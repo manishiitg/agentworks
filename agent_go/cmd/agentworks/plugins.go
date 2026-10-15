@@ -796,7 +796,7 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 			root = configured
 		}
-		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Version: cliVersion, ClientBuild: cliBuild, Notify: notifyAgentWaiting, HostAlive: cursorAwareHostAlive, UsageRead: readAttachedUsage(root), AutoUpdate: autoUpdateHelperCallback})
+		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Version: cliVersion, ClientBuild: cliBuild, Notify: notifyAgentWaiting, Ping: notifyPing, HostAlive: cursorAwareHostAlive, UsageRead: readAttachedUsage(root), AutoUpdate: autoUpdateHelperCallback})
 	}}
 	serve.Flags().StringVar(&piRootOverride, "pi-root", "", "Pi SDK configured root")
 	_ = serve.Flags().MarkHidden("pi-root")
@@ -841,8 +841,8 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 			session = os.Getenv("CODEX_THREAD_ID")
 		}
-		if args[0] != "ack" && args[0] != "reply" && args[0] != "peers" && args[0] != "send" && args[0] != "read" && args[0] != "purpose" {
-			return errors.New("choose ack, reply, peers, send, read or purpose")
+		if args[0] != "ack" && args[0] != "reply" && args[0] != "peers" && args[0] != "send" && args[0] != "read" && args[0] != "purpose" && args[0] != "ping_person" {
+			return errors.New("choose ack, reply, peers, send, read, purpose or ping_person")
 		}
 		root, err := agentworksclient.DefaultLocalBridgeRoot()
 		if err != nil {
@@ -1024,6 +1024,22 @@ func notifyAgentWaiting(a agentworksclient.AgentAttachment, notice string) {
 	if notice != "" {
 		text = "agent:" + a.AgentName + ". " + notice
 	}
+	desktopNotify(ctx, a, text)
+}
+
+// notifyPing shows another agent's ping for this person. The second line is
+// the start of the waiting message; it is left out when the person turned
+// previews off (agentworks setup notifications --no-preview).
+func notifyPing(a agentworksclient.AgentAttachment, text string) {
+	if notificationPreviewOff() {
+		text = strings.SplitN(text, "\n", 2)[0]
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	desktopNotify(ctx, a, text)
+}
+
+func desktopNotify(ctx context.Context, a agentworksclient.AgentAttachment, text string) {
 	if runtime.GOOS == "darwin" {
 		// The AgentWorks app shows the AgentWorks icon; the rest are fallbacks.
 		if err := notifyWithIcon(text); err == nil {

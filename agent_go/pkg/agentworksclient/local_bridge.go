@@ -203,6 +203,8 @@ type LocalBridgeOptions struct {
 	NativeOffer func(context.Context, string, LocalBridgeReply) error
 	NativeRoute func(provider, session, hostKey, remote string) string
 	Notify      func(AgentAttachment, string)
+	// Ping shows a person ping (another agent waiting for this agent's reply) as a desktop notification.
+	Ping func(AgentAttachment, string)
 	// RouteRetry is how long a chat whose native-route lookup failed waits before the bridge looks again
 	// (5 s when zero). Attaching, re-attaching and a chat starting look at once.
 	RouteRetry time.Duration
@@ -600,6 +602,17 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 					return nil
 				}
 				if m.Sequence <= s.SeenThrough && !lateButNew(s, m) {
+					return nil
+				}
+				if m.Kind == "ping" {
+					// A ping is for the person, never the chat: show it on this computer and mark it handled.
+					s.SeenThrough = max(s.SeenThrough, m.Sequence)
+					_ = b.save()
+					if b.options.Ping != nil {
+						go b.options.Ping(s.Attachment, m.Message)
+					}
+					b.acknowledgeLines(s, []string{m.MessageID}, "mailbox")
+					log.Printf("[BRIDGE] ping for agent=%s shown on this computer", s.Attachment.AgentName)
 					return nil
 				}
 				compactLocalOffers(s, false)
@@ -1306,7 +1319,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		out.Attachment = s.Attachment
 		out.Result = raw
 		return out
-	case "peers", "send", "read", "reply_inbox":
+	case "peers", "send", "read", "reply_inbox", "ping_person":
 		// The plugin exposes only messaging for its attached identity. A full
 		// AgentWorks tool connection must be installed separately by the person.
 		// The server calls run without the bridge lock (a busy server can take many seconds);
@@ -1723,6 +1736,8 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 	switch in.Action {
 	case "peers":
 		args["action"] = "list_agents"
+	case "ping_person":
+		args["action"], args["message_id"] = "ping_person", in.MessageID
 	case "send":
 		args["action"], args["target"], args["message"], args["submission_id"] = "send", in.Target, in.Message, in.SubmissionID
 	case "reply_inbox":
@@ -2128,6 +2143,11 @@ func (b *localBridge) acknowledgeStatusLines(s *localSession, messages []AgentLi
 		return
 	}
 	_ = b.save()
+	b.acknowledgeLines(s, ids, transport)
+}
+
+// acknowledgeLines acknowledges server-authored lines (status, ping) admitted and processed, in the background.
+func (b *localBridge) acknowledgeLines(s *localSession, ids []string, transport string) {
 	client, attachment := s.client, s.Attachment
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)

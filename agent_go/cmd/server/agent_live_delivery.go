@@ -302,7 +302,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 				continue
 			}
 			dest, source := c.Endpoints[1-m.From], c.Endpoints[m.From]
-			status := m.Kind == "status" // written by the server for this agent: no sender to check
+			status := serverAuthoredKind(m.Kind) // written by the server for this agent: no sender to check
 			if dest.NamedAgentID != a.ID || dest.UserID != claims.UserID || !status && !store.shareSenderAllowed(c, m.From, claims.UserID, time.Now().UTC()) {
 				continue
 			}
@@ -325,7 +325,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 			}
 			frame := map[string]any{"type": "message", "attachment_id": id, "message_id": m.ID, "inbox_id": c.ID, "sender": endpointDisplayLabel(source, dest.UserID), "sender_id": source.NamedAgentID, "message": m.Text, "sequence": m.AgentSequence, "delivery": m.Delivery, "sent_at": m.SentAt}
 			if status {
-				frame["sender"], frame["sender_id"], frame["kind"] = "AgentWorks", "", "status"
+				frame["sender"], frame["sender_id"], frame["kind"] = "AgentWorks", "", m.Kind
 			}
 			if person := crossPersonOwner(source, dest.UserID); person != "" && !status {
 				frame["from_person"], frame["untrusted"] = person, true
@@ -419,7 +419,7 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 					continue
 				}
 				src := c.Endpoints[m.From]
-				if m.Kind == "status" {
+				if serverAuthoredKind(m.Kind) {
 					permitted = append(permitted, id)
 					continue
 				}

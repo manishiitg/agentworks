@@ -72,6 +72,9 @@ type agentMessage struct {
 	NoticeSent         bool      `json:"notice_sent,omitempty"`
 	AdmittedAt         time.Time `json:"admitted_at,omitempty"`
 	ProcessedAt        time.Time `json:"processed_at,omitempty"`
+	PingedAt           time.Time `json:"pinged_at,omitempty"`   // the sender pinged the person once for this message
+	PingSender         string    `json:"ping_sender,omitempty"` // on a ping line: the agent that pinged
+	PingCount          int       `json:"ping_count,omitempty"`  // on a ping line: messages it is waiting on
 }
 type agentConversation struct {
 	ID        string                  `json:"inbox_id"`

@@ -112,6 +112,10 @@ func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 		cursor, _ := a["after"].(float64)
 		return call(ctx, LocalBridgeRequest{Action: "read", InboxID: inbox, Cursor: int(cursor)}, req)
 	})
+	s.AddTool(mcp.NewTool("agent_message_ping_person", mcp.WithDescription("Ping the person behind an agent that has not answered a message you sent: they get one desktop notification. Once per message, only when the reply matters; never on a loop."), mcp.WithString("message_id", mcp.Required())), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		id, _ := req.GetArguments()["message_id"].(string)
+		return call(ctx, LocalBridgeRequest{Action: "ping_person", MessageID: id}, req)
+	})
 	s.AddTool(mcp.NewTool("agent_message_ack", mcp.WithDescription("Acknowledge an offered message in this exact session: admitted on receipt, processed after handling."), mcp.WithString("message_id", mcp.Required()), mcp.WithString("delivery", mcp.Required(), mcp.Enum("admitted", "processed"))), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		id, _ := req.GetArguments()["message_id"].(string)
 		delivery, _ := req.GetArguments()["delivery"].(string)

@@ -55,8 +55,16 @@ func setupCommand(o *options) *cobra.Command {
 		}
 		return nil
 	}})
-	var remove bool
-	notifications := &cobra.Command{Use: "notifications", Args: cobra.NoArgs, Short: "Manage the small AgentWorks app that shows notifications with the AgentWorks icon (macOS)", RunE: func(cmd *cobra.Command, _ []string) error {
+	var remove, noPreview, preview bool
+	notifications := &cobra.Command{Use: "notifications", Args: cobra.NoArgs, Short: "Notification settings: the AgentWorks notifier app (macOS) and message previews", RunE: func(cmd *cobra.Command, _ []string) error {
+		if noPreview || preview {
+			line, err := setNotificationPreview(preview)
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(o.stdout, line)
+			return err
+		}
 		pick := restoreNotifierApp
 		if remove {
 			pick = removeNotifierApp
@@ -69,6 +77,8 @@ func setupCommand(o *options) *cobra.Command {
 		return err
 	}}
 	notifications.Flags().BoolVar(&remove, "remove", false, "Delete the AgentWorks notifier app")
+	notifications.Flags().BoolVar(&noPreview, "no-preview", false, "Leave message text out of notifications (they can show on a lock screen)")
+	notifications.Flags().BoolVar(&preview, "preview", false, "Show the first line of a waiting message in notifications again")
 	cmd.AddCommand(notifications)
 	for _, app := range []struct{ provider, name, what, next, undo string }{
 		{"claude", "Claude Code", "the AgentWorks plugin (agentworks@agentworks) for your user in Claude Code (~/.claude)", "Restart Claude Code, then type /agentworks attach (or /agentworks attach NAME) in a chat.", "claude plugin uninstall agentworks@agentworks --scope user"},

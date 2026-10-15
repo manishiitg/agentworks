@@ -58,7 +58,7 @@ func (s agentMessageStore) sentReceipts(c agentConversation, side, limit int) []
 	rows := []map[string]interface{}{}
 	for i := len(c.Messages) - 1; i >= 0 && len(rows) < limit; i-- {
 		m := c.Messages[i]
-		if m.From != side || m.Kind == "status" {
+		if m.From != side || serverAuthoredKind(m.Kind) {
 			continue
 		}
 		row := s.receiptFields(m, c.Endpoints[1-side])

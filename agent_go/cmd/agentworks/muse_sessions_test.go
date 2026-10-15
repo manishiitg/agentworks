@@ -55,7 +55,7 @@ func TestMusePluginExactProcessBoundary(t *testing.T) {
 			t.Fatal("unattached hook started bridge", err)
 		}
 		server, err := agentworksclient.NewPluginMCPServer(context.Background(), root, "muse", host, false)
-		if err != nil || len(server.ListTools()) != 6 || server.ListTools()["agent_message_ack"] == nil || server.ListTools()["agent_message_set_purpose"] == nil {
+		if err != nil || len(server.ListTools()) != 7 || server.ListTools()["agent_message_ping_person"] == nil || server.ListTools()["agent_message_ack"] == nil || server.ListTools()["agent_message_set_purpose"] == nil {
 			t.Fatal("Muse messaging child unavailable or overbroad", err)
 		}
 		if _, err = agentworksclient.NewPluginMCPServer(context.Background(), root, "muse", host, true); err == nil {
@@ -170,7 +170,7 @@ func TestMusePluginExactProcessBoundary(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(server.ListTools()) != 8 || server.ListTools()["agent_message_monitor"] == nil || server.ListTools()["agent_message_receive"] == nil {
+		if len(server.ListTools()) != 9 || server.ListTools()["agent_message_monitor"] == nil || server.ListTools()["agent_message_receive"] == nil {
 			t.Fatal("Muse delivery helper tools missing")
 		}
 		_, _ = server.ListTools()["agent_message_peers"].Handler(context.Background(), mcp.CallToolRequest{})

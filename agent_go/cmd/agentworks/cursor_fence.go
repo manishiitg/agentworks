@@ -29,7 +29,7 @@ const (
 	cursorFenceScanLimit = 4096
 )
 
-var cursorMessageTools = []string{"agent_message_set_purpose", "agent_message_peers", "agent_message_send", "agent_message_read", "agent_message_ack", "agent_message_reply", "agent_attach_chat", "agent_detach_chat", "agent_share_chat", "agent_unshare_chat", "agent_groups", "agent_group"}
+var cursorMessageTools = []string{"agent_message_set_purpose", "agent_message_peers", "agent_message_send", "agent_message_read", "agent_message_ack", "agent_message_reply", "agent_attach_chat", "agent_detach_chat", "agent_share_chat", "agent_unshare_chat", "agent_groups", "agent_group", "agent_message_ping_person"}
 
 type cursorFence struct {
 	Conversation string `json:"conversation_id"`
