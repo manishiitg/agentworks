@@ -121,6 +121,43 @@ check_shared_acl() {
 }
 case "$slots_mode" in on|optin) check_shared_acl ;; esac
 
+# A slot's Docker is usable only by that slot (owner decision 2026-10-15): the service account is a member of every slot group, so
+# the only thing between it and a slot's rootless Docker is the slot's runtime folder /run/user/<uid> (0700, owner only). Prove it from
+# the service account's side: it must not be able to traverse any slot's folder or open any docker.sock in it. A failure is a real
+# hole (any app-account CLI could drive that user's containers) and fails the self-test; the repair is `provision-slots.sh ensure`.
+# That the slot itself still reaches its Docker is proven at provisioning (`docker info` as the slot), not from here.
+check_slot_docker_owner_only() {
+  local slot uid dir bad=0 checked=0
+  while IFS= read -r slot; do
+    [[ -n "$slot" ]] || continue
+    uid="$(id -u "$slot" 2>/dev/null)" || continue
+    dir="/run/user/$uid"
+    [[ -d "$dir" ]] || continue
+    checked=$((checked + 1))
+    if [[ -x "$dir" ]]; then
+      echo "FAIL slot-docker-owner-only: the service account can enter $dir (slot $slot) -- fix: as root on the host, run: PRODUCT=$PRODUCT bash -s -- ensure < deploy/common/provision-slots.sh"
+      bad=1
+    elif [[ -S "$dir/docker.sock" && ( -r "$dir/docker.sock" || -w "$dir/docker.sock" ) ]]; then
+      echo "FAIL slot-docker-owner-only: the service account can open $dir/docker.sock (slot $slot) -- fix: as root on the host, run: PRODUCT=$PRODUCT bash -s -- ensure < deploy/common/provision-slots.sh"
+      bad=1
+    fi
+  done < <(python3 - "$table" <<'PY'
+import json, sys
+try:
+    for slot in sorted(json.load(open(sys.argv[1])).get("slots", {})):
+        print(slot)
+except (OSError, ValueError):
+    pass
+PY
+)
+  if [[ "$bad" == 0 ]]; then
+    echo "PASS slot-docker-owner-only: the service account cannot reach any of the $checked slot Docker folders"
+    return 0
+  fi
+  return 1
+}
+case "$slots_mode" in on|optin) check_slot_docker_owner_only || rc=1 ;; esac
+
 echo "==> [$PRODUCT] secret admission scan (names only, warnings never fail the deploy)"
 if [[ -f "$RELEASE/admission_scan.py" ]]; then
   python3 "$RELEASE/admission_scan.py" --docs "$DOCS" --agent-pid "$(main_pid "$PRODUCT-agent")" --env-file "$APP/.env" || true

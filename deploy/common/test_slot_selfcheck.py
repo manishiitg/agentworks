@@ -243,3 +243,36 @@ class SecretAdmissionScanTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SlotDockerOwnerOnlyTest(unittest.TestCase):
+    """The service account must not be able to enter a slot's /run/user/<uid> folder (PLAT-480, owner 2026-10-15)."""
+
+    def run_check(self, table_slots, tmpdir):
+        fake = Path(tmpdir) / "table.json"
+        fake.write_text(json.dumps({"slots": table_slots}))
+        script = SLOTCHECK_SH.read_text()
+        start = script.index("check_slot_docker_owner_only() {")
+        end = script.index("\ncase \"$slots_mode\" in on|optin) check_slot_docker_owner_only")
+        body = script[start:end]
+        proc = subprocess.run(
+            ["bash", "-c", f'PRODUCT=test; table="{fake}"; {body}\ncheck_slot_docker_owner_only'],
+            capture_output=True, text=True,
+        )
+        return proc
+
+    def test_unknown_slots_are_skipped_and_pass(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = self.run_check({"slot-does-not-exist": "u1"}, tmp)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("PASS slot-docker-owner-only", proc.stdout)
+
+    @unittest.skipUnless(os.path.isdir(f"/run/user/{os.getuid()}"), "needs this account's /run/user folder (Linux with systemd)")
+    def test_a_folder_the_service_account_can_enter_fails(self):
+        # The test user plays a "slot" whose runtime folder it can enter: that is the hole the row exists to catch.
+        import pwd
+        name = pwd.getpwuid(os.getuid()).pw_name
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = self.run_check({name: "u1"}, tmp)
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertIn("FAIL slot-docker-owner-only", proc.stdout)

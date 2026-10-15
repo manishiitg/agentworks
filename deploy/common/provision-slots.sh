@@ -233,6 +233,7 @@ enable_slot_docker() {
   runuser -u "$slot" -- env $env DOCKER_HOST="unix:///run/user/$uid/docker.sock" docker info --format '{{.SecurityOptions}}' | grep -q rootless \
     || { echo "$slot: its Docker is not rootless" >&2; return 1; }
   echo "docker ready: $slot (uid $uid)"
+  ensure_slot_docker_private
 }
 
 cmd_docker() {
@@ -463,6 +464,43 @@ ensure_shared_default_acl() {
   done
 }
 
+# A slot's Docker is usable only by that slot (owner decision 2026-10-15). What keeps the service account out is the slot's
+# runtime folder /run/user/<uid>: systemd-logind creates it 0700, and the service account (a member of every slot group) cannot
+# even traverse it, whatever mode the socket inside has. That held only by logind's default; this asserts it on every `ensure`
+# (every deploy of a slot host), repairs it, and says so when it had to. The socket is made 0600 when it exists (the daemon
+# recreates it on restart, so the folder is the real guard). Idempotent; a slot without a runtime folder is skipped.
+ensure_slot_docker_private() {
+  local slot uid dir mode acl repaired=0
+  while IFS= read -r slot; do
+    [[ -n "$slot" ]] || continue
+    uid="$(id -u "$slot" 2>/dev/null)" || continue
+    dir="/run/user/$uid"
+    [[ -d "$dir" ]] || continue
+    mode="$(stat -c %a "$dir")"
+    acl=""
+    command -v getfacl >/dev/null 2>&1 && acl="$(getfacl -p -s "$dir" 2>/dev/null | grep -E '^(user|group|mask):[^:]*:' | grep -v '^user::' | grep -v '^group::' || true)"
+    if [[ "$mode" != 700 || -n "$acl" ]]; then
+      chmod 0700 "$dir"
+      command -v setfacl >/dev/null 2>&1 && setfacl -b "$dir"
+      echo "repaired: $dir (slot $slot) was mode $mode${acl:+ with extra ACL entries}; now owner-only"
+      repaired=1
+    fi
+    if [[ -S "$dir/docker.sock" && "$(stat -c %a "$dir/docker.sock")" != 600 ]]; then
+      chmod 0600 "$dir/docker.sock"
+    fi
+  done < <(python3 - "$TABLE" <<'PY'
+import json, sys
+try:
+    for slot in sorted(json.load(open(sys.argv[1])).get("slots", {})):
+        print(slot)
+except (OSError, ValueError):
+    pass
+PY
+)
+  [[ "$repaired" == 0 ]] && echo "slot Docker folders are owner-only (/run/user/<slot uid> 0700, no ACL)"
+  return 0
+}
+
 cmd_ensure() {
   # init is idempotent and is what installs the sudo rule and the launcher config: run it every time, so a run that stopped half-way
   # (the table and accounts exist, the sudo rule does not) is finished by the next one.
@@ -492,6 +530,7 @@ PY
     sleep 5
   fi
   ensure_shared_default_acl
+  ensure_slot_docker_private
   echo "Every account in $DOCS/config/users.json has a slot."
 }
 
