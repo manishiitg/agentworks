@@ -5796,7 +5796,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Load selected tools and code execution mode from preset if available (for simple/ReAct agents)
 		var selectedTools []string
-		var useCodeExecutionMode bool
 
 		// Load selected tools from manifest (no DB dependency)
 		{
@@ -5828,13 +5827,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[TOOLS] No tool selection specified - will use ALL tools from selected servers")
 		}
 
-		// App chat uses code-execution mode. External Builder uses direct
-		// managed tools because its permission boundary excludes the shell.
-		// Provider-specific CLI handling (prompt template, native context and
-		// MCP bridge mapping) is decided separately via common.IsCLIProvider.
-		useCodeExecutionMode, _ = externalBuilderTransport(GetUserFromContext(r.Context()))
-		log.Printf("[CODE_EXECUTION] code_execution=%v browser_mode=%s", useCodeExecutionMode, req.BrowserMode)
-
 		var resolvedPrimaryOptions map[string]interface{}
 		if req.LLMConfig != nil {
 			resolvedPrimaryOptions = req.LLMConfig.Primary.Options
@@ -5847,8 +5839,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Create new agent with streamCtx instead of r.Context()
-		log.Printf("[AGENT CONFIG DEBUG] Creating agent with ServerName: %s, UseCodeExecutionMode: %v", serverList, useCodeExecutionMode)
 		profileAgentToolsMode := ""
 		profileApprovalsMode := ""
 		// Native agent tools request Full CLI; applyCLILandlock below decides
@@ -6063,6 +6053,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			return !builderProductSelection(GetUserFromContext(r.Context())).AllowsTool(name)
 		})
 		toolGate.AllowWorkflowNotifications(isWorkflowPhase && !relayChat && workflowNotificationsForPath(workflowPhaseFolder))
+		claims := GetUserFromContext(r.Context())
+		workflowRun := isWorkflowPhase && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && currentUserIsReadOnly && !relayChat
+		if workflowRun && claims != nil && claims.AccessToken != nil {
+			// Apply the existing token denylist to registration and the core CLI
+			// bridge as well as execution, so an unusable shell is not advertised.
+			toolGate.DenyWhere(func(name string) bool { return accessTokenRunToolDenied(claims, name) })
+		}
 		if req.ExternalBuilderOperationID != "" {
 			claims := GetUserFromContext(r.Context())
 			toolGate.DenyWhere(func(name string) bool { return externalBuilderToolDenied(claims, name) })
@@ -6074,7 +6071,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		defer toolGate.logSurface(sessionID)
-		_, platformBridgeTools := externalBuilderTransport(GetUserFromContext(r.Context()))
+		useCodeExecutionMode, platformBridgeTools := externalWorkflowTransport(claims, workflowRun, toolGate)
+		log.Printf("[CODE_EXECUTION] session=%s code_execution=%v browser_mode=%s direct_bridge_tools=%v", sessionID, useCodeExecutionMode, req.BrowserMode, platformBridgeTools)
 		clarificationAvailable := requestFromAttendedChat(r) && codingAgentRequestHasAttendingUser(&req, sessionID) &&
 			!currentUserIsReadOnly && (!isWorkflowPhase || isWorkflowBuilderPhase) && !relayChat &&
 			req.ExternalBuilderOperationID == "" && isCodingAgentProvider(finalProvider, finalModelID) && toolGate.Admit("request_clarification")
