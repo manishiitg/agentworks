@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
-	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 )
 
@@ -79,6 +78,9 @@ func (api *StreamingAPI) homeInventory(ctx context.Context) ([]homeWork, error) 
 				return nil, err
 			}
 			for _, row := range crews {
+				if claims.AccessToken != nil && !claims.AccessToken.AllowsCrew(fmt.Sprint(row["id"])) {
+					continue
+				}
 				out = append(out, homeWork{Surface: "work", ID: fmt.Sprint(row["id"]), Label: fmt.Sprint(row["name"]), WorkspacePath: fmt.Sprint(row["workspace_path"])})
 			}
 		}
@@ -95,10 +97,6 @@ func (api *StreamingAPI) homeInventory(ctx context.Context) ([]homeWork, error) 
 	return out, nil
 }
 
-func homeDecisionNeedsAttention(input ReportHumanInput) bool {
-	return input.Status == "pending" || (input.Status == "answered" && strings.TrimSpace(input.ApplyMessage) != "")
-}
-
 func homeSessionRunning(session *ActiveSessionInfo) bool {
 	if session == nil || session.ParentSessionID != "" {
 		return false
@@ -113,7 +111,7 @@ func (api *StreamingAPI) collectHome(r *http.Request) (homeResponse, error) {
 	start := time.Now()
 	result := homeResponse{Attention: []homeAttention{}, Work: []homeWork{}, Running: []*ActiveSessionInfo{}, RunningWork: map[string]homeWork{}, Warnings: []string{}}
 	defer func() {
-		log.Printf("[HOME] user=%s attention=%d work=%d running=%d ms=%d", GetUserIDFromContext(r.Context()), len(result.Attention), len(result.Work), len(result.Running), time.Since(start).Milliseconds())
+		log.Printf("[HOME] user=%s attention=%d work=%d running=%d truncated=%t ms=%d", GetUserIDFromContext(r.Context()), len(result.Attention), len(result.Work), len(result.Running), result.Truncated, time.Since(start).Milliseconds())
 	}()
 	work, err := api.homeInventory(r.Context())
 	if err != nil {
@@ -148,45 +146,42 @@ func (api *StreamingAPI) collectHome(r *http.Request) (homeResponse, error) {
 	for i := range work {
 		byPath[canonicalChatHistoryWorkspacePath(GetUserIDFromContext(r.Context()), work[i].WorkspacePath)] = &work[i]
 	}
-	for _, q := range api.visibleHumanFeedback(r.Context(), virtualtools.GetHumanFeedbackStore().ListPending(time.Now())) {
-		active, ok := api.getActiveSession(q.SessionID)
-		if !ok {
-			continue
+	places := make([]needsYouPlace, 0, len(work))
+	for _, item := range work {
+		kind := "workflow"
+		switch item.Surface {
+		case "relays":
+			kind = "relay"
+		case "work":
+			kind = "crew"
+		case "code":
+			kind = "code"
 		}
-		place := byPath[canonicalChatHistoryWorkspacePath(GetUserIDFromContext(r.Context()), active.WorkspacePath)]
-		if place == nil {
-			continue
-		} // includes product and token bounds
-		result.Attention = append(result.Attention, homeAttention{ID: q.UniqueID, Kind: "question", Title: q.MessageForUser, Work: place, SessionID: q.SessionID, UpdatedAt: q.CreatedAt.Format(time.RFC3339)})
+		places = append(places, needsYouPlace{Kind: kind, ID: item.ID, Label: item.Label, path: item.WorkspacePath})
+	}
+	collected := api.collectNeedsYou(r.Context(), GetUserFromContext(r.Context()), places, false, homeSectionLimit)
+	result.Warnings = append(result.Warnings, collected.warnings...)
+	result.Truncated = result.Truncated || collected.truncated
+	for _, q := range collected.questions {
+		place := byPath[canonicalChatHistoryWorkspacePath(GetUserIDFromContext(r.Context()), q.place.path)]
+		result.Attention = append(result.Attention, homeAttention{ID: q.request.UniqueID, Kind: "question", Title: q.request.MessageForUser, Work: place, SessionID: q.request.SessionID, UpdatedAt: q.request.CreatedAt.Format(time.RFC3339)})
+	}
+	for _, decision := range collected.decisions {
+		place := byPath[canonicalChatHistoryWorkspacePath(GetUserIDFromContext(r.Context()), decision.place.path)]
+		kind := "decision"
+		if decision.input.Status == "answered" {
+			kind = "apply_decision"
+		}
+		view := "human-actions"
+		if place.Surface == "work" || place.Surface == "code" {
+			view = "suggestions"
+		}
+		result.Attention = append(result.Attention, homeAttention{ID: decision.input.ID, Kind: kind, Title: decision.input.Question, Work: place, View: view, UpdatedAt: decision.input.UpdatedAt})
 	}
 	for i := range work {
 		place := &work[i]
 		if read, _ := reportHumanInputAccess(r.Context(), place.WorkspacePath); !read {
 			continue
-		}
-		inputs, err := listReportHumanInputsBounded(r.Context(), place.WorkspacePath, "needs-attention", "", homeSectionLimit+1)
-		if err != nil {
-			result.Warnings = append(result.Warnings, "Some decisions could not be loaded.")
-			continue
-		}
-		if len(inputs) > homeSectionLimit {
-			inputs = inputs[:homeSectionLimit]
-			result.Truncated = true
-		}
-		withDecisionApplyMessages(inputs)
-		for _, input := range inputs {
-			if !homeDecisionNeedsAttention(input) {
-				continue
-			}
-			kind := "decision"
-			if input.Status == "answered" {
-				kind = "apply_decision"
-			}
-			view := "human-actions"
-			if place.Surface == "work" || place.Surface == "code" {
-				view = "suggestions"
-			}
-			result.Attention = append(result.Attention, homeAttention{ID: input.ID, Kind: kind, Title: input.Question, Work: place, View: view, UpdatedAt: input.UpdatedAt})
 		}
 		if place.Surface != "agentworks" && place.Surface != "relays" {
 			continue
