@@ -43,22 +43,23 @@ func setupCommand(o *options) *cobra.Command {
 			return fmt.Errorf("Cursor setup was not completed: %w", err)
 		}
 		if changed {
-			fmt.Fprintln(o.stdout, "Cursor is set up for AgentWorks. This applies to every project you open in Cursor.")
+			fmt.Fprintln(o.stdout, "Cursor is set up for AgentWorks: added the AgentWorks hooks to ~/.cursor/hooks.json and the AgentWorks message tools (agentworks-messages) to ~/.cursor/mcp.json. This applies to every project you open in Cursor.")
 		} else {
 			fmt.Fprintln(o.stdout, "Cursor was already set up for AgentWorks (every project).")
 		}
 		fmt.Fprintln(o.stdout, "Next: restart Cursor, open a chat and type /agentworks attach (or /agentworks attach NAME) as its own message.")
+		fmt.Fprintln(o.stdout, "To undo: remove the entries that run agentworks from those two files (or put back a saved copy listed above), then restart Cursor.")
 		fmt.Fprintln(o.stdout, "Messages from other agents reach a connected chat when it finishes a turn, and can start a turn you did not type. A chat that is idle gets them after its next turn.")
 		if cwd, e := os.Getwd(); e == nil && cursorProjectHasAgentWorksHooks(filepath.Join(cwd, ".cursor", "hooks.json")) {
 			fmt.Fprintln(o.stdout, "This project also has its own AgentWorks hooks from the older command-line setup. Remove the AgentWorks entries from .cursor/hooks.json here so they do not run twice.")
 		}
 		return nil
 	}})
-	for _, app := range []struct{ provider, name, next string }{
-		{"claude", "Claude Code", "Restart Claude Code, then type /agentworks attach (or /agentworks attach NAME) in a chat."},
-		{"codex", "Codex", "In the Codex app, open Settings > Hooks and trust the AgentWorks hooks, then reload. In any Codex chat type /agentworks attach (or /agentworks attach NAME)."},
-		{"muse", "Muse", "Approve it with muse plugins approve agentworks-muse, restart Muse, then type /agentworks attach in a chat."},
-		{"pi", "Pi", "Reload Pi, then type /agentworks attach in the chat."},
+	for _, app := range []struct{ provider, name, what, next, undo string }{
+		{"claude", "Claude Code", "the AgentWorks plugin (agentworks@agentworks) for your user in Claude Code (~/.claude)", "Restart Claude Code, then type /agentworks attach (or /agentworks attach NAME) in a chat.", "claude plugin uninstall agentworks@agentworks --scope user"},
+		{"codex", "Codex", "the AgentWorks plugin (agentworks-codex@agentworks) in your Codex profile (~/.codex), used by the Codex app and the Codex CLI", "In the Codex app, open Settings > Hooks and trust the AgentWorks hooks, then reload. In any Codex chat type /agentworks attach (or /agentworks attach NAME).", "codex plugin remove agentworks-codex@agentworks"},
+		{"muse", "Muse", "the AgentWorks plugin (agentworks-muse) for your user in Muse", "Approve it with muse plugins approve agentworks-muse, restart Muse, then type /agentworks attach in a chat.", "muse plugins remove agentworks-muse"},
+		{"pi", "Pi", "the AgentWorks Pi package for your user in Pi", "Reload Pi, then type /agentworks attach in the chat.", "pi list (find the AgentWorks entry), then pi remove <that source>"},
 	} {
 		app := app
 		cmd.AddCommand(&cobra.Command{Use: app.provider, Args: cobra.NoArgs, Short: "Set up " + app.name + " for AgentWorks (every project)", Long: "Installs the AgentWorks plugin for " + app.name + " with its own plugin commands, for every project. Running it again is safe. It does not trust hooks, sign in or connect a chat; you do those next.", RunE: func(cmd *cobra.Command, _ []string) error {
@@ -66,8 +67,9 @@ func setupCommand(o *options) *cobra.Command {
 			if err := installAgentPlugin(cmd.Context(), o, app.provider); err != nil {
 				return fmt.Errorf("%s setup was not completed: %w", app.name, err)
 			}
-			fmt.Fprintln(o.stdout, app.name+" is set up for AgentWorks. This applies to every project.")
+			fmt.Fprintln(o.stdout, app.name+" is set up for AgentWorks: installed "+app.what+". This applies to every project.")
 			fmt.Fprintln(o.stdout, "Next: "+app.next)
+			fmt.Fprintln(o.stdout, "To undo: "+app.undo)
 			return nil
 		}})
 	}
