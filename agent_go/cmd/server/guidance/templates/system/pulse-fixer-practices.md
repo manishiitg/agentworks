@@ -354,6 +354,12 @@ assume the applied fix holds unless the defect is reproduced.
 - Repair the harness when the same failure crosses workflows. Do not copy a
   platform workaround into every workflow.
 
+- Stray files (screenshots, test files, `.patch`, ad-hoc `.py`) at the workflow
+  root or loose in `db/` that nothing refers to are leftovers: move them into
+  `backup/stray-<date>/`, never delete them, and say which files moved. Referenced
+  files stay. If unsure, ask the owner. New output goes only to the run folder,
+  `tool_output_folder`, `reports` or `db/assets`.
+
 ## Scheduler and lifecycle repair
 
 - Trace live execution state, child completion, durable run metadata, and UI

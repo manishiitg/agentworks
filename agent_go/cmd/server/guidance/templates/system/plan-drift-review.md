@@ -184,7 +184,14 @@ Audit procedure:
    fix in this turn using the exact same classification scheme as step 4
    below (`step_id="__workflow_drift_review__"` on every `record_pulse_finding`
    call).
-5. Persist with `record_plan_drift_review(step_id="__workflow_drift_review__",
+5. Tidy leftovers. Files at the workflow root or loose in `db/` that no step,
+   plan, script or report refers to (screenshots, test files, `.patch` files,
+   ad-hoc `.py` scripts) are leftovers. Move them into `backup/stray-<date>/`;
+   never delete them, and list every moved file in the drift record. Anything
+   still referenced stays where it is. If you are unsure whether a file is
+   used, ask the owner instead of moving it. New output belongs only in the run
+   folder, `tool_output_folder`, `reports` or `db/assets`.
+6. Persist with `record_plan_drift_review(step_id="__workflow_drift_review__",
    checks=[...], reviewed_through_change_id=<latest delete_plan_steps
    change_id you actually read>)` — one call, same shape as a real step's,
    using a `check_id` such as `deleted_step_dependent_artifact_audit` per
