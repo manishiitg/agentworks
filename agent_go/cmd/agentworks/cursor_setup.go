@@ -85,6 +85,11 @@ func setupCommand(o *options) *cobra.Command {
 			fmt.Fprintln(o.stdout, app.name+" is set up for AgentWorks: installed "+app.what+". This applies to every project.")
 			fmt.Fprintln(o.stdout, "Next: "+app.next)
 			fmt.Fprintln(o.stdout, "To undo: "+app.undo)
+			if app.provider == "claude" {
+				for _, project := range claudeProjectInstalls() {
+					fmt.Fprintf(o.stdout, "AgentWorks is also installed just for the project %s, so in that project its hooks run twice. Remove that copy: cd %s && claude plugin uninstall agentworks@agentworks --scope project\n", project, shellWord(project))
+				}
+			}
 			return nil
 		}})
 	}
@@ -240,4 +245,33 @@ func shellWord(s string) string {
 		return s
 	}
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// claudeProjectInstalls lists projects where the AgentWorks plugin is also
+// installed with project scope (next to the every-project install).
+func claudeProjectInstalls() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	raw, err := os.ReadFile(filepath.Join(home, ".claude", "plugins", "installed_plugins.json"))
+	if err != nil {
+		return nil
+	}
+	var data struct {
+		Plugins map[string][]struct {
+			Scope       string `json:"scope"`
+			ProjectPath string `json:"projectPath"`
+		} `json:"plugins"`
+	}
+	if json.Unmarshal(raw, &data) != nil {
+		return nil
+	}
+	var out []string
+	for _, entry := range data.Plugins["agentworks@agentworks"] {
+		if entry.Scope == "project" && entry.ProjectPath != "" {
+			out = append(out, entry.ProjectPath)
+		}
+	}
+	return out
 }

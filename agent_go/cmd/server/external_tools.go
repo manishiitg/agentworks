@@ -455,7 +455,68 @@ func (api *StreamingAPI) handleExternalTools(w http.ResponseWriter, r *http.Requ
 	}
 	externalJSON(w, map[string]any{"tools": externalListedTools(GetUserFromContext(r.Context()), allowed)})
 }
+
+// externalCallRecorder keeps the status and the start of an error body, so a
+// refused call leaves one log line naming the tool, never its arguments.
+type externalCallRecorder struct {
+	http.ResponseWriter
+	status int
+	body   []byte
+	size   int
+}
+
+func (rec *externalCallRecorder) WriteHeader(status int) {
+	if rec.status == 0 {
+		rec.status = status
+	}
+	rec.ResponseWriter.WriteHeader(status)
+}
+
+func (rec *externalCallRecorder) Write(b []byte) (int, error) {
+	if rec.status == 0 {
+		rec.status = http.StatusOK
+	}
+	if rec.status >= 400 {
+		rec.size += len(b)
+		if len(rec.body) < 512 {
+			rec.body = append(rec.body, b[:min(len(b), 512-len(rec.body))]...)
+		}
+	}
+	return rec.ResponseWriter.Write(b)
+}
+
+func (rec *externalCallRecorder) Flush() {
+	if f, ok := rec.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Request) {
+	rec := &externalCallRecorder{ResponseWriter: w}
+	w = rec
+	var logTool, logAction string
+	defer func() {
+		if rec.status < 400 {
+			return
+		}
+		var envelope struct {
+			Error struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		// Only our own error envelope is logged; any other body (a tool or upstream
+		// error could echo an argument back) is reported by size alone.
+		if json.Unmarshal(rec.body, &envelope) != nil || envelope.Error.Code == "" {
+			logfWithContext(api.httpRequestLogContext(r), "[EXTERNAL_CALL] tool=%s action=%s status=%d error=<non-envelope, %d bytes>", logTool, logAction, rec.status, rec.size)
+			return
+		}
+		message := strings.Join(strings.Fields(envelope.Error.Message), " ")
+		if len(message) > 240 {
+			message = message[:240] + "…"
+		}
+		logfWithContext(api.httpRequestLogContext(r), "[EXTERNAL_CALL] tool=%s action=%s status=%d code=%s error=%q", logTool, logAction, rec.status, envelope.Error.Code, message)
+	}()
 	if GetUserFromContext(r.Context()) == nil {
 		externalError(w, 401, "unauthorized", "Sign in to AgentWorks.")
 		return
@@ -478,6 +539,13 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if call.Arguments == nil {
 		call.Arguments = map[string]any{}
+	}
+	logTool, logAction = call.Name, externalArg(call.Arguments, "action")
+	if len(logTool) > 80 {
+		logTool = logTool[:80]
+	}
+	if len(logAction) > 40 {
+		logAction = logAction[:40]
 	}
 	if token := GetUserFromContext(r.Context()).AccessToken; token != nil && token.BoundAgentID != "" {
 		if call.Name != "messages" || !slices.Contains([]string{"list_agents", "send", "read", "ack", "update_purpose"}, externalArg(call.Arguments, "action")) || externalArg(call.Arguments, "agent_name") != token.BoundAgentName {
