@@ -406,12 +406,17 @@ func limitProfileModelsToAccount(ctx context.Context, person string, profile age
 	for i := range options {
 		provider := strings.TrimSpace(options[i].Provider)
 		if provider == "" || own[provider] {
+			if provider != "" {
+				log.Printf("[MODEL_LIMIT] profile person=%s provider=%s not limited: the person has an account of their own", person, provider)
+			}
 			continue
 		}
 		allowed, _, err := accountAllowedModels(ctx, provider, "")
 		if err != nil || len(allowed) == 0 {
+			log.Printf("[MODEL_LIMIT] profile person=%s provider=%s not limited: allowed=%d err=%v", person, provider, len(allowed), err)
 			continue
 		}
+		log.Printf("[MODEL_LIMIT] profile person=%s provider=%s limited to %d model(s)", person, provider, len(allowed))
 		var models []string
 		if len(options[i].Models) > 0 {
 			for _, model := range options[i].Models {
