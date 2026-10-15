@@ -9,6 +9,7 @@ import (
 	"time"
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 )
 
 func TestHomeUsesAuthoritativeVisibleQuestionsAndDecisions(t *testing.T) {
@@ -150,5 +151,47 @@ func TestWorkspaceStateCorruptPreferenceRecoversToHome(t *testing.T) {
 	var state workspaceReturnState
 	if err := json.Unmarshal(w.Body.Bytes(), &state); err != nil || state.Last == nil || state.Last.ID != "invoices" || state.Note != "" {
 		t.Fatalf("recovery was not durable: %s (%v)", w.Body, err)
+	}
+}
+
+func TestHomeInventoryRespectsOneCrewToken(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	env.api.agentProfiles = env.svc.registry
+	t.Setenv("AGENT_PRODUCTS", "work")
+	claims := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, CrewIDs: []string{"beta"}}}
+	req := adminRequest("GET", "/api/home", "", claims, nil)
+	items, err := env.api.homeInventory(req.Context())
+	if err != nil || len(items) != 1 || items[0].Surface != "work" || items[0].ID != "beta" {
+		t.Fatalf("Home escaped token Crew bound: %+v (%v)", items, err)
+	}
+}
+
+func TestHomeAndNeedsYouShareAnsweredDecisionProjection(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	t.Setenv("AGENT_PRODUCTS", "agentworks")
+	req := adminRequest("GET", "/api/home", "", &UserClaims{UserID: "owner"}, nil)
+	input, err := createReportHumanInput(req.Context(), "Workflow/invoices", ReportHumanInputCreateRequest{Question: "Use approved invoice rule", Source: "pulse", Options: []ReportHumanInputOption{{ID: "approve", Title: "Approve"}}, ApplyContract: ReportHumanInputApplyContract{Mode: "direct_apply"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := answerReportHumanInput(req.Context(), "Workflow/invoices", input.ID, ReportHumanInputAnswerRequest{SelectedOptionID: "approve", AnsweredBy: "owner"}); err != nil {
+		t.Fatal(err)
+	}
+	home, err := f.api.collectHome(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, item := range home.Attention {
+		if item.ID == input.ID && item.Kind == "apply_decision" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("Home omitted unapplied decision: %+v", home.Attention)
+	}
+	w := f.call(t, "owner", "list_needs_you", map[string]any{})
+	if w.Code != 200 || !strings.Contains(w.Body.String(), input.ID) || !strings.Contains(w.Body.String(), `"type":"apply_decision"`) || !strings.Contains(w.Body.String(), `"apply_message"`) {
+		t.Fatalf("MCP disagrees with Home: %d %s", w.Code, w.Body)
 	}
 }
