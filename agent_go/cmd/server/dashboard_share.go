@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // Sharing a dashboard (PLAT-750, share = dashboard). There is one access source
@@ -144,25 +145,47 @@ func (api *StreamingAPI) readRunShare(ctx context.Context, claims *UserClaims, t
 	return state, nil
 }
 
-func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, target dashboardTarget, mode string, emails []string) (runShareState, error) {
+func logDashboardShareRefusal(claims *UserClaims, target dashboardTarget, mode, stage string, err, cause error) {
+	user := ""
+	if claims != nil {
+		user = sanitizeUserIDForPath(claims.UserID)
+	}
+	if cause == nil {
+		cause = err
+	}
+	log.Printf("[RUN_SHARE] refused user_id=%q kind=%q target=%q root=%q mode=%q stage=%q status=%d cause_status=%d reason=%q", user, target.Kind, target.ID, target.Root, mode, stage, wf.StatusCode(err), wf.StatusCode(cause), cause.Error())
+}
+
+func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, target dashboardTarget, mode string, emails []string) (state runShareState, err error) {
 	mode = strings.ToLower(strings.TrimSpace(mode))
+	stage := "mode"
+	var cause error
+	defer func() {
+		if err != nil {
+			logDashboardShareRefusal(claims, target, mode, stage, err, cause)
+		}
+	}()
 	if mode != runShareEveryone && mode != runSharePeople && mode != runSharePrivate {
 		return runShareState{}, dashboardFailure(400, "mode must be everyone, people or private")
 	}
+	stage = "owner"
 	if !api.dashboardShareOwner(ctx, claims, target) {
 		return runShareState{}, dashboardFailure(403, "only the owner can share this project")
 	}
 	// Sharing is sharing the dashboard: there must be one published to share. Making it private needs none.
 	madeDefault := false
+	stage = "dashboard"
 	if mode != runSharePrivate && !hasPublishedDashboard(ctx, target.Root) {
-		if _, generated, err := api.ensureDefaultDashboard(ctx, claims, target); err != nil || !hasPublishedDashboard(ctx, target.Root) {
+		if _, generated, defaultErr := api.ensureDefaultDashboard(ctx, claims, target); defaultErr != nil || !hasPublishedDashboard(ctx, target.Root) {
+			cause = defaultErr
 			return runShareState{}, dashboardFailure(409, "this project has no published dashboard and a standard one could not be made; build and publish a dashboard, then share it")
 		} else {
 			madeDefault = generated
 		}
 	}
 	before, _ := api.readRunShare(ctx, claims, target)
-	state, err := api.applyRunShareChange(ctx, claims, target, mode, emails)
+	stage = "save"
+	state, err = api.applyRunShareChange(ctx, claims, target, mode, emails)
 	if err == nil {
 		state.Previous = &before
 		if madeDefault {
@@ -275,6 +298,7 @@ func (api *StreamingAPI) handleDashboardShare(w http.ResponseWriter, r *http.Req
 	)
 	if action == "share" {
 		if !dashboardAuthoringAllowed(claims, &target) {
+			logDashboardShareRefusal(claims, target, mode, "authoring_scope", dashboardFailure(403, "sharing requires owner and project authoring consent"), nil)
 			externalError(w, 403, "insufficient_scope", "Sharing needs the project's owner and existing authoring consent for this project.")
 			return
 		}

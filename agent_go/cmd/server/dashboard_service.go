@@ -261,6 +261,9 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	claims := GetUserFromContext(r.Context())
 	w.Header().Set("Cache-Control", "no-store")
 	if !dashboardScopeAllowed(claims, args.Action) {
+		if args.Action == "share" {
+			logDashboardShareRefusal(claims, dashboardTarget{Root: args.Workspace}, args.Mode, "scope", dashboardFailure(403, "dashboard access and project authoring consent required"), nil)
+		}
 		externalError(w, 403, "insufficient_scope", "dashboard access or explicit dashboard consent required; preview and animation export additionally require runs:execute")
 		return
 	}
@@ -270,6 +273,9 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	}
 	target, err := api.dashboardTarget(r.Context(), claims, args.Workspace)
 	if err != nil {
+		if args.Action == "share" {
+			logDashboardShareRefusal(claims, dashboardTarget{Root: args.Workspace}, args.Mode, "target", err, nil)
+		}
 		dashboardError(w, err)
 		return
 	}

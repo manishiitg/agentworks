@@ -114,6 +114,9 @@ func (api *StreamingAPI) externalDashboardCall(w http.ResponseWriter, r *http.Re
 			}
 		}
 		if named > 1 || (named == 0 && dashboardActions[name] != "list") {
+			if name == "share_dashboard" {
+				logDashboardShareRefusal(GetUserFromContext(r.Context()), dashboardTarget{Root: workspace, ID: workflowID + crewID}, externalArg(args, "mode"), "selector", dashboardFailure(400, "pass exactly one project"), nil)
+			}
 			externalError(w, 400, "invalid_arguments", "Pass exactly one of workflow_id, crew_id or workspace.")
 			return
 		}
@@ -123,6 +126,9 @@ func (api *StreamingAPI) externalDashboardCall(w http.ResponseWriter, r *http.Re
 		case workflowID != "":
 			root, ok := dashboardWorkflowRoot(r, workflowID)
 			if !ok {
+				if name == "share_dashboard" {
+					logDashboardShareRefusal(GetUserFromContext(r.Context()), dashboardTarget{Kind: "workflow", ID: workflowID}, externalArg(args, "mode"), "target", dashboardFailure(404, "project unavailable"), nil)
+				}
 				externalError(w, 404, "not_found", "project unavailable")
 				return
 			}
@@ -130,6 +136,9 @@ func (api *StreamingAPI) externalDashboardCall(w http.ResponseWriter, r *http.Re
 		case crewID != "":
 			crew, _, _, ok := api.externalCrewResolve(r.Context(), GetUserFromContext(r.Context()), crewID)
 			if !ok {
+				if name == "share_dashboard" {
+					logDashboardShareRefusal(GetUserFromContext(r.Context()), dashboardTarget{Kind: "crew", ID: crewID}, externalArg(args, "mode"), "target", dashboardFailure(404, "project unavailable"), nil)
+				}
 				externalError(w, 404, "not_found", "project unavailable")
 				return
 			}

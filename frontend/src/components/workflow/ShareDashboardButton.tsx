@@ -52,9 +52,10 @@ export function ShareDashboardButton({ workspacePath }: { workspacePath: string 
       setState(data)
       setMessage(data.unknown_emails?.length ? `Saved. No account for: ${data.unknown_emails.join(', ')}` : 'Saved.')
     } catch (error) {
-      const body = (error as { response?: { data?: { error?: string; message?: string; unknown_emails?: string[] } } }).response?.data
+      const body = (error as { response?: { data?: { error?: string | { message?: string }; message?: string; unknown_emails?: string[] } } }).response?.data
       const extra = body?.unknown_emails?.length ? ` No account for: ${body.unknown_emails.join(', ')}` : ''
-      setMessage(`${body?.error || body?.message || 'Could not save.'}${extra}`)
+      const detail = typeof body?.error === 'string' ? body.error : body?.error?.message
+      setMessage(`${detail || body?.message || 'Could not save. Try again shortly.'}${extra}`)
     } finally {
       setBusy(false)
     }

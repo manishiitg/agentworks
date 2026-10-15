@@ -22,7 +22,7 @@ func TestDefaultDashboardHTMLShowsOnlyDeclaredThings(t *testing.T) {
 	if strings.Contains(page, "<script") || strings.Contains(page, `x"><`) {
 		t.Fatal("a function name or title must be escaped and the page must not run a script")
 	}
-	if !defaultDashboardMarker.MatchString(page) {
+	if !unmodifiedDefaultDashboard(page) {
 		t.Fatal("the refresh marker is missing")
 	}
 	relay := defaultDashboardHTML(defaultDashboardInfo{Kind: "relay", Title: "Invoices"})

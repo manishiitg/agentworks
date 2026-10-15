@@ -1,8 +1,98 @@
 package server
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"log"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
+
+// Exercise the app/MCP share path against the real workspace HTTP handler and
+// disk store. A project with no dashboard used to fail with a workspace 403
+// because platform-generated mutations omitted the draft/write flag.
+func TestDashboardShareCreatesAndPublishesStandardDashboard(t *testing.T) {
+	for _, mode := range []string{runSharePeople, runShareEveryone} {
+		t.Run(mode, func(t *testing.T) {
+			f := newExternalToolsFixture(t)
+			withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["agentworks"]},{"id":"reader","username":"reader","email":"reader@example.com","products":["agentworks"]}]}`)
+			f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoices","created_by":"owner","access":{"owners":["owner"]}}`)
+			args := map[string]any{"mode": mode, "emails": []string{"reader@example.com"}}
+			claims := &UserClaims{UserID: "owner", Username: "owner"}
+			w := httptest.NewRecorder()
+			if mode == runSharePeople {
+				args["workflow_id"] = "invoices"
+				f.api.externalDashboardCall(w, adminRequest(http.MethodPost, "/api/external/call", "", claims, nil), "share_dashboard", args)
+			} else {
+				args["workspace"], args["action"] = "Workflow/invoices", "share"
+				raw, _ := json.Marshal(args)
+				f.api.handleDashboards(w, adminRequest(http.MethodPost, "/api/dashboards", string(raw), claims, nil))
+			}
+			state := externalTestBody(t, w, 200)
+			if state["mode"] != mode || state["note"] == "" {
+				t.Fatalf("share should explain the generated dashboard: %v", state)
+			}
+			listed, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: "Workflow/invoices", Action: "list"})
+			if err != nil || len(listed.Dashboards) != 1 || listed.Dashboards[0].ID != defaultDashboardID || listed.Dashboards[0].Published == "" {
+				t.Fatalf("share did not publish the standard dashboard: %+v, %v", listed, err)
+			}
+			manifest, found, err := ReadWorkflowManifest(context.Background(), "Workflow/invoices")
+			if err != nil || !found || manifest == nil || workflowAccessForManifest(&UserClaims{UserID: "reader", Username: "reader"}, manifest) != WorkflowAccessRead {
+				t.Fatalf("the shared person cannot use the project: %+v, %v", manifest, err)
+			}
+		})
+	}
+}
+
+func TestDashboardShareResumesStandardDraftButNeverPublishesAuthoredDraft(t *testing.T) {
+	for _, authored := range []bool{false, true} {
+		t.Run(map[bool]string{false: "standard", true: "authored"}[authored], func(t *testing.T) {
+			f := newExternalToolsFixture(t)
+			page := defaultDashboardHTML(defaultDashboardInfo{Kind: "workflow", Title: "Earlier title"})
+			if authored {
+				// Editors commonly keep the marker. The changed body must be
+				// treated as authored, not overwritten just because it remains.
+				page = strings.Replace(page, "Earlier title", "My unfinished dashboard", 1)
+			}
+			created, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: "Workflow/invoices", Action: "create", ID: defaultDashboardID, Title: "Earlier title", Files: map[string]string{"index.html": page}, IncludeDraft: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var logs bytes.Buffer
+			previous := log.Writer()
+			log.SetOutput(&logs)
+			t.Cleanup(func() { log.SetOutput(previous) })
+			w := httptest.NewRecorder()
+			f.api.handleDashboards(w, adminRequest(http.MethodPost, "/api/dashboards", `{"action":"share","workspace":"Workflow/invoices","mode":"everyone"}`, &UserClaims{UserID: "owner", Username: "owner"}, nil))
+			want := http.StatusOK
+			if authored {
+				want = http.StatusConflict
+			}
+			externalTestBody(t, w, want)
+			current, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: "Workflow/invoices", Action: "get", ID: defaultDashboardID, IncludeDraft: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if authored {
+				if current.Dashboard.Published != "" || current.Dashboard.Revision != created.Dashboard.Revision || current.Snapshot.Files["index.html"] != page {
+					t.Fatal("sharing changed or published the owner's unfinished dashboard")
+				}
+				for _, part := range []string{`[RUN_SHARE] refused`, `target="invoices"`, `mode="everyone"`, `stage="dashboard"`, `status=409`, `reason="dashboard is not published"`} {
+					if !strings.Contains(logs.String(), part) {
+						t.Fatalf("refusal missing %s: %s", part, logs.String())
+					}
+				}
+			} else if current.Dashboard.Published == "" || !defaultDashboardMarker.MatchString(current.Snapshot.Files["index.html"]) {
+				t.Fatal("the platform draft was not resumed and published")
+			}
+		})
+	}
+}
 
 // Sharing opens a product only when its owner says so: RunEveryone gives every
 // account that may use the product reader access, never owner or editor, and a
