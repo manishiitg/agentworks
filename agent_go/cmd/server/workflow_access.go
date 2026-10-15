@@ -441,6 +441,11 @@ func (api *StreamingAPI) handleSetWorkflowAccess(w http.ResponseWriter, r *http.
 		writeUsersError(w, http.StatusNotFound, "no workflow at that path")
 		return
 	}
+	// A Relay has one owner and is shared by sharing its dashboard (PLAT-750).
+	if manifest.Kind == "relay" {
+		writeUsersError(w, http.StatusConflict, "A Relay is shared from its dashboard: use the Share button there, or ask your agent to share the dashboard.")
+		return
+	}
 	// Only owners share a claimed workflow. Account-tier writers may still
 	// share a legacy manifest with no ownership record — that save is what
 	// claims it and ends the legacy openness.

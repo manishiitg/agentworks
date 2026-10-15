@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { ShieldCheck } from 'lucide-react'
 import WorkflowTeamView from './WorkflowTeamView'
-import WorkflowSharePopup from './WorkflowSharePopup'
 import UsersAdminPanel from '../admin/UsersAdminPanel'
 import SlackAdminPanel from '../admin/SlackAdminPanel'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -98,7 +97,7 @@ export default function WorkflowAccessView({ workspacePath, relayMode = false }:
           <div key={`${activeTab}:${tabNonce}`} className="p-4">
             {activeTab === 'workflow' && workspacePath ? (
               isRelay
-                ? <WorkflowSharePopup workspacePath={workspacePath} readOnly={workflowReadOnly} relay />
+                ? <p className="text-sm text-muted-foreground">A Relay has one owner, who builds it. To let others use it, share its dashboard with the Share button there.</p>
                 : <WorkflowTeamView workspacePath={workspacePath} readOnly={workflowReadOnly} />
             ) : activeTab === 'users' ? (
               <UsersAdminPanel />

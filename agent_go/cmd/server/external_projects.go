@@ -16,7 +16,7 @@ import (
 
 func externalProjectDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	names := map[string]any{"type": "array", "maxItems": 100, "items": map[string]any{"type": "string", "minLength": 1, "maxLength": 200}, "description": "User ids, usernames or emails."}
-	add("manage_project", "Rename, duplicate, delete or share a workflow, Relay or Crew, or install a Crew template after creation. Pass workflow_id or crew_id. rename (workflows and Relays; Crews use update_crew): label, description (one short line, shown in Slack and lists), icon. duplicate (workflows and Relays): a copy you own, new_label. delete is permanent with no undo: owner only, and confirm must repeat the workflow_id or crew_id. get_access / set_access: workflows and Relays list owners, editors and readers (set_access changes only the lists you send; owners only); Crews use private true/false (owner only). install_template (Crews): template_id from the Crew Agent catalog; files you edited are kept.", true, false, map[string]any{
+	add("manage_project", "Rename, duplicate, delete or share a workflow, Relay or Crew, or install a Crew template after creation. Pass workflow_id or crew_id. rename (workflows and Relays; Crews use update_crew): label, description (one short line, shown in Slack and lists), icon. duplicate (workflows and Relays): a copy you own, new_label. delete is permanent with no undo: owner only, and confirm must repeat the workflow_id or crew_id. get_access / set_access: workflows list owners, editors and readers (set_access changes only the lists you send; owners only). A Relay or Crew is shared from its dashboard with share_dashboard instead; set_access on them is refused. install_template (Crews): template_id from the Crew Agent catalog; files you edited are kept.", true, false, map[string]any{
 		"workflow_id": externalString("Workflow or Relay ID from list_workflows. Pass this or crew_id."),
 		"crew_id":     externalString("Crew ID from list_crews. Pass this or workflow_id."),
 		"action":      map[string]any{"type": "string", "enum": []any{"rename", "duplicate", "delete", "get_access", "set_access", "install_template"}},
@@ -28,7 +28,6 @@ func externalProjectDefinitions(add func(string, string, bool, bool, map[string]
 		"owners":      names,
 		"editors":     names,
 		"readers":     names,
-		"private":     map[string]any{"type": "boolean", "description": "For a Crew's set_access."},
 		"template_id": externalString("For install_template."),
 	}, "action")
 }
@@ -91,6 +90,10 @@ func (api *StreamingAPI) externalWorkflowProjectCall(w http.ResponseWriter, r *h
 	case "get_access":
 		respond(scheduleHandler(r, api.handleGetWorkflowAccess, http.MethodGet, "/api/workflow/access", nil, url.Values{"workspace_path": {root}}, nil))
 	case "set_access":
+		if workflow.Manifest.Kind == "relay" {
+			externalError(w, 409, "use_share_dashboard", "A Relay is shared from its dashboard: call share_dashboard.")
+			return
+		}
 		owners, editors, readers := workflow.Manifest.effectiveOwners(), workflow.Manifest.effectiveEditors(), workflow.Manifest.effectiveReaders()
 		if workflow.Manifest.Kind == "relay" {
 			// A Relay has one owner and no editors: what is not sent keeps its meaning (the Builder; everyone else running).
@@ -155,12 +158,7 @@ func (api *StreamingAPI) externalCrewProjectCall(w http.ResponseWriter, r *http.
 		}
 		respond(scheduleHandler(r, api.handleDeleteAgentProfileProject, http.MethodDelete, "/api/agent-profiles/work/projects/"+url.PathEscape(crewID), vars, nil, nil))
 	case "set_access":
-		private, ok := args["private"].(bool)
-		if !ok {
-			externalError(w, 400, "invalid_arguments", "For a Crew, set_access takes private true or false.")
-			return
-		}
-		respond(scheduleHandler(r, api.handlePutProjectSharing, http.MethodPut, "/api/agent-profiles/work/projects/"+url.PathEscape(crewID)+"/sharing", vars, nil, map[string]any{"private": private}))
+		externalError(w, 409, "use_share_dashboard", "A Crew is shared from its dashboard: call share_dashboard.")
 	case "install_template":
 		template, err := loadCrewAgentTemplate(externalArg(args, "template_id"))
 		if err != nil || template == nil {
