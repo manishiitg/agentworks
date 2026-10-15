@@ -552,3 +552,44 @@ func TestEffectivePulseModeHonorsScheduleOverride(t *testing.T) {
 		t.Fatalf("legacy full Pulse mode = %q, want basic", got)
 	}
 }
+
+// 2026-10-15: a workflow whose workflow.json still carried the retired top-level objective and success_criteria was rewritten on
+// EVERY read (about 270 times a minute): the writer kept every key the schema has no field for, so the prune never removed them.
+func TestReadWorkflowManifestPrunesRetiredTopLevelFieldsOnce(t *testing.T) {
+	const workspacePath = "Workflow/x-post-drafts"
+	manifestJSON, err := json.Marshal(map[string]interface{}{
+		"schema_version": 1, "id": "wf_x", "version": "1.0.20", "label": "x-post-drafts",
+		"objective": "retired objective text", "success_criteria": []string{"retired"},
+		"capabilities": map[string]interface{}{}, "schedules": []interface{}{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := &mockWorkspaceAPI{files: map[string]string{workspacePath + "/workflow.json": string(manifestJSON)}}
+	server := httptest.NewServer(workspace)
+	defer server.Close()
+	t.Setenv("WORKSPACE_API_URL", server.URL)
+	staleManifestPruneMu.Lock()
+	delete(staleManifestPruneAt, workspacePath)
+	staleManifestPruneMu.Unlock()
+
+	if _, found, err := ReadWorkflowManifest(context.Background(), workspacePath); err != nil || !found {
+		t.Fatalf("ReadWorkflowManifest() found=%v err=%v", found, err)
+	}
+	workspace.mu.Lock()
+	first := workspace.files[workspacePath+"/workflow.json"]
+	workspace.mu.Unlock()
+	if strings.Contains(first, "objective") || strings.Contains(first, "success_criteria") {
+		t.Fatalf("the prune did not remove the retired top-level fields: %s", first)
+	}
+	// A second read finds nothing stale and writes nothing: the file is byte-for-byte what the first read left.
+	if _, _, err := ReadWorkflowManifest(context.Background(), workspacePath); err != nil {
+		t.Fatal(err)
+	}
+	workspace.mu.Lock()
+	second := workspace.files[workspacePath+"/workflow.json"]
+	workspace.mu.Unlock()
+	if second != first {
+		t.Fatalf("a read of an already-clean manifest rewrote it:\n%s\n--- vs ---\n%s", first, second)
+	}
+}
