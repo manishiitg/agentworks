@@ -185,7 +185,8 @@ own message in a chat. Each chat in a Cursor window connects separately: the
 hook sees the exact chat, and every message-tool call is matched to the chat
 that made it before it is served. Messages arrive when the chat finishes a turn
 and can start a turn you did not type; an idle chat gets them after its next
-turn. Use the message tools in the chat, not the agent terminal (Cursor's
+turn. Keep the chat in Agent mode: Ask and Plan modes block the message tools.
+Use the message tools in the chat, not the agent terminal (Cursor's
 sandboxed terminal can block the network). Windows and Linux Cursor apps are not
 supported yet.
 

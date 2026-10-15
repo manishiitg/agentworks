@@ -154,7 +154,7 @@ export const messagingGuides: MessagingGuide[] = [
     ],
     desktop: {
       status: 'Cursor app', available: true,
-      requirements: ['The Cursor app on macOS and the AgentWorks CLI.', 'One setup covers every project you open in Cursor.', 'A connected chat gets its messages when it finishes a turn. An idle chat is not woken; its messages wait until its next turn.'],
+      requirements: ['The Cursor app on macOS and the AgentWorks CLI.', 'One setup covers every project you open in Cursor.', 'A connected chat gets its messages when it finishes a turn. An idle chat is not woken; its messages wait until its next turn.', 'Use the chat in Agent mode. In Ask or Plan mode Cursor blocks the AgentWorks message tools, so the agent can read a message but cannot answer it.'],
       versions: 'Built for Cursor 3.24 on macOS. Windows and Linux Cursor apps are not supported yet.',
       install: [{ label: 'Set up Cursor (every project)', text: 'agentworks setup cursor' }],
       update: [],
@@ -170,6 +170,7 @@ export const messagingGuides: MessagingGuide[] = [
         { title: 'The attach command reaches the model', text: 'The AgentWorks hooks are not active. Run agentworks setup cursor in Terminal, restart Cursor, and type /agentworks attach again as its own message.' },
         { title: 'A message tool says it could not confirm the chat', text: 'Ask the agent to try again. If it keeps failing, run agentworks setup cursor and restart Cursor.' },
         { title: 'Nothing arrives in an idle chat', text: 'An idle Cursor chat is not woken. Send a prompt, or let a turn finish, and its waiting messages arrive.' },
+        { title: 'The agent says it cannot use the message tools', text: 'The chat is in Ask or Plan mode, where Cursor blocks tools. Switch it to Agent mode and ask again.' },
       ],
     },
   },
