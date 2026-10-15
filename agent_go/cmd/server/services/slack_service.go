@@ -1876,6 +1876,9 @@ func (s *SlackService) handleConfiguredSlackTrigger(ev *slackevents.MessageEvent
 // handleSocketModeMessage handles message events from Socket Mode
 func (s *SlackService) handleSocketModeMessage(ev *slackevents.MessageEvent) {
 	if s.handleConfiguredSlackTrigger(ev) {
+		if ev.ChannelType == "im" && ev.BotID == "" {
+			log.Printf("[SLACK_DM] connection=%s user=%s channel=%s taken by a saved Slack trigger, not a DM chat", s.connectionID, ev.User, ev.Channel)
+		}
 		return
 	}
 	// A 1:1 DM with the bot (channel_type "im"): every message, top-level or

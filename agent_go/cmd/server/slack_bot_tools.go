@@ -701,7 +701,10 @@ func slackTriggerMatchSchema() map[string]interface{} {
 // an optional trigger (PLAT-668: triggers also run on own bots).
 func (api *StreamingAPI) mutateOwnBotSlackRoute(ctx context.Context, target ChannelRoute, operation, channel string, triggerProvided bool) error {
 	channel = services.NormalizeSlackChannelID(channel)
-	if !slackChannelIDPattern.MatchString(channel) || services.IsSlackDMChannel(channel) {
+	if services.IsSlackDMChannel(channel) {
+		return fmt.Errorf("a direct message needs no route: this bot answers anyone whose Slack email matches their account; a route is for a channel (its ID starts with C or G)")
+	}
+	if !slackChannelIDPattern.MatchString(channel) {
 		return fmt.Errorf("an exact Slack channel ID is required")
 	}
 	if _, err := requireSlackRouteDestinationOwner(ctx, api, target); err != nil {

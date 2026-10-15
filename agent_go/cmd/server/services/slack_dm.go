@@ -157,6 +157,9 @@ func (s *SlackService) directMessage(ctx context.Context, userID, channelID, thr
 func (s *SlackService) handleSlackDirectMessage(ev *slackevents.MessageEvent) {
 	// Edits, deletions and joins are not new messages; file shares are.
 	if s.messageHandler == nil || ev.BotID != "" || (ev.SubType != "" && ev.SubType != "file_share") || strings.TrimSpace(ev.User) == "" {
+		if ev.BotID == "" && strings.TrimSpace(ev.User) != "" {
+			log.Printf("[SLACK_DM] connection=%s user=%s channel=%s dropped: handler_set=%t subtype=%q", s.connectionID, ev.User, ev.Channel, s.messageHandler != nil, ev.SubType)
+		}
 		return
 	}
 	if s.botUserID != "" && ev.User == s.botUserID {
@@ -178,6 +181,7 @@ func (s *SlackService) handleSlackDirectMessage(ev *slackevents.MessageEvent) {
 	text := s.stripMention(ev.Text)
 	msg, refusal, ignore, pick := s.directMessage(ctx, ev.User, ev.Channel, threadTS, ev.TimeStamp, text, isThreadReply)
 	if ignore {
+		log.Printf("[SLACK_DM] connection=%s user=%s channel=%s ignored: the sender is a bot or a deleted account", s.connectionID, ev.User, ev.Channel)
 		return
 	}
 	thread := ThreadID{Platform: "slack", ChannelID: ev.Channel, ThreadTS: threadTS, ConnectionID: s.connectionID}
@@ -191,12 +195,14 @@ func (s *SlackService) handleSlackDirectMessage(ev *slackevents.MessageEvent) {
 		}
 	}
 	if refusal != "" {
+		log.Printf("[SLACK_DM] connection=%s user=%s channel=%s replied without a turn: %.120s", s.connectionID, ev.User, ev.Channel, refusal)
 		if _, err := s.SendThreadMessage(ctx, thread, refusal); err != nil {
 			log.Printf("[SLACK_DM] refusal reply failed: %v", err)
 		}
 		return
 	}
 	if len(pick.choices) > 0 {
+		log.Printf("[SLACK_DM] connection=%s user=%s channel=%s asked which target (%d choices)", s.connectionID, ev.User, ev.Channel, len(pick.choices))
 		msg.Text = pick.text
 		rememberSlackPendingPick(ThreadID{Platform: "slack", ChannelID: ev.Channel, ThreadTS: ev.Channel, ConnectionID: s.connectionID}, msg, ev.Message, pick.choices)
 		if _, err := s.SendThreadMessageWithBlocks(ctx, thread, slackPickPrompt(pick.choices, ""), slackPickBlocks(pick.choices)); err != nil {
