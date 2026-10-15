@@ -39,15 +39,15 @@ it('loads Sharing without team requests for a Relay, including before discovery,
   // A trailing slash must not lose the manifest's Relay identity.
   workflows = [{ workspace_path: 'Workflow/relay/', my_access: 'owner', manifest: { id: 'relay', kind: 'relay' } }]
   await act(async () => root?.render(<WorkflowAccessView workspacePath="Workflow/relay" />))
-  expect(host.textContent).toContain('Sharing')
-  expect(host.textContent).toContain('share its dashboard with the Share button')
+  expect(host.textContent).toContain('Share button there')
+  expect(host.textContent).toContain('share its dashboard')
   expect(host.textContent).not.toContain('Goal team')
   expect(host.textContent).not.toContain('Create a plan')
   expect(api.teamGet).not.toHaveBeenCalled()
 
   workflows = []
   await act(async () => root?.render(<WorkflowAccessView workspacePath="Workflow/relay" relayMode />))
-  expect(host.textContent).toContain('Sharing')
+  expect(host.textContent).toContain('Share button there')
   expect(api.teamGet).not.toHaveBeenCalled()
 
   // Workflows without an explicit kind still support goal teams.
