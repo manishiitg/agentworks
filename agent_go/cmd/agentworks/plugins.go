@@ -166,15 +166,7 @@ func pluginCommand(o *options) *cobra.Command {
 					return pluginBlock(o, err.Error())
 				}
 			case "share", "unshare", "groups", "group":
-				if usage := parseGroupWords(req.Action, words[2:], &req); usage != "" {
-					return pluginBlock(o, usage)
-				}
-				req.Action += "_person"
-				done, e := bridgeCall(ctx, root, o, req)
-				if e != nil {
-					return pluginBlock(o, e.Error())
-				}
-				return pluginBlock(o, groupResultText(done.Result))
+				return pluginBlock(o, personGroupCommand(ctx, root, o, req, words))
 			case "detach", "agents":
 				if len(words) == 4 && words[1] == "detach" && words[2] == "--from" {
 					req.Network = words[3]

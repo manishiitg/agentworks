@@ -212,15 +212,7 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 			if msg := reconnectOffline(ctx, root, req); msg != "" {
 				return cursorBlock(o, msg)
 			}
-			if usage := parseGroupWords(req.Action, words[2:], &req); usage != "" {
-				return cursorBlock(o, usage)
-			}
-			req.Action += "_person"
-			done, e := bridgeCall(ctx, root, o, req)
-			if e != nil {
-				return cursorBlock(o, e.Error())
-			}
-			return cursorBlock(o, groupResultText(done.Result))
+			return cursorBlock(o, personGroupCommand(ctx, root, o, req, words))
 		} else {
 			if req.Action == "agents" {
 				if msg := reconnectOffline(ctx, root, req); msg != "" {

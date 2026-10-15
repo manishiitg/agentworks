@@ -1191,18 +1191,29 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		if s.Offline || in.HostKey == "" || in.HostKey != s.HostKey {
 			return LocalBridgeReply{Error: "This chat is not connected right now. Type /agentworks attach in it, then try again."}
 		}
-		if s.ParentConfigPath == "" {
+		on := s
+		if in.Network != "" && !s.Also {
+			// GROUP@LOGIN: the group lives on a network this chat joined with --also.
+			on = b.networkFor(key, s, in)
+			if on == nil || on.Offline {
+				return LocalBridgeReply{Error: "This chat is not connected to network " + in.Network + ". Type /agentworks attach --also " + in.Network + " first."}
+			}
+		}
+		if on.ParentConfigPath == "" {
 			return LocalBridgeReply{Error: "this chat has no saved login to share with; attach it again"}
 		}
-		parent, err := localConfiguredClient(s.ParentConfigPath)
+		parent, err := localConfiguredClient(on.ParentConfigPath)
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
 		}
-		raw, err := parent.ShareAgent(callCtx, strings.SplitN(in.Action, "_", 2)[0], s.Attachment.AgentName, in.Group, in.Purpose)
+		raw, err := parent.ShareAgent(callCtx, strings.SplitN(in.Action, "_", 2)[0], on.Attachment.AgentName, in.Group, in.Purpose)
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
 		}
-		return LocalBridgeReply{Attached: !s.Offline, Attachment: s.Attachment, Result: raw}
+		if on != s {
+			log.Printf("[BRIDGE] network=%s %s agent=%s group=%s", on.Network, in.Action, on.Attachment.AgentName, in.Group)
+		}
+		return LocalBridgeReply{Attached: !s.Offline, Attachment: on.Attachment, Result: raw}
 	}
 	if in.Action == "detach_own" {
 		if !s.OwnCLI || in.HostKey == "" || in.HostKey != s.HostKey || in.AttachmentID != s.Attachment.ID {
