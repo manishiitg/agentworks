@@ -974,7 +974,7 @@ func getAgentProfileHandler(registry *agentprofiles.Registry) http.HandlerFunc {
 			writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
 			return
 		}
-		writeAgentProfileJSON(w, http.StatusOK, profileWithAvailableProviders(profile.ForProducts(builderProductSelection(GetUserFromContext(r.Context())))))
+		writeAgentProfileJSON(w, http.StatusOK, limitProfileModelsToAccount(r.Context(), GetUserIDFromContext(r.Context()), profileWithAvailableProviders(profile.ForProducts(builderProductSelection(GetUserFromContext(r.Context()))))))
 	}
 }
 

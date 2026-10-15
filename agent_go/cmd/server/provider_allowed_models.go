@@ -9,6 +9,8 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/llmguard"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
 // Allowed models per provider account (the decisions log, 2026-10-03).
@@ -362,4 +364,67 @@ func checkKnownModels(provider string, models []string) error {
 		return fmt.Errorf("unknown %s model(s): %s; known: %s", provider, strings.Join(unknown, ", "), strings.Join(catalog, ", "))
 	}
 	return nil
+}
+
+// personHasOwnProviderConnection reports whether the person has an account of their own for the provider: their own
+// account's model list is its own, so the shared account's list does not narrow what they are offered.
+func personHasOwnProviderConnection(ctx context.Context, person, provider string) bool {
+	if strings.TrimSpace(person) == "" {
+		return false
+	}
+	providerConnectionsMu.Lock()
+	records, err := loadProviderConnections(ctx)
+	providerConnectionsMu.Unlock()
+	if err != nil {
+		return false
+	}
+	for _, record := range records {
+		if !record.Removed && record.OwnerUserID == person && record.Provider == provider {
+			return true
+		}
+	}
+	return false
+}
+
+// limitProfileModelsToAccount narrows each engine of a product profile to the models the person's account allows, in
+// the profile's own Models field (the composer's model switcher and the server's accepted model_id): when the shared
+// server account has an allowed-model list, an engine offers just those models (the server already runs a disallowed
+// choice on the first allowed model, so offering the rest picked a model that never ran). An engine that curates its
+// own Models keeps the ones the account allows; a person with their own account for the provider keeps the profile as
+// is. The registry's profile is shared: the options are copied, never edited.
+func limitProfileModelsToAccount(ctx context.Context, person string, profile agentprofiles.Profile) agentprofiles.Profile {
+	if len(profile.Runtime.ProviderOptions) == 0 {
+		return profile
+	}
+	ctx = withModelLimitPerson(ctx, person)
+	options := make([]agentprofiles.ProviderOption, len(profile.Runtime.ProviderOptions))
+	copy(options, profile.Runtime.ProviderOptions)
+	changed := false
+	for i := range options {
+		provider := strings.TrimSpace(options[i].Provider)
+		if provider == "" || personHasOwnProviderConnection(ctx, person, provider) {
+			continue
+		}
+		allowed, _, err := accountAllowedModels(ctx, provider, "")
+		if err != nil || len(allowed) == 0 {
+			continue
+		}
+		var models []string
+		if len(options[i].Models) > 0 {
+			for _, model := range options[i].Models {
+				if modelAllowed(allowed, model) {
+					models = append(models, model)
+				}
+			}
+		}
+		if len(models) == 0 {
+			models = append([]string(nil), allowed...)
+		}
+		options[i].Models = models
+		changed = true
+	}
+	if changed {
+		profile.Runtime.ProviderOptions = options
+	}
+	return profile
 }

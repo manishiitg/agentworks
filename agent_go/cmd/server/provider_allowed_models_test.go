@@ -12,6 +12,7 @@ import (
 
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/picli"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
@@ -292,5 +293,28 @@ func TestProviderModelsListOnlyTheAllowedModelsExceptForAnAdminsFullCatalog(t *t
 	}
 	if got := models("admin", "?full=true"); len(got) < 2 {
 		t.Fatalf("an admin's full catalog = %v, want every model", got)
+	}
+}
+
+// The Code/Crew model picker is built from the product profile's provider options: with the shared account limited to
+// one model the profile a member reads offers just that model on the engine (2026-10-15: eight Pi models were shown
+// while one was allowed), and the registry's own profile is left untouched.
+func TestProfileModelsAreLimitedToTheAccountsAllowedModels(t *testing.T) {
+	env := newProviderAccountsEnv(t, "")
+	t.Setenv("CODEX_API_KEY", "server-codex-key")
+	if code := patchAllowed(env, t, "admin", "global:codex-cli", []string{"gpt-5.3-codex"}); code != http.StatusNoContent {
+		t.Fatalf("admin restriction: %d", code)
+	}
+	profile := agentprofiles.Profile{}
+	profile.Runtime.ProviderOptions = []agentprofiles.ProviderOption{
+		{ID: "codex-cli", Provider: "codex-cli", ModelID: "gpt-5.5"},
+		{ID: "claude-code", Provider: "claude-code", ModelID: "sonnet"},
+	}
+	got := limitProfileModelsToAccount(context.Background(), "bob", profile)
+	if !reflect.DeepEqual(got.Runtime.ProviderOptions[0].Models, []string{"gpt-5.3-codex"}) || len(got.Runtime.ProviderOptions[1].Models) != 0 {
+		t.Fatalf("limited options = %+v, want codex narrowed to its allowed model and claude untouched", got.Runtime.ProviderOptions)
+	}
+	if len(profile.Runtime.ProviderOptions[0].Models) != 0 {
+		t.Fatal("the shared profile was edited")
 	}
 }

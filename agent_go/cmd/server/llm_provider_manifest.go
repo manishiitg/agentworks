@@ -536,17 +536,8 @@ func limitProviderModelsToAccount(r *http.Request, provider string, full bool, r
 	}
 	person := GetUserIDFromContext(r.Context())
 	ctx := withModelLimitPerson(r.Context(), person)
-	if person != "" {
-		providerConnectionsMu.Lock()
-		records, err := loadProviderConnections(ctx)
-		providerConnectionsMu.Unlock()
-		if err == nil {
-			for _, record := range records {
-				if !record.Removed && record.OwnerUserID == person && record.Provider == provider {
-					return resp
-				}
-			}
-		}
+	if personHasOwnProviderConnection(ctx, person, provider) {
+		return resp
 	}
 	allowed, _, err := accountAllowedModels(ctx, provider, "")
 	if err != nil || len(allowed) == 0 {
