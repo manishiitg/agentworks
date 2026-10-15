@@ -5,6 +5,7 @@ import { useAuthStore } from '../../../stores/useAuthStore'
 import { openProjectAskConversation } from '../../../utils/projectAskConversation'
 import { sendWorkspacePaneMessageToChat } from '../../../utils/workspacePaneChat'
 import ModalPortal from '../../ui/ModalPortal'
+import { WorkingTipsContext } from '../../chat/workingTipsContext'
 import type { CommandDefinition } from '../../../commands'
 import { ReportEmbedProvider, useReportDataApi } from './reportEmbedContext'
 import { installDashboardChatWidgets, type ChatWidgetSlot, type ReportTheme } from './dashboardChatWidgets'
@@ -138,7 +139,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
     }
   }
   const conversation = canAsk && bound && bound.viewer === viewer && bound.resourceId === resourceId
-    ? <div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><Suspense fallback={<p>Opening chat…</p>}><ChatArea tabId={bound.tabId} compact hideHeader previousChatsWorkspacePath={workspacePath} landingContent={<div />} slashCommands={slashCommands} composerPlaceholder="Ask a question…" /></Suspense></div></div>
+    ? <div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><WorkingTipsContext.Provider value={false}><Suspense fallback={<p>Opening chat…</p>}><ChatArea tabId={bound.tabId} compact hideHeader previousChatsWorkspacePath={workspacePath} landingContent={<div />} slashCommands={slashCommands} composerPlaceholder="Ask a question…" /></Suspense></WorkingTipsContext.Provider></div></div>
     : <p role="status">{canAsk ? error || 'Opening chat…' : 'Chat is unavailable for this dashboard.'}</p>
   return <ReportEmbedProvider value={runtime}>
     <div ref={container} className="relative overflow-hidden">

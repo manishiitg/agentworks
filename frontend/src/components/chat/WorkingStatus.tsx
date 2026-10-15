@@ -1,4 +1,5 @@
-import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useContext, useEffect, useRef, useState } from 'react'
+import { WorkingTipsContext } from './workingTipsContext'
 import { WORKING_ACCESSIBLE_LABEL, WORKING_GLYPH_FRAMES, WORKING_GLYPH_INTERVAL_MS, WORKING_GLYPH_STATIC, WORKING_WORDS, WORKING_WORD_INTERVAL_MS, formatElapsed, nextWorkingWordIndex, resolveWorkingLabel } from './workingWords'
 
 // Tip selection and catalog loading are needed only while a turn is Working.
@@ -33,6 +34,7 @@ function WorkingGlyph({ reduced }: { reduced: boolean }) {
 // Screen readers get one stable "Working…" label; the changing text is hidden from them so they are not spammed.
 export function WorkingStatus({ realStatus, startedAt, className }: { realStatus?: string; startedAt?: number; className?: string }) {
   const reduced = usePrefersReducedMotion()
+  const tipsAllowed = useContext(WorkingTipsContext)
   const recent = useRef<number[]>([])
   const [word, setWord] = useState(() => ({ index: nextWorkingWordIndex([]) }))
   const [now, setNow] = useState(() => Date.now())
@@ -62,7 +64,7 @@ export function WorkingStatus({ realStatus, startedAt, className }: { realStatus
         </span>
         {elapsed ? <span className="text-muted-foreground">{elapsed}</span> : null}
       </span>
-      <Suspense fallback={null}><WorkingTip turnKey={startedAt} /></Suspense>
+      {tipsAllowed ? <Suspense fallback={null}><WorkingTip turnKey={startedAt} /></Suspense> : null}
     </span>
   )
 }

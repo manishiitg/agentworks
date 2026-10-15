@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { WorkingTipsContext } from '../../chat/workingTipsContext'
 import api from '../../../services/api'
 import { workflowWebhooksApi } from '../../../api/workflowWebhooks'
 import { useAuthStore } from '../../../stores/useAuthStore'
@@ -179,7 +180,7 @@ export default function DefaultRelayDashboard({ workspacePath, refreshToken }: {
         <h2 className="font-semibold">Ask</h2>
         {data.can_ask ? <>
           <p className="mt-1 text-xs text-muted-foreground">Your existing Flow conversation.</p>
-          {bound?.identity === identity ? <div className="mt-3 h-[min(65vh,40rem)] min-h-80"><Suspense fallback={<p>Opening Ask…</p>}><ChatArea tabId={bound.tabId} compact hideHeader previousChatsWorkspacePath={workspacePath} composerPlaceholder="Ask about this Flow…" /></Suspense></div>
+          {bound?.identity === identity ? <div className="mt-3 h-[min(65vh,40rem)] min-h-80"><WorkingTipsContext.Provider value={false}><Suspense fallback={<p>Opening Ask…</p>}><ChatArea tabId={bound.tabId} compact hideHeader previousChatsWorkspacePath={workspacePath} composerPlaceholder="Ask about this Flow…" /></Suspense></WorkingTipsContext.Provider></div>
             : <button type="button" onClick={() => void openAsk().catch(reason => setError(reason instanceof Error ? reason.message : 'Could not open Ask.'))} className="mt-3 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted">Open Ask</button>}
         </> : <p className="mt-2 text-sm text-muted-foreground">Ask is unavailable for this Flow.</p>}
       </section>
