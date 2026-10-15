@@ -1,3 +1,4 @@
+import { useWorkspaceReturn } from '../../hooks/useWorkspaceReturn'
 import { currentProductRoute, routeView } from '../../utils/productRoutes'
 import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { replaceProductSelection } from '../../utils/productUrlNavigation'
@@ -1203,6 +1204,11 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     setSplitRatioState(nextRatio)
     setReportPreviewPreference(readReportPreviewPreference(selected?.workspacePath))
   }, [product.defaultView, product.profileId, selected?.id, selected?.shared, selected?.workspacePath])
+
+  useWorkspaceReturn(product.profileId, selected?.id, selected ? workspaceView : undefined,
+    { chat_open: chatOpen, panel_open: panelOpen, split_ratio: splitRatio, navigation_mode: 'fixed' },
+    saved => { setChatOpen(saved.chat_open); setPanelOpen(saved.panel_open); splitRatioRef.current = saved.split_ratio; setSplitRatioState(saved.split_ratio); writeWorkSplitRatio(selected?.id, saved.split_ratio) },
+  )
 
   const landingProjectId = selected?.id
   const landingWorkspacePath = selected?.workspacePath

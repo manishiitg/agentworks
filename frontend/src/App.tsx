@@ -40,6 +40,8 @@ declare global {
 import { apiLogEntries, summarizeApiTimings } from './utils/apiTiming'
 import ToastHost from './components/ui/ToastHost'
 import QuickSwitcher, { preloadQuickSwitcher } from './components/QuickSwitcherHost'
+import { HomePage } from './components/HomePage'
+import { useWorkspaceReturnStore } from './stores/useWorkspaceReturnStore'
 import { WelcomeHome } from './components/WelcomeHome'
 import { setPendingLocalLink } from './products/work/codeLocalFiles'
 import { markFeatureUsed } from './utils/featureUsage'
@@ -101,6 +103,7 @@ const hasOpenWorkspaceCollapsingPopup = () => {
 
 
 function AppWorkspace() {
+  const homeOpen = useWorkspaceReturnStore(state => state.homeOpen)
   const productSurface = useProductSurfaceStore(state => state.productSurface)
   const setProductSurface = useProductSurfaceStore(state => state.setProductSurface)
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
@@ -778,7 +781,7 @@ function AppWorkspace() {
             render on every surface, not only the ones that mount a chat. */}
         <ToastHost />
         {/* First visit: products, MCP and providers instead of an empty product surface. */}
-        <WelcomeHome />
+        <WelcomeHome autoOpen={false} />
         {showQuickSwitcher && (
           <QuickSwitcher
             isOpen
@@ -786,7 +789,7 @@ function AppWorkspace() {
             initialQuery={quickSwitcherInitialQuery}
           />
         )}
-        {productSurface === 'bullpen' ? (
+        {homeOpen ? <HomePage /> : productSurface === 'bullpen' ? (
           <Suspense fallback={<ProductSurfaceFallback label="Bullpen" />}><BullpenSurface /></Suspense>
         ) : productSurface === 'video-studio' ? (
           <Suspense fallback={<ProductSurfaceFallback label="Video Studio" />}><VideoStudioSurface /></Suspense>
