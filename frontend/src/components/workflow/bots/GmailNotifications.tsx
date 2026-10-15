@@ -111,7 +111,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                 <span>Gmail</span>
               </span>
             }
-            description="Your Google accounts for this project. The agent uses them through the server; the default one sends workflow notifications."
+            description="Google accounts added to this item. The agent uses these accounts through the server."
             actions={
               <AskAIButton
                 workspacePath={workspacePath}
@@ -149,19 +149,19 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
             title="Company delivery defaults"
             description={scopeNoun === 'workflow' ? "Company-wide workflow email defaults are managed by an administrator. To use your own email, add your Google account above and choose it in Notify; this switch can stay off." : "Company-wide workflow email defaults are managed by an administrator. Your personal Google account is managed above and does not need this switch."}
           >
-            {gmailSettingsReadOnly && <p className="mb-3 text-xs text-muted-foreground" role="status">Only an admin can change shared Gmail delivery settings or send a test email.</p>}
+            {gmailSettingsReadOnly && <p className="mb-3 text-xs text-muted-foreground" role="status">Only an admin can change company email defaults or send a company test email.</p>}
             {gmailError && <StatusBanner tone="error">{gmailError}</StatusBanner>}
             {gmailSuccess && <StatusBanner tone="success">{gmailSuccess}</StatusBanner>}
             <Card className="p-4">
               <ToggleRow
                 label="Workflow email notifications (company default)"
-                description="Turns on automatically after Gmail sign-in, unless previously turned off. Controls workflow summary emails."
+                description="Controls the company default sender for workflow summaries. An item’s selected personal sender does not need this switch."
                 checked={gmailConfig.enabled}
                 onCheckedChange={checked => setGmailConfig({ ...gmailConfig, enabled: checked })}
                 disabled={gmailSettingsReadOnly || (!gmailConfig.enabled && !gmailCanEnable)}
                 disabledTitle={gmailSettingsReadOnly ? READ_ONLY_TITLE : undefined}
               />
-              {!gmailConfig.enabled && !gmailCanEnable && <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">Sign in a Gmail account with sending access above. Workflow email notifications switch on automatically unless previously turned off.</p>}
+              {!gmailConfig.enabled && !gmailCanEnable && <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">The company default sender is not ready. Your own Google accounts above work independently of company email defaults.</p>}
             </Card>
             <Card className="space-y-3 p-4">
                 <div>
