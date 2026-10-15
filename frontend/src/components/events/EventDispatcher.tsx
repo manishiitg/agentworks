@@ -78,6 +78,7 @@ import { BlockingHumanFeedbackDisplay } from './BlockingHumanFeedbackDisplay'
 import { PlanApprovalDisplay } from './PlanApprovalDisplay'
 import { useChatStore } from '../../stores/useChatStore'
 import { MarkdownRenderer } from '../ui/MarkdownRenderer'
+import { HIDDEN_EVENTS } from './eventModeUtils'
 import { backgroundAgentCompletionSummary } from '../../utils/backgroundAgentSummary'
 import { summarizeBackgroundTaskMessage } from '../../utils/cleanConversation'
 // getTerminalOwnerPayload / getOwnedTerminalOwnerKeys moved to
@@ -1385,6 +1386,10 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
       </CompactWrapper>
     )
   }
+
+  // Events the chat never shows as a row (the server's turn_phase feeds the Working line only) stay out of the detailed
+  // view as well, instead of falling into the "Unknown Event Type" JSON dump below.
+  if (HIDDEN_EVENTS.has(event.type)) return null
 
   // Default case for unknown event types
   return (
