@@ -1,6 +1,7 @@
 package events
 
 import (
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -114,18 +115,33 @@ func (es *EventStore) recomputeSessionBytesLocked(sessionID string) {
 	es.sessionBytes[sessionID] = total
 }
 
-// pruneToByteBudget drops the oldest noisy events (then the oldest of anything) until the session fits its byte budget, and
-// returns how many it dropped. The newest event is never dropped. The caller holds es.mu.
+// currentTurnStart is the index of the session's latest user message: the events from there on are the turn a live screen is
+// still drawing, and are pruned last.
+func currentTurnStart(list []Event) int {
+	for i := len(list) - 1; i >= 0; i-- {
+		if list[i].Type == "user_message" {
+			return i
+		}
+	}
+	return 0
+}
+
+// pruneToByteBudget drops events until the session fits its byte budget, and returns how many it dropped. Earlier turns go first
+// (non-structural, non-transcript events oldest first, then anything oldest first); only if that is not enough does it touch the
+// current turn, and then only its oldest non-structural events. The newest event is never dropped. One line is logged per prune.
+// The caller holds es.mu.
 func (es *EventStore) pruneToByteBudget(sessionID string, budget int64) int {
 	if budget <= 0 || es.sessionBytes[sessionID] <= budget {
 		return 0
 	}
 	list := es.events[sessionID]
+	turn := currentTurnStart(list)
 	drop := make([]bool, len(list))
-	total := es.sessionBytes[sessionID]
+	before := es.sessionBytes[sessionID]
+	total := before
 	dropped := 0
-	pass := func(onlyNoisy bool) {
-		for i := 0; i < len(list)-1 && total > budget; i++ {
+	pass := func(from, to int, onlyNoisy bool) {
+		for i := from; i < to && i < len(list)-1 && total > budget; i++ {
 			if drop[i] {
 				continue
 			}
@@ -137,8 +153,9 @@ func (es *EventStore) pruneToByteBudget(sessionID string, budget int64) int {
 			dropped++
 		}
 	}
-	pass(true)
-	pass(false)
+	pass(0, turn, true)
+	pass(0, turn, false)
+	pass(turn, len(list), true)
 	if dropped == 0 {
 		return 0
 	}
@@ -152,5 +169,6 @@ func (es *EventStore) pruneToByteBudget(sessionID string, budget int64) int {
 	es.sessionStartIndices[sessionID] += dropped
 	es.rebuildTerminalEventsLocked(sessionID)
 	es.recomputeSessionBytesLocked(sessionID)
+	log.Printf("[MEM] pruned session=%s bytes_before=%d bytes_after=%d dropped=%d", sessionID, before, es.sessionBytes[sessionID], dropped)
 	return dropped
 }

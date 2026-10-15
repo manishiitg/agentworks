@@ -63,3 +63,28 @@ func TestSessionStaysInsideItsByteBudget(t *testing.T) {
 		t.Fatalf("the newest event was dropped: %d events", len(events))
 	}
 }
+
+// Earlier turns are pruned before the turn a live screen is still drawing.
+func TestByteBudgetKeepsTheCurrentTurnAndPrunesEarlierTurnsFirst(t *testing.T) {
+	es := NewEventStore(1000)
+	defer es.Stop()
+	es.byteBudget = 250 << 10
+	const session = "turns-session"
+	huge := strings.Repeat("r", 100<<10)
+	add := func(id, typ string, data mcpevents.EventData) {
+		es.AddEvent(session, Event{ID: id, Type: typ, Timestamp: time.Now(), Data: mcpevents.NewAgentEvent(data)})
+	}
+	add("old1", "tool_call_end", &mcpevents.ToolCallEndEvent{Result: huge})
+	add("old2", "tool_call_end", &mcpevents.ToolCallEndEvent{Result: huge})
+	add("user", "user_message", &mcpevents.UserMessageEvent{Content: "now"})
+	add("cur1", "tool_call_end", &mcpevents.ToolCallEndEvent{Result: huge})
+	add("cur2", "tool_call_end", &mcpevents.ToolCallEndEvent{Result: huge})
+	var ids []string
+	for _, event := range es.GetAllEventsRaw(session) {
+		ids = append(ids, event.ID)
+	}
+	got := strings.Join(ids, ",")
+	if !strings.Contains(got, "user") || !strings.Contains(got, "cur1") || !strings.Contains(got, "cur2") || strings.Contains(got, "old1") {
+		t.Fatalf("kept %v: the current turn must stay and the earlier turn go first", ids)
+	}
+}
