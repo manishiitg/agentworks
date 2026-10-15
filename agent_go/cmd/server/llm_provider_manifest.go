@@ -530,8 +530,7 @@ func limitProviderModelsToAccount(r *http.Request, provider string, full bool, r
 	if resp == nil {
 		return resp
 	}
-	claims := GetUserFromContext(r.Context())
-	if full && claims != nil && workFolderClaimsAreAdmin(claims) {
+	if full && currentUserIsAdmin(r) {
 		return resp
 	}
 	person := GetUserIDFromContext(r.Context())
