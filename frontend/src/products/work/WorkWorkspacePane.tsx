@@ -475,7 +475,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
                 iconOnly
               />
             </div>
-            <ReportHumanInputPanel workspacePath={workspacePath} source="user_suggestion" showEmptyState className="min-h-0 flex-1 overflow-auto p-3" />
+            <ReportHumanInputPanel workspacePath={workspacePath} chatTarget={{ profileId: product.profileId, conversationKey: projectId }} source="user_suggestion" showEmptyState className="min-h-0 flex-1 overflow-auto p-3" />
           </div>}
           {view === 'browser' && <WorkBrowserPanel tabId={tabId} projectId={projectId} workspacePath={workspacePath} />}
           {view === 'costs' && <CostsPopup projectMode workspacePath={workspacePath} runFolders={[]} selectedRunFolder={null} emptyHint="Send a message to see this project's usage here." headerAction={<AskAIButton

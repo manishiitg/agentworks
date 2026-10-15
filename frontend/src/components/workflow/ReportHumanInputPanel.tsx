@@ -10,7 +10,7 @@ import {
   reportHumanInputImpact,
   reportHumanInputStatusLabel,
 } from '../../utils/reportHumanInputFormatting'
-import { delegateReportHumanInputActionToChat, openReportHumanInputAnswerInChat, openReportHumanInputQuestionInChat, sendReportHumanInputAnswerToChat } from '../../utils/reportHumanInputChat'
+import { type HumanInputChatTarget, delegateReportHumanInputActionToChat, openReportHumanInputAnswerInChat, openReportHumanInputQuestionInChat, sendReportHumanInputAnswerToChat } from '../../utils/reportHumanInputChat'
 import { useContainerSizeTier } from './reportWidgets/tableHelpers'
 import { PlainMarkdown } from '../ui/PlainMarkdown'
 import { WORKFLOW_DECISIONS_REFRESH_EVENT } from './workflowEvents'
@@ -108,6 +108,8 @@ function HumanInputContext({ value }: { value: string }) {
 
 interface ReportHumanInputPanelProps {
 	workspacePath: string
+	/** Set for a Crew: its chat is found by profile and conversation key, not by a workflow path. */
+	chatTarget?: HumanInputChatTarget
 	className?: string
 	source?: string
 	workspaceLabel?: string
@@ -124,6 +126,7 @@ interface ReportHumanInputPanelProps {
 
 export function ReportHumanInputPanel({
   workspacePath,
+	chatTarget,
 	className = '',
 	source,
 	workspaceLabel,
@@ -264,7 +267,7 @@ export function ReportHumanInputPanel({
   const answerInChat = async (input: ReportHumanInput, option?: { id: string; title: string }) => {
     if (!option) {
       try {
-        await openReportHumanInputAnswerInChat({ input, workspacePath })
+        await openReportHumanInputAnswerInChat({ input, workspacePath, chatTarget })
       } catch (err) {
         useChatStore.getState().addToast(err instanceof Error ? err.message : 'Failed to open the chat.', 'error')
       }
@@ -272,7 +275,7 @@ export function ReportHumanInputPanel({
     }
     updateDraft(input.id, { delegating: true })
     try {
-      const result = await sendReportHumanInputAnswerToChat({ input, workspacePath, option })
+      const result = await sendReportHumanInputAnswerToChat({ input, workspacePath, chatTarget, option })
       useChatStore.getState().addToast(
         result.queuedBehindRunningTurn ? `"${option.title}" sent; it runs after the current chat turn.` : `"${option.title}" sent to chat.`,
         'success',
@@ -289,7 +292,7 @@ export function ReportHumanInputPanel({
   const askInChat = async (input: ReportHumanInput) => {
     updateDraft(input.id, { askingInChat: true })
     try {
-      await openReportHumanInputQuestionInChat({ input, workspacePath })
+      await openReportHumanInputQuestionInChat({ input, workspacePath, chatTarget })
     } catch (err) {
       useChatStore.getState().addToast(err instanceof Error ? err.message : 'Failed to open the chat.', 'error')
     } finally {
@@ -300,7 +303,7 @@ export function ReportHumanInputPanel({
   const delegateActionToChat = async (input: ReportHumanInput) => {
     updateDraft(input.id, { delegating: true })
     try {
-      const result = await delegateReportHumanInputActionToChat({ input, workspacePath })
+      const result = await delegateReportHumanInputActionToChat({ input, workspacePath, chatTarget })
       useChatStore.getState().addToast(
         result.queuedBehindRunningTurn
           ? 'Delegated decision queued behind the current chat turn.'
@@ -519,7 +522,7 @@ export function ReportHumanInputPanel({
                   onClick={async () => {
                     updateDraft(input.id, { submitting: true })
                     try {
-                      await sendWorkspacePaneMessageToChat({ workspacePath: input.workspace_path || workspacePath || '', message: input.apply_message || '' })
+                      await sendWorkspacePaneMessageToChat({ ...(chatTarget ? { profileId: chatTarget.profileId, conversationKey: chatTarget.conversationKey } : { workspacePath: input.workspace_path || workspacePath || '' }), message: input.apply_message || '' })
                     } catch (err) {
                       useChatStore.getState().addToast(err instanceof Error ? err.message : 'Could not send the decision to chat.', 'error')
                     } finally {

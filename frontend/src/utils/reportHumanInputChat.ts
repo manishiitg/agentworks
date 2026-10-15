@@ -2,6 +2,13 @@ import type { ReportHumanInput } from '../services/api-types'
 import type { WorkspacePaneChatResult } from './workspacePaneChat'
 import { openWorkspacePaneChatWithDraft, sendWorkspacePaneMessageToChat } from './workspacePaneChat'
 
+/** A Crew (or any product) chat is named by its profile and conversation key, never by a workflow path. */
+export type HumanInputChatTarget = { profileId: string; conversationKey: string }
+
+function paneTarget(workspacePath: string, chatTarget?: HumanInputChatTarget) {
+  return chatTarget ? { profileId: chatTarget.profileId, conversationKey: chatTarget.conversationKey } : { workspacePath }
+}
+
 function sourceName(source: string): string {
   if (['technical_review', 'engineering_review', 'ops_review'].includes(source)) return 'Technical Review'
   if (['strategic_review', 'strategy_auditor', 'goal_advisor'].includes(source)) return 'Strategic Review'
@@ -87,16 +94,18 @@ export function buildReportHumanInputDelegatedActionMessage(
 export async function sendReportHumanInputQuestionToChat({
   input,
   workspacePath,
+  chatTarget,
   userQuestion,
 }: {
   input: ReportHumanInput
   workspacePath: string
+  chatTarget?: HumanInputChatTarget
   userQuestion: string
 }): Promise<WorkspacePaneChatResult> {
   const question = userQuestion.trim()
   if (!question) throw new Error('Write a question before opening chat.')
   return sendWorkspacePaneMessageToChat({
-    workspacePath,
+    ...paneTarget(workspacePath, chatTarget),
     message: buildReportHumanInputChatMessage(input, workspacePath, question),
   })
 }
@@ -104,12 +113,14 @@ export async function sendReportHumanInputQuestionToChat({
 export async function delegateReportHumanInputActionToChat({
   input,
   workspacePath,
+  chatTarget,
 }: {
   input: ReportHumanInput
   workspacePath: string
+  chatTarget?: HumanInputChatTarget
 }): Promise<WorkspacePaneChatResult> {
   return sendWorkspacePaneMessageToChat({
-    workspacePath,
+    ...paneTarget(workspacePath, chatTarget),
     message: buildReportHumanInputDelegatedActionMessage(input, workspacePath),
   })
 }
@@ -121,12 +132,14 @@ export async function delegateReportHumanInputActionToChat({
 export async function openReportHumanInputQuestionInChat({
   input,
   workspacePath,
+  chatTarget,
 }: {
   input: ReportHumanInput
   workspacePath: string
+  chatTarget?: HumanInputChatTarget
 }): Promise<{ tabId: string }> {
   return openWorkspacePaneChatWithDraft({
-    workspacePath,
+    ...paneTarget(workspacePath, chatTarget),
     message: buildReportHumanInputChatMessage(input, workspacePath, ''),
   })
 }
@@ -167,14 +180,16 @@ export function buildReportHumanInputAnswerMessage(
 export async function sendReportHumanInputAnswerToChat({
   input,
   workspacePath,
+  chatTarget,
   option,
 }: {
   input: ReportHumanInput
   workspacePath: string
+  chatTarget?: HumanInputChatTarget
   option: { id: string; title: string }
 }): Promise<WorkspacePaneChatResult> {
   return sendWorkspacePaneMessageToChat({
-    workspacePath,
+    ...paneTarget(workspacePath, chatTarget),
     message: buildReportHumanInputAnswerMessage(input, workspacePath, option),
   })
 }
@@ -182,14 +197,16 @@ export async function sendReportHumanInputAnswerToChat({
 export async function openReportHumanInputAnswerInChat({
   input,
   workspacePath,
+  chatTarget,
   option,
 }: {
   input: ReportHumanInput
   workspacePath: string
+  chatTarget?: HumanInputChatTarget
   option?: { id: string; title: string }
 }): Promise<{ tabId: string }> {
   return openWorkspacePaneChatWithDraft({
-    workspacePath,
+    ...paneTarget(workspacePath, chatTarget),
     message: buildReportHumanInputAnswerMessage(input, workspacePath, option),
   })
 }
