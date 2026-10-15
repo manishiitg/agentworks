@@ -35,11 +35,12 @@ type homeAttention struct {
 	UpdatedAt string    `json:"updated_at,omitempty"`
 }
 type homeResponse struct {
-	Attention []homeAttention      `json:"attention"`
-	Work      []homeWork           `json:"work"`
-	Running   []*ActiveSessionInfo `json:"running"`
-	Warnings  []string             `json:"warnings"`
-	Truncated bool                 `json:"truncated"`
+	Attention   []homeAttention      `json:"attention"`
+	Work        []homeWork           `json:"work"`
+	Running     []*ActiveSessionInfo `json:"running"`
+	RunningWork map[string]homeWork  `json:"running_work"`
+	Warnings    []string             `json:"warnings"`
+	Truncated   bool                 `json:"truncated"`
 }
 
 func homeProductAllowed(claims *UserClaims, surface string) bool {
@@ -69,7 +70,7 @@ func (api *StreamingAPI) homeInventory(ctx context.Context) ([]homeWork, error) 
 		if claims.AccessToken != nil && (!claims.AccessToken.AllowsWorkflow(item.Manifest.ID) || !claims.AccessToken.Allows("workflows:read")) {
 			continue
 		}
-		out = append(out, homeWork{Surface: surface, ID: item.Manifest.ID, Label: item.Manifest.Label, WorkspacePath: item.WorkspacePath})
+		out = append(out, homeWork{Surface: surface, ID: item.Manifest.ID, Label: item.Manifest.Label, WorkspacePath: item.WorkspacePath, UpdatedAt: item.Manifest.UpdatedAt})
 	}
 	if api.agentProfiles != nil {
 		if homeProductAllowed(claims, "work") && (claims.AccessToken == nil || claims.AccessToken.Allows("crews:read")) {
@@ -98,15 +99,44 @@ func homeDecisionNeedsAttention(input ReportHumanInput) bool {
 	return input.Status == "pending" || (input.Status == "answered" && strings.TrimSpace(input.ApplyMessage) != "")
 }
 
+func homeSessionRunning(session *ActiveSessionInfo) bool {
+	if session == nil || session.ParentSessionID != "" {
+		return false
+	}
+	if state := session.RuntimeState; state != nil {
+		return runtimePhaseIsLive(state.Phase) || (state.BackgroundLive && state.Phase != runtimePhaseFailed && state.Phase != runtimePhaseCompleted && state.Phase != runtimePhaseCanceled)
+	}
+	return session.Status == "running" || session.Status == "paused" || session.NeedsUserInput || session.HasRunningBackgroundAgents
+}
+
 func (api *StreamingAPI) collectHome(r *http.Request) (homeResponse, error) {
 	start := time.Now()
-	result := homeResponse{Attention: []homeAttention{}, Work: []homeWork{}, Running: []*ActiveSessionInfo{}, Warnings: []string{}}
+	result := homeResponse{Attention: []homeAttention{}, Work: []homeWork{}, Running: []*ActiveSessionInfo{}, RunningWork: map[string]homeWork{}, Warnings: []string{}}
 	defer func() {
 		log.Printf("[HOME] user=%s attention=%d work=%d running=%d ms=%d", GetUserIDFromContext(r.Context()), len(result.Attention), len(result.Work), len(result.Running), time.Since(start).Milliseconds())
 	}()
 	work, err := api.homeInventory(r.Context())
 	if err != nil {
 		return result, err
+	}
+	if state, stateErr := readWorkspaceReturnState(r); stateErr == nil {
+		rank := map[string]int{}
+		for i, d := range state.Recent {
+			rank[d.Surface+":"+d.ID] = i + 1
+		}
+		sort.SliceStable(work, func(i, j int) bool {
+			left, right := rank[work[i].Surface+":"+work[i].ID], rank[work[j].Surface+":"+work[j].ID]
+			if left != 0 || right != 0 {
+				if left == 0 {
+					return false
+				}
+				if right == 0 {
+					return true
+				}
+				return left < right
+			}
+			return work[i].UpdatedAt > work[j].UpdatedAt
+		})
 	}
 	if len(work) > homeWorkspaceLimit {
 		work = work[:homeWorkspaceLimit]
@@ -152,7 +182,11 @@ func (api *StreamingAPI) collectHome(r *http.Request) (homeResponse, error) {
 			if input.Status == "answered" {
 				kind = "apply_decision"
 			}
-			result.Attention = append(result.Attention, homeAttention{ID: input.ID, Kind: kind, Title: input.Question, Work: place, View: "human-actions", UpdatedAt: input.UpdatedAt})
+			view := "human-actions"
+			if place.Surface == "work" || place.Surface == "code" {
+				view = "suggestions"
+			}
+			result.Attention = append(result.Attention, homeAttention{ID: input.ID, Kind: kind, Title: input.Question, Work: place, View: view, UpdatedAt: input.UpdatedAt})
 		}
 		if place.Surface != "agentworks" && place.Surface != "relays" {
 			continue
@@ -178,8 +212,9 @@ func (api *StreamingAPI) collectHome(r *http.Request) (homeResponse, error) {
 		result.Truncated = true
 	}
 	for _, session := range api.collectActiveSessions(r.Context()) {
-		if byPath[canonicalChatHistoryWorkspacePath(GetUserIDFromContext(r.Context()), session.WorkspacePath)] != nil {
+		if homeSessionRunning(session) && byPath[canonicalChatHistoryWorkspacePath(GetUserIDFromContext(r.Context()), session.WorkspacePath)] != nil {
 			result.Running = append(result.Running, session)
+			result.RunningWork[session.SessionID] = *byPath[canonicalChatHistoryWorkspacePath(GetUserIDFromContext(r.Context()), session.WorkspacePath)]
 		}
 	}
 	if len(result.Running) > homeSectionLimit {
@@ -205,7 +240,9 @@ func (api *StreamingAPI) handleHome(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthenticated", 401)
 		return
 	}
-	result, err := api.collectHome(r)
+	ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+	defer cancel()
+	result, err := api.collectHome(r.WithContext(ctx))
 	if err != nil {
 		http.Error(w, "Could not load your work. Please try again.", 503)
 		return

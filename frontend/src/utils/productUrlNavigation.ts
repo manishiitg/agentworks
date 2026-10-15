@@ -47,7 +47,7 @@ export function readProductNavigation(): ProductRoute {
 }
 
 /** Batch synchronous projections from one navigation action into one entry. */
-export function observeProductHistory(): () => void {
+export function observeProductHistory(onSelection?: (route: ProductRoute) => void): () => void {
   let lastSelection = productRoutePath(readProductNavigation())
   let timer: ReturnType<typeof setTimeout> | undefined
   let replace = false
@@ -75,6 +75,7 @@ export function observeProductHistory(): () => void {
       // A fresh deep link names its view before the mounted surface has
       // applied it; a projection must not rewrite the link to the default.
       if (replaceEntry && currentProductRoute()?.view && projected.view !== currentProductRoute()?.view) { lastSelection = productRoutePath(projected); return }
+      onSelection?.(projected)
       const path = productRoutePath(projected)
       if (path === lastSelection && !replaceEntry) return
       lastSelection = path

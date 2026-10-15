@@ -22,9 +22,15 @@ type workspaceLayout struct {
 	NavigationMode string  `json:"navigation_mode"`
 }
 type workspaceChat struct {
-	Name            string `json:"name"`
-	ReadOnly        bool   `json:"read_only"`
-	ConversationKey string `json:"conversation_key,omitempty"`
+	Name             string `json:"name"`
+	ReadOnly         bool   `json:"read_only"`
+	ExecutionRun     bool   `json:"execution_run,omitempty"`
+	ScheduledRun     bool   `json:"scheduled_run,omitempty"`
+	ScheduledJobName string `json:"scheduled_job_name,omitempty"`
+	BotPlatform      string `json:"bot_platform,omitempty"`
+	ViewMode         string `json:"view_mode,omitempty"`
+	WorkshopMode     string `json:"workshop_mode,omitempty"`
+	ConversationKey  string `json:"conversation_key,omitempty"`
 }
 
 type workspaceDestination struct {
@@ -60,7 +66,7 @@ func validWorkspaceDestination(d *workspaceDestination) bool {
 	if !known[d.Surface] || (d.ID != "" && (!workspaceReturnID.MatchString(d.ID) || d.ID == "." || d.ID == "..")) || (d.View != "" && !workspaceReturnView.MatchString(d.View)) || (d.SessionID != "" && !workspaceReturnID.MatchString(d.SessionID)) {
 		return false
 	}
-	if d.Chat != nil && (len(d.Chat.Name) > 256 || (d.Chat.ConversationKey != "" && (!workspaceReturnID.MatchString(d.Chat.ConversationKey) || !strings.HasPrefix(d.Chat.ConversationKey, d.ID)))) {
+	if d.Chat != nil && (len(d.Chat.Name) > 256 || len(d.Chat.ScheduledJobName) > 256 || len(d.Chat.BotPlatform) > 32 || (d.Chat.ViewMode != "" && d.Chat.ViewMode != "formatted" && d.Chat.ViewMode != "terminal" && d.Chat.ViewMode != "tree") || (d.Chat.WorkshopMode != "" && d.Chat.WorkshopMode != "workshop" && d.Chat.WorkshopMode != "run") || (d.Chat.ConversationKey != "" && (!workspaceReturnID.MatchString(d.Chat.ConversationKey) || !(d.Chat.ConversationKey == d.ID || strings.HasPrefix(d.Chat.ConversationKey, d.ID+":"))))) {
 		return false
 	}
 	if d.Layout != nil {
@@ -124,8 +130,15 @@ func (api *StreamingAPI) validateWorkspaceReturn(r *http.Request, d *workspaceDe
 			allowed = canonicalChatHistoryWorkspacePath(claims.UserID, session.WorkspacePath) == canonicalChatHistoryWorkspacePath(claims.UserID, workspace)
 		}
 		if !allowed && workspace != "" {
-			runtime, found, err := ReadChatHistoryRuntimeForSession(claims.UserID, copy.SessionID, workspace)
-			allowed = err == nil && found && runtime != nil && canonicalChatHistoryWorkspacePath(claims.UserID, runtime.WorkspacePath) == canonicalChatHistoryWorkspacePath(claims.UserID, workspace)
+			data, err := ReadChatHistoryConversation(claims.UserID, copy.SessionID, workspace)
+			if err == nil {
+				owner, _ := chatHistoryConversationIdentity(data)
+				var history ChatHistorySession
+				_ = json.Unmarshal(data, &history)
+				runtime, runtimeErr := chatHistoryRuntimeFromJSON(data)
+				visible := chatHistoryVisibleTo(owner, claims.UserID, false) || ((copy.Surface == "agentworks" || copy.Surface == "relays") && isWorkflowBotHistory(history))
+				allowed = visible && runtimeErr == nil && runtime != nil && canonicalChatHistoryWorkspacePath(claims.UserID, runtime.WorkspacePath) == canonicalChatHistoryWorkspacePath(claims.UserID, workspace)
+			}
 		}
 		if !allowed {
 			copy.SessionID = ""
