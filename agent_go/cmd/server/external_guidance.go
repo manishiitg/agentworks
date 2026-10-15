@@ -275,6 +275,7 @@ func loadExternalGuidanceTopics() []externalGuidanceTopic {
 	topics = append(topics,
 		externalGuidanceTopic{Name: "product-guide", Description: "Choose AgentWorks products: purpose, abilities, access requirements and examples.", Source: "product-guide", SourceVersion: productguide.GuideVersion},
 		externalGuidanceTopic{Name: productguide.SkillName, Description: productguide.SkillDescription, Source: "mcp-usage", SourceVersion: productguide.SkillVersion},
+		externalGuidanceTopic{Name: productguide.CLISetupTopic, Description: productguide.CLISetupDescription, Source: "cli-setup", SourceVersion: productguide.CLISetupVersion},
 	)
 	sort.Slice(topics, func(i, j int) bool { return topics[i].Name < topics[j].Name })
 	return topics
@@ -320,6 +321,9 @@ func externalGuidanceContentForProducts(topic string, selection productpolicy.Se
 	}
 	if meta.Source == "mcp-usage" {
 		return meta.Description, productguide.SkillBody(selection), nil
+	}
+	if meta.Source == "cli-setup" {
+		return meta.Description, productguide.CLISetup(selection), nil
 	}
 	if meta.Source != "" {
 		return selection.Text(meta.Description), selection.Text(meta.Content), nil

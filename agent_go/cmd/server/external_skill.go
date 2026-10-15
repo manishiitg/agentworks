@@ -73,7 +73,7 @@ func (api *StreamingAPI) handleExternalSkillZIP(w http.ResponseWriter, r *http.R
 		externalError(w, http.StatusInternalServerError, "skill_unavailable", err.Error())
 		return
 	}
-	for _, name := range []string{"references/products.md", "references/versions.json"} {
+	for _, name := range []string{"references/products.md", "references/cli-setup.md", "references/versions.json"} {
 		content := agentworksclient.EntrySkillFiles()[name]
 		if name == "references/versions.json" {
 			content = productguide.VersionsForSkill(productpolicy.Selection{}, "agentworks", agentworksclient.EntrySkillVersion, buildHostedSkillMarkdown(getBaseURL(r)))
@@ -134,7 +134,7 @@ func (api *StreamingAPI) handleExternalPlugin(w http.ResponseWriter, r *http.Req
 		{"skills/agentworks/SKILL.md", buildHostedSkillMarkdown(origin)},
 		{"README.md", "# AgentWorks for Claude Cowork\n\nInstall this plugin in Customize > Plugins, then connect AgentWorks and approve access in your browser. The connector uses OAuth; this package contains no credential.\n"},
 	}
-	for _, name := range []string{"references/products.md", "references/versions.json"} {
+	for _, name := range []string{"references/products.md", "references/cli-setup.md", "references/versions.json"} {
 		content := agentworksclient.EntrySkillFiles()[name]
 		if name == "references/versions.json" {
 			content = productguide.VersionsForSkill(productpolicy.Selection{}, "agentworks", agentworksclient.EntrySkillVersion, buildHostedSkillMarkdown(origin))

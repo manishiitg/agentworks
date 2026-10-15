@@ -1,13 +1,15 @@
 ---
 name: agentworks
-description: Use AgentWorks products through the live MCP tools and guidance allowed by the current MCP connection.
+description: Use AgentWorks products through the current MCP connection, or help install the CLI and connect a coding chat.
 metadata:
-  version: 1.0.4
+  version: 1.0.5
 ---
 
 # AgentWorks
 
 Use this entry pointer to discover current server guidance. Explain results in plain words, with one useful next step in chat or on the website. Use internal IDs in tool calls; show them only when the person asks. If an action is unavailable, explain what they can do instead. The CLI is an extra for developers.
+
+For CLI installation, sign-in, updates or connecting this coding chat, read [the setup guide](references/cli-setup.md) or fetch `help action=topic topic=cli-setup`. Use the person's actual server address; a hosted MCP client needs local execution access to install on their computer.
 
 1. Discover live tools and selected schemas with `get_api_spec` (remote MCP) or the stdio tool list. Invoke returned names and arguments through `call_tool` or the tool itself.
 2. Call `help action=context` for current access and `guidance_version`; find relevant guidance with `help action=topics`. Load `agentworks-mcp` and the selected product topics with `help action=topic` or `help action=skills`. Keep their `external_note`: internal reference names may be action values rather than standalone MCP tools.

@@ -84,6 +84,14 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	if cache["unchanged"] != true || cache["content"] != nil {
 		t.Fatal("guide cache did not retain its version")
 	}
+	setup := remote("help", map[string]any{"action": "topic", "topic": productguide.CLISetupTopic})
+	if setup["content"] != productguide.CLISetup(builderProductSelection(claims)) || setup["source_version"] != productguide.CLISetupVersion {
+		t.Fatal("MCP CLI setup differs from its versioned source", setup)
+	}
+	setupNote := remote("brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/cli-setup.md"})["result"].(map[string]any)
+	if setupNote["content"] != productguide.CLISetup(productpolicy.Selection{}) {
+		t.Fatal("Brain CLI setup differs from the shared source", setupNote)
+	}
 	read := remote("brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/product-guide.md"})["result"].(map[string]any)
 	noteVersion, _ := read["version"].(string)
 	if read["content"] != productguide.Guide(productpolicy.Selection{}) || noteVersion == "" || noteVersion == productguide.GuideVersion {
@@ -92,7 +100,7 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	const skillFolder = "Shared/Skills/agentworks-mcp"
 	pack := remote("brain_skills", map[string]any{"action": "get", "folder_path": skillFolder})["result"].(map[string]any)
 	brainSkillVersion, _ := pack["version"].(string)
-	if pack["name"] != productguide.SkillName || brainSkillVersion == "" || len(pack["files"].([]any)) != 3 {
+	if pack["name"] != productguide.SkillName || brainSkillVersion == "" || len(pack["files"].([]any)) != 4 {
 		t.Fatal("Brain package incomplete", pack)
 	}
 	files := map[string]string{}
@@ -103,6 +111,9 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	if files["SKILL.md"] != productguide.Skill(productpolicy.Selection{}) || files["references/products.md"] != read["content"] {
 		t.Fatal("Brain skill and guide drifted from shared sources")
 	}
+	if files["references/cli-setup.md"] != setupNote["content"] {
+		t.Fatal("Brain note and installable CLI setup reference drifted")
+	}
 	var versions map[string]map[string]string
 	if err := json.Unmarshal([]byte(files["references/versions.json"]), &versions); err != nil {
 		t.Fatal(err)
@@ -110,14 +121,23 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	if versions["mcp_skill"]["sha256"] != productguide.Fingerprint(files["SKILL.md"]) || versions["product_guide"]["sha256"] != productguide.Fingerprint(files["references/products.md"]) {
 		t.Fatal("package content fingerprints do not match actual files")
 	}
+	if versions["cli_setup"]["version"] != productguide.CLISetupVersion || versions["cli_setup"]["sha256"] != productguide.Fingerprint(files["references/cli-setup.md"]) {
+		t.Fatal("CLI setup version/fingerprint does not describe the packaged source")
+	}
 	guidancePack := remote("help", map[string]any{"action": "skills", "topics": []any{productguide.SkillName}})
 	var packageVersion string
 	for _, raw := range guidancePack["skills"].([]any) {
 		item := raw.(map[string]any)
 		if item["name"] == productguide.SkillName {
 			packageVersion = item["version"].(string)
-			if item["source_version"] != productguide.SkillVersion || len(item["files"].([]any)) != 3 {
+			if item["source_version"] != productguide.SkillVersion || len(item["files"].([]any)) != 4 {
 				t.Fatal("MCP usage skill omitted references or version")
+			}
+			for _, rawFile := range item["files"].([]any) {
+				file := rawFile.(map[string]any)
+				if file["path"] == "references/cli-setup.md" && file["content"] != setup["content"] {
+					t.Fatal("MCP package CLI setup differs from the topic")
+				}
 			}
 		}
 	}
@@ -140,6 +160,9 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	}
 	if content, err := os.ReadFile(filepath.Join(install, "agentworks", "references", "products.md")); err != nil || string(content) != files["references/products.md"] {
 		t.Fatal("CLI product reference missing or different", err)
+	}
+	if content, err := os.ReadFile(filepath.Join(install, "agentworks", "references", "cli-setup.md")); err != nil || string(content) != setupNote["content"] {
+		t.Fatal("CLI setup reference missing or different", err)
 	}
 	if strings.Contains(agentworksclient.EntrySkill(), "| Goals |") || !strings.Contains(agentworksclient.EntrySkill(), "| Crew |") || !strings.Contains(agentworksclient.EntrySkill(), "| Brain |") {
 		t.Fatal("entry skill lacks product routing overview")
@@ -216,6 +239,10 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	if !strings.Contains(read["content"].(string), "### Bullpen") || strings.Contains(read["content"].(string), "SparkQuill") || strings.Contains(read["content"].(string), "Video Studio") {
 		t.Fatal("enabled work product or personal-product exclusion incorrect in Brain guide")
 	}
+	enabledSetup := remote("help", map[string]any{"action": "topic", "topic": productguide.CLISetupTopic})
+	if enabledSetup["content"] != productguide.CLISetup(builderProductSelection(claims)) || !strings.Contains(enabledSetup["content"].(string), "## Connect the coding chat to Bullpen") {
+		t.Fatal("enabled Bullpen setup unavailable through MCP", enabledSetup)
+	}
 	if err := seedBrainStarterFiles(t.Context(), service, admin, stateDir, originalFiles); err != nil {
 		t.Fatal(err)
 	}
@@ -225,6 +252,8 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	}
 	// Customize one starter and deliberately remove another through native tools.
 	remote("brain_update", map[string]any{"action": "update", "path": "Shared/AgentWorks/product-guide.md", "content": "Our own product guide", "expected_version": read["version"], "request_id": "custom-guide"})
+	setupNote = remote("brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/cli-setup.md"})["result"].(map[string]any)
+	remote("brain_update", map[string]any{"action": "update", "path": "Shared/AgentWorks/cli-setup.md", "content": "Our own CLI notes", "expected_version": setupNote["version"], "request_id": "custom-cli-setup"})
 	ref := remote("brain_read", map[string]any{"action": "read", "path": skillFolder + "/references/products.md"})["result"].(map[string]any)
 	remote("brain_update", map[string]any{"action": "delete", "path": skillFolder + "/references/products.md", "expected_version": ref["version"], "request_id": "remove-starter-ref"})
 	if err := service.Close(); err != nil {
@@ -245,6 +274,9 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	}
 	if value, err := restarted.CallTool(t.Context(), admin, "brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/product-guide.md"}); err != nil || value.(map[string]any)["content"] != "Our own product guide" {
 		t.Fatal("customized note replaced after restart", value, err)
+	}
+	if value, err := restarted.CallTool(t.Context(), admin, "brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/cli-setup.md"}); err != nil || value.(map[string]any)["content"] != "Our own CLI notes" {
+		t.Fatal("customized CLI setup note replaced after restart", value, err)
 	}
 	if _, err := restarted.CallTool(t.Context(), admin, "brain_read", map[string]any{"action": "read", "path": skillFolder + "/references/products.md"}); !brainStarterError(err, "NOT_FOUND") {
 		t.Fatal("deleted starter reference resurrected", err)
@@ -269,14 +301,25 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if err := ensureBrainStarterParents(t.Context(), s, admin, "Shared/AgentWorks"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.CallTool(t.Context(), admin, "brain_update", map[string]any{"action": "create", "folder_path": "Shared/AgentWorks", "filename": "cli-setup.md", "type": "note", "title": "Our setup", "content": "Existing user setup notes", "request_id": "existing-cli-setup"}); err != nil {
+			t.Fatal(err)
+		}
 		if err := seedBrainStarterFiles(t.Context(), s, admin, t.TempDir(), knowledgebaseStarterFiles()); err != nil {
 			t.Fatal(err)
 		}
 		if value, err := s.CallTool(t.Context(), admin, "brain_read", map[string]any{"action": "read", "path": skillFolder + "/SKILL.md"}); err != nil || value.(map[string]any)["content"] != "Our own skill" {
 			t.Fatal("preexisting skill replaced", value, err)
 		}
-		if _, err := s.CallTool(t.Context(), admin, "brain_read", map[string]any{"action": "read", "path": skillFolder + "/references/products.md"}); !brainStarterError(err, "NOT_FOUND") {
-			t.Fatal("platform mixed references into a user skill", err)
+		for _, reference := range []string{"products.md", "cli-setup.md"} {
+			if _, err := s.CallTool(t.Context(), admin, "brain_read", map[string]any{"action": "read", "path": skillFolder + "/references/" + reference}); !brainStarterError(err, "NOT_FOUND") {
+				t.Fatal("platform mixed references into a user skill", reference, err)
+			}
+		}
+		if value, err := s.CallTool(t.Context(), admin, "brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/cli-setup.md"}); err != nil || value.(map[string]any)["content"] != "Existing user setup notes" {
+			t.Fatal("preexisting CLI setup note replaced", value, err)
 		}
 	})
 	t.Run("definite-refusal-retries", func(t *testing.T) {
@@ -327,9 +370,11 @@ func futureStarterFiles(original []brainStarterFile, version string) []brainStar
 	guide := strings.Replace(oldGuide, "Guide version: "+original[0].SourceVersion, "Guide version: "+version, 1)
 	skill := strings.ReplaceAll(oldSkill, original[1].SourceVersion, version)
 	skill = strings.ReplaceAll(skill, productguide.Fingerprint(oldGuide), productguide.Fingerprint(guide))
+	setup := strings.Replace(original[4].Content, "CLI setup guide version: "+original[4].SourceVersion, "CLI setup guide version: "+version, 1)
 	manifest, _ := json.Marshal(map[string]any{
 		"product_guide": map[string]string{"version": version, "sha256": productguide.Fingerprint(guide)},
 		"mcp_skill":     map[string]string{"name": productguide.SkillName, "version": version, "sha256": productguide.Fingerprint(skill)},
+		"cli_setup":     map[string]string{"version": version, "sha256": productguide.Fingerprint(setup)},
 	})
 	for i := range out {
 		out[i].SourceVersion = version
@@ -340,6 +385,8 @@ func futureStarterFiles(original []brainStarterFile, version string) []brainStar
 			out[i].Content = skill
 		case 3:
 			out[i].Content = string(manifest) + "\n"
+		case 4, 5:
+			out[i].Content = setup
 		}
 	}
 	return out

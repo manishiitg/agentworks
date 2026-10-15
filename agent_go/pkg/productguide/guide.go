@@ -15,11 +15,14 @@ import (
 // Bump the corresponding semantic version when changing either source.
 // Fingerprints additionally identify the exact installation-specific content.
 const GuideVersion = "1.0.2"
-const SkillVersion = "1.0.3"
+const SkillVersion = "1.0.4"
 const SkillName = "agentworks-mcp"
-const SkillDescription = "Choose AgentWorks products and use their live MCP tools, guidance and Brain knowledge with the current connection's permissions."
+const SkillDescription = "Choose AgentWorks products, use live MCP tools and guidance, or follow CLI installation and connection setup."
+const CLISetupVersion = "1.0.0"
+const CLISetupTopic = "cli-setup"
+const CLISetupDescription = "Install or update the AgentWorks CLI, sign in and connect a supported coding chat."
 
-//go:embed products.md mcp-usage.md
+//go:embed products.md mcp-usage.md cli-setup.md
 var sources embed.FS
 
 func source(name string) string {
@@ -52,6 +55,10 @@ func SkillBody(selection productpolicy.Selection) string {
 		selection.Text(source("mcp-usage.md"))
 }
 
+func CLISetup(selection productpolicy.Selection) string {
+	return "CLI setup guide version: " + CLISetupVersion + ".\n\n" + selection.Text(source("cli-setup.md"))
+}
+
 func Skill(selection productpolicy.Selection) string {
 	return "---\nname: " + SkillName + "\ndescription: " + SkillDescription + "\nmetadata:\n  version: " + SkillVersion + "\n  product-guide-version: " + GuideVersion + "\n  product-guide-sha256: \"" + Fingerprint(Guide(selection)) + "\"\n---\n\n" + SkillBody(selection)
 }
@@ -66,6 +73,7 @@ func VersionsForSkill(selection productpolicy.Selection, name, version, content 
 	b, _ := json.MarshalIndent(map[string]any{
 		"product_guide": map[string]string{"version": GuideVersion, "sha256": Fingerprint(Guide(selection))},
 		"mcp_skill":     map[string]string{"name": name, "version": version, "sha256": Fingerprint(content)},
+		"cli_setup":     map[string]string{"version": CLISetupVersion, "sha256": Fingerprint(CLISetup(selection))},
 	}, "", "  ")
 	return string(b) + "\n"
 }

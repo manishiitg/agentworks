@@ -9,6 +9,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productguide"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 )
 
 func TestExternalSkillRequiresIdentity(t *testing.T) {
@@ -55,7 +58,7 @@ func TestExternalPluginPackagesSkillAndOAuthConnector(t *testing.T) {
 		}
 		entries[file.Name] = string(content)
 	}
-	if len(entries) != 6 {
+	if len(entries) != 7 {
 		t.Fatalf("unexpected plugin files: %v", entries)
 	}
 	var manifest struct {
@@ -82,6 +85,9 @@ func TestExternalPluginPackagesSkillAndOAuthConnector(t *testing.T) {
 	}
 	if entries["skills/agentworks/references/products.md"] == "" || entries["skills/agentworks/references/versions.json"] == "" {
 		t.Fatal("plugin omitted product guide or source versions")
+	}
+	if entries["skills/agentworks/references/cli-setup.md"] != productguide.CLISetup(productpolicy.Selection{}) {
+		t.Fatal("plugin omitted or changed canonical CLI setup")
 	}
 	if !strings.Contains(entries["README.md"], "OAuth") {
 		t.Fatal("plugin instructions missing")
@@ -147,12 +153,21 @@ func TestExternalSkillMDAndZIP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unzip: %v", err)
 	}
-	if len(archive.File) != 3 || archive.File[0].Name != "agentworks/SKILL.md" {
+	if len(archive.File) != 4 || archive.File[0].Name != "agentworks/SKILL.md" {
 		names := make([]string, 0, len(archive.File))
 		for _, f := range archive.File {
 			names = append(names, f.Name)
 		}
-		t.Fatalf("zip entries %v, want SKILL.md and both product references", names)
+		t.Fatalf("zip entries %v, want SKILL.md, product/setup guides and versions", names)
+	}
+	setupFile, err := archive.File[2].Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup, err := io.ReadAll(setupFile)
+	setupFile.Close()
+	if err != nil || string(setup) != productguide.CLISetup(productpolicy.Selection{}) {
+		t.Fatal("hosted skill ZIP setup differs from the canonical source", err)
 	}
 	entry, err := archive.File[0].Open()
 	if err != nil {

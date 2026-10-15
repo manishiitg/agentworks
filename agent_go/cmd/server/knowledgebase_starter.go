@@ -50,6 +50,8 @@ func knowledgebaseStarterFiles() []brainStarterFile {
 		{Path: packagePath + "/SKILL.md", Title: "Use AgentWorks over MCP", Content: productguide.Skill(selection), SourceVersion: productguide.SkillVersion, Package: packagePath},
 		{Path: packagePath + "/references/products.md", Title: "AgentWorks products", Content: guide, SourceVersion: productguide.GuideVersion, Package: packagePath},
 		{Path: packagePath + "/references/versions.json", Title: "AgentWorks guide and skill versions", Content: productguide.Versions(selection), SourceVersion: productguide.SkillVersion, Package: packagePath},
+		{Path: "Shared/AgentWorks/cli-setup.md", Title: "AgentWorks CLI setup", Content: productguide.CLISetup(selection), SourceVersion: productguide.CLISetupVersion},
+		{Path: packagePath + "/references/cli-setup.md", Title: "AgentWorks CLI setup", Content: productguide.CLISetup(selection), SourceVersion: productguide.CLISetupVersion, Package: packagePath},
 	}
 }
 

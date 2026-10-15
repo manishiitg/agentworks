@@ -16,7 +16,7 @@ import (
 //go:embed skills/agentworks/SKILL.md
 var installedSkillFile embed.FS
 
-const EntrySkillVersion = "1.0.4"
+const EntrySkillVersion = "1.0.5"
 
 // EntrySkillFiles is shared by CLI installation and hosted skill packages.
 func EntrySkillFiles() map[string]string {
@@ -25,6 +25,7 @@ func EntrySkillFiles() map[string]string {
 	return map[string]string{
 		"SKILL.md":                 content,
 		"references/products.md":   productguide.Guide(selection),
+		"references/cli-setup.md":  productguide.CLISetup(selection),
 		"references/versions.json": productguide.VersionsForSkill(selection, "agentworks", EntrySkillVersion, content),
 	}
 }

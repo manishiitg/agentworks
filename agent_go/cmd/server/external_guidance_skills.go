@@ -59,6 +59,7 @@ func externalGuidanceSkillFiles(claims *UserClaims, topic externalGuidanceTopic)
 		return []any{
 			map[string]any{"path": "SKILL.md", "content": productguide.Skill(selection)},
 			map[string]any{"path": "references/products.md", "content": productguide.Guide(selection)},
+			map[string]any{"path": "references/cli-setup.md", "content": productguide.CLISetup(selection)},
 			map[string]any{"path": "references/versions.json", "content": productguide.Versions(selection)},
 		}, nil
 	}
