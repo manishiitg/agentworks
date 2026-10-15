@@ -13,7 +13,8 @@ const normalizedPath = (value?: string | null): string => (value || '')
 
 export function isWorkProductSession(session: Pick<ActiveSessionInfo, 'session_id' | 'workspace_path'>): boolean {
   if (session.session_id.startsWith('work:project:')) return true
-  return /(?:^|\/)Chats\/Work\/projects\/[^/]+(?:\/|$)/i.test(normalizedPath(session.workspace_path))
+  const workspace = normalizedPath(session.workspace_path)
+  return /^Crew\/[^/]+(?:\/|$)/i.test(workspace) || /(?:^|\/)Chats\/Work\/projects\/[^/]+(?:\/|$)/i.test(workspace)
 }
 
 export function isCodeProductSession(session: Pick<ActiveSessionInfo, 'session_id' | 'workspace_path'>): boolean {
