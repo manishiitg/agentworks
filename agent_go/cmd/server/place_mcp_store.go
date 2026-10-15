@@ -60,7 +60,9 @@ type placeMCPServer struct {
 	Catalog   string                    `json:"catalog,omitempty"` // set by the server, never by the request
 	// AppKey names the deployment's sign-in app this server signs in
 	// through (set by the server from the catalog, never by the request).
-	AppKey string `json:"app_key,omitempty"`
+	AppKey      string `json:"app_key,omitempty"`
+	SlackUserID string `json:"slack_user_id,omitempty"`
+	SlackTeamID string `json:"slack_team_id,omitempty"`
 }
 
 // placeMCPHeader is a credential header built from one personal secret:
@@ -275,6 +277,9 @@ func addPlaceMCPServer(userID string, server placeMCPServer) (placeMCPServer, er
 	for _, existing := range servers {
 		if existing.Name != server.Name {
 			kept = append(kept, existing)
+		} else if isPersonalSlack(existing) && isPersonalSlack(server) {
+			// Generic MCP editing must not clear a known Slack identity.
+			server.SlackUserID, server.SlackTeamID = existing.SlackUserID, existing.SlackTeamID
 		}
 	}
 	kept = append(kept, server)

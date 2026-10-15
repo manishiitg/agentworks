@@ -56,6 +56,7 @@ chat:
       - uninstall_skill
       - list_gmail_connections
       - manage_google_account
+      - manage_slack_account
       - update_gmail_connection_grants
       - google_workspace_cli
       - get_notification_history

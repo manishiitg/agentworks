@@ -67,6 +67,10 @@ func startGmailOAuthHandler(api *StreamingAPI) http.HandlerFunc {
 			http.Error(w, fmt.Sprintf("gmail connection %q not found", id), http.StatusNotFound)
 			return
 		}
+		if conn.IsPrivate() && conn.OwnerID != personalConnectionActor(r.Context()) {
+			http.Error(w, "Only the account owner can sign in again. Ask them to reconnect in Google apps.", http.StatusForbidden)
+			return
+		}
 		conn, err := svc.EnsureConnectionOAuthClient(r.Context(), id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

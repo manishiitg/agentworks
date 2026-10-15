@@ -2340,6 +2340,11 @@ func runServer(cmd *cobra.Command, args []string) {
 	eventStore.SetEventAddedCallback(func(sessionID string, event events.Event) {
 		terminalEventObserver(sessionID, event)
 		api.observeRetainedMainTurnEvent(sessionID, event)
+		if event.Data != nil {
+			if call, ok := unifiedevents.ToolCallRecordFromEvent(event.Data.Data); ok {
+				api.logPersonalSlackCall(context.Background(), sessionID, call.ServerName, call.ToolName, call.Status)
+			}
+		}
 	})
 
 	// Some tool calls never produce a tool_call_end on the live stream, which
@@ -2596,6 +2601,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Sign-in apps (Google, GitHub, ...): set up once by an admin.
 	apiRouter.HandleFunc("/admin/mcp-apps", requireAdmin(api.handleListMCPApps)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/mcp-apps/{key}", requireAdmin(api.handlePutMCPApp)).Methods("PUT", "DELETE", "OPTIONS")
+	apiRouter.HandleFunc("/integrations/slack/accounts", api.handlePersonalSlackAccounts).Methods("GET", "POST", "OPTIONS")
 	apiRouter.HandleFunc("/mcp/place", api.handleListPlaceMCP).Methods("GET")
 	apiRouter.HandleFunc("/mcp/place", api.handleAddPlaceMCP).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/mcp/place/{name}/connect", api.handleConnectPlaceMCP).Methods("POST", "OPTIONS")

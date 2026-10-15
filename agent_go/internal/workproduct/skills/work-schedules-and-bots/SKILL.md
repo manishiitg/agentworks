@@ -75,6 +75,16 @@ The Automation pane lists your watchers and, for shared products, who owns the w
   Pulse, or workflow runs. Use an AgentWorks workflow webhook when those
   orchestration semantics are required.
 
+## Personal Slack accounts
+
+Use `manage_slack_account` to list saved accounts, connect a new one, add it to this item, remove it only here, or disconnect it everywhere. The website offers the same actions in **Integrations → Slack**. Existing Builders (including workflow editors) can explicitly add their own saved account; only the account owner signs in or reconnects, while owners or administrators can disconnect the saved connection. Signing in opens Slack in the browser, never a terminal or a request for a token in chat.
+
+Connect once and explicitly add the account to every item that should use it. Shared runs use the account selected for this item, not the caller's Slack login. Messages appear as sent by that person with Slack's app attribution. Anyone who can run or change the item can send as that person through it. State this consequence when adding the account. Removing it here leaves other items connected. It stays selected until explicitly removed, including after its connector loses Builder access.
+
+Discover the attached Slack connection with `list_mcp_servers`, inspect its live tools, then use `call_mcp_tool`. Resolve the actual recipient/channel before sending. For a new DM, Slack needs `im:write`; use the live conversation-creation tool rather than guessing a channel. Report a pending sign-in or Slack error accurately. Personal Slack and bot messaging use separate connections and identities. Use only tools actually available in this product; do not substitute a bot for the person's selected account, or the reverse.
+
+An administrator sets up an internal Slack app named **AgentWorks** once in Sign-in apps. Enable its Slack MCP Server feature in the Slack app's Agents settings, register the returned callback URL and the required user scopes, then store its client ID and secret in the website. Slack may require workspace app approval. See https://docs.slack.dev/ai/slack-mcp-server/.
+
 ## Project-chat bots
 
 Slack and WhatsApp bot connections use the shared AgentWorks connector

@@ -1,3 +1,7 @@
+## Personal Slack accounts and bots
+
+`manage_slack_account` connects a person's own Slack account once and explicitly adds it to each item. Website: **Integrations → Slack**. Shared runs use that selected account; messages appear as sent by its owner with Slack's app attribution. Anyone who can run or change this item can send as that person through it. The account stays selected until explicitly removed. Removing it from one item preserves other selections. Builders may add their own saved account; only its owner signs in again; its owner or an administrator can disconnect the saved connection. Discover its live tools with `list_mcp_servers` and use `call_mcp_tool`; a new DM requires `im:write`. Never silently use a bot instead, or present the bot's status as personal sign-in status.
+
 # Slack bot routes and threaded messages
 
 Call `get_slack_bot_settings` before changing a route and again afterward to confirm the saved state. Use exact Slack channel IDs (for example `C1234567890`), never display names. A `#Name` in chat is a workflow/Crew mention from the `#` picker, never a Slack channel — never treat it as a channel or offer Slack setup because of it. The tools are bound to the current workflow or Work project; they cannot manage another target.

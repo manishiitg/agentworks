@@ -1,6 +1,6 @@
 import { selectWorkspacePaneWorkflowTab } from '../../utils/workspacePaneChat'
 import { capabilitiesEqual, mergeRemoteCapabilities } from './workflowCapabilitiesSync'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LoaderCircle, Save } from 'lucide-react'
 import SkillsManagerPanel from '../skills/SkillsManagerPanel'
 import PlaybooksPanel from '../playbooks/PlaybooksPanel'
@@ -39,6 +39,8 @@ import WorkflowIdentityPanel from './WorkflowIdentityPanel'
 import WorkflowFolderAccessView from './WorkflowFolderAccessView'
 import WorkflowUpdatesView from './WorkflowUpdatesView'
 import { useGmailInboundUIEnabled } from './bots/gmailAskAI'
+
+const SlackAccountsPanel = lazy(() => import('../integrations/SlackAccountsPanel'))
 
 // Which sections exist is decided by the registry in workspaceViews.ts; this
 // panel only carries the per-section copy.
@@ -414,9 +416,9 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                 {!relayMode && activeMcpTab === 'folders' && (
                   <WorkflowFolderAccessView workspacePath={workspacePath} hideHeader manageOwnScroll={false} />
                 )}
-                {!relayMode && activeMcpTab === 'slack' && (
+                {activeMcpTab === 'slack' && (
                   <div className="mt-3">
-                    <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="slack" />
+                    {relayMode && workspacePath ? <Suspense fallback={null}><SlackAccountsPanel key={workspacePath} workspacePath={workspacePath} /></Suspense> : <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="slack" />}
                   </div>
                 )}
                 {!relayMode && activeMcpTab === 'whatsapp' && (

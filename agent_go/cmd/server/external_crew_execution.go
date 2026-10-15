@@ -396,6 +396,9 @@ func (api *StreamingAPI) executeCrewSelectedMCP(ctx context.Context, root string
 	handler.SetMCPServerResolver(func(callCtx context.Context, _ string, server, tool string) (*executor.ResolvedMCPServer, error) {
 		callCtx = context.WithValue(callCtx, placeScopedKey{}, true)
 		if resolved, handled, err := api.resolvePlaceAttachedMCP(callCtx, "", server); handled {
+			if err == nil && resolved != nil {
+				api.logPersonalSlackSend(callCtx, "", resolved.Name, tool)
+			}
 			return resolved, err
 		}
 		manifest, found, err := ReadWorkflowManifest(callCtx, root)

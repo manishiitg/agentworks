@@ -54,6 +54,7 @@ type GmailConnectionResponse struct {
 	IsDefault          bool   `json:"is_default"`
 	CanRemove          bool   `json:"can_remove"`
 	CanManage          bool   `json:"can_manage"`
+	CanReconnect       bool   `json:"can_reconnect"`
 	Personal           bool   `json:"personal"`
 	CanDetach          bool   `json:"can_detach"`
 
@@ -245,13 +246,13 @@ func projectGmailConnection(r *http.Request, svc *services.GmailService, conn se
 		IsDefault:             conn.ID == defaultID,
 		CanRemove:             canRemoveGmailConnection(r, conn),
 		CanManage:             canManageGoogleAccount(r, conn),
+		CanReconnect:          canManageGoogleAccount(r, conn) && (!conn.IsPrivate() || conn.OwnerID == personalConnectionActor(r.Context())),
 		Personal:              conn.IsPrivate(),
 		Auth:                  auth,
 		Ready:                 conn.Enabled && auth.Authenticated && auth.HasGmailScope,
 	}
 	if workspace := r.URL.Query().Get("workspace_path"); workspace != "" && conn.IsPrivate() {
-		_, err := googleItemScope(r, workspace, true)
-		out.CanDetach = err == nil || canManageGoogleAccount(r, conn)
+		out.CanDetach = personalConnectionAccess(r, conn.OwnerID, workspace, true, "Google", "Google apps").CanDetach
 	}
 	if !conn.CreatedAt.IsZero() {
 		out.CreatedAt = conn.CreatedAt.UTC().Format("2006-01-02T15:04:05Z")

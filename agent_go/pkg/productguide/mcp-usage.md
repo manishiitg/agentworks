@@ -47,6 +47,10 @@ For other work, choose from the topics actually listed by this connection.
 - Find packages with `brain_skills action=list`, then retrieve one with `action=get`. Install all returned files with their relative paths; preserve customized copies.
 - The starter package is `Shared/Skills/agentworks-mcp`; its product guide also appears at `Shared/AgentWorks/product-guide.md`. Current MCP guidance is available independently of those starter copies.
 <!-- /product -->
+## Connected accounts
+
+A person connects Google or Slack once, then explicitly adds the saved account to each item they build. Existing workflow editors can do this too. Shared runs use that item's selected account, without changing the caller's access or cost attribution. Removing it here leaves other items connected; it stays selected until explicitly removed. Only the account owner signs in again; the account owner or an administrator can disconnect the saved connection. In Slack, messages sent through the selected personal account appear as sent by that person with Slack's app attribution. Anyone who can run or change the item can send as that person through it. Website: **Integrations → Slack**; Builder tool: `manage_slack_account`. Inspect live tools and relevant Slack guidance before setup or sending. Bot messaging is a separate connection.
+
 ## Secrets and messages
 
 When a person gives you a secret value in chat, store it with the project's settings tool (`secrets.set`, owner access). <!-- product:mcp-gateway -->For shared values use Vault's `manage_vault_secret_access operation=set_value` (Vault administrators). <!-- /product -->Use the actual tool schema. Confirm by name only; never repeat the value or put it in a shell command, file, log or URL. Developers may instead use `agentworks secret set` or `agentworks secret import .env`. Existing secret selections and grants decide which work can use it.

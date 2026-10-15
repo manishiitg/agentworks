@@ -41,11 +41,11 @@ it.each(['local', 'server', 'account', 'enabled', 'relay'])('keeps product integ
     expect(host.querySelector('[role="tabpanel"]')?.textContent).toBe('Vault groups')
     expect(host.querySelector('[aria-label="About Brain"]')).not.toBeNull()
   } else if (scenario === 'relay') {
-    expect(menu.querySelectorAll('button')).toHaveLength(2)
+    expect(menu.querySelectorAll('button')).toHaveLength(3)
     expect(menu.textContent).toContain('Tools & secrets')
     expect(menu.textContent).toContain('Google apps')
     expect(menu.textContent).not.toContain('Brain')
-    expect(menu.textContent).not.toContain('Slack')
+    expect(menu.textContent).toContain('Slack')
     expect(host.querySelector('[role="tabpanel"]')?.textContent).toBe('Vault groups')
     expect(knowledgebaseApi.bootstrap).not.toHaveBeenCalled()
   } else {

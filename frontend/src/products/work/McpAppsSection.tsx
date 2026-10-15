@@ -12,11 +12,10 @@ const errorText = (cause: unknown, fallback: string) => {
 
 /**
  * Sign-in apps, for admins (docs/design/code_private_mcp.md, "Sign-in apps").
- * Google and GitHub have no automatic app registration, so people are asked for an
+ * Google and Slack have no automatic app registration, so an administrator stores an
  * OAuth client ID and secret. An admin sets one app up per provider here, once;
  * everyone's Connect then goes straight to the provider's consent screen and signs in
- * as themselves. Only these two are listed (the product focuses on Google apps and
- * GitHub); the server decides which providers appear (mcpAppFocusKeys).
+ * as themselves. The server decides which providers appear (mcpAppFocusKeys).
  */
 export function McpAppsSection() {
   const [apps, setApps] = useState<McpAppGroup[]>([])
@@ -99,7 +98,7 @@ export function McpAppsSection() {
     return (
       <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs" data-testid="mcp-apps-section">
         <KeyRound className="h-3.5 w-3.5 text-primary" />
-        <span className="font-medium text-foreground">Google sign-in app</span>
+        <span className="font-medium text-foreground">Sign-in apps</span>
         <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">Admin</span>
         {ready.length > 0 && <span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />{ready.join(', ')} set up</span>}
         {missing.length > 0 && <span className="text-amber-600">{missing.join(', ')} not set up</span>}
@@ -112,10 +111,10 @@ export function McpAppsSection() {
     <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3" data-testid="mcp-apps-section">
       <div className="flex items-center gap-2">
         <KeyRound className="h-4 w-4 text-primary" />
-        <h4 className="text-sm font-semibold text-foreground">Google sign-in app <span className="ml-1 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">Admin</span></h4>
+        <h4 className="text-sm font-semibold text-foreground">Sign-in apps <span className="ml-1 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">Admin</span></h4>
       </div>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">
-        People connect their own Google account (Gmail, Drive, Calendar, Docs, Sheets, Slides) through this app: set it up once, and everyone just clicks Connect Google account and signs in as themselves, with no file of their own. The app only identifies this server to Google.
+        People connect their own Google account (Gmail, Drive, Calendar, Docs, Sheets, Slides) through this app: set it up once, and everyone just clicks Connect Google account and signs in as themselves, with no file of their own. The app only identifies this server to Google. Slack accounts use a separate Slack app named AgentWorks; enable its Slack MCP Server feature in Slack’s app settings.
       </p>
       {error && <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>}
       <div className="mt-2 space-y-2">
@@ -150,6 +149,8 @@ export function McpAppsSection() {
                       <li>Enable the <b>Gmail, Drive, Calendar, Docs, Sheets and Slides</b> APIs in that project (the regular APIs, not the Workspace MCP preview).</li>
                       <li>Download the client JSON and upload it here, or paste the client ID and secret.</li>
                     </ol>
+                  ) : app.key === 'slack' ? (
+                    <p>Create an internal Slack app named <b>AgentWorks</b>, enable <b>Agents → Slack MCP Server</b>, add the required user scopes (including chat:write and im:write), and register the redirect URI below. Store its client ID and secret here. Each person then signs in as themselves. <a className="text-primary underline" href="https://docs.slack.dev/ai/slack-mcp-server/" target="_blank" rel="noreferrer">Slack setup guide</a></p>
                   ) : (
                     <p>Create an OAuth app with {app.label}, register the redirect URI below, then paste its client ID and secret.</p>
                   )}
@@ -161,7 +162,7 @@ export function McpAppsSection() {
                   )}
                 </div>
                 <input ref={fileInput} type="file" accept="application/json,.json" className="hidden" aria-label="Upload the client JSON" onChange={event => { void loadClientFile(event.target.files?.[0]); event.target.value = '' }} />
-                <Button variant="outline" size="sm" onClick={() => fileInput.current?.click()}><Upload className="mr-1 h-3.5 w-3.5" />Upload client_secret.json</Button>
+                {app.key === 'google' && <Button variant="outline" size="sm" onClick={() => fileInput.current?.click()}><Upload className="mr-1 h-3.5 w-3.5" />Upload client_secret.json</Button>}
                 <div className="grid gap-2 sm:grid-cols-2">
                   <Input value={clientId} onChange={event => setClientId(event.target.value)} placeholder="Client ID" aria-label={`${app.label} client ID`} />
                   <Input type="password" autoComplete="off" value={clientSecret} onChange={event => setClientSecret(event.target.value)} placeholder="Client secret" aria-label={`${app.label} client secret`} />

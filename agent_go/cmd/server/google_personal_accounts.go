@@ -6,113 +6,26 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 const googleAccountSharingNotice = "Anyone who can run or change this item can use this Google account through it. Removing it here leaves your other items connected."
 
-func googleAccountActor(ctx context.Context) string {
-	if claims := GetUserFromContext(ctx); claims != nil {
-		if strings.TrimSpace(claims.UserID) == "" {
-			return ""
-		}
-		return sanitizeUserIDForPath(claims.UserID)
-	}
-	if !IsMultiUserMode() {
-		return sanitizeUserIDForPath(GetDefaultUserID())
-	}
-	return ""
-}
-
+func googleAccountActor(ctx context.Context) string { return personalConnectionActor(ctx) }
 func canManageGoogleAccount(r *http.Request, conn services.GmailConnection) bool {
-	claims := GetUserFromContext(r.Context())
-	access := userAccessForClaims(claims)
-	if access.Disabled || IsMultiUserMode() && !access.Known {
+	if !conn.IsPrivate() && !currentUserIsAdmin(r) {
 		return false
 	}
-	if claims != nil && claims.Provider == "bot_route" {
-		return false
-	}
-	if currentUserIsAdmin(r) {
-		return true
-	}
-	return conn.IsPrivate() && googleAccountActor(r.Context()) != "" && googleAccountActor(r.Context()) == conn.OwnerID
+	return canManagePersonalConnection(r, conn.OwnerID)
 }
-
-// Both permission checks and revocation use the same physical item identity.
 func googleAccountItemRoot(user, workspace string) string {
-	workspace = canonicalCrewWorkspaceRoot(workspace)
-	if root := common.CodeProjectRoot(user, workspace); root != "" {
-		return root
-	}
-	kind, root := common.ClassifySessionWorkspace(user, workspace)
-	if kind == common.SessionWorkspaceCrewProject {
-		ref := workspaceref.MustParse(workspace)
-		if _, shared := ref.SharedProject(); shared {
-			return root
-		}
-		return ref.WithLogical(root).PhysicalKeepOwner(user)
-	}
-	return workspace
+	return personalConnectionItemRoot(user, workspace)
 }
-
-// googleItemScope resolves only the named item's root, and rechecks current
-// product and Builder access. A missing workflow manifest is never authority.
 func googleItemScope(r *http.Request, workspace string, write bool) (services.GmailUseScope, error) {
-	user := googleAccountActor(r.Context())
-	claims := GetUserFromContext(r.Context())
-	scope := services.GmailUseScope{UserID: user}
-	access := userAccessForClaims(claims)
-	if access.Disabled || IsMultiUserMode() && !access.Known || write && !access.CanEdit {
-		return scope, fmt.Errorf("Ask this item's Builder to manage Google accounts in Google apps.")
-	}
-	workspace = googleAccountItemRoot(user, workspace)
-	if user == "" || workspace == "" || strings.Contains(workspace, "..") {
-		return scope, fmt.Errorf("Sign in and open the item's Google apps to manage accounts.")
-	}
-	if claims != nil && claims.Provider == "bot_route" && write {
-		return scope, fmt.Errorf("Ask this item's Builder to add a Google account in Google apps.")
-	}
-	if isProjectWorkspacePath(workspace) {
-		product, _, _ := projectProductForPath(workspace)
-		if !userAllowedProduct(claims, product.ProfileID) || !crewProjectOwnedByCaller(user, workspace) {
-			return scope, fmt.Errorf("Only this item's Builder can manage its Google accounts. Open an item you build.")
-		}
-		workspace = agentProfileRuntimeWorkspace(user, workspace)
-		if claims != nil && claims.AccessToken != nil {
-			token := claims.AccessToken
-			raw, found, err := readFileFromWorkspace(r.Context(), workspace+"/product.json")
-			var metadata productProjectManifest
-			if err != nil || !found || json.Unmarshal([]byte(raw), &metadata) != nil || metadata.ID == "" || !token.Allows("crews:write") || !token.AllowsCrew(metadata.ID) || token.FileGuard != nil {
-				return scope, fmt.Errorf("Reconnect MCP with Builder access to this item, then add your Google account in Google apps.")
-			}
-		}
-		if root := common.CodeProjectRoot(user, workspace); root != "" {
-			workspace, scope.CodeWorkspace = root, root
-		}
-	} else {
-		kind, root := common.ClassifySessionWorkspace(user, workspace)
-		if kind != common.SessionWorkspaceWorkflow || root != workspace || strings.HasPrefix(root, "Workflow/.relay_releases") {
-			return scope, fmt.Errorf("Open a workflow or Flow's Google apps to manage accounts.")
-		}
-		level, manifest := workflowAccessForWorkspacePath(r.Context(), claims, root)
-		if manifest == nil || level == WorkflowAccessNone || write && level != WorkflowAccessOwner && level != WorkflowAccessWrite || !userAllowedWorkflowID(claims, manifest.ID) {
-			return scope, fmt.Errorf("Ask this item's Builder to add a Google account in Google apps.")
-		}
-		if claims != nil && claims.AccessToken != nil {
-			token := claims.AccessToken
-			if !token.AllowsWorkflow(manifest.ID) || !token.Allows("builder:chat") || token.FileGuard != nil || manifest.Kind == "relay" && !token.Allows("relays:write") {
-				return scope, fmt.Errorf("Reconnect MCP with Builder access to this item, then add your Google account in Google apps.")
-			}
-		}
-	}
-	scope.Workspace = workspace
-	return scope, nil
+	scope, err := personalConnectionItemScope(r, workspace, write, "Google", "Google apps")
+	return services.GmailUseScope{UserID: scope.UserID, Workspace: scope.Workspace, CodeWorkspace: scope.CodeWorkspace}, err
 }
 
 func selectGoogleAccount(r *http.Request, id, workspace string, selected bool) error {
@@ -130,13 +43,13 @@ func selectGoogleAccount(r *http.Request, id, workspace string, selected bool) e
 		return fmt.Errorf("Choose one of your saved personal Google accounts in Google apps.")
 	}
 	scope, accessErr := googleItemScope(r, workspace, true)
-	owner := googleAccountActor(r.Context()) == conn.OwnerID
+	permissions := personalConnectionAccess(r, conn.OwnerID, workspace, true, "Google", "Google apps")
 	// Attaching always requires BOTH account ownership and current item Builder
 	// access. Detaching also lets the account owner or admin revoke their grant.
-	if selected && (!owner || accessErr != nil) {
+	if selected && !permissions.CanAdd {
 		return fmt.Errorf("Add your own Google account to an item you build, from Google apps.")
 	}
-	if !selected && accessErr != nil && !owner && !currentUserIsAdmin(r) {
+	if !selected && !permissions.CanDetach {
 		return accessErr
 	}
 	if accessErr != nil {

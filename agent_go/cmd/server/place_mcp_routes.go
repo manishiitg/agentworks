@@ -20,6 +20,7 @@ import (
 	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/mcpagent/netguard"
 	"github.com/manishiitg/mcpagent/oauth"
+	"golang.org/x/oauth2"
 )
 
 // /api/me/mcp/* and /api/me/secrets/*: a person manages their own MCP
@@ -98,6 +99,7 @@ func (api *StreamingAPI) ensurePersonalMCP(ctx context.Context, person string, b
 // manage_my_mcp_servers tool both use it. The int is the HTTP status of an error.
 func (api *StreamingAPI) addPlaceMCP(ctx context.Context, userID string, body placeMCPServer, catalog string) (placeMCPServer, int, error) {
 	body.OAuth, body.Catalog, body.AppKey = nil, "", ""
+	body.SlackUserID, body.SlackTeamID = "", "" // provider identity is recorded only after OAuth
 	var catalogClient *registeredClient
 	if strings.TrimSpace(catalog) != "" {
 		entry, ok := api.placeMCPCatalogEntry(catalog)
@@ -227,12 +229,23 @@ func (api *StreamingAPI) startPlaceMCPSignIn(userID, name, redirectURI, sessionI
 			cfg.OAuth.ClientID, cfg.OAuth.ClientSecret = "", ""
 		}
 	}
+	var validateToken func(context.Context, *oauth2.Token) error
+	if servers, err := listPlaceMCPServers(userID); err == nil {
+		for _, server := range servers {
+			if server.Name == name && isPersonalSlack(server) {
+				validateToken = func(ctx context.Context, token *oauth2.Token) error {
+					return validatePersonalSlackToken(ctx, userID, name, token)
+				}
+			}
+		}
+	}
 	notificationID := "private-oauth:" + name + ":" + newSteerMessageID()
 	start, discovery, err := api.runOAuthFlow(sessionID, redirectURI, oauthFlowTarget{
-		Name:        internal,
-		DisplayName: display,
-		Config:      cfg,
-		ClientFile:  placeMCPClientFile(dir, userID, name),
+		ValidateToken: validateToken,
+		Name:          internal,
+		DisplayName:   display,
+		Config:        cfg,
+		ClientFile:    placeMCPClientFile(dir, userID, name),
 		Notify: func(success bool, detail string) {
 			api.notifyPlaceOAuthFlowOutcome(sessionID, name, notificationID, success, detail)
 		},

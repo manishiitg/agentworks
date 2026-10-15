@@ -14,7 +14,7 @@ var crewIntegrationMembers = map[string]bool{
 	"configure_slack_bot": true, "test_slack_bot_connection": true,
 	"create_slack_bot_route": true, "update_slack_bot_route_permission": true, "remove_slack_bot_route": true,
 	"slack": true, "send_slack_message": true, "google_workspace_cli": true,
-	"manage_google_account": true, "list_gmail_connections": true, "update_gmail_connection_grants": true,
+	"manage_google_account": true, "manage_slack_account": true, "list_gmail_connections": true, "update_gmail_connection_grants": true,
 	"get_gmail_trigger": true, "manage_gmail_trigger": true,
 }
 

@@ -14,7 +14,7 @@ import (
 
 func (api *StreamingAPI) registerPersonalGoogleAccountTool(reg definitionToolRegistrar, workspace string) error {
 	return reg.RegisterCustomTool("manage_google_account",
-		"Manage your personal Google accounts in this item. list_saved shows your reusable saved accounts; connect creates your own connection, adds it here, and returns a link for you to sign in with Google; attach adds one of your saved accounts here; detach removes it here and leaves other items connected; disconnect removes your saved connection everywhere; reconnect returns a sign-in link. Only existing Builders can add an account, including workflow editors. Only the account owner or an administrator manages the saved account or its Google access. Company accounts remain administrator-managed. "+googleAccountSharingNotice,
+		"Manage your personal Google accounts in this item. list_saved shows your reusable saved accounts; connect creates your own connection, adds it here, and returns a link for you to sign in with Google; attach adds one of your saved accounts here; detach removes it here and leaves other items connected; disconnect removes your saved connection everywhere; reconnect returns a sign-in link. Only existing Builders can add an account, including workflow editors. Only the account owner signs in again; the account owner or an administrator manages access or disconnects the saved account. Company accounts remain administrator-managed. "+googleAccountSharingNotice,
 		map[string]interface{}{"type": "object", "properties": map[string]interface{}{
 			"action":                   map[string]interface{}{"type": "string", "enum": []string{"list_saved", "connect", "attach", "detach", "disconnect", "reconnect"}},
 			"connection_id":            map[string]interface{}{"type": "string", "description": "Account returned by list_saved or list_gmail_connections."},
@@ -76,6 +76,9 @@ func (api *StreamingAPI) registerPersonalGoogleAccountTool(reg definitionToolReg
 				}
 				log.Printf("[GOOGLE_ACCOUNTS] actor=%s connection=%s items=%v reason=disconnect_everywhere", googleAccountActor(ctx), id, c.Workspaces)
 				return "Google account disconnected from all items. Other saved accounts are unchanged.", nil
+			}
+			if c.OwnerID != personalConnectionActor(ctx) {
+				return "", fmt.Errorf("Only the account owner can sign in again. Ask them to reconnect in Google apps.")
 			}
 			redirect, err := gmailOAuthRedirectURIFromEnv(c.ClientName)
 			if err != nil {

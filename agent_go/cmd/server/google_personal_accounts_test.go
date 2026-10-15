@@ -128,6 +128,13 @@ esac
 	if !c.Personal || len(c.Workspaces) != 2 || c.ScopeWorkspace == "" {
 		t.Fatalf("legacy selection/store identity lost: %+v", c)
 	}
+	// An administrator can disconnect, but cannot put their browser's Google
+	// login under somebody else's saved personal connection.
+	rec := httptest.NewRecorder()
+	startGmailOAuthHandler(api)(rec, mux.SetURLVars(googleAppRequest("POST", "/", "", "boss"), map[string]string{"id": "mine"}))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("admin personal reconnect: %d %s", rec.Code, rec.Body.String())
+	}
 	// Account owner and admin manage saved connections; another Builder cannot.
 	if !canManageGoogleAccount(googleAppRequest("PATCH", "/", "", "editor"), c) || !canManageGoogleAccount(googleAppRequest("PATCH", "/", "", "boss"), c) || canManageGoogleAccount(googleAppRequest("PATCH", "/", "", "builder"), c) {
 		t.Fatal("saved account ownership changed")

@@ -60,12 +60,13 @@ func mcpAppKeyFor(catalogName string, cfg *oauth.OAuthConfig) string {
 var mcpAppLabels = map[string]string{"google": "Google", "github": "GitHub", "slack": "Slack"}
 
 // mcpAppFocusKeys are the providers whose sign-in app an admin manages on the Sign-in apps card
-// and with `set-mcp-app`. Only Google (owner decision 2026-09-30): it is the deployment's Google
-// app, the OAuth client people sign in through to connect their own Google accounts (Gmail,
+// and with `set-mcp-app`. Google and Slack have no automatic app registration.
+// The deployment's Google
+// app is the OAuth client people sign in through to connect their own Google accounts (Gmail,
 // Drive, Calendar, Docs, Sheets, Slides, used through the server-side gog tool; see
-// docs/design/google_accounts_gog.md). GitHub is a personal access token and every other
-// connector registers itself, so none of them needs a platform app.
-var mcpAppFocusKeys = map[string]bool{"google": true}
+// docs/design/google_accounts_gog.md). Slack uses its confidential user OAuth
+// endpoints through an internal or Marketplace app. GitHub uses a personal token.
+var mcpAppFocusKeys = map[string]bool{"google": true, "slack": true}
 
 // mcpApp is what an admin stores for one provider.
 type mcpApp struct {

@@ -352,10 +352,10 @@ func withMCPAppFocus(t *testing.T, keys ...string) {
 	t.Cleanup(func() { mcpAppFocusKeys, mcpCatalogHiddenKeys = previous, previousHidden })
 }
 
-// By default only Google has an app card (the deployment's Google app for gog), and Google and
+// Google and Slack have sign-in app cards. Google and
 // GitHub are not offered as MCP connectors (Google apps are the Gmail tab / gog, GitHub is a
 // personal access token).
-func TestOnlyTheGoogleAppCardAndNoGoogleOrGitHubConnectors(t *testing.T) {
+func TestGoogleAndSlackSignInAppsAndNoGoogleOrGitHubConnectors(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	withMCPConnectionsRoot(t)
 	api, _ := newCodePrivacyFixture(t)
@@ -363,20 +363,21 @@ func TestOnlyTheGoogleAppCardAndNoGoogleOrGitHubConnectors(t *testing.T) {
 	catalog := `{"mcpServers":{
 		"GoogleGmail":{"url":"https://gmailmcp.googleapis.com/mcp/v1","protocol":"http","oauth":{"auth_url":"https://accounts.google.com/o/oauth2/v2/auth","token_url":"https://oauth2.googleapis.com/token"}},
 		"GitHub":{"url":"https://api.githubcopilot.com/mcp/","protocol":"http","oauth":{"auth_url":"https://github.com/login/oauth/authorize","token_url":"https://github.com/login/oauth/access_token"}},
-		"Linear":{"url":"https://mcp.linear.app/mcp","protocol":"http","oauth":{"auth_url":"https://mcp.linear.app/authorize","token_url":"https://mcp.linear.app/token","registration_endpoint":"https://mcp.linear.app/register"}}}}`
+		"Slack":{"url":"https://mcp.slack.com/mcp","protocol":"http","oauth":{"auth_url":"https://slack.com/oauth/v2_user/authorize","token_url":"https://slack.com/api/oauth.v2.user.access"}},
+        "Linear":{"url":"https://mcp.linear.app/mcp","protocol":"http","oauth":{"auth_url":"https://mcp.linear.app/authorize","token_url":"https://mcp.linear.app/token","registration_endpoint":"https://mcp.linear.app/register"}}}}`
 	if err := os.WriteFile(catalogPath, []byte(catalog), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	api.mcpConfigPath = catalogPath
 	api.logger = loggerv2.NewNoop()
-	if cards := api.mcpAppGroups(); len(cards) != 1 || cards[0].Key != "google" {
-		t.Fatalf("sign-in app cards = %+v, want only the Google app", cards)
+	if cards := api.mcpAppGroups(); len(cards) != 2 || cards[0].Key != "google" || cards[1].Key != "slack" {
+		t.Fatalf("sign-in app cards = %+v, want Google and Slack apps", cards)
 	}
 	var names []string
 	for _, entry := range api.placeMCPCatalog() {
 		names = append(names, entry.Catalog)
 	}
-	if strings.Join(names, ",") != "Linear" {
-		t.Fatalf("connectors offered = %v, want only Linear", names)
+	if strings.Join(names, ",") != "Linear,Slack" {
+		t.Fatalf("connectors offered = %v, want Linear and Slack", names)
 	}
 }

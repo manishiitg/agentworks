@@ -325,6 +325,7 @@ chat:
       - uninstall_skill
       - update_step
       - manage_google_account
+      - manage_slack_account
       - update_gmail_connection_grants
       - manage_gmail_trigger
       - setup_gmail_inbound

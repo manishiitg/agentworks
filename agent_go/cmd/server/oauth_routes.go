@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
+	"html"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,18 +17,22 @@ import (
 	"github.com/manishiitg/mcpagent/mcpcache"
 	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/mcpagent/oauth"
+	"golang.org/x/oauth2"
 )
 
 // OAuthFlowState tracks ongoing OAuth flows
 type OAuthFlowState struct {
-	ServerName   string
-	ConnectionID string
-	Outcome      string // guarded by oauthFlowsMu
-	State        string
-	CodeChan     chan string
-	ErrChan      chan error
-	Manager      *oauth.Manager
-	ServerConfig mcpclient.MCPServerConfig // The server config with OAuth settings to persist
+	ServerName        string
+	ConnectionID      string
+	Outcome           string // guarded by oauthFlowsMu
+	Failure           string // guarded by oauthFlowsMu
+	ValidatesIdentity bool
+	Done              chan struct{}
+	State             string
+	CodeChan          chan string
+	ErrChan           chan error
+	Manager           *oauth.Manager
+	ServerConfig      mcpclient.MCPServerConfig // The server config with OAuth settings to persist
 }
 
 var (
@@ -268,6 +273,25 @@ func (api *StreamingAPI) handleOAuthCallback(w http.ResponseWriter, r *http.Requ
 	// Send code to flow
 	select {
 	case flow.CodeChan <- code:
+		if flow.ValidatesIdentity {
+			select {
+			case <-flow.Done:
+				oauthFlowsMu.RLock()
+				failure := flow.Failure
+				oauthFlowsMu.RUnlock()
+				if failure != "" {
+					w.WriteHeader(http.StatusBadRequest)
+					fmt.Fprintf(w, "<html><body><h1>Sign-in could not finish</h1><p>%s</p><p>Close this window and return to Integrations → Slack.</p></body></html>", html.EscapeString(failure))
+					return
+				}
+			case <-time.After(45 * time.Second):
+				w.WriteHeader(http.StatusAccepted)
+				fmt.Fprint(w, "<html><body><p>Still checking this account. Return to Integrations → Slack to see its status.</p></body></html>")
+				return
+			case <-r.Context().Done():
+				return
+			}
+		}
 		// Success - show nice page
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, `
@@ -506,6 +530,7 @@ type oauthFlowTarget struct {
 	BeforeExchange func(*OAuthFlowState) error
 	AfterExchange  func(*OAuthFlowState) error
 	Notify         func(bool, string)
+	ValidateToken  func(context.Context, *oauth2.Token) error
 }
 
 // runOAuthFlow is the OAuth connect shared by platform and personal servers:
@@ -568,8 +593,16 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 		}, nil
 	}
 
-	// Create OAuth manager with the fully configured OAuth settings
-	oauthMgr := oauth.NewManager(serverConfig.OAuth, api.logger)
+	// A personal account's identity must be checked before replacing its
+	// live credential. The pending token is sealed by the same store and removed
+	// after completion; a failed or mismatched sign-in leaves the old login intact.
+	oauthConfig := *serverConfig.OAuth
+	pendingTokenFile := ""
+	if target.ValidateToken != nil {
+		pendingTokenFile = oauthConfig.TokenFile + ".pending-" + newSteerMessageID()
+		oauthConfig.TokenFile = pendingTokenFile
+	}
+	oauthMgr := oauth.NewManager(&oauthConfig, api.logger)
 
 	// Generate state and authorization URL using the manager's helper
 	state, authURL, err := oauthMgr.GenerateAuthURL()
@@ -584,13 +617,15 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 
 	// Register the OAuth flow state
 	flow := &OAuthFlowState{
-		ConnectionID: target.ConnectionID,
-		ServerName:   serverName,
-		State:        state,
-		CodeChan:     make(chan string, 1),
-		ErrChan:      make(chan error, 1),
-		Manager:      oauthMgr,
-		ServerConfig: serverConfig, // Store server config for persistence after OAuth success
+		ConnectionID:      target.ConnectionID,
+		ValidatesIdentity: target.ValidateToken != nil,
+		Done:              make(chan struct{}),
+		ServerName:        serverName,
+		State:             state,
+		CodeChan:          make(chan string, 1),
+		ErrChan:           make(chan error, 1),
+		Manager:           oauthMgr,
+		ServerConfig:      serverConfig, // Store server config for persistence after OAuth success
 	}
 
 	oauthFlowsMu.Lock()
@@ -606,17 +641,25 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 	}()
 
 	finish := func(success bool, detail string) {
+		if pendingTokenFile != "" {
+			_ = os.Remove(pendingTokenFile)
+		}
 		oauthFlowsMu.Lock()
 		if success {
 			flow.Outcome = "completed"
 		} else {
 			flow.Outcome = "failed"
+			flow.Failure = detail
 		}
 		oauthFlowsMu.Unlock()
+		close(flow.Done)
 		outcome(success, detail)
 	}
 	// Start OAuth flow in background goroutine
 	go func() {
+		if pendingTokenFile != "" {
+			defer os.Remove(pendingTokenFile)
+		}
 		// Recover from panics so the goroutine doesn't die silently
 		defer func() {
 			if r := recover(); r != nil {
@@ -661,6 +704,12 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 			}
 		}
 		token, err := oauthMgr.ExchangeCodeForToken(ctx, code)
+		if err == nil && target.ValidateToken != nil {
+			err = target.ValidateToken(ctx, token)
+			if err == nil {
+				err = oauth.NewTokenStore(serverConfig.OAuth.TokenFile).Save(token)
+			}
+		}
 		mutex.Unlock()
 		if err != nil {
 			api.logger.Error(fmt.Sprintf("❌ Failed to exchange code for token for %s: %v", serverName, err), err)

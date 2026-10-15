@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { AlertCircle, ArrowLeft, MessageSquare, Phone } from 'lucide-react'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { useWorkflowBots, type BotRouteTarget } from './bots/useWorkflowBots'
@@ -8,6 +9,8 @@ import { ChannelRow } from './bots/AddChannel'
 import { routeId } from './bots/types'
 import { AskAIButton } from './AskAIButton'
 import { WorkspaceViewTabs } from './WorkspaceViewTabs'
+
+const SlackAccountsPanel = lazy(() => import('../integrations/SlackAccountsPanel'))
 
 type WorkflowBotsPanelProps = {
   workspacePath: string | null
@@ -80,6 +83,7 @@ export default function WorkflowBotsPanel({ workspacePath, target, scopeNoun = '
             {setup !== 'slack' && <span className="text-xs font-normal text-muted-foreground">· shared across AgentWorks</span>}
           </div>
         </div>
+        {setup === 'slack' && workspacePath && <Suspense fallback={null}><SlackAccountsPanel key={workspacePath} workspacePath={workspacePath} /></Suspense>}
         {setup === 'slack' ? <SlackSetup bots={bots} headerAction={askSlackSetup} homeTabAction={askSlackHomeTab} /> : <WhatsAppSetup bots={bots} />}
       </div>
     )
@@ -98,7 +102,7 @@ export default function WorkflowBotsPanel({ workspacePath, target, scopeNoun = '
     return (
       <div className="space-y-4">
         {tabs}
-        <SlackSetup bots={bots} headerAction={askSlackSetup} homeTabAction={askSlackHomeTab} ownBotOnly={ownBotOnly} />
+        <>{workspacePath && <Suspense fallback={null}><SlackAccountsPanel key={workspacePath} workspacePath={workspacePath} /></Suspense>}<SlackSetup bots={bots} headerAction={askSlackSetup} homeTabAction={askSlackHomeTab} ownBotOnly={ownBotOnly} /></>
       </div>
     )
   }

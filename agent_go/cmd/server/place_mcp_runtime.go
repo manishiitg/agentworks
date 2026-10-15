@@ -43,11 +43,17 @@ func (api *StreamingAPI) resolveMCPServer(ctx context.Context, sessionID, server
 		ctx = context.WithValue(ctx, placeScopedKey{}, true)
 	}
 	if resolved, isCode, err := api.resolveCodeMCPServer(ctx, sessionID, server, tool); isCode {
+		if err == nil && resolved != nil {
+			api.logPersonalSlackSend(ctx, sessionID, resolved.Name, tool)
+		}
 		return resolved, err
 	}
 	// A connection attached to the session's own workflow, Relay, Crew or Code belongs to that place:
 	// any session of it (a chat of anyone with access, a run, a step, a schedule) resolves it.
 	if resolved, handled, err := api.resolvePlaceAttachedMCP(ctx, sessionID, server); handled {
+		if err == nil && resolved != nil {
+			api.logPersonalSlackSend(ctx, sessionID, resolved.Name, tool)
+		}
 		return resolved, err
 	}
 	resolved, err := api.resolveWorkshopMCPServer(ctx, sessionID, server, tool)

@@ -130,6 +130,9 @@ func (api *StreamingAPI) registerGmailConnectionManagementTools(registrar defini
 	if err := api.registerPersonalGoogleAccountTool(registrar, workspacePath); err != nil {
 		return err
 	}
+	if err := api.registerPersonalSlackAccountTool(registrar, workspacePath); err != nil {
+		return err
+	}
 	return api.registerGmailTriggerTools(registrar, sessionID, workspacePath)
 }
 
@@ -200,6 +203,10 @@ func (api *StreamingAPI) updateGmailConnectionGrantsFromTool(ctx context.Context
 		return "", fmt.Errorf("saved the new request, but could not prepare this legacy connection for reconnect: %w", err)
 	}
 
+	if updated.IsPrivate() && updated.OwnerID != personalConnectionActor(ctx) {
+		out, err := json.Marshal(map[string]any{"connection_id": updated.ID, "note": "The access request is saved. Only the account owner can complete Google's consent; ask them to sign in again from Google apps."})
+		return string(out), err
+	}
 	redirectURI, err := gmailOAuthRedirectURIFromEnv(updated.ClientName)
 	if err != nil {
 		return "", fmt.Errorf("saved the new request, but could not build a reconnect link: %w. Tell the user to open the Sending accounts panel and click Reconnect themselves", err)

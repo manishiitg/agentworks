@@ -3452,6 +3452,7 @@ export interface GmailConnection {
   /** Server authorization to remove this account, independent of shared settings. */
   can_remove?: boolean
   can_manage?: boolean
+  can_reconnect?: boolean
   personal?: boolean
   can_detach?: boolean
   id: string

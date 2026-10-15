@@ -374,6 +374,9 @@ func CompleteGmailOAuth(ctx context.Context, state, code string) (string, string
 		if !ok {
 			return "", "", nil, fmt.Errorf("this Google connection no longer exists — start again from the Gmail settings")
 		}
+		if conn.IsPrivate() && strings.TrimSpace(conn.Email) != "" && !strings.EqualFold(strings.TrimSpace(conn.Email), email) {
+			return "", "", nil, fmt.Errorf("This is a different Google account; connect it as a new account.")
+		}
 		home = gogHomeForConnection(conn)
 	}
 	if err := ImportRefreshTokenIntoGog(ctx, home, email, pending.ClientName, token.RefreshToken); err != nil {
