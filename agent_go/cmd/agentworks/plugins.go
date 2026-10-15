@@ -95,11 +95,22 @@ func pluginCommand(o *options) *cobra.Command {
 		ctx, cancel := context.WithTimeout(cmd.Context(), 8*time.Second)
 		defer cancel()
 		personPrompt := input.Event == "UserPromptSubmit" || args[0] == "claude" && input.Event == "UserPromptExpansion"
-		if personPrompt && pluginPersonPrompt(args[0], input.Prompt) {
+		typed := input.Prompt
+		if args[0] == "codex" && personPrompt {
+			if request, blocks, wrapped := codexTypedRequest(typed); wrapped && pluginPersonPrompt(args[0], request) {
+				typed = request
+				command := ""
+				if words, e := pluginPromptWords(request); e == nil && len(words) > 1 {
+					command = words[1]
+				}
+				hookLog(root, "codex session=%s typed /agentworks %s found after app blocks %v", input.SessionID, command, blocks)
+			}
+		}
+		if personPrompt && pluginPersonPrompt(args[0], typed) {
 			if input.Queued || strings.Contains(input.Prompt, agentDeliveryHeader) {
 				return pluginBlock(o, "Agent messages cannot attach or detach a conversation. The person must submit this command directly.")
 			}
-			words, parseErr := pluginPromptWords(input.Prompt)
+			words, parseErr := pluginPromptWords(typed)
 			if parseErr != nil {
 				return pluginBlock(o, parseErr.Error())
 			}
@@ -356,6 +367,39 @@ const agentDeliveryHeader = "AgentWorks messages from other agents."
 
 func messagingPluginProvider(provider string) bool {
 	return provider == "claude" || provider == "codex" || provider == "muse"
+}
+
+// codexTypedRequest returns what the person typed when the Codex app wrapped it
+// in ambient blocks (such as the in-app browser state) followed by a
+// "## My request:" line, plus the names of those blocks. The marker must come
+// after the last closing tag, so text inside a block (a page title, URL or
+// page text) can never stand in for the person's request.
+func codexTypedRequest(prompt string) (string, []string, bool) {
+	const marker = "\n## My request:\n"
+	trimmed := strings.TrimSpace(prompt)
+	at := strings.LastIndex(trimmed, marker)
+	if !strings.HasPrefix(trimmed, "<") || at < 0 || at < strings.LastIndex(trimmed, "</") {
+		return prompt, nil, false
+	}
+	var blocks []string
+	for _, line := range strings.Split(trimmed[:at], "\n") {
+		if name, ok := strings.CutPrefix(line, "<"); ok && !strings.HasPrefix(name, "/") && len(blocks) < 8 {
+			if end := strings.IndexAny(name, " >"); end > 0 {
+				blocks = append(blocks, name[:end])
+			}
+		}
+	}
+	return strings.TrimSpace(trimmed[at+len(marker):]), blocks, true
+}
+
+// hookLog writes one [HOOK] line to the bridge log; never prompt text.
+func hookLog(root, format string, args ...any) {
+	f, err := os.OpenFile(filepath.Join(root, "bridge.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "%s [HOOK] %s\n", time.Now().Format("2006/01/02 15:04:05"), fmt.Sprintf(format, args...))
 }
 
 func pluginPersonPrompt(provider, prompt string) bool {
