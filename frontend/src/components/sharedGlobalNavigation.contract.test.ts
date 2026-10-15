@@ -5,12 +5,15 @@ describe('shared AgentWorks and Crew global navigation shell', () => {
   it('mounts Ctrl+K above the product surface switch without an AgentWorks-only guard', () => {
     const source = readFileSync('src/App.tsx', 'utf8')
     const switcher = source.indexOf('{showQuickSwitcher && (')
-    const surfaceSwitch = source.indexOf("{productSurface ===")
+    const surfaceSwitch = source.indexOf("productSurface === 'bullpen' ? (", switcher)
+    const homeSwitch = source.indexOf("{homeOpen ?", switcher)
 
     expect(source).not.toContain('PanelSwitcher')
     expect(source).not.toContain("event.code === 'KeyJ'")
     expect(switcher).toBeGreaterThan(0)
+    expect(surfaceSwitch).toBeGreaterThan(0)
     expect(switcher).toBeLessThan(surfaceSwitch)
+    expect(switcher).toBeLessThan(homeSwitch)
     expect(source).not.toContain("surface !== 'agentworks' && surface !== 'work'")
     expect(source).not.toContain("productSurface !== 'code' && productSurface !== 'relays'")
   })
