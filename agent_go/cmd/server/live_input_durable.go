@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"errors"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
@@ -18,6 +20,45 @@ import (
 // bounds the actual wait; this only guards against a pathological
 // hang beneath it.
 const liveInputDurableWatchTimeout = 6 * time.Minute
+
+// liveInputDelivered remembers the exact text a retained CLI was sent when the
+// server added its session notice in front of the user's message. The chat row
+// shows the message as typed, but the CLI's own record holds the notice too, so
+// the durability watch must look for what was really sent.
+var liveInputDelivered sync.Map
+
+func liveInputDeliveredKey(sessionID, typed string) string {
+	return sessionID + "\x00" + strings.TrimSpace(typed)
+}
+
+// noteLiveInputDelivered records the text sent to the CLI for a typed message.
+func noteLiveInputDelivered(sessionID, typed, delivered string) {
+	if sessionID == "" || delivered == "" || strings.TrimSpace(delivered) == strings.TrimSpace(typed) {
+		return
+	}
+	liveInputDelivered.Store(liveInputDeliveredKey(sessionID, typed), delivered)
+}
+
+// takeLiveInputDelivered returns the text the CLI was sent for a typed message
+// (the typed text itself when nothing was added), and forgets it.
+func takeLiveInputDelivered(sessionID, typed string) string {
+	if v, ok := liveInputDelivered.LoadAndDelete(liveInputDeliveredKey(sessionID, typed)); ok {
+		if text, ok := v.(string); ok && text != "" {
+			return text
+		}
+	}
+	return typed
+}
+
+// liveInputDurableTimedOut reports that the CLI's record simply was not seen in
+// time. That is "not confirmed yet", never proof the message was lost.
+func liveInputDurableTimedOut(err error) bool {
+	return err != nil && (errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "not durably acknowledged"))
+}
+
+// liveInputLateConfirmWindow is how much longer the server keeps looking for
+// the CLI's record after the first budget ran out.
+const liveInputLateConfirmWindow = 5 * time.Minute
 
 // watchLiveInputDurable starts the durability half of the two-stage
 // delivery receipt after a fast pane ack. It returns at once — the HTTP
@@ -60,12 +101,21 @@ func (api *StreamingAPI) watchLiveInputDurableRecording(sessionID, provider, mes
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), liveInputDurableWatchTimeout)
 		defer cancel()
-		ack, err := api.awaitLiveInputDurable(ctx, llmproviders.Provider(provider), sessionID, message)
+		delivered := takeLiveInputDelivered(sessionID, message)
+		ack, err := api.awaitLiveInputDurable(ctx, llmproviders.Provider(provider), sessionID, delivered)
 		var outcome string
 		proof := ""
 		var latencyMs int64
+		timedOut := false
 		if err != nil {
-			outcome = string(llmtypes.DurableAckFailed)
+			if liveInputDurableTimedOut(err) {
+				// The CLI took the message at its prompt (the fast ack); its own record was
+				// not seen within the budget. Say "held, awaiting record", not "failed":
+				// a failed receipt invites a Resend and duplicate work.
+				outcome, proof, timedOut = string(llmtypes.DurableAckUnflushed), "durable_wait_timeout", true
+			} else {
+				outcome = string(llmtypes.DurableAckFailed)
+			}
 		} else {
 			outcome = string(ack.Outcome)
 			proof = ack.ProofSource
@@ -85,6 +135,23 @@ func (api *StreamingAPI) watchLiveInputDurableRecording(sessionID, provider, mes
 			api.eventStore.CompleteDeferredSteer(sessionID, events.UserMessageAt(*deferred, time.Now()))
 		}
 		api.recordLiveInputConfirmed(sessionID, messageID, outcome, proof, provider, latencyMs, clientMessageID)
+		if !timedOut {
+			return
+		}
+		// Keep looking for the CLI's own record for a while; when it shows up the
+		// row is upgraded to confirmed (a later event, so it is not deduplicated).
+		lateCtx, lateCancel := context.WithTimeout(context.Background(), liveInputLateConfirmWindow)
+		defer lateCancel()
+		for lateCtx.Err() == nil {
+			lateAck, lateErr := api.awaitLiveInputDurable(lateCtx, llmproviders.Provider(provider), sessionID, delivered)
+			if lateErr == nil && lateAck.Outcome == llmtypes.DurableAckConfirmed {
+				api.recordLiveInputConfirmedLate(sessionID, messageID, string(lateAck.Outcome), lateAck.ProofSource, provider, lateAck.Latency.Milliseconds(), clientMessageID)
+				return
+			}
+			if lateErr != nil && !liveInputDurableTimedOut(lateErr) {
+				return
+			}
+		}
 	}()
 }
 
@@ -132,9 +199,44 @@ func (api *StreamingAPI) awaitLiveInputDurable(ctx context.Context, provider llm
 // the user_message row it upgrades. The event ID derives
 // deterministically from the message so redelivery is idempotent.
 func (api *StreamingAPI) recordLiveInputConfirmed(sessionID, messageID, outcome, proofSource, provider string, latencyMs int64, clientMessageID string) {
+	api.recordLiveInputReceipt(sessionID, messageID, outcome, proofSource, provider, latencyMs, clientMessageID, "")
+}
+
+// recordLiveInputConfirmedLate records a later verdict for a message that
+// already has one (an upgrade after the first budget ran out). Its event ID
+// differs so the store does not drop it as a duplicate.
+func (api *StreamingAPI) recordLiveInputConfirmedLate(sessionID, messageID, outcome, proofSource, provider string, latencyMs int64, clientMessageID string) {
+	api.recordLiveInputReceipt(sessionID, messageID, outcome, proofSource, provider, latencyMs, clientMessageID, ":late")
+}
+
+// liveInputDecision maps a stored outcome to the word used in the [DELIVERY] log.
+func liveInputDecision(outcome string) string {
+	switch outcome {
+	case string(llmtypes.DurableAckConfirmed):
+		return "confirmed"
+	case string(llmtypes.DurableAckUnflushed):
+		return "unflushed"
+	default:
+		return "failed"
+	}
+}
+
+func (api *StreamingAPI) recordLiveInputReceipt(sessionID, messageID, outcome, proofSource, provider string, latencyMs int64, clientMessageID, idSuffix string) {
 	if api == nil || api.eventStore == nil || sessionID == "" || messageID == "" {
 		return
 	}
+	source := "durable_ack"
+	switch {
+	case strings.HasPrefix(proofSource, "conversation_turn"):
+		source = "turn_queue"
+	case proofSource == "" && strings.HasPrefix(messageID, "late-delivery-"):
+		source = "late_delivery"
+	case idSuffix != "":
+		source = "durable_ack_late"
+	}
+	// One line per receipt decision, keyed by submission and message id. No message text.
+	log.Printf("[DELIVERY] submission=%s message_id=%s session=%s decision=%s source=%s reason=%s provider=%s latency_ms=%d",
+		clientMessageID, messageID, sessionID, liveInputDecision(outcome), source, proofSource, provider, latencyMs)
 	eventData := unifiedevents.NewLiveInputConfirmedEvent(messageID, outcome, proofSource, provider, latencyMs)
 	if clientMessageID != "" {
 		if eventData.Metadata == nil {
@@ -146,7 +248,7 @@ func (api *StreamingAPI) recordLiveInputConfirmed(sessionID, messageID, outcome,
 	agentEvent.SessionID = sessionID
 	agentEvent.Component = "coding_agent_live_input"
 	event := events.Event{
-		ID:        messageID + ":confirmed",
+		ID:        messageID + ":confirmed" + idSuffix,
 		Type:      string(unifiedevents.LiveInputConfirmed),
 		Timestamp: time.Now(),
 		Data:      agentEvent,

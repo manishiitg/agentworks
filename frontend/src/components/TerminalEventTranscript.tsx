@@ -312,7 +312,7 @@ const TranscriptEvent: React.FC<{
   if (isConversationContinuityNotice(content)) {
     const notice = <ConversationContinuityNotice content={content} timestamp={timestamp} />
     if (!displayContent) return notice
-    return <>{notice}<UserTranscriptMessage content={displayContent} timestamp={timestamp} metadata={metadata} compactBottom={compactUserBottom} onResend={onResendMessage} /></>
+    return <>{notice}<UserTranscriptMessage content={displayContent} timestamp={timestamp} metadata={metadata} compactBottom={compactUserBottom} onResend={onResendMessage} sessionId={event.session_id} /></>
   }
   // A message another agent sent into this chat (Pulse messaging the Builder
   // chat) shows who sent it, with that agent's icon, on the agent side.
@@ -321,7 +321,7 @@ const TranscriptEvent: React.FC<{
     const text = (displayContent || content || '').replace(new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:\\s*`), '')
     return <AgentSentMessage label={label} content={text} timestamp={timestamp} />
   }
-  return <UserTranscriptMessage content={displayContent || content || 'Message'} timestamp={timestamp} metadata={metadata} compactBottom={compactUserBottom} onResend={onResendMessage} />
+  return <UserTranscriptMessage content={displayContent || content || 'Message'} timestamp={timestamp} metadata={metadata} compactBottom={compactUserBottom} onResend={onResendMessage} sessionId={event.session_id} />
 }
 
 const AgentSentMessage: React.FC<{ label: string; content: string; timestamp: string }> = ({ label, content, timestamp }) => (
@@ -337,7 +337,7 @@ const AgentSentMessage: React.FC<{ label: string; content: string; timestamp: st
 
 const USER_MESSAGE_PREVIEW_LIMIT = 480
 
-const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; metadata?: Record<string, unknown>; compactBottom?: boolean; onResend?: (text: string) => void }> = ({ content, timestamp, metadata, compactBottom = false, onResend }) => {
+const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; metadata?: Record<string, unknown>; compactBottom?: boolean; onResend?: (text: string) => void; sessionId?: string }> = ({ content, timestamp, metadata, compactBottom = false, onResend, sessionId }) => {
   // Ask AI blocks collapse to their plain-words request; the builder-only
   // instructions stay one click away behind the usual expansion toggle.
   const askAI = hasAskAIMessage(content)
@@ -360,7 +360,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
         <div className="whitespace-pre-wrap break-words text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">{shown}</div>
         {showReceipt && (
           <div className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
-            <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} />
+            <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} sessionId={sessionId} />
             {timestamp && <span className="tabular-nums">{timestamp}</span>}
             <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} /></span>
           </div>
@@ -381,7 +381,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
           {expanded ? 'Show less' : 'Show full message'}
         </button>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
-          <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} />
+          <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} sessionId={sessionId} />
           {timestamp && <span className="tabular-nums">{timestamp}</span>}
           <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} /></span>
         </div>

@@ -1,6 +1,7 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Check, CheckCheck, CircleAlert, Clock } from 'lucide-react'
 import { deliveryTickState, deliveryTickTitle } from './deliveryTickState'
+import { recordChatSubmissionTelemetry } from '../../../utils/chatDeliveryTelemetry'
 
 const TICK_ICON = {
   queued: Clock,
@@ -38,8 +39,16 @@ export const DeliveryTick: React.FC<{ metadata: Record<string, unknown> | undefi
 // A failed live input is lost unless the user notices a faint icon and
 // retypes it. Say so next to the message and offer a one-click resend
 // through the chat's normal send path.
-export const DeliveryFailedResend: React.FC<{ metadata: Record<string, unknown> | undefined; text: string; onResend?: (text: string) => void }> = ({ metadata, text, onResend }) => {
+export const DeliveryFailedResend: React.FC<{ metadata: Record<string, unknown> | undefined; text: string; onResend?: (text: string) => void; sessionId?: string }> = ({ metadata, text, onResend, sessionId }) => {
   const [resent, setResent] = useState(false)
+  const failed = deliveryTickState(metadata) === 'failed'
+  const messageId = typeof metadata?.message_id === 'string' ? metadata.message_id : ''
+  const clientMessageId = typeof metadata?.client_message_id === 'string' ? metadata.client_message_id : ''
+  // Content-free: lets a screenshot of "Not delivered" be matched to the server's [DELIVERY] line by id.
+  useEffect(() => {
+    if (!failed || !sessionId) return
+    recordChatSubmissionTelemetry('receipt_shown', sessionId, clientMessageId || messageId, { eventId: messageId, deliveryStatus: 'failed' })
+  }, [failed, sessionId, clientMessageId, messageId])
   if (deliveryTickState(metadata) !== 'failed' || !onResend || !text.trim()) return null
   if (resent) return <span className="text-muted-foreground">Resent</span>
   return (

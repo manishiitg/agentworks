@@ -2,6 +2,9 @@ package server
 
 import (
 	"context"
+	"errors"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -200,7 +203,7 @@ func TestWatchLiveInputDurableMapsAwaitErrorToFailed(t *testing.T) {
 	const sessionID = "durable-watch-failed"
 	api := &StreamingAPI{eventStore: store,
 		internalDurableAckHandler: func(context.Context, llmproviders.Provider, string, string) (llmtypes.DurableAck, error) {
-			return llmtypes.DurableAck{Outcome: llmtypes.DurableAckFailed}, context.DeadlineExceeded
+			return llmtypes.DurableAck{Outcome: llmtypes.DurableAckFailed}, errors.New("pane lost")
 		},
 	}
 
@@ -255,5 +258,54 @@ func TestWatchLiveInputDurablePassesThroughUnflushed(t *testing.T) {
 	}
 	if payload.Outcome != "accepted_but_unflushed" {
 		t.Fatalf("confirm outcome = %q, want accepted_but_unflushed", payload.Outcome)
+	}
+}
+
+// A timeout is "not confirmed yet", never "failed" (a failed receipt invites a
+// Resend). When the CLI's record shows up later, the row is upgraded, and the
+// watch looks for the text the CLI was really sent (notice included).
+func TestWatchLiveInputDurableTimeoutIsHeldThenUpgraded(t *testing.T) {
+	store := internalevents.NewEventStore(20)
+	defer store.Stop()
+	const sessionID = "durable-watch-timeout"
+	const typed = "generate again"
+	noteLiveInputDelivered(sessionID, typed, "[AGENTWORKS SESSION]\nnotice\n[/AGENTWORKS SESSION]\n\n[USER MESSAGE]\n"+typed)
+	var mu sync.Mutex
+	var seen []string
+	api := &StreamingAPI{eventStore: store,
+		internalDurableAckHandler: func(_ context.Context, _ llmproviders.Provider, _, message string) (llmtypes.DurableAck, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			seen = append(seen, message)
+			if len(seen) == 1 {
+				return llmtypes.DurableAck{}, errors.New("Muse input not durably acknowledged after 1m0s")
+			}
+			return llmtypes.DurableAck{Outcome: llmtypes.DurableAckConfirmed, Latency: time.Second}, nil
+		},
+	}
+	sub := store.Subscribe(sessionID)
+	defer store.Unsubscribe(sessionID, sub)
+
+	api.watchLiveInputDurable(sessionID, string(llmproviders.ProviderMuseCLI), "steer-message-late", typed)
+
+	var outcomes []string
+	deadline := time.After(5 * time.Second)
+	for len(outcomes) < 2 {
+		select {
+		case event := <-sub.Ch:
+			if payload, ok := event.Data.Data.(*pkgevents.LiveInputConfirmedEvent); ok {
+				outcomes = append(outcomes, payload.Outcome)
+			}
+		case <-deadline:
+			t.Fatalf("receipts so far: %v", outcomes)
+		}
+	}
+	if outcomes[0] != "accepted_but_unflushed" || outcomes[1] != "confirmed" {
+		t.Fatalf("receipts = %v, want held then confirmed", outcomes)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) < 2 || !strings.HasSuffix(seen[0], "\n\n[USER MESSAGE]\n"+typed) {
+		t.Fatalf("the watch must look for the text the CLI was sent, got %q", seen)
 	}
 }
