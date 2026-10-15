@@ -56,7 +56,11 @@ export function useWorkspaceReturn(
   const ready = useWorkspaceReturnStore(state => state.ready)
   const applyRef = useRef(applyLayout); applyRef.current = applyLayout
   useEffect(() => {
-    if (restore?.surface !== surface || restore.id !== id) return
+    if (!restore) return
+    if (restore.surface !== surface || restore.id !== id) {
+      if (id && useProductSurfaceStore.getState().productSurface === surface) useWorkspaceReturnStore.setState({ restore: null })
+      return
+    }
     let cancelled = false
     // Apply after the surface's own mount effects so default pane activation
     // cannot overwrite the person's restored visibility in the same commit.

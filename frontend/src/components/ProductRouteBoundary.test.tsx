@@ -87,7 +87,7 @@ describe('server workspace return', () => {
     const { useWorkspaceReturnStore } = await import('../stores/useWorkspaceReturnStore')
     const { restoreWorkspaceChat } = await import('../utils/restoreWorkspaceChat')
     useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null, restore: null, homeOpen: false })
-    const saved = { surface: 'code' as const, id: 'last', view: 'files', session_id: 'chat-1' }
+    const saved = { surface: 'code' as const, id: 'last', view: 'files', session_id: 'chat-1', layout: { chat_open: true, panel_open: false, split_ratio: 0.4, navigation_mode: 'fixed' as const, focused_pane: 'chat' as const } }
     vi.mocked(workspaceStateApi.get).mockResolvedValueOnce({ version: 1, revision: 3, last: saved, recent: [saved] })
     window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['code', 'bullpen'] }
     window.history.replaceState({}, '', '/')
@@ -98,11 +98,16 @@ describe('server workspace return', () => {
       expect(mocks.resolve).toHaveBeenCalledWith(saved, expect.any(AbortSignal))
       expect(restoreWorkspaceChat).toHaveBeenCalledWith(saved, expect.any(AbortSignal))
       expect(window.location.pathname).toBe('/code/projects/last')
+      window.history.replaceState({}, '', '/code/projects/last?view=dashboard')
+      await act(async () => window.dispatchEvent(new PopStateEvent('popstate')))
+      expect(useWorkspaceReturnStore.getState().restore?.view).toBe('dashboard')
+      expect(useWorkspaceReturnStore.getState().restore?.layout).toMatchObject({ panel_open: true, focused_pane: 'preview', split_ratio: 0.4 })
       vi.mocked(restoreWorkspaceChat).mockClear()
       window.history.replaceState({}, '', '/bullpen/connect')
       await act(async () => window.dispatchEvent(new PopStateEvent('popstate')))
       expect(mocks.resolve).toHaveBeenLastCalledWith({ surface: 'bullpen', view: 'setup' }, expect.any(AbortSignal))
       expect(restoreWorkspaceChat).not.toHaveBeenCalled()
+      expect(useWorkspaceReturnStore.getState().restore).toBeNull()
       expect(window.location.pathname).toBe('/bullpen/connect')
     } finally { await act(async () => root.unmount()); host.remove() }
   })

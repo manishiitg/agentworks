@@ -71,7 +71,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
         window.history.replaceState({}, '', '/home')
         finish('ready'); return
       }
-      useWorkspaceReturnStore.setState({ homeOpen: false })
+      useWorkspaceReturnStore.setState({ homeOpen: false, restore: null })
       // Root connection parameters belong to App, not workspace restoration.
       if (!destination) { finish('ready'); return }
       if (!allowed.includes(destination.surface)) {
@@ -90,7 +90,9 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
             if (!controller.signal.aborted) useWorkspaceReturnStore.setState({ note: 'Your workspace opened, but its saved chat could not be restored.' })
           })
           if (controller.signal.aborted) return
-          useWorkspaceReturnStore.setState({ restore: ['agentworks', 'relays', 'work', 'code'].includes(saved.surface) ? { ...saved, view: destination.view } : null })
+          const explicitPanel = route?.view && route.view !== saved.view
+          const layout = explicitPanel && saved.layout ? { ...saved.layout, panel_open: true, focused_pane: 'preview' as const } : saved.layout
+          useWorkspaceReturnStore.setState({ restore: ['agentworks', 'relays', 'work', 'code'].includes(saved.surface) ? { ...saved, view: destination.view, layout } : null })
         }
         window.history.replaceState({}, '', productRoutePath(destination))
         finish('ready')
