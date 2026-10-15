@@ -240,3 +240,4 @@ instruction_sections:
   - clarification
   - native-subagents
   - native-shell-off
+  - native-shell-on
