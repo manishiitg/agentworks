@@ -44,7 +44,9 @@ func TestTurnPhaseFollowsTheAgentNotTheClock(t *testing.T) {
 	add(es, session, "unified_completion", nil)
 	add(es, session, "user_message", nil)
 
+	// The message itself does not say which agent; the first generation does, and the line is refreshed.
 	want := []string{
+		"starting: Starting the agent",
 		"starting: Starting Muse",
 		"retrying: Retrying: Muse did not start in 1m30s: it was showing a plugin hooks review screen (attempt 1 of 5, next in 10s)",
 		"starting: Starting Muse",
