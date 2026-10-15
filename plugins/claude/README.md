@@ -16,7 +16,7 @@ can message the attached session; there is no sender allow field.
 Use `/agentworks agents` or `/agentworks detach` to manage this exact chat.
 Claude also accepts the namespaced `/agentworks:agentworks` spelling.
 The prompt hook consumes these commands before model execution and learns the
-exact session ID from the host hook input. An agent cannot attach through MCP.
+exact session ID from the host hook input. The AgentWorks tools (`agent_attach_chat`, `agent_share_chat` and others) do the same when the person asks the agent in plain words; joining another network stays the person's own typed command.
 This is a tool boundary, not OS isolation from shell access to CLI credentials.
 
 Default hooks run without channel launch flags. Unattached hooks make no network

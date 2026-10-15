@@ -8,6 +8,11 @@
       "name": "agentworks",
       "source": "./plugins/claude",
       "description": "Person-controlled AgentWorks messaging for Claude Code"
+    },
+    {
+      "name": "agentworks-tools",
+      "source": "./plugins/claude-tools",
+      "description": "AgentWorks messaging tools for Claude Code, no hooks: ask your agent to connect, share, message and ping"
     }
   ],
   "metadata": {

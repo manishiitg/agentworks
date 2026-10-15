@@ -1,0 +1,10 @@
+{
+  "name": "agentworks-tools",
+  "version": "1.0.0",
+  "description": "AgentWorks messaging tools for Claude Code with no hooks: ask your agent to connect, share, message and ping",
+  "author": {
+    "name": "AgentWorks"
+  },
+  "homepage": "https://github.com/manishiitg/agentworks",
+  "license": "MIT"
+}

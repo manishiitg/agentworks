@@ -110,6 +110,14 @@ func installedPluginUpdates(home string, onPath func(string) bool, read func(str
 		out = append(out, pluginUpdate{Provider: "claude", Auto: [][]string{{"plugin", "marketplace", "update", "agentworks"}, {"plugin", "update", "agentworks@agentworks"}},
 			Manual: "claude plugin marketplace update agentworks && claude plugin update agentworks@agentworks, then reload Claude Code"})
 	}
+	if onPath("claude") && strings.Contains(read(filepath.Join(home, ".claude", "plugins", "installed_plugins.json")), "agentworks-tools@agentworks") {
+		out = append(out, pluginUpdate{Provider: "claude", Auto: [][]string{{"plugin", "marketplace", "update", "agentworks"}, {"plugin", "update", "agentworks-tools@agentworks"}},
+			Manual: "claude plugin marketplace update agentworks && claude plugin update agentworks-tools@agentworks, then reload Claude Code"})
+	}
+	if codexHomeDir(home) != "" && codexExecutable(onPath) != "" && strings.Contains(read(filepath.Join(codexHomeDir(home), "config.toml")), "agentworks-codex-tools@agentworks") {
+		out = append(out, pluginUpdate{Provider: "codex", Auto: [][]string{{"plugin", "marketplace", "upgrade", "agentworks"}, {"plugin", "add", "agentworks-codex-tools@agentworks"}},
+			Manual: "codex plugin marketplace upgrade agentworks && codex plugin add agentworks-codex-tools@agentworks, then reload Codex"})
+	}
 	if codexHomeDir(home) != "" && codexExecutable(onPath) != "" && (strings.Contains(read(filepath.Join(codexHomeDir(home), "config.toml")), "agentworks-codex@agentworks") || strings.Contains(read(filepath.Join(codexHomeDir(home), "plugins", "installed_plugins.json")), "agentworks-codex")) {
 		out = append(out, pluginUpdate{Provider: "codex", Auto: [][]string{{"plugin", "marketplace", "upgrade", "agentworks"}, {"plugin", "add", "agentworks-codex@agentworks"}},
 			Manual: "codex plugin marketplace upgrade agentworks && codex plugin add agentworks-codex@agentworks, then reload Codex"})

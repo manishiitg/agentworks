@@ -1218,7 +1218,15 @@ func shareCommand(o *options, unshare bool) *cobra.Command {
 		if !fromAgent {
 			return fmt.Errorf("name the agent: agentworks %s%s --agent AGENT, or type /agentworks %s in the chat", verb, map[bool]string{true: " GROUP", false: ""}[!unshare], verb)
 		}
-		out, err := bridgeCall(cmd.Context(), root, o, agentworksclient.LocalBridgeRequest{Action: verb + "_own", Provider: own.provider, SessionID: own.session, HostKey: own.host, Group: group, Purpose: purpose})
+		// GROUP@LOGIN: the group is on a network this chat joined with --also. Only the person's own
+		// request, run in the chat (never a message tool).
+		network := ""
+		if at := strings.LastIndex(group, "@"); at > 0 {
+			if _, e := o.loginPath(group[at+1:]); e == nil {
+				group, network = group[:at], group[at+1:]
+			}
+		}
+		out, err := bridgeCall(cmd.Context(), root, o, agentworksclient.LocalBridgeRequest{Action: verb + "_own", Provider: own.provider, SessionID: own.session, HostKey: own.host, Group: group, Purpose: purpose, Network: network})
 		if err != nil {
 			return err
 		}

@@ -1,0 +1,17 @@
+{
+  "name": "agentworks-codex-tools",
+  "version": "1.0.0",
+  "description": "AgentWorks messaging tools for the Codex app with no hooks: ask your agent to connect, share, message and ping",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "AgentWorks (tools only)",
+    "shortDescription": "Ask your agent to connect, share, message and ping",
+    "longDescription": "Adds the AgentWorks messaging tools to Codex with no hooks. Say 'connect this chat to AgentWorks'; messages arrive through the Codex app's own route.",
+    "developerName": "AgentWorks",
+    "category": "Productivity",
+    "brandColor": "#38BDF8",
+    "composerIcon": "./assets/logo.svg",
+    "logo": "./assets/logo.svg"
+  }
+}

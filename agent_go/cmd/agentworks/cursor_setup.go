@@ -87,8 +87,23 @@ func setupCommand(o *options) *cobra.Command {
 		{"pi", "Pi", "the AgentWorks Pi package for your user in Pi", "Reload Pi, then type /agentworks attach in the chat.", "pi list (find the AgentWorks entry), then pi remove <that source>"},
 	} {
 		app := app
-		cmd.AddCommand(&cobra.Command{Use: app.provider, Args: cobra.NoArgs, Short: "Set up " + app.name + " for AgentWorks (every project)", Long: "Installs the AgentWorks plugin for " + app.name + " with its own plugin commands, for every project. Running it again is safe. It does not trust hooks, sign in or connect a chat; you do those next.", RunE: func(cmd *cobra.Command, _ []string) error {
+		var noHooks bool
+		sub := &cobra.Command{Use: app.provider, Args: cobra.NoArgs, Short: "Set up " + app.name + " for AgentWorks (every project)", Long: "Installs the AgentWorks plugin for " + app.name + " with its own plugin commands, for every project. Running it again is safe. It does not trust hooks, sign in or connect a chat; you do those next.", RunE: func(cmd *cobra.Command, _ []string) error {
 			o.setupAll = true
+			if noHooks && (app.provider == "claude" || app.provider == "codex") {
+				installed, undo, err := installToolsPlugin(cmd.Context(), o, app.provider)
+				if err != nil {
+					return fmt.Errorf("%s setup was not completed: %w", app.name, err)
+				}
+				fmt.Fprintln(o.stdout, app.name+" is set up for AgentWorks without hooks: installed "+installed+". This applies to every project.")
+				fmt.Fprintln(o.stdout, "Next: restart "+app.name+", then say \"connect this chat to AgentWorks\" in a chat. Nothing is typed and nothing shows as blocked.")
+				fmt.Fprintln(o.stdout, noHooksGivesUp)
+				fmt.Fprintln(o.stdout, "To undo: "+undo)
+				return nil
+			}
+			if noHooks {
+				return fmt.Errorf("--no-hooks is available for Claude Code and the Codex app; %s needs its hooks", app.name)
+			}
 			if err := installAgentPlugin(cmd.Context(), o, app.provider); err != nil {
 				return fmt.Errorf("%s setup was not completed: %w", app.name, err)
 			}
@@ -101,7 +116,11 @@ func setupCommand(o *options) *cobra.Command {
 				}
 			}
 			return nil
-		}})
+		}}
+		if app.provider == "claude" || app.provider == "codex" {
+			sub.Flags().BoolVar(&noHooks, "no-hooks", false, "Install the tools only, with no hooks (nothing shows as blocked); you ask the agent to connect")
+		}
+		cmd.AddCommand(sub)
 	}
 	return cmd
 }

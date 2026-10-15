@@ -13,6 +13,8 @@ TARGETS = {
     "muse": "plugins/muse/skills/messaging/SKILL.md",
     "pi": "plugins/pi/skills/agent-messages/SKILL.md",
     "cursor": "plugins/cursor/skills/agent-messages/SKILL.md",
+    "claude-tools": "plugins/claude-tools/skills/agent-messages/SKILL.md",
+    "codex-tools": "plugins/codex-tools/skills/agent-messages/SKILL.md",
 }
 
 

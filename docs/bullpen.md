@@ -92,6 +92,24 @@ retype the count). A move needs a login you have saved; to add a new server it
 runs `agentworks login --server URL --name NAME`, and the browser approval for
 that login still happens wherever you open the link.
 
+## Ask your agent
+
+After setup, just say what you want in the chat: "connect this chat to
+AgentWorks as reviewer", "share yourself in the sales group", "which agents
+can you see?", "ping them if they have not answered". The agent uses the
+AgentWorks message tools; the app tells AgentWorks exactly which chat made each
+call. The typed `/agentworks` commands are the shortcut that also works when
+the agent cannot. Joining another company's network (`--also LOGIN`, and
+`GROUP@LOGIN`) is your own request: type it, or ask the agent to run
+`agentworks attach --also LOGIN` in the chat; it is never a tool call.
+
+Want no hooks at all (nothing shows as "blocked")? Run
+`agentworks setup claude --no-hooks` or `agentworks setup codex --no-hooks`
+(Codex app): skills and message tools only. You give up delivery at the end of
+a turn if the live connection drops, automatic reconnect after a restart (say
+"connect this chat" once) and the typed shortcuts. Use one install or the other.
+The Codex command line, Pi and Cursor keep their hooks.
+
 ## Set up an app once
 
 Run one command in Terminal for the coding app you use; each covers every

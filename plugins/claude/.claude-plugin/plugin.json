@@ -1,6 +1,6 @@
 {
   "name": "agentworks",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "AgentWorks named-agent communication with person-controlled session attachment",
   "author": {
     "name": "AgentWorks"
