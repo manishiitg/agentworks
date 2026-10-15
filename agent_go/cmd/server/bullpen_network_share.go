@@ -47,9 +47,16 @@ func (api *StreamingAPI) handleAgentSharing(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	claims := GetUserFromContext(r.Context())
-	if claims == nil || claims.AccessToken == nil || claims.AccessToken.BoundAgentID != "" || claims.UserID == "" ||
-		!productpolicy.Enabled("bullpen") || !userAllowedProduct(claims, "bullpen") || !namedAgentOperationAllowed(claims, true) {
-		externalError(w, http.StatusForbidden, "sharing_refused", "Sharing needs your own CLI sign-in on a server with Bullpen.")
+	if !productpolicy.Enabled("bullpen") {
+		externalError(w, http.StatusForbidden, "sharing_refused", "Agent sharing (Bullpen) is not switched on for this server, so agents cannot join groups here yet. Ask your AgentWorks admin to turn it on.")
+		return
+	}
+	if claims != nil && claims.UserID != "" && !userAllowedProduct(claims, "bullpen") {
+		externalError(w, http.StatusForbidden, "sharing_refused", "Your account does not have agent sharing (Bullpen) on this server. Ask your AgentWorks admin to give you access.")
+		return
+	}
+	if claims == nil || claims.AccessToken == nil || claims.AccessToken.BoundAgentID != "" || claims.UserID == "" || !namedAgentOperationAllowed(claims, true) {
+		externalError(w, http.StatusForbidden, "sharing_refused", "Sharing needs your own CLI sign-in on this server: run agentworks login, then try again.")
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
