@@ -14,6 +14,7 @@ import { getReportGoalMetrics, renderReportGoalProgress } from './reportGoalProg
 import { REPORT_OPEN_ATTR, REPORT_SRC_ATTR } from './reportMarkdownLinks'
 import { reportDaisyUiHead } from './reportDaisyUi'
 import { selectReportDocument } from '../reportDocuments'
+import { reportMotionFor } from './reportMotion'
 
 export type ReportHostTheme = 'dark' | 'light'
 
@@ -482,6 +483,7 @@ export function installReportHost(frame: HTMLIFrameElement, options: ReportHostI
   const renderActivity = (target: string | HTMLElement, activityOptions?: ReportActivityOptions) => renderReportActivity(doc, dataApi, target, activityOptions)
 
   win.report = {
+    motion: reportMotionFor(doc, error => showReportError(String(error), 'report.motion')),
     chat: options.chatApi ?? {
       available: false,
       mount: async () => { throw new Error('Chat widgets require an authenticated project dashboard. Preview does not open conversations.') },

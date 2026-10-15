@@ -64,11 +64,30 @@ This skill describes platform usage. Inspect existing documents before editing.
 - Explicit user actions may call `window.report.sendChatMessage(message, { requestId })`
   with a stable item/action identity. A queued receipt confirms chat delivery,
   not completion. `updateField`/`updateFields` provide schema-checked row edits.
-- For MP4 explainers, inspect available video-rendering tools
-  before offering export. Snapshot source data and timestamps once and render
-  deterministically. Save an approved MP4 under `db/assets/` and play it using
-  `await window.report.mediaUrl('db/assets/explainer.mp4')`. Exported video is a
-  snapshot and does not refresh with dashboard data.
+- Interactive motion uses `window.report.motion.create({ id, duration, render,
+  onChange })` inside `window.report.ready`. The designer supplies all visuals
+  and controls. The returned player has `play`, `pause`, `replay`, `seek(seconds)`,
+  `setSpeed(multiplier)`, `getState` and `destroy`. Render synchronously from
+  absolute time/progress and previously loaded recorded data; no fabricated
+  history. Stable ids replace previous players on refresh, preserving position.
+  Playback starts paused; reduced motion initially shows the end state.
+- Optional MP4 uses the core `dashboard action=export_motion` operation (app
+  Builder: `export_dashboard_motion`), with `composition_path` under
+  `code/motion/` and a unique `submission_id`. The reply returns `export_id`
+  immediately; poll the same action with that id until completed/failed.
+  Reuse the submission id for retries of that same export only. Save a standalone HyperFrames `index.html`, local assets and
+  `snapshot.json` containing `as_of` (ISO timestamp), `source` and `data`.
+  The composition reads that local snapshot, not `window.report` or live data.
+  Export requires current Builder authoring access and, over MCP, existing
+  authoring consent plus `dashboards:read` and `runs:execute`. The server needs
+  Node/npm, Chrome, FFmpeg and FFprobe; if unavailable, say video export is
+  unavailable there. Interactive motion needs none of those render tools.
+  Limits: ten minutes, 128 MB source, 256 MB video. This is a core capability
+  independent of personal products. The completed `result` returns the video `path` plus
+  editable source and snapshot paths. Play with `window.report.mediaUrl(path)`
+  and native video controls, and show its snapshot time. Run people can use a
+  shared exported video; export grants them no new execution permissions.
+  Never start export on dashboard load/refresh. Layout/style remain user choices.
 - Run `validate_report_html` for each changed document and `preview_report`
   when rendering is available. Check data, errors, interactions and requested
   pane sizes in both themes. Use `get_report_link` for an authenticated live

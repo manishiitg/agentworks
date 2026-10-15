@@ -113,7 +113,7 @@ func TestExternalGuidanceTopicsRoundTrip(t *testing.T) {
 	for _, raw := range topics {
 		original[raw.(map[string]any)["name"].(string)] = true
 	}
-	for _, name := range []string{"dashboard-authoring", "plan-change-impact", "plan-design", "planning-steps", "step-description", "step-config", "skill-management", "file-layout", "secure-share-links"} {
+	for _, name := range []string{"dashboard-authoring", "motion-guide", "plan-change-impact", "plan-design", "planning-steps", "step-description", "step-config", "skill-management", "file-layout", "secure-share-links"} {
 		if !original[name] {
 			t.Fatalf("original reference lost during source migration: %s", name)
 		}

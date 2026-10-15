@@ -52,7 +52,11 @@ func (api *StreamingAPI) registerDashboardTools(reg definitionToolRegistrar, use
 			}
 			return response.Body.String(), nil
 		}
-		if err := reg.RegisterCustomToolWithTimeout(def.Name, def.Description, def.InputSchema, execute, 3*time.Minute, "dashboard"); err != nil {
+		timeout := 3 * time.Minute
+		if def.Name == "export_dashboard_motion" {
+			timeout = dashboardMotionTimeout + time.Minute
+		}
+		if err := reg.RegisterCustomToolWithTimeout(def.Name, def.Description, def.InputSchema, execute, timeout, "dashboard"); err != nil {
 			return err
 		}
 	}

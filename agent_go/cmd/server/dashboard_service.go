@@ -74,7 +74,7 @@ func dashboardScopeAllowed(claims *UserClaims, action string) bool {
 	if claims == nil || userAccessForClaims(claims).Disabled {
 		return false
 	}
-	if (dashboardMutation(action) || action == "share") && !userAccessForClaims(claims).CanEdit {
+	if (dashboardMutation(action) || action == "share" || action == "export_motion") && !userAccessForClaims(claims).CanEdit {
 		return false
 	}
 	if claims.AccessToken == nil {
@@ -83,10 +83,10 @@ func dashboardScopeAllowed(claims *UserClaims, action string) bool {
 	if !claims.AccessToken.Allows("dashboards:read") {
 		return false
 	}
-	if (dashboardMutation(action) || action == "share") && !dashboardAuthoringAllowed(claims, nil) {
+	if (dashboardMutation(action) || action == "share" || action == "export_motion") && !dashboardAuthoringAllowed(claims, nil) {
 		return false
 	}
-	if action == "preview" && !claims.AccessToken.Allows("runs:execute") {
+	if (action == "preview" || action == "export_motion") && !claims.AccessToken.Allows("runs:execute") {
 		return false
 	}
 	return true
@@ -232,6 +232,9 @@ func dashboardError(w http.ResponseWriter, err error) {
 // The authenticated transport supplies claims; JSON cannot set roles or draft rights.
 func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request) {
 	var args struct {
+		ExportID     string            `json:"export_id"`
+		Submission   string            `json:"submission_id"`
+		Composition  string            `json:"composition_path"`
 		Workspace    string            `json:"workspace"`
 		Action       string            `json:"action"`
 		ID           string            `json:"dashboard_id"`
@@ -258,7 +261,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	claims := GetUserFromContext(r.Context())
 	w.Header().Set("Cache-Control", "no-store")
 	if !dashboardScopeAllowed(claims, args.Action) {
-		externalError(w, 403, "insufficient_scope", "dashboard access or explicit dashboard consent required; preview additionally requires runs:execute")
+		externalError(w, 403, "insufficient_scope", "dashboard access or explicit dashboard consent required; preview and animation export additionally require runs:execute")
 		return
 	}
 	if args.Action == "list" && args.Workspace == "" {
@@ -272,6 +275,10 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	}
 	if dashboardShareAction(args.Action) {
 		api.handleDashboardShare(w, r, claims, target, args.Action, args.Mode, args.Emails)
+		return
+	}
+	if args.Action == "export_motion" {
+		api.dashboardMotionOperation(w, r, target, args.Composition, args.ExportID, args.Submission)
 		return
 	}
 	if (dashboardMutation(args.Action) || args.Action == "preview") && !target.Edit {

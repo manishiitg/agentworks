@@ -342,6 +342,11 @@ echo "==> [$RELEASE_ID] Activating release and restarting services"
 PRODUCT="$PRODUCT" EXPECTED_PUBLIC_URL="${EXPECTED_PUBLIC_URL:-}" python3 "$SCRIPT_DIR/deployment_checks.py" preflight
 source "$REPO_ROOT/deploy/common/relay-dbos.sh"
 relay_dbos_python="$(relay_dbos_prepare "$REPO_ROOT" "$REMOTE_APP")"
+# Video export uses the same encoder as browser recordings plus FFprobe.
+# Provision this core tool during deploy, never in a person's export request.
+if ! REMOTE_APP="$REMOTE_APP" python3 "$SCRIPT_DIR/install-ffprobe.py"; then
+  echo "Video export is not available on this server yet: FFprobe setup failed. Dashboard playback is available." >&2
+fi
 chmod +x "$BUILD_DIR"/bin/*
 # The Linux sandbox must really work on this host for this release before it goes live. Shell commands run inside it, and a
 # policy that blocks a path inside a granted one needs a user namespace, which Ubuntu 23.10+ denies by default

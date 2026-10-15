@@ -12,7 +12,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
-var dashboardActions = map[string]string{"list_dashboards": "list", "get_dashboard": "get", "create_dashboard": "create", "update_dashboard": "update", "validate_dashboard": "validate", "preview_dashboard": "preview", "publish_dashboard": "publish", "restore_dashboard": "restore", "get_dashboard_link": "link", "get_report_link": "link", "get_dashboard_share": "share_status", "share_dashboard": "share"}
+var dashboardActions = map[string]string{"export_dashboard_motion": "export_motion", "list_dashboards": "list", "get_dashboard": "get", "create_dashboard": "create", "update_dashboard": "update", "validate_dashboard": "validate", "preview_dashboard": "preview", "publish_dashboard": "publish", "restore_dashboard": "restore", "get_dashboard_link": "link", "get_report_link": "link", "get_dashboard_share": "share_status", "share_dashboard": "share"}
 
 func isDashboardTool(name string) bool { return dashboardActions[name] != "" }
 func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
@@ -74,6 +74,14 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		}
 		add(name, descriptions[action], dashboardMutation(action), false, props, required...)
 	}
+	add("export_dashboard_motion", "Start or check a background MP4 export from an authored animation and saved data snapshot. Use a unique submission_id to start; retrying the same submission returns the same export. Poll with export_id until completed or failed. Builder only; same project authoring consent and runs:execute as preview. Saves the video and editable source in this project. Never runs automatically when a dashboard opens.", true, false, map[string]any{
+		"workflow_id":      externalString("Workflow or Relay ID. Pass exactly one of workflow_id, crew_id or workspace."),
+		"crew_id":          externalString("Crew ID."),
+		"workspace":        externalString("Project root, for an owned Code project."),
+		"export_id":        externalString("Export ID from an earlier call; pass to check its progress/result without starting another export."),
+		"submission_id":    externalString("Stable unique request name for a new export (max 128 characters); reuse only to retry the same composition."),
+		"composition_path": externalString("Folder under code/motion/ with a standalone HyperFrames index.html, local assets and snapshot.json containing as_of, source and data."),
+	})
 	shareProps := map[string]any{
 		"workflow_id": externalString("Workflow or Relay ID from list_workflows or the dashboard list. Pass one of workflow_id, crew_id or workspace."),
 		"crew_id":     externalString("Crew ID from list_crews or the dashboard list."),

@@ -319,6 +319,7 @@ chat:
       - update_dashboard
       - validate_dashboard
       - preview_dashboard
+      - export_dashboard_motion
       - publish_dashboard
       - restore_dashboard
       - get_dashboard_link
@@ -507,6 +508,7 @@ chat:
       - update_dashboard
       - validate_dashboard
       - preview_dashboard
+      - export_dashboard_motion
       - publish_dashboard
       - restore_dashboard
       - get_dashboard_link

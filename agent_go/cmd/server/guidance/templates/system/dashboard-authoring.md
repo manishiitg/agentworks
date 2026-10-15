@@ -158,7 +158,12 @@ viewer's live permissions. A shared dashboard grants no new source credentials.
 Keep data scripts read-only upstream and never print secrets. Publication does
 not run a workflow<!-- product:relays -->, invoke relay.py or publish a Relay API<!-- /product -->.
 
-Dashboards may animate HTML using the user's choices; exported MP4 explainers
-use the available video tools and frozen input data. A video is a snapshot.
-Managed bundles currently accept the image/font/text formats above; existing
-videos can remain in db/assets/ and use window.report.mediaUrl(path).
+For requested interactive animation, use `window.report.motion.create` inside
+`window.report.ready`; the designer supplies the visuals and controls. See the
+on-demand `motion-guide` for play/pause/seek, real historical data and refresh.
+Optional MP4 exports use `dashboard action=export_motion` (app Builder:
+`export_dashboard_motion`) with a standalone composition under `code/motion/`
+and a frozen `snapshot.json`. Export needs current authoring access and server
+rendering tools; it is never triggered by dashboard load/refresh. The returned
+video is a snapshot, played via `window.report.mediaUrl(path)`. Design, layout
+and whether to include motion or export controls belong to the user.

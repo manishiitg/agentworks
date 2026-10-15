@@ -137,11 +137,12 @@ dashboards have no function buttons yet.
 
 ## Requested motion
 
-When the user asks for Dashboard animation, an MP4 explainer, or both, read this
-skill's `references/motion-guide.md`. It documents playback, refresh and the
-available Video Studio export path, while leaving design to the user. A
-Dashboard project does not automatically acquire Video Studio's renderer or
-presentation tools; check the active capabilities before offering an export.
+When the user asks for interactive animation, an MP4 explainer, or both, read
+`references/motion-guide.md`. It describes the shared `window.report.motion`
+playback API and optional core `dashboard action=export_motion` operation.
+Design and layout remain the user's choice. Historical values must come from
+recorded data. MP4 exports use a frozen snapshot and require rendering tools
+on the server; interactive motion does not require that renderer.
 
 ## Project data and actions
 

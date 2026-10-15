@@ -164,7 +164,7 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 		"apply_workflow_db_migration":       false,
 		"create_workflow_database_snapshot": false,
 		"validate_report_html":              false,
-		"list_dashboards":                   false, "get_dashboard": false, "create_dashboard": false, "update_dashboard": false, "validate_dashboard": false, "preview_dashboard": false, "publish_dashboard": false, "restore_dashboard": false, "get_dashboard_link": false,
+		"list_dashboards":                   false, "get_dashboard": false, "create_dashboard": false, "update_dashboard": false, "validate_dashboard": false, "preview_dashboard": false, "export_dashboard_motion": false, "publish_dashboard": false, "restore_dashboard": false, "get_dashboard_link": false,
 		"preview_report":       false,
 		"run_in_background":    false,
 		"query_agent":          false,

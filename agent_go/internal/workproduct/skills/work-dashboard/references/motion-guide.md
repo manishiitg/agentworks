@@ -1,86 +1,115 @@
-## Motion usage: animated Dashboards and MP4 explainers
+## Interactive motion and optional video export
 
-Load this reference when the user requests motion. It describes the existing
-Dashboard runtime and the Video Studio export path. Style, layout, pacing,
-transitions, fonts, colors and chart presentation follow the user's preferences
-and references. Do not add animation to an unrelated Dashboard request.
+Use motion when the person requests it. They choose the layout, appearance,
+charts, controls, pacing and animation style; the platform supplies playback
+and export mechanics. Do not add a standard motion layout or required palette.
 
-### Choose the output the user requested
+### Use real dated data
 
-| Output | Existing path |
-|---|---|
-| Live animated Dashboard | HTML/CSS/JavaScript under `db/reports/`, using `window.report` for data |
-| Shareable video explainer | Editable composition in Video Studio, rendered to MP4 |
-| Both | Dashboard for current data; a video from a recorded data snapshot |
+A dashboard does not automatically keep the history of every number. Query
+existing dated records, saved run results or a source's historical API through
+`window.report.query`, `get`, `run` or `getRelayRuns` as appropriate. Keep the
+units, date range and source with the result. If only the latest value exists,
+say that history is unavailable; never invent earlier values or treat a missing
+value as zero. Recording future snapshots is separate data work, not a side
+effect of animation or dashboard refresh.
 
-A guide does not grant tools or install a renderer. Inspect the active product's
-attached skills and available tools before using a path. Dashboard viewers
-cannot invoke arbitrary rendering commands through the report bridge.
+### Playback inside the dashboard
 
-### Animation inside a Dashboard
+The shared app and preview runtime provides `window.report.motion.create` inside
+`window.report.ready`. It adds no HTML, CSS, chart type or fixed controls:
 
-- Use the user's chosen browser-compatible animation implementation: CSS,
-  Web Animations API, SVG/canvas, or a version-pinned HTTPS browser library.
-  The platform does not require an animation framework.
-- Read actual data inside `window.report.ready(async () => { ... })`. The
-  callback also runs on refresh. Keep data loading separate from animation
-  initialization so refresh does not create duplicate timelines, event handlers
-  or animation loops. Update existing elements when the data changes.
-- Store controllers/players on the document or persistent elements rather than
-  only in a callback-local variable. Cancel replaced animations and prevent
-  older asynchronous reads from overwriting a newer result.
-- Use the host's app theme signals. Do not infer the Dashboard theme from the
-  OS. Animation must continue to use the same data and permission APIs as a
-  static Dashboard; an animation library receives no additional access.
-- If motion runs automatically, respect `prefers-reduced-motion`. Keep data and
-  actions usable when motion is disabled. For an explainer in the page,
-  provide user controls to start, pause, replay and seek when supported.
-- Show loading, unavailable and error states accurately. Never turn missing
-  values into zero or animate fabricated numbers as actual results.
-- Run `validate_report_html` and `preview_report`. Preview checks rendering and
-  data errors; also exercise the animation controls and refresh path in the
-  managed browser. Check that refresh does not restart unchanged media or leave
-  old loops running.
+```js
+let player;
+let refresh = 0;
+window.report.ready(async () => {
+  const version = ++refresh;
+  const rows = await window.report.query(
+    'SELECT day, total FROM daily_sales ORDER BY day'
+  );
+  if (version !== refresh) return; // A newer refresh owns the display.
+  if (!rows.length) {
+    player?.destroy();
+    showEmptyHistory(); // Your authored empty state.
+    return;
+  }
+  player = window.report.motion.create({
+    id: 'sales-history',
+    duration: 12, // Playback seconds, not days of source data.
+    render: ({ progress }) => {
+      const index = Math.min(rows.length - 1, Math.floor(progress * rows.length));
+      drawRecordedValues(rows.slice(0, index + 1)); // Your chart/DOM renderer.
+    },
+    onChange: state => updateYourControls(state)
+  });
+});
+// Wire the designer's controls once, outside the refresh callback:
+playButton.onclick = () => player?.play();
+pauseButton.onclick = () => player?.pause();
+replayButton.onclick = () => player?.replay();
+slider.oninput = () => player?.seek(Number(slider.value));
+```
 
-### A standalone MP4 explainer
+The example's drawing, controls and table are authored choices, not built-in
+widgets or a required design. Use existing tables/fields rather than creating
+this example's schema automatically. The slider range should be 0 to duration.
+`setSpeed(number)` accepts a positive playback multiplier. `getState()` returns
+`{ time, duration, progress, playing, speed, reducedMotion }`; `time` and
+`duration` are seconds and `progress` is 0–1. `destroy()` releases the player.
 
-1. Record the requested content, duration, aspect ratio and any supplied style
-   references. Use the requested preferences rather than a platform look.
-2. Capture the facts for this export once: query results, units, time window,
-   source/query identifiers, and an `as_of` timestamp. Save this snapshot beside
-   the editable source. Resolve assets to files the renderer can read.
-   Do not query a changing system separately for every rendered frame.
-3. Use Video Studio's existing HyperFrames capability when it is available.
-   Load its attached `hyperframes` entry skill and the relevant runtime/CLI
-   references. Inspect CLI help and run its environment checks before rendering.
-   The Video Studio manifest supplies HyperFrames, Chrome and FFmpeg
-   prerequisites; dashboard-only projects do not automatically have them.
-4. Keep the editable composition and its data/assets together. For direct
-   Video Studio work, intermediates live under `work/` and exports under
-   `outputs/`. A workflow stage uses its own stage folder. Time must be
-   deterministic: the same playback position yields the same frame, including
-   when seeking backward or rendering frames out of order.
-5. Preview and render using the available renderer's documented commands.
-   Verify the exact MP4's duration, dimensions, playback and representative
-   frames. In Video Studio, `show_video` presents a preview; its existing
-   quality-report contract is required before marking an export approved final.
-   Do not invent a new Dashboard `render_motion` or `export_mp4` API.
+`render` and `onChange` are synchronous. Fetch data before creating the player;
+render from absolute time/progress so backward seeking produces the same state.
+CSS, SVG, Canvas, Web Animations and browser-compatible libraries can use the
+clock. Keep values tied to real observations; disclose any interpolation.
+A stable id replaces its prior player on refresh while keeping position and
+speed, so one report does not accumulate clocks. Reuse the id only for the same
+sequence. The runtime starts paused. Reduced motion initially shows the end
+state; people can still play and seek. Hidden pages pause. Playback does not
+query data, start runs or change product permissions. Do not start playback
+from a refresh callback. Cancel stale asynchronous data reads as above.
 
-Paid assets and publishing remain separate actions governed by the user's
-request and the active product's permissions. A deterministic animation does
-not require purchasing AI-generated footage.
+### Optional MP4
 
-### Show an export in the Dashboard
+A Builder can ask: “Export this animation as a video.” External MCP uses
+`dashboard` with `action: "export_motion"`, the project selector and
+`composition_path: "code/motion/sales-history"` and a unique `submission_id`.
+Retry with the same submission id only for the same export. The reply returns
+`export_id` and `status` immediately. Check progress by calling the same action
+with that `export_id`; completed replies contain `result` with the saved paths,
+and failed replies explain what to fix. App Builder uses the same
+server operation. This requires current project authoring access and, over
+MCP, the same authoring consent plus `dashboards:read` and `runs:execute`.
+Run people can watch/download a shared export; this does not give them Builder
+execution. Export never starts on page load, polling or data refresh.
 
-If the user wants the exported explainer beside live data, transfer the final
-MP4 through permitted workspace file operations into `db/assets/` and store
-that workspace-relative path. Obtain a fresh playback URL with
-`window.report.mediaUrl(path)` when opening a native `<video controls
-playsinline preload="metadata">` player. Do not store its expiring URL or
-embed the MP4 as a data URL. Preserve the player through data refresh when the
-export has not changed.
+Author a standalone HyperFrames composition in that folder, with `index.html`,
+local assets, and `snapshot.json` containing `as_of` (ISO timestamp), `source`
+(source/query and units), and `data` (the chosen recorded results). Reuse the
+same chart drawing logic where practical. Read HyperFrames' current composition
+contract when available. The export composition reads this local snapshot;
+it cannot depend on `window.report`, app login state or live data queries.
+A whole interactive dashboard is not automatically a video composition.
 
-The MP4 represents its saved snapshot; it does not become current when the
-Dashboard refreshes. Show the snapshot's timestamp wherever the export's
-freshness matters. Regenerating it is an explicit production action, not a
-side effect of opening, rendering or polling a Dashboard.
+The core export service uses the HyperFrames version pinned in the platform code, copies
+the source and snapshot to a new project asset folder, checks the renderer,
+renders and decodes the MP4, and puts `path`, `source_path`, `snapshot_path`,
+`as_of`, duration, dimensions and bytes in the completed job result. It needs Node/npm, Chrome, FFmpeg and
+FFprobe on that server. If unavailable, say video export is unavailable there;
+interactive dashboard motion still works. This capability has no dependency on
+a personal product. Limits: ten minutes per export, 128 MB source, 256 MB video.
+
+Present the returned video through `window.report.mediaUrl(path)` and a native
+`<video controls playsinline preload="metadata">` element if requested. Obtain
+a fresh URL when opened, and keep the workspace path rather than an expiring
+URL. Persist the player through refresh if its video path has not changed.
+Show the snapshot time where freshness matters: an MP4 does not update when
+the dashboard refreshes. Keep the exported source for requested revisions.
+The designer chooses whether and where to offer playback or download.
+
+### Check the actual result
+
+Run `validate_report_html`/`preview_report` (or managed dashboard validate and
+preview), then exercise play, pause, backward seek, replay, speed and refresh
+in the browser. Check the requested layout in both themes and reduced motion.
+For MP4, inspect playback and representative frames of the returned file;
+successful encoding alone does not prove the chart or explanation is correct.
