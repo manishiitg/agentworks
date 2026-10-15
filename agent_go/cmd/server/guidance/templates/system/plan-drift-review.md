@@ -213,6 +213,14 @@ context dependencies, and guidance that execution actually receives. Assess:
 - a clear objective, necessary inputs/evidence, scope, output location, and
   success boundary;
 - explicit business constraints, approval boundaries, and permitted actions;
+- human tools named in the step's config: human tools are not baseline any more. If the
+  step sends email, posts to Slack, or asks a person for a decision (read the
+  description, items and scripts for that), its `enabled_custom_tools` must name
+  `human_tools:send_email`, `human_tools:send_slack_message` or
+  `human_tools:create_human_input_request` as needed. Add the missing name with
+  `update_step_config` (keep the existing entries); this restores what the step
+  already did, it does not widen it. Do not add `human_feedback` for unattended
+  steps. Prefer the config over relying on the description's wording;
 - WHAT in the description; reusable HOW in real, accessible skills/learnings;
 - an appropriately light output contract in the schema or an authoritative
   reference, without repeated field lists or checks on harmless variation;
