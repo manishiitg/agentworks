@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/picli"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -316,5 +317,28 @@ func TestProfileModelsAreLimitedToTheAccountsAllowedModels(t *testing.T) {
 	}
 	if len(profile.Runtime.ProviderOptions[0].Models) != 0 {
 		t.Fatal("the shared profile was edited")
+	}
+}
+
+// The model pickers list the provider manifest's catalog: with the shared account limited to one model a member's
+// manifest carries just that model for the provider (2026-10-15: eight Pi models were listed), other providers are
+// untouched, and the shared metadata entries are not edited.
+func TestManifestModelsAreLimitedToTheAccountsAllowedModels(t *testing.T) {
+	env := newProviderAccountsEnv(t, "")
+	t.Setenv("CODEX_API_KEY", "server-codex-key")
+	if code := patchAllowed(env, t, "admin", "global:codex-cli", []string{"gpt-5.3-codex"}); code != http.StatusNoContent {
+		t.Fatalf("admin restriction: %d", code)
+	}
+	shared := []*llmtypes.ModelMetadata{{Provider: "codex-cli", ModelID: "gpt-5.3-codex"}, {Provider: "codex-cli", ModelID: "gpt-5.5"}}
+	entries := []providerManifestEntry{
+		{ID: "codex-cli", Models: shared},
+		{ID: "claude-code", Models: []*llmtypes.ModelMetadata{{Provider: "claude-code", ModelID: "sonnet"}}},
+	}
+	got := limitManifestModelsToAccount(sharedSecretsRequest(http.MethodGet, "/api/llm-config/providers", "bob", nil), entries)
+	if len(got[0].Models) != 1 || got[0].Models[0].ModelID != "gpt-5.3-codex" || len(got[1].Models) != 1 {
+		t.Fatalf("manifest models = %+v / %+v, want codex narrowed to its allowed model and claude untouched", got[0].Models, got[1].Models)
+	}
+	if len(shared) != 2 {
+		t.Fatal("the shared metadata slice was edited")
 	}
 }

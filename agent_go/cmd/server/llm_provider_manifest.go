@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os/exec"
 	"path/filepath"
@@ -437,6 +438,8 @@ func (api *StreamingAPI) handleGetProviderManifest(w http.ResponseWriter, r *htt
 		}
 		entries = append(entries, entry)
 	}
+
+	entries = limitManifestModelsToAccount(r, entries)
 
 	resp := providerManifestResponse{
 		Providers: entries,
@@ -1214,4 +1217,41 @@ func piCuratedModelIDs() []string {
 		}
 	}
 	return ids
+}
+
+// limitManifestModelsToAccount narrows each provider's model catalog in the manifest to the models the person's
+// account allows: the Code and Crew model pickers list the catalog, so a shared account limited to one model otherwise
+// still showed every model of the provider while the server ran the allowed one (2026-10-15: eight Pi models). A
+// provider with no list, or where the person has their own account, keeps its whole catalog. An allowed model the
+// catalog does not list is added with its id as its name. The metadata entries are shared: only the slice is new.
+func limitManifestModelsToAccount(r *http.Request, entries []providerManifestEntry) []providerManifestEntry {
+	person := GetUserIDFromContext(r.Context())
+	ctx := withModelLimitPerson(r.Context(), person)
+	own := personOwnProviders(ctx, person)
+	for i := range entries {
+		provider := entries[i].ID
+		if provider == "" || own[provider] {
+			continue
+		}
+		allowed, _, err := accountAllowedModels(ctx, provider, "")
+		if err != nil || len(allowed) == 0 {
+			continue
+		}
+		models := make([]*llmtypes.ModelMetadata, 0, len(allowed))
+		seen := map[string]bool{}
+		for _, model := range entries[i].Models {
+			if model != nil && modelAllowed(allowed, model.ModelID) {
+				models = append(models, model)
+				seen[strings.ToLower(strings.TrimSpace(model.ModelID))] = true
+			}
+		}
+		for _, id := range allowed {
+			if !seen[strings.ToLower(strings.TrimSpace(id))] {
+				models = append(models, &llmtypes.ModelMetadata{Provider: provider, ModelID: id, ModelName: id})
+			}
+		}
+		entries[i].Models = models
+		log.Printf("[MODEL_LIMIT] manifest person=%s provider=%s limited to %d model(s)", person, provider, len(models))
+	}
+	return entries
 }
