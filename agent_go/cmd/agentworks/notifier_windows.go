@@ -63,3 +63,12 @@ func notifyWithIcon(text string) error {
 	c.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: windows.CREATE_NO_WINDOW}
 	return c.Run()
 }
+
+// removeNotifierApp: there is no notifier app outside macOS.
+func removeNotifierApp() (string, error) {
+	return "AgentWorks adds no notifier app on this system; nothing to remove.", nil
+}
+
+func restoreNotifierApp() (string, error) {
+	return "AgentWorks adds no notifier app on this system.", nil
+}

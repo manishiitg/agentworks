@@ -40,8 +40,29 @@ func notifierApp() (string, error) {
 	return filepath.Join(home, "Applications", "AgentWorks.app"), nil
 }
 
-// ensureNotifierApp builds the app once (or after an update of it).
-func ensureNotifierApp(ctx context.Context) (string, error) {
+// notifierAddedNote is shown once, as the first notification after the app is created.
+const notifierAddedNote = "AgentWorks added a small notifier app so its notifications show its icon. Remove it any time by deleting ~/Applications/AgentWorks.app, or with agentworks setup notifications --remove."
+
+// ensureNotifierApp builds the app once (or after an update of it); created
+// reports a fresh build, so the person can be told once.
+func ensureNotifierApp(ctx context.Context) (app string, created bool, err error) {
+	app, err = buildNotifierApp(ctx)
+	return app, err == nil && notifierFresh, err
+}
+
+var notifierFresh bool
+
+// notifierOff is the person's choice to not have the app (setup notifications --remove).
+func notifierOff() string {
+	cache, _ := os.UserCacheDir()
+	return filepath.Join(cache, "agentworks", "notifier-off")
+}
+
+func buildNotifierApp(ctx context.Context) (string, error) {
+	notifierFresh = false
+	if _, err := os.Stat(notifierOff()); err == nil {
+		return "", errors.New("notifier app turned off")
+	}
 	app, err := notifierApp()
 	if err != nil {
 		return "", err
@@ -95,6 +116,7 @@ func ensureNotifierApp(ctx context.Context) (string, error) {
 		return "", err
 	}
 	_ = run("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister", "-f", app)
+	notifierFresh = true
 	return app, nil
 }
 
@@ -104,10 +126,19 @@ func notifyWithIcon(text string) error {
 	defer notifierMu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	app, err := ensureNotifierApp(ctx)
+	app, created, err := ensureNotifierApp(ctx)
 	if err != nil {
 		return err
 	}
+	if created {
+		_ = showNotification(app, notifierAddedNote)
+	}
+	return showNotification(app, text)
+}
+
+// showNotification hands one text to the app as data (never as script) and
+// removes it again once shown, so the last message does not stay in the cache.
+func showNotification(app, text string) error {
 	cache, err := os.UserCacheDir()
 	if err != nil {
 		return err
@@ -116,10 +147,34 @@ func notifyWithIcon(text string) error {
 	if err = os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	if err = os.WriteFile(filepath.Join(dir, "notify.txt"), []byte(text), 0o600); err != nil {
+	note := filepath.Join(dir, "notify.txt")
+	if err = os.WriteFile(note, []byte(text), 0o600); err != nil {
 		return err
 	}
+	defer os.Remove(note)
 	show, cancelShow := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelShow()
 	return exec.CommandContext(show, filepath.Join(app, "Contents", "MacOS", "applet")).Run()
+}
+
+// removeNotifierApp deletes the notifier app (agentworks setup notifications --remove).
+func removeNotifierApp() (string, error) {
+	app, err := notifierApp()
+	if err != nil {
+		return "", err
+	}
+	_ = os.MkdirAll(filepath.Dir(notifierOff()), 0o700)
+	if err = os.WriteFile(notifierOff(), []byte("off\n"), 0o600); err != nil {
+		return "", err
+	}
+	if err = os.RemoveAll(app); err != nil {
+		return "", err
+	}
+	return "Removed " + app + " and will not add it again. AgentWorks notifications now use the plain macOS style. To get the icon back: agentworks setup notifications.", nil
+}
+
+// restoreNotifierApp lets the CLI add the app again (agentworks setup notifications).
+func restoreNotifierApp() (string, error) {
+	_ = os.Remove(notifierOff())
+	return "AgentWorks will add its small notifier app the next time it notifies you, so notifications show its icon.", nil
 }

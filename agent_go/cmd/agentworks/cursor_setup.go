@@ -55,6 +55,21 @@ func setupCommand(o *options) *cobra.Command {
 		}
 		return nil
 	}})
+	var remove bool
+	notifications := &cobra.Command{Use: "notifications", Args: cobra.NoArgs, Short: "Manage the small AgentWorks app that shows notifications with the AgentWorks icon (macOS)", RunE: func(cmd *cobra.Command, _ []string) error {
+		pick := restoreNotifierApp
+		if remove {
+			pick = removeNotifierApp
+		}
+		line, err := pick()
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintln(o.stdout, line)
+		return err
+	}}
+	notifications.Flags().BoolVar(&remove, "remove", false, "Delete the AgentWorks notifier app")
+	cmd.AddCommand(notifications)
 	for _, app := range []struct{ provider, name, what, next, undo string }{
 		{"claude", "Claude Code", "the AgentWorks plugin (agentworks@agentworks) for your user in Claude Code (~/.claude)", "Restart Claude Code, then type /agentworks attach (or /agentworks attach NAME) in a chat.", "claude plugin uninstall agentworks@agentworks --scope user"},
 		{"codex", "Codex", "the AgentWorks plugin (agentworks-codex@agentworks) in your Codex profile (~/.codex), used by the Codex app and the Codex CLI", "In the Codex app, open Settings > Hooks and trust the AgentWorks hooks, then reload. In any Codex chat type /agentworks attach (or /agentworks attach NAME).", "codex plugin remove agentworks-codex@agentworks"},
