@@ -56,6 +56,19 @@ type LocalBridgeRequest struct {
 	Target           string `json:"target,omitempty"`
 	InboxID          string `json:"inbox_id,omitempty"`
 	Cursor           int    `json:"after,omitempty"`
+	// Also adds this chat to another network (the saved login in ConfigPath) next to
+	// its own; Network picks one of those extra networks (detach --from, read).
+	Also    bool   `json:"also,omitempty"`
+	Network string `json:"network,omitempty"`
+}
+
+// LocalNetworkState is one extra network a chat has joined with --also.
+type LocalNetworkState struct {
+	Network    string `json:"network"`
+	AgentName  string `json:"agent_name"`
+	Online     bool   `json:"online"`
+	ConfigPath string `json:"config_path"`
+	LastError  string `json:"last_error,omitempty"`
 }
 
 type LocalAgentState struct {
@@ -69,6 +82,7 @@ type LocalAgentState struct {
 	Pending      int    `json:"pending"`
 	LastDelivery string `json:"last_delivery,omitempty"`
 	LastError    string `json:"last_error,omitempty"`
+	Network      string `json:"network,omitempty"`
 }
 
 type LocalAgentDirectory struct {
@@ -103,6 +117,8 @@ type LocalBridgeReply struct {
 	HeldReasons        map[string]int `json:"held_reasons,omitempty"`
 	previousGuidanceAt time.Time
 	guidanceAt         time.Time
+	Networks           []LocalNetworkState `json:"networks,omitempty"`
+	OwnServer          string              `json:"own_server,omitempty"`
 }
 
 type localOffer struct {
@@ -124,10 +140,14 @@ type localOffer struct {
 }
 
 type localSession struct {
-	lateNotice        string // set when an attach finished after its command had given up; said once on the next prompt
-	museWatch         *museWatchState
-	OfflineExplicit   bool                  `json:"offline_explicit,omitempty"`
-	OwnCLI            bool                  `json:"own_cli,omitempty"`
+	lateNotice      string // set when an attach finished after its command had given up; said once on the next prompt
+	museWatch       *museWatchState
+	OfflineExplicit bool `json:"offline_explicit,omitempty"`
+	OwnCLI          bool `json:"own_cli,omitempty"`
+	// Also marks an extra network this chat joined next to its own (--also);
+	// Network is that login's name. The chat's own attachment has neither.
+	Also              bool                  `json:"also,omitempty"`
+	Network           string                `json:"network,omitempty"`
 	MissingHostNotice bool                  `json:"missing_host_notice,omitempty"`
 	SetupPending      bool                  `json:"setup_pending,omitempty"`
 	AccountSenders    bool                  `json:"account_senders,omitempty"`
@@ -244,6 +264,38 @@ func localDifferentNetwork(a, b string) bool {
 }
 
 func localBridgeKey(provider, session string) string { return provider + ":" + session }
+
+// localAlsoKey is the key of an extra network the chat joined with --also.
+func localAlsoKey(primary, configPath string) string { return primary + "|" + configPath }
+
+// localNetworkName is the person's name for a saved login (its file name).
+func localNetworkName(configPath string) string {
+	return strings.TrimSuffix(filepath.Base(configPath), ".json")
+}
+
+// extrasOf returns the extra networks of the chat whose own key is primary, in a stable order.
+func (b *localBridge) extrasOf(primary string) []*localSession {
+	var keys []string
+	for k, v := range b.sessions {
+		if v.Also && strings.HasPrefix(k, primary+"|") {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	out := make([]*localSession, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, b.sessions[k])
+	}
+	return out
+}
+
+func (b *localBridge) networkStates(primary string) []LocalNetworkState {
+	var out []LocalNetworkState
+	for _, x := range b.extrasOf(primary) {
+		out = append(out, LocalNetworkState{Network: x.Network, AgentName: x.Attachment.AgentName, Online: !x.Offline && x.client != nil, ConfigPath: x.ParentConfigPath, LastError: x.LastError})
+	}
+	return out
+}
 
 // CallLocalBridge uses only the private local socket; it never signs in or
 // starts a listener. In particular an unattached hook cannot contact the server.
@@ -672,6 +724,24 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		return LocalBridgeReply{Error: "local bridge stopping"}
 	}
 	key := localBridgeKey(in.Provider, in.SessionID)
+	primaryKey := key
+	if in.Also && in.Action == "attach" {
+		p := b.sessions[primaryKey]
+		if p == nil || p.Offline || p.client == nil {
+			return LocalBridgeReply{Error: "Connect this chat to its own network first (type /agentworks attach), then add another with --also."}
+		}
+		if in.ConfigPath == "" || in.ConfigPath == p.ParentConfigPath || !localDifferentNetwork(in.ConfigPath, p.ParentConfigPath) {
+			return LocalBridgeReply{Error: "That login is this chat's own network. Choose another saved login (agentworks logins)."}
+		}
+		if in.HostKey == "" || in.HostKey != p.HostKey {
+			return LocalBridgeReply{Error: "AgentWorks cannot tell which chat this is. Type the command in the chat itself."}
+		}
+		if in.AgentName == "" {
+			in.AgentName = p.Attachment.AgentName
+		}
+		in.SwitchConnection, in.ReuseIdentity, in.NativeRemote = false, false, ""
+		key = localAlsoKey(primaryKey, in.ConfigPath)
+	}
 	if in.Provider == "muse" && in.MuseCurrent && in.HostKey != "" && in.SessionID != "" {
 		if b.museCurrent == nil {
 			b.museCurrent = map[string]string{}
@@ -686,6 +756,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	s := b.sessions[key]
 	if in.SessionID == "" && in.HostKey != "" {
 		for k, v := range b.sessions {
+			if v.Also {
+				continue
+			}
 			if v.Attachment.Provider == in.Provider && v.HostKey == in.HostKey {
 				if s != nil {
 					return LocalBridgeReply{Error: "exact session ID required for a shared provider process"}
@@ -697,7 +770,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	if in.Action == "list" {
 		out := LocalBridgeReply{}
 		for _, session := range b.sessions {
-			state := LocalAgentState{AgentAttachment: session.Attachment, Online: !session.Offline, ServerClosed: session.ServerClosed, HostAlive: b.options.HostAlive != nil && hostAliveFrom(probed, session.Attachment.Provider, session.HostKey, b.options.HostAlive), Route: "hooks", LastError: session.LastError}
+			state := LocalAgentState{Network: session.Network, AgentAttachment: session.Attachment, Online: !session.Offline, ServerClosed: session.ServerClosed, HostAlive: b.options.HostAlive != nil && hostAliveFrom(probed, session.Attachment.Provider, session.HostKey, b.options.HostAlive), Route: "hooks", LastError: session.LastError}
 			if museWatchActive(session) {
 				state.Route = "muse_monitor"
 			}
@@ -1040,7 +1113,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 		}
 		var err error
-		next := &localSession{OwnCLI: in.OwnAttach, SetupPending: in.Setup, AccountSenders: true, Attachment: a, HostKey: in.HostKey, NativeRemote: in.NativeRemote, ConfigPath: connectionPath, ParentConfigPath: in.ConfigPath, Offers: map[string]localOffer{}, client: client}
+		next := &localSession{Also: in.Also, OwnCLI: in.OwnAttach && !in.Also, SetupPending: in.Setup && !in.Also, AccountSenders: true, Attachment: a, HostKey: in.HostKey, NativeRemote: in.NativeRemote, ConfigPath: connectionPath, ParentConfigPath: in.ConfigPath, Offers: map[string]localOffer{}, client: client}
 		if previous != nil && previous.Attachment.AgentID == a.AgentID {
 			next.Offers = previous.Offers
 			next.SeenThrough = previous.SeenThrough
@@ -1096,9 +1169,14 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				_ = os.Remove(v.ConfigPath)
 			}
 		}
+		if in.Also {
+			next.Network = localNetworkName(in.ConfigPath)
+			_ = b.save()
+			log.Printf("[BRIDGE] network=%s attach agent=%s chat=%s (extra network)", next.Network, a.AgentName, boundedMuseHint(in.SessionID))
+		}
 		b.start(serverCtx, next)
 		b.wake()
-		return LocalBridgeReply{Attached: true, Attachment: a, NativeDelivery: next.NativeRemote != "", Warning: warning}
+		return LocalBridgeReply{Attached: true, Attachment: a, NativeDelivery: next.NativeRemote != "", Warning: warning, Networks: b.networkStates(primaryKey)}
 	}
 	if s == nil {
 		return LocalBridgeReply{}
@@ -1178,6 +1256,10 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	if in.Action == "reply" && in.MessageID == "" && in.InboxID != "" {
 		in.Action = "reply_inbox"
 	}
+	if !s.Also {
+		out.Networks = b.networkStates(key)
+		out.OwnServer = s.client.baseURL
+	}
 	switch in.Action {
 	case "purpose":
 		snap := &localSession{Attachment: s.Attachment, client: s.client}
@@ -1218,13 +1300,59 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		// AgentWorks tool connection must be installed separately by the person.
 		// The server calls run without the bridge lock (a busy server can take many seconds);
 		// they need only this chat's identity and client, copied here.
-		s := &localSession{Attachment: s.Attachment, client: s.client}
+		via := b.networkFor(key, s, in)
+		if via == nil {
+			return LocalBridgeReply{Error: "This chat has not joined network " + in.Network + ". Add it with /agentworks attach --also " + in.Network + "."}
+		}
+		if via.Offline || via.client == nil {
+			return LocalBridgeReply{Error: "This chat's connection to network " + via.Network + " is offline. Type /agentworks attach --also " + via.Network + " to reconnect it."}
+		}
+		if via.Also && in.Action == "send" {
+			in.Target = networkTarget(in.Target, via.Network)
+		}
+		extras := []*localSession{}
+		if in.Action == "peers" {
+			for _, x := range b.extrasOf(key) {
+				if !x.Offline && x.client != nil {
+					extras = append(extras, &localSession{Attachment: x.Attachment, client: x.client, Network: x.Network})
+				}
+			}
+		}
+		network := via.Network
+		snap := &localSession{Attachment: via.Attachment, client: via.client}
 		var reply LocalBridgeReply
-		b.unlocked(func() { reply = b.mailboxCall(callCtx, s, in, out) })
+		b.unlocked(func() {
+			reply = b.mailboxCall(callCtx, snap, in, out)
+			for _, x := range extras {
+				raw, err := x.client.Call(callCtx, "messages", map[string]any{"action": "list_agents", "agent_name": x.Attachment.AgentName})
+				if err == nil {
+					reply.Directories = append(reply.Directories, LocalAgentDirectory{Server: x.Network, Agents: raw})
+				}
+			}
+		})
+		if network != "" && (in.Action == "send" || in.Action == "reply_inbox") {
+			log.Printf("[BRIDGE] network=%s %s agent=%s ok=%t", network, in.Action, via.Attachment.AgentName, reply.Error == "")
+		}
 		return reply
 	case "status":
 		return out
 	case "detach", "offline":
+		if !s.Also && in.Network != "" {
+			x := b.sessions[localAlsoKey(key, b.networkConfig(key, in.Network))]
+			if x == nil {
+				return LocalBridgeReply{Error: "This chat has not joined network " + in.Network + "."}
+			}
+			key, s = localAlsoKey(key, x.ParentConfigPath), x
+		} else if !s.Also {
+			// Leaving (or going offline) leaves every network the chat joined.
+			for _, x := range b.extrasOf(key) {
+				b.leaveNetwork(callCtx, localAlsoKey(key, x.ParentConfigPath), x, in.Action)
+			}
+		}
+		if s.Also {
+			b.leaveNetwork(callCtx, key, s, in.Action)
+			return LocalBridgeReply{}
+		}
 		if s.Offline && in.Action == "offline" {
 			return out
 		}
@@ -1316,7 +1444,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			// this Unix socket; all server reads remain persistent SSE.
 			wait := time.NewTimer(25 * time.Second)
 			defer wait.Stop()
-			for !localPending(s) && !s.SetupPending && b.sessions[key] == s && !b.closed {
+			for !localPending(s) && !b.extrasPending(key) && !s.SetupPending && b.sessions[key] == s && !b.closed {
 				changed := b.changed
 				away := b.release()
 				select {
@@ -1345,127 +1473,52 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 			return out
 		}
-		for _, m := range s.Offers {
-			if !m.Offered && !m.Suppressed || museRedelivery(s, m, in.Transport) {
-				out.Messages = append(out.Messages, m.AgentLiveMessage)
-			}
-		}
-		sort.Slice(out.Messages, func(i, j int) bool { return out.Messages[i].Sequence < out.Messages[j].Sequence })
-		if len(out.Messages) > 20 {
-			out.Messages = out.Messages[:20]
-		}
-		if len(out.Messages) == 0 {
-			return out
-		}
-		ids := []string{}
-		for _, m := range out.Messages {
-			ids = append(ids, m.MessageID)
-		}
-		raw, err := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": ids}, true)
+		taken, held, reasons, err := b.takeOffers(callCtx, s, in.Transport, 20)
 		if err != nil {
-			return LocalBridgeReply{Error: "attachment or messages no longer authorized"}
+			return LocalBridgeReply{Error: err.Error()}
 		}
-		var checked struct {
-			IDs         []string       `json:"message_ids"`
-			HeldReasons map[string]int `json:"held_reasons"`
-		}
-		if json.Unmarshal(raw, &checked) != nil {
-			return LocalBridgeReply{Error: "invalid pending validation"}
-		}
-		allowed := map[string]bool{}
-		for _, id := range checked.IDs {
-			allowed[id] = true
-		}
-		if len(allowed) < len(ids) {
-			// Try to release what the server left out once more before saying anything about it.
-			var left []string
-			for _, id := range ids {
-				if !allowed[id] {
-					left = append(left, id)
+		if !s.Also {
+			// Messages from the other networks this chat joined ride along, each labelled
+			// with its network; ack and reply find their way back by message ID.
+			for _, x := range b.extrasOf(key) {
+				if x.Offline || x.client == nil || len(taken) >= 20 {
+					continue
 				}
-			}
-			if raw2, e := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": left}, true); e == nil {
-				var again struct {
-					IDs         []string       `json:"message_ids"`
-					HeldReasons map[string]int `json:"held_reasons"`
+				more, xheld, _, xerr := b.takeOffers(callCtx, x, in.Transport, 20-len(taken))
+				if xerr != nil {
+					log.Printf("[BRIDGE] network=%s deliver failed: %v", x.Network, xerr)
+					continue
 				}
-				if json.Unmarshal(raw2, &again) == nil {
-					for _, id := range again.IDs {
-						allowed[id] = true
-					}
-					checked.HeldReasons = again.HeldReasons
+				for i := range more {
+					more[i].Network = x.Network
+					more[i].AttachmentID = s.Attachment.ID
 				}
+				if len(more) > 0 {
+					log.Printf("[BRIDGE] network=%s deliver count=%d chat=%s", x.Network, len(more), boundedMuseHint(s.Attachment.SessionID))
+				}
+				taken = append(taken, more...)
+				held += xheld
 			}
 		}
-		held := 0
-		previous := map[string]localOffer{}
-		filtered := []AgentLiveMessage{}
-		for _, m := range out.Messages {
-			previous[m.MessageID] = s.Offers[m.MessageID]
-			if allowed[m.MessageID] {
-				filtered = append(filtered, m)
-				if v := s.Offers[m.MessageID]; !v.DeniedAt.IsZero() {
-					v.DeniedAt = time.Time{}
-					s.Offers[m.MessageID] = v
-				}
-			} else {
-				v := s.Offers[m.MessageID]
-				if v.DeniedAt.IsZero() {
-					v.DeniedAt = time.Now().UTC()
-				}
-				if v.FirstDeniedAt.IsZero() {
-					v.FirstDeniedAt = v.DeniedAt
-				}
-				v.Denials++
-				held++
-				if time.Since(v.DeniedAt) > time.Hour {
-					v.Suppressed = true
-					v.Message = ""
-				}
-				s.Offers[m.MessageID] = v
-			}
-		}
-		out.Messages = filtered
-		out.Held = held
-		out.HeldReasons = checked.HeldReasons
-		if held > 0 {
-			var left []string
-			for _, m := range previous {
-				if !allowed[m.MessageID] {
-					left = append(left, m.MessageID)
-				}
-			}
-			sort.Strings(left)
-			log.Printf("[BRIDGE] the server left %d of %d pending messages out for lease %s (kept and retried): %s", held, len(ids), boundedMuseHint(s.Attachment.ID), strings.Join(left, ","))
-		}
-		previousGuidanceAt := s.LastGuidanceAt
-		out.previousGuidanceAt = previousGuidanceAt
+		out.Messages, out.Held, out.HeldReasons = taken, held, reasons
+		out.previousGuidanceAt = s.LastGuidanceAt
 		if in.Transport != "claude_channel" && len(out.Messages) > 0 && (s.LastGuidanceAt.IsZero() || time.Since(s.LastGuidanceAt) >= 24*time.Hour) {
 			out.IncludeGuidance = true
 			s.LastGuidanceAt = time.Now().UTC()
 			out.guidanceAt = s.LastGuidanceAt
+			_ = b.save()
 		}
-		for _, m := range out.Messages {
-			v := s.Offers[m.MessageID]
-			v.Offered = true
-			v.OfferedAt = time.Now()
-			if s.Attachment.Provider != "muse" {
-				v.Message = ""
-			}
-			v.Transport = in.Transport
-			s.Offers[m.MessageID] = v
-		}
-		if err := b.save(); err != nil {
-			for id, old := range previous {
-				s.Offers[id] = old
-			}
-			s.LastGuidanceAt = previousGuidanceAt
-
-			return LocalBridgeReply{Error: err.Error()}
-		}
-		b.acknowledgeStatusLines(s, out.Messages, in.Transport)
 		return out
 	case "ack", "reply":
+		if _, mine := s.Offers[in.MessageID]; !mine && !s.Also {
+			for _, x := range b.extrasOf(key) {
+				if _, there := x.Offers[in.MessageID]; there && x.client != nil {
+					log.Printf("[BRIDGE] network=%s %s message=%s", x.Network, in.Action, boundedMuseHint(in.MessageID))
+					key, s = localAlsoKey(key, x.ParentConfigPath), x
+					break
+				}
+			}
+		}
 		m, ok := s.Offers[in.MessageID]
 		if ok && !m.Offered {
 			// Seen only as a notice or in a read: the body is handed over by receive, and only then can it be acknowledged.
@@ -2077,4 +2130,214 @@ func (b *localBridge) acknowledgeStatusLines(s *localSession, messages []AgentLi
 			}
 		}
 	}()
+}
+
+// takeOffers hands over up to limit pending messages of one attachment: the
+// server confirms each is still deliverable, the rest are kept and retried, and
+// the handed-over ones are marked offered (restored if saving fails).
+func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, transport string, limit int) ([]AgentLiveMessage, int, map[string]int, error) {
+	var messages []AgentLiveMessage
+	for _, m := range s.Offers {
+		if !m.Offered && !m.Suppressed || museRedelivery(s, m, transport) {
+			messages = append(messages, m.AgentLiveMessage)
+		}
+	}
+	sort.Slice(messages, func(i, j int) bool { return messages[i].Sequence < messages[j].Sequence })
+	if len(messages) > limit {
+		messages = messages[:limit]
+	}
+	if len(messages) == 0 {
+		return nil, 0, nil, nil
+	}
+	ids := []string{}
+	for _, m := range messages {
+		ids = append(ids, m.MessageID)
+	}
+	raw, err := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": ids}, true)
+	if err != nil {
+		return nil, 0, nil, errors.New("attachment or messages no longer authorized")
+	}
+	var checked struct {
+		IDs         []string       `json:"message_ids"`
+		HeldReasons map[string]int `json:"held_reasons"`
+	}
+	if json.Unmarshal(raw, &checked) != nil {
+		return nil, 0, nil, errors.New("invalid pending validation")
+	}
+	allowed := map[string]bool{}
+	for _, id := range checked.IDs {
+		allowed[id] = true
+	}
+	if len(allowed) < len(ids) {
+		// Try to release what the server left out once more before saying anything about it.
+		var left []string
+		for _, id := range ids {
+			if !allowed[id] {
+				left = append(left, id)
+			}
+		}
+		if raw2, e := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": left}, true); e == nil {
+			var again struct {
+				IDs         []string       `json:"message_ids"`
+				HeldReasons map[string]int `json:"held_reasons"`
+			}
+			if json.Unmarshal(raw2, &again) == nil {
+				for _, id := range again.IDs {
+					allowed[id] = true
+				}
+				checked.HeldReasons = again.HeldReasons
+			}
+		}
+	}
+	held := 0
+	previous := map[string]localOffer{}
+	filtered := []AgentLiveMessage{}
+	for _, m := range messages {
+		previous[m.MessageID] = s.Offers[m.MessageID]
+		if allowed[m.MessageID] {
+			filtered = append(filtered, m)
+			if v := s.Offers[m.MessageID]; !v.DeniedAt.IsZero() {
+				v.DeniedAt = time.Time{}
+				s.Offers[m.MessageID] = v
+			}
+		} else {
+			v := s.Offers[m.MessageID]
+			if v.DeniedAt.IsZero() {
+				v.DeniedAt = time.Now().UTC()
+			}
+			if v.FirstDeniedAt.IsZero() {
+				v.FirstDeniedAt = v.DeniedAt
+			}
+			v.Denials++
+			held++
+			if time.Since(v.DeniedAt) > time.Hour {
+				v.Suppressed = true
+				v.Message = ""
+			}
+			s.Offers[m.MessageID] = v
+		}
+	}
+	if held > 0 {
+		var left []string
+		for _, m := range previous {
+			if !allowed[m.MessageID] {
+				left = append(left, m.MessageID)
+			}
+		}
+		sort.Strings(left)
+		log.Printf("[BRIDGE] the server left %d of %d pending messages out for lease %s (kept and retried): %s", held, len(ids), boundedMuseHint(s.Attachment.ID), strings.Join(left, ","))
+	}
+	for _, m := range filtered {
+		v := s.Offers[m.MessageID]
+		v.Offered = true
+		v.OfferedAt = time.Now()
+		if s.Attachment.Provider != "muse" {
+			v.Message = ""
+		}
+		v.Transport = transport
+		s.Offers[m.MessageID] = v
+	}
+	if err := b.save(); err != nil {
+		for id, old := range previous {
+			s.Offers[id] = old
+		}
+		return nil, 0, nil, err
+	}
+	b.acknowledgeStatusLines(s, filtered, transport)
+	return filtered, held, checked.HeldReasons, nil
+}
+
+// extrasPending is whether any network the chat joined with --also has a message waiting.
+func (b *localBridge) extrasPending(primary string) bool {
+	for _, x := range b.extrasOf(primary) {
+		if !x.Offline && localPending(x) {
+			return true
+		}
+	}
+	return false
+}
+
+// networkFor picks the attachment a mailbox action uses: an explicit network,
+// a target written NAME@NETWORK, or an inbox that came from a joined network.
+// A bare name always stays on the chat's own network.
+func (b *localBridge) networkFor(primary string, s *localSession, in LocalBridgeRequest) *localSession {
+	if s.Also {
+		return s
+	}
+	pick := func(network string) *localSession {
+		for _, x := range b.extrasOf(primary) {
+			if x.Network == network {
+				return x
+			}
+		}
+		return nil
+	}
+	if in.Network != "" {
+		return pick(in.Network)
+	}
+	if in.Action == "send" {
+		if at := strings.LastIndex(in.Target, "@"); at > 0 {
+			if x := pick(in.Target[at+1:]); x != nil {
+				return x
+			}
+		}
+	}
+	if in.Action == "reply_inbox" && in.InboxID != "" {
+		for _, x := range b.extrasOf(primary) {
+			for _, m := range x.Offers {
+				if m.InboxID == in.InboxID {
+					return x
+				}
+			}
+		}
+	}
+	return s
+}
+
+func (b *localBridge) networkConfig(primary, network string) string {
+	for _, x := range b.extrasOf(primary) {
+		if x.Network == network {
+			return x.ParentConfigPath
+		}
+	}
+	return ""
+}
+
+// leaveNetwork detaches (or takes offline) one extra network of a chat.
+func (b *localBridge) leaveNetwork(callCtx context.Context, key string, x *localSession, action string) {
+	if !x.Offline && x.client != nil {
+		known, att := x.client, x.Attachment
+		b.unlocked(func() {
+			_, _ = known.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "detach", "agent_name": att.AgentName, "attachment_id": att.ID}, true)
+		})
+	}
+	if b.sessions[key] != x {
+		return
+	}
+	stopMuseWatch(x)
+	if x.cancel != nil {
+		x.cancel()
+	}
+	if action == "offline" {
+		x.Offline, x.OfflineExplicit = true, true
+	} else {
+		delete(b.sessions, key)
+		if cfg, e := LoadConfig(x.ConfigPath); e == nil && x.client != nil {
+			known := x.client
+			b.unlocked(func() { _ = known.RevokeOAuth(callCtx, cfg.RefreshToken) })
+		}
+		_ = os.Remove(x.ConfigPath)
+	}
+	_ = b.save()
+	b.wake()
+	log.Printf("[BRIDGE] network=%s %s agent=%s", x.Network, action, x.Attachment.AgentName)
+}
+
+// networkTarget is the agent name to send on a joined network: NAME@NETWORK
+// becomes NAME there; anything else is left as written.
+func networkTarget(target, network string) string {
+	if at := strings.LastIndex(target, "@"); at > 0 && target[at+1:] == network {
+		return target[:at]
+	}
+	return target
 }

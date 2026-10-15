@@ -41,6 +41,9 @@ type AgentLiveMessage struct {
 	// as a plain status, needs no reply, and is acknowledged by the bridge. SentAt is when the sender sent the message.
 	Kind   string `json:"kind,omitempty"`
 	SentAt string `json:"sent_at,omitempty"`
+	// Network is set (by the local bridge) on a message that came from another
+	// network the chat joined with --also; empty means the chat's own network.
+	Network string `json:"network,omitempty"`
 }
 
 type AgentAttachmentOptions struct {

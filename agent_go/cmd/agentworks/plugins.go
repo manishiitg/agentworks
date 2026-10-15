@@ -138,20 +138,22 @@ func pluginCommand(o *options) *cobra.Command {
 			detachedName := ""
 			switch req.Action {
 			case "attach":
-				// Strict grammar: attach [NAME] [--on LOGIN]; nothing else.
-				rest, on := words[2:], ""
-				if n := len(rest); n >= 2 && rest[n-2] == "--on" {
-					on, rest = rest[n-1], rest[:n-2]
-				}
-				if len(rest) > 1 || len(rest) == 1 && strings.HasPrefix(rest[0], "--") || on != "" && strings.HasPrefix(on, "--") {
-					return pluginBlock(o, "Use /agentworks attach [NAME] [--on LOGIN]. No confirmation or resume command is needed.")
+				// Strict grammar: attach [NAME] [--on LOGIN | --also LOGIN]; nothing else.
+				name, on, also, ok := attachWords(words[2:])
+				if !ok {
+					return pluginBlock(o, "Use /agentworks attach [NAME] [--on LOGIN] or /agentworks attach [NAME] --also LOGIN. No confirmation or resume command is needed.")
 				}
 				if req.HostKey == "" {
 					return pluginBlock(o, "AgentWorks cannot tell which chat this is. Run agentworks attach in your terminal and choose the chat.")
 				}
-				if len(rest) == 1 {
-					req.AgentName = rest[0]
+				if also != "" {
+					line, e := joinNetwork(ctx, root, o, req, also, name)
+					if e != nil {
+						return pluginBlock(o, e.Error())
+					}
+					return pluginBlock(o, line)
 				}
+				req.AgentName = name
 				if on != "" {
 					path, e := o.loginPath(on)
 					if e != nil {
@@ -174,8 +176,15 @@ func pluginCommand(o *options) *cobra.Command {
 				}
 				return pluginBlock(o, groupResultText(done.Result))
 			case "detach", "agents":
+				if len(words) == 4 && words[1] == "detach" && words[2] == "--from" {
+					req.Network = words[3]
+					if _, e := bridgeCall(ctx, root, o, req); e != nil {
+						return pluginBlock(o, e.Error())
+					}
+					return pluginBlock(o, "This chat left network "+words[3]+". It stays connected to its own network.")
+				}
 				if len(words) != 2 {
-					return pluginBlock(o, "detach and agents take no arguments")
+					return pluginBlock(o, "Use /agentworks detach, /agentworks detach --from LOGIN, or /agentworks agents.")
 				}
 				if req.Action == "agents" {
 					return pluginAgents(ctx, root, o, req)
@@ -1078,5 +1087,6 @@ func reconnectOffline(ctx context.Context, root string, req agentworksclient.Loc
 	if reply, e := agentworksclient.CallLocalBridge(ctx, root, resume); e != nil || !reply.Attached {
 		return "This chat could not reconnect by itself. Type /agentworks attach in it, then try again."
 	}
+	rejoinNetworks(ctx, root, req)
 	return ""
 }

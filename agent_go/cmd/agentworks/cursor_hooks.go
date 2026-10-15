@@ -179,17 +179,19 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 		defer cancel()
 		detachedName := ""
 		if req.Action == "attach" {
-			// attach [NAME] [--on LOGIN]; nothing else.
-			rest, on := words[2:], ""
-			if n := len(rest); n >= 2 && rest[n-2] == "--on" {
-				on, rest = rest[n-1], rest[:n-2]
-			}
-			if len(rest) > 1 || len(rest) == 1 && strings.HasPrefix(rest[0], "--") || strings.HasPrefix(on, "--") {
+			// attach [NAME] [--on LOGIN | --also LOGIN]; nothing else.
+			name, on, also, ok := attachWords(words[2:])
+			if !ok {
 				return cursorBlock(o, personCommandHelp)
 			}
-			if len(rest) == 1 {
-				req.AgentName = rest[0]
+			if also != "" {
+				line, e := joinNetwork(ctx, root, o, req, also, name)
+				if e != nil {
+					return cursorBlock(o, e.Error())
+				}
+				return cursorBlock(o, line)
 			}
+			req.AgentName = name
 			if on != "" {
 				path, e := o.loginPath(on)
 				if e != nil {
@@ -225,6 +227,13 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 					return cursorBlock(o, msg)
 				}
 			}
+			if len(words) == 4 && req.Action == "detach" && words[2] == "--from" {
+				req.Network = words[3]
+				if _, e := bridgeCall(ctx, root, o, req); e != nil {
+					return cursorBlock(o, e.Error())
+				}
+				return cursorBlock(o, "This chat left network "+words[3]+". It stays connected to its own network.")
+			}
 			if len(words) != 2 || req.Action != "detach" && req.Action != "agents" && req.Action != "status" {
 				return cursorBlock(o, personCommandHelp)
 			}
@@ -253,7 +262,7 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 			return cursorBlock(o, "AgentWorks did not confirm this exact Cursor attachment.")
 		}
 		if req.Action == "peers" {
-			return cursorBlock(o, "AgentWorks agents:\n"+agentRoster(out.Result, agentworksclient.LocalBridgeReply{}))
+			return cursorBlock(o, "AgentWorks agents:\n"+agentRoster(out.Result, agentworksclient.LocalBridgeReply{})+networkRosters(out, agentworksclient.LocalBridgeReply{}))
 		}
 		return cursorBlock(o, strings.TrimSpace("Handled by AgentWorks. "+pluginAttachmentStatus(out)+" "+o.reconnectNote+o.newAgentWhy))
 	}

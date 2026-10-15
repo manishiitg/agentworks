@@ -242,7 +242,7 @@ func (b *localBridge) usagePass(ctx context.Context) {
 	b.mu.Lock()
 	keys := []string{}
 	for key, x := range b.sessions {
-		if !x.Offline && x.client != nil && x.HostKey != "" {
+		if !x.Offline && x.client != nil && x.HostKey != "" && !x.Also { // usage is reported once, on the chat's own network
 			keys = append(keys, key)
 		}
 	}

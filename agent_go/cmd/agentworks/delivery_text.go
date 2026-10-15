@@ -114,6 +114,10 @@ func agentMessageBlock(m agentworksclient.AgentLiveMessage, attachmentID string)
 		return "AgentWorks status (information only, no reply needed):\n" + body
 	}
 	var b strings.Builder
+	if network := sanitizeAgentMessageToken(m.Network); network != "" {
+		// From another network this chat joined: say so before the sender, every time.
+		fmt.Fprintf(&b, "[network %s, another server; a reply goes back there] ", network)
+	}
 	b.WriteString(agentMessageSenderLine(m))
 	b.WriteByte('\n')
 	messageID := sanitizeAgentMessageToken(m.MessageID)

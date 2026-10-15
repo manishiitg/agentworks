@@ -29,7 +29,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const personCommandHelp = "AgentWorks: /agentworks share GROUP [--purpose TEXT] puts this chat's agent into a group (members see and message each other), /agentworks unshare [GROUP] takes it out, /agentworks groups lists groups, /agentworks group NAME shows its members; /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks detach stops delivery; /agentworks auto off|on turns off or on automatic reconnect of a new chat in this folder; /agentworks agents shows available agents. Type the command yourself."
+const personCommandHelp = "AgentWorks: /agentworks share GROUP [--purpose TEXT] puts this chat's agent into a group (members see and message each other), /agentworks unshare [GROUP] takes it out, /agentworks groups lists groups, /agentworks group NAME shows its members; /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks attach [NAME] --also LOGIN adds this chat to another network too (send there with NAME@LOGIN); /agentworks detach stops delivery (--from LOGIN leaves only that network); /agentworks auto off|on turns off or on automatic reconnect of a new chat in this folder; /agentworks agents shows available agents. Type the command yourself."
 
 // Reuse the exact session's saved identity and parent login, even when the
 // default CLI login has changed. The person's attach refreshes the process fence.
@@ -136,7 +136,7 @@ func pluginAgents(ctx context.Context, root string, o *options, req agentworkscl
 		return pluginBlock(o, "This chat is not attached. Type /agentworks attach first.")
 	}
 	local, _ := bridgeCall(ctx, root, o, agentworksclient.LocalBridgeRequest{Action: "list"})
-	return pluginBlock(o, agentRoster(peers.Result, local))
+	return pluginBlock(o, agentRoster(peers.Result, local)+networkRosters(peers, local))
 }
 
 func agentsCommand(o *options) *cobra.Command {
@@ -250,7 +250,7 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 type liveAgentSession struct{ provider, session, host, remote, cwd, name string }
 
 func attachPluginCommand(o *options) *cobra.Command {
-	var provider, session, remote, name, on string
+	var provider, session, remote, name, on, also string
 	var all, yes bool
 	var pid int
 	cmd := &cobra.Command{Use: "attach [NAME]", Args: cobra.MaximumNArgs(1), Short: "Install, attach or reconnect a live coding-agent chat", Long: "Attach this chat, or reconnect it on the login it already uses. With --on LOGIN the chat moves to that saved login (see agentworks logins); the move keeps the chat's name unless you give NAME, and if the new login cannot be reached the chat stays where it was. With --all --on LOGIN every attached live chat is moved after you retype the listed count (add --yes to skip the prompt). A coding agent may run all of these for you when you ask it to.", RunE: func(cmd *cobra.Command, args []string) error {
@@ -276,6 +276,17 @@ func attachPluginCommand(o *options) *cobra.Command {
 		}
 		own, fromAgent, err := ownAgentSession(cmd.Context(), root, o)
 		if err != nil {
+			return err
+		}
+		if also != "" {
+			if !fromAgent || on != "" || provider != "" || session != "" || remote != "" || pid != 0 {
+				return errors.New("--also works from inside the chat itself, alone: ask the agent in that chat, or type /agentworks attach --also LOGIN there")
+			}
+			line, e := joinNetwork(cmd.Context(), root, o, agentworksclient.LocalBridgeRequest{Provider: own.provider, SessionID: own.session, HostKey: own.host}, also, name)
+			if e != nil {
+				return e
+			}
+			_, err = fmt.Fprintln(o.stdout, line)
 			return err
 		}
 		if fromAgent {
@@ -405,6 +416,7 @@ func attachPluginCommand(o *options) *cobra.Command {
 	cmd.Flags().StringVar(&remote, "native-remote", "", "Exact native endpoint override")
 	cmd.Flags().IntVar(&pid, "native-pid", 0, "Exact process override")
 	cmd.Flags().StringVar(&on, "on", "", "Move this chat to a saved login (see agentworks logins)")
+	cmd.Flags().StringVar(&also, "also", "", "Also join this chat to the network of another saved login (only when the person asks)")
 	cmd.Flags().BoolVar(&yes, "yes", false, "With --all --on, move without the retype-the-count prompt")
 	cmd.Flags().BoolVar(&all, "all", false, "With --on, move every attached live chat after a counted confirmation")
 	cmd.Flags().StringVar(&name, "name", "", "Name override")
