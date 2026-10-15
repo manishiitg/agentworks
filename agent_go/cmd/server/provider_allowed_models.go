@@ -366,43 +366,46 @@ func checkKnownModels(provider string, models []string) error {
 	return nil
 }
 
-// personHasOwnProviderConnection reports whether the person has an account of their own for the provider: their own
+// personOwnProviders lists the providers the person has an account of their own for, read once per request: their own
 // account's model list is its own, so the shared account's list does not narrow what they are offered.
-func personHasOwnProviderConnection(ctx context.Context, person, provider string) bool {
+func personOwnProviders(ctx context.Context, person string) map[string]bool {
+	own := map[string]bool{}
 	if strings.TrimSpace(person) == "" {
-		return false
+		return own
 	}
 	providerConnectionsMu.Lock()
 	records, err := loadProviderConnections(ctx)
 	providerConnectionsMu.Unlock()
 	if err != nil {
-		return false
+		return own
 	}
 	for _, record := range records {
-		if !record.Removed && record.OwnerUserID == person && record.Provider == provider {
-			return true
+		if !record.Removed && record.OwnerUserID == person {
+			own[record.Provider] = true
 		}
 	}
-	return false
+	return own
 }
 
-// limitProfileModelsToAccount narrows each engine of a product profile to the models the person's account allows, in
-// the profile's own Models field (the composer's model switcher and the server's accepted model_id): when the shared
-// server account has an allowed-model list, an engine offers just those models (the server already runs a disallowed
-// choice on the first allowed model, so offering the rest picked a model that never ran). An engine that curates its
-// own Models keeps the ones the account allows; a person with their own account for the provider keeps the profile as
-// is. The registry's profile is shared: the options are copied, never edited.
+// limitProfileModelsToAccount narrows each engine of the profile a person reads to the models their account allows, in
+// the profile's Models field (what the composer's model switcher offers): when the shared server account has an
+// allowed-model list, an engine offers just those models (the server already runs a disallowed choice on the first
+// allowed model, so offering the rest picked a model that never ran). This copy only changes the response, the
+// picker's choices: the server enforces the allowed list separately, against its own registry profile. An engine that
+// curates its own Models keeps the ones the account allows; a person with their own account for the provider keeps
+// the profile as is. The registry's profile is shared: the options are copied, never edited.
 func limitProfileModelsToAccount(ctx context.Context, person string, profile agentprofiles.Profile) agentprofiles.Profile {
 	if len(profile.Runtime.ProviderOptions) == 0 {
 		return profile
 	}
 	ctx = withModelLimitPerson(ctx, person)
+	own := personOwnProviders(ctx, person)
 	options := make([]agentprofiles.ProviderOption, len(profile.Runtime.ProviderOptions))
 	copy(options, profile.Runtime.ProviderOptions)
 	changed := false
 	for i := range options {
 		provider := strings.TrimSpace(options[i].Provider)
-		if provider == "" || personHasOwnProviderConnection(ctx, person, provider) {
+		if provider == "" || own[provider] {
 			continue
 		}
 		allowed, _, err := accountAllowedModels(ctx, provider, "")

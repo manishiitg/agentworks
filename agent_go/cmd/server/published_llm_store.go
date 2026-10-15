@@ -503,11 +503,12 @@ func (api *StreamingAPI) handleLoadPublishedLLMs(w http.ResponseWriter, r *http.
 // no list, and one where the person has their own account, are never flagged.
 func markPublishedLLMsNotAllowed(ctx context.Context, person string, llms []StoredPublishedLLM) []StoredPublishedLLM {
 	ctx = withModelLimitPerson(ctx, person)
+	own := personOwnProviders(ctx, person)
 	allowedBy := map[string][]string{}
 	out := make([]StoredPublishedLLM, len(llms))
 	for i, llm := range llms {
 		out[i] = llm
-		if personHasOwnProviderConnection(ctx, person, llm.Provider) {
+		if own[llm.Provider] {
 			continue
 		}
 		allowed, known := allowedBy[llm.Provider]
