@@ -3451,6 +3451,9 @@ export interface GoogleServiceGrant {
 export interface GmailConnection {
   /** Server authorization to remove this account, independent of shared settings. */
   can_remove?: boolean
+  can_manage?: boolean
+  personal?: boolean
+  can_detach?: boolean
   id: string
   display_name: string
   email?: string
@@ -3481,6 +3484,7 @@ export interface GmailConnection {
 }
 
 export interface GmailConnectionsResponse {
+  can_add?: boolean
   connections: GmailConnection[]
   /** Empty means no default is set — sends that name no connection will fail. */
   default_connection_id?: string

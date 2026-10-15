@@ -147,3 +147,19 @@ scopes. `google_workspace_cli` (Drive/Sheets/Docs/Slides/Calendar) always
 uses `gog`, regardless of that setting.
 
 A provider login or billing email is not a Gmail connection or the signed-in AgentWorks user. The app login email also does not establish mailbox consent. Identify usable mailboxes through `list_gmail_connections` and verified scoped account checks. An empty list means no connected account; ask which account the user wants to connect without guessing from provider metadata.
+
+
+### Personal accounts and item selection
+
+A personal Google connection belongs to the person who signs in. They can add it
+explicitly to each workflow, Crew, Code project or Flow they build, including a
+workflow they edit. Use `manage_google_account`: `list_saved` finds their accounts,
+`connect` returns a Google sign-in link and adds the new account here, and `attach`
+adds a saved account. Tell them: anyone who can run or change this item can use
+this Google account through it. `detach` removes only this item's selection;
+`disconnect` removes the saved connection everywhere. Only the account owner or
+an administrator changes the saved account's Google access. Company accounts
+remain administrator-managed. An account listed as saved is not automatically
+available to a run; `list_gmail_connections` shows accounts available here.
+Never show passwords or tokens. If sign-in expires, name the account and ask its
+owner to reconnect in Google apps or use the returned reconnect link.

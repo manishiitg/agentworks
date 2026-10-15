@@ -324,6 +324,7 @@ chat:
       - trigger_schedule
       - uninstall_skill
       - update_step
+      - manage_google_account
       - update_gmail_connection_grants
       - manage_gmail_trigger
       - setup_gmail_inbound

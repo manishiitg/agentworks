@@ -121,19 +121,26 @@ type GmailConnection struct {
 	ScopeWorkspace string `json:"scope_workspace,omitempty"`
 	// OwnerID is the user who connected a private connection.
 	OwnerID string `json:"owner_id,omitempty"`
+	// Personal connections belong to a person and are selected explicitly by each item.
+	Personal   bool     `json:"personal,omitempty"`
+	Workspaces []string `json:"workspaces,omitempty"`
 
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }
 
 // IsPrivate reports a connection that belongs to one Code workspace.
-func (c GmailConnection) IsPrivate() bool { return strings.TrimSpace(c.ScopeWorkspace) != "" }
+func (c GmailConnection) IsPrivate() bool {
+	return c.Personal || strings.TrimSpace(c.ScopeWorkspace) != ""
+}
 
 // GmailUseScope is where a connection is about to be used: the Code
 // workspace of the session (empty outside a Code) and the acting user.
 type GmailUseScope struct {
 	CodeWorkspace string
-	UserID        string
+	// Workspace is the server-bound target, independent of the person running it.
+	Workspace string
+	UserID    string
 	// ReadOnly runs gog read-only whatever the connection grants (a Pulse Goal
 	// Work turn whose Outward permission is ask). It does not affect which
 	// connections are usable.
@@ -145,7 +152,22 @@ type GmailUseScope struct {
 // only outside a Code (a Code uses its own accounts only).
 func (c GmailConnection) UsableFrom(scope GmailUseScope) bool {
 	workspace := strings.Trim(strings.TrimSpace(scope.CodeWorkspace), "/")
+	if c.Personal {
+		target := strings.Trim(strings.TrimSpace(scope.Workspace), "/")
+		if target == "" {
+			target = workspace
+		}
+		for _, selected := range c.Workspaces {
+			if target != "" && selected == target {
+				return true
+			}
+		}
+		return false
+	}
 	if c.IsPrivate() {
+		if scope.Workspace != "" && scope.Workspace == strings.Trim(c.ScopeWorkspace, "/") {
+			return true
+		}
 		return workspace != "" && workspace == strings.Trim(c.ScopeWorkspace, "/") &&
 			strings.TrimSpace(scope.UserID) != "" && strings.TrimSpace(scope.UserID) == strings.TrimSpace(c.OwnerID)
 	}
@@ -175,10 +197,10 @@ func (g *GmailService) ConnectionForScope(id string, scope GmailUseScope) (Gmail
 		}
 		return conn, nil
 	}
-	if strings.TrimSpace(scope.CodeWorkspace) != "" {
+	if strings.TrimSpace(scope.CodeWorkspace) != "" || strings.TrimSpace(scope.Workspace) != "" {
 		var own []GmailConnection
 		for _, conn := range g.ConnectionsUsableFrom(scope) {
-			if conn.Enabled {
+			if conn.Enabled && (conn.IsPrivate() || scope.CodeWorkspace != "") {
 				own = append(own, conn)
 			}
 		}
@@ -186,9 +208,12 @@ func (g *GmailService) ConnectionForScope(id string, scope GmailUseScope) (Gmail
 		case 1:
 			return own[0], nil
 		case 0:
-			return GmailConnection{}, fmt.Errorf("this Code has no Google account of its own — its owner can connect one in the Code's Setup › Gmail")
+			if scope.CodeWorkspace == "" {
+				break
+			}
+			return GmailConnection{}, fmt.Errorf("No Google account is added here. Ask the Builder to add one in Google apps.")
 		default:
-			return GmailConnection{}, fmt.Errorf("this Code has several Google accounts; pass connection_id (list_gmail_connections shows them)")
+			return GmailConnection{}, fmt.Errorf("Several Google accounts are added here; choose one from list_gmail_connections and pass connection_id")
 		}
 	}
 	conn, ok := g.DefaultConnection()
@@ -204,6 +229,7 @@ func (c GmailConnection) Clone() GmailConnection {
 	out := c
 	out.Scopes = append([]string(nil), c.Scopes...)
 	out.Services = append([]GoogleServiceGrant(nil), c.Services...)
+	out.Workspaces = append([]string(nil), c.Workspaces...)
 	return out
 }
 
@@ -345,7 +371,7 @@ func normalizeGmailConnections(cfg *GmailConfig) {
 	if cfg.DefaultConnectionID != "" {
 		valid := false
 		for _, c := range cfg.Connections {
-			if c.ID == cfg.DefaultConnectionID && c.Enabled {
+			if c.ID == cfg.DefaultConnectionID && c.Enabled && !c.IsPrivate() {
 				valid = true
 				break
 			}
@@ -358,7 +384,7 @@ func normalizeGmailConnections(cfg *GmailConfig) {
 	if cfg.DefaultConnectionID == "" {
 		var enabled []string
 		for _, c := range cfg.Connections {
-			if c.Enabled {
+			if c.Enabled && !c.IsPrivate() {
 				enabled = append(enabled, c.ID)
 			}
 		}
@@ -453,6 +479,8 @@ type GmailConnectionInput struct {
 	// (create only; see GmailConnection.ScopeWorkspace).
 	ScopeWorkspace string
 	OwnerID        string
+	Personal       bool
+	Workspaces     []string
 }
 
 // CreateConnection registers a new sending identity and provisions its private
@@ -465,7 +493,7 @@ type GmailConnectionInput struct {
 // connection depends on (the shared client_secret.json failure mode this
 // registry replaces).
 func (g *GmailService) CreateConnection(ctx context.Context, in GmailConnectionInput) (GmailConnection, error) {
-	if strings.TrimSpace(in.ScopeWorkspace) != "" && pinsGmailCredentialPaths(in) {
+	if (in.Personal || strings.TrimSpace(in.ScopeWorkspace) != "") && pinsGmailCredentialPaths(in) {
 		return GmailConnection{}, ErrPrivateGmailCredentialPaths
 	}
 	name := strings.TrimSpace(in.DisplayName)
@@ -508,12 +536,17 @@ func (g *GmailService) CreateConnection(ctx context.Context, in GmailConnectionI
 		Enabled:               enabled,
 		ScopeWorkspace:        strings.Trim(strings.TrimSpace(in.ScopeWorkspace), "/"),
 		OwnerID:               strings.TrimSpace(in.OwnerID),
+		Personal:              in.Personal,
+		Workspaces:            append([]string(nil), in.Workspaces...),
 		CreatedAt:             now,
 		UpdatedAt:             now,
 	}
 	cfg.Connections = append(cfg.Connections, conn)
 	if err := g.SaveConfig(ctx, cfg); err != nil {
 		return GmailConnection{}, err
+	}
+	if conn.IsPrivate() {
+		log.Printf("[GOOGLE_ACCOUNTS] actor=%s connection=%s items=%v reason=connect_and_select", conn.OwnerID, conn.ID, conn.Workspaces)
 	}
 	return conn, nil
 }
@@ -522,7 +555,7 @@ func (g *GmailService) CreateConnection(ctx context.Context, in GmailConnectionI
 // names a gws config dir or key file: those are host paths, and pointing one
 // at a shared account's dir or key would send and read as that account.
 // A private connection signs in through OAuth into its own store only.
-var ErrPrivateGmailCredentialPaths = errors.New("a Code's Google account signs in with Google; it cannot use a config_home or credentials_file")
+var ErrPrivateGmailCredentialPaths = errors.New("A personal Google account signs in with Google; choose Sign in in Google apps.")
 
 func pinsGmailCredentialPaths(in GmailConnectionInput) bool {
 	return strings.TrimSpace(in.ConfigHome) != "" || strings.TrimSpace(in.CredentialsFile) != ""
@@ -679,6 +712,7 @@ func (g *GmailService) DeleteConnection(ctx context.Context, id string) error {
 	// Always drop the stored OAuth credential, whoever owned the directory:
 	// removing the connection must not leave a token that can still send.
 	deleteGmailOAuthToken(conn.ID)
+	log.Printf("[GOOGLE_ACCOUNTS] connection=%s items=%v reason=disconnect_everywhere", conn.ID, conn.Workspaces)
 	return nil
 }
 
@@ -1104,7 +1138,7 @@ func (g *GmailService) AutoDefaultRecipientIfMissing(ctx context.Context) (bool,
 func (g *GmailService) PrivateDuplicatesOf(id string) []GmailConnection {
 	cfg := g.GetConfig()
 	conn, ok := findGmailConnection(cfg, id)
-	if !ok || !conn.IsPrivate() || strings.TrimSpace(conn.Email) == "" {
+	if !ok || !conn.IsPrivate() || conn.Personal || strings.TrimSpace(conn.Email) == "" {
 		return nil
 	}
 	var out []GmailConnection

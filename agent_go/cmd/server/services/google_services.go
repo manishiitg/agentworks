@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"log"
 	"os/exec"
 	"sort"
 	"strings"
@@ -224,7 +225,7 @@ func (g *GmailService) GoogleCLIAccessForConnectionIn(ctx context.Context, conne
 		var err error
 		token, err = accessTokenForConnection(ctx, conn.ID, conn.ClientName)
 		if err != nil {
-			return GoogleCLIAccess{}, err
+			return GoogleCLIAccess{}, fmt.Errorf("Google account %s (%s) needs sign-in again. Ask its owner to reconnect in Google apps.", conn.DisplayName, conn.ID)
 		}
 	} else if conn.Email == "" || conn.ClientName == "" {
 		return GoogleCLIAccess{}, fmt.Errorf("Google connection is missing its account or client")
@@ -248,6 +249,10 @@ func (g *GmailService) GoogleCLIAccessForConnectionIn(ctx context.Context, conne
 	// otherwise), so this stays live without paying a subprocess on every
 	// tool call.
 	status, _ := g.AuthStatusForConnectionBlocking(ctx, conn.ID)
+	if conn.IsPrivate() && !status.Authenticated {
+		return GoogleCLIAccess{}, fmt.Errorf("Google account %s (%s) needs sign-in again. Ask its owner to reconnect in Google apps.", conn.DisplayName, conn.ID)
+	}
+	log.Printf("[GOOGLE_ACCOUNTS] connection=%s item=%s actor=%s reason=run_selected_account", conn.ID, scope.Workspace, scope.UserID)
 	liveScopes := status.Scopes
 
 	grants := make(map[string]bool, len(conn.Services)+1)

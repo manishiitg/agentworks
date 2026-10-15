@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const { status, connect, reconnect, clients, registerClient, connectWithClient } = vi.hoisted(() => ({ status: vi.fn(), connect: vi.fn(), reconnect: vi.fn(), clients: vi.fn(), registerClient: vi.fn(), connectWithClient: vi.fn() }))
 vi.mock('../../api/googleApp', () => ({ googleAppApi: { status, connect, reconnect, clients, registerClient, connectWithClient } }))
 
-vi.mock('../../components/workflow/bots/GmailSetupGuide', () => ({ GmailSetupGuide: () => null }))
+const { listSaved, listAdded, selectAccount, deleteAccount } = vi.hoisted(() => ({ listSaved: vi.fn(), listAdded: vi.fn(), selectAccount: vi.fn(), deleteAccount: vi.fn() }))
+vi.mock('../../services/api', () => ({ agentApi: { listSavedGoogleAccounts: listSaved, listGmailConnections: listAdded, selectGoogleAccount: selectAccount, deleteGmailConnection: deleteAccount } }))
+vi.mock('../../components/workflow/bots/GmailSetupGuide' , () => ({ GmailSetupGuide: () => null }))
 
 import { GoogleAccountConnect } from './GoogleAccountConnect'
 import { changeGoogleAccountAccess } from './googleAccountAccess'
@@ -14,7 +16,7 @@ import type { GmailConnection } from '../../services/api-types'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanups: (() => void)[] = []
-beforeEach(() => clients.mockResolvedValue([]))
+beforeEach(() => { clients.mockResolvedValue([]); listSaved.mockResolvedValue({ connections: [] }); listAdded.mockResolvedValue({ connections: [] }) })
 afterEach(() => { cleanups.splice(0).forEach(fn => fn()); vi.clearAllMocks(); vi.restoreAllMocks(); document.body.innerHTML = '' })
 
 const render = async (props: Partial<React.ComponentProps<typeof GoogleAccountConnect>> = {}) => {
@@ -28,6 +30,20 @@ const render = async (props: Partial<React.ComponentProps<typeof GoogleAccountCo
 }
 
 describe('GoogleAccountConnect', () => {
+  it('adds an existing personal account without another sign-in', async () => {
+    status.mockResolvedValue({ configured: true, redirect_uri: '' })
+    listSaved.mockResolvedValue({ connections: [{ id: 'personal', display_name: 'My account', email: 'me@example.com', personal: true }] })
+    const changed = vi.fn()
+    const host = await render({ workspacePath: 'Workflow/orders', onChanged: changed })
+    const select = host.querySelector<HTMLSelectElement>('[aria-label="Saved Google account"]')!
+    await act(async () => { select.value = 'personal'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'Add to this item')!.click())
+    expect(selectAccount).toHaveBeenCalledWith('personal', 'Workflow/orders', true)
+    expect(changed).toHaveBeenCalledOnce()
+    expect(connect).not.toHaveBeenCalled()
+    expect(host.textContent).toContain('Anyone who can run or change this item can use this Google account through it.')
+  })
+
   it('opens access changes and lets the person collapse and reopen without losing edits', async () => {
     status.mockResolvedValue({ configured: true, redirect_uri: '' })
     const host = await render()
@@ -102,13 +118,13 @@ describe('GoogleAccountConnect', () => {
     } finally { open.mockRestore() }
   })
 
-  it('blocks account creation and access changes for shared-account readers', async () => {
+  it('explains that Run people ask the Builder to add an account', async () => {
     status.mockResolvedValue({ configured: true, redirect_uri: '' })
     const host = await render({ workspacePath: 'Workflow/support', privateAccount: false, readOnly: true })
-    expect(host.textContent).toContain('only an administrator can connect one')
+    expect(host.textContent).toContain("Only this item's Builder can add a Google account")
     expect([...host.querySelectorAll('select')].every(select => select.disabled)).toBe(true)
     expect([...host.querySelectorAll<HTMLButtonElement>('button[aria-label$=" access"]')].every(button => button.disabled)).toBe(true)
-    const locked = [...host.querySelectorAll('button')].find(b => b.textContent === 'Only an admin can connect') as HTMLButtonElement
+    const locked = [...host.querySelectorAll('button')].find(b => b.textContent === 'Ask the Builder to connect') as HTMLButtonElement
     expect(locked.disabled).toBe(true)
     await act(async () => locked.click())
     await act(async () => changeGoogleAccountAccess({ id: 'shared', email: 'me@example.com' } as GmailConnection, 'Workflow/support'))

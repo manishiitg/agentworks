@@ -28,6 +28,7 @@ export function GoogleAccountList({ connections, busyId, readOnly, canRemove, on
       {connections.map(conn => {
         const ready = conn.ready !== false && conn.enabled
         const busy = busyId === conn.id
+        const manageAllowed = !readOnly && conn.can_manage !== false
         const removalAllowed = canRemove ? canRemove(conn) : !readOnly
         const access = googleAccessLevels(conn)
         const scopes = conn.auth?.scopes
@@ -52,16 +53,16 @@ export function GoogleAccountList({ connections, busyId, readOnly, canRemove, on
                 </div>
               </div>
               <div className="ml-auto flex shrink-0 items-center gap-2">
-                <button type="button" disabled={readOnly || busy} onClick={() => { setExpandedId(null); changeGoogleAccountAccess(conn, workspacePath) }}
+                <button type="button" disabled={!manageAllowed || busy} onClick={() => { setExpandedId(null); changeGoogleAccountAccess(conn, workspacePath) }}
                   className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
                   {conn.ready === false ? 'Sign in again' : 'Change access'}
                 </button>
                 <MoreMenu disabled={busy || (readOnly && !removalAllowed)} label={`More for ${conn.email || conn.display_name}`} items={[
-                  { label: 'Send a test email', disabled: readOnly || busy, onSelect: () => onSendTest(conn) },
-                  ...(onSetDefault ? [{ label: 'Make default', disabled: readOnly || busy || conn.is_default || !conn.enabled, onSelect: () => onSetDefault(conn) }] : []),
-                  { label: 'Reconnect', disabled: readOnly || busy, onSelect: () => onReconnect(conn) },
-                  { label: conn.enabled ? 'Turn off' : 'Turn on', disabled: readOnly || busy, onSelect: () => onToggle(conn) },
-                  { label: 'Remove', disabled: !removalAllowed || busy, danger: true, onSelect: () => onRemove(conn) },
+                  { label: 'Send a test email', disabled: !manageAllowed || busy, onSelect: () => onSendTest(conn) },
+                  ...(onSetDefault ? [{ label: 'Make default', disabled: !manageAllowed || busy || conn.is_default || !conn.enabled || conn.personal, onSelect: () => onSetDefault(conn) }] : []),
+                  { label: 'Reconnect', disabled: !manageAllowed || busy, onSelect: () => onReconnect(conn) },
+                  { label: conn.enabled ? 'Turn off' : 'Turn on', disabled: !manageAllowed || busy, onSelect: () => onToggle(conn) },
+                  { label: conn.personal && workspacePath ? 'Remove from this item' : 'Remove', disabled: !removalAllowed || busy, danger: true, onSelect: () => onRemove(conn) },
                 ]} />
               </div>
             </div>

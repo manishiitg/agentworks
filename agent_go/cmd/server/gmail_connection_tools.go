@@ -55,10 +55,10 @@ const gmailGrantMismatchNote = "granted_scopes reflects the last SUCCESSFUL conn
 func gmailToolScope(workspacePath string) services.GmailUseScope {
 	root := common.CodeProjectRoot("", workspacePath)
 	if root == "" {
-		return services.GmailUseScope{}
+		return services.GmailUseScope{Workspace: canonicalCrewWorkspaceRoot(workspacePath)}
 	}
 	owner, _ := crewProjectOwnerID(root)
-	return services.GmailUseScope{CodeWorkspace: root, UserID: owner}
+	return services.GmailUseScope{Workspace: root, CodeWorkspace: root, UserID: owner}
 }
 
 func (api *StreamingAPI) registerGmailConnectionManagementTools(registrar definitionToolRegistrar, sessionID, workspacePath string) error {
@@ -127,15 +127,13 @@ func (api *StreamingAPI) registerGmailConnectionManagementTools(registrar defini
 	}, "gmail_connection_management"); err != nil {
 		return err
 	}
+	if err := api.registerPersonalGoogleAccountTool(registrar, workspacePath); err != nil {
+		return err
+	}
 	return api.registerGmailTriggerTools(registrar, sessionID, workspacePath)
 }
 
 func (api *StreamingAPI) updateGmailConnectionGrantsFromTool(ctx context.Context, sessionID, workspacePath string, args map[string]interface{}, scope services.GmailUseScope) (string, error) {
-	// Shared accounts use the same administrator gate as the Sending accounts
-	// routes; owning a Crew never grants account-wide credential management.
-	if scope.CodeWorkspace == "" && !currentUserIsAdmin(httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)) {
-		return "", fmt.Errorf("shared Google account grants require an administrator")
-	}
 	svc := services.GetGmailService()
 	if svc == nil {
 		return "", fmt.Errorf("gmail is not configured on this deployment")
@@ -149,6 +147,9 @@ func (api *StreamingAPI) updateGmailConnectionGrantsFromTool(ctx context.Context
 		return "", fmt.Errorf("gmail connection %q not found; call list_gmail_connections or check the Sending accounts panel for valid IDs", connectionID)
 	}
 
+	if !canManageGoogleAccount(httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx), conn) {
+		return "", fmt.Errorf("Only the account owner or an administrator can change it. Ask them to reconnect in Google apps.")
+	}
 	input := services.GmailConnectionInput{}
 	if raw, ok := args["allow_read_access"]; ok {
 		v, ok := raw.(bool)

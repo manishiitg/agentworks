@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"log"
 	"net/http"
 	"strings"
@@ -54,6 +53,9 @@ type GmailConnectionResponse struct {
 	Enabled            bool   `json:"enabled"`
 	IsDefault          bool   `json:"is_default"`
 	CanRemove          bool   `json:"can_remove"`
+	CanManage          bool   `json:"can_manage"`
+	Personal           bool   `json:"personal"`
+	CanDetach          bool   `json:"can_detach"`
 
 	// Auth is live state, cached per connection so listing N accounts does not
 	// spawn N subprocesses. Checking=true means "ask again shortly".
@@ -69,6 +71,7 @@ type GmailConnectionResponse struct {
 
 // GmailConnectionsResponse is the list payload.
 type GmailConnectionsResponse struct {
+	CanAdd      bool                      `json:"can_add"`
 	Connections []GmailConnectionResponse `json:"connections"`
 	// DefaultConnectionID is empty when no default is set, which is a
 	// configuration error the UI should surface: sends with no explicit
@@ -123,6 +126,7 @@ func GmailConnectionRoutes(router *mux.Router, api *StreamingAPI) {
 	r.HandleFunc("", listGmailConnectionsHandler(api)).Methods("GET")
 	r.HandleFunc("", createGmailConnectionHandler(api)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/{id}", getGmailConnectionHandler(api)).Methods("GET")
+	r.HandleFunc("/{id}/selection", selectGoogleAccountHandler(api)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/{id}", requireGmailConnectionManager(updateGmailConnectionHandler(api))).Methods("PATCH", "POST", "OPTIONS")
 	r.HandleFunc("/{id}", deleteGmailConnectionHandler(api)).Methods("DELETE", "OPTIONS")
 	r.HandleFunc("/{id}/default", requireGmailConnectionManager(setDefaultGmailConnectionHandler(api))).Methods("POST", "OPTIONS")
@@ -141,7 +145,7 @@ func requireGmailConnectionManager(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		if svc := services.GetGmailService(); svc != nil {
-			if conn, found := svc.GetConnection(strings.TrimSpace(mux.Vars(r)["id"])); found && conn.IsPrivate() {
+			if conn, found := svc.GetConnection(strings.TrimSpace(mux.Vars(r)["id"])); found && canManageGoogleAccount(r, conn) {
 				next(w, r)
 				return
 			}
@@ -177,7 +181,7 @@ func canRemoveGmailConnection(r *http.Request, conn services.GmailConnection) bo
 	ownerMatches := claims != nil && strings.TrimSpace(claims.UserID) != "" &&
 		strings.TrimSpace(conn.OwnerID) != "" && sanitizeUserIDForPath(claims.UserID) == strings.TrimSpace(conn.OwnerID)
 	if conn.IsPrivate() {
-		return ownerMatches
+		return ownerMatches || currentUserIsAdmin(r)
 	}
 	if currentUserIsAdmin(r) {
 		return true
@@ -240,8 +244,14 @@ func projectGmailConnection(r *http.Request, svc *services.GmailService, conn se
 		Enabled:               conn.Enabled,
 		IsDefault:             conn.ID == defaultID,
 		CanRemove:             canRemoveGmailConnection(r, conn),
+		CanManage:             canManageGoogleAccount(r, conn),
+		Personal:              conn.IsPrivate(),
 		Auth:                  auth,
 		Ready:                 conn.Enabled && auth.Authenticated && auth.HasGmailScope,
+	}
+	if workspace := r.URL.Query().Get("workspace_path"); workspace != "" && conn.IsPrivate() {
+		_, err := googleItemScope(r, workspace, true)
+		out.CanDetach = err == nil || canManageGoogleAccount(r, conn)
 	}
 	if !conn.CreatedAt.IsZero() {
 		out.CreatedAt = conn.CreatedAt.UTC().Format("2006-01-02T15:04:05Z")
@@ -288,8 +298,7 @@ func gmailConnectionService(w http.ResponseWriter, r *http.Request) (*services.G
 	// A Code's private account is its owner's alone: nobody else can read,
 	// change, test, authorize or delete it.
 	if conn, found := svc.GetConnection(id); found && conn.IsPrivate() {
-		claims := GetUserFromContext(r.Context())
-		if claims == nil || sanitizeUserIDForPath(claims.UserID) != strings.TrimSpace(conn.OwnerID) {
+		if !canManageGoogleAccount(r, conn) {
 			http.Error(w, fmt.Sprintf("gmail connection %q not found", id), http.StatusNotFound)
 			return nil, "", false
 		}
@@ -305,19 +314,7 @@ func gmailRequestScope(r *http.Request, workspacePath string) (services.GmailUse
 	if workspacePath == "" {
 		return services.GmailUseScope{}, nil
 	}
-	claims := GetUserFromContext(r.Context())
-	if claims == nil || strings.TrimSpace(claims.UserID) == "" {
-		return services.GmailUseScope{}, fmt.Errorf("sign in to manage this Code's Google accounts")
-	}
-	root := common.CodeProjectRoot(claims.UserID, workspacePath)
-	if root == "" {
-		return services.GmailUseScope{}, nil
-	}
-	caller := sanitizeUserIDForPath(claims.UserID)
-	if owner, ok := crewProjectOwnerID(root); !ok || owner != caller {
-		return services.GmailUseScope{}, fmt.Errorf("only this Code's owner can manage its Google accounts")
-	}
-	return services.GmailUseScope{CodeWorkspace: root, UserID: caller}, nil
+	return googleItemScope(r, workspacePath, true)
 }
 
 func listGmailConnectionsHandler(api *StreamingAPI) http.HandlerFunc {
@@ -335,19 +332,36 @@ func listGmailConnectionsHandler(api *StreamingAPI) http.HandlerFunc {
 			log.Printf("[GMAIL] adopted the host's authenticated gws account as the default connection")
 		}
 		autoConfigureGmailIfAuthenticated(r.Context(), svc)
-		scope, scopeErr := gmailRequestScope(r, r.URL.Query().Get("workspace_path"))
+		scope := services.GmailUseScope{}
+		var scopeErr error
+		if workspace := r.URL.Query().Get("workspace_path"); workspace != "" {
+			scope, scopeErr = googleItemScope(r, workspace, false)
+		}
 		if scopeErr != nil {
 			http.Error(w, scopeErr.Error(), http.StatusForbidden)
 			return
 		}
 		defaultID := svc.GetConfig().DefaultConnectionID
-		if scope.CodeWorkspace != "" {
+		if scope.Workspace != "" {
 			defaultID = "" // a Code has no default; it uses its own accounts
 		}
 		conns := svc.ConnectionsUsableFrom(scope)
+		if r.URL.Query().Get("personal") == "true" {
+			conns = nil
+			for _, c := range svc.ListConnections() {
+				if c.IsPrivate() && c.OwnerID == googleAccountActor(r.Context()) && c.OwnerID != "" {
+					conns = append(conns, c)
+				}
+			}
+		}
 		out := GmailConnectionsResponse{
 			Connections:         make([]GmailConnectionResponse, 0, len(conns)),
 			DefaultConnectionID: defaultID,
+			CanAdd:              currentUserIsAdmin(r),
+		}
+		if workspace := r.URL.Query().Get("workspace_path"); workspace != "" {
+			_, err := googleItemScope(r, workspace, true)
+			out.CanAdd = err == nil
 		}
 		for _, c := range conns {
 			out.Connections = append(out.Connections, projectGmailConnection(r, svc, c, defaultID))
@@ -394,15 +408,16 @@ func createGmailConnectionHandler(api *StreamingAPI) http.HandlerFunc {
 			return
 		}
 		// A shared account is created by an admin; a Code's own by its owner.
-		if scope.CodeWorkspace == "" && !currentUserIsAdmin(r) {
+		if scope.Workspace == "" && !currentUserIsAdmin(r) {
 			writeWorkflowPermissionDenied(w, "admin")
 			return
 		}
-		if !gmailCredentialPathsAllowed(w, r, scope.CodeWorkspace != "", req) {
+		if !gmailCredentialPathsAllowed(w, r, scope.Workspace != "", req) {
 			return
 		}
 		conn, err := svc.CreateConnection(r.Context(), services.GmailConnectionInput{
-			ScopeWorkspace:        scope.CodeWorkspace,
+			Personal:              scope.Workspace != "",
+			Workspaces:            googleSelectedWorkspaces(scope.Workspace),
 			OwnerID:               scope.UserID,
 			DisplayName:           req.DisplayName,
 			ConfigHome:            req.ConfigHome,
@@ -485,7 +500,7 @@ func deleteGmailConnectionHandler(api *StreamingAPI) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		log.Printf("[GMAIL] Deleted connection %s", id)
+		log.Printf("[GOOGLE_ACCOUNTS] actor=%s connection=%s items=%v reason=disconnect_everywhere", googleAccountActor(r.Context()), id, conn.Workspaces)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"deleted": id})
 	}

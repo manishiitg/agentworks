@@ -1,5 +1,17 @@
 # Google accounts through the server's Google app (gog)
 
+Updated for PLAT-856: personal Google accounts belong to the person who signs in,
+with one credential store per connection. Builders (including workflow editors)
+explicitly add their own saved account to each workflow, Crew, Code project or
+Flow. People who can run or change that item can use the selected account through
+it. Removing a selection leaves other items connected; disconnecting the saved
+account removes it everywhere. The account owner or an administrator manages the
+saved connection. Company accounts and OAuth client registrations remain
+administrator-managed. Existing Code connections keep their store and original
+selection; adding them elsewhere adopts the reusable model without moving tokens.
+The sections below describe the original transport and sign-in implementation.
+
+
 Status: built 2026-09-30, on main, not deployed. Owner decisions the same day: Google apps are
 the one integration to focus on; Google's Workspace MCP servers and GitHub MCP are not offered.
 

@@ -1,4 +1,3 @@
-import { projectProductForPath } from '../../../products/work/projectProduct'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { agentApi } from '../../../services/api'
 import { useWorkflowManifestStore } from '../../../stores/useWorkflowManifestStore'
@@ -66,7 +65,7 @@ export type BotRouteTarget = {
 
 export function useWorkflowBots(workspacePath: string | null, target?: BotRouteTarget, section: 'bots' | 'email' | 'slack' | 'all' = 'all') {
   // A Code's Google accounts are its own: list and connect only those.
-  const gmailScopeWorkspace = projectProductForPath(workspacePath || undefined)?.profileId === 'code' ? (workspacePath || undefined) : undefined
+  const gmailScopeWorkspace = workspacePath || undefined
   // ── Workflow identity ─────────────────────────────────────────────────────
   // Crew passes a fresh target object when chat state changes. Effects must
   // depend on its values so typing does not reload the Slack setup panel.
@@ -91,14 +90,11 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
   // A Code owner manages its private accounts independently of the shared settings.
   const canManageSharedGmail = useAuthStore(state => state.user?.is_admin === true
     || (state.isMultiUserModeChecked && !state.isMultiUserMode))
-  const userId = useAuthStore(state => state.user?.id)
-  const codeOwner = /^_users\/([^/]+)\//.exec((workspacePath || '').replace(/^\/+/, ''))?.[1]
-  const gmailConnectionsReadOnly = readOnly || (gmailScopeWorkspace
-    ? !!codeOwner && codeOwner !== userId
-    : !canManageSharedGmail)
+  const [gmailCanAdd, setGmailCanAdd] = useState(false)
+  const gmailConnectionsReadOnly = readOnly || !gmailCanAdd
   const gmailSettingsReadOnly = readOnly || !canManageSharedGmail
   const canRemoveGmailConnection = useCallback((connection: GmailConnection) =>
-    !readOnly && (connection.can_remove ?? !gmailConnectionsReadOnly),
+    !readOnly && (connection.can_detach || (connection.can_remove ?? !gmailConnectionsReadOnly)),
   [readOnly, gmailConnectionsReadOnly])
   // Slack apps are owner-managed (writers get a 403 server-side); readers see
   // everything disabled through readOnly as usual.
@@ -309,6 +305,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
   const loadGmailConnections = useCallback(async (attempt = 0) => {
     try {
       const data = await agentApi.listGmailConnections(gmailScopeWorkspace)
+      setGmailCanAdd(data.can_add === true)
       const connections = data.connections || []
       setGmailConnections(connections)
       // The server answers the first read with "checking" while it runs each
@@ -321,11 +318,12 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
         window.setTimeout(() => { void loadGmailConnections(attempt + 1) }, 2000)
       }
     } catch {
+      setGmailCanAdd(false)
       // A registry that cannot be read must not break the single-account view
       // this panel has always shown.
       setGmailConnections([])
     }
-  }, [gmailScopeWorkspace])
+  }, [gmailScopeWorkspace, canManageSharedGmail])
 
   const loadGmailOAuthClients = useCallback(async () => {
     try {
@@ -491,6 +489,12 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
     try {
       setGmailConnectionsBusy(connectionId)
       setGmailError(null)
+      const connection = gmailConnections.find(account => account.id === connectionId)
+      if (connection?.personal && workspacePath) {
+        await agentApi.selectGoogleAccount(connectionId, workspacePath, false)
+        await loadGmailConnections()
+        return
+      }
       await agentApi.deleteGmailConnection(connectionId)
       const stillInUse = gmailConnections.some(c => c.id !== connectionId && c.client_name === clientName)
       if (canManageSharedGmail && !stillInUse && clientName) {
@@ -505,7 +509,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
     } finally {
       setGmailConnectionsBusy(null)
     }
-  }, [canManageSharedGmail, gmailConnections, loadGmailConnections, loadGmailOAuthClients])
+  }, [canManageSharedGmail, gmailConnections, loadGmailConnections, loadGmailOAuthClients, workspacePath])
 
   const loadGmail = useCallback(async (background = false) => {
     try {

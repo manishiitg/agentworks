@@ -92,8 +92,8 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
     gmailOAuthClientError, removeGmailMailboxAndClient,
   } = bots
 
-  const handleRemoveMailbox = (conn: { id: string; display_name: string; client_name?: string }) => {
-    if (!window.confirm(`Remove "${conn.display_name}"?`)) return
+  const handleRemoveMailbox = (conn: { id: string; display_name: string; client_name?: string; personal?: boolean }) => {
+    if (!window.confirm(conn.personal ? `Remove "${conn.display_name}" from this item? Other items stay connected.` : `Remove "${conn.display_name}"?`)) return
     void removeGmailMailboxAndClient(conn.id, conn.client_name || '')
   }
 
@@ -143,7 +143,7 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
               )}
               {gmailAuthPending && gmailAuthUrl && <SignInLinkBox url={gmailAuthUrl} />}
               {platformConnect || (workspacePath && <GoogleAccountConnect key={workspacePath} workspacePath={workspacePath}
-                privateAccount={/(?:^|\/)Chats\/Code\/projects\//.test(workspacePath)} readOnly={readOnly} onChanged={() => { void bots.loadGmailConnections() }} />)}
+                privateAccount={/(?:^|\/)Chats\/Code\/projects\//.test(workspacePath)} readOnly={readOnly} addedConnectionIds={gmailConnections.map(account => account.id)} onChanged={() => { void bots.loadGmailConnections() }} />)}
           </FormSection>
           <FormSection
             title="Delivery settings"

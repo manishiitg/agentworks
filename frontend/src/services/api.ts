@@ -1774,6 +1774,14 @@ export const agentApi = {
     return apiResponse.data
   },
 
+  listSavedGoogleAccounts: async (): Promise<GmailConnectionsResponse> => {
+    return (await api.get('/api/human-feedback/gmail/connections', { params: { personal: true } })).data
+  },
+
+  selectGoogleAccount: async (id: string, workspacePath: string, selected: boolean): Promise<void> => {
+    await api.post(`/api/human-feedback/gmail/connections/${encodeURIComponent(id)}/selection`, { workspace_path: workspacePath, selected })
+  },
+
   createGmailConnection: async (req: GmailConnectionRequest): Promise<GmailConnection> => {
     const apiResponse = await api.post('/api/human-feedback/gmail/connections', req)
     return apiResponse.data

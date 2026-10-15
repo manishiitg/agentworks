@@ -79,7 +79,7 @@ func googleAppConnectHandler(api *StreamingAPI) http.HandlerFunc {
 		}
 		// A person connects their own account to a Code they own; a shared (organisation)
 		// account is an admin's.
-		if scope.CodeWorkspace == "" && !currentUserIsAdmin(r) {
+		if scope.Workspace == "" && !currentUserIsAdmin(r) {
 			writeWorkflowPermissionDenied(w, "admin")
 			return
 		}
@@ -95,7 +95,8 @@ func googleAppConnectHandler(api *StreamingAPI) http.HandlerFunc {
 		}
 		displayName := googleAppDisplayName(req.DisplayName)
 		conn, err := svc.CreateConnection(r.Context(), services.GmailConnectionInput{
-			ScopeWorkspace:        scope.CodeWorkspace,
+			Personal:              scope.Workspace != "",
+			Workspaces:            googleSelectedWorkspaces(scope.Workspace),
 			OwnerID:               scope.UserID,
 			DisplayName:           displayName,
 			ClientName:            services.PlatformGoogleClientName,

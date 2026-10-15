@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 const { status, connect, clients, access, refresh } = vi.hoisted(() => ({ status: vi.fn(), connect: vi.fn(), clients: vi.fn(), access: { readOnly: false }, refresh: vi.fn() }))
 vi.mock('../../api/googleApp', () => ({ googleAppApi: { status, connect, clients } }))
+vi.mock('../../services/api', () => ({ agentApi: { listSavedGoogleAccounts: vi.fn(async () => ({ connections: [] })) } }))
 vi.mock('./bots/useWorkflowBots', () => ({ useWorkflowBots: () => ({ gmailConnectionsReadOnly: access.readOnly, loadGmailConnections: refresh }) }))
 vi.mock('./bots/GmailNotifications', () => ({ GmailNotifications: ({ platformConnect }: { platformConnect?: React.ReactNode }) => <div>{platformConnect || 'Legacy client upload'}</div> }))
 vi.mock('./bots/GmailSetupGuide', () => ({ GmailSetupGuide: () => null }))
@@ -28,18 +29,18 @@ it.each(['Chats/Code/projects/app', '_users/alice/Chats/Code/projects/app', 'Cha
   const host = await render(path)
   expect(host.querySelector('[data-testid="google-account-connect"]')).not.toBeNull()
   expect(host.textContent).not.toContain('Legacy client upload')
-  expect(host.textContent).toContain(path.includes('/Code/') ? 'It stays in this Code' : 'shared by Crews and workflows')
+  expect(host.textContent).toContain('Sign in once with your own Google account, then add it to the items you build.')
   await act(async () => ([...host.querySelectorAll('button')].find(b => b.textContent === 'Connect Google account') as HTMLButtonElement).click())
   expect(connect).toHaveBeenCalledWith(expect.objectContaining({ workspace_path: path }))
   await act(async () => window.dispatchEvent(new Event('focus')))
   expect(refresh).toHaveBeenCalledTimes(1)
 })
 
-it('retains shared-account management restrictions in the unified flow', async () => {
+it('explains the existing Builder requirement in the unified flow', async () => {
   access.readOnly = true
   const host = await render('Workflow/support')
-  const button = [...host.querySelectorAll('button')].find(b => b.textContent === 'Only an admin can connect') as HTMLButtonElement
-  expect(host.querySelector('[role="note"]')?.textContent).toContain('only an administrator can connect')
+  const button = [...host.querySelectorAll('button')].find(b => b.textContent === 'Ask the Builder to connect') as HTMLButtonElement
+  expect(host.querySelector('[role="note"]')?.textContent).toContain("Only this item's Builder can add")
   expect(button.disabled).toBe(true)
   await act(async () => button.click())
   expect(connect).not.toHaveBeenCalled()

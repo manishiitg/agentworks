@@ -10,7 +10,7 @@ export default function WorkflowEmailPanel({ workspacePath, scopeNoun = 'workflo
   const settings = useWorkflowBots(workspacePath, undefined, 'email')
   const privateAccount = /(?:^|\/)Chats\/Code\/projects\//.test(workspacePath || '')
   const platformConnect = workspacePath
-    ? <GoogleAccountConnect key={workspacePath} workspacePath={workspacePath} privateAccount={privateAccount} readOnly={settings.gmailConnectionsReadOnly} onChanged={() => { void settings.loadGmailConnections() }} />
+    ? <GoogleAccountConnect key={workspacePath} workspacePath={workspacePath} privateAccount={privateAccount} readOnly={settings.gmailConnectionsReadOnly} addedConnectionIds={settings.gmailConnections?.map(account => account.id)} onChanged={() => { void settings.loadGmailConnections() }} />
     : undefined
   return <GmailNotifications bots={settings} workspacePath={workspacePath} scopeNoun={scopeNoun} onAsk={onAsk} platformConnect={platformConnect} />
 }

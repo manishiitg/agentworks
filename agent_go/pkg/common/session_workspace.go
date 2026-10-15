@@ -174,3 +174,34 @@ func GmailScopeFromContext(ctx context.Context) (codeWorkspace, userID string, e
 	}
 	return "", userID, nil
 }
+
+// GoogleWorkspaceFromContext names the target configured by the server. Attached
+// folders and tool arguments never choose which account a run can use.
+func GoogleWorkspaceFromContext(ctx context.Context) (string, error) {
+	sessionID, _ := ctx.Value(ChatSessionIDKey).(string)
+	user := SessionUserIDFromContext(ctx)
+	if root := CodeSessionRoot(sessionID); root != "" {
+		return root, nil
+	}
+	cfg := GetSessionShellConfig(sessionID)
+	if cfg == nil {
+		return "", fmt.Errorf("Open this item's chat to use its Google accounts.")
+	}
+	for _, candidate := range []string{cfg.WorkflowPath, cfg.WorkingDir} {
+		if root := CodeProjectRoot(user, candidate); root != "" {
+			return root, nil
+		}
+		kind, root := ClassifySessionWorkspace(user, candidate)
+		if kind == SessionWorkspaceWorkflow {
+			return root, nil
+		}
+		if kind == SessionWorkspaceCrewProject {
+			ref := workspaceref.MustParse(candidate)
+			if _, shared := ref.SharedProject(); shared {
+				return root, nil
+			}
+			return ref.WithLogical(root).PhysicalKeepOwner(user), nil
+		}
+	}
+	return "", nil // legacy non-product chats retain company accounts only
+}

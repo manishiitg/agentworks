@@ -27,13 +27,14 @@ vi.mock('../../../services/api', () => ({
   agentApi: {
 
     getGmailInboundRoute: vi.fn(async () => ({ configured: false, route: null, deliveries: [] })),
+    listSavedGoogleAccounts: vi.fn(async () => ({ connections: [] })),
     getBotConfig: vi.fn(async () => ({ allowed_emails: [] })),
     getGmailFeedbackConfig: vi.fn(async () => ({
       enabled: true, default_to: 'alice@example.com', blocked_recipients: [], ready: true,
       auth: { authenticated: true, has_gmail_scope: true, gws_installed: true },
     })),
-    listGmailConnections: vi.fn(async () => ({ connections: [{
-      id: 'gmail_002', display_name: 'Test mailbox', client_name: 'test-client',
+    listGmailConnections: vi.fn(async (workspace?: string) => ({ can_add: access.canWrite, connections: [{
+      id: 'gmail_002', display_name: 'Test mailbox', client_name: 'test-client', can_manage: access.user.is_admin || !!workspace?.includes('/Code/'), can_remove: access.user.is_admin,
       enabled: true, ready: true, auth: { authenticated: true, has_gmail_scope: true },
     }] })),
     listGmailOAuthClients: vi.fn(async () => ({ clients: [] })),
@@ -78,28 +79,28 @@ describe('Gmail management permissions with either OAuth source', () => {
     await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks()
   })
 
-  it('keeps the new UI while preventing workflow editors from managing shared accounts', async () => {
+  it('allows workflow editors to connect personal accounts while company accounts stay admin-managed', async () => {
     await render()
     expect(host.querySelector('[data-testid="google-account-list"]')).not.toBeNull()
     expect(button('Change access').disabled).toBe(true)
-    expect(button('Only an admin can connect').disabled).toBe(true)
+    expect(button('Connect Google account').disabled).toBe(false)
     expect(button('Save').disabled).toBe(true)
-    expect((host.querySelector('[aria-label="Google sign-in app"]') as HTMLSelectElement).disabled).toBe(true)
-    expect(host.textContent).toContain('An admin manages shared Gmail accounts')
+    expect((host.querySelector('[aria-label="Google sign-in app"]') as HTMLSelectElement).disabled).toBe(false)
+    expect(host.textContent).toContain('Company accounts are managed by an administrator.')
     expect(host.textContent).toContain('Workflow email notifications')
     expect(host.textContent).not.toContain('Enable Gmail')
-    await act(async () => button('Only an admin can connect').click())
+    await act(async () => button('Connect Google account').click())
     expect(agentApi.createGmailOAuthClient).not.toHaveBeenCalled()
   })
 
   it('permits removal of a server-identified own account without other shared management', async () => {
-    vi.mocked(agentApi.listGmailConnections).mockResolvedValueOnce({ connections: [{
-      id: 'gmail_002', display_name: 'Own mailbox', client_name: 'test-client', can_remove: true,
+    vi.mocked(agentApi.listGmailConnections).mockResolvedValueOnce({ can_add: true, connections: [{
+      id: 'gmail_002', display_name: 'Own mailbox', client_name: 'test-client', can_remove: true, can_manage: false,
       enabled: true, is_default: false, ready: true, auth: { authenticated: true, has_gmail_scope: true, gws_installed: true },
     }] })
     await render(); await openMenu()
     expect(button('Remove').disabled).toBe(false)
-    for (const label of ['Change access', 'Only an admin can connect', 'Reconnect', 'Make default', 'Send a test email', 'Turn off', 'Save']) expect(button(label).disabled, label).toBe(true)
+    for (const label of ['Change access', 'Reconnect', 'Make default', 'Send a test email', 'Turn off', 'Save']) expect(button(label).disabled, label).toBe(true)
     await act(async () => button('Remove').click())
     expect(agentApi.deleteGmailConnection).toHaveBeenCalledWith('gmail_002')
     expect(agentApi.deleteGmailOAuthClient).not.toHaveBeenCalled()
@@ -123,14 +124,16 @@ describe('Gmail management permissions with either OAuth source', () => {
     expect(button('Send test email').disabled).toBe(true)
     await render('_users/alice/Chats/Code/projects/app-1')
     expect(button('Change access').disabled).toBe(false)
+    access.canWrite = false
     await render('_users/bob/Chats/Code/projects/app-1')
     expect(button('Change access').disabled).toBe(true)
-    expect(button('Only the owner can connect').disabled).toBe(true)
+    expect(button('Ask the Builder to connect').disabled).toBe(true)
   })
 
-  it('fails closed until auth mode is known and allows the local installation owner', async () => {
+  it('shows company management from the server and respects Builder access', async () => {
     Object.assign(access, { isMultiUserMode: false, isMultiUserModeChecked: false })
     await render(); expect(button('Change access').disabled).toBe(true)
+    access.user.is_admin = true
     access.isMultiUserModeChecked = true
     await render(); expect(button('Change access').disabled).toBe(false)
     access.canWrite = false

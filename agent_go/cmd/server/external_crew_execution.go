@@ -253,7 +253,7 @@ func (api *StreamingAPI) externalCrewExecutionCall(w http.ResponseWriter, r *htt
 		return
 	}
 	root := agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath)
-	if group == "crew_integrations" && (action == "update_gmail_connection_grants" || action == "setup_gmail_inbound" || action == "manage_gmail_trigger" && externalArg(params, "action") == "connect") {
+	if group == "crew_integrations" && (action == "setup_gmail_inbound" || action == "manage_gmail_trigger" && externalArg(params, "action") == "connect") {
 		if !currentUserIsAdmin(r) || claims.AccessToken != nil && !claims.AccessToken.AllCrews {
 			externalError(w, 403, "forbidden", "Shared Google account management requires an administrator and consent covering all Crews.")
 			return

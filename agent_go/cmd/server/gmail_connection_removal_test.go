@@ -46,7 +46,7 @@ func TestGmailAccountRemovalOwnership(t *testing.T) {
 		{"shared admin unknown email", "boss", "", services.GmailConnection{}, true},
 		{"private owner", "alice", "", services.GmailConnection{ScopeWorkspace: "code", OwnerID: "alice"}, true},
 		{"private email is insufficient", "alice", "", services.GmailConnection{ScopeWorkspace: "code", OwnerID: "bob", Email: "alice@example.com"}, false},
-		{"private admin is not owner", "boss", "", services.GmailConnection{ScopeWorkspace: "code", OwnerID: "alice"}, false},
+		{"private admin manages saved account", "boss", "", services.GmailConnection{ScopeWorkspace: "code", OwnerID: "alice"}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodDelete, "/x", nil)
