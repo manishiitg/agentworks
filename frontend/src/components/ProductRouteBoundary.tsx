@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { deploymentDefaultProductSurface, enabledProductSurfaces, intersectAllowedProductSurfaces } from '../products/productSurfaceConfig'
 import { waitForChatStoreHydration } from '../stores/useChatStore'
+import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { useAuthStore } from '../stores/useAuthStore'
 import { isLegacyAppPath, LEGACY_APP_ROOTS, legacyAppRoot, parseProductRoute, productRoutePath } from '../utils/productRoutes'
 import { observeProductHistory } from '../utils/productUrlNavigation'
@@ -9,18 +10,20 @@ import { ProductUnavailable, resolveProductRoute } from '../utils/resolveProduct
 
 import { workspaceStateApi } from '../services/workspaceState'
 import { useWorkspaceReturnStore } from '../stores/useWorkspaceReturnStore'
-import { installWorkspaceStateFlush } from '../hooks/useWorkspaceReturn'
+import { installWorkspaceStateFlush, queueWorkspaceState } from '../hooks/useWorkspaceReturn'
 import { restoreWorkspaceChat } from '../utils/restoreWorkspaceChat'
 
 type Status = 'loading' | 'ready' | 'disabled' | 'unavailable' | 'error'
 export function ProductRouteBoundary({ children, account, allowedProducts }: { children: ReactNode; account?: string; allowedProducts?: string[] | null }) {
   useEffect(installWorkspaceStateFlush, [])
+  const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const homeOpen = useWorkspaceReturnStore(state => state.homeOpen)
   const [location, setLocation] = useState(() => window.location.pathname + window.location.search)
   const [attempt, setAttempt] = useState(0)
   const permissionKey = allowedProducts == null ? 'unrestricted' : JSON.stringify([...allowedProducts].map(value => value.toLowerCase()).sort())
   const activeResolution = useRef<AbortController | null>(null)
-  const [resolution, setResolution] = useState<{ location: string; account?: string; status: Status; attempt: number; permissionKey: string }>({ location: '', status: 'loading', attempt: 0, permissionKey: '' })
-  const status = resolution.location === location && resolution.account === account && resolution.attempt === attempt && resolution.permissionKey === permissionKey ? resolution.status : 'loading'
+  const [resolution, setResolution] = useState<{ location: string; account?: string; status: Status; attempt: number; permissionKey: string; workspace?: string }>({ location: '', status: 'loading', attempt: 0, permissionKey: '' })
+  const status = resolution.location === location && resolution.account === account && resolution.workspace === workspace && resolution.attempt === attempt && resolution.permissionKey === permissionKey ? resolution.status : 'loading'
   useLayoutEffect(() => {
     const onPop = () => {
       activeResolution.current?.abort()
@@ -36,7 +39,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
   useEffect(() => {
     const controller = new AbortController()
     activeResolution.current = controller
-    const finish = (status: Status) => { if (!controller.signal.aborted) setResolution({ location, account, status, attempt, permissionKey }) }
+    const finish = (status: Status) => { if (!controller.signal.aborted) setResolution({ location, account, workspace, status, attempt, permissionKey }) }
     const requested = window.location.pathname + window.location.search
     let route = parseProductRoute(requested)
     const enabled = enabledProductSurfaces()
@@ -52,11 +55,11 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
     if (!allowed.length || (route && !allowed.includes(route.surface))) { finish('unavailable'); return () => controller.abort() }
     const initialize = async () => {
       let state = useWorkspaceReturnStore.getState()
-      if (state.account !== account || !state.ready) {
-        useWorkspaceReturnStore.setState({ account, ready: false, record: null, restore: null, homeOpen: false, note: '', saveError: '' })
+      if (state.account !== account || state.workspace !== workspace || !state.ready) {
+        useWorkspaceReturnStore.setState({ account, workspace, ready: false, record: null, restore: null, homeOpen: false, note: '', saveError: '' })
         const record = await workspaceStateApi.get(controller.signal)
         if (controller.signal.aborted) return
-        useWorkspaceReturnStore.setState({ account, ready: true, record, note: record.note || '' })
+        useWorkspaceReturnStore.setState({ account, workspace, ready: true, record, note: record.note || '' })
         state = useWorkspaceReturnStore.getState()
       }
       let destination = route
@@ -87,7 +90,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
             if (!controller.signal.aborted) useWorkspaceReturnStore.setState({ note: 'Your workspace opened, but its saved chat could not be restored.' })
           })
           if (controller.signal.aborted) return
-          useWorkspaceReturnStore.setState({ restore: { ...saved, view: destination.view } })
+          useWorkspaceReturnStore.setState({ restore: ['agentworks', 'relays', 'work', 'code'].includes(saved.surface) ? { ...saved, view: destination.view } : null })
         }
         window.history.replaceState({}, '', productRoutePath(destination))
         finish('ready')
@@ -112,8 +115,10 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
       finish(error instanceof ProductUnavailable || code === 403 || code === 404 ? 'unavailable' : 'error')
     })
     return () => { controller.abort(); cancelPendingWorkflowNavigation() }
-  }, [location, account, permissionKey, attempt])
-  useEffect(() => status === 'ready' && window.location.pathname !== '/home' ? observeProductHistory() : undefined, [status, location, account])
+  }, [location, account, workspace, permissionKey, attempt])
+  useEffect(() => status === 'ready' && !homeOpen && window.location.pathname !== '/home' ? observeProductHistory(route => {
+    if (!['agentworks', 'relays', 'work', 'code'].includes(route.surface)) queueWorkspaceState({ surface: route.surface, view: route.view })
+  }) : undefined, [status, location, account, homeOpen])
   if (status === 'ready') return <>{children}</>
   const text = status === 'loading' ? 'Opening link…' : status === 'disabled' ? 'This product is not enabled on this server.' : status === 'error' ? 'Could not open this link. Please try again.' : 'This item is not available. You may not have access.'
   return <main className="grid min-h-screen place-items-center p-6"><div className="max-w-md space-y-4 text-center"><p role={status === 'loading' ? 'status' : 'alert'}>{text}</p>{status !== 'loading' && <div className="flex justify-center gap-4"><a className="underline" href="/">Home</a>{status === 'error' && <button className="underline" onClick={() => { activeResolution.current?.abort(); setAttempt(value => value + 1) }}>Retry</button>}</div>}</div></main>

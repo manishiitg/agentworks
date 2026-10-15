@@ -4,6 +4,7 @@ import type { WorkspaceDestination, WorkspaceState } from '../services/workspace
 // account. Another person's browser-local workspace is never a fallback.
 export const useWorkspaceReturnStore = create<{
   account?: string
+  workspace?: string
   ready: boolean
   record: WorkspaceState | null
   restore: WorkspaceDestination | null
