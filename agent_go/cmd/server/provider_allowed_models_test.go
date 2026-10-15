@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -259,5 +260,37 @@ func TestPublishedLLMsFlagTheModelsTheAccountDoesNotAllow(t *testing.T) {
 	}
 	if saved := sanitizePersistedPublishedLLMs(got); len(saved) != 3 || saved[1].NotAllowed {
 		t.Fatalf("the per-person flag must never be stored: %+v", saved)
+	}
+}
+
+// The model pickers read /api/llm-config/providers/{provider}/models: with the shared account limited to one model a
+// member is offered just that one, an administrator asking for the full catalog (the Accounts page) still gets every
+// model (2026-10-15: the picker listed eight Pi models while one was allowed).
+func TestProviderModelsListOnlyTheAllowedModelsExceptForAnAdminsFullCatalog(t *testing.T) {
+	env := newProviderAccountsEnv(t, "")
+	t.Setenv("CODEX_API_KEY", "server-codex-key")
+	if code := patchAllowed(env, t, "admin", "global:codex-cli", []string{"gpt-5.3-codex"}); code != http.StatusNoContent {
+		t.Fatalf("admin restriction: %d", code)
+	}
+	models := func(user, query string) []string {
+		w := env.do(t, env.api.handleGetProviderModels, http.MethodGet, "/api/llm-config/providers/codex-cli/models"+query, user, nil, map[string]string{"provider": "codex-cli"})
+		var resp dynamicModelsResponse
+		if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &resp) != nil {
+			t.Fatalf("%s %s: %d %s", user, query, w.Code, w.Body.String())
+		}
+		ids := []string{}
+		for _, model := range resp.Models {
+			ids = append(ids, model.ModelID)
+		}
+		return ids
+	}
+	if got := models("bob", ""); len(got) != 1 || got[0] != "gpt-5.3-codex" {
+		t.Fatalf("a member's picker = %v, want only the allowed model", got)
+	}
+	if got := models("bob", "?full=true"); len(got) != 1 || got[0] != "gpt-5.3-codex" {
+		t.Fatalf("a member asking for the full catalog = %v, want only the allowed model", got)
+	}
+	if got := models("admin", "?full=true"); len(got) < 2 {
+		t.Fatalf("an admin's full catalog = %v, want every model", got)
 	}
 }

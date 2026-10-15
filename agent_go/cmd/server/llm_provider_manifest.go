@@ -477,7 +477,7 @@ func (api *StreamingAPI) handleGetProviderModels(w http.ResponseWriter, r *http.
 	if mode == "dynamic" {
 		full := r.URL.Query().Get("full") == "true"
 		availableOnly := r.URL.Query().Get("available_only") == "true"
-		resp := getDynamicModels(provider, full, availableOnly)
+		resp := limitProviderModelsToAccount(r, provider, full, getDynamicModels(provider, full, availableOnly))
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
@@ -515,9 +515,59 @@ func (api *StreamingAPI) handleGetProviderModels(w http.ResponseWriter, r *http.
 		Models:             models,
 		Source:             "metadata_registry",
 	}
+	resp = limitProviderModelsToAccount(r, provider, r.URL.Query().Get("full") == "true", resp)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// limitProviderModelsToAccount offers a person only the models their account may run: when the shared server account
+// has an allowed-model list, the model pickers show just those (the server already runs a disallowed choice on the
+// first allowed model, so offering the rest picked a model that never ran). An administrator asking for the full
+// catalog (the Accounts page, where the list is set) still gets every model, and a person with their own account for
+// the provider keeps every model. The response may be a shared cached one: it is copied, never edited.
+func limitProviderModelsToAccount(r *http.Request, provider string, full bool, resp *dynamicModelsResponse) *dynamicModelsResponse {
+	if resp == nil {
+		return resp
+	}
+	claims := GetUserFromContext(r.Context())
+	if full && claims != nil && workFolderClaimsAreAdmin(claims) {
+		return resp
+	}
+	person := GetUserIDFromContext(r.Context())
+	ctx := withModelLimitPerson(r.Context(), person)
+	if person != "" {
+		providerConnectionsMu.Lock()
+		records, err := loadProviderConnections(ctx)
+		providerConnectionsMu.Unlock()
+		if err == nil {
+			for _, record := range records {
+				if !record.Removed && record.OwnerUserID == person && record.Provider == provider {
+					return resp
+				}
+			}
+		}
+	}
+	allowed, _, err := accountAllowedModels(ctx, provider, "")
+	if err != nil || len(allowed) == 0 {
+		return resp
+	}
+	limited := *resp
+	limited.Models = make([]dynamicModelEntry, 0, len(allowed))
+	seen := map[string]bool{}
+	for _, model := range resp.Models {
+		if modelAllowed(allowed, model.ModelID) {
+			limited.Models = append(limited.Models, model)
+			seen[strings.ToLower(strings.TrimSpace(model.ModelID))] = true
+		}
+	}
+	// An allowed model the catalog does not list (a deployment's own model) is still offered.
+	for _, id := range allowed {
+		if !seen[strings.ToLower(strings.TrimSpace(id))] {
+			limited.Models = append(limited.Models, dynamicModelEntry{ModelID: id, ModelName: id})
+		}
+	}
+	return &limited
 }
 
 func getDynamicModels(provider string, full, availableOnly bool) *dynamicModelsResponse {
