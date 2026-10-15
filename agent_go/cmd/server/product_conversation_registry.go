@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -80,6 +81,100 @@ type productConversationRegistryDocument struct {
 	// reopen or forget its earlier chats. Identities only; the transcripts
 	// stay in chat_history.
 	Previous map[string][]ProductConversationRecord `json:"previous,omitempty"`
+	// Agents holds, per slot, the name and purpose of an agent (a Code or Cowork chat tab). They belong to the slot,
+	// not the session, so a new conversation in the same tab keeps its role (PLAT-571).
+	Agents map[string]ProductAgentIdentity `json:"agents,omitempty"`
+}
+
+// ProductAgentIdentity is the name and one-line purpose of an agent in a project, with who last changed it.
+type ProductAgentIdentity struct {
+	Name      string `json:"name,omitempty"`
+	Purpose   string `json:"purpose,omitempty"`
+	UpdatedBy string `json:"updated_by,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
+const (
+	productAgentNameMaxRunes    = 120
+	productAgentPurposeMaxRunes = 300
+)
+
+// setAgentIdentity changes an agent's name and/or purpose (nil keeps the field) and logs the change with its actor.
+// An empty string clears the field.
+func (store productConversationRegistryStore) setAgentIdentity(ctx context.Context, userID, profileID, conversationKey string, name, purpose *string, actor string) (ProductAgentIdentity, error) {
+	conversationKey = strings.TrimSpace(conversationKey)
+	if conversationKey == "" || strings.TrimSpace(userID) == "" {
+		return ProductAgentIdentity{}, fmt.Errorf("an agent is required")
+	}
+	clean := func(value *string, limit int, label string) (*string, error) {
+		if value == nil {
+			return nil, nil
+		}
+		trimmed := strings.Join(strings.Fields(*value), " ")
+		if len([]rune(trimmed)) > limit {
+			return nil, fmt.Errorf("the %s is longer than %d characters", label, limit)
+		}
+		return &trimmed, nil
+	}
+	cleanName, err := clean(name, productAgentNameMaxRunes, "name")
+	if err != nil {
+		return ProductAgentIdentity{}, err
+	}
+	cleanPurpose, err := clean(purpose, productAgentPurposeMaxRunes, "purpose")
+	if err != nil {
+		return ProductAgentIdentity{}, err
+	}
+	path := productConversationRegistryPath(userID)
+	mutex := productConversationRegistryMutex(path)
+	mutex.Lock()
+	defer mutex.Unlock()
+	document, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return ProductAgentIdentity{}, err
+	}
+	entryKey := productConversationRegistryEntryKey(profileID, conversationKey)
+	if _, ok := document.Entries[entryKey]; !ok {
+		return ProductAgentIdentity{}, fmt.Errorf("that agent no longer exists")
+	}
+	if document.Agents == nil {
+		document.Agents = map[string]ProductAgentIdentity{}
+	}
+	identity := document.Agents[entryKey]
+	if cleanName != nil {
+		identity.Name = *cleanName
+	}
+	if cleanPurpose != nil {
+		identity.Purpose = *cleanPurpose
+	}
+	identity.UpdatedBy = strings.TrimSpace(actor)
+	identity.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	document.Agents[entryKey] = identity
+	document.Version = productConversationRegistryVersion
+	if err := store.writeDocument(ctx, path, document); err != nil {
+		return ProductAgentIdentity{}, err
+	}
+	log.Printf("[AGENT_IDENTITY] %s set the agent %s to name=%q purpose=%q", identity.UpdatedBy, entryKey, identity.Name, identity.Purpose)
+	return identity, nil
+}
+
+// agentIdentities returns the saved identities of one project's agents, keyed by conversation key.
+func (store productConversationRegistryStore) agentIdentities(ctx context.Context, userID, profileID, projectID string) (map[string]ProductAgentIdentity, error) {
+	path := productConversationRegistryPath(userID)
+	mutex := productConversationRegistryMutex(path)
+	mutex.Lock()
+	defer mutex.Unlock()
+	document, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]ProductAgentIdentity{}
+	main := productConversationRegistryEntryKey(profileID, strings.TrimSpace(projectID))
+	for entryKey, identity := range document.Agents {
+		if entryKey == main || strings.HasPrefix(entryKey, main+":chat:") {
+			out[strings.TrimPrefix(entryKey, strings.TrimSpace(profileID)+"/")] = identity
+		}
+	}
+	return out, nil
 }
 
 // productConversationPreviousLimit bounds how many earlier conversations one

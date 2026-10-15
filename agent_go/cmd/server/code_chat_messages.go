@@ -25,6 +25,7 @@ type codeChat struct {
 	Key       string // conversation key: <projectId> or <projectId>:chat:<id>
 	ID        string // "main" or the side chat's id
 	Name      string
+	Purpose   string
 	SessionID string
 	UpdatedAt string
 }
@@ -70,6 +71,7 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 			titles[session.SessionID] = strings.TrimSpace(session.Title)
 		}
 	}
+	identities, _ := defaultProductConversationRegistryStore().agentIdentities(ctx, userID, codeproduct.ProfileID, manifest.ID)
 	found := false
 	for _, record := range chats {
 		if !workspacePathsMatchForUser(userID, record.WorkspacePath, binding.WorkspacePath) {
@@ -81,6 +83,11 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 		} else {
 			chat.ID = strings.TrimPrefix(record.ConversationKey, manifest.ID+codeChatSideMarker)
 			chat.Name = firstNonEmptyTrimmed(titles[record.SessionID], "Chat "+chat.ID)
+		}
+		// The person's or the agent's own name wins over the chat's automatic title.
+		if identity, ok := identities[record.ConversationKey]; ok {
+			chat.Name = firstNonEmptyTrimmed(identity.Name, chat.Name)
+			chat.Purpose = identity.Purpose
 		}
 		if record.SessionID == sessionID {
 			project.Self, found = chat, true
@@ -172,6 +179,30 @@ func (api *StreamingAPI) codeChatTurnRequest(ctx context.Context, userID string,
 	return reqMap, sessionID, nil
 }
 
+// agentRolePrompt tells an agent its own name and purpose in this project, as a fact about it (PLAT-571). Empty when
+// neither is set.
+func agentRolePrompt(ctx context.Context, userID, profileID, conversationKey string) string {
+	conversationKey = strings.TrimSpace(conversationKey)
+	project, _, _ := strings.Cut(conversationKey, codeChatSideMarker)
+	if project == "" {
+		return ""
+	}
+	identities, err := defaultProductConversationRegistryStore().agentIdentities(ctx, userID, profileID, project)
+	if err != nil {
+		return ""
+	}
+	identity := identities[conversationKey]
+	switch {
+	case identity.Name != "" && identity.Purpose != "":
+		return fmt.Sprintf("\n\n## Your role in this Code\n\nYou are the %q agent in this Code: %s\n", identity.Name, identity.Purpose)
+	case identity.Name != "":
+		return fmt.Sprintf("\n\n## Your role in this Code\n\nYou are the %q agent in this Code.\n", identity.Name)
+	case identity.Purpose != "":
+		return fmt.Sprintf("\n\n## Your role in this Code\n\nThis agent's purpose in this Code: %s\n", identity.Purpose)
+	}
+	return ""
+}
+
 // registerCodeChatTools registers list_project_chats and ask_project_chat
 // for one Code chat turn.
 func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar, gate *productToolGate, userID, sessionID, workspacePath string) error {
@@ -186,6 +217,9 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 		out := make([]map[string]interface{}, 0, len(project.Chats))
 		for _, chat := range project.Chats {
 			item := map[string]interface{}{"id": chat.ID, "name": chat.Name, "working": api.conversationTurnOccupied(chat.SessionID)}
+			if chat.Purpose != "" {
+				item["purpose"] = chat.Purpose
+			}
 			if chat.Key == project.Self.Key {
 				item["this_chat"] = true
 			}
@@ -199,7 +233,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
 	}{
-		{"list_project_chats", "List the chats of this Code: the main chat and its side chats (tabs), with id, name, whether each is working now, and which one is this chat. Use it before ask_project_chat.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}},
+		{"list_project_chats", "List the agents of this Code: the main chat and its side chats (tabs), with id, name, purpose when it has one, whether each is working now, and which one is this chat. Use it before ask_project_chat.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}},
 			func(ctx context.Context, _ map[string]interface{}) (string, error) {
 				ctx = trusted(ctx)
 				project, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
@@ -207,6 +241,33 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					return "", err
 				}
 				return jsonOut(map[string]interface{}{"chats": describe(project)})
+			}},
+		{"set_my_agent_identity", "Set this agent's own name and/or purpose (a few words and one short line) so the other agents in this Code know what it is for. Only this agent and the person change them; another agent can ask this one to.", map[string]interface{}{
+			"type": "object", "properties": map[string]interface{}{
+				"name":    map[string]interface{}{"type": "string", "maxLength": productAgentNameMaxRunes},
+				"purpose": map[string]interface{}{"type": "string", "maxLength": productAgentPurposeMaxRunes},
+			}},
+			func(ctx context.Context, args map[string]interface{}) (string, error) {
+				ctx = trusted(ctx)
+				var name, purpose *string
+				if value, ok := args["name"].(string); ok {
+					name = &value
+				}
+				if value, ok := args["purpose"].(string); ok {
+					purpose = &value
+				}
+				if name == nil && purpose == nil {
+					return "", fmt.Errorf("pass a name, a purpose or both")
+				}
+				project, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
+				if err != nil {
+					return "", err
+				}
+				identity, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, userID, codeproduct.ProfileID, project.Self.Key, name, purpose, "agent "+project.Self.Name)
+				if err != nil {
+					return "", err
+				}
+				return jsonOut(map[string]interface{}{"name": firstNonEmptyTrimmed(identity.Name, project.Self.Name), "purpose": identity.Purpose})
 			}},
 		{"ask_project_chat", "Send an explicit message to another chat (tab) of this Code. Busy chats receive it after their current turn. Returns an inbox/reply address, not a function call. The recipient chooses whether and when to reply with send_message; final chat text is not forwarded. Read messages with read_agent_messages(inbox_id). Other chats share this folder but not this conversation, so make the message self-contained.", map[string]interface{}{
 			"type": "object", "required": []string{"chat", "message"}, "properties": map[string]interface{}{

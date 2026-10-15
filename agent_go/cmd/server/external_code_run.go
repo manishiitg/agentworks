@@ -98,6 +98,7 @@ func (api *StreamingAPI) externalCodeRunChats(ctx context.Context, userID, proje
 			titles[session.SessionID] = strings.TrimSpace(session.Title)
 		}
 	}
+	identities, _ := defaultProductConversationRegistryStore().agentIdentities(ctx, userID, codeproduct.ProfileID, projectID)
 	var chats []codeChat
 	for _, record := range records {
 		if !workspacePathsMatchForUser(userID, record.WorkspacePath, binding.WorkspacePath) {
@@ -109,6 +110,10 @@ func (api *StreamingAPI) externalCodeRunChats(ctx context.Context, userID, proje
 		} else {
 			chat.ID = strings.TrimPrefix(record.ConversationKey, projectID+codeChatSideMarker)
 			chat.Name = firstNonEmptyTrimmed(titles[record.SessionID], "Chat "+chat.ID)
+		}
+		if identity, ok := identities[record.ConversationKey]; ok {
+			chat.Name = firstNonEmptyTrimmed(identity.Name, chat.Name)
+			chat.Purpose = identity.Purpose
 		}
 		chats = append(chats, chat)
 	}
@@ -162,7 +167,11 @@ func (api *StreamingAPI) externalCodeRunCall(w http.ResponseWriter, r *http.Requ
 	describe := func() []map[string]any {
 		out := make([]map[string]any, 0, len(chats))
 		for _, chat := range chats {
-			out = append(out, map[string]any{"chat_id": chat.ID, "name": chat.Name, "working": api.conversationTurnOccupied(chat.SessionID), "local": api.codeLocalSession(chat.SessionID)})
+			item := map[string]any{"chat_id": chat.ID, "name": chat.Name, "working": api.conversationTurnOccupied(chat.SessionID), "local": api.codeLocalSession(chat.SessionID)}
+			if chat.Purpose != "" {
+				item["purpose"] = chat.Purpose
+			}
+			out = append(out, item)
 		}
 		return out
 	}

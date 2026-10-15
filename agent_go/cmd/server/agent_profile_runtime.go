@@ -544,6 +544,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	if err != nil {
 		return nil, err
 	}
+	if profile.ID == codeproduct.ProfileID {
+		rendered += agentRolePrompt(ctx, userID, profile.ID, req.AgentProfileConversationKey)
+	}
 	if err := api.agentProfiles.Initialize(ctx, profile.ID, agentprofiles.RuntimeContext{
 		UserID: userID, SessionID: sessionID, WorkspacePath: workspacePath,
 	}); err != nil {
