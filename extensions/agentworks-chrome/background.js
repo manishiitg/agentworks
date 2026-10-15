@@ -113,7 +113,7 @@ function retryLater(scope) {
  retryTimer=setTimeout(queueResume,Math.max(100,[...retries.values()].reduce((n,r)=>Math.min(n,r.after-Date.now()),30000)));
 }
 function queueResume() {
- if(resumeQueued || (!accountPairing && ![...savedPairings.keys()].some(scope=>!connections.get(scope)?.state().connected)))return;
+ if(resumeQueued || !(accountPairing && !accountOnline) && ![...savedPairings.keys()].some(scope=>!connections.get(scope)?.state().connected))return;
  resumeQueued=true;
  const resume=async()=>{
   try {

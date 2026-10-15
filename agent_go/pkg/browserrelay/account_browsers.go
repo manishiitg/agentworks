@@ -212,7 +212,7 @@ func (m *Manager) selectBrowserLocked(user, scope, id string) error {
 	}
 	old := m.bindings[k]
 	if old == nil || old.browserID != id {
-		m.bindings[k] = &Binding{key: k, label: g.Label, profile: g.ProfileID, browserID: id, gate: make(chan struct{}, 1)}
+		m.bindings[k] = &Binding{key: k, label: g.Label, profile: g.ProfileID, browserID: id, browserName: r.Name, gate: make(chan struct{}, 1)}
 		if old != nil {
 			old.closeWithReason("A different browser was selected for this project")
 		}

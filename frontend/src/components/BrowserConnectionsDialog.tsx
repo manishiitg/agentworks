@@ -4,6 +4,7 @@ import api from '../services/api'
 import { Button } from './ui/Button'
 import ModalPortal from './ui/ModalPortal'
 import { useLiveRefetch } from '../hooks/useLiveRefetch'
+import { getRuntimeAppName, runtimeBrandingConfig } from '../runtime-branding'
 
 export interface SavedBrowserConnection {
   id: string; name: string; browser: string; version?: string; connected: boolean; enabled: boolean
@@ -34,7 +35,7 @@ export default function BrowserConnectionsDialog({ open, onClose }: { open: bool
     try {
       const { data } = await api.post('/api/browser/extension', { action: 'copy' }, { skipSessionContext: true })
       const url = new URL('/api/browser/extension/connect', base); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-      const value = JSON.stringify({ url: url.href, token: data.token })
+      const value = JSON.stringify({ url: url.href, token: data.token, brand: getRuntimeAppName(runtimeBrandingConfig()) || 'AgentWorks' })
       setCode(value)
       try { await navigator.clipboard.writeText(value); setCopied(true) } catch { /* Manual copy remains available. */ }
     } catch { setError('Could not prepare your browser connection. Try again.') }

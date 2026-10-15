@@ -61,6 +61,7 @@ type Binding struct {
 	chatClients                        bool
 	profile                            string
 	browserID                          string
+	browserName                        string
 	tabTitles                          []string
 	version                            string
 	label                              string
@@ -413,6 +414,13 @@ func (b *Binding) Status() Status {
 	defer b.mu.Unlock()
 	return Status{Selected: true, Connected: b.extension != nil && time.Now().Before(b.expires), Workspace: b.label, Tabs: b.tabs, ConnectionID: b.session, TabTitles: append([]string(nil), b.tabTitles...), ExtensionVersion: b.version}
 }
+func (b *Binding) disconnectedError() error {
+	name := b.browserName
+	if name == "" {
+		name = "selected"
+	}
+	return fmt.Errorf("CHROME_EXTENSION_DISCONNECTED: Your %s browser is offline. Open it, or choose another browser for this project.", name)
+}
 func (b *Binding) Session() string { return b.session }
 func (b *Binding) Profile() string { return b.profile }
 func (b *Binding) Acquire(ctx context.Context) (string, func(), error) {
@@ -438,7 +446,7 @@ func (b *Binding) AcquireForActive(ctx context.Context, owner string, active boo
 	defer b.mu.Unlock()
 	if b.extension == nil || time.Now().After(b.expires) {
 		release()
-		return "", nil, errors.New("CHROME_EXTENSION_DISCONNECTED: connect Chrome, or disconnect the extension in browser settings to use the workspace browser")
+		return "", nil, b.disconnectedError()
 	}
 	if owner != "" {
 		if b.owner != "" && b.owner != owner {
@@ -827,7 +835,7 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 	old := m.bindings[key(g.User, g.Scope)]
 	capability := secret()
 	hash := sha256.Sum256([]byte(capability))
-	b := &Binding{key: key(g.User, g.Scope), label: g.Label, profile: g.ProfileID, browserID: hello.BrowserID, capability: capability, endpoint: m.base + "/cdp/" + capability, session: "session-" + hex.EncodeToString(hash[:8]) + "--browser", expires: time.Now().Add(ConnectionLifetime), extension: conn, gate: make(chan struct{}, 1)}
+	b := &Binding{key: key(g.User, g.Scope), label: g.Label, profile: g.ProfileID, browserID: hello.BrowserID, browserName: m.browserRecords[key(g.User, hello.BrowserID)].Name, capability: capability, endpoint: m.base + "/cdp/" + capability, session: "session-" + hex.EncodeToString(hash[:8]) + "--browser", expires: time.Now().Add(ConnectionLifetime), extension: conn, gate: make(chan struct{}, 1)}
 	for _, feature := range hello.Features {
 		if feature == "chat-clients" {
 			b.chatClients = true

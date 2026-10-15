@@ -80,7 +80,7 @@ func (b *Binding) AcquireClient(ctx context.Context, owner string, active bool) 
 	b.mu.Lock()
 	fail := func(err error) (*Client, func(), error) { b.mu.Unlock(); release(); return nil, nil, err }
 	if b.extension == nil || time.Now().After(b.expires) {
-		return fail(errors.New("CHROME_EXTENSION_DISCONNECTED: reconnect the extension"))
+		return fail(b.disconnectedError())
 	}
 	if !b.chatClients {
 		return fail(errors.New("CHROME_EXTENSION_UPDATE_REQUIRED: reload Browser Bridge 0.4.6 or newer for independent Code chat tabs"))
