@@ -428,6 +428,17 @@ func TestHandleLiveInputMessageIdleAgentRefusalIsDefinite(t *testing.T) {
 	}
 }
 
+// Delivery assertions retain every event except the independently tested turn-status update.
+func deliveryEventsWithoutTurnPhase(store *internalevents.EventStore, sessionID string) []internalevents.Event {
+	var deliveryEvents []internalevents.Event
+	for _, event := range store.GetAllEventsRaw(sessionID) {
+		if event.Type != "turn_phase" {
+			deliveryEvents = append(deliveryEvents, event)
+		}
+	}
+	return deliveryEvents
+}
+
 func TestHandleLiveInputMessageBusyCodingAgentDeliversExactlyOnce(t *testing.T) {
 	store := internalevents.NewEventStore(10)
 	defer store.Stop()
@@ -499,7 +510,7 @@ func TestHandleLiveInputMessageBusyCodingAgentDeliversExactlyOnce(t *testing.T) 
 		t.Fatal("confirmed live delivery must keep the current foreground turn active")
 	}
 
-	events := store.GetAllEventsRaw(sessionID)
+	events := deliveryEventsWithoutTurnPhase(store, sessionID)
 	if len(events) < 1 {
 		t.Fatalf("recorded events = %d, want at least the user_message", len(events))
 	}
@@ -515,7 +526,7 @@ func TestHandleLiveInputMessageBusyCodingAgentDeliversExactlyOnce(t *testing.T) 
 	// confirms the same message_id without a second delivery.
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		events = store.GetAllEventsRaw(sessionID)
+		events = deliveryEventsWithoutTurnPhase(store, sessionID)
 		if len(events) == 2 {
 			break
 		}
@@ -656,14 +667,14 @@ func TestHandleLiveInputMessageCompletionBoundaryChoosesExactlyOneRoute(t *testi
 		// turn) still holds with delivery==1 and next_turn==0.
 		deadline := time.Now().Add(5 * time.Second)
 		for {
-			if got := len(store.GetAllEventsRaw(sessionID)); got == 2 {
+			if got := len(deliveryEventsWithoutTurnPhase(store, sessionID)); got == 2 {
 				break
 			} else if time.Now().After(deadline) {
 				t.Fatalf("recorded events = %d, want user_message + live_input_confirmed", got)
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
-		if events := store.GetAllEventsRaw(sessionID); events[1].Type != string(pkgevents.LiveInputConfirmed) {
+		if events := deliveryEventsWithoutTurnPhase(store, sessionID); events[1].Type != string(pkgevents.LiveInputConfirmed) {
 			t.Fatalf("second event type = %q, want live_input_confirmed", events[1].Type)
 		}
 	})
