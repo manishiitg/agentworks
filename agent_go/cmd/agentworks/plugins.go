@@ -20,6 +20,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
 )
@@ -342,6 +343,24 @@ func pluginCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		provider := args[0]
+		addChatTools(bridge, o, dir, provider, host, func(ctx context.Context, req mcp.CallToolRequest) (string, error) {
+			switch provider {
+			case "codex":
+				return agentworksclient.CodexMCPThread(req, os.Getenv("CODEX_THREAD_ID"))
+			case "muse":
+				return museSessionForHost(dir, host)
+			}
+			// Claude: this child's own process ancestry names its exact chat.
+			own, _, e := ownAgentSession(ctx, dir, o)
+			if e != nil {
+				return "", e
+			}
+			if own.provider != provider || own.session == "" {
+				return "", errors.New("AgentWorks could not tell which chat this is; type /agentworks attach in it instead")
+			}
+			return own.session, nil
+		})
 		return server.NewStdioServer(bridge).Listen(ctx, o.stdin, o.stdout)
 	}})
 	return root

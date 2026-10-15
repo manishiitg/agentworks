@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
 
@@ -36,5 +37,8 @@ func cursorMessagingChild(parent context.Context, o *options) error {
 	if err != nil {
 		return err
 	}
+	addChatTools(bridge, o, dir, "cursor", process.Host, func(_ context.Context, req mcp.CallToolRequest) (string, error) {
+		return session(req.Params.Name, req.GetArguments())
+	})
 	return server.NewStdioServer(bridge).Listen(ctx, o.stdin, o.stdout)
 }

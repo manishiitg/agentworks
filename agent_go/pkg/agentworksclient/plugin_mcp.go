@@ -191,3 +191,9 @@ func codexMCPThread(req mcp.CallToolRequest, startup []string) (string, error) {
 	}
 	return "", errors.New("Codex host did not supply an exact thread UUID; use bridge message inside the chat.")
 }
+
+// CodexMCPThread is the exact Codex thread a tool call came from (host-supplied
+// metadata, or the child's startup thread); never taken from tool arguments.
+func CodexMCPThread(req mcp.CallToolRequest, startup ...string) (string, error) {
+	return codexMCPThread(req, startup)
+}
