@@ -30,8 +30,9 @@ func MigrateWorkspaceDatabases(ctx context.Context, root string) (BatchResult, e
 		}
 		if entry.IsDir() {
 			name := entry.Name()
+			// Frozen Flow releases (.relay_releases) run with their own workspace, so they are scanned like any other.
 			if name == ".git" || name == "node_modules" || name == ".backups" || name == "backup" ||
-				(path != root && strings.HasPrefix(name, ".")) {
+				(path != root && strings.HasPrefix(name, ".") && name != ".relay_releases") {
 				return filepath.SkipDir
 			}
 			relative, err := filepath.Rel(root, path)

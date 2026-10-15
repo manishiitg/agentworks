@@ -332,7 +332,8 @@ func TestMigrateWorkspaceDatabasesSkipsUnreadableAndHiddenFolders(t *testing.T) 
 	root := t.TempDir()
 	pulsePath := filepath.Join(root, "Workflow", "pulse", "db", "db.sqlite")
 	hiddenPath := filepath.Join(root, "Crew", "demo", ".sandbox-cache", "home", "db", "db.sqlite")
-	for _, path := range []string{pulsePath, hiddenPath} {
+	releasePath := filepath.Join(root, "Workflow", ".relay_releases", "flow", "v1", "db", "db.sqlite")
+	for _, path := range []string{pulsePath, hiddenPath, releasePath} {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -353,7 +354,7 @@ func TestMigrateWorkspaceDatabasesSkipsUnreadableAndHiddenFolders(t *testing.T) 
 	if err != nil {
 		t.Fatalf("an unreadable folder must not abort the pass: %v", err)
 	}
-	if report.Scanned != 1 || report.Migrated != 1 {
-		t.Fatalf("only the workspace database is migrated, not the one under a hidden folder: %+v", report)
+	if report.Scanned != 2 || report.Migrated != 2 {
+		t.Fatalf("the workspace and frozen-release databases are migrated, not the one under a hidden folder: %+v", report)
 	}
 }
