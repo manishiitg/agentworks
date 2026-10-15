@@ -3,8 +3,8 @@ package server
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"path/filepath"
 	"regexp"
@@ -93,14 +93,18 @@ func readWorkspaceReturnState(r *http.Request) (workspaceReturnState, error) {
 	if !exists {
 		return result, nil
 	}
+	corrupt := func() (workspaceReturnState, error) {
+		log.Printf("[WORKSPACE_STATE] user=%s invalid saved preferences; opening Home", GetUserIDFromContext(r.Context()))
+		return workspaceReturnState{Version: 1, Recent: []workspaceDestination{}, Note: "Your saved workspace could not be read. Choose another item from Home."}, nil
+	}
 	if len(raw) > 32768 {
-		return result, fmt.Errorf("workspace state exceeds limit")
+		return corrupt()
 	}
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
-		return result, err
+		return corrupt()
 	}
-	if result.Version != 1 {
-		return result, fmt.Errorf("unsupported workspace state version")
+	if result.Version != 1 || len(result.Recent) > 20 {
+		return corrupt()
 	}
 	result.Note = ""
 	return result, nil
