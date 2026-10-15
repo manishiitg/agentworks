@@ -1639,6 +1639,17 @@ func ReadWorkflowManifest(ctx context.Context, workspacePath string) (*WorkflowM
 	return &m, true, nil
 }
 
+// manifestContentUnchanged says whether two workflow.json documents are the same apart from the updated_at stamp.
+func manifestContentUnchanged(previous, next []byte) bool {
+	var a, b map[string]any
+	if json.Unmarshal(previous, &a) != nil || json.Unmarshal(next, &b) != nil {
+		return false
+	}
+	delete(a, "updated_at")
+	delete(b, "updated_at")
+	return reflect.DeepEqual(a, b)
+}
+
 // retiredManifestTopLevelKeys are the top-level workflow.json keys the product removed on purpose. ONLY these are pruned from
 // a file: any other key the schema does not model (a Crew's triggers, a field written by another subsystem or by a newer or
 // older app version) is kept by the writer (keepUnmodelledManifestFields) and is never treated as stale. Before 2026-10-16 the
@@ -1996,6 +2007,12 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 		data = keepUnmodelledManifestFields([]byte(previous), data)
 	}
 
+	// A save that changes nothing but its own updated_at stamp is not a save: skipping it keeps the folder from being marked
+	// dirty and the manifest index from re-reading every manifest, so no future write-on-read path can feed itself (the
+	// 2026-10-15 prune loop did exactly that).
+	if previousExists && manifestContentUnchanged([]byte(previous), data) {
+		return nil
+	}
 	if err := writeFileToWorkspace(ctx, manifestPath(workspacePath), string(data)); err != nil {
 		return fmt.Errorf("failed to write workflow.json: %w", err)
 	}

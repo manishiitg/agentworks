@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A Crew's workflow.json has top-level fields WorkflowManifest does not model. Rewriting it through the struct dropped its
@@ -30,5 +31,32 @@ func TestRewritingAManifestKeepsFieldsTheStructDoesNotModel(t *testing.T) {
 	}
 	if _, still := written["workflow_context_paths"]; still {
 		t.Fatalf("a cleared modelled field came back: %s", written["workflow_context_paths"])
+	}
+}
+
+// A save that changes nothing must not touch the file or mark the folder dirty: the manifest index re-reads every dirty folder, so
+// any write-on-read path would otherwise keep itself running (the 2026-10-15 prune loop: ~270 rewrites a minute).
+func TestSavingAnUnchangedManifestWritesNothing(t *testing.T) {
+	stub, _ := newScheduleRunWorkspaceStub(t)
+	ws := "Workflow/steady"
+	stub.files[manifestPath(ws)] = `{"schema_version":1,"id":"wf_steady","version":"1.0.20","label":"steady","capabilities":{},"schedules":[]}`
+	manifest, exists, err := ReadWorkflowManifest(context.Background(), ws)
+	if err != nil || !exists {
+		t.Fatalf("read: %v exists=%v", err, exists)
+	}
+	if err := WriteWorkflowManifest(context.Background(), ws, manifest); err != nil {
+		t.Fatal(err)
+	}
+	first := stub.files[manifestPath(ws)]
+	generation := manifestMutationGeneration.Load()
+	time.Sleep(1100 * time.Millisecond) // updated_at has one-second resolution
+	if err := WriteWorkflowManifest(context.Background(), ws, manifest); err != nil {
+		t.Fatal(err)
+	}
+	if stub.files[manifestPath(ws)] != first {
+		t.Fatalf("an unchanged save rewrote the file:\n%s\n--- vs ---\n%s", first, stub.files[manifestPath(ws)])
+	}
+	if manifestMutationGeneration.Load() != generation {
+		t.Fatal("an unchanged save bumped the manifest generation (every discover() would re-read all manifests)")
 	}
 }
