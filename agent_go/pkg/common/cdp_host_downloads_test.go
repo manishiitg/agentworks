@@ -11,18 +11,25 @@ func TestCDPHostDownloadsPathOnlyOnAPersonsOwnMachine(t *testing.T) {
 	}
 	t.Setenv("MULTI_USER_MODE", "")
 	t.Setenv("LOCAL_MODE", "true")
-	if CDPHostDownloadsPath("cdp") == "" {
-		t.Fatal("local single-user CDP should get the host Downloads folder")
+	if CDPHostDownloadsPath("cdp") != "" {
+		t.Fatal("a person's own Downloads must not be opened by default, even in local mode")
 	}
+	t.Setenv("HOST_DOWNLOADS_PATH", "/data/downloads")
+	if CDPHostDownloadsPath("cdp") == "" {
+		t.Fatal("an explicitly named folder should be granted in CDP mode")
+	}
+	t.Setenv("HOST_DOWNLOADS_PATH", "")
 	if CDPHostDownloadsPath("headless") != "" {
 		t.Fatal("non-CDP mode must not get it")
 	}
+	t.Setenv("HOST_DOWNLOADS_PATH", "/data/downloads")
 	t.Setenv("MULTI_USER_MODE", "true")
 	if CDPHostDownloadsPath("cdp") != "" {
 		t.Fatal("a multi-user server must never get it")
 	}
 	t.Setenv("MULTI_USER_MODE", "")
 	t.Setenv("LOCAL_MODE", "")
+	t.Setenv("HOST_DOWNLOADS_PATH", "")
 	if CDPHostDownloadsPath("cdp") != "" {
 		t.Fatal("a non-local server without an explicit folder must not get it")
 	}
