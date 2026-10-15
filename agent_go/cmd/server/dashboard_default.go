@@ -97,7 +97,7 @@ func defaultDashboardHTML(info defaultDashboardInfo) string {
   html, body { overflow-x: hidden; }
   body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
   .layout { display:flex; min-height:600px; align-items:stretch; }
-  .chat { flex:0 0 360px; display:flex; flex-direction:column; min-height:600px; padding:16px; background:var(--card); border-right:1px solid var(--line); }
+  .chat { flex:0 0 clamp(440px, 42vw, 680px); display:flex; flex-direction:column; min-height:600px; padding:16px; background:var(--card); border-right:1px solid var(--line); }
   .chat h2 { font-size:16px; font-weight:600; margin:0 0 2px; }
   .meta { color:var(--muted); font-size:12px; margin:0 0 10px; }
   #ask { flex:1 1 auto; min-height:500px; overflow:hidden; border:1px solid var(--line); border-radius:6px; }
