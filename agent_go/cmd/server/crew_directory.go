@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"io"
-	"log"
 	"net/http"
 	"path/filepath"
 	"sort"
