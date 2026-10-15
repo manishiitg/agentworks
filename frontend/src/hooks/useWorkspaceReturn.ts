@@ -84,8 +84,9 @@ export function installWorkspaceStateFlush() {
   const onHide = () => { if (document.visibilityState === 'hidden') void flushWorkspaceState() }
   const onExit = () => {
     const state = useWorkspaceReturnStore.getState()
-    if (!writing && pending?.account === state.account && pending?.workspace === state.workspace && (state.workspace === undefined || state.workspace === useWorkspaceConnectionStore.getState().activeWorkspaceId) && state.record) {
-      const destination = pending.destination; pending = null; clearTimeout(timer)
+    const exiting = pending
+    if (!writing && exiting && exiting.account === state.account && exiting.workspace === state.workspace && (state.workspace === undefined || state.workspace === useWorkspaceConnectionStore.getState().activeWorkspaceId) && state.record) {
+      const destination = exiting.destination; pending = null; clearTimeout(timer)
       void saveWorkspaceStateOnExit({ ...state.record, last: destination })
     }
   }

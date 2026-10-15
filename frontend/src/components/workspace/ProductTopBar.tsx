@@ -18,6 +18,7 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
   const [navigationMode, setNavigationMode] = usePersistentTab(
     'product_navigation_mode', 'fixed', ['fixed', 'auto-hide'] as const,
   )
+  const homeAvailable = useWorkspaceReturnStore(state => state.ready)
   const restoreNavigation = useWorkspaceReturnStore(state => state.restore?.layout?.navigation_mode)
   useEffect(() => { if (restoreNavigation) setNavigationMode(restoreNavigation) }, [restoreNavigation, setNavigationMode])
   useEffect(() => { useWorkspaceReturnStore.setState({ navigationMode }) }, [navigationMode])
@@ -122,7 +123,7 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
           stays mounted so hiding it never stops the global activity monitor. */}
       <nav aria-label="Product navigation" data-product-navigation="sidebar"
         className={`${autoHide ? `absolute inset-y-0 ${revealed ? 'left-0 shadow-xl' : '-left-12'}` : 'relative h-full'} flex w-12 flex-col border-r border-border bg-background px-1.5 py-3`}>
-        <button type="button" aria-label="Home" title="Home" onClick={openHome} className="mb-3 grid h-9 w-full shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"><Home className="h-4 w-4" /></button>
+        {homeAvailable && <button type="button" aria-label="Home" title="Home" onClick={openHome} className="mb-3 grid h-9 w-full shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"><Home className="h-4 w-4" /></button>}
         {children}
         <button type="button" aria-label="Keep navigation fixed" aria-pressed={!autoHide}
           title={autoHide ? 'Navigation: Auto-hide · click to keep fixed' : 'Navigation: Open · hides after 10 minutes without navigation activity · click to hide now'}
