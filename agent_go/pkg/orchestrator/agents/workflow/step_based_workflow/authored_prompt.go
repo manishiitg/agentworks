@@ -11,7 +11,7 @@ import (
 var authoredPromptVariable = regexp.MustCompile(`\{\{\s*([^{}]+?)\s*\}\}`)
 var authoredStepID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
 
-// renderAuthoredPrompt resolves Relay input paths before an agent turn starts.
+// renderAuthoredPrompt resolves Flow input paths before an agent turn starts.
 // INPUT is the JSON object supplied to the existing workflow function trigger.
 // Missing paths fail the run instead of silently sending unresolved placeholders.
 func renderAuthoredPrompt(prompt string, variables map[string]string) (string, error) {
@@ -104,7 +104,7 @@ func normalizeAuthoredJSONResult(answer string) (string, error) {
 		return "", fmt.Errorf("compact final JSON: %w", err)
 	}
 	if compact.Len() > 128*1024 {
-		return "", fmt.Errorf("final JSON exceeds the 128 KiB Relay response limit")
+		return "", fmt.Errorf("final JSON exceeds the 128 KiB Flow response limit")
 	}
 	return compact.String(), nil
 }

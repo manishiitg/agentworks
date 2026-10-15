@@ -55,7 +55,7 @@ async def main():
     data = json.loads((attempt / "input.json").read_text(encoding="utf-8"))
     config = data["dbos"]
     if hashlib.sha256(source.read_bytes()).hexdigest() != config["source_sha256"]:
-        raise RuntimeError("Relay source changed after admission")
+        raise RuntimeError("Flow source changed after admission")
     state = run_dir / ".relay_dbos"
     state.mkdir(mode=0o700, exist_ok=True)
     # Prevent two launchers from treating a live executor as a crashed one.
@@ -131,9 +131,9 @@ async def main():
         if marker.exists():
             previous = json.loads(marker.read_text(encoding="utf-8"))
             if previous["signature"] != signature:
-                raise RuntimeError("Relay operation changed during recovery")
+                raise RuntimeError("Flow operation changed during recovery")
             if not replay_safe:
-                raise RuntimeError("Uncertain Relay operation requires reconciliation; "
+                raise RuntimeError("Uncertain Flow operation requires reconciliation; "
                                    "automatic retry is disabled")
         durable_json_write(sdk, marker, {"signature": signature})
         before = len(durable_context._trace["calls"])
@@ -173,7 +173,7 @@ async def main():
                 try:
                     result = await operation(index, signature, replay_safe)
                     if result["signature"] != signature:
-                        raise RuntimeError("Relay operation changed during recovery")
+                        raise RuntimeError("Flow operation changed during recovery")
                     record = result["record"]
                     record["checkpoint_reused"] = index not in executed
                     # Transport IDs start at one in each fresh mailbox; logical
@@ -240,7 +240,7 @@ async def main():
         program = load_module("relay_program", source)
         result = await program.run(input_value, durable_context)
         if len(json.dumps(result, ensure_ascii=False, allow_nan=False).encode()) > 128 * 1024:
-            raise ValueError("Relay output exceeds 128 KiB")
+            raise ValueError("Flow output exceeds 128 KiB")
         return {"output": result, "trace": copy.deepcopy(durable_context._trace)}
 
     DBOS(config={"name": "relay-prototype", "application_version": identity,

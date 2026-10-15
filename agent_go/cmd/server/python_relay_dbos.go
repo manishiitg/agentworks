@@ -28,7 +28,7 @@ func authorizePythonRelayInvocation(ctx context.Context, sctx *ScheduleContext) 
 	}
 	live, found, err := ReadWorkflowManifest(ctx, draft)
 	if err != nil || !found || !isPythonRelay(live) || live.ID != sctx.WorkflowID || workflowExecutionOwnerUserID(live) != sctx.OwnerUserID || !workflowExecutionAccountActive(sctx.OwnerUserID) {
-		return fmt.Errorf("Relay execution owner or identity is no longer available")
+		return fmt.Errorf("Flow execution owner or identity is no longer available")
 	}
 	var payload struct {
 		Function string        `json:"function"`
@@ -36,19 +36,19 @@ func authorizePythonRelayInvocation(ctx context.Context, sctx *ScheduleContext) 
 		User     string        `json:"relay_caller"`
 	}
 	if sctx.WebhookInput == nil || json.Unmarshal(sctx.WebhookInput.Payload, &payload) != nil {
-		return fmt.Errorf("Relay invocation caller is unavailable")
+		return fmt.Errorf("Flow invocation caller is unavailable")
 	}
 	if payload.Caller.ID == "" && payload.User != "" {
 		payload.Caller = triggerCaller{Type: triggerCallerUser, ID: payload.User}
 	}
 	trigger, err := findWorkflowFunctionTrigger(live, payload.Function)
 	if payload.Caller.ID == "" || err != nil || trigger.ID != sctx.Schedule.ID || !relayFunctionCallerAllowed(live, trigger.Function, payload.Caller) {
-		return fmt.Errorf("Relay invocation caller is no longer allowed")
+		return fmt.Errorf("Flow invocation caller is no longer allowed")
 	}
 	if payload.Caller.Type == triggerCallerUser {
 		claims := principalClaims(payload.Caller.ID)
 		if workflowAccessForManifest(claims, live) == WorkflowAccessNone || !userAllowedWorkflowID(claims, live.ID) {
-			return fmt.Errorf("Relay invocation caller no longer has access")
+			return fmt.Errorf("Flow invocation caller no longer has access")
 		}
 	}
 	return nil
@@ -68,11 +68,11 @@ func relayDraftSnapshotHash(ctx context.Context, workspace string) (string, erro
 		}
 		raw, exists, err := readFileFromWorkspace(ctx, file)
 		if err != nil || !exists {
-			return "", fmt.Errorf("Relay draft file %q unavailable", relative)
+			return "", fmt.Errorf("Flow draft file %q unavailable", relative)
 		}
 		size += len(raw)
 		if size > 50*1024*1024 || len(content) >= 5000 {
-			return "", fmt.Errorf("Relay draft snapshot is too large")
+			return "", fmt.Errorf("Flow draft snapshot is too large")
 		}
 		content[relative] = raw
 	}
@@ -141,7 +141,7 @@ func (s *SchedulerService) executeDurablePythonRelay(ctx context.Context, sctx *
 				return err
 			}
 			if current != hash {
-				return fmt.Errorf("Relay draft changed during execution; start a new test")
+				return fmt.Errorf("Flow draft changed during execution; start a new test")
 			}
 			return nil
 		}
@@ -216,7 +216,7 @@ func (s *SchedulerService) executeDurablePythonRelay(ctx context.Context, sctx *
 func dbosRelayResumeContext(ctx context.Context, run schedulerstate.Run) (*ScheduleContext, error) {
 	m, found, err := ReadWorkflowManifest(ctx, run.ScopeID)
 	if err != nil || !found || !isDBOSRelay(m) {
-		return nil, fmt.Errorf("DBOS Relay release is unavailable")
+		return nil, fmt.Errorf("DBOS Flow release is unavailable")
 	}
 	var trigger *WorkflowSchedule
 	for i := range m.Schedules {
@@ -226,7 +226,7 @@ func dbosRelayResumeContext(ctx context.Context, run schedulerstate.Run) (*Sched
 		}
 	}
 	if trigger == nil || !trigger.Enabled || !trigger.IsFunctionTrigger() {
-		return nil, fmt.Errorf("DBOS Relay function is unavailable")
+		return nil, fmt.Errorf("DBOS Flow function is unavailable")
 	}
 	raw, exists, err := readFileFromWorkspace(ctx, webhookInputPath(run.ScopeID, run.RunID))
 	if err != nil || !exists {

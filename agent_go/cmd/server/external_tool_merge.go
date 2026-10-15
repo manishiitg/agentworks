@@ -23,12 +23,12 @@ type externalToolMerge struct {
 }
 
 var externalToolMerges = []externalToolMerge{
-	{"dashboard", "Live dashboards of workflows, Relays, Crews and owned Code projects: find them, read and edit drafts, check and publish revisions, and get links.", [][2]string{
+	{"dashboard", "Live dashboards of workflows, Flows, Crews and owned Code projects: find them, read and edit drafts, check and publish revisions, and get links.", [][2]string{
 		{"list", "list_dashboards"}, {"get", "get_dashboard"}, {"link", "get_dashboard_link"},
 		{"create", "create_dashboard"}, {"update", "update_dashboard"}, {"validate", "validate_dashboard"},
 		{"export_motion", "export_dashboard_motion"}, {"preview", "preview_dashboard"}, {"publish", "publish_dashboard"}, {"restore", "restore_dashboard"},
 	}},
-	{"settings", "Read and change the setup of a workflow, Relay or Crew: models, MCP servers, skills, secrets, Pulse, browser mode, notifications and after-run steps.", [][2]string{
+	{"settings", "Read and change the setup of a workflow, Flow or Crew: models, MCP servers, skills, secrets, Pulse, browser mode, notifications and after-run steps.", [][2]string{
 		{"get", "get_settings"}, {"update", "update_settings"},
 	}},
 	{"needs_you", "What is waiting on you across workflows and Crews: agent questions and open decisions. List them, then answer or dismiss one.", [][2]string{
@@ -40,14 +40,14 @@ var externalToolMerges = []externalToolMerge{
 	{"help", "Guidance for using this connection: your access context, guidance topics to load, and the AgentWorks skill to install.", [][2]string{
 		{"context", "get_agent_context"}, {"topics", "list_guidance_topics"}, {"topic", "get_guidance_topic"}, {"skills", "get_guidance_skills"}, {"skill", "get_skill"},
 	}},
-	{"workflow", "Find workflows and Relays you can use, read one workflow's manifest and access, or its plan.", [][2]string{
+	{"workflow", "Find workflows and Flows you can use, read one workflow's manifest and access, or its plan.", [][2]string{
 		{"list", "list_workflows"}, {"get", "get_workflow"}, {"plan", "get_plan"},
 	}},
 	{"crew", "Crews you can use: list, read, create, edit, export and import. Ask a Crew with ask_crew.", [][2]string{
 		{"list", "list_crews"}, {"get", "get_crew"}, {"costs", "get_crew_costs"}, {"create", "create_crew"}, {"update", "update_crew"},
 		{"export", "export_crew"}, {"import", "import_crew"},
 	}},
-	{"files", "Browse, search, read and write project files, with revision checks, for a workflow or Relay (workflow_id), or a Crew you own (crew_id; read for anyone with access, write for its owner, text or binary). action=code lists a step's saved code.", [][2]string{
+	{"files", "Browse, search, read and write project files, with revision checks, for a workflow or Flow (workflow_id), or a Crew you own (crew_id; read for anyone with access, write for its owner, text or binary). action=code lists a step's saved code.", [][2]string{
 		{"list", "list_files|list_crew_files"}, {"search", "search_files|search_crew_files"}, {"read", "read_file|read_crew_file"},
 		{"write", "write_file|write_crew_file"}, {"code", "list_step_code"},
 	}},
@@ -59,15 +59,15 @@ var externalToolMerges = []externalToolMerge{
 	{"suggest_change", "Suggest a change to a workflow (workflow_id) or a Crew (crew_id) for its owner to review; it never changes anything itself.", [][2]string{
 		{"suggest", "suggest_workflow_change|suggest_crew_change"},
 	}},
-	{"runs", "Runs of a workflow or Relay: list them, read one, its logs, poll a session started externally and answer a pending input.", [][2]string{
+	{"runs", "Runs of a workflow or Flow: list them, read one, its logs, poll a session started externally and answer a pending input.", [][2]string{
 		{"list", "list_runs"}, {"get", "get_run"}, {"logs", "get_logs"}, {"status", "run_status"}, {"reply_input", "run_reply_input"},
 	}},
-	{"builder", "Edit a workflow or Relay through its Builder model in your existing workflow chat, and talk to its Pulse. Submit with action=chat, then poll status; answer a question with reply_input; cancel an operation; read and restore file edits.", [][2]string{
+	{"builder", "Edit a workflow or Flow through its Builder model in your existing workflow chat, and talk to its Pulse. Submit with action=chat, then poll status; answer a question with reply_input; cancel an operation; read and restore file edits.", [][2]string{
 		{"chat", "builder_chat"}, {"status", "builder_status"}, {"reply_input", "builder_reply_input"}, {"cancel", "builder_cancel"},
 		{"file_history", "builder_file_history"}, {"restore_file", "builder_restore_file"},
 		{"pulse_chat", "builder_pulse_chat"}, {"pulse_status", "builder_pulse_status"},
 	}},
-	{"relay", "Relays: create and edit one, test the draft, publish an immutable version, run a published version and read its runs and releases. Edit its code directly with files action=read/write, then test and inspect the draft run.", [][2]string{
+	{"relay", "Flows: create and edit one, test the draft, publish an immutable version, run a published version and read its runs and releases. Edit its code directly with files action=read/write, then test and inspect the draft run.", [][2]string{
 		{"create", "create_relay"}, {"update", "update_relay"}, {"test", "test_relay"}, {"publish", "publish_relay"},
 		{"run", "run_relay"}, {"get_run", "get_relay_run"}, {"runs", "list_relay_runs"}, {"releases", "get_relay_releases"},
 	}},

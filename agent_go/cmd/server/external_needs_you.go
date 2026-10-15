@@ -11,7 +11,7 @@ import (
 )
 
 // "Needs you" over MCP: one list of what waits on this person across
-// workflows, Relays and Crews, and one way to answer it. Two sources:
+// workflows, Flows and Crews, and one way to answer it. Two sources:
 // live agent questions (a paused chat, run, scheduled run or function call)
 // and stored decisions and suggestions. Visibility and answering follow
 // the app: questions through humanFeedbackVisibleTo, decisions through the
@@ -19,10 +19,10 @@ import (
 
 func externalNeedsYouDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	filter := map[string]any{
-		"workflow_id": externalString("Optional: only this workflow or Relay."),
+		"workflow_id": externalString("Optional: only this workflow or Flow."),
 		"crew_id":     externalString("Optional: only this Crew."),
 	}
-	add("list_needs_you", "List what is waiting on you across workflows, Relays and Crews: live agent questions (a paused chat, run, scheduled run or function call, with when it expires) and open decisions (with Pulse's recommendation when there is one) and suggestions sent to you as owner. Urgent first. Answer with answer_needs_you.", false, false, filter)
+	add("list_needs_you", "List what is waiting on you across workflows, Flows and Crews: live agent questions (a paused chat, run, scheduled run or function call, with when it expires) and open decisions (with Pulse's recommendation when there is one) and suggestions sent to you as owner. Urgent first. Answer with answer_needs_you.", false, false, filter)
 	add("answer_needs_you", "Answer or dismiss one item from list_needs_you. Pass option (an option id or title) or answer (free text), or dismiss=true for a decision. A live question goes back to the paused chat or run, which continues; a decision is recorded as answered by you via MCP and applied by the Builder as from the app. If someone already answered, says so.", true, false, map[string]any{
 		"id":      externalString("Item id from needs_you action=list."),
 		"option":  externalString("Chosen option id or title."),
@@ -38,7 +38,7 @@ type needsYouPlace struct {
 	path  string
 }
 
-// needsYouPlaces is every workflow, Relay and Crew this connection may read,
+// needsYouPlaces is every workflow, Flow and Crew this connection may read,
 // narrowed by an optional filter.
 func (api *StreamingAPI) needsYouPlaces(ctx context.Context, claims *UserClaims, visible []DiscoveredWorkflow, workflowID, crewID string) []needsYouPlace {
 	places := []needsYouPlace{}

@@ -32,7 +32,7 @@ const products: Array<{
   icon: ProductMarkComponent
 }> = [
   { id: 'agentworks', label: 'Goals', description: 'Set a goal, give the agents a metric, and watch them hit it', icon: RunloopMark },
-  { id: 'relays', label: 'Relays', description: 'Build and run an API callable agent graph', icon: Waypoints },
+  { id: 'relays', label: 'Flows', description: 'Build and run an API callable agent graph', icon: Waypoints },
   { id: 'video-studio', label: 'Video Studio', description: 'Projects and video production', icon: VideoStudioMark },
   { id: 'sparkquill', label: 'SparkQuill', description: 'Family learning with Quill', icon: SparkQuillMark },
   { id: 'work', label: 'Crew', description: 'Specialist agents with their own memory and skills, working together', icon: WorkMark },

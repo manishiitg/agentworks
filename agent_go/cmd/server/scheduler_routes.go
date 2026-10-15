@@ -246,7 +246,7 @@ func buildJobResponse(workspacePath string, manifest *WorkflowManifest, sched Wo
 }
 
 // scheduleAfterRunForResponse is the schedule's effective after-run options,
-// or nil for a schedule that has none (webhooks, Relays).
+// or nil for a schedule that has none (webhooks, Flows).
 func scheduleAfterRunForResponse(manifest *WorkflowManifest, sched WorkflowSchedule) *ScheduleAfterRun {
 	if manifest == nil || manifest.Kind == "relay" || strings.EqualFold(strings.TrimSpace(sched.ScheduleType), "webhook") || sched.PulseReviewOnly {
 		return nil
@@ -768,7 +768,7 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			return
 		}
 		if manifest.Kind == "relay" && len(normalizeScheduleGroupNames(req.GroupNames)) > 0 {
-			http.Error(w, "Relays do not accept group_names; configure variables directly", http.StatusBadRequest)
+			http.Error(w, "Flows do not accept group_names; configure variables directly", http.StatusBadRequest)
 			return
 		}
 		// PLAT-115: a PulseReviewOnly schedule never runs the workflow, so it has
@@ -959,7 +959,7 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			sched.TriggerPayload = req.TriggerPayload
 		}
 		if manifest.Kind == "relay" && len(normalizeScheduleGroupNames(req.GroupNames)) > 0 {
-			http.Error(w, "Relays do not accept group_names; configure variables directly", http.StatusBadRequest)
+			http.Error(w, "Flows do not accept group_names; configure variables directly", http.StatusBadRequest)
 			return
 		}
 		if manifest.Kind != "relay" && req.GroupNames != nil {

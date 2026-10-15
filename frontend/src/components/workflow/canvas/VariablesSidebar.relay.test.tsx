@@ -22,7 +22,7 @@ async function mount(groups: { name: string; values: Record<string, string>; ena
   return host
 }
 
-it('saves Relay configuration and sample INPUT without groups, preserving legacy values and refusing ambiguous migration', async () => {
+it('saves Flow configuration and sample INPUT without groups, preserving legacy values and refusing ambiguous migration', async () => {
   const host = await mount([{ name: 'old-default', values: { ENDPOINT: 'https://service.example', EXTRA: 'preserved' }, enabled: true }])
   expect(host.textContent).not.toContain('Add Variable Group')
   expect(host.querySelector<HTMLInputElement>('[aria-label="ENDPOINT"]')?.value).toBe('https://service.example')

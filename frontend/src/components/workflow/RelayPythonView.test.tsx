@@ -50,10 +50,10 @@ it('builds the graph from source, keeps code optional, and matches recorded call
   await act(async () => root.render(<RelayPythonView workspacePath="Workflow/python-relay" relayID="id" onBuild={() => {}} />))
   expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('Graph')
   expect(host.textContent).toContain('Invoice assistant')
-  expect(host.querySelector('[aria-label="Relay Python source"]')).toBeNull()
+  expect(host.querySelector('[aria-label="Flow Python source"]')).toBeNull()
   const code = Array.from(host.querySelectorAll('[role="tab"]')).find(button => button.textContent === 'Code') as HTMLButtonElement
   await act(async () => code.click())
-  expect(host.querySelector('[aria-label="Relay Python source"]')?.textContent).toBe(fixture.annotations + fixture.source)
+  expect(host.querySelector('[aria-label="Flow Python source"]')?.textContent).toBe(fixture.annotations + fixture.source)
   const openFiles = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('Open in Files'))!
   await act(async () => openFiles.click())
   expect(fixture.openWorkspaceView).toHaveBeenCalledWith('files', 'relay.py')
@@ -70,8 +70,8 @@ it('builds the graph from source, keeps code optional, and matches recorded call
   expect(host.textContent).toContain('Published graph')
   const node = host.querySelector('[aria-label="Select extract"]') as HTMLButtonElement
   await act(async () => node.click())
-  expect(host.querySelector('[aria-label="Relay node details"]')?.textContent).toContain('Result 1 · completed')
-  expect(host.querySelector('[aria-label="Relay node details"]')?.textContent).toContain('lookup_customer')
+  expect(host.querySelector('[aria-label="Flow node details"]')?.textContent).toContain('Result 1 · completed')
+  expect(host.querySelector('[aria-label="Flow node details"]')?.textContent).toContain('lookup_customer')
   expect(fixture.paths.some(path => path.endsWith('relay.md'))).toBe(false)
   const version = host.querySelector('#relay-python-version') as HTMLSelectElement
   await act(async () => { version.value = 'draft'; version.dispatchEvent(new Event('change', { bubbles: true })) })
@@ -87,7 +87,7 @@ it('offers chat guidance when existing Python has no graph comments', async () =
   try {
     await act(async () => root.render(<RelayPythonView workspacePath="Workflow/existing-relay" onBuild={onBuild} />))
     expect(host.textContent).toContain('add graph comments')
-    expect(host.querySelector('[aria-label="Relay Python source"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Flow Python source"]')).toBeNull()
     const build = Array.from(host.querySelectorAll('button')).find(button => button.textContent === 'Add graph in chat')!
     await act(async () => build.click())
     expect(onBuild).toHaveBeenCalledOnce()
@@ -96,7 +96,7 @@ it('offers chat guidance when existing Python has no graph comments', async () =
   }
 })
 
-it('derives the native overview from AST inspection without requiring Relay annotations', async () => {
+it('derives the native overview from AST inspection without requiring Flow annotations', async () => {
   fixture.native = true
   await act(async () => root.render(<RelayPythonView workspacePath="Workflow/native" relayID="id" onBuild={() => {}} />))
   expect(host.textContent).toContain('Overview of possible paths')
@@ -104,6 +104,6 @@ it('derives the native overview from AST inspection without requiring Relay anno
   expect(host.textContent).not.toContain('Add graph in chat')
   const code = Array.from(host.querySelectorAll('[role="tab"]')).find(button => button.textContent === 'Code') as HTMLButtonElement
   await act(async () => code.click())
-  expect(host.querySelector('[aria-label="Relay Python source"]')?.textContent).toContain('@DBOS.workflow()')
-  expect(host.querySelector('[aria-label="Relay Python source"]')?.textContent).not.toContain('@relay')
+  expect(host.querySelector('[aria-label="Flow Python source"]')?.textContent).toContain('@DBOS.workflow()')
+  expect(host.querySelector('[aria-label="Flow Python source"]')?.textContent).not.toContain('@relay')
 })

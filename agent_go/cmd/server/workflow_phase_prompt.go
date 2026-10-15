@@ -35,9 +35,9 @@ func buildWorkflowPhaseSystemPrompt(phase string, vars map[string]string, ctx pr
 		if err != nil {
 			return "", nil, nil, err
 		}
-		parts := []string{chatPrompt, "## Workspace\n\nActive Relay workspace: `" + vars["WorkspacePath"] + "`. Use only the registered Relay " + surface + " tools and attached skills."}
+		parts := []string{chatPrompt, "## Workspace\n\nActive Flow workspace: `" + vars["WorkspacePath"] + "`. Use only the registered Flow " + surface + " tools and attached skills."}
 		if ctx.WorkflowUIAvailable {
-			parts = append(parts, "## Relay views\n\nUse perform_ui_action to open and refresh the graph, triggers, and executions when useful.")
+			parts = append(parts, "## Flow views\n\nUse perform_ui_action to open and refresh the graph, triggers, and executions when useful.")
 		}
 		for _, addition := range additions {
 			if strings.TrimSpace(addition) != "" {

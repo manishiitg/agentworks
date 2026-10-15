@@ -9,15 +9,15 @@ import (
 	"strings"
 )
 
-// Lifecycle and sharing of a workflow, Relay or Crew over MCP, through the
+// Lifecycle and sharing of a workflow, Flow or Crew over MCP, through the
 // app's own handlers and their owner/editor checks: rename, duplicate, delete
 // (permanent, so the caller repeats the ID), who has access, and Crew
 // templates after creation. Crew names and icons stay in update_crew.
 
 func externalProjectDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	names := map[string]any{"type": "array", "maxItems": 100, "items": map[string]any{"type": "string", "minLength": 1, "maxLength": 200}, "description": "User ids, usernames or emails."}
-	add("manage_project", "Rename, duplicate, delete or share a workflow, Relay or Crew, or install a Crew template after creation. Pass workflow_id or crew_id. rename (workflows and Relays; Crews use update_crew): label, description (one short line, shown in Slack and lists), icon. duplicate (workflows and Relays): a copy you own, new_label. delete is permanent with no undo: owner only, and confirm must repeat the workflow_id or crew_id. get_access / set_access: workflows list owners, editors and readers (set_access changes only the lists you send; owners only). A Relay or Crew is shared from its dashboard with share_dashboard instead; set_access on them is refused. install_template (Crews): template_id from the Crew Agent catalog; files you edited are kept.", true, false, map[string]any{
-		"workflow_id": externalString("Workflow or Relay ID from list_workflows. Pass this or crew_id."),
+	add("manage_project", "Rename, duplicate, delete or share a workflow, Flow or Crew, or install a Crew template after creation. Pass workflow_id or crew_id. rename (workflows and Flows; Crews use update_crew): label, description (one short line, shown in Slack and lists), icon. duplicate (workflows and Flows): a copy you own, new_label. delete is permanent with no undo: owner only, and confirm must repeat the workflow_id or crew_id. get_access / set_access: workflows list owners, editors and readers (set_access changes only the lists you send; owners only). A Flow or Crew is shared from its dashboard with share_dashboard instead; set_access on them is refused. install_template (Crews): template_id from the Crew Agent catalog; files you edited are kept.", true, false, map[string]any{
+		"workflow_id": externalString("Workflow or Flow ID from list_workflows. Pass this or crew_id."),
 		"crew_id":     externalString("Crew ID from list_crews. Pass this or workflow_id."),
 		"action":      map[string]any{"type": "string", "enum": []any{"rename", "duplicate", "delete", "get_access", "set_access", "install_template"}},
 		"label":       map[string]any{"type": "string", "minLength": 1, "maxLength": 200},
@@ -91,12 +91,12 @@ func (api *StreamingAPI) externalWorkflowProjectCall(w http.ResponseWriter, r *h
 		respond(scheduleHandler(r, api.handleGetWorkflowAccess, http.MethodGet, "/api/workflow/access", nil, url.Values{"workspace_path": {root}}, nil))
 	case "set_access":
 		if workflow.Manifest.Kind == "relay" {
-			externalError(w, 409, "use_share_dashboard", "Share this Relay from its dashboard: call share_dashboard, or open the dashboard and press Share.")
+			externalError(w, 409, "use_share_dashboard", "Share this Flow from its dashboard: call share_dashboard, or open the dashboard and press Share.")
 			return
 		}
 		owners, editors, readers := workflow.Manifest.effectiveOwners(), workflow.Manifest.effectiveEditors(), workflow.Manifest.effectiveReaders()
 		if workflow.Manifest.Kind == "relay" {
-			// A Relay has one owner and no editors: what is not sent keeps its meaning (the Builder; everyone else running).
+			// A Flow has one owner and no editors: what is not sent keeps its meaning (the Builder; everyone else running).
 			owners, editors, readers = relayAccessLists(workflow.Manifest)
 		}
 		changed := false

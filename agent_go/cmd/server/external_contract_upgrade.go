@@ -26,7 +26,7 @@ func externalContractUpgradeDefinition(add func(string, string, bool, bool, map[
 func (api *StreamingAPI) externalContractUpgradeCall(w http.ResponseWriter, r *http.Request, args map[string]any, workflow DiscoveredWorkflow) {
 	claims := GetUserFromContext(r.Context())
 	if workflow.Manifest.Kind == "relay" {
-		externalError(w, 400, "wrong_product", "Relays have their own contract lifecycle; this route is for Goals workflows.")
+		externalError(w, 400, "wrong_product", "Flows have their own contract lifecycle; this route is for Goals workflows.")
 		return
 	}
 	if !externalFileAuthoringAllowed(claims, workflow.Manifest) {

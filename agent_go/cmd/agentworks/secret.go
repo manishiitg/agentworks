@@ -16,7 +16,7 @@ import (
 
 const maxDotenvBytes = 1 << 20
 
-// secretCommand adds secrets the person gives, from the terminal or a .env file, to Vault or to a workflow, Relay or
+// secretCommand adds secrets the person gives, from the terminal or a .env file, to Vault or to a workflow, Flow or
 // Crew. The value goes from the terminal or file straight to the server over the person's own sign-in; the output
 // and errors name secrets and outcomes only, never a value.
 func secretCommand(o *options) *cobra.Command {
@@ -27,7 +27,7 @@ func secretCommand(o *options) *cobra.Command {
 		c.Flags().BoolVar(&vault, "vault", false, "add to Vault (a Vault administrator)")
 		c.Flags().StringVar(&workflow, "workflow", "", "add to this workflow (its owner)")
 		c.Flags().StringVar(&crew, "crew", "", "add to this Crew (its owner)")
-		c.Flags().StringVar(&relay, "relay", "", "add to this Relay (its owner)")
+		c.Flags().StringVar(&relay, "relay", "", "add to this Flow (its owner)")
 	}
 	target := func() (agentworksclient.SecretTarget, error) {
 		var picked []agentworksclient.SecretTarget

@@ -71,7 +71,7 @@ func TestSlackFullAccessRejectsRelayTarget(t *testing.T) {
 	t.Setenv("WORKSPACE_API_URL", workspace.URL)
 	api := &StreamingAPI{}
 	_, err = api.slackCLIFullAccess(context.Background(), "relay", "Workflow/relay", "", map[string]interface{}{"method": "users.list"})
-	if err == nil || !strings.Contains(err.Error(), "Relays do not support Slack") {
+	if err == nil || !strings.Contains(err.Error(), "Flows do not support Slack") {
 		t.Fatalf("Relay reached Slack runtime: %v", err)
 	}
 }
@@ -92,7 +92,7 @@ func TestSlackRouteRejectsRetainedRelaySession(t *testing.T) {
 		"relay": {SessionID: "relay", UserID: "owner", WorkspacePath: "Workflow/relay"},
 	}}
 	_, err = api.authorizeSlackToolRoute(context.Background(), "relay", "C123", ChannelRoute{WorkflowID: manifest.ID, WorkspacePath: "Workflow/relay", BotGrant: "owner"})
-	if err == nil || !strings.Contains(err.Error(), "Relays do not support Slack") {
+	if err == nil || !strings.Contains(err.Error(), "Flows do not support Slack") {
 		t.Fatalf("retained Relay session reached Slack route: %v", err)
 	}
 }

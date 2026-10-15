@@ -222,7 +222,7 @@ func requireSlackRouteWorkflowOwner(ctx context.Context, route ChannelRoute) err
 		return fmt.Errorf("Slack route workflow %s does not match manifest %s", strings.TrimSpace(route.WorkflowID), strings.TrimSpace(manifest.ID))
 	}
 	if manifest.Kind == "relay" {
-		return fmt.Errorf("Relay %s does not accept Slack bot routes", manifest.ID)
+		return fmt.Errorf("Flow %s does not accept Slack bot routes", manifest.ID)
 	}
 	if workflowAccessForManifest(GetUserFromContext(ctx), manifest) != WorkflowAccessOwner {
 		return fmt.Errorf("only a workflow owner may manage Slack bot grants for %s", manifest.ID)

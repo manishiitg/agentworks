@@ -113,7 +113,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
     agentMode: state.agentMode,
   })))
   const isReadOnlyUser = useAuthStore(state => isWorkflowReadOnly(state.user, state.isMultiUserMode))
-  // Workflows and Relays each have their own create permission (PLAT-767).
+  // Workflows and Flows each have their own create permission (PLAT-767).
   const canCreateWorkflows = useAuthStore(state => hasProductCreateAccess(state.user, state.isMultiUserMode, isRelaySurface ? 'relays' : 'agentworks'))
   const schedulerPaused = useGlobalSchedulerPaused(productSurface)
   // Use toolList to get all available servers, not just enabled ones
@@ -681,10 +681,10 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
                       label={activePreset?.label}
                       leading={activePreset ? <WorkflowIcon icon={activePreset.icon} label={activePreset.label} /> : undefined}
                       compactOnNarrow
-                      placeholder={isRelaySurface ? 'Select Relay' : 'Select Automation'}
+                      placeholder={isRelaySurface ? 'Select Flow' : 'Select Automation'}
                       title={activePreset?.label
                         ? (currentSessionStatusLabel ? `${activePreset.label} · ${currentSessionStatusLabel}` : activePreset.label)
-                        : isRelaySurface ? 'Select Relay' : 'Select Automation'}
+                        : isRelaySurface ? 'Select Flow' : 'Select Automation'}
                       open={showPresetDropdown}
                       onToggle={() => {
                         if (isGlobalPage) returnToWorkspace()
@@ -692,8 +692,8 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
                       }}
                       onClose={() => setShowPresetDropdown(false)}
                       onAdd={handleAddWorkflow}
-                      addLabel={isRelaySurface ? 'Add relay' : 'Add automation'}
-                      addTitle={!canCreateWorkflows ? 'Your account cannot create workflows. Ask an administrator to enable creation.' : isRelaySurface ? 'Add relay' : 'Add automation'}
+                      addLabel={isRelaySurface ? 'Add Flow' : 'Add automation'}
+                      addTitle={!canCreateWorkflows ? 'Your account cannot create workflows. Ask an administrator to enable creation.' : isRelaySurface ? 'Add Flow' : 'Add automation'}
                       addDisabled={!canCreateWorkflows}
                       addTestId="add-workflow-button"
                       dataTour="workflow-add-edit"
@@ -710,7 +710,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
                             >
                               <div className="flex items-center gap-2">
                                 <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                                <span className="font-medium">+ Add {isRelaySurface ? 'Relay' : 'Automation'}</span>
+                                <span className="font-medium">+ Add {isRelaySurface ? 'Flow' : 'Automation'}</span>
                               </div>
                             </button>
 
@@ -755,7 +755,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
                                       <WorkflowIcon icon={preset.icon} label={preset.label} />
                                       <div className="flex-1">
                                         <div className="font-medium">{preset.label}</div>
-                                        {'workflowKind' in preset && preset.workflowKind === 'relay' && <span className="text-[10px] font-medium uppercase tracking-wide text-blue-600 dark:text-blue-400">Relay</span>}
+                                        {'workflowKind' in preset && preset.workflowKind === 'relay' && <span className="text-[10px] font-medium uppercase tracking-wide text-blue-600 dark:text-blue-400">Flow</span>}
                                       </div>
                                     </div>
                                   </button>

@@ -49,7 +49,7 @@ func (api *StreamingAPI) externalCreateWorkflow(w http.ResponseWriter, r *http.R
 		}
 	}
 	if kind, _ := workflow["kind"].(string); kind != "" {
-		externalError(w, 400, "invalid_arguments", "Use relay action=create to create a Relay.")
+		externalError(w, 400, "invalid_arguments", "Use relay action=create to create a Flow.")
 		return
 	}
 	workflowID, _ := workflow["id"].(string)
@@ -70,7 +70,7 @@ func (api *StreamingAPI) externalCreateWorkflow(w http.ResponseWriter, r *http.R
 		err = json.Unmarshal(encoded, &manifest)
 	}
 	if err == nil && manifest.Kind != "" {
-		externalError(w, 400, "invalid_arguments", "Use relay action=create to create a Relay.")
+		externalError(w, 400, "invalid_arguments", "Use relay action=create to create a Flow.")
 		return
 	}
 	if err == nil {

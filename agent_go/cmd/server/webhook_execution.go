@@ -100,10 +100,10 @@ func (s *SchedulerService) executeWebhookJob(ctx context.Context, sctx *Schedule
 	}
 	if isPythonRelay(manifest) {
 		if sctx.CapacityResumeRunID != "" {
-			return "", "", fmt.Errorf("Python Relays do not support execution recovery")
+			return "", "", fmt.Errorf("Python Flows do not support execution recovery")
 		}
 		if sctx.DBOSResumeRunID != "" && !isDBOSRelay(manifest) {
-			return "", "", fmt.Errorf("Relay does not enable DBOS recovery")
+			return "", "", fmt.Errorf("Flow does not enable DBOS recovery")
 		}
 		if err := validatePythonRelaySource(ctx, sctx.WorkspacePath); err != nil {
 			return "", "", err

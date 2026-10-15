@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  PRODUCT_SURFACE_LABELS,
   deploymentDefaultProductSurface,
   enabledProductSurfaces,
   gatewayAdminUrl,
@@ -70,8 +71,9 @@ describe('product surface deployment configuration', () => {
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
   })
 
-  it('defaults to AgentWorks, Relays, Crew, and Brain when no deployment allowlist is configured', () => {
+  it('defaults to AgentWorks, Flows, Crew, and Brain when no deployment allowlist is configured', () => {
     expect(enabledProductSurfaces()).toEqual(['agentworks', 'relays', 'work', 'knowledgebase'])
+    expect(PRODUCT_SURFACE_LABELS.relays).toBe('Flows')
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
     expect(isSingleProductDeployment()).toBe(false)
     expect(enabledProductSurfaces()).not.toContain('bullpen')

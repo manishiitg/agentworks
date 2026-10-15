@@ -27,11 +27,11 @@ func relayConfigurationView(manifest *VariablesManifest, workflow *WorkflowManif
 		}
 		groups := normalizeScheduleGroupNames(trigger.GroupNames)
 		if len(groups) > 1 {
-			return fmt.Errorf("legacy Relay trigger %q has multiple configuration groups", trigger.Name)
+			return fmt.Errorf("legacy Flow trigger %q has multiple configuration groups", trigger.Name)
 		}
 		if len(groups) == 1 {
 			if legacy != "" && legacy != groups[0] {
-				return fmt.Errorf("legacy Relay triggers use different configurations; consolidate them before editing configuration")
+				return fmt.Errorf("legacy Flow triggers use different configurations; consolidate them before editing configuration")
 			}
 			legacy = groups[0]
 		}
@@ -68,10 +68,10 @@ func clearRelayConfigurationBindings(ctx context.Context, workspace string) erro
 	defer workflowWebhookConfigMu.Unlock()
 	manifest, found, err := ReadWorkflowManifest(ctx, workspace)
 	if err != nil {
-		return fmt.Errorf("Relay manifest unavailable while clearing legacy configuration: %w", err)
+		return fmt.Errorf("Flow manifest unavailable while clearing legacy configuration: %w", err)
 	}
 	if !found || manifest.Kind != "relay" {
-		return fmt.Errorf("Relay manifest unavailable while clearing legacy configuration")
+		return fmt.Errorf("Flow manifest unavailable while clearing legacy configuration")
 	}
 	changed := false
 	for i := range manifest.Schedules {

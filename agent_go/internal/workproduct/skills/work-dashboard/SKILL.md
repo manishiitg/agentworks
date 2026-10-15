@@ -58,7 +58,7 @@ user's preferences and supplied references. This skill describes platform usage.
 
 ## Optional native chat widgets
 
-In a managed Crew, workflow or Relay dashboard, the designer may add an open
+In a managed Crew or workflow<!-- product:relays --> or Flow<!-- /product --> dashboard, the designer may add an open
 chat panel, a button, or both. Choose the placement, size, label, visibility and
 responsive layout in the dashboard's HTML/CSS. There is no required sidebar.
 For example (dimensions are only an example):
@@ -132,8 +132,7 @@ dialog. The page cannot run a function itself: there is no script method, only
 the person's click and Run. The function must be one the signed-in person can
 already use in this project (the owner's published functions); a button naming
 anything else shows that it is unavailable. Button text, placement and styling
-are the designer's choice. Crew and workflow dashboards only; Relay and Code
-dashboards have no function buttons yet.
+are the designer's choice. Crew and workflow dashboards only.<!-- product:relays --> Flow dashboards have no function buttons yet.<!-- /product --><!-- product:code --> Code dashboards have no function buttons yet.<!-- /product -->
 
 ## Requested motion
 
@@ -167,7 +166,7 @@ on the server; interactive motion does not require that renderer.
   `window.report.ready`, with a loading state, a visible error, and a Refresh
   button that passes `{ refresh: true }`. Prefer `query` when the data is
   already in the project database. The script contract:
-  - Supported in Goals/Workflow, <!-- product:relays -->Relays, <!-- /product -->Crew<!-- product:code --> and Code<!-- /product --> project roots. Crew
+  - Supported in Goals/Workflow, <!-- product:relays -->Flows, <!-- /product -->Crew<!-- product:code --> and Code<!-- /product --> project roots. Crew
     people it is shared with follow the existing project access rules.<!-- product:code --> Code scripts are owner-only.<!-- /product -->
     Scripts use the project's selected MCP tools and secrets (`$SECRET_*`) under
     the authenticated viewer's live MCP<!-- product:mcp-gateway -->/Vault<!-- /product --> permissions. Viewing a project does
@@ -274,13 +273,13 @@ revisions, read it and create a new managed dashboard from its source.
 
 External MCP clients use `get_api_spec` then `call_tool`. Request explicit
 `dashboards:read` plus existing product authoring consent for drafts/publication:
-`builder:chat` for workflows,<!-- product:relays --> `relays:write` or Builder consent for Relays,<!-- /product -->
-`crews:write` for Crews, <!-- product:code -->and `code:run` for owned Code projects.<!-- /product --> Workflow<!-- product:relays -->/Relay<!-- /product -->
+`builder:chat` for workflows,<!-- product:relays --> `relays:write` or Builder consent for Flows,<!-- /product -->
+`crews:write` for Crews, <!-- product:code -->and `code:run` for owned Code projects.<!-- /product --> Workflow<!-- product:relays -->/Flow<!-- /product -->
 consent retains its companion read/run scopes and Builder enablement. Current
 account/product and project owner/editor roles, ID bounds and folder caps still
 apply. Read-only and retired dashboard-write grants gain no authoring rights;
 connections receive no replacement scopes automatically.
 Preview additionally requires `runs:execute` and edit access because it can run
 live data scripts. It keeps the connection's scope, expiry and revocation checks.
-Publishing does not run a workflow<!-- product:relays --> or the Relay API<!-- /product -->. SQLite files, transcripts,
+Publishing does not run a workflow<!-- product:relays --> or the Flow API<!-- /product -->. SQLite files, transcripts,
 secrets and runtime selections stay outside dashboard authoring.

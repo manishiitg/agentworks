@@ -181,7 +181,7 @@ func workflowFunctions(manifest *WorkflowManifest) []crewFunction {
 		}
 		resultSchema := workflowFunctionResultSchema()
 		if manifest.Kind == "relay" {
-			// The authored Relay output is JSON chosen by its author. A future
+			// The authored Flow output is JSON chosen by its author. A future
 			// output-schema field can narrow this for specific integrations.
 			resultSchema = nil
 			sched.GroupNames = nil
@@ -230,9 +230,9 @@ func workflowFunctionCallerAllowed(spec *WorkflowFunctionSpec, caller triggerCal
 	return false
 }
 
-// relayFunctionCallerAllowed is workflowFunctionCallerAllowed for a Relay's
-// PUBLISHED versions: anyone with access to the Relay (a product member in Run
-// mode) may run the whole published Relay, so the per-function allow-list only
+// relayFunctionCallerAllowed is workflowFunctionCallerAllowed for a Flow's
+// PUBLISHED versions: anyone with access to the Flow (a product member in Run
+// mode) may run the whole published Flow, so the per-function allow-list only
 // narrows plain function callers (a workflow, a Crew or a user without access).
 // Draft tests never use it.
 func relayFunctionCallerAllowed(live *WorkflowManifest, spec *WorkflowFunctionSpec, caller triggerCaller) bool {
@@ -242,7 +242,7 @@ func relayFunctionCallerAllowed(live *WorkflowManifest, spec *WorkflowFunctionSp
 	return sharedFunctionCallerAllowed(live, spec, caller)
 }
 
-// sharedFunctionCallerAllowed: anyone a workflow, Relay or Crew is shared with
+// sharedFunctionCallerAllowed: anyone a workflow, Flow or Crew is shared with
 // may run its published functions (owner decision 2026-10-14: sharing a product
 // is sharing what it publishes). The per-function allow-list keeps narrowing
 // callers that are not people (a workflow, a Crew); a person entry in it no
@@ -385,7 +385,7 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 		return "", internalTriggerDeliveryResult{}, fmt.Errorf("%w: %w", ErrInternalTriggerNotFound, err)
 	}
 	if manifest.Kind == "relay" {
-		// Revoking a function or caller on the live Relay takes effect at once.
+		// Revoking a function or caller on the live Flow takes effect at once.
 		// The published copy still supplies the versioned input contract and
 		// executable graph, but never grants authority on its own.
 		liveSchedule, liveErr := findWorkflowFunctionTrigger(manifest, call.Function)
@@ -406,7 +406,7 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 			workspacePath = releaseWorkspace
 			manifest, _, err = ReadWorkflowManifest(ctx, workspacePath)
 			if err != nil || manifest == nil {
-				return "", internalTriggerDeliveryResult{}, fmt.Errorf("read published Relay %s: %w", release.Version, err)
+				return "", internalTriggerDeliveryResult{}, fmt.Errorf("read published Flow %s: %w", release.Version, err)
 			}
 			if call.Payload == nil {
 				call.Payload = map[string]interface{}{}
@@ -455,7 +455,7 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 			payload["relay_runtime"] = "python"
 		} else {
 			if strings.TrimSpace(manifest.RelayOutputStepID) == "" {
-				return sched.ID, internalTriggerDeliveryResult{}, fmt.Errorf("Relay %q has no relay_output_step_id", manifest.Label)
+				return sched.ID, internalTriggerDeliveryResult{}, fmt.Errorf("Flow %q has no relay_output_step_id", manifest.Label)
 			}
 			if err := validateRelayOutputStep(ctx, workspacePath, manifest.RelayOutputStepID); err != nil {
 				return sched.ID, internalTriggerDeliveryResult{}, err
@@ -478,7 +478,7 @@ func (s *SchedulerService) dispatchWorkflowFunction(ctx context.Context, call wo
 func validateRelayOutputStep(ctx context.Context, workspacePath, outputStepID string) error {
 	plan, err := readPlanFromWorkspace(ctx, workspacePath)
 	if err != nil {
-		return fmt.Errorf("read Relay plan: %w", err)
+		return fmt.Errorf("read Flow plan: %w", err)
 	}
 	return stepworkflow.ValidateRelayPlanStructure(plan, outputStepID)
 }

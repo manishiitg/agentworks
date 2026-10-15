@@ -1,23 +1,25 @@
 ---
 name: relay-builder
-description: Author, test and publish native DBOS Python Relays with platform agents and authorized tools.
+description: Author, test and publish native DBOS Python Flows with platform agents and authorized tools.
 external: true
 external_tools: ["*relay*"]
-external_description: "The Python Relay contract the Relay Builder follows: DBOS workflow and steps, agent and MCP calls, tools, vault, limits. Read it before asking the Builder to write or change a Relay."
+external_description: "The Python Flow contract the Flow Builder follows: DBOS workflow and steps, agent and MCP calls, tools, vault, limits. Read it before asking the Builder to write or change a Flow."
 external_scopes: ["relays:write"]
-external_note: "External mapping: files action=read/write accepts a Relay workflow_id for relay.py, memory, local skills and helper source, with existing authoring consent, current owner access, revisions and file guards. Relays have no workflow plan; use guarded source writes and typed Relay actions directly. External model-mediated Builder turns retain their managed editing policy: the external caller must run relay action=test and action=get_run after those edits. builder action=chat can delegate broader changes when listed; relay action=test|publish|run|get_run|releases tests drafts, publishes versions and inspects executions. The Relay Python runtime and its internal bridge environment described here belong to server-side Relay execution; do not copy its internal URLs, environment or authentication into external client commands."
+external_note: "External mapping: files action=read/write accepts a Flow workflow_id for relay.py, memory, local skills and helper source, with existing authoring consent, current owner access, revisions and file guards. Flows have no workflow plan; use guarded source writes and typed Flow actions directly. External model-mediated Builder turns retain their managed editing policy: the external caller must run relay action=test and action=get_run after those edits. builder action=chat can delegate broader changes when listed; relay action=test|publish|run|get_run|releases tests drafts, publishes versions and inspects executions. The Flow Python runtime and its internal bridge environment described here belong to server-side Flow execution; do not copy its internal URLs, environment or authentication into external client commands."
 ---
 
-# Python Relay contract
+# Python Flow contract
 
-A Relay has one owner, who builds and changes it. Share its dashboard to let other people use published work in Run mode.
+The product is **Flows** (one **Flow**). Internal IDs, `relay.py`, `relay` MCP tools and `relay-builder` stay unchanged. Do not rename saved projects or their authored code as part of the product rename.
 
-Read relay.py, workflow.json and variables/variables.json before editing. New Relays
+A Flow has one owner, who builds and changes it. Share its dashboard to let other people use published work in Run mode.
+
+Read relay.py, workflow.json and variables/variables.json before editing. New Flows
 have kind: relay, relay_runtime: python and relay_durability: dbos. Author native
 DBOS Python: `from dbos import DBOS`, `@DBOS.workflow()` and `@DBOS.step()`.
 The entrypoint is `@DBOS.workflow()` followed by `async def run(INPUT)`.
 INPUT is the caller's JSON object. Return JSON (128 KiB limit).
-Keep source separate from workflow plans. No custom Relay workflow decorators are needed.
+Keep source separate from workflow plans. No custom Flow workflow decorators are needed.
 
 ## Graph and execution logs
 
@@ -133,10 +135,10 @@ Publishing freezes source/configuration; selected secret access remains live.
   that call share context; separate calls do not. There is no resume_agent.
 - model is provider:model_id or {provider, model_id, connection_id, options}; omitted
   uses the configured Builder model. Use current supported provider/model names.
-- tools=[decorated_callable] executes that function in the live Relay Python process
+- tools=[decorated_callable] executes that function in the live Flow Python process
   when the model asks. Closures and async functions work. Return JSON serializable data.
   Provide description/schema to @tool for complex inputs. Tool arguments are checked.
-- skills=["installed-name"] attaches explicitly named bundles from this Relay workspace.
+- skills=["installed-name"] attaches explicitly named bundles from this Flow workspace.
 - mcp=[{"server":"exact connection","tools":["exact tool"]}] exposes selected tools
   to the agent. Omit tools to select all tools on that explicitly named connection.
   Resolve names/schemas using list_mcp_servers first. Live access/grants are rechecked.
@@ -197,12 +199,12 @@ source and helpers. In an external model-mediated Builder turn, use read_file,
 list_files, search_files and write_file with the current revision to edit the
 draft. After saving, describe the change and let the calling client use relay
 action=test and action=get_run to check it; execution and publication are direct
-Relay actions for that client. Package
+Flow actions for that client. Package
 installation uses the existing sandbox dependency mechanism; never install into a
 published snapshot. Preserve Python whitespace and literal escapes.
 
 Configure function triggers through manage_workflow_webhook with required object
-INPUT. Python Relays invoke run(INPUT) and have no step_id, route_selections or
+INPUT. Python Flows invoke run(INPUT) and have no step_id, route_selections or
 payload routing mappings. If no function is saved yet, create one before testing.
 Use test_relay(input={...}, function="...") for the draft; it returns a run_id.
 Inspect get_relay_run(run_id="...") for completion/output/error and recorded calls.
@@ -210,7 +212,7 @@ Direct shell execution is not a platform test and does not verify triggers, agen
 credentials or publication; report that distinction and the exact failing tool error.
 A failed run is terminal. Testing again creates a new invocation and may repeat effects;
 use safe sample data. No run_full_workflow, execute_step, plans, groups, prevalidation,
-DB/KB/learnings closing turns or Pulse apply to Python Relays.
+DB/KB/learnings closing turns or Pulse apply to Python Flows.
 Optional dashboard database migrations are authoring actions, separate from execution.
 
 Use get_relay_releases and publish_relay when the user asks. Published source, helpers,
@@ -220,7 +222,7 @@ always use draft. Report the actual returned version/hash, not an assumed deploy
 
 Builder remains the shared scoped chat runtime with this product-owned prompt, skill
 and tool list. Vault/MCP tools retain their normal authorization. Brain is not an
-implicit Relay store or runtime. Do not create workflow knowledgebase assets.
+implicit Flow store or runtime. Do not create workflow knowledgebase assets.
 A requested Dashboard may use an optional managed database as described by relay-dashboard.
 
 MVP custom Python tools must not call `agent` or `mcp` inside
@@ -232,8 +234,8 @@ external services using ordinary Python clients.
 
 Chat setup and editing stay in Builder mode. Existing Run views stay unchanged; caller attribution follows product access. Configuring a Watcher never edits the shared product.
 
-Use manage_condition_triggers for deterministic Python checks that call a published function of a Relay, defaulting to this Relay. They appear in Automation → Watchers and Ctrl/Cmd+K. Set once=true for a specific condition/event wait: no-match checks continue, the first new event is selected in detector order, its stable submission retries until accepted, then the watcher disables and shows Completed. Omit once for recurring monitoring. Completed waits do not rearm on Enable/edit; create another watcher for a new wait.
+Use manage_condition_triggers for deterministic Python checks that call a published function of a Flow, defaulting to this Flow. They appear in Automation → Watchers and Ctrl/Cmd+K. Set once=true for a specific condition/event wait: no-match checks continue, the first new event is selected in detector order, its stable submission retries until accepted, then the watcher disables and shows Completed. Omit once for recurring monitoring. Completed waits do not rearm on Enable/edit; create another watcher for a new wait.
 
 The Watcher belongs to its creator. Pass script_content on create/update; the server saves and pins it in that person's own watcher folder. Use read_script before edits. Select only that caller's own/Vault credentials (SECRET_<NAME> in Python), never the target's credentials or files. The script reads prior state JSON from stdin and prints exactly {"events":[{"id":"stable-source-id","payload":{}}],"state":{}}; events=[] means no match. The first event dispatches; other matches in that batch are recorded as not sent for once=true. Use a stable request_id on create, list first and expected_revision on update. Configure five-field cron at least five minutes apart plus timezone. Current access is rechecked; target entry points keep their own execution rules and credentials. A receipt proves accepted delivery, not final success.
 
-A Relay Watcher calls only a published Relay entry (event payload is INPUT). Discover real published functions and choose one if there are several; with one, the tool selects it. Polling is caller work, separate from Relay execution. Do not create a workflow plan or timed Relay run.
+A Flow Watcher calls only a published Flow entry (event payload is INPUT). Discover real published functions and choose one if there are several; with one, the tool selects it. Polling is caller work, separate from Flow execution. Do not create a workflow plan or timed Flow run.

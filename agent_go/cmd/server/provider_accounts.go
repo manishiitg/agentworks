@@ -145,6 +145,8 @@ func productDisplayName(product string) string {
 		return "Crews"
 	case productCode:
 		return "Code"
+	case "relays":
+		return "Flows"
 	}
 	if product == "" {
 		return product

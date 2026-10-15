@@ -1906,7 +1906,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 		// Categories for built-in delegation tools are registered once when the
 		// BaseOrchestrator is constructed; the map stays immutable so nested
 		// orchestrators can be created in parallel safely.
-		// An authored agent (a Relay agent) calls only its saved scripts, through
+		// An authored agent (a Flow agent) calls only its saved scripts, through
 		// the named route tools below: no sub-agent, generic agent or delegation
 		// tools (PLAT-441).
 		authoredAgent := subAgentExecCtx.OrchestratorStep != nil && subAgentExecCtx.OrchestratorStep.AuthoredPrompt
@@ -2015,7 +2015,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) restoreSubAgentToolExecutors(execCtx 
 		return
 	}
 	if execCtx.OrchestratorStep != nil && execCtx.OrchestratorStep.AuthoredPrompt {
-		return // an authored (Relay) agent never had delegation executors
+		return // an authored (Flow) agent never had delegation executors
 	}
 	subAgentExecutors := virtualtools.CreateSubAgentToolExecutors()
 	wrappedExecutors := make(map[string]func(ctx context.Context, args map[string]interface{}) (string, error), len(subAgentExecutors))

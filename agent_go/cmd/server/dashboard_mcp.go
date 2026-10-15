@@ -19,7 +19,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 	for _, name := range []string{"list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "get_dashboard_link"} {
 		action := dashboardActions[name]
 		props := map[string]any{
-			"workflow_id": externalString("Workflow or Relay ID from list_workflows or the dashboard list. Pass one of workflow_id, crew_id or workspace."),
+			"workflow_id": externalString("Workflow or Flow ID from list_workflows or the dashboard list. Pass one of workflow_id, crew_id or workspace."),
 			"crew_id":     externalString("Crew ID from list_crews or the dashboard list."),
 			"workspace":   externalString("Project root from the dashboard list; needed only for an owned Code project."),
 		}
@@ -64,7 +64,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		descriptions := map[string]string{
 			"list":     "Discover only accessible published dashboards (drafts for authorized editors), with project identities, document paths and authenticated live URLs. Existing HTML dashboards are included.",
 			"get":      "Read a dashboard bundle and revision. Draft source requires edit rights and existing product authoring consent.",
-			"create":   "Create a new dashboard draft from supplied HTML, assets and optional scripts. Does not publish or select new data sources. Uses existing workflow/Relay/Crew/Code authoring consent and current project edit access.",
+			"create":   "Create a new dashboard draft from supplied HTML, assets and optional scripts. Does not publish or select new data sources. Uses existing workflow/Flow/Crew/Code authoring consent and current project edit access.",
 			"update":   "Update supplied draft files/title and optionally remove files, preserving omitted files. Creates an immutable revision; published viewers keep seeing the published bundle.",
 			"validate": "Validate the exact dashboard revision with the same HTML, SQL schema and referenced-file checks as the app Builder.",
 			"preview":  "Render the exact dashboard revision with the app's real browser runtime; returns state, data/script errors and screenshots. Requires project edit rights, dashboards:read and runs:execute (live scripts may use your allowed selected sources).",
@@ -75,7 +75,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		add(name, descriptions[action], dashboardMutation(action), false, props, required...)
 	}
 	add("export_dashboard_motion", "Start or check a background MP4 export from an authored animation and saved data snapshot. Use a unique submission_id to start; retrying the same submission returns the same export. Poll with export_id until completed or failed. Builder only; same project authoring consent and runs:execute as preview. Saves the video and editable source in this project. Never runs automatically when a dashboard opens.", true, false, map[string]any{
-		"workflow_id":      externalString("Workflow or Relay ID. Pass exactly one of workflow_id, crew_id or workspace."),
+		"workflow_id":      externalString("Workflow or Flow ID. Pass exactly one of workflow_id, crew_id or workspace."),
 		"crew_id":          externalString("Crew ID."),
 		"workspace":        externalString("Project root, for an owned Code project."),
 		"export_id":        externalString("Export ID from an earlier call; pass to check its progress/result without starting another export."),
@@ -83,7 +83,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		"composition_path": externalString("Folder under code/motion/ with a standalone HyperFrames index.html, local assets and snapshot.json containing as_of, source and data."),
 	})
 	shareProps := map[string]any{
-		"workflow_id": externalString("Workflow or Relay ID from list_workflows or the dashboard list. Pass one of workflow_id, crew_id or workspace."),
+		"workflow_id": externalString("Workflow or Flow ID from list_workflows or the dashboard list. Pass one of workflow_id, crew_id or workspace."),
 		"crew_id":     externalString("Crew ID from list_crews or the dashboard list."),
 		"workspace":   externalString("Project root from the dashboard list."),
 	}
@@ -92,11 +92,11 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 	for key, value := range shareProps {
 		shareSet[key] = value
 	}
-	shareSet["mode"] = map[string]any{"type": "string", "enum": []any{"everyone", "people", "private"}, "description": "everyone: every account that may use the product opens the dashboard, asks and runs its published functions. people: only the emails you list (workflows and Relays; an email with no account is reported back). private: only the owner."}
+	shareSet["mode"] = map[string]any{"type": "string", "enum": []any{"everyone", "people", "private"}, "description": "everyone: every account that may use the product opens the dashboard, asks and runs its published functions. people: only the emails you list (workflows and Flows; an email with no account is reported back). private: only the owner."}
 	shareSet["emails"] = map[string]any{"type": "array", "maxItems": 200, "items": externalString("Email of an account to share with, for mode people."), "description": "Replaces the people list. Ignored for everyone and private."}
 	add("share_dashboard", "Share the project behind a dashboard (owner only, existing authoring consent). Sharing gives the Ask chat and the project's published functions, as a Run person has today, and nothing more. Nothing is shared until you call this, and the owner decides who: ask them first whether it is everyone on this server (mode everyone) or only chosen people (mode people with their emails); never pick for them. Mode people REPLACES the whole list: call get_dashboard_share first and keep everyone the owner did not ask to remove; the reply shows the previous list.", true, false, shareSet, "mode")
 	// Replace the old Run-assistant proxy with a native read operation. Keep its call shape.
-	add("get_report_link", "Return a live dashboard URL directly, without starting a Run conversation. document_path defaults to db/reports/index.html; supports Goals and Relays. Requires dashboards:read consent.", false, true, map[string]any{"document_path": externalString("HTML document under db/reports/.")})
+	add("get_report_link", "Return a live dashboard URL directly, without starting a Run conversation. document_path defaults to db/reports/index.html; supports Goals and Flows. Requires dashboards:read consent.", false, true, map[string]any{"document_path": externalString("HTML document under db/reports/.")})
 }
 func (api *StreamingAPI) externalDashboardCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any) {
 	payload := map[string]any{"action": dashboardActions[name]}
@@ -170,7 +170,7 @@ func (api *StreamingAPI) externalDashboardCall(w http.ResponseWriter, r *http.Re
 	api.handleDashboards(w, clone)
 }
 
-// dashboardWorkflowRoot is the workspace of a workflow or Relay ID.
+// dashboardWorkflowRoot is the workspace of a workflow or Flow ID.
 func dashboardWorkflowRoot(r *http.Request, workflowID string) (string, bool) {
 	discovered, err := DiscoverWorkflowManifests(r.Context())
 	if err != nil {

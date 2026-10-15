@@ -9,7 +9,7 @@ export function RelayIntro() {
   return (
     <ProductIntro
       tour="relay-empty-state"
-      product="Relays"
+      product="Flows"
       icon={<Workflow className="h-9 w-9 text-gray-600 dark:text-gray-200" />}
       title="Turn an idea into an API you can reuse"
       description="Describe an agent or a chain of agents in chat. Choose the information it receives and the result it returns, then connect it to your website or product."
@@ -20,9 +20,9 @@ export function RelayIntro() {
       ]}
       footer="Example: receive a support request → classify it → route it to an agent → return a JSON response."
       createTour="relay-create"
-      createLabel="Create your first relay"
+      createLabel="Create your first Flow"
       canCreate={canCreate}
-      createUnavailableMessage="Choose an existing relay from the top bar, or ask an administrator to enable creation."
+      createUnavailableMessage="Choose an existing Flow from the top bar, or ask an administrator to enable creation."
       onCreate={() => useCommandDialogStore.getState().openDialog('presetCreate')}
     />
   )

@@ -1343,7 +1343,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
   const setChanges = planData.setChanges
 
   // One shared /api/live connection carries Plan changes for AgentWorks,
-  // Crew and Relays. Keep the visible graph current during Builder edits;
+  // Crew and Flows. Keep the visible graph current during Builder edits;
   // the slow timer only covers direct filesystem writes or an offline feed.
   useLiveRefetch(() => {
     void loadPlanRefresh()
@@ -2567,7 +2567,7 @@ const WorkflowCanvasInner = forwardRef<WorkflowCanvasRef, WorkflowCanvasProps>((
     return (
       <PlanEmptyState
         kind={relayMode ? 'graph' : 'plan'}
-        title={relayMode ? 'Build your Relay graph' : 'Plan your workflow'}
+        title={relayMode ? 'Build your Flow graph' : 'Plan your workflow'}
         description={relayMode
           ? 'Describe the input, agents, scripts, and JSON output in chat. Your graph will appear here as you build it.'
           : 'Describe what you want to accomplish in chat. Your plan will appear here when it is ready.'}

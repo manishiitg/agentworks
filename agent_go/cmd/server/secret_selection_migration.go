@@ -197,9 +197,9 @@ func secretMigrationChildren(root *os.Root, rel string) ([]string, error) {
 }
 
 func secretMigrationManifests(root *os.Root) ([]string, error) {
-	roots := []string{"Workflow", workspaceref.SharedCrewRoot, "Relays"}
+	roots := []string{"Workflow", workspaceref.SharedCrewRoot, "Flows"}
 	projects := append([]string{}, workspaceref.ProjectRoots...)
-	projects = append(projects, "Chats/Relays/projects", "Chats/Goals/projects", "Chats/Video Studio/projects")
+	projects = append(projects, "Chats/Flows/projects", "Chats/Goals/projects", "Chats/Video Studio/projects")
 	roots = append(roots, projects...)
 	users, err := secretMigrationChildren(root, filepath.Dir(workspaceref.UserRoot("default")))
 	if err != nil {

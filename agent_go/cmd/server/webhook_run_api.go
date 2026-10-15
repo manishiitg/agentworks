@@ -191,7 +191,7 @@ func collectWebhookOutputs(root *os.Root) ([]webhookStepOutput, bool, error) {
 	count, total := 0, 0
 	truncated := false
 	// A group-free delivery records progress at the run root. This also
-	// disambiguates a Relay step called "execution" from a legacy group
+	// disambiguates a Flow step called "execution" from a legacy group
 	// with that same name, while old run folders remain readable.
 	_, progressErr := root.Lstat("webhook_progress.json")
 	groupFree := progressErr == nil
@@ -440,7 +440,7 @@ func readBoundedRelayRunFile(root *os.Root, name string, limit int64) ([]byte, e
 		return nil, err
 	}
 	if !info.Mode().IsRegular() || info.Size() > limit {
-		return nil, fmt.Errorf("Relay run file %s is not a regular file within its size limit", name)
+		return nil, fmt.Errorf("Flow run file %s is not a regular file within its size limit", name)
 	}
 	file, err := root.Open(name)
 	if err != nil {
@@ -452,7 +452,7 @@ func readBoundedRelayRunFile(root *os.Root, name string, limit int64) ([]byte, e
 		return nil, err
 	}
 	if int64(len(content)) > limit {
-		return nil, fmt.Errorf("Relay run file %s exceeds its size limit", name)
+		return nil, fmt.Errorf("Flow run file %s exceeds its size limit", name)
 	}
 	return content, nil
 }
@@ -467,7 +467,7 @@ func applyRelayResult(manifest *WorkflowManifest, result *webhookRunResult, work
 		root, err := openWebhookRunRoot(workspacePath, run)
 		if err != nil {
 			if result.Terminal && result.Error == "" && !workflowRunStatusFailed(result.Status) {
-				result.Error, result.Status = "Relay result unavailable", "failed"
+				result.Error, result.Status = "Flow result unavailable", "failed"
 			}
 			return
 		}
@@ -480,7 +480,7 @@ func applyRelayResult(manifest *WorkflowManifest, result *webhookRunResult, work
 		}
 		encoded, err := readBoundedRelayRunFile(root, "relay_result.json", 128*1024)
 		if err != nil || len(encoded) > 128*1024 || !json.Valid(encoded) {
-			result.Error, result.Status = "Relay completed without a valid JSON return value (maximum 128 KiB)", "failed"
+			result.Error, result.Status = "Flow completed without a valid JSON return value (maximum 128 KiB)", "failed"
 			return
 		}
 		result.Result = json.RawMessage(encoded)
@@ -502,7 +502,7 @@ func applyRelayResult(manifest *WorkflowManifest, result *webhookRunResult, work
 		}
 	}
 	if outputStepID == "" {
-		result.Error = "Relay has no relay_output_step_id"
+		result.Error = "Flow has no relay_output_step_id"
 		result.Status = "failed"
 		return
 	}
@@ -517,14 +517,14 @@ func applyRelayResult(manifest *WorkflowManifest, result *webhookRunResult, work
 			continue
 		}
 		if found {
-			result.Error = "multiple Relay result.json outputs found; set relay_output_step_id"
+			result.Error = "multiple Flow result.json outputs found; set relay_output_step_id"
 			result.Status = "failed"
 			return
 		}
 		selected, found = value, true
 	}
 	if !found {
-		// Generic webhook snapshots stop inlining outputs after 2 MiB. A Relay's
+		// Generic webhook snapshots stop inlining outputs after 2 MiB. A Flow's
 		// selected result is its response contract, so read that one saved file
 		// directly when it appears only in the artifact list.
 		for _, step := range result.Steps {
@@ -548,13 +548,13 @@ func applyRelayResult(manifest *WorkflowManifest, result *webhookRunResult, work
 		}
 	}
 	if !found {
-		result.Error = "Relay completed without a result.json output"
+		result.Error = "Flow completed without a result.json output"
 		result.Status = "failed"
 		return
 	}
 	encoded, err := json.Marshal(selected)
 	if err != nil {
-		result.Error = "Relay result.json could not be encoded"
+		result.Error = "Flow result.json could not be encoded"
 		result.Status = "failed"
 		return
 	}

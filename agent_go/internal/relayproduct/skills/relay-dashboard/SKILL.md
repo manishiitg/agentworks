@@ -1,13 +1,13 @@
 ---
 name: relay-dashboard
-description: Create or update a Relay Dashboard using the shared HTML runtime, project data and read-only scripts.
+description: Create or update a Flow Dashboard using the shared HTML runtime, project data and read-only scripts.
 external: true
-external_description: "How a Relay's dashboard is authored and fed with recorded run data."
+external_description: "How a Flow's dashboard is authored and fed with recorded run data."
 external_scopes: ["relays:write"]
-external_note: "External mapping: dashboard action=list|get|link|create|update|validate|preview|publish|restore uses the shared revisioned dashboard handlers and existing project authoring consent. Read/write Relay helper source through files when allowed, or delegate broader changes through builder action=chat. Internal Relay bridge variables and client URLs are server execution context, not externally usable credentials."
+external_note: "External mapping: dashboard action=list|get|link|create|update|validate|preview|publish|restore uses the shared revisioned dashboard handlers and existing project authoring consent. Read/write Flow helper source through files when allowed, or delegate broader changes through builder action=chat. Internal Flow bridge variables and client URLs are server execution context, not externally usable credentials."
 ---
 
-# Relay Dashboard usage
+# Flow Dashboard usage
 
 Follow the user's layout, colors, typography, charts and motion preferences.
 This skill describes platform usage. Inspect existing documents before editing.
@@ -16,7 +16,7 @@ This skill describes platform usage. Inspect existing documents before editing.
   supporting assets belong under `db/assets/`. The Dashboard toolbar discovers
   multiple documents. Optional `db/reports/views.json` controls titles, order
   and default: `{"schema_version":1,"default":"overview","views":[{"id":"overview","title":"Overview","path":"db/reports/index.html","order":0}]}`.
-- Open the **Dashboard** button in Relays. Graph remains the default Relay view.
+- Open the **Dashboard** button in Flows. Graph remains the default Flow view.
   The Dashboard uses the same host runtime as Goals, Crew and Code.
 - Put data loading inside `window.report.ready(async () => { ... })`.
   The callback runs again on refresh. Keep one-time animation initialization
@@ -39,8 +39,8 @@ This skill describes platform usage. Inspect existing documents before editing.
   value on stdout and send logs to stderr. Limits are 60 seconds, 2 MB stdout,
   16 KB args and four concurrent platform report runs. Python can import helpers
   under `code/` and installed sandbox dependencies.
-- The script uses the Relay's selected MCP tools, secrets and variables under
-  the authenticated viewer's live permissions. Access to the Relay does not
+- The script uses the Flow's selected MCP tools, secrets and variables under
+  the authenticated viewer's live permissions. Access to the Flow does not
   grant credentials. Use `POST $MCP_MCP/<server>/<tool>` with `$MCP_AUTH` for
   selected MCP tools and `SECRET_*`/`VAR_*` for admitted values. Never print secrets.
   Scripts should only read external sources; use explicit chat actions for changes.
@@ -48,7 +48,7 @@ This skill describes platform usage. Inspect existing documents before editing.
   `DB_PATH` is unset when no database exists. Only `REPORT_CACHE_DIR` is writable.
   Every call executes afresh; implement caching there if useful. A refresh flag
   in args is your script's convention, not platform caching.
-- Read recorded Relay invocations with `await window.report.getRelayRuns({ version: 'draft', limit: 20 })`.
+- Read recorded Flow invocations with `await window.report.getRelayRuns({ version: 'draft', limit: 20 })`.
   The response is `{ version, runs }`. Each run contains `run`, `run_id`, `status`,
   `attempt`, `started_at`, `duration_s`, `steps` (name/status/reused) and `result`.
   Select an explicit published version, e.g. `version: 'v2'`, to show its runs;
@@ -56,11 +56,11 @@ This skill describes platform usage. Inspect existing documents before editing.
   state before the first run, and a clear error when data cannot be fetched.
   Never enumerate `runs/` from a shell or report script: slot filesystem
   privacy prevents listing it. The authenticated reader returns only this
-  Relay's recorded summaries and JSON results, without its private journals,
+  Flow's recorded summaries and JSON results, without its private journals,
   agent prompts or tool arguments. It never starts a run.
-- Dashboard scripts run independently of `relay.py`: they do not get the Relay
-  SDK `ctx`, start a published Relay or invoke `ctx.call_agent`. Do not run a
-  Relay with external effects during dashboard load or refresh.
+- Dashboard scripts run independently of `relay.py`: they do not get the Flow
+  SDK `ctx`, start a published Flow or invoke `ctx.call_agent`. Do not run a
+  Flow with external effects during dashboard load or refresh.
 - Explicit user actions may call `window.report.sendChatMessage(message, { requestId })`
   with a stable item/action identity. A queued receipt confirms chat delivery,
   not completion. `updateField`/`updateFields` provide schema-checked row edits.
@@ -94,12 +94,12 @@ This skill describes platform usage. Inspect existing documents before editing.
   dashboard URL; present the returned URL and its shareable/warning metadata.
   It grants no access. `publish_relay` publishes the API source, not a Dashboard.
 
-Relay execution still has no automatic DB/KB/learnings closing stages. Dashboard
+Flow execution still has no automatic DB/KB/learnings closing stages. Dashboard
 assets and authoring tools are optional and do not add workflow plans or Pulse.
 
 ## Optional native chat widgets
 
-In a managed Crew, workflow or Relay dashboard, the designer may add an open
+In a managed Crew, workflow or Flow dashboard, the designer may add an open
 chat panel, a button, or both. Choose the placement, size, label, visibility and
 responsive layout in the dashboard's HTML/CSS. There is no required sidebar.
 For example (dimensions are only an example):
@@ -161,13 +161,13 @@ revisions, read it and create a new managed dashboard from its source.
 
 External MCP clients use `get_api_spec` then `call_tool`. Request explicit
 `dashboards:read` plus existing product authoring consent for drafts/publication:
-`builder:chat` for workflows, `relays:write` or Builder consent for Relays,
-`crews:write` for Crews, and `code:run` for owned Code projects. Workflow/Relay
+`builder:chat` for workflows, `relays:write` or Builder consent for Flows,
+`crews:write` for Crews, and `code:run` for owned Code projects. Workflow/Flow
 consent retains its companion read/run scopes and Builder enablement. Current
 account/product and project owner permissions (and workflow editor permissions), ID bounds and folder caps still
 apply. Connections without existing authoring consent gain no editing rights;
 connections receive no replacement scopes automatically.
 Preview additionally requires `runs:execute` and edit access because it can run
 live data scripts. It keeps the connection's scope, expiry and revocation checks.
-Publishing does not run the Relay API or a workflow. SQLite files, transcripts,
+Publishing does not run the Flow API or a workflow. SQLite files, transcripts,
 secrets and runtime selections stay outside dashboard authoring.

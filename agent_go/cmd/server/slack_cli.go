@@ -156,7 +156,7 @@ func (api *StreamingAPI) slackCLIFullAccess(ctx context.Context, session, worksp
 			return "", fmt.Errorf("cannot verify Slack target: %w", err)
 		}
 		if found && manifest.Kind == "relay" {
-			return "", fmt.Errorf("Relays do not support Slack")
+			return "", fmt.Errorf("Flows do not support Slack")
 		}
 	}
 	connID := ""

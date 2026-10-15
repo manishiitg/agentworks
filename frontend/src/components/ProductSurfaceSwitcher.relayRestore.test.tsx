@@ -30,7 +30,7 @@ function Navigation() {
   return <><ProductTopBar sidebar><ProductSurfaceSwitcher /></ProductTopBar><h1>{product}</h1></>
 }
 
-it.each([false, true])('keeps Relays selected with saved Goal tabs (saved Relay tab: %s)', async hasRelayTab => {
+it.each([false, true])('keeps Flows selected with saved Goal tabs (saved Flow tab: %s)', async hasRelayTab => {
   window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'relays'] }
   useProductSurfaceStore.setState({ productSurface: 'agentworks' })
   useModeStore.setState({ selectedModeCategory: 'workflow' })
@@ -53,7 +53,7 @@ it.each([false, true])('keeps Relays selected with saved Goal tabs (saved Relay 
       await act(async () => host.querySelector<HTMLButtonElement>(`[role="menuitem"][aria-label="${label}"]`)!.click())
     }
     for (let attempt = 0; attempt < 2; attempt++) {
-      await select('Relays')
+      await select('Flows')
       expect(host.querySelector('h1')?.textContent).toBe('relays')
       expect(useChatStore.getState().activeTabId).toBe(relayTabId)
       expect(useGlobalPresetStore.getState().activePresetIds.workflow).toBe(hasRelayTab ? relay.id : null)

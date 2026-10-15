@@ -52,7 +52,7 @@ const SECTION_DEFS = [
   { id: 'chats', label: 'Chats', icon: MessageSquareText },
 ] as const
 
-// The tab a person last chose is remembered per kind of hub (workflow, Relay,
+// The tab a person last chose is remembered per kind of hub (workflow, Flow,
 // or a product such as Code), so coming back to Automation reopens it instead
 // of Schedules. Browser storage can be blocked, so every access is guarded.
 const SECTION_STORAGE_PREFIX = 'automationHub.section.'
@@ -180,9 +180,9 @@ export function AutomationHubPanel({
     >
       <WorkspaceViewHeader
         icon={Zap}
-        title={relayMode ? 'Relay' : 'Automation'}
+        title={relayMode ? 'Flow' : 'Automation'}
         helpTopic={`Automation · ${SECTION_DEFS.find(item => item.id === section)?.label ?? 'Chats'}`}
-        subtitle={relayMode ? 'API triggers, Watchers and chat history for this Relay.' : 'Chat history and the channels that can start work.'}
+        subtitle={relayMode ? 'API triggers, Watchers and chat history for this Flow.' : 'Chat history and the channels that can start work.'}
         actions={headerActions}
         context={
           section === 'schedules' && schedulesStatus ? <ScheduleStatusPills status={schedulesStatus} />

@@ -77,7 +77,7 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 			t.Fatalf("unavailable or personal product %s advertised in the guide", excluded)
 		}
 	}
-	if !strings.Contains(canonical, "### Should I use a Crew or a Relay?") || strings.Contains(canonical, "### Should I use Goals or") {
+	if !strings.Contains(canonical, "### Should I use a Crew or a Flow?") || strings.Contains(canonical, "### Should I use Goals or") {
 		t.Fatal("product-choice FAQ does not match installation availability")
 	}
 	cache := remote("help", map[string]any{"action": "topic", "topic": "product-guide", "known_version": guide["version"]})

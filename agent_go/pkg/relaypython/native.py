@@ -298,7 +298,7 @@ async def execute(sdk, load_module, source, run_dir, attempt, data, state, ident
         result = await handle.get_result()
         encoded = json.dumps(result, ensure_ascii=False, allow_nan=False)
         if len(encoded.encode()) > 128 * 1024:
-            raise ValueError("Relay output exceeds 128 KiB")
+            raise ValueError("Flow output exceeds 128 KiB")
         sdk._json_write(run_dir / "relay_result.json", result)
         lifecycle["status"] = "completed"
         save_status("completed")

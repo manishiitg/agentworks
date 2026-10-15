@@ -103,15 +103,15 @@ func (p workspaceProxyPolicy) denies(key, raw string) string {
 	if write && serverOwnedWrite(clean) {
 		return "this file is written only by the server"
 	}
-	// Relay releases are server-owned snapshots. Their nested path has no
+	// Flow releases are server-owned snapshots. Their nested path has no
 	// manifest at Workflow/.relay_releases, so normal workflow path lookup
 	// cannot safely authorize access to them.
 	if clean == "Workflow/.relay_releases" || strings.HasPrefix(clean, "Workflow/.relay_releases/") {
 		if write {
-			return "Relay releases are written only by the server"
+			return "Flow releases are written only by the server"
 		}
 		if !p.admin {
-			return "Relay releases are not available through the workspace proxy"
+			return "Flow releases are not available through the workspace proxy"
 		}
 	}
 	// Bulk parent mutations must not erase protected team source through an ancestor.

@@ -297,7 +297,7 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
           <div className={shellClass}>
             {loading && !report && <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading dashboard…</div>}
             {error && <div className="m-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">Failed to load report: {error}</div>}
-            {!loading && !error && !report && defaultRelayDashboard && <Suspense fallback={<p className="p-6 text-sm text-muted-foreground">Opening Relay dashboard…</p>}><DefaultRelayDashboard workspacePath={workspacePath} refreshToken={refreshNonce} /></Suspense>}
+            {!loading && !error && !report && defaultRelayDashboard && <Suspense fallback={<p className="p-6 text-sm text-muted-foreground">Opening Flow dashboard…</p>}><DefaultRelayDashboard workspacePath={workspacePath} refreshToken={refreshNonce} /></Suspense>}
             {!loading && !error && !report && !defaultRelayDashboard && (
               <div className="m-3 flex flex-col items-center gap-3 rounded-xl border border-dashed border-border p-8 text-center">
                 {emptyIdentity ? (

@@ -69,7 +69,7 @@ func TestRelayCommandCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(profiles) != 1 || profiles[0].ID != "relays" {
+	if len(profiles) != 1 || profiles[0].ID != "relays" || profiles[0].Name != "Flows" {
 		t.Fatal("wrong Relay catalog")
 	}
 	commands := map[string]string{}

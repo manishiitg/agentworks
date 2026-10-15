@@ -527,7 +527,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
         <div className="flex flex-shrink-0 flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
           <h2 className="min-w-0 text-lg font-semibold text-foreground sm:text-2xl">
             {effectiveAgentMode === 'workflow'
-              ? `${editingPreset ? 'Edit' : 'Add'} ${workflowKind === 'relay' ? 'Relay' : 'Automation'}`
+              ? `${editingPreset ? 'Edit' : 'Add'} ${workflowKind === 'relay' ? 'Flow' : 'Automation'}`
               : (editingPreset ? 'Edit Preset' : 'Add New Preset')}
           </h2>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -551,7 +551,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
               disabled={isSavingPreset || !label.trim() || (effectiveAgentMode !== 'workflow' && !query.trim()) || (effectiveAgentMode === 'workflow' && !selectedFolder)}
             >
               {isSavingPreset && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
-              {editingPreset ? 'Update' : 'Save'} {effectiveAgentMode === 'workflow' ? (workflowKind === 'relay' ? 'Relay' : 'Automation') : 'Preset'}
+              {editingPreset ? 'Update' : 'Save'} {effectiveAgentMode === 'workflow' ? (workflowKind === 'relay' ? 'Flow' : 'Automation') : 'Preset'}
             </Button>
             <Button
               type="button"
@@ -593,13 +593,13 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
                 </div>
                 <div>
                   <label htmlFor="preset-label" className="block text-sm font-medium mb-2">
-                    {workflowKind === 'relay' ? 'Relay Name' : 'Automation Name'}
+                    {workflowKind === 'relay' ? 'Flow Name' : 'Automation Name'}
                   </label>
                   <Input
                     id="preset-label"
                     value={label}
                     onChange={(e) => setLabel(e.target.value)}
-                    placeholder={workflowKind === 'relay' ? 'Enter relay name...' : 'Enter automation name...'}
+                    placeholder={workflowKind === 'relay' ? 'Enter Flow name...' : 'Enter automation name...'}
                     autoFocus
                     required
                   />
@@ -627,7 +627,7 @@ const PresetModal: React.FC<PresetModalProps> = React.memo(({
                   className="w-full rounded-md border border-gray-300 bg-white p-2 text-sm dark:border-gray-600 dark:bg-gray-800"
                 >
                   <option value="workflow">Automation</option>
-                  <option value="relay">Relay</option>
+                  <option value="relay">Flow</option>
                 </select>
                 {workflowKind === 'relay' && <p className="mt-1 text-xs text-gray-500">Build an API callable graph of authored agents, scripts, and decisions.</p>}
               </div>}

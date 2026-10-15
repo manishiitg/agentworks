@@ -57,7 +57,7 @@ type externalGuidanceTopic struct {
 	Description  string
 	ExternalNote string
 	// Source says where the text comes from: the Builder reference (default),
-	// a file under external_topics/ ("embedded") or a Relay Builder skill ("relay").
+	// a file under external_topics/ ("embedded") or a Flow Builder skill ("relay").
 	Source string
 	// Scopes the token must allow for the topic to be listed and served.
 	Scopes        []string
@@ -440,7 +440,7 @@ func externalPreparation(claims *UserClaims) []string {
 	}
 	if claims != nil && claims.AccessToken != nil {
 		if productEnabled("relays") {
-			steps = append(steps, "For Relays (kind=relay), use files for guarded source/memory/skill edits when current authoring consent allows it, or builder action=chat to delegate changes. relay action=test tests a draft, action=publish creates an immutable version, and action=run/get_run executes or reads production runs. Everyone else with access chats with a Relay in Run mode in the app: it reads the published source, shows every run and runs a published version, but changes nothing. Creation requires relays:write consent covering all accessible workflows.")
+			steps = append(steps, "For Flows (kind=relay), use files for guarded source/memory/skill edits when current authoring consent allows it, or builder action=chat to delegate changes. relay action=test tests a draft, action=publish creates an immutable version, and action=run/get_run executes or reads production runs. Everyone else with access chats with a Flow in Run mode in the app: it reads the published source, shows every run and runs a published version, but changes nothing. Creation requires relays:write consent covering all accessible workflows.")
 		}
 		steps = append(steps, "This token is restricted: unavailable tools are omitted from the tools list.")
 	}

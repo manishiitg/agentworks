@@ -49,7 +49,7 @@ func validateWebhookTarget(ctx context.Context, path, stepID string, routes map[
 		return err
 	}
 	if isPythonRelay(manifest) {
-		return fmt.Errorf("Python Relays run relay.py; workflow step targets are not supported")
+		return fmt.Errorf("Python Flows run relay.py; workflow step targets are not supported")
 	}
 	plan, err := readPlanFromWorkspace(ctx, path)
 	if err != nil {

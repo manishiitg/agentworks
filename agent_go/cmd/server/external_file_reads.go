@@ -34,12 +34,12 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	}
 	parts := strings.Split(rootPath, "/")
 	crewRoot := externalIsCrewRoot(rootPath)
-	// A Relay release folder is allowed only when it maps back to a live Relay;
-	// callers pass it after checking access to that Relay.
+	// A Flow release folder is allowed only when it maps back to a live Flow;
+	// callers pass it after checking access to that Flow.
 	releaseRoot := len(parts) == 4 && parts[0] == "Workflow" && parts[1] == relayReleasesFolder
 	if releaseRoot {
 		if _, err := relayDraftWorkspaceForRelease(ctx, rootPath); err != nil {
-			return wf.Result{}, &externalUpstreamError{400, "unknown Relay release"}
+			return wf.Result{}, &externalUpstreamError{400, "unknown Flow release"}
 		}
 	}
 	if !crewRoot && !releaseRoot && (len(parts) != 2 || parts[0] != "Workflow" || parts[1] == ".") {

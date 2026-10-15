@@ -17,7 +17,7 @@ func TestRelayBuilderUsesOwnPromptSkillAndToolGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"You are the Relay Builder", "Workflow/relay-test", "Current authenticated user"} {
+	for _, required := range []string{"You are the Flow Builder", "Workflow/relay-test", "Current authenticated user"} {
 		if !strings.Contains(prompt, required) {
 			t.Fatalf("Relay prompt missing %q", required)
 		}
@@ -82,13 +82,13 @@ func TestRelayBuilderChatIsSeparateFromRunChat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(prompt, "You are the Relay Builder") {
+	if !strings.Contains(prompt, "You are the Flow Builder") {
 		t.Fatal("Relay prompt changed with shared workflow mode")
 	}
 	// Everyone except the Builder has a Run chat (PLAT-856-80); it is a
 	// separate prompt, never the Builder's.
 	run, err := relayproduct.ChatPrompt("run")
-	if err != nil || strings.Contains(run, "You are the Relay Builder") {
+	if err != nil || strings.Contains(run, "You are the Flow Builder") {
 		t.Fatalf("Relay Run chat missing or reuses the Builder prompt: %v", err)
 	}
 }

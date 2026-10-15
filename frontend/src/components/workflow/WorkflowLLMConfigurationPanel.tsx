@@ -82,7 +82,7 @@ type WorkflowLLMConfigurationPanelProps = {
   /** Work selects Pi as one coding CLI, then chooses its model separately. */
   splitPiProviders?: boolean
   showModelsPerRole?: boolean
-  /** Relays expose the Builder choice here; execution models are selected on agent steps. */
+  /** Flows expose the Builder choice here; execution models are selected on agent steps. */
   builderOnly?: boolean
   readOnlyReason?: string
   /** Product-profile bindings remain authoritative under the deployment-wide
@@ -1010,7 +1010,7 @@ export default function WorkflowLLMConfigurationPanel({
       <div className="space-y-2 px-3 py-2.5">
         <div>
           <div className="text-xs font-medium text-foreground">{row.label}</div>
-          <div className="text-[11px] text-muted-foreground">Used for the Relay Builder chat and graph editing.</div>
+          <div className="text-[11px] text-muted-foreground">Used for the Flow Builder chat and graph editing.</div>
         </div>
         {value ? renderPickers(value, next => updateRole(row.key, next)) : <span className="text-xs text-muted-foreground">Select a provider first.</span>}
       </div>

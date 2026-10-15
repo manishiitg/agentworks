@@ -57,7 +57,7 @@ func (api *StreamingAPI) registerWebhookTools(reg definitionToolRegistrar, userI
 			"group_names":      map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}}, "rotate_secret": map[string]interface{}{"type": "boolean"},
 		}}
 	if manifest, found, err := ReadWorkflowManifest(context.Background(), workspace); err == nil && found && manifest.Kind == "relay" {
-		description = "Create and manage this Relay's authenticated API function triggers. First list to discover declared variables and saved routes. Create/update require name, enabled, kind=function, route_selections and function with a required object INPUT argument. Relays execute once per call using configuration values and caller inputs; there are no variable groups. Omit group_names. action=test executes the draft; action=status reads durable run results. All calls enforce current permissions."
+		description = "Create and manage this Flow's authenticated API function triggers. First list to discover declared variables and saved routes. Create/update require name, enabled, kind=function, route_selections and function with a required object INPUT argument. Flows execute once per call using configuration values and caller inputs; there are no variable groups. Omit group_names. action=test executes the draft; action=status reads durable run results. All calls enforce current permissions."
 		properties := params["properties"].(map[string]interface{})
 		delete(properties, "group_names")
 		properties["kind"] = map[string]interface{}{"type": "string", "enum": []string{triggerKindFunction}}
@@ -72,7 +72,7 @@ func (api *StreamingAPI) registerWebhookTools(reg definitionToolRegistrar, userI
 }
 
 // manageWorkflowWebhook lists, saves, deletes or tests one workflow's or
-// Relay's triggers as the person in ctx. The Builder tool and the MCP
+// Flow's triggers as the person in ctx. The Builder tool and the MCP
 // manage_triggers tool share it.
 func (api *StreamingAPI) manageWorkflowWebhook(ctx context.Context, workspace string, args map[string]interface{}) (string, error) {
 	if _, err := authorizeWorkflowContextPaths(ctx, []string{workspace}); err != nil {

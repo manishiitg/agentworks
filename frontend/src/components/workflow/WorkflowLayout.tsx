@@ -114,10 +114,10 @@ const WorkflowNewChatGuide: React.FC<{ relayMode?: boolean; pythonRelay?: boolea
     <div className="w-full max-w-lg rounded-xl border border-border bg-muted/20 p-5">
       <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
         <Sparkles className="h-4 w-4 text-primary" />
-        {relayMode ? 'Build your Relay in chat' : 'Start your workflow chat'}
+        {relayMode ? 'Build your Flow in chat' : 'Start your workflow chat'}
       </div>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">
-        {relayMode ? 'Describe what your Relay receives, what it should do, and what it returns. Ask the builder to:' : 'This is your persistent conversation for this workflow. Ask the builder to:'}
+        {relayMode ? 'Describe what your Flow receives, what it should do, and what it returns. Ask the builder to:' : 'This is your persistent conversation for this workflow. Ask the builder to:'}
       </p>
       <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
         {relayMode ? <>
@@ -2353,10 +2353,10 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   )
 
   // Run enters the product dashboard, including when an old browser preference
-  // retained a Builder pane. The common Relay Run chat policy is still pending;
+  // retained a Builder pane. The common Flow Run chat policy is still pending;
   // neither legacy HTML actions nor selection may open its Builder conversation.
   if (relayMode && workspacePath && activeWorkflowAccess !== 'owner' && activeWorkflowAccess !== 'write') {
-    return <ReportView workspacePath={workspacePath} defaultRelayDashboard dashboardConversation allowContentQuestions={false} sendChatMessage={async () => { throw new Error('Ask is unavailable for this Relay.') }} />
+    return <ReportView workspacePath={workspacePath} defaultRelayDashboard dashboardConversation allowContentQuestions={false} sendChatMessage={async () => { throw new Error('Ask is unavailable for this Flow.') }} />
   }
 
   return (

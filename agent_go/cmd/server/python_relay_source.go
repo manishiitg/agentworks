@@ -48,7 +48,7 @@ func validatePythonRelaySource(ctx context.Context, workspacePath string) error 
 		return fmt.Errorf("read relay.py: %w", err)
 	}
 	if !exists {
-		return fmt.Errorf("Relay needs relay.py")
+		return fmt.Errorf("Flow needs relay.py")
 	}
 	inspected, err := inspectPythonRelaySource(ctx, workspacePath, source)
 	if err != nil {
@@ -79,7 +79,7 @@ func inspectPythonRelaySource(ctx context.Context, workspacePath, source string)
 	}
 	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
 	if err != nil || !found {
-		return nil, fmt.Errorf("Relay manifest unavailable during source validation")
+		return nil, fmt.Errorf("Flow manifest unavailable during source validation")
 	}
 	sessionID := "relay-syntax-" + uuid.NewString()
 	common.SetSessionFolderGuard(sessionID, []string{workspacePath}, nil)
@@ -89,7 +89,7 @@ func inspectPythonRelaySource(ctx context.Context, workspacePath, source string)
 	client := workspace.NewClient(getWorkspaceAPIURL())
 	client.UserID = workflowExecutionOwnerUserID(manifest)
 	if IsMultiUserMode() && client.UserID == "" {
-		return nil, fmt.Errorf("Relay execution owner unavailable")
+		return nil, fmt.Errorf("Flow execution owner unavailable")
 	}
 	const check = `import base64,os; exec(compile(base64.b64decode(os.environ["VAR_RELAY_INSPECTOR"]),"<platform-inspector>","exec"))`
 	timeout := 15

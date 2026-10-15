@@ -25,7 +25,7 @@ export type QuickNavigationItem = {
 }
 
 const CREATION_LABELS: Record<ProductCreateSurface, string> = {
-  agentworks: 'Create new workflow', relays: 'Create new Relay', work: 'Create new Crew',
+  agentworks: 'Create new workflow', relays: 'Create new Flow', work: 'Create new Crew',
   code: 'Create new Code workspace', 'video-studio': 'Create new video project',
 }
 
@@ -51,7 +51,7 @@ export function quickNavigationItems(
   }
   browse('active', 'Running work')
   if (products.includes('agentworks')) { browse('workflows', 'All workflows'); browse('chats', 'All chats') }
-  if (products.includes('relays')) browse('relays', 'All Relays')
+  if (products.includes('relays')) browse('relays', 'All Flows')
   if (products.includes('work')) browse('crew', 'All Crews')
   if (products.includes('code')) browse('code', 'All Code projects')
   if (products.length) browse('products', 'All products')

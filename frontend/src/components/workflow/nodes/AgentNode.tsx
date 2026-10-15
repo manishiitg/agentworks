@@ -173,7 +173,7 @@ export const AgentNode = memo(({ data, selected }: AgentNodeProps) => {
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {data.isRelayOutput && <span title="This agent supplies the Relay API response" className="rounded bg-teal-500/15 px-1.5 py-0.5 text-[10px] font-medium text-teal-700 dark:text-teal-300">Output</span>}
+          {data.isRelayOutput && <span title="This agent supplies the Flow API response" className="rounded bg-teal-500/15 px-1.5 py-0.5 text-[10px] font-medium text-teal-700 dark:text-teal-300">Output</span>}
           {(data.parentOrchestratorTitle || data.routeName) && (
             <span className="text-[10px] font-medium text-violet-700 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/30 rounded px-1.5 py-0.5">
               Specialist

@@ -12,7 +12,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Relay calls use the existing function trigger and scheduler run store. The
+// Flow calls use the existing function trigger and scheduler run store. The
 // stable run ID remains pollable after a server restart, unlike the external
 // function-call conversation handle.
 type relayRunRequest struct {
@@ -29,17 +29,17 @@ func (api *StreamingAPI) relayForRunRequest(w http.ResponseWriter, r *http.Reque
 func (api *StreamingAPI) relayForRequest(w http.ResponseWriter, r *http.Request, scope string) (string, *WorkflowManifest, *UserClaims, bool) {
 	claims := GetUserFromContext(r.Context())
 	if claims == nil || !userAllowedWorkflowID(claims, mux.Vars(r)["id"]) || (claims.AccessToken != nil && (!claims.AccessToken.Allows(scope) || !claims.AccessToken.AllowsWorkflow(mux.Vars(r)["id"]))) {
-		http.Error(w, "Relay not found", http.StatusNotFound)
+		http.Error(w, "Flow not found", http.StatusNotFound)
 		return "", nil, nil, false
 	}
 	workspace, manifest, err := findWorkflowManifestByID(r.Context(), mux.Vars(r)["id"])
 	if err != nil || manifest == nil || manifest.Kind != "relay" {
-		http.Error(w, "Relay not found", http.StatusNotFound)
+		http.Error(w, "Flow not found", http.StatusNotFound)
 		return "", nil, nil, false
 	}
 	access := workflowAccessForManifest(claims, manifest)
 	if access == WorkflowAccessNone {
-		http.Error(w, "Relay not found", http.StatusNotFound)
+		http.Error(w, "Flow not found", http.StatusNotFound)
 		return "", nil, nil, false
 	}
 	return workspace, manifest, claims, true
@@ -75,7 +75,7 @@ func (api *StreamingAPI) handlePublishRelayRelease(w http.ResponseWriter, r *htt
 	}
 	access := workflowAccessForManifest(claims, manifest)
 	if access != WorkflowAccessOwner && access != WorkflowAccessWrite {
-		http.Error(w, "Publishing requires Relay write access", http.StatusForbidden)
+		http.Error(w, "Publishing requires Flow write access", http.StatusForbidden)
 		return
 	}
 	release, err := publishRelayRelease(r.Context(), workspace)
@@ -126,7 +126,7 @@ func (api *StreamingAPI) startRelayRun(w http.ResponseWriter, r *http.Request, d
 	decoder.DisallowUnknownFields()
 	var request relayRunRequest
 	if err := decoder.Decode(&request); err != nil {
-		http.Error(w, "invalid Relay request: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, "invalid Flow request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
@@ -154,7 +154,7 @@ func (api *StreamingAPI) startRelayRun(w http.ResponseWriter, r *http.Request, d
 	caller := triggerCaller{Type: triggerCallerUser, ID: claims.UserID}
 	liveSched, liveErr := findWorkflowFunctionTrigger(manifest, request.Function)
 	if liveErr != nil || !draft && !relayFunctionCallerAllowed(manifest, liveSched.Function, caller) || draft && !workflowFunctionCallerAllowed(liveSched.Function, caller) {
-		http.Error(w, "Relay function not found", http.StatusNotFound)
+		http.Error(w, "Flow function not found", http.StatusNotFound)
 		return
 	}
 	args := map[string]interface{}{"INPUT": request.Input}
@@ -195,7 +195,7 @@ func (api *StreamingAPI) startRelayRun(w http.ResponseWriter, r *http.Request, d
 			}
 			content, exists, readErr := readFileFromWorkspace(r.Context(), webhookInputPath(candidate.workspace, runID))
 			if readErr != nil || !exists {
-				http.Error(w, "existing Relay request is temporarily unavailable", http.StatusServiceUnavailable)
+				http.Error(w, "existing Flow request is temporarily unavailable", http.StatusServiceUnavailable)
 				return
 			}
 			if !relayCallPayloadMatches(content, request.Function, request.Input, claims.UserID) {
@@ -222,12 +222,12 @@ func (api *StreamingAPI) startRelayRun(w http.ResponseWriter, r *http.Request, d
 	}
 	published, found, err := ReadWorkflowManifest(r.Context(), releaseWorkspace)
 	if err != nil || !found {
-		http.Error(w, "published Relay is unavailable", http.StatusServiceUnavailable)
+		http.Error(w, "published Flow is unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	sched, err := findWorkflowFunctionTrigger(published, request.Function)
 	if err != nil {
-		http.Error(w, "Relay function not found", http.StatusNotFound)
+		http.Error(w, "Flow function not found", http.StatusNotFound)
 		return
 	}
 	if _, _, err := workflowFunctionArgs(*sched, args); err != nil {
@@ -298,7 +298,7 @@ func (api *StreamingAPI) handleGetRelayRun(w http.ResponseWriter, r *http.Reques
 		}
 		manifest, _, err = ReadWorkflowManifest(r.Context(), releaseWorkspace)
 		if err != nil || manifest == nil {
-			http.Error(w, "published Relay is unavailable", http.StatusServiceUnavailable)
+			http.Error(w, "published Flow is unavailable", http.StatusServiceUnavailable)
 			return
 		}
 	}

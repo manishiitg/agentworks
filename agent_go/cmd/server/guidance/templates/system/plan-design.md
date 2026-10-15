@@ -107,13 +107,13 @@ If selecting the next call genuinely requires live judgment, keep the decision a
 
 **Whenever you change an existing plan** — add / remove / reorder a step, or change a step's output contract, db writes, or behavior — run `read_skill(skills=[{"name":"builder-reference","path":"references/plan-change-impact.md"}])` before treating it as done and reconcile the blast radius (downstream steps, evals, report dashboard, db, learnings, KB). A step change ripples into everything that reads it; don't leave silent breakage behind.
 
-### Step 3: Design Context Flow
+### Step 3: Design context flow
 
 Every step reads from prior steps and writes for downstream steps:
 - **description** is the complete executable first user turn for description-first-v1 agents, including agents with predefined_routes. It runs ALONE before optional items. task rules belong in the description's Rules section; items[] are useful later phases or semantic checks and may be empty. Unmigrated agents retain their saved charter contract. A scripted `scripted` step describes its deterministic contract and `main.py` implements it. For `routing`, leave it empty because routing never runs an agent. Legacy non-scripted steps temporarily use the description through the compatibility adapter. Before writing or editing any of these descriptions, call `read_skill(skills=[{"name":"builder-reference","path":"references/step-description.md"}])` — it covers writing an optimized description, not just choosing the right step type.
 - **context_dependencies**: Files from prior steps this step needs (e.g., ["login_status.json"])
 - **context_output**: The file this step produces (e.g., "extracted_data.json")
-- **Flow must be forward-only** — no circular dependencies
+- **The flow must be forward-only** — no circular dependencies
 - Use JSON for structured data consumed by downstream steps. Keep output files < 100KB. For a final human-readable report or analysis, **prefer `.md`** — markdown renders richly in the file viewer (headings, tables, lists), and unlike HTML gets clickable workspace file links; it is also simpler and more robust to author. Reach for HTML only when you genuinely need a rich/branded layout markdown cannot express — and for a real dashboard, author one or more `db/reports/*.html` documents that read live data through `window.report`. For prose appended into learnings/KB, use Markdown.
 
 ### Step 4: When an Agent Needs Specialist Routes

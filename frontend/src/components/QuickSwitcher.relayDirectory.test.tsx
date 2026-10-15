@@ -35,7 +35,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanups: (() => void)[] = []
 afterEach(() => { cleanups.splice(0).forEach(fn => fn()) })
 
-it('labels a Relay, marks it current, and opens it on the Relay surface', async () => {
+it('labels a Flow, marks it current, and opens it on the Flow surface', async () => {
   const preset = { id: 'invoice-relay', label: 'Invoice Relay', workflowKind: 'relay', selectedFolder: { filepath: 'Workflow/invoice-relay' } } as CustomPreset
   useGlobalPresetStore.setState(state => ({ workflowPresetsLoaded: true, workflowPresets: [preset], activePresetIds: { ...state.activePresetIds, workflow: preset.id } }))
   useModeStore.setState({ selectedModeCategory: 'workflow' })
@@ -46,7 +46,7 @@ it('labels a Relay, marks it current, and opens it on the Relay surface', async 
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
   await act(async () => { root.render(<QuickSwitcher isOpen onClose={onClose} />) })
   const row = [...host.querySelectorAll('.cursor-pointer')].find(div => div.textContent?.includes('Invoice Relay'))!
-  expect(row.textContent).toContain('Relay')
+  expect(row.textContent).toContain('Flow')
   expect(row.textContent).toContain('current')
   expect(row.textContent).not.toContain('Automation ·')
   await act(async () => { useProductSurfaceStore.setState({ productSurface: 'work' }) })

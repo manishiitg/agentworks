@@ -1117,7 +1117,7 @@ func (iwm *InteractiveWorkshopManager) refreshVariablesManifest(ctx context.Cont
 		if iwm.controller.isRelayExecution() {
 			values, resolveErr := iwm.controller.relayVariableValues()
 			if resolveErr != nil {
-				iwm.controller.GetLogger().Warn(fmt.Sprintf("Relay configuration needs migration: %v", resolveErr))
+				iwm.controller.GetLogger().Warn(fmt.Sprintf("Flow configuration needs migration: %v", resolveErr))
 				values = nil
 			}
 			iwm.controller.variableValues = values

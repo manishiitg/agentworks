@@ -18,7 +18,7 @@ import (
 
 func (s *SchedulerService) executePythonRelay(ctx context.Context, sctx *ScheduleContext, runID, runFolder, sessionID string) (runErr error) {
 	if sctx.OwnerUserID == "" || s.api == nil {
-		return fmt.Errorf("Relay execution identity unavailable")
+		return fmt.Errorf("Flow execution identity unavailable")
 	}
 	ctx = context.WithValue(ctx, common.UserIDKey, sctx.OwnerUserID)
 	ctx = context.WithValue(ctx, common.ChatSessionIDKey, sessionID)
@@ -31,7 +31,7 @@ func (s *SchedulerService) executePythonRelay(ctx context.Context, sctx *Schedul
 	}
 	manifest, found, err := ReadWorkflowManifest(ctx, sctx.WorkspacePath)
 	if err != nil || !found {
-		return fmt.Errorf("Relay manifest unavailable during execution")
+		return fmt.Errorf("Flow manifest unavailable during execution")
 	}
 	readPaths := []string{sctx.WorkspacePath}
 	if isDBOSRelay(manifest) {
@@ -84,7 +84,7 @@ func (s *SchedulerService) executePythonRelay(ctx context.Context, sctx *Schedul
 		return err
 	} else if exists {
 		if err := json.Unmarshal([]byte(content), &variables); err != nil {
-			return fmt.Errorf("Relay configuration: %w", err)
+			return fmt.Errorf("Flow configuration: %w", err)
 		}
 	}
 	values, err := stepworkflow.ResolveRelayVariableValues(&variables, "")
@@ -99,10 +99,10 @@ func (s *SchedulerService) executePythonRelay(ctx context.Context, sctx *Schedul
 	}
 	var input map[string]interface{}
 	if sctx.WebhookInput == nil {
-		return fmt.Errorf("Relay INPUT is unavailable")
+		return fmt.Errorf("Flow INPUT is unavailable")
 	}
 	if err := json.Unmarshal([]byte(sctx.WebhookInput.Variables["INPUT"]), &input); err != nil || input == nil {
-		return fmt.Errorf("Relay INPUT must be an object")
+		return fmt.Errorf("Flow INPUT must be an object")
 	}
 	selected := s.api.loadSelectedSecrets(ctx, sctx.OwnerUserID, sctx.WorkspacePath, sctx.Capabilities.SelectedSecrets)
 	if err := validateVaultSecretSelection(ctx, sctx.OwnerUserID, selected, sctx.Capabilities.SelectedGlobalSecretNames); err != nil {

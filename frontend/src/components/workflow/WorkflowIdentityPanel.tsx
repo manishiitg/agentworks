@@ -74,7 +74,7 @@ export default function WorkflowIdentityPanel({ workspacePath, relayMode = false
       ])
       useWorkflowStore.getState().setShowWorkspacePane(false)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : `Failed to delete ${relayMode ? 'Relay' : 'automation'}. Please try again.`)
+      setError(cause instanceof Error ? cause.message : `Failed to delete ${relayMode ? 'Flow' : 'automation'}. Please try again.`)
     } finally {
       setDeleting(false)
       setConfirmingDelete(false)
@@ -87,10 +87,10 @@ export default function WorkflowIdentityPanel({ workspacePath, relayMode = false
       <SettingsCard
         icon={<Tag aria-hidden="true" className="h-4 w-4 text-primary" />}
         title={relayMode ? 'Name' : 'Name and icon'}
-        description={relayMode ? 'How this Relay appears in the app.' : 'How this workflow appears across AgentWorks.'}
+        description={relayMode ? 'How this Flow appears in the app.' : 'How this workflow appears across AgentWorks.'}
       >
         <div>
-          <Label className="mb-2 block">{relayMode ? 'Relay name' : 'Workflow name'}</Label>
+          <Label className="mb-2 block">{relayMode ? 'Flow name' : 'Workflow name'}</Label>
           <Input
             value={labelDraft}
             onChange={event => setLabelDraft(event.target.value)}
@@ -134,8 +134,8 @@ export default function WorkflowIdentityPanel({ workspacePath, relayMode = false
 
       <SettingsCard
         icon={<Trash2 aria-hidden="true" className="h-4 w-4 text-primary" />}
-        title={relayMode ? 'Delete Relay' : 'Delete workflow'}
-        description={relayMode ? 'Removes this Relay and everything in it. This cannot be undone.' : 'Removes the workflow folder and everything in it. This cannot be undone.'}
+        title={relayMode ? 'Delete Flow' : 'Delete workflow'}
+        description={relayMode ? 'Removes this Flow and everything in it. This cannot be undone.' : 'Removes the workflow folder and everything in it. This cannot be undone.'}
       >
         <div>
           <Button
@@ -144,7 +144,7 @@ export default function WorkflowIdentityPanel({ workspacePath, relayMode = false
             disabled={!canWriteWorkflow || deleting}
             title={!canWriteWorkflow ? READ_ONLY_TITLE : undefined}
           >
-            <Trash2 className="h-4 w-4" /> Delete {relayMode ? 'Relay' : 'workflow'}
+            <Trash2 className="h-4 w-4" /> Delete {relayMode ? 'Flow' : 'workflow'}
           </Button>
         </div>
       </SettingsCard>
@@ -153,9 +153,9 @@ export default function WorkflowIdentityPanel({ workspacePath, relayMode = false
         isOpen={confirmingDelete}
         onClose={() => { if (!deleting) setConfirmingDelete(false) }}
         onConfirm={() => void remove()}
-        title={`Delete ${workflow?.manifest.label || (relayMode ? 'Relay' : 'workflow')}?`}
-        message={relayMode ? 'This removes the Relay and everything in it. This cannot be undone.' : 'This removes the workflow folder and everything in it. This cannot be undone.'}
-        confirmText={`Delete ${relayMode ? 'Relay' : 'workflow'}`}
+        title={`Delete ${workflow?.manifest.label || (relayMode ? 'Flow' : 'workflow')}?`}
+        message={relayMode ? 'This removes the Flow and everything in it. This cannot be undone.' : 'This removes the workflow folder and everything in it. This cannot be undone.'}
+        confirmText={`Delete ${relayMode ? 'Flow' : 'workflow'}`}
         type="danger"
         isLoading={deleting}
         loadingText="Deleting…"

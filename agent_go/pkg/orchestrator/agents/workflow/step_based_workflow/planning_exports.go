@@ -813,7 +813,7 @@ func NewWorkshopChatSession(ctx context.Context, cfg *WorkshopConfig) (*Workshop
 		if controller.isRelayExecution() {
 			values, err := controller.relayVariableValues()
 			if err != nil {
-				logger.Warn(fmt.Sprintf("[WORKSHOP] Relay configuration needs migration: %v", err))
+				logger.Warn(fmt.Sprintf("[WORKSHOP] Flow configuration needs migration: %v", err))
 			} else {
 				controller.variableValues = values
 				SyncExactVariablesToWorkspaceEnv(controller.BaseOrchestrator, values)
@@ -1038,7 +1038,7 @@ func (s *WorkshopChatSession) UpdateEnabledGroupNames(ctx context.Context, enabl
 		s.controller.enabledGroupNames = nil
 		values, resolveErr := s.controller.relayVariableValues()
 		if resolveErr != nil {
-			s.controller.GetLogger().Warn(fmt.Sprintf("[WORKSHOP] Relay configuration needs migration: %v", resolveErr))
+			s.controller.GetLogger().Warn(fmt.Sprintf("[WORKSHOP] Flow configuration needs migration: %v", resolveErr))
 			values = nil
 		}
 		s.controller.variableValues = values

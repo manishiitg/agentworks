@@ -771,7 +771,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
 
   let body: React.ReactNode
   if (kind === 'canvas' && pythonRelay) {
-    body = toolbarOnly ? null : <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Relay…</div>}>
+    body = toolbarOnly ? null : <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading Flow…</div>}>
       <RelayPythonView workspacePath={workspacePath} relayID={relayID} onBuild={onCreatePlan || noop} />
     </Suspense>
   } else if (kind === 'canvas') {

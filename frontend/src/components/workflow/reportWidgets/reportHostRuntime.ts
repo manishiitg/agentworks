@@ -472,7 +472,7 @@ export function installReportHost(frame: HTMLIFrameElement, options: ReportHostI
   if (!dataApi) return
 
   const getRelayRuns = (options?: { version?: string; limit?: number }) => {
-    if (!dataApi.getRelayRuns) return Promise.reject(new Error('Relay run history is unavailable.'))
+    if (!dataApi.getRelayRuns) return Promise.reject(new Error('Flow run history is unavailable.'))
     return dataApi.getRelayRuns(options)
   }
   const getCosts = (costOptions?: ReportCostOptions) => getReportCosts(dataApi, costOptions)

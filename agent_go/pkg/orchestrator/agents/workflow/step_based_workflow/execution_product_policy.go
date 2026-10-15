@@ -16,7 +16,7 @@ import (
 
 // The validated workflow kind selects a product policy. Steps cannot override it.
 // loadCodeLayout applies it at every plan-read/direct-execution entry point,
-// including immutable Relay release workspaces.
+// including immutable Flow release workspaces.
 func (hcpo *StepBasedWorkflowOrchestrator) configureExecutionProduct(kind string) error {
 	hcpo.relayExecution.Store(strings.TrimSpace(kind) == "relay")
 	enabled, err := platformStoresForProduct(kind)
@@ -34,7 +34,7 @@ func platformStoresForProduct(kind string) (bool, error) {
 	}
 	enabled, err := relayproduct.PlatformStoresEnabled()
 	if err != nil {
-		return false, fmt.Errorf("load Relay execution policy: %w", err)
+		return false, fmt.Errorf("load Flow execution policy: %w", err)
 	}
 	return enabled, nil
 }

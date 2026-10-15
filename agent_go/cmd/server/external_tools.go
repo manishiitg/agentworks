@@ -91,10 +91,10 @@ func externalTools() ([]externalTool, error) {
 		p["step_id"] = externalString("Optional plan step ID; limits the inventory to its saved code directory.")
 		p["glob"] = externalString("Optional path glob inside the code directory; defaults to **/*.py.")
 		add("list_step_code", "List saved Python code by workflow step, with plan step IDs and titles where available. Uses code/<step-id>/ for current workflows and learnings/<step-id>/ for legacy workflows.", false, true, p)
-		add("get_file_link", "Get an existing workflow, Relay or Crew file/folder's authenticated browser preview URL. Files include a download URL, size and content type. Pass exactly one of workflow_id (files:read) or crew_id (crews:read); existing visibility, project bounds and file guards apply. Links contain no credentials and grant no access; recipients must sign in with their own current project access.", false, false, map[string]any{"path": externalString("Canonical project-relative file or folder path."), "workflow_id": externalString("Workflow or Relay ID."), "crew_id": externalString("Crew ID returned by crew list.")}, "path")
+		add("get_file_link", "Get an existing workflow, Flow or Crew file/folder's authenticated browser preview URL. Files include a download URL, size and content type. Pass exactly one of workflow_id (files:read) or crew_id (crews:read); existing visibility, project bounds and file guards apply. Links contain no credentials and grant no access; recipients must sign in with their own current project access.", false, false, map[string]any{"path": externalString("Canonical project-relative file or folder path."), "workflow_id": externalString("Workflow or Flow ID."), "crew_id": externalString("Crew ID returned by crew list.")}, "path")
 		defined[len(defined)-1].InputSchema["oneOf"] = []any{map[string]any{"required": []any{"workflow_id"}}, map[string]any{"required": []any{"crew_id"}}}
 		add("read_file", "Read a workflow file: text up to 2 MiB, smaller binary content as base64. Larger files up to 11 MiB return size and revision metadata without content, for guarded replacement or authenticated download.", false, true, map[string]any{"path": externalString("Workflow-relative file path.")}, "path")
-		add("write_file", "Write UTF-8 source or documentation (content), or a binary file such as an image, PDF or spreadsheet (content_base64, at most 11 MiB), within your current owner/editor role and existing workflow or Relay authoring consent. Read first for expected_revision (missing for new files); use a unique request_id and reuse it only for identical retries. Planning, workflow configuration, databases and private paths are protected.", true, true, map[string]any{"path": externalString("Workflow-relative file path."), "content": externalString("UTF-8 content, at most 2 MiB."), "content_base64": externalString("Base64 of a binary file, at most 11 MiB decoded. Pass this or content."), "expected_revision": externalString("Revision returned by read_file, or missing."), "request_id": externalString("Unique durable mutation ID (at most 128 characters).")}, "path", "expected_revision", "request_id")
+		add("write_file", "Write UTF-8 source or documentation (content), or a binary file such as an image, PDF or spreadsheet (content_base64, at most 11 MiB), within your current owner/editor role and existing workflow or Flow authoring consent. Read first for expected_revision (missing for new files); use a unique request_id and reuse it only for identical retries. Planning, workflow configuration, databases and private paths are protected.", true, true, map[string]any{"path": externalString("Workflow-relative file path."), "content": externalString("UTF-8 content, at most 2 MiB."), "content_base64": externalString("Base64 of a binary file, at most 11 MiB decoded. Pass this or content."), "expected_revision": externalString("Revision returned by read_file, or missing."), "request_id": externalString("Unique durable mutation ID (at most 128 characters).")}, "path", "expected_revision", "request_id")
 		// Product declarations admit tools; current roles and existing connection
 		// consent separately authorize reads, execution and direct authoring.
 		// Catalog membership is admitted by product.yaml (chat.run
@@ -106,7 +106,7 @@ func externalTools() ([]externalTool, error) {
 		})
 		add("get_agent_context", "Describe this connection for an external agent: token capabilities, available tools, and guidance version. No workflow required; pass workflow_id for the caller's role on it.", false, false, map[string]any{"workflow_id": map[string]any{"type": "string", "description": "Optional workflow ID to report the caller's role on."}})
 		add("list_guidance_topics", "List the server-owned external guidance topics and their descriptions.", false, false, nil)
-		add("get_guidance_topic", "Read one external guidance topic (Builder reference, Crew authoring, Relay Builder contract). Each has its own version. Load only topics relevant to the task.", false, false, map[string]any{"topic": externalString("Topic name from list_guidance_topics."), "known_version": externalString("Optional version you already hold for this topic; an unchanged topic returns unchanged:true without its text.")}, "topic")
+		add("get_guidance_topic", "Read one external guidance topic (Builder reference, Crew authoring, Flow Builder contract). Each has its own version. Load only topics relevant to the task.", false, false, map[string]any{"topic": externalString("Topic name from list_guidance_topics."), "known_version": externalString("Optional version you already hold for this topic; an unchanged topic returns unchanged:true without its text.")}, "topic")
 		add("get_guidance_skills", "Discover versioned server guidance skill files. By default returns names, descriptions, versions and file paths only. Pass topics to fetch selected files; known_versions omits unchanged bodies. Uses this connection's existing access; no workflow required.", false, false, map[string]any{
 			"topics":         map[string]any{"type": "array", "maxItems": 64, "uniqueItems": true, "items": externalString("Topic name returned in skills.")},
 			"known_versions": map[string]any{"type": "object", "maxProperties": 64, "additionalProperties": externalString("Previously saved topic version.")},
@@ -114,10 +114,10 @@ func externalTools() ([]externalTool, error) {
 		add("get_skill", "Return the AgentWorks skill (SKILL.md) for this server so you can install it: save `content` to <your skills folder>/agentworks/SKILL.md (Claude Code: ~/.claude/skills/agentworks/SKILL.md). Read-only; no workflow required.", false, false, nil)
 		add("list_workflow_knowledge", "List a workflow's learnings, knowledgebase notes, workspace skills, and skill wiring (workflow-selected skills plus per-step enabled_skills). Page the file inventories with limit and offset; has_more signals another page.", false, true, page())
 		add("read_workflow_knowledge", "Read one knowledge file: learnings/ or knowledgebase/ paths from the workflow, or skills/<folder>/<file> from the workspace skill catalog. Nothing else is addressable.", false, true, map[string]any{"path": externalString("Knowledge path: learnings/..., knowledgebase/..., or skills/<folder>/<file>.")}, "path")
-		relayVersion := externalString("Relays only: a published version from relay action=releases (e.g. v3) to read that version's production runs; omit for draft test runs. Needs owner or editor access.")
+		relayVersion := externalString("Flows only: a published version from relay action=releases (e.g. v3) to read that version's production runs; omit for draft test runs. Needs owner or editor access.")
 		p = page()
 		p["version"] = relayVersion
-		add("list_runs", "List saved run folders and their metadata files. Use get_run for a chosen run. For a Relay, pass version to see a published version's production runs.", false, true, p)
+		add("list_runs", "List saved run folders and their metadata files. Use get_run for a chosen run. For a Flow, pass version to see a published version's production runs.", false, true, p)
 		for _, name := range []string{"get_run", "get_logs"} {
 			p = page()
 			p["version"] = relayVersion
@@ -819,7 +819,7 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if tool.Name == "manage_schedules" {
 		if selected.Manifest.Kind == "relay" {
-			externalError(w, 400, "relay_api_only", "Relays have no schedules; they run through function triggers.")
+			externalError(w, 400, "relay_api_only", "Flows have no schedules; they run through function triggers.")
 			return
 		}
 		api.externalScheduleCall(w, r, args, externalScheduleTarget{workflow: selected})
@@ -844,13 +844,13 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	if selected.Manifest.Kind == "relay" {
 		switch tool.Name {
 		case "list_schedules", "create_schedule", "create_calendar_schedule", "update_schedule", "delete_schedule", "trigger_schedule", "get_schedule_runs":
-			externalError(w, 400, "relay_api_only", "Relays use API function triggers. Use relay action=test or relay action=run and relay action=get_run.")
+			externalError(w, 400, "relay_api_only", "Flows use API function triggers. Use relay action=test or relay action=run and relay action=get_run.")
 			return
 		}
 	}
-	// Relay chat is Builder-only; direct API tools handle published execution.
+	// Flow chat is Builder-only; direct API tools handle published execution.
 	if selected.Manifest.Kind == "relay" && (tool.Name == "chat" || tool.Name == "call_workflow_function" && externalArg(args, "function") == "ask") {
-		externalError(w, 400, "relay_builder_only", "Use guarded files to edit Relay source, relay action=test for draft tests, or relay action=run for published versions. Builder chat can delegate edits when requested.")
+		externalError(w, 400, "relay_builder_only", "Use guarded files to edit Flow source, relay action=test for draft tests, or relay action=run for published versions. Builder chat can delegate edits when requested.")
 		return
 	}
 	// Conversation access follows the builder runtime: workflow readers may
@@ -916,7 +916,7 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if tool.executes {
 		if selected.Manifest.Kind == "relay" {
-			externalError(w, 400, "relay_builder_only", "Use relay action=test or relay action=run; Relay does not expose Run chat tools.")
+			externalError(w, 400, "relay_builder_only", "Use relay action=test or relay action=run; Flow does not expose Run chat tools.")
 			return
 		}
 		api.externalRunProxy(w, r, tool.Name, args, *selected)
@@ -998,15 +998,15 @@ func (api *StreamingAPI) externalFileCall(w http.ResponseWriter, r *http.Request
 			req.Path = path.Join(req.Path, "logs")
 		}
 	}
-	// A Relay's published version keeps its production runs in its own
+	// A Flow's published version keeps its production runs in its own
 	// release folder, the one the app's version picker reads.
 	if version := externalArg(args, "version"); version != "" {
 		if workflow.Manifest.Kind != "relay" {
-			externalError(w, 400, "invalid_arguments", "version applies to Relays only.")
+			externalError(w, 400, "invalid_arguments", "version applies to Flows only.")
 			return
 		}
 		if access := workflowAccessForManifest(GetUserFromContext(r.Context()), workflow.Manifest); access != WorkflowAccessOwner && access != WorkflowAccessWrite {
-			externalError(w, 403, "forbidden", "Production runs of a Relay need owner or editor access.")
+			externalError(w, 403, "forbidden", "Production runs of a Flow need owner or editor access.")
 			return
 		}
 		root := relayReleaseWorkspace(workflow.WorkspacePath, version)

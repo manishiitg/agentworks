@@ -129,8 +129,8 @@ func (t Token) BuilderAccess() bool {
 	return true
 }
 
-// RelayBuilderAccess delegates Relay authoring only. AllWorkflows permits
-// creating new Relays; a selected-ID grant may edit only those Relays.
+// RelayBuilderAccess delegates Flow authoring only. AllWorkflows permits
+// creating new Flows; a selected-ID grant may edit only those Flows.
 func (t Token) RelayBuilderAccess() bool {
 	if !t.Allows("relays:write") || (!t.AllWorkflows && len(t.WorkflowIDs) == 0) {
 		return false
@@ -168,7 +168,7 @@ func Validate(t Token, now time.Time) error {
 		return errors.New("devices:connect must be approved separately from other permissions")
 	}
 	if t.FileGuard != nil && !t.BuilderAccess() && !t.RelayBuilderAccess() && !t.Allows("crews:read") && !t.Allows("crews:write") && !(t.Allows("dashboards:read") && t.Allows("code:run")) {
-		return errors.New("file guards require Crew access or existing workflow, Relay or Code authoring consent")
+		return errors.New("file guards require Crew access or existing workflow, Flow or Code authoring consent")
 	}
 	if err := t.FileGuard.Validate(); err != nil {
 		return err
@@ -244,7 +244,7 @@ func Validate(t Token, now time.Time) error {
 		return errors.New("Builder chat requires workflows:read, files:read and runs:execute")
 	}
 	if t.Allows("relays:write") && !t.RelayBuilderAccess() {
-		return errors.New("Relay authoring requires workflows:read, files:read and runs:execute")
+		return errors.New("Flow authoring requires workflows:read, files:read and runs:execute")
 	}
 	return nil
 }

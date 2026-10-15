@@ -47,8 +47,8 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
     }
     return [...names.values()]
   }, [chatTabs, savedChats, scope.projectId])
-  const sourceName = scope.profileId === 'code' ? 'Code project' : scope.profileId === 'work' ? 'Crew' : scope.profileId === 'relays' ? 'Relay' : 'workflow'
-  const targetHint = scope.profileId === 'code' ? 'the agent in the creating chat, or an existing function or route' : scope.profileId === 'work' ? 'a published function, defaulting to this Crew' : scope.profileId === 'relays' ? 'a published Relay entry, defaulting to this Relay' : 'a saved route or internal trigger, defaulting to this workflow'
+  const sourceName = scope.profileId === 'code' ? 'Code project' : scope.profileId === 'work' ? 'Crew' : scope.profileId === 'relays' ? 'Flow' : 'workflow'
+  const targetHint = scope.profileId === 'code' ? 'the agent in the creating chat, or an existing function or route' : scope.profileId === 'work' ? 'a published function, defaulting to this Crew' : scope.profileId === 'relays' ? 'a published Flow entry, defaulting to this Flow' : 'a saved route or internal trigger, defaulting to this workflow'
   const setupMessage = `Set up a watcher attached to this ${sourceName}. Determine the condition I want to wait for and select ${targetHint}. Use manage_condition_triggers to list current watchers and discover actual entry points. Choose One time for a specific wait that should disable after the first accepted action, or Keep watching for ongoing monitoring. Default the source to the current product. ${scope.profileId === 'code' ? 'Save the detector under code/triggers and default agent delivery to the chat creating it.' : 'Pass script_content so the tool saves the detector in my own watcher folder; select only secrets I can use from Vault.'} Preserve cursor and duplicate handling.`
   const sendToChat = onAsk ?? ((message: string) => sendWorkspacePaneMessageToChat({ profileId: scope.profileId, conversationKey: scope.projectId, message }).then(() => undefined))
   // A failed hand-off to the chat must show, not vanish: the buttons call this without awaiting.

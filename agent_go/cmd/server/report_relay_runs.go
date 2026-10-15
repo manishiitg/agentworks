@@ -31,7 +31,7 @@ func (api *StreamingAPI) handleReportRelayRuns(w http.ResponseWriter, r *http.Re
 	}
 	workspace, err := reportPreviewWorkspace(r, claims, r.URL.Query().Get("workspace"))
 	if err != nil || !isReportRunWorkflowRoot(workspace) {
-		http.Error(w, "a canonical Relay workspace is required", http.StatusBadRequest)
+		http.Error(w, "a canonical Flow workspace is required", http.StatusBadRequest)
 		return
 	}
 	if err := reportPreviewReadable(r, claims, workspace); err != nil {
@@ -45,7 +45,7 @@ func (api *StreamingAPI) handleReportRelayRuns(w http.ResponseWriter, r *http.Re
 	}
 	manifest, found, err := ReadWorkflowManifest(r.Context(), workspace)
 	if err != nil || !found || manifest.Kind != "relay" {
-		http.Error(w, "Relay not found", http.StatusNotFound)
+		http.Error(w, "Flow not found", http.StatusNotFound)
 		return
 	}
 	limit := 20
@@ -70,7 +70,7 @@ func (api *StreamingAPI) handleReportRelayRuns(w http.ResponseWriter, r *http.Re
 		return
 	}
 	out["product"] = map[string]any{"id": manifest.ID, "name": manifest.Label, "purpose": manifest.Description}
-	// Everyone with product access can ask: the Builder in their own Builder chat, everyone else in the Relay's Run chat
+	// Everyone with product access can ask: the Builder in their own Builder chat, everyone else in the Flow's Run chat
 	// (read_relay, list/get runs, run_relay; 856-80).
 	out["can_draft"] = claims != nil && workflowAccessForManifest(claims, manifest) == WorkflowAccessOwner && claims.Scope == ""
 	out["can_ask"] = relayRunSeesAll(claims, manifest) && (claims == nil || claims.Scope == "")
@@ -131,7 +131,7 @@ func relayRecordedRunsBefore(ctx context.Context, claims *UserClaims, workspace 
 	if claims != nil && claims.Scope == "" && claims.Provider != "bot_route" {
 		account := userAccessForClaims(claims)
 		if account.Disabled || IsMultiUserMode() && !account.Known {
-			return nil, http.StatusForbidden, "Relay is unavailable for this account."
+			return nil, http.StatusForbidden, "Flow is unavailable for this account."
 		}
 	}
 	seeAll := relayRunSeesAll(claims, manifest)
@@ -152,7 +152,7 @@ func relayRecordedRunsBefore(ctx context.Context, claims *UserClaims, workspace 
 		if err != nil {
 			_, exists, readErr := readFileFromWorkspace(ctx, path.Join(relayReleaseRoot(workspace), "active.json"))
 			if readErr != nil || exists {
-				return nil, http.StatusServiceUnavailable, "Published Relay version is unavailable."
+				return nil, http.StatusServiceUnavailable, "Published Flow version is unavailable."
 			}
 			return map[string]any{"version": "", "published": false, "runs": []map[string]any{}, "scope": scope}, 0, ""
 		}
@@ -162,7 +162,7 @@ func relayRecordedRunsBefore(ctx context.Context, claims *UserClaims, workspace 
 		var err error
 		_, rootWorkspace, err = readRelayRelease(ctx, workspace, version)
 		if err != nil {
-			return nil, http.StatusNotFound, "Relay version not found"
+			return nil, http.StatusNotFound, "Flow version not found"
 		}
 	}
 	root, err := webhookWorkspaceRoot(rootWorkspace)
@@ -171,12 +171,12 @@ func relayRecordedRunsBefore(ctx context.Context, claims *UserClaims, workspace 
 		return map[string]any{"version": version, "runs": []map[string]any{}, "scope": scope}, 0, ""
 	}
 	if err != nil {
-		return nil, http.StatusNotFound, "Relay workspace unavailable"
+		return nil, http.StatusNotFound, "Flow workspace unavailable"
 	}
 	defer root.Close()
 	entries, err := fs.ReadDir(root.FS(), "runs")
 	if err != nil && !os.IsNotExist(err) {
-		return nil, http.StatusInternalServerError, "Relay runs unavailable"
+		return nil, http.StatusInternalServerError, "Flow runs unavailable"
 	}
 	// Allocation numbers establish newest-first order without reading every
 	// run's transcript, agent prompt, or private journal.
@@ -326,8 +326,8 @@ func readReportRelayJSONLimit(root *os.Root, name string, target any, limit int6
 	return json.NewDecoder(io.LimitReader(f, limit)).Decode(target) == nil
 }
 
-// relaySecretValues are the values of the secrets a Relay's own runs use (the Builder's selection). Runs are visible to
-// everyone with access to the Relay, but secret values never are.
+// relaySecretValues are the values of the secrets a Flow's own runs use (the Builder's selection). Runs are visible to
+// everyone with access to the Flow, but secret values never are.
 func (api *StreamingAPI) relaySecretValues(ctx context.Context, workspace string, manifest *WorkflowManifest) []string {
 	if manifest == nil {
 		return nil
@@ -347,7 +347,7 @@ func (api *StreamingAPI) relaySecretValues(ctx context.Context, workspace string
 	return values
 }
 
-// maskRelaySecrets returns value with every secret value of the Relay replaced by <REDACTED>, in any string inside it.
+// maskRelaySecrets returns value with every secret value of the Flow replaced by <REDACTED>, in any string inside it.
 func (api *StreamingAPI) maskRelaySecrets(ctx context.Context, workspace string, manifest *WorkflowManifest, value any) map[string]any {
 	secrets := api.relaySecretValues(ctx, workspace, manifest)
 	encoded, err := json.Marshal(value)
@@ -470,7 +470,7 @@ func relayRunFunction(root *os.Root, guard *wf.FolderGuard, runID string) string
 func relayRecordedRun(ctx context.Context, claims *UserClaims, workspace string, manifest *WorkflowManifest, guard *wf.FolderGuard, run, version string) (map[string]any, int, string) {
 	if claims != nil && claims.Scope == "" && claims.Provider != "bot_route" {
 		if account := userAccessForClaims(claims); account.Disabled || IsMultiUserMode() && !account.Known {
-			return nil, http.StatusForbidden, "Relay is unavailable for this account."
+			return nil, http.StatusForbidden, "Flow is unavailable for this account."
 		}
 	}
 	// Same version rules as the run list: callers run the active published version,
@@ -491,18 +491,18 @@ func relayRecordedRun(ctx context.Context, claims *UserClaims, workspace string,
 	case version == "active":
 		release, releaseWorkspace, err := activeRelayRelease(ctx, workspace)
 		if err != nil {
-			return nil, http.StatusNotFound, "Relay run not found"
+			return nil, http.StatusNotFound, "Flow run not found"
 		}
 		version, rootWorkspace = release.Version, releaseWorkspace
 	default:
 		var err error
 		if _, rootWorkspace, err = readRelayRelease(ctx, workspace, version); err != nil {
-			return nil, http.StatusNotFound, "Relay version not found"
+			return nil, http.StatusNotFound, "Flow version not found"
 		}
 	}
 	root, err := webhookWorkspaceRoot(rootWorkspace)
 	if err != nil {
-		return nil, http.StatusNotFound, "Relay run not found"
+		return nil, http.StatusNotFound, "Flow run not found"
 	}
 	defer root.Close()
 	type traceFile struct {
@@ -549,7 +549,7 @@ func relayRecordedRun(ctx context.Context, claims *UserClaims, workspace string,
 		folder = ""
 	}
 	if folder == "" {
-		return nil, http.StatusNotFound, "Relay run not found"
+		return nil, http.StatusNotFound, "Flow run not found"
 	}
 	// Someone with product access sees every run. A caller who can only call a function sees only the runs they started,
 	// as in the list; a run with no recorded caller stays hidden from them.
@@ -559,7 +559,7 @@ func relayRecordedRun(ctx context.Context, claims *UserClaims, workspace string,
 			viewer = claims.UserID
 		}
 		if recorded := relayRunCaller(ctx, rootWorkspace, trace.WorkflowID); recorded == "" || viewer == "" || recorded != viewer {
-			return nil, http.StatusNotFound, "Relay run not found"
+			return nil, http.StatusNotFound, "Flow run not found"
 		}
 	}
 	caller, input := relayReportInput(root, guard, trace.WorkflowID)
@@ -635,7 +635,7 @@ func (api *StreamingAPI) handleReportRelayRun(w http.ResponseWriter, r *http.Req
 	}
 	workspace, err := reportPreviewWorkspace(r, claims, r.URL.Query().Get("workspace"))
 	if err != nil || !isReportRunWorkflowRoot(workspace) {
-		http.Error(w, "a canonical Relay workspace is required", http.StatusBadRequest)
+		http.Error(w, "a canonical Flow workspace is required", http.StatusBadRequest)
 		return
 	}
 	if err := reportPreviewReadable(r, claims, workspace); err != nil {
@@ -649,7 +649,7 @@ func (api *StreamingAPI) handleReportRelayRun(w http.ResponseWriter, r *http.Req
 	}
 	manifest, found, err := ReadWorkflowManifest(r.Context(), workspace)
 	if err != nil || !found || manifest.Kind != "relay" {
-		http.Error(w, "Relay not found", http.StatusNotFound)
+		http.Error(w, "Flow not found", http.StatusNotFound)
 		return
 	}
 	run := r.URL.Query().Get("run")

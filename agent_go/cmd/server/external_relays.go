@@ -13,18 +13,18 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Relay product.yaml owns admission; these are adapters to existing services.
+// Flow product.yaml owns admission; these are adapters to existing services.
 func externalRelayDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	id := map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}
 	key := map[string]any{"type": "string", "minLength": 1, "maxLength": 128}
 	label := map[string]any{"type": "string", "minLength": 1, "maxLength": 80}
-	add("create_relay", "Create a Relay you own, with relay.py, object INPUT and enabled function trigger. Requires relays:write covering all accessible workflows and account create rights. Reuse submission_id on retries. Author relay.py directly with files action=write using the current file revision and a request_id; creation does not publish.", false, false, map[string]any{"label": label, "submission_id": key, "function": id}, "label", "submission_id")
-	add("update_relay", "Rename a Relay. Native DBOS Relays return the value of run(INPUT); legacy programs keep their declared entrypoint. output_step_id applies only to older graph Relays. Requires Builder permission and owner/editor access. Published versions stay frozen.", true, true, map[string]any{"label": label, "output_step_id": id})
-	add("get_relay_releases", "Inspect a Relay's active and previous published versions.", false, true, nil)
-	add("publish_relay", "Publish the validated draft as an immutable Relay version using the existing publisher. Requires Builder permission and owner/editor access. Repeating an unchanged draft returns the same version.", true, true, nil)
-	add("test_relay", "Run the current Relay draft with JSON input. Requires Builder permission and owner/editor access. Does not publish or use the active release. Reuse idempotency_key on retries; poll relay action=get_run.", true, true, map[string]any{"function": externalString("Enabled function name, default process on creation."), "input": map[string]any{"type": "object"}, "idempotency_key": key}, "function", "input", "idempotency_key")
-	add("run_relay", "Run a published Relay version with JSON input. Omit version for the active release. Requires runs:execute and current Relay/function access. Reuse idempotency_key on retries; poll relay action=get_run. Does not create Run chat.", false, true, map[string]any{"function": externalString("Published function name."), "input": map[string]any{"type": "object"}, "version": map[string]any{"type": "string", "pattern": "^v[1-9][0-9]*$"}, "idempotency_key": key}, "function", "input", "idempotency_key")
-	add("list_relay_runs", "List bounded Relay diagnostics: run/version/caller, input, result, errors, step IDs/outputs/timings and freshness. Product members see all product runs; function-only callers retain their own-run scope. Non-Builders default to the active published version; draft tests require Builder. Pass version v1, v2, etc., or active; limit is 1 to 50 (default 20). Pass returned next_before as before for older records. Truncation/unavailable markers identify omitted evidence. Requires runs:execute or workflows:read.", false, true, map[string]any{"version": map[string]any{"type": "string", "pattern": "^(active|draft|v[1-9][0-9]*)$"}, "limit": externalInteger(1, 50), "before": externalInteger(1, 2147483647)})
+	add("create_relay", "Create a Flow you own, with relay.py, object INPUT and enabled function trigger. Requires relays:write covering all accessible workflows and account create rights. Reuse submission_id on retries. Author relay.py directly with files action=write using the current file revision and a request_id; creation does not publish.", false, false, map[string]any{"label": label, "submission_id": key, "function": id}, "label", "submission_id")
+	add("update_relay", "Rename a Flow. Native DBOS Flows return the value of run(INPUT); legacy programs keep their declared entrypoint. output_step_id applies only to older graph Flows. Requires Builder permission and owner/editor access. Published versions stay frozen.", true, true, map[string]any{"label": label, "output_step_id": id})
+	add("get_relay_releases", "Inspect a Flow's active and previous published versions.", false, true, nil)
+	add("publish_relay", "Publish the validated draft as an immutable Flow version using the existing publisher. Requires Builder permission and owner/editor access. Repeating an unchanged draft returns the same version.", true, true, nil)
+	add("test_relay", "Run the current Flow draft with JSON input. Requires Builder permission and owner/editor access. Does not publish or use the active release. Reuse idempotency_key on retries; poll relay action=get_run.", true, true, map[string]any{"function": externalString("Enabled function name, default process on creation."), "input": map[string]any{"type": "object"}, "idempotency_key": key}, "function", "input", "idempotency_key")
+	add("run_relay", "Run a published Flow version with JSON input. Omit version for the active release. Requires runs:execute and current Flow/function access. Reuse idempotency_key on retries; poll relay action=get_run. Does not create Run chat.", false, true, map[string]any{"function": externalString("Published function name."), "input": map[string]any{"type": "object"}, "version": map[string]any{"type": "string", "pattern": "^v[1-9][0-9]*$"}, "idempotency_key": key}, "function", "input", "idempotency_key")
+	add("list_relay_runs", "List bounded Flow diagnostics: run/version/caller, input, result, errors, step IDs/outputs/timings and freshness. Product members see all product runs; function-only callers retain their own-run scope. Non-Builders default to the active published version; draft tests require Builder. Pass version v1, v2, etc., or active; limit is 1 to 50 (default 20). Pass returned next_before as before for older records. Truncation/unavailable markers identify omitted evidence. Requires runs:execute or workflows:read.", false, true, map[string]any{"version": map[string]any{"type": "string", "pattern": "^(active|draft|v[1-9][0-9]*)$"}, "limit": externalInteger(1, 50), "before": externalInteger(1, 2147483647)})
 	add("get_relay_run", "See what happened in one execution: its status, result and diagnostics with recorded steps, timings, errors and recent log entries. Use the run_id from relay action=runs, test or run. Older logs may be shortened; diagnostics.logs_truncated and logs_note explain this. A queued execution may not have recorded details yet. Published versions are resolved from the execution automatically. Requires runs:execute and current access.", false, true, map[string]any{"run_id": externalString("run_id returned by relay action=runs, test or run.")}, "run_id")
 }
 func isExternalRelayTool(name string) bool {
@@ -43,20 +43,20 @@ func isExternalRelayAuthoringTool(name string) bool {
 }
 
 // Reserve identity in private auth state before workspace writes. A retry after
-// partial creation converges on the same Relay without overwriting its graph.
+// partial creation converges on the same Flow without overwriting its graph.
 func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
 	if claims != nil && claims.AccessToken != nil {
 		live, err := activeExternalGrantClaims(r.Context(), claims.AccessToken.ID)
 		if err != nil || live.UserID != claims.UserID {
-			externalError(w, 403, "grant_unavailable", "Relay authoring grant is no longer active")
+			externalError(w, 403, "grant_unavailable", "Flow authoring grant is no longer active")
 			return
 		}
 		claims = live
 		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, live))
 	}
 	if claims == nil || claims.AccessToken == nil || !claims.AccessToken.RelayBuilderAccess() || !claims.AccessToken.AllWorkflows || !userAccessForClaims(claims).CanCreateIn("relays") || !userAllowedProduct(claims, "relays") {
-		externalError(w, 403, "forbidden", "Creation needs account create rights, Relay product access and relays:write consent covering all accessible workflows.")
+		externalError(w, 403, "forbidden", "Creation needs account create rights, Flow product access and relays:write consent covering all accessible workflows.")
 		return
 	}
 	label := strings.TrimSpace(externalArg(args, "label"))
@@ -72,7 +72,7 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 	workspace := "Workflow/relay-" + identity
 	workflowID := "wf_" + identity
 	if !userAllowedWorkflowID(claims, workflowID) {
-		externalError(w, 403, "forbidden", "The account workflow allowlist does not permit a new Relay.")
+		externalError(w, 403, "forbidden", "The account workflow allowlist does not permit a new Flow.")
 		return
 	}
 	lock := productConversationRegistryMutex("external-relay-create:" + identity)
@@ -109,7 +109,7 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 	}
 	if found {
 		if manifest.Kind != "relay" || manifest.ID != workflowID || workflowAccessForManifest(claims, manifest) != WorkflowAccessOwner {
-			externalError(w, 409, "creation_conflict", "Reserved Relay identity is unavailable")
+			externalError(w, 409, "creation_conflict", "Reserved Flow identity is unavailable")
 			return
 		}
 		externalJSON(w, map[string]any{"workflow_id": manifest.ID, "manifest": manifest, "duplicate": true})
@@ -153,7 +153,7 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 
 func (api *StreamingAPI) externalRelayCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any, selected DiscoveredWorkflow) {
 	if selected.Manifest.Kind != "relay" || !userAllowedProduct(GetUserFromContext(r.Context()), "relays") {
-		externalError(w, 404, "relay_not_found", "Relay does not exist or is not accessible.")
+		externalError(w, 404, "relay_not_found", "Flow does not exist or is not accessible.")
 		return
 	}
 	if isExternalRelayAuthoringTool(name) {
@@ -183,7 +183,7 @@ func (api *StreamingAPI) externalRelayCall(w http.ResponseWriter, r *http.Reques
 			if !isPythonRelay(selected.Manifest) {
 				body["relay_output_step_id"] = output
 			} else {
-				externalError(w, 400, "invalid_arguments", "Python Relays return run(INPUT, ctx); no output step can be selected")
+				externalError(w, 400, "invalid_arguments", "Python Flows return run(INPUT, ctx); no output step can be selected")
 				return
 			}
 		}
@@ -199,7 +199,7 @@ func (api *StreamingAPI) externalRelayCall(w http.ResponseWriter, r *http.Reques
 		externalBuilderForward(w, forward, api.handleListRelayReleases)
 	case "run_relay", "test_relay":
 		if api.scheduler == nil {
-			externalError(w, 503, "scheduler_unavailable", "Relay scheduler is unavailable")
+			externalError(w, 503, "scheduler_unavailable", "Flow scheduler is unavailable")
 			return
 		}
 		body := map[string]any{"function": args["function"], "input": args["input"], "idempotency_key": args["idempotency_key"]}
@@ -215,7 +215,7 @@ func (api *StreamingAPI) externalRelayCall(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		if claims != nil && claims.AccessToken != nil && !claims.AccessToken.AllowsWorkflow(selected.Manifest.ID) {
-			externalError(w, 404, "relay_not_found", "Relay does not exist or is not accessible.")
+			externalError(w, 404, "relay_not_found", "Flow does not exist or is not accessible.")
 			return
 		}
 		guard := dashboardFileGuard(claims)
@@ -236,7 +236,7 @@ func (api *StreamingAPI) externalRelayCall(w http.ResponseWriter, r *http.Reques
 		externalJSON(w, api.maskRelaySecrets(r.Context(), selected.WorkspacePath, selected.Manifest, out))
 	case "get_relay_run":
 		if api.scheduler == nil {
-			externalError(w, 503, "scheduler_unavailable", "Relay scheduler is unavailable")
+			externalError(w, 503, "scheduler_unavailable", "Flow scheduler is unavailable")
 			return
 		}
 		externalBuilderForward(w, forward, api.handleGetRelayRun)

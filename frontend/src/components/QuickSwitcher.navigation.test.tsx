@@ -159,7 +159,7 @@ it('browses all workflows or Relays from footer icons without requiring typed sc
   expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['workflow:workflow', 'create:agentworks'])
   expect(host.querySelector('input')!.value).toBe('')
   expect(host.querySelector('[aria-label="Show all work and navigation"]')?.textContent).toContain('All workflows')
-  await act(async () => shortcuts.querySelector<HTMLButtonElement>('[aria-label="All Relays"]')!.click())
+  await act(async () => shortcuts.querySelector<HTMLButtonElement>('[aria-label="All Flows"]')!.click())
   expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['workflow:relay', 'create:relays'])
   expect(onClose).not.toHaveBeenCalled()
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Show all work and navigation"]')!.click())

@@ -519,7 +519,7 @@ type ScriptedPlanStep struct {
 	Type StepType `json:"type"` // Always "scripted" - required for JSON marshaling/unmarshaling
 	CommonStepFields
 	// ScriptOnly executes the saved main.py without agent generation or repair.
-	// Relay script nodes use this on the existing scripted step executor.
+	// Flow script nodes use this on the existing scripted step executor.
 	ScriptOnly      bool          `json:"script_only,omitempty"`
 	NextStepID      string        `json:"next_step_id,omitempty"`     // Optional explicit successor; empty preserves sequential execution
 	HasLoop         bool          `json:"has_loop"`                   // DEPRECATED: loop feature removed, kept for JSON backward compatibility
@@ -768,7 +768,7 @@ type AgentPlanStep struct {
 	SystemRules        string            `json:"system_rules,omitempty"`
 	InitialWriteAccess *AgentWriteAccess `json:"initial_write_access,omitempty"`
 	// AuthoredPrompt runs the exact system prompt and user messages supplied by
-	// the author. It is used by Relays on the shared agent executor.
+	// the author. It is used by Flows on the shared agent executor.
 	AuthoredPrompt          bool                     `json:"authored_prompt,omitempty"`
 	SystemPrompt            string                   `json:"system_prompt,omitempty"`
 	PredefinedRoutes        []PlanOrchestrationRoute `json:"predefined_routes,omitempty"`
@@ -1342,7 +1342,7 @@ func getUpdateScriptedStepSchema() string {
 							"type": "string",
 							"description": "REQUIRED: The ID of the step in the existing plan that you want to update. Use the step's id field from the plan."
 						},
-						"script_only": {"type": "boolean", "description": "For a Relay script node, execute saved main.py strictly, without agent repair."},
+						"script_only": {"type": "boolean", "description": "For a Flow script node, execute saved main.py strictly, without agent repair."},
 						"title": {
 							"type": "string",
 							"description": "OPTIONAL: New title for the step. Only include if you want to rename the step. If omitted, the existing title is preserved."
@@ -1414,7 +1414,7 @@ func getAddScriptedStepSchema() string {
 		"type": "object",
 		"properties": {
             "is_orphan": {"type": "boolean", "description": "Set true to create a reusable saved script in orphan_steps instead of the main flow, for scripted agent batches. It does not auto-run. Use empty insert_after_step_id."},
-			"script_only": {"type": "boolean", "description": "For a Relay script node, require an existing main.py and stop on any error without agent generation or repair."},
+			"script_only": {"type": "boolean", "description": "For a Flow script node, require an existing main.py and stop on any error without agent generation or repair."},
 			"id": {
 				"type": "string",
 				"description": "REQUIRED: Stable step ID for this new step. Generate a unique, URL-friendly ID based on the step title (e.g., 'deploy-application' from 'Deploy Application')."
@@ -1507,7 +1507,7 @@ func getAddAgentStepSchema() string {
 			"id": {"type": "string", "description": "REQUIRED: Stable URL-friendly step ID."},
 			"title": {"type": "string", "description": "REQUIRED: Short title for the agent step."},
 			"description": {"type": "string", "description": "REQUIRED: The executable task for the first user turn alone: objective, boundaries, inputs, durable result, failure behavior, and definition of done. It runs before any optional items in description-first-v1; unchanged legacy agents keep their old contract until migrated. Do not copy shared AgentWorks bridge/auth, Folder Guard, managed-tool, tool-discovery, or coding-session mechanics here. Put task-specific policies in the description's Rules section. items[] are optional subsequent turns, not a repeated execution instruction."},
-			"authored_prompt": {"type": "boolean", "description": "Relay agent mode: run the exact system_prompt and user_message items without generated workflow turns. The final user_message must return valid JSON."},
+			"authored_prompt": {"type": "boolean", "description": "Flow agent mode: run the exact system_prompt and user_message items without generated workflow turns. The final user_message must return valid JSON."},
 			"system_prompt": {"type": "string", "description": "Required when authored_prompt is true. The author's system prompt; supports {{input}} for all caller JSON, {{input.field}} for a required field, and {{steps.id.output.field}} for earlier output."},
 			"prompt_contract": {"type":"string", "enum":["description-first-v1"], "description":"Use description-first-v1 after reviewing the description and optional follow-ups. New agents use it automatically; omit on updates to retain an unmigrated agent's semantics."},
             "system_rules": {"type":"string", "description":"Compatibility input only: merged into the description Rules section. New authoring puts all task rules in description, once. Preserve approval, spend, scope and evidence rules."},
@@ -1526,7 +1526,7 @@ func getAddAgentStepSchema() string {
 						"kind": {"type": "string", "description": "Optional shorthand that narrows this turn's inherited writes to one store: learning, knowledgebase, or db. Explicit non-empty write_access overrides kind."},
 						"title": {"type": "string"},
 						"retained_reason": {"type": "string", "description": "Review note explaining what this follow-up adds after the description has completed, why automatic validation is insufficient, and how external actions are kept from repeating. Required on the first retained item when stamping description-first-v1; rationale only, not another user turn."},
-						"message": {"type": "string", "description": "For user_message items: a follow-up semantic workflow instruction run in the same persistent conversation. In a Relay authored step, use {{input}} for the complete caller JSON, {{input.field}} for a required field, or {{steps.id.output.field}} for earlier output. Do not use {{input.INPUT}} or {{variables.INPUT}}. Do not copy shared AgentWorks bridge/auth, Folder Guard, managed-tool, tool-discovery, or coding-session mechanics here. Prefer evidence-seeking validation/repair turns (e.g. \"Re-open the output. Did you actually satisfy every criterion? Quote the evidence, then fix every unsupported or incomplete item.\") over routine subtask instructions. For a first scripted follow-up: message records why this is a subsequent phase rather than an initial-task prerequisite; it is rationale, not an extra user turn. For foreach items: a Go text/template rendered once per row of source, with the row bound to '.' (e.g. 'Process {{.id}}: {{.task}}')."},
+						"message": {"type": "string", "description": "For user_message items: a follow-up semantic workflow instruction run in the same persistent conversation. In a Flow authored step, use {{input}} for the complete caller JSON, {{input.field}} for a required field, or {{steps.id.output.field}} for earlier output. Do not use {{input.INPUT}} or {{variables.INPUT}}. Do not copy shared AgentWorks bridge/auth, Folder Guard, managed-tool, tool-discovery, or coding-session mechanics here. Prefer evidence-seeking validation/repair turns (e.g. \"Re-open the output. Did you actually satisfy every criterion? Quote the evidence, then fix every unsupported or incomplete item.\") over routine subtask instructions. For a first scripted follow-up: message records why this is a subsequent phase rather than an initial-task prerequisite; it is rationale, not an extra user turn. For foreach items: a Go text/template rendered once per row of source, with the row bound to '.' (e.g. 'Process {{.id}}: {{.task}}')."},
 						"write_access": {
 							"type": "object",
 							"description": "Optional item-scoped narrowing. Omit it to inherit the step-level DB/KB/learnings write permissions. A non-empty object limits this turn to the selected stores and can never exceed step-level access. Folder-level booleans only — NO per-file path scoping (a \"paths\" list is rejected).",
@@ -1773,8 +1773,8 @@ func getAddBranchStepSchema() string {
 				"type": "string",
 				"description": "REQUIRED for compatibility/readability: Human-readable next-step decision prompt. It is not evaluated by an LLM at runtime; the selected route must come from caller route_selections, route_source_file, route_selection.json dependency, or default_route_id."
 			},
-			"value_path": {"type": "string", "description": "Relay decision: one {{input.field}} or {{steps.id.output.field}} reference."},
-			"value_cases": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Relay decision: map exact rendered values to route_id; unmatched values use default_route_id or fail."},
+			"value_path": {"type": "string", "description": "Flow decision: one {{input.field}} or {{steps.id.output.field}} reference."},
+			"value_cases": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Flow decision: map exact rendered values to route_id; unmatched values use default_route_id or fail."},
 			"routes": {
 				"type": "array",
 				"minItems": 2,
@@ -1863,8 +1863,8 @@ func getUpdateBranchStepSchema() string {
 				"type": "string",
 				"description": "OPTIONAL: Updated human-readable branch prompt. Runtime does not LLM-evaluate this field."
 			},
-			"value_path": {"type": "string", "description": "Relay decision: one {{input.field}} or {{steps.id.output.field}} reference."},
-			"value_cases": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Relay decision: replace exact value to route_id mapping."},
+			"value_path": {"type": "string", "description": "Flow decision: one {{input.field}} or {{steps.id.output.field}} reference."},
+			"value_cases": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Flow decision: replace exact value to route_id mapping."},
 			"routes": {
 				"type": "array",
 				"minItems": 2,

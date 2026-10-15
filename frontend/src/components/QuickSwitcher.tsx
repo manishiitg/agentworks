@@ -470,7 +470,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           type: 'workflow' as const,
           id: `workflow:${preset.id}`,
           label: preset.label,
-          subtitle: `${preset.workflowKind === 'relay' ? 'Relay' : 'Automation'}${builderStateSuffix(workflowTab)}${activeSessionSuffix(activeSession)}${activeCountSuffix}`,
+          subtitle: `${preset.workflowKind === 'relay' ? 'Flow' : 'Automation'}${builderStateSuffix(workflowTab)}${activeSessionSuffix(activeSession)}${activeCountSuffix}`,
           searchText: `${preset.selectedFolder!.filepath} ${activeSessionSearchText(activeSession)}`,
           isActive: productSurface === workflowSurfaceForPreset(preset.id) && isWorkflowMode && preset.id === activePresetId,
           lastAccessedAt: recentPresetAccessedAt[preset.id] || (() => {

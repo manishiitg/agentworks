@@ -96,7 +96,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 	if hcpo.isRelayExecution() {
 		_, manifest, err := hcpo.variableManager.checkExistingVariables(ctx, hcpo.GetWorkspacePath()+"/variables/variables.json")
 		if err != nil {
-			return "", fmt.Errorf("load Relay configuration: %w", err)
+			return "", fmt.Errorf("load Flow configuration: %w", err)
 		}
 		hcpo.variablesManifest = manifest
 		values, err := hcpo.relayVariableValues()
@@ -383,7 +383,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) applyWorkshopExecuteOptions(ctx conte
 	releaseGroupSession := func() {}
 	if hcpo.isRelayExecution() {
 		if opts.GroupName != "" || opts.GroupID != "" {
-			return releaseGroupSession, fmt.Errorf("Relays do not accept variable groups")
+			return releaseGroupSession, fmt.Errorf("Flows do not accept variable groups")
 		}
 		if opts.RunFolder == "" {
 			opts.RunFolder = "relay-" + workflowExecutionIDToken()

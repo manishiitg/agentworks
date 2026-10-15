@@ -42,7 +42,7 @@ type WorkflowAccess struct {
 	// enough to read another workflow's KB, but a mutating grant needs this
 	// workflow's own owner to explicitly name the consumer workflow.
 	AllowedKBWriters []string `json:"allowed_kb_writers,omitempty"`
-	// RunEveryone: the owner shared this workflow or Relay with every account that may use the product
+	// RunEveryone: the owner shared this workflow or Flow with every account that may use the product
 	// (dashboard sharing, PLAT-750). Those accounts run it like readers; the named Readers stay as they are.
 	RunEveryone bool `json:"run_everyone,omitempty"`
 }
@@ -86,7 +86,7 @@ func (m *WorkflowManifest) hasOwnershipRecord() bool {
 	return len(m.effectiveOwners()) > 0
 }
 
-// relayBuilder is the one person who builds a Relay (Builder mode, owner decision 2026-10-13: a Relay has a single owner, because
+// relayBuilder is the one person who builds a Flow (Builder mode, owner decision 2026-10-13: a Flow has a single owner, because
 // an editor's runs leave journals in their own slot that the owner cannot clean). It is the creator when the creator is still a
 // listed owner, else the first listed owner, so the answer is the same on every read. Everyone else is in Run mode.
 func (m *WorkflowManifest) relayBuilder() string {
@@ -200,7 +200,7 @@ func workflowAccessForManifest(claims *UserClaims, m *WorkflowManifest) Workflow
 		return account
 	}
 	if m.Kind == "relay" {
-		// A Relay has one Builder; any other listed owner or editor runs published versions like a reader.
+		// A Flow has one Builder; any other listed owner or editor runs published versions like a reader.
 		if claims.UserID == m.relayBuilder() {
 			if !userAccessForClaims(claims).CanEdit {
 				return WorkflowAccessRead
@@ -300,7 +300,7 @@ func requireWorkflowVisible(w http.ResponseWriter, r *http.Request, workspacePat
 }
 
 // Release files have a separate execution path but inherit access from the
-// live Relay. Never authorize them through the manifest-less release parent.
+// live Flow. Never authorize them through the manifest-less release parent.
 func requireRelayReleaseVisible(w http.ResponseWriter, r *http.Request, workspacePath string) bool {
 	clean, ok := cleanWorkspaceReadPath(workspacePath, true)
 	if !ok {
@@ -441,9 +441,9 @@ func (api *StreamingAPI) handleSetWorkflowAccess(w http.ResponseWriter, r *http.
 		writeUsersError(w, http.StatusNotFound, "no workflow at that path")
 		return
 	}
-	// A Relay has one owner and is shared by sharing its dashboard (PLAT-750).
+	// A Flow has one owner and is shared by sharing its dashboard (PLAT-750).
 	if manifest.Kind == "relay" {
-		writeUsersError(w, http.StatusConflict, "Share this Relay from its dashboard: open the dashboard and press Share.")
+		writeUsersError(w, http.StatusConflict, "Share this Flow from its dashboard: open the dashboard and press Share.")
 		return
 	}
 	// Only owners share a claimed workflow. Account-tier writers may still
@@ -510,10 +510,10 @@ func (api *StreamingAPI) handleSetWorkflowAccess(w http.ResponseWriter, r *http.
 	}
 	if manifest.Kind == "relay" {
 		if len(owners) != 1 {
-			writeUsersError(w, http.StatusBadRequest, "A Relay has one owner; others can run its published versions")
+			writeUsersError(w, http.StatusBadRequest, "A Flow has one owner; others can run its published versions")
 			return
 		}
-		// Everyone who is not the owner runs the Relay: the editor tier does not exist for a Relay.
+		// Everyone who is not the owner runs the Flow: the editor tier does not exist for a Flow.
 		seen := map[string]bool{}
 		var runners []string
 		for _, id := range append(append([]string{}, readers...), editors...) {
@@ -616,7 +616,7 @@ func workflowManifestBlockedWriteForNonOwner(ctx context.Context, claims *UserCl
 	return folder + "/workflow.json"
 }
 
-// relayAccessLists is how a Relay's people are shown: its one Builder as the owner, nobody as an editor, and everyone else
+// relayAccessLists is how a Flow's people are shown: its one Builder as the owner, nobody as an editor, and everyone else
 // (other listed owners, editors, readers) as running it.
 func relayAccessLists(m *WorkflowManifest) (owners, editors, readers []string) {
 	builder := m.relayBuilder()

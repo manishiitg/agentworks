@@ -113,7 +113,7 @@ The reference covers both paths using available capabilities; it prescribes no v
 
 ## Optional native chat widgets
 
-In a managed Crew, workflow or Relay dashboard, the designer may add an open
+In a managed Crew or workflow<!-- product:relays --> or Flow<!-- /product --> dashboard, the designer may add an open
 chat panel, a button, or both. Choose the placement, size, label, visibility and
 responsive layout in the dashboard's HTML/CSS. There is no required sidebar.
 For example (dimensions are only an example):
@@ -256,7 +256,7 @@ run stored. Anyone who can open the workflow — owner or read-only — can
 trigger it. The workspace selects MCP servers/tools, secrets (`$SECRET_*`) and
 variables (`$VAR_*`); the authenticated viewer's live MCP<!-- product:mcp-gateway -->/Vault<!-- /product --> permissions
 still govern access. Viewing a workspace does not grant credentials.
-The same runner supports Workflow/Goals, <!-- product:relays -->Relays, <!-- /product -->Crew and owner-only Code
+The same runner supports Workflow/Goals, <!-- product:relays -->Flows, <!-- /product -->Crew<!-- product:code --> and owner-only Code<!-- /product -->
 project roots. Published static copies cannot run scripts.
 
 The script contract:
@@ -541,5 +541,4 @@ dialog. The page cannot run a function itself: there is no script method, only
 the person's click and Run. The function must be one the signed-in person can
 already use in this project (the owner's published functions); a button naming
 anything else shows that it is unavailable. Button text, placement and styling
-are the designer's choice. Crew and workflow dashboards only; Relay and Code
-dashboards have no function buttons yet.
+are the designer's choice. Crew and workflow dashboards only.<!-- product:relays --> Flow dashboards have no function buttons yet.<!-- /product --><!-- product:code --> Code dashboards have no function buttons yet.<!-- /product -->

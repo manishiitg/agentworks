@@ -61,7 +61,7 @@ func (c *conditionService) validateTarget(ctx context.Context, job productSchedu
 		switch job.Profile.ID {
 		case "work", "relays":
 			if cfg.Target.Kind != "function" {
-				return errors.New("Crew and Relay watchers call a published function")
+				return errors.New("Crew and Flow watchers call a published function")
 			}
 		case "agentworks":
 			if cfg.Target.Kind != "route" && cfg.Target.Kind != "trigger" {
@@ -83,7 +83,7 @@ func (c *conditionService) validateTarget(ctx context.Context, job productSchedu
 		return err
 	}
 	if job.WatcherSource != nil && job.Profile.ID == "relays" && (t.Manifest == nil || t.Manifest.Kind != "relay") {
-		return errors.New("a Relay watcher must call a Relay")
+		return errors.New("a Flow watcher must call a Flow")
 	}
 	switch cfg.Target.Kind {
 	case "function":
@@ -96,7 +96,7 @@ func (c *conditionService) validateTarget(ctx context.Context, job productSchedu
 		}
 	case "route":
 		if t.Manifest == nil || t.Manifest.Kind == "relay" {
-			return errors.New("route targets must be workflows; call a published Relay function instead")
+			return errors.New("route targets must be workflows; call a published Flow function instead")
 		}
 		if _, err := validateScheduleGroupNamesForWorkspace(ctx, t.Path, cfg.Target.Groups); err != nil {
 			return err

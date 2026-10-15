@@ -51,7 +51,7 @@ function missingFile(error: unknown): boolean {
 
 async function readFile(path: string): Promise<unknown> {
   const response = await agentApi.getPlannerFileContent(path)
-  if (!response.success || !response.data) throw new Error(response.error || 'Could not read Relay file')
+  if (!response.success || !response.data) throw new Error(response.error || 'Could not read Flow file')
   return response.data.content
 }
 
@@ -117,7 +117,7 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
       setRuns(response.folders ?? [])
       setRunError('')
     } catch (error) {
-      if (request === runsRequest.current) setRunError(error instanceof Error ? error.message : 'Could not load Relay runs')
+      if (request === runsRequest.current) setRunError(error instanceof Error ? error.message : 'Could not load Flow runs')
     }
   }, [runWorkspace])
 
@@ -133,7 +133,7 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
     try {
       if (traceResponse.status === 'rejected') throw traceResponse.reason
       const parsed = typeof traceResponse.value === 'string' ? JSON.parse(traceResponse.value) : traceResponse.value
-      if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.calls)) throw new Error('This run has no supported Python Relay trace')
+      if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.calls)) throw new Error('This run has no supported Python Flow trace')
       setTrace(parsed)
       setTraceError('')
     } catch (error) {
@@ -145,11 +145,11 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
         setResult(typeof resultResponse.value === 'string' ? JSON.parse(resultResponse.value) : resultResponse.value)
       } catch {
         setResult(undefined)
-        setTraceError('The saved Relay result is not valid JSON.')
+        setTraceError('The saved Flow result is not valid JSON.')
       }
     } else {
       setResult(undefined)
-      if (!missingFile(resultResponse.reason)) setTraceError('Could not read the saved Relay result.')
+      if (!missingFile(resultResponse.reason)) setTraceError('Could not read the saved Flow result.')
     }
     setRunSource(runSourceResponse.status === 'fulfilled' ? String(runSourceResponse.value ?? '') : null)
     setRunSourceError(runSourceResponse.status === 'rejected' ? 'Could not load the source for this version.' : '')
@@ -205,12 +205,12 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
 
   return <div className="relative flex h-full min-h-0 flex-col bg-background">
     <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-      <div className="flex gap-1" role="tablist" aria-label="Relay">
+      <div className="flex gap-1" role="tablist" aria-label="Flow">
         {(['graph', 'calls', 'source'] as const).map(value => <button key={value} type="button" role="tab" aria-selected={tab === value} aria-controls={`relay-python-${value}`} onClick={() => setTab(value)} className={`rounded-md px-3 py-1.5 text-xs font-medium ${tab === value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}>{value === 'graph' ? 'Graph' : value === 'calls' ? 'Runs' : 'Code'}</button>)}
       </div>
       <div className="ml-auto flex items-center gap-1">
-        <button type="button" onClick={() => setConfigurationOpen(open => !open)} aria-label="Relay configuration" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"><Settings2 className="h-4 w-4" /></button>
-        <button type="button" onClick={() => { refresh(); void refreshReleases() }} aria-label="Refresh Relay" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"><RefreshCw className="h-4 w-4" /></button>
+        <button type="button" onClick={() => setConfigurationOpen(open => !open)} aria-label="Flow configuration" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"><Settings2 className="h-4 w-4" /></button>
+        <button type="button" onClick={() => { refresh(); void refreshReleases() }} aria-label="Refresh Flow" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"><RefreshCw className="h-4 w-4" /></button>
       </div>
     </div>
     {tab === 'graph' ? <div id="relay-python-graph" role="tabpanel" className="flex min-h-0 flex-1 flex-col">
@@ -222,14 +222,14 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
 
     </div> : tab === 'source' ? <div id="relay-python-source" role="tabpanel" className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2 text-xs text-muted-foreground"><span>Draft code · Implementation managed by the builder.</span><button type="button" onClick={() => useWorkflowStore.getState().openWorkspaceView('files', 'relay.py')} className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted hover:text-foreground"><Code2 className="h-3.5 w-3.5" />Open in Files</button></div>
-      {loadingSource ? <p className="p-6 text-sm text-muted-foreground">Loading source…</p> : sourceError ? <p role="alert" className="p-6 text-sm text-destructive">{sourceError}</p> : source === null ? <div className="m-auto max-w-md p-6 text-center"><h2 className="font-semibold">Build your Relay</h2><p className="mt-2 text-sm text-muted-foreground">Describe what your Relay should do in chat. The builder creates its implementation for you.</p><button type="button" onClick={onBuild} className="mt-4 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground">Build in chat</button></div> : <pre className="min-h-0 flex-1 overflow-auto p-4 font-mono text-xs leading-6" aria-label="Relay Python source">{source}</pre>}
+      {loadingSource ? <p className="p-6 text-sm text-muted-foreground">Loading source…</p> : sourceError ? <p role="alert" className="p-6 text-sm text-destructive">{sourceError}</p> : source === null ? <div className="m-auto max-w-md p-6 text-center"><h2 className="font-semibold">Build your Flow</h2><p className="mt-2 text-sm text-muted-foreground">Describe what your Flow should do in chat. The builder creates its implementation for you.</p><button type="button" onClick={onBuild} className="mt-4 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground">Build in chat</button></div> : <pre className="min-h-0 flex-1 overflow-auto p-4 font-mono text-xs leading-6" aria-label="Flow Python source">{source}</pre>}
     </div> : <div id="relay-python-calls" role="tabpanel" className="min-h-0 flex-1 overflow-auto p-4">
       <div className="mb-4 flex flex-wrap items-center gap-2 text-xs"><label htmlFor="relay-python-version">Version</label><select id="relay-python-version" value={version} onChange={event => setVersion(event.target.value)} className="rounded-md border border-border bg-background px-2 py-1.5"><option value="draft">Draft tests</option>{releases?.releases.map(release => <option key={release.version} value={release.version}>{release.version}{release.version === releases.active_version ? ' (active)' : ''}</option>)}</select><label htmlFor="relay-python-run">Run</label><select id="relay-python-run" value={folder ?? ''} onChange={event => useWorkflowStore.getState().setSelectedRunFolder(event.target.value || null)} className="max-w-full rounded-md border border-border bg-background px-2 py-1.5"><option value="" disabled>{runs.length ? 'Select a run' : 'No runs yet'}</option>{runs.map(run => <option key={run.name} value={run.name}>{run.name}{run.metadata?.status ? ` · ${run.metadata.status}` : ''}</option>)}</select>{trace && <span role="status" className="rounded bg-muted px-2 py-1">{trace.status}</span>}</div>
       {(releaseError || selectedRelease?.error || releases?.active_error) && <p role="alert" className="mb-3 text-sm text-destructive">{releaseError || selectedRelease?.error || releases?.active_error}</p>}
       {trace?.durability === 'dbos' && <p className="mb-3 text-xs text-muted-foreground" role="status">DBOS recovery enabled · Attempt {trace.attempt_number || 1} · {trace.calls.filter(call => call.checkpoint_reused).length} checkpoints reused</p>}
       <p className="mb-4 text-xs text-muted-foreground">Steps performed in this run. Expand a step to inspect its result and tool activity.</p>
       {runError && <p role="alert" className="mb-3 text-sm text-destructive">{runError}</p>}
-      {loadingTrace ? <p className="text-sm text-muted-foreground">Loading run…</p> : traceError ? <p role="alert" className="text-sm text-muted-foreground">{traceError}</p> : !folder ? <p className="text-sm text-muted-foreground">Ask the Builder to test your Relay with sample JSON. Its steps and final result will appear here.</p> : null}
+      {loadingTrace ? <p className="text-sm text-muted-foreground">Loading run…</p> : traceError ? <p role="alert" className="text-sm text-muted-foreground">{traceError}</p> : !folder ? <p className="text-sm text-muted-foreground">Ask the Builder to test your Flow with sample JSON. Its steps and final result will appear here.</p> : null}
       {folder && <section className="mb-4 rounded-lg border border-border">
         <button type="button" onClick={() => setRunGraphOpen(open => !open)} aria-expanded={runGraphOpen} className="w-full px-3 py-2 text-left text-sm font-medium">{runGraphOpen ? 'Hide run graph' : 'View run graph'}</button>
         {runGraphOpen && <><p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{trace?.execution_model === 'native-dbos' ? 'Execution path · Recorded steps in order. Select a step to see its result.' : 'Recorded agent calls appear on the saved graph. Script and decision execution is not recorded in this version.'}</p>{trace?.execution_model === 'native-dbos' ? <div className="flex h-[540px] flex-col"><RelaySourceGraph source="" graph={graphFromDBOSHistory(trace.calls, { status: trace.status, resultRecorded: result !== undefined })} calls={trace.calls} onBuild={onBuild} /></div> : runSourceError ? <p role="alert" className="p-3 text-xs text-destructive">{runSourceError}</p> : runSource !== null ? <div className="flex h-[540px] flex-col"><RelaySourceGraph key={`${runWorkspace}-${folder}`} source={runSource} calls={trace?.calls} onBuild={onBuild} /></div> : <p className="p-3 text-xs text-muted-foreground">Loading version source…</p>}</>}

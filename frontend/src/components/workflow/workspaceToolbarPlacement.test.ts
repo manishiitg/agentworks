@@ -37,7 +37,7 @@ describe('workflow Ask AI placement', () => {
   it('keeps report separate, Knowledge visible, Costs and Execution logs in Ops, and Playbooks in Setup', () => {
     const toolbar = readFileSync('src/components/workflow/canvas/WorkflowToolbar.tsx', 'utf8')
 
-    // Browser stays visible beside Pulse; Plan lives in Ops (a Relay keeps its Graph in Views).
+    // Browser stays visible beside Pulse; Plan lives in Ops (a Flow keeps its Graph in Views).
     expect(toolbar).toContain("PRIMARY_TOOLBAR_VIEW_IDS = new Set<WorkspaceViewId>(['pulse', 'browser'])")
     expect(toolbar).toContain("new Set<WorkspaceViewId>(['flow', 'workshop', 'knowledge', 'costs', 'execution-logs', 'files', 'backup', 'publish', 'notify'])")
     expect(toolbar).toContain("playbooks: 'Playbooks'")

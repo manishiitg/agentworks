@@ -71,14 +71,14 @@ describe('Workflow MCP panel layout', () => {
 
 
 
-  it('keeps AgentWorks channel tabs while Relay shows MCPs, Skills and Google apps', () => {
+  it('keeps AgentWorks channel tabs while Flow shows MCPs, Skills and Google apps', () => {
     const panel = readFileSync('src/components/workflow/WorkflowCapabilitiesPanel.tsx', 'utf8')
 
     // The section list (Tools & secrets, Slack, WhatsApp, Google apps, Use in AI apps) is shared with Crew and Code.
     const sections = readFileSync('src/components/integrations/integrationSections.ts', 'utf8')
     expect(sections).toMatch(/'apps'[\s\S]*?'slack'[\s\S]*?'whatsapp'[\s\S]*?'gmail'/)
     expect(sections).toContain("{ value: 'apps', label: 'Tools & secrets'")
-    // Relay shows Tools & secrets (MCPs, secrets, skills, Vault now live in that one section) and Google apps.
+    // Flow shows Tools & secrets (MCPs, secrets, skills, Vault now live in that one section) and Google apps.
     expect(panel).toContain('tabs={section ===')
     expect(panel).toContain("ariaLabel: 'Integrations'")
     expect(panel).toContain('fixedChannel="slack"')

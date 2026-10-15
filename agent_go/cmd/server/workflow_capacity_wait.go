@@ -275,7 +275,7 @@ func (s *SchedulerService) capacityResumeContext(ctx context.Context, run schedu
 		}
 		live, found, err := ReadWorkflowManifest(ctx, draft)
 		if err != nil || !found {
-			return nil, fmt.Errorf("capacity resume Relay is unavailable")
+			return nil, fmt.Errorf("capacity resume Flow is unavailable")
 		}
 		var payload struct {
 			Function string        `json:"function"`
@@ -294,7 +294,7 @@ func (s *SchedulerService) capacityResumeContext(ctx context.Context, run schedu
 		}
 		access := workflowAccessForManifest(principalClaims(payload.Caller.ID), live)
 		if payload.Caller.Type == triggerCallerUser && (access == WorkflowAccessNone || !userAllowedWorkflowID(principalClaims(payload.Caller.ID), live.ID)) {
-			return nil, fmt.Errorf("capacity resume caller no longer has Relay access")
+			return nil, fmt.Errorf("capacity resume caller no longer has Flow access")
 		}
 	}
 	resume.CapacityResumeRunID = run.RunID

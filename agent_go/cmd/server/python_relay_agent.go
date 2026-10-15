@@ -61,7 +61,7 @@ func pythonRelayCallModel(call relaypython.Call, caps WorkflowCapabilities) (pyt
 		}
 	}
 	if model.Provider == "" {
-		return model, fmt.Errorf("Choose a Relay builder model or pass model to call_agent")
+		return model, fmt.Errorf("Choose a Flow builder model or pass model to call_agent")
 	}
 	if err := llmguard.RequireCodingAgentProvider(model.Provider); err != nil {
 		return model, err
@@ -177,7 +177,7 @@ func (api *StreamingAPI) callPythonRelayAgent(ctx context.Context, sctx *Schedul
 	}
 	definition.Skills = skills.LoadAttachableIn(getWorkspaceAPIURL(), sctx.WorkspacePath, call.Skills)
 	if len(definition.Skills) != len(call.Skills) {
-		return nil, fmt.Errorf("one or more Relay skills could not be loaded")
+		return nil, fmt.Errorf("one or more Flow skills could not be loaded")
 	}
 	keys, err := api.resolveEffectiveAPIKeys(ctx, sctx.OwnerUserID, sctx.WorkspacePath, nil)
 	if err != nil {
@@ -276,7 +276,7 @@ func (api *StreamingAPI) callPythonRelayAgent(ctx context.Context, sctx *Schedul
 	return output, nil
 }
 
-// Bridge HTTP requests have their own context. Bind callbacks to the Relay
+// Bridge HTTP requests have their own context. Bind callbacks to the Flow
 // agent's lifetime as well, so an interrupted agent cannot leave a tool polling
 // an abandoned Python mailbox after recovery starts a new attempt.
 func callBoundPythonRelayTool(agentCtx, toolCtx context.Context, tool relaypython.ToolCaller, name string, args map[string]interface{}) (string, error) {

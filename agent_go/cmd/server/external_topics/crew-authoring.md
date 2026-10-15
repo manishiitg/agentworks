@@ -182,7 +182,7 @@ remain protected. Check `shareable`/`warning` for a same-machine preview.
 ## MCP installation policy
 
 Catalog and custom remote MCP servers are allowed through the same authoring
-tools in Crew, workflow and Relay, including the owner's Crew chat, function and
+tools in Crew, workflow and Flow, including the owner's Crew chat, function and
 message runs and external MCP callers. Pass a catalog name or `name` plus an
 HTTPS `url`; reuse a saved custom connection by its exact name. Existing roles,
 product authoring consent and project bounds still apply. Setup reuses the

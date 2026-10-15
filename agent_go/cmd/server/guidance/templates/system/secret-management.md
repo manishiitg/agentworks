@@ -8,7 +8,7 @@ Secrets are credentials (API keys, tokens, passwords). Keep project-specific cre
 ### Tools
 
 - **`list_secrets`** — lists current project secret names<!-- product:mcp-gateway --> and permitted Vault names in the `global` bucket<!-- /product -->. Values are never exposed. Call before set/delete/attach.
-- **`set_workflow_secret(name, value)`** — create or update a workflow-scoped value in a workflow Builder chat. Over MCP, use `settings action=get/update` with `secrets.set` and the returned settings version; project owners can store and select values for a workflow, Crew or Relay. Values are not returned.
+- **`set_workflow_secret(name, value)`** — create or update a workflow-scoped value in a workflow Builder chat. Over MCP, use `settings action=get/update` with `secrets.set` and the returned settings version; project owners can store and select values for a workflow, Crew<!-- product:relays --> or Flow<!-- /product -->. Values are not returned.
 - **`delete_workflow_secret(name)`** — delete a workflow-scoped value. Available only in workflow-scoped builder/workshop chats.
 
 ### When a user says "store / save / set this key"
@@ -20,11 +20,11 @@ Secrets are credentials (API keys, tokens, passwords). Keep project-specific cre
 
 ### Adding a secret value
 
-A person may give you a secret value in chat, in this app or over MCP from any client. Store it with the secret tool for the target (`set_workflow_secret`, the settings tool's `secrets.set` for a workflow, Relay or Crew owner, `manage_vault_secret_access` `set_value` for Vault, or `manage_my_vaults` `set_secret` for a vault you own), say "I'll store it as NAME; I won't repeat it", then confirm by name only. Developers can instead run `agentworks secret set NAME --vault|--workflow ID|--crew ID|--relay ID`, or import a whole file with `agentworks secret import .env --vault`, in their own terminal. Tools never return a value.
+A person may give you a secret value in chat, in this app or over MCP from any client. Store it with the secret tool for the target (`set_workflow_secret`, the settings tool's `secrets.set` for a workflow or Crew owner<!-- product:relays --> or Flow owner<!-- /product --><!-- product:mcp-gateway -->, `manage_vault_secret_access` `set_value` for Vault, or `manage_my_vaults` `set_secret` for a vault you own<!-- /product -->), say "I'll store it as NAME; I won't repeat it", then confirm by name only. Developers can instead run `agentworks secret set NAME --vault|--workflow ID|--crew ID|--relay ID`, or import a whole file with `agentworks secret import .env --vault`, in their own terminal. Tools never return a value.
 
 ### Safety rules
 
-Secret values must never be printed, echoed, logged, or passed to unrelated tools. The designated project or Vault secret tool may receive a user-provided value for the requested save; this does not authorize plaintext files, shell commands, or disclosure to unrelated tools. If a user pastes a secret in chat, treat it as sensitive: store it, then acknowledge only by name.
+Secret values must never be printed, echoed, logged, or passed to unrelated tools. The designated project<!-- product:mcp-gateway --> or Vault<!-- /product --> secret tool may receive a user-provided value for the requested save; this does not authorize plaintext files, shell commands, or disclosure to unrelated tools. If a user pastes a secret in chat, treat it as sensitive: store it, then acknowledge only by name.
 
 Do not tell the user to rotate the secret after a normal requested save. Recommend rotation only for a concrete exposure event such as logs, files, commits, or the wrong channel.
 

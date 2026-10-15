@@ -17,10 +17,10 @@ const errorText = (cause: unknown, fallback: string) => {
 
 /** One permission form for company OAuth apps, named JSON uploads and existing accounts. */
 export function GoogleAccountConnect({ workspacePath, onChanged, privateAccount = true, readOnly = false }: { workspacePath: string; onChanged?: () => void; privateAccount?: boolean; readOnly?: boolean }) {
-  // Members saw a disabled button with no reason in Goals, Relay and Crew (server C 2026-10-07).
+  // Members saw a disabled button with no reason in Goals, Flow and Crew (server C 2026-10-07).
   const lockedReason = privateAccount
     ? "Only this Code's owner can connect or change its Google accounts."
-    : 'Google accounts for Crews, workflows and Relays are shared, so only an administrator can connect one. Ask an admin, or connect your own Google account in Code.'
+    : 'Google accounts for Crews, workflows and Flows are shared, so only an administrator can connect one. Ask an admin, or connect your own Google account in Code.'
   const [configured, setConfigured] = useState<boolean | null>(null)
   const [clients, setClients] = useState<{ name: string }[]>([])
   const [source, setSource] = useState('')

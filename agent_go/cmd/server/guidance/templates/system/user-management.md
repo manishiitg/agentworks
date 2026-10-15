@@ -8,7 +8,7 @@ still rechecks the mapped user's current authorization.
 Call `get_workflow_access` with the actual `workspace_path` before changing
 sharing. `list_users` resolves existing user IDs: owners see the enabled sharing
 directory; admins see account metadata. Ordinary readers/non-owners get an error.
-`set_workflow_access` is for workflows only and requires complete `owners` and `readers` arrays. A Relay or a Crew is shared from its dashboard with `share_dashboard` (ask the owner whether it is everyone on this server or chosen people); `set_workflow_access` is refused for them. Preserve
+`set_workflow_access` is for workflows only and requires complete `owners` and `readers` arrays. A Crew<!-- product:relays --> or a Flow<!-- /product --> is shared from its dashboard with `share_dashboard` (ask the owner whether it is everyone on this server or chosen people); `set_workflow_access` is refused for them. Preserve
 existing members unless the user requested removal; retain at least one owner.
 Owners can manage their workflow; admins can manage other accessible workflows.
 

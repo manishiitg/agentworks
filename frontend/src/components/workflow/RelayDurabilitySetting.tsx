@@ -19,7 +19,7 @@ export function RelayDurabilitySetting({ workspacePath }: { workspacePath: strin
     setLoading(true); setError(''); setSource(null); setRelayID(null)
     if (!workspacePath) { setLoading(false); return }
     void Promise.all([agentApi.getWorkflowManifest(workspacePath), agentApi.getPlannerFileContent(`${workspacePath}/relay.py`)]).then(([response, file]) => {
-      if (typeof file?.data?.content !== 'string' || !file.data.content.trim()) throw new Error('Relay source unavailable')
+      if (typeof file?.data?.content !== 'string' || !file.data.content.trim()) throw new Error('Flow source unavailable')
       if (active) { setEnabled(response.manifest.relay_durability === 'dbos'); setRelayID(response.manifest.id || null); setSource(file.data.content); setLoading(false) }
     }).catch(() => { if (active) { setError('Could not load recovery settings.'); setLoading(false) } })
     return () => { active = false }
@@ -38,6 +38,6 @@ export function RelayDurabilitySetting({ workspacePath }: { workspacePath: strin
     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={enabled} disabled={!canWrite || !source || !relayID || loading || saving || !!error || overview.loading || !!overview.error || overview.native} onChange={event => void save(event.target.checked)} />Enable DBOS recovery</label>
     <p className="text-xs text-muted-foreground">{overview.native ? 'Native DBOS programs require recovery to stay enabled. Service writes need idempotency; uncertain agent and MCP calls stop for review.' : 'Ask the Builder to prepare service actions for safe recovery. Uncertain actions stop for review.'} Publish a new version to apply this setting to API calls.</p>
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-    {overview.error && <p role="alert" className="text-xs text-destructive">Could not inspect Relay source: {overview.error}</p>}
+    {overview.error && <p role="alert" className="text-xs text-destructive">Could not inspect Flow source: {overview.error}</p>}
   </SettingsCard>
 }

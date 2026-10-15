@@ -133,7 +133,7 @@ func (api *StreamingAPI) dashboardTarget(ctx context.Context, claims *UserClaims
 		}
 	}
 	if !isReportRunWorkflowRoot(clean) {
-		return target, dashboardFailure(400, "Workflow, Relay, Crew or owned Code root required")
+		return target, dashboardFailure(400, "Workflow, Flow, Crew or owned Code root required")
 	}
 	access, manifest := workflowAccessForWorkspacePath(ctx, claims, clean)
 	if access == WorkflowAccessNone || manifest == nil || !userAllowedWorkflowID(claims, manifest.ID) {

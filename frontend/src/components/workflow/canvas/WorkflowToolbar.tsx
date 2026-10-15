@@ -33,7 +33,7 @@ import { WorkspaceToolbarFrame } from '../../workspace/WorkspaceToolbarFrame'
 import { useRegisterPanelSwitcher, type PanelSwitcherPanel } from '../../../stores/usePanelSwitcherStore'
 import { RELAY_INTEGRATION_SECTION_IDS, WORKFLOW_PANEL_SECTIONS } from '../../../products/productPanels'
 
-/** Adds each panel's tabs from the registry; a Relay's panels show fewer tabs. */
+/** Adds each panel's tabs from the registry; a Flow's panels show fewer tabs. */
 function withPanelSections(panels: PanelSwitcherPanel[], relayMode: boolean): PanelSwitcherPanel[] {
   return panels.map(panel => {
     const sections = (WORKFLOW_PANEL_SECTIONS[panel.id] ?? []).filter(section =>
@@ -177,7 +177,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   const activeWorkspaceView: WorkspaceViewId = workflowWorkspaceView ?? lastCanvasView
   // Button clusters come from the view registry, in registry order. Plan is
   // always present, including for a new workflow with no steps yet.
-  // Browser stays visible in Views; Plan lives in Ops. A Relay keeps its Graph in Views.
+  // Browser stays visible in Views; Plan lives in Ops. A Flow keeps its Graph in Views.
   const workspaceViewDefinitions = PRIMARY_WORKSPACE_TOOLBAR_VIEWS.filter(view => (relayMode ? view.id === 'flow' : PRIMARY_TOOLBAR_VIEW_IDS.has(view.id)) && view.id !== 'report')
   const operationsWorkspaceViewDefinitions = PRIMARY_WORKSPACE_TOOLBAR_VIEWS.filter(view => OPERATIONS_TOOLBAR_VIEW_IDS.has(view.id) && (!relayMode || ['workshop', 'costs', 'execution-logs', 'files'].includes(view.id)))
   const capabilityViewDefinitions = useMemo(
@@ -426,7 +426,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
               hideLabel
               hideToggleWhenOpen
               open
-              title={relayMode ? `Relay views: ${pythonRelay ? 'Source and calls' : 'Graph'}` : 'Views: Pulse, Needs you, Activity and Browser'}
+              title={relayMode ? `Flow views: ${pythonRelay ? 'Source and calls' : 'Graph'}` : 'Views: Pulse, Needs you, Activity and Browser'}
             >
               <div className="inline-flex items-center gap-0.5 px-0.5">
                 {!relayMode && <Tooltip>
@@ -469,7 +469,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
                   }}
                 />}
                 {workspaceViewDefinitions.map(({ id: view, icon: Icon, label }) => (
-                  <ToolbarInlineItem key={view} label={relayMode && view === 'flow' ? (pythonRelay ? 'Relay' : 'Graph') : label} Icon={Icon} indicatorClass={view === 'browser' && browserConnected ? 'bg-emerald-500' : undefined} statusLabel={view === 'browser' ? browserConnected ? 'Connected' : 'Not connected' : undefined} active={view === activeWorkspaceView} onClick={() => openWorkspaceView(view)} />
+                  <ToolbarInlineItem key={view} label={relayMode && view === 'flow' ? (pythonRelay ? 'Flow' : 'Graph') : label} Icon={Icon} indicatorClass={view === 'browser' && browserConnected ? 'bg-emerald-500' : undefined} statusLabel={view === 'browser' ? browserConnected ? 'Connected' : 'Not connected' : undefined} active={view === activeWorkspaceView} onClick={() => openWorkspaceView(view)} />
                 ))}
               </div>
             </WorkspaceToolbarGroup>
@@ -483,7 +483,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
             open={operationsOpen}
             onToggle={() => setOperationsOpen(open => !open)}
             active={operationsWorkspaceViewDefinitions.some(view => view.id === activeWorkspaceView) || (!relayMode && ['backup', 'publish', 'notify'].includes(activeWorkspaceView))}
-            title={relayMode ? 'Relay operations: triggers, costs, execution logs and files' : 'Operations: plan, automation, knowledge, costs, execution logs, files, backup, publish and notifications'}
+            title={relayMode ? 'Flow operations: triggers, costs, execution logs and files' : 'Operations: plan, automation, knowledge, costs, execution logs, files, backup, publish and notifications'}
           >
             <div className="inline-flex items-center gap-0.5">
               {operationsWorkspaceViewDefinitions.map(({ id: view, icon: Icon, label }) => (
@@ -505,7 +505,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
             data-tour="workflow-setup"
             hideToggleWhenOpen
             open
-            title={relayMode ? 'Relay setup: identity, models, and integrations' : 'Setup: identity, integrations, playbooks and access'}
+            title={relayMode ? 'Flow setup: identity, models, and integrations' : 'Setup: identity, integrations, playbooks and access'}
           >
             <div className="inline-flex items-center gap-0.5">
               {capabilityViewDefinitions.map(({ id, icon: Icon, label }) => {

@@ -5,7 +5,7 @@ import type { RunFolderInfo } from '../../services/api-types'
 import ExecutionLogsPopup from './ExecutionLogsPopup'
 import DBOSExecutionTimeline from './DBOSExecutionTimeline'
 
-/** Selects a Relay release, then uses the shared workflow execution log viewer. */
+/** Selects a Flow release, then uses the shared workflow execution log viewer. */
 export default function RelayExecutionLogsView({ relayID, draftWorkspacePath, draftRunFolders, draftRunFolderInfos, draftSelectedRunFolder, onRefreshDraftRuns }: {
   relayID: string
   draftWorkspacePath: string
@@ -32,7 +32,7 @@ export default function RelayExecutionLogsView({ relayID, draftWorkspacePath, dr
       setSelectedVersion(previous => previous === null ? (next.active_version || 'draft') : previous)
       setError('')
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not load Relay releases')
+      setError(cause instanceof Error ? cause.message : 'Could not load Flow releases')
     }
   }, [relayID])
   useEffect(() => { void refreshReleases() }, [refreshReleases])

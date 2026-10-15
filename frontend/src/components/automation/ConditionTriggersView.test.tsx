@@ -67,7 +67,7 @@ describe('ConditionTriggersView', () => {
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 
-  it('uses the Relay source for listing and creation guidance', async () => {
+  it('uses the Flow source for listing and creation guidance', async () => {
     api.list.mockResolvedValue({ triggers: [], callers: [{ owner_id: 'person', id: 'w1', name: 'Ticket ready', enabled: true, target: { kind: 'function', name: 'Relay', function: 'process' }, last_dispatch_at: '2026-10-14T00:00:00Z' }] })
     const onAsk = vi.fn().mockResolvedValue(undefined)
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
@@ -77,7 +77,7 @@ describe('ConditionTriggersView', () => {
       expect(host.textContent).toContain('Watchers calling this product')
       expect(host.textContent).toContain('person')
       await act(async () => { Array.from(host.querySelectorAll('button')).find(b => b.textContent === 'Add in chat')!.click(); await Promise.resolve() })
-      expect(onAsk).toHaveBeenCalledWith(expect.stringContaining('defaulting to this Relay'))
+      expect(onAsk).toHaveBeenCalledWith(expect.stringContaining('defaulting to this Flow'))
       expect(onAsk).toHaveBeenCalledWith(expect.stringContaining('script_content'))
     } finally { await act(async () => root.unmount()); host.remove() }
   })

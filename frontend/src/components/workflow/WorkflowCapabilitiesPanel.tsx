@@ -314,15 +314,15 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                 ? activeMcpTab === 'apps' && pluginTab === 'vault'
                   ? 'Help me choose from my Vault groups’ permitted connections and secrets for this project. Check current user/group access; Vault MCPs are available automatically; never show secret values.'
                   : relayMode && activeMcpTab === 'apps'
-                  ? 'Help me choose from the MCP servers and tools already connected to this platform for this Relay. Explain what each agent can use before changing the selection.'
+                  ? 'Help me choose from the MCP servers and tools already connected to this platform for this Flow. Explain what each agent can use before changing the selection.'
                   : relayMode && activeMcpTab === 'gmail'
-                    ? 'Help me connect Google apps to this Relay, including Drive, Sheets, Calendar or Gmail. Inspect the authorized connections and service grants, explain what its agents can use, and ask which access is needed. Plan creation needs no Google credentials.'
+                    ? 'Help me connect Google apps to this Flow, including Drive, Sheets, Calendar or Gmail. Inspect the authorized connections and service grants, explain what its agents can use, and ask which access is needed. Plan creation needs no Google credentials.'
                   : getIntegrationTabAskAIMessage(activeMcpTab === 'apps' && (pluginTab === 'secrets' || pluginTab === 'skills') ? pluginTab : activeMcpTab, incomingGmail)
                 : section === 'identity'
                   ? relayMode
                     ? activeIdentityTab === 'llm'
-                      ? 'Help me choose the Builder model for this Relay. Agent execution models are configured per step through execution_llm, so explain the current Builder choice and ask what I want to change.'
-                      : 'Help me rename this Relay or explain how to delete it. Show its current name and ask what I want to change.'
+                      ? 'Help me choose the Builder model for this Flow. Agent execution models are configured per step through execution_llm, so explain the current Builder choice and ask what I want to change.'
+                      : 'Help me rename this Flow or explain how to delete it. Show its current name and ask what I want to change.'
                     : getIdentityTabAskAIMessage(activeIdentityTab)
                   : getWorkspaceAskAIMessage(section)}
               onRefresh={section === 'mcp'
@@ -360,7 +360,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                   connections={view => <ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun="workflow" canEdit={canWriteWorkflow}
                       selectedServers={capabilities.selected_servers}
                       onSelectedServersChange={async selected_servers => { const next = { ...latest.current.capabilities, selected_servers }; await persist(next, true); setCapabilities(next) }} />}
-                  secrets={<ProjectSecretsPanel placeNoun={relayMode ? 'Relay' : 'Workflow'}
+                  secrets={<ProjectSecretsPanel placeNoun={relayMode ? 'Flow' : 'Workflow'}
                   workspacePath={workspacePath || ''} selectedSecrets={capabilities.selected_secrets}
                   selectedGlobalSecrets={capabilities.selected_global_secret_names ?? []}
                   onSecretChange={async selected_secrets => { const next = { ...latest.current.capabilities, selected_secrets }; await persist(next,true);setCapabilities(next) }}
@@ -375,7 +375,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                           iconOnly
                           label="Install a skill"
                           message={relayMode
-                            ? 'Help me add a skill to this Relay. Ask which skill I want, install it in this Relay, then attach it to the chat or steps that need it and verify the selection.'
+                            ? 'Help me add a skill to this Flow. Ask which skill I want, install it in this Flow, then attach it to the chat or steps that need it and verify the selection.'
                             : 'Help me install a specific skill for this workflow. Ask which skill I want, then find it: check skills installed in this workflow first, then search the web. Install it in this workflow, attach it to the chat or steps that need it, verify it works, and confirm briefly.'}
                         />
                       )}
@@ -446,7 +446,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                   <WorkflowLLMConfigurationPanel
                     workspacePath={workspacePath}
                     llmConfig={capabilities.llm_config}
-                    scopeNoun={relayMode ? 'Relay Builder' : 'workflow'}
+                    scopeNoun={relayMode ? 'Flow Builder' : 'workflow'}
                     builderOnly={relayMode}
                     onChange={(llm_config) => {
                       const next = { ...capabilities, llm_config }

@@ -68,7 +68,7 @@ describe('Shared user roles and product access', () => {
     await render(true)
     expect(host.querySelector('[aria-label="Role for creator@example.com"]')).toBeNull()
     expect(host.querySelector('[aria-label="Code reviewer for creator@example.com"]')).toBeNull()
-    for (const product of ['Goals', 'Code', 'Relays', 'Crew', 'Vault']) {
+    for (const product of ['Goals', 'Code', 'Flows', 'Crew', 'Vault']) {
       expect(host.querySelector(`[aria-label="${product} for creator@example.com"]`)).toBeNull()
     }
     expect(api.updateAdminUser).not.toHaveBeenCalled()

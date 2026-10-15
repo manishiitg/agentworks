@@ -261,7 +261,7 @@ function AccountLimitsList({ user, disabled, accountProviders, onSave }: {
   )
 }
 
-// Products in which an account creates something (a workflow, Relay, Crew, Code project, video).
+// Products in which an account creates something (a workflow, Flow, Crew, Code project, video).
 const CREATABLE_PRODUCTS = ['agentworks', 'relays', 'work', 'code', 'video-studio', 'sparkquill']
 
 const productLabel = (id: string) => isProductSurface(id) ? PRODUCT_SURFACE_LABELS[id] : id === 'finance' ? 'Finance' : id
@@ -505,7 +505,7 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
                             )
                           )}
                           {!vaultOnly && (role === 'creator' || role === 'editor') && creatableFor(u, role).length > 0 && (
-                            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs" title="Where this account may create new workflows, Relays, Crews or projects. Editing what already exists is not affected.">
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs" title="Where this account may create new workflows, Flows, Crews or projects. Editing what already exists is not affected.">
                               <span className="text-muted-foreground">May create in:</span>
                               {creatableFor(u, role).map((p) => (
                                 <label key={p} className="inline-flex items-center gap-1.5">

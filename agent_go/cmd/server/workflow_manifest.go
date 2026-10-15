@@ -139,7 +139,7 @@ type WorkflowManifest struct {
 	CodeLayoutVersion            int                                 `json:"code_layout_version,omitempty"` // 0: legacy learnings; 1: persistent code tree
 	SchemaVersion                int                                 `json:"schema_version"`
 	ID                           string                              `json:"id"`
-	// Kind distinguishes a Relay from a general workflow while reusing the
+	// Kind distinguishes a Flow from a general workflow while reusing the
 	// same manifest, schedules, access rules, runner, and run history.
 	Kind                   string                                `json:"kind,omitempty"`
 	RelayRuntime           string                                `json:"relay_runtime,omitempty"`
@@ -736,7 +736,7 @@ func (c WorkflowCapabilities) NativeAgentToolsEnabled() bool {
 	return nativeAgentToolsEnabled(c.NativeAgentTools)
 }
 
-// nativeAgentToolsEnabled: native agent tools are on for every workflow, Relay, Crew and Code (owner, 2026-10-03). A value an older workflow
+// nativeAgentToolsEnabled: native agent tools are on for every workflow, Flow, Crew and Code (owner, 2026-10-03). A value an older workflow
 // saved as false is ignored, as it already is for a Crew or a Code: there is no switch left to turn it back on.
 func nativeAgentToolsEnabled(_ *bool) bool {
 	return true
@@ -1093,22 +1093,22 @@ func ValidateManifest(m *WorkflowManifest) error {
 		return fmt.Errorf("kind must be relay or omitted")
 	}
 	if m.RelayRuntime != "" && (m.Kind != "relay" || m.RelayRuntime != "python") {
-		return fmt.Errorf("relay_runtime must be python on a Relay")
+		return fmt.Errorf("relay_runtime must be python on a Flow")
 	}
 	if m.RelayDurability != "" && (!isPythonRelay(m) || m.RelayDurability != "dbos") {
-		return fmt.Errorf("relay_durability must be dbos on a Python Relay")
+		return fmt.Errorf("relay_durability must be dbos on a Python Flow")
 	}
 	if isPythonRelay(m) && m.RelayOutputStepID != "" {
-		return fmt.Errorf("Python Relays return run(INPUT, ctx); relay_output_step_id is not supported")
+		return fmt.Errorf("Python Flows return run(INPUT, ctx); relay_output_step_id is not supported")
 	}
 	if m.Kind != "relay" && m.RelayOutputStepID != "" {
 		return fmt.Errorf("relay_output_step_id requires kind relay")
 	}
 	if m.Kind == "relay" && m.Pulse != nil && m.Pulse.Enabled {
-		return fmt.Errorf("Relays do not support Pulse")
+		return fmt.Errorf("Flows do not support Pulse")
 	}
 	if m.Kind == "relay" && strings.TrimSpace(m.Capabilities.SlackConnectionID) != "" {
-		return fmt.Errorf("Relays do not support Slack connections")
+		return fmt.Errorf("Flows do not support Slack connections")
 	}
 	if m.Kind == "relay" && m.Capabilities.Notifications != nil {
 		notifications := m.Capabilities.Notifications
@@ -1119,7 +1119,7 @@ func ValidateManifest(m *WorkflowManifest) error {
 		}
 		if unsupportedChannel(notifications.RunSummaryChannels) || unsupportedChannel(notifications.PulseSummaryChannels) ||
 			strings.TrimSpace(notifications.SlackWebhookSecretName) != "" || len(notifications.RunSummarySlackWebhookSecretNames) > 0 || len(notifications.PulseSummarySlackWebhookSecretNames) > 0 {
-			return fmt.Errorf("Relays do not support Slack or WhatsApp notifications")
+			return fmt.Errorf("Flows do not support Slack or WhatsApp notifications")
 		}
 	}
 	if m.Label == "" {
@@ -1310,13 +1310,13 @@ func ValidateManifest(m *WorkflowManifest) error {
 	}
 	for i, sched := range m.Schedules {
 		if isPythonRelay(m) && (len(sched.RouteSelections) != 0 || (sched.Webhook != nil && (strings.TrimSpace(sched.Webhook.StepID) != "" || sched.Webhook.PayloadMappings != nil))) {
-			return fmt.Errorf("Python Relays run relay.py; workflow step targets and payload routing are not supported")
+			return fmt.Errorf("Python Flows run relay.py; workflow step targets and payload routing are not supported")
 		}
 		if m.Kind == "relay" && !sched.IsFunctionTrigger() {
-			return fmt.Errorf("schedules[%d]: Relays support API function triggers only; cron and calendar schedules are not supported", i)
+			return fmt.Errorf("schedules[%d]: Flows support API function triggers only; cron and calendar schedules are not supported", i)
 		}
 		if m.Kind == "relay" && len(normalizeScheduleGroupNames(sched.GroupNames)) > 1 {
-			return fmt.Errorf("schedules[%d]: a legacy Relay trigger may bind at most one configuration group", i)
+			return fmt.Errorf("schedules[%d]: a legacy Flow trigger may bind at most one configuration group", i)
 		}
 		if sched.ID == "" {
 			return fmt.Errorf("schedules[%d].id is required", i)
@@ -1338,7 +1338,7 @@ func ValidateManifest(m *WorkflowManifest) error {
 		}
 		mode := strings.ToLower(strings.TrimSpace(sched.PulseMode))
 		if m.Kind == "relay" && mode != "" && mode != schedulePulseModeOff {
-			return fmt.Errorf("schedules[%d].pulse_mode must be off for a Relay", i)
+			return fmt.Errorf("schedules[%d].pulse_mode must be off for a Flow", i)
 		}
 		if mode != "" && mode != schedulePulseModeOff && mode != schedulePulseModeBasic && mode != schedulePulseModeFull {
 			return fmt.Errorf("schedules[%d].pulse_mode must be off, basic, or full", i)
@@ -1569,7 +1569,7 @@ func ReadWorkflowManifest(ctx context.Context, workspacePath string) (*WorkflowM
 
 	// Apply defaults for missing fields from older schema versions
 	applyManifestDefaults(&m)
-	// Retired Relay timers never execute. Ignore them on read so an older
+	// Retired Flow timers never execute. Ignore them on read so an older
 	// draft or frozen release remains callable; the next draft save removes
 	// them through the normal manifest writer and changelog. Never rewrite a
 	// published snapshot for this product policy change.

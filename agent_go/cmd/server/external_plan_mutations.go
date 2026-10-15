@@ -28,7 +28,7 @@ func externalPlanMutationDefinition(add func(string, string, bool, bool, map[str
 		actions = append(actions, tool.Name)
 		schemas = append(schemas, schema)
 	}
-	add("plan", "Edit a workflow plan directly with the existing native Builder validators and plan changelog. action=list returns exact operation schemas; otherwise action is a listed native name and arguments matches that schema. Read get_plan for expected_revision covering plan and configuration. Every mutation needs a unique request_id: identical retries return its durable receipt. Existing Builder authoring consent and current editable owner/editor/team roles apply; readers cannot edit. Relay source uses write_file and relay tools. No model turn or chat is adopted.", true, true, map[string]any{
+	add("plan", "Edit a workflow plan directly with the existing native Builder validators and plan changelog. action=list returns exact operation schemas; otherwise action is a listed native name and arguments matches that schema. Read get_plan for expected_revision covering plan and configuration. Every mutation needs a unique request_id: identical retries return its durable receipt. Existing Builder authoring consent and current editable owner/editor/team roles apply; readers cannot edit. Flow source uses write_file and relay tools. No model turn or chat is adopted.", true, true, map[string]any{
 		"action":            map[string]any{"type": "string", "enum": actions},
 		"arguments":         map[string]any{"anyOf": schemas},
 		"expected_revision": externalString("Combined revision returned by get_plan."),
@@ -51,7 +51,7 @@ func externalPlanRevision(ctx context.Context, root string) (string, error) {
 func (api *StreamingAPI) externalPlanMutationCall(w http.ResponseWriter, r *http.Request, args map[string]any, workflow DiscoveredWorkflow) {
 	claims := GetUserFromContext(r.Context())
 	if workflow.Manifest.Kind == "relay" {
-		externalError(w, 400, "wrong_product", "Relay uses typed relay tools and write_file for its Python source.")
+		externalError(w, 400, "wrong_product", "Flow uses typed relay tools and write_file for its Python source.")
 		return
 	}
 	if !externalFileAuthoringAllowed(claims, workflow.Manifest) {

@@ -12,7 +12,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// The Relay Run chat (856-78): everyone with access to a Relay who is not its Builder chats in Run mode. They read the
+// The Flow Run chat (856-78): everyone with access to a Flow who is not its Builder chats in Run mode. They read the
 // published source and releases, see every run and result (one company per server), and run a published version. They
 // cannot test a draft, publish, edit files, or use a shell, MCP servers or secrets.
 const (
@@ -23,20 +23,20 @@ const (
 	relayRunSourceLimit   = 64 * 1024
 )
 
-// relayRunChatTools is the whole custom-tool surface of a Relay Run chat; it matches the run surface in the Relay product
+// relayRunChatTools is the whole custom-tool surface of a Flow Run chat; it matches the run surface in the Flow product
 // manifest, which the tool gate enforces.
 var relayRunChatTools = []string{relayReadToolName, relayListRunsToolName, relayGetRunToolName, relayRunToolName}
 
 func (api *StreamingAPI) registerRelayRunChatTools(registrar definitionToolRegistrar, callerID, workspace string) error {
-	// access resolves the person and the Relay on every call, so a revoked share ends the chat's reach at once.
+	// access resolves the person and the Flow on every call, so a revoked share ends the chat's reach at once.
 	access := func(ctx context.Context) (*UserClaims, *WorkflowManifest, error) {
 		claims := userClaimsForDirectoryID(strings.TrimSpace(callerID))
 		if claims == nil {
-			return nil, nil, fmt.Errorf("your account cannot use this Relay")
+			return nil, nil, fmt.Errorf("your account cannot use this Flow")
 		}
 		manifest, found, err := ReadWorkflowManifest(ctx, workspace)
 		if err != nil || !found || manifest.Kind != "relay" || workflowAccessForManifest(claims, manifest) == WorkflowAccessNone {
-			return nil, nil, fmt.Errorf("you can no longer use this Relay")
+			return nil, nil, fmt.Errorf("you can no longer use this Flow")
 		}
 		return claims, manifest, nil
 	}
@@ -46,7 +46,7 @@ func (api *StreamingAPI) registerRelayRunChatTools(registrar definitionToolRegis
 		return string(data), err
 	}
 	if err := registrar.RegisterCustomTool(relayReadToolName,
-		"Read this Relay's published side. action=source returns relay.py of a published version (default the active one); action=releases lists the active and previous published versions with their functions. Never the draft.",
+		"Read this Flow's published side. action=source returns relay.py of a published version (default the active one); action=releases lists the active and previous published versions with their functions. Never the draft.",
 		map[string]interface{}{"type": "object", "required": []string{"action"}, "additionalProperties": false, "properties": map[string]interface{}{
 			"action":  map[string]interface{}{"type": "string", "enum": []string{"source", "releases"}},
 			"version": version,
@@ -91,7 +91,7 @@ func (api *StreamingAPI) registerRelayRunChatTools(registrar definitionToolRegis
 		return err
 	}
 	if err := registrar.RegisterCustomTool(relayListRunsToolName,
-		"List recorded runs of this Relay, newest first, whoever started them: run id, caller, status, errors, start time, duration, step names and statuses, and the returned result. Pass version for a published version (default: the active release).",
+		"List recorded runs of this Flow, newest first, whoever started them: run id, caller, status, errors, start time, duration, step names and statuses, and the returned result. Pass version for a published version (default: the active release).",
 		map[string]interface{}{"type": "object", "additionalProperties": false, "properties": map[string]interface{}{
 			"version": version,
 			"limit":   map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 50},
@@ -118,7 +118,7 @@ func (api *StreamingAPI) registerRelayRunChatTools(registrar definitionToolRegis
 		return err
 	}
 	if err := registrar.RegisterCustomTool(relayGetRunToolName,
-		"Read one run of this Relay by run id or folder name, whoever started it: input, status, error, every step with timings, errors and output, the returned result and its log lines.",
+		"Read one run of this Flow by run id or folder name, whoever started it: input, status, error, every step with timings, errors and output, the returned result and its log lines.",
 		map[string]interface{}{"type": "object", "required": []string{"run"}, "additionalProperties": false, "properties": map[string]interface{}{
 			"run":     map[string]interface{}{"type": "string", "description": "run_id or folder name from list_relay_runs."},
 			"version": version,
@@ -142,7 +142,7 @@ func (api *StreamingAPI) registerRelayRunChatTools(registrar definitionToolRegis
 		return err
 	}
 	return registrar.RegisterCustomTool(relayRunToolName,
-		"Run a published version of this Relay with a JSON input and return its run id (poll with "+relayGetRunToolName+"). The run is yours: it is recorded under your name and uses the owner's published code and credentials. Reuse idempotency_key after an uncertain retry; never run twice for the same work. Only published versions: there is no draft test here.",
+		"Run a published version of this Flow with a JSON input and return its run id (poll with "+relayGetRunToolName+"). The run is yours: it is recorded under your name and uses the owner's published code and credentials. Reuse idempotency_key after an uncertain retry; never run twice for the same work. Only published versions: there is no draft test here.",
 		map[string]interface{}{"type": "object", "required": []string{"function", "input", "idempotency_key"}, "additionalProperties": false, "properties": map[string]interface{}{
 			"function":        map[string]interface{}{"type": "string", "description": "Published function name (see read_relay releases)."},
 			"input":           map[string]interface{}{"type": "object"},
@@ -155,7 +155,7 @@ func (api *StreamingAPI) registerRelayRunChatTools(registrar definitionToolRegis
 				return "", err
 			}
 			if api.scheduler == nil {
-				return "", fmt.Errorf("the Relay runner is unavailable")
+				return "", fmt.Errorf("the Flow runner is unavailable")
 			}
 			body := map[string]interface{}{"function": args["function"], "input": args["input"], "idempotency_key": args["idempotency_key"]}
 			if v, ok := args["version"].(string); ok && strings.TrimSpace(v) != "" {
@@ -190,7 +190,7 @@ func (api *StreamingAPI) relayRunChatVersion(ctx context.Context, workspace stri
 	}
 	release, _, err := activeRelayRelease(ctx, workspace)
 	if err != nil || release == nil {
-		return "", fmt.Errorf("this Relay has no published version yet")
+		return "", fmt.Errorf("this Flow has no published version yet")
 	}
 	return release.Version, nil
 }

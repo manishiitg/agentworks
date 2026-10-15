@@ -9,7 +9,7 @@ external_tools: ["*dashboard*", "get_report_link"]
 Follow the user’s design and motion preferences. These instructions describe
 platform operations and data access.
 
-Sharing a product means sharing its dashboard: people use the published work there through Ask and available function buttons. Code, Crew and Relays have one owner; workflows retain their existing owners and editors. Use the current dashboard sharing controls and returned links; a copied URL alone does not give access. Describe people as Builder or Run in replies, never as permission-level labels.
+Sharing a product means sharing its dashboard: people use the published work there through Ask and available function buttons. Crew<!-- product:code -->, Code<!-- /product --><!-- product:relays --> and Flows<!-- /product --> have one owner; workflows retain their existing owners and editors. Use the current dashboard sharing controls and returned links; a copied URL alone does not give access. Describe people as Builder or Run in replies, never as permission-level labels.
 
 For external MCP, call `get_api_spec` to discover tool schemas, then `call_tool`
 with the chosen name and arguments. App Builder tools are bound to their project;
@@ -17,7 +17,7 @@ external operations use the authorized `workspace` returned by discovery.
 
 1. `list_dashboards` lists accessible documents, project roots and live URLs.
    Omit workspace for cross-project discovery; use limit/offset for pagination.
-   Goals, <!-- product:relays -->Relays and <!-- /product -->Crews use current project access.<!-- product:code --> Code is owner-only.<!-- /product -->
+   Goals, <!-- product:relays -->Flows and <!-- /product -->Crews use current project access.<!-- product:code --> Code is owner-only.<!-- /product -->
 2. `get_dashboard` returns source and revision. Existing HTML documents can be
    read using their returned document_path; adopt them by creating a new managed
    bundle from that source. Existing files are preserved.
@@ -36,14 +36,14 @@ external operations use the authorized `workspace` returned by discovery.
    displaying the published bundle. `restore_dashboard` republishes a previously
    published revision with the current draft revision as expected_revision.
 7. `get_dashboard_link` returns a live authenticated URL. For existing Goals<!-- product:relays --> or
-   Relay<!-- /product --> documents, `get_report_link` also returns it directly. URLs contain no
+   Flow<!-- /product --> documents, `get_report_link` also returns it directly. URLs contain no
    credentials and grant no access. Recipients must sign in with current project
    access. Check shareable/warning: localhost links work on that machine only.
 
 External connections need `dashboards:read` for discovery, source reads and links.
 Drafts and publication use existing product authoring consent: `builder:chat` for
-workflows,<!-- product:relays --> `relays:write` or Builder consent for Relays,<!-- /product --> `crews:write` for Crews,
-<!-- product:code -->and `code:run` for owned Code projects.<!-- /product --> Workflow<!-- product:relays -->/Relay<!-- /product --> authoring retains its
+workflows,<!-- product:relays --> `relays:write` or Builder consent for Flows,<!-- /product --> `crews:write` for Crews,
+<!-- product:code -->and `code:run` for owned Code projects.<!-- /product --> Workflow<!-- product:relays -->/Flow<!-- /product --> authoring retains its
 companion read/run scopes and Builder enablement. Current account and project
 owner permissions (and workflow editor permissions), product access, connection bounds and folder grants apply.
 Preview additionally requires `runs:execute` and project edit access because live
@@ -53,7 +53,7 @@ Connections gain no new scopes automatically; expiry and revocation remain enfor
 
 ## Optional native chat widgets
 
-In a managed Crew, workflow or Relay dashboard, the designer may add an open
+In a managed Crew or workflow<!-- product:relays --> or Flow<!-- /product --> dashboard, the designer may add an open
 chat panel, a button, or both. Choose the placement, size, label, visibility and
 responsive layout in the dashboard's HTML/CSS. There is no required sidebar.
 For example (dimensions are only an example):
@@ -127,8 +127,7 @@ dialog. The page cannot run a function itself: there is no script method, only
 the person's click and Run. The function must be one the signed-in person can
 already use in this project (the owner's published functions); a button naming
 anything else shows that it is unavailable. Button text, placement and styling
-are the designer's choice. Crew and workflow dashboards only; Relay and Code
-dashboards have no function buttons yet.
+are the designer's choice. Crew and workflow dashboards only.<!-- product:relays --> Flow dashboards have no function buttons yet.<!-- /product --><!-- product:code --> Code dashboards have no function buttons yet.<!-- /product -->
 
 ## Live HTML and scripts
 
@@ -156,7 +155,7 @@ read-only snapshot; REPORT_CACHE_DIR is the only writable cache folder.
 Scripts use the project's selected MCP tools/secrets under the authenticated
 viewer's live permissions. A shared dashboard grants no new source credentials.
 Keep data scripts read-only upstream and never print secrets. Publication does
-not run a workflow<!-- product:relays -->, invoke relay.py or publish a Relay API<!-- /product -->.
+not run a workflow<!-- product:relays -->, invoke relay.py or publish a Flow API<!-- /product -->.
 
 For requested interactive animation, use `window.report.motion.create` inside
 `window.report.ready`; the designer supplies the visuals and controls. See the

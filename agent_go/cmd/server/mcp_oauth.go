@@ -140,7 +140,7 @@ func (api *StreamingAPI) handleMCPOAuthRegister(w http.ResponseWriter, r *http.R
 // (the tools re-check the account on every call regardless).
 func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
 	// An administrator who asks for nothing in particular (the default scopes) gets every supported scope: the CLI sign-in and a
-	// client taking the advertised default would otherwise leave an admin without Brain, Builder, Relays or dashboards. What the
+	// client taking the advertised default would otherwise leave an admin without Brain, Builder, Flows or dashboards. What the
 	// server or the account refuses is still removed below, and a client that names its scopes gets exactly those.
 	if user != nil && claimsIsAdmin(user) && sameMCPOAuthScopeSet(scopes, mcpOAuthDefaultScopes) {
 		scopes = mcpOAuthScopes
@@ -261,7 +261,7 @@ func (api *StreamingAPI) handleMCPOAuthAuthorize(w http.ResponseWriter, r *http.
 // workflow discovery. Selection is revalidated when consent is submitted.
 func validateMCPOAuthBuilderSelection(ctx context.Context, claims *UserClaims, scopes, ids []string) error {
 	if slices.Contains(scopes, "relays:write") && (!userAccessForClaims(claims).CanEdit || !userAllowedProduct(claims, "relays")) {
-		return errors.New("Relay authoring is not available to this account or deployment")
+		return errors.New("Flow authoring is not available to this account or deployment")
 	}
 	if !slices.Contains(scopes, "builder:chat") {
 		if len(ids) != 0 {

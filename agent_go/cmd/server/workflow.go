@@ -1480,11 +1480,11 @@ func (api *StreamingAPI) handleUpdateVariableGroups(w http.ResponseWriter, r *ht
 	}
 	if found && workflow.Kind == "relay" {
 		if workflowtypes.RelayReleaseWorkspace(workspacePath) != "" {
-			http.Error(w, "Published Relay configuration is immutable", http.StatusBadRequest)
+			http.Error(w, "Published Flow configuration is immutable", http.StatusBadRequest)
 			return
 		}
 		if len(manifest.Groups) > 0 {
-			http.Error(w, "Relays do not accept variable groups; save configuration values directly", http.StatusBadRequest)
+			http.Error(w, "Flows do not accept variable groups; save configuration values directly", http.StatusBadRequest)
 			return
 		}
 	}

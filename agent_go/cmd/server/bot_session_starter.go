@@ -162,7 +162,7 @@ func (api *StreamingAPI) checkBotWorkflowAccess(ctx context.Context, workspaceUs
 		return fallbackID, false, nil
 	}
 	if manifest.Kind == "relay" {
-		log.Printf("[BOT_ACCESS] Denied: Relay %q only accepts API function triggers", manifest.ID)
+		log.Printf("[BOT_ACCESS] Denied: Flow %q only accepts API function triggers", manifest.ID)
 		return fallbackID, false, nil
 	}
 
@@ -506,7 +506,7 @@ func (api *StreamingAPI) botWorkflowTurn(ctx context.Context, query string, rout
 		return nil, fmt.Errorf("workflow route target is unavailable")
 	}
 	if manifest.Kind == "relay" {
-		return nil, fmt.Errorf("Relay %q does not accept bot channel messages", manifest.ID)
+		return nil, fmt.Errorf("Flow %q does not accept bot channel messages", manifest.ID)
 	}
 	if api.scheduler == nil {
 		return nil, fmt.Errorf("shared conversation builder unavailable")

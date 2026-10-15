@@ -3541,7 +3541,7 @@ func (api *StreamingAPI) loadSelectedSecrets(ctx context.Context, userID, workfl
 	var identityErr error
 	workflowPath, identityErr = relayDraftWorkspaceForRelease(ctx, workflowPath)
 	if identityErr != nil {
-		log.Printf("[SECRETS] Relay release identity unavailable: %v", identityErr)
+		log.Printf("[SECRETS] Flow release identity unavailable: %v", identityErr)
 		return nil
 	}
 
@@ -4612,7 +4612,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// branch) — see frontend/src/utils/agentModeDescriptions.ts.
 	isWorkflowPhase := req.AgentMode == "workflow_phase"
 	req.admittedWorkflowPhase = isWorkflowPhase
-	relayRunChat := false // a non-owner's chat on a Relay (856-78)
+	relayRunChat := false // a non-owner's chat on a Flow (856-78)
 	workflowPhaseID := req.PhaseID
 	workflowPhaseFolder := "" // The preset's SelectedFolder — used to auto-grant write access in FolderGuard
 	workflowPhaseRunFolder := ""
@@ -4763,7 +4763,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		// A Relay's Builder chat is its owner's; everyone else with access chats in Run mode (856-78). Run mode is the same
+		// A Flow's Builder chat is its owner's; everyone else with access chats in Run mode (856-78). Run mode is the same
 		// server-side policy as a Crew's: no shell, MCP servers or secrets, and only the Run tool surface.
 		if currentUserIsReadOnly && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && workflowPhaseFolder != "" {
 			if relayManifest, relayFound, relayErr := ReadWorkflowManifest(context.Background(), workflowPhaseFolder); relayErr == nil && relayFound && relayManifest.Kind == "relay" {
@@ -6036,7 +6036,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				relayTools, toolErr := relayToolsFn()
 				if toolErr != nil {
-					sendError(fmt.Sprintf("Failed to load Relay Builder tools: %v", toolErr), true)
+					sendError(fmt.Sprintf("Failed to load Flow Builder tools: %v", toolErr), true)
 					return
 				}
 				toolGate = newProductToolGateForAllowlist("relays", relayTools)
@@ -6711,7 +6711,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// access so a denied migration cannot fall back to the sqlite CLI.
 				if relayChat {
 					if err := todo_creation_human.ConfigureRelayDashboardBuilderSession(sessionID, workflowPhaseFolder, !currentUserIsReadOnly); err != nil {
-						sendError(fmt.Sprintf("Could not prepare Relay dashboard authoring: %v", err), true)
+						sendError(fmt.Sprintf("Could not prepare Flow dashboard authoring: %v", err), true)
 						return
 					}
 				} else {
@@ -7465,7 +7465,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					// sessions cannot retain broad raw SQLite or sidecar access.
 					if relayChat {
 						if err := todo_creation_human.ConfigureRelayDashboardBuilderSession(sessionID, phaseWorkspacePath, !currentUserIsReadOnly); err != nil {
-							sendError(fmt.Sprintf("Could not prepare Relay dashboard authoring: %v", err), true)
+							sendError(fmt.Sprintf("Could not prepare Flow dashboard authoring: %v", err), true)
 							return
 						}
 					} else {
@@ -12482,7 +12482,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				return "", fmt.Errorf("workflow manifest not found at %s", workspacePath)
 			}
 			if manifest.Kind == "relay" {
-				return "", fmt.Errorf("Relays support API function triggers only")
+				return "", fmt.Errorf("Flows support API function triggers only")
 			}
 			// PLAT-115: a PulseReviewOnly schedule never runs the workflow, so it
 			// has no group to validate — the same reason the manual "Run Pulse
@@ -12581,7 +12581,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				return "", fmt.Errorf("workflow manifest not found at %s", workspacePath)
 			}
 			if manifest.Kind == "relay" {
-				return "", fmt.Errorf("Relays support API function triggers only")
+				return "", fmt.Errorf("Flows support API function triggers only")
 			}
 			groupNames, err = validateScheduleGroupNamesForWorkspace(ctx, workspacePath, groupNames)
 			if err != nil {
@@ -12671,7 +12671,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				sched.Timezone = timezone
 			}
 			if manifest.Kind == "relay" && setGroupNames && len(normalizeScheduleGroupNames(groupNames)) > 0 {
-				return "", fmt.Errorf("Relays do not accept group_names; configure variables directly")
+				return "", fmt.Errorf("Flows do not accept group_names; configure variables directly")
 			}
 			if manifest.Kind != "relay" && setGroupNames {
 				validGroupNames, err := validateScheduleGroupNamesForWorkspace(ctx, workspacePath, groupNames)
@@ -13607,7 +13607,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"install_mcp_server",
-		"Connect a catalog server or user-supplied remote MCP URL to this workflow, <!-- product:relays -->Relay, <!-- /product -->Crew<!-- product:code --> or Code<!-- /product --> with the authenticated user's login; everyone with access to it can use it. Return an actual OAuth sign-in link or direct them to Integrations for credentials. Never ask for secrets in chat. Select the private server for a workflow using update_workflow_config or for a Crew using update_project_mcp_server_selection. <!-- product:mcp-gateway -->Shared setup belongs in Vault and requires group grants.<!-- /product -->",
+		"Connect a catalog server or user-supplied remote MCP URL to this workflow, <!-- product:relays -->Flow, <!-- /product -->Crew<!-- product:code --> or Code<!-- /product --> with the authenticated user's login; everyone with access to it can use it. Return an actual OAuth sign-in link or direct them to Integrations for credentials. Never ask for secrets in chat. Select the private server for a workflow using update_workflow_config or for a Crew using update_project_mcp_server_selection. <!-- product:mcp-gateway -->Shared setup belongs in Vault and requires group grants.<!-- /product -->",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -13788,7 +13788,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"add_mcp_server",
-		"Add a remote MCP server to this workflow, <!-- product:relays -->Relay, <!-- /product -->Crew<!-- product:code --> or Code<!-- /product --> with the authenticated person's login. Use a catalog name or an HTTPS URL. Enter credentials in Integrations. <!-- product:mcp-gateway -->Use Vault for access shared across places.<!-- /product -->",
+		"Add a remote MCP server to this workflow, <!-- product:relays -->Flow, <!-- /product -->Crew<!-- product:code --> or Code<!-- /product --> with the authenticated person's login. Use a catalog name or an HTTPS URL. Enter credentials in Integrations. <!-- product:mcp-gateway -->Use Vault for access shared across places.<!-- /product -->",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

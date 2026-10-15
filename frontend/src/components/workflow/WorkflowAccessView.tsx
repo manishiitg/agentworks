@@ -97,7 +97,7 @@ export default function WorkflowAccessView({ workspacePath, relayMode = false }:
           <div key={`${activeTab}:${tabNonce}`} className="p-4">
             {activeTab === 'workflow' && workspacePath ? (
               isRelay
-                ? <p className="text-sm text-muted-foreground">A Relay has one owner, who builds it. To let others use it, share its dashboard with the Share button there.</p>
+                ? <p className="text-sm text-muted-foreground">A Flow has one owner, who builds it. To let others use it, share its dashboard with the Share button there.</p>
                 : <WorkflowTeamView workspacePath={workspacePath} readOnly={workflowReadOnly} />
             ) : activeTab === 'users' ? (
               <UsersAdminPanel />

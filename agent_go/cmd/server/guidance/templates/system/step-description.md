@@ -96,7 +96,7 @@ only when it has nothing to say; do not add other sections.
 ```
 ## Goal       — what the step achieves, in one to three sentences
 ## Inputs     — prior step outputs, caller input and evidence needed for the task
-## Resources  — which KB/Brain notes, DB tables and learnings to read or update; say none when unused
+## Resources  — which KB<!-- product:knowledgebase -->/Brain<!-- /product --> notes, DB tables and learnings to read or update; say none when unused
 ## Output     — what it produces and where; the shape stays in validation_schema
 ## Rules      — binding business constraints, approval limits, actions outside its authority
 ## Done when  — the success boundary, including what counts as a valid no-op

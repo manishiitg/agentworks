@@ -90,7 +90,7 @@ func (c *conditionService) productSource(ctx context.Context, owner, profile, pr
 			return productScheduleJob{}, errors.New("watcher source is unavailable")
 		}
 	default:
-		return productScheduleJob{}, errors.New("watchers are available in Code, Crew, workflows and Relays")
+		return productScheduleJob{}, errors.New("watchers are available in Code, Crew, workflows and Flows")
 	}
 	return conditionCallerJob(owner, conditionCallerDefinition{Source: source}, productScheduleUserState{}), nil
 }
@@ -243,7 +243,7 @@ func (c *conditionService) callerScript(ctx context.Context, job productSchedule
 		return "", err
 	}
 	if !found {
-		return "", fmt.Errorf("save the Python script before creating the watcher; Crew, workflow and Relay callers use script_content")
+		return "", fmt.Errorf("save the Python script before creating the watcher; Crew, workflow and Flow callers use script_content")
 	}
 	return raw, nil
 }

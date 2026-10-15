@@ -670,8 +670,8 @@ func workflowExecutionOwnerUserID(manifest *WorkflowManifest) string {
 		return ""
 	}
 	if manifest.Kind == "relay" {
-		// Only a Relay's one Builder runs it unattended: if that account is inactive the run fails closed, and it never falls to
-		// another listed owner (now Run mode), whose slot would write journals into the Relay.
+		// Only a Flow's one Builder runs it unattended: if that account is inactive the run fails closed, and it never falls to
+		// another listed owner (now Run mode), whose slot would write journals into the Flow.
 		if builder := strings.TrimSpace(manifest.relayBuilder()); builder != "" {
 			return builder
 		}
@@ -772,7 +772,7 @@ func (s *SchedulerService) LoadSchedule(sctx *ScheduleContext) error {
 			delete(s.jobs, key)
 		}
 	}
-	// Relays retain the shared function-delivery ledger, but register no timers.
+	// Flows retain the shared function-delivery ledger, but register no timers.
 	if sctx.WorkflowKind == "relay" && !sched.IsFunctionTrigger() {
 		s.scheduleFingerprints[runtimeKey] = scheduleConfigFingerprint(sctx)
 		return nil
@@ -1773,7 +1773,7 @@ func (s *SchedulerService) cancelScheduledSessionWork(sessionID, closeReason str
 // triggerSchedule is called by the tick loop when a schedule is due.
 func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor time.Time) {
 	if sctx.WorkflowKind == "relay" {
-		s.logf(sctx, "[SCHEDULER] Relay timers are not supported; use an authenticated API function trigger")
+		s.logf(sctx, "[SCHEDULER] Flow timers are not supported; use an authenticated API function trigger")
 		return
 	}
 	triggerCtx := *sctx
@@ -2398,7 +2398,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		}
 	}
 	if sctx.WorkflowKind == "relay" && (!sctx.Schedule.IsFunctionTrigger() || sctx.WebhookInput == nil) {
-		err := errors.New("Relays require an authenticated API function delivery; schedules are not supported")
+		err := errors.New("Flows require an authenticated API function delivery; schedules are not supported")
 		failBeforeHistory(err, "")
 		return "", err
 	}

@@ -158,15 +158,15 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 	case workflowtypes.WorkflowStatusWorkflowBuilder:
 		if phaseTemplateVars["WorkflowKind"] == "relay" && phaseTemplateVars["RelayRunMode"] == "true" {
 			if err := api.registerRelayRunChatTools(definitionAgent, userID, phaseWorkspacePath); err != nil {
-				return fmt.Errorf("register Relay Run tools: %w", err)
+				return fmt.Errorf("register Flow Run tools: %w", err)
 			}
 		}
 		if phaseTemplateVars["WorkflowKind"] == "relay" && policy.Origin == "interactive" && policy.allows("plan_authoring") {
 			if err := api.registerRelayReleaseTools(definitionAgent, phaseWorkspacePath, userID); err != nil {
-				return fmt.Errorf("register Relay release tools: %w", err)
+				return fmt.Errorf("register Flow release tools: %w", err)
 			}
 			if err := api.registerPythonRelayBuilderTools(definitionAgent, phaseWorkspacePath, userID); err != nil {
-				return fmt.Errorf("register Relay Python tools: %w", err)
+				return fmt.Errorf("register Flow Python tools: %w", err)
 			}
 		}
 		if policy.allows("plan_authoring") {
@@ -520,11 +520,11 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 			}
 			skills, err := relayproduct.ChatSkills(skillMode)
 			if err != nil {
-				return fmt.Errorf("load Relay Builder skills: %w", err)
+				return fmt.Errorf("load Flow Builder skills: %w", err)
 			}
 			for _, skill := range skills {
 				if err := definitionAgent.AttachSkill(skill); err != nil {
-					return fmt.Errorf("attach Relay Builder skill %s: %w", skill.Name, err)
+					return fmt.Errorf("attach Flow Builder skill %s: %w", skill.Name, err)
 				}
 			}
 		} else if isGoalLeadSessionID(sessionID) {

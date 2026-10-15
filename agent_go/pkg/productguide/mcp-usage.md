@@ -29,14 +29,14 @@ Use a product's `ask` entry point for a question or conversational request. Use 
 
 Runs do real work with real effects. Carry out the person's requested task within their permissions and scope; do not invent a simulation or an extra approval step. Follow the product's edit, test, publish and run lifecycle. A started call is not a completed result: check its returned status and evidence before reporting success.
 
-The owner builds and changes the product in Builder mode. Others use published work in Run mode. Code, Crew and Relays have one owner; give other people use through the product's dashboard. Workflows retain their current owners and editors.
+The owner builds and changes the product in Builder mode. Others use published work in Run mode. Code, Crew and Flows have one owner; give other people use through the product's dashboard. Workflows retain their current owners and editors.
 
 Schedules call shared entry points at a chosen time. Watchers check for a condition and call an entry point when it occurs. Both belong to the person who creates them, use that person's current access and selected secrets, and attribute the work's cost to them. Use the discovered scheduling tools and current product guidance.
 
 Load guidance relevant to the work:
 
 <!-- product:work -->- Crew: `crew-authoring` for setup, functions and use.
-<!-- /product --><!-- product:relays -->- Relays: `relay-builder` for source, test and publication; `relay-dashboard` for dashboards.
+<!-- /product --><!-- product:relays -->- Flows: `relay-builder` for source, test and publication; `relay-dashboard` for dashboards.
 <!-- /product --><!-- product:agentworks -->- Goals: the relevant plan, step, execution and Pulse topics.
 <!-- /product -->
 For other work, choose from the topics actually listed by this connection.

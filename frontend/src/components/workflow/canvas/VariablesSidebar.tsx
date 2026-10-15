@@ -55,7 +55,7 @@ export const VariablesSidebar: React.FC<VariablesSidebarProps> = ({
           if (relayMode && (response.manifest.groups?.length ?? 0) > 1) {
             setManifest(response.manifest)
             setMigrationBlocked(true)
-            setError('This legacy Relay has multiple variable groups. Ask the Builder to choose the configuration values to keep and remove the groups before editing here.')
+            setError('This legacy Flow has multiple variable groups. Ask the Builder to choose the configuration values to keep and remove the groups before editing here.')
           } else if (relayMode) {
             const normalized = { ...response.manifest, variables: (response.manifest.variables ?? []).map(variable => ({ ...variable })) }
             for (const [name, value] of Object.entries(response.manifest.groups?.[0]?.values ?? {})) {
@@ -325,7 +325,7 @@ export const VariablesSidebar: React.FC<VariablesSidebarProps> = ({
           </section>
           <section className="space-y-3">
             <h3 className="text-sm font-semibold">Configuration</h3>
-            <p className="text-xs text-muted-foreground">Reusable values for this Relay. Ask the Builder to add or change configuration variables. Manage credentials in Secrets.</p>
+            <p className="text-xs text-muted-foreground">Reusable values for this Flow. Ask the Builder to add or change configuration variables. Manage credentials in Secrets.</p>
             {(manifest?.variables ?? []).filter(variable => variable.name !== 'INPUT').map(variable => (
               <label key={variable.name} className="block space-y-1 text-xs">
                 <span className="font-mono font-medium">{variable.name}</span>

@@ -5,7 +5,7 @@ dependencies: {}
 execution:
   platform_stores: false
 
-# Relay identity/configuration stays in workflow.json; relay.py owns execution.
+# Flow identity/configuration stays in workflow.json; relay.py owns execution.
 # This manifest owns Builder prompts, skills and tools.
 prompt:
   file: prompts/builder.md
@@ -13,7 +13,7 @@ prompt:
 
 chat:
   builder:
-    # Platform MCP uses the same Builder operation lifecycle. Direct Relay
+    # Platform MCP uses the same Builder operation lifecycle. Direct Flow
     # calls test the draft or run an immutable version without Run chat.
     external_tools: [create_relay, update_relay, builder_chat, builder_status, builder_reply_input, builder_cancel, builder_file_history, builder_restore_file, get_relay_releases, publish_relay, test_relay, run_relay, get_relay_run, list_relay_runs]
     prompt:
@@ -81,7 +81,7 @@ chat:
       - apply_workflow_db_migration
       - agent_browser
   run:
-    # Everyone with access to a Relay who is not its Builder: read the published side, see every run, run a published version.
+    # Everyone with access to a Flow who is not its Builder: read the published side, see every run, run a published version.
     prompt:
       file: prompts/run.md
     skills: []
@@ -92,46 +92,46 @@ chat:
       - run_relay
 profile:
   id: relays
-  name: Relays
+  name: Flows
   version: 1
   scope: global
   built_in: true
   commands:
     - name: build-relay
-      description: Build or refine your Relay in chat
+      description: Build or refine your Flow in chat
       icon: git-branch
       prompt: |
         Design or refine relay.py using the relay-builder skill and existing workspace file tools. Read relay.py, workflow.json and configuration. For native DBOS source use from dbos import DBOS, @DBOS.workflow() async def run(INPUT), readable module-level @DBOS.step() functions, Classifier nodes using agentworks.classifier with user-defined categories/instructions, and fresh calls to agentworks.agent with exact authored prompts and explicit JSON returns. The Graph is derived from the Python AST; do not add @relay comments or require relay.md. Keep existing legacy source on its declared contract unless the user requests migration. Preserve user choices. Explain it for a user who does not program. Test with a supplied example before claiming it works.
         {{context}}
     - name: design-dashboard
-      description: Create or update this Relay's live Dashboard
+      description: Create or update this Flow's live Dashboard
       icon: layout-dashboard
       prompt: |
-        Create or update this Relay's Dashboard using the relay-dashboard skill. Inspect existing db/reports/ documents and preserve user design choices. Use the shared HTML runtime, validate_report_html and preview_report. Keep dashboard scripts under code/reports/ separate from relay.py and API publication. Use files or scripts when a database is unnecessary.
+        Create or update this Flow's Dashboard using the relay-dashboard skill. Inspect existing db/reports/ documents and preserve user design choices. Use the shared HTML runtime, validate_report_html and preview_report. Keep dashboard scripts under code/reports/ separate from relay.py and API publication. Use files or scripts when a database is unnecessary.
         {{context}}
     - name: test
       description: Test the draft with sample inputs and inspect its JSON output
       icon: check-circle
       prompt: |
-        Test this Relay's current draft using the relay-builder skill. Read its INPUT definition and flat configuration. Use the supplied sample input, or ask for required values; do not invent production inputs. Use test_relay with the sample INPUT object, then get_relay_run to inspect completion, relay_trace.json and returned JSON. Report the actual output or failing Python/agent call. Do not publish.
+        Test this Flow's current draft using the relay-builder skill. Read its INPUT definition and flat configuration. Use the supplied sample input, or ask for required values; do not invent production inputs. Use test_relay with the sample INPUT object, then get_relay_run to inspect completion, relay_trace.json and returned JSON. Report the actual output or failing Python/agent call. Do not publish.
         {{context}}
     - name: publish
-      description: Publish the draft as a versioned Relay API
+      description: Publish the draft as a versioned Flow API
       icon: globe
       prompt: |
-        Publish this Relay's current draft as an API version. Follow the relay-builder skill: inspect existing releases with get_relay_releases, validate the draft, then use publish_relay. Report the exact returned version and content hash. Explain how callers select this version while later Builder edits remain in the draft. Do not publish a dashboard or report.
+        Publish this Flow's current draft as an API version. Follow the relay-builder skill: inspect existing releases with get_relay_releases, validate the draft, then use publish_relay. Report the exact returned version and content hash. Explain how callers select this version while later Builder edits remain in the draft. Do not publish a dashboard or report.
         {{context}}
     - name: versions
-      description: Inspect the active and previous published Relay versions
+      description: Inspect the active and previous published Flow versions
       icon: layers
       prompt: |
-        Use get_relay_releases to inspect this Relay's active and previous published API versions. Report the actual versions and hashes returned, and distinguish published versions from the editable draft. Do not publish or edit anything.
+        Use get_relay_releases to inspect this Flow's active and previous published API versions. Report the actual versions and hashes returned, and distinguish published versions from the editable draft. Do not publish or edit anything.
         {{context}}
     - name: setup-api
-      description: Configure JSON inputs and an API trigger for this Relay
+      description: Configure JSON inputs and an API trigger for this Flow
       icon: terminal
       prompt: |
-        Configure this Relay's API integration using the relay-builder skill and existing function trigger tools. Inspect workflow.json and variables/variables.json. Define the object INPUT and flat configuration values in variables[].value if missing, then configure the function trigger. Explain the authenticated API call, version selection and final JSON output using actual saved configuration and registered guidance; do not invent URLs or credentials. Preserve existing triggers unless asked to change them.
+        Configure this Flow's API integration using the relay-builder skill and existing function trigger tools. Inspect workflow.json and variables/variables.json. Define the object INPUT and flat configuration values in variables[].value if missing, then configure the function trigger. Explain the authenticated API call, version selection and final JSON output using actual saved configuration and registered guidance; do not invent URLs or credentials. Preserve existing triggers unless asked to change them.
         {{context}}
 
 branding:

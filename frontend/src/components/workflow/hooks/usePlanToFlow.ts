@@ -167,7 +167,7 @@ interface UsePlanToFlowOptions {
   completedStepIndices?: number[]  // 0-based indices of completed steps (from steps_done.json)
   workspacePath?: string | null  // Workspace path for file opening
   selectedRunFolder?: string  // Selected iteration folder for file opening
-  relayMode?: boolean  // Relays show configuration without execution groups
+  relayMode?: boolean  // Flows show configuration without execution groups
   variablesManifest?: VariablesManifest | null  // Variables manifest for Variables node
   onOpenVariablesSidebar?: () => void  // Callback for opening variables sidebar
   isLoadingVariables?: boolean  // Whether variables are being loaded

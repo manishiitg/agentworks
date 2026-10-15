@@ -1,12 +1,12 @@
 Choose a product by the work you want to accomplish. Discover its current tools before acting: the products enabled on this server and your access decide what you can use.
 
-Agent conversations have two modes: **Builder** is the owner's workspace for building and changing the product; **Run** is how everyone else understands it and uses what the owner published. These mode names do not replace the current permission checks on individual operations. Shared dashboards let people in Run mode understand and use published work. Within a product shared with you, runs, results, execution and step logs, function calls and token usage are visible. Secret values and personal provider accounts and logins remain private. Personal chats stay private. Code, Crew and Relays have one owner; other people use published work through the product's shared dashboard. Workflows retain their current owners and editors.
+Agent conversations have two modes: **Builder** is the owner's workspace for building and changing the product; **Run** is how everyone else understands it and uses what the owner published. These mode names do not replace the current permission checks on individual operations. Shared dashboards let people in Run mode understand and use published work. Within a product shared with you, runs, results, execution and step logs, function calls and token usage are visible. Secret values and personal provider accounts and logins remain private. Personal chats stay private. Code, Crew and Flows have one owner; other people use published work through the product's shared dashboard. Workflows retain their current owners and editors.
 
 | Product | Choose it for |
 |---|---|
 <!-- product:agentworks -->| Goals | An ongoing objective with a plan, scheduled work, measurements and Pulse follow-through. |
 <!-- /product --><!-- product:work -->| Crew | A reusable agent with standing instructions, skills and exposed functions. |
-<!-- /product --><!-- product:relays -->| Relays | A code-based workflow with a test, publish and production-run lifecycle. |
+<!-- /product --><!-- product:relays -->| Flows | A code-based workflow with a test, publish and production-run lifecycle. |
 <!-- /product --><!-- product:knowledgebase -->| Brain | Shared knowledge, files and reusable skill packages. |
 <!-- /product --><!-- product:mcp-gateway -->| Vault | Shared MCP integrations, secrets and centrally managed access. |
 <!-- /product --><!-- product:code -->| Code | Repository work and private coding-agent projects. |
@@ -34,13 +34,13 @@ Use a Crew for a specialist you want to call repeatedly from your agent, another
 - **Access:** a Crew has one owner, who changes its setup. Share its dashboard to let others use it in Run mode through Ask and published functions. Functions run with the owner's authority and may change the Crew; callers do not gain setup access. Current account, connection and project checks still apply.
 - **Example:** a document specialist exposes a function that accepts a file and returns a structured summary.
 
-<!-- /product --><!-- product:relays -->### Relays
+<!-- /product --><!-- product:relays -->### Flows
 
-Use a Relay when a repeatable code workflow should have an explicit release and execution lifecycle.
+Use a Flow when a repeatable code workflow should have an explicit release and execution lifecycle.
 
 - **Abilities:** edit source, test drafts, inspect test results, publish immutable versions and execute or inspect production runs; configure the workflow's supported triggers and integrations.
 - **MCP route:** load `relay-builder`; inspect the current source and schemas; edit through admitted source tools, test the draft, then publish with the current revision. A test is not a production publication.
-- **Access:** a Relay has one owner, who edits, tests and publishes it. Share its dashboard so others can use published work in Run mode and inspect runs, results and execution logs. Current connection and project checks still apply.
+- **Access:** a Flow has one owner, who edits, tests and publishes it. Share its dashboard so others can use published work in Run mode and inspect runs, results and execution logs. Current connection and project checks still apply.
 - **Example:** validate incoming records and deliver the accepted records to a connected system.
 
 <!-- /product --><!-- product:knowledgebase -->### Brain
@@ -86,13 +86,13 @@ Use Bullpen to connect and coordinate external agents while they keep working in
 
 Use **Goals** for an ongoing outcome that needs a plan, measures, scheduled work and follow-up. Use a **Crew** for a reusable specialist that answers requests or exposes functions. A Goal can call a Crew when both are enabled and accessible.
 
-<!-- /product --><!-- /product --><!-- product:work --><!-- product:relays -->### Should I use a Crew or a Relay?
+<!-- /product --><!-- /product --><!-- product:work --><!-- product:relays -->### Should I use a Crew or a Flow?
 
-Use a **Crew** when the work needs an agent's judgment, standing instructions, memory or conversation. Use a **Relay** when the work is a repeatable code pipeline that you want to test and publish as a version before production runs.
+Use a **Crew** when the work needs an agent's judgment, standing instructions, memory or conversation. Use a **Flow** when the work is a repeatable code pipeline that you want to test and publish as a version before production runs.
 
-<!-- /product --><!-- /product --><!-- product:agentworks --><!-- product:relays -->### Should I use Goals or Relays?
+<!-- /product --><!-- /product --><!-- product:agentworks --><!-- product:relays -->### Should I use Goals or Flows?
 
-Use **Goals** to pursue and reassess an outcome over time. Use **Relays** to execute a defined code pipeline with a test and release lifecycle.
+Use **Goals** to pursue and reassess an outcome over time. Use **Flows** to execute a defined code pipeline with a test and release lifecycle.
 
 <!-- /product --><!-- /product --><!-- product:knowledgebase --><!-- product:mcp-gateway -->### Should I put this in Brain or Vault?
 

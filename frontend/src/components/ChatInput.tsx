@@ -2852,7 +2852,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (agentProfileWorkspace) return 'Describe the video you want to make… (@ files, / commands)'
     if (isWorkflowPhaseChat) {
       return isRelaySurface
-        ? 'Describe your Relay graph... (@ files, / commands, # references)'
+        ? 'Describe your Flow graph... (@ files, / commands, # references)'
         : 'Chat with the automation builder... (@ files, / commands, # references)'
     }
     const baseHints = "@ files, / commands, # references, ! skills, $ servers"

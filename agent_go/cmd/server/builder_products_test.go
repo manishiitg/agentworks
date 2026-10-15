@@ -21,9 +21,15 @@ import (
 
 func assertNoDisabledProductGuidance(t *testing.T, label, body string) {
 	t.Helper()
-	pattern := regexp.MustCompile(`\b(Vault|Brain|Relays?)\b|\bCode (projects?|workspaces?|dashboards?|scripts?|owners?|is|remains|stays|may|can use)\b|\bCode's|Crew(?:/Code| or Code| and Code)|\bCodes\b|[Ii]n a Code\b`)
+	pattern := regexp.MustCompile(`\b(Vault|Brain|Flows?|Relays?)\b|\bCode (projects?|workspaces?|dashboards?|scripts?|owners?|is|remains|stays|may|can use)\b|\bCode's|Crew(?:/Code| or Code| and Code)|\bCodes\b|[Ii]n a Code\b`)
 	for _, line := range strings.Split(body, "\n") {
-		if pattern.MatchString(line) {
+		// Saved Resources fields and the quoted conditional runtime prompt are
+		// technical contracts, not advertisements for the current product set.
+		candidate := strings.ReplaceAll(line, "`Brain:`", "")
+		if strings.HasPrefix(candidate, `{{if eq .KbAccess "shared"}}`) {
+			candidate = strings.ReplaceAll(candidate, "**Shared Brain:**", "**Shared reference knowledge:**")
+		}
+		if pattern.MatchString(candidate) {
 			t.Errorf("%s mentions disabled product: %s", label, line)
 		}
 	}

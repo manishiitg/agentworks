@@ -109,7 +109,7 @@ func migrateWorkflowAgentStepsFromDisk(roots []string, apply, drained bool, out 
 				return err
 			}
 			if kind.Kind == "relay" {
-				_, err := fmt.Fprintf(out, "skip Relay: %s (use its own contract migration)\n", identity)
+				_, err := fmt.Fprintf(out, "skip Flow: %s (use its own contract migration)\n", identity)
 				return err
 			}
 			planAfter, manifestAfter, count, err := stepworkflow.MigrateAgentStepDeployment(string(plan.before), string(manifest.before), now)

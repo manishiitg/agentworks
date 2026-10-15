@@ -53,7 +53,7 @@ const RecoveryLeaseGracePeriod = 17 * time.Second
 // become recovery candidates.
 type InterruptedError struct{ Cause error }
 
-func (e *InterruptedError) Error() string { return "Relay process interrupted: " + e.Cause.Error() }
+func (e *InterruptedError) Error() string { return "Flow process interrupted: " + e.Cause.Error() }
 func (e *InterruptedError) Unwrap() error { return e.Cause }
 func IsInterrupted(err error) bool {
 	var interrupted *InterruptedError
@@ -131,7 +131,7 @@ func read(ctx context.Context, c Files, file string, target interface{}) (bool, 
 		return false, err
 	}
 	if len(result.Content) > 1024*1024 {
-		return false, fmt.Errorf("Relay protocol message exceeds 1 MiB")
+		return false, fmt.Errorf("Flow protocol message exceeds 1 MiB")
 	}
 	return true, json.Unmarshal([]byte(result.Content), target)
 }
@@ -144,7 +144,7 @@ func Run(ctx context.Context, cfg Config) (runErr error) {
 		cfg.DBOSPrototype = cfg.DBOS
 	}
 	if cfg.Client == nil || cfg.CallAgent == nil {
-		return fmt.Errorf("Relay runtime is not configured")
+		return fmt.Errorf("Flow runtime is not configured")
 	}
 	ipc := path.Join(cfg.RunPath, ".relay_ipc")
 	input := map[string]interface{}{"input": cfg.Input, "variables": cfg.Variables}
@@ -315,7 +315,7 @@ func Run(ctx context.Context, cfg Config) (runErr error) {
 			continue
 		}
 		if call.ID != id {
-			return fmt.Errorf("invalid Relay call identity")
+			return fmt.Errorf("invalid Flow call identity")
 		}
 		if cfg.DBOSPrototype != nil {
 			call.AttemptID = path.Base(ipc)

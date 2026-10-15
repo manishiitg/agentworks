@@ -11,7 +11,7 @@ vi.mock('../../../utils/projectAskConversation', () => ({ openProjectAskConversa
 vi.mock('../../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: send }))
 vi.mock('../../../hooks/useLiveRefetch', () => ({ useLiveRefetch: vi.fn() }))
 vi.mock('../../../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { id: auth.id } }) }))
-vi.mock('../../ChatArea', () => ({ default: ({ tabId }: { tabId: string }) => <div data-native-tab={tabId}>Existing Relay conversation and replies</div> }))
+vi.mock('../../ChatArea', () => ({ default: ({ tabId }: { tabId: string }) => <div data-native-tab={tabId}>Existing Flow conversation and replies</div> }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 const cleanups: (() => Promise<void>)[] = []
@@ -65,7 +65,7 @@ it('shows shared run diagnostics while keeping Run chat and draft tests unavaila
   const { host } = await mount()
   expect(host.textContent).toContain('Started by finance-b')
   expect(host.textContent).toContain('Missing invoice date')
-  expect(host.textContent).toContain('Ask is unavailable for this Relay.')
+  expect(host.textContent).toContain('Ask is unavailable for this Flow.')
   expect([...host.querySelectorAll('option')].some(item => item.value === 'draft')).toBe(false)
   expect([...host.querySelectorAll('button')].some(item => item.textContent === 'Ask about this run')).toBe(false)
   expect(openAsk).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled()

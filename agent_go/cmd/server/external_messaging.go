@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Slack and WhatsApp for a workflow, Relay or Crew over MCP, through the Slack
+// Slack and WhatsApp for a workflow, Flow or Crew over MCP, through the Slack
 // tab's own handlers and their owner check. Seeing the setup, routing
 // channels (each new route is tested with the app's dry run), and choosing
 // which existing bot answers. Connecting a new Slack bot (a token or the app
@@ -16,8 +16,8 @@ import (
 // phone acts as its owner, so pairing stays behind a browser sign-in).
 
 func externalMessagingDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_messaging", "Slack and WhatsApp for a workflow, Relay or Crew. status: the Slack bot it uses, the channels routed to it and the bots you may choose. set_target: name, description and slug shown in Slack's \"who should answer\" picker (pass only what you want to change; an empty value goes back to the product's). add_channel / remove_channel: route a Slack channel (exact ID like C0123ABCD) to it; a new route is tested with the app's dry run (nothing is posted). test_channel: run that dry run again. use_bot: answer through one of the listed bots (connection_id, or \"shared\" for the shared bot). whatsapp_link: where to pair your WhatsApp in the app (scan the QR code with your phone; pairing is never done over MCP). Connecting a new Slack bot also stays in the app. Changes need the owner.", true, false, map[string]any{
-		"workflow_id":   externalString("Workflow or Relay ID from list_workflows. Pass this or crew_id."),
+	add("manage_messaging", "Slack and WhatsApp for a workflow, Flow or Crew. status: the Slack bot it uses, the channels routed to it and the bots you may choose. set_target: name, description and slug shown in Slack's \"who should answer\" picker (pass only what you want to change; an empty value goes back to the product's). add_channel / remove_channel: route a Slack channel (exact ID like C0123ABCD) to it; a new route is tested with the app's dry run (nothing is posted). test_channel: run that dry run again. use_bot: answer through one of the listed bots (connection_id, or \"shared\" for the shared bot). whatsapp_link: where to pair your WhatsApp in the app (scan the QR code with your phone; pairing is never done over MCP). Connecting a new Slack bot also stays in the app. Changes need the owner.", true, false, map[string]any{
+		"workflow_id":   externalString("Workflow or Flow ID from list_workflows. Pass this or crew_id."),
 		"crew_id":       externalString("Crew ID from list_crews. Pass this or workflow_id."),
 		"action":        map[string]any{"type": "string", "enum": []any{"status", "set_target", "add_channel", "remove_channel", "test_channel", "use_bot", "whatsapp_link"}},
 		"channel_id":    externalString("Exact Slack channel ID, e.g. C0123ABCD."),

@@ -121,7 +121,7 @@ func TestExternalMCPLocalProductSelection(t *testing.T) {
 	defer cancel()
 	cli := dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
 	init := initializeExternalMCP(t, ctx, cli)
-	for _, absent := range []string{"Brain stores", "Vault management", "Relays:", "<!-- product:"} {
+	for _, absent := range []string{"Brain stores", "Vault management", "Flows:", "<!-- product:"} {
 		if strings.Contains(init.Instructions, absent) {
 			t.Fatalf("local initialize advertised %s", absent)
 		}

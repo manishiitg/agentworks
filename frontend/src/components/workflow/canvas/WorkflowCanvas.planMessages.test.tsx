@@ -109,7 +109,7 @@ it('explains scripted execution and human branch choice using their own saved co
   }, host => {
     expect(host.textContent).toContain('Script')
     expect(host.textContent).toContain('Errors fail the step; automatic repair is off.')
-    expect(host.textContent).not.toContain('Errors stop the Relay')
+    expect(host.textContent).not.toContain('Errors stop the Flow')
     expect(host.textContent).toContain('Script loop')
     expect(host.textContent).toContain('Maximum iterations: 3')
     expect(host.textContent).not.toContain('First user message')

@@ -60,7 +60,7 @@ it('offers to add a function when there is none', async () => {
   expect(onAsk).toHaveBeenCalled()
 })
 
-it('shows the durable Relay endpoint without the continuing ask function', async () => {
+it('shows the durable Flow endpoint without the continuing ask function', async () => {
   const host = await mount(undefined, true)
   expect(host.querySelector('[data-testid="workflow-function-ask"]')).toBeNull()
   expect(host.textContent).toContain('External API request')

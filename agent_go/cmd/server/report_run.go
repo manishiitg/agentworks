@@ -26,7 +26,7 @@ import (
 
 // Live report data (window.report.run).
 //
-// A Workflow, Relay, Crew or Code Dashboard can run one of
+// A Workflow, Flow, Crew or Code Dashboard can run one of
 // its own scripts under code/ and use
 // the JSON it prints. The script runs in the same sandbox as a scripted step:
 // read access to the workflow, a read-only DB snapshot, the workflow's
@@ -183,7 +183,7 @@ func (api *StreamingAPI) handleReportRun(w http.ResponseWriter, r *http.Request)
 	}
 	clean, valid := cleanWorkspaceReadPath(workspacePath, false)
 	if !valid {
-		http.Error(w, "a Workflow, Relay, Crew or Code project root is required", http.StatusBadRequest)
+		http.Error(w, "a Workflow, Flow, Crew or Code project root is required", http.StatusBadRequest)
 		return
 	}
 	crew, isCrew := resolveCrewPath(r.Context(), claims.UserID, clean)
@@ -191,7 +191,7 @@ func (api *StreamingAPI) handleReportRun(w http.ResponseWriter, r *http.Request)
 	root, project, projectRoot := ref.ProjectRoot()
 	isCode := projectRoot && root == workspaceref.CodeProjectsRoot && !strings.HasPrefix(project, ".")
 	if (isCrew && crew.Rest != "") || (!isCrew && !isCode && !isReportRunWorkflowRoot(clean)) {
-		http.Error(w, "a Workflow, Relay, Crew or Code project root is required", http.StatusBadRequest)
+		http.Error(w, "a Workflow, Flow, Crew or Code project root is required", http.StatusBadRequest)
 		return
 	}
 	if isCrew {

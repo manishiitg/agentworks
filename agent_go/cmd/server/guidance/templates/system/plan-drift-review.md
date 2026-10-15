@@ -96,7 +96,7 @@ plan.json could not be read) and already carrying Go-computed results for:
   in the knowledgebase) and reusable HOW goes to a learnings skill named under
   Guides; then run `check_plan_no_loss` and record it `fixed`.
 - `resource_intent` — on workflows at contract 1.0.49 or later: the agent's
-  `## Resources` section states its knowledge base, database, Brain and learnings use
+  `## Resources` section states its knowledge base, database<!-- product:knowledgebase -->, Brain<!-- /product --> and learnings use
   (or `none`), never says `none` for a reference the description names, and never
   describes use of a store its own configuration switches off (an explicit `none`;
   unset access defaults to read). Fix a `fail` in this review: rewrite the four

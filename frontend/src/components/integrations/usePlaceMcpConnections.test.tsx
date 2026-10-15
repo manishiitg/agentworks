@@ -255,7 +255,7 @@ it('binds private sign-in to the product chat and avoids a duplicate focus notif
 })
 
 
-it.each(['Crew', 'Code', 'workflow', 'Relay'])('adds multiple named accounts through the shared UI in %s', async noun => {
+it.each(['Crew', 'Code', 'workflow', 'Flow'])('adds multiple named accounts through the shared UI in %s', async noun => {
   catalogMock.entries = [{ name: 'notion', catalog: 'Notion', sign_in: true, needs_client: false }]
   placeMock.list.mockResolvedValue([
     { name: 'notion_a', label: 'Notion · Engineering', catalog: 'Notion', url: 'https://x', owner: 'u1', owner_name: 'me', mine: true, connected: true, active: true, sign_in: true },

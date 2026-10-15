@@ -24,7 +24,7 @@ const relayReleasesFolder = ".relay_releases"
 
 var relayVersionPattern = regexp.MustCompile(`^v[1-9][0-9]*$`)
 var relayPublishLocks sync.Map
-var errRelayVersionNotFound = errors.New("Relay version not found")
+var errRelayVersionNotFound = errors.New("Flow version not found")
 
 type relayRelease struct {
 	Version         string    `json:"version"`
@@ -47,7 +47,7 @@ func relayReleaseRoot(workspace string) string {
 }
 
 // relayDraftWorkspaceForRelease maps a release's execution workspace back to
-// its live Relay identity. Credentials and grants belong to that identity,
+// its live Flow identity. Credentials and grants belong to that identity,
 // while plan/code and run artifacts remain in the frozen release workspace.
 func relayDraftWorkspaceForRelease(ctx context.Context, workspace string) (string, error) {
 	clean := path.Clean(workspace)
@@ -60,22 +60,22 @@ func relayDraftWorkspaceForRelease(ctx context.Context, workspace string) (strin
 		parts = strings.Split(root, "/")
 	}
 	if len(parts) != 4 || !relayVersionPattern.MatchString(parts[3]) {
-		return "", errors.New("invalid Relay release workspace")
+		return "", errors.New("invalid Flow release workspace")
 	}
 	manifest, found, err := ReadWorkflowManifest(ctx, clean)
 	if err != nil || !found || manifest.Kind != "relay" {
-		return "", errors.New("published Relay manifest unavailable")
+		return "", errors.New("published Flow manifest unavailable")
 	}
 	draft, live, err := findWorkflowManifestByID(ctx, manifest.ID)
 	if err != nil || live == nil || live.Kind != "relay" || relayReleaseWorkspace(draft, parts[3]) != clean {
-		return "", errors.New("published Relay has no matching live identity")
+		return "", errors.New("published Flow has no matching live identity")
 	}
 	return draft, nil
 }
 
 func readRelayRelease(ctx context.Context, workspace, version string) (*relayRelease, string, error) {
 	if !relayVersionPattern.MatchString(version) {
-		return nil, "", fmt.Errorf("invalid Relay version %q", version)
+		return nil, "", fmt.Errorf("invalid Flow version %q", version)
 	}
 	releaseWorkspace := relayReleaseWorkspace(workspace, version)
 	raw, exists, err := readFileFromWorkspace(ctx, path.Join(releaseWorkspace, "release.json"))
@@ -87,7 +87,7 @@ func readRelayRelease(ctx context.Context, workspace, version string) (*relayRel
 	}
 	var release relayRelease
 	if err := json.Unmarshal([]byte(raw), &release); err != nil || release.Version != version || release.Hash == "" || len(release.Files) == 0 || release.FileCount != len(release.Files) {
-		return nil, "", fmt.Errorf("Relay version %q has invalid release metadata", version)
+		return nil, "", fmt.Errorf("Flow version %q has invalid release metadata", version)
 	}
 	return &release, releaseWorkspace, nil
 }
@@ -110,7 +110,7 @@ func relaySnapshotHash(content map[string]string) string {
 
 func verifyRelayRelease(ctx context.Context, release *relayRelease, workspace string) error {
 	if release == nil {
-		return errors.New("missing Relay release")
+		return errors.New("missing Flow release")
 	}
 	paths, err := listWorkspaceFilesRecursive(ctx, workspace)
 	if err != nil {
@@ -127,16 +127,16 @@ func verifyRelayRelease(ctx context.Context, release *relayRelease, workspace st
 			continue
 		}
 		if !known[relative] {
-			return fmt.Errorf("published Relay contains unexpected file %q", relative)
+			return fmt.Errorf("published Flow contains unexpected file %q", relative)
 		}
 		raw, exists, err := readFileFromWorkspace(ctx, file)
 		if err != nil || !exists {
-			return fmt.Errorf("published Relay file %q is unavailable", relative)
+			return fmt.Errorf("published Flow file %q is unavailable", relative)
 		}
 		content[relative] = raw
 	}
 	if len(content) != release.FileCount || relaySnapshotHash(content) != release.Hash {
-		return fmt.Errorf("published Relay %s changed after publishing", release.Version)
+		return fmt.Errorf("published Flow %s changed after publishing", release.Version)
 	}
 	return nil
 }
@@ -144,13 +144,13 @@ func verifyRelayRelease(ctx context.Context, release *relayRelease, workspace st
 func activeRelayRelease(ctx context.Context, workspace string) (*relayRelease, string, error) {
 	raw, exists, err := readFileFromWorkspace(ctx, path.Join(relayReleaseRoot(workspace), "active.json"))
 	if err != nil || !exists {
-		return nil, "", errors.New("Relay has no published version")
+		return nil, "", errors.New("Flow has no published version")
 	}
 	var pointer struct {
 		Version string `json:"version"`
 	}
 	if json.Unmarshal([]byte(raw), &pointer) != nil {
-		return nil, "", errors.New("Relay active version is invalid")
+		return nil, "", errors.New("Flow active version is invalid")
 	}
 	return readRelayRelease(ctx, workspace, pointer.Version)
 }
@@ -211,7 +211,7 @@ func relayRuntimeFile(relative string) bool {
 	return false
 }
 
-// publishRelayRelease freezes a Relay in a nested workspace. The ordinary
+// publishRelayRelease freezes a Flow in a nested workspace. The ordinary
 // runtime then reads that workspace unchanged while the parent remains a draft.
 func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, error) {
 	lockAny, _ := relayPublishLocks.LoadOrStore(workspace, &sync.Mutex{})
@@ -221,21 +221,21 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 
 	manifest, found, err := ReadWorkflowManifest(ctx, workspace)
 	if err != nil || !found || manifest.Kind != "relay" {
-		return nil, errors.New("Relay manifest not found")
+		return nil, errors.New("Flow manifest not found")
 	}
 	if err := ValidateManifest(manifest); err != nil {
 		return nil, err
 	}
 	variableRaw, exists, err := readFileFromWorkspace(ctx, path.Join(workspace, "variables/variables.json"))
 	if err != nil {
-		return nil, fmt.Errorf("Relay configuration unavailable: %w", err)
+		return nil, fmt.Errorf("Flow configuration unavailable: %w", err)
 	}
 	if !exists {
-		return nil, errors.New("Relay configuration unavailable: variables/variables.json not found")
+		return nil, errors.New("Flow configuration unavailable: variables/variables.json not found")
 	}
 	var variables stepworkflow.VariablesManifest
 	if err := json.Unmarshal([]byte(variableRaw), &variables); err != nil {
-		return nil, fmt.Errorf("invalid Relay configuration: %w", err)
+		return nil, fmt.Errorf("invalid Flow configuration: %w", err)
 	}
 	var plan *stepworkflow.PlanningResponse
 	if isPythonRelay(manifest) {
@@ -245,7 +245,7 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 	} else {
 		plan, err = readPlanFromWorkspace(ctx, workspace)
 		if err != nil {
-			return nil, fmt.Errorf("read Relay graph: %w", err)
+			return nil, fmt.Errorf("read Flow graph: %w", err)
 		}
 		if err := stepworkflow.ValidateRelayPlanStructure(plan, manifest.RelayOutputStepID); err != nil {
 			return nil, err
@@ -277,12 +277,12 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 		}
 	}
 	if len(functions) == 0 {
-		return nil, errors.New("Relay needs an enabled function trigger before publishing")
+		return nil, errors.New("Flow needs an enabled function trigger before publishing")
 	}
 	sort.Strings(functions)
 	files, err := listWorkspaceFilesRecursive(ctx, workspace)
 	if err != nil {
-		return nil, fmt.Errorf("list Relay files: %w", err)
+		return nil, fmt.Errorf("list Flow files: %w", err)
 	}
 	content := map[string]string{}
 	var size int
@@ -292,18 +292,18 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 			continue
 		}
 		if len(content) >= 5000 {
-			return nil, errors.New("Relay has more than 5000 publishable files")
+			return nil, errors.New("Flow has more than 5000 publishable files")
 		}
 		raw, exists, err := readFileFromWorkspace(ctx, file)
 		if err != nil || !exists {
-			return nil, fmt.Errorf("read Relay file %q: %w", relative, err)
+			return nil, fmt.Errorf("read Flow file %q: %w", relative, err)
 		}
 		if !utf8.ValidString(raw) {
-			return nil, fmt.Errorf("Relay file %q is not UTF-8 text", relative)
+			return nil, fmt.Errorf("Flow file %q is not UTF-8 text", relative)
 		}
 		size += len(raw)
 		if size > 50*1024*1024 {
-			return nil, errors.New("Relay publishable files exceed 50 MiB")
+			return nil, errors.New("Flow publishable files exceed 50 MiB")
 		}
 		content[relative] = raw
 	}
@@ -313,7 +313,7 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 	}
 	for _, required := range requiredFiles {
 		if _, ok := content[required]; !ok {
-			return nil, fmt.Errorf("Relay needs %s before publishing", required)
+			return nil, fmt.Errorf("Flow needs %s before publishing", required)
 		}
 	}
 	// Script nodes and the scripts agents call as tools (scripted routes,
@@ -335,10 +335,10 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 	}
 	for _, script := range scripts {
 		if manifest.CodeLayoutVersion != 1 {
-			return nil, fmt.Errorf("Relay script %q needs code_layout_version 1 before publishing", script.ID)
+			return nil, fmt.Errorf("Flow script %q needs code_layout_version 1 before publishing", script.ID)
 		}
 		if _, exists := content[path.Join("code", script.ID, "main.py")]; !exists {
-			return nil, fmt.Errorf("Relay script %q needs saved code/%s/main.py", script.ID, script.ID)
+			return nil, fmt.Errorf("Flow script %q needs saved code/%s/main.py", script.ID, script.ID)
 		}
 	}
 	// Hash the exact file names and contents, independent of workspace listing order.
@@ -394,7 +394,7 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 			}
 		}
 		if err := writeFileToWorkspace(ctx, path.Join(destination, key), content[key]); err != nil {
-			return nil, fmt.Errorf("copy Relay file %q: %w", key, err)
+			return nil, fmt.Errorf("copy Flow file %q: %w", key, err)
 		}
 	}
 	release := &relayRelease{Version: version, SourceWorkspace: workspace, Hash: hash, PublishedAt: time.Now().UTC(), Functions: functions, OutputStep: manifest.RelayOutputStepID, FileCount: len(keys), Files: keys}
@@ -426,10 +426,10 @@ func (api *StreamingAPI) registerRelayReleaseTools(registrar interface {
 	RegisterCustomTool(string, string, map[string]interface{}, func(context.Context, map[string]interface{}) (string, error), string) error
 }, workspace, userID string) error {
 	params := map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}
-	if err := registrar.RegisterCustomTool("get_relay_releases", "List published versions and the active version of this Relay.", params, func(ctx context.Context, _ map[string]interface{}) (string, error) {
+	if err := registrar.RegisterCustomTool("get_relay_releases", "List published versions and the active version of this Flow.", params, func(ctx context.Context, _ map[string]interface{}) (string, error) {
 		manifest, found, err := ReadWorkflowManifest(ctx, workspace)
 		if err != nil || !found || manifest.Kind != "relay" {
-			return "Relay not found", nil
+			return "Flow not found", nil
 		}
 		releases, err := listRelayReleases(ctx, workspace)
 		if err != nil {
@@ -445,10 +445,10 @@ func (api *StreamingAPI) registerRelayReleaseTools(registrar interface {
 	}, "relay_release_tools"); err != nil {
 		return err
 	}
-	return registrar.RegisterCustomTool("publish_relay", "Publish the current validated Relay program and executable files as a new immutable API version. Returns the active version and content hash. Builder tests still use the draft; API calls use published versions.", params, func(ctx context.Context, _ map[string]interface{}) (string, error) {
+	return registrar.RegisterCustomTool("publish_relay", "Publish the current validated Flow program and executable files as a new immutable API version. Returns the active version and content hash. Builder tests still use the draft; API calls use published versions.", params, func(ctx context.Context, _ map[string]interface{}) (string, error) {
 		manifest, found, err := ReadWorkflowManifest(ctx, workspace)
 		if err != nil || !found || manifest.Kind != "relay" || workflowAccessForManifest(&UserClaims{UserID: userID}, manifest) != WorkflowAccessOwner && workflowAccessForManifest(&UserClaims{UserID: userID}, manifest) != WorkflowAccessWrite {
-			return "Relay write access required", nil
+			return "Flow write access required", nil
 		}
 		release, err := publishRelayRelease(ctx, workspace)
 		if err != nil {
@@ -484,7 +484,7 @@ func (api *StreamingAPI) handleListRelayReleases(w http.ResponseWriter, r *http.
 		}
 	}
 	// The existing run-folder and execution-log readers take a workspace path.
-	// Give the Relay UI each release's path so it can reuse those readers.
+	// Give the Flow UI each release's path so it can reuse those readers.
 	type releaseWithWorkspace struct {
 		relayRelease
 		WorkspacePath string `json:"workspace_path"`

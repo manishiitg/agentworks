@@ -198,7 +198,7 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
             const isBlank = isBlankWorkflowBuilderTab(tab, activePresetId || '', tabEvents)
             const isPersistentChat = tab.metadata?.isViewOnly !== true && tab.metadata?.phaseId === 'workflow-builder'
             const workflowName = workflowPresets.find(preset => preset.id === tab.metadata?.presetQueryId)?.label?.trim()
-              || (isRelaySurface ? 'Relay' : 'Workflow')
+              || (isRelaySurface ? 'Flow' : 'Workflow')
             return (
               <AgentWorksChatTabItem
                 key={tab.tabId}

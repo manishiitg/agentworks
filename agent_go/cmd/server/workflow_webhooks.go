@@ -584,7 +584,7 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 	}
 	if manifest.Kind == "relay" {
 		if len(groups) != 0 {
-			http.Error(w, "Relays do not accept group_names; configure variables directly", 400)
+			http.Error(w, "Flows do not accept group_names; configure variables directly", 400)
 			return
 		}
 		if index >= 0 {

@@ -207,7 +207,7 @@ func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *
 
 	if isPythonRelay(manifest) {
 		if err := initializePythonRelayWorkspaceWithSource(r.Context(), req.WorkspacePath, defaultNativeDBOSRelaySource); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to initialize Relay: %v", err), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Failed to initialize Flow: %v", err), http.StatusInternalServerError)
 			return
 		}
 	}
@@ -430,7 +430,7 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 	}
 	if req.RelayOutputStepID != nil {
 		if isPythonRelay(manifest) && strings.TrimSpace(*req.RelayOutputStepID) != "" {
-			http.Error(w, "Python Relays return run(INPUT, ctx); no output step can be selected", http.StatusBadRequest)
+			http.Error(w, "Python Flows return run(INPUT, ctx); no output step can be selected", http.StatusBadRequest)
 			return
 		}
 		manifest.RelayOutputStepID = strings.TrimSpace(*req.RelayOutputStepID)

@@ -19,8 +19,8 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
 
-// Workflow, Relay and Crew settings over MCP: the fields the app's settings
-// panels save. Workflows and Relays save through the app's manifest handler
+// Workflow, Flow and Crew settings over MCP: the fields the app's settings
+// panels save. Workflows and Flows save through the app's manifest handler
 // and its owner/editor check; Crews rewrite the Crew's runtime manifest like
 // the Crew panels, owner only (as update_crew). Every choice the panels only
 // offer from a list (model accounts, MCP servers, skills, shared secrets) is
@@ -39,11 +39,11 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 	}
 	target := func() map[string]any {
 		return map[string]any{
-			"workflow_id": externalString("Workflow or Relay ID from list_workflows. Pass this or crew_id."),
+			"workflow_id": externalString("Workflow or Flow ID from list_workflows. Pass this or crew_id."),
 			"crew_id":     externalString("Crew ID from list_crews. Pass this or workflow_id."),
 		}
 	}
-	add("get_settings", "Read a workflow's, Relay's or Crew's settings: models per role, MCP servers and tools, skills, secrets (names and whether a value is stored; never values), browser mode, notifications (workflows and Relays), plus a version for update_settings.", false, false, target())
+	add("get_settings", "Read a workflow's, Flow's or Crew's settings: models per role, MCP servers and tools, skills, secrets (names and whether a value is stored; never values), browser mode, notifications (workflows and Flows), plus a version for update_settings.", false, false, target())
 	props := target()
 	for key, value := range map[string]any{
 		"expected_version": externalString("Version from settings action=get; the update is refused if the settings changed since."),
@@ -59,7 +59,7 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 			"use_shared":  names,
 			"stop_shared": names,
 		}, "description": "set/remove store or delete secret values (owner only); select/unselect choose stored secrets; use_shared/stop_shared choose shared (global) secrets by name."},
-		"browser_mode":  map[string]any{"type": "string", "enum": []any{"auto", "headless", "none", "cdp"}},
+		"browser_mode": map[string]any{"type": "string", "enum": []any{"auto", "headless", "none", "cdp"}},
 		"after_manual_run": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows only: what runs after a full run you start yourself (schedules have their own after_run in manage_schedules). Backup and publish need to be set up first (in the app's Builder: /backup, /publish).", "properties": map[string]any{
 			"backup": map[string]any{"type": "boolean"}, "publish": map[string]any{"type": "boolean"}, "notify": map[string]any{"type": "boolean"},
 		}},
@@ -68,14 +68,14 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 			"autonomy_level": map[string]any{"type": "integer", "minimum": 0, "maximum": 5},
 			"pace":           map[string]any{"type": "string", "enum": []any{"calm", "steady", "aggressive"}},
 		}},
-		"notifications": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows and Relays only.", "properties": map[string]any{
+		"notifications": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows and Flows only.", "properties": map[string]any{
 			"run_instructions": map[string]any{"type": "string", "maxLength": 4000}, "pulse_instructions": map[string]any{"type": "string", "maxLength": 4000},
 			"run_channels": names, "pulse_channels": names,
 		}},
 	} {
 		props[key] = value
 	}
-	add("update_settings", "Change a workflow's, Relay's or Crew's settings. Send only what changes. Workflows and Relays need owner or editor access, Crews their owner; setting or removing secret values needs owner. MCP servers come from your own connections, shared Vault connections the server allows you, or the catalog; one that still needs a sign-in is attached and listed under pending_sign_in. Returns the new settings.", true, false, props)
+	add("update_settings", "Change a workflow's, Flow's or Crew's settings. Send only what changes. Workflows and Flows need owner or editor access, Crews their owner; setting or removing secret values needs owner. MCP servers come from your own connections, shared Vault connections the server allows you, or the catalog; one that still needs a sign-in is attached and listed under pending_sign_in. Returns the new settings.", true, false, props)
 }
 
 // externalSettingsState is the part of a workflow's or Crew's capabilities
@@ -568,7 +568,7 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 		return
 	}
 	if _, ok := args["notifications"]; ok {
-		externalError(w, 400, "invalid_settings", "notifications apply to workflows and Relays only.")
+		externalError(w, 400, "invalid_settings", "notifications apply to workflows and Flows only.")
 		return
 	}
 	if _, ok := args["pulse"]; ok {

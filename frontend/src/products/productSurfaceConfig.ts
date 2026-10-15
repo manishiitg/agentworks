@@ -3,7 +3,7 @@ export const PRODUCT_SURFACES = ['agentworks', 'relays', 'video-studio', 'sparkq
 export type ProductSurface = (typeof PRODUCT_SURFACES)[number]
 
 export const PRODUCT_SURFACE_LABELS: Record<ProductSurface, string> = {
-  agentworks: 'Goals', relays: 'Relays', 'video-studio': 'Video Studio',
+  agentworks: 'Goals', relays: 'Flows', 'video-studio': 'Video Studio',
   sparkquill: 'SparkQuill', work: 'Crew', code: 'Code', 'mcp-gateway': 'Vault', 'llm-gateway': 'LLM Gateway', knowledgebase: 'Brain', bullpen: 'Bullpen',
 }
 

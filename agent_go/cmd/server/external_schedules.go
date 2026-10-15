@@ -16,7 +16,7 @@ import (
 // app's own scheduler handlers, so validation (cron, calendar, groups, the
 // collision guard) and permissions match the Schedules page: changes need
 // the owner, run now and stop need the workflow to be visible, and Crew
-// schedules follow the Crew's owner. Relays have no schedules (they use
+// schedules follow the Crew's owner. Flows have no schedules (they use
 // function triggers). The older list_schedules, trigger_schedule and
 // get_schedule_runs stay for workflows.
 
@@ -26,7 +26,7 @@ var externalScheduleActions = []any{"list", "create", "update", "delete", "enabl
 var externalScheduleTargetFields = []string{"workspace_path", "entity_type", "product_profile_id", "product_project_id", "id"}
 
 func externalScheduleDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_schedules", "List, create, change, delete, enable, disable, run now, stop, or read the run history of a workflow's or Crew's schedules (not Relays: they use function triggers). Pass workflow_id or crew_id. Changes need the owner, as on the Schedules page; run_now and stop need run access.", true, false, map[string]any{
+	add("manage_schedules", "List, create, change, delete, enable, disable, run now, stop, or read the run history of a workflow's or Crew's schedules (not Flows: they use function triggers). Pass workflow_id or crew_id. Changes need the owner, as on the Schedules page; run_now and stop need run access.", true, false, map[string]any{
 		"workflow_id": externalString("Workflow ID from list_workflows. Pass this or crew_id."),
 		"crew_id":     externalString("Crew ID from list_crews. Pass this or workflow_id."),
 		"action":      map[string]any{"type": "string", "enum": externalScheduleActions},
