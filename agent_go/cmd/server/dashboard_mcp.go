@@ -74,13 +74,21 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		}
 		add(name, descriptions[action], dashboardMutation(action), false, props, required...)
 	}
-	add("export_dashboard_motion", "Start or check a background MP4 export from an authored animation and saved data snapshot. Use a unique submission_id to start; retrying the same submission returns the same export. Poll with export_id until completed or failed. Builder only; same project authoring consent and runs:execute as preview. Saves the video and editable source in this project. Never runs automatically when a dashboard opens.", true, false, map[string]any{
+	add("export_dashboard_motion", "Export a published dashboard as an MP4 with its layout, selected theme and frozen data. Native dashboard motion is seeked through its final state; a page without a shared motion clock exports as a still video with a note. A separate explainer is optional via composition_path. Use a unique submission_id to start; retrying returns the original snapshot. Poll with export_id. Builder only; existing authoring and runs:execute consent. Returns the saved video path under db/assets for playback/download. Never runs on page load.", true, false, map[string]any{
 		"workflow_id":      externalString("Workflow or Flow ID. Pass exactly one of workflow_id, crew_id or workspace."),
 		"crew_id":          externalString("Crew ID."),
 		"workspace":        externalString("Project root, for an owned Code project."),
 		"export_id":        externalString("Export ID from an earlier call; pass to check its progress/result without starting another export."),
 		"submission_id":    externalString("Stable unique request name for a new export (max 128 characters); reuse only to retry the same composition."),
 		"composition_path": externalString("Folder under code/motion/ with a standalone HyperFrames index.html, local assets and snapshot.json containing as_of, source and data."),
+		"source_mode":      map[string]any{"type": "string", "enum": []any{"dashboard", "composition"}, "description": "dashboard is the default; composition explicitly exports a separately authored video. Passing composition_path also selects the separate video for compatibility."},
+		"dashboard_id":     externalString("Published dashboard slug to export. May be omitted when the project has one published dashboard."),
+		"revision":         externalString("Exact published revision; defaults to the current publication. Retries retain the original snapshot."),
+		"theme":            map[string]any{"type": "string", "enum": []any{"dark", "light"}, "description": "Theme to capture; pass the person's selected dashboard theme. Defaults to dark."},
+		"viewport_width":   externalInteger(320, 3840),
+		"viewport_height":  externalInteger(180, 3840),
+		"duration_s":       map[string]any{"type": "number", "minimum": 0, "maximum": 600, "description": "Playback seconds. Omit to use the dashboard clock's duration, or one second for a still page."},
+		"fps":              externalInteger(1, 60),
 	})
 	shareProps := map[string]any{
 		"workflow_id": externalString("Goal/workflow ID from workflow action=list. Also accepts an existing Flow ID for compatibility. Pass exactly one project selector."),

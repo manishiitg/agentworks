@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -16,6 +17,17 @@ import (
 const reportMediaScope = "report-media"
 const reportMediaStreamPath = "/api/workflow/report-media"
 const reportMediaTTL = 30 * time.Minute
+
+func observeDashboardMedia(w http.ResponseWriter, r *http.Request, stage string, workspace, file *string) (http.ResponseWriter, func()) {
+	recorded := &statusCapturingResponseWriter{ResponseWriter: w}
+	return recorded, func() {
+		status := recorded.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		log.Printf("[DASHBOARD_MEDIA] stage=%s workspace=%q path=%q method=%s status=%d bytes=%d", stage, *workspace, *file, r.Method, status, recorded.bytes)
+	}
+}
 
 // Only durable media can be embedded. Reject ambiguous paths rather than
 // cleaning traversal into a different authorized resource.
@@ -61,8 +73,11 @@ func (api *StreamingAPI) handleReportMediaURL(w http.ResponseWriter, r *http.Req
 		Workspace string `json:"workspace"`
 		Path      string `json:"path"`
 	}
+	var finish func()
+	w, finish = observeDashboardMedia(w, r, "url", &body.Workspace, &body.Path)
+	defer finish()
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&body) != nil || !validReportMediaPath(body.Workspace, body.Path) {
-		http.Error(w, "expected a workspace and media path under db/assets/", http.StatusBadRequest)
+		http.Error(w, "This video needs a saved project asset. Use the path returned by Export, or ask the Builder to save the video under db/assets/.", http.StatusBadRequest)
 		return
 	}
 	claims := GetUserFromContext(r.Context())
@@ -100,6 +115,13 @@ func (api *StreamingAPI) handleReportMediaURL(w http.ResponseWriter, r *http.Req
 
 func (api *StreamingAPI) handleReportMediaStream(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
+	workspace, file := "", ""
+	if claims != nil {
+		workspace, file = claims.ScopeWorkspace, claims.ScopeFile
+	}
+	var finish func()
+	w, finish = observeDashboardMedia(w, r, "stream", &workspace, &file)
+	defer finish()
 	if claims == nil || claims.Scope != reportMediaScope || !validReportMediaPath(claims.ScopeWorkspace, claims.ScopeFile) {
 		http.Error(w, "file-scoped media token required", http.StatusForbidden)
 		return

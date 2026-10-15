@@ -17,6 +17,8 @@ import { createReportQuery } from '../components/workflow/reportWidgets/reportQu
 
 import type { WorkflowCostsResponse } from '../services/api-types'
 import type { ReportDataApi } from '../components/workflow/reportWidgets/reportEmbedContext'
+import { reportMotionCapture } from '../components/workflow/reportWidgets/reportMotion'
+import { captureReportData } from './exportSnapshot'
 import {
   applyReportTheme,
   installReportHost,
@@ -64,12 +66,15 @@ const documentPath = /^db\/reports\/(?!.*(?:^|\/)\.\.(?:\/|$))[^\\]+\.html$/i.te
   : 'db/reports/index.html'
 const initialTheme: ReportHostTheme = params.get('theme') === 'light' ? 'light' : 'dark'
 const initialWidth = Math.max(320, Number(params.get('width')) || 1280)
+const requestedHeight = Number(params.get('height'))
+const exportHeight = params.get('export') === '1' && Number.isFinite(requestedHeight) && requestedHeight > 0 ? requestedHeight : 0
 
 const openedFiles: string[] = []
 const consoleErrors: string[] = []
 const fetchErrors: string[] = []
 let frame: HTMLIFrameElement | null = null
 let currentTheme: ReportHostTheme = initialTheme
+let exportCapture: ReturnType<typeof captureReportData> | undefined
 
 // "ResizeObserver loop completed with undelivered notifications." is a
 // Chromium-only diagnostic, not a real failure: it fires whenever a
@@ -148,13 +153,11 @@ function createPreviewDataApi(): ReportDataApi {
     // The file endpoint accepts the token as a query parameter, so the URL is
     // usable directly in <img src> / <iframe src> without a blob round-trip.
     mediaUrl: async (path: string) => {
-      const allowed = allowedReportPath(path)
-      if (!allowed?.startsWith('db/assets/')) return null
       const response = await fetch(apiUrl('media-url', {}), {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ workspace, path: allowed }),
+        body: JSON.stringify({ workspace, path }),
       })
-      if (!response.ok) throw new Error(`Media unavailable (HTTP ${response.status})`)
+      if (!response.ok) throw new Error((await response.text()).trim() || `Media unavailable (HTTP ${response.status})`)
       const body = await response.json() as { url: string }
       return new URL(body.url, window.location.href).href
     },
@@ -200,6 +203,7 @@ function snapshot(): PreviewSnapshot {
 function resizeFrame() {
   const doc = frame?.contentDocument
   if (!frame || !doc?.body) return
+  if (exportHeight) return
   const scrollY = doc.defaultView?.scrollY ?? 0
   let maxBottom = 0
   for (const child of Array.from(doc.body.children)) {
@@ -245,7 +249,15 @@ async function start() {
     consoleErrors.push(message)
   })
   window.addEventListener('unhandledrejection', (e) => consoleErrors.push(String((e as PromiseRejectionEvent).reason?.message || e.reason || 'rejection')))
-  ;(window as unknown as { __reportPreview: unknown }).__reportPreview = { getState: snapshot, setTheme, setWidth }
+  ;(window as unknown as { __reportPreview: unknown }).__reportPreview = {
+    getState: snapshot, setTheme, setWidth,
+    motion: () => frame?.contentDocument ? reportMotionCapture(frame.contentDocument) : [],
+    seek: (seconds: number) => frame?.contentDocument ? reportMotionCapture(frame.contentDocument, seconds) : [],
+    freeze: async () => {
+      await frame?.contentDocument?.fonts.ready
+      return exportCapture?.freeze()
+    },
+  }
 
   if (!workspace || !token) {
     setStatus('Missing workspace or token.')
@@ -265,8 +277,10 @@ async function start() {
   frame = document.createElement('iframe')
   frame.id = 'report-preview-frame'
   frame.title = 'Dashboard preview'
+  if (exportHeight) frame.style.height = `${exportHeight}px`
   frame.setAttribute('sandbox', 'allow-same-origin allow-scripts')
-  const dataApi = createPreviewDataApi()
+  exportCapture = captureReportData(createPreviewDataApi(), params.get('export') === '1')
+  const dataApi = exportCapture.api
   frame.addEventListener('load', () => {
     if (!frame) return
     installReportHost(frame, {
@@ -287,8 +301,10 @@ async function start() {
     mirrorLifecycle()
     resizeFrame()
   })
-  shell.appendChild(frame)
+  // Set the authored document before insertion. Otherwise the initial blank
+  // frame can fire load and report ready before this document has loaded.
   frame.srcdoc = withReportBootstrap(report.text)
+  shell.appendChild(frame)
 }
 
 void start()

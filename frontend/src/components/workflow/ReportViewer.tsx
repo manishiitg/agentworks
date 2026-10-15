@@ -118,7 +118,13 @@ function useReportDataApi(workspacePath: string, sendChatMessage: ReportDataApi[
       // retain their `/api` prefix. Without it the SPA fallback answers with
       // index.html (HTTP 200), leaving response.data.url undefined and every
       // native media element pointed at `/undefined`.
-      const response = await api.post('/api/workflow/report-preview/media-url', { workspace: workspacePath, path: allowedPath })
+      let response
+      try {
+        response = await api.post('/api/workflow/report-preview/media-url', { workspace: workspacePath, path: allowedPath })
+      } catch (error) {
+        const detail = (error as { response?: { data?: unknown } })?.response?.data
+        throw new Error(typeof detail === 'string' && detail.trim() ? detail.trim() : 'This video could not be loaded. Ask the Builder to check its saved export.')
+      }
       // Resolve against the configured API origin (also supports remote workspaces).
       return new URL(response.data.url, new URL(getApiBaseUrl(), window.location.href)).href
     }
@@ -147,9 +153,7 @@ function useReportDataApi(workspacePath: string, sendChatMessage: ReportDataApi[
         return renderReportMarkdown(text, reportMarkdownBasePath(path)) || null
       },
       mediaUrl: async (path: string) => {
-        const allowed = allowedReportPath(path)
-        if (!allowed?.startsWith('db/assets/')) return null
-        return mediaUrl(allowed)
+        return mediaUrl(path)
       },
       fileUrl: async (path: string) => {
         const allowed = allowedReportPath(path)

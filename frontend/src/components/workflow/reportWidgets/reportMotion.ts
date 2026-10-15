@@ -33,12 +33,34 @@ export interface ReportMotionApi {
 }
 
 const hosts = new WeakMap<Document, ReportMotionApi>()
+const hostPlayers = new WeakMap<Document, Map<string, ReportMotionPlayer>>()
+
+// Used by the platform capture runtime. This exposes no data or execution API.
+export function reportMotionCapture(doc: Document, seconds?: number) {
+  const players = hostPlayers.get(doc)
+  if (seconds !== undefined) {
+    for (const player of players?.values() ?? []) {
+      player.pause()
+      player.seek(seconds)
+    }
+  }
+  const states = [...(players?.entries() ?? [])].map(([id, player]) => ({ id, ...player.getState() }))
+  for (const [index, animation] of (doc.getAnimations?.() ?? []).entries()) {
+    const end = Number(animation.effect?.getComputedTiming().endTime)
+    if (!Number.isFinite(end) || end <= 0) continue
+    if (seconds !== undefined) { animation.pause(); animation.currentTime = Math.min(seconds * 1000, end) }
+    const time = Number(animation.currentTime ?? 0) / 1000
+    states.push({ id: `animation-${index}`, duration: end / 1000, time, progress: time * 1000 / end, playing: animation.playState === 'running', speed: animation.playbackRate, reducedMotion: false })
+  }
+  return states
+}
 
 export function reportMotionFor(doc: Document, onError: (error: unknown) => void): ReportMotionApi {
   const installed = hosts.get(doc)
   if (installed) return installed
   const win = doc.defaultView!
   const players = new Map<string, ReportMotionPlayer>()
+  hostPlayers.set(doc, players)
   const preference = win.matchMedia?.('(prefers-reduced-motion: reduce)')
   const finite = (value: number, label: string) => {
     if (!Number.isFinite(value)) throw new Error(`${label} must be a finite number`)

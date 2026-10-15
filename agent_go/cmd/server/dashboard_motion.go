@@ -41,11 +41,23 @@ func dashboardMotionGuard(claims *UserClaims, target dashboardTarget, compositio
 	return guard, nil
 }
 
-func (api *StreamingAPI) renderDashboardMotion(parentCtx context.Context, claims *UserClaims, target dashboardTarget, composition, id string) (rendered map[string]any, renderErr error) {
+func (api *StreamingAPI) renderDashboardMotion(parentCtx context.Context, claims *UserClaims, target dashboardTarget, composition, id string, requested ...dashboardExportOptions) (rendered map[string]any, renderErr error) {
 	if !dashboardAuthoringAllowed(claims, &target) {
 		return nil, fmt.Errorf("Ask this project's Builder to export the animation.")
 	}
-	if !validDashboardMotionPath(composition) {
+	var options dashboardExportOptions
+	if len(requested) > 0 {
+		options = requested[0]
+	}
+	faithful := options.SourceMode == "dashboard"
+	if faithful {
+		// The queued source is an exact immutable publication. Recheck its
+		// readability as this person before opening the rendering session.
+		checked, err := resolveDashboardExportSource(parentCtx, target, options)
+		if err != nil || checked.Document != options.Document || checked.SourcePath != composition {
+			return nil, fmt.Errorf("This published dashboard is no longer available. Choose a current dashboard and export again.")
+		}
+	} else if !validDashboardMotionPath(composition) {
 		return nil, fmt.Errorf("Save the animation in a folder under code/motion/ first.")
 	}
 	guard, err := dashboardMotionGuard(claims, target, composition, id)
@@ -54,7 +66,19 @@ func (api *StreamingAPI) renderDashboardMotion(parentCtx context.Context, claims
 	}
 	output := "db/assets/motion/" + id
 	cache := ".sandbox-cache/dashboard-motion"
-	args, err := json.Marshal(map[string]string{"composition_path": composition, "output_path": output, "cache_path": cache, "caller": claims.UserID, "renderer_version": dashboardmotion.RendererVersion})
+	config := map[string]any{"composition_path": composition, "output_path": output, "cache_path": cache, "caller": claims.UserID, "renderer_version": dashboardmotion.RendererVersion}
+	var previewToken string
+	if faithful {
+		previewToken, err = mintReportPreviewToken(claims, target.Root, options.Document)
+		if err != nil {
+			return nil, err
+		}
+		config["source_mode"], config["dashboard_id"], config["revision"], config["document"] = "dashboard", options.Dashboard, options.Revision, options.Document
+		config["preview_origin"], config["workspace"] = api.GetCodeExecAPIURL(), target.Root
+		config["theme"], config["width"], config["height"] = options.Theme, options.Width, options.Height
+		config["duration_s"], config["fps"] = options.Duration, options.FPS
+	}
+	args, err := json.Marshal(config)
 	if err != nil {
 		return nil, err
 	}
@@ -84,6 +108,9 @@ func (api *StreamingAPI) renderDashboardMotion(parentCtx context.Context, claims
 	defer func() {
 		elapsed := time.Since(started).Milliseconds()
 		log.Printf("[DASHBOARD_MOTION_EXPORT] caller=%s project=%s composition=%s output=%s duration_ms=%d bytes=%v result=%s", claims.UserID, target.Root, composition, output, elapsed, rendered["bytes"], status)
+		if faithful {
+			log.Printf("[DASHBOARD_EXPORT] dashboard=%s revision=%s by=%s frames=%v result=%s", options.Dashboard, options.Revision, claims.UserID, rendered["frames"], status)
+		}
 		if api.costLedger != nil {
 			binding := costProductForWorkspace(parentCtx, target.Root)
 			entry := costledger.Entry{
@@ -98,6 +125,10 @@ func (api *StreamingAPI) renderDashboardMotion(parentCtx context.Context, claims
 	}()
 	command := dashboardmotion.Command(args)
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(claims.UserID))
+	if faithful {
+		// Never put this credential in command arguments or saved source.
+		client.SetExtraEnv("SECRET_DASHBOARD_EXPORT_TOKEN", previewToken)
+	}
 	result, execErr := client.ExecuteShellCommand(ctx, workspace.ExecuteShellCommandParams{
 		Command: command, WorkingDirectory: target.Root, Timeout: &seconds,
 		FolderGuard: guard,

@@ -8,6 +8,7 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 
 const fixture = { name: 'dashboard-motion-fixture', configureServer(server) {
+  server.middlewares.use('/__bad-video', (_req, res) => { res.statusCode=404;res.end('Not found') })
   server.middlewares.use('/__motion', async (_req, res) => {
     res.setHeader('Content-Type', 'text/html')
     res.end(await server.transformIndexHtml('/__motion', `<!doctype html>
@@ -66,6 +67,9 @@ try {
   assert.equal(await report.locator('#value').textContent(),'2')
   const errors=await page.evaluate(()=>window.errors)
   assert.deepEqual(errors,[])
+  await page.evaluate(()=>{const doc=document.querySelector('iframe').contentDocument;const video=doc.createElement('video');video.src='/__bad-video';doc.body.appendChild(video)})
+  await report.locator('[data-report-error]').waitFor()
+  assert.match(await report.locator('[data-report-error]').textContent(),/video or audio could not be loaded/)
   console.log('Chromium: play/pause, backward seek, replay, speed, refresh position and reduced motion passed.')
 
   const root=await mkdtemp(path.join(tmpdir(),'dashboard-motion-'))
@@ -82,7 +86,7 @@ try {
   assert.ok(gsap.ok)
   await writeFile(path.join(source,'gsap.js'),await gsap.text())
   await writeFile(path.join(source,'snapshot.json'),JSON.stringify({as_of:'2026-10-15T00:00:00Z',source:'Recorded sample totals',data:[10,20]}))
-  await writeFile(path.join(source,'index.html'),`<!doctype html><html><head><meta charset="utf-8"><script src="gsap.js"></script><style>body{margin:0;background:white;color:black}#root{width:320px;height:180px;display:grid;place-items:center}#value{font:40px sans-serif}</style></head><body><div id="root" data-composition-id="main" data-width="320" data-height="180" data-duration="1"><div id="value">20</div></div><script>window.__timelines=window.__timelines||{};const timeline=gsap.timeline({paused:true});timeline.fromTo('#value',{opacity:0},{opacity:1,duration:1});window.__timelines.main=timeline;</script></body></html>`)
+  await writeFile(path.join(source,'index.html'),`<!doctype html><html><head><meta charset="utf-8"><script src="gsap.js"></script><style>body{margin:0;background:white;color:black}#root{width:320px;height:180px}#bar{height:80px;width:0;background:rgb(20,160,220)}#value{font:40px sans-serif}</style></head><body><div id="root" data-composition-id="main" data-width="320" data-height="180" data-duration="1"><div id="bar"></div><div id="value">0</div></div><script>window.__timelines=window.__timelines||{};const timeline=gsap.timeline({paused:true});timeline.fromTo('#bar',{width:0},{width:307,duration:1,ease:'none'},0);timeline.fromTo('#value',{textContent:0},{textContent:20,duration:1,ease:'none',snap:{textContent:1}},0);window.__timelines.main=timeline;</script></body></html>`)
   const runner=path.resolve('../agent_go/pkg/dashboardmotion/render.py')
   const config={composition_path:'code/motion/check',output_path:'db/assets/motion/check',cache_path:'.sandbox-cache/dashboard-motion',caller:'test-author',renderer_version:'0.8.99'}
   const rendered=spawnSync('python3',[runner,Buffer.from(JSON.stringify(config)).toString('base64')],{cwd:root,env:{...process.env,PATH:path.join(root,'tools/bin')+path.delimiter+process.env.PATH,AGENT_BROWSER_EXECUTABLE_PATH:chromium.executablePath()},encoding:'utf8',timeout:600000,maxBuffer:8*1024*1024})
@@ -95,9 +99,13 @@ try {
   assert.ok(result.duration_s>=0.9 && result.duration_s<=1.2)
   assert.ok(result.bytes>0)
   assert.equal(result.created_by,'test-author')
-  assert.deepEqual(JSON.parse(await readFile(path.join(root,result.snapshot_path),'utf8')).data,[10,20])
+  const decoded=spawnSync(path.join(root,'tools/bin/ffmpeg'),['-v','error','-i',path.join(root,result.path),'-vf','select=eq(n\\,29)','-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','pipe:1'],{maxBuffer:1024*1024})
+  assert.equal(decoded.status,0,decoded.stderr.toString())
+  const finalPixel=[...decoded.stdout.subarray((40*320+305)*3,(40*320+305)*3+3)]
   const evidence=process.env.RUNNER_TEMP && path.join(process.env.RUNNER_TEMP,'browser-check-artifacts')
-  if(evidence){await mkdir(evidence,{recursive:true});await writeFile(path.join(evidence,'dashboard-motion-export.json'),JSON.stringify(result,null,2))}
+  if(evidence){await mkdir(evidence,{recursive:true});await writeFile(path.join(evidence,'dashboard-motion-final-frame.png'),await readFile(path.join(root,result.final_frame_path)));await writeFile(path.join(evidence,'dashboard-motion-export.json'),JSON.stringify(result,null,2))}
+  assert.ok(finalPixel.every((v,i)=>Math.abs(v-[20,160,220][i])<22),`final tween did not reach its endpoint: ${finalPixel}`)
+  assert.deepEqual(JSON.parse(await readFile(path.join(root,result.snapshot_path),'utf8')).data,[10,20])
   console.log('HyperFrames: real 320x180 MP4 encoded and fully decoded; source, snapshot, renderer version and caller preserved.')
 } finally {
   await browser?.close()

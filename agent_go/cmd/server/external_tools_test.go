@@ -88,6 +88,11 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 			return
 		}
 		if (strings.HasPrefix(rel, "Workflow/invoices/") || strings.HasPrefix(rel, "Crew/dashboard-team/") || strings.HasPrefix(rel, "_users/owner/Chats/Code/projects/dashboard-code/")) && strings.HasSuffix(rel, "/raw") {
+			if c.Query("report_media") == "true" {
+				c.Params = append(c.Params, gin.Param{Key: "filepath", Value: "/" + strings.TrimSuffix(rel, "/raw")})
+				workspacehandlers.GetRawDocument(c)
+				return
+			}
 			data, err := os.ReadFile(filepath.Join(f.docs, strings.TrimSuffix(rel, "/raw")))
 			if err != nil {
 				c.Status(404)

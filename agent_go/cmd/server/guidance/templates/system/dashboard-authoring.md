@@ -161,8 +161,10 @@ For requested interactive animation, use `window.report.motion.create` inside
 `window.report.ready`; the designer supplies the visuals and controls. See the
 on-demand `motion-guide` for play/pause/seek, real historical data and refresh.
 Optional MP4 exports use `dashboard action=export_motion` (app Builder:
-`export_dashboard_motion`) with a standalone composition under `code/motion/`
-and a frozen `snapshot.json`. Export needs current authoring access and server
+`export_dashboard_motion`) with the published `dashboard_id`, selected theme
+and viewport. It captures the existing page and freezes its data. A separate
+explainer remains explicit through `composition_path` under `code/motion/`
+and `snapshot.json`. Export needs current authoring access and server
 rendering tools; it is never triggered by dashboard load/refresh. The returned
 video is a snapshot, played via `window.report.mediaUrl(path)`. Design, layout
 and whether to include motion or export controls belong to the user.

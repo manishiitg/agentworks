@@ -408,6 +408,13 @@ export function installReportHost(frame: HTMLIFrameElement, options: ReportHostI
         err?.filename ? `${err.filename}:${err.lineno}` : undefined,
       )
     })
+    // Media errors do not bubble and authored players often have no error
+    // handler. Use the existing report error surface rather than leaving 0:00.
+    doc.addEventListener('error', (event: Event) => {
+      const target = event.target as HTMLMediaElement | null
+      if (target?.tagName !== 'VIDEO' && target?.tagName !== 'AUDIO') return
+      showReportError('This video or audio could not be loaded. Ask the Builder to check the saved export and use its project asset path.', 'media playback')
+    }, true)
     win.addEventListener('unhandledrejection', (e: Event) => {
       const reason = (e as AnyWindow)?.reason
       showReportError(

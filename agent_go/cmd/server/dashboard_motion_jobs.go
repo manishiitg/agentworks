@@ -41,7 +41,7 @@ error TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, UNIQUE(user_id,work
 
 // A durable receipt outlives the HTTP request. Status always rechecks the
 // caller's current project/connection access in the shared dashboard service.
-func (api *StreamingAPI) dashboardMotionOperation(w http.ResponseWriter, r *http.Request, target dashboardTarget, composition, exportID, submission string) {
+func (api *StreamingAPI) dashboardMotionOperation(w http.ResponseWriter, r *http.Request, target dashboardTarget, composition, exportID, submission string, requested ...dashboardExportOptions) {
 	claims := GetUserFromContext(r.Context())
 	if !dashboardAuthoringAllowed(claims, &target) {
 		externalError(w, 403, "forbidden", "Ask this project's Builder to export the animation, or download an export they have already shared.")
@@ -74,8 +74,44 @@ func (api *StreamingAPI) dashboardMotionOperation(w http.ResponseWriter, r *http
 		externalJSON(w, job)
 		return
 	}
-	if !validDashboardMotionPath(composition) || len(submission) == 0 || len(submission) > 128 || strings.TrimSpace(submission) != submission {
-		externalError(w, 400, "invalid_arguments", "To export, pass composition_path under code/motion/ and a unique submission_id. To check an existing export, pass its export_id.")
+	if len(submission) == 0 || len(submission) > 128 || strings.TrimSpace(submission) != submission {
+		externalError(w, 400, "invalid_arguments", "Pass a unique submission_id to export. To check an existing export, pass its export_id.")
+		return
+	}
+	var options dashboardExportOptions
+	if len(requested) > 0 {
+		options = requested[0]
+	}
+	options, signature, err := normalizeDashboardExport(options, composition)
+	if err != nil {
+		dashboardError(w, err)
+		return
+	}
+	if options.SourceMode == "dashboard" {
+		options, err = resolveDashboardExportSource(r.Context(), target, options)
+		if err != nil {
+			dashboardError(w, err)
+			return
+		}
+		composition = options.SourcePath
+	}
+	// Reuse the original snapshot on retries, even after a new publication.
+	var priorID, priorSignature string
+	err = store.db.QueryRowContext(r.Context(), `SELECT id,composition FROM dashboard_motion_exports WHERE user_id=? AND workspace=? AND submission_id=?`, claims.UserID, target.Root, submission).Scan(&priorID, &priorSignature)
+	if err == nil {
+		if priorSignature != signature {
+			externalError(w, 409, "conflict", "This submission_id was already used for a different export. Use a new one.")
+			return
+		}
+		if _, err := dashboardMotionGuard(claims, target, composition, priorID); err != nil {
+			externalError(w, 403, "protected_path", err.Error())
+			return
+		}
+		api.dashboardMotionOperation(w, r, target, "", priorID, "")
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		dashboardError(w, err)
 		return
 	}
 	id := uuid.NewString()
@@ -83,7 +119,7 @@ func (api *StreamingAPI) dashboardMotionOperation(w http.ResponseWriter, r *http
 		externalError(w, 403, "protected_path", err.Error())
 		return
 	}
-	insert, err := store.db.ExecContext(r.Context(), `INSERT INTO dashboard_motion_exports(id,user_id,workspace,submission_id,composition,runtime_id,status,created_at) VALUES(?,?,?,?,?,?,'running',?) ON CONFLICT(user_id,workspace,submission_id) DO NOTHING`, id, claims.UserID, target.Root, submission, composition, dashboardMotionRuntimeID, time.Now().Unix())
+	insert, err := store.db.ExecContext(r.Context(), `INSERT INTO dashboard_motion_exports(id,user_id,workspace,submission_id,composition,runtime_id,status,created_at) VALUES(?,?,?,?,?,?,'running',?) ON CONFLICT(user_id,workspace,submission_id) DO NOTHING`, id, claims.UserID, target.Root, submission, signature, dashboardMotionRuntimeID, time.Now().Unix())
 	if err != nil {
 		dashboardError(w, err)
 		return
@@ -99,8 +135,12 @@ func (api *StreamingAPI) dashboardMotionOperation(w http.ResponseWriter, r *http
 			dashboardError(w, err)
 			return
 		}
-		if prior != composition {
+		if prior != signature {
 			externalError(w, 409, "conflict", "This submission_id was already used for a different animation. Use a new one.")
+			return
+		}
+		if _, err := dashboardMotionGuard(claims, target, composition, id); err != nil {
+			externalError(w, 403, "protected_path", err.Error())
 			return
 		}
 		api.dashboardMotionOperation(w, r, target, "", id, "")
@@ -109,12 +149,12 @@ func (api *StreamingAPI) dashboardMotionOperation(w http.ResponseWriter, r *http
 	// Keep the authenticated context and trusted shell restrictions, without the
 	// proxy request's lifetime. The render has its own ten-minute deadline.
 	jobCtx := context.WithoutCancel(r.Context())
-	go api.runDashboardMotionJob(jobCtx, claims, target, composition, id)
+	go api.runDashboardMotionJob(jobCtx, claims, target, composition, id, options)
 	externalJSON(w, dashboardMotionJob{ID: id, Status: "running", Caller: claims.UserID})
 }
 
-func (api *StreamingAPI) runDashboardMotionJob(ctx context.Context, claims *UserClaims, target dashboardTarget, composition, id string) {
-	result, err := api.renderDashboardMotion(ctx, claims, target, composition, id)
+func (api *StreamingAPI) runDashboardMotionJob(ctx context.Context, claims *UserClaims, target dashboardTarget, composition, id string, options dashboardExportOptions) {
+	result, err := api.renderDashboardMotion(ctx, claims, target, composition, id, options)
 	status, detail := "completed", ""
 	if err != nil {
 		status, detail = "failed", err.Error()

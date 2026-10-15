@@ -16,8 +16,12 @@ const RendererVersion = "0.8.99"
 //go:embed render.py
 var Runner string
 
+//go:embed capture.mjs
+var CaptureDriver string
+
 // Command carries non-secret render configuration as data, independently of
 // the workspace shell's intentionally restricted environment-key list.
 func Command(config []byte) string {
-	return "python3 -c '" + strings.ReplaceAll(Runner, "'", "'\\''") + "' '" + base64.StdEncoding.EncodeToString(config) + "'"
+	runner := "CAPTURE_DRIVER = __import__('base64').b64decode('" + base64.StdEncoding.EncodeToString([]byte(CaptureDriver)) + "').decode()\n" + Runner
+	return "python3 -c '" + strings.ReplaceAll(runner, "'", "'\\''") + "' '" + base64.StdEncoding.EncodeToString(config) + "'"
 }

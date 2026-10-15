@@ -1,8 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -28,6 +30,10 @@ func TestReportMediaPathsAndScope(t *testing.T) {
 }
 
 func TestReportMediaRangeProxy(t *testing.T) {
+	var diagnostics bytes.Buffer
+	previousLog := log.Writer()
+	log.SetOutput(&diagnostics)
+	t.Cleanup(func() { log.SetOutput(previousLog) })
 	withMemoryUserDirectory(t, `{"users":[{"id":"media-reader","username":"reader","admin":true,"can_create":true,"products":[]}]}`)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasSuffix(r.URL.Path, "/raw") {
@@ -121,5 +127,8 @@ func TestReportMediaRangeProxy(t *testing.T) {
 	}
 	if !strings.HasPrefix(multiResponse.Body.String(), "--") {
 		t.Fatalf("multi-range body did not contain a MIME boundary: %q", multiResponse.Body.String())
+	}
+	if !strings.Contains(diagnostics.String(), `[DASHBOARD_MEDIA] stage=stream workspace="Workflow/test" path="db/assets/test.webm" method=GET status=206`) || strings.Contains(diagnostics.String(), u.Query().Get("token")) {
+		t.Fatal("media delivery diagnostics are missing or contain a credential")
 	}
 }

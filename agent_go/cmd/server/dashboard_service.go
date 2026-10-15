@@ -235,6 +235,11 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		ExportID     string            `json:"export_id"`
 		Submission   string            `json:"submission_id"`
 		Composition  string            `json:"composition_path"`
+		SourceMode   string            `json:"source_mode"`
+		ExportWidth  int               `json:"viewport_width"`
+		ExportHeight int               `json:"viewport_height"`
+		Duration     float64           `json:"duration_s"`
+		FPS          int               `json:"fps"`
 		Workspace    string            `json:"workspace"`
 		Action       string            `json:"action"`
 		ID           string            `json:"dashboard_id"`
@@ -284,7 +289,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if args.Action == "export_motion" {
-		api.dashboardMotionOperation(w, r, target, args.Composition, args.ExportID, args.Submission)
+		api.dashboardMotionOperation(w, r, target, args.Composition, args.ExportID, args.Submission, dashboardExportOptions{SourceMode: args.SourceMode, Dashboard: args.ID, Revision: args.Revision, Theme: args.Theme, Width: args.ExportWidth, Height: args.ExportHeight, Duration: args.Duration, FPS: args.FPS})
 		return
 	}
 	if (dashboardMutation(args.Action) || args.Action == "preview") && !target.Edit {

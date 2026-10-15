@@ -16,6 +16,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
 // Headless report preview (preview_report tool).
@@ -64,7 +65,7 @@ func reportPreviewRuntimePath() string {
 // report data for a few minutes. It carries the current user's identity so
 // workspace reads run as that user, but the scope claim keeps it away from
 // every other endpoint.
-func mintReportPreviewToken(claims *UserClaims, workspacePath string) (string, error) {
+func mintReportPreviewToken(claims *UserClaims, workspacePath string, document ...string) (string, error) {
 	if err := ValidateConfiguredAuthSecret(); err != nil {
 		return "", err
 	}
@@ -91,6 +92,9 @@ func mintReportPreviewToken(claims *UserClaims, workspacePath string) (string, e
 			Issuer:    "mcp-agent-builder",
 			Subject:   userID,
 		},
+	}
+	if len(document) > 0 {
+		preview.ScopeFile = document[0]
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, preview).SignedString(GetAuthSecret())
 }
@@ -237,6 +241,10 @@ func (api *StreamingAPI) handleReportPreviewFile(w http.ResponseWriter, r *http.
 	relative, err = api.resolveDashboardDocument(r, workspacePath, relative)
 	if err != nil {
 		dashboardError(w, err)
+		return
+	}
+	if claims != nil && claims.Scope == reportPreviewScope && claims.ScopeFile != "" && strings.HasPrefix(relative, dashboards.Prefix) && !strings.HasPrefix(relative, path.Dir(claims.ScopeFile)+"/") {
+		http.Error(w, "This export is bound to its selected dashboard publication.", http.StatusForbidden)
 		return
 	}
 	if guard := dashboardFileGuard(claims); guard != nil && !guard.Allows(relative, false) {

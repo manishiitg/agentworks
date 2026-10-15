@@ -72,22 +72,31 @@ This skill describes platform usage. Inspect existing documents before editing.
   history. Stable ids replace previous players on refresh, preserving position.
   Playback starts paused; reduced motion initially shows the end state.
 - Optional MP4 uses the core `dashboard action=export_motion` operation (app
-  Builder: `export_dashboard_motion`), with `composition_path` under
-  `code/motion/` and a unique `submission_id`. The reply returns `export_id`
-  immediately; poll the same action with that id until completed/failed.
-  Reuse the submission id for retries of that same export only. Save a standalone HyperFrames `index.html`, local assets and
-  `snapshot.json` containing `as_of` (ISO timestamp), `source` and `data`.
-  The composition reads that local snapshot, not `window.report` or live data.
+  Builder: `export_dashboard_motion`), with the project selector, `dashboard_id`
+  and a unique `submission_id`. By default it captures that published page with
+  frozen data through the shared runtime. Pass the person's chosen `theme`,
+  `viewport_width` and `viewport_height`; otherwise state the dark 1280×720
+  default. Optional `revision`, `duration_s` and `fps` select the saved version
+  and recording settings. The shared clock or seekable CSS/Web Animations drive
+  frames, including the terminal state. Without a clock, export returns a still
+  video and a note; connect the existing drawing code to the shared clock for
+  animation, preserving the user's layout and appearance.
+  The reply returns `export_id` immediately; poll the same action with that id
+  until completed/failed. Reuse the submission id only for retries of that same
+  export. A separate explainer is optional: pass `source_mode: "composition"`
+  and `composition_path` under `code/motion/`, containing HyperFrames
+  `index.html`, local assets and `snapshot.json` with `as_of`, `source` and
+  `data`. That composition reads its local snapshot, not live dashboard data.
   Export requires current Builder authoring access and, over MCP, existing
   authoring consent plus `dashboards:read` and `runs:execute`. The server needs
-  Node/npm, Chrome, FFmpeg and FFprobe; if unavailable, say video export is
-  unavailable there. Interactive motion needs none of those render tools.
-  Limits: ten minutes, 128 MB source, 256 MB video. This is a core capability
-  independent of personal products. The completed `result` returns the video `path` plus
-  editable source and snapshot paths. Play with `window.report.mediaUrl(path)`
-  and native video controls, and show its snapshot time. Run people can use a
-  shared exported video; export grants them no new execution permissions.
-  Never start export on dashboard load/refresh. Layout/style remain user choices.
+  Node/npm, Chrome, FFmpeg and FFprobe. Limits: ten minutes, 128 MB source,
+  256 MB video. Interactive motion needs none of those rendering tools.
+  Use completed `result.path` exactly, under `db/assets/motion/`, with
+  `window.report.mediaUrl(result.path)` and native video controls. Never replace
+  it with an `outputs/` or `code/` path, or save the expiring URL. Handle media
+  metadata/errors visibly and show snapshot time where freshness matters.
+  Run people can watch/download shared exports without gaining Builder execution.
+  Never start export on load/refresh. All placement and style remain user choices.
 - Run `validate_report_html` for each changed document and `preview_report`
   when rendering is available. Check data, errors, interactions and requested
   pane sizes in both themes. Use `get_report_link` for an authenticated live
