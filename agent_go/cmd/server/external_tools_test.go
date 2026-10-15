@@ -331,6 +331,10 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 }
 
 func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
+	sharing, ok := externalCatalogTool("share")
+	if !ok || len(sharing.actions) != 2 || sharing.actions["get"] != "get_dashboard_share" || sharing.actions["set"] != "share_dashboard" {
+		t.Fatalf("Share must derive from the admitted native sharing aliases: %+v", sharing.actions)
+	}
 	catalog, err := externalTools()
 	if err != nil {
 		t.Fatal(err)

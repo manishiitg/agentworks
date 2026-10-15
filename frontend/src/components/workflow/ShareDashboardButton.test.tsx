@@ -15,7 +15,7 @@ it('shows the server message when a share is refused with a structured error', a
   post.mockRejectedValueOnce({ response: { status: 409, data: { error: { code: 'conflict', message: 'Publish your unfinished dashboard, then share it.' } } } })
   try {
     await act(async () => root.render(<ShareDashboardButton workspacePath="Workflow/invoices" />))
-    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Share dashboard"]')!.click())
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Share"]')!.click())
     await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Save')!.click())
     expect(host.querySelector('[role="status"]')?.textContent).toBe('Publish your unfinished dashboard, then share it.')
     expect(host.textContent).not.toContain('[object Object]')

@@ -7,12 +7,13 @@ type ShareState = {
   people?: { id: string; email?: string; username?: string }[]
   unknown_emails?: string[]
   can_share: boolean
+  note?: string
 }
 
 const OPTIONS: { mode: ShareState['mode']; label: string; hint: string }[] = [
-  { mode: 'everyone', label: 'Everyone on this server', hint: 'They can open the dashboard, ask questions and use its buttons.' },
-  { mode: 'people', label: 'Only the people I list', hint: 'One email per line. Each needs an account here.' },
   { mode: 'private', label: 'Only me', hint: 'Nobody else can open it.' },
+  { mode: 'people', label: 'Chosen people', hint: 'One email per line. Each needs an account here.' },
+  { mode: 'everyone', label: 'Everyone', hint: 'Everyone allowed to use this product.' },
 ]
 
 /** Share this dashboard (and so its Crew, workflow or Relay). The server decides who may share and what a share gives;
@@ -50,7 +51,7 @@ export function ShareDashboardButton({ workspacePath }: { workspacePath: string 
         emails: emails.split(/[\s,;]+/).filter(Boolean),
       })
       setState(data)
-      setMessage(data.unknown_emails?.length ? `Saved. No account for: ${data.unknown_emails.join(', ')}` : 'Saved.')
+      setMessage(data.unknown_emails?.length ? `Saved. No account for: ${data.unknown_emails.join(', ')}` : data.note || 'Saved.')
     } catch (error) {
       const body = (error as { response?: { data?: { error?: string | { message?: string }; message?: string; unknown_emails?: string[] } } }).response?.data
       const extra = body?.unknown_emails?.length ? ` No account for: ${body.unknown_emails.join(', ')}` : ''
@@ -63,12 +64,13 @@ export function ShareDashboardButton({ workspacePath }: { workspacePath: string 
 
   return (
     <div className="relative">
-      <button type="button" onClick={() => setOpen(v => !v)} aria-label="Share dashboard" title="Share dashboard" aria-expanded={open}
+      <button type="button" onClick={() => setOpen(v => !v)} aria-label="Share" title="Share" aria-expanded={open}
         className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background/95 px-2 text-xs text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground">
         <Users className="h-3.5 w-3.5" /> Share
       </button>
       {open && (
-        <div role="dialog" aria-label="Share dashboard" className="absolute right-0 mt-1 w-72 space-y-2 rounded-md border border-border bg-background p-3 text-sm shadow-lg">
+        <div role="dialog" aria-label="Share" className="absolute right-0 mt-1 w-72 space-y-2 rounded-md border border-border bg-background p-3 text-sm shadow-lg">
+          <p className="text-xs text-muted-foreground">People you share with open its dashboard, can ask it, use its functions and read its files (not secrets).</p>
           {OPTIONS.map(option => (
             <label key={option.mode} className="flex cursor-pointer items-start gap-2">
               <input type="radio" name="share-mode" className="mt-1" checked={mode === option.mode} onChange={() => setMode(option.mode)} />

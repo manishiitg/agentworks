@@ -171,3 +171,7 @@ Preview additionally requires `runs:execute` and edit access because it can run
 live data scripts. It keeps the connection's scope, expiry and revocation checks.
 Publishing does not run the Flow API or a workflow. SQLite files, transcripts,
 secrets and runtime selections stay outside dashboard authoring.
+
+## Share the Flow
+
+Use Share on the dashboard: Only me / Chosen people / Everyone. Shared people open its dashboard, Ask, use published functions and read its files, runs and logs over MCP. Secret values and private logs stay excluded. External clients use `share` action=get|set with `flow_id` (the existing `workflow_id` selector also works); `get_dashboard_share` and `share_dashboard` remain callable aliases. Only the owner changes sharing, with existing authoring consent. Preserve existing people when replacing the people list. The server creates a standard dashboard when one is needed.

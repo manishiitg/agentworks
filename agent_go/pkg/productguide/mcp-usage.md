@@ -31,6 +31,8 @@ Runs do real work with real effects. Carry out the person's requested task withi
 
 The owner builds and changes the product in Builder mode. Others use published work in Run mode. Code, Crew and Flows have one owner; give other people use through the product's dashboard. Workflows retain their current owners and editors.
 
+To manage a product's sharing, use `share` action=get to inspect its audience, then action=set with `crew_id`, `workflow_id` or `flow_id` and the owner's choice of `private`, `people` (with `emails`) or `everyone`. Preserve existing people unless the owner requested removal. Shared people open the dashboard, Ask, use published functions and read product files, runs and logs over MCP. Secret values and private logs stay excluded. Sharing creates a standard dashboard when needed. `get_dashboard_share` and `share_dashboard` remain callable aliases using the same access checks.
+
 Schedules call shared entry points at a chosen time. Watchers check for a condition and call an entry point when it occurs. Both belong to the person who creates them, use that person's current access and selected secrets, and attribute the work's cost to them. Use the discovered scheduling tools and current product guidance.
 
 Load guidance relevant to the work:

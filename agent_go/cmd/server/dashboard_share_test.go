@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
@@ -17,36 +19,102 @@ import (
 // disk store. A project with no dashboard used to fail with a workspace 403
 // because platform-generated mutations omitted the draft/write flag.
 func TestDashboardShareCreatesAndPublishesStandardDashboard(t *testing.T) {
-	for _, mode := range []string{runSharePeople, runShareEveryone} {
-		t.Run(mode, func(t *testing.T) {
-			f := newExternalToolsFixture(t)
-			withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["agentworks"]},{"id":"reader","username":"reader","email":"reader@example.com","products":["agentworks"]}]}`)
-			f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoices","created_by":"owner","access":{"owners":["owner"]}}`)
-			args := map[string]any{"mode": mode, "emails": []string{"reader@example.com"}}
-			claims := &UserClaims{UserID: "owner", Username: "owner"}
-			w := httptest.NewRecorder()
-			if mode == runSharePeople {
-				args["workflow_id"] = "invoices"
-				f.api.externalDashboardCall(w, adminRequest(http.MethodPost, "/api/external/call", "", claims, nil), "share_dashboard", args)
-			} else {
-				args["workspace"], args["action"] = "Workflow/invoices", "share"
-				raw, _ := json.Marshal(args)
-				f.api.handleDashboards(w, adminRequest(http.MethodPost, "/api/dashboards", string(raw), claims, nil))
+	// Goals omit kind; relay is the only non-empty persisted kind.
+	for _, kind := range []string{"", "relay"} {
+		for _, mode := range []string{runSharePeople, runShareEveryone} {
+			label := kind
+			if label == "" {
+				label = "goal"
 			}
-			state := externalTestBody(t, w, 200)
-			if state["mode"] != mode || state["note"] == "" {
-				t.Fatalf("share should explain the generated dashboard: %v", state)
-			}
-			listed, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: "Workflow/invoices", Action: "list"})
-			if err != nil || len(listed.Dashboards) != 1 || listed.Dashboards[0].ID != defaultDashboardID || listed.Dashboards[0].Published == "" {
-				t.Fatalf("share did not publish the standard dashboard: %+v, %v", listed, err)
-			}
-			manifest, found, err := ReadWorkflowManifest(context.Background(), "Workflow/invoices")
-			if err != nil || !found || manifest == nil || workflowAccessForManifest(&UserClaims{UserID: "reader", Username: "reader"}, manifest) != WorkflowAccessRead {
-				t.Fatalf("the shared person cannot use the project: %+v, %v", manifest, err)
-			}
-		})
+			t.Run(label+"/"+mode, func(t *testing.T) {
+				f := newExternalToolsFixture(t)
+				withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["agentworks","relays"]},{"id":"reader","username":"reader","email":"reader@example.com","products":["agentworks","relays"]}]}`)
+				raw, _ := json.Marshal(WorkflowManifest{ID: "invoices", Label: "Invoices", Kind: kind, CreatedBy: "owner", Access: &WorkflowAccess{Owners: []string{"owner"}}})
+				f.write(t, "Workflow/invoices/workflow.json", string(raw))
+				args := map[string]any{"mode": mode, "emails": []string{"reader@example.com"}}
+				claims := &UserClaims{UserID: "owner", Username: "owner"}
+				var w *httptest.ResponseRecorder
+				if mode == runSharePeople {
+					args["action"] = "set"
+					selector := "workflow_id"
+					if kind == "relay" {
+						selector = "flow_id"
+					}
+					args[selector] = "invoices"
+					w = f.call(t, "owner", "share", args)
+				} else {
+					args["workspace"], args["action"] = "Workflow/invoices", "share"
+					body, _ := json.Marshal(args)
+					w = httptest.NewRecorder()
+					f.api.handleDashboards(w, adminRequest(http.MethodPost, "/api/dashboards", string(body), claims, nil))
+				}
+				state := externalTestBody(t, w, 200)
+				if state["mode"] != mode || state["note"] == "" {
+					t.Fatalf("share should explain the generated dashboard: %v", state)
+				}
+				listed, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: "Workflow/invoices", Action: "list"})
+				if err != nil || len(listed.Dashboards) != 1 || listed.Dashboards[0].ID != defaultDashboardID || listed.Dashboards[0].Published == "" {
+					t.Fatalf("share did not publish the standard dashboard: %+v, %v", listed, err)
+				}
+				manifest, found, err := ReadWorkflowManifest(context.Background(), "Workflow/invoices")
+				if err != nil || !found || manifest == nil || workflowAccessForManifest(&UserClaims{UserID: "reader", Username: "reader"}, manifest) != WorkflowAccessRead {
+					t.Fatalf("the shared person cannot use the project: %+v, %v", manifest, err)
+				}
+			})
+		}
 	}
+}
+
+// The canonical tool and its old names reach the same HTTP admission and owner
+// checks; a readable connection never acquires authoring consent through Share.
+func TestShareMCPKeepsExistingAliasPermissions(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["agentworks"]},{"id":"editor","username":"editor","can_create":true,"products":["agentworks"]},{"id":"reader","username":"reader","email":"reader@example.com","products":["agentworks"]}]}`)
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoices","created_by":"owner","access":{"owners":["owner"],"editors":["editor"],"readers":["reader"]}}`)
+	readToken := &accesstokens.Token{ID: "share-read", Scopes: []string{"dashboards:read"}, WorkflowIDs: []string{"invoices"}}
+	writerToken := &accesstokens.Token{ID: "share-author", Scopes: []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "builder:chat"}, WorkflowIDs: []string{"invoices"}}
+	call := func(name, user string, token *accesstokens.Token, args map[string]any, status int) map[string]any {
+		t.Helper()
+		body, _ := json.Marshal(map[string]any{"name": name, "arguments": args})
+		w := httptest.NewRecorder()
+		f.api.handleExternalCall(w, adminRequest(http.MethodPost, "/api/external/call", string(body), &UserClaims{UserID: user, Username: user, AccessToken: token}, nil))
+		return externalTestBody(t, w, status)
+	}
+	for _, name := range []string{"share", "get_dashboard_share"} {
+		args := map[string]any{"workflow_id": "invoices"}
+		if name == "share" {
+			args["action"] = "get"
+		}
+		call(name, "reader", readToken, args, 200)
+	}
+	share, ok := externalCatalogTool("share")
+	if !ok {
+		t.Fatal("canonical sharing tool missing")
+	}
+	narrowed, ok := externalMergedForClaims(&UserClaims{UserID: "reader", Username: "reader", AccessToken: readToken}, share)
+	if !ok {
+		t.Fatal("read connection lost sharing inspection")
+	}
+	actions := narrowed.InputSchema["properties"].(map[string]any)["action"].(map[string]any)["enum"].([]any)
+	if len(actions) != 1 || actions[0] != "get" {
+		t.Fatalf("read connection acquired a sharing mutation: %+v", actions)
+	}
+	for _, name := range []string{"share", "share_dashboard"} {
+		args := map[string]any{"workflow_id": "invoices", "mode": "private"}
+		if name == "share" {
+			args["action"] = "set"
+		}
+		call(name, "owner", readToken, args, 403)
+		call(name, "editor", writerToken, args, 403)
+	}
+	call("share", "owner", writerToken, map[string]any{"action": "set", "workflow_id": "invoices", "flow_id": "invoices", "mode": "private"}, 400)
+	call("share_dashboard", "owner", writerToken, map[string]any{"workflow_id": "invoices", "mode": "people", "emails": []string{"reader@example.com"}}, 200)
+	call("share", "owner", writerToken, map[string]any{"action": "set", "workflow_id": "invoices", "mode": "private"}, 200)
+	state := call("get_dashboard_share", "owner", readToken, map[string]any{"workflow_id": "invoices"}, 200)
+	if state["mode"] != "private" {
+		t.Fatalf("legacy alias did not see canonical change: %+v", state)
+	}
+	call("share", "reader", readToken, map[string]any{"action": "get", "workflow_id": "invoices"}, 404)
 }
 
 func TestDashboardShareResumesStandardDraftButNeverPublishesAuthoredDraft(t *testing.T) {

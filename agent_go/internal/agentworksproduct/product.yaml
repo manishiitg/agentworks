@@ -346,6 +346,7 @@ chat:
       - publish_dashboard
       - restore_dashboard
       - get_dashboard_link
+      # External MCP presents these native aliases as share action=get/set.
       - get_dashboard_share
       - share_dashboard
       - validate_report_html
@@ -537,6 +538,7 @@ chat:
       - publish_dashboard
       - restore_dashboard
       - get_dashboard_link
+      # External MCP presents these native aliases as share action=get/set.
       - get_dashboard_share
       - share_dashboard
       - list_workflows

@@ -83,18 +83,19 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		"composition_path": externalString("Folder under code/motion/ with a standalone HyperFrames index.html, local assets and snapshot.json containing as_of, source and data."),
 	})
 	shareProps := map[string]any{
-		"workflow_id": externalString("Workflow or Flow ID from list_workflows or the dashboard list. Pass one of workflow_id, crew_id or workspace."),
+		"workflow_id": externalString("Goal/workflow ID from workflow action=list. Also accepts an existing Flow ID for compatibility. Pass exactly one project selector."),
+		"flow_id":     externalString("Flow ID from workflow action=list or relay. Pass exactly one of workflow_id, flow_id, crew_id or workspace."),
 		"crew_id":     externalString("Crew ID from list_crews or the dashboard list."),
-		"workspace":   externalString("Project root from the dashboard list."),
+		"workspace":   externalString("Existing project root from the dashboard list; use the product's ID when available."),
 	}
-	add("get_dashboard_share", "Who the project behind a dashboard is shared with: everyone, specific people (emails) or private. Anyone with access to the project may read it.", false, false, shareProps)
+	add("get_dashboard_share", "Read who a Crew, Goal or Flow is shared with: everyone, chosen people (emails) or private. Anyone with access to the product may inspect sharing. "+runShareAccessDescription, false, false, shareProps)
 	shareSet := map[string]any{}
 	for key, value := range shareProps {
 		shareSet[key] = value
 	}
-	shareSet["mode"] = map[string]any{"type": "string", "enum": []any{"everyone", "people", "private"}, "description": "everyone: every account that may use the product opens the dashboard, asks and runs its published functions. people: only the emails you list (workflows and Flows; an email with no account is reported back). private: only the owner."}
+	shareSet["mode"] = map[string]any{"type": "string", "enum": []any{"everyone", "people", "private"}, "description": "everyone: every account allowed to use this product. people: only the emails you list; an email with no account is reported back. private: only the owner. Shared people open the dashboard, Ask, use published functions and read product files, runs and logs through MCP; secret values and private logs stay excluded."}
 	shareSet["emails"] = map[string]any{"type": "array", "maxItems": 200, "items": externalString("Email of an account to share with, for mode people."), "description": "Replaces the people list. Ignored for everyone and private."}
-	add("share_dashboard", "Share the project behind a dashboard (owner only, existing authoring consent). Sharing gives the Ask chat and the project's published functions, as a Run person has today, and nothing more. Nothing is shared until you call this, and the owner decides who: ask them first whether it is everyone on this server (mode everyone) or only chosen people (mode people with their emails); never pick for them. Mode people REPLACES the whole list: call get_dashboard_share first and keep everyone the owner did not ask to remove; the reply shows the previous list.", true, false, shareSet, "mode")
+	add("share_dashboard", "Share a Crew, Goal or Flow using its owner's existing authoring consent. "+runShareAccessDescription+" A standard dashboard is created when one is needed. Nothing is shared until the owner asks: use their choice of everyone, chosen people or private; never pick the audience for them. Mode people REPLACES the whole list: inspect sharing first and keep everyone the owner did not ask to remove; the reply shows the previous list.", true, false, shareSet, "mode")
 	// Replace the old Run-assistant proxy with a native read operation. Keep its call shape.
 	add("get_report_link", "Return a live dashboard URL directly, without starting a Run conversation. document_path defaults to db/reports/index.html; supports Goals and Flows. Requires dashboards:read consent.", false, true, map[string]any{"document_path": externalString("HTML document under db/reports/.")})
 }
@@ -106,21 +107,25 @@ func (api *StreamingAPI) externalDashboardCall(w http.ResponseWriter, r *http.Re
 	// Projects are named by ID like every other MCP tool; dashboardTarget
 	// re-checks access on the resolved root.
 	if name != "get_report_link" {
-		workflowID, crewID, workspace := externalArg(args, "workflow_id"), externalArg(args, "crew_id"), externalArg(args, "workspace")
+		workflowID, flowID, crewID, workspace := externalArg(args, "workflow_id"), externalArg(args, "flow_id"), externalArg(args, "crew_id"), externalArg(args, "workspace")
 		named := 0
-		for _, value := range []string{workflowID, crewID, workspace} {
+		for _, value := range []string{workflowID, flowID, crewID, workspace} {
 			if value != "" {
 				named++
 			}
 		}
 		if named > 1 || (named == 0 && dashboardActions[name] != "list") {
 			if name == "share_dashboard" {
-				logDashboardShareRefusal(GetUserFromContext(r.Context()), dashboardTarget{Root: workspace, ID: workflowID + crewID}, externalArg(args, "mode"), "selector", dashboardFailure(400, "pass exactly one project"), nil)
+				logDashboardShareRefusal(GetUserFromContext(r.Context()), dashboardTarget{Root: workspace, ID: workflowID + flowID + crewID}, externalArg(args, "mode"), "selector", dashboardFailure(400, "pass exactly one project"), nil)
 			}
-			externalError(w, 400, "invalid_arguments", "Pass exactly one of workflow_id, crew_id or workspace.")
+			externalError(w, 400, "invalid_arguments", "Pass exactly one project ID or workspace.")
 			return
 		}
+		if workflowID == "" {
+			workflowID = flowID
+		}
 		delete(payload, "workflow_id")
+		delete(payload, "flow_id")
 		delete(payload, "crew_id")
 		switch {
 		case workflowID != "":

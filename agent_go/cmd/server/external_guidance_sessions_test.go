@@ -92,14 +92,23 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 			if fields[1] == "current" {
 				return "delivered_to_client"
 			}
+			// Multi-topic reminders put the non-current status first.
+			switch fields[0] {
+			case "missing", "stale", "unavailable":
+				return fields[0]
+			}
 			return fields[1]
 		}
 		guidance, _ := body["guidance"].(map[string]any)
 		topics, _ := guidance["topics"].([]any)
-		if len(topics) != 1 {
-			t.Fatalf("expected one topic: %+v", body)
+		for _, raw := range topics {
+			topic := raw.(map[string]any)
+			if topic["topic"] == "dashboard-authoring" {
+				return topic["status"].(string)
+			}
 		}
-		return topics[0].(map[string]any)["status"].(string)
+		t.Fatalf("dashboard authoring receipt missing: %+v", body)
+		return ""
 	}
 	call := func(name string, args map[string]any, handle string) map[string]any {
 		t.Helper()
@@ -121,6 +130,14 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	handle := id(prep)
 	if handle == "" || prep["guidance_skills"] == nil || status(prep) != "delivered_to_client" {
 		t.Fatalf("preparation: %+v", prep)
+	}
+	// Dashboard preparation includes both reusable authoring and motion skills.
+	prepared := map[string]bool{}
+	for _, raw := range prep["guidance_skills"].([]any) {
+		prepared[raw.(map[string]any)["name"].(string)] = true
+	}
+	if len(prepared) != 2 || !prepared["dashboard-authoring"] || !prepared["motion-guide"] {
+		t.Fatalf("dashboard preparation skills: %+v", prepared)
 	}
 	// A second conversation with the same identity has its own independent handle.
 	second := dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
@@ -182,7 +199,8 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 		t.Fatal("get reply includes unnecessary guidance")
 	}
 	counts, err := f.api.guidanceStore.Stats(ctx)
-	if err != nil || counts.Deliveries != 2 {
+	// Each of the two conversations fetched the two skills once.
+	if err != nil || counts.Deliveries != 4 {
 		t.Fatalf("20 calls re-delivered skills: %+v %v", counts, err)
 	}
 	guideBytes := len(wire(prep))

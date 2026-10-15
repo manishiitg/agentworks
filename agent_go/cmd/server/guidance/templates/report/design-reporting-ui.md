@@ -99,5 +99,5 @@ at 768px, 480px and 1280px in both themes. Open the screenshots with `read_image
 to verify that the requested design renders and its data/actions work.
 
 ## When it works
-Call `get_dashboard_link` and give the person the link in plain words. Sharing a workflow means sharing this dashboard: tell them to press Share on it, or run `/share`. Never put the dashboard on a public website or add a password page. For an MP4 or animation of the data, use the dashboard tool's `export_motion` action after loading the motion guide (`motion-guide` skill).
+Call `get_dashboard_link` and give the person the link in plain words. Share opens this dashboard, Ask and published functions to the chosen audience and allows MCP reads of product files, runs and logs; secret values and private logs stay excluded. Tell them to press Share, or use MCP `share` action=get|set with their chosen audience. Sharing creates a standard dashboard when needed. Never put the dashboard on a public website or add a password page. For an MP4 or animation of the data, use the dashboard tool's `export_motion` action after loading the motion guide (`motion-guide` skill).
 

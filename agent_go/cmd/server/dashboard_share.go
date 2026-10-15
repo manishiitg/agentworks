@@ -22,10 +22,11 @@ import (
 //   - Workflow and Relay: WorkflowAccess.Readers (the people listed) plus
 //     RunEveryone (every account that may use that product).
 //
-// A share gives what a Run person gets today (the Ask chat and the published
-// functions, as a reader). Whether Run people may read files over the API is a
-// separate open decision and is neither widened nor narrowed here. Nothing
-// becomes visible to more people unless its owner shares it.
+// A share includes the dashboard, Ask, published functions and existing MCP
+// reads of product files, runs and logs. Secret values and private logs remain
+// excluded. Nothing becomes visible to more people unless its owner shares it.
+
+const runShareAccessDescription = "People you share with open its dashboard, can ask it, use its published functions and read its files, runs and logs through MCP. Secret values and private logs stay excluded."
 
 const (
 	runShareEveryone = "everyone"

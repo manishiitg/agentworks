@@ -23,6 +23,9 @@ type externalToolMerge struct {
 }
 
 var externalToolMerges = []externalToolMerge{
+	{"share", "Share a Crew, Goal or Flow. get inspects the current audience; set is owner-only and keeps the existing product authoring consent. " + runShareAccessDescription, [][2]string{
+		{"get", "get_dashboard_share"}, {"set", "share_dashboard"},
+	}},
 	{"dashboard", "Live dashboards of workflows, Flows, Crews and owned Code projects: find them, read and edit drafts, check and publish revisions, and get links.", [][2]string{
 		{"list", "list_dashboards"}, {"get", "get_dashboard"}, {"link", "get_dashboard_link"},
 		{"create", "create_dashboard"}, {"update", "update_dashboard"}, {"validate", "validate_dashboard"},
