@@ -21,15 +21,23 @@ import (
 
 var closeAllCodingCLISessionsForRuntimeCancel = closeAllCodingCLIInteractiveSessionsForOwner
 var closeCodingAgentTmuxForRuntimeCancel = closeCodingAgentTmuxSessionByName
-var deliverMuseTurnInterrupt = func(ctx context.Context, agent *mcpagent.Agent, sessionID string) error {
+var deliverCLITurnInterrupt = func(ctx context.Context, agent *mcpagent.Agent, sessionID string) error {
 	_, err := mcpagent.DeliverAgentControlKey(ctx, agent, mcpagent.ControlKeyDeliveryRequest{SessionID: sessionID, Key: "Escape"})
 	return err
 }
 
-// A conversational Stop is a CLI interrupt, not a terminal teardown. Deliver
-// Escape before canceling the Go turn: after cancellation the provider's tmux
-// command would inherit a dead context and never reach the running Muse TUI.
-func (api *StreamingAPI) interruptInteractiveMuseTurn(sessionID string) {
+// deliverCLIPaneInterrupt sends Escape to a chat's live provider pane when no Go agent is running: a turn typed into
+// a retained terminal (live input) has no foreground turn to cancel, but the pane is still working on it.
+var deliverCLIPaneInterrupt = func(ctx context.Context, provider llmproviders.Provider, sessionID string) error {
+	return llmproviders.SendCodingAgentControlKey(ctx, provider, "", sessionID, "Escape")
+}
+
+// A conversational Stop is a CLI interrupt, not a terminal teardown, for every terminal coding CLI (Pi, Codex,
+// Claude, Cursor, Muse, Agy): Escape goes to the provider's pane. Deliver it before canceling the Go turn: after
+// cancellation the provider's tmux command would inherit a dead context and never reach the running TUI. A turn
+// that was typed into the retained pane has no Go turn at all, so the pane is found through the chat's live
+// terminal. Stop on a Pi live turn logged "No active LLM turn to cancel" and the command ran on.
+func (api *StreamingAPI) interruptInteractiveCLITurn(sessionID string, hasGoTurn bool) {
 	api.activeSessionsMux.RLock()
 	session := api.activeSessions[sessionID]
 	interactive := session != nil && !isScheduledSessionIdentity(sessionID, session.TriggeredBy) && strings.TrimSpace(session.BotPlatform) == ""
@@ -40,14 +48,36 @@ func (api *StreamingAPI) interruptInteractiveMuseTurn(sessionID string) {
 	api.runningAgentsMux.RLock()
 	agent := api.runningAgents[sessionID]
 	api.runningAgentsMux.RUnlock()
-	if agent == nil || !strings.EqualFold(string(mcpagent.ReadAgentRuntimeInfo(agent).Provider), "muse-cli") || !mcpagent.AgentSupportsSteering(agent) {
+	// Escape on an idle prompt is not harmless in every CLI (Claude Code and Codex open a rewind/back-track menu on
+	// a second Esc), so it goes only to a turn that is running: a Go turn, or one the server's turn state still shows.
+	if !hasGoTurn && !(api.eventStore != nil && api.eventStore.TurnInProgress(sessionID)) {
+		log.Printf("[SESSION STOP] interrupt provider= method=esc result=skipped reason=idle session=%s", sessionID)
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if err := deliverMuseTurnInterrupt(ctx, agent, sessionID); err != nil {
-		log.Printf("[SESSION DEBUG] Could not interrupt Muse turn in place for session %s: %v", sessionID, err)
+	provider := ""
+	var err error
+	switch {
+	case agent != nil && mcpagent.AgentSupportsSteering(agent):
+		provider = string(mcpagent.ReadAgentRuntimeInfo(agent).Provider)
+		err = deliverCLITurnInterrupt(ctx, agent, sessionID)
+	default:
+		snapshot, live := api.liveMainCodingTmuxSnapshot(sessionID)
+		if !live {
+			return
+		}
+		provider = retainedCodingAgentProvider(snapshot)
+		if provider == "" {
+			return
+		}
+		err = deliverCLIPaneInterrupt(ctx, llmproviders.Provider(provider), sessionID)
 	}
+	result := "sent"
+	if err != nil {
+		result = "failed: " + err.Error()
+	}
+	log.Printf("[SESSION STOP] interrupt provider=%s method=esc result=%s session=%s", provider, result, sessionID)
 }
 
 // handleCancelCurrentTurn cancels only the currently running LLM turn for a session.
@@ -72,11 +102,9 @@ func (api *StreamingAPI) handleCancelCurrentTurn(w http.ResponseWriter, r *http.
 	}
 
 	api.agentCancelMux.Lock()
-	_, hasTurn := api.agentCancelFuncs[sessionID]
+	_, hasGoTurn := api.agentCancelFuncs[sessionID]
 	api.agentCancelMux.Unlock()
-	if hasTurn {
-		api.interruptInteractiveMuseTurn(sessionID)
-	}
+	api.interruptInteractiveCLITurn(sessionID, hasGoTurn)
 	api.agentCancelMux.Lock()
 	cancelFunc, exists := api.agentCancelFuncs[sessionID]
 	if exists {

@@ -11,10 +11,13 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/llm"
+	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -476,10 +479,10 @@ func TestHandleCancelCurrentTurnInterruptsMuseBeforeCancelWithoutClosingConversa
 	if !mcpagent.AgentSupportsSteering(agent) {
 		t.Fatal("test Muse agent must use the interactive transport")
 	}
-	oldDeliver := deliverMuseTurnInterrupt
-	t.Cleanup(func() { deliverMuseTurnInterrupt = oldDeliver })
+	oldDeliver := deliverCLITurnInterrupt
+	t.Cleanup(func() { deliverCLITurnInterrupt = oldDeliver })
 	var order []string
-	deliverMuseTurnInterrupt = func(_ context.Context, got *mcpagent.Agent, owner string) error {
+	deliverCLITurnInterrupt = func(_ context.Context, got *mcpagent.Agent, owner string) error {
 		if got != agent || owner != sessionID {
 			t.Fatalf("Escape targeted wrong session %q", owner)
 		}
@@ -625,5 +628,42 @@ func TestStopSessionWithoutQueryIDsClearsTrackedBuilderChat(t *testing.T) {
 	}
 	if exec.Status == trackedExecutionStatusRunning {
 		t.Fatalf("tracked execution still %q after stop; it would block new Builder chats", exec.Status)
+	}
+}
+
+// A turn typed into a retained provider pane (live input) has no Go turn to cancel; Stop must still interrupt the pane
+// (Stop on a Pi live turn logged "No active LLM turn to cancel" and the command ran to the end).
+func TestHandleCancelCurrentTurnInterruptsALiveRetainedPaneWithoutAGoTurn(t *testing.T) {
+	const sessionID = "pi-live-pane-stop"
+	oldPane := deliverCLIPaneInterrupt
+	t.Cleanup(func() { deliverCLIPaneInterrupt = oldPane })
+	var got []string
+	deliverCLIPaneInterrupt = func(_ context.Context, provider llmproviders.Provider, owner string) error {
+		got = append(got, string(provider)+" "+owner)
+		return nil
+	}
+	api := &StreamingAPI{
+		agentCancelFuncs: map[string]context.CancelFunc{},
+		activeSessions:   map[string]*ActiveSessionInfo{sessionID: {SessionID: sessionID, Status: "running"}},
+		terminalStore:    terminals.NewStore(),
+	}
+	api.terminalStore.HandleEvent(sessionID, codingAgentTmuxReaperChunkEvent(time.Now(), sessionID, "main:"+sessionID, "mlp-pi-cli-int-live"))
+	store := internalevents.NewEventStore(10)
+	defer store.Stop()
+	api.eventStore = store
+	stop := func() int {
+		req := httptest.NewRequest(http.MethodPost, "/api/session/cancel-turn", nil)
+		req.Header.Set("X-Session-ID", sessionID)
+		rec := httptest.NewRecorder()
+		api.handleCancelCurrentTurn(rec, req)
+		return rec.Code
+	}
+	// Idle: no turn is running, so no Escape (a second Esc at an idle prompt can open a menu in some CLIs).
+	if code := stop(); code != http.StatusNoContent || len(got) != 0 {
+		t.Fatalf("idle Stop response=%d, pane interrupts=%v; want none", code, got)
+	}
+	store.AddEvent(sessionID, internalevents.Event{Type: "user_message", Timestamp: time.Now(), SessionID: sessionID})
+	if code := stop(); code != http.StatusNoContent || len(got) != 1 || got[0] != "pi-cli "+sessionID {
+		t.Fatalf("running Stop response=%d, pane interrupts=%v; want one Escape to the pi-cli pane", code, got)
 	}
 }

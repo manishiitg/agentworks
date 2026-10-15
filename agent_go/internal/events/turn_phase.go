@@ -114,6 +114,15 @@ func turnPhaseText(s *turnPhaseState) string {
 }
 
 // trackTurnPhase moves the session's turn phase on one event and announces the change.
+// TurnInProgress reports whether the server sees a turn running for the session: one began (a user message or the
+// agent's first event) and no turn-end event has cleared it yet. Stop uses it to interrupt only a turn that is running.
+func (es *EventStore) TurnInProgress(sessionID string) bool {
+	turnPhasesMu.Lock()
+	defer turnPhasesMu.Unlock()
+	st := turnPhases[sessionID]
+	return st != nil && time.Since(st.updated) <= turnPhaseStaleAfter
+}
+
 func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 	if sessionID == "" || event.Type == turnPhaseEventType {
 		return
