@@ -99,6 +99,11 @@ func (bo *BaseOrchestrator) PersistNativeSubagentTranscripts(ctx context.Context
 			child.CompletedAt = snapshot.UpdatedAt
 		}
 		child.Events = nativeTranscriptEvents(snapshot)
+		for i := range child.Events {
+			if child.Events[i].Role == "system" {
+				child.Events[i].RuntimeSessionID = snapshot.Provider + ":" + snapshot.ID
+			}
+		}
 		encoded, marshalErr := child.Marshal()
 		if marshalErr != nil {
 			return marshalErr

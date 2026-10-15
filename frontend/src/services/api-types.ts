@@ -1644,6 +1644,7 @@ export interface ExecutionInspectionTarget {
 }
 
 export interface ExecutionInspectionResponse {
+ system_prompts?: {versions: Array<{text: string; label: string; session_label: string; session_count: number}>; current_index: number}
  model?: {provider?: string; model_id?: string; label: string; previous?: Array<{provider?: string; model_id?: string; label: string}>; tooltip?: string}
  conversation?: {source_execution_ids: string[]; events: ExecutionInspectionResponse['transcript']['events']; truncated?: boolean} | null
  execution_mode?: 'agent' | 'script' | 'validation' | ''

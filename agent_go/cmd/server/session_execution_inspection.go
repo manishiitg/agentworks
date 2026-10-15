@@ -170,10 +170,20 @@ func (api *StreamingAPI) handleInspectSessionExecution(w http.ResponseWriter, r 
 			linkedModelEvents = append(linkedModelEvents, event.BackgroundAgentTranscriptEvent)
 		}
 	}
+	var promptEvents []executioninspection.PromptEvent
+	for _, event := range transcript.Events {
+		promptEvents = append(promptEvents, executioninspection.PromptEvent{Event: event, ExecutionID: transcript.AgentID})
+	}
+	if conversation != nil {
+		for _, event := range conversation.Events {
+			promptEvents = append(promptEvents, executioninspection.PromptEvent{Event: event.BackgroundAgentTranscriptEvent, ExecutionID: event.ExecutionID})
+		}
+	}
+	systemPrompts := executioninspection.PromptVersions(promptEvents)
 	model := executioninspection.Model(transcript, linkedModelEvents)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"transcript": transcript, "children": children, "result": result, "execution_mode": mode, "scripts": scripts, "conversation": conversation, "model": model})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"transcript": transcript, "children": children, "result": result, "execution_mode": mode, "scripts": scripts, "conversation": conversation, "model": model, "system_prompts": systemPrompts})
 }
 
 type inspectionConversationEvent struct {

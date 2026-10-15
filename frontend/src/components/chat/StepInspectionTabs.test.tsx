@@ -248,6 +248,10 @@ it('shows the current system prompt with labelled collapsed earlier versions and
  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
  const data=response('first','Task and its Rules section')
  data.execution_mode='agent'
+ data.system_prompts={current_index:1,versions:[
+  {text:'Startup instructions',label:'Version 1 of 2',session_label:'Used in 2 sessions',session_count:2},
+  {text:'Current workflow context',label:'Version 2 of 2 · new session',session_label:'Used in 1 session',session_count:1},
+ ]}
  data.transcript.events.unshift(
   {timestamp:target.started_at,type:'system_message',role:'system',text:'Startup instructions'},
   {timestamp:target.started_at,type:'system_message',role:'system',text:'Current workflow context'},
@@ -260,6 +264,8 @@ it('shows the current system prompt with labelled collapsed earlier versions and
   expect(host.querySelector('[data-testid="inspection-current-system-prompt"]')!.textContent).toBe('Current workflow context')
   const earlier=host.querySelector<HTMLDetailsElement>('[data-testid="inspection-earlier-system-prompts"]')!
   expect(earlier.open).toBe(false)
+  expect(host.textContent).toContain('Version 2 of 2 · new session')
+  expect(earlier.textContent).toContain('Used in 2 sessions')
   expect(earlier.textContent).toContain('Version 1 of 2')
   expect(earlier.textContent).toContain('Startup instructions')
   expect(inspectionRecords(data).system).toEqual(['Startup instructions','Current workflow context'])

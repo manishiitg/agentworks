@@ -60,10 +60,12 @@ type BackgroundAgentTranscript struct {
 // should not need to special-case a coding-CLI transport vs an API provider
 // — both funnel through the same typed events before reaching here.
 type BackgroundAgentTranscriptEvent struct {
-	Timestamp time.Time `json:"timestamp"`
-	Type      string    `json:"type"` // "user_message" | "assistant_message" | "tool_call"
-	Role      string    `json:"role,omitempty"`
-	Text      string    `json:"text,omitempty"`
+	Timestamp        time.Time `json:"timestamp"`
+	TurnID           string    `json:"turn_id,omitempty"`
+	RuntimeSessionID string    `json:"runtime_session_id,omitempty"`
+	Type             string    `json:"type"` // "user_message" | "assistant_message" | "tool_call"
+	Role             string    `json:"role,omitempty"`
+	Text             string    `json:"text,omitempty"`
 	// Preserve carrier identity so the view can join a lifecycle prompt/result
 	// with its provider message without removing intentional repeated messages.
 	SourceType string `json:"source_type,omitempty"`
@@ -211,6 +213,7 @@ func NormalizeBackgroundTranscriptEvent(evt *events.AgentEvent) (normalized Back
 	defer func() {
 		if ok {
 			normalized.SourceType = string(evt.Type)
+			normalized.TurnID = evt.TurnID
 		}
 	}()
 	switch data := evt.Data.(type) {

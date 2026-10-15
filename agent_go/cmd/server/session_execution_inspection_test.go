@@ -19,6 +19,7 @@ import (
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	agentEvents "github.com/manishiitg/mcpagent/events"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 type inspectionRoundTripper func(*http.Request) (*http.Response, error)
@@ -317,8 +318,9 @@ func TestInspectAgentItemCapturesProviderRuntimeEvents(t *testing.T) {
 			{Type: agentEvents.ToolCallEnd, Data: &agentEvents.ToolCallEndEvent{ToolCallID: "reused-tool-id", ToolName: "read_file", Result: "Facts for " + id}},
 			// Tool-only calls still carry model evidence; the next response changes model.
 			{Type: agentEvents.LLMGenerationEnd, Data: &agentEvents.LLMGenerationEndEvent{BaseEventData: agentEvents.BaseEventData{Metadata: map[string]interface{}{"provider": "codex-cli", "model_id": "before-" + id}}}},
-			{Type: agentEvents.LLMGenerationEnd, Data: &agentEvents.LLMGenerationEndEvent{BaseEventData: agentEvents.BaseEventData{Metadata: map[string]interface{}{"provider": "codex-cli", "model_id": "actual-" + id}}, Content: "Result for " + id}},
+			{Type: agentEvents.LLMGenerationEnd, Data: &agentEvents.LLMGenerationEndEvent{BaseEventData: agentEvents.BaseEventData{Metadata: map[string]interface{}{"provider": "codex-cli", "model_id": "actual-" + id, llmtypes.CodingProviderSessionHandleAdditionalKey: llmtypes.CodingProviderSessionHandle{Provider: "codex-cli", NativeSessionID: "native-" + id}}}, Content: "Result for " + id}},
 		} {
+			event.TurnID = "turn-" + id
 			event.SessionID = "dedicated-provider-runtime"
 			event.Timestamp = time.Now()
 			if err := bridge.HandleEvent(ctx, event); err != nil {
@@ -357,9 +359,9 @@ func TestInspectAgentItemCapturesProviderRuntimeEvents(t *testing.T) {
 		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || w.Code != http.StatusOK || result.Conversation == nil {
 			t.Fatalf("delegated conversation: status=%d err=%v", w.Code, err)
 		}
-		want := 14
+		want := 16
 		if id == "call-second" {
-			want = 7
+			want = 8
 		}
 		if len(result.Transcript.Events) != 0 || len(result.Conversation.Events) != want {
 			t.Fatalf("conversation replaced raw evidence or mixed tasks: %s", w.Body.String())
@@ -389,15 +391,19 @@ func TestInspectAgentItemCapturesProviderRuntimeEvents(t *testing.T) {
 			Transcript *orchEvents.BackgroundAgentTranscript `json:"transcript"`
 			Result     string                                `json:"result"`
 			Model      executioninspection.ModelInfo         `json:"model"`
+			Prompts    executioninspection.PromptHistory     `json:"system_prompts"`
 		}
 		if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil || w.Code != http.StatusOK {
 			t.Fatalf("inspect status=%d err=%v", w.Code, err)
 		}
-		if response.Transcript == nil || response.Transcript.SessionID != "chat" || response.Transcript.AgentID != id || response.Transcript.Status != "completed" || len(response.Transcript.Events) != 7 || response.Result != "Result for "+id {
+		if response.Transcript == nil || response.Transcript.SessionID != "chat" || response.Transcript.AgentID != id || response.Transcript.Status != "completed" || len(response.Transcript.Events) != 8 || response.Result != "Result for "+id {
 			t.Fatalf("wrong capture for %s: %+v", id, response)
 		}
 		if response.Model.Label != "Codex · actual-"+id || len(response.Model.Previous) != 1 || response.Model.Previous[0].ModelID != "before-"+id {
 			t.Fatalf("model did not follow recorded calls: %+v", response.Model)
+		}
+		if len(response.Prompts.Versions) != 1 || response.Prompts.Versions[0].SessionCount != 1 {
+			t.Fatalf("prompt session did not survive capture and HTTP projection: %+v", response.Prompts)
 		}
 		body := w.Body.String()
 		for _, expected := range []string{"System for " + id, "User for " + id, "Facts for " + id, "sources.txt", "[redacted]"} {

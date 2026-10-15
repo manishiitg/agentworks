@@ -909,6 +909,9 @@ func (c *ContextAwareEventBridge) HandleEvent(ctx context.Context, event *events
 		c.mu.RUnlock()
 		if writer != nil {
 			var transcriptEvents []orchevents.BackgroundAgentTranscriptEvent
+			if session, ok := orchevents.NormalizeExecutionSessionEvent(event); ok {
+				transcriptEvents = append(transcriptEvents, session)
+			}
 			if model, ok := orchevents.NormalizeExecutionModelEvent(event); ok {
 				transcriptEvents = append(transcriptEvents, model)
 			}
