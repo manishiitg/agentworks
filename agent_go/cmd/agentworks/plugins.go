@@ -599,7 +599,7 @@ func pluginAttachmentStatus(out agentworksclient.LocalBridgeReply) string {
 		}
 		return text + " Native live delivery is selected."
 	}
-	return text + " Hooks deliver at turn boundaries; native live delivery is unavailable for this attachment."
+	return text + " Connected. Messages arrive when you next send a message in this chat or when a turn ends; live delivery is not available for this app yet."
 }
 
 func discoverNativeRemote(provider, session, hostKey string) string {

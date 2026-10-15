@@ -321,7 +321,7 @@ func debugBridge(ctx context.Context, b *strings.Builder) {
 				if st.Online {
 					online = "online"
 				}
-				text := fmt.Sprintf("  %s %s: %s, route %s, %d waiting", st.Provider, st.AgentName, online, st.Route, st.Pending)
+				text := fmt.Sprintf("  %s %s: %s, route %s, chat process %s, %d waiting", st.Provider, st.AgentName, online, st.Route, map[bool]string{true: "running", false: "not found"}[st.HostAlive], st.Pending)
 				if st.LastError != "" {
 					text += ", last error: " + st.LastError
 				}
