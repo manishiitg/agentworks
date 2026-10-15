@@ -1797,6 +1797,30 @@ func turnHeartbeatDue(age time.Duration, beats int) bool {
 
 var turnHeartbeatOnce sync.Once
 
+// turnDiagnostics adds content-free state (numbers and fixed words) to a turn's still_running line, so a stall says
+// whether the CLI is quiet or the server stopped reading it. Set once at startup; it runs on the sweep's goroutine.
+var (
+	turnDiagnosticsMu sync.RWMutex
+	turnDiagnostics   func(sessionID string) string
+)
+
+// SetTurnDiagnostics installs the callback; a nil callback or an empty result adds nothing.
+func SetTurnDiagnostics(fn func(sessionID string) string) {
+	turnDiagnosticsMu.Lock()
+	turnDiagnostics = fn
+	turnDiagnosticsMu.Unlock()
+}
+
+func turnDiagnosticsFor(sessionID string) string {
+	turnDiagnosticsMu.RLock()
+	fn := turnDiagnostics
+	turnDiagnosticsMu.RUnlock()
+	if fn == nil {
+		return ""
+	}
+	return strings.TrimSpace(fn(sessionID))
+}
+
 func startTurnHeartbeat() {
 	turnHeartbeatOnce.Do(func() {
 		go func() {
@@ -1841,7 +1865,11 @@ func sweepTurnHeartbeats(now time.Time) {
 			log.Printf("[TURN] session=%s abandoned age=%s chunks=%d (no end event; forgetting it)", b.session, b.age.Round(time.Second), b.chunks)
 			continue
 		}
-		log.Printf("[TURN] session=%s still_running age=%s last_chunk_age=%s chunks=%d", b.session, b.age.Round(time.Second), b.sinceChunk.Round(time.Second), b.chunks)
+		line := fmt.Sprintf("[TURN] session=%s still_running age=%s last_chunk_age=%s chunks=%d", b.session, b.age.Round(time.Second), b.sinceChunk.Round(time.Second), b.chunks)
+		if extra := turnDiagnosticsFor(b.session); extra != "" {
+			line += " " + extra
+		}
+		log.Print(line)
 	}
 }
 
