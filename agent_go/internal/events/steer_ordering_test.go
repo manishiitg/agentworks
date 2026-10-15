@@ -33,6 +33,9 @@ func liveIDs(store *EventStore, sessionID string) []string {
 	result := store.GetEvents(sessionID, GetEventsOptions{SinceIndex: -1})
 	ids := make([]string, 0, len(result.Events))
 	for _, event := range result.Events {
+		if event.Type == turnPhaseEventType {
+			continue // the server's turn-phase announcements are not part of the ordering under test
+		}
 		ids = append(ids, event.ID)
 	}
 	return ids
