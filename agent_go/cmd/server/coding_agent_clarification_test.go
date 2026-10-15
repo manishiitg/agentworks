@@ -1,10 +1,13 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -218,5 +221,35 @@ func TestCodingAgentClarificationAnswerEndpointOwnership(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
+	}
+}
+
+// An answer's trace line names the prompt, session and whether the agent's turn was still running; no answer text.
+func TestClarificationAnswerTraceHasIdsAndTurnStateOnly(t *testing.T) {
+	api := &StreamingAPI{eventStore: events.NewEventStore(100)}
+	var out bytes.Buffer
+	log.SetOutput(&out)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		_, _ = api.waitForCodingAgentClarification(ctx, "session", "codex-cli", clarificationTestArgs())
+		close(done)
+	}()
+	p := pendingClarificationForTest(t, api, "session")
+	input := []codingAgentQuestionAnswerInput{{ID: "scope", SelectedLabels: []string{"Gmail"}}, {ID: "purpose", SelectedLabels: []string{"Read"}}}
+	if err := api.submitCodingAgentClarification("session", "codex-cli", p.promptID, false, input); err != nil {
+		t.Fatal(err)
+	}
+	<-done
+	got := out.String()
+	for _, want := range []string{"[HUMAN_INPUT] prompt=" + p.promptID, "answered turn=none", "waiter=consumed"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("trace lacks %q: %s", want, got)
+		}
+	}
+	if strings.Contains(got, "Gmail") || strings.Contains(got, "Choose scope") {
+		t.Fatalf("answer or question text must not be logged: %s", got)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ type pendingCodingAgentClarification struct {
 	questions []unifiedevents.CodingAgentQuestionPrompt
 	answers   chan []unifiedevents.CodingAgentQuestionAnswer
 	ctx       context.Context
+	askedAt   time.Time
 }
 
 func codingAgentClarificationSchema() map[string]interface{} {
@@ -137,7 +139,7 @@ func (api *StreamingAPI) waitForCodingAgentClarification(ctx context.Context, se
 	if err != nil {
 		return "", err
 	}
-	p := &pendingCodingAgentClarification{sessionID: sessionID, provider: provider, promptID: clarificationPromptPrefix + uuid.NewString(), questions: questions, answers: make(chan []unifiedevents.CodingAgentQuestionAnswer, 1), ctx: ctx}
+	p := &pendingCodingAgentClarification{sessionID: sessionID, provider: provider, promptID: clarificationPromptPrefix + uuid.NewString(), questions: questions, answers: make(chan []unifiedevents.CodingAgentQuestionAnswer, 1), ctx: ctx, askedAt: time.Now()}
 	api.codingAgentClarificationsMu.Lock()
 	if api.codingAgentClarifications == nil {
 		api.codingAgentClarifications = map[string]*pendingCodingAgentClarification{}
@@ -157,6 +159,7 @@ func (api *StreamingAPI) waitForCodingAgentClarification(ctx context.Context, se
 	}
 	select {
 	case answers := <-p.answers:
+		log.Printf("[HUMAN_INPUT] prompt=%s session=%s provider=%s waiter=consumed after_ms=%d", p.promptID, sessionID, provider, time.Since(p.askedAt).Milliseconds())
 		result, err := json.Marshal(map[string]interface{}{"status": "answered", "prompt_id": p.promptID, "answers": answers})
 		return string(result), err
 	case <-ctx.Done():
@@ -166,10 +169,12 @@ func (api *StreamingAPI) waitForCodingAgentClarification(ctx context.Context, se
 			delete(api.codingAgentClarifications, sessionID)
 			_ = api.emitCodingAgentClarification(p, "settled", "interrupted", nil)
 			api.codingAgentClarificationsMu.Unlock()
+			log.Printf("[HUMAN_INPUT] prompt=%s session=%s provider=%s waiter=interrupted after_ms=%d", p.promptID, sessionID, provider, time.Since(p.askedAt).Milliseconds())
 			return "", ctx.Err()
 		}
 		api.codingAgentClarificationsMu.Unlock()
 		answers := <-p.answers
+		log.Printf("[HUMAN_INPUT] prompt=%s session=%s provider=%s waiter=consumed_after_cancel after_ms=%d", p.promptID, sessionID, provider, time.Since(p.askedAt).Milliseconds())
 		result, err := json.Marshal(map[string]interface{}{"status": "answered", "prompt_id": p.promptID, "answers": answers})
 		return string(result), err
 	}
@@ -243,5 +248,15 @@ func (api *StreamingAPI) submitCodingAgentClarification(sessionID, provider, pro
 	}
 	delete(api.codingAgentClarifications, sessionID)
 	p.answers <- answers
+	// One line per answer, ids and numbers only: was the agent's turn still running when the person answered?
+	// An answer that arrives after its turn ended reaches a waiter nobody is reading (PLAT-825-35).
+	turn := api.conversationTurnOccupiedBy(sessionID)
+	if turn == "" && api.isSessionBusy(sessionID) {
+		turn = "busy_flag"
+	}
+	if turn == "" {
+		turn = "none"
+	}
+	log.Printf("[HUMAN_INPUT] prompt=%s session=%s provider=%s answered turn=%s after_ms=%d", promptID, sessionID, provider, turn, time.Since(p.askedAt).Milliseconds())
 	return nil
 }
