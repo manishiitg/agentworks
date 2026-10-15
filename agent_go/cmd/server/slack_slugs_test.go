@@ -187,8 +187,8 @@ func TestSlackSlugsDMAccessIsThePersons(t *testing.T) {
 
 	requireMode(t, dm("U0OWNER", "ops what changed?"), "owner", "full")
 	requireMode(t, dm("U0READER", "ops what changed?"), "reader", "run")
-	if outcome := dm("U0STRANGER", "ops what changed?"); outcome.Admitted || len(outcome.Replies) == 0 {
-		t.Fatalf("a sender without access reached the workflow: %+v", outcome)
+	if outcome := dm("U0STRANGER", "ops what changed?"); outcome.Admitted || len(outcome.Replies) == 0 || !strings.Contains(outcome.Replies[0], "can't use") {
+		t.Fatalf("a sender without access reached the workflow, or was not told they cannot use it: %+v", outcome)
 	}
 	if listed := dm("U0READER", "list"); !strings.Contains(listed.Reason, "ops") {
 		t.Fatalf("list did not show what the reader can reach: %+v", listed)

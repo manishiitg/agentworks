@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"path"
 	"sort"
 	"strings"
@@ -109,20 +110,37 @@ func slackLoadTargetsRegistry(ctx context.Context) *services.SlackTargetsRegistr
 // set, else the target's name.
 func slackNamedTargets(ctx context.Context, registry *services.SlackTargetsRegistry, refs []services.SlackTargetRef) []services.SlackTarget {
 	out := make([]services.SlackTarget, 0, len(refs))
-	for _, ref := range refs {
+	for _, stored := range refs {
+		// A Crew that moved to the shared Crew/ root keeps its old path in a saved bot connection; follow it to the
+		// Crew's current root, so the bot keeps answering for it (the registry entry is still found by the stored ref).
+		ref := stored
+		if strings.TrimSpace(ref.ProfileID) != "" {
+			ref.WorkspacePath = foldCrewRootForStoredReference(ref.WorkspacePath)
+		}
 		// A target whose workflow or Crew was deleted is not offered; its stale registry entry must not show up as a
 		// button named after a folder.
 		if !slackTargetExists(ctx, ref) {
+			log.Printf("[SLACK_TARGETS] dropped %s: its workflow or Crew no longer exists", ref.WorkspacePath)
 			continue
 		}
-		out = append(out, slackNamedTarget(ctx, registry, ref))
+		out = append(out, slackNamedTargetStored(ctx, registry, ref, stored))
 	}
 	return out
 }
 
 func slackNamedTarget(ctx context.Context, registry *services.SlackTargetsRegistry, ref services.SlackTargetRef) services.SlackTarget {
+	return slackNamedTargetStored(ctx, registry, ref, ref)
+}
+
+// slackNamedTargetStored names one target. stored is the ref as the registry and the connection saved it (a moved
+// Crew's registry entry is still keyed by its old path); ref is where it lives now.
+func slackNamedTargetStored(ctx context.Context, registry *services.SlackTargetsRegistry, ref, stored services.SlackTargetRef) services.SlackTarget {
 	target := services.SlackTarget{Ref: ref}
-	if entry, ok := registry.Settings(ref); ok {
+	entry, ok := registry.Settings(ref)
+	if !ok {
+		entry, ok = registry.Settings(stored)
+	}
+	if ok {
 		target.Slug = strings.TrimSpace(entry.Slug)
 		// The owner's own name and description win; otherwise the live product values (the stored Label is an old
 		// snapshot of the product name and is no longer read).
@@ -160,10 +178,22 @@ func slackTargetExists(ctx context.Context, ref services.SlackTargetRef) bool {
 	return err != nil || found
 }
 
+// currentSlackRef follows a moved Crew's saved path to the Crew's current root; any other ref comes back unchanged.
+func currentSlackRef(ref services.SlackTargetRef) services.SlackTargetRef {
+	if strings.TrimSpace(ref.ProfileID) != "" {
+		ref.WorkspacePath = foldCrewRootForStoredReference(ref.WorkspacePath)
+	}
+	return ref
+}
+
 func appendSlackRef(refs []services.SlackTargetRef, ref services.SlackTargetRef) []services.SlackTargetRef {
 	if ref.Empty() {
 		return refs
 	}
+	// Two spellings of one Crew (its old private path and Crew/<id>) are the same destination, and the one added
+	// first wins. A bot connection saved before the Crew moved carries the old spelling: follow it to the Crew's
+	// current root first, or the stale path wins and then fails the existence check, dropping the Crew silently.
+	ref = currentSlackRef(ref)
 	for _, seen := range refs {
 		if seen.Same(ref) {
 			return refs
@@ -436,7 +466,7 @@ func (api *StreamingAPI) slackDMRouteMatching(ctx context.Context, connectionID,
 // slackOwnBotTargets lists every target attached to an own bot, its own
 // first: attaching a target to a bot is the only grant (PLAT-668).
 func slackOwnBotTargets(conn services.SlackConnection) []services.SlackTargetRef {
-	refs := []services.SlackTargetRef{{WorkspacePath: conn.WorkspacePath, ProfileID: conn.ProfileID}}
+	refs := []services.SlackTargetRef{currentSlackRef(services.SlackTargetRef{WorkspacePath: conn.WorkspacePath, ProfileID: conn.ProfileID})}
 	channels := make([]string, 0, len(conn.ChannelRoutes))
 	for channel := range conn.ChannelRoutes {
 		channels = append(channels, channel)

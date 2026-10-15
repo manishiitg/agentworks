@@ -299,6 +299,13 @@ func (s *SlackService) pickDMRoute(ctx context.Context, hooks *SlackRoutingHooks
 		}
 		route, err := hooks.Route(ctx, s.connectionID, "", set.Targets[index])
 		if err != nil || route == nil || !hooks.CanReach(ctx, accountID, *route) {
+			reason := "no access"
+			if err != nil {
+				reason = err.Error()
+			} else if route == nil {
+				reason = "no route"
+			}
+			log.Printf("[SLACK_DM] connection=%s account=%s target=%s not reachable: %.120s", s.connectionID, accountID, set.Targets[index].Slug, reason)
 			routes[index] = nil
 			return false
 		}
@@ -330,6 +337,15 @@ func (s *SlackService) pickDMRoute(ctx context.Context, hooks *SlackRoutingHooks
 	// "<workflow-slug>-pulse": the workflow's Pulse, for people who can
 	// reach the workflow.
 	goal := false
+	if len(matches) == 0 {
+		// The message starts with the slug of a target this person cannot use: refuse it here, never hand the
+		// text to a different target (the default) that happens to be reachable.
+		if named := set.WithSlug(word); len(named) > 0 {
+			label := firstNonEmptyString(set.Targets[named[0]].Label, set.Targets[named[0]].Slug)
+			log.Printf("[SLACK_DM] connection=%s account=%s refused: %q is not reachable for this person", s.connectionID, accountID, set.Targets[named[0]].Slug)
+			return slackDMPick{reply: fmt.Sprintf("You can't use %s yet. Ask its owner to share it with you.", label)}
+		}
+	}
 	if len(matches) == 0 {
 		for _, index := range goalLeadSlugMatches(set, word) {
 			if reachable(index) {
