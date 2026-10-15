@@ -344,6 +344,8 @@ chat:
       - publish_dashboard
       - restore_dashboard
       - get_dashboard_link
+      - get_dashboard_share
+      - share_dashboard
       - validate_report_html
       # Shared platform and interactive function tools, previously measured
       # outside this declaration by the Goals shadow gate. Admission now
