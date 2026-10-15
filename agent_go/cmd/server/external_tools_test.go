@@ -102,6 +102,11 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 			return
 		}
 
+		if strings.HasSuffix(rel, "/preferences/workspace-state.json") {
+			c.Params = append(c.Params, gin.Param{Key: "filepath", Value: "/" + rel})
+			workspacehandlers.GetDocument(c)
+			return
+		}
 		if rel != "Crew/dashboard-team/product.json" && rel != "Crew/dashboard-team/workflow.json" && rel != "_users/owner/Chats/Code/projects/dashboard-code/product.json" && rel != "_users/owner/Chats/Code/projects/dashboard-code/workflow.json" && rel != "Workflow/invoices/workflow.json" && rel != "Workflow/secret/workflow.json" && rel != "Workflow/invoices/schedule-runs.json" && rel != userProductAccessFilePath() {
 			c.Status(404)
 			return
@@ -117,6 +122,11 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 	router.PUT("/api/documents/*file", func(c *gin.Context) {
 		rel := strings.TrimPrefix(c.Param("file"), "/")
 		if strings.HasPrefix(rel, "_system/dashboard_questions/") {
+			c.Params = append(c.Params, gin.Param{Key: "filepath", Value: "/" + rel})
+			workspacehandlers.UpdateDocument(c)
+			return
+		}
+		if strings.HasSuffix(rel, "/preferences/workspace-state.json") {
 			c.Params = append(c.Params, gin.Param{Key: "filepath", Value: "/" + rel})
 			workspacehandlers.UpdateDocument(c)
 			return

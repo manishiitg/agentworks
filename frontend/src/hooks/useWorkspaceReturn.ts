@@ -1,0 +1,84 @@
+import { useEffect, useRef } from 'react'
+import { saveWorkspaceStateOnExit, workspaceStateApi, type WorkspaceDestination, type WorkspaceLayout } from '../services/workspaceState'
+import { useWorkspaceReturnStore } from '../stores/useWorkspaceReturnStore'
+import { useAuthStore } from '../stores/useAuthStore'
+import { useChatStore } from '../stores/useChatStore'
+import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
+import type { ProductSurface } from '../products/productSurfaceConfig'
+
+// One writer per page, serialized: a slow save cannot arrive after a newer one.
+let pending: { account: string; destination: WorkspaceDestination } | null = null
+let timer: ReturnType<typeof setTimeout> | undefined
+let writing = false
+export async function flushWorkspaceState() {
+  if (writing) return
+  const current = useWorkspaceReturnStore.getState()
+  if (!pending || !current.ready || !current.record || !current.account) return
+  if (pending.account !== current.account) { pending = null; return }
+  const destination = pending.destination; pending = null; writing = true
+  const account = current.account
+  try {
+    const record = await workspaceStateApi.save({ ...current.record, last: destination })
+    if (useWorkspaceReturnStore.getState().account === account) useWorkspaceReturnStore.setState({ record, saveError: '' })
+  } catch (error) {
+    if (useWorkspaceReturnStore.getState().account !== account) return
+    if ((error as { response?: { status?: number } }).response?.status === 409) {
+      const record = await workspaceStateApi.get().catch(() => null)
+      if (record && useWorkspaceReturnStore.getState().account === account) useWorkspaceReturnStore.setState({ record })
+    }
+    useWorkspaceReturnStore.setState({ saveError: 'Your latest workspace could not be saved. It will retry when you continue working.' })
+  } finally { writing = false; if (pending) void flushWorkspaceState() }
+}
+
+export function queueWorkspaceState(destination: WorkspaceDestination) {
+  const state = useWorkspaceReturnStore.getState()
+  if (!state.ready || state.homeOpen || state.restore || state.account !== useAuthStore.getState().user?.id) return
+  pending = { account: state.account!, destination }
+  clearTimeout(timer)
+  timer = setTimeout(() => { void flushWorkspaceState() }, 700)
+}
+
+/** Product surfaces keep their existing layout owners; this adapter restores
+ * once, then publishes settled selection/visibility to the server writer. */
+export function useWorkspaceReturn(
+  surface: ProductSurface, id: string | undefined, view: string | undefined,
+  layout: WorkspaceLayout, applyLayout: (layout: WorkspaceLayout) => void,
+) {
+  const session = useChatStore(state => state.activeTabId ? state.chatTabs[state.activeTabId]?.sessionId : undefined)
+  const name = useChatStore(state => state.activeTabId ? state.chatTabs[state.activeTabId]?.name : undefined)
+  const account = useAuthStore(state => state.user?.id)
+  const restore = useWorkspaceReturnStore(state => state.restore)
+  const navigationMode = useWorkspaceReturnStore(state => state.navigationMode)
+  const ready = useWorkspaceReturnStore(state => state.ready)
+  const applyRef = useRef(applyLayout); applyRef.current = applyLayout
+  useEffect(() => {
+    if (restore?.surface !== surface || restore.id !== id) return
+    if (restore.layout) applyRef.current(restore.layout)
+    useWorkspaceReturnStore.setState({ restore: null })
+  }, [restore, surface, id])
+  useEffect(() => {
+    if (restore || !ready || !id || useProductSurfaceStore.getState().productSurface !== surface) return
+    const state = useChatStore.getState()
+    const tab = state.activeTabId ? state.chatTabs[state.activeTabId] : undefined
+    const belongs = surface === 'agentworks' || surface === 'relays'
+      ? tab?.metadata?.presetQueryId === id
+      : tab?.metadata?.agentProfileId === surface && tab?.metadata?.agentProfileProjectId === id
+    queueWorkspaceState({ surface, id, view, layout: { ...layout, navigation_mode: navigationMode },
+      ...(belongs && tab?.sessionId ? { session_id: tab.sessionId, chat: { name: tab.name, read_only: tab.metadata?.isViewOnly === true, conversation_key: tab.metadata?.agentProfileConversationKey } } : {}),
+    })
+  }, [surface, id, view, layout.chat_open, layout.panel_open, layout.split_ratio, layout.navigation_mode, navigationMode, session, name, ready, restore, account])
+}
+
+export function installWorkspaceStateFlush() {
+  const onHide = () => { if (document.visibilityState === 'hidden') void flushWorkspaceState() }
+  const onExit = () => {
+    const state = useWorkspaceReturnStore.getState()
+    if (!writing && pending?.account === state.account && state.record) {
+      const destination = pending.destination; pending = null; clearTimeout(timer)
+      void saveWorkspaceStateOnExit({ ...state.record, last: destination })
+    }
+  }
+  document.addEventListener('visibilitychange', onHide)
+  window.addEventListener('pagehide', onExit)
+  return () => { document.removeEventListener('visibilitychange', onHide); window.removeEventListener('pagehide', onExit) }
+}

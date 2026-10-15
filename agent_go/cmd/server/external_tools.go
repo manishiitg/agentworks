@@ -255,6 +255,7 @@ func externalTools() ([]externalTool, error) {
 		externalTriggerDefinitions(add)
 		dashboardToolDefinitions(add)
 		externalNeedsYouDefinitions(add)
+		add("home", "Read your Home: action=attention for pending questions, decisions and latest failed runs; action=recent for your existing accessible work. Same current product/project permissions as the app. Read-only, bounded; reports partial sources.", false, false, map[string]any{"action": map[string]any{"type": "string", "enum": []string{"attention", "recent"}}}, "action")
 		externalPulseManageDefinitions(add)
 		externalProjectDefinitions(add)
 		externalCrewChatDefinitions(add)
@@ -804,6 +805,19 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if tool.Name == "create_relay" {
 		api.externalCreateRelay(w, r, call.Arguments)
+		return
+	}
+	if tool.Name == "home" {
+		result, err := api.collectHome(r)
+		if err != nil {
+			externalError(w, 503, "workspace_unavailable", "Could not load your work.")
+			return
+		}
+		if externalArg(call.Arguments, "action") == "attention" {
+			externalJSON(w, map[string]any{"items": result.Attention, "warnings": result.Warnings, "truncated": result.Truncated})
+		} else {
+			externalJSON(w, map[string]any{"items": result.Work, "warnings": result.Warnings, "truncated": result.Truncated})
+		}
 		return
 	}
 	discovered, err := discoverWorkflowManifests(r.Context(), tool.Name != "get_secret_sources")

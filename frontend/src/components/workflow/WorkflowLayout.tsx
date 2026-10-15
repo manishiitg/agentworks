@@ -1,3 +1,4 @@
+import { useWorkspaceReturn } from '../../hooks/useWorkspaceReturn'
 import { useWorkflowFilesViewSync } from './hooks/useWorkflowFilesViewSync'
 import { ShortcutHint } from '../chat/ShortcutHint'
 import { openHistoryExecutionLogs } from '../../utils/historyExecutionLogs'
@@ -1303,6 +1304,16 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     setShowWorkspacePane,
     setWorkflowWorkspaceView,
   })
+
+  useWorkspaceReturn(relayMode ? 'relays' : 'agentworks', activePresetId ?? undefined, workflowWorkspaceView ?? undefined,
+    { chat_open: showChatArea, panel_open: showWorkspacePane, split_ratio: workspaceSplitRatio, navigation_mode: 'fixed' },
+    saved => {
+      setShowChatArea(saved.chat_open); setShowWorkspacePane(saved.panel_open)
+      setWorkspaceMinimized(!saved.panel_open)
+      workspaceSplitRatioRef.current = saved.split_ratio; setWorkspaceSplitRatio(saved.split_ratio)
+      writeWorkflowSplitPreference(workspacePath, saved.split_ratio, reportPreviewPreference)
+    },
+  )
 
   // Auto-minimize the file workspace sidebar when entering Report so the report
   // has room. Do not reopen it on exit: workflow switches can unmount/remount
