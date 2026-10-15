@@ -1,4 +1,4 @@
-import { Activity, BellRing, CheckCircle, Cloud, FileText, GitBranch, Globe, Layers, RefreshCw, Target, Terminal } from 'lucide-react'
+import { Activity, BellRing, Calendar, CheckCircle, Cloud, FileText, GitBranch, Globe, Layers, Play, Plug, RefreshCw, Share2, Target, Terminal, Wrench } from 'lucide-react'
 import type { CommandDefinition } from './types'
 import type { CommandContext } from './types'
 import { pulseReviewFocuses, resolvePulseReviewFocus } from './pulse-review-focus'
@@ -48,15 +48,20 @@ export function parseAgentworksProductCommands(profile: AgentProfileResponse): A
 const icons: Record<string, typeof Terminal> = {
   activity: Activity,
   'bell-ring': BellRing,
+  calendar: Calendar,
   'check-circle': CheckCircle,
   cloud: Cloud,
   'file-text': FileText,
   'git-branch': GitBranch,
   globe: Globe,
   layers: Layers,
+  play: Play,
+  plug: Plug,
   'refresh-cw': RefreshCw,
+  'share-2': Share2,
   target: Target,
   terminal: Terminal,
+  wrench: Wrench,
 }
 
 // Every builder command runs in the workflow surface under the plan-phase

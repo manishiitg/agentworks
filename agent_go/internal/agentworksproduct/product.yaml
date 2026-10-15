@@ -37,7 +37,7 @@ profile:
     # are gone: the Pulse agent owns the goal and there are no separate
     # reviewers (owner, 2026-10-08). Ask Pulse with #pulse in the Builder chat.
     - name: design-plan
-      description: Comprehensively review the plan, dependent artifacts, and better design options
+      description: Would you build this again today? Review the plan and suggest a simpler one
       icon: git-branch
       file: commands/design-plan.md
     - name: run-plan-drift
@@ -47,27 +47,48 @@ profile:
       menu_hidden: true
       file: commands/run-plan-drift.md
     - name: design-dashboard
-      description: 'Design the dashboard from scratch: one live-data HTML dashboard at db/reports/index.html'
+      description: Design this workflow's dashboard from its real data
       icon: check-circle
       aliases: [design-reporting-ui]
       file: commands/design-dashboard.md
     - name: setup-goals
-      description: Set up outcome goals, primary and supporting metrics, and progress tracking
+      description: Say what this workflow is for and how to tell it is working
       icon: target
       aliases: [define-success]
       file: commands/setup-goals.md
+    - name: run
+      description: Run the workflow, or one step, now
+      icon: play
+      file: commands/run.md
+    - name: fix
+      description: Look at the last failed run and fix the workflow
+      icon: wrench
+      file: commands/fix.md
+    - name: schedule
+      description: Set when it runs by itself and what it reacts to
+      icon: calendar
+      file: commands/schedule.md
+    - name: share
+      description: Share the dashboard with everyone, chosen people or only you
+      icon: share-2
+      aliases: [publish]
+      file: commands/share.md
+    - name: connect
+      description: Let people reach it from Slack and other AI tools
+      icon: plug
+      file: commands/connect.md
+    - name: notify
+      description: Choose who gets the summaries, and where
+      icon: bell-ring
+      file: commands/notify.md
+    - name: upgrade
+      description: Bring the workflow up to date with the platform
+      icon: layers
+      file: commands/upgrade.md
     - name: backup
       description: Set up, run, or restore this automation's backup
       icon: cloud
       file: commands/backup.md
-    - name: publish
-      description: Set up or publish this automation's report to a public URL
-      icon: globe
-      file: commands/publish.md
-    - name: notify
-      description: Set up, review, or test agentic notifications
-      icon: bell-ring
-      file: commands/notify.md
 
 branding:
   icon: ""

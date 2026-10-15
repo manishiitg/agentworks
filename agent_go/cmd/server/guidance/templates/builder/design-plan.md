@@ -2,6 +2,17 @@
 
 **Saved-code paths:** Read `workflow.json.code_layout_version` first. In this reference, `<script-dir>` means `code/<step-id>` for version 1, or `learnings/<step-id>` for absent/zero (legacy). Resolve the placeholder before using a path; never infer the version from folders or migrate an existing workflow implicitly. Version 1 executes and repairs canonical source directly, with shared helpers under `WORKFLOW_CODE_ROOT`; only legacy workflows copy code into runs and save it back.
 
+## FIRST — would you build this from scratch?
+
+(Skip this section when a parent Pulse prompt loads this guidance as a checklist.)
+
+Before the detailed review, read soul/soul.md, the plan and what the workflow has produced, and answer in plain words, knowing what the owner wants today: *would you build this workflow this way from scratch?* Give the person:
+1. What the workflow is for, in one line.
+2. A verdict for the workflow as a whole and for each step that matters: keep, simplify, merge, remove, rebuild or retire, with the reason.
+3. The simplest version that would still do the job: how many steps, roughly how much work, what it would stop doing.
+4. Anything else that looks wrong, in one line each, including a bigger problem you noticed outside the question.
+Prefer removing over adding. A step or rule that has not earned its place should go. This answer is review only: change nothing. If the person then says to do it, make the smaller plan as one decision for the owner, not a string of small edits.
+
 Run one combined critical plan review and senior workflow-design review. Read `planning/plan.json` (+ `planning/step_config.json`, `variables/variables.json`) and review the plan WITH the user. Find what is broken, weak, risky, stale, or unjustified across the plan and its dependent artifacts, then explain the better design shape and teach the user how to use each building block well.
 
 When a parent Pulse prompt explicitly loads this guidance as a read-only checklist, that parent contract overrides persistence: return findings to the parent only and do not edit any workspace file. The parent Pulse Fixer remains the only writer; the final message of that parent's retained review sequence owns typed persistence. `technical_review` is this checklist's automated owner (engineering correctness — step-type/prevalidation/schema fitness, not tactic quality). `strategic_review` owns tactic quality and conditional outside-the-plan opportunity discovery, but loads this structural checklist only when its own work needs the plan map. Attribute the module id to whichever parent actually loaded this checklist — `technical_review` for the automated structural-hygiene pass, `strategic_review` for Strategic Review, including manual `/strategy-auditor` and its compatibility alias `/goal-advisor`.

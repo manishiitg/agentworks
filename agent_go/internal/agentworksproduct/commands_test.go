@@ -50,7 +50,7 @@ func TestAgentWorksCommandsResolvePrompts(t *testing.T) {
 			t.Fatalf("command %q prompt does not name its guidance kind %s", name, wantKind)
 		}
 	}
-	for _, name := range []string{"backup", "publish", "notify"} {
+	for _, name := range []string{"backup", "share", "notify", "run", "fix", "schedule", "connect", "upgrade"} {
 		if _, ok := byName[name]; !ok {
 			t.Fatalf("command %q missing from product.yaml", name)
 		}
@@ -76,7 +76,10 @@ func TestAgentWorksCommandsResolvePrompts(t *testing.T) {
 	if !slices.Equal(aliases["define-success"], []string{"setup-goals"}) {
 		t.Fatalf("setup-goals alias define-success = %v", aliases["define-success"])
 	}
-	if len(byName) != 7 {
-		t.Fatalf("product.yaml carries %d commands, want 7", len(byName))
+	if !slices.Equal(aliases["publish"], []string{"share"}) {
+		t.Fatalf("share keeps /publish as an alias, got %v", aliases["publish"])
+	}
+	if len(byName) != 12 {
+		t.Fatalf("product.yaml carries %d commands, want 12", len(byName))
 	}
 }

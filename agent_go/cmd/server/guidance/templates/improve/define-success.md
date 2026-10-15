@@ -4,6 +4,9 @@ shared flow for /setup-goals, legacy /define-success, and first-time Pulse setup
 User context: {{.Focus}}
 {{end}}
 
+## Goal first
+Start from what the workflow is for and what the owner wants out of it, in plain words. Only then ask how to tell it is working. Measure through what the workflow can already see and the platform allows at low risk (its own results, records and reports); do not add new collection, spending or outside access just to have a number. If a goal cannot be measured safely yet, say so and keep the goal.
+
 ## Inspect before asking
 Read soul/soul.md, the current plan/config, reports and relevant existing data.
 Call get_goal_metrics(workspace_path=...) for current definitions and history.

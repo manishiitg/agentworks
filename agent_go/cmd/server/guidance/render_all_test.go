@@ -1101,6 +1101,7 @@ func TestImprovementAndPlanGuidanceIncludesAssumptionAudit(t *testing.T) {
 		t.Fatalf("render design-plan: %v", err)
 	}
 	for _, want := range []string{
+		"would you build this workflow this way from scratch",
 		"It is read-only",
 		"dependent artifacts",
 		"VISUAL MAP",

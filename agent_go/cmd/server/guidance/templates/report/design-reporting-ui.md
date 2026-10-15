@@ -97,3 +97,7 @@ Then run `preview_report` for each changed document. It uses the same runtime
 in a real browser and reports script/fetch errors, loading state and screenshots
 at 768px, 480px and 1280px in both themes. Open the screenshots with `read_image`
 to verify that the requested design renders and its data/actions work.
+
+## When it works
+Call `get_dashboard_link` and give the person the link in plain words. Sharing a workflow means sharing this dashboard: tell them to press Share on it, or run `/share`. Never put the dashboard on a public website or add a password page. For an MP4 or animation of the data, use `export_dashboard_motion` after loading the motion guide.
+
