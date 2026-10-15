@@ -44,3 +44,22 @@ it('says how long the agent has been quiet once it has produced nothing for a mi
     vi.useRealTimers()
   }
 })
+
+it('says the agent is starting, not a playful word, until the server reports it running, and restarts the clock then', async () => {
+  vi.useFakeTimers()
+  const host = document.createElement('div')
+  const root = createRoot(host)
+  try {
+    const now = Date.now()
+    await act(async () => root.render(<WorkingTipsContext.Provider value={false}><WorkingStatus startedAt={now - 300_000} lastOutputAt={now - 300_000} phase={{ phase: 'starting', text: 'Starting Muse', since: now - 12_000 }} /></WorkingTipsContext.Provider>))
+    expect(host.querySelector('[data-testid="working-word"]')?.textContent).toBe('Starting Muse')
+    expect(host.textContent).toContain('(12s)')
+    expect(host.querySelector('[data-testid="working-quiet"]')).toBeNull()
+    await act(async () => root.render(<WorkingTipsContext.Provider value={false}><WorkingStatus startedAt={now - 300_000} lastOutputAt={now} phase={{ phase: 'running', text: '', since: now }} /></WorkingTipsContext.Provider>))
+    expect(host.querySelector('[data-testid="working-word"]')?.textContent).not.toContain('Starting')
+    expect(host.textContent).toContain('(0s)')
+  } finally {
+    act(() => root.unmount())
+    vi.useRealTimers()
+  }
+})

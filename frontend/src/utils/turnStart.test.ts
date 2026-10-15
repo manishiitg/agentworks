@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { currentTurnStartedAt, lastAgentOutputAt } from './turnStart'
+import { currentTurnPhase, currentTurnStartedAt, lastAgentOutputAt } from './turnStart'
 
 const at = (iso: string) => Date.parse(iso)
 const ev = (type: string, timestamp: string) => ({ type, timestamp })
@@ -26,5 +26,21 @@ describe('lastAgentOutputAt', () => {
     expect(currentTurnStartedAt(noEnd)).toBeUndefined()
     expect(lastAgentOutputAt(noEnd)).toBeUndefined()
     expect(lastAgentOutputAt(undefined)).toBeUndefined()
+  })
+})
+
+describe('currentTurnPhase', () => {
+  const phaseEvent = (phase: string, text: string, since: string) => ({ type: 'turn_phase', data: { data: { data: { phase, text, since } } } })
+  const user = { type: 'user_message', data: undefined }
+
+  it('is the newest phase the server announced for the turn now running', () => {
+    const events = [user, phaseEvent('starting', 'Starting Muse', '2026-10-15T10:01:00Z'), phaseEvent('retrying', 'Retrying: no response in time (attempt 1 of 5, next in 10s)', '2026-10-15T10:02:30Z')]
+    expect(currentTurnPhase(events as never)).toEqual({ phase: 'retrying', text: 'Retrying: no response in time (attempt 1 of 5, next in 10s)', since: Date.parse('2026-10-15T10:02:30Z') })
+  })
+
+  it('is undefined once the turn has ended, and when the server never said', () => {
+    expect(currentTurnPhase([phaseEvent('running', '', '2026-10-15T10:01:00Z'), { type: 'unified_completion', data: undefined }] as never)).toBeUndefined()
+    expect(currentTurnPhase([user] as never)).toBeUndefined()
+    expect(currentTurnPhase(undefined)).toBeUndefined()
   })
 })

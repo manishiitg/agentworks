@@ -1,0 +1,233 @@
+package events
+
+import (
+	"fmt"
+	"log"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/manishiitg/mcpagent/events"
+)
+
+// The turn phase (PLAT-861-220). The Working line used to show a playful word from the moment the person sent a
+// message, even while the agent had not started (a launch stuck on a screen, a retry waiting out its delay). The
+// server now says what the turn is really doing, from the events it already sees, and the browser only displays it:
+//
+//	starting         the turn began; the agent has produced nothing yet
+//	retrying         a launch or call failed and the next attempt is waiting
+//	waiting_for_you  the agent asked a question and waits for the answer
+//	running          the agent produced output
+//
+// A change is announced as one "turn_phase" event (application-defined, carried as GenericEventData). It is not
+// stored in the durable history: the in-memory session events replay it, and a chat without one keeps the old line.
+const turnPhaseEventType = "turn_phase"
+
+const (
+	turnPhaseStarting       = "starting"
+	turnPhaseRetrying       = "retrying"
+	turnPhaseWaitingForYou  = "waiting_for_you"
+	turnPhaseRunning        = "running"
+	turnPhaseStaleAfter     = 6 * time.Hour
+	turnPhaseRetrySuffix    = " - retrying original model"
+	turnPhaseWaitingMessage = "Waiting for your answer"
+)
+
+type turnPhaseState struct {
+	phase    string
+	label    string // "Muse", "Claude" or "the agent"
+	reason   string
+	attempt  int
+	total    int
+	nextIn   string
+	updated  time.Time
+	announce string // signature of the last announced state
+}
+
+var (
+	turnPhasesMu sync.Mutex
+	turnPhases   = map[string]*turnPhaseState{}
+	// turnPhaseLabels remembers the agent's name per session, so the next turn can say "Starting Muse" before any
+	// event of that turn names it.
+	turnPhaseLabels = map[string]string{}
+)
+
+// turnPhaseLabel names the agent the person chose, from the provider or (when only the model is known) its family.
+func turnPhaseLabel(provider, modelID string) string {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "muse-cli", "muse":
+		return "Muse"
+	case "codex-cli", "codex":
+		return "Codex"
+	case "claude-code", "claude-cli":
+		return "Claude"
+	case "pi-cli":
+		return "Pi"
+	case "cursor-cli":
+		return "Cursor"
+	case "agy-cli":
+		return "Antigravity"
+	case "gemini-cli":
+		return "Gemini"
+	}
+	model := strings.ToLower(strings.TrimSpace(modelID))
+	switch {
+	case strings.HasPrefix(model, "muse-"):
+		return "Muse"
+	case strings.HasPrefix(model, "claude-"):
+		return "Claude"
+	}
+	return ""
+}
+
+func turnPhaseText(s *turnPhaseState) string {
+	label := s.label
+	if label == "" {
+		label = "the agent"
+	}
+	switch s.phase {
+	case turnPhaseStarting:
+		return "Starting " + label
+	case turnPhaseRetrying:
+		text := "Retrying"
+		if s.reason != "" {
+			text += ": " + s.reason
+		}
+		if s.attempt > 0 && s.total > 0 {
+			text += fmt.Sprintf(" (attempt %d of %d", s.attempt, s.total)
+			if s.nextIn != "" {
+				text += ", next in " + s.nextIn
+			}
+			text += ")"
+		}
+		return text
+	case turnPhaseWaitingForYou:
+		return turnPhaseWaitingMessage
+	}
+	return ""
+}
+
+// trackTurnPhase moves the session's turn phase on one event and announces the change.
+func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
+	if sessionID == "" || event.Type == turnPhaseEventType {
+		return
+	}
+	now := time.Now()
+	turnPhasesMu.Lock()
+	for id, st := range turnPhases {
+		if now.Sub(st.updated) > turnPhaseStaleAfter {
+			delete(turnPhases, id)
+		}
+	}
+	st := turnPhases[sessionID]
+	var announce *turnPhaseState
+	set := func(phase string) {
+		if st == nil {
+			st = &turnPhaseState{label: turnPhaseLabels[sessionID]}
+			turnPhases[sessionID] = st
+		}
+		if st.phase != phase {
+			st.reason, st.attempt, st.total, st.nextIn = "", 0, 0, ""
+		}
+		st.phase, st.updated = phase, now
+	}
+	switch event.Type {
+	case "user_message":
+		if st == nil {
+			set(turnPhaseStarting)
+		}
+	case "llm_generation_start":
+		if st == nil {
+			set(turnPhaseStarting)
+		} else if st.phase == turnPhaseRetrying {
+			set(turnPhaseStarting)
+		}
+		if st.label == "" && event.Data != nil {
+			if d, ok := event.Data.Data.(*events.LLMGenerationStartEvent); ok {
+				st.label = turnPhaseLabel("", d.ModelID)
+			}
+		}
+	case "retry_attempt":
+		if st == nil {
+			set(turnPhaseStarting)
+		}
+		if event.Data != nil {
+			if d, ok := event.Data.Data.(*events.RetryAttemptEvent); ok {
+				if l := turnPhaseLabel(d.Provider, d.ModelID); l != "" {
+					st.label = l
+				}
+				set(turnPhaseRetrying)
+				st.reason = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(d.Error), turnPhaseRetrySuffix))
+				st.reason = strings.ReplaceAll(st.reason, "_", " ")
+				st.attempt, st.total, st.nextIn = d.AttemptIndex+1, d.TotalAttempts, d.Duration
+				if st.attempt > st.total && st.total > 0 {
+					st.attempt = st.total
+				}
+			}
+		}
+	case "request_human_feedback", "blocking_human_feedback", "coding_agent_question":
+		if st != nil {
+			set(turnPhaseWaitingForYou)
+		}
+	case "human_feedback_resolved", "tool_call_start", "conversation_thinking", "llm_generation_end":
+		if st != nil && st.phase != turnPhaseRunning {
+			set(turnPhaseRunning)
+		}
+	case "streaming_chunk":
+		if st != nil && st.phase != turnPhaseRunning {
+			// The agent's own words. A terminal-screen snapshot is the pane, not output: a sign-in or update screen
+			// streamed as terminal text must not turn "starting" into "working".
+			if source, _, contentLen := streamingChunkFields(event); source != "terminal" && contentLen > 0 {
+				set(turnPhaseRunning)
+			}
+		}
+	case "streaming_end":
+		// A failed launch ends its stream with nothing in it while the retry is still to come.
+		if st != nil && st.phase == turnPhaseRunning {
+			delete(turnPhases, sessionID)
+			st = nil
+		}
+	case "unified_completion", "conversation_end", "conversation_error", "context_cancelled", "agent_error":
+		if st != nil {
+			delete(turnPhases, sessionID)
+			st = nil
+		}
+	}
+	if st != nil && st.label != "" {
+		turnPhaseLabels[sessionID] = st.label
+	}
+	if st != nil {
+		sig := fmt.Sprintf("%s|%s|%s|%d|%d|%s", st.phase, st.label, st.reason, st.attempt, st.total, st.nextIn)
+		if sig != st.announce {
+			st.announce = sig
+			copied := *st
+			announce = &copied
+		}
+	}
+	turnPhasesMu.Unlock()
+	if announce == nil {
+		return
+	}
+	data := map[string]interface{}{
+		"phase": announce.phase,
+		"text":  turnPhaseText(announce),
+		"since": now.UTC().Format(time.RFC3339Nano),
+	}
+	if announce.label != "" {
+		data["agent_label"] = announce.label
+	}
+	agentEvent := events.NewAgentEvent(&events.GenericEventData{
+		BaseEventData: events.BaseEventData{Timestamp: now},
+		Data:          data,
+	})
+	agentEvent.SessionID = sessionID
+	agentEvent.Component = "turn_phase"
+	log.Printf("[TURN] phase=%s session=%s text=%q", announce.phase, sessionID, data["text"])
+	es.AddEvent(sessionID, Event{
+		ID:        fmt.Sprintf("turn-phase-%s-%d", sessionID, now.UnixNano()),
+		Type:      turnPhaseEventType,
+		Timestamp: now,
+		Data:      agentEvent,
+		SessionID: sessionID,
+	})
+}

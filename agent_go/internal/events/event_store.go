@@ -1109,6 +1109,7 @@ func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 
 	logStreamingChunkTelemetry(sessionID, event)
 	es.logToolCallTelemetry(sessionID, event)
+	es.trackTurnPhase(sessionID, event)
 
 	// Notify SSE subscribers (non-blocking send; drop if buffer full)
 	es.subscribersMu.RLock()

@@ -1,6 +1,6 @@
 import { CodingAgentQuestionCard } from './CodingAgentQuestionCard'
 import { WorkingStatus } from './chat/WorkingStatus'
-import { currentTurnStartedAt, lastAgentOutputAt } from '../utils/turnStart'
+import { currentTurnPhase, currentTurnStartedAt, lastAgentOutputAt, type TurnPhase } from '../utils/turnStart'
 import { codingAgentQuestionCards, withClosedQuestions, type CodingAgentQuestionAnswerHandler } from '../utils/codingAgentQuestions'
 import { AgentRuntimeActivityIndicator } from './AgentRuntimeActivityIndicator'
 import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
@@ -67,6 +67,7 @@ type TranscriptHistoryContext = {
   usage?: LiveUsageSummary
   turnStartedAt?: number
   lastOutputAt?: number
+  turnPhase?: TurnPhase
 }
 
 // Keep history navigation inside the virtual scroller. A fixed sibling header
@@ -100,7 +101,7 @@ const TranscriptActivityFooter = ({ context }: { context?: TranscriptHistoryCont
     {working && <>
       {activity.label === 'running'
         // The twinkling star is the motion here, so no separate spinner.
-        ? <WorkingStatus className="truncate" startedAt={context?.turnStartedAt} lastOutputAt={context?.lastOutputAt} />
+        ? <WorkingStatus className="truncate" startedAt={context?.turnStartedAt} lastOutputAt={context?.lastOutputAt} phase={context?.turnPhase} />
         : <>
           <AgentRuntimeActivityIndicator state={activity.state} label={activity.label} />
           <span className="truncate">{ACTIVITY_TEXT[activity.label] ?? activity.label}</span>
@@ -1106,6 +1107,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   const usage = useMemo(() => liveUsageSummary(statusMeta), [usageKey])
   const turnStartedAt = useMemo(() => currentTurnStartedAt(events), [events])
   const lastOutputAt = useMemo(() => lastAgentOutputAt(events), [events])
+  const turnPhase = useMemo(() => currentTurnPhase(events), [events])
   const historyContext = useMemo<TranscriptHistoryContext>(() => ({
     hasOlder: Boolean(hasOlder && onLoadOlder),
     loadingOlder,
@@ -1114,7 +1116,8 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     usage,
     turnStartedAt,
     lastOutputAt,
-  }), [hasOlder, loadingOlder, onLoadOlder, handleEarlierMessages, runtimeActivity, usage, turnStartedAt, lastOutputAt])
+    turnPhase,
+  }), [hasOlder, loadingOlder, onLoadOlder, handleEarlierMessages, runtimeActivity, usage, turnStartedAt, lastOutputAt, turnPhase])
 
   if (listData.length === 0) {
     const state = (terminal?.state || '').trim().toLowerCase()

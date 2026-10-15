@@ -7,6 +7,8 @@ export const HIDDEN_EVENTS = new Set([
   'system_prompt',
   'agent_start',
   'llm_generation_end',
+  // The server's turn phase feeds the Working line only; it is never a chat row.
+  'turn_phase',
 ]);
 
 // Summary mode allowlist — only these event types are shown when viewMode='summary'.

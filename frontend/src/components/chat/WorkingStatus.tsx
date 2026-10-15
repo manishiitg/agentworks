@@ -35,7 +35,7 @@ function WorkingGlyph({ reduced }: { reduced: boolean }) {
 // One shared "the agent is working" line. Real server status wins; otherwise a friendly word that changes every few
 // seconds, with the seconds since the server started the turn when it told us. Display only: it never decides anything.
 // Screen readers get one stable "Working…" label; the changing text is hidden from them so they are not spammed.
-export function WorkingStatus({ realStatus, startedAt, lastOutputAt, className }: { realStatus?: string; startedAt?: number; lastOutputAt?: number; className?: string }) {
+export function WorkingStatus({ realStatus, startedAt, lastOutputAt, phase, className }: { realStatus?: string; startedAt?: number; lastOutputAt?: number; phase?: { phase: string; text: string; since: number }; className?: string }) {
   const reduced = usePrefersReducedMotion()
   const tipsAllowed = useContext(WorkingTipsContext)
   const recent = useRef<number[]>([])
@@ -50,15 +50,19 @@ export function WorkingStatus({ realStatus, startedAt, lastOutputAt, className }
     return () => window.clearInterval(timer)
   }, [reduced])
   useEffect(() => {
-    if (startedAt === undefined && lastOutputAt === undefined) return
+    if (startedAt === undefined && lastOutputAt === undefined && phase === undefined) return
     setNow(Date.now())
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
-  }, [startedAt, lastOutputAt])
-  const { text } = resolveWorkingLabel(realStatus, WORKING_WORDS[reduced ? 0 : word.index])
-  const elapsed = startedAt !== undefined && now >= startedAt ? ` (${formatElapsed(now - startedAt)})` : ''
+  }, [startedAt, lastOutputAt, phase?.since])
+  // The server's phase: until the agent has really started the line says what is happening instead of a playful word,
+  // and each phase counts from its own start. "Running" (or no phase known) keeps the playful word.
+  const notYetRunning = phase !== undefined && phase.phase !== 'running' && phase.text !== ''
+  const { text } = notYetRunning ? { text: phase.text } : resolveWorkingLabel(realStatus, WORKING_WORDS[reduced ? 0 : word.index])
+  const clockFrom = phase !== undefined ? phase.since : startedAt
+  const elapsed = phase?.phase === 'waiting_for_you' ? '' : clockFrom !== undefined && now >= clockFrom ? ` (${formatElapsed(now - clockFrom)})` : ''
   // Honest about silence: once the agent has produced nothing for a minute and a half, say so (the server's times).
-  const quiet = lastOutputAt !== undefined && now - lastOutputAt >= QUIET_NOTE_AFTER_MS ? ` \u00b7 no new output for ${formatElapsed(now - lastOutputAt)}` : ''
+  const quiet = !notYetRunning && lastOutputAt !== undefined && now - lastOutputAt >= QUIET_NOTE_AFTER_MS ? ` \u00b7 no new output for ${formatElapsed(now - lastOutputAt)}` : ''
   return (
     <span className={`inline-flex min-w-0 max-w-full flex-col ${className ?? ''}`} data-testid="working-status">
       <span className="sr-only" role="status" aria-live="polite">{WORKING_ACCESSIBLE_LABEL}</span>

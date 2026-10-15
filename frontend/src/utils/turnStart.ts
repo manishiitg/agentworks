@@ -26,7 +26,7 @@ export function currentTurnStartedAt(events: readonly Pick<PollingEvent, 'type' 
 }
 
 // Events that are not the agent's own output: the person's message and delivery receipts.
-const NOT_AGENT_OUTPUT = new Set(['user_message', 'live_input_confirmed'])
+const NOT_AGENT_OUTPUT = new Set(['user_message', 'live_input_confirmed', 'turn_phase'])
 
 // The server's own time of the newest thing the agent produced in the turn now running (text, a tool call, thinking,
 // a question), so the Working line can say how long it has been quiet. Display only. Like currentTurnStartedAt it
@@ -51,4 +51,31 @@ export function lastAgentOutputAt(events: readonly Pick<PollingEvent, 'type' | '
     if (Number.isFinite(at) && at > newest) newest = at
   }
   return newest
+}
+
+// What the server says the turn now running is doing (its "turn_phase" event): starting, retrying, waiting for the
+// person's answer, or running. Display only. Undefined when the server has not said (an older server, a restored
+// chat), and the Working line then keeps its old behaviour.
+export interface TurnPhase {
+  phase: string
+  text: string
+  since: number
+}
+
+export function currentTurnPhase(events: readonly Pick<PollingEvent, 'type' | 'data'>[] | undefined): TurnPhase | undefined {
+  if (!events) return undefined
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    const type = event.type ?? ''
+    if (TURN_END_EVENTS.has(type)) return undefined
+    if (type !== 'turn_phase') continue
+    const outer = event.data as unknown as Record<string, unknown> | undefined
+    const inner = (outer?.data ?? {}) as Record<string, unknown>
+    const payload = (inner.data ?? inner) as Record<string, unknown>
+    const phase = payload.phase
+    const since = typeof payload.since === 'string' ? Date.parse(payload.since) : NaN
+    if (typeof phase !== 'string' || !Number.isFinite(since)) return undefined
+    return { phase, text: typeof payload.text === 'string' ? payload.text : '', since }
+  }
+  return undefined
 }
