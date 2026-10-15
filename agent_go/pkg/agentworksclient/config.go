@@ -176,7 +176,8 @@ func ListLogins() ([]LoginInfo, error) {
 	}
 	for _, entry := range entries {
 		name := strings.TrimSuffix(entry.Name(), ".json")
-		if entry.IsDir() || name == entry.Name() || ValidateLoginName(name) != nil {
+		// Guidance caches sit beside a login as <login>.json.guidance.json; they are not logins.
+		if entry.IsDir() || name == entry.Name() || ValidateLoginName(name) != nil || strings.Contains(name, ".json") {
 			continue
 		}
 		load(name, filepath.Join(dir, entry.Name()))
