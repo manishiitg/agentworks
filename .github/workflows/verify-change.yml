@@ -36,7 +36,7 @@ jobs:
       GOWORK: "off"
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version-file: agent_go/go.mod
           cache-dependency-path: agent_go/go.sum
@@ -70,7 +70,7 @@ jobs:
       GOWORK: "off"
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version-file: agent_go/go.mod
           cache-dependency-path: agent_go/go.sum
@@ -104,7 +104,7 @@ jobs:
           echo "frontend=$(grep -q '^frontend/' changed.txt && echo true || echo false)" >> "$GITHUB_OUTPUT"
           git log -1 --format=%B > message.txt
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         if: steps.changed.outputs.go == 'true'
         with:
           go-version-file: agent_go/go.mod
@@ -283,7 +283,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version-file: agent_go/go.mod
           cache-dependency-path: agent_go/go.sum
