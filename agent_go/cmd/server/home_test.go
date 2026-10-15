@@ -127,3 +127,28 @@ func TestHomeRunningExcludesIdleAndCompletedChats(t *testing.T) {
 		t.Fatal("child duplicated as top-level work")
 	}
 }
+
+func TestWorkspaceStateCorruptPreferenceRecoversToHome(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	t.Setenv("AGENT_PRODUCTS", "agentworks")
+	for _, raw := range []string{`{broken`, `{"version":99,"last":{"surface":"agentworks","id":"invoices"}}`, strings.Repeat("x", 32769)} {
+		f.write(t, workspaceReturnPath("owner"), raw)
+		w := httptest.NewRecorder()
+		f.api.handleWorkspaceReturnState(w, adminRequest("GET", "/api/workspace-state", "", &UserClaims{UserID: "owner"}, nil))
+		var state workspaceReturnState
+		if err := json.Unmarshal(w.Body.Bytes(), &state); w.Code != 200 || err != nil || state.Last != nil || state.Revision != 0 || state.Note == "" {
+			t.Fatalf("corrupt state blocked navigation: %d %s (%v)", w.Code, w.Body, err)
+		}
+	}
+	w := httptest.NewRecorder()
+	f.api.handleWorkspaceReturnState(w, adminRequest("PUT", "/api/workspace-state", `{"version":1,"revision":0,"last":{"surface":"agentworks","id":"invoices"}}`, &UserClaims{UserID: "owner"}, nil))
+	if w.Code != 200 {
+		t.Fatalf("could not replace corrupt preference: %d %s", w.Code, w.Body)
+	}
+	w = httptest.NewRecorder()
+	f.api.handleWorkspaceReturnState(w, adminRequest("GET", "/api/workspace-state", "", &UserClaims{UserID: "owner"}, nil))
+	var state workspaceReturnState
+	if err := json.Unmarshal(w.Body.Bytes(), &state); err != nil || state.Last == nil || state.Last.ID != "invoices" || state.Note != "" {
+		t.Fatalf("recovery was not durable: %s (%v)", w.Body, err)
+	}
+}
