@@ -1,15 +1,20 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 )
 
@@ -23,6 +28,7 @@ type pendingCodingAgentClarification struct {
 	answers   chan []unifiedevents.CodingAgentQuestionAnswer
 	ctx       context.Context
 	askedAt   time.Time
+	askedTurn string // the turn that asked, as clarificationTurnToken saw it
 }
 
 func codingAgentClarificationSchema() map[string]interface{} {
@@ -50,7 +56,7 @@ func codingAgentClarificationSchema() map[string]interface{} {
 // never leave an unattended workflow, bot or scheduled run waiting for a UI.
 func (api *StreamingAPI) registerCodingAgentClarificationTool(registrar definitionToolRegistrar, sessionID, provider string) error {
 	return registrar.RegisterCustomToolWithTimeout("request_clarification",
-		"Ask the user to choose options in this chat and wait for their answers. Put related questions in a single call; give every question a unique id. Supports single choice, multi_select with selection bounds, and a custom text answer when allow_other is true. The user explicitly submits all answers together; subsequent calls create separate prompts. A cancelled or expired prompt returns an error, never an assumed answer.",
+		"Ask the user to choose options in this chat and wait for their answers. Put related questions in a single call; give every question a unique id. Supports single choice, multi_select with selection bounds, and a custom text answer when allow_other is true. The user explicitly submits all answers together; subsequent calls create separate prompts. A cancelled or expired prompt returns an error, never an assumed answer. Wait for the result before doing anything else, and do not end your turn while the question is open; if you must end it, say that you will continue when the person answers.",
 		codingAgentClarificationSchema(), func(ctx context.Context, args map[string]interface{}) (string, error) {
 			return api.waitForCodingAgentClarification(ctx, sessionID, provider, args)
 		}, 30*time.Minute, "human_tools")
@@ -139,7 +145,7 @@ func (api *StreamingAPI) waitForCodingAgentClarification(ctx context.Context, se
 	if err != nil {
 		return "", err
 	}
-	p := &pendingCodingAgentClarification{sessionID: sessionID, provider: provider, promptID: clarificationPromptPrefix + uuid.NewString(), questions: questions, answers: make(chan []unifiedevents.CodingAgentQuestionAnswer, 1), ctx: ctx, askedAt: time.Now()}
+	p := &pendingCodingAgentClarification{sessionID: sessionID, provider: provider, promptID: clarificationPromptPrefix + uuid.NewString(), questions: questions, answers: make(chan []unifiedevents.CodingAgentQuestionAnswer, 1), ctx: ctx, askedAt: time.Now(), askedTurn: api.clarificationTurnToken(sessionID)}
 	api.codingAgentClarificationsMu.Lock()
 	if api.codingAgentClarifications == nil {
 		api.codingAgentClarifications = map[string]*pendingCodingAgentClarification{}
@@ -232,31 +238,138 @@ func clarificationAnswers(questions []unifiedevents.CodingAgentQuestionPrompt, a
 	return answers, nil
 }
 
+// clarificationOutcome says what a submitted answer needs next: when the turn that asked has already ended, the
+// waiting tool call can no longer hand the answer to the agent, so the server continues the chat itself.
+type clarificationOutcome struct {
+	askingTurnEnded bool
+	message         string
+}
+
 func (api *StreamingAPI) submitCodingAgentClarification(sessionID, provider, promptID string, auto bool, input []codingAgentQuestionAnswerInput) error {
+	_, err := api.submitCodingAgentClarificationOutcome(sessionID, provider, promptID, auto, input)
+	return err
+}
+
+func (api *StreamingAPI) submitCodingAgentClarificationOutcome(sessionID, provider, promptID string, auto bool, input []codingAgentQuestionAnswerInput) (clarificationOutcome, error) {
 	api.codingAgentClarificationsMu.Lock()
 	defer api.codingAgentClarificationsMu.Unlock()
 	p := api.codingAgentClarifications[sessionID]
 	if p == nil || p.promptID != promptID || p.provider != provider || p.ctx.Err() != nil {
-		return fmt.Errorf("clarification is no longer pending")
+		return clarificationOutcome{}, fmt.Errorf("clarification is no longer pending")
 	}
 	answers, err := clarificationAnswers(p.questions, auto, input)
 	if err != nil {
-		return err
+		return clarificationOutcome{}, err
 	}
 	if err := api.emitCodingAgentClarification(p, "settled", "answered", answers); err != nil {
-		return err
+		return clarificationOutcome{}, err
 	}
 	delete(api.codingAgentClarifications, sessionID)
 	p.answers <- answers
 	// One line per answer, ids and numbers only: was the agent's turn still running when the person answered?
 	// An answer that arrives after its turn ended reaches a waiter nobody is reading (PLAT-825-35).
-	turn := api.conversationTurnOccupiedBy(sessionID)
-	if turn == "" && api.isSessionBusy(sessionID) {
-		turn = "busy_flag"
+	current := api.clarificationTurnToken(sessionID)
+	ended := clarificationAskingTurnEnded(p.askedTurn, current)
+	log.Printf("[HUMAN_INPUT] prompt=%s session=%s provider=%s answered turn=%s asked_turn=%s asking_turn_ended=%t after_ms=%d", promptID, sessionID, provider, turnTokenKind(current), turnTokenKind(p.askedTurn), ended, time.Since(p.askedAt).Milliseconds())
+	return clarificationOutcome{askingTurnEnded: ended, message: clarificationFollowUpMessage(p.questions, answers)}, nil
+}
+
+// clarificationTurnToken names the turn running in a chat: what occupies it ("" when idle) and, for a retained CLI
+// session, that turn's id, joined with "|".
+func (api *StreamingAPI) clarificationTurnToken(sessionID string) string {
+	occupant := api.conversationTurnOccupiedBy(sessionID)
+	if occupant == "" && api.isSessionBusy(sessionID) {
+		occupant = "busy_flag"
 	}
-	if turn == "" {
-		turn = "none"
+	id := ""
+	if retained, ok := mcpagent.LookupSession(sessionID); ok {
+		id = retained.ActiveTurnID()
 	}
-	log.Printf("[HUMAN_INPUT] prompt=%s session=%s provider=%s answered turn=%s after_ms=%d", promptID, sessionID, provider, turn, time.Since(p.askedAt).Milliseconds())
-	return nil
+	return occupant + "|" + id
+}
+
+func splitTurnToken(token string) (occupant, id string) {
+	occupant, id, _ = strings.Cut(token, "|")
+	return occupant, id
+}
+
+func turnTokenKind(token string) string {
+	if occupant, _ := splitTurnToken(token); occupant != "" {
+		return occupant
+	}
+	return "none"
+}
+
+// clarificationAskingTurnEnded: the turn that asked has ended when the chat is now idle, or when it has a different
+// turn than the one that asked (a retained session's turn id changed).
+func clarificationAskingTurnEnded(asked, current string) bool {
+	occupant, id := splitTurnToken(current)
+	if occupant == "" && id == "" {
+		return true
+	}
+	_, askedID := splitTurnToken(asked)
+	return askedID != "" && id != askedID
+}
+
+// clarificationFollowUpMessage is the follow-up in the person's words: what they chose.
+func clarificationFollowUpMessage(questions []unifiedevents.CodingAgentQuestionPrompt, answers []unifiedevents.CodingAgentQuestionAnswer) string {
+	parts := make([]string, 0, len(answers))
+	for i, answer := range answers {
+		chosen := append([]string(nil), answer.SelectedLabels...)
+		if other := strings.TrimSpace(answer.OtherText); other != "" {
+			chosen = append(chosen, other)
+		}
+		text := strings.Join(chosen, ", ")
+		if len(answers) > 1 && i < len(questions) {
+			label := strings.TrimSpace(questions[i].Header)
+			if label == "" {
+				label = strings.TrimSpace(questions[i].Question)
+			}
+			if len([]rune(label)) > 60 {
+				label = string([]rune(label)[:60])
+			}
+			text = label + ": " + text
+		}
+		parts = append(parts, text)
+	}
+	return "You chose: " + strings.Join(parts, "; ")
+}
+
+// clarificationFollowUps remembers which prompts already started a follow-up turn, so an answer continues the chat
+// once and never twice.
+var clarificationFollowUps sync.Map
+
+// startClarificationFollowUp continues the chat with the person's answer when the turn that asked has already ended.
+// It sends "You chose: ..." the way the person typing it would (the same /api/query path and the same person), using
+// the chat's last request for its settings. Logged either way, once per prompt id (PLAT-825-35).
+func (api *StreamingAPI) startClarificationFollowUp(r *http.Request, sessionID, promptID, message string) {
+	if _, already := clarificationFollowUps.LoadOrStore(promptID, true); already {
+		return
+	}
+	api.lastQueryMu.RLock()
+	prior, ok := api.lastQueryRequests[sessionID]
+	api.lastQueryMu.RUnlock()
+	if !ok {
+		log.Printf("[HUMAN_INPUT] prompt=%s session=%s followup=skipped reason=no_prior_request", promptID, sessionID)
+		return
+	}
+	prior.Query = message
+	body, err := json.Marshal(prior)
+	if err != nil {
+		log.Printf("[HUMAN_INPUT] prompt=%s session=%s followup=skipped reason=encode_failed", promptID, sessionID)
+		return
+	}
+	ctx := context.WithoutCancel(r.Context())
+	go func() {
+		request, err := http.NewRequestWithContext(ctx, http.MethodPost, "/api/query", bytes.NewReader(body))
+		if err != nil {
+			log.Printf("[HUMAN_INPUT] prompt=%s session=%s followup=skipped reason=request_failed", promptID, sessionID)
+			return
+		}
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("X-Session-ID", sessionID)
+		recorder := httptest.NewRecorder()
+		api.handleQuery(recorder, request)
+		log.Printf("[HUMAN_INPUT] prompt=%s session=%s followup=started status=%d", promptID, sessionID, recorder.Code)
+	}()
 }

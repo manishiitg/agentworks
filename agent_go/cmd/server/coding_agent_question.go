@@ -46,9 +46,14 @@ func (api *StreamingAPI) handleCodingAgentQuestionAnswer(w http.ResponseWriter, 
 		provider = "muse-cli"
 	}
 	if strings.HasPrefix(req.PromptID, clarificationPromptPrefix) {
-		if err := api.submitCodingAgentClarification(sessionID, provider, req.PromptID, req.Auto, req.Answers); err != nil {
+		outcome, err := api.submitCodingAgentClarificationOutcome(sessionID, provider, req.PromptID, req.Auto, req.Answers)
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
+		}
+		// The agent that asked is gone: its waiting tool call cannot pass the answer on, so continue the chat.
+		if outcome.askingTurnEnded {
+			api.startClarificationFollowUp(r, sessionID, req.PromptID, outcome.message)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "prompt_id": req.PromptID})

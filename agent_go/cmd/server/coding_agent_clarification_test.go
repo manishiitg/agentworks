@@ -253,3 +253,51 @@ func TestClarificationAnswerTraceHasIdsAndTurnStateOnly(t *testing.T) {
 		t.Fatalf("answer or question text must not be logged: %s", got)
 	}
 }
+
+// The follow-up turn is decided by "the turn that asked has ended", not only "nothing is running".
+func TestClarificationAskingTurnEnded(t *testing.T) {
+	for name, c := range map[string]struct {
+		asked, current string
+		want           bool
+	}{
+		"chat idle":                     {"input_lane|t1", "|", true},
+		"same retained turn still runs": {"retained_session_turn|t1", "retained_session_turn|t1", false},
+		"a new retained turn":           {"retained_session_turn|t1", "retained_session_turn|t2", true},
+		"turn without an id, running":   {"input_lane|", "input_lane|", false},
+		"busy flag only":                {"busy_flag|", "busy_flag|", false},
+	} {
+		if got := clarificationAskingTurnEnded(c.asked, c.current); got != c.want {
+			t.Errorf("%s: ended=%v, want %v", name, got, c.want)
+		}
+	}
+}
+
+// The follow-up is in the person's words: "You chose: <labels>".
+func TestClarificationFollowUpMessage(t *testing.T) {
+	one := []unifiedevents.CodingAgentQuestionPrompt{{ID: "run_review_choice", Question: "Run now or review first?"}}
+	got := clarificationFollowUpMessage(one, []unifiedevents.CodingAgentQuestionAnswer{{ID: "run_review_choice", SelectedLabels: []string{"Review first"}}})
+	if got != "You chose: Review first" {
+		t.Fatalf("one question: %q", got)
+	}
+	two := []unifiedevents.CodingAgentQuestionPrompt{{ID: "a", Header: "Scope", Question: "Choose scope"}, {ID: "b", Question: "Choose purpose"}}
+	got = clarificationFollowUpMessage(two, []unifiedevents.CodingAgentQuestionAnswer{
+		{ID: "a", SelectedLabels: []string{"Sheets", "Gmail"}}, {ID: "b", OtherText: " custom "},
+	})
+	if got != "You chose: Scope: Sheets, Gmail; Choose purpose: custom" {
+		t.Fatalf("two questions: %q", got)
+	}
+}
+
+// A prompt starts at most one follow-up, and without a recorded request there is nothing to continue.
+func TestClarificationFollowUpStartsOncePerPrompt(t *testing.T) {
+	api := &StreamingAPI{lastQueryRequests: map[string]QueryRequest{}}
+	var out bytes.Buffer
+	log.SetOutput(&out)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	request := httptest.NewRequest(http.MethodPost, "/answer", nil)
+	api.startClarificationFollowUp(request, "once-session", "clarification:once", "You chose: A")
+	api.startClarificationFollowUp(request, "once-session", "clarification:once", "You chose: A")
+	if got := strings.Count(out.String(), "followup=skipped reason=no_prior_request"); got != 1 {
+		t.Fatalf("expected exactly one decision line, got %d: %s", got, out.String())
+	}
+}
