@@ -195,6 +195,12 @@ cp -R "$REPO_ROOT/playbooks/." "$BUILD_DIR/playbooks/"
 # HyperFrames Chrome to <app>/tools/chrome/<version>/ (world-readable) and points AGENT_BROWSER_EXECUTABLE_PATH there
 # (PLAT-758; the rootless deploy already uses <app>/tools/chrome).
 REMOTE_TOOLS_DIR="/var/lib/video-studio/.local"
+# Core dashboard exports need FFprobe in the same managed command folder that
+# workspace shells already receive through AGENT_BROWSER_CLI_DIR. A missing
+# optional video tool must not stop the application release.
+if ! REMOTE_APP="$REMOTE_APP" python3 "$REPO_ROOT/deploy/rootless-linux/install-ffprobe.py" --bin-dir "$REMOTE_TOOLS_DIR/bin"; then
+  echo "Video export is not available on this server yet: FFprobe setup failed. Dashboard playback is available." >&2
+fi
 "${SSH[@]}" "command -v python3 >/dev/null"
 REMOTE_BROWSER_PATH="$("${SSH[@]}" "set -e; export HOME=/var/lib/video-studio; npx --yes 'hyperframes@$HYPERFRAMES_VERSION' browser ensure >/dev/null; npx --yes 'hyperframes@$HYPERFRAMES_VERSION' browser path | tail -n 1")"
 case "$REMOTE_BROWSER_PATH" in

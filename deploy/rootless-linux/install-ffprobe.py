@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Provision the pinned FFprobe used by core dashboard video exports."""
+import argparse
 import base64
 import hashlib
 import json
@@ -19,9 +20,9 @@ PACKAGES = {
 }
 
 
-def install(root):
+def install(root, bin_dir=None):
     package, integrity = PACKAGES[platform.machine()]
-    destination = root / "tools/bin/ffprobe"
+    destination = (bin_dir if bin_dir is not None else root / "tools/bin") / "ffprobe"
     marker = root / "tools/ffprobe.json"
     if destination.is_file() and marker.is_file():
         try:
@@ -33,6 +34,7 @@ def install(root):
             print("ffprobe: pinned tool unchanged")
             return
     destination.parent.mkdir(parents=True, exist_ok=True)
+    marker.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=root / "tools") as name:
         stage = Path(name)
         archive = stage / "ffprobe.tgz"
@@ -62,7 +64,10 @@ def install(root):
 
 if __name__ == "__main__":
     try:
-        install(Path(os.environ["REMOTE_APP"]))
+        parser = argparse.ArgumentParser(description=__doc__)
+        parser.add_argument("--bin-dir", type=Path, help="Existing deployment-managed command folder; defaults to app tools/bin")
+        options = parser.parse_args()
+        install(Path(os.environ["REMOTE_APP"]), options.bin_dir)
     except Exception as error:
         print(f"Video export setup: could not prepare FFprobe: {error}", file=sys.stderr)
         sys.exit(1)
