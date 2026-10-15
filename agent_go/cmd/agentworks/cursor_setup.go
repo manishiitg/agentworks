@@ -21,7 +21,7 @@ import (
 var cursorHookEvents = []string{"sessionStart", "beforeSubmitPrompt", "stop", "sessionEnd", "beforeMCPExecution"}
 
 func setupCommand(o *options) *cobra.Command {
-	cmd := &cobra.Command{Use: "setup", Short: "Set up a coding app to work with AgentWorks"}
+	cmd := &cobra.Command{Use: "setup", Short: "Set up a coding app to work with AgentWorks: claude, codex, cursor, muse or pi"}
 	cmd.AddCommand(&cobra.Command{Use: "cursor", Args: cobra.NoArgs, Short: "Set up the Cursor app for AgentWorks (every project)", Long: "Adds the AgentWorks hooks and the AgentWorks message tools to your Cursor user settings (~/.cursor/hooks.json and ~/.cursor/mcp.json), so every Cursor chat in every project can be connected with /agentworks attach. Other entries in those files are kept. Run it again any time; it only changes what is missing or outdated.", RunE: func(cmd *cobra.Command, _ []string) error {
 		if runtime.GOOS == "windows" {
 			return errors.New("Cursor on Windows cannot connect to AgentWorks yet. Use Claude or Codex on Windows for now")
@@ -54,6 +54,23 @@ func setupCommand(o *options) *cobra.Command {
 		}
 		return nil
 	}})
+	for _, app := range []struct{ provider, name, next string }{
+		{"claude", "Claude Code", "Restart Claude Code, then type /agentworks attach (or /agentworks attach NAME) in a chat."},
+		{"codex", "Codex", "In the Codex app, open Settings > Hooks and trust the AgentWorks hooks, then reload. In any Codex chat type /agentworks attach (or /agentworks attach NAME)."},
+		{"muse", "Muse", "Approve it with muse plugins approve agentworks-muse, restart Muse, then type /agentworks attach in a chat."},
+		{"pi", "Pi", "Reload Pi, then type /agentworks attach in the chat."},
+	} {
+		app := app
+		cmd.AddCommand(&cobra.Command{Use: app.provider, Args: cobra.NoArgs, Short: "Set up " + app.name + " for AgentWorks (every project)", Long: "Installs the AgentWorks plugin for " + app.name + " with its own plugin commands, for every project. Running it again is safe. It does not trust hooks, sign in or connect a chat; you do those next.", RunE: func(cmd *cobra.Command, _ []string) error {
+			o.setupAll = true
+			if err := installAgentPlugin(cmd.Context(), o, app.provider); err != nil {
+				return fmt.Errorf("%s setup was not completed: %w", app.name, err)
+			}
+			fmt.Fprintln(o.stdout, app.name+" is set up for AgentWorks. This applies to every project.")
+			fmt.Fprintln(o.stdout, "Next: "+app.next)
+			return nil
+		}})
+	}
 	return cmd
 }
 

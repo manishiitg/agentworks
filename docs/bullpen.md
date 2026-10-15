@@ -92,6 +92,23 @@ retype the count). A move needs a login you have saved; to add a new server it
 runs `agentworks login --server URL --name NAME`, and the browser approval for
 that login still happens wherever you open the link.
 
+## Set up an app once
+
+Run one command in Terminal for the coding app you use; each covers every
+project and is safe to run again:
+
+```text
+agentworks setup claude    # Claude Code
+agentworks setup codex     # Codex app and Codex CLI
+agentworks setup cursor    # Cursor app
+agentworks setup muse      # Muse
+agentworks setup pi        # Pi
+```
+
+Setup installs the AgentWorks plugin (or, for Cursor, its hooks and message
+tools). It does not trust hooks, sign in or connect a chat: the command tells
+you the one next step for that app.
+
 ## Connect a chat
 
 In the chat you want to connect, type the command yourself:

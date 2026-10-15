@@ -672,21 +672,28 @@ func installAgentPlugin(ctx context.Context, o *options, provider string) error 
 			}
 		}
 	}
-	if b, e := os.ReadFile(registry); e == nil && json.Valid(b) && strings.Contains(string(b), marker) {
+	// A project-scoped Claude install elsewhere is not an every-project setup.
+	if b, e := os.ReadFile(registry); e == nil && json.Valid(b) && strings.Contains(string(b), marker) && !(o.setupAll && provider == "claude") {
 		return nil
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(o.stderr, "Install the AgentWorks %s plugin in %s? Review provider trust prompts afterward. Type yes: ", provider, cwd)
-	var answer string
-	if _, err = fmt.Fscanln(o.stdin, &answer); err != nil || answer != "yes" {
-		return errors.New("plugin installation cancelled")
+	if !o.setupAll {
+		fmt.Fprintf(o.stderr, "Install the AgentWorks %s plugin in %s? Review provider trust prompts afterward. Type yes: ", provider, cwd)
+		var answer string
+		if _, err = fmt.Fscanln(o.stdin, &answer); err != nil || answer != "yes" {
+			return errors.New("plugin installation cancelled")
+		}
 	}
 	var steps [][]string
 	if provider == "claude" {
-		steps = [][]string{{"plugin", "marketplace", "add", "manishiitg/agentworks-plugins", "--scope", "project"}, {"plugin", "install", "agentworks@agentworks", "--scope", "project"}}
+		scope := "project"
+		if o.setupAll {
+			scope = "user"
+		}
+		steps = [][]string{{"plugin", "marketplace", "add", "manishiitg/agentworks-plugins", "--scope", scope}, {"plugin", "install", "agentworks@agentworks", "--scope", scope}}
 	} else {
 		steps = [][]string{{"plugin", "marketplace", "add", "manishiitg/agentworks-plugins"}, {"plugin", "add", "agentworks-codex@agentworks"}}
 	}
@@ -729,10 +736,12 @@ func installMusePlugin(ctx context.Context, o *options) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(o.stderr, "Install the AgentWorks muse plugin in %s? Review provider trust prompts afterward. Type yes: ", cwd)
-	var answer string
-	if _, err = fmt.Fscanln(o.stdin, &answer); err != nil || answer != "yes" {
-		return errors.New("plugin installation cancelled")
+	if !o.setupAll {
+		fmt.Fprintf(o.stderr, "Install the AgentWorks muse plugin in %s? Review provider trust prompts afterward. Type yes: ", cwd)
+		var answer string
+		if _, err = fmt.Fscanln(o.stdin, &answer); err != nil || answer != "yes" {
+			return errors.New("plugin installation cancelled")
+		}
 	}
 	for _, args := range [][]string{
 		{"plugins", "marketplace", "add", "agentworks", "https://github.com/manishiitg/agentworks-plugins.git"},

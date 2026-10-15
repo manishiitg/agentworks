@@ -243,10 +243,12 @@ func installPiPlugin(ctx context.Context, o *options) error {
 		}
 		source = "https://github.com/manishiitg/agentworks at commit " + revision + " (plugins/pi)"
 	}
-	fmt.Fprintf(o.stderr, "Install AgentWorks Pi in %s from %s? Review Pi trust prompts afterward. Type yes: ", cwd, source)
-	var answer string
-	if _, err = fmt.Fscanln(o.stdin, &answer); err != nil || answer != "yes" {
-		return errors.New("Pi package installation cancelled")
+	if !o.setupAll {
+		fmt.Fprintf(o.stderr, "Install AgentWorks Pi in %s from %s? Review Pi trust prompts afterward. Type yes: ", cwd, source)
+		var answer string
+		if _, err = fmt.Fscanln(o.stdin, &answer); err != nil || answer != "yes" {
+			return errors.New("Pi package installation cancelled")
+		}
 	}
 	if !bundled {
 		cache, err := os.UserCacheDir()
@@ -281,7 +283,11 @@ func installPiPlugin(ctx context.Context, o *options) error {
 		}
 		source = filepath.Join(dir, "plugins", "pi")
 	}
-	install := exec.CommandContext(ctx, "pi", "install", source, "--local")
+	piArgs := []string{"install", source, "--local"}
+	if o.setupAll {
+		piArgs = piArgs[:2] // every project
+	}
+	install := exec.CommandContext(ctx, "pi", piArgs...)
 	install.Stdin, install.Stdout, install.Stderr = o.stdin, o.stdout, o.stderr
 	if err := install.Run(); err != nil {
 		return errors.New("Pi package installation failed; review the Pi output")
