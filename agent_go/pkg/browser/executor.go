@@ -760,6 +760,7 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 		if artifactErr != nil {
 			return "", artifactErr
 		}
+		retargetDefaultScreenshot(artifactPlan, folderGuard)
 		if artifactPlan != nil {
 			commandArgs = artifactPlan.RewrittenArgs
 			cloned.ArtifactTransfer = artifactPlan.Transfer

@@ -367,3 +367,22 @@ func rewriteBrowserArtifactOutput(output string, plan *browserArtifactPlan) stri
 	}
 	return strings.ReplaceAll(output, plan.StagedPath, plan.RequestedPath)
 }
+
+// retargetDefaultScreenshot sends a screenshot taken without a path to the
+// session's tool_output_folder when its guard grants one (a workflow step), so
+// default screenshots never land at the workflow root. Other sessions keep the
+// project's screenshots folder.
+func retargetDefaultScreenshot(plan *browserArtifactPlan, guard *FolderGuardConfig) {
+	if plan == nil || plan.Transfer == nil || guard == nil || !strings.HasPrefix(plan.RequestedPath, "screenshots/screenshot-") {
+		return
+	}
+	for _, p := range guard.WritePaths {
+		p = strings.TrimRight(strings.TrimSpace(p), "/")
+		if p == "tool_output_folder" || strings.HasSuffix(p, "/tool_output_folder") {
+			dest := p + "/" + plan.RequestedPath
+			plan.RequestedPath = dest
+			plan.Transfer.DestinationPath = dest
+			return
+		}
+	}
+}
