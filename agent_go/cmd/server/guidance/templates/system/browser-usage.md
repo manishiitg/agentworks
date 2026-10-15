@@ -1,3 +1,5 @@
+People connect one or more Chrome or Edge browsers once from Account → Browser connections, without choosing a workflow. Products reuse a server-selected saved browser; their tabs stay separate. Over external MCP, `browser_connections` lists your own browser metadata, returns the setup link, and selects/removes a target project's browser under existing project access. Pairing credentials are never returned to project-scoped external tokens. If a chosen browser is offline, open it or explicitly choose another; never silently use another person's browser or a different saved browser.
+
 <!-- Chrome extension uses the same tool and backend-owned workspace scope. -->
 When `agent_browser(command="status")` reports `effective_mode: "extension"`,
 use ordinary `agent_browser` commands without `--cdp`. The connected Chrome

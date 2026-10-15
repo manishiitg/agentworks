@@ -542,6 +542,7 @@ chat:
       - list_workflows
       - get_workflow
       - get_settings
+      - browser_connections
       - update_settings
       - manage_schedules
       - workflow_team

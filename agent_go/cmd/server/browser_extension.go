@@ -45,6 +45,10 @@ func (api *StreamingAPI) projectExtensionAccess(r *http.Request, workspace, prof
 }
 func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.Request) {
 	workspace := r.URL.Query().Get("workspace_path")
+	if workspace == "" {
+		api.handleAccountBrowsers(w, r)
+		return
+	}
 	if _, err := api.projectExtensionAccess(r, workspace, r.URL.Query().Get("profile_id")); err != nil {
 		http.Error(w, err.Error(), 403)
 		return
@@ -63,7 +67,8 @@ func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.R
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method == http.MethodPost {
 		var req struct {
-			Action string `json:"action"`
+			Action    string `json:"action"`
+			BrowserID string `json:"browser_id"`
 		}
 		if json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&req) != nil {
 			http.Error(w, "Invalid browser request", 400)
@@ -76,6 +81,12 @@ func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.R
 			if _, err := browserrelay.Default.PairForProfile(user, scope, workspace, profile); err != nil {
 				http.Error(w, "Cannot start Chrome bridge", 503)
 				return
+			}
+			if req.BrowserID != "" {
+				if err := browserrelay.Default.SelectBrowser(user, scope, req.BrowserID); err != nil {
+					http.Error(w, err.Error(), 400)
+					return
+				}
 			}
 			browserrelay.Default.RequestProjectConnection(user, scope)
 		case "pair", "copy", "reset":
@@ -117,6 +128,9 @@ func (api *StreamingAPI) handleBrowserExtensionConnect(w http.ResponseWriter, r 
 			claims.Username, claims.Email = rec.Username, rec.Email
 		} else if IsMultiUserMode() {
 			return fmt.Errorf("account unavailable")
+		}
+		if scope == "" && workspace == "" {
+			return nil
 		}
 		checked := r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
 		if _, err := api.projectExtensionAccess(checked, workspace, profile); err != nil {

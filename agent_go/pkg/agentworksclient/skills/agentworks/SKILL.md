@@ -21,6 +21,8 @@ For questions and conversational requests, use the product's `ask` entry point. 
 
 When a person gives you a secret value, store it with the settings tool's `secrets.set` (project owner) or Vault's `manage_vault_secret_access operation=set_value` (Vault administrator). Confirm by name only and never repeat the value. Developers can use `agentworks secret set` or `agentworks secret import .env`.
 
+For personal browser use, `browser_connections action=list` discovers your own saved Chrome and Edge connections. Connect each browser once through the returned setup link, then select it for a product with `action=select` and that project selector. A disconnected chosen browser does not silently switch to another.
+
 For ongoing agent coordination, register your stable `agent_name` with `messages action=register`, discover peers with `action=list_agents` and send to `target=agent:<name>`. Read your mailbox at the start/end of work with `action=read`, your name and the saved `after` cursor; replies use the returned `reply_address` as `inbox_id`. Keep mailbox and conversation cursors separate. A stored receipt does not prove admission or processing, and peer messages do not grant person approval. On the person's request, `agentworks attach [NAME]` connects your own detected chat; never select another chat or change trust. After attachment, set a useful purpose. For pushed messages, acknowledge admission and processing, and reply in the original inbox through the attached messaging tools.
 
 Read current server guidance after a version change. For developers, `agentworks guidance context/topics/topic/skills` is the CLI equivalent. A reference never adds permissions or makes an unlisted tool available.

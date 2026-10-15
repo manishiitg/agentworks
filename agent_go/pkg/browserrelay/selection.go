@@ -20,6 +20,10 @@ func NewPersistent(root string) (*Manager, error) {
 	m := New()
 	m.selectionPath = filepath.Join(root, "selected.json")
 	m.credentialsPath = filepath.Join(root, "credentials.json")
+	m.browserStatePath = filepath.Join(root, "browsers.json")
+	if err := m.loadBrowserState(); err != nil {
+		return nil, err
+	}
 	if err := m.loadCredentials(); err != nil {
 		return nil, err
 	}
@@ -54,7 +58,7 @@ func NewPersistent(root string) (*Manager, error) {
 		if profile == "" && strings.Contains("/"+label+"/", "/Chats/Code/projects/") {
 			profile = "code"
 		}
-		m.bindings[key] = &Binding{key: key, label: label, profile: profile, gate: make(chan struct{}, 1)}
+		m.bindings[key] = &Binding{key: key, label: label, profile: profile, browserID: m.selectedBrowsers[key], gate: make(chan struct{}, 1)}
 	}
 	return m, nil
 }

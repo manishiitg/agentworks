@@ -387,6 +387,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if isExternalCrewTool(tool.Name) && !productEnabled("work") || isExternalCodeReviewTool(tool.Name) && !productEnabled("code") {
 		return false
 	}
+	if tool.Name == "browser_connections" {
+		return externalBrowserConnectionsAllowed(c)
+	}
 	if tool.Name == "costs" {
 		return externalCostsAllowed(c)
 	}

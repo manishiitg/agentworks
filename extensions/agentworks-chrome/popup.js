@@ -3,9 +3,9 @@ let busy = false;
 let current = { connected: false, tabs: [] };
 function updateButtons() {
   for (const button of document.querySelectorAll('button')) button.disabled = busy;
-  for(const id of ['share','newtab','group'])$(id).disabled=busy || !current.connected;
+  for(const id of ['share','newtab','group'])$(id).disabled=busy || !current.projectConnected;
   $('connect').disabled = busy || !$('pairing').value.trim();
-  $('group').disabled = busy || !current.connected || !current.tabs.length;
+  $('group').disabled = busy || !current.projectConnected || !current.tabs.length;
   $('connect').textContent = busy && !current.connected ? 'Connecting…' : 'Connect browser';
 }
 async function run(request) {
@@ -21,14 +21,16 @@ function render(state) {
   showError(state.error);
   $('setup').hidden = state.connected || state.remembered;
   $('controls').hidden = !state.connected && !state.remembered;
-  $('workspace').textContent = state.name || state.projects?.find(p=>p.scope === state.selectedScope)?.name || (state.workspace || '').split('/').filter(Boolean).pop() || '';
+  $('workspace').textContent = state.accountName || 'AgentWorks';
   $('server').textContent = state.server || '';
-  $('project').replaceChildren(...(state.projects || []).map(p=>{const option=document.createElement('option');option.value=p.scope;option.textContent=`${p.profile_id === 'workflow' ? 'Workflow' : p.profile_id === 'work' ? 'Crew' : 'Code'} · ${p.name || p.workspace.split('/').pop()}${p.connected ? ' · connected' : ''}`;option.selected=p.scope === state.selectedScope;return option;}));
+  $('project').replaceChildren(...(state.projects?.length ? state.projects : [{scope:'',name:'Choose a project in AgentWorks',profile_id:''}]).map(p=>{const option=document.createElement('option');option.value=p.scope;option.textContent=p.scope ? `${p.profile_id === 'workflow' ? 'Workflow' : p.profile_id === 'work' ? 'Crew' : 'Code'} · ${p.name || p.workspace.split('/').pop()}${p.connected ? ' · in use here' : ''}` : p.name;option.selected=p.scope === state.selectedScope;return option;}));
   $('tab-count').textContent = String(state.tabs.length);
   $('empty').hidden = !!state.tabs.length;
   $('empty').querySelector('strong').textContent = state.connected ? 'Ready for your agent' : 'Restoring your connection';
   $('empty').querySelector('p').textContent = state.connected ? 'Your agent can create its own tabs. Sharing an already-open page below is optional.' : 'This browser will reconnect automatically when the platform is available.';
-  document.querySelector('.workspace .eyebrow').textContent = state.connected ? 'CONNECTED PROJECT' : 'REMEMBERED PROJECT';
+  document.querySelector('.workspace .eyebrow').textContent = state.connected ? 'CONNECTED TO' : 'RECONNECTING TO';
+  $('stop').hidden = !state.selectedScope;
+  $('project').disabled = busy || !state.connected || !state.projects?.length;
   $('tabs').replaceChildren(...state.tabs.map(tab => {
     const row = document.createElement('li'), title = document.createElement('span'), remove = document.createElement('button');
     title.textContent = tab.title; title.title = tab.title; remove.textContent = 'Unshare'; remove.setAttribute('aria-label', `Unshare ${tab.title}`);

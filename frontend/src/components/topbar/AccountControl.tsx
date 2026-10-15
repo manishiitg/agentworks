@@ -1,11 +1,12 @@
 import { ProductNavigationLabel, useProductNavigationSidebar } from '../workspace/ProductTopBar'
 import { useEffect, useRef, useState } from 'react'
-import { HelpCircle, Keyboard, KeyRound, LogOut, Users } from 'lucide-react'
+import { HelpCircle, Keyboard, KeyRound, LogOut, Users, Globe } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useAuthStore } from '../../stores/useAuthStore'
 import NotificationsControl from './NotificationsControl'
 import TipsToggle from './TipsToggle'
 import ChangePasswordDialog from './ChangePasswordDialog'
+import BrowserConnectionsDialog from '../BrowserConnectionsDialog'
 import { APP_VERSION } from '../../version'
 
 /**
@@ -26,6 +27,14 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts }: A
   const passwordSignIn = (providers ?? []).some(provider => provider.type === 'credentials')
   const [open, setOpen] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
+  const [browserConnections, setBrowserConnections] = useState(false)
+  useEffect(() => {
+    const show = () => { setOpen(false); setBrowserConnections(true) }
+    window.addEventListener('open-browser-connections', show)
+    const url = new URL(window.location.href)
+    if (url.searchParams.get('browser_connections') === '1') { show(); url.searchParams.delete('browser_connections'); window.history.replaceState(window.history.state, '', url) }
+    return () => window.removeEventListener('open-browser-connections', show)
+  }, [])
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -90,6 +99,7 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts }: A
             <Users className="h-4 w-4 text-muted-foreground" />
             Shared with me
           </button>}
+          <button type="button" role="menuitem" className={itemClass} onClick={() => { setOpen(false); setBrowserConnections(true) }}><Globe className="h-4 w-4 text-muted-foreground" />Browser connections</button>
           {onOpenWalkthrough && <button type="button" role="menuitem" className={itemClass} onClick={() => {
             setOpen(false)
             onOpenWalkthrough()
@@ -135,6 +145,7 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts }: A
         </div>
       )}
 
+      <BrowserConnectionsDialog open={browserConnections} onClose={() => setBrowserConnections(false)} />
       <ChangePasswordDialog isOpen={changingPassword} onClose={() => setChangingPassword(false)} />
     </div>
   )

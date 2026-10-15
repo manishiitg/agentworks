@@ -36,6 +36,19 @@ function tabFacts(tab) {
   return { tab_status: ['loading', 'complete', 'unloaded'].includes(tab.status) ? tab.status : '', tab_flags: flags };
 }
 let accountPairing = null;
+let installationID = '';
+let accountSocket = null;
+let accountOnline = false;
+let accountResume = false;
+let accountConnecting = null;
+let accountError = '';
+function browserBrand() {
+ const brands = navigator.userAgentData?.brands || [];
+ if (brands.some(b=>/Microsoft Edge/i.test(b.brand)) || /Edg\//.test(navigator.userAgent)) return 'Edge';
+ if (brands.some(b=>/Google Chrome/i.test(b.brand)) || /Chrome\//.test(navigator.userAgent)) return 'Chrome';
+ return 'Chromium';
+}
+
 let availableProjects = [];
 let selectedScope = '';
 let popupQueue = Promise.resolve();
@@ -50,9 +63,9 @@ let retryTimer;
 let storageError = '';
 let resumeQueued = false;
 function saveRemembered() {
- const record = {pairings:[...savedPairings.values()],selectedScope,projects:availableProjects};
+ const record = {pairings:[...savedPairings.values()],selectedScope,projects:availableProjects,account:accountPairing ? {url:accountPairing.url,token:accountPairing.token,brand:accountPairing.brand,resume:accountResume} : null};
  const grants = Object.fromEntries(savedTabs);
- const hasPairings = record.pairings.length > 0;
+ const hasPairings = !!accountPairing || record.pairings.length > 0;
  const write = () => Promise.all([
   hasPairings ? chrome.storage.local.set({[storageKey]:record}) : chrome.storage.local.remove(storageKey),
   chrome.storage.session.set({browserSharedTabs:grants,browserChatTabs:Object.fromEntries(savedChatTabs)})
@@ -65,13 +78,16 @@ async function initialize() {
   chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'}),
   chrome.storage.session.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'})
  ]);
- const [{browserConnections:record},{browserSharedTabs:grants,browserChatTabs:chatGrants}] = await Promise.all([
-  chrome.storage.local.get(storageKey),chrome.storage.session.get(['browserSharedTabs','browserChatTabs'])
+ const [{browserConnections:record,browserInstallationID},{browserSharedTabs:grants,browserChatTabs:chatGrants}] = await Promise.all([
+  chrome.storage.local.get([storageKey,'browserInstallationID']),chrome.storage.session.get(['browserSharedTabs','browserChatTabs'])
  ]);
+ installationID = typeof browserInstallationID==='string' && /^[a-zA-Z0-9-]{16,64}$/.test(browserInstallationID) ? browserInstallationID : crypto.randomUUID();
+ await chrome.storage.local.set({browserInstallationID:installationID});
  for(const pairing of record?.pairings || []) {
   if(typeof pairing.scope==='string' && pairing.scope && typeof pairing.token==='string' && typeof pairing.url==='string') savedPairings.set(pairing.scope,pairing);
  }
- accountPairing = savedPairings.values().next().value || null;
+ accountPairing = record?.account || savedPairings.values().next().value || null;
+ accountResume = !!record?.account?.resume;
  if(accountPairing)accountPairing={...accountPairing,resume:false};
  selectedScope = savedPairings.has(record?.selectedScope) ? record.selectedScope : savedPairings.keys().next().value || '';
  availableProjects = Array.isArray(record?.projects) ? record.projects : [];
@@ -84,12 +100,12 @@ async function forgetProject(scope,reason='') {
  const c=connections.get(scope);
  connections.delete(scope);
  if(selectedScope===scope)selectedScope=savedPairings.keys().next().value || '';
- if(!savedPairings.size){accountPairing=null;availableProjects=[];}
+ if(!savedPairings.size && !accountPairing){availableProjects=[];}
  await saveRemembered();
  await c?.stop(reason);updateBadge();
 }
 function retryLater(scope) {
- if(!savedPairings.has(scope))return;
+ if(scope==='@account' ? !accountPairing : !savedPairings.has(scope))return;
  const delay=Math.min((retries.get(scope)?.delay || 500)*2,30000);
  retries.set(scope,{delay,after:Date.now()+delay,attempt:(retries.get(scope)?.attempt || 0)+1});
  offlineDiagnostic('reconnect_scheduled',scope,'',{delay_ms:delay,attempt:retries.get(scope).attempt,chrome:chromeMajor()});
@@ -97,11 +113,15 @@ function retryLater(scope) {
  retryTimer=setTimeout(queueResume,Math.max(100,[...retries.values()].reduce((n,r)=>Math.min(n,r.after-Date.now()),30000)));
 }
 function queueResume() {
- if(resumeQueued || ![...savedPairings.keys()].some(scope=>!connections.get(scope)?.state().connected))return;
+ if(resumeQueued || (!accountPairing && ![...savedPairings.keys()].some(scope=>!connections.get(scope)?.state().connected)))return;
  resumeQueued=true;
  const resume=async()=>{
   try {
    await ready;
+   if(accountPairing && !accountOnline) {
+    if(Date.now()<(retries.get('@account')?.after || 0))return;
+    try{await connectAccount(JSON.stringify(accountPairing));retries.delete('@account');}catch{retryLater('@account');return;}
+   }
    const previousScope=selectedScope;
    for(const [scope,pairing] of [...savedPairings]) {
     if(connections.get(scope)?.state().connected || Date.now()<(retries.get(scope)?.after || 0))continue;
@@ -126,18 +146,50 @@ function queueResume() {
  };
  popupQueue=popupQueue.then(resume,resume);
 }
-function updateBadge() { void chrome.action.setBadgeText({text:[...connections.values()].some(c=>c.state().connected) ? 'ON' : ''}); }
+function updateBadge() { void chrome.action.setBadgeText({text:accountOnline ? 'ON' : ''}); }
 function state() {
  const c = connections.get(selectedScope);
- const remembered=savedPairings.has(selectedScope);
+ const remembered=!!accountPairing;
  const live=c?.state() || {connected:false,workspace:'',server:'',error:'',tabs:[]};
- return {...live,
+ return {...live, connected:accountOnline, projectConnected:live.connected,
+  accountConnected:accountOnline, accountName:accountPairing?.brand || 'AgentWorks',
   workspace:live.workspace || availableProjects.find(p=>p.scope===selectedScope)?.workspace || '',
-  server:live.server || (remembered ? new URL(savedPairings.get(selectedScope).url).host : ''),
-  error:live.error || storageError,
-  selectedScope, remembered, reconnecting:remembered && !live.connected,
+  server:accountPairing ? new URL(accountPairing.url).host : '',
+  error:accountError || live.error || storageError,
+  selectedScope, remembered, reconnecting:remembered && !accountOnline,
   projects:availableProjects.map(p=>({...p,connected:connections.get(p.scope)?.state().connected || false}))};
 }
+// The account socket has no project CDP authority. It asks the server to route
+// independently authorized project sockets to this installation.
+async function connectAccount(raw, manual=false) {
+ if(accountConnecting)return accountConnecting;
+ const pairing=JSON.parse(raw),endpoint=new URL(pairing.url);
+ if(endpoint.pathname!=='/api/browser/extension/connect'||endpoint.search||endpoint.hash||endpoint.username||endpoint.password||typeof pairing.token!=='string'||pairing.token.length<32||(endpoint.protocol!=='wss:'&&!(endpoint.protocol==='ws:'&&['localhost','127.0.0.1'].includes(endpoint.hostname))))throw new Error('Paste the connection code from Account → Browser connections.');
+ if(accountOnline && accountPairing && (accountPairing.url!==pairing.url||accountPairing.token!==pairing.token))throw new Error('Disconnect this browser before connecting another account.');
+ accountPairing={url:pairing.url,token:pairing.token,brand:pairing.brand};
+ const attempt=new Promise((resolve,reject)=>{
+  const ws=new WebSocket(endpoint.href),previous=accountSocket;accountSocket=ws;previous?.close();accountOnline=false;
+  let heartbeat;const timer=setTimeout(()=>{if(accountSocket===ws)ws.close();reject(new Error('Cannot connect to AgentWorks. Open the app and try again.'));},10000);
+  ws.onopen=()=>ws.send(JSON.stringify({type:'pair',token:pairing.token,browser_id:installationID,browser:browserBrand(),version:chrome.runtime.getManifest().version,resume:manual?false:accountResume,resume_scopes:accountResume?[]:[...savedPairings.keys()]}));
+  ws.onmessage=({data})=>{
+   if(accountSocket!==ws)return;let event;try{event=JSON.parse(data);}catch{return;}
+   if(event.type==='account-paired'){
+    clearTimeout(timer);accountOnline=true;accountResume=true;accountError='';availableProjects=event.projects||[];heartbeat=setInterval(()=>{if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'ping'}));},25000);void saveRemembered();updateBadge();resolve(state());
+   }else if(event.type==='connect-project'){
+    const attach=async()=>{if(accountSocket!==ws||!accountOnline)return;const previousScope=selectedScope;if(!connections.get(event.scope)?.state().connected)await connectProject(JSON.stringify({...accountPairing,scope:event.scope,resume:savedPairings.has(event.scope)}));if(connections.get(previousScope)?.state().connected)selectedScope=previousScope;await saveRemembered();};popupQueue=popupQueue.then(attach,attach);
+   }else if(event.type==='project-error'){accountError=event.workspace || 'Could not use this browser for that project.';}
+   else if(event.type==='pong'){if(Array.isArray(event.projects))availableProjects=event.projects;}
+   else if(event.type==='account-disconnected'||event.type==='error'){
+    accountError=event.workspace||'This browser was disconnected. Connect again to enable it.';accountPairing=null;accountResume=false;accountOnline=false;savedPairings.clear();savedTabs.clear();savedChatTabs.clear();void saveRemembered();void Promise.allSettled([...connections.values()].map(c=>c.stop()));connections.clear();ws.close();reject(new Error(accountError));
+   }
+  };
+  ws.onerror=()=>{accountError='Cannot connect to AgentWorks. Open it and check this browser’s connection permission.';reject(new Error(accountError));};
+  ws.onclose=()=>{clearTimeout(timer);clearInterval(heartbeat);if(accountSocket!==ws)return;accountOnline=false;accountSocket=null;updateBadge();if(accountPairing)retryLater('@account');reject(new Error('AgentWorks is offline. This browser will reconnect automatically.'));};
+ });
+ accountConnecting=attempt;
+ try{return await attempt;}finally{accountConnecting=null;}
+}
+
 async function connectProject(raw) {
  const pairing = JSON.parse(raw);
  const changedAccount=accountPairing && (accountPairing.url!==pairing.url || accountPairing.token!==pairing.token);
@@ -409,7 +461,7 @@ async function connect(raw) {
     const transientLoss=async(reason)=>{if(socket!==ws)return;await stop(reason);retryLater(pairing.scope);};
     const revoke=()=>{const forget=()=>{const scope=api.scope || pairing.scope, saved=savedPairings.get(scope);if(saved?.token===pairing.token && saved.url===pairing.url)return forgetProject(scope,'Connection stopped. Connect again to enable access.');};popupQueue=popupQueue.then(forget,forget);};
     const timer = setTimeout(() => {void transientLoss('Reconnecting to the platform…');reject(new Error('Connection timed out'));},10000);
-    ws.onopen = () => ws.send(JSON.stringify({ type: 'pair', features:['chat-clients'], token: pairing.token, scope: pairing.scope, resume:pairing.resume===true }));
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'pair', features:['chat-clients'], token: pairing.token, scope: pairing.scope, browser_id:installationID, resume:pairing.resume===true }));
     ws.onmessage = ({ data }) => {
       if (socket !== ws) return;
       let e; try { e = JSON.parse(data); } catch { void stop('Invalid server response'); return; }
@@ -659,29 +711,20 @@ chrome.runtime.onMessage.addListener((request,sender,respond)=>{
  const run=async()=>{
   await ready;
   if(request.action==='state')return state();
-  if(request.action==='connect') {
-     await connectProject(request.pairing);
-   savedTabs.set(selectedScope,[]);await saveRemembered();
-   const c=connections.get(selectedScope);
-   const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
-   // Connect is a human action granting this workspace the current website.
-   // Automatic project connections above never adopt the user's active tab.
-   const url=tab?.pendingUrl || tab?.url || '';
-   if(c && tab && (/^https?:\/\//.test(url) || url==='about:blank') && (!tabOwners.has(tab.id) || tabOwners.get(tab.id)===c)) {
-    try {await c.share(tab.id);} catch { /* Pairing remains usable if Chrome refuses this page. */ }
-   }
-   return state();
-  }
+  if(request.action==='connect') { await connectAccount(request.pairing, true); return state(); }
   if(request.action==='select-project') {
-   if(!availableProjects.some(p=>p.scope===request.scope) || !accountPairing)throw new Error('Project is not available to this account');
-   if(!connections.get(request.scope)?.state().connected)await connectProject(JSON.stringify({...accountPairing,scope:request.scope}));
-   selectedScope=request.scope;await saveRemembered();return state();
+   if(!availableProjects.some(p=>p.scope===request.scope) || !accountOnline)throw new Error('Connect this browser to your account first.');
+   selectedScope=request.scope;accountError='';
+   accountSocket.send(JSON.stringify({type:'select-project',scope:request.scope}));
+   await saveRemembered();return state();
   }
   if(request.action==='stop-all') {
+   if(accountSocket?.readyState===WebSocket.OPEN)accountSocket.send(JSON.stringify({type:'disconnect'}));
+   accountOnline=false;accountResume=false;const old=accountSocket;accountSocket=null;old?.close();
    savedPairings.clear();savedTabs.clear();savedChatTabs.clear();retries.clear();clearTimeout(retryTimer);
    await saveRemembered();await Promise.allSettled([...connections.values()].map(c=>c.stop()));connections.clear();accountPairing=null;availableProjects=[];selectedScope='';return state();
   }
-  if(request.action==='stop'){await forgetProject(selectedScope);return state();}
+  if(request.action==='stop'){if(accountSocket?.readyState===WebSocket.OPEN)accountSocket.send(JSON.stringify({type:'disconnect-project',scope:selectedScope}));await forgetProject(selectedScope);return state();}
   const c=connections.get(selectedScope);if(!c)throw new Error('Browser is reconnecting. Wait until connected.');
   if(request.action==='share')await c.share(request.tabId);
   else if(request.action==='newtab')await c.newtab();
@@ -691,7 +734,7 @@ chrome.runtime.onMessage.addListener((request,sender,respond)=>{
   return state();
  };
  // Popup mutations serialize so two Share clicks cannot claim one tab twice.
- if(request.action==='state'){void ready.then(()=>{respond({ok:true,...state()});if([...savedPairings.keys()].some(scope=>!connections.get(scope)?.state().connected))queueResume();},e=>respond({ok:false,error:e.message}));return true;}
+ if(request.action==='state'){void ready.then(()=>{respond({ok:true,...state()});if(accountPairing && !accountOnline || [...savedPairings.keys()].some(scope=>!connections.get(scope)?.state().connected))queueResume();},e=>respond({ok:false,error:e.message}));return true;}
  popupQueue=popupQueue.then(run,run);
  popupQueue.then(value=>respond({ok:true,...value}),e=>respond({ok:false,error:e.message}));return true;
 });

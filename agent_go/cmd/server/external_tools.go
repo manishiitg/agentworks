@@ -247,6 +247,7 @@ func externalTools() ([]externalTool, error) {
 		}
 		externalContractUpgradeDefinition(add)
 		externalSettingsDefinitions(add)
+		externalBrowserConnectionsDefinition(add)
 		externalScheduleDefinitions(add)
 		externalWorkflowTeamDefinition(add)
 		externalTriggerDefinitions(add)
@@ -532,6 +533,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if err = tool.validator.Validate(call.Arguments); err != nil {
 		externalError(w, 400, "invalid_arguments", err.Error())
+		return
+	}
+	if tool.Name == "browser_connections" {
+		api.externalBrowserConnectionsCall(w, r, call.Arguments)
 		return
 	}
 	if tool.Name == "costs" {

@@ -29,6 +29,7 @@ const maxMessage = 16 << 20
 type grant struct {
 	User, Scope, Label, ProfileID string
 	Projects                      map[string]projectGrant `json:"projects,omitempty"`
+	Account                       bool                    `json:"account,omitempty"`
 }
 type projectGrant struct {
 	Scope     string `json:"scope"`
@@ -46,8 +47,11 @@ type Status struct {
 	TabTitles        []string `json:"tab_titles,omitempty"`
 	// ExtensionVersion is what the connected Browser Bridge reports in its
 	// diagnostics; LatestVersion is the one this server ships for download.
-	ExtensionVersion string `json:"extension_version,omitempty"`
-	LatestVersion    string `json:"latest_extension_version,omitempty"`
+	BrowserID        string              `json:"browser_id,omitempty"`
+	Message          string              `json:"message,omitempty"`
+	Browsers         []BrowserConnection `json:"browsers,omitempty"`
+	ExtensionVersion string              `json:"extension_version,omitempty"`
+	LatestVersion    string              `json:"latest_extension_version,omitempty"`
 }
 type Binding struct {
 	mu                                 sync.Mutex
@@ -56,6 +60,7 @@ type Binding struct {
 	clients                            map[string]*Client
 	chatClients                        bool
 	profile                            string
+	browserID                          string
 	tabTitles                          []string
 	version                            string
 	label                              string
@@ -71,18 +76,24 @@ type Binding struct {
 	recordingInterruptions             uint64
 }
 type Manager struct {
-	mu              sync.Mutex
-	pairs           map[string]grant
-	bindings        map[string]*Binding
-	listener        net.Listener
-	base            string
-	selectionPath   string
-	credentialsPath string
+	mu               sync.Mutex
+	pairs            map[string]grant
+	bindings         map[string]*Binding
+	listener         net.Listener
+	base             string
+	selectionPath    string
+	credentialsPath  string
+	browserStatePath string
+	browserRecords   map[string]BrowserConnection
+	accountBrowsers  map[string]*accountBrowser
+	selectedBrowsers map[string]string
 }
 
 var Default = New()
 
-func New() *Manager                 { return &Manager{pairs: map[string]grant{}, bindings: map[string]*Binding{}} }
+func New() *Manager {
+	return &Manager{pairs: map[string]grant{}, bindings: map[string]*Binding{}, browserRecords: map[string]BrowserConnection{}, accountBrowsers: map[string]*accountBrowser{}, selectedBrowsers: map[string]string{}}
+}
 func key(user, scope string) string { return user + "\x00" + scope }
 func secret() string {
 	b := make([]byte, 32)
@@ -134,6 +145,11 @@ func (m *Manager) Reset(user, scope, label, profile string) (string, error) {
 	defer m.mu.Unlock()
 	token, err := m.connectionCode(user, scope, label, profile, true)
 	if err == nil {
+		for k, a := range m.accountBrowsers {
+			if strings.HasPrefix(k, user+"\x00") {
+				a.close()
+			}
+		}
 		for bindingKey, b := range m.bindings {
 			if strings.HasPrefix(bindingKey, user+"\x00") {
 				b.closeWithReason("Account connection code reset")
@@ -146,7 +162,7 @@ func (m *Manager) Reset(user, scope, label, profile string) (string, error) {
 // Caller holds m.mu. Upgrade the first legacy project code to the account code;
 // keep other legacy copies usable for their original project until account Reset.
 func (m *Manager) connectionCode(user, scope, label, profile string, reset bool) (string, error) {
-	if user == "" || scope == "" {
+	if user == "" {
 		return "", errors.New("account and browser scope required")
 	}
 	if m.bindings[key(user, scope)] == nil && len(m.bindings) >= 1000 {
@@ -167,7 +183,7 @@ func (m *Manager) connectionCode(user, scope, label, profile string, reset bool)
 				}
 				legacy = append(legacy, existing)
 			}
-			if len(g.Projects) > 0 {
+			if g.Account || len(g.Projects) > 0 {
 				token = existing
 				for k, p := range g.Projects {
 					projects[k] = p
@@ -186,11 +202,13 @@ func (m *Manager) connectionCode(user, scope, label, profile string, reset bool)
 	if reset || token == "" {
 		token = secret()
 	}
-	projects[scope] = projectGrant{Scope: scope, Label: label, ProfileID: profile}
+	if scope != "" {
+		projects[scope] = projectGrant{Scope: scope, Label: label, ProfileID: profile}
+	}
 	if len(projects) > 1000 {
 		return "", errors.New("too many browser connections")
 	}
-	next[token] = grant{User: user, Projects: projects}
+	next[token] = grant{User: user, Projects: projects, Account: true}
 	if len(next) > 1000 {
 		return "", errors.New("too many browser connections")
 	}
@@ -261,6 +279,9 @@ func (m *Manager) availableProjects(token string, authorize func(string, string,
 func (m *Manager) RequestProjectConnection(user, scope string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.hasAccountBrowserLocked(user) || m.selectedBrowsers[key(user, scope)] != "" {
+		return m.requestAccountProjectLocked(user, scope)
+	}
 	if b := m.bindings[key(user, scope)]; b != nil && b.Status().Connected {
 		return true
 	}
@@ -367,6 +388,18 @@ func (m *Manager) Status(user, scope string) Status {
 		status = b.Status()
 	}
 	status.LatestVersion = LatestExtensionVersion()
+	status.Browsers = m.browserListLocked(user)
+	status.BrowserID = m.selectedBrowsers[key(user, scope)]
+	if status.BrowserID != "" && !status.Connected {
+		if r, ok := m.browserRecords[key(user, status.BrowserID)]; ok {
+			status.Message = "Your " + r.Name + " browser is offline. Open it, or choose another browser for this project."
+		}
+	}
+	for _, browser := range status.Browsers {
+		if browser.Connected {
+			status.AccountConnected = true
+		}
+	}
 	for bindingKey, b := range m.bindings {
 		if strings.HasPrefix(bindingKey, user+"\x00") && b.Status().Connected {
 			status.AccountConnected = true
@@ -425,6 +458,15 @@ func (b *Binding) AcquireForActive(ctx context.Context, owner string, active boo
 func (m *Manager) Disconnect(user, scope string) error {
 	m.mu.Lock()
 	b := m.bindings[key(user, scope)]
+	previous := m.selectedBrowsers[key(user, scope)]
+	delete(m.selectedBrowsers, key(user, scope))
+	if err := m.persistBrowsersLocked(); err != nil {
+		if previous != "" {
+			m.selectedBrowsers[key(user, scope)] = previous
+		}
+		m.mu.Unlock()
+		return err
+	}
 	if err := m.persistSelection(key(user, scope), nil); err != nil {
 		m.mu.Unlock()
 		return err
@@ -482,6 +524,9 @@ func (b *Binding) closeWithReason(reason string) {
 func (m *Manager) Close() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	for _, a := range m.accountBrowsers {
+		a.close()
+	}
 	for _, b := range m.bindings {
 		b.close()
 	}
@@ -495,31 +540,35 @@ func (m *Manager) Close() {
 }
 
 type envelope struct {
-	Type        string          `json:"type"`
-	ClientID    string          `json:"client_id,omitempty"`
-	Features    []string        `json:"features,omitempty"`
-	Token       string          `json:"token,omitempty"`
-	Scope       string          `json:"scope,omitempty"`
-	Resume      bool            `json:"resume,omitempty"`
-	ProfileID   string          `json:"profile_id,omitempty"`
-	Projects    []projectGrant  `json:"projects,omitempty"`
-	Workspace   string          `json:"workspace,omitempty"`
-	Name        string          `json:"name,omitempty"`
-	Tabs        int             `json:"tabs,omitempty"`
-	TabTitles   []string        `json:"tab_titles,omitempty"`
-	Message     json.RawMessage `json:"message,omitempty"`
-	RequestID   string          `json:"request_id,omitempty"`
-	URL         string          `json:"url,omitempty"`
-	TargetID    string          `json:"target_id,omitempty"`
-	Error       string          `json:"error,omitempty"`
-	Active      bool            `json:"active,omitempty"`
-	Event       string          `json:"event,omitempty"`
-	Reason      string          `json:"reason,omitempty"`
-	Method      string          `json:"method,omitempty"`
-	TabID       int64           `json:"tab_id,omitempty"`
-	Diagnostics bool            `json:"diagnostics,omitempty"`
-	Version     string          `json:"version,omitempty"`
-	DurationMS  int64           `json:"duration_ms,omitempty"`
+	Type           string          `json:"type"`
+	BrowserID      string          `json:"browser_id,omitempty"`
+	Browser        string          `json:"browser,omitempty"`
+	BrowserVersion string          `json:"browser_version,omitempty"`
+	ResumeScopes   []string        `json:"resume_scopes,omitempty"`
+	ClientID       string          `json:"client_id,omitempty"`
+	Features       []string        `json:"features,omitempty"`
+	Token          string          `json:"token,omitempty"`
+	Scope          string          `json:"scope,omitempty"`
+	Resume         bool            `json:"resume,omitempty"`
+	ProfileID      string          `json:"profile_id,omitempty"`
+	Projects       []projectGrant  `json:"projects,omitempty"`
+	Workspace      string          `json:"workspace,omitempty"`
+	Name           string          `json:"name,omitempty"`
+	Tabs           int             `json:"tabs,omitempty"`
+	TabTitles      []string        `json:"tab_titles,omitempty"`
+	Message        json.RawMessage `json:"message,omitempty"`
+	RequestID      string          `json:"request_id,omitempty"`
+	URL            string          `json:"url,omitempty"`
+	TargetID       string          `json:"target_id,omitempty"`
+	Error          string          `json:"error,omitempty"`
+	Active         bool            `json:"active,omitempty"`
+	Event          string          `json:"event,omitempty"`
+	Reason         string          `json:"reason,omitempty"`
+	Method         string          `json:"method,omitempty"`
+	TabID          int64           `json:"tab_id,omitempty"`
+	Diagnostics    bool            `json:"diagnostics,omitempty"`
+	Version        string          `json:"version,omitempty"`
+	DurationMS     int64           `json:"duration_ms,omitempty"`
 	// Diagnostic detail (PLAT-788). Every field is a number or a value from a fixed vocabulary, checked in
 	// logExtensionDiagnostic; none is ever a page address, title or message.
 	Attempt         int      `json:"attempt,omitempty"`
@@ -708,6 +757,10 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 	if conn.ReadJSON(&hello) != nil || hello.Type != "pair" {
 		return
 	}
+	if hello.Scope == "" && hello.BrowserID != "" {
+		m.serveAccountBrowser(conn, hello, authorize, displayName)
+		return
+	}
 	m.mu.Lock()
 	credential, exists := m.pairs[hello.Token]
 	g, ok := resolveProject(credential, hello.Scope)
@@ -757,10 +810,24 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 		conn.WriteJSON(envelope{Type: "error", Workspace: "Cannot save Chrome selection; reconnect after checking server storage"})
 		return
 	}
+	chosen := m.selectedBrowsers[key(g.User, g.Scope)]
+	if chosen != "" && chosen != hello.BrowserID {
+		m.mu.Unlock()
+		conn.WriteJSON(envelope{Type: "error", Workspace: "This project uses a different browser. Choose this browser in the project's Browser settings first."})
+		return
+	}
+	if hello.BrowserID != "" {
+		a := m.accountBrowsers[key(g.User, hello.BrowserID)]
+		if a == nil || !a.connected() || a.token != hello.Token || chosen != hello.BrowserID {
+			m.mu.Unlock()
+			conn.WriteJSON(envelope{Type: "error", Workspace: "Connect this browser to your account and choose it in Browser settings first."})
+			return
+		}
+	}
 	old := m.bindings[key(g.User, g.Scope)]
 	capability := secret()
 	hash := sha256.Sum256([]byte(capability))
-	b := &Binding{key: key(g.User, g.Scope), label: g.Label, profile: g.ProfileID, capability: capability, endpoint: m.base + "/cdp/" + capability, session: "session-" + hex.EncodeToString(hash[:8]) + "--browser", expires: time.Now().Add(ConnectionLifetime), extension: conn, gate: make(chan struct{}, 1)}
+	b := &Binding{key: key(g.User, g.Scope), label: g.Label, profile: g.ProfileID, browserID: hello.BrowserID, capability: capability, endpoint: m.base + "/cdp/" + capability, session: "session-" + hex.EncodeToString(hash[:8]) + "--browser", expires: time.Now().Add(ConnectionLifetime), extension: conn, gate: make(chan struct{}, 1)}
 	for _, feature := range hello.Features {
 		if feature == "chat-clients" {
 			b.chatClients = true
