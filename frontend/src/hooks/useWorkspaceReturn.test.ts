@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-const mocks = vi.hoisted(() => ({ save: vi.fn(), get: vi.fn(), user: { id: 'alice' } }))
+const mocks = vi.hoisted(() => ({ save: vi.fn(), get: vi.fn(), user: { id: 'alice' }, workspace: 'local' }))
 vi.mock('../services/workspaceState', () => ({ workspaceStateApi: { save: mocks.save, get: mocks.get }, saveWorkspaceStateOnExit: vi.fn() }))
 vi.mock('../stores/useAuthStore', () => ({ useAuthStore: { getState: () => ({ user: mocks.user }) } }))
+vi.mock('../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: { getState: () => ({ activeWorkspaceId: mocks.workspace }) } }))
 vi.mock('../stores/useChatStore', () => ({ useChatStore: {} }))
 vi.mock('../stores/useProductSurfaceStore', () => ({ useProductSurfaceStore: {} }))
 import { queueWorkspaceState, flushWorkspaceState } from './useWorkspaceReturn'
@@ -39,14 +40,13 @@ describe('per-user workspace writer', () => {
 })
 
 it('drops a pending snapshot when the connected server changes', async () => {
-  const { useWorkspaceConnectionStore } = await import('../stores/useWorkspaceConnectionStore')
   vi.useFakeTimers()
-  const previous = useWorkspaceConnectionStore.getState().activeWorkspaceId
+  const previous = mocks.workspace
   useWorkspaceReturnStore.setState({ ready: true, account: 'alice', workspace: previous, record, homeOpen: false, restore: null })
   queueWorkspaceState({ surface: 'code', id: 'same-id-on-old-server' })
-  useWorkspaceConnectionStore.setState({ activeWorkspaceId: 'different-server' })
+  mocks.workspace = 'different-server'
   await flushWorkspaceState()
   expect(mocks.save).not.toHaveBeenCalled()
-  useWorkspaceConnectionStore.setState({ activeWorkspaceId: previous })
+  mocks.workspace = previous
   useWorkspaceReturnStore.setState({ workspace: undefined })
 })
