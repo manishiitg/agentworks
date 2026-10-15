@@ -21,6 +21,13 @@ func withStepParentPlacement(ctx context.Context, title, task string) context.Co
 // roles and preview use this builder, with their immutable plan and call context.
 func (hcpo *StepBasedWorkflowOrchestrator) buildStepPlacement(ctx context.Context, allSteps []PlanStepInterface, index int) string {
 	var lines []string
+	if runFolder := strings.TrimSpace(hcpo.selectedRunFolder); runFolder != "" {
+		line := "Run: " + filepath.Base(filepath.ToSlash(runFolder))
+		if index >= 0 && index < len(allSteps) && allSteps[index] != nil {
+			line += " · step " + allSteps[index].GetID()
+		}
+		lines = append(lines, line)
+	}
 	objective, criteria := hcpo.ResolveWorkflowObjective(ctx)
 	if objective != "" {
 		lines = append(lines, "Goal: "+placementLine(objective, 360))

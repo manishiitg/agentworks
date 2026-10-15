@@ -212,7 +212,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) snapshotWorkspaceEnv() map[string]str
 		snapshot[k] = v
 	}
 	hcpo.UnlockWorkspaceEnv()
-	return snapshot
+	return hcpo.withRunIdentityEnv(snapshot)
 }
 
 // ResolveVariables replaces {{VARIABLE}} placeholders with actual values
