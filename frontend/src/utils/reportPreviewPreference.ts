@@ -8,7 +8,9 @@
 // open, a workaround for a terminal-restore path that once wrote a stray
 // "mobile"; that writer is gone, and the reset only ever threw away the
 // user's choice (and orphaned the widths saved under the other devices).
-// Do not add a programmatic writer back here or at a call site.
+// A server-revalidated workspace return may hydrate this cache with the same
+// person's saved device and width; ordinary product opens remain read-only.
+// Do not add a default-setting writer back here or at a call site.
 export const REPORT_PREVIEW_PREFERENCE_KEY = 'workflow_report_preview_preference'
 export const REPORT_PREVIEW_PREFERENCE_CHANGED_EVENT = 'workflow-report-preview-preference-changed'
 export const WORKFLOW_SPLIT_PREFERENCE_KEY = 'workflow_workspace_split_ratio'
