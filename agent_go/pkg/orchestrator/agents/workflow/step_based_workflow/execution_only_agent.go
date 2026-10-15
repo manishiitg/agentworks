@@ -117,6 +117,12 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) Execute(ctx context.Context, template
 		userMessage = templateVars["AuthoredUserMessage"]
 	}
 
+	// A live runtime keeps the prompt it started with: re-applying a re-rendered
+	// prompt on turn 2+ would replace the agent identity (a new session handle)
+	// and record a prompt the session never started with. A rebuilt runtime has
+	// no instructions yet and gets the full prompt again.
+	systemPrompt = systemPromptForTurn(hctpeoa.startedInstructions(), conversationHistory, systemPrompt)
+
 	// Create a simple input processor that returns the user message
 	inputProcessor := func(map[string]string) string {
 		return userMessage
@@ -124,6 +130,28 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) Execute(ctx context.Context, template
 
 	// Use ExecuteWithTemplateValidation with system prompt (overwrite=true to replace default MCP prompt with agent-specific prompt)
 	return hctpeoa.BaseOrchestratorAgent.ExecuteWithTemplateValidation(ctx, templateVars, inputProcessor, conversationHistory, nil, systemPrompt, true)
+}
+
+// startedInstructions returns the instructions the live runtime was started
+// with, or "" when it has none yet.
+func (hctpeoa *WorkflowExecutionOnlyAgent) startedInstructions() string {
+	if hctpeoa == nil || hctpeoa.BaseOrchestratorAgent == nil {
+		return ""
+	}
+	if ba := hctpeoa.GetBaseAgent(); ba != nil && ba.Agent() != nil {
+		return strings.TrimSpace(ba.Agent().Definition().Instructions)
+	}
+	return ""
+}
+
+// systemPromptForTurn returns the system prompt to apply for this turn: none
+// (keep the started one) for a later turn of a runtime that already holds
+// instructions, the rendered prompt otherwise.
+func systemPromptForTurn(started string, history []llmtypes.MessageContent, rendered string) string {
+	if started != "" && len(history) > 0 {
+		return ""
+	}
+	return rendered
 }
 
 // buildCodeExecBestPractices returns the Python best practices section — only for

@@ -291,3 +291,18 @@ func TestTaskRulesPreservedOnceInDescriptionAndContinuation(t *testing.T) {
 		t.Fatal("child lost its own task or caller input")
 	}
 }
+
+// A later turn of a live runtime keeps the prompt it started with; a first turn
+// or a rebuilt runtime (no instructions yet) gets the rendered prompt.
+func TestSystemPromptForTurnKeepsTheStartedPrompt(t *testing.T) {
+	history := []llmtypes.MessageContent{llmtypes.TextParts(llmtypes.ChatMessageTypeHuman, "hi")}
+	if got := systemPromptForTurn("started", history, "rendered"); got != "" {
+		t.Fatalf("turn 2 of a live runtime re-applied %q", got)
+	}
+	if got := systemPromptForTurn("", history, "rendered"); got != "rendered" {
+		t.Fatalf("a rebuilt runtime must get the full prompt, got %q", got)
+	}
+	if got := systemPromptForTurn("started", nil, "rendered"); got != "rendered" {
+		t.Fatalf("the first turn must apply the prompt, got %q", got)
+	}
+}
