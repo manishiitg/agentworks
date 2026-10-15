@@ -1011,6 +1011,10 @@ func notifyAgentWaiting(a agentworksclient.AgentAttachment, notice string) {
 		text = "agent:" + a.AgentName + ". " + notice
 	}
 	if runtime.GOOS == "darwin" {
+		// The AgentWorks app shows the AgentWorks icon; the rest are fallbacks.
+		if err := notifyWithIcon(text); err == nil {
+			return
+		}
 		if helper, err := exec.LookPath("terminal-notifier"); err == nil {
 			args := []string{"-title", "AgentWorks", "-message", text, "-group", "agentworks-" + a.AgentName}
 			if a.Provider == "codex" {
