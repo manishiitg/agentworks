@@ -324,3 +324,36 @@ func openMigrationFixture(t *testing.T, path string) *sql.DB {
 	}
 	return db
 }
+
+// One folder the server cannot open (a build cache, another account's sandbox home) must not stop the whole
+// deployment-time pass, and dot folders are never scanned.
+func TestMigrateWorkspaceDatabasesSkipsUnreadableAndHiddenFolders(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	pulsePath := filepath.Join(root, "Workflow", "pulse", "db", "db.sqlite")
+	hiddenPath := filepath.Join(root, "Crew", "demo", ".sandbox-cache", "home", "db", "db.sqlite")
+	for _, path := range []string{pulsePath, hiddenPath} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		db := openMigrationFixture(t, path)
+		_, _ = db.Exec(`CREATE TABLE run_concerns (fingerprint TEXT PRIMARY KEY,issue_id TEXT,step_id TEXT,phase TEXT,text TEXT,first_seen_run TEXT,first_seen_at TEXT,last_seen_run TEXT,last_seen_at TEXT,status TEXT,resolution_note TEXT)`)
+		_ = db.Close()
+	}
+	locked := filepath.Join(root, "Crew", "demo", "locked")
+	if err := os.MkdirAll(locked, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(locked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+	report, err := MigrateWorkspaceDatabases(ctx, root)
+	if err != nil {
+		t.Fatalf("an unreadable folder must not abort the pass: %v", err)
+	}
+	if report.Scanned != 1 || report.Migrated != 1 {
+		t.Fatalf("only the workspace database is migrated, not the one under a hidden folder: %+v", report)
+	}
+}

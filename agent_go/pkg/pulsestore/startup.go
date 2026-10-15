@@ -3,20 +3,35 @@ package pulsestore
 import (
 	"context"
 	"io/fs"
+	"log"
 	"path/filepath"
+	"strings"
 )
 
 // MigrateWorkspaceDatabases performs the deployment-time pass. Lazy Ensure
 // remains mandatory because another laptop may not have been online during it.
 func MigrateWorkspaceDatabases(ctx context.Context, root string) (BatchResult, error) {
 	var report BatchResult
+	skippedFolders := 0
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return walkErr
+			// The root itself must be readable. Any other folder the server cannot open (a build cache, a
+			// sandbox home owned by another account) is not a workspace record: note it and keep scanning, so one
+			// unreadable folder never stops the whole deployment-time pass.
+			if path == root {
+				return walkErr
+			}
+			skippedFolders++
+			log.Printf("[PULSE MIGRATION] skipped %s: %v", path, walkErr)
+			if entry != nil && entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		if entry.IsDir() {
 			name := entry.Name()
-			if name == ".git" || name == "node_modules" || name == ".backups" || name == "backup" {
+			if name == ".git" || name == "node_modules" || name == ".backups" || name == "backup" ||
+				(path != root && strings.HasPrefix(name, ".")) {
 				return filepath.SkipDir
 			}
 			relative, err := filepath.Rel(root, path)
@@ -57,6 +72,8 @@ func MigrateWorkspaceDatabases(ctx context.Context, root string) (BatchResult, e
 		}
 		return nil
 	})
+	log.Printf("[PULSE MIGRATION] done scanned=%d migrated=%d current=%d skipped=%d failed=%d unreadable_folders=%d",
+		report.Scanned, report.Migrated, report.Current, report.Skipped, len(report.Failures), skippedFolders)
 	return report, err
 }
 
