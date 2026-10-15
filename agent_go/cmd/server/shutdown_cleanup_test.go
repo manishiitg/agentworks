@@ -650,6 +650,7 @@ func TestHandleCancelCurrentTurnInterruptsALiveRetainedPaneWithoutAGoTurn(t *tes
 	api.terminalStore.HandleEvent(sessionID, codingAgentTmuxReaperChunkEvent(time.Now(), sessionID, "main:"+sessionID, "mlp-pi-cli-int-live"))
 	store := internalevents.NewEventStore(10)
 	defer store.Stop()
+	store.EnableTurnPhase() // the server enables the turn-phase tracking Stop reads on its own store
 	api.eventStore = store
 	stop := func() int {
 		req := httptest.NewRequest(http.MethodPost, "/api/session/cancel-turn", nil)

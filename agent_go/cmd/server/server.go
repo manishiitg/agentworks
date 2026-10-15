@@ -9875,6 +9875,19 @@ func completionMetadataFlag(event events.Event, key string) bool {
 	return flag
 }
 
+// completionMetadataString reads a string field of a completion event's metadata ("" when absent).
+func completionMetadataString(event events.Event, key string) string {
+	if event.Data == nil {
+		return ""
+	}
+	completion, ok := event.Data.Data.(*unifiedevents.UnifiedCompletionEvent)
+	if !ok || completion == nil || completion.Metadata == nil {
+		return ""
+	}
+	value, _ := completion.Metadata[key].(string)
+	return value
+}
+
 // retainedMainTurnTracked reports whether a retained main-agent turn is open.
 func (api *StreamingAPI) retainedMainTurnTracked(sessionID string) bool {
 	if api == nil {
@@ -10060,8 +10073,12 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		!api.persistRetainedStructuredCompletion(sessionID, event) {
 		log.Printf("[CHAT_HISTORY] Retained turn completion carried no final reply to save session=%s event=%s", sessionID, event.ID)
 	}
-	log.Printf("[RETAINED_TURN] Settled retained main-agent turn from structured %s event session=%s terminal=%s state=%s next_execution=%s",
-		eventType, sessionID, snapshot.TerminalID, snapshot.State, promotedExecutionID)
+	outcome := completionMetadataString(event, mcpagent.RetainedTurnOutcomeMetadataKey)
+	if outcome == "" {
+		outcome = "completed"
+	}
+	log.Printf("[RETAINED_TURN] Settled retained main-agent turn from structured %s event session=%s terminal=%s state=%s next_execution=%s outcome=%s",
+		eventType, sessionID, snapshot.TerminalID, snapshot.State, promotedExecutionID, outcome)
 	if promotedExecutionID == "" {
 		api.kickConversationTurnQueue(sessionID)
 	}
