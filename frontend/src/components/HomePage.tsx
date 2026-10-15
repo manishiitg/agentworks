@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ArrowUpRight, CircleCheck, Home, Plus, RefreshCw } from 'lucide-react'
+import type { ActiveSessionInfo } from '../services/api-types'
 import { workspaceStateApi, type HomeData, type HomeWork } from '../services/workspaceState'
 import { useWorkspaceReturnStore } from '../stores/useWorkspaceReturnStore'
 import { ProductTopBar, ProductTopBarActions, ProductTopBarMain } from './workspace/ProductTopBar'
@@ -47,6 +48,13 @@ export function HomePage() {
     if (left >= 0 || right >= 0) return (left < 0 ? Infinity : left) - (right < 0 ? Infinity : right)
     return (b.updated_at || '').localeCompare(a.updated_at || '')
   })
+  const openActivity = (session: ActiveSessionInfo) => {
+    const target = data?.running_work?.[session.session_id]
+    if (!target) return
+    window.history.pushState({}, '', productRoutePath({ surface: target.surface, id: target.id }))
+    useWorkspaceReturnStore.setState({ homeOpen: false })
+    void openGlobalActivitySession(session, { source: 'home' })
+  }
   const openWork = (item: HomeWork, view?: string) => navigate(productRoutePath({ surface: item.surface, id: item.id, view }))
   return <div className="flex h-screen bg-background text-foreground">
     <ProductTopBar><ProductTopBarMain><ProductSurfaceSwitcher /></ProductTopBarMain><ProductTopBarActions><AccountControl onOpenWalkthrough={() => window.dispatchEvent(new Event(OPEN_WELCOME_HOME_EVENT))} /></ProductTopBarActions></ProductTopBar>
@@ -63,7 +71,7 @@ export function HomePage() {
               if (!item.work) return
               if (item.session_id) {
                 const session = data.running.find(session => session.session_id === item.session_id)
-                if (session) { useWorkspaceReturnStore.setState({ homeOpen: false }); void openGlobalActivitySession(session, { source: 'home' }); return }
+                if (session) { openActivity(session); return }
               }
               openWork(item.work, item.view)
             }}><span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" /><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{item.title}</span><span className="mt-1 block text-xs text-muted-foreground">{item.work?.label} · {item.kind.replaceAll('_', ' ')}</span></span><ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground" /></button>) : <p className="flex items-center gap-2 px-4 py-4 text-sm text-muted-foreground"><CircleCheck className="h-4 w-4" />Nothing needs your attention right now.</p>}</div>
@@ -72,7 +80,7 @@ export function HomePage() {
             <div className="overflow-hidden rounded-xl border border-border divide-y divide-border">{(showAll ? work : work.slice(0, 6)).map(item => <button key={`${item.surface}:${item.id}`} onClick={() => openWork(item)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50"><ProductSurfaceIcon surface={item.surface} className="h-7 w-7 shrink-0" /><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{item.label}</span><span className="block text-xs text-muted-foreground">{PRODUCT_SURFACE_LABELS[item.surface]}{rank(item) >= 0 ? ' · Recently used' : ''}</span></span><ArrowUpRight className="h-4 w-4 text-muted-foreground" /></button>)}{!work.length && <p className="px-4 py-4 text-sm text-muted-foreground">Your work and items shared with you will appear here.</p>}</div>
             {work.length > 6 && <button className="mt-3 text-sm text-muted-foreground hover:text-foreground" onClick={() => setShowAll(value => !value)}>{showAll ? 'Show less' : `Show all ${work.length}`}</button>}
           </section>
-          <section aria-labelledby="home-running"><h2 id="home-running" className="mb-3 text-sm font-semibold">Running activity</h2><div className="overflow-hidden rounded-xl border border-border divide-y divide-border">{data.running.map(session => <button key={session.session_id} className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-muted/50" onClick={() => { useWorkspaceReturnStore.setState({ homeOpen: false }); void openGlobalActivitySession(session, { source: 'home' }) }}><span className="h-2 w-2 rounded-full bg-sky-500" /><span className="flex-1 truncate">{session.title || session.query || 'Running work'}</span><ArrowUpRight className="h-4 w-4 text-muted-foreground" /></button>)}{!data.running.length && <p className="px-4 py-4 text-sm text-muted-foreground">No work is running.</p>}</div></section>
+          <section aria-labelledby="home-running"><h2 id="home-running" className="mb-3 text-sm font-semibold">Running activity</h2><div className="overflow-hidden rounded-xl border border-border divide-y divide-border">{data.running.map(session => <button key={session.session_id} className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-muted/50" onClick={() => openActivity(session)}><span className="h-2 w-2 rounded-full bg-sky-500" /><span className="flex-1 truncate">{session.title || session.query || 'Running work'}</span><ArrowUpRight className="h-4 w-4 text-muted-foreground" /></button>)}{!data.running.length && <p className="px-4 py-4 text-sm text-muted-foreground">No work is running.</p>}</div></section>
         </>}
         <footer className="border-t border-border pt-4"><button className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground" onClick={() => window.dispatchEvent(new CustomEvent('open-quick-switcher', { detail: { query: 'create' } }))}><Plus className="h-4 w-4" />Create new…</button><button className="ml-6 text-sm text-muted-foreground hover:text-foreground" onClick={() => window.dispatchEvent(new Event(OPEN_WELCOME_HOME_EVENT))}>Connect tools &amp; getting started</button></footer>
       </div>

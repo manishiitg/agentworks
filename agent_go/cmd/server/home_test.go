@@ -113,3 +113,17 @@ func TestHomeMCPUsesSameVisibility(t *testing.T) {
 		t.Fatalf("MCP home: %d %s", w.Code, w.Body)
 	}
 }
+
+func TestHomeRunningExcludesIdleAndCompletedChats(t *testing.T) {
+	for _, phase := range []RuntimePhase{runtimePhaseIdle, runtimePhaseCompleted, runtimePhaseCanceled, runtimePhaseFailed} {
+		if homeSessionRunning(&ActiveSessionInfo{Status: "running", RuntimeState: &RuntimeSnapshot{Phase: phase}}) {
+			t.Fatalf("settled phase %s shown as running", phase)
+		}
+	}
+	if !homeSessionRunning(&ActiveSessionInfo{RuntimeState: &RuntimeSnapshot{Phase: runtimePhaseRunning}}) {
+		t.Fatal("live work hidden")
+	}
+	if homeSessionRunning(&ActiveSessionInfo{ParentSessionID: "parent", Status: "running"}) {
+		t.Fatal("child duplicated as top-level work")
+	}
+}
