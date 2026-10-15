@@ -1,3 +1,4 @@
+import { useWorkspaceReturnStore } from './useWorkspaceReturnStore'
 import { useCommandDialogStore } from './useCommandDialogStore'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
@@ -27,7 +28,10 @@ export const useProductSurfaceStore = create<ProductSurfaceState>()(
       selectedCodeProjectId: null,
       pendingWorkView: null,
       setProductSurface: (productSurface) => {
-        if (get().productSurface !== productSurface) useCommandDialogStore.getState().requestProductCreate(null)
+        if (get().productSurface !== productSurface) {
+          useCommandDialogStore.getState().requestProductCreate(null)
+          useWorkspaceReturnStore.setState({ restore: null })
+        }
         set({ productSurface })
       },
       setLastVideoProjectId: (lastVideoProjectId) => set({ lastVideoProjectId }),
