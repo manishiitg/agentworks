@@ -99,6 +99,7 @@ function sanitizeSavedLLM(llm: SavedLLM): SavedLLM {
     name: llm.name,
     source: llm.source,
     created_at: llm.created_at,
+    not_allowed: llm.not_allowed,
   }
 }
 
@@ -107,7 +108,7 @@ function isAutoPublishedLLM(llm: SavedLLM): boolean {
 }
 
 function persistablePublishedLLMs(llms: SavedLLM[]): SavedLLM[] {
-  return filterPublishedLLMs(llms).filter(llm => !isAutoPublishedLLM(llm))
+  return filterPublishedLLMs(llms).filter(llm => !isAutoPublishedLLM(llm)).map(({ not_allowed: _notAllowed, ...llm }) => llm)
 }
 
 function filterPublishedLLMs(llms: SavedLLM[]): SavedLLM[] {
@@ -585,6 +586,8 @@ export const useLLMStore = create<LLMState>()(
               if (supportedProviders.length > 0 && !supportedProviders.includes(savedLLM.provider)) {
                 return
               }
+              // The server says this person's account does not allow the model: it would run on another one.
+              if (savedLLM.not_allowed) return
 
               const metadata = metadataMap[`${savedLLM.provider}:${savedLLM.model_id}`]
               availableLLMs.push({

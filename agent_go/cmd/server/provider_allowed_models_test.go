@@ -238,3 +238,26 @@ func TestAllowedModelsProductChatTurn(t *testing.T) {
 		t.Fatalf("no list: %v %+v", err, query)
 	}
 }
+
+// The picker offers only what the account allows: with the shared account limited to one model the others are flagged
+// for the browser to hide (they ran on the allowed model anyway, 2026-10-15), and stay in the list because the browser
+// writes the whole shared list back. A provider with no list keeps every model; the flag is never stored.
+func TestPublishedLLMsFlagTheModelsTheAccountDoesNotAllow(t *testing.T) {
+	env := newProviderAccountsEnv(t, "")
+	t.Setenv("CODEX_API_KEY", "server-codex-key")
+	if code := patchAllowed(env, t, "admin", "global:codex-cli", []string{"gpt-5.3-codex"}); code != http.StatusNoContent {
+		t.Fatalf("admin restriction: %d", code)
+	}
+	all := []StoredPublishedLLM{
+		{ID: "a", Name: "Allowed", Provider: "codex-cli", ModelID: "gpt-5.3-codex"},
+		{ID: "b", Name: "Other", Provider: "codex-cli", ModelID: "gpt-5.5"},
+		{ID: "c", Name: "Claude", Provider: "claude-code", ModelID: "sonnet"},
+	}
+	got := markPublishedLLMsNotAllowed(context.Background(), "bob", all)
+	if len(got) != 3 || got[0].NotAllowed || !got[1].NotAllowed || got[2].NotAllowed {
+		t.Fatalf("flags = %+v, want only the other codex model flagged and every entry kept", got)
+	}
+	if saved := sanitizePersistedPublishedLLMs(got); len(saved) != 3 || saved[1].NotAllowed {
+		t.Fatalf("the per-person flag must never be stored: %+v", saved)
+	}
+}

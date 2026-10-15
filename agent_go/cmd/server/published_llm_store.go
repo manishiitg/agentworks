@@ -43,6 +43,8 @@ type StoredPublishedLLM struct {
 	Options                   map[string]interface{} `json:"options,omitempty"`
 	Source                    string                 `json:"source,omitempty"`
 	CreatedAt                 string                 `json:"created_at,omitempty"`
+	// NotAllowed is set on a load, per person, for a model the person's account does not allow; it is never stored.
+	NotAllowed bool `json:"not_allowed,omitempty"`
 }
 
 func isAutoPublishedLLM(entry StoredPublishedLLM) bool {
@@ -98,6 +100,7 @@ func sanitizePersistedPublishedLLMs(llms []StoredPublishedLLM) []StoredPublished
 			log.Printf("[PUBLISHED_LLM] Skipping auto-published entry during persistence: id=%q provider=%q model_id=%q", entry.ID, entry.Provider, entry.ModelID)
 			continue
 		}
+		entry.NotAllowed = false
 		clean, ok := sanitizePublishedLLM(entry)
 		if !ok {
 			log.Printf("[PUBLISHED_LLM] Dropping invalid entry during persistence: id=%q name=%q provider=%q model_id=%q", entry.ID, entry.Name, entry.Provider, entry.ModelID)
@@ -483,6 +486,7 @@ func (api *StreamingAPI) handleLoadPublishedLLMs(w http.ResponseWriter, r *http.
 		http.Error(w, fmt.Sprintf("Failed to load published llms: %v", err), http.StatusInternalServerError)
 		return
 	}
+	llms = markPublishedLLMsNotAllowed(r.Context(), GetUserIDFromContext(r.Context()), llms)
 	if llms == nil {
 		llms = []StoredPublishedLLM{}
 	}
@@ -490,4 +494,43 @@ func (api *StreamingAPI) handleLoadPublishedLLMs(w http.ResponseWriter, r *http.
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(llms)
+}
+
+// markPublishedLLMsNotAllowed flags, for this person, the models their account does not allow: a provider whose shared
+// server account has an allowed-model list allows just those (the server already runs a disallowed one on the first
+// allowed model, so offering the rest picked a model that never ran). The entries stay in the list: the browser reads
+// the shared list and writes all of it back, so dropping entries here would delete them for everyone. A provider with
+// no list, and one where the person has their own account, are never flagged.
+func markPublishedLLMsNotAllowed(ctx context.Context, person string, llms []StoredPublishedLLM) []StoredPublishedLLM {
+	ctx = withModelLimitPerson(ctx, person)
+	own := map[string]bool{}
+	if person != "" {
+		providerConnectionsMu.Lock()
+		records, err := loadProviderConnections(ctx)
+		providerConnectionsMu.Unlock()
+		if err == nil {
+			for _, record := range records {
+				if !record.Removed && record.OwnerUserID == person {
+					own[record.Provider] = true
+				}
+			}
+		}
+	}
+	allowedBy := map[string][]string{}
+	out := make([]StoredPublishedLLM, len(llms))
+	for i, llm := range llms {
+		out[i] = llm
+		if own[llm.Provider] {
+			continue
+		}
+		allowed, known := allowedBy[llm.Provider]
+		if !known {
+			if list, _, err := accountAllowedModels(ctx, llm.Provider, ""); err == nil {
+				allowed = list
+			}
+			allowedBy[llm.Provider] = allowed
+		}
+		out[i].NotAllowed = !modelAllowed(allowed, llm.ModelID)
+	}
+	return out
 }

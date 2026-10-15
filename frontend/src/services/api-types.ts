@@ -41,6 +41,8 @@ export interface SavedLLM extends LLMModel {
   cached_input_cost_write_per_1m?: number
   source?: 'auto_coding_agent' | string
   created_at?: string
+  // Set by the server, per person: the account does not allow this model, so the picker does not offer it.
+  not_allowed?: boolean
 }
 
 export interface AgentLLMConfiguration {
