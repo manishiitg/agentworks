@@ -218,6 +218,17 @@ func TestCursorDesktopFenceIsOneShotAndPerChat(t *testing.T) {
 	if _, err := consumeCursorFence(root, host, "agent_message_ack", ack, now); err == nil {
 		t.Fatal("a fence was used twice")
 	}
+	// Two identical calls in a row from one chat: each announced call is served once.
+	for i := 0; i < 2; i++ {
+		if err := writeCursorFence(root, host, chatA, "agent_message_read", "{}", now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 2; i++ {
+		if chat, err := consumeCursorFence(root, host, "agent_message_read", map[string]any{}, now); err != nil || chat != chatA {
+			t.Fatal("a repeated call from one chat lost its record", i, err)
+		}
+	}
 	// Identical calls from two chats cannot be told apart: refuse, never pick one.
 	for _, chat := range []string{chatA, chatB} {
 		if err := writeCursorFence(root, host, chat, "agent_message_peers", "", now); err != nil {
@@ -227,7 +238,7 @@ func TestCursorDesktopFenceIsOneShotAndPerChat(t *testing.T) {
 	if _, err := consumeCursorFence(root, host, "agent_message_peers", nil, now); err == nil {
 		t.Fatal("an ambiguous call was served")
 	}
-	if err := writeCursorFence(root, host, chatB, "agent_message_read", `{"inbox_id":"i"}`, now.Add(-time.Minute)); err != nil {
+	if err := writeCursorFence(root, host, chatB, "agent_message_read", `{"inbox_id":"i"}`, now.Add(-3*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := consumeCursorFence(root, host, "agent_message_read", map[string]any{"inbox_id": "i"}, now); err == nil {

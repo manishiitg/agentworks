@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -33,7 +34,11 @@ func setupCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		changed, err := setupCursor(filepath.Join(home, ".cursor"), exe)
+		var backups []string
+		changed, err := setupCursor(filepath.Join(home, ".cursor"), exe, &backups)
+		for _, backup := range backups {
+			fmt.Fprintln(o.stdout, "Saved a copy of your previous settings: "+backup)
+		}
 		if err != nil {
 			return fmt.Errorf("Cursor setup was not completed: %w", err)
 		}
@@ -53,7 +58,7 @@ func setupCommand(o *options) *cobra.Command {
 }
 
 // setupCursor merges the AgentWorks entries into the user-level Cursor files.
-func setupCursor(dir, exe string) (bool, error) {
+func setupCursor(dir, exe string, backups *[]string) (bool, error) {
 	if info, err := os.Lstat(dir); err == nil && info.Mode()&os.ModeSymlink != 0 {
 		return false, errors.New("~/.cursor is a symlink; check it and retry")
 	}
@@ -61,7 +66,7 @@ func setupCursor(dir, exe string) (bool, error) {
 		return false, err
 	}
 	command := shellWord(exe) + " plugin hook cursor"
-	hooksChanged, err := updateCursorJSON(filepath.Join(dir, "hooks.json"), func(data map[string]any) error {
+	hooksChanged, err := updateCursorJSON(filepath.Join(dir, "hooks.json"), backups, func(data map[string]any) error {
 		if v, ok := data["version"]; ok && v != float64(1) {
 			return errors.New("hooks.json has a version AgentWorks does not know")
 		}
@@ -95,7 +100,7 @@ func setupCursor(dir, exe string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	mcpChanged, err := updateCursorJSON(filepath.Join(dir, "mcp.json"), func(data map[string]any) error {
+	mcpChanged, err := updateCursorJSON(filepath.Join(dir, "mcp.json"), backups, func(data map[string]any) error {
 		servers, _ := data["mcpServers"].(map[string]any)
 		if servers == nil {
 			if _, exists := data["mcpServers"]; exists {
@@ -139,7 +144,7 @@ func cursorProjectHasAgentWorksHooks(path string) bool {
 
 // updateCursorJSON applies edit to one JSON object file and writes it back
 // atomically (owner-only) when it changed; a file edited meanwhile is refused.
-func updateCursorJSON(path string, edit func(map[string]any) error) (bool, error) {
+func updateCursorJSON(path string, backups *[]string, edit func(map[string]any) error) (bool, error) {
 	if info, err := os.Lstat(path); err == nil && !info.Mode().IsRegular() {
 		return false, fmt.Errorf("%s is not a regular file", filepath.Base(path))
 	}
@@ -166,6 +171,14 @@ func updateCursorJSON(path string, edit func(map[string]any) error) (bool, error
 	encoded := buf.Bytes()
 	if bytes.Equal(encoded, prior) {
 		return false, nil
+	}
+	// The person's other entries are their own data: keep the previous file.
+	if len(prior) > 0 {
+		backup := path + ".agentworks-backup-" + time.Now().Format("20060102-150405")
+		if err = os.WriteFile(backup, prior, 0o600); err != nil {
+			return false, fmt.Errorf("could not keep a copy of %s: %w", filepath.Base(path), err)
+		}
+		*backups = append(*backups, backup)
 	}
 	temp, err := os.CreateTemp(filepath.Dir(path), ".agentworks-*.json")
 	if err != nil {

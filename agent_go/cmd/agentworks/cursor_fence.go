@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // The Cursor desktop app runs every chat in one process and shares one
@@ -23,7 +25,7 @@ import (
 
 const (
 	cursorMessagesServer = "agentworks-messages"
-	cursorFenceTTL       = 15 * time.Second
+	cursorFenceTTL       = 120 * time.Second
 	cursorFenceScanLimit = 4096
 )
 
@@ -102,7 +104,9 @@ func writeCursorFence(root, host, conversation, toolName, toolInput string, now 
 	if err != nil {
 		return err
 	}
-	if err = writeMuseObservation(dir, key+"-"+conversation+".json", raw); err != nil {
+	// One record per announced call, so two identical calls in a row from the
+	// same chat each find their own record.
+	if err = writeMuseObservation(dir, key+"-"+conversation+"-"+uuid.NewString()+".json", raw); err != nil {
 		return err
 	}
 	hookLog(root, "cursor fence written conversation=%s tool=%s", conversation, tool)
@@ -110,10 +114,11 @@ func writeCursorFence(root, host, conversation, toolName, toolInput string, now 
 }
 
 // consumeCursorFence returns the one chat whose hook announced exactly this
-// call. Every matching fence is removed (one-shot), expired fences are pruned,
-// and none or several matches are refused with a plain message.
+// call and uses up one of that chat's records for it. Expired records are
+// pruned. No record, or records from several chats for the same call, is
+// refused with a plain message (the ambiguous records are removed).
 func consumeCursorFence(root, host, toolName string, args map[string]any, now time.Time) (string, error) {
-	refuse := errors.New("AgentWorks could not confirm which Cursor chat made this call. Ask again in the chat; if it keeps failing, run agentworks setup cursor and restart Cursor.")
+	refuse := errors.New("AgentWorks could not confirm which Cursor chat made this call. Try again in the chat; if it keeps failing, run agentworks setup cursor and restart Cursor.")
 	tool := cursorMessageTool(toolName)
 	key, err := cursorCallKey(tool, args)
 	if tool == "" || err != nil {
@@ -126,7 +131,12 @@ func consumeCursorFence(root, host, toolName string, args map[string]any, now ti
 		return "", refuse
 	}
 	defer dir.Close()
-	var found []cursorFence
+	type match struct {
+		name  string
+		fence cursorFence
+	}
+	var found []match
+	chats := map[string]bool{}
 	scanned := 0
 	for {
 		files, readErr := dir.ReadDir(256)
@@ -141,33 +151,33 @@ func consumeCursorFence(root, host, toolName string, args map[string]any, now ti
 			if strings.HasPrefix(name, ".") {
 				continue
 			}
-			mine := strings.HasPrefix(name, key+"-")
 			raw, e := readMuseObservation(dir, name)
 			var fence cursorFence
-			if e != nil || json.Unmarshal(raw, &fence) != nil {
+			if e != nil || json.Unmarshal(raw, &fence) != nil || now.UnixMilli() > fence.ExpiresMS {
 				removeMuseObservation(dir, name)
 				continue
 			}
-			expired := now.UnixMilli() > fence.ExpiresMS
-			if mine || expired {
-				removeMuseObservation(dir, name)
-			}
-			if mine && !expired && fence.Host == host && fence.Tool == tool && name == key+"-"+fence.Conversation+".json" {
-				found = append(found, fence)
+			if strings.HasPrefix(name, key+"-"+fence.Conversation+"-") && fence.Host == host && fence.Tool == tool {
+				found = append(found, match{name, fence})
+				chats[fence.Conversation] = true
 			}
 		}
 		if errors.Is(readErr, io.EOF) || scanned > cursorFenceScanLimit {
 			break
 		}
 	}
-	if len(found) != 1 {
-		reason := "missing_or_expired"
-		if len(found) > 1 {
-			reason = "ambiguous"
+	if len(chats) > 1 {
+		for _, m := range found {
+			removeMuseObservation(dir, m.name)
 		}
-		hookLog(root, "cursor fence refused tool=%s reason=%s matches=%d", tool, reason, len(found))
+		hookLog(root, "cursor fence refused tool=%s reason=ambiguous chats=%d", tool, len(chats))
+		return "", errors.New("Two Cursor chats made the same call at the same moment, so AgentWorks could not tell them apart. Try again.")
+	}
+	if len(found) == 0 {
+		hookLog(root, "cursor fence refused tool=%s reason=missing_or_expired", tool)
 		return "", refuse
 	}
-	hookLog(root, "cursor fence consumed conversation=%s tool=%s", found[0].Conversation, tool)
-	return found[0].Conversation, nil
+	removeMuseObservation(dir, found[0].name)
+	hookLog(root, "cursor fence consumed conversation=%s tool=%s", found[0].fence.Conversation, tool)
+	return found[0].fence.Conversation, nil
 }
