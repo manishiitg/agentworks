@@ -101,7 +101,8 @@ describe('Workflow MCP panel layout', () => {
     expect(readFileSync('src/components/admin/SlackAdminPanel.tsx', 'utf8')).toContain('Shared bot enabled')
     const gmail = readFileSync('src/components/workflow/bots/GmailNotifications.tsx', 'utf8')
     // The accounts list now lives in the Gmail section, described as "Your Google accounts".
-    expect(gmail).toContain('Your Google accounts for this project')
+    expect(gmail).toContain('Google accounts added to this item')
+    expect(gmail).toContain('Your own Google accounts above work independently of company email defaults')
     expect(gmail).toContain('<GoogleAccountList')
     expect(gmail).toContain('Ask Builder to set up Gmail')
     expect(gmail).not.toContain('gmailOpen')
