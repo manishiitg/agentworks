@@ -6,6 +6,10 @@ export interface ConditionTrigger {
   id: string
   name: string
   enabled: boolean
+  check_mode?: 'schedule' | 'event' | 'both'
+  event_auth_mode?: 'bearer' | 'github'
+  event_secret_name?: string
+  event_path?: string
   once?: boolean
   completed_at?: string
   once_status?: string

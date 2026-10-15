@@ -3,8 +3,8 @@ import { Copy } from 'lucide-react'
 import { apiTriggerURL } from '../../../api/workflowWebhooks'
 import { copyToClipboard } from '../../../utils/textUtils'
 
-export function WebhookEndpoint({ id, name, address }: { id: string; name: string; address?: string }) {
-  const url = address || apiTriggerURL(`/api/hooks/workflow/${encodeURIComponent(id)}`)
+export function WebhookEndpoint({ id, name, address, path }: { id: string; name: string; address?: string; path?: string }) {
+  const url = address || apiTriggerURL(path ?? `/api/hooks/workflow/${encodeURIComponent(id)}`)
   const [copyStatus, setCopyStatus] = useState('')
   const copy = async () => {
     setCopyStatus(await copyToClipboard(url) ? address ? 'Address copied' : 'URL copied' : 'Copy failed — select the value to copy it.')

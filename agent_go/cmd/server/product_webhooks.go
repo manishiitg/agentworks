@@ -618,6 +618,9 @@ func (s *ProductScheduleService) receiveProductWebhook(w http.ResponseWriter, r 
 		http.Error(w, "trigger not found", http.StatusNotFound)
 		return
 	}
+	if s.conditionService().receiveWebhookWake(w, r, id) {
+		return
+	}
 	match, err := s.findProductWebhook(r.Context(), id)
 	if err != nil || match.Trigger.Webhook == nil || match.Trigger.IsInternal() {
 		http.Error(w, "trigger not found", http.StatusNotFound)

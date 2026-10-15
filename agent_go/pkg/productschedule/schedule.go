@@ -90,7 +90,11 @@ func Validate(s Schedule) error {
 			forms++
 		}
 	}
-	if forms == 0 {
+	eventOnly := s.Condition != nil && s.Condition.CheckMode == "event"
+	if eventOnly && forms != 0 {
+		return fmt.Errorf("watcher %q: event-only checks do not use a schedule", s.ID)
+	}
+	if forms == 0 && !eventOnly {
 		return fmt.Errorf("schedule %q: cron_expression, cadence_hours or run_at is required", s.ID)
 	}
 	if forms > 1 {
@@ -246,6 +250,9 @@ type Decision struct {
 // Decide is the pure timing rule: is this schedule due now, given when it
 // last ran and how recently the user was active?
 func Decide(s Schedule, in Inputs) Decision {
+	if s.Condition != nil && s.Condition.CheckMode == "event" {
+		return Decision{Reason: "waiting for an event"}
+	}
 	if !s.Enabled {
 		return Decision{Reason: "disabled"}
 	}

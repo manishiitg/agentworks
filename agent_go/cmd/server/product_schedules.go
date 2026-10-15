@@ -892,6 +892,9 @@ func (s *ProductScheduleService) tick(ctx context.Context, now time.Time) {
 			}
 			if job.Schedule.Condition != nil && job.Effective().Enabled {
 				go s.conditionService().drain(context.Background(), job)
+				if job.Schedule.Condition.WakesOnEvents() {
+					go s.conditionService().processWake(context.Background(), job)
+				}
 			}
 			activatedAt := job.activatedAt()
 			if strings.TrimSpace(job.Schedule.CronExpression) != "" && job.lastRun().IsZero() && strings.TrimSpace(job.State.ActivatedAt) == "" {

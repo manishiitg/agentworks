@@ -7,6 +7,8 @@ description: Manage {{product}}'s message-only project schedules, authenticated 
 
 ## Watchers
 
+For immediate event-driven checks, use `check_mode: "event"`; use `"both"` for events plus a backup `cron_expression` (at least five minutes apart). Omit `check_mode` for existing schedule-only behavior. Select an existing granted secret name in `secrets` and `event_secret_name`; `event_auth_mode` is `bearer` (default) or `github` for GitHub HMAC signatures. Management returns `event_path` on the existing product webhook receiver. Connect the source to that URL using the selected secret without printing its value. The source must support authenticated webhook notifications; otherwise keep scheduled checks. Incoming JSON is only a wake signal: the Python detector still queries/paginates the source and uses its saved state. Accepted wakes survive restart; bursts coalesce into checks at least five seconds apart. One time still stops after the first accepted matching action. In Watchers, use **Connect events in chat** or **Edit event connection**; the pane shows the event URL and secret name.
+
 Chat setup and editing stay in Builder mode. Existing Run views stay unchanged; caller attribution follows product access. Configuring a Watcher never edits the shared product.
 
 Use `manage_condition_triggers` for scheduled Python checks that start existing work only when a condition matches. These have their own **Watchers** pane beside Schedules and Webhooks. Press Ctrl/Cmd+K and search **Watchers** to open it. Crew, workflows<!-- product:code -->, Code<!-- /product --><!-- product:relays --> and Flows<!-- /product --> use the same engine.

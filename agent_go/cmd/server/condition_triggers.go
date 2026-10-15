@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,6 +23,8 @@ import (
 
 type conditionJobContext struct{}
 type conditionService struct {
+	wakeLocks   sync.Map
+	wakeWorkers sync.Map
 	s           *ProductScheduleService
 	engine      *conditiontrigger.Engine
 	capacity    chan struct{}
@@ -257,20 +260,9 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 	if len(source) > conditiontrigger.MaxOutput {
 		return nil, errors.New("watcher script exceeds 64 KiB")
 	}
-	env := map[string]string{}
-	secrets := c.s.api.loadSelectedSecrets(ctx, job.UserID, root, cfg.Secrets)
-	// Only explicitly selected global names participate in credential resolution.
-	global := append([]string{}, cfg.Secrets...)
-	if err := validateVaultSecretSelection(ctx, job.UserID, secrets, &global); err != nil {
+	env, err := c.secretEnvironment(ctx, job, cfg)
+	if err != nil {
 		return nil, err
-	}
-	for _, secret := range c.s.api.mergeGlobalSecretsFor(ctx, job.UserID, secrets, &global) {
-		env["SECRET_"+secret.Name] = secret.Value
-	}
-	for _, n := range cfg.Secrets {
-		if env["SECRET_"+n] == "" {
-			return nil, fmt.Errorf("selected secret %q has no value", n)
-		}
 	}
 	if len(state) == 0 {
 		state = json.RawMessage(`{}`)

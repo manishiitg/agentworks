@@ -94,4 +94,18 @@ describe('ConditionTriggersView', () => {
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 
+  it('shows the event connection and routes event setup to Builder chat', async () => {
+    api.list.mockResolvedValue({ triggers: [{ id: 'c1', name: 'Ticket ready', enabled: true, check_mode: 'event', event_path: '/api/hooks/product/example', event_secret_name: 'WAKE_KEY', script: 'code/triggers/check.py', target: { kind: 'agent' } }] })
+    const onAsk = vi.fn().mockResolvedValue(undefined)
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    await act(async () => root.render(<ConditionTriggersView scope={{ profileId: 'code', projectId: 'project-a' }} onAsk={onAsk} />))
+    try {
+      expect(host.textContent).toContain('When an event arrives')
+      expect(host.textContent).toContain('/api/hooks/product/example')
+      expect(host.textContent).toContain('Secret: WAKE_KEY')
+      await act(async () => { Array.from(host.querySelectorAll('button')).find(b => b.textContent === 'Edit event connection')!.click(); await Promise.resolve() })
+      expect(onAsk).toHaveBeenCalledWith(expect.stringContaining('Configure event wakeups for watcher c1'))
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+
 })

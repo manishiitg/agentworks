@@ -26,11 +26,11 @@ func conditionToolSchema() map[string]interface{} {
 		"id":                map[string]interface{}{"type": "string", "description": "Exact watcher id from list."},
 		"request_id":        map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 128, "description": "Create: stable request id, reuse after uncertain transport to recover the same trigger."},
 		"expected_revision": map[string]interface{}{"type": "string", "description": "Update: revision returned by list; stale edits are refused."},
-		"trigger":           map[string]interface{}{"type": "object", "description": "For create/update: name, script_content (Crew/workflow/Flow: Python source saved in your own watcher folder; Code uses an existing script path), once (true = first matching event only, then automatically disable after target acceptance; false/default = keep watching), cron_expression (at least 5 minutes apart), timezone, enabled, script (saved Python under code/triggers), secrets (selected project names), target {kind: agent|function|route|trigger, message and optional chat_id for this Code agent (omit or main = the main chat; the id of an existing side chat; new = a new chat tab for each event), name/function/arguments for shared functions, name/route_selections/group_names for saved workflow routes, name/trigger_id for existing internal triggers}. The platform pins the current script hash. Partial updates preserve omitted fields."},
+		"trigger":           map[string]interface{}{"type": "object", "description": "For create/update: name, script_content (Crew/workflow/Flow: Python source saved in your own watcher folder; Code uses an existing script path), once (true = first matching event only, then automatically disable after target acceptance; false/default = keep watching), check_mode (schedule/default, event, both), event_secret_name (existing selected secret name for webhook authentication), event_auth_mode (bearer/default or github), cron_expression (at least 5 minutes apart for schedule/both; omitted for event), timezone, enabled, script (saved Python under code/triggers), secrets (selected project names), target {kind: agent|function|route|trigger, message and optional chat_id for this Code agent (omit or main = the main chat; the id of an existing side chat; new = a new chat tab for each event), name/function/arguments for shared functions, name/route_selections/group_names for saved workflow routes, name/trigger_id for existing internal triggers}. The platform pins the current script hash. Partial updates preserve omitted fields."},
 	}}
 }
 
-const conditionToolDescription = "Manage this project's Watchers: deterministic Python checks on a timer, without a model turn, dispatching matching events to a saved authorized agent/function/route. Sources: current Code project, Crew, workflow or Flow. Code agents default to the creating chat; Crew callers use a published function, workflows a saved route/internal trigger, and Flow callers a published Flow function with event payload as INPUT. Non-Code detectors are saved at a server-chosen path in the creator's private watcher folder with script_content, use only creator-selected Vault credentials, and never read target internals or secrets. read_script reads only your own detector for edits. once=true waits until the first matching event in detector order, retries its stable submission until accepted, then disables itself; later events in that batch are recorded as not sent. Completion and history survive restart; create a new watcher for another one-time wait. Default source is this project and default agent destination is the creating chat. Create with a stable request_id; list first and use expected_revision for updates. For Code save under code/triggers; other products supply script_content: read previous state JSON from stdin, print exactly {events:[{id,payload}],state:{...}}; events=[] is a no-op. Use a stable source id and advance the cursor so old items are not rediscovered. Select only required project secrets (SECRET_<NAME> environment variables); no MCP tools are passed to the detector. Agent targets stay in this Code; functions/routes may be shared targets you can use. history shows checks, dispatch receipts and reconciliation. check runs and dispatches now; use only when requested. Updates accept the current script hash and preserve cursor/history. Target edits hold old queued events for reconciliation. No exactly-once guarantee for external effects; write-back belongs in the target."
+const conditionToolDescription = "Manage this project's Watchers: deterministic Python checks on a timer or immediately after authenticated events, without a model turn, dispatching matching events to a saved authorized agent/function/route. Sources: current Code project, Crew, workflow or Flow. Code agents default to the creating chat; Crew callers use a published function, workflows a saved route/internal trigger, and Flow callers a published Flow function with event payload as INPUT. Non-Code detectors are saved at a server-chosen path in the creator's private watcher folder with script_content, use only creator-selected Vault credentials, and never read target internals or secrets. read_script reads only your own detector for edits. check_mode=event waits for webhook wakes without a timer; both adds scheduled backup. Select an existing secret by name in secrets and event_secret_name; event_auth_mode is bearer (default) or github HMAC. Use returned event_path under the server URL. No secret values are returned. Webhook JSON is only a wake signal: the Python detector must query and paginate the source, not read webhook payload. Wakes are durable and bursts coalesce, with at least five seconds between webhook checks. Services must support sending an authenticated webhook; otherwise use scheduled checks. once=true waits until the first matching event in detector order, retries its stable submission until accepted, then disables itself; later events in that batch are recorded as not sent. Completion and history survive restart; create a new watcher for another one-time wait. Default source is this project and default agent destination is the creating chat. Create with a stable request_id; list first and use expected_revision for updates. For Code save under code/triggers; other products supply script_content: read previous state JSON from stdin, print exactly {events:[{id,payload}],state:{...}}; events=[] is a no-op. Use a stable source id and advance the cursor so old items are not rediscovered. Select only required project secrets (SECRET_<NAME> environment variables); no MCP tools are passed to the detector. Agent targets stay in this Code; functions/routes may be shared targets you can use. history shows checks, dispatch receipts and reconciliation. check runs and dispatches now; use only when requested. Updates accept the current script hash and preserve cursor/history. Target edits hold old queued events for reconciliation. No exactly-once guarantee for external effects; write-back belongs in the target."
 
 func (api *StreamingAPI) registerConditionTools(reg definitionToolRegistrar, userID, profileID, projectID, sessionID string) error {
 	if profileID != "code" && profileID != "work" && profileID != "agentworks" && profileID != "relays" {
@@ -94,7 +94,7 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		out := []interface{}{}
 		for _, j := range jobs {
 			if j.Profile.ID == base.Profile.ID && j.ProjectID == base.ProjectID && j.Schedule.Condition != nil {
-				v := conditionView(j.Schedule)
+				v := conditionJobView(j)
 				v["enabled"] = j.Effective().Enabled
 				if j.Schedule.Condition.Once {
 					l, err := c.engine.Read(ctx, conditionKey(j))
@@ -213,7 +213,7 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		}
 		for k, v := range trigger {
 			switch k {
-			case "name", "enabled", "once", "cron_expression", "timezone", "script", "secrets", "target", "script_content":
+			case "name", "enabled", "once", "check_mode", "event_auth_mode", "event_secret_name", "cron_expression", "timezone", "script", "secrets", "target", "script_content":
 				doc[k] = v
 			default:
 				return nil, fmt.Errorf("unknown watcher setting %q", k)
@@ -231,6 +231,12 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 			return nil, err
 		}
 		cfg := fields.Config
+		if cfg.CheckMode == "schedule" {
+			cfg.CheckMode = ""
+		}
+		if cfg.CheckMode == "event" {
+			fields.Cron = ""
+		}
 		if action == "create" {
 			requestID, _ := args["request_id"].(string)
 			if strings.TrimSpace(requestID) == "" || len(requestID) > 128 {
@@ -331,25 +337,37 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		if err := productschedule.Validate(schedule); err != nil {
 			return nil, err
 		}
-		parsed, err := cron.ParseStandard(schedule.CronExpression)
-		if err != nil {
-			return nil, err
-		}
-		at := time.Now()
-		for i := 0; i < 5; i++ {
-			next := parsed.Next(at)
-			after := parsed.Next(next)
-			if after.Sub(next) < 5*time.Minute {
-				return nil, errors.New("watcher checks must be at least 5 minutes apart")
+		if schedule.CronExpression != "" {
+			parsed, err := cron.ParseStandard(schedule.CronExpression)
+			if err != nil {
+				return nil, err
 			}
-			at = next
+			at := time.Now()
+			for i := 0; i < 5; i++ {
+				next := parsed.Next(at)
+				after := parsed.Next(next)
+				if after.Sub(next) < 5*time.Minute {
+					return nil, errors.New("watcher checks must be at least 5 minutes apart")
+				}
+				at = next
+			}
 		}
+		// Publish only a locator; the receiver always reads the current caller
+		// and its granted secret. An interrupted save leaves no runnable grant.
+		configured := job
+		configured.Schedule = schedule
+		if cfg.WakesOnEvents() {
+			if err := c.ensureWakeReceiver(ctx, configured); err != nil {
+				return nil, err
+			}
+		}
+
 		if action == "create" {
 			if prior, lookupErr := c.s.Job(ctx, owner, projectScheduleJobID(base.Profile.ID, base.ProjectID, schedule.ID)); lookupErr == nil {
 				if prior.Schedule.Condition == nil || prior.Schedule.Condition.Revision() != cfg.Revision() || prior.Schedule.Name != schedule.Name || prior.Schedule.CronExpression != schedule.CronExpression || prior.Schedule.Timezone != schedule.Timezone || prior.Schedule.Enabled != schedule.Enabled {
 					return nil, errors.New("request_id already belongs to a different watcher")
 				}
-				return conditionView(prior.Schedule), nil
+				return conditionJobView(prior), nil
 			} else if !strings.HasPrefix(lookupErr.Error(), "product schedule ") || !strings.HasSuffix(lookupErr.Error(), "not found for this user") {
 				return nil, lookupErr
 			}
@@ -377,7 +395,7 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 		if err != nil {
 			return nil, err
 		}
-		return conditionView(job.Schedule), nil
+		return conditionJobView(job), nil
 	default:
 		return nil, errors.New("action must be list, create, update, delete, history, read_script or check")
 	}

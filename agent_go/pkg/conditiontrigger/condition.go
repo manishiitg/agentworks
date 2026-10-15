@@ -55,16 +55,38 @@ type Target struct {
 // Payload becomes named function arguments, or event data for messages/triggers.
 // Target selection and constant arguments are never taken from script output.
 type Config struct {
-	Once    bool     `json:"once,omitempty"`
-	Script  string   `json:"script"`
-	SHA256  string   `json:"sha256"`
-	Secrets []string `json:"secrets,omitempty"`
-	Target  Target   `json:"target"`
+	CheckMode     string   `json:"check_mode,omitempty"`
+	EventAuthMode string   `json:"event_auth_mode,omitempty"`
+	EventSecret   string   `json:"event_secret_name,omitempty"`
+	Once          bool     `json:"once,omitempty"`
+	Script        string   `json:"script"`
+	SHA256        string   `json:"sha256"`
+	Secrets       []string `json:"secrets,omitempty"`
+	Target        Target   `json:"target"`
 }
 
 var secretName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+func (c Config) WakesOnEvents() bool { return c.CheckMode == "event" || c.CheckMode == "both" }
+
 func (c Config) Validate() error {
+	switch c.CheckMode {
+	case "", "schedule", "event", "both":
+	default:
+		return errors.New("check_mode must be schedule, event or both")
+	}
+	if c.EventAuthMode != "" && c.EventAuthMode != "bearer" && c.EventAuthMode != "github" {
+		return errors.New("event_auth_mode must be bearer or github")
+	}
+	if c.WakesOnEvents() {
+		selected := false
+		for _, name := range c.Secrets {
+			selected = selected || name == c.EventSecret
+		}
+		if !secretName.MatchString(c.EventSecret) || !selected {
+			return errors.New("select an existing secret for webhook authentication and set event_secret_name to its name")
+		}
+	}
 	if !strings.HasPrefix(c.Script, "code/triggers/") || path.Clean(c.Script) != c.Script || !strings.HasSuffix(c.Script, ".py") || strings.ContainsAny(c.Script, "\\\x00\r\n") {
 		return errors.New("script must be a Python file under code/triggers")
 	}
