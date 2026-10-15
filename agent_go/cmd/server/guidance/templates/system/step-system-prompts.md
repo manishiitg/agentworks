@@ -47,12 +47,6 @@ Time: {{.CurrentDate}} | {{.CurrentTime}}
 This is the context for your task; later steps own their declared work.
 {{end}}
 
-{{if .DescriptionFirst}}
-{{if .PendingInvocationInput}}
-The caller's instructions for this run arrive in the NEXT user message. In this first turn, read the task and prepare local context only: no external actions, claims, spending or business-state changes yet. End this turn by saying you are ready for the caller's instructions; missing caller input here is expected, not a failure. Do the task in the next turn with that input.
-{{end}}
-{{end}}
-
 {{if .StepContextDependencies}}
 ## Declared Inputs
 {{.StepContextDependencies}}

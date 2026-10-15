@@ -43,7 +43,6 @@ type agentSequenceSession struct {
 	PromptContract            string `json:"prompt_contract,omitempty"`
 	SystemRules               string `json:"system_rules,omitempty"`
 	TaskContextInConversation bool   `json:"task_context_in_conversation,omitempty"`
-	pendingInitialInstruction bool
 	initialStep               *AgentPlanStep
 	SessionID                 string                    `json:"session_id"`
 	StepID                    string                    `json:"step_id"`
@@ -505,8 +504,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 		if initialInstruction == "" && execCtx != nil {
 			initialInstruction = strings.TrimSpace(execCtx.WorkshopHumanInput)
 		}
-		if initialInstruction != "" && !sequenceStep.AuthoredPrompt {
-			session.pendingInitialInstruction = true
+		descriptionCallerInstruction := ""
+		if initialInstruction != "" && !sequenceStep.AuthoredPrompt && agentDescriptionFirst(sequenceStep) {
+			// The task and the caller's instructions are ONE first message: no
+			// description-only turn that the model must answer with "ready".
+			descriptionCallerInstruction = initialInstruction
+		} else if initialInstruction != "" && !sequenceStep.AuthoredPrompt {
 			configuredItems = append([]AgentItem{{
 				ID:      sequenceStep.GetID() + "-initial-instruction",
 				Type:    "user_message",
@@ -524,8 +527,13 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 		}
 		if agentDescriptionFirst(sequenceStep) {
 			// The task is a complete first turn, never combined with item zero,
-			// operator input, a script result, or a generic execution instruction.
-			configuredItems = append([]AgentItem{agentDescriptionItem(sequenceStep)}, configuredItems...)
+			// a script result, or a generic execution instruction. The caller's
+			// own instructions for this run ride in the same message.
+			descriptionItem := agentDescriptionItem(sequenceStep)
+			if descriptionCallerInstruction != "" {
+				descriptionItem.Message += "\n\n## Instructions for this run\n" + descriptionCallerInstruction
+			}
+			configuredItems = append([]AgentItem{descriptionItem}, configuredItems...)
 		}
 		if sequenceStep.AuthoredPrompt {
 			plannedItems = configuredItems
@@ -1158,10 +1166,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentUserMessage(ctx context.C
 			}
 		}
 	}
-	if agentDescriptionFirst(step) && item.ID == AgentDescriptionTurnID && session.pendingInitialInstruction {
-		templateVars["PendingInvocationInput"] = "true"
+	shellEnv := map[string]string{"SHARED_KB_STEP_ACCESS": agentSequencePromptKBAccess(resolveKnowledgebaseAccess(getAgentConfigs(step), hcpo.UseKnowledgebase()), writeAccess)}
+	if stepExecutionID := currentWorkshopParentExecutionID(ctx); stepExecutionID != "" {
+		shellEnv["STEP_EXECUTION_ID"] = stepExecutionID
 	}
-	common.SetSessionShellEnv(runtime.SessionID, map[string]string{"SHARED_KB_STEP_ACCESS": agentSequencePromptKBAccess(resolveKnowledgebaseAccess(getAgentConfigs(step), hcpo.UseKnowledgebase()), writeAccess)})
+	common.SetSessionShellEnv(runtime.SessionID, shellEnv)
 	if step.AuthoredPrompt {
 		systemPrompt, promptErr := hcpo.renderAuthoredPrompt(ctx, step.SystemPrompt)
 		if promptErr != nil {

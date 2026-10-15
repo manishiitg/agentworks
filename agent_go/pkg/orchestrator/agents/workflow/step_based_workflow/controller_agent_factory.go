@@ -7,7 +7,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"time"

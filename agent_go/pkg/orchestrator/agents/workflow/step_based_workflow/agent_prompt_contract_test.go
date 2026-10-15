@@ -86,13 +86,6 @@ func TestDescriptionFirstExecutionAndRepair(t *testing.T) {
 					if strings.Contains(system, step.Description) || strings.Contains(system, step.SystemRules) {
 						t.Fatal("task or rules have the wrong prompt authority")
 					}
-					if pending && calls == 0 {
-						if user != agentTaskDescription(step) || len(history) != 0 || vars["PendingInvocationInput"] != "true" || !strings.Contains(system, "prepare local context only: no external actions") {
-							t.Fatal("pending scope was combined with the opening task or its preparation-only rule was lost")
-						}
-						calls++
-						return "Ready for scope.", append(history, llmtypes.TextParts(llmtypes.ChatMessageTypeHuman, user), llmtypes.TextParts(llmtypes.ChatMessageTypeAI, "Ready for scope.")), nil
-					}
 					if effects == 0 {
 						want := agentTaskDescription(step)
 						if contract == "" {
@@ -100,8 +93,8 @@ func TestDescriptionFirstExecutionAndRepair(t *testing.T) {
 						}
 						wantHistory := 0
 						if pending {
-							want = "Apply the task to the supplied scope once."
-							wantHistory = 2
+							// Caller instructions arrive in the same first message as the task.
+							want = agentTaskDescription(step) + "\n\n## Instructions for this run\nApply the task to the supplied scope once."
 						}
 						if user != want || len(history) != wantHistory || vars["PendingInvocationInput"] != "" {
 							t.Fatalf("opening message=%q, want alone %q", user, want)
@@ -143,9 +136,6 @@ func TestDescriptionFirstExecutionAndRepair(t *testing.T) {
 				}
 				wantCalls := 2
 				if followup {
-					wantCalls++
-				}
-				if pending {
 					wantCalls++
 				}
 				if calls != wantCalls {

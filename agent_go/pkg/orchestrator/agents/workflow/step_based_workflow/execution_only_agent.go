@@ -279,7 +279,6 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlySystemPromptProcessor(te
 		"StepDescription":           systemStepDescription,
 		"DescriptionFirst":          templateVars["DescriptionFirst"],
 		"StepSystemRules":           templateVars["StepSystemRules"],
-		"PendingInvocationInput":    templateVars["PendingInvocationInput"],
 		"StepContextDependencies":   templateVars["StepContextDependencies"],
 		"WorkspacePath":             promptExecutionFolder(templateVars),
 		"IsCodeExecutionMode":       isCodeExecutionMode,
