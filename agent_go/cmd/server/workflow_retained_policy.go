@@ -200,7 +200,9 @@ func (api *StreamingAPI) interruptWorkflowPolicySession(session, provider string
 
 	// Close the process receiving messages, even when the original request
 	// omitted its provider and setup selected it from the workflow manifest.
+	closedTerminalID := ""
 	if snapshot, live := api.liveMainCodingTmuxSnapshot(session); live {
+		closedTerminalID = snapshot.TerminalID
 		if actual := retainedCodingAgentProvider(snapshot); actual != "" {
 			provider = actual
 		}
@@ -219,6 +221,11 @@ func (api *StreamingAPI) interruptWorkflowPolicySession(session, provider string
 		cancel()
 	}
 	closeWorkflowPolicyCLI(session, provider, "workflow chat policy changed; rebuilding definition")
+	// The process is gone; its terminal must stop reading as live, or the next turn (a different provider after the
+	// person switched agents) is routed to, and treats as the context owner, a pane that no longer exists.
+	if closedTerminalID != "" && api.terminalStore != nil {
+		api.terminalStore.MarkStale(closedTerminalID)
+	}
 }
 
 func closeWorkflowPolicyCLI(session, provider, reason string) {
