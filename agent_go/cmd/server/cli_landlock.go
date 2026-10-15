@@ -78,6 +78,8 @@ func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, sessionID, provider, work
 		log.Printf("[CLI_LANDLOCK] session %s: Full CLI on (native shell and file edits, inside the lock)", sessionID)
 	}
 	log.Printf("[CLI_LANDLOCK] session %s: %s confined (reads %d, writes %d, private home under %s)", sessionID, provider, len(policy.WorkspaceReadPaths), len(policy.WorkspaceWritePaths), workingDir)
+	// The paths themselves (folders, never file contents): the counts alone could not show what a chat can reach.
+	log.Printf("[CLI_LANDLOCK] session %s: reads=%v writes=%v blocked=%v blocked_writes=%v", sessionID, policy.WorkspaceReadPaths, policy.WorkspaceWritePaths, policy.BlockedPaths, policy.BlockedWritePaths)
 }
 
 type cliRunDecision string

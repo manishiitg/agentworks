@@ -64,6 +64,12 @@ func privateTmpAvailable(runner string) bool {
 		return false
 	}
 	privateTmpProbe.once.Do(func() {
+		// Once per process: the kernel's Landlock ABI decides which scopes a confined command could be given.
+		if abi, abiErr := landlockABI(); abiErr != nil {
+			log.Printf("[SANDBOX] landlock abi unavailable: %v", abiErr)
+		} else {
+			log.Printf("[SANDBOX] landlock abi=%d", abi)
+		}
 		err := runPrivateTmpProbe(runner)
 		privateTmpProbe.ok = err == nil
 		if err != nil {
