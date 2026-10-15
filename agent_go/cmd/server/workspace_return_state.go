@@ -16,10 +16,13 @@ import (
 )
 
 type workspaceLayout struct {
-	ChatOpen       bool    `json:"chat_open"`
-	PanelOpen      bool    `json:"panel_open"`
-	SplitRatio     float64 `json:"split_ratio"`
-	NavigationMode string  `json:"navigation_mode"`
+	ChatOpen        bool    `json:"chat_open"`
+	PanelOpen       bool    `json:"panel_open"`
+	SplitRatio      float64 `json:"split_ratio"`
+	NavigationMode  string  `json:"navigation_mode"`
+	PreviewDevice   string  `json:"preview_device,omitempty"`
+	FocusedPane     string  `json:"focused_pane,omitempty"`
+	MobilePaneWidth float64 `json:"mobile_pane_width,omitempty"`
 }
 type workspaceChat struct {
 	Name             string `json:"name"`
@@ -71,6 +74,9 @@ func validWorkspaceDestination(d *workspaceDestination) bool {
 	}
 	if d.Layout != nil {
 		l := d.Layout
+		if (l.PreviewDevice != "" && l.PreviewDevice != "mobile" && l.PreviewDevice != "tablet" && l.PreviewDevice != "desktop") || (l.FocusedPane != "" && l.FocusedPane != "chat" && l.FocusedPane != "preview") || (l.MobilePaneWidth != 0 && (l.MobilePaneWidth < 320 || l.MobilePaneWidth > 1600)) {
+			return false
+		}
 		if (!l.ChatOpen && !l.PanelOpen) || l.SplitRatio < 0.1 || l.SplitRatio > 0.9 || (l.NavigationMode != "fixed" && l.NavigationMode != "auto-hide") {
 			return false
 		}
@@ -126,10 +132,11 @@ func (api *StreamingAPI) validateWorkspaceReturn(r *http.Request, d *workspaceDe
 	copy.WorkspacePath = workspace
 	if copy.SessionID != "" {
 		allowed := false
-		if session, exists := api.getActiveSession(copy.SessionID); exists && session.UserID == claims.UserID && workspace != "" {
+		session, active := api.getActiveSession(copy.SessionID)
+		if active && session.UserID == claims.UserID && workspace != "" {
 			allowed = canonicalChatHistoryWorkspacePath(claims.UserID, session.WorkspacePath) == canonicalChatHistoryWorkspacePath(claims.UserID, workspace)
 		}
-		if !allowed && workspace != "" {
+		if !active && workspace != "" {
 			data, err := ReadChatHistoryConversation(claims.UserID, copy.SessionID, workspace)
 			if err == nil {
 				owner, _ := chatHistoryConversationIdentity(data)

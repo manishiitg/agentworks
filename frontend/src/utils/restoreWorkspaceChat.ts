@@ -13,7 +13,7 @@ export async function restoreWorkspaceChat(destination: WorkspaceDestination, si
   const common = { isViewOnly: destination.chat?.read_only, isExecutionRun: destination.chat?.execution_run,
     isScheduledRun: destination.chat?.scheduled_run, scheduledJobName: destination.chat?.scheduled_job_name,
     isBotRun: Boolean(destination.chat?.bot_platform), botPlatform: destination.chat?.bot_platform,
-    workshopMode: destination.chat?.workshop_mode, readOnlyRestoredAt: Date.now(),
+    workshopMode: destination.chat?.workshop_mode, readOnlyRestoredAt: Date.now(), workspaceReturnAt: Date.now(),
   }
   const metadata = workflow ? {
     ...common, mode: 'workflow' as const, phaseId: destination.chat?.execution_run ? undefined : 'workflow-builder', phaseName: destination.chat?.execution_run ? undefined : 'Automation Builder', presetQueryId: destination.id,
@@ -29,7 +29,14 @@ export async function restoreWorkspaceChat(destination: WorkspaceDestination, si
   if (signal.aborted) return
   chat.setTabMetadata(tabId, metadata)
   if (destination.chat?.view_mode) chat.setTabViewMode(tabId, destination.chat.view_mode)
-  if (destination.chat?.execution_run) await hydrateExecutionConversation(destination.session_id, destination.workspace_path)
-  else await hydrateTabEvents(destination.session_id, { workspacePath: destination.workspace_path, compact: !destination.chat?.read_only })
+  const runtime = destination.chat?.execution_run
+    ? await hydrateExecutionConversation(destination.session_id, destination.workspace_path)
+    : await hydrateTabEvents(destination.session_id, { workspacePath: destination.workspace_path, compact: !destination.chat?.read_only })
+  if (signal.aborted) return
+  chat.setTabStreaming(tabId, runtime.status === 'running' && (destination.chat?.execution_run === true || (!runtime.isSyntheticTurn && (!runtime.hasRunningBackgroundAgents || runtime.canSteer === true))))
+  chat.setTabCompleted(tabId, ['completed', 'stopped', 'error', 'failed'].includes(runtime.status))
+  chat.setTabHasRunningBgAgents(tabId, Boolean(runtime.hasRunningBackgroundAgents))
+  chat.setTabSyntheticTurn(tabId, Boolean(runtime.isSyntheticTurn))
+  chat.setTabCanSteer(tabId, Boolean(runtime.canSteer))
   if (!signal.aborted) activateTab(tabId)
 }

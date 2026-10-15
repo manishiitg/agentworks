@@ -37,3 +37,16 @@ describe('per-user workspace writer', () => {
     mocks.user.id = 'alice'
   })
 })
+
+it('drops a pending snapshot when the connected server changes', async () => {
+  const { useWorkspaceConnectionStore } = await import('../stores/useWorkspaceConnectionStore')
+  vi.useFakeTimers()
+  const previous = useWorkspaceConnectionStore.getState().activeWorkspaceId
+  useWorkspaceReturnStore.setState({ ready: true, account: 'alice', workspace: previous, record, homeOpen: false, restore: null })
+  queueWorkspaceState({ surface: 'code', id: 'same-id-on-old-server' })
+  useWorkspaceConnectionStore.setState({ activeWorkspaceId: 'different-server' })
+  await flushWorkspaceState()
+  expect(mocks.save).not.toHaveBeenCalled()
+  useWorkspaceConnectionStore.setState({ activeWorkspaceId: previous })
+  useWorkspaceReturnStore.setState({ workspace: undefined })
+})

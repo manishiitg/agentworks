@@ -213,13 +213,13 @@ func (api *StreamingAPI) collectHome(r *http.Request) (homeResponse, error) {
 	}
 	for _, session := range api.collectActiveSessions(r.Context()) {
 		if homeSessionRunning(session) && byPath[canonicalChatHistoryWorkspacePath(GetUserIDFromContext(r.Context()), session.WorkspacePath)] != nil {
+			if len(result.Running) == homeSectionLimit {
+				result.Truncated = true
+				break
+			}
 			result.Running = append(result.Running, session)
 			result.RunningWork[session.SessionID] = *byPath[canonicalChatHistoryWorkspacePath(GetUserIDFromContext(r.Context()), session.WorkspacePath)]
 		}
-	}
-	if len(result.Running) > homeSectionLimit {
-		result.Running = result.Running[:homeSectionLimit]
-		result.Truncated = true
 	}
 	// Keep partial-data messages useful without repeating one per workspace.
 	seen := map[string]bool{}

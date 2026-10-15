@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ create: vi.fn().mockResolvedValue('tab'), metadata: vi.fn(), view: vi.fn(), hydrate: vi.fn().mockResolvedValue({}), execution: vi.fn().mockResolvedValue({}), activate: vi.fn() }))
-vi.mock('../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ chatTabs: {}, createChatTab: mocks.create, setTabMetadata: mocks.metadata, setTabViewMode: mocks.view }) } }))
+vi.mock('../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ chatTabs: {}, createChatTab: mocks.create, setTabMetadata: mocks.metadata, setTabViewMode: mocks.view, setTabStreaming: vi.fn(), setTabCompleted: vi.fn(), setTabHasRunningBgAgents: vi.fn(), setTabSyntheticTurn: vi.fn(), setTabCanSteer: vi.fn() }) } }))
 vi.mock('./sessionRestore', () => ({ hydrateTabEvents: mocks.hydrate }))
 vi.mock('./executionConversationRestore', () => ({ hydrateExecutionConversation: mocks.execution }))
 vi.mock('./activateTab', () => ({ activateTab: mocks.activate }))

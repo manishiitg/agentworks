@@ -94,3 +94,15 @@ describe('resolveLatestWorkflowChatAction', () => {
       .toEqual({ action: 'keep-active' })
   })
 })
+
+describe('explicit server workspace return', () => {
+  it('distinguishes a current validated return from stale local tab metadata', async () => {
+    const { isRecentWorkspaceReturnTab } = await import('./workflowTabOwnership')
+    const now = Date.now()
+    const returned = { ...tab({ tabId: 'returned', sessionId: 'older' }), metadata: { mode: 'workflow' as const, presetQueryId: 'finance', workspaceReturnAt: now } }
+    expect(isRecentWorkspaceReturnTab(returned, 'finance', now)).toBe(true)
+    expect(isRecentWorkspaceReturnTab(returned, 'other', now)).toBe(false)
+    expect(isRecentWorkspaceReturnTab(returned, 'finance', now + 60001)).toBe(false)
+    expect(isRecentWorkspaceReturnTab(returned, 'finance', now - 1)).toBe(false)
+  })
+})
