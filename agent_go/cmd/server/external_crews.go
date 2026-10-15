@@ -28,6 +28,7 @@ var externalCrewTools = map[string]bool{
 	// Costs of a Crew you own (external_crew_costs.go).
 	"get_crew_costs":         true,
 	"crew_diagnostics":       true,
+	externalCrewOwnersTool:   true,
 	"crew_execution":         true,
 	"crew_integrations":      true,
 	externalCrewCommandsTool: true,
@@ -178,6 +179,10 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 	}
 	if name == "crew_diagnostics" {
 		api.externalCrewDiagnosticsCall(w, r, args)
+		return
+	}
+	if name == externalCrewOwnersTool {
+		api.externalCrewOwnersCall(w, r, args)
 		return
 	}
 	if externalCrewCapabilities[name] != nil {

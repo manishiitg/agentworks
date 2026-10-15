@@ -80,7 +80,7 @@ func personalConnectionItemScope(r *http.Request, workspace string, write bool, 
 	}
 	if isProjectWorkspacePath(workspace) {
 		product, _, _ := projectProductForPath(workspace)
-		if !userAllowedProduct(claims, product.ProfileID) || !crewProjectOwnedByCaller(user, workspace) {
+		if !userAllowedProduct(claims, product.ProfileID) || !crewProjectOwnedByCallerStrict(user, workspace) {
 			return scope, fmt.Errorf("Only this item's Builder can manage its %s accounts. Open an item you build.", provider)
 		}
 		workspace = agentProfileRuntimeWorkspace(user, workspace)

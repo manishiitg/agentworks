@@ -132,6 +132,10 @@ func crewAccessFor(claims *UserClaims, ref crewPathRef) crewAccessLevel {
 	if ref.OwnerID == sanitizeUserIDForPath(claims.UserID) {
 		return crewAccessOwner
 	}
+	// A co-owner builds with the same rights as the main owner (crew_co_owners.go); identity stays the main owner's.
+	if userAllowedProduct(claims, "work") && crewIsCoOwner(ref.Root, claims.UserID) {
+		return crewAccessOwner
+	}
 	// Another user's Crew is read while it is shared (the default, DECISIONS 2026-10-08); when sharing is off or the
 	// owner made the Crew private, nobody else sees even that the Crew exists or is working.
 	if userAllowedProduct(claims, "work") && crewSharedWith(ref.Root, claims.UserID) {

@@ -279,7 +279,8 @@ func workspaceProxyPathIsOtherUser(raw, own string) bool {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		crew, ok := resolveCrewPath(ctx, own, workspaceref.SharedProjectPath(project))
-		return !ok || crew.OwnerID == "" || crew.OwnerID != own
+		// The main owner and the Crew's co-owners reach its files; everyone else goes through the Crew's own APIs.
+		return !ok || crew.OwnerID == "" || (crew.OwnerID != own && !crewIsCoOwner(crew.Root, own))
 	}
 	return ref.HasOwner() && ref.Owner() != own
 }

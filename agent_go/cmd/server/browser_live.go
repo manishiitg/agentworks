@@ -84,7 +84,7 @@ func (api *StreamingAPI) crewBrowserAccess(claims *UserClaims, workspace string)
 		// A Code's live browser belongs to its owner. Sharing a Code is a removed
 		// legacy (code_shares.go answers 410); the branch below only serves old
 		// share records, view-only.
-		if crewProjectOwnedByCaller(claims.UserID, workspace) {
+		if crewProjectOwnedByCallerStrict(claims.UserID, workspace) {
 			return WorkflowAccessOwner
 		}
 		owner, ok := crewProjectOwnerID(workspace)
@@ -101,7 +101,7 @@ func (api *StreamingAPI) crewBrowserAccess(claims *UserClaims, workspace string)
 	if claims == nil || strings.TrimSpace(claims.UserID) == "" || !isCrewProjectPath(workspace) {
 		return WorkflowAccessNone
 	}
-	if crewProjectOwnedByCaller(claims.UserID, workspace) {
+	if crewProjectOwnedByCallerStrict(claims.UserID, workspace) {
 		return WorkflowAccessOwner
 	}
 	if api.agentProfiles == nil {

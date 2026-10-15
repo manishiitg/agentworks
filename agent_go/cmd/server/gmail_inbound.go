@@ -182,7 +182,7 @@ func (api *StreamingAPI) inboundTarget(ctx context.Context, owner, path string) 
 		return r, fmt.Errorf("invalid project workspace")
 	}
 	if isProjectWorkspacePath(r.WorkspacePath) {
-		if !crewProjectOwnedByCaller(owner, r.WorkspacePath) {
+		if !crewProjectOwnedByCallerStrict(owner, r.WorkspacePath) {
 			return r, fmt.Errorf("only the project owner can configure incoming email")
 		}
 		r.ProfileID = "work"

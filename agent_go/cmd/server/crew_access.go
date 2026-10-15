@@ -34,9 +34,14 @@ import (
 // or chatting with someone else's crew never touches the owner's manifest
 // and never adopts the owner's live session.
 type crewProjectBinding struct {
-	OwnerID       string
+	OwnerID string
+	// OwnedByCaller is the permission to build: the main owner, or a co-owner (crew_co_owners.go). OwnerID stays the main
+	// owner either way.
 	OwnedByCaller bool
-	Binding       productConversationBinding
+	// CoOwner is true when the caller builds as a co-owner. Such a binding is the reader-style one (no manifest coupling,
+	// no authoritative session of the main owner's): each person keeps their own conversations.
+	CoOwner bool
+	Binding productConversationBinding
 }
 
 // crewProjectOwnerID returns the owning user ID of a crew workspace path.
@@ -94,6 +99,12 @@ func isCrewProjectPath(workspacePath string) bool {
 // Crew/<id> path (or an old spelling of a migrated crew) is owned by the
 // owner in the server's registry.
 func crewProjectOwnedByCaller(callerID, workspacePath string) bool {
+	return crewProjectOwnedByCallerStrict(callerID, workspacePath) || crewIsCoOwner(workspacePath, callerID)
+}
+
+// crewProjectOwnedByCallerStrict is crewProjectOwnedByCaller for the places that mean the MAIN owner's own things (their
+// browser, mailbox, personal connections), not the permission to build: a co-owner is not the owner there.
+func crewProjectOwnedByCallerStrict(callerID, workspacePath string) bool {
 	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(workspacePath)))
 	if _, shared := ref.SharedProject(); shared {
 		owner, ok := crewProjectOwnerID(workspacePath)
@@ -205,6 +216,11 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 	}
 	// A Crew its owner made private resolves for nobody else.
 	reader := func(ownerID string, binding productConversationBinding) (crewProjectBinding, error) {
+		if crewIsCoOwner(binding.WorkspacePath, callerID) {
+			co := readerCrewProjectBinding(ownerID, binding)
+			co.OwnedByCaller, co.CoOwner = true, true
+			return co, nil
+		}
 		if !crewSharedWith(binding.WorkspacePath, callerID) {
 			return denied()
 		}
