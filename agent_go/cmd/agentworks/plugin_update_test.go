@@ -31,8 +31,8 @@ func TestInstalledPluginUpdatesFollowWhatIsInstalled(t *testing.T) {
 	if u, ok := names["muse"]; !ok || len(u.Auto) != 0 || !strings.Contains(u.Manual, "muse plugins install") {
 		t.Fatalf("Muse is updated by the person, with the exact line printed: %+v", u)
 	}
-	if u, ok := names["cursor"]; !ok || len(u.Auto) != 0 || !strings.Contains(u.Manual, "setup_project.py") {
-		t.Fatalf("Cursor project hooks are repaired by the person, never automatically: %+v", u)
+	if u, ok := names["cursor"]; !ok || len(u.Auto) != 0 || !strings.Contains(u.Manual, "agentworks setup cursor") {
+		t.Fatalf("Cursor without AgentWorks hooks is told the one setup line, never changed automatically: %+v", u)
 	}
 	if _, ok := names["pi"]; ok {
 		t.Fatal("pi is not on PATH and must not appear")
@@ -195,7 +195,7 @@ func TestPluginInstallHelpNamesTheRightCommandPerCLI(t *testing.T) {
 		"claude": "claude plugin install agentworks@agentworks",
 		"codex":  "codex plugin marketplace add manishiitg/agentworks-plugins",
 		"muse":   "muse plugins install agentworks-muse@agentworks",
-		"cursor": "setup_project.py",
+		"cursor": "agentworks setup cursor",
 		"pi":     "no repository clone needed",
 	} {
 		if got := pluginInstallHelp(provider); !strings.Contains(got, want) {
