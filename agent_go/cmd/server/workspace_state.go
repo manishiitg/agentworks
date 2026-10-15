@@ -27,6 +27,7 @@ type WorkspaceStateResponse struct {
 type WorkspaceState struct {
 	// Run folders and progress
 	RunFolders       []RunFolderInfo `json:"run_folders"`
+	DefaultRunFolder string          `json:"default_run_folder"`
 	SelectedProgress *StepProgress   `json:"selected_progress,omitempty"`
 
 	// Variables manifest
@@ -84,6 +85,8 @@ func (api *StreamingAPI) handleLoadWorkspaceState(w http.ResponseWriter, r *http
 		}
 		mu.Lock()
 		state.RunFolders = folders
+		state.DefaultRunFolder = defaultRunFolder(folders)
+		logRunFolderDefault(workspacePath, folders)
 		mu.Unlock()
 	}()
 
@@ -262,24 +265,6 @@ func (api *StreamingAPI) getRunFoldersFromWorkspace(ctx context.Context, workspa
 		folderInfos = append(folderInfos, RunFolderInfo{Name: folderName})
 	}
 
-	// Sort by iteration number descending (highest first), then by group name ascending within the same iteration
-	// Supports both formats: iteration-X and iteration-X/group-Y
-	sort.Slice(folderInfos, func(i, j int) bool {
-		iterI := extractIterationNumber(folderInfos[i].Name)
-		iterJ := extractIterationNumber(folderInfos[j].Name)
-		if iterI != iterJ {
-			return iterI > iterJ
-		}
-		// Same iteration: sort group names ascending so alphabetically early names (e.g. "atul") aren't pushed to the end
-		return folderInfos[i].Name < folderInfos[j].Name
-	})
-
-	// Limit to 10 most recent folders/groups
-	const maxFolders = 10
-	if len(folderInfos) > maxFolders {
-		folderInfos = folderInfos[:maxFolders]
-	}
-
 	// Load metadata for all iterations/groups in parallel (bounded concurrency)
 	{
 		var wgMeta sync.WaitGroup
@@ -301,23 +286,12 @@ func (api *StreamingAPI) getRunFoldersFromWorkspace(ctx context.Context, workspa
 		wgMeta.Wait()
 	}
 
-	// Re-sort by created_at (most recent first) when metadata is available
-	sort.Slice(folderInfos, func(i, j int) bool {
-		mi := folderInfos[i].Metadata
-		mj := folderInfos[j].Metadata
-		if mi != nil && mj != nil {
-			return mi.CreatedAt.After(mj.CreatedAt)
-		}
-		// Folders with metadata come first
-		if mi != nil {
-			return true
-		}
-		if mj != nil {
-			return false
-		}
-		// Fallback: iteration number descending
-		return extractIterationNumber(folderInfos[i].Name) > extractIterationNumber(folderInfos[j].Name)
-	})
+	// Read clocks before limiting: a reused iteration-zero slot can be newest.
+	sortRunFoldersByTime(folderInfos)
+	const maxFolders = 10
+	if len(folderInfos) > maxFolders {
+		folderInfos = folderInfos[:maxFolders]
+	}
 
 	return folderInfos, nil
 }

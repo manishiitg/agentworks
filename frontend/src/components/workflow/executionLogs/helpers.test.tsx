@@ -16,7 +16,9 @@ describe('isWebhookRunFolder', () => {
 
 describe('execution log run selection', () => {
   it('keeps an explicitly opened run even when another grouped run is available', () => {
-    expect(getDefaultRunFolder('iteration-85-slack-one', ['iteration-84/default'])).toBe('iteration-85-slack-one')
+    expect(getDefaultRunFolder('iteration-85-slack-one', 'iteration-84/default')).toBe('iteration-85-slack-one')
+    expect(getDefaultRunFolder(null, 'iteration-0/default')).toBe('iteration-0/default')
+    expect(getDefaultRunFolder(null, undefined)).toBe('')
   })
 })
 

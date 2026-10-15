@@ -662,18 +662,10 @@ export const useWorkflowStore = create<WorkflowStore>()(
             return
           }
 
-          // Sort folders by iteration number (descending - newest first)
-          const sorted = [...folders].sort((a, b) => {
-            const numA = parseInt(a.name.replace('iteration-', '')) || 0
-            const numB = parseInt(b.name.replace('iteration-', '')) || 0
-            return numB - numA
-          })
-
+          // The server owns ordering and the default; folders are reusable slots.
+          const sorted = folders
           set({ runFolders: sorted, isLoadingRunFolders: false })
-
-          const defaultRunFolder = sorted.find(folder => folder.name === 'iteration-0')?.name
-            ?? sorted[0]?.name
-            ?? null
+          const defaultRunFolder = response.default_run_folder || null
 
           // Auto-select iteration-0 by default if no selection exists
           const currentSelection = get().selectedRunFolder

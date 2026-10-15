@@ -10,11 +10,12 @@ export interface UseExecutionLogsDataArgs {
   initialRunFolder: string | null | undefined
   allowDefaultRunFolder?: boolean
   runFolders: string[]
+  defaultRunFolder?: string | null
   initialStepId?: string
 }
 
-export function useExecutionLogsData({ workspacePath, initialRunFolder, runFolders, allowDefaultRunFolder = true, initialStepId }: UseExecutionLogsDataArgs) {
-  const defaultRunFolder = !allowDefaultRunFolder && !initialRunFolder ? '' : getDefaultRunFolder(initialRunFolder, runFolders)
+export function useExecutionLogsData({ workspacePath, initialRunFolder, runFolders, allowDefaultRunFolder = true, defaultRunFolder: serverDefault, initialStepId }: UseExecutionLogsDataArgs) {
+  const defaultRunFolder = !allowDefaultRunFolder && !initialRunFolder ? '' : getDefaultRunFolder(initialRunFolder,serverDefault)
   const runFolderOptions = useMemo(() => {
     if (!defaultRunFolder || runFolders.includes(defaultRunFolder)) return runFolders
     return [defaultRunFolder, ...runFolders]
@@ -81,9 +82,19 @@ export function useExecutionLogsData({ workspacePath, initialRunFolder, runFolde
     setStepDetailScrolled(false)
   }, [focusedStepId])
 
-  // Update selected run folder when prop changes
+  const chosenByPerson = useRef(false)
+  const selectRunFolder = useCallback((folder: string) => {
+    chosenByPerson.current = true
+    setSelectedRunFolder(folder)
+  }, [])
   useEffect(() => {
+    chosenByPerson.current = false
     setSelectedRunFolder(defaultRunFolder)
+  // A new explicit navigation target replaces the prior dropdown choice.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspacePath, initialRunFolder])
+  useEffect(() => {
+    if (!chosenByPerson.current) setSelectedRunFolder(defaultRunFolder)
   }, [defaultRunFolder])
 
   // A route filter from one run's routes rarely means anything for another run
@@ -311,7 +322,7 @@ export function useExecutionLogsData({ workspacePath, initialRunFolder, runFolde
     expandedExecutions,
     expandedArchived,
     selectedRunFolder,
-    setSelectedRunFolder,
+    setSelectedRunFolder: selectRunFolder,
     stepSearchQueries,
     setStepSearchQueries,
     routeFilterKey,

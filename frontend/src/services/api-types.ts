@@ -2450,6 +2450,7 @@ export interface WorkflowConstantsResponse {
 // RunFolderInfo is defined below (near WorkspaceState) with metadata field
 
 export interface RunFoldersResponse {
+ default_run_folder?: string;
   folders: RunFolderInfo[]; // Changed from string[] to RunFolderInfo[]
   total_count: number;
   showing_count: number;
@@ -3050,6 +3051,7 @@ export interface WorkspaceStateResponse {
 }
 
 export interface WorkspaceState {
+ default_run_folder?: string;
   run_folders: RunFolderInfo[];
   variables_manifest?: VariablesManifest;
   phases: WorkflowPhase[];

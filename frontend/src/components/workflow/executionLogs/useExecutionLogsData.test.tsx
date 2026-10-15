@@ -31,3 +31,26 @@ it('clears prior run evidence immediately and ignores its late file response', a
   expect(host.textContent).toContain('"steps":{}')
  } finally {await act(async () => root.unmount()); vi.restoreAllMocks(); vi.unstubAllGlobals()}
 })
+
+
+it('waits for the server default, preserves a dropdown choice, and follows an explicit target', async () => {
+ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+ const read=vi.spyOn(agentApi,'getExecutionLogs').mockResolvedValue({success:true,steps:{}})
+ function Probe({serverDefault,explicit}: {serverDefault?:string;explicit?:string}) {
+  const data=useExecutionLogsData({workspacePath:'Workflow/example',initialRunFolder:explicit,defaultRunFolder:serverDefault,runFolders:['iteration-0/default','iteration-11/default']})
+  return <div><pre>{data.selectedRunFolder}</pre><button onClick={()=>data.setSelectedRunFolder('iteration-11/default')}>Choose history</button></div>
+ }
+ const host=document.createElement('div');const root=createRoot(host)
+ try {
+  await act(async()=>root.render(<Probe />))
+  expect(read).not.toHaveBeenCalled()
+  await act(async()=>root.render(<Probe serverDefault="iteration-0/default" />))
+  expect(host.querySelector('pre')?.textContent).toBe('iteration-0/default')
+  await act(async()=>host.querySelector<HTMLButtonElement>('button')!.click())
+  await act(async()=>root.render(<Probe serverDefault="iteration-1/default" />))
+  expect(host.querySelector('pre')?.textContent).toBe('iteration-11/default')
+  await act(async()=>root.render(<Probe serverDefault="iteration-1/default" explicit="iteration-2/default" />))
+  expect(host.querySelector('pre')?.textContent).toBe('iteration-2/default')
+  expect(read).toHaveBeenLastCalledWith('Workflow/example','iteration-2/default')
+ } finally {await act(async()=>root.unmount());vi.restoreAllMocks();vi.unstubAllGlobals()}
+})

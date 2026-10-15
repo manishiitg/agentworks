@@ -14,24 +14,14 @@ export interface ValidationFeedback {
   description: string
 }
 
-const ITERATION_ZERO_DEFAULT_FOLDER = 'iteration-0/default'
-
-const isIterationZeroRunFolder = (folder: string) => (
-  folder === 'iteration-0' || folder.startsWith('iteration-0/')
-)
-
 export const isWebhookRunFolder = (folder: string | null | undefined) => (
   /^iteration-\d+-hook(?:\/|$)/.test((folder || '').trim())
 )
 
-export const getDefaultRunFolder = (initialRunFolder: string | null | undefined, runFolders: string[]) => {
-  if (initialRunFolder && initialRunFolder !== 'new') return initialRunFolder
-  const groupedRunFolder = runFolders.find(folder => folder.includes('/'))
-  if (groupedRunFolder) return groupedRunFolder
-  const iterationZeroFolder = runFolders.find(isIterationZeroRunFolder)
-  if (iterationZeroFolder) return iterationZeroFolder
-  return ITERATION_ZERO_DEFAULT_FOLDER
-}
+// Both values come from server evidence: an explicit target or its default.
+export const getDefaultRunFolder = (initialRunFolder: string | null | undefined, serverDefault?: string | null) => (
+  initialRunFolder && initialRunFolder !== 'new' ? initialRunFolder : serverDefault || ''
+)
 
 export const formatLogFileContent = (content: unknown): string => {
   if (typeof content !== 'string') return JSON.stringify(content, null, 2)

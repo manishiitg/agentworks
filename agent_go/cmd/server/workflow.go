@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -796,9 +795,10 @@ type RunFolderInfo struct {
 
 // RunFoldersResponse represents the response for listing run folders
 type RunFoldersResponse struct {
-	Folders      []RunFolderInfo `json:"folders"` // Changed from []string to []RunFolderInfo
-	TotalCount   int             `json:"total_count"`
-	ShowingCount int             `json:"showing_count"`
+	DefaultRunFolder string          `json:"default_run_folder"`
+	Folders          []RunFolderInfo `json:"folders"` // Changed from []string to []RunFolderInfo
+	TotalCount       int             `json:"total_count"`
+	ShowingCount     int             `json:"showing_count"`
 }
 
 // StepProgress represents the progress of workflow execution
@@ -1243,36 +1243,7 @@ func (api *StreamingAPI) handleGetRunFolders(w http.ResponseWriter, r *http.Requ
 		folderInfos = append(folderInfos, folderInfo)
 	}
 
-	// Sort by created_at (most recent first) when metadata is available,
-	// fallback to iteration number descending
-	if len(folderInfos) > 0 {
-		sort.Slice(folderInfos, func(i, j int) bool {
-			mi := folderInfos[i].Metadata
-			mj := folderInfos[j].Metadata
-			if mi != nil && mj != nil {
-				return mi.CreatedAt.After(mj.CreatedAt)
-			}
-			if mi != nil {
-				return true
-			}
-			if mj != nil {
-				return false
-			}
-			// Fallback: iteration number descending
-			extractIteration := func(name string) int {
-				re := regexp.MustCompile(`iteration-(\d+)`)
-				matches := re.FindStringSubmatch(name)
-				if len(matches) > 1 {
-					var num int
-					if _, err := fmt.Sscanf(matches[1], "%d", &num); err == nil {
-						return num
-					}
-				}
-				return -1
-			}
-			return extractIteration(folderInfos[i].Name) > extractIteration(folderInfos[j].Name)
-		})
-	}
+	sortRunFoldersByTime(folderInfos)
 
 	// Limit to 10 most recent folders
 	totalCount := len(folderInfos)
@@ -1281,10 +1252,12 @@ func (api *StreamingAPI) handleGetRunFolders(w http.ResponseWriter, r *http.Requ
 		folderInfos = folderInfos[:maxFolders]
 	}
 
+	logRunFolderDefault(workspacePath, folderInfos)
 	response := RunFoldersResponse{
-		Folders:      folderInfos,
-		TotalCount:   totalCount,
-		ShowingCount: len(folderInfos),
+		DefaultRunFolder: defaultRunFolder(folderInfos),
+		Folders:          folderInfos,
+		TotalCount:       totalCount,
+		ShowingCount:     len(folderInfos),
 	}
 
 	w.Header().Set("Content-Type", "application/json")

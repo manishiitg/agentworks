@@ -79,9 +79,7 @@ export function useWorkspaceState(
     setState(nextState)
 
     const workflowStore = useWorkflowStore.getState()
-    const folders = nextState.run_folders.map(folder => ({
-      name: folder.name,
-    }))
+    const folders = nextState.run_folders
 
     workflowStore.setRunFolders(folders)
     workflowStore.setVariablesManifest(nextState.variables_manifest || null)

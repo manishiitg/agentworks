@@ -1,3 +1,4 @@
+import { inspectionKey } from '../../../utils/stepInspection'
 import { usePulseToggle } from '../hooks/usePulseToggle'
 import React, {
   Suspense,
@@ -131,6 +132,11 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
   const workflowWorkspaceView = useWorkflowStore(state => state.workflowWorkspaceView)
   const refreshToken = useWorkflowStore(state => state.workspaceViewRefreshToken)
   const historyLogsTarget = useWorkflowStore(state => state.workspaceViewTarget?.view === 'execution-logs' && state.workspaceViewTarget.target.startsWith('history:') ? state.workspaceViewTarget : null)
+  const inspectedRun = useChatStore(state => {
+    const tab = state.getActiveTab()
+    const inspections = tab?.metadata?.stepInspections
+    return inspections?.items.find(item => item.workspace_path === workspacePath && item.session_id === tab?.sessionId && inspectionKey(item) === inspections.activeId)
+  })
   const { planData, selectedRunFolder, runFolderNames, workspace, pulse } = useWorkspaceViewData()
   const relayID = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest.id)
   const plan = planData.plan
@@ -171,7 +177,8 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
         return (
           <ExecutionLogsPopup
             workspacePath={workspacePath}
-            runFolder={selectedRunFolder}
+            runFolder={historyLogsTarget ? selectedRunFolder : inspectedRun?.run_folder || null}
+            defaultRunFolder={workspace.state?.default_run_folder}
             allowDefaultRunFolder={!historyLogsTarget}
             key={historyLogsTarget?.token ?? 'execution-logs'}
             runFolders={runFolderNames}
