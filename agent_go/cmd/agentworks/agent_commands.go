@@ -1277,7 +1277,8 @@ func groupResultText(raw json.RawMessage) string {
 		New   bool     `json:"created"`
 	}
 	if json.Unmarshal(raw, &data) != nil {
-		return "Done."
+		// Never report success without a result.
+		return "AgentWorks sent back no result, so this may not have changed anything. Check with /agentworks groups."
 	}
 	switch {
 	case data.State == "joined":

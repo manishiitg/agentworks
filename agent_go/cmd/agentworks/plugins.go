@@ -238,6 +238,9 @@ func pluginCommand(o *options) *cobra.Command {
 				}
 				return pluginBlock(o, result)
 			}
+			if words[1] == "attach" {
+				return pluginBlock(o, "AgentWorks did not confirm the attach, so this chat is not connected. Type /agentworks attach again; if it keeps failing, run agentworks status in a terminal.")
+			}
 			return pluginBlock(o, "Handled by AgentWorks. This conversation is detached.")
 		}
 		if input.Event == "SessionStart" {
