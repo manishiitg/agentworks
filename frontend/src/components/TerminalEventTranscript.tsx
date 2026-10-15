@@ -1,6 +1,6 @@
 import { CodingAgentQuestionCard } from './CodingAgentQuestionCard'
 import { WorkingStatus } from './chat/WorkingStatus'
-import { currentTurnStartedAt } from '../utils/turnStart'
+import { currentTurnStartedAt, lastAgentOutputAt } from '../utils/turnStart'
 import { codingAgentQuestionCards, withClosedQuestions, type CodingAgentQuestionAnswerHandler } from '../utils/codingAgentQuestions'
 import { AgentRuntimeActivityIndicator } from './AgentRuntimeActivityIndicator'
 import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
@@ -66,6 +66,7 @@ type TranscriptHistoryContext = {
   activity?: ChatRuntimeActivity
   usage?: LiveUsageSummary
   turnStartedAt?: number
+  lastOutputAt?: number
 }
 
 // Keep history navigation inside the virtual scroller. A fixed sibling header
@@ -99,7 +100,7 @@ const TranscriptActivityFooter = ({ context }: { context?: TranscriptHistoryCont
     {working && <>
       {activity.label === 'running'
         // The twinkling star is the motion here, so no separate spinner.
-        ? <WorkingStatus className="truncate" startedAt={context?.turnStartedAt} />
+        ? <WorkingStatus className="truncate" startedAt={context?.turnStartedAt} lastOutputAt={context?.lastOutputAt} />
         : <>
           <AgentRuntimeActivityIndicator state={activity.state} label={activity.label} />
           <span className="truncate">{ACTIVITY_TEXT[activity.label] ?? activity.label}</span>
@@ -1104,6 +1105,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const usage = useMemo(() => liveUsageSummary(statusMeta), [usageKey])
   const turnStartedAt = useMemo(() => currentTurnStartedAt(events), [events])
+  const lastOutputAt = useMemo(() => lastAgentOutputAt(events), [events])
   const historyContext = useMemo<TranscriptHistoryContext>(() => ({
     hasOlder: Boolean(hasOlder && onLoadOlder),
     loadingOlder,
@@ -1111,7 +1113,8 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     activity: runtimeActivity,
     usage,
     turnStartedAt,
-  }), [hasOlder, loadingOlder, onLoadOlder, handleEarlierMessages, runtimeActivity, usage, turnStartedAt])
+    lastOutputAt,
+  }), [hasOlder, loadingOlder, onLoadOlder, handleEarlierMessages, runtimeActivity, usage, turnStartedAt, lastOutputAt])
 
   if (listData.length === 0) {
     const state = (terminal?.state || '').trim().toLowerCase()

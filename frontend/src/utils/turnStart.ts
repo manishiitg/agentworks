@@ -24,3 +24,31 @@ export function currentTurnStartedAt(events: readonly Pick<PollingEvent, 'type' 
   }
   return undefined
 }
+
+// Events that are not the agent's own output: the person's message and delivery receipts.
+const NOT_AGENT_OUTPUT = new Set(['user_message', 'live_input_confirmed'])
+
+// The server's own time of the newest thing the agent produced in the turn now running (text, a tool call, thinking,
+// a question), so the Working line can say how long it has been quiet. Display only. Like currentTurnStartedAt it
+// answers only when the turn start is proven by the loaded events; otherwise it returns undefined and the line shows
+// nothing rather than a wrong time. With no output yet it returns the turn start itself.
+export function lastAgentOutputAt(events: readonly Pick<PollingEvent, 'type' | 'timestamp'>[] | undefined): number | undefined {
+  if (!events) return undefined
+  const started = currentTurnStartedAt(events)
+  if (started === undefined) return undefined
+  let newest = started
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    const type = event.type ?? ''
+    if (TURN_END_EVENTS.has(type)) continue
+    if (type === 'user_message') {
+      const at = event.timestamp ? Date.parse(event.timestamp) : NaN
+      if (Number.isFinite(at) && at <= started) break
+      continue
+    }
+    if (NOT_AGENT_OUTPUT.has(type) || !event.timestamp) continue
+    const at = Date.parse(event.timestamp)
+    if (Number.isFinite(at) && at > newest) newest = at
+  }
+  return newest
+}

@@ -5,6 +5,9 @@ import { WORKING_ACCESSIBLE_LABEL, WORKING_GLYPH_FRAMES, WORKING_GLYPH_INTERVAL_
 // Tip selection and catalog loading are needed only while a turn is Working.
 const WorkingTip = lazy(() => import('./WorkingTip'))
 
+// How long the agent must be quiet before the Working line says so.
+const QUIET_NOTE_AFTER_MS = 90_000
+
 function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
   useEffect(() => {
@@ -32,7 +35,7 @@ function WorkingGlyph({ reduced }: { reduced: boolean }) {
 // One shared "the agent is working" line. Real server status wins; otherwise a friendly word that changes every few
 // seconds, with the seconds since the server started the turn when it told us. Display only: it never decides anything.
 // Screen readers get one stable "Working…" label; the changing text is hidden from them so they are not spammed.
-export function WorkingStatus({ realStatus, startedAt, className }: { realStatus?: string; startedAt?: number; className?: string }) {
+export function WorkingStatus({ realStatus, startedAt, lastOutputAt, className }: { realStatus?: string; startedAt?: number; lastOutputAt?: number; className?: string }) {
   const reduced = usePrefersReducedMotion()
   const tipsAllowed = useContext(WorkingTipsContext)
   const recent = useRef<number[]>([])
@@ -47,13 +50,15 @@ export function WorkingStatus({ realStatus, startedAt, className }: { realStatus
     return () => window.clearInterval(timer)
   }, [reduced])
   useEffect(() => {
-    if (startedAt === undefined) return
+    if (startedAt === undefined && lastOutputAt === undefined) return
     setNow(Date.now())
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
-  }, [startedAt])
+  }, [startedAt, lastOutputAt])
   const { text } = resolveWorkingLabel(realStatus, WORKING_WORDS[reduced ? 0 : word.index])
   const elapsed = startedAt !== undefined && now >= startedAt ? ` (${formatElapsed(now - startedAt)})` : ''
+  // Honest about silence: once the agent has produced nothing for a minute and a half, say so (the server's times).
+  const quiet = lastOutputAt !== undefined && now - lastOutputAt >= QUIET_NOTE_AFTER_MS ? ` \u00b7 no new output for ${formatElapsed(now - lastOutputAt)}` : ''
   return (
     <span className={`inline-flex min-w-0 max-w-full flex-col ${className ?? ''}`} data-testid="working-status">
       <span className="sr-only" role="status" aria-live="polite">{WORKING_ACCESSIBLE_LABEL}</span>
@@ -63,6 +68,7 @@ export function WorkingStatus({ realStatus, startedAt, className }: { realStatus
           <span data-testid="working-word">{text}</span>
         </span>
         {elapsed ? <span className="text-muted-foreground">{elapsed}</span> : null}
+        {quiet ? <span className="text-muted-foreground" data-testid="working-quiet">{quiet}</span> : null}
       </span>
       {tipsAllowed ? <Suspense fallback={null}><WorkingTip turnKey={startedAt} /></Suspense> : null}
     </span>
