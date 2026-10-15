@@ -1185,3 +1185,18 @@ func TestWorkflowNotificationRejectsRemovedRecipientArguments(t *testing.T) {
 		}
 	}
 }
+
+func TestPersonalNotificationSummaryKeepsEmailSchemaAndItem(t *testing.T) {
+	old := services.GetGmailService()
+	services.SetGmailService(nil)
+	t.Cleanup(func() { services.SetGmailService(old) })
+	raw, _ := json.Marshal(CreateHumanTools())
+	if !strings.Contains(string(raw), `"email_subject"`) {
+		t.Fatal("company-off tool schema omitted personal email content")
+	}
+	dest := &services.NotificationDestination{Gmail: &services.GmailDest{Workspace: "Workflow/mail", ConnectionIDs: []string{"personal"}}}
+	copy := cloneNotificationDestination(dest)
+	if copy.Gmail.Workspace != "Workflow/mail" {
+		t.Fatal("cloning dropped trusted item")
+	}
+}

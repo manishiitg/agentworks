@@ -136,7 +136,7 @@ func resolveWorkflowSlackNotificationState(manifest *WorkflowManifest, secretVal
 	return resolveSlackNotificationState("workflow-slack-webhook", "Workflow Slack webhook", manifest.Capabilities, secretValue, secretResolved)
 }
 
-func notificationAccountChannels(ctx context.Context, selectedSenderID string) []WorkflowNotificationAccountChannelInfo {
+func notificationAccountChannels(ctx context.Context, selectedSenderID, itemWorkspace string) []WorkflowNotificationAccountChannelInfo {
 	accountChannels := []WorkflowNotificationAccountChannelInfo{}
 	if gmail, gmailErr := ensureGmailService(); gmailErr == nil {
 		config := gmail.GetConfig()
@@ -170,7 +170,7 @@ func notificationAccountChannels(ctx context.Context, selectedSenderID string) [
 		selectedFound := false
 		selectedReady := false
 		selectedChecking := false
-		for _, conn := range gmail.ConnectionsUsableFrom(services.GmailUseScope{}) {
+		for _, conn := range gmail.ConnectionsUsableFrom(services.GmailUseScope{Workspace: itemWorkspace}) {
 			connAuth, _ := gmail.AuthStatusForConnection(conn.ID)
 			email := conn.Email
 			if connAuth.Email != "" {
@@ -183,13 +183,13 @@ func notificationAccountChannels(ctx context.Context, selectedSenderID string) [
 			if conn.ID == selectedSenderID {
 				selectedFound = true
 				selectedChecking = connAuth.Checking
-				selectedReady = conn.Enabled && connAuth.Authenticated && connAuth.HasGmailScope
+				selectedReady = (config.Enabled || conn.IsPrivate()) && conn.Enabled && connAuth.Authenticated && connAuth.HasGmailScope
 			}
 			choices = append(choices, WorkflowNotificationSenderChoice{
 				ID:          conn.ID,
 				DisplayName: conn.DisplayName,
 				Email:       email,
-				Ready:       conn.Enabled && connAuth.Authenticated && connAuth.HasGmailScope,
+				Ready:       (config.Enabled || conn.IsPrivate()) && conn.Enabled && connAuth.Authenticated && connAuth.HasGmailScope,
 				IsDefault:   isDefault,
 			})
 		}
@@ -199,7 +199,7 @@ func notificationAccountChannels(ctx context.Context, selectedSenderID string) [
 				gmailState, gmailSummary = "not_ready", "Selected Notify sender is missing."
 			case selectedChecking:
 				gmailState, gmailSummary = "checking", "Checking the selected Notify sender…"
-			case config.Enabled && selectedReady:
+			case selectedReady:
 				gmailState, gmailSummary = "ready", "Selected Notify sender is connected."
 			default:
 				gmailState, gmailSummary = "not_ready", "Selected Notify sender is unavailable."
@@ -279,7 +279,7 @@ func (api *StreamingAPI) handleGetWorkflowNotifications(w http.ResponseWriter, r
 	if manifest.Capabilities.Notifications != nil {
 		selectedSenderID = strings.TrimSpace(manifest.Capabilities.Notifications.GmailConnectionID)
 	}
-	accountChannels := notificationAccountChannels(r.Context(), selectedSenderID)
+	accountChannels := notificationAccountChannels(r.Context(), selectedSenderID, personalConnectionItemRoot(GetUserIDFromContext(r.Context()), workspacePath))
 
 	response := WorkflowNotificationInfoResponse{
 		Success:                  true,

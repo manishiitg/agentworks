@@ -40,6 +40,19 @@ type NotificationConnector interface {
 	SendNotification(ctx context.Context, uniqueID string, message string, contextMsg string, buttonOptions *ButtonOptions, dest *NotificationDestination) (string, error)
 }
 
+// destinationNotificationConnector lets an item-selected sender work independently
+// of an account-wide default. The connector validates the selection at send time.
+type destinationNotificationConnector interface {
+	IsEnabledForDestination(*NotificationDestination) bool
+}
+
+func notificationConnectorEnabled(connector NotificationConnector, dest *NotificationDestination) bool {
+	if scoped, ok := connector.(destinationNotificationConnector); ok {
+		return scoped.IsEnabledForDestination(dest)
+	}
+	return connector.IsEnabled()
+}
+
 // UserNotificationConnector is an optional extension for connectors that can
 // send a non-blocking message to a human without creating a feedback request.
 type UserNotificationConnector interface {
@@ -111,7 +124,7 @@ func (nm *NotificationManager) SendNotification(ctx context.Context, uniqueID st
 	nm.mu.RLock()
 	connectors := make([]NotificationConnector, 0, len(nm.connectors))
 	for _, connector := range nm.connectors {
-		if connector.IsEnabled() {
+		if notificationConnectorEnabled(connector, dest) {
 			connectors = append(connectors, connector)
 		}
 	}
@@ -143,7 +156,7 @@ func (nm *NotificationManager) SendUserNotification(ctx context.Context, message
 	nm.mu.RLock()
 	connectors := make([]NotificationConnector, 0, len(nm.connectors))
 	for _, connector := range nm.connectors {
-		if connector.IsEnabled() {
+		if notificationConnectorEnabled(connector, dest) {
 			connectors = append(connectors, connector)
 		}
 	}
@@ -199,7 +212,7 @@ func (nm *NotificationManager) SendUserNotificationSync(ctx context.Context, mes
 	nm.mu.RLock()
 	connectors := make([]NotificationConnector, 0, len(nm.connectors))
 	for _, connector := range nm.connectors {
-		if connector.IsEnabled() && !excluded[strings.ToLower(connector.Name())] {
+		if notificationConnectorEnabled(connector, dest) && !excluded[strings.ToLower(connector.Name())] {
 			connectors = append(connectors, connector)
 		}
 	}
@@ -244,12 +257,17 @@ func (nm *NotificationManager) GetConnector(name string) (NotificationConnector,
 // currently enabled (IsEnabled() == true). Used to surface the live set of
 // delivery channels — e.g. to bake into a tool description at session start.
 func (nm *NotificationManager) ListEnabledConnectors() []string {
+	return nm.ListEnabledConnectorsForDestination(nil)
+}
+
+// ListEnabledConnectorsForDestination includes an item-selected sending account.
+func (nm *NotificationManager) ListEnabledConnectorsForDestination(dest *NotificationDestination) []string {
 	nm.mu.RLock()
 	defer nm.mu.RUnlock()
 
 	names := make([]string, 0, len(nm.connectors))
 	for name, connector := range nm.connectors {
-		if connector.IsEnabled() {
+		if notificationConnectorEnabled(connector, dest) {
 			names = append(names, name)
 		}
 	}

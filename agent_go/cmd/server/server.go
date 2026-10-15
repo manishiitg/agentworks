@@ -945,6 +945,8 @@ type QueryRequest struct {
 
 	// Workspace path passed directly (used by scheduler to bypass preset lookup)
 	SelectedFolder string `json:"selected_folder,omitempty"`
+	// Set only after target admission, or by an internal scheduled run.
+	notificationItemWorkspace string
 
 	// Triggered by: "manual", "cron" — for tracking execution source
 	TriggeredBy string `json:"triggered_by,omitempty"`
@@ -1087,6 +1089,12 @@ func notificationDestinationFromQuery(req QueryRequest, userID string) *services
 			dest.Gmail = &services.GmailDest{}
 		}
 		dest.Gmail.ConnectionIDs = []string{connID}
+	}
+	if dest.Gmail != nil || len(dest.RunSummaryGmailConnectionIDs) > 0 || len(dest.PulseSummaryGmailConnectionIDs) > 0 {
+		if dest.Gmail == nil {
+			dest.Gmail = &services.GmailDest{}
+		}
+		dest.Gmail.Workspace = req.notificationItemWorkspace
 	}
 	if dest.UserID == "" && dest.WorkspacePath == "" && dest.Slack == nil && dest.SlackWebhook == nil && dest.WhatsApp == nil && dest.Gmail == nil &&
 		len(dest.ExcludeChannels) == 0 && len(dest.RunSummaryRecipients) == 0 && len(dest.PulseSummaryRecipients) == 0 &&
@@ -2100,13 +2108,13 @@ func runServer(cmd *cobra.Command, args []string) {
 	gmailSvc, err := services.InitGmailService()
 	if err != nil {
 		log.Printf("⚠️  Failed to initialize Gmail service: %v (Gmail integration will be disabled)", err)
-	} else if gmailSvc.IsEnabled() {
-		log.Printf("✅ Gmail service initialized and enabled")
+	} else {
+		// Registration is independent of company defaults: an item's selected
+		// personal sender is checked by the connector for each delivery.
+		log.Printf("✅ Gmail service initialized")
 		if notificationManager != nil {
 			notificationManager.RegisterConnector(gmailSvc)
 		}
-	} else {
-		log.Printf("✅ Gmail service initialized (disabled — set config/gmail-config.json)")
 	}
 
 	chromeStateRoot, chromeStateErr := workflowCLIStateRoot()
@@ -14564,6 +14572,16 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 	access, err := api.conversationTargetAccess(ctx, *req)
 	if err != nil {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: err}
+	}
+	// Only targets actually checked above can authorize an item sender. A
+	// profile-less folder alias must not inherit the account-tier fallback.
+	req.notificationItemWorkspace = ""
+	if resolvedProfile != nil {
+		req.notificationItemWorkspace = personalConnectionItemRoot(currentUserID, req.SelectedFolder)
+	} else if strings.HasPrefix(req.SelectedFolder, "Workflow/") {
+		if _, exists, readErr := ReadWorkflowManifest(ctx, req.SelectedFolder); readErr == nil && exists {
+			req.notificationItemWorkspace = personalConnectionItemRoot(currentUserID, req.SelectedFolder)
+		}
 	}
 	crewReadOnly := readOnlyForRequest(access, *req) || crewGuestCallerForTurn(*req, currentUserID) != ""
 	if req.CodeLocalFiles != nil {

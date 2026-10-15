@@ -635,7 +635,7 @@ func filterRecipientsAgainstList(recipients []string, blockedRecipients []string
 // through another channel (Slack bot, web UI). Any options are listed in the
 // body for context only — there is no email reply path.
 func (g *GmailService) SendNotification(ctx context.Context, uniqueID string, message string, contextMsg string, buttonOptions *ButtonOptions, dest *NotificationDestination) (string, error) {
-	if !g.IsEnabled() {
+	if !g.IsEnabledForDestination(dest) {
 		return "", nil
 	}
 	to := g.pickRecipientWithContext(ctx, dest)
@@ -667,12 +667,12 @@ func (g *GmailService) SendNotification(ctx context.Context, uniqueID string, me
 	}
 	cc = g.filterCCRecipients(cc, destBlockedRecipients(dest)...)
 
-	return g.deliver(ctx, destGmailConnectionIDs(dest), destWorkflowName(dest), to, cc, subject, body, htmlBody, attachments)
+	return g.deliverNotification(ctx, dest, destGmailConnectionIDs(dest), destWorkflowName(dest), to, cc, subject, body, htmlBody, attachments)
 }
 
 // SendUserNotification sends a non-blocking informational email.
 func (g *GmailService) SendUserNotification(ctx context.Context, message string, contextMsg string, dest *NotificationDestination) (string, error) {
-	if !g.IsEnabled() {
+	if !g.IsEnabledForDestination(dest) {
 		return "", nil
 	}
 	to := g.pickRecipientWithContext(ctx, dest)
@@ -699,15 +699,14 @@ func (g *GmailService) SendUserNotification(ctx context.Context, message string,
 		return "", nil
 	}
 	cc = g.filterCCRecipients(cc, destBlockedRecipients(dest)...)
-	return g.deliver(ctx, destGmailConnectionIDs(dest), destWorkflowName(dest), to, cc, subject, body, htmlBody, attachments)
+	return g.deliverNotification(ctx, dest, destGmailConnectionIDs(dest), destWorkflowName(dest), to, cc, subject, body, htmlBody, attachments)
 }
 
 // maxGmailAttachmentBytes caps the total attachment payload per message to keep
 // well under Gmail's raw-send limit and avoid pathological memory use.
 const maxGmailAttachmentBytes = 20 * 1024 * 1024 // 20 MB
 
-// deliver sends every notification through the HTML-capable path.
-func (g *GmailService) deliver(ctx context.Context, connectionIDs []string, workflowName, to string, cc []string, subject, body, htmlBody string, attachments []string) (string, error) {
+func (g *GmailService) deliverNotification(ctx context.Context, dest *NotificationDestination, connectionIDs []string, workflowName, to string, cc []string, subject, body, htmlBody string, attachments []string) (string, error) {
 	// No senders named means "the default connection" — expressed as a
 	// single-element run so the fan-out path below is the only send path and
 	// cannot drift from the single-account one.
@@ -722,9 +721,10 @@ func (g *GmailService) deliver(ctx context.Context, connectionIDs []string, work
 		// Resolve per account, because one disabled connection must not stop the
 		// others: a fan-out that silently became a single send would be worse
 		// than a partial failure the caller can see.
-		cfg, resolvedID, err := g.resolveSendConfig(connectionID)
+		cfg, resolvedID, senderKind, err := g.notificationSendConfig(dest, connectionID)
 		if err != nil {
 			g.recordSend("send_refused", connectionID, workflowName, to, cc, "", err)
+			log.Printf("[NOTIFY] item=%s sender=%s account=%s result=refused reason=sender_unavailable", gmailNotificationWorkspace(dest), senderKind, connectionID)
 			failures = append(failures, err.Error())
 			continue
 		}
@@ -733,6 +733,14 @@ func (g *GmailService) deliver(ctx context.Context, connectionIDs []string, work
 		// supplies only text, sendRaw safely converts it to a single HTML body.
 		msgID, err := g.sendRaw(ctx, cfg, to, cc, subject, body, htmlBody, attachments)
 		g.recordSend("send", resolvedID, workflowName, to, cc, msgID, err)
+		result := "sent"
+		if err != nil {
+			result = "failed"
+		}
+		log.Printf("[NOTIFY] item=%s sender=%s account=%s result=%s reason=transport_result", gmailNotificationWorkspace(dest), senderKind, resolvedID, result)
+		if err != nil && senderKind == "personal" {
+			err = fmt.Errorf("Email could not be sent using the Google account added to this item; check its connection in Google apps")
+		}
 		if err != nil {
 			failures = append(failures, fmt.Sprintf("%s: %v", senderLabel(resolvedID), err))
 			continue

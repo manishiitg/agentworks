@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
@@ -379,22 +380,32 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 		writeWorkflowPermissionDenied(w, "owner")
 		return
 	}
+	senderIDs := []string{}
 	if req.NotificationGmailConnectionID != nil {
-		id := strings.TrimSpace(*req.NotificationGmailConnectionID)
-		if id != "" {
-			gmail, gmailErr := ensureGmailService()
-			if gmailErr != nil {
-				http.Error(w, gmailErr.Error(), http.StatusBadRequest)
-				return
-			}
+		senderIDs = append(senderIDs, *req.NotificationGmailConnectionID)
+	}
+	if req.RunNotificationGmailConnectionIDs != nil {
+		senderIDs = append(senderIDs, (*req.RunNotificationGmailConnectionIDs)...)
+	}
+	if req.PulseNotificationGmailConnectionIDs != nil {
+		senderIDs = append(senderIDs, (*req.PulseNotificationGmailConnectionIDs)...)
+	}
+	if len(normalizeGmailConnectionIDs(senderIDs)) > 0 {
+		gmail, gmailErr := ensureGmailService()
+		if gmailErr != nil {
+			http.Error(w, gmailErr.Error(), http.StatusBadRequest)
+			return
+		}
+		item := personalConnectionItemRoot(GetUserIDFromContext(r.Context()), req.WorkspacePath)
+		for _, id := range normalizeGmailConnectionIDs(senderIDs) {
 			conn, found := gmail.GetConnection(id)
-			// A Code's private account never sends for a workflow.
-			if !found || !conn.Enabled || conn.IsPrivate() {
-				http.Error(w, "Notify sender must be an enabled Gmail connection", http.StatusBadRequest)
+			if !found || !conn.Enabled || !conn.UsableFrom(services.GmailUseScope{Workspace: item}) {
+				http.Error(w, "Choose an enabled Google account added to this item in Google apps", http.StatusBadRequest)
 				return
 			}
 		}
 	}
+
 	if req.KnowledgebaseSources != nil {
 		if err := workflowkb.Validate(stepworkflow.GetPromptDocsRoot(), req.WorkspacePath, *req.KnowledgebaseSources); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

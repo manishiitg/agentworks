@@ -171,29 +171,27 @@ func CreateHumanTools() []llmtypes.Tool {
 		},
 	}
 	summaryContentProps["summary_routes"] = notificationRoutesSchema(summaryContentProps["summary_fields"], summaryContentProps["summary_sections"])
-	if gmailEnabled() {
-		summaryContentProps["email_subject"] = map[string]interface{}{
-			"type":        "string",
-			"description": "Required non-empty plain-text subject whenever this notification sends Gmail, including general notifications. summary_title is not a substitute. Omit only when Gmail is excluded or not used. Do not supply MIME-encoded text or line breaks.",
-		}
-		summaryContentProps["email_attachments"] = map[string]interface{}{
-			"type":        "array",
-			"items":       map[string]interface{}{"type": "string"},
-			"description": "Optional. Absolute file paths on the server host to attach to the email (Gmail only).",
-		}
-		summaryContentProps["block_recipients"] = map[string]interface{}{
-			"type":        "array",
-			"items":       map[string]interface{}{"type": "string"},
-			"description": "Optional one-off email denylist for THIS notification (Gmail only). Addresses listed here are rejected as To or CC recipients, on top of BOTH the account-wide disallowed-recipients list AND the durable per-workflow denylist in workflow.json notifications.block_recipients — it can only block MORE, never unblock a globally-blocked address. Put addresses the workflow must never email in workflow.json notifications.block_recipients (applied automatically); use this arg only for a one-time block beyond that. A blocked address is removed from the To/CC list and the message still goes to the remaining recipients; only when EVERY recipient is blocked is the email skipped entirely. Does not change any account-wide configuration; other channels ignore this.",
-		}
-		summaryContentProps["email_html"] = map[string]interface{}{
-			"type":        "string",
-			"description": "The single rich email body (Gmail only). For workflow/Pulse/Goal Advisor notifications, supply this by default unless the user explicitly asked not to email. MUST be EMAIL-SAFE: use INLINE styles only (a style attribute on each element). Gmail strips <style> blocks, <head>, <script>, and class-based CSS, so a full browser HTML document or a generated *.html report (e.g. pulse/org-pulse.html) arrives UNSTYLED — build a compact inline-styled summary and link to the full report instead of pasting it. Do not create a separate plain email version; message_for_user is the automatic fallback. Other channels ignore this.",
-		}
-		summaryContentProps["email_html_file"] = map[string]interface{}{
-			"type":        "string",
-			"description": "Optional. Absolute path to an .html file on the server host to use as the HTML email body (alternative to email_html). The file MUST be email-safe — INLINE styles only; Gmail strips <style>/<head>/class CSS, so a browser-oriented report file (e.g. pulse/org-pulse.html) renders UNSTYLED. Point this at an email-specific inline-styled file, not the full browser report. If the file can't be read, the tool returns an error so you can fix the path.",
-		}
+	summaryContentProps["email_subject"] = map[string]interface{}{
+		"type":        "string",
+		"description": "Required non-empty plain-text subject whenever this notification sends Gmail, including general notifications. summary_title is not a substitute. Omit only when Gmail is excluded or not used. Do not supply MIME-encoded text or line breaks.",
+	}
+	summaryContentProps["email_attachments"] = map[string]interface{}{
+		"type":        "array",
+		"items":       map[string]interface{}{"type": "string"},
+		"description": "Optional. Absolute file paths on the server host to attach to the email (Gmail only).",
+	}
+	summaryContentProps["block_recipients"] = map[string]interface{}{
+		"type":        "array",
+		"items":       map[string]interface{}{"type": "string"},
+		"description": "Optional one-off email denylist for THIS notification (Gmail only). Addresses listed here are rejected as To or CC recipients, on top of BOTH the account-wide disallowed-recipients list AND the durable per-workflow denylist in workflow.json notifications.block_recipients — it can only block MORE, never unblock a globally-blocked address. Put addresses the workflow must never email in workflow.json notifications.block_recipients (applied automatically); use this arg only for a one-time block beyond that. A blocked address is removed from the To/CC list and the message still goes to the remaining recipients; only when EVERY recipient is blocked is the email skipped entirely. Does not change any account-wide configuration; other channels ignore this.",
+	}
+	summaryContentProps["email_html"] = map[string]interface{}{
+		"type":        "string",
+		"description": "The single rich email body (Gmail only). For workflow/Pulse/Goal Advisor notifications, supply this by default unless the user explicitly asked not to email. MUST be EMAIL-SAFE: use INLINE styles only (a style attribute on each element). Gmail strips <style> blocks, <head>, <script>, and class-based CSS, so a full browser HTML document or a generated *.html report (e.g. pulse/org-pulse.html) arrives UNSTYLED — build a compact inline-styled summary and link to the full report instead of pasting it. Do not create a separate plain email version; message_for_user is the automatic fallback. Other channels ignore this.",
+	}
+	summaryContentProps["email_html_file"] = map[string]interface{}{
+		"type":        "string",
+		"description": "Optional. Absolute path to an .html file on the server host to use as the HTML email body (alternative to email_html). The file MUST be email-safe — INLINE styles only; Gmail strips <style>/<head>/class CSS, so a browser-oriented report file (e.g. pulse/org-pulse.html) renders UNSTYLED. Point this at an email-specific inline-styled file, not the full browser report. If the file can't be read, the tool returns an error so you can fix the path.",
 	}
 	humanTools = append(humanTools, createSendEmailTool())
 	humanTools = append(humanTools, createRecordSummaryTool(summaryContentProps))
@@ -625,7 +623,7 @@ func DeliverWorkflowNotification(ctx context.Context, args map[string]interface{
 	}
 
 	expectedChannels := append([]string{}, routedChannels...)
-	expectedChannels = append(expectedChannels, notificationManager.ListEnabledConnectors()...)
+	expectedChannels = append(expectedChannels, notificationManager.ListEnabledConnectorsForDestination(dest)...)
 	if dest.Slack != nil {
 		expectedChannels = append(expectedChannels, "slack")
 	}
@@ -1166,6 +1164,7 @@ func cloneNotificationDestination(dest *services.NotificationDestination) *servi
 	}
 	if dest.Gmail != nil {
 		clone.Gmail = &services.GmailDest{
+			Workspace:         dest.Gmail.Workspace,
 			Email:             dest.Gmail.Email,
 			ConnectionIDs:     append([]string(nil), dest.Gmail.ConnectionIDs...),
 			BlockedRecipients: append([]string(nil), dest.Gmail.BlockedRecipients...),

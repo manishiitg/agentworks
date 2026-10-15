@@ -354,7 +354,7 @@ func (s *SchedulerService) sendAfterRunNotification(ctx context.Context, sctx *S
 		return fmt.Errorf("scheduler not available")
 	}
 	owner := strings.TrimSpace(sctx.OwnerUserID)
-	req := QueryRequest{SelectedFolder: sctx.WorkspacePath}
+	req := QueryRequest{SelectedFolder: sctx.WorkspacePath, notificationItemWorkspace: personalConnectionItemRoot(owner, sctx.WorkspacePath)}
 	applyMultiAgentCapabilitiesToRequest(&req, manifest.Capabilities)
 	s.api.resolveNotificationSecretForRequest(ctx, owner, sctx.WorkspacePath, &req)
 	dest := notificationDestinationFromQuery(req, owner)

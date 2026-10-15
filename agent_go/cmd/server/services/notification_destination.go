@@ -59,10 +59,12 @@ type SlackWebhookDest struct {
 }
 
 // GmailDest is the Gmail-specific destination hint. Email is the recipient
-// address; the sending account is the single shared identity gws is
-// authenticated as.
+// address; the sending identity is selected explicitly or inherited from
+// company defaults.
 type GmailDest struct {
-	Email string
+	// Workspace is the canonical item bound by the server, never a tool argument.
+	Workspace string
+	Email     string
 
 	// ConnectionIDs selects which configured Gmail account(s) send this message.
 	// Empty means the workspace default connection. Several entries deliver the

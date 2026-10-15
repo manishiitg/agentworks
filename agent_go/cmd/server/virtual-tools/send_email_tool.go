@@ -105,6 +105,7 @@ func handleSendEmail(ctx context.Context, args map[string]interface{}) (string, 
 	if base != nil {
 		dest.UserID, dest.WorkflowName, dest.WorkspacePath = base.UserID, base.WorkflowName, base.WorkspacePath
 		if base.Gmail != nil {
+			dest.Gmail.Workspace = base.Gmail.Workspace
 			dest.Gmail.ConnectionIDs = append([]string(nil), base.Gmail.ConnectionIDs...)
 			dest.Gmail.BlockedRecipients = append([]string(nil), base.Gmail.BlockedRecipients...)
 		}

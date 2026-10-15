@@ -146,15 +146,15 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
                 privateAccount={/(?:^|\/)Chats\/Code\/projects\//.test(workspacePath)} readOnly={readOnly} addedConnectionIds={gmailConnections.map(account => account.id)} onChanged={() => { void bots.loadGmailConnections() }} />)}
           </FormSection>
           <FormSection
-            title="Delivery settings"
-            description={<>Account-wide one-way email delivery, used for workflow run and Pulse summaries. This setting controls workflow notification emails; connected Google accounts and their read/write permissions are managed above. Email replies do not resume an agent.</>}
+            title="Company delivery defaults"
+            description={scopeNoun === 'workflow' ? "Company-wide workflow email defaults are managed by an administrator. To use your own email, add your Google account above and choose it in Notify; this switch can stay off." : "Company-wide workflow email defaults are managed by an administrator. Your personal Google account is managed above and does not need this switch."}
           >
             {gmailSettingsReadOnly && <p className="mb-3 text-xs text-muted-foreground" role="status">Only an admin can change shared Gmail delivery settings or send a test email.</p>}
             {gmailError && <StatusBanner tone="error">{gmailError}</StatusBanner>}
             {gmailSuccess && <StatusBanner tone="success">{gmailSuccess}</StatusBanner>}
             <Card className="p-4">
               <ToggleRow
-                label="Workflow email notifications"
+                label="Workflow email notifications (company default)"
                 description="Turns on automatically after Gmail sign-in, unless previously turned off. Controls workflow summary emails."
                 checked={gmailConfig.enabled}
                 onCheckedChange={checked => setGmailConfig({ ...gmailConfig, enabled: checked })}

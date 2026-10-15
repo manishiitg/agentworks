@@ -186,15 +186,9 @@ func updateGmailConfigHandler(api *StreamingAPI) http.HandlerFunc {
 			return
 		}
 
-		// Reflect the toggle on the live NotificationManager so it takes effect
-		// without a restart: register when enabled, unregister when disabled.
-		nm := services.GetNotificationManager()
-		if nm != nil {
-			if svc.IsEnabled() {
-				nm.RegisterConnector(svc)
-			} else {
-				nm.UnregisterConnector("gmail")
-			}
+		// Keep personal item senders available when company defaults are off.
+		if nm := services.GetNotificationManager(); nm != nil {
+			nm.RegisterConnector(svc)
 		}
 
 		saved := svc.GetConfig()
