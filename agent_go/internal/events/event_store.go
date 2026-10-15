@@ -670,9 +670,12 @@ type EventStore struct {
 	// sessionBytes is the estimated payload each session holds in memory (event_memory.go). Guarded by mu.
 	sessionBytes map[string]int64
 	// byteBudget is the per-session cap on estimated payload bytes; 0 means no byte cap.
-	byteBudget    int64
-	cleanupTicker *time.Ticker
-	stopCh        chan struct{}
+	byteBudget int64
+	// turnPhaseEnabled turns on the server's turn-phase announcements (turn_phase.go). Off in a bare store, so code and tests that
+	// count a session's events see only the events they added; the server enables it on its own store.
+	turnPhaseEnabled bool
+	cleanupTicker    *time.Ticker
+	stopCh           chan struct{}
 	// journalMaintenanceStarted guards the single compaction/size-guard loop.
 	journalMaintenanceStarted bool
 	// steerOrdering holds answer rows behind a deferred steered message.

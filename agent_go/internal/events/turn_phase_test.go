@@ -33,6 +33,7 @@ func add(es *EventStore, sessionID, typ string, data mcpevents.EventData) {
 func TestTurnPhaseFollowsTheAgentNotTheClock(t *testing.T) {
 	es := NewEventStore(100)
 	defer es.Stop()
+	es.EnableTurnPhase()
 	const session = "turn-phase-session"
 	add(es, session, "user_message", nil)
 	add(es, session, "llm_generation_start", &mcpevents.LLMGenerationStartEvent{ModelID: "muse-wonder-1.0"})

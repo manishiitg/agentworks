@@ -1999,6 +1999,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		}
 	}
 	eventStore := events.NewEventStore(maxSessionEvents)
+	eventStore.EnableTurnPhase()
 	carryOverLegacyStateRoot()
 	eventStateRoot, err := workflowCLIStateRoot()
 	if err != nil {

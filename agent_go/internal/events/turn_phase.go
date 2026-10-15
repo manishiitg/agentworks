@@ -123,8 +123,21 @@ func (es *EventStore) TurnInProgress(sessionID string) bool {
 	return st != nil && time.Since(st.updated) <= turnPhaseStaleAfter
 }
 
+// EnableTurnPhase makes the store announce turn phases (the server calls it once on its own store).
+func (es *EventStore) EnableTurnPhase() {
+	es.mu.Lock()
+	es.turnPhaseEnabled = true
+	es.mu.Unlock()
+}
+
+func (es *EventStore) turnPhaseOn() bool {
+	es.mu.RLock()
+	defer es.mu.RUnlock()
+	return es.turnPhaseEnabled
+}
+
 func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
-	if sessionID == "" || event.Type == turnPhaseEventType {
+	if sessionID == "" || event.Type == turnPhaseEventType || !es.turnPhaseOn() {
 		return
 	}
 	now := time.Now()
