@@ -667,8 +667,12 @@ type EventStore struct {
 	expectedSenders map[string]*expectedSender
 	mu              sync.RWMutex
 	maxEvents       int // Maximum events per session
-	cleanupTicker   *time.Ticker
-	stopCh          chan struct{}
+	// sessionBytes is the estimated payload each session holds in memory (event_memory.go). Guarded by mu.
+	sessionBytes map[string]int64
+	// byteBudget is the per-session cap on estimated payload bytes; 0 means no byte cap.
+	byteBudget    int64
+	cleanupTicker *time.Ticker
+	stopCh        chan struct{}
 	// journalMaintenanceStarted guards the single compaction/size-guard loop.
 	journalMaintenanceStarted bool
 	// steerOrdering holds answer rows behind a deferred steered message.
@@ -712,6 +716,7 @@ func NewEventStoreWithActivityCallback(maxEvents int, activityCallback ActivityC
 		persistenceClasses:  make(map[string]SessionPersistenceClass),
 		thinkingRuns:        make(map[string]*thinkingRun),
 		maxEvents:           maxEvents,
+		byteBudget:          sessionEventByteBudget(),
 		cleanupTicker:       time.NewTicker(5 * time.Minute), // Cleanup every 5 minutes
 		stopCh:              make(chan struct{}),
 		activityCallback:    activityCallback,
@@ -768,6 +773,7 @@ func (es *EventStore) hydrateSession(sessionID string) {
 	}
 	if len(persisted) > 0 {
 		es.events[sessionID] = append([]Event(nil), persisted...)
+		es.recomputeSessionBytesLocked(sessionID)
 		// Sequence is one-based and gap-free within the durable journal. When
 		// only the bounded tail is hydrated, preserve its absolute zero-based
 		// polling position so a reconnect cursor is not compared with tail-local
@@ -1067,8 +1073,15 @@ func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 		es.nextSequence[sessionID] = event.Sequence
 	}
 
+	// A replacing terminal snapshot supersedes the previous one of its terminal (event_memory.go).
+	es.supersedeTerminalSnapshot(sessionID, event)
+
 	// Add event
 	es.events[sessionID] = append(es.events[sessionID], event)
+	if es.sessionBytes == nil {
+		es.sessionBytes = make(map[string]int64)
+	}
+	es.sessionBytes[sessionID] += estimateEventBytes(event)
 	if event.TerminalID != "" {
 		if es.terminalEvents[sessionID] == nil {
 			es.terminalEvents[sessionID] = make(map[string][]Event)
@@ -1079,6 +1092,9 @@ func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 		}
 		es.terminalEvents[sessionID][event.TerminalID] = owned
 	}
+
+	// Keep the session inside its byte budget as well as its count (event_memory.go).
+	es.pruneToByteBudget(sessionID, es.byteBudget)
 
 	// Remove old events if over limit
 	if len(es.events[sessionID]) > es.maxEvents {
@@ -1091,6 +1107,7 @@ func (es *EventStore) addEventUnheld(sessionID string, event Event) error {
 		// retention so unopened terminals cannot keep otherwise-evicted payloads
 		// alive in backend memory.
 		es.rebuildTerminalEventsLocked(sessionID)
+		es.recomputeSessionBytesLocked(sessionID)
 	}
 
 	// Call activity callback if set (call outside of lock to avoid deadlock)
@@ -2278,6 +2295,8 @@ type EventStoreStats struct {
 	Sessions       int
 	Events         int
 	TerminalEvents int
+	// Bytes is the estimated payload all sessions hold in memory.
+	Bytes int64
 	// Largest lists the sessions holding the most events, largest first.
 	Largest []SessionEventCount
 }
@@ -2287,6 +2306,8 @@ type SessionEventCount struct {
 	SessionID      string
 	Events         int
 	TerminalEvents int
+	// Bytes is the estimated payload the session holds in memory (event_memory.go).
+	Bytes int64
 }
 
 // Stats reports in-memory sizes, for the periodic memory log.
@@ -2304,8 +2325,11 @@ func (es *EventStore) Stats(top int) EventStoreStats {
 	}
 	stats := EventStoreStats{}
 	for sessionID, events := range es.events {
-		count(sessionID).Events = len(events)
+		entry := count(sessionID)
+		entry.Events = len(events)
+		entry.Bytes = es.sessionBytes[sessionID]
 		stats.Events += len(events)
+		stats.Bytes += entry.Bytes
 	}
 	for sessionID, terminals := range es.terminalEvents {
 		for _, events := range terminals {
@@ -2318,7 +2342,7 @@ func (es *EventStore) Stats(top int) EventStoreStats {
 		stats.Largest = append(stats.Largest, *entry)
 	}
 	sort.Slice(stats.Largest, func(i, j int) bool {
-		return stats.Largest[i].Events+stats.Largest[i].TerminalEvents > stats.Largest[j].Events+stats.Largest[j].TerminalEvents
+		return stats.Largest[i].Bytes > stats.Largest[j].Bytes || stats.Largest[i].Bytes == stats.Largest[j].Bytes && stats.Largest[i].Events+stats.Largest[i].TerminalEvents > stats.Largest[j].Events+stats.Largest[j].TerminalEvents
 	})
 	if len(stats.Largest) > top {
 		stats.Largest = stats.Largest[:top]

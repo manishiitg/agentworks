@@ -38,8 +38,8 @@ func memoryLogLine(store *events.EventStore) string {
 	stats := store.Stats(5)
 	largest := make([]string, 0, len(stats.Largest))
 	for _, session := range stats.Largest {
-		largest = append(largest, fmt.Sprintf("%s:%d+%dt", session.SessionID, session.Events, session.TerminalEvents))
+		largest = append(largest, fmt.Sprintf("%s:%d+%dt/%dKB", session.SessionID, session.Events, session.TerminalEvents, session.Bytes>>10))
 	}
-	return fmt.Sprintf("%s event_sessions=%d events=%d terminal_events=%d largest=[%s]",
-		line, stats.Sessions, stats.Events, stats.TerminalEvents, strings.Join(largest, " "))
+	return fmt.Sprintf("%s event_sessions=%d events=%d terminal_events=%d event_bytes=%dMB largest=[%s]",
+		line, stats.Sessions, stats.Events, stats.TerminalEvents, stats.Bytes>>20, strings.Join(largest, " "))
 }
