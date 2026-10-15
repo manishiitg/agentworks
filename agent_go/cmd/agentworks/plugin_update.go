@@ -424,7 +424,7 @@ func updateMusePlugin(ctx context.Context, o *options) {
 			return
 		}
 	}
-	fmt.Fprintf(o.stderr, "Updated the Muse plugin from %s to %s. It needs your approval before it runs. Review it: muse plugins inspect agentworks-muse. Then approve it: muse plugins approve agentworks-muse. Then start a NEW Muse chat; do not resume an older one, because it remembers the old tool names and will keep failing.\n", installed, offered)
+	fmt.Fprintf(o.stderr, "Updated the Muse plugin from %s to %s. Muse asks you to trust AgentWorks' hooks: approve once with muse plugins approve agentworks-muse (look first with muse plugins inspect agentworks-muse). The hooks are what tell AgentWorks which Muse chat is which; if you skip them (Esc), AgentWorks messaging will not work in that chat. Then start a NEW Muse chat; an older one remembers the old tool names and will keep failing.\n", installed, offered)
 }
 
 // versionNewer reports whether dotted numeric version a is newer than b ("0.1.10" > "0.1.9"). A marketplace

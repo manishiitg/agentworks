@@ -83,7 +83,7 @@ func setupCommand(o *options) *cobra.Command {
 	for _, app := range []struct{ provider, name, what, next, undo string }{
 		{"claude", "Claude Code", "the AgentWorks plugin (agentworks@agentworks) for your user in Claude Code (~/.claude)", "Restart Claude Code, then type /agentworks attach (or /agentworks attach NAME) in a chat.", "claude plugin uninstall agentworks@agentworks --scope user"},
 		{"codex", "Codex", "the AgentWorks plugin (agentworks-codex@agentworks) in your Codex profile (~/.codex), used by the Codex app and the Codex CLI", "In the Codex app, open Settings > Hooks and trust the AgentWorks hooks, then reload. In any Codex chat type /agentworks attach (or /agentworks attach NAME).", "codex plugin remove agentworks-codex@agentworks"},
-		{"muse", "Muse", "the AgentWorks plugin (agentworks-muse) for your user in Muse", "Approve it with muse plugins approve agentworks-muse, restart Muse, then type /agentworks attach in a chat.", "muse plugins remove agentworks-muse"},
+		{"muse", "Muse", "the AgentWorks plugin (agentworks-muse) for your user in Muse", "Muse asks you to trust AgentWorks' hooks: approve once with muse plugins approve agentworks-muse (they tell AgentWorks which Muse chat is which; without them messaging does not work). Then start a new Muse chat and say \"connect this chat to AgentWorks\".", "muse plugins remove agentworks-muse"},
 		{"pi", "Pi", "the AgentWorks Pi package for your user in Pi", "Reload Pi, then type /agentworks attach in the chat.", "pi list (find the AgentWorks entry), then pi remove <that source>"},
 	} {
 		app := app
