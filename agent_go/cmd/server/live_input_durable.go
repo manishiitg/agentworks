@@ -32,8 +32,9 @@ func liveInputDeliveredKey(sessionID, typed string) string {
 }
 
 // noteLiveInputDelivered records the text sent to the CLI for a typed message.
-func noteLiveInputDelivered(sessionID, typed, delivered string) {
-	if sessionID == "" || delivered == "" || strings.TrimSpace(delivered) == strings.TrimSpace(typed) {
+func noteLiveInputDelivered(sessionID, provider, typed, delivered string) {
+	// Only a provider with a durability watch will ever take the entry back.
+	if !liveInputHasDurableAck(provider) || sessionID == "" || delivered == "" || strings.TrimSpace(delivered) == strings.TrimSpace(typed) {
 		return
 	}
 	liveInputDelivered.Store(liveInputDeliveredKey(sessionID, typed), delivered)

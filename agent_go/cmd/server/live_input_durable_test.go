@@ -269,7 +269,7 @@ func TestWatchLiveInputDurableTimeoutIsHeldThenUpgraded(t *testing.T) {
 	defer store.Stop()
 	const sessionID = "durable-watch-timeout"
 	const typed = "generate again"
-	noteLiveInputDelivered(sessionID, typed, "[AGENTWORKS SESSION]\nnotice\n[/AGENTWORKS SESSION]\n\n[USER MESSAGE]\n"+typed)
+	noteLiveInputDelivered(sessionID, string(llmproviders.ProviderMuseCLI), typed, "[AGENTWORKS SESSION]\nnotice\n[/AGENTWORKS SESSION]\n\n[USER MESSAGE]\n"+typed)
 	var mu sync.Mutex
 	var seen []string
 	api := &StreamingAPI{eventStore: store,

@@ -116,7 +116,7 @@ describe('UserMessageEventDisplay', () => {
       />,
     )
     expect(unflushed).toContain('data-state="unflushed"')
-    expect(unflushed).toContain('Held in codex-cli CLI queue')
+    expect(unflushed).toContain('Sent to codex-cli CLI; not confirmed yet')
 
     const failed = renderToStaticMarkup(
       <UserMessageEventDisplay

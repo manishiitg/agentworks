@@ -26,7 +26,7 @@ export function deliveryTickTitle(metadata: Record<string, unknown> | undefined,
   switch (state) {
     case 'queued': return `Queued behind the active conversation turn${position}${pendingProviderSuffix}`
     case 'confirmed': return `Confirmed in${provider} CLI record${latency}`
-    case 'unflushed': return `Held in${provider} CLI queue, awaiting record`
+    case 'unflushed': return `Sent to${provider} CLI; not confirmed yet`
     case 'failed': return `Delivery to${provider} CLI unconfirmed`
     case 'fast': return `Sent to${provider} CLI`
   }
