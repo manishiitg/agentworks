@@ -109,7 +109,7 @@ function PricingDetail({ usage }: { usage: CostOverviewAggregate }) {
       </div>)}
     </dl> : <p className="mt-1 text-gray-600 dark:text-gray-300">No priced calls recorded.</p>}
     {(usage.unpriced_call_count ?? 0) > 0 && <p className="mt-2 text-gray-600 dark:text-gray-300">{pricingCoverageText(usage)}</p>}
-    {(usage.subscription_shadow_cost_usd ?? 0) > 0 && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Subscription equivalent is a usage estimate, not the subscription bill. Cursor Auto is priced at an average rate, because Auto bills whichever model each request is routed to.</p>}
+    {(usage.subscription_shadow_cost_usd ?? 0) > 0 && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Subscription equivalent is a usage estimate, not the subscription bill. Cursor does not report its token use, so Cursor tokens are estimated from the length of the messages, and Cursor Auto is priced at an average rate, because Auto bills whichever model each request is routed to.</p>}
   </section>
 }
 
@@ -182,7 +182,11 @@ export default function CostExplorer({ data, days, itemLabel }: {
     : []
   const modelRows = selected?.item || selected?.user
     ? Object.entries(selected.item?.by_model || selected.user?.by_model || {}).filter(([, value]) => value.call_count > 0 || value.total_cost_usd > 0)
-      .map(([key, value]) => ({ key, label: `${costAgentLabel(value.provider || '', key)} · ${key}`, usage: value }))
+      .map(([key, value]) => {
+        const agent = costAgentLabel(value.provider || '', key)
+        // Cursor reports no token counts; its tokens are estimated from message length.
+        return { key, label: `${agent} · ${key}${agent === 'Cursor' ? ' · estimated' : ''}`, usage: value }
+      })
       .sort((a, b) => b.usage.total_cost_usd - a.usage.total_cost_usd || b.usage.call_count - a.usage.call_count)
     : []
 
