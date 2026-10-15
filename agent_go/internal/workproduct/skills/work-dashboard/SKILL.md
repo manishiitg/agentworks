@@ -168,7 +168,7 @@ on the server; interactive motion does not require that renderer.
   button that passes `{ refresh: true }`. Prefer `query` when the data is
   already in the project database. The script contract:
   - Supported in Goals/Workflow, <!-- product:relays -->Relays, <!-- /product -->Crew<!-- product:code --> and Code<!-- /product --> project roots. Crew
-    readers follow the existing project access rules.<!-- product:code --> Code scripts are owner-only.<!-- /product -->
+    people it is shared with follow the existing project access rules.<!-- product:code --> Code scripts are owner-only.<!-- /product -->
     Scripts use the project's selected MCP tools and secrets (`$SECRET_*`) under
     the authenticated viewer's live MCP<!-- product:mcp-gateway -->/Vault<!-- /product --> permissions. Viewing a project does
     not grant access to its credentials. Published static copies cannot run scripts.
@@ -242,8 +242,8 @@ window.report.ready(async function () {
   with that document path (or omit it for the default) and present its returned
   `url` verbatim. It opens the full live
   Dashboard runtime, not the restricted generic HTML file preview. The link is
-  protected by current project access. Crew readers can open shared Crew
-  dashboards<!-- product:code -->; Code dashboards remain owner-only<!-- /product -->. It contains no credential and
+  protected by current project access. People a Crew is shared with can open its
+  dashboard<!-- product:code -->; Code dashboards remain owner-only<!-- /product -->. It contains no credential and
   grants no access or public publication. Inspect `shareable`,
   `scope`, and `warning`; when `shareable` is false (including localhost and
   loopback deployments), describe it only as a same-machine preview and relay

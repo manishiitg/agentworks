@@ -674,5 +674,5 @@ func (api *StreamingAPI) handlePutProjectSharing(w http.ResponseWriter, r *http.
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	writeAgentProfileError(w, http.StatusConflict, "A Crew is shared from its dashboard: use the Share button there, or ask your agent to share the dashboard.")
+	writeAgentProfileError(w, http.StatusConflict, "Share this Crew from its dashboard: open the dashboard and press Share.")
 }

@@ -443,7 +443,7 @@ func (api *StreamingAPI) handleSetWorkflowAccess(w http.ResponseWriter, r *http.
 	}
 	// A Relay has one owner and is shared by sharing its dashboard (PLAT-750).
 	if manifest.Kind == "relay" {
-		writeUsersError(w, http.StatusConflict, "A Relay is shared from its dashboard: use the Share button there, or ask your agent to share the dashboard.")
+		writeUsersError(w, http.StatusConflict, "Share this Relay from its dashboard: open the dashboard and press Share.")
 		return
 	}
 	// Only owners share a claimed workflow. Account-tier writers may still

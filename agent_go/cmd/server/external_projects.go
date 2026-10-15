@@ -91,7 +91,7 @@ func (api *StreamingAPI) externalWorkflowProjectCall(w http.ResponseWriter, r *h
 		respond(scheduleHandler(r, api.handleGetWorkflowAccess, http.MethodGet, "/api/workflow/access", nil, url.Values{"workspace_path": {root}}, nil))
 	case "set_access":
 		if workflow.Manifest.Kind == "relay" {
-			externalError(w, 409, "use_share_dashboard", "A Relay is shared from its dashboard: call share_dashboard.")
+			externalError(w, 409, "use_share_dashboard", "Share this Relay from its dashboard: call share_dashboard, or open the dashboard and press Share.")
 			return
 		}
 		owners, editors, readers := workflow.Manifest.effectiveOwners(), workflow.Manifest.effectiveEditors(), workflow.Manifest.effectiveReaders()
@@ -158,7 +158,7 @@ func (api *StreamingAPI) externalCrewProjectCall(w http.ResponseWriter, r *http.
 		}
 		respond(scheduleHandler(r, api.handleDeleteAgentProfileProject, http.MethodDelete, "/api/agent-profiles/work/projects/"+url.PathEscape(crewID), vars, nil, nil))
 	case "set_access":
-		externalError(w, 409, "use_share_dashboard", "A Crew is shared from its dashboard: call share_dashboard.")
+		externalError(w, 409, "use_share_dashboard", "Share this Crew from its dashboard: call share_dashboard, or open the dashboard and press Share.")
 	case "install_template":
 		template, err := loadCrewAgentTemplate(externalArg(args, "template_id"))
 		if err != nil || template == nil {
