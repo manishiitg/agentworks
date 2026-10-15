@@ -1632,20 +1632,19 @@ func ReadWorkflowManifest(ctx context.Context, workspacePath string) (*WorkflowM
 			// Pruned (or tried) a moment ago and the fields are still there: do not write on every read.
 			return &m, true, nil
 		}
-		writeCtx := ctx
-		if hasStaleFields {
-			// The writer keeps every top-level key the struct has no field for (a Crew's triggers); a prune must drop them.
-			writeCtx = context.WithValue(ctx, pruneRetiredManifestFieldsKey{}, true)
-		}
-		if err := WriteWorkflowManifest(writeCtx, workspacePath, &m); err != nil {
+		if err := WriteWorkflowManifest(ctx, workspacePath, &m); err != nil {
 			log.Printf("[WARN] ReadWorkflowManifest: failed to persist manifest migrations for %s: %v", workspacePath, err)
 		}
 	}
 	return &m, true, nil
 }
 
-// pruneRetiredManifestFieldsKey marks a write whose purpose is to remove the top-level fields the schema retired.
-type pruneRetiredManifestFieldsKey struct{}
+// retiredManifestTopLevelKeys are the top-level workflow.json keys the product removed on purpose. ONLY these are pruned from
+// a file: any other key the schema does not model (a Crew's triggers, a field written by another subsystem or by a newer or
+// older app version) is kept by the writer (keepUnmodelledManifestFields) and is never treated as stale. Before 2026-10-16 the
+// prune detected every unknown key but the writer kept them all, so a workflow with a retired "objective" was rewritten on
+// every read (about 270 times a minute) and nothing was ever removed. Add a key here when the product retires one.
+var retiredManifestTopLevelKeys = map[string]bool{"objective": true, "success_criteria": true}
 
 var (
 	staleManifestPruneMu sync.Mutex
@@ -1700,7 +1699,12 @@ func staleManifestFields(content []byte) (topLevel, executionDefaults, capabilit
 	if err := json.Unmarshal(content, &top); err != nil {
 		return nil, nil, nil
 	}
-	topLevel = unknownManifestKeys(top, knownJSONFieldNames(reflect.TypeOf(WorkflowManifest{})))
+	known := knownJSONFieldNames(reflect.TypeOf(WorkflowManifest{}))
+	for _, key := range unknownManifestKeys(top, known) {
+		if retiredManifestTopLevelKeys[key] {
+			topLevel = append(topLevel, key)
+		}
+	}
 	if raw, ok := top["execution_defaults"]; ok {
 		var obj map[string]json.RawMessage
 		if json.Unmarshal(raw, &obj) == nil {
@@ -1988,9 +1992,7 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 	// Rewriting it from the struct erased them: Server C's blueprint Crew lost the trigger a workflow step called it by, and every
 	// webhook run then died with "internal trigger not found" (2026-10-07). Keep what the file already had that the struct
 	// has no field for; fields the struct does model still follow the struct (clearing one still clears it).
-	// A prune of retired fields (ReadWorkflowManifest) is the one writer that must drop them: keeping them made every read
-	// rewrite the file again, about 270 times a minute for a workflow with a retired objective (2026-10-15).
-	if previousExists && ctx.Value(pruneRetiredManifestFieldsKey{}) == nil {
+	if previousExists {
 		data = keepUnmodelledManifestFields([]byte(previous), data)
 	}
 
@@ -2296,7 +2298,7 @@ func keepUnmodelledManifestFields(previous, written []byte) []byte {
 	}
 	kept := false
 	for key, value := range before {
-		if workflowManifestKnownKeys[key] {
+		if workflowManifestKnownKeys[key] || retiredManifestTopLevelKeys[key] {
 			continue
 		}
 		if _, exists := after[key]; !exists {
