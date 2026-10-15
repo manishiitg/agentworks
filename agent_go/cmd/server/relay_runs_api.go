@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 
@@ -256,11 +257,12 @@ func (api *StreamingAPI) startRelayRun(w http.ResponseWriter, r *http.Request, d
 
 func (api *StreamingAPI) handleGetRelayRun(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	workspace, manifest, _, ok := api.relayForRunRequest(w, r)
+	workspace, manifest, claims, ok := api.relayForRunRequest(w, r)
 	if !ok {
 		return
 	}
 	runID := mux.Vars(r)["run"]
+	rootManifest := manifest
 	run, err := api.scheduler.existingWebhookRun(r.Context(), runID)
 	if err != nil {
 		http.NotFound(w, r)
@@ -307,6 +309,22 @@ func (api *StreamingAPI) handleGetRelayRun(w http.ResponseWriter, r *http.Reques
 	}
 	applyRelayResult(manifest, &result, run.ScopeID, run)
 	result.Version = payload.Version
+	// Use the same recorded reader as the dashboard and Run chat. The live
+	// manifest owns access even when the execution belongs to a frozen version.
+	version := payload.Version
+	if version == "" {
+		version = "draft"
+	}
+	diagnostics, _, unavailable := relayRecordedRun(r.Context(), claims, workspace, rootManifest, dashboardFileGuard(claims), run.RunFolder, version)
+	if unavailable != "" {
+		diagnostics = map[string]any{"available": false, "message": "Recorded execution details are not available yet, or this connection cannot read them."}
+	} else {
+		diagnostics["available"] = true
+	}
+	result.Diagnostics = diagnostics
+	steps, _ := diagnostics["steps"].([]map[string]any)
+	logs, _ := diagnostics["logs"].([]map[string]any)
+	log.Printf("[RELAY_RUN_DIAGNOSTICS] workflow=%s run_id=%s version=%s available=%t steps=%d log_lines=%d logs_truncated=%t external=%t", rootManifest.ID, runID, version, unavailable == "", len(steps), len(logs), diagnostics["logs_truncated"] == true, claims != nil && claims.AccessToken != nil)
 	if err := signWebhookRunArtifacts(&result, run); err != nil {
 		http.Error(w, "run artifacts temporarily unavailable", http.StatusServiceUnavailable)
 		return

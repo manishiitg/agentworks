@@ -164,6 +164,7 @@ type webhookRunResult struct {
 	Steps            []webhookStepOutput    `json:"steps"`
 	Result           json.RawMessage        `json:"result,omitempty"`
 	Trace            json.RawMessage        `json:"trace,omitempty"`
+	Diagnostics      map[string]any         `json:"diagnostics,omitempty"`
 	Truncated        bool                   `json:"truncated,omitempty"`
 }
 

@@ -208,7 +208,7 @@ func TestReportRelayRunDrillDownShowsFailureToAnyReader(t *testing.T) {
 		return dir
 	}
 	dir := write("1", `{"workflow_id":"run-1","status":"failed","error":"validation failed: total mismatch","calls":[{"name":"ocr","status":"completed","started_at":10,"completed_at":12,"output":{"total":"12.50"},"agent_calls":[{"system_prompt":"PRIVATE PROMPT"}]},{"name":"validate","status":"failed","started_at":12,"completed_at":13,"error":"total mismatch: 12.50 vs 21.50"}]}`)
-	if err := os.WriteFile(filepath.Join(dir, "dbos_events.jsonl"), []byte(`{"timestamp":12.5,"level":"INFO","message":"checking total","step_id":2}`+"\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "dbos_events.jsonl"), []byte(strings.Repeat(`{"timestamp":12.5,"level":"INFO","message":"checking total","step_id":2}`+"\n", 201)), 0600); err != nil {
 		t.Fatal(err)
 	}
 	write("2", `{"workflow_id":"../../outside","status":"completed","calls":[]}`)
@@ -235,12 +235,12 @@ func TestReportRelayRunDrillDownShowsFailureToAnyReader(t *testing.T) {
 	for _, run := range []string{"run-1", "iteration-1-hook"} {
 		w := get("reader-b", "relay-run?workspace=Workflow/relay&run="+run)
 		body := w.Body.String()
-		for _, want := range []string{"validation failed: total mismatch", "total mismatch: 12.50 vs 21.50", `"caller":"reader-a"`, `"function":"extract"`, "INV-7", "checking total", `"duration_s":1`, `"version":"v1"`} {
+		for _, want := range []string{"validation failed: total mismatch", "total mismatch: 12.50 vs 21.50", `"caller":"reader-a"`, `"function":"extract"`, "INV-7", "checking total", `"duration_s":1`, `"version":"v1"`, `"logs_truncated":true`, "The owner can open the full log in Files."} {
 			if w.Code != http.StatusOK || !strings.Contains(body, want) {
 				t.Fatalf("%s: missing %q: %d %s", run, want, w.Code, body)
 			}
 		}
-		if strings.Contains(body, "PRIVATE") || strings.Contains(body, "relay_caller") {
+		if strings.Contains(body, "PRIVATE") || strings.Contains(body, "relay_caller") || strings.Contains(body, "In the builder, open Files") {
 			t.Fatalf("%s: leaked prompt or internal key: %s", run, body)
 		}
 	}

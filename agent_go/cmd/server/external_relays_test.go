@@ -178,6 +178,8 @@ func TestExternalRelayBuilderAndPublishingRespectRoles(t *testing.T) {
 }
 
 func TestExternalRelayMCPTransportAndSchema(t *testing.T) {
+	// This transport fixture never needs to probe locally installed providers.
+	t.Setenv("AGENTWORKS_PRODUCT_DEFAULTS", `{"agentworks":{"provider":"codex-cli","model":"gpt-5"}}`)
 	f := newExternalRelayFixture(t)
 	token, _ := f.token(t, "owner", relayConsentScopes, true)
 	claims, err := accessTokenClaims(token)
@@ -200,6 +202,51 @@ func TestExternalRelayMCPTransportAndSchema(t *testing.T) {
 	bad := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "run_relay", "arguments": map[string]any{"workflow_id": "invoices", "function": "process", "input": "not JSON object", "idempotency_key": "bad"}})
 	if !bad.IsError {
 		t.Fatal("invalid input reached run ingress")
+	}
+	// The existing polling action also exposes the dashboard's recorded reader.
+	// Drive it through MCP, including the gap before any trace has been saved.
+	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "runs.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	f.api.scheduler = &SchedulerService{stateStore: store}
+	runID := uuid.NewString()
+	workspace := "Workflow/invoices"
+	if err := store.BeginRun(t.Context(), schedulerstate.Run{RunID: runID, ScopeType: "workflow", ScopeID: workspace, LockKey: workspace, ScheduleID: "process", TriggerSource: "webhook"}); err != nil {
+		t.Fatal(err)
+	}
+	payload := `{"run_id":"` + runID + `","payload":{"function":"process","relay_caller":"owner","args":{"INPUT":{"invoice":"INV-7"}}}}`
+	f.mock.mu.Lock()
+	f.mock.files[webhookInputPath(workspace, runID)] = payload
+	f.mock.mu.Unlock()
+	f.write(t, webhookInputPath(workspace, runID), payload)
+	inspect := func() string {
+		t.Helper()
+		response := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "relay", "arguments": map[string]any{"action": "get_run", "workflow_id": "invoices", "run_id": runID}})
+		requireRemoteSuccess(t, response, "read execution and logs through MCP")
+		return marshalStructured(t, response)
+	}
+	if body := inspect(); !strings.Contains(body, `"available":false`) || !strings.Contains(body, `"terminal":false`) {
+		t.Fatalf("unrecorded execution must remain pollable: %s", body)
+	}
+	folder, err := allocateWebhookRunFolder(workspace, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AssignRunFolder(t.Context(), runID, folder); err != nil {
+		t.Fatal(err)
+	}
+	f.write(t, workspace+"/runs/"+folder+"/relay_trace.json", `{"workflow_id":"`+runID+`","status":"running","calls":[{"name":"extract","status":"completed","started_at":10,"completed_at":12,"output":{"total":42}}]}`)
+	f.write(t, workspace+"/runs/"+folder+"/dbos_events.jsonl", `{"timestamp":1,"level":"INFO","message":"old-log-marker"}`+"\n"+strings.Repeat(`{"timestamp":12,"level":"INFO","message":"checked total","step_id":1}`+"\n", 201))
+	body := inspect()
+	for _, want := range []string{`"diagnostics"`, `"available":true`, `"name":"extract"`, `"total":42`, `"invoice":"INV-7"`, `"message":"checked total"`, `"logs_truncated":true`, "In the builder, open Files", workspace + "/runs/" + folder + "/dbos_events.jsonl", `"terminal":false`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("execution diagnostics missing %s: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "old-log-marker") {
+		t.Fatal("MCP execution logs were not bounded")
 	}
 }
 

@@ -28,7 +28,11 @@ Use readable function names and docstrings. Imported helpers and dynamic dispatc
 may not appear in this static overview. Runs and Execution Logs show actual DBOS
 step history, including repeated calls, step IDs, timestamps and reused checkpoints.
 Agent and tool receipts are linked to those step IDs. DBOS.logger messages appear
-in Execution Logs. Never put secrets in step arguments, results, prompts or logs.
+in Execution Logs. External MCP uses `relay action=get_run` with the returned
+`run_id`: the same response includes `diagnostics` with recorded steps, timings,
+errors and recent log entries. Check `available`, `logs_truncated` and `logs_note`;
+queued executions may not have recorded details yet. The execution selects its
+own draft or published version. Never put secrets in step arguments, results, prompts or logs.
 Do not create # @relay comments, relay.md or a separate plan for native DBOS source.
 
 ## Authoring example

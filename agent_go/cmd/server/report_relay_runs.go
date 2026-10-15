@@ -612,6 +612,10 @@ func relayRecordedRun(ctx context.Context, claims *UserClaims, workspace string,
 		out["logs"] = logs
 		if cut {
 			out["logs_truncated"] = true
+			out["logs_note"] = "Older log entries were left out. The owner can open the full log in Files."
+			if workflowAccessForManifest(claims, manifest) == WorkflowAccessOwner {
+				out["logs_note"] = "Older log entries were left out. In the builder, open Files, then " + rootWorkspace + "/runs/" + folder + "/dbos_events.jsonl to read or download the full log."
+			}
 		}
 	}
 	return out, 0, ""
