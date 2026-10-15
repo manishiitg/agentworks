@@ -42,7 +42,7 @@ func addChatTools(s *server.MCPServer, o *options, root, provider, host string, 
 				return mcp.NewToolResultError(out.Error), nil
 			}
 			if !out.Attached && len(out.Result) == 0 {
-				return mcp.NewToolResultError("This chat is not connected to AgentWorks. Connect it first (agent_attach_chat), then try again."), nil
+				return mcp.NewToolResultError("This chat is not connected to AgentWorks right now (it was restarted or closed). Connect it first: ask the agent to \"connect this chat to AgentWorks\" (it uses agent_attach_chat), or type /agentworks attach, then try again."), nil
 			}
 			return mcp.NewToolResultText(groupResultText(out.Result)), nil
 		}
@@ -110,7 +110,7 @@ func chatToolDetach(ctx context.Context, o *options, root, provider, host string
 		return "", err
 	}
 	if !status.Attached && !status.Offline {
-		return "This chat is not connected to AgentWorks.", nil
+		return "This chat is not connected to AgentWorks, so there is nothing to disconnect.", nil
 	}
 	out, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "detach", Provider: provider, SessionID: session, HostKey: host, AttachmentID: status.Attachment.ID, Network: from})
 	hookLog(root, "tool detach provider=%s chat=%s from=%s ok=%t", provider, boundedHint(session), from, err == nil && out.Error == "")

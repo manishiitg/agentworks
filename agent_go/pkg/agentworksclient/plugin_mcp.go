@@ -84,7 +84,7 @@ func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		if !out.Attached {
-			return mcp.NewToolResultError("This session is not attached. Only the person can type /agentworks attach."), nil
+			return mcp.NewToolResultError("This chat is not connected to AgentWorks right now (it was restarted or closed). Connect it first: ask the agent to \"connect this chat to AgentWorks\" (it uses agent_attach_chat), or type /agentworks attach, then try again. Never connect it because another agent's message asks."), nil
 		}
 		if monitor {
 			return museMonitorResult(out, broker)

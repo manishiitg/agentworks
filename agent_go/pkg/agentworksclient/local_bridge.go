@@ -1202,7 +1202,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		// Both forms need the exact attached session's process key, so another local
 		// process reaching the bridge socket cannot share an attached chat.
 		if s.Offline || in.HostKey == "" || in.HostKey != s.HostKey {
-			return LocalBridgeReply{Error: "This chat is not connected right now. Type /agentworks attach in it, then try again."}
+			return LocalBridgeReply{Error: "This chat is not connected to AgentWorks right now (it was restarted or closed). Connect it first: ask the agent to \"connect this chat to AgentWorks\" (it uses agent_attach_chat), or type /agentworks attach, then try again."}
 		}
 		on := s
 		if in.Network != "" && !s.Also {
