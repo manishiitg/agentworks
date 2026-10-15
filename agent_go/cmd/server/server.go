@@ -938,6 +938,9 @@ type QueryRequest struct {
 	// resolvedResumeTarget is attached only by a trusted server-owned product
 	// route. It is never accepted from or serialized back to a browser.
 	resolvedResumeTarget *resolvedResumeTarget `json:"-"`
+	// providerSwitchedFrom is the coding provider of the retained CLI this turn replaced (the person changed the agent
+	// mid-chat); empty otherwise. It only feeds the log line that proves the conversation was carried over.
+	providerSwitchedFrom string `json:"-"`
 
 	// Workflow phase chat: phase ID for running a phase as a conversational chat session
 	// When agent_mode is "workflow_phase", this specifies which phase to run (e.g., "planning", "plan-improvement")
@@ -4296,6 +4299,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// and then relaunches on the selected provider (the native conversation resumes across providers).
 	providerChanged := !req.IsAutoNotification && api.retainedCLIProviderDiffers(sessionID, api.effectiveProviderOf(r.Context(), req))
 	if providerChanged {
+		req.providerSwitchedFrom = api.retainedCLIProvider(sessionID)
 		log.Printf("[CHAT_HISTORY] Provider changed for session %s: the retained CLI is not %s; relaunching on the selected provider", sessionID, api.effectiveProviderOf(r.Context(), req))
 		retainedProfileCompatible = false
 	}
@@ -8393,12 +8397,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				logfWithContext(queryLogCtx, "[CHAT_HISTORY] Native resume unavailable; refusing unbounded conversation-file prompt fallback")
 			}
 
-			if isCodingAgentProvider(finalProvider, finalModelID) &&
-				// A pane launched with an older definition does not own the context
-				// after a definition change; a seeded native resume does.
-				(restoredNativeCodingResume || codingAgentHasNativeResume(finalProvider, underlyingAgent) || (!productDefinitionRefreshed && api.sessionHasLiveMainCodingTmux(sessionID))) {
-				replayHistoryToAgent = false
-				logfWithContext(queryLogCtx, "[CONVERSATION] Coding-agent context is owned by its transport/native continuation; UI history will not be replayed")
+			if isCodingAgentProvider(finalProvider, finalModelID) {
+				// A pane launched with an older definition does not own the context after a definition change; a
+				// seeded native resume does. Only a pane or handle of THIS turn's provider owns anything.
+				nativeHandle := codingAgentHasNativeResume(finalProvider, underlyingAgent)
+				livePane := !productDefinitionRefreshed && api.sessionHasLiveMainCodingTmuxOf(sessionID, finalProvider)
+				if restoredNativeCodingResume || nativeHandle || livePane {
+					replayHistoryToAgent = false
+					logfWithContext(queryLogCtx, "[CONVERSATION] Coding-agent context is owned by its transport/native continuation; UI history will not be replayed (restored_native=%t native_handle=%t live_pane=%t)", restoredNativeCodingResume, nativeHandle, livePane)
+				}
 			}
 			codingFallbackConversationPath = restoredConversationPathForFallback
 			codingFallbackWorkspace = restoredConversationWorkspace
@@ -8432,6 +8439,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 			} else {
 				logfWithContext(queryLogCtx, "[CONVERSATION] Replaying %d in-memory messages for session %s", len(historyToReplay), sessionID)
+			}
+			if req.providerSwitchedFrom != "" {
+				logfWithContext(queryLogCtx, "[CONVERSATION] provider_switch from=%s to=%s seeded_msgs=%d archive=%t", req.providerSwitchedFrom, strings.ToLower(strings.TrimSpace(finalProvider)), len(historyForAgent), codingFallbackConversationPath != "")
 			}
 			for _, msg := range historyToReplay {
 				llmAgent.AppendMessage(msg)
@@ -9220,6 +9230,14 @@ func (api *StreamingAPI) sessionHasLiveCodingTmux(sessionID string) bool {
 func (api *StreamingAPI) sessionHasLiveMainCodingTmux(sessionID string) bool {
 	_, ok := api.liveMainCodingTmuxSnapshot(sessionID)
 	return ok
+}
+
+// sessionHasLiveMainCodingTmuxOf is sessionHasLiveMainCodingTmux for one provider: a live pane of ANOTHER coding
+// provider owns none of this turn's context. After the person switched Claude to Codex mid-chat the old Claude pane
+// still counted, so the conversation was neither resumed nor replayed and Codex started blind (2026-10-15).
+func (api *StreamingAPI) sessionHasLiveMainCodingTmuxOf(sessionID, provider string) bool {
+	snapshot, ok := api.liveMainCodingTmuxSnapshot(sessionID)
+	return ok && strings.EqualFold(strings.TrimSpace(retainedCodingAgentProvider(snapshot)), strings.TrimSpace(provider))
 }
 
 // liveMainCodingTmuxSnapshot returns the provider-owned main pane for a chat.

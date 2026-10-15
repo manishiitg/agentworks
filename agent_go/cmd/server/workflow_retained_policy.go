@@ -169,6 +169,16 @@ func (api *StreamingAPI) retainedCLIProviderDiffers(sessionID, requested string)
 	if api == nil || requested == "" || strings.TrimSpace(sessionID) == "" {
 		return false
 	}
+	live := api.retainedCLIProvider(sessionID)
+	return live != "" && live != requested
+}
+
+// retainedCLIProvider is the coding provider of the session's retained CLI (its live pane, else its running agent),
+// lower-cased; empty when there is none.
+func (api *StreamingAPI) retainedCLIProvider(sessionID string) string {
+	if api == nil || strings.TrimSpace(sessionID) == "" {
+		return ""
+	}
 	live := ""
 	if snapshot, ok := api.liveMainCodingTmuxSnapshot(sessionID); ok {
 		live = retainedCodingAgentProvider(snapshot)
@@ -180,8 +190,7 @@ func (api *StreamingAPI) retainedCLIProviderDiffers(sessionID, requested string)
 			live = string(mcpagent.ReadAgentRuntimeInfo(agent).Provider)
 		}
 	}
-	live = strings.ToLower(strings.TrimSpace(live))
-	return live != "" && live != requested
+	return strings.ToLower(strings.TrimSpace(live))
 }
 
 func (api *StreamingAPI) interruptWorkflowPolicySession(session, provider string) {
