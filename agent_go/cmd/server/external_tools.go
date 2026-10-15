@@ -255,7 +255,7 @@ func externalTools() ([]externalTool, error) {
 		externalTriggerDefinitions(add)
 		dashboardToolDefinitions(add)
 		externalNeedsYouDefinitions(add)
-		add("home", "Read your Home: action=attention for pending questions, decisions and latest failed runs; action=recent for your existing accessible work. Same current product/project permissions as the app. Read-only, bounded; reports partial sources.", false, false, map[string]any{"action": map[string]any{"type": "string", "enum": []string{"attention", "recent"}}}, "action")
+		add("home", "Read your Home: action=attention for pending questions, decisions and latest failed runs; action=recent for your existing accessible work. Same current product/project permissions as the app. Read-only, bounded; reports partial sources.", false, false, map[string]any{"action": map[string]any{"type": "string", "enum": []any{"attention", "recent"}}}, "action")
 		externalPulseManageDefinitions(add)
 		externalProjectDefinitions(add)
 		externalCrewChatDefinitions(add)
