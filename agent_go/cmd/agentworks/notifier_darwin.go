@@ -22,13 +22,21 @@ import (
 var notifierIcon []byte
 
 // Bump when the app below changes, so an older copy is rebuilt.
-const notifierVersion = "1"
+const notifierVersion = "2"
 
 const notifierScript = `on run
-	set f to (POSIX path of (path to library folder from user domain)) & "Caches/agentworks/notify.txt"
-	set t to read (POSIX file f) as «class utf8»
-	display notification t with title "AgentWorks"
-end run`
+	-- Clicking a notification opens this app again with no message waiting: do nothing then.
+	try
+		set f to (POSIX path of (path to library folder from user domain)) & "Caches/agentworks/notify.txt"
+		set t to read (POSIX file f) as «class utf8»
+		if t is not "" then display notification t with title "AgentWorks"
+	end try
+end run
+
+on reopen
+	-- Nothing to show.
+end reopen
+`
 
 var notifierMu sync.Mutex
 
