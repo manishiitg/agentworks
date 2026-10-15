@@ -130,7 +130,7 @@ export const messagingGuides: MessagingGuide[] = [
     ],
   },
   {
-    id: 'cursor', name: 'Cursor', status: 'CLI preview · desktop later', available: true,
+    id: 'cursor', name: 'Cursor', status: 'Cursor app · CLI preview', available: true,
     requirements: ['Cursor CLI on macOS or Linux, Python 3, and an AgentWorks CLI build with Cursor messaging support.', 'Gets messages when its chat is used: when you send your next prompt or when its current turn ends. A chat sitting idle is not woken; its messages wait safely until then.', 'Start in the exact project whose hooks you reviewed. This setup is for cursor-agent; choose Cursor desktop below for its current limits.'],
     versions: 'Package: agentworks 0.2.0. Investigated CLI: 2026.10.01-e373342; desktop: 3.21.18. Kernel/session checks passed on macOS. Real Cursor acceptance remains pending.',
     install: [
@@ -153,16 +153,24 @@ export const messagingGuides: MessagingGuide[] = [
       { title: 'Nothing arrives in an idle chat', text: 'An idle Cursor chat is not woken. Send a prompt, or let a turn finish, and its waiting messages arrive. Reading the mailbox by hand is a last resort; do not set up a loop that keeps checking.' },
     ],
     desktop: {
-      status: 'Desktop · not supported yet', available: false,
-      requirements: ['Cursor desktop 3.21.18 was inspected. This release does not claim end-to-end desktop messaging.', 'Attach is not available yet; use Cursor CLI above.'],
-      versions: 'Desktop remains a separate development stage; CLI results do not prove desktop delivery.',
-      install: [], update: [],
-      installNote: 'Use the supported Cursor CLI setup. Do not install or reconfigure a desktop messaging MCP expecting it to create a live attachment.',
-      approval: 'Workflow/Crew HTTP MCP tools can be configured separately; their access does not attach this desktop chat.',
-      attach: '', ownRequest: '',
-      delivery: 'Not available yet. Use Cursor CLI above to connect a Cursor chat.',
-      menus: [{ entry: 'Cursor desktop messaging', who: 'Later stage', description: 'Per-call identity and native delivery still need proof.' }],
-      troubleshooting: [{ title: 'HTTP MCP works but the chat is absent', text: 'Tool access is separate from Bullpen chat attachment. Use Cursor CLI for this setup; desktop support remains pending.' }],
+      status: 'Cursor app', available: true,
+      requirements: ['The Cursor app on macOS and the AgentWorks CLI.', 'One setup covers every project you open in Cursor.', 'A connected chat gets its messages when it finishes a turn. An idle chat is not woken; its messages wait until its next turn.'],
+      versions: 'Built for Cursor 3.24 on macOS. Windows and Linux Cursor apps are not supported yet.',
+      install: [{ label: 'Set up Cursor (every project)', text: 'agentworks setup cursor' }],
+      update: [],
+      installNote: 'Run this once in Terminal after installing the AgentWorks CLI, then restart Cursor. It adds the AgentWorks hooks and message tools to your Cursor settings for every project and keeps your other settings. Running it again is safe.',
+      approval: 'If Cursor asks you to allow the AgentWorks message tools, allow them. Setup does not sign you in or connect a chat; you do that next.',
+      attach: '/agentworks attach cursor-review', ownRequest: '',
+      delivery: 'Messages from other agents arrive when the chat finishes a turn, and can start a turn you did not type. An idle chat gets them after its next turn. A message that is only stored has not been seen by the chat yet.',
+      menus: [
+        { entry: '/agentworks attach, detach, agents, share GROUP, unshare, groups, group NAME', who: 'You', description: 'Type as its own message in the Cursor chat.' },
+        { entry: 'AgentWorks message tools', who: 'The agent', description: 'Each call is checked against the exact chat that made it, so chats in the same Cursor window cannot act for each other.' },
+      ],
+      troubleshooting: [
+        { title: 'The attach command reaches the model', text: 'The AgentWorks hooks are not active. Run agentworks setup cursor in Terminal, restart Cursor, and type /agentworks attach again as its own message.' },
+        { title: 'A message tool says it could not confirm the chat', text: 'Ask the agent to try again. If it keeps failing, run agentworks setup cursor and restart Cursor.' },
+        { title: 'Nothing arrives in an idle chat', text: 'An idle Cursor chat is not woken. Send a prompt, or let a turn finish, and its waiting messages arrive.' },
+      ],
     },
   },
   {

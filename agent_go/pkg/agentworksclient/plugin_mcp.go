@@ -17,23 +17,25 @@ import (
 // key identifies its exact Claude or Muse process; the person hook supplies session_id
 // when attaching. Native is enabled only by the person's channel launcher.
 func NewPluginMCPServer(ctx context.Context, root, provider, hostKey string, native bool, sessionIDs ...string) (*server.MCPServer, error) {
-	return newPluginMCPServer(ctx, root, provider, hostKey, native, sessionIDs, nil)
+	return newPluginMCPServer(ctx, root, provider, hostKey, native, sessionIDs, nil, nil)
 }
 
 // Muse can switch chats within one process. Resolve its current native-hook
 // UUID on each call instead of inferring whichever old lease shares the host.
 func NewMusePluginMCPServer(ctx context.Context, root, hostKey string, session func() (string, error)) (*server.MCPServer, error) {
-	return newPluginMCPServer(ctx, root, "muse", hostKey, false, nil, session)
+	return newPluginMCPServer(ctx, root, "muse", hostKey, false, nil, session, nil)
 }
 
-// Cursor runs one conversation per CLI process. The caller resolves the native
-// UUID of that exact process on each call from its verified hook observation, so
-// the child never infers a session and never serves a shared desktop process.
-func NewCursorPluginMCPServer(ctx context.Context, root, hostKey string, session func() (string, error)) (*server.MCPServer, error) {
-	return newPluginMCPServer(ctx, root, "cursor", hostKey, false, nil, session)
+// Cursor resolves the exact chat for each call: a CLI process has one chat
+// (its verified hook observation); the shared desktop app proves the chat with a
+// one-shot record its beforeMCPExecution hook wrote for this exact tool call.
+// The resolver gets the tool name and full arguments; the child never infers a
+// session from the arguments themselves.
+func NewCursorPluginMCPServer(ctx context.Context, root, hostKey string, session func(tool string, args map[string]any) (string, error)) (*server.MCPServer, error) {
+	return newPluginMCPServer(ctx, root, "cursor", hostKey, false, nil, nil, session)
 }
 
-func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, native bool, sessionIDs []string, museSession func() (string, error)) (*server.MCPServer, error) {
+func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, native bool, sessionIDs []string, museSession func() (string, error), callSession func(tool string, args map[string]any) (string, error)) (*server.MCPServer, error) {
 	if provider != "claude" && provider != "codex" && provider != "muse" && provider != "cursor" || native && provider != "claude" {
 		return nil, errors.New("unsupported plugin provider")
 	}
@@ -50,11 +52,15 @@ func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 		in.Provider, in.HostKey = provider, hostKey
 		if provider == "muse" || provider == "cursor" {
 			name := map[string]string{"muse": "Muse", "cursor": "Cursor"}[provider]
-			if museSession == nil {
+			if provider == "muse" && museSession == nil || provider == "cursor" && callSession == nil {
 				return mcp.NewToolResultError(name + " messaging requires its exact native-hook session UUID"), nil
 			}
 			var err error
-			in.SessionID, err = museSession()
+			if provider == "cursor" {
+				in.SessionID, err = callSession(req.Params.Name, req.GetArguments())
+			} else {
+				in.SessionID, err = museSession()
+			}
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}

@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 )
@@ -178,15 +179,15 @@ func TestCursorHookLeaseAndRecovery(t *testing.T) {
 		{AttachmentID: "old", MessageID: "stale", InboxID: "inbox", Sender: "worker", Message: "DO_NOT_RENDER", Sequence: 2},
 		{AttachmentID: "lease", MessageID: "last", InboxID: "inbox", Sender: "worker", Message: "Last valid", Sequence: 3},
 	}
-	text := cursorFollowup(state, cursorTestSession, "lease", false)
+	text := cursorFollowup(state, cursorTestSession, "lease", false, false)
 	if !strings.Contains(text, "First valid") || !strings.Contains(text, "Last valid") || strings.Contains(text, "DO_NOT_RENDER") || !strings.Contains(text, "explicit recovery") {
 		t.Fatal("mixed offers lost valid neighbors or recovery")
 	}
-	if cursorFollowup(state, cursorTestSession, "old", false) != "" {
+	if cursorFollowup(state, cursorTestSession, "old", false, false) != "" {
 		t.Fatal("followed a replacement attachment")
 	}
 	state.Messages = nil
-	if !strings.Contains(cursorFollowup(state, cursorTestSession, "lease", true), "--attachment-id") {
+	if !strings.Contains(cursorFollowup(state, cursorTestSession, "lease", true, false), "--attachment-id") {
 		t.Fatal("ambiguous drain lost its original attachment recovery")
 	}
 	// Launch-prefix validation must stop before private arguments.
@@ -194,5 +195,48 @@ func TestCursorHookLeaseAndRecovery(t *testing.T) {
 	r := strings.NewReader(args)
 	if _, _, err := cursorLeadingEntry(r); err != nil || r.Len() != len("PRIVATE_ARGUMENT\x00") {
 		t.Fatal("process verifier consumed prompt arguments", err)
+	}
+}
+
+// The desktop app shares one MCP server between chats: a call is served only for
+// the one chat whose hook announced exactly that call, once, before it expires.
+func TestCursorDesktopFenceIsOneShotAndPerChat(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Cursor desktop messaging needs owner-only record files")
+	}
+	root := filepath.Join(t.TempDir(), "bridge")
+	now := time.Now()
+	const chatA, chatB = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"
+	host := cursorHostKey(4242, strings.Repeat("a", 64))
+	ack := map[string]any{"message_id": "m1", "delivery": "admitted"}
+	if err := writeCursorFence(root, host, chatA, "agentworks-messages-agent_message_ack", `{"delivery":"admitted","message_id":"m1"}`, now); err != nil {
+		t.Fatal(err)
+	}
+	if chat, err := consumeCursorFence(root, host, "agent_message_ack", ack, now); err != nil || chat != chatA {
+		t.Fatal("announced call was not matched to its chat", chat, err)
+	}
+	if _, err := consumeCursorFence(root, host, "agent_message_ack", ack, now); err == nil {
+		t.Fatal("a fence was used twice")
+	}
+	// Identical calls from two chats cannot be told apart: refuse, never pick one.
+	for _, chat := range []string{chatA, chatB} {
+		if err := writeCursorFence(root, host, chat, "agent_message_peers", "", now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := consumeCursorFence(root, host, "agent_message_peers", nil, now); err == nil {
+		t.Fatal("an ambiguous call was served")
+	}
+	if err := writeCursorFence(root, host, chatB, "agent_message_read", `{"inbox_id":"i"}`, now.Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := consumeCursorFence(root, host, "agent_message_read", map[string]any{"inbox_id": "i"}, now); err == nil {
+		t.Fatal("an expired fence was served")
+	}
+	if err := writeCursorFence(root, host, chatB, "agent_message_read", `{"inbox_id":"i"}`, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := consumeCursorFence(root, cursorHostKey(4243, strings.Repeat("b", 64)), "agent_message_read", map[string]any{"inbox_id": "i"}, now); err == nil {
+		t.Fatal("another Cursor app consumed this app's fence")
 	}
 }

@@ -1,8 +1,8 @@
 # Bullpen
 
 Bullpen is the AgentWorks directory and messaging layer for coding agents.
-Connect the chats you already run — in Claude Code, Codex, Muse or Pi
-(Cursor CLI setup is separate from desktop support) — and they can find each other by name and exchange
+Connect the chats you already run — in Claude Code, Codex, Muse, Pi or the Cursor app
+— and they can find each other by name and exchange
 messages. Each agent keeps running in its own CLI or app, with its own
 accounts and settings; AgentWorks only connects them. Attaching a chat is
 always your choice, and a message is an offer until the receiving agent
@@ -176,19 +176,25 @@ With the updated CLI and skill loaded, you can instead ask the agent to
 attach the chat ("Attach this chat to AgentWorks as pi-review") or type
 `/agentworks attach` yourself.
 
-**Cursor CLI.** Use a Cursor-capable AgentWorks build and the plugin from the
-small [plugins repository](https://github.com/manishiitg/agentworks-plugins).
-Load `plugins/cursor` with `cursor-agent --plugin-dir` in the exact reviewed
-project. Its setup script preserves existing hooks and registers AgentWorks
-project hooks once; it does not approve trust or attach a chat. Type
-`/agentworks attach cursor-review`. The messaging MCP is scoped to the verified
-CLI conversation; HTTP workflow/Crew MCP is a separate connection.
+**Cursor app (macOS).** Install the AgentWorks CLI, then run
+`agentworks setup cursor` once in Terminal and restart Cursor. It adds the
+AgentWorks hooks and message tools to your Cursor user settings
+(`~/.cursor/hooks.json`, `~/.cursor/mcp.json`), so it applies to every project,
+and keeps your other entries. Then type `/agentworks attach cursor-review` as its
+own message in a chat. Each chat in a Cursor window connects separately: the
+hook sees the exact chat, and every message-tool call is matched to the chat
+that made it before it is served. Messages arrive when the chat finishes a turn
+and can start a turn you did not type; an idle chat gets them after its next
+turn. Use the message tools in the chat, not the agent terminal (Cursor's
+sandboxed terminal can block the network). Windows and Linux Cursor apps are not
+supported yet.
 
-Completed-turn hooks deliver after busy work. Idle persist/tmux delivery is not built
-in this milestone; a hook write alone is not admission. Keep desktop
-results separate: no end-to-end desktop or idle-input route is claimed yet.
-See the [Cursor guide](../plugins/cursor/README.md) and
-[owner live test plan](cursor-mac-live-test.md).
+**Cursor CLI.** Still works with the project setup from the small
+[plugins repository](https://github.com/manishiitg/agentworks-plugins)
+(`plugins/cursor/scripts/setup_project.py`), but it is no longer the main path.
+Do not use both the project hooks and `agentworks setup cursor` in the same
+project, or the hooks run twice. See the [Cursor guide](../plugins/cursor/README.md)
+and [owner live test plan](cursor-mac-live-test.md).
 
 **agy.** A compatible MCP client can use AgentWorks tools. No supported
 live-messaging plugin, exact-chat attachment or idle-wake route is advertised.
@@ -327,11 +333,11 @@ start after approving the plugin ("Required MCP server agentworks failed
 during startup"), disable the plugin, update the AgentWorks CLI to a
 version with Muse support, then inspect, approve and restart.
 
-**Cursor CLI setup.** If attach reaches the model, review the exact project's
-`.cursor/hooks.json`; the investigated CLI can skip plugin-only prompt/stop
-hooks. Rerun the project setup and restart Cursor CLI. An older AgentWorks build
-may not expose the messaging MCP. Do not replace it with full-account tools to
-bypass session checks. Desktop messaging remains a separate development stage.
+**Cursor setup.** If `/agentworks attach` reaches the model, the hooks are not
+active: run `agentworks setup cursor`, restart Cursor and type it again as its
+own message. If a message tool says it could not confirm the chat, ask again;
+if it keeps failing, rerun the setup and restart Cursor. The bridge log records
+each check (`[HOOK] cursor fence ...`).
 
 ## Setup and updates
 

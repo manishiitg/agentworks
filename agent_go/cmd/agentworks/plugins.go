@@ -29,6 +29,9 @@ type pluginHookInput struct {
 	CursorRoots        []string        `json:"workspace_roots,omitempty"`
 	CursorStatus       string          `json:"status,omitempty"`
 	CursorLoop         json.RawMessage `json:"loop_count,omitempty"`
+	CursorTool         string          `json:"tool_name,omitempty"`
+	CursorToolInput    string          `json:"tool_input,omitempty"`
+	CursorMCPServer    string          `json:"mcp_server_name,omitempty"`
 	PiPersonToken      string          `json:"pi_person_token,omitempty"`
 	SessionID          string          `json:"session_id"`
 	Event              string          `json:"hook_event_name"`

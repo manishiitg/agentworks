@@ -448,7 +448,7 @@ func pluginInstallHelp(provider string) string {
 	case "muse":
 		return "muse plugins marketplace add agentworks " + pluginsRepoURL + " && muse plugins install agentworks-muse@agentworks, then muse plugins approve agentworks-muse and start a new Muse chat"
 	case "cursor":
-		return "git clone --depth 1 " + pluginsRepoURL + " ~/.local/share/agentworks-plugins && python3 ~/.local/share/agentworks-plugins/plugins/cursor/scripts/setup_project.py --project <this folder>"
+		return "agentworks setup cursor, then restart Cursor and type /agentworks attach in the chat"
 	case "pi":
 		return "run agentworks attach in a terminal and accept the Pi extension install (no repository clone needed), then reload Pi"
 	}

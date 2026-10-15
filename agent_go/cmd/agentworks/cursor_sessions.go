@@ -31,8 +31,8 @@ func cursorUUID(value string) (string, error) {
 
 // Person-facing refusals: plain words and one next step.
 var (
-	errCursorDesktop = errors.New("Cursor desktop chats cannot connect to AgentWorks yet. For now, connect a Claude or Codex chat instead: ask it to run agentworks attach.")
-	errCursorNoHooks = errors.New("Cursor has not told AgentWorks about any chat yet. Run the AgentWorks setup for this project (plugins/cursor/scripts/setup_project.py), restart the Cursor CLI, send one message in this chat, then attach again.")
+	errCursorDesktop = errors.New("In the Cursor app, type /agentworks attach as its own message in the chat to connect it (first time: run agentworks setup cursor once and restart Cursor). After that, use the AgentWorks message tools in the chat, not the terminal.")
+	errCursorNoHooks = errors.New("Cursor has not told AgentWorks about any chat yet. Run agentworks setup cursor once, restart Cursor, then type /agentworks attach in the chat.")
 )
 
 func cursorObservationDirectory(root string) string {
@@ -192,7 +192,7 @@ func cursorRequireHelperLease(own liveAgentSession, attachment string) error {
 
 func cursorHelperAllowed(kind, attachment string) error {
 	if kind == "desktop" {
-		return errors.New("Cursor desktop helpers require a per-conversation own-session fence; use the verified hook path")
+		return errCursorDesktop
 	}
 	if attachment == "" {
 		return errors.New("Every Cursor helper action requires the original --attachment-id")
