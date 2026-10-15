@@ -187,6 +187,11 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 			Online   bool     `json:"online"`
 			Groups   []string `json:"groups"`
 		} `json:"agents"`
+		Hosted []struct {
+			Name    string `json:"agent_name"`
+			Display string `json:"display"`
+			Why     string `json:"reachable_because"`
+		} `json:"chats_inside_agentworks"`
 	}
 	if json.Unmarshal(raw, &data) != nil {
 		return "Agent roster unavailable."
@@ -243,6 +248,12 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 	}
 	if len(data.Agents) == 0 {
 		b.WriteString("No registered agents.\n")
+	}
+	if len(data.Hosted) > 0 {
+		b.WriteString("\nChats inside AgentWorks you can reach (messages are stored and read at their next turn):\n")
+		for _, h := range data.Hosted {
+			fmt.Fprintf(&b, "agent:%s | %s | %s\n", clean(h.Name), clean(h.Display), clean(h.Why))
+		}
 	}
 	return b.String()
 }
