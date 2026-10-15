@@ -545,7 +545,11 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		return nil, err
 	}
 	if profile.ID == codeproduct.ProfileID {
-		rendered += agentRolePrompt(ctx, userID, profile.ID, req.AgentProfileConversationKey)
+		noun := "Code"
+		if codeProjectMode(ctx, workspacePath) == "cowork" {
+			noun = "Cowork project"
+		}
+		rendered += agentRolePrompt(ctx, userID, profile.ID, req.AgentProfileConversationKey, noun)
 	}
 	if err := api.agentProfiles.Initialize(ctx, profile.ID, agentprofiles.RuntimeContext{
 		UserID: userID, SessionID: sessionID, WorkspacePath: workspacePath,

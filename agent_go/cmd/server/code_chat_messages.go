@@ -181,7 +181,7 @@ func (api *StreamingAPI) codeChatTurnRequest(ctx context.Context, userID string,
 
 // agentRolePrompt tells an agent its own name and purpose in this project, as a fact about it (PLAT-571). Empty when
 // neither is set.
-func agentRolePrompt(ctx context.Context, userID, profileID, conversationKey string) string {
+func agentRolePrompt(ctx context.Context, userID, profileID, conversationKey, noun string) string {
 	conversationKey = strings.TrimSpace(conversationKey)
 	project, _, _ := strings.Cut(conversationKey, codeChatSideMarker)
 	if project == "" {
@@ -192,13 +192,16 @@ func agentRolePrompt(ctx context.Context, userID, profileID, conversationKey str
 		return ""
 	}
 	identity := identities[conversationKey]
+	if noun == "" {
+		noun = "Code"
+	}
 	switch {
 	case identity.Name != "" && identity.Purpose != "":
-		return fmt.Sprintf("\n\n## Your role in this Code\n\nYou are the %q agent in this Code: %s\n", identity.Name, identity.Purpose)
+		return fmt.Sprintf("\n\n## Your role in this %s\n\nYou are the %q agent in this %s: %s\n", noun, identity.Name, noun, identity.Purpose)
 	case identity.Name != "":
-		return fmt.Sprintf("\n\n## Your role in this Code\n\nYou are the %q agent in this Code.\n", identity.Name)
+		return fmt.Sprintf("\n\n## Your role in this %s\n\nYou are the %q agent in this %s.\n", noun, identity.Name, noun)
 	case identity.Purpose != "":
-		return fmt.Sprintf("\n\n## Your role in this Code\n\nThis agent's purpose in this Code: %s\n", identity.Purpose)
+		return fmt.Sprintf("\n\n## Your role in this %s\n\nThis agent's purpose in this %s: %s\n", noun, noun, identity.Purpose)
 	}
 	return ""
 }
