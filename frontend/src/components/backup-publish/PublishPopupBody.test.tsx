@@ -73,7 +73,7 @@ it('keeps hosts behind a collapsed disclosure', async () => {
 it('asks in chat to set up and per host', async () => {
   const { host, unmount } = await mount({ effective_state: 'published', config: { enabled: true, destinations: [] }, status: {} })
   try {
-    expect(askMessages).toContain('/publish')
+    expect(askMessages).toContain('/share')
     expect(askMessages).toContain('Help me publish this workflow to Netlify. Explain what I need and walk me through it.')
     expect(host.querySelectorAll('[data-testid="ask-ai"]').length).toBe(3)
   } finally {

@@ -19,7 +19,7 @@ const FALLBACK_SUPPORTED: WorkflowPublishStrategyInfo[] = [
 ]
 
 const getPublishSummary = (info: WorkflowPublishInfoResponse | null): string => {
-  if (!info?.config?.enabled) return 'Not published yet. Set one up with /publish in chat.'
+  if (!info?.config?.enabled) return 'Not published yet. Share the dashboard with /share in chat.'
   switch (info?.effective_state) {
     case 'published':
       return 'Published. Your site is up to date.'
@@ -101,7 +101,7 @@ const WorkflowPublishView: React.FC<WorkflowPublishViewProps> = ({ workspacePath
       onStateLoaded={onStateLoaded}
       fallbackStrategies={FALLBACK_SUPPORTED}
       subtitle="Share this automation's Pulse log and dashboard at a public URL"
-      emptyDestinationsText="No hosts yet — set one up with /publish in chat. Any static host works."
+      emptyDestinationsText="No hosts yet — share the dashboard with /share in chat."
       destinationsHelp="Deploys update automatically."
       askContext={{ workspacePath, strategyVerb: 'publish this workflow to' }}
       supportedHelp="Suggestions, not a limit — any static host works."

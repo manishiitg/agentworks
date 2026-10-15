@@ -273,7 +273,7 @@ const PublishPopupBody: React.FC<PublishPopupProps> = ({
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       {askContext && (
-                        <AskAIButton workspacePath={askContext.workspacePath} label="Set up" message="/publish" />
+                        <AskAIButton workspacePath={askContext.workspacePath} label="Set up" message="/share" />
                       )}
                     </div>
                   </div>

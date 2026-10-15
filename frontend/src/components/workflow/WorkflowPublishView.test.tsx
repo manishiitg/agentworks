@@ -36,7 +36,7 @@ it('shows one short line instead of the backend paragraph', async () => {
   try {
     expect(host.textContent).toContain('Published. Your site is up to date.')
     expect(host.textContent).not.toContain(LONG_BACKEND_SUMMARY)
-    const setup = [...host.querySelectorAll('[data-testid="ask-ai"]')].find(node => node.getAttribute('data-message') === '/publish')
+    const setup = [...host.querySelectorAll('[data-testid="ask-ai"]')].find(node => node.getAttribute('data-message') === '/share')
     expect(setup?.textContent).toBe('Set up')
   } finally {
     await act(async () => root.unmount()); host.remove()
