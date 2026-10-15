@@ -908,7 +908,14 @@ func (c *ContextAwareEventBridge) HandleEvent(ctx context.Context, event *events
 		writer := c.transcriptWriter
 		c.mu.RUnlock()
 		if writer != nil {
-			if transcriptEvent, ok := orchevents.NormalizeBackgroundTranscriptEvent(event); ok {
+			var transcriptEvents []orchevents.BackgroundAgentTranscriptEvent
+			if model, ok := orchevents.NormalizeExecutionModelEvent(event); ok {
+				transcriptEvents = append(transcriptEvents, model)
+			}
+			if normalized, ok := orchevents.NormalizeBackgroundTranscriptEvent(event); ok {
+				transcriptEvents = append(transcriptEvents, normalized)
+			}
+			for _, transcriptEvent := range transcriptEvents {
 				sessionID := event.SessionID
 				if owner, ok := ctx.Value(backgroundTranscriptSessionIDKey{}).(string); ok && strings.TrimSpace(owner) != "" {
 					sessionID = strings.TrimSpace(owner)

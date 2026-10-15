@@ -164,9 +164,16 @@ func (api *StreamingAPI) handleInspectSessionExecution(w http.ResponseWriter, r 
 			mode = "agent"
 		}
 	}
+	var linkedModelEvents []orchEvents.BackgroundAgentTranscriptEvent
+	if conversation != nil {
+		for _, event := range conversation.Events {
+			linkedModelEvents = append(linkedModelEvents, event.BackgroundAgentTranscriptEvent)
+		}
+	}
+	model := executioninspection.Model(transcript, linkedModelEvents)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"transcript": transcript, "children": children, "result": result, "execution_mode": mode, "scripts": scripts, "conversation": conversation})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"transcript": transcript, "children": children, "result": result, "execution_mode": mode, "scripts": scripts, "conversation": conversation, "model": model})
 }
 
 type inspectionConversationEvent struct {

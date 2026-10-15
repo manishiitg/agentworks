@@ -21,9 +21,11 @@ const response = (id: string, text: string): ExecutionInspectionResponse => ({tr
 it('shows only the selected saved execution record without loading workflow history or retaining the previous task', async () => {
  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
  const parent = response('first',''); parent.transcript.events=[]
+ parent.model={label:'Parent model'}
  parent.execution_mode='agent'
  parent.children=[{agent_id:'task',name:'Task work',status:'completed'},{agent_id:'validation',name:'Final validation (prevalidation)',status:'completed'}]
  const task=response('task','Actual task instruction')
+ task.model={label:'Codex · actual-model',tooltip:'Previously used: Claude · earlier-model'}
  task.transcript.events.push({...task.transcript.events[0]}) // Raw carriers stay available for debugging.
  let finishValidation!: (data:ExecutionInspectionResponse) => void
  vi.spyOn(agentApi,'inspectSessionExecution').mockImplementation(item => item.execution_id==='first' ? Promise.resolve(parent) : item.execution_id==='task' ? Promise.resolve(task) : new Promise(resolve=>{finishValidation=resolve}))
@@ -36,14 +38,20 @@ it('shows only the selected saved execution record without loading workflow hist
   const saved=()=>host.querySelector('[data-testid="inspection-saved-log"] pre')
   const openSaved=async()=>{await act(async()=>{const disclosure=host.querySelector<HTMLDetailsElement>('[data-testid="inspection-saved-log"]')!;disclosure.open=true;disclosure.dispatchEvent(new Event('toggle'))})}
   expect(saved()).toBeNull()
+  expect(host.querySelector('[data-testid="inspection-model"]')?.textContent).toBe('Codex · actual-model')
+  expect(host.querySelector('[data-testid="inspection-model"]')?.getAttribute('title')).toBe('Previously used: Claude · earlier-model')
+  expect(host.textContent).not.toContain('Parent model')
   await openSaved()
   expect(JSON.parse(saved()!.textContent!).transcript).toEqual(task.transcript)
+  expect(JSON.parse(saved()!.textContent!).model).toEqual(task.model)
   expect(JSON.parse(saved()!.textContent!)).not.toHaveProperty('children')
   expect(host.textContent).not.toContain('Open saved logs')
   const select=host.querySelector<HTMLSelectElement>('select')!
   await act(async()=>{select.value='validation';select.dispatchEvent(new Event('change',{bubbles:true}))})
   expect(saved()).toBeNull()
+  expect(host.querySelector('[data-testid="inspection-model"]')).toBeNull()
   await act(async()=>{finishValidation(response('validation','Validation evidence'))})
+  expect(host.querySelector('[data-testid="inspection-model"]')?.textContent).toBe('Model not recorded')
   expect(saved()).toBeNull()
   expect(host.querySelector<HTMLDetailsElement>('[data-testid="inspection-saved-log"]')!.open).toBe(false)
   await openSaved()

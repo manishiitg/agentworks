@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/executioninspection"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	agentEvents "github.com/manishiitg/mcpagent/events"
@@ -314,7 +315,9 @@ func TestInspectAgentItemCapturesProviderRuntimeEvents(t *testing.T) {
 			{Type: agentEvents.UserMessage, Data: &agentEvents.UserMessageEvent{Role: "user", Content: "User for " + id}},
 			{Type: agentEvents.ToolCallStart, Data: &agentEvents.ToolCallStartEvent{ToolCallID: "reused-tool-id", ToolName: "read_file", ToolParams: agentEvents.ToolParams{Arguments: `{"path":"sources.txt"}`}}},
 			{Type: agentEvents.ToolCallEnd, Data: &agentEvents.ToolCallEndEvent{ToolCallID: "reused-tool-id", ToolName: "read_file", Result: "Facts for " + id}},
-			{Type: agentEvents.LLMGenerationEnd, Data: &agentEvents.LLMGenerationEndEvent{Content: "Result for " + id}},
+			// Tool-only calls still carry model evidence; the next response changes model.
+			{Type: agentEvents.LLMGenerationEnd, Data: &agentEvents.LLMGenerationEndEvent{BaseEventData: agentEvents.BaseEventData{Metadata: map[string]interface{}{"provider": "codex-cli", "model_id": "before-" + id}}}},
+			{Type: agentEvents.LLMGenerationEnd, Data: &agentEvents.LLMGenerationEndEvent{BaseEventData: agentEvents.BaseEventData{Metadata: map[string]interface{}{"provider": "codex-cli", "model_id": "actual-" + id}}, Content: "Result for " + id}},
 		} {
 			event.SessionID = "dedicated-provider-runtime"
 			event.Timestamp = time.Now()
@@ -349,16 +352,24 @@ func TestInspectAgentItemCapturesProviderRuntimeEvents(t *testing.T) {
 		var result struct {
 			Transcript   *orchEvents.BackgroundAgentTranscript `json:"transcript"`
 			Conversation *inspectionConversation               `json:"conversation"`
+			Model        executioninspection.ModelInfo         `json:"model"`
 		}
 		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || w.Code != http.StatusOK || result.Conversation == nil {
 			t.Fatalf("delegated conversation: status=%d err=%v", w.Code, err)
 		}
-		want := 10
+		want := 14
 		if id == "call-second" {
-			want = 5
+			want = 7
 		}
 		if len(result.Transcript.Events) != 0 || len(result.Conversation.Events) != want {
 			t.Fatalf("conversation replaced raw evidence or mixed tasks: %s", w.Body.String())
+		}
+		wantModel, wantPrevious := "actual-item-second", 3
+		if id == "call-second" {
+			wantModel, wantPrevious = "actual-item-foreign", 1
+		}
+		if result.Model.ModelID != wantModel || len(result.Model.Previous) != wantPrevious {
+			t.Fatalf("wrong delegated model: %+v", result.Model)
 		}
 		for _, event := range result.Conversation.Events {
 			if event.ExecutionID == "item-mismatch" || id == "call-first" && event.ExecutionID == "item-foreign" {
@@ -377,12 +388,16 @@ func TestInspectAgentItemCapturesProviderRuntimeEvents(t *testing.T) {
 		var response struct {
 			Transcript *orchEvents.BackgroundAgentTranscript `json:"transcript"`
 			Result     string                                `json:"result"`
+			Model      executioninspection.ModelInfo         `json:"model"`
 		}
 		if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil || w.Code != http.StatusOK {
 			t.Fatalf("inspect status=%d err=%v", w.Code, err)
 		}
-		if response.Transcript == nil || response.Transcript.SessionID != "chat" || response.Transcript.AgentID != id || response.Transcript.Status != "completed" || len(response.Transcript.Events) != 5 || response.Result != "Result for "+id {
+		if response.Transcript == nil || response.Transcript.SessionID != "chat" || response.Transcript.AgentID != id || response.Transcript.Status != "completed" || len(response.Transcript.Events) != 7 || response.Result != "Result for "+id {
 			t.Fatalf("wrong capture for %s: %+v", id, response)
+		}
+		if response.Model.Label != "Codex · actual-"+id || len(response.Model.Previous) != 1 || response.Model.Previous[0].ModelID != "before-"+id {
+			t.Fatalf("model did not follow recorded calls: %+v", response.Model)
 		}
 		body := w.Body.String()
 		for _, expected := range []string{"System for " + id, "User for " + id, "Facts for " + id, "sources.txt", "[redacted]"} {
