@@ -1909,6 +1909,9 @@ func logStreamingChunkTelemetry(sessionID string, event Event) {
 		log.Printf("[STREAM] session=%s turn started", sessionID)
 	case "streaming_chunk":
 		source, isDelta, contentLen := streamingChunkFields(event)
+		if source == events.StreamingChunkSourcePromptAccepted {
+			return // a signal, not output: it must not change the chunk counts the stall heartbeat reports
+		}
 		if source == "" {
 			source = "unset"
 		}

@@ -49,11 +49,17 @@ var (
 	turnPhases   = map[string]*turnPhaseState{}
 	// turnPhaseLabels remembers the agent's name per session, so the next turn can say "Starting Muse" before any
 	// event of that turn names it.
-	turnPhaseLabels = map[string]string{}
+	turnPhaseLabels  = map[string]turnPhaseLabel{}
+	turnPhaseSweptAt time.Time
 )
 
+type turnPhaseLabel struct {
+	name string
+	at   time.Time
+}
+
 // turnPhaseLabel names the agent the person chose, from the provider or (when only the model is known) its family.
-func turnPhaseLabel(provider, modelID string) string {
+func turnPhaseLabelFor(provider, modelID string) string {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case "muse-cli", "muse":
 		return "Muse"
@@ -114,16 +120,25 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 	}
 	now := time.Now()
 	turnPhasesMu.Lock()
-	for id, st := range turnPhases {
-		if now.Sub(st.updated) > turnPhaseStaleAfter {
-			delete(turnPhases, id)
+	// Forget abandoned sessions, at most once a minute: this runs on every event.
+	if now.Sub(turnPhaseSweptAt) >= time.Minute {
+		turnPhaseSweptAt = now
+		for id, st := range turnPhases {
+			if now.Sub(st.updated) > turnPhaseStaleAfter {
+				delete(turnPhases, id)
+			}
+		}
+		for id, l := range turnPhaseLabels {
+			if now.Sub(l.at) > turnPhaseStaleAfter {
+				delete(turnPhaseLabels, id)
+			}
 		}
 	}
 	st := turnPhases[sessionID]
 	var announce *turnPhaseState
 	set := func(phase string) {
 		if st == nil {
-			st = &turnPhaseState{label: turnPhaseLabels[sessionID]}
+			st = &turnPhaseState{label: turnPhaseLabels[sessionID].name}
 			turnPhases[sessionID] = st
 		}
 		if st.phase != phase {
@@ -144,7 +159,7 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 		}
 		if st.label == "" && event.Data != nil {
 			if d, ok := event.Data.Data.(*events.LLMGenerationStartEvent); ok {
-				st.label = turnPhaseLabel("", d.ModelID)
+				st.label = turnPhaseLabelFor("", d.ModelID)
 			}
 		}
 	case "retry_attempt":
@@ -153,7 +168,7 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 		}
 		if event.Data != nil {
 			if d, ok := event.Data.Data.(*events.RetryAttemptEvent); ok {
-				if l := turnPhaseLabel(d.Provider, d.ModelID); l != "" {
+				if l := turnPhaseLabelFor(d.Provider, d.ModelID); l != "" {
 					st.label = l
 				}
 				set(turnPhaseRetrying)
@@ -177,7 +192,10 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 		if st != nil && st.phase != turnPhaseRunning {
 			// The agent's own words. A terminal-screen snapshot is the pane, not output: a sign-in or update screen
 			// streamed as terminal text must not turn "starting" into "working".
-			if source, _, contentLen := streamingChunkFields(event); source != "terminal" && contentLen > 0 {
+			source, _, contentLen := streamingChunkFields(event)
+			// "prompt_accepted" is the terminal CLI saying it took the prompt: the turn really began, even if it is
+			// quiet. Otherwise only the agent's own words count.
+			if source == events.StreamingChunkSourcePromptAccepted || (source != "terminal" && contentLen > 0) {
 				set(turnPhaseRunning)
 			}
 		}
@@ -194,7 +212,7 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 		}
 	}
 	if st != nil && st.label != "" {
-		turnPhaseLabels[sessionID] = st.label
+		turnPhaseLabels[sessionID] = turnPhaseLabel{name: st.label, at: now}
 	}
 	if st != nil {
 		sig := fmt.Sprintf("%s|%s|%s|%d|%d|%s", st.phase, st.label, st.reason, st.attempt, st.total, st.nextIn)

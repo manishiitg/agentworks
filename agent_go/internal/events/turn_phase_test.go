@@ -42,7 +42,9 @@ func TestTurnPhaseFollowsTheAgentNotTheClock(t *testing.T) {
 	add(es, session, "streaming_chunk", &mcpevents.StreamingChunkEvent{Content: "Hello", Source: "transcript"})
 	add(es, session, "streaming_chunk", &mcpevents.StreamingChunkEvent{Content: "again", Source: "transcript"})
 	add(es, session, "unified_completion", nil)
+	// A quiet CLI that took the prompt is running even before its first word.
 	add(es, session, "user_message", nil)
+	add(es, session, "streaming_chunk", &mcpevents.StreamingChunkEvent{Source: mcpevents.StreamingChunkSourcePromptAccepted})
 
 	// The message itself does not say which agent; the first generation does, and the line is refreshed.
 	want := []string{
@@ -52,6 +54,7 @@ func TestTurnPhaseFollowsTheAgentNotTheClock(t *testing.T) {
 		"starting: Starting Muse",
 		"running: ",
 		"starting: Starting Muse",
+		"running: ",
 	}
 	got := phaseEvents(es, session)
 	if len(got) != len(want) {
