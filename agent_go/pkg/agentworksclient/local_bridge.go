@@ -1564,16 +1564,18 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 		}
 		m, ok := s.Offers[in.MessageID]
-		if in.Action == "reply" && ok && !m.Offered && !m.Suppressed && b.offerOne(callCtx, s, in.MessageID) {
-			// A reply (not an ack: "admitted" still means the body was handed to this chat) to a message that reached
-			// it as a stored-mailbox hint or from another network is allowed after the same server check receive makes.
+		// A reply (not an ack: "admitted" still means the body was handed to this chat) to a message that reached
+		// the chat only as a stored-mailbox hint or from another network is allowed after the same server check
+		// receive makes. The message stays unread for receive, which still hands over its body.
+		replyToHint := in.Action == "reply" && ok && !m.Offered && !m.Suppressed && b.messageAuthorized(callCtx, s, in.MessageID)
+		if replyToHint {
 			m, ok = s.Offers[in.MessageID]
 		}
-		if ok && !m.Offered {
+		if ok && !m.Offered && !replyToHint {
 			// Seen only as a notice or in a read: the body is handed over by receive, and only then can it be acknowledged.
 			return LocalBridgeReply{Error: "message was not offered to this exact session yet: call agent_message_receive in this chat to take it, then ack or reply"}
 		}
-		if !ok || !m.Offered {
+		if !ok || !m.Offered && !replyToHint {
 			return LocalBridgeReply{Error: "message was not offered to this exact session"}
 		}
 		if in.Action == "ack" && in.Delivery != "admitted" && in.Delivery != "processed" {
@@ -2202,9 +2204,9 @@ func (b *localBridge) acknowledgeLines(s *localSession, ids []string, transport 
 // takeOffers hands over up to limit pending messages of one attachment: the
 // server confirms each is still deliverable, the rest are kept and retried, and
 // the handed-over ones are marked offered (restored if saving fails).
-// offerOne takes one waiting message for this exact attachment, after the server confirms the same
-// authorization receive checks, so an ack or reply can follow without receiving every other waiting message.
-func (b *localBridge) offerOne(ctx context.Context, s *localSession, id string) bool {
+// messageAuthorized asks the server the same question receive does for one waiting message: may this exact
+// attachment be given it. It changes nothing locally, so a later receive still hands the chat the body.
+func (b *localBridge) messageAuthorized(ctx context.Context, s *localSession, id string) bool {
 	snap := &localSession{Attachment: s.Attachment, client: s.client}
 	allowed := false
 	b.unlocked(func() {
@@ -2214,17 +2216,7 @@ func (b *localBridge) offerOne(ctx context.Context, s *localSession, id string) 
 		}
 		allowed = err == nil && json.Unmarshal(raw, &checked) == nil && slices.Contains(checked.IDs, id)
 	})
-	v, ok := s.Offers[id]
-	if !allowed || !ok {
-		return false
-	}
-	if !v.Offered {
-		transports := map[string]string{"claude": "claude_session", "codex": "codex_hook", "cursor": "cursor_hook", "muse": "muse_session", "agy": "agy_hook", "pi": "pi_hook"}
-		v.Offered, v.OfferedAt, v.Transport = true, time.Now(), transports[s.Attachment.Provider]
-		s.Offers[id] = v
-		_ = b.save()
-	}
-	return true
+	return allowed
 }
 
 func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, transport string, limit int) ([]AgentLiveMessage, int, map[string]int, error) {
