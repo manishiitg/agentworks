@@ -72,11 +72,10 @@ grep -Fq 'Environment=AGENT_BROWSER_CDP_ENABLED=false' "$SCRIPT_DIR/rootless/vid
   echo "Video Studio server deployment must disable CDP in the workspace service" >&2
   exit 1
 }
-grep -Fq 'Environment=DOCKER_HOST=unix:///run/user/%U/docker.sock' "$SCRIPT_DIR/rootless/video-studio-workspace.service" || {
-  echo "Video Studio workspace must use the service user's rootless Docker socket" >&2
+grep -Fq 'DOCKER_HOST' "$SCRIPT_DIR/rootless/video-studio-workspace.service" && {
+  echo "Video Studio workspace must not be given a Docker socket (only a person's own slot has Docker)" >&2
   exit 1
 }
-bash "$REPO_ROOT/deploy/common/install-rootless-docker.sh" --check video-studio
 grep -Fq 'cdpEnabled: false' "$RUNTIME_CONFIG" || {
   echo "Video Studio runtime config must display CDP as disabled" >&2
   exit 1
@@ -431,6 +430,16 @@ if slots_enabled; then
     echo "Rootless Video Studio release is live at $LIVE_URL, but the SLOT SELF-TEST FAILED (see FAIL lines above)" >&2
     exit 1
   fi
+fi
+
+# The platform account has no Docker (owner, 2026-10-16): AI CLIs and platform terminals run as this account, so a Docker here
+# would be reachable by all of them. Only a person's own slot has Docker. Read-only; fails the deploy loudly if it comes back.
+if ! "${SSH[@]}" "set -e; pid=\$(systemctl --user show -p MainPID --value video-studio-workspace); bad=0
+  if [ -n \"\$pid\" ] && [ \"\$pid\" != 0 ] && tr '\\0' '\\n' < /proc/\$pid/environ | grep -q '^DOCKER_HOST='; then echo 'FAIL platform-no-docker: the workspace process has DOCKER_HOST set'; bad=1; fi
+  if [ -S /run/user/\$(id -u)/docker.sock ]; then echo 'FAIL platform-no-docker: /run/user/'\$(id -u)'/docker.sock exists'; bad=1; fi
+  [ \$bad = 0 ] && echo 'PASS platform-no-docker: no DOCKER_HOST in the workspace process and no platform Docker socket'; exit \$bad"; then
+  echo "Rootless Video Studio release is live at $LIVE_URL, but the platform-no-docker self-test FAILED (see FAIL lines above)" >&2
+  exit 1
 fi
 
 echo "Rootless Video Studio release deployed: $LIVE_URL"

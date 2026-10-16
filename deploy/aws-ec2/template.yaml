@@ -159,10 +159,6 @@ Resources:
           grep -q '^video-studio:' /etc/subgid || usermod --add-subgids $subid_start-$((subid_start + 65535)) video-studio
           loginctl enable-linger video-studio
           systemctl start user@$(id -u video-studio).service
-          runuser -u video-studio -- env HOME=/var/lib/video-studio XDG_RUNTIME_DIR=/run/user/$(id -u video-studio) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u video-studio)/bus dockerd-rootless-setuptool.sh install --force
-          runuser -u video-studio -- env HOME=/var/lib/video-studio XDG_RUNTIME_DIR=/run/user/$(id -u video-studio) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u video-studio)/bus systemctl --user enable --now docker.service
-          test "$(stat -c %u /run/user/$(id -u video-studio)/docker.sock)" = "$(id -u video-studio)"
-          runuser -u video-studio -- env HOME=/var/lib/video-studio XDG_RUNTIME_DIR=/run/user/$(id -u video-studio) DOCKER_HOST=unix:///run/user/$(id -u video-studio)/docker.sock docker info --format '{{json .SecurityOptions}}' | grep -Fq name=rootless
           ! id -nG video-studio | tr ' ' '\n' | grep -Fxq docker
           runuser -u video-studio -- env HOME=/var/lib/video-studio npx --yes hyperframes@0.8.6 browser ensure
           test -x "$(runuser -u video-studio -- env HOME=/var/lib/video-studio npx --yes hyperframes@0.8.6 browser path | tail -n 1)"
