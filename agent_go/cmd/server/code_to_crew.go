@@ -125,7 +125,7 @@ func (api *StreamingAPI) makeCrewFromCodeProject(ctx context.Context, userID, se
 	files, skipped, total := map[string]string{}, []string{}, 0
 	for _, full := range paths {
 		rel := strings.TrimPrefix(strings.TrimPrefix(path.Clean(strings.ReplaceAll(full, "\\", "/")), root), "/")
-		if rel == "" || rel == "product.json" || rel == crewFunctionsFileName || codeCopyHidden(rel) {
+		if rel == "" || rel == "product.json" || rel == "schedule-runs.json" || rel == crewFunctionsFileName || codeCopyHidden(rel) {
 			continue
 		}
 		if _, e := crewSpecFilePath("crew", rel); e != nil {
@@ -193,10 +193,10 @@ func codeCopyHidden(rel string) bool {
 		}
 	}
 	lower := strings.ToLower(rel)
-	return strings.HasPrefix(lower, "chats/") || strings.HasPrefix(lower, "builder/") || strings.HasPrefix(lower, "db/")
+	return strings.HasPrefix(lower, "chats/") || strings.HasPrefix(lower, "builder/") || strings.HasPrefix(lower, "db/") || strings.HasPrefix(lower, "planning/")
 }
 
 // crewAppLink is the address of a Crew in the app.
 func crewAppLink(crewID string) string {
-	return strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_URL")), "/") + "/crew/" + crewID
+	return strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_URL")), "/") + "/crew/projects/" + crewID
 }
