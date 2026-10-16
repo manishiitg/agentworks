@@ -106,6 +106,7 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 		return out
 	}
 	call(sender, map[string]any{"action": "register", "agent_name": "sender"})
+	attachRegisteredAgentsForTest(t)
 	call(freshSender, map[string]any{"action": "register", "agent_name": "fresh-sender"})
 	// Short path avoids the operating system Unix socket filename limit.
 	cache, err := os.MkdirTemp("", "aw-cache-")

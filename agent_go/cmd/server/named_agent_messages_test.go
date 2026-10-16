@@ -76,18 +76,7 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 	call(owner, map[string]any{"action": "register", "agent_name": "Reviewer"}, true)
 	call(worker, map[string]any{"action": "register", "agent_name": "worker"}, true)
 	// Only an attached name receives (owner 2026-10-16: AgentBridge messaging needs the CLI).
-	agentMessageMu.Lock()
-	attachStore, attachErr := readAgentMessageStore(context.Background())
-	if attachErr != nil {
-		t.Fatal(attachErr)
-	}
-	for i := range attachStore.Agents {
-		attachStore.Agents[i].Attachment = &namedAgentAttachment{DeliveryContract: 2, ID: "attach-" + attachStore.Agents[i].Name, Provider: "claude", SessionID: "session-" + attachStore.Agents[i].Name}
-	}
-	if attachErr = saveAgentMessageStore(context.Background(), attachStore); attachErr != nil {
-		t.Fatal(attachErr)
-	}
-	agentMessageMu.Unlock()
+	attachRegisteredAgentsForTest(t)
 	if n := len(call(foreign, map[string]any{"action": "list_agents"}, true)["agents"].([]any)); n != 0 {
 		t.Fatal("foreign account saw directory")
 	}
@@ -179,5 +168,25 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 	}
 	if _, err := env.api.readNamedAgentMessages(ctx, claims, map[string]any{"agent_name": "reviewer", "wait_seconds": 1}); err == nil {
 		t.Fatal("waiting reader retained revoked connection")
+	}
+}
+
+// attachRegisteredAgentsForTest gives every registered name an attachment, as `agentworks attach` does:
+// unattached names are hidden from lists and refuse messages.
+func attachRegisteredAgentsForTest(t *testing.T) {
+	t.Helper()
+	agentMessageMu.Lock()
+	defer agentMessageMu.Unlock()
+	store, err := readAgentMessageStore(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range store.Agents {
+		if store.Agents[i].Attachment == nil {
+			store.Agents[i].Attachment = &namedAgentAttachment{DeliveryContract: 2, ID: "attach-" + store.Agents[i].Name, Provider: "claude", SessionID: "session-" + store.Agents[i].Name}
+		}
+	}
+	if err = saveAgentMessageStore(context.Background(), store); err != nil {
+		t.Fatal(err)
 	}
 }

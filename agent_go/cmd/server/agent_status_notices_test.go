@@ -103,6 +103,7 @@ func TestAgentStatusNoticeTellsTheSenderOnceThatAMessageIsWaiting(t *testing.T) 
 	if _, err = sender.Call(context.Background(), "messages", map[string]any{"action": "register", "agent_name": "detached"}); err != nil {
 		t.Fatal(err)
 	}
+	attachRegisteredAgentsForTest(t)
 	send := chat
 	send.Action, send.Target, send.Message, send.SubmissionID = "send", "agent:detached", "are you there", "status-notice-1"
 	if out := call(send); out.Error != "" {

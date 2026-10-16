@@ -59,6 +59,7 @@ func TestAgentPingOncePerMessageAndCollapses(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	attachRegisteredAgentsForTest(t)
 	send := func(id, text string) string {
 		out, err := call(map[string]any{"action": "send", "agent_name": "asker", "target": "agent:helper", "message": text, "submission_id": id})
 		if err != nil {

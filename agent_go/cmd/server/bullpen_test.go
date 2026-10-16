@@ -21,8 +21,8 @@ func TestBullpenAccountDirectoryOverAuthenticatedHTTP(t *testing.T) {
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks,bullpen")
 	ctx := context.Background()
 	if err := saveAgentMessageStore(ctx, agentMessageStore{Agents: []namedMessageAgent{
-		{ID: "own-id", UserID: "owner", Name: "own-agent", Purpose: "Reviewing changes", Connections: []string{"private-connection"}},
-		{ID: "foreign-id", UserID: "other", Name: "foreign-agent", Connections: []string{"foreign-connection"}},
+		{ID: "own-id", UserID: "owner", Name: "own-agent", Purpose: "Reviewing changes", Connections: []string{"private-connection"}, Attachment: &namedAgentAttachment{DeliveryContract: 2, ID: "own-attach", Provider: "claude", SessionID: "own-session"}},
+		{ID: "foreign-id", UserID: "other", Name: "foreign-agent", Connections: []string{"foreign-connection"}, Attachment: &namedAgentAttachment{DeliveryContract: 2, ID: "foreign-attach", Provider: "claude", SessionID: "foreign-session"}},
 	}}); err != nil {
 		t.Fatal(err)
 	}
