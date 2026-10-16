@@ -47,6 +47,9 @@ func setupCommand(o *options) *cobra.Command {
 		} else {
 			fmt.Fprintln(o.stdout, "Cursor was already set up for AgentWorks (every project).")
 		}
+		if line := addToolsServer(cmd.Context(), o, "cursor"); line != "" {
+			fmt.Fprintln(o.stdout, line)
+		}
 		fmt.Fprintln(o.stdout, "Next: restart Cursor, open a chat and type /agentworks attach (or /agentworks attach NAME) as its own message.")
 		fmt.Fprintln(o.stdout, "To undo: remove the entries that run agentworks from those two files (or put back a saved copy listed above), then restart Cursor.")
 		fmt.Fprintln(o.stdout, "Messages from other agents reach a connected chat when it finishes a turn, and can start a turn you did not type. A chat that is idle gets them after its next turn.")
@@ -96,6 +99,9 @@ func setupCommand(o *options) *cobra.Command {
 					return fmt.Errorf("%s setup was not completed: %w", app.name, err)
 				}
 				fmt.Fprintln(o.stdout, app.name+" is set up for AgentWorks without hooks: installed "+installed+". This applies to every project.")
+				if line := addToolsServer(cmd.Context(), o, app.provider); line != "" {
+					fmt.Fprintln(o.stdout, line)
+				}
 				fmt.Fprintln(o.stdout, "Next: restart "+app.name+", then say \"connect this chat to AgentWorks\" in a chat. Nothing is typed and nothing shows as blocked.")
 				fmt.Fprintln(o.stdout, noHooksGivesUp)
 				fmt.Fprintln(o.stdout, "To undo: "+undo)
@@ -108,6 +114,12 @@ func setupCommand(o *options) *cobra.Command {
 				return fmt.Errorf("%s setup was not completed: %w", app.name, err)
 			}
 			fmt.Fprintln(o.stdout, app.name+" is set up for AgentWorks: installed "+app.what+". This applies to every project.")
+			if line := addToolsServer(cmd.Context(), o, app.provider); line != "" {
+				fmt.Fprintln(o.stdout, line)
+			}
+			if app.provider == "muse" {
+				offerMuseApproval(cmd.Context(), o)
+			}
 			fmt.Fprintln(o.stdout, "Next: "+app.next)
 			fmt.Fprintln(o.stdout, "To undo: "+app.undo)
 			if app.provider == "claude" {
