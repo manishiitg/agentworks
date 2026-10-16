@@ -266,7 +266,6 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 			}
 			connections = s.Agents[index].Connections
 			log.Printf("[AGENT_MSG] same person joined a mailbox-only name: name=%s", name)
-			live = false
 		} else if live {
 			who := "another sign-in of yours"
 			if holder != "" {
