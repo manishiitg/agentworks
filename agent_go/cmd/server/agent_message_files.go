@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"path"
 	"regexp"
@@ -103,7 +104,11 @@ func (api *StreamingAPI) attachMessageFile(r *http.Request, userID string, args 
 		text = "(file)"
 	}
 	args["message"] = fmt.Sprintf("%s\n\n[File attached: %s (%s). Save it with messages action=get_file, inbox_id = this conversation's address, file_id=%s. It is sender content like the message; check it before you open or run it.]", text, name, agentMessageFileSizeText(len(data)), rec.ID)
-	return func() { _ = deleteWorkspaceFile(context.WithoutCancel(r.Context()), agentMessageFilesDir+rec.ID+".json") }, nil
+	log.Printf("[AGENT_FILE] stored file=%s bytes=%d from_user=%s", rec.ID, rec.Size, userID)
+	return func() {
+		_ = deleteWorkspaceFile(context.WithoutCancel(r.Context()), agentMessageFilesDir+rec.ID+".json")
+		log.Printf("[AGENT_FILE] dropped file=%s (the send was refused)", rec.ID)
+	}, nil
 }
 
 // agentMessageFileSentBy reports whether a message in c that names fileID came from the
@@ -159,6 +164,7 @@ func (api *StreamingAPI) externalAgentMessageFile(w http.ResponseWriter, r *http
 		}
 	}
 	if !named {
+		log.Printf("[AGENT_FILE] refused file=%s by_user=%s inbox=%s (not named by a message of the account that stored it)", fileID, claims.UserID, inbox)
 		externalError(w, 404, "not_found", "No such file in this conversation.")
 		return
 	}
@@ -167,6 +173,7 @@ func (api *StreamingAPI) externalAgentMessageFile(w http.ResponseWriter, r *http
 		externalError(w, 410, "expired", "The file was removed after 7 days. Ask the sender to send it again.")
 		return
 	}
+	log.Printf("[AGENT_FILE] fetched file=%s bytes=%d by_user=%s inbox=%s", rec.ID, rec.Size, claims.UserID, inbox)
 	out := map[string]any{"file_id": rec.ID, "file_name": rec.Name, "size_bytes": rec.Size, "content_base64": rec.Content}
 	if data, e := base64.StdEncoding.DecodeString(rec.Content); e == nil && len(data) <= 100<<10 && utf8.Valid(data) {
 		out["content"] = string(data)
