@@ -28,7 +28,21 @@ func TestMergeToolsServerURLKeepsOthersAndIsRepeatable(t *testing.T) {
 	if changed, _, err = mergeToolsServerURL(path, "agentworks", url); err != nil || changed {
 		t.Errorf("second add must change nothing: changed=%t err=%v", changed, err)
 	}
+	if info, e := os.Stat(path); e != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("the file mode must be kept: %v %v", info, e)
+	}
 	if _, _, err = mergeToolsServerURL(path, "agentworks", "https://different.example.com/mcp"); err == nil {
 		t.Error("a different server under the same name must be refused")
+	}
+}
+
+// A named login registers under its own name so several logins do not collide in one app.
+func TestToolsServerNameFollowsTheLogin(t *testing.T) {
+	cfg := filepath.Join("home", ".config", "agentworks")
+	if got := toolsServerName(filepath.Join(cfg, "config.json")); got != "agentworks" {
+		t.Errorf("default login: %q", got)
+	}
+	if got := toolsServerName(filepath.Join(cfg, "logins", "partner.json")); got != "agentworks-partner" {
+		t.Errorf("named login: %q", got)
 	}
 }
