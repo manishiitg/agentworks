@@ -59,14 +59,14 @@ func TestWorkshopResolveLLMConfigExpandsCodingAgentMode(t *testing.T) {
 	if !ok {
 		t.Fatal("expected Claude Code coding-agent defaults")
 	}
-	// multi-llm-provider-go coding_agent_tier_defaults.go (2026-09-23):
-	// Opus 5.5 builds; Sonnet 5.5 backs High, Medium, Low and Pulse (= High).
-	if defaults.Builder.ModelID != "claude-opus-5-5" ||
+	// multi-llm-provider-go coding_agent_tier_defaults.go (2026-10-16):
+	// Sonnet 5.5 backs Builder, High and Pulse (= High); Haiku 5.5 backs Medium and Low.
+	if defaults.Builder.ModelID != "claude-sonnet-5-5" ||
 		defaults.High.ModelID != "claude-sonnet-5-5" ||
-		defaults.Medium.ModelID != "claude-sonnet-5-5" ||
-		defaults.Low.ModelID != "claude-sonnet-5-5" ||
+		defaults.Medium.ModelID != "claude-haiku-5-5" ||
+		defaults.Low.ModelID != "claude-haiku-5-5" ||
 		defaults.Pulse.ModelID != defaults.High.ModelID {
-		t.Fatalf("Opus 5.5 should back Claude Builder and Sonnet 5.5 High/Medium/Low/Pulse, got defaults: %+v", defaults)
+		t.Fatalf("Sonnet 5.5 should back Claude Builder/High/Pulse and Haiku 5.5 Medium/Low, got defaults: %+v", defaults)
 	}
 
 	builder, tiered := workshopResolveLLMConfig(&workflowtypes.PresetLLMConfig{
@@ -107,8 +107,8 @@ func TestWorkshopResolveLLMConfigExpandsCodingAgentMode(t *testing.T) {
 	if tiered.Tier2.Provider != defaults.Medium.Provider || tiered.Tier2.ModelID != defaults.Medium.ModelID {
 		t.Fatalf("unexpected medium tier: %+v", tiered.Tier2)
 	}
-	if got := tiered.Tier2.Options["reasoning_effort"]; got != "medium" {
-		t.Fatalf("medium reasoning_effort = %#v, want medium", got)
+	if got := tiered.Tier2.Options["reasoning_effort"]; got != "high" {
+		t.Fatalf("medium reasoning_effort = %#v, want high", got)
 	}
 	if tiered.Tier3.Provider != defaults.Low.Provider || tiered.Tier3.ModelID != defaults.Low.ModelID {
 		t.Fatalf("unexpected low tier: %+v", tiered.Tier3)

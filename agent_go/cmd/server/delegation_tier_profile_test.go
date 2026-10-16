@@ -15,10 +15,10 @@ func TestResolveDelegationTierConfigExpandsProviderProfile(t *testing.T) {
 	if resolved == nil {
 		t.Fatal("resolveDelegationTierConfig() = nil")
 	}
-	// Main is the provider's builder tier: Opus 5.5 at medium effort
-	// (multi-llm-provider-go coding_agent_tier_defaults.go, 2026-09-23).
-	if resolved.Main == nil || resolved.Main.ModelID != "claude-opus-5-5" {
-		t.Fatalf("main = %+v, want claude-opus-5-5", resolved.Main)
+	// Main is the provider's builder tier: Sonnet 5.5 at medium effort; Medium
+	// is Haiku 5.5 at high effort (multi-llm-provider-go coding_agent_tier_defaults.go, 2026-10-16).
+	if resolved.Main == nil || resolved.Main.ModelID != "claude-sonnet-5-5" {
+		t.Fatalf("main = %+v, want claude-sonnet-5-5", resolved.Main)
 	}
 	if got := resolved.Main.Options["reasoning_effort"]; got != "medium" {
 		t.Fatalf("main reasoning_effort = %#v, want medium", got)
@@ -29,11 +29,11 @@ func TestResolveDelegationTierConfigExpandsProviderProfile(t *testing.T) {
 	if got := resolved.High.Options["reasoning_effort"]; got != "high" {
 		t.Fatalf("high reasoning_effort = %#v, want high", got)
 	}
-	if resolved.Medium == nil || resolved.Medium.ModelID != "claude-sonnet-5-5" {
-		t.Fatalf("medium = %+v, want claude-sonnet-5-5", resolved.Medium)
+	if resolved.Medium == nil || resolved.Medium.ModelID != "claude-haiku-5-5" {
+		t.Fatalf("medium = %+v, want claude-haiku-5-5", resolved.Medium)
 	}
-	if got := resolved.Medium.Options["reasoning_effort"]; got != "medium" {
-		t.Fatalf("medium reasoning_effort = %#v, want medium", got)
+	if got := resolved.Medium.Options["reasoning_effort"]; got != "high" {
+		t.Fatalf("medium reasoning_effort = %#v, want high", got)
 	}
 }
 
