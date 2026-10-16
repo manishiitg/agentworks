@@ -190,3 +190,49 @@ func attachRegisteredAgentsForTest(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Owner decision 2026-10-16 (decisions log): AgentBridge mail needs the CLI. A plain MCP connection is refused
+// agent mail, a CLI sign-in and a bound agent connection are not, and talking to a Crew stays open.
+func TestAgentMailOverMCPNeedsTheCLI(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	code := func(token accesstokens.Token, bearer, body string) string {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", strings.NewReader(body))
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner", AccessToken: &token}))
+		rec := httptest.NewRecorder()
+		env.api.handleExternalCall(rec, req)
+		var out struct {
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return out.Error.Code
+	}
+	mcp := accesstokens.Token{ID: "oauth-mcp", Name: "MCP OAuth", UserID: "owner", Scopes: []string{"crews:run"}}
+	register := `{"name":"messages","arguments":{"action":"register","agent_name":"helper"}}`
+	toAgent := `{"name":"messages","arguments":{"action":"send","target":"agent:helper","message":"hi","submission_id":"s1"}}`
+	toCrew := `{"name":"messages","arguments":{"action":"send","crew_id":"nope","message":"hi","submission_id":"s2"}}`
+	if got := code(mcp, "mcp-token", register); got != "cli_required" {
+		t.Fatalf("MCP register must need the CLI, got %q", got)
+	}
+	if got := code(mcp, "mcp-token", toAgent); got != "cli_required" {
+		t.Fatalf("MCP send to an agent must need the CLI, got %q", got)
+	}
+	if got := code(mcp, "mcp-token", toCrew); got == "cli_required" {
+		t.Fatal("a Crew message over MCP must stay open")
+	}
+	cli := mcp
+	cli.Name = "AgentWorks CLI"
+	if got := code(cli, cliOAuthAccessPrefix+"x", register); got == "cli_required" {
+		t.Fatal("a CLI sign-in must be allowed to register")
+	}
+	bound := mcp
+	bound.BoundAgentID, bound.BoundAgentName = "agent-1", "helper"
+	if got := code(bound, cliOAuthAccessPrefix+"x", `{"name":"messages","arguments":{"action":"list_agents","agent_name":"helper"}}`); got == "cli_required" {
+		t.Fatal("a bound agent connection must be allowed")
+	}
+}

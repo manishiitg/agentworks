@@ -90,18 +90,24 @@ else
   PATH_LINE="export PATH=\"$INSTALL_DIR:\$PATH\""
   case "${SHELL:-}" in
     */zsh) RC="${HOME:-}/.zshrc" ;;
-    */bash) if [ "$OS" = darwin ]; then RC="${HOME:-}/.bash_profile"; else RC="${HOME:-}/.bashrc"; fi ;;
+    */bash) RC="${HOME:-}/.bash_profile" ;;
     *) RC="${HOME:-}/.profile" ;;
   esac
-  if [ -n "${HOME:-}" ] && [ -z "${AGENTWORKS_NO_PATH_EDIT:-}" ]; then
-    if ! grep -qsF "$PATH_LINE" "$RC"; then
-      printf '\n# Added by the AgentWorks installer\n%s\n' "$PATH_LINE" >> "$RC"
-    fi
-    echo "Added $INSTALL_DIR to your PATH in $RC. Open a new terminal window, or run this now:"
-  else
-    echo "$INSTALL_DIR is not on your PATH. Add it with:"
-  fi
-  echo "  $PATH_LINE"
+  case ":$PATH:" in
+    *":$INSTALL_DIR:"*) echo "$INSTALL_DIR is already on your PATH; open a new terminal window if the command is missing." ;;
+    *)
+      if [ -n "${HOME:-}" ] && [ -z "${AGENTWORKS_NO_PATH_EDIT:-}" ]; then
+        if ! grep -qsF "$PATH_LINE" "$RC"; then
+          printf '\n# Added by the AgentWorks installer\n%s\n' "$PATH_LINE" >> "$RC"
+        fi
+        echo "Added this line to $RC:"
+        echo "  $PATH_LINE"
+        echo "Open a new terminal window, or run that line now."
+      else
+        echo "$INSTALL_DIR is not on your PATH. Add it with:"
+        echo "  $PATH_LINE"
+      fi ;;
+  esac
 fi
 
 if [ "${NO_LOGIN:-0}" != 1 ]; then
