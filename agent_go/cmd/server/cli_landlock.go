@@ -49,7 +49,7 @@ func failClosedToBridgeOnly(llmAgent *agent.LLMAgentWrapper, sessionID, why stri
 // finalized. A read-only guard path stays read-only for the CLI; blocked paths
 // inside a granted folder are not carved out (Landlock only adds access), and
 // the bridge tools still enforce them.
-func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, sessionID, provider, workingDir string, base *llmtypes.CLISecurityPolicy) {
+func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, sessionID, personID, provider, workingDir string, base *llmtypes.CLISecurityPolicy) {
 	if llmAgent == nil {
 		return
 	}
@@ -77,7 +77,8 @@ func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, sessionID, provider, work
 	} else if upgraded {
 		log.Printf("[CLI_LANDLOCK] session %s: Full CLI on (native shell and file edits, inside the lock)", sessionID)
 	}
-	log.Printf("[CLI_LANDLOCK] session %s: %s confined (reads %d, writes %d, private home under %s)", sessionID, provider, len(policy.WorkspaceReadPaths), len(policy.WorkspaceWritePaths), workingDir)
+	// person= and home= match the provider's "[CLI_LANDLOCK] launch ... home=" line, so a launch's account label can be tied to its chat and person (PLAT-480-1).
+	log.Printf("[CLI_LANDLOCK] session %s: %s confined (reads %d, writes %d, private home under %s) person=%s home=%s", sessionID, provider, len(policy.WorkspaceReadPaths), len(policy.WorkspaceWritePaths), workingDir, personID, policy.PrivateHome)
 	// The paths themselves (folders, never file contents): the counts alone could not show what a chat can reach.
 	log.Printf("[CLI_LANDLOCK] session %s: reads=%v writes=%v blocked=%v blocked_writes=%v", sessionID, policy.WorkspaceReadPaths, policy.WorkspaceWritePaths, policy.BlockedPaths, policy.BlockedWritePaths)
 }

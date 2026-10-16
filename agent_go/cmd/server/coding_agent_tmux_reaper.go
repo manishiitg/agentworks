@@ -58,7 +58,8 @@ func (api *StreamingAPI) cleanupStaleCodingAgentTmuxSessions(now time.Time) int 
 	if now.IsZero() {
 		now = time.Now()
 	}
-	candidates := api.staleCodingAgentTmuxCleanupCandidates(now, codingAgentTmuxOrphanIdleTimeout())
+	idleLimit := codingAgentTmuxOrphanIdleTimeout()
+	candidates := api.staleCodingAgentTmuxCleanupCandidates(now, idleLimit)
 	closed := 0
 	for _, candidate := range candidates {
 		snapshot := candidate.snapshot
@@ -86,8 +87,17 @@ func (api *StreamingAPI) cleanupStaleCodingAgentTmuxSessions(now time.Time) int 
 		// queues behind the dead turn (server B, 2026-09-30, a Muse Code chat).
 		api.releaseStoppedSessionTurnMarkers(snapshot.SessionID)
 		closed++
-		log.Printf("[TMUX_REAPER] Closed stale coding-agent tmux session %q terminal=%q owner=%q session=%q reason=%s",
-			tmuxSession, snapshot.TerminalID, snapshot.OwnerID, snapshot.SessionID, candidate.reason)
+		// idle_for/last_activity/idle_limit show the time the close decision used (PLAT-480-2).
+		lastActivity := snapshot.UpdatedAt
+		if lastActivity.IsZero() {
+			lastActivity = snapshot.CreatedAt
+		}
+		idleFor := time.Duration(0)
+		if !lastActivity.IsZero() {
+			idleFor = now.Sub(lastActivity).Round(time.Second)
+		}
+		log.Printf("[TMUX_REAPER] Closed stale coding-agent tmux session %q terminal=%q owner=%q session=%q reason=%s idle_for=%s last_activity=%s idle_limit=%s",
+			tmuxSession, snapshot.TerminalID, snapshot.OwnerID, snapshot.SessionID, candidate.reason, idleFor, lastActivity.UTC().Format(time.RFC3339), idleLimit)
 	}
 	// Panes no lease knows (their turn emitted no terminal event) are invisible to the loop above.
 	closed += api.cleanupUnleasedCodingAgentTmuxSessions(now)
