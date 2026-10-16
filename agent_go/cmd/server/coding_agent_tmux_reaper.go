@@ -82,6 +82,7 @@ func (api *StreamingAPI) cleanupStaleCodingAgentTmuxSessions(now time.Time) int 
 		}
 		api.terminalStore.MarkArchived(snapshot.TerminalID, candidate.reason)
 		api.closeRetainedSessionForReapedTmux(snapshot.SessionID, tmuxSession)
+		crewEditLockReleaseSession(snapshot.SessionID)
 		// The pane is gone, so nothing can finish the turn it was running: clear what still marks
 		// the conversation busy (retained-turn record, claimed queue entry), or every later message
 		// queues behind the dead turn (server B, 2026-09-30, a Muse Code chat).

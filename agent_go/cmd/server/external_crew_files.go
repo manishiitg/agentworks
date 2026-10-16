@@ -43,6 +43,9 @@ func (api *StreamingAPI) externalCrewFilesCall(w http.ResponseWriter, r *http.Re
 		externalError(w, 403, "protected_path", "Path is protected or outside write grants.")
 		return
 	}
+	if crewEditLockRefuse(w, crew, claims, p) {
+		return
+	}
 	action := externalArg(args, "action")
 	if action == "patch" {
 		if externalArg(args, "diff") == "" || externalArg(args, "expected_revision") == "" || externalArg(args, "request_id") == "" || args["destination"] != nil {

@@ -4081,6 +4081,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	currentUserIsReadOnly = readOnlyForRequest(access, req)
+	// One owner at a time edits a Crew (crew_edit_lock.go): an owner's Builder chat takes the lock, and another owner who
+	// tries while it is held is told who has it and when it frees.
+	if !currentUserIsReadOnly && resolvedProfile != nil && resolvedProfile.Definition.ID == crewProfileID && crewBuilderTurn(req) {
+		if ref, ok := resolveCrewPath(r.Context(), currentUserID, req.SelectedFolder); ok && ref.Shared && crewAccessFor(GetUserFromContext(r.Context()), ref) == crewAccessOwner {
+			if message := crewEditLockTake(ref.Root, currentUserID, sessionID, time.Now()); message != "" {
+				logfWithContext(queryLogCtx, "[CREW_LOCK] %s refused for session %s: %s", sanitizeUserIDForPath(currentUserID), sessionID, message)
+				http.Error(w, message, http.StatusConflict)
+				return
+			}
+		}
+	}
 	// One person at a time uses the Builder on a workflow. When someone else has it, this turn runs in Run mode instead
 	// of being refused, and is told who has it (PLAT-766). Your own other Builder chat still gets the 409 below.
 	if !currentUserIsReadOnly {

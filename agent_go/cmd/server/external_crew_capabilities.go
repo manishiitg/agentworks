@@ -182,6 +182,9 @@ func (api *StreamingAPI) externalCrewCapabilityCall(w http.ResponseWriter, r *ht
 		externalError(w, 403, "forbidden", "Only the Crew owner can change this configuration.")
 		return
 	}
+	if write && crewEditLockRefuse(w, crew, claims, "") {
+		return
+	}
 	if group == "crew_folders" && (!crew.OwnedByCaller || token != nil && (!token.AllCrews || token.FileGuard != nil)) {
 		externalError(w, 403, "insufficient_scope", "Account-wide folder access requires the Crew owner and consent for all Crews without a file guard.")
 		return

@@ -411,6 +411,9 @@ func (api *StreamingAPI) externalCrewAuthoringCall(w http.ResponseWriter, r *htt
 			externalError(w, http.StatusForbidden, "forbidden", fmt.Sprintf("Only the Crew's owner (%v) can %s it.", summary["owner"], strings.TrimSuffix(name, "_crew")))
 			return
 		}
+		if name == "update_crew" && crewEditLockRefuse(w, crew, claims, "") {
+			return
+		}
 		if name == "export_crew" {
 			spec, err := exportCrewSpec(ctx, crew, manifest)
 			if err != nil {
@@ -1020,6 +1023,9 @@ func (api *StreamingAPI) externalWriteCrewFile(w http.ResponseWriter, r *http.Re
 	}
 	if _, pathErr := crewSpecFilePath(root, rel); pathErr != nil || err != nil || wf.ProtectedWrite(clean) {
 		externalError(w, http.StatusForbidden, "protected_path", "That path is not an editable Crew file (manifests, functions.json, chats, databases and hidden folders are protected).")
+		return
+	}
+	if crew.OwnedByCaller && !inOwnShared && crewEditLockRefuse(w, crew, claims, clean) {
 		return
 	}
 	_, hasText := args["content"]
