@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 )
 
@@ -108,5 +110,40 @@ func TestAgentPingOncePerMessageAndCollapses(t *testing.T) {
 	}
 	if pings != 1 {
 		t.Fatalf("want one collapsed ping line, got %d", pings)
+	}
+}
+
+// A chat inside AgentWorks that wrote to an attached agent is judged by the person's access, not by
+// the bound connection's scopes; sending and unbound connections keep their own scopes.
+func TestMessagePeerViewDropsBoundScopesOnlyWhenReceiving(t *testing.T) {
+	bound := &UserClaims{UserID: "u1", AccessToken: &accesstokens.Token{ID: "t1", BoundAgentID: "agent-1"}}
+	if got := messagePeerView(bound, false); got.AccessToken != nil || got.UserID != "u1" {
+		t.Errorf("receiving: want the person's own access, got %+v", got)
+	}
+	if bound.AccessToken == nil {
+		t.Error("the caller's claims must not be changed")
+	}
+	if messagePeerView(bound, true) != bound {
+		t.Error("sending must keep the connection's scopes")
+	}
+	plain := &UserClaims{UserID: "u1", AccessToken: &accesstokens.Token{ID: "t2"}}
+	if messagePeerView(plain, false) != plain {
+		t.Error("an unbound connection keeps its scopes")
+	}
+}
+
+// A chat inside AgentWorks owned by someone else never reaches this person's attached agent through the
+// receiving rule, even for a Crew or Goal this person can use.
+func TestHostedSenderOfAnotherPersonIsRefusedForAttachedAgent(t *testing.T) {
+	api := &StreamingAPI{}
+	claims := &UserClaims{UserID: "u1", AccessToken: &accesstokens.Token{ID: "t1", BoundAgentID: "agent-1"}}
+	for _, peer := range []agentMessageEndpoint{
+		{Kind: triggerCallerCrew, UserID: "u2", ID: "crew-1"},
+		{Kind: triggerCallerWorkflow, UserID: "u2", ID: "wf-1"},
+		{Kind: triggerCallerCrew, Profile: codeproduct.ProfileID, UserID: "u2", ID: "code-1"},
+	} {
+		if err := api.externalAuthorizeMessagePeer(context.Background(), claims, peer, false); err == nil {
+			t.Errorf("%s chat of another person was accepted", peer.Kind)
+		}
 	}
 }

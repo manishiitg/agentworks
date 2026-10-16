@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -51,6 +52,17 @@ func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claim
 	return agentMessageEndpoint{}, fmt.Errorf("conversation unavailable or access denied")
 }
 
+// messagePeerView is the access used to judge a chat inside AgentWorks that sent to an attached agent:
+// when only receiving, the person's own access instead of the bound connection's scopes.
+func messagePeerView(claims *UserClaims, send bool) *UserClaims {
+	if send || claims == nil || claims.AccessToken == nil || claims.AccessToken.BoundAgentID == "" {
+		return claims
+	}
+	person := *claims
+	person.AccessToken = nil
+	return &person
+}
+
 func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claims *UserClaims, peer agentMessageEndpoint, send bool) error {
 	token := claims.AccessToken
 	denied := fmt.Errorf("conversation unavailable or access denied")
@@ -68,6 +80,18 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 		}
 		return nil
 	}
+	// An attached agent's connection exists only to receive its own mail: a chat inside AgentWorks that
+	// wrote to it is judged by what the person can reach, not by the connection's tool scopes (which a
+	// bound connection never has), or its messages would be stored and never delivered.
+	if view := messagePeerView(claims, send); view != claims {
+		// Only the person's OWN Builder, Code or Cowork chats may reach their attached agent.
+		if peer.UserID != claims.UserID {
+			log.Printf("[AGENT_MSG] refused a chat of another person: sender_user=%s kind=%s receiving_agent=%s", peer.UserID, peer.Kind, claims.AccessToken.BoundAgentName)
+			return denied
+		}
+		claims = view
+	}
+	token = claims.AccessToken
 	if peer.Profile == codeproduct.ProfileID {
 		if peer.UserID != claims.UserID || !externalCodeRunAllowed(claims) {
 			return denied
