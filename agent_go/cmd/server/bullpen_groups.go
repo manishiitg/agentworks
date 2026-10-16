@@ -188,7 +188,7 @@ func (s agentMessageStore) groupAgentItems(userID string) []map[string]interface
 				continue
 			}
 			for _, a := range s.Agents {
-				if a.ID != m.AgentID || a.UserID != m.UserID {
+				if a.ID != m.AgentID || a.UserID != m.UserID || a.Attachment == nil {
 					continue
 				}
 				owner := label(a.UserID)
@@ -215,7 +215,7 @@ func (s agentMessageStore) groupsView(viewerID string, withMembers bool) []map[s
 		members := []map[string]interface{}{}
 		for _, m := range g.Members {
 			for _, a := range s.Agents {
-				if a.ID != m.AgentID || a.UserID != m.UserID {
+				if a.ID != m.AgentID || a.UserID != m.UserID || a.Attachment == nil {
 					continue
 				}
 				if m.UserID == viewerID {

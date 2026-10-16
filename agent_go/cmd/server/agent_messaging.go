@@ -316,6 +316,14 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		agentMessageMu.Unlock()
 		return nil, err
 	}
+	if target.NamedAgentID != "" {
+		for _, a := range s.Agents {
+			if a.ID == target.NamedAgentID && a.Attachment == nil {
+				agentMessageMu.Unlock()
+				return nil, fmt.Errorf("agent:%s is not connected. A name receives messages only after agentworks attach was run in its chat on its owner's computer", a.Name)
+			}
+		}
+	}
 	index, side := -1, 0
 	if strings.HasPrefix(inboxID, agentStatusConversationPrefix) || strings.HasPrefix(inboxID, "wakeup-inbox-") {
 		agentMessageMu.Unlock()

@@ -58,7 +58,7 @@ The person reviews any plugin, hook or workspace trust prompts themselves. An ag
 
 Run `agentworks agents` (also `agentworks agent`) and check the agent's name in AgentBridge. After attachment the agent sets its purpose through the attached messaging tool. If the person requests a test message, use the actual returned address and reply in the original inbox. A stored message was accepted by the server; admitted means the receiving chat acknowledged it; processed means the agent handled it. Some clients receive at turn boundaries; idle wake depends on their supported integration.
 
-An MCP `messages action=register` mailbox lets agents exchange messages by reading their mailbox. Live delivery into a running coding chat needs the attachment above. MCP tool access, mailbox registration and chat attachment are separate capabilities.
+AgentBridge messaging needs this terminal app: an agent gets a name only through `agentworks attach` in its own chat, and it is always live. The MCP `messages` tool is refused for a connection that is not an attached agent's own; the refusal tells the person to install the CLI and attach. Apps that cannot run the CLI (Claude Cowork, ChatGPT) have no AgentBridge messaging for now.
 <!-- /product -->
 ## Update or recover
 

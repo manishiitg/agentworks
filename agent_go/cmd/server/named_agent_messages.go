@@ -16,6 +16,20 @@ import (
 	"github.com/google/uuid"
 )
 
+// agentBridgeNeedsCLIText is what an MCP-only connection hears (owner 2026-10-16): AgentBridge names exist only through the CLI.
+const agentBridgeNeedsCLIText = "AgentBridge messaging needs the AgentWorks CLI on your computer: install it from Connect AI agents and run agentworks attach in the chat that should receive messages."
+
+// agentMailCall is a messages call that uses an AgentBridge agent name or group; talking to a Crew or workflow
+// (ask_crew, chat, send with crew_id) stays open to MCP clients.
+func agentMailCall(args map[string]any) bool {
+	target := strings.ToLower(strings.TrimSpace(externalArg(args, "target")))
+	switch externalArg(args, "action") {
+	case "register", "unregister", "list_agents", "ack", "update_purpose", "join_group", "leave_group", "list_groups", "group_members", "ping_person", "get_file":
+		return true
+	}
+	return externalArg(args, "agent_name") != "" || strings.HasPrefix(target, "agent:") || strings.HasPrefix(target, "group:")
+}
+
 // Names are account-owned addresses, not device identities or access grants.
 // A registration survives reconnects; deleting and recreating a name gets a new
 // ID so old conversations cannot silently reach a replacement agent.
@@ -147,7 +161,7 @@ func listNamedMessageAgents(ctx context.Context, userID string) (map[string]inte
 func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessageStore, withUsage bool) map[string]interface{} {
 	items := []map[string]interface{}{}
 	for _, a := range s.Agents {
-		if a.UserID == userID {
+		if a.UserID == userID && a.Attachment != nil {
 			item := map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "groups": s.groupNamesOf(a.ID, a.UserID), "provider": func() string {
 				if a.Attachment != nil {
 					return a.Attachment.Provider
@@ -304,12 +318,6 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 	}
 	if claims.AccessToken != nil {
 		out["connection_id"] = claims.AccessToken.ID
-	}
-	if externalArg(args, "action") == "register" {
-		out["presence"] = namedAgentPresence(s.Agents[index])
-		if s.Agents[index].Attachment == nil {
-			out["next"] = "Mailbox only: messages wait here until this agent reads them. For live messages in this app, install the AgentWorks CLI and run agentworks attach " + name + " in the chat (it takes over this name and keeps your groups)."
-		}
 	}
 	externalJSON(w, out)
 }
