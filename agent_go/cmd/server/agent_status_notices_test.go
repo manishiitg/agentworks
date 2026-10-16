@@ -170,7 +170,7 @@ func TestAgentStatusSweepSkipsRepliedMessagesAndNamesDeadNames(t *testing.T) {
 			text = c.Messages[0].Text
 		}
 	}
-	if !strings.Contains(text, "it is offline") || strings.Contains(text, "your message 1") || strings.Contains(text, "b has not read") {
+	if !strings.Contains(text, "no chat is attached to this name") || strings.Contains(text, "your message 1") || strings.Contains(text, "b has not read") {
 		t.Fatalf("unexpected notice: %q", text)
 	}
 	if sweepAgentStatusNotices(&s, now.Add(time.Minute)) {
