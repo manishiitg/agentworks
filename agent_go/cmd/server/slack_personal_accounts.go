@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-const slackAccountNotice = "Messages this item sends with this account appear in Slack as sent by you, with Slack's app attribution. Anyone who can run or change this item can send as you through it. Removing it here leaves your other items connected."
+const slackAccountNotice = "Messages sent with your Slack show as from you. Anyone who can use this item can send as you through it."
 
 // Slack uses the existing sealed personal MCP login and explicit attachment
 // index. No tokens are copied into a product, tool reply or chat.
@@ -26,12 +26,16 @@ type slackAccountRow struct {
 	Label     string `json:"label"`
 	Selected  bool   `json:"selected"`
 	Connected bool   `json:"connected"`
+	// Mine marks the caller's own account; others appear only when added here.
+	Mine bool `json:"mine"`
 }
 
 type slackAccountsResponse struct {
 	Accounts   []slackAccountRow `json:"accounts"`
 	CanConnect bool              `json:"can_connect"`
 	Notice     string            `json:"notice"`
+	// SignInReady is false while the deployment's Slack sign-in app is not set up.
+	SignInReady bool `json:"sign_in_ready"`
 }
 
 func slackSelected(owner, id, root string) bool {
@@ -57,23 +61,41 @@ func personalSlackServer(owner, id string) (placeMCPServer, error) {
 	return placeMCPServer{}, fmt.Errorf("Choose a saved Slack account from this item's Slack settings.")
 }
 
-// unsignedPersonalSlack returns the person's saved Slack account that has no
-// login yet, or "" when every saved account is signed in.
-func unsignedPersonalSlack(person string) (string, error) {
+// ownPersonalSlack returns the person's saved Slack account (one per person,
+// owner 2026-10-16), preferring a signed-in one, or "" when they have none.
+func ownPersonalSlack(person string) (string, bool, error) {
 	servers, err := listPlaceMCPServers(person)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	dir, err := placeMCPDir(person)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
+	id := ""
 	for _, server := range servers {
-		if isPersonalSlack(server) && !placeMCPServerConnected(dir, person, server) {
-			return server.Name, nil
+		if !isPersonalSlack(server) {
+			continue
+		}
+		if placeMCPServerConnected(dir, person, server) {
+			return server.Name, true, nil
+		}
+		if id == "" {
+			id = server.Name
 		}
 	}
-	return "", nil
+	return id, false, nil
+}
+
+// slackSignInReady reports whether people can sign in to Slack: the
+// deployment's Slack sign-in app is set up, or the catalog brings its own.
+func (api *StreamingAPI) slackSignInReady() bool {
+	for _, group := range api.mcpAppGroups() {
+		if group.Key == "slack" {
+			return group.Configured
+		}
+	}
+	return true
 }
 
 func (api *StreamingAPI) personalSlackAccounts(r *http.Request, workspace string) (slackAccountsResponse, error) {
@@ -85,6 +107,7 @@ func (api *StreamingAPI) personalSlackAccounts(r *http.Request, workspace string
 	root := personalConnectionItemRoot(actor, workspace)
 	_, buildErr := personalConnectionItemScope(r, workspace, true, "Slack", "Integrations → Slack")
 	out.CanConnect = buildErr == nil
+	out.SignInReady = api.slackSignInReady()
 	// A person's own saved accounts stay private. A product Builder may also
 	// inspect and detach accounts explicitly selected for this item.
 	owners := map[string]bool{actor: true}
@@ -113,11 +136,11 @@ func (api *StreamingAPI) personalSlackAccounts(r *http.Request, workspace string
 			if !isPersonalSlack(server) || owner != actor && !selected {
 				continue
 			}
-			label := server.Label
-			if label == "" {
-				label = "Slack account"
+			label := "Your Slack"
+			if owner != actor {
+				label = shareOwnerLabel(owner) + "'s Slack"
 			}
-			out.Accounts = append(out.Accounts, slackAccountRow{personalConnectionPermissions: personalConnectionAccess(r, owner, workspace, selected, "Slack", "Integrations → Slack"), ID: server.Name, Owner: owner, Label: label, Selected: selected, Connected: placeMCPServerConnected(dir, owner, server)})
+			out.Accounts = append(out.Accounts, slackAccountRow{personalConnectionPermissions: personalConnectionAccess(r, owner, workspace, selected, "Slack", "Integrations → Slack"), ID: server.Name, Owner: owner, Label: label, Selected: selected, Connected: placeMCPServerConnected(dir, owner, server), Mine: owner == actor})
 		}
 	}
 	sort.Slice(out.Accounts, func(i, j int) bool {
@@ -158,12 +181,19 @@ func (api *StreamingAPI) personalSlackOperation(r *http.Request, workspace strin
 		if strings.TrimSpace(label) == "" {
 			label = "My Slack account"
 		}
-		// Reuse the person's saved account that never finished signing in, so
-		// repeated Connect clicks (e.g. before the sign-in app is set up) do
-		// not pile up empty "Sign-in needed" accounts (2026-10-16).
-		id, err = unsignedPersonalSlack(actor)
+		// One Slack account per person (owner, 2026-10-16): Connect reuses the
+		// saved one, so repeated clicks never pile up empty accounts.
+		var signedIn bool
+		id, signedIn, err = ownPersonalSlack(actor)
 		if err != nil {
 			return nil, err
+		}
+		if signedIn {
+			if err := attachPersonalLoginToPlace(actor, id, root); err != nil {
+				return nil, err
+			}
+			log.Printf("[SLACK_ACCOUNTS] actor=%s account=%s owner=%s item=%s reason=connect_existing", actor, id, actor, root)
+			return map[string]any{"connection_id": id, "selected": true, "message": "Your Slack is now used here.", "notice": slackAccountNotice}, nil
 		}
 		if id == "" {
 			saved, _, err := api.ensurePersonalMCP(r.Context(), actor, placeMCPServer{Label: label}, "Slack")

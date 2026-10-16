@@ -102,7 +102,12 @@ export default function WorkflowBotsPanel({ workspacePath, target, scopeNoun = '
     return (
       <div className="space-y-4">
         {tabs}
-        <>{workspacePath && <Suspense fallback={null}><SlackAccountsPanel key={workspacePath} workspacePath={workspacePath} /></Suspense>}<SlackSetup bots={bots} headerAction={askSlackSetup} homeTabAction={askSlackHomeTab} ownBotOnly={ownBotOnly} /></>
+        <>{workspacePath && <Suspense fallback={null}><SlackAccountsPanel key={workspacePath} workspacePath={workspacePath} /></Suspense>}
+          {/* The bot is a separate feature: collapsed so sending as yourself stays the first thing people see. */}
+          <details className="rounded-md border border-border p-3">
+            <summary className="cursor-pointer text-sm font-medium">Let people message this in Slack (a bot)</summary>
+            <div className="mt-3"><SlackSetup bots={bots} headerAction={askSlackSetup} homeTabAction={askSlackHomeTab} ownBotOnly={ownBotOnly} /></div>
+          </details></>
       </div>
     )
   }

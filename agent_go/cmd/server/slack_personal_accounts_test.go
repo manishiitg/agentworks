@@ -67,6 +67,10 @@ func TestPersonalSlackConnectionsAcrossSurfaces(t *testing.T) {
 	if err != nil || strings.Contains(string(sealed), "fixture-slack-access") {
 		t.Fatal("login was not sealed")
 	}
+	// One Slack account per person: Connect once signed in reuses it, no new sign-in.
+	if signedIn := call("editor", "Workflow/orders", "connect", "", "", 200); signedIn["connection_id"] != id || signedIn["auth_url"] != nil {
+		t.Fatalf("connect after sign-in = %+v, want the same account and no new sign-in", signedIn)
+	}
 	// Neither another Builder nor an administrator attaches somebody else's account.
 	call("builder", "Workflow/orders", "attach", "editor", id, 403)
 	call("boss", "Workflow/orders", "attach", "editor", id, 403)
