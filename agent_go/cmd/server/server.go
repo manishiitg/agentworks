@@ -6260,6 +6260,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				for name, override := range placeOverrides {
 					agentConfig.RuntimeOverrides[name] = override
 				}
+				// Someone else's personal Slack added to this place: this person's turn lists only its send side.
+				if entries, restricted := personalSlackSendOnlyEntries(placeRoot, currentUserID); len(entries) > 0 {
+					agentConfig.SelectedTools = restrictSelectedToolsForSlack(agentConfig.SelectedTools, selectedServers, entries, restricted)
+					log.Printf("[SLACK_ACCOUNTS] item=%s caller=%s tool list cut to the send side for %d account(s)", placeRoot, currentUserID, len(restricted))
+				}
 			}
 		}
 		// Apply the external Builder boundary last, including after a Code

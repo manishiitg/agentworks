@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"sort"
 	"strings"
+
+	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
 const slackAccountNotice = "Messages sent with your Slack show as from you. Anyone who can use this item can send as you through it, but only you can read or search your Slack."
@@ -391,4 +393,63 @@ func (api *StreamingAPI) logPersonalSlackCall(ctx context.Context, session, serv
 		}
 		log.Printf("[SLACK_ACCOUNTS] account=%s owner=%s item=%s caller=%s session=%s tool=%s event=tool_%s", a.Server, a.Owner, root, caller, session, tool, stage)
 	}
+}
+
+// personalSlackSendOnlyEntries lists, as "server:tool" selections, the send-side tools of every personal Slack account
+// added to root that does not belong to caller, with the account's internal server names. A turn for someone who is not
+// the account's owner offers only these tools of that server (the read side is also refused on the server).
+func personalSlackSendOnlyEntries(root, caller string) (entries []string, servers map[string]bool) {
+	attachments, _ := placeMCPAttachmentsFor(placeRootOf(root))
+	servers = map[string]bool{}
+	for _, a := range attachments {
+		if a.Scope != "user" || a.Owner == caller {
+			continue
+		}
+		if _, err := personalSlackServer(a.Owner, a.Server); err != nil {
+			continue
+		}
+		internal := placeMCPInternalName(a.Owner, a.Server)
+		servers[internal] = true
+		names := make([]string, 0, len(slackSendSideTools))
+		for tool := range slackSendSideTools {
+			names = append(names, tool)
+		}
+		sort.Strings(names)
+		for _, tool := range names {
+			entries = append(entries, internal+":"+tool)
+		}
+	}
+	return entries, servers
+}
+
+// restrictSelectedToolsForSlack returns the turn's tool selection with each non-owned personal Slack server cut down to
+// its send side. A selection that was empty (every tool of every server) becomes explicit "server:*" entries for the
+// other servers, so only the Slack server narrows.
+func restrictSelectedToolsForSlack(selected, serverNames []string, entries []string, restricted map[string]bool) []string {
+	if len(entries) == 0 {
+		return selected
+	}
+	out := make([]string, 0, len(selected)+len(serverNames)+len(entries))
+	for _, tool := range selected {
+		server, _, _ := strings.Cut(tool, ":")
+		if !restricted[server] {
+			out = append(out, tool)
+		}
+	}
+	for _, name := range serverNames {
+		if name == "" || name == mcpclient.NoServers || restricted[name] {
+			continue
+		}
+		has := false
+		for _, tool := range out {
+			if strings.HasPrefix(tool, name+":") {
+				has = true
+				break
+			}
+		}
+		if !has {
+			out = append(out, name+":*")
+		}
+	}
+	return append(out, entries...)
 }
