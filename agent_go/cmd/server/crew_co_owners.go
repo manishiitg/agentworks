@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"strings"
 )
 
@@ -62,4 +63,15 @@ func crewRoleOf(root, userID string) string {
 		return crewRoleReader
 	}
 	return crewRoleNone
+}
+
+// coOwnerTurnOwner is the main owner of the Crew at workspacePath when callerID is one of its CO-owners, or "". Such a
+// caller's Builder turn runs as that owner for provider accounts and token limits (their cost is billed to the owner;
+// the cost record still names the caller).
+func coOwnerTurnOwner(ctx context.Context, callerID, workspacePath string) string {
+	ref, ok := resolveCrewPath(ctx, callerID, workspacePath)
+	if !ok || !ref.Shared || ref.OwnerID == "" || ref.OwnerID == sanitizeUserIDForPath(callerID) || !crewIsCoOwner(ref.Root, callerID) {
+		return ""
+	}
+	return ref.OwnerID
 }

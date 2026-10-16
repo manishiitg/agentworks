@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"testing"
 )
@@ -59,6 +60,24 @@ func TestCrewCoOwnerHasPermissionsButNotIdentity(t *testing.T) {
 	// The Crew's files through the raw workspace proxy: the co-owner reaches them, a stranger does not.
 	if workspaceProxyPathIsOtherUser(root+"/instructions.md", "co") || !workspaceProxyPathIsOtherUser(root+"/instructions.md", "ann") {
 		t.Fatal("the workspace proxy gate ignores co-owners")
+	}
+
+	// A co-owner's turn runs as the main owner for accounts and limits; the owner's own and a stranger's turn do not change.
+	crewOwners.mu.Lock()
+	crewOwners.entries = map[string]crewOwnerEntry{}
+	crewOwners.read = func(_ context.Context, r string) string {
+		if r == root {
+			return "owner"
+		}
+		return ""
+	}
+	crewOwners.mu.Unlock()
+	t.Cleanup(func() { crewOwners.mu.Lock(); crewOwners.read = nil; crewOwners.mu.Unlock() })
+	if got := coOwnerTurnOwner(context.Background(), "co", root+"/instructions.md"); got != "owner" {
+		t.Fatalf("co-owner turn owner = %q, want owner", got)
+	}
+	if coOwnerTurnOwner(context.Background(), "owner", root) != "" || coOwnerTurnOwner(context.Background(), "ann", root) != "" {
+		t.Fatal("only a co-owner's turn runs as the main owner")
 	}
 
 	// Every owner reads every Builder conversation on disk (owner, 2026-10-16); readers read none.
