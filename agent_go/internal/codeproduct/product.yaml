@@ -78,6 +78,13 @@ profile:
       - manage_vault_access
       # Any account: create vaults and share MCP connections through them (owner-checked by the Vault service).
       - manage_my_vaults
+  skills: [make-a-crew]
+  # Slash commands Code ships with. The prompt lives under commands/; {{context}} is what was typed before the slash.
+  commands:
+    - name: crew
+      description: Make a Crew from this project (or from a description) so others can use it
+      icon: terminal
+      file: commands/crew.md
   runtime:
     transport: auto
     provider_options:

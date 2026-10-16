@@ -940,6 +940,9 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		if err := api.registerCodeChatTools(registrar, gate, userID, sessionID, workspacePath); err != nil {
 			return err
 		}
+		if err := api.registerCodeCrewTools(registrar, gate, userID, sessionID, workspacePath); err != nil {
+			return err
+		}
 	}
 	// The existing Ask read tool also resolves captured published dashboard
 	// source. Ordinary native Crew chats retain their other tools and policy.
