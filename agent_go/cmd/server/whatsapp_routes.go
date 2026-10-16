@@ -209,10 +209,21 @@ func whatsappPairHandler(manager *services.WhatsAppServiceManager, defaults What
 				size = n
 			}
 		}
-		png, err := svc.GetQRImagePNG(size)
-		if err != nil {
-			http.Error(w, "qr encode failed: "+err.Error(), http.StatusInternalServerError)
-			return
+		// A new attempt issues its first code about a second after it starts.
+		// Wait for it, so the screen shows the code instead of an error at
+		// every restart (the attempt ends every ~2.5 minutes).
+		var png []byte
+		deadline := time.Now().Add(8 * time.Second)
+		for {
+			png, err = svc.GetQRImagePNG(size)
+			if err != nil {
+				http.Error(w, "qr encode failed: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if png != nil || svc.IsPaired() || time.Now().After(deadline) || r.Context().Err() != nil {
+				break
+			}
+			time.Sleep(250 * time.Millisecond)
 		}
 		if png == nil {
 			http.Error(w, "no pairing QR available — already paired, or service not started", http.StatusNotFound)
