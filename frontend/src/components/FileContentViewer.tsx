@@ -42,7 +42,7 @@ const PdfRenderer = lazy(() => import('./ui/PdfRenderer').then(module => ({ defa
 const FileSurfaceFallback = () => (
   <div className="flex h-full min-h-40 items-center justify-center text-muted-foreground">
     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-    Loading viewer...
+    Loading...
   </div>
 )
 
