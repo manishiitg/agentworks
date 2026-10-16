@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getDisplaySafeUserMessageContent } from './chatMessageContent'
+import { getDisplaySafeUserMessageContent, getUserMessageAttachmentPaths, isImageAttachmentPath } from './chatMessageContent'
 
 describe('getDisplaySafeUserMessageContent', () => {
   it('keeps typed text and hides attached-file transport context', () => {
@@ -22,5 +22,15 @@ describe('getDisplaySafeUserMessageContent', () => {
   it('labels Pulse automatic turns and leaves plain messages alone', () => {
     expect(getDisplaySafeUserMessageContent('whats is your purpose')).toBe('whats is your purpose')
     expect(getDisplaySafeUserMessageContent('PULSE TURN: daily goal check, 2026-10-08.\n\nPULSE DAILY GOAL CHECK...')).toBe('Pulse: daily goal check')
+  })
+})
+
+describe('getUserMessageAttachmentPaths', () => {
+  it('lists the attached files from the stored request context, once each', () => {
+    expect(getUserMessageAttachmentPaths('what is this?\n\n📁 Files in context: Chats/Work/p/uploads/a.png, Chats/Work/p/uploads/b.pdf, Chats/Work/p/uploads/a.png'))
+      .toEqual(['Chats/Work/p/uploads/a.png', 'Chats/Work/p/uploads/b.pdf'])
+    expect(getUserMessageAttachmentPaths('just text')).toEqual([])
+    expect(isImageAttachmentPath('x/Screenshot 1.PNG')).toBe(true)
+    expect(isImageAttachmentPath('x/report.pdf')).toBe(false)
   })
 })

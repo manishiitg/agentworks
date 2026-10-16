@@ -76,7 +76,7 @@ import { selectWorkflowPreset } from '../utils/workflowNavigation'
 import { ProductChatSurface } from '../platform/chat/ProductChatSurface'
 import { buildCleanConversationItems } from '../utils/cleanConversation'
 import { submissionFailure } from '../platform/chat/submissionFailure'
-import { getDisplaySafeUserMessageContent } from '../utils/chatMessageContent'
+import { getDisplaySafeUserMessageContent, getUserMessageAttachmentPaths } from '../utils/chatMessageContent'
 import { recordChatDeliveryTelemetry, recordChatSubmissionTelemetry } from '../utils/chatDeliveryTelemetry'
 
 // Stable empty array to avoid infinite re-render loops in Zustand selectors
@@ -112,7 +112,7 @@ function getEventTimestampMs(event: PollingEvent): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function createNextOptimisticUserMessage(sessionId: string, content: string, existing: PollingEvent[], clientMessageId: string): PollingEvent {
+function createNextOptimisticUserMessage(sessionId: string, content: string, existing: PollingEvent[], clientMessageId: string, attachments: string[] = []): PollingEvent {
   const indexed = existing.filter(event => typeof event.event_index === 'number')
   const eventIndex = indexed.length > 0
     ? indexed.reduce((maxIndex, event) => Math.max(maxIndex, event.event_index as number), -1) + 1
@@ -134,7 +134,7 @@ function createNextOptimisticUserMessage(sessionId: string, content: string, exi
   return {
     ...event,
     id: clientMessageEventId(clientMessageId),
-    data: { ...outer, data: { ...inner, metadata: { client_message_id: clientMessageId, provisional: true } } } as PollingEvent['data'],
+    data: { ...outer, data: { ...inner, metadata: { client_message_id: clientMessageId, provisional: true, ...(attachments.length > 0 ? { attachments } : {}) } } } as PollingEvent['data'],
   }
 }
 
@@ -357,9 +357,12 @@ function withDisplaySafeUserMessage(event: PollingEvent): PollingEvent {
   const safeContent = getDisplaySafeUserMessageContent(content)
   if (!content || safeContent === content) return event
 
+  // The files the person attached are shown beside their message (a thumbnail for an image), not as path text.
+  const attachments = getUserMessageAttachmentPaths(content)
   const agentEvent = event.data as Record<string, unknown> | undefined
   const innerData = agentEvent?.data as Record<string, unknown> | undefined
   if (innerData) {
+    const metadata = (innerData.metadata ?? {}) as Record<string, unknown>
     return {
       ...event,
       data: {
@@ -367,16 +370,19 @@ function withDisplaySafeUserMessage(event: PollingEvent): PollingEvent {
         data: {
           ...innerData,
           content: safeContent,
+          ...(attachments.length > 0 ? { metadata: { ...metadata, attachments } } : {}),
         },
       } as PollingEvent['data'],
     }
   }
 
+  const metadata = (agentEvent?.metadata ?? {}) as Record<string, unknown>
   return {
     ...event,
     data: {
       ...agentEvent,
       content: safeContent,
+      ...(attachments.length > 0 ? { metadata: { ...metadata, attachments } } : {}),
     } as PollingEvent['data'],
   }
 }
@@ -2913,6 +2919,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         displayQueryWithContext,
         chatStore.getTabEvents(tabSessionId),
         receipt.id,
+        fileContextForPrompt.map((file: { path: string }) => file.path),
       )
       optimisticUserEventID = optimisticUserMessage.id
       chatStore.addTabEvents(tabSessionId, [optimisticUserMessage])
@@ -3336,6 +3343,9 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           query.trim(),
           store.getTabEvents(sourceTab.sessionId),
           submissionId,
+          (store.getTabConfig(sourceTab.tabId)?.fileContext ?? [])
+            .map((file: { path: string }) => file.path)
+            .filter((path: string) => path !== store.getTabConfig(sourceTab.tabId)?.restoredConversationPath),
         )
         captured.optimisticUserEventId = optimistic.id
         store.addTabEvents(sourceTab.sessionId, [optimistic])

@@ -7,7 +7,9 @@ import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
 import React, { memo, createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { prependedIndex, transcriptReadingState, useTranscriptScroll, type TranscriptReadingState } from './useTranscriptScroll'
-import { CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Terminal as TerminalIcon, XCircle } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronRight, CircleDashed, FileText, Terminal as TerminalIcon, XCircle } from 'lucide-react'
+import { WorkspaceImage } from './ui/WorkspaceImage'
+import { isImageAttachmentPath } from '../utils/chatMessageContent'
 import { InspectExecutionButton } from './chat/InspectExecutionButton'
 import { readInspectionTarget } from '../utils/stepInspection'
 import { RunInspectionButton } from './chat/RunInspectionButton'
@@ -323,7 +325,7 @@ const TranscriptEvent: React.FC<{
     const text = (displayContent || content || '').replace(new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:\\s*`), '')
     return <AgentSentMessage label={label} content={text} timestamp={timestamp} />
   }
-  return <UserTranscriptMessage content={displayContent || content || 'Message'} timestamp={timestamp} metadata={metadata} compactBottom={compactUserBottom} onResend={onResendMessage} sessionId={event.session_id} />
+  return <UserTranscriptMessage content={displayContent || content || (messageAttachmentPaths(metadata).length > 0 ? '' : 'Message')} timestamp={timestamp} metadata={metadata} compactBottom={compactUserBottom} onResend={onResendMessage} sessionId={event.session_id} />
 }
 
 const AgentSentMessage: React.FC<{ label: string; content: string; timestamp: string }> = ({ label, content, timestamp }) => (
@@ -338,6 +340,37 @@ const AgentSentMessage: React.FC<{ label: string; content: string; timestamp: st
 )
 
 const USER_MESSAGE_PREVIEW_LIMIT = 480
+
+// The files a person attached to their message: a thumbnail for an image (click to open it larger), a name chip for any
+// other file. The paths come with the message, so the same shows after a reload; the path text itself is not shown.
+const UserAttachments: React.FC<{ paths: string[] }> = ({ paths }) => {
+  const [open, setOpen] = useState<string | null>(null)
+  const nameOf = (path: string) => path.split('/').pop() || path
+  return (
+    <div data-testid="user-message-attachments" className="mb-1 flex flex-wrap justify-end gap-2">
+      {paths.map(path => isImageAttachmentPath(path) ? (
+        <button key={path} type="button" aria-label={`Open ${nameOf(path)}`} onClick={() => setOpen(path)} className="overflow-hidden rounded-md border border-border bg-muted/30">
+          <WorkspaceImage path={path} alt={nameOf(path)} className="max-h-28 max-w-[10rem] object-cover" />
+        </button>
+      ) : (
+        <span key={path} title={nameOf(path)} className="inline-flex max-w-[14rem] items-center gap-1 rounded-md border border-border bg-muted/30 px-2 py-1 text-xs text-foreground">
+          <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="truncate">{nameOf(path)}</span>
+        </span>
+      ))}
+      {open && (
+        <div role="dialog" aria-label={nameOf(open)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6" onClick={() => setOpen(null)}>
+          <WorkspaceImage path={open} alt={nameOf(open)} className="max-h-full max-w-full rounded-md object-contain" />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function messageAttachmentPaths(metadata?: Record<string, unknown>): string[] {
+  const value = metadata?.attachments
+  return Array.isArray(value) ? value.filter((path): path is string => typeof path === 'string' && path.trim() !== '') : []
+}
 
 const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; metadata?: Record<string, unknown>; compactBottom?: boolean; onResend?: (text: string) => void; sessionId?: string }> = ({ content, timestamp, metadata, compactBottom = false, onResend, sessionId }) => {
   // Ask AI blocks collapse to their plain-words request; the builder-only
@@ -356,10 +389,12 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
   // delivery verdict; plain untimestamped rows render exactly as before.
   const showReceipt = Boolean(timestamp) || deliveryTickState(metadata) !== null
 
+  const attachments = messageAttachmentPaths(metadata)
   if (!collapsible) {
     return (
       <div className={`ml-auto mt-2 max-w-[84%] text-right ${compactBottom ? 'mb-1' : 'mb-2'}`}>
-        <div className="whitespace-pre-wrap break-words text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">{shown}</div>
+        {attachments.length > 0 && <UserAttachments paths={attachments} />}
+        {shown !== '' && <div className="whitespace-pre-wrap break-words text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">{shown}</div>}
         {showReceipt && (
           <div className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
             <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} sessionId={sessionId} />
@@ -373,6 +408,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
 
   return (
     <article className={`ml-auto mt-4 w-[min(92%,52rem)] rounded-lg border border-border bg-muted/30 px-4 py-3 text-left ${compactBottom ? 'mb-1' : 'mb-4'}`}>
+      {attachments.length > 0 && <UserAttachments paths={attachments} />}
       <div className="whitespace-pre-wrap break-words text-[length:calc(13px*var(--chat-scale,1))] leading-[calc(24px*var(--chat-scale,1))] text-foreground/90">{shown}</div>
       <div className="mt-1 flex items-center gap-2">
         <button
