@@ -683,9 +683,11 @@ type EventStore struct {
 	steerOrdering      *steerOrdering
 	activityCallback   ActivityCallback // Optional callback to update session activity
 	eventAddedCallback EventAddedCallback
-	durableJournal     DurableEventJournal
-	hydratedSessions   map[string]bool
-	hydrateMu          sync.Mutex
+	// eventPreparer, when set, may add facts the server derives to an event before it is stored (see SetEventPreparer).
+	eventPreparer    func(event *Event)
+	durableJournal   DurableEventJournal
+	hydratedSessions map[string]bool
+	hydrateMu        sync.Mutex
 	// journalProbed caches "journal has no history for this session" so an
 	// unclassified live-only session pays for the probe once, not per event.
 	journalProbed map[string]bool
@@ -837,6 +839,15 @@ func (es *EventStore) SetActivityCallback(callback ActivityCallback) {
 	es.activityCallback = callback
 }
 
+// SetEventPreparer sets a function that runs on every event before it is stored, so the server can write facts it derives
+// (for example the files attached to a user message) into the stored event once, for every producer. It must be quick and
+// must not add events.
+func (es *EventStore) SetEventPreparer(prepare func(event *Event)) {
+	es.mu.Lock()
+	defer es.mu.Unlock()
+	es.eventPreparer = prepare
+}
+
 // SetEventAddedCallback sets a runtime callback for sidecar stores that should
 // observe accepted events without becoming part of durable event history.
 func (es *EventStore) SetEventAddedCallback(callback EventAddedCallback) {
@@ -970,6 +981,12 @@ func (es *EventStore) AddEvent(sessionID string, event Event) {
 func (es *EventStore) AddEventChecked(sessionID string, event Event) error {
 	if isUsageOnlyEvent(event) {
 		return nil // for the cost ledger only; never a chat event (see usage_only_event.go)
+	}
+	es.mu.Lock()
+	prepare := es.eventPreparer
+	es.mu.Unlock()
+	if prepare != nil {
+		prepare(&event)
 	}
 	if es.holdForDeferredSteer(sessionID, event) {
 		return nil

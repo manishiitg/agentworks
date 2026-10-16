@@ -367,9 +367,13 @@ const UserAttachments: React.FC<{ paths: string[] }> = ({ paths }) => {
   )
 }
 
+// The server records the attachments on the stored message as {path, name, kind}; an older message or a row not yet stored
+// carries plain paths, read from its request context.
 function messageAttachmentPaths(metadata?: Record<string, unknown>): string[] {
   const value = metadata?.attachments
-  return Array.isArray(value) ? value.filter((path): path is string => typeof path === 'string' && path.trim() !== '') : []
+  if (!Array.isArray(value)) return []
+  const paths = value.map(item => typeof item === 'string' ? item : item && typeof item === 'object' && typeof (item as { path?: unknown }).path === 'string' ? (item as { path: string }).path : '')
+  return paths.filter(path => path.trim() !== '')
 }
 
 const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; metadata?: Record<string, unknown>; compactBottom?: boolean; onResend?: (text: string) => void; sessionId?: string }> = ({ content, timestamp, metadata, compactBottom = false, onResend, sessionId }) => {

@@ -2351,6 +2351,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// the same accepted structured events. The terminal observer updates the
 	// durable pane snapshot first; retained-turn reconciliation then uses that
 	// authoritative result to settle only the matching main-agent turn.
+	eventStore.SetEventPreparer(prepareUserMessageAttachments)
 	eventStore.SetEventAddedCallback(func(sessionID string, event events.Event) {
 		terminalEventObserver(sessionID, event)
 		api.observeRetainedMainTurnEvent(sessionID, event)

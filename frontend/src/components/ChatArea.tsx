@@ -358,9 +358,11 @@ function withDisplaySafeUserMessage(event: PollingEvent): PollingEvent {
   if (!content || safeContent === content) return event
 
   // The files the person attached are shown beside their message (a thumbnail for an image), not as path text.
-  const attachments = getUserMessageAttachmentPaths(content)
+  // The server writes metadata.attachments on the stored message; the request text is only the fallback for older ones.
   const agentEvent = event.data as Record<string, unknown> | undefined
   const innerData = agentEvent?.data as Record<string, unknown> | undefined
+  const storedMetadata = ((innerData ?? agentEvent)?.metadata ?? {}) as Record<string, unknown>
+  const attachments = Array.isArray(storedMetadata.attachments) ? [] : getUserMessageAttachmentPaths(content)
   if (innerData) {
     const metadata = (innerData.metadata ?? {}) as Record<string, unknown>
     return {
