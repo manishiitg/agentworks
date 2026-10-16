@@ -620,6 +620,7 @@ chat:
       - list_my_code_projects
       - list_my_code_chats
       - ask_my_code
+      - read_my_code_chat
       - get_my_code_state
       - open_my_code_chat
       - close_my_code_chat

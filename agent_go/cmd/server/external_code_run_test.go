@@ -28,6 +28,12 @@ func TestCodeRunNeedsTheScopeAndOwnProjects(t *testing.T) {
 	if code != 404 || !strings.Contains(body, "No Code project of yours") {
 		t.Fatalf("not your project: %d %s", code, body)
 	}
+	if code, body := call([]string{"crews:read"}, "read_my_code_chat", map[string]any{"project_id": "p1"}); code != 403 {
+		t.Fatalf("reading a chat without code:run: %d %s", code, body)
+	}
+	if code, body := call([]string{"code:run"}, "read_my_code_chat", map[string]any{"project_id": "someone-elses"}); code != 404 {
+		t.Fatalf("reading a chat of a project that is not yours: %d %s", code, body)
+	}
 	if code, body := call([]string{"code:run"}, "get_my_code_state", map[string]any{"project_id": "a:b"}); code != 404 {
 		t.Fatalf("a malformed project id must be a not-found: %d %s", code, body)
 	}

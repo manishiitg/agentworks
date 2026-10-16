@@ -116,7 +116,7 @@ func ToolProduct(name string) string {
 		return "knowledgebase"
 	case "manage_vault_access", "manage_vault_groups", "manage_vault_secret_access", "query_vault_db", "mutate_vault_db", "list_vault_mcp_servers", "call_vault_mcp_tool", "manage_vault_tools", "read_vault_audit", "manage_my_vaults", "manage_global_secret", "manage_vault_secret", "share_mcp_to_vault":
 		return "mcp-gateway"
-	case "create_code_workspace", "list_my_code_projects", "list_my_code_chats", "ask_my_code", "get_my_code_state", "open_my_code_chat", "close_my_code_chat", "stop_my_code_chat", "rename_my_code_chat", "list_code_workspaces", "get_code_costs", "list_code_files", "read_code_file", "list_code_chats", "read_code_chat", "get_code_audit":
+	case "create_code_workspace", "list_my_code_projects", "list_my_code_chats", "ask_my_code", "read_my_code_chat", "get_my_code_state", "open_my_code_chat", "close_my_code_chat", "stop_my_code_chat", "rename_my_code_chat", "list_code_workspaces", "get_code_costs", "list_code_files", "read_code_file", "list_code_chats", "read_code_chat", "get_code_audit":
 		return "code"
 	case "create_relay", "update_relay", "test_relay", "publish_relay", "run_relay", "get_relay_run", "list_relay_runs", "get_relay_releases", "inspect_relay_graph":
 		return "relays"

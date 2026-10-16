@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 )
@@ -25,6 +26,7 @@ var externalCodeRunTools = map[string]bool{
 	"list_my_code_projects": true,
 	"list_my_code_chats":    true,
 	"ask_my_code":           true,
+	"read_my_code_chat":     true,
 	"get_my_code_state":     true,
 	"open_my_code_chat":     true,
 	"close_my_code_chat":    true,
@@ -48,13 +50,21 @@ func externalCodeRunDefinitions(add func(name, description string, write, scoped
 	project := map[string]any{"project_id": externalString("Code project ID from code action=projects.")}
 	add("list_my_code_projects", "List your own Code projects: id, title, last update."+suffix, false, false, nil)
 	add("list_my_code_chats", "List the chats (tabs) of one of your Code projects: the main chat and its side chats, with id, name and whether each is working now."+suffix, false, false, project, "project_id")
-	add("ask_my_code", "Send an explicit conversational message into one of your own Code chats. Returns an inbox delivery receipt; replies are optional agent-sent messages read with messages action=read. No call_id or automatic final-answer capture."+suffix, true, false, map[string]any{
+	add("ask_my_code", "Send an explicit conversational message into one of your own Code chats. Starts a turn in that chat like typing there (a closed session is resumed). Returns a delivery receipt and next_after; pass wait_seconds (max 25) to get that turn's answer in the same call, else read it with code action=read after=next_after."+suffix, true, false, map[string]any{
 		"project_id":    externalString("Code project ID from code action=projects."),
 		"message":       externalString("Message to send."),
 		"chat_id":       externalString("Chat ID from code action=chats; default main."),
 		"inbox_id":      externalString("Inbox from a previous send to this Code chat."),
 		"submission_id": externalString("Unique message submission ID; reuse after uncertain delivery."),
+		"wait_seconds":  externalInteger(0, externalCrewMaxWaitSeconds),
 	}, "project_id", "message")
+	add("read_my_code_chat", "Read the latest of one of your own Code chats (tabs) as plain text: what you asked, what the agent answered and which tools it used (names only). Pass after (the next_after of a previous read or ask) to get only what is new, and wait_seconds (max 25) to wait until the chat has finished its turn."+suffix, false, false, map[string]any{
+		"project_id":   project["project_id"],
+		"chat_id":      externalString("Chat ID from code action=chats; default main."),
+		"after":        externalInteger(0, 1<<30),
+		"limit":        externalInteger(1, 100),
+		"wait_seconds": externalInteger(0, externalCrewMaxWaitSeconds),
+	}, "project_id")
 	chatArg := map[string]any{"project_id": project["project_id"], "chat_id": externalString("A side chat id from code action=chats.")}
 	add("open_my_code_chat", "Open a new side chat (tab) in one of your Code projects (up to "+strconv.Itoa(externalCrewMaxSideChats)+"), as the + in the app does; give it a name with the optional name argument; talk in it with code action=ask chat_id=<the id returned>. Chats in one project can message each other with the agent's list_project_chats and ask_project_chat tools."+suffix, true, false, map[string]any{"project_id": project["project_id"], "name": externalString("A short tab name, optional.")}, "project_id")
 	add("rename_my_code_chat", "Rename one of your Code project's side chats (tab). The main chat keeps its project name."+suffix, true, false, map[string]any{"project_id": project["project_id"], "chat_id": externalString("A side chat id from code action=chats."), "name": externalString("The new tab name.")}, "project_id", "chat_id", "name")
@@ -293,8 +303,196 @@ func (api *StreamingAPI) externalCodeRunCall(w http.ResponseWriter, r *http.Requ
 		target := triggerTarget{Kind: triggerCallerCrew, Path: binding.WorkspacePath, Label: "Code " + projectID + " · " + chat.Name, CrewID: projectID, CrewProfile: codeproduct.ProfileID, CrewOwner: claims.UserID}
 		target.Chat = chat
 		log.Printf("[CODE_RUN] %s sends to Code %s chat %s via an external connection", claims.UserID, projectID, chat.ID)
-		api.externalSendMessage(w, r, args, target)
+		wait := externalCrewWait(args)
+		_, cursor, _ := codeChatTranscript(ctx, claims.UserID, chat.SessionID, binding.WorkspacePath, 0, 0)
+		if wait <= 0 {
+			rec := &externalMCPRecorder{header: http.Header{}}
+			api.externalSendMessage(rec, r, args, target)
+			externalCodeRunRespond(w, rec, map[string]any{"next_after": cursor, "next": "Read the answer with code action=read chat_id=" + chat.ID + " after=" + strconv.Itoa(cursor) + " wait_seconds=25."})
+			return
+		}
+		rec := &externalMCPRecorder{header: http.Header{}}
+		api.externalSendMessage(rec, r, args, target)
+		var receipt map[string]any
+		if rec.status >= 300 || json.Unmarshal(rec.body.Bytes(), &receipt) != nil {
+			externalCodeRunRespond(w, rec, nil)
+			return
+		}
+		messageID, _ := receipt["message_id"].(string)
+		items, turnDone := api.waitForCodeTurn(ctx, claims.UserID, chat.SessionID, binding.WorkspacePath, projectID, chat.ID, cursor, messageID, wait)
+		receipt["next_after"] = cursor
+		if len(items) > 0 {
+			receipt["next_after"] = items[len(items)-1].Seq
+			receipt["messages"] = items
+		}
+		receipt["working"] = !turnDone
+		if turnDone {
+			receipt["status"] = "answered"
+		} else {
+			receipt["status"] = "running"
+			receipt["next"] = "Still working. Read it with code action=read chat_id=" + chat.ID + " after=" + strconv.Itoa(cursor) + " wait_seconds=25."
+		}
+		externalJSON(w, receipt)
+	case "read_my_code_chat":
+		chatID := firstNonEmptyTrimmed(str("chat_id"), codeChatMainName)
+		var chat *codeChat
+		for i := range chats {
+			if strings.EqualFold(chats[i].ID, chatID) {
+				chat = &chats[i]
+				break
+			}
+		}
+		if chat == nil {
+			externalError(w, http.StatusNotFound, "chat_not_found", "No chat with that chat_id; see code action=chats.")
+			return
+		}
+		after, limit := 0, 40
+		if v, ok := args["after"].(float64); ok && v > 0 {
+			after = int(v)
+		}
+		if v, ok := args["limit"].(float64); ok && v >= 1 {
+			limit = min(int(v), 100)
+		}
+		wait := externalCrewWait(args)
+		deadline := time.Now().Add(wait)
+		for {
+			items, last, err := codeChatTranscript(ctx, claims.UserID, chat.SessionID, binding.WorkspacePath, after, limit)
+			working := api.conversationTurnOccupied(chat.SessionID)
+			if err != nil {
+				externalError(w, http.StatusBadGateway, "workspace_unavailable", "Cannot read that chat right now.")
+				return
+			}
+			if wait <= 0 || time.Now().After(deadline) || (!working && len(items) > 0) || ctx.Err() != nil {
+				externalJSON(w, map[string]any{"project_id": projectID, "chat_id": chat.ID, "messages": items, "next_after": last, "working": working})
+				return
+			}
+			time.Sleep(700 * time.Millisecond)
+		}
 	default:
 		externalError(w, http.StatusNotFound, "unknown_tool", "Tool is not exposed by this API.")
+	}
+}
+
+// externalCodeRunRespond writes a recorded send's answer, adding fields to a successful JSON receipt.
+func externalCodeRunRespond(w http.ResponseWriter, rec *externalMCPRecorder, extra map[string]any) {
+	status := rec.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	var receipt map[string]any
+	if status < 300 && extra != nil && json.Unmarshal(rec.body.Bytes(), &receipt) == nil {
+		for k, v := range extra {
+			receipt[k] = v
+		}
+		externalJSON(w, receipt)
+		return
+	}
+	for k, v := range rec.header {
+		w.Header()[k] = v
+	}
+	w.WriteHeader(status)
+	_, _ = w.Write(rec.body.Bytes())
+}
+
+// codeTurnItem is one line of a Code chat as plain text.
+type codeTurnItem struct {
+	Seq  int    `json:"seq"`
+	Turn string `json:"turn,omitempty"`
+	Role string `json:"role"` // you, assistant or tool
+	Text string `json:"text"`
+	At   string `json:"at,omitempty"`
+}
+
+// codeChatTranscript reads a Code chat's saved events as plain lines: what was asked, the answer of each turn and the
+// names of the tools used (never their output). after is the last seq already seen; the returned last is the newest seq.
+func codeChatTranscript(ctx context.Context, userID, sessionID, workspacePath string, after, limit int) ([]codeTurnItem, int, error) {
+	data, err := ReadChatHistoryConversation(userID, sessionID, workspacePath)
+	if err != nil {
+		return nil, after, err
+	}
+	var doc struct {
+		Events []struct {
+			Sequence  int    `json:"sequence"`
+			Type      string `json:"type"`
+			Timestamp string `json:"timestamp"`
+			Data      struct {
+				Data struct {
+					Content     string `json:"content"`
+					FinalResult string `json:"final_result"`
+					ToolName    string `json:"tool_name"`
+					ServerName  string `json:"server_name"`
+					Metadata    struct {
+						TurnID string `json:"turn_id"`
+					} `json:"metadata"`
+				} `json:"data"`
+			} `json:"data"`
+		} `json:"ui_events"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, after, err
+	}
+	clip := func(s string) string {
+		r := []rune(strings.TrimSpace(s))
+		if len(r) > 8000 {
+			return string(r[:8000]) + "…"
+		}
+		return string(r)
+	}
+	var items []codeTurnItem
+	last := after
+	for _, e := range doc.Events {
+		if e.Sequence > last {
+			last = e.Sequence
+		}
+		if e.Sequence <= after {
+			continue
+		}
+		d := e.Data.Data
+		switch e.Type {
+		case "user_message":
+			items = append(items, codeTurnItem{Seq: e.Sequence, Turn: d.Metadata.TurnID, Role: "you", Text: clip(d.Content), At: e.Timestamp})
+		case "unified_completion":
+			if strings.TrimSpace(d.FinalResult) != "" {
+				items = append(items, codeTurnItem{Seq: e.Sequence, Turn: d.Metadata.TurnID, Role: "assistant", Text: clip(d.FinalResult), At: e.Timestamp})
+			}
+		case "tool_call_start":
+			if name := firstNonEmptyTrimmed(d.ToolName, d.ServerName); name != "" {
+				items = append(items, codeTurnItem{Seq: e.Sequence, Turn: d.Metadata.TurnID, Role: "tool", Text: name, At: e.Timestamp})
+			}
+		}
+	}
+	if limit > 0 && len(items) > limit {
+		items = items[len(items)-limit:]
+	}
+	return items, last, nil
+}
+
+// waitForCodeTurn waits for the turn that carries messageID (the delivered text names it) to answer, up to wait.
+// It logs when the turn starts and when it answers, so a resume of a closed session is visible in the log.
+func (api *StreamingAPI) waitForCodeTurn(ctx context.Context, userID, sessionID, workspacePath, projectID, chatID string, after int, messageID string, wait time.Duration) ([]codeTurnItem, bool) {
+	started := time.Now()
+	deadline := started.Add(wait)
+	turn, announced := "", false
+	for {
+		items, _, err := codeChatTranscript(ctx, userID, sessionID, workspacePath, after, 0)
+		if err == nil {
+			for _, it := range items {
+				if turn == "" && it.Role == "you" && messageID != "" && strings.Contains(it.Text, messageID) {
+					turn = it.Turn
+					if !announced {
+						announced = true
+						log.Printf("[CODE_RUN] turn started in Code %s chat %s for message %s after %s (turn %s)", projectID, chatID, messageID, time.Since(started).Round(time.Millisecond), turn)
+					}
+				}
+				if turn != "" && it.Role == "assistant" && it.Turn == turn {
+					log.Printf("[CODE_RUN] turn answered in Code %s chat %s for message %s after %s", projectID, chatID, messageID, time.Since(started).Round(time.Millisecond))
+					return items, true
+				}
+			}
+		}
+		if time.Now().After(deadline) || ctx.Err() != nil {
+			return nil, false
+		}
+		time.Sleep(700 * time.Millisecond)
 	}
 }
