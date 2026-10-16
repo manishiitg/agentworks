@@ -7,7 +7,7 @@ import (
 )
 
 // crewAskModelSentence is the one sentence every Crew-facing description states about a free-text ask (856-59).
-const crewAskModelSentence = "Everyone except the Crew's owner uses it in Run mode: a chat or ask there understands the Crew (files, memory, skills, functions) and runs what its owner published; it changes nothing and uses no MCP tools. To make a Crew do something, call one of its functions. The owner's own chat is Builder mode, with full access. Only the owner changes a Crew."
+const crewAskModelSentence = "Everyone except the Crew's owners uses it in Run mode: a chat or ask there understands the Crew (files, memory, skills, functions) and runs what its owner published; it changes nothing and uses no MCP tools. To make a Crew do something, call one of its functions. An owner's own chat is Builder mode, with full access. Only its owners change a Crew."
 
 // crewAskAllowedTools is the whole tool surface of a guest's free-text ask (856-59, reviewer: an allow list, so a new tool
 // is refused until someone classifies it). Everything here reads; nothing acts. The guest acts by calling the functions the

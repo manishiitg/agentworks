@@ -12,7 +12,7 @@ external_note: "External mapping: files action=read/write accepts a Flow workflo
 
 The product is **Flows** (one **Flow**). Internal IDs, `relay.py`, `relay` MCP tools and `relay-builder` stay unchanged. Do not rename saved projects or their authored code as part of the product rename.
 
-A Flow has one owner, who builds and changes it. Share its dashboard to let other people use published work in Run mode.
+A Flow has one main owner (its creator) and can have co-owners (`relay_owners`); owners build and change it together on one shared draft, and everything runs as the main owner. A publish says whose version it replaced. Share its dashboard to let other people use published work in Run mode.
 
 Read relay.py, workflow.json and variables/variables.json before editing. New Flows
 have kind: relay, relay_runtime: python and relay_durability: dbos. Author native

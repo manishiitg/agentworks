@@ -31,7 +31,7 @@ Use a Crew for a specialist you want to call repeatedly from your agent, another
 
 - **Abilities:** persistent purpose and instructions, project files, memory, selected skills and integrations; admitted shell, browser and database tools; typed functions with input/result schemas; ask and message entry points; schedules and caller-specific conversations.
 - **MCP route:** discover with `crew action=list`, inspect the selected Crew, load `crew-authoring`, and discover exposed functions with `functions action=list`. Call functions or ask only through the entry points currently admitted for that Crew and caller.
-- **Access:** a Crew has one owner, who changes its setup. Share its dashboard to let others use it in Run mode through Ask and published functions. Functions run with the owner's authority and may change the Crew; callers do not gain setup access. Current account, connection and project checks still apply.
+- **Access:** a Crew has one main owner (its creator) and can have co-owners; owners change its setup together and everything runs as the main owner. Share its dashboard to let others use it in Run mode through Ask and published functions. Functions run with the owner's authority and may change the Crew; callers do not gain setup access. Current account, connection and project checks still apply.
 - **Example:** a document specialist exposes a function that accepts a file and returns a structured summary.
 
 <!-- /product --><!-- product:relays -->### Flows
@@ -40,7 +40,7 @@ Use a Flow when a repeatable code workflow should have an explicit release and e
 
 - **Abilities:** edit source, test drafts, inspect test results, publish immutable versions and execute or inspect production runs; configure the workflow's supported triggers and integrations.
 - **MCP route:** load `relay-builder`; inspect the current source and schemas; edit through admitted source tools, test the draft, then publish with the current revision. A test is not a production publication.
-- **Access:** a Flow has one owner, who edits, tests and publishes it. Share its dashboard so others can use published work in Run mode and inspect runs, results and execution logs. Current connection and project checks still apply.
+- **Access:** a Flow has one main owner (its creator) and can have co-owners; owners edit, test and publish it together on one shared draft, and everything runs as the main owner. A publish says whose version it replaced. Share its dashboard so others can use published work in Run mode and inspect runs, results and execution logs. Current connection and project checks still apply.
 - **Example:** validate incoming records and deliver the accepted records to a connected system.
 
 <!-- /product --><!-- product:knowledgebase -->### Brain

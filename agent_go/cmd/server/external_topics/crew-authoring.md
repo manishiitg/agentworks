@@ -9,7 +9,7 @@ external_scopes: ["crews:write"]
 
 A Crew is a persistent, shareable agent: standing instructions (`purpose`), skills, typed
 **functions** other people and agents can call, schedules, and a project folder of files.
-A Crew has one owner, who builds and edits it. Use Share to give others access to its dashboard, Ask and published functions. Shared people can also list, search and read its files over MCP, including skills, memory, knowledge, instructions, runs and logs. Secret values and private logs stay excluded.
+A Crew has one main owner (its creator) and can have co-owners; owners build and edit it together, and everything runs as the main owner. Only the main owner adds or removes owners (`crew_owners`); `crew_owners action=lock_status` shows who is editing, because one owner edits at a time. Use Share to give others access to its dashboard, Ask and published functions. Shared people can also list, search and read its files over MCP, including skills, memory, knowledge, instructions, runs and logs. Secret values and private logs stay excluded.
 
 Over MCP, use `share action=get` to inspect the audience, then `share action=set` with `crew_id` and the owner's chosen mode: `private` (Only me), `people` (Chosen people, with `emails`) or `everyone`. Only the owner changes sharing, with existing authoring consent. The people list replaces the saved list: preserve people the owner did not ask to remove. A standard dashboard is created when needed. `get_dashboard_share` and `share_dashboard` remain callable aliases.
 
@@ -51,7 +51,7 @@ operation, timing and outcome, with commands, values and payloads withheld.
   `skills` {set, add, remove}, `functions` {upsert, delete}, `schedules` {add, update, remove},
   `files`, `remove_files`. The reply is a compact summary; pass `return_spec: true` for the whole Crew.
   action=export and action=import move a Crew between accounts or servers as a portable spec.
-- Only the owner edits. Needs `crews:write`.
+- Only owners edit. Needs `crews:write`.
 
 ## Custom commands
 
@@ -83,7 +83,7 @@ type, properties, required, items, enum).
 
 ## Messages and memory
 
-- Everyone except the Crew's owner uses it in Run mode: a chat or ask there understands the Crew (files, memory, skills, functions) and runs what its owner published; it changes nothing and uses no MCP tools. To make a Crew do something, call one of its functions. The owner's own chat is Builder mode, with full access. Only the owner changes a Crew. Expose a function for everything others may make the Crew do.
+- Everyone except the Crew's owners uses it in Run mode: a chat or ask there understands the Crew (files, memory, skills, functions) and runs what its owner published; it changes nothing and uses no MCP tools. To make a Crew do something, call one of its functions. An owner's own chat is Builder mode, with full access. Only its owners change a Crew. Expose a function for everything others may make the Crew do.
 - Conversational contact is separate from functions: `messages`/`ask_crew` send a message to the Crew,
   it may reply or not, and replies are read from the inbox. Ask is always open to everyone the Crew
   is shared with; there is no switch to turn it off, so give people use through Share. Read replies with `messages` action=read, `inbox_id`, `after` (a

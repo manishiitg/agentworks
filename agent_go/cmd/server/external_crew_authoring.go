@@ -40,7 +40,7 @@ const (
 	crewSpecMaxFunctions  = 50
 	crewSpecMaxSchedules  = 20
 	crewPurposeLimit      = 1000
-	crewSharingModel      = "Crews have a single owner. Every user with the Crew product can open a Crew in Run mode and call its functions; only the owner edits it. There is no per-Crew share list."
+	crewSharingModel      = "A Crew has one main owner (its creator) and can have co-owners who build it together; everything runs as the main owner. Every user with the Crew product can open a Crew in Run mode and call its functions; only its owners edit it. Use Share to choose who else can use it."
 )
 
 // crewSpec is the portable Crew definition: create_crew's input, export_crew's
@@ -887,6 +887,9 @@ func externalCrewDescription(ctx context.Context, crew crewProjectBinding, manif
 	yourAccess := "run"
 	if crew.OwnedByCaller {
 		yourAccess = "owner"
+		if crew.CoOwner {
+			yourAccess = "co_owner"
+		}
 	}
 	out := map[string]any{
 		"crew_id": manifest.ID, "name": label, "identity": summary["identity"],
