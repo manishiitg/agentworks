@@ -9,6 +9,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
@@ -70,6 +71,26 @@ func resolveWorkflowChatPolicy(session string, req QueryRequest, active *ActiveS
 	}
 	return workflowChatPolicy{KnowledgeKey: knowledgeRuntimeConfigKey(workspace), Mode: normalized, Origin: origin, Capabilities: agentworksproduct.ChatCapabilities(normalized, origin, readOnly), AuthorityKey: req.ExternalBuilderOperationID, ProductProfileID: strings.TrimSpace(req.AgentProfileID)}
 }
+
+// describe is the readable form of the parts that make up sessionKey, for the log line that says why a chat's native
+// session was replaced (never contains config contents or secrets).
+func (p workflowChatPolicy) describe() string {
+	names := make([]string, 0, len(p.Capabilities))
+	for name, on := range p.Capabilities {
+		if on {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	caps := strings.Join(names, ",")
+	if len(caps) > 400 {
+		caps = caps[:400] + "..."
+	}
+	return fmt.Sprintf("mode=%s origin=%s profile=%q knowledge=%t authority=%t caps=[%s]", p.Mode, p.Origin, p.ProductProfileID, p.KnowledgeKey != "", p.AuthorityKey != "", caps)
+}
+
+// lastChatPolicyDescription remembers, per session, the describe() of the previous turn's policy (log only).
+var lastChatPolicyDescription sync.Map
 
 func (p workflowChatPolicy) allows(capability string) bool { return p.Capabilities[capability] }
 

@@ -8033,6 +8033,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// session (Muse) gets a fresh session on any drift, carrying the
 			// recent dialogue, rather than keep running on the old prompt.
 			roleChanged := chatPolicyRoleRequiresReconnect(codingProvider, previousRole, policyRoleKey, knownRole, savedRuntime)
+			cause := []string{}
+			if roleChanged {
+				cause = append(cause, "role")
+			}
+			toolsWas, toolsNow := "", ""
 			// Turning the workflow's native agent tools on or off changes what
 			// the CLI can do, like Builder <-> Run: start fresh with the recent
 			// dialogue instead of resuming a transcript full of the other mode.
@@ -8048,13 +8053,27 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				api.lastWorkflowToolsModeBySession[sessionID] = currentTools
 				if knownTools && normalizeAgentToolsMode(previousTools) != currentTools {
 					roleChanged = true
+					cause = append(cause, "tools")
+					toolsWas, toolsNow = normalizeAgentToolsMode(previousTools), currentTools
 				}
 			}
 			definitionChanged := !codingProviderReloadsInstructionsOnResume(finalProvider) && chatPolicyRequiresReconnect(codingProvider, previousPolicy, policyKey, knownPolicy, savedRuntime)
+			currentDescription := currentPolicy.describe()
+			previousDescription := "unknown"
+			if was, ok := lastChatPolicyDescription.Load(sessionID); ok {
+				previousDescription, _ = was.(string)
+			}
+			lastChatPolicyDescription.Store(sessionID, currentDescription)
+			if definitionChanged {
+				cause = append(cause, "definition")
+			}
+			if hadPrev && prevMode != "" && prevMode != newWorkshopMode {
+				cause = append(cause, "mode")
+			}
 			if roleChanged || definitionChanged || hadPrev && prevMode != "" && prevMode != newWorkshopMode {
 				modeChangedThisTurn = true
 				modeChangePrevMode = prevMode
-				log.Printf("[CHAT_POLICY] Policy refresh for session %s (mode %q -> %q); starting a fresh native coding-agent session with recent conversation context", sessionID, prevMode, newWorkshopMode)
+				log.Printf("[CHAT_POLICY] Policy refresh for session %s (mode %q -> %q); starting a fresh native coding-agent session with recent conversation context cause=%s role_known=%t policy_was={%s} policy_now={%s} tools_was=%q tools_now=%q triggered_by=%q profile=%q", sessionID, prevMode, newWorkshopMode, strings.Join(cause, "+"), knownRole, previousDescription, currentDescription, toolsWas, toolsNow, req.TriggeredBy, req.AgentProfileID)
 				// Snapshot existing history before replacing — the on-disk persisted
 				// record reuses this so the user sees a complete conversation log.
 				if existing, ok := api.conversationHistory[sessionID]; ok && len(existing) > 0 {
