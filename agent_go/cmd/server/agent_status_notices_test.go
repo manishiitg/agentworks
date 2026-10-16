@@ -129,7 +129,7 @@ func TestAgentStatusNoticeTellsTheSenderOnceThatAMessageIsWaiting(t *testing.T) 
 	drain := chat
 	drain.Action, drain.Transport = "drain", "muse_hook"
 	got := call(drain).Messages
-	if len(got) != 1 || got[0].Kind != "status" || got[0].Sender != "AgentWorks" || !strings.Contains(got[0].Message, "detached has not read your message") || !strings.Contains(got[0].Message, "no chat is attached to this name") {
+	if len(got) != 1 || got[0].Kind != "status" || got[0].Sender != "AgentWorks" || !strings.Contains(got[0].Message, "detached has not read your message") || !strings.Contains(got[0].Message, "it is offline") {
 		t.Fatalf("the status line is wrong: %+v", got)
 	}
 	// Reported once: a second sweep adds nothing, and the line is not offered again.
@@ -170,7 +170,7 @@ func TestAgentStatusSweepSkipsRepliedMessagesAndNamesDeadNames(t *testing.T) {
 			text = c.Messages[0].Text
 		}
 	}
-	if !strings.Contains(text, "no chat is attached to this name") || strings.Contains(text, "your message 1") || strings.Contains(text, "b has not read") {
+	if !strings.Contains(text, "it is offline") || strings.Contains(text, "your message 1") || strings.Contains(text, "b has not read") {
 		t.Fatalf("unexpected notice: %q", text)
 	}
 	if sweepAgentStatusNotices(&s, now.Add(time.Minute)) {
