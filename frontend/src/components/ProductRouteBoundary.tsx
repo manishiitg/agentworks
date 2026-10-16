@@ -1,21 +1,29 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { deploymentDefaultProductSurface, enabledProductSurfaces, intersectAllowedProductSurfaces } from '../products/productSurfaceConfig'
 import { waitForChatStoreHydration } from '../stores/useChatStore'
+import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { useAuthStore } from '../stores/useAuthStore'
-import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { isLegacyAppPath, LEGACY_APP_ROOTS, legacyAppRoot, parseProductRoute, productRoutePath } from '../utils/productRoutes'
-import { observeProductHistory, readProductNavigation } from '../utils/productUrlNavigation'
+import { observeProductHistory } from '../utils/productUrlNavigation'
 import { cancelPendingWorkflowNavigation } from '../utils/workflowNavigation'
 import { ProductUnavailable, resolveProductRoute } from '../utils/resolveProductRoute'
 
+import { workspaceStateApi } from '../services/workspaceState'
+import { useWorkspaceReturnStore } from '../stores/useWorkspaceReturnStore'
+import { installWorkspaceStateFlush, queueWorkspaceState } from '../hooks/useWorkspaceReturn'
+import { restoreWorkspaceChat } from '../utils/restoreWorkspaceChat'
+
 type Status = 'loading' | 'ready' | 'disabled' | 'unavailable' | 'error'
 export function ProductRouteBoundary({ children, account, allowedProducts }: { children: ReactNode; account?: string; allowedProducts?: string[] | null }) {
+  useEffect(installWorkspaceStateFlush, [])
+  const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const homeOpen = useWorkspaceReturnStore(state => state.homeOpen)
   const [location, setLocation] = useState(() => window.location.pathname + window.location.search)
   const [attempt, setAttempt] = useState(0)
   const permissionKey = allowedProducts == null ? 'unrestricted' : JSON.stringify([...allowedProducts].map(value => value.toLowerCase()).sort())
   const activeResolution = useRef<AbortController | null>(null)
-  const [resolution, setResolution] = useState<{ location: string; account?: string; status: Status; attempt: number; permissionKey: string }>({ location: '', status: 'loading', attempt: 0, permissionKey: '' })
-  const status = resolution.location === location && resolution.account === account && resolution.attempt === attempt && resolution.permissionKey === permissionKey ? resolution.status : 'loading'
+  const [resolution, setResolution] = useState<{ location: string; account?: string; status: Status; attempt: number; permissionKey: string; workspace?: string }>({ location: '', status: 'loading', attempt: 0, permissionKey: '' })
+  const status = resolution.location === location && resolution.account === account && resolution.workspace === workspace && resolution.attempt === attempt && resolution.permissionKey === permissionKey ? resolution.status : 'loading'
   useLayoutEffect(() => {
     const onPop = () => {
       activeResolution.current?.abort()
@@ -31,7 +39,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
   useEffect(() => {
     const controller = new AbortController()
     activeResolution.current = controller
-    const finish = (status: Status) => { if (!controller.signal.aborted) setResolution({ location, account, status, attempt, permissionKey }) }
+    const finish = (status: Status) => { if (!controller.signal.aborted) setResolution({ location, account, workspace, status, attempt, permissionKey }) }
     const requested = window.location.pathname + window.location.search
     let route = parseProductRoute(requested)
     const enabled = enabledProductSurfaces()
@@ -41,43 +49,78 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
       const preferred = deploymentDefaultProductSurface()
       route = { surface: allowed.includes(preferred) ? preferred : allowed[0] }
     }
-    if (route === undefined) { finish('unavailable'); return () => controller.abort() }
+    const isHome = requested === '/home'
+    if (route === undefined && !isHome) { finish('unavailable'); return () => controller.abort() }
     if (route && !enabled.includes(route.surface)) { finish('disabled'); return () => controller.abort() }
     if (!allowed.length || (route && !allowed.includes(route.surface))) { finish('unavailable'); return () => controller.abort() }
-    if (!route) {
-      const state = useProductSurfaceStore.getState()
-      if (!allowed.includes(state.productSurface)) state.setProductSurface(allowed[0] ?? deploymentDefaultProductSurface())
-      // Preserve CLI connection query arguments until App consumes them.
-      if (!window.location.search) window.history.replaceState({}, '', productRoutePath(readProductNavigation()))
-      finish('ready')
-    } else {
-      const destination = route
-      finish('loading')
-      void waitForChatStoreHydration().then(() => {
-        if (controller.signal.aborted) return () => {}
-        return resolveProductRoute(destination, controller.signal)
-      }).then(activate => {
+    const initialize = async () => {
+      let state = useWorkspaceReturnStore.getState()
+      if (state.account !== account || state.workspace !== workspace || !state.ready) {
+        useWorkspaceReturnStore.setState({ account, workspace, ready: false, record: null, restore: null, homeOpen: false, note: '', saveError: '' })
+        const record = await workspaceStateApi.get(controller.signal)
+        if (controller.signal.aborted) return
+        useWorkspaceReturnStore.setState({ account, workspace, ready: true, record, note: record.note || '' })
+        state = useWorkspaceReturnStore.getState()
+      }
+      let destination = route
+      const last = state.record?.last
+      const saved = !isHome && ((!destination && requested === '/') || (destination && last?.surface === destination.surface && last.id === destination.id)) ? last : null
+      if (saved && !destination) destination = saved
+      if (isHome || (!destination && !window.location.search)) {
+        useWorkspaceReturnStore.setState({ homeOpen: true, restore: null })
+        window.history.replaceState({}, '', '/home')
+        finish('ready'); return
+      }
+      useWorkspaceReturnStore.setState({ homeOpen: false, restore: null })
+      // Root connection parameters belong to App, not workspace restoration.
+      if (!destination) { finish('ready'); return }
+      if (!allowed.includes(destination.surface)) {
+        if (!saved) { finish('unavailable'); return }
+        useWorkspaceReturnStore.setState({ homeOpen: true, note: 'Your last workspace is no longer available. Choose another item from Home.' })
+        window.history.replaceState({}, '', '/home'); finish('ready'); return
+      }
+      await waitForChatStoreHydration()
+      if (controller.signal.aborted) return
+      try {
+        const activate = await resolveProductRoute(destination, controller.signal)
         if (controller.signal.aborted) return
         activate()
+        if (saved) {
+          await restoreWorkspaceChat(saved, controller.signal).catch(() => {
+            if (!controller.signal.aborted) useWorkspaceReturnStore.setState({ note: 'Your workspace opened, but its saved chat could not be restored.' })
+          })
+          if (controller.signal.aborted) return
+          const explicitPanel = route?.view && route.view !== saved.view
+          const layout = explicitPanel && saved.layout ? { ...saved.layout, panel_open: true, focused_pane: 'preview' as const } : saved.layout
+          useWorkspaceReturnStore.setState({ restore: ['agentworks', 'relays', 'work', 'code'].includes(saved.surface) ? { ...saved, view: destination.view, layout } : null })
+        }
         window.history.replaceState({}, '', productRoutePath(destination))
         finish('ready')
-      }).catch(error => {
-        const code = error?.response?.status
-        if (controller.signal.aborted) return
-        if (code === 401) {
-          // Re-check the session through the existing auth lifecycle. An expired
-          // session mounts Login at this URL; a valid session gets Retry instead.
-          void useAuthStore.getState().checkAuth({ background: true }).then(() => {
-            if (useAuthStore.getState().isAuthenticated) finish('error')
-          })
-          return
+      } catch (error) {
+        const code = (error as { response?: { status?: number } })?.response?.status
+        if (saved && (error instanceof ProductUnavailable || code === 403 || code === 404)) {
+          useWorkspaceReturnStore.setState({ homeOpen: true, restore: null, note: 'Your last workspace is no longer available. Choose another item from Home.' })
+          window.history.replaceState({}, '', '/home'); finish('ready'); return
         }
-        finish(error instanceof ProductUnavailable || code === 403 || code === 404 ? 'unavailable' : 'error')
-      })
+        throw error
+      }
     }
+    void initialize().catch(error => {
+      const code = error?.response?.status
+      if (controller.signal.aborted) return
+      if (code === 401) {
+        void useAuthStore.getState().checkAuth({ background: true }).then(() => {
+          if (useAuthStore.getState().isAuthenticated) finish('error')
+        })
+        return
+      }
+      finish(error instanceof ProductUnavailable || code === 403 || code === 404 ? 'unavailable' : 'error')
+    })
     return () => { controller.abort(); cancelPendingWorkflowNavigation() }
-  }, [location, account, permissionKey, attempt])
-  useEffect(() => status === 'ready' ? observeProductHistory() : undefined, [status, location, account])
+  }, [location, account, workspace, permissionKey, attempt])
+  useEffect(() => status === 'ready' && !homeOpen && window.location.pathname !== '/home' ? observeProductHistory(route => {
+    if (!['agentworks', 'relays', 'work', 'code'].includes(route.surface)) queueWorkspaceState({ surface: route.surface, view: route.view })
+  }) : undefined, [status, location, account, homeOpen])
   if (status === 'ready') return <>{children}</>
   const text = status === 'loading' ? 'Opening link…' : status === 'disabled' ? 'This product is not enabled on this server.' : status === 'error' ? 'Could not open this link. Please try again.' : 'This item is not available. You may not have access.'
   return <main className="grid min-h-screen place-items-center p-6"><div className="max-w-md space-y-4 text-center"><p role={status === 'loading' ? 'status' : 'alert'}>{text}</p>{status !== 'loading' && <div className="flex justify-center gap-4"><a className="underline" href="/">Home</a>{status === 'error' && <button className="underline" onClick={() => { activeResolution.current?.abort(); setAttempt(value => value + 1) }}>Retry</button>}</div>}</div></main>

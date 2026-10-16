@@ -80,6 +80,7 @@ describe('global AgentWorks and Crew navigation', () => {
   it('recognizes public and physical Crew sessions without admitting other products', () => {
     expect(isWorkProductSession(session({ session_id: 'work:project:project-1' }))).toBe(true)
     expect(isWorkProductSession(session({ workspace_path: '_users/user-1/Chats/Work/projects/demo' }))).toBe(true)
+    expect(isWorkProductSession(session({ session_id: 'product-trigger-1', workspace_path: 'Crew/news-monitor' }))).toBe(true)
     expect(isWorkProductSession(session({ workspace_path: 'Chats/Video Studio/projects/demo' }))).toBe(false)
   })
 
@@ -117,7 +118,7 @@ describe('global AgentWorks and Crew navigation', () => {
     const trigger = session({
       session_id: 'product-af49f7f6-151d-4f94-9578-acd2c155e1a0',
       agent_mode: 'multi-agent',
-      workspace_path: 'Chats/Work/projects/news-monitor',
+      workspace_path: 'Crew/news-monitor',
       triggered_by: 'webhook',
       title: 'News Monitor · news monitor trigger · 2026-09-20 21:52',
     })

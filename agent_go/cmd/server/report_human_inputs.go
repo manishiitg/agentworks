@@ -555,6 +555,10 @@ func createReportHumanInput(ctx context.Context, workspacePath string, req Repor
 }
 
 func listReportHumanInputs(ctx context.Context, workspacePath, status, source string) ([]ReportHumanInput, error) {
+	return listReportHumanInputsBounded(ctx, workspacePath, status, source, 0)
+}
+
+func listReportHumanInputsBounded(ctx context.Context, workspacePath, status, source string, limit int) ([]ReportHumanInput, error) {
 	reportHumanInputStoreMu.Lock()
 	defer reportHumanInputStoreMu.Unlock()
 
@@ -569,7 +573,9 @@ func listReportHumanInputs(ctx context.Context, workspacePath, status, source st
 
 	clauses := []string{"workspace_path = ?"}
 	args := []interface{}{normalized}
-	if s := strings.TrimSpace(status); s != "" {
+	if status == "needs-attention" {
+		clauses = append(clauses, "status IN ('pending', 'answered')")
+	} else if s := strings.TrimSpace(status); s != "" {
 		clauses = append(clauses, "status = ?")
 		args = append(args, s)
 	}
@@ -583,6 +589,10 @@ func listReportHumanInputs(ctx context.Context, workspacePath, status, source st
 		FROM report_human_inputs WHERE ` + strings.Join(clauses, " AND ") + `
 		ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'answered' THEN 1 WHEN 'claimed' THEN 2 WHEN 'dismissed' THEN 3 ELSE 4 END,
 			datetime(updated_at) DESC, id DESC`
+	if limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, limit)
+	}
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		if isReportHumanInputsMissingTable(err) {

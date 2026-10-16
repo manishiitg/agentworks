@@ -75,3 +75,9 @@ export function cachedWorkflowTabIdForPreset(
   }
   return best?.tabId
 }
+
+/** A server-revalidated return is an explicit selection, not an old browser tab. */
+export function isRecentWorkspaceReturnTab(tab: ChatTab | null | undefined, presetId: string | null, now = Date.now()): tab is ChatTab {
+  const returned = tab?.metadata?.workspaceReturnAt
+  return Boolean(tab?.sessionId && tab.metadata?.presetQueryId === presetId && typeof returned === 'number' && returned <= now && now - returned < 60000)
+}

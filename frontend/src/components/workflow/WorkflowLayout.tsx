@@ -1,3 +1,4 @@
+import { useWorkspaceReturn } from '../../hooks/useWorkspaceReturn'
 import { useWorkflowFilesViewSync } from './hooks/useWorkflowFilesViewSync'
 import { ShortcutHint } from '../chat/ShortcutHint'
 import { openHistoryExecutionLogs } from '../../utils/historyExecutionLogs'
@@ -26,7 +27,7 @@ import { sanitizeDisplayNameForFolder } from '../../utils/workflowUtils'
 import { logger } from '../../utils/logger'
 import { startRestoredTransportTerminal } from '../../utils/restoredTerminal'
 import { isInternalChildSession, isScheduledSession, shouldDiscoverWorkflowChatTab } from '../../utils/workflowSessionKinds'
-import { activeWorkflowTabHasCachedConversation, activeWorkflowTabIdForPreset } from '../../utils/workflowTabOwnership'
+import { isRecentWorkspaceReturnTab, activeWorkflowTabHasCachedConversation, activeWorkflowTabIdForPreset } from '../../utils/workflowTabOwnership'
 import { activateTab } from '../../utils/activateTab'
 import { findLatestRestorableWorkflowChatSession, isRestorableWorkflowChatSession, resolveLatestWorkflowChatAction } from '../../utils/latestWorkflowChat'
 import {
@@ -1304,6 +1305,20 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     setWorkflowWorkspaceView,
   })
 
+  useWorkspaceReturn(relayMode ? 'relays' : 'agentworks', activePresetId ?? undefined, workflowWorkspaceView ?? undefined,
+    { chat_open: showChatArea, panel_open: showWorkspacePane, split_ratio: workspaceSplitRatio, navigation_mode: 'fixed', preview_device: reportPreviewPreference, focused_pane: focusedPane },
+    saved => {
+      setShowChatArea(saved.chat_open); setShowWorkspacePane(saved.panel_open)
+      setWorkspaceMinimized(!saved.panel_open)
+      if (saved.focused_pane) setFocusedPane(saved.focused_pane)
+      const device = saved.preview_device ?? reportPreviewPreference
+      // The validated server record hydrates this device's existing local cache.
+      writeWorkflowSplitPreference(workspacePath, saved.split_ratio, device)
+      if (saved.preview_device) writeReportPreviewPreference(workspacePath, saved.preview_device)
+      workspaceSplitRatioRef.current = saved.split_ratio; setWorkspaceSplitRatio(saved.split_ratio)
+    },
+  )
+
   // Auto-minimize the file workspace sidebar when entering Report so the report
   // has room. Do not reopen it on exit: workflow switches can unmount/remount
   // this layout, and auto-reopening makes the workspace look default-open.
@@ -1371,6 +1386,13 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
       // Without this, chatTabs is empty and dedup fails → duplicate tabs.
       await waitForChatStoreHydration()
       if (cancelled) return
+      const returningStore = useChatStore.getState()
+      const returningTab = returningStore.activeTabId ? returningStore.chatTabs[returningStore.activeTabId] : undefined
+      if (isRecentWorkspaceReturnTab(returningTab, activePresetId)) {
+        resolvedWorkflowConversationKeyRef.current = reconnectKey
+        setResolvedWorkflowConversationKey(reconnectKey)
+        return
+      }
       try {
         const { closeTab, createChatTab, getTabEvents, setTabStreaming } = useChatStore.getState()
         const { getPhaseById } = useWorkflowStore.getState()
@@ -2103,14 +2125,16 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
         // Prefer a read-only Schedule/Bot tab only for the immediate restore action.
         // Normal preset switches should not keep reopening stale scheduled-run tabs.
         const interactiveTabs = newPresetTabs.filter(t => !t.metadata?.isViewOnly)
-        if (!restoredReadOnlyTab && interactiveTabs.length === 0) {
+        if (!restoredReadOnlyTab && !isRecentWorkspaceReturnTab(chatStore.activeTabId ? chatStore.chatTabs[chatStore.activeTabId] : undefined, activePresetId) && interactiveTabs.length === 0) {
           void createFreshWorkflowBuilderTab(activePresetId)
           console.timeEnd(`[WorkflowLayout] preset-switch-effect-${activePresetId?.slice(0,8)}`)
           return
         }
         const streamingTab = interactiveTabs.find(t => chatStore.getTabStreamingStatus(t.tabId))
         const builderTab = interactiveTabs.find(t => t.metadata?.phaseId === 'workflow-builder')
-        const targetTab = restoredReadOnlyTab || streamingTab || builderTab || interactiveTabs[0] || newPresetTabs[0]
+        const activeOnReturn = chatStore.activeTabId ? chatStore.chatTabs[chatStore.activeTabId] : undefined
+        const returnedTab = isRecentWorkspaceReturnTab(activeOnReturn, activePresetId) ? activeOnReturn : undefined
+        const targetTab = returnedTab || restoredReadOnlyTab || streamingTab || builderTab || interactiveTabs[0] || newPresetTabs[0]
         console.log(`[WorkflowLayout] Switching to tab: ${targetTab.tabId.slice(0,8)} (${newPresetTabs.length} tabs for preset, restoredReadOnly=${!!restoredReadOnlyTab}, streaming=${!!streamingTab}, builder=${!!builderTab})`)
         if (restoredReadOnlyTab) {
           revealWorkflowChat(restoredReadOnlyTab.tabId)

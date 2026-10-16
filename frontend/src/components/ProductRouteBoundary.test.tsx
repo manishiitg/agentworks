@@ -5,6 +5,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ resolve: vi.fn(), observe: vi.fn(() => vi.fn()), cancel: vi.fn(), authValid: false, checkAuth: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../stores/useAuthStore', () => ({ useAuthStore: { getState: () => ({ checkAuth: mocks.checkAuth, isAuthenticated: mocks.authValid }) } }))
+vi.mock('../services/workspaceState', () => ({ workspaceStateApi: { get: vi.fn().mockResolvedValue({ version: 1, revision: 0, last: null, recent: [] }) } }))
+vi.mock('../utils/restoreWorkspaceChat', () => ({ restoreWorkspaceChat: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../hooks/useWorkspaceReturn', () => ({ installWorkspaceStateFlush: () => () => {}, queueWorkspaceState: vi.fn() }))
 vi.mock('../utils/resolveProductRoute', () => ({ ProductUnavailable: class extends Error {}, resolveProductRoute: mocks.resolve }))
 vi.mock('../utils/workflowNavigation', () => ({ cancelPendingWorkflowNavigation: mocks.cancel }))
 vi.mock('../utils/productUrlNavigation', () => ({ observeProductHistory: mocks.observe, readProductNavigation: () => ({ surface: 'bullpen' }) }))
@@ -74,6 +77,53 @@ describe('protected deep-link boundary', () => {
       expect(host.textContent).toContain('not enabled on this server')
       expect(mounted).not.toHaveBeenCalled()
       expect(mocks.observe).not.toHaveBeenCalled()
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+})
+
+describe('server workspace return', () => {
+  it('restores the server destination and chat at root, preserving an explicit different link', async () => {
+    const { workspaceStateApi } = await import('../services/workspaceState')
+    const { useWorkspaceReturnStore } = await import('../stores/useWorkspaceReturnStore')
+    const { restoreWorkspaceChat } = await import('../utils/restoreWorkspaceChat')
+    useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null, restore: null, homeOpen: false })
+    const saved = { surface: 'code' as const, id: 'last', view: 'files', session_id: 'chat-1', layout: { chat_open: true, panel_open: false, split_ratio: 0.4, navigation_mode: 'fixed' as const, focused_pane: 'chat' as const } }
+    vi.mocked(workspaceStateApi.get).mockResolvedValueOnce({ version: 1, revision: 3, last: saved, recent: [saved] })
+    window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['code', 'bullpen'] }
+    window.history.replaceState({}, '', '/')
+    mocks.resolve.mockResolvedValue(vi.fn())
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    try {
+      await act(async () => root.render(<ProductRouteBoundary account="alice" allowedProducts={['code', 'bullpen']}>Workspace</ProductRouteBoundary>))
+      expect(mocks.resolve).toHaveBeenCalledWith(saved, expect.any(AbortSignal))
+      expect(restoreWorkspaceChat).toHaveBeenCalledWith(saved, expect.any(AbortSignal))
+      expect(window.location.pathname).toBe('/code/projects/last')
+      window.history.replaceState({}, '', '/code/projects/last?view=dashboard')
+      await act(async () => window.dispatchEvent(new PopStateEvent('popstate')))
+      expect(useWorkspaceReturnStore.getState().restore?.view).toBe('dashboard')
+      expect(useWorkspaceReturnStore.getState().restore?.layout).toMatchObject({ panel_open: true, focused_pane: 'preview', split_ratio: 0.4 })
+      vi.mocked(restoreWorkspaceChat).mockClear()
+      window.history.replaceState({}, '', '/bullpen/connect')
+      await act(async () => window.dispatchEvent(new PopStateEvent('popstate')))
+      expect(mocks.resolve).toHaveBeenLastCalledWith({ surface: 'bullpen', view: 'setup' }, expect.any(AbortSignal))
+      expect(restoreWorkspaceChat).not.toHaveBeenCalled()
+      expect(useWorkspaceReturnStore.getState().restore).toBeNull()
+      expect(window.location.pathname).toBe('/bullpen/connect')
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+  it('opens Home with a plain note after saved access is removed, with no cached fallback', async () => {
+    const { workspaceStateApi } = await import('../services/workspaceState')
+    const { useWorkspaceReturnStore } = await import('../stores/useWorkspaceReturnStore')
+    useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null })
+    vi.mocked(workspaceStateApi.get).mockResolvedValueOnce({ version: 1, revision: 3, last: null, recent: [], note: 'Your last workspace is no longer available.' })
+    window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['code'] }
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    try {
+      await act(async () => root.render(<ProductRouteBoundary account="bob" allowedProducts={['code']}>Workspace</ProductRouteBoundary>))
+      expect(window.location.pathname).toBe('/home')
+      expect(useWorkspaceReturnStore.getState().homeOpen).toBe(true)
+      expect(useWorkspaceReturnStore.getState().note).toContain('no longer available')
+      expect(mocks.resolve).not.toHaveBeenCalled()
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 })

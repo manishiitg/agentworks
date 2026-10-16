@@ -458,6 +458,7 @@ export interface ChatTab {
     scheduledJobName?: string // Display name of the scheduled job, surfaced in the view-only banner
     isBotRun?: boolean // True when tab is observing a bot-triggered session (read-only live view)
     botPlatform?: string // Display label for the bot platform, e.g. Slack or WhatsApp
+    workspaceReturnAt?: number // Ephemeral explicit server return; supersedes automatic latest-chat selection on entry.
     readOnlyRestoredAt?: number // Timestamp for an explicit user-opened Schedule/Bot restore
     // Generic product-agent binding. These fields are durable so a project can
     // recover its normal AgentWorks session after a refresh without maintaining

@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"time"
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 )
@@ -22,8 +21,8 @@ func externalNeedsYouDefinitions(add func(string, string, bool, bool, map[string
 		"workflow_id": externalString("Optional: only this workflow or Flow."),
 		"crew_id":     externalString("Optional: only this Crew."),
 	}
-	add("list_needs_you", "List what is waiting on you across workflows, Flows and Crews: live agent questions (a paused chat, run, scheduled run or function call, with when it expires) and open decisions (with Pulse's recommendation when there is one) and suggestions sent to you as owner. Urgent first. Answer with answer_needs_you.", false, false, filter)
-	add("answer_needs_you", "Answer or dismiss one item from list_needs_you. Pass option (an option id or title) or answer (free text), or dismiss=true for a decision. A live question goes back to the paused chat or run, which continues; a decision is recorded as answered by you via MCP and applied by the Builder as from the app. If someone already answered, says so.", true, false, map[string]any{
+	add("list_needs_you", "Shares Home's authoritative question/decision collector (home action=attention also includes failed-run review items). List what is waiting on you across workflows, Flows and Crews: live agent questions (a paused chat, run, scheduled run or function call, with when it expires) and open decisions (with Pulse's recommendation when there is one) and suggestions sent to you as owner. Urgent first. Answer with answer_needs_you.", false, false, filter)
+	add("answer_needs_you", "Answer or dismiss one item from list_needs_you. For apply_decision items, send the returned apply_message to the Builder chat; answering again is rejected. Pass option (an option id or title) or answer (free text), or dismiss=true for a decision. A live question goes back to the paused chat or run, which continues; a decision is recorded as answered by you via MCP and applied by the Builder as from the app. If someone already answered, says so.", true, false, map[string]any{
 		"id":      externalString("Item id from needs_you action=list."),
 		"option":  externalString("Chosen option id or title."),
 		"answer":  map[string]any{"type": "string", "maxLength": 8000, "description": "Free-text answer or note."},
@@ -80,55 +79,13 @@ func (api *StreamingAPI) externalNeedsYou(w http.ResponseWriter, r *http.Request
 		return
 	}
 	places := api.needsYouPlaces(ctx, claims, visible, externalArg(args, "workflow_id"), externalArg(args, "crew_id"))
-	byPath := map[string]needsYouPlace{}
-	for _, place := range places {
-		byPath[strings.Trim(place.path, "/")] = place
-	}
 	filtered := externalArg(args, "workflow_id") != "" || externalArg(args, "crew_id") != ""
-
-	// Live agent questions this person may answer.
-	type question struct {
-		request virtualtools.HumanFeedbackRequest
-		place   *needsYouPlace
+	limit := 0
+	if name == "list_needs_you" {
+		limit = homeSectionLimit
 	}
-	questions := []question{}
-	for _, request := range api.visibleHumanFeedback(ctx, virtualtools.GetHumanFeedbackStore().ListPending(time.Now())) {
-		api.activeSessionsMux.RLock()
-		session := api.activeSessions[request.SessionID]
-		workspace := ""
-		if session != nil {
-			workspace = strings.Trim(session.WorkspacePath, "/")
-		}
-		api.activeSessionsMux.RUnlock()
-		var place *needsYouPlace
-		if found, ok := byPath[workspace]; ok {
-			place = &found
-		}
-		// A scoped connection sees only questions from places it may reach.
-		if (filtered || claims.AccessToken != nil) && place == nil {
-			continue
-		}
-		questions = append(questions, question{request: request, place: place})
-	}
-
-	// Open decisions and suggestions.
-	type decision struct {
-		input ReportHumanInput
-		place needsYouPlace
-	}
-	decisions := []decision{}
-	for _, place := range places {
-		if read, _ := reportHumanInputAccess(ctx, place.path); !read {
-			continue
-		}
-		inputs, err := listReportHumanInputs(ctx, place.path, "pending", "")
-		if err != nil {
-			continue
-		}
-		for _, input := range inputs {
-			decisions = append(decisions, decision{input: input, place: place})
-		}
-	}
+	collected := api.collectNeedsYou(ctx, claims, places, !filtered, limit)
+	questions, decisions := collected.questions, collected.decisions
 
 	if name == "list_needs_you" {
 		items := []map[string]any{}
@@ -156,7 +113,11 @@ func (api *StreamingAPI) externalNeedsYou(w http.ResponseWriter, r *http.Request
 			}
 			item := map[string]any{"id": d.input.ID, "type": kind, "question": d.input.Question, "options": d.input.Options,
 				"allow_free_text": d.input.AllowFreeText, "priority": d.input.Priority, "source": d.input.Source,
-				"asked_at": d.input.CreatedAt, "from": d.place}
+				"asked_at": d.input.CreatedAt, "from": d.place, "status": d.input.Status}
+			if d.input.ApplyMessage != "" {
+				item["apply_message"] = d.input.ApplyMessage
+				item["type"] = "apply_decision"
+			}
 			if d.input.Context != "" {
 				item["context"] = d.input.Context
 			}
@@ -165,7 +126,7 @@ func (api *StreamingAPI) externalNeedsYou(w http.ResponseWriter, r *http.Request
 			}
 			items = append(items, item)
 		}
-		externalJSON(w, map[string]any{"items": items, "count": len(items)})
+		externalJSON(w, map[string]any{"items": items, "count": len(items), "warnings": collected.warnings, "truncated": collected.truncated})
 		return
 	}
 

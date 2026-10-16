@@ -16,10 +16,10 @@ export const WELCOME_HOME_DISMISSED_KEY = 'agentworks_welcome_home_v1_dismissed'
 export const OPEN_WELCOME_HOME_EVENT = 'open-welcome-home'
 const PERSONAL_PRODUCTS = new Set<string>(['video-studio', 'sparkquill'])
 
-export function WelcomeHome() {
+export function WelcomeHome({ autoOpen = true }: { autoOpen?: boolean }) {
   // Someone whose account opens exactly one product (a Code-only account) goes straight to it: the welcome page is for choosing
   // between products and connecting tools, and they have nothing to choose. The menu can still open it.
-  const [open, setOpen] = useState(() => !isGuideRemembered(WELCOME_HOME_DISMISSED_KEY) && visibleProductSurfaceIDs(useAuthStore.getState().user?.allowed_products).length !== 1)
+  const [open, setOpen] = useState(() => autoOpen && !isGuideRemembered(WELCOME_HOME_DISMISSED_KEY) && visibleProductSurfaceIDs(useAuthStore.getState().user?.allowed_products).length !== 1)
   const [copied, setCopied] = useState('')
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const products = useMemo(() => {

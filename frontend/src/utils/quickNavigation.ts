@@ -1,3 +1,4 @@
+import { openHome } from '../stores/useWorkspaceReturnStore'
 import type { AuthUser } from '../services/api'
 import { useCommandDialogStore, type ProductCreateSurface } from '../stores/useCommandDialogStore'
 import { hasProductCreateAccess } from './workflowPermissions'
@@ -9,7 +10,7 @@ import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { openProductWorkspace } from './productWorkspaceNavigation'
 
 export type QuickNavigationScope = 'active' | 'workflows' | 'relays' | 'crew' | 'code' | 'chats' | 'products' | 'panels' | 'create'
-export type NavigationAction = 'active' | 'browse' | 'activity' | 'schedules' | 'providers' | 'users' | 'mcp' | 'vault-audit' | 'vault-connect' | 'create'
+export type NavigationAction = 'home' | 'active' | 'browse' | 'activity' | 'schedules' | 'providers' | 'users' | 'mcp' | 'vault-audit' | 'vault-connect' | 'create'
 export type QuickNavigationItem = {
   type: 'product' | 'menu'
   id: string
@@ -49,6 +50,7 @@ export function quickNavigationItems(
   const browse = (scope: QuickNavigationScope, label: string) => {
     items.push({ ...common, type: 'menu', id: `browse:${scope}`, label, subtitle: 'Browse · show the full list', isActive: false, action: scope === 'active' ? 'active' : 'browse', scope })
   }
+  menu('home', 'Home', 'Needs my attention, existing work and running activity')
   browse('active', 'Running work')
   if (products.includes('agentworks')) { browse('workflows', 'All workflows'); browse('chats', 'All chats') }
   if (products.includes('relays')) browse('relays', 'All Flows')
@@ -90,6 +92,7 @@ export function openQuickNavigation(item: QuickNavigationItem): boolean {
     return true
   }
   if (!item.action || item.scope) return false
+  if (item.action === 'home') { openHome(); return true }
   if (item.action === 'create') {
     // Resolve the admitted destination again instead of trusting a stale row.
     const destination = quickNavigationItems(user, current).find(candidate => candidate.id === item.id)?.surface
