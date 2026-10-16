@@ -51,6 +51,11 @@ func TestPersonalSlackConnectionsAcrossSurfaces(t *testing.T) {
 	if id == "" || created["status"] != "needs_client_id" {
 		t.Fatalf("missing app setup next step: %+v", created)
 	}
+	// A second Connect before signing in reuses that account (2026-10-16: two
+	// clicks before the sign-in app was set up left two empty accounts).
+	if again := call("editor", "Workflow/orders", "connect", "", "", 200); again["connection_id"] != id {
+		t.Fatalf("second connect made a new account: %v, want %s", again["connection_id"], id)
+	}
 	internal, cfg, err := placeMCPServerConfig("editor", id)
 	if err != nil || cfg.OAuth == nil {
 		t.Fatal("saved connection unavailable", err)

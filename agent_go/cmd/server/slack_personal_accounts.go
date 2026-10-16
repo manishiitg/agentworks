@@ -57,6 +57,25 @@ func personalSlackServer(owner, id string) (placeMCPServer, error) {
 	return placeMCPServer{}, fmt.Errorf("Choose a saved Slack account from this item's Slack settings.")
 }
 
+// unsignedPersonalSlack returns the person's saved Slack account that has no
+// login yet, or "" when every saved account is signed in.
+func unsignedPersonalSlack(person string) (string, error) {
+	servers, err := listPlaceMCPServers(person)
+	if err != nil {
+		return "", err
+	}
+	dir, err := placeMCPDir(person)
+	if err != nil {
+		return "", err
+	}
+	for _, server := range servers {
+		if isPersonalSlack(server) && !placeMCPServerConnected(dir, person, server) {
+			return server.Name, nil
+		}
+	}
+	return "", nil
+}
+
 func (api *StreamingAPI) personalSlackAccounts(r *http.Request, workspace string) (slackAccountsResponse, error) {
 	out := slackAccountsResponse{Accounts: []slackAccountRow{}, Notice: slackAccountNotice}
 	actor := personalConnectionActor(r.Context())
@@ -139,11 +158,20 @@ func (api *StreamingAPI) personalSlackOperation(r *http.Request, workspace strin
 		if strings.TrimSpace(label) == "" {
 			label = "My Slack account"
 		}
-		saved, _, err := api.ensurePersonalMCP(r.Context(), actor, placeMCPServer{Label: label}, "Slack")
+		// Reuse the person's saved account that never finished signing in, so
+		// repeated Connect clicks (e.g. before the sign-in app is set up) do
+		// not pile up empty "Sign-in needed" accounts (2026-10-16).
+		id, err = unsignedPersonalSlack(actor)
 		if err != nil {
 			return nil, err
 		}
-		id = saved.Name
+		if id == "" {
+			saved, _, err := api.ensurePersonalMCP(r.Context(), actor, placeMCPServer{Label: label}, "Slack")
+			if err != nil {
+				return nil, err
+			}
+			id = saved.Name
+		}
 		if err := attachPersonalLoginToPlace(actor, id, root); err != nil {
 			return nil, err
 		}
