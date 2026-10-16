@@ -76,6 +76,19 @@ func notifyAgentLiveChanged() {
 	agentLiveEvents.changed = make(chan struct{})
 	agentLiveEvents.Unlock()
 }
+
+// namedAgentPresence is the words people see: "Live" (an attached chat is connected), "Mailbox only"
+// (registered over MCP, never attached: messages wait until it reads them) or "Offline" (was attached, not connected now).
+func namedAgentPresence(a namedMessageAgent) string {
+	switch {
+	case namedAgentOnline(a):
+		return "Live"
+	case a.Attachment == nil:
+		return "Mailbox only"
+	}
+	return "Offline"
+}
+
 func namedAgentOnline(a namedMessageAgent) bool {
 	agentLiveEvents.Lock()
 	defer agentLiveEvents.Unlock()

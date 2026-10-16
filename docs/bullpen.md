@@ -273,8 +273,8 @@ proof that the agent read or processed a message.
 ## The AgentBridge page
 
 The AgentBridge page has one **Agents** view and **Connect an agent**. Agents lists
-your agents with their provider, purpose and a Connected or Offline badge
-(connected first), a badge for the groups it is in, and any notice from an
+your agents with their provider, purpose and a Live, Mailbox only or Offline badge
+(live first), a badge for the groups it is in, and any notice from an
 administrator. Below it are the groups on this server with their members.
 Type in the search box to filter. Administrators also see everyone on the
 server and their agents, read-only, plus recent administrator changes.
@@ -363,7 +363,12 @@ software already running as you.
 
 ## Troubleshooting
 
-**Offline chats.** A chat shows Offline when no live session holds its
+**Mailbox only.** A name registered over MCP (not attached) shows Mailbox only: messages
+wait until the agent reads them. Run `agentworks attach NAME` in the chat's app for live
+delivery. If your MCP sign-in already holds the name, the CLI attach joins it in one step
+and the name keeps its groups.
+
+**Offline chats.** A chat that was attached shows Offline when no live session holds its
 name, for example after the app closed or the computer restarted.
 Re-attach in the same chat (`/agentworks attach`, or
 `/agentworks-muse:agentworks attach` in Muse) to reconnect the same

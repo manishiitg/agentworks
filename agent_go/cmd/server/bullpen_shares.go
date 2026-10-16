@@ -394,7 +394,7 @@ func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[
 				continue
 			}
 			owner := shareOwnerLabel(sh.OwnerUserID)
-			item := map[string]interface{}{"agent_name": owner + "/" + a.Name, "target": "agent:" + owner + "/" + a.Name, "owner": owner, "shared": true, "capability": sh.Capability, "scope": map[bool]string{true: "everyone", false: "person"}[sh.serverScope()], "purpose": a.Purpose, "online": namedAgentOnline(a)}
+			item := map[string]interface{}{"agent_name": owner + "/" + a.Name, "target": "agent:" + owner + "/" + a.Name, "owner": owner, "shared": true, "capability": sh.Capability, "scope": map[bool]string{true: "everyone", false: "person"}[sh.serverScope()], "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a)}
 			if !sh.serverScope() {
 				item["expires_at"] = sh.ExpiresAt
 			}

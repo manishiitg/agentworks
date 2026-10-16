@@ -198,7 +198,7 @@ func (s agentMessageStore) groupAgentItems(userID string) []map[string]interface
 					continue
 				}
 				seen[target] = len(items)
-				items = append(items, map[string]interface{}{"agent_name": owner + "/" + a.Name, "target": target, "owner": owner, "shared": true, "scope": "group", "groups": []string{g.Name}, "purpose": a.Purpose, "online": namedAgentOnline(a)})
+				items = append(items, map[string]interface{}{"agent_name": owner + "/" + a.Name, "target": target, "owner": owner, "shared": true, "scope": "group", "groups": []string{g.Name}, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a)})
 			}
 		}
 	}
@@ -222,7 +222,7 @@ func (s agentMessageStore) groupsView(viewerID string, withMembers bool) []map[s
 					joined = append(joined, a.Name)
 				}
 				if withMembers {
-					members = append(members, map[string]interface{}{"agent_name": label(a.UserID) + "/" + a.Name, "owner": label(a.UserID), "purpose": a.Purpose, "online": namedAgentOnline(a)})
+					members = append(members, map[string]interface{}{"agent_name": label(a.UserID) + "/" + a.Name, "owner": label(a.UserID), "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a)})
 				}
 			}
 		}

@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -146,7 +148,7 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 	items := []map[string]interface{}{}
 	for _, a := range s.Agents {
 		if a.UserID == userID {
-			item := map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "groups": s.groupNamesOf(a.ID, a.UserID), "provider": func() string {
+			item := map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "groups": s.groupNamesOf(a.ID, a.UserID), "provider": func() string {
 				if a.Attachment != nil {
 					return a.Attachment.Provider
 				}
@@ -232,16 +234,26 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 	if index >= 0 && !namedAgentConnectionAllowed(s.Agents[index], claims) {
 		// The holding sign-in may be gone (revoked or expired); the same person then takes the name.
 		// While it is still active, say which one holds it and how to move the name.
-		holder, live := "", false
+		holder, live, onlyMCP := "", false, true
 		for _, id := range s.Agents[index].Connections {
 			if c, e := agentMessageConnectionClaims(r.Context(), id); e == nil && c.UserID == claims.UserID && c.AccessToken != nil {
 				live = true
+				onlyMCP = onlyMCP && c.AccessToken.Name == "MCP OAuth"
 				if holder == "" {
 					holder = c.AccessToken.Name
 				}
 			}
 		}
-		if live {
+		if live && onlyMCP && s.Agents[index].Attachment == nil && claims.AccessToken != nil && claims.AccessToken.Name == "AgentWorks CLI" {
+			// The same person's MCP sign-in only holds a mailbox (never attached) and now the CLI attaches the name:
+			// the CLI sign-in joins it in one step and the name keeps its groups.
+			if !slices.Contains(s.Agents[index].Connections, claims.AccessToken.ID) {
+				s.Agents[index].Connections = append(slices.Clone(s.Agents[index].Connections), claims.AccessToken.ID)
+			}
+			connections = s.Agents[index].Connections
+			log.Printf("[AGENT_MSG] same person joined a mailbox-only name: name=%s", name)
+			live = false
+		} else if live {
 			who := "another sign-in of yours"
 			if holder != "" {
 				who = "your sign-in \"" + holder + "\""
@@ -292,6 +304,12 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 	}
 	if claims.AccessToken != nil {
 		out["connection_id"] = claims.AccessToken.ID
+	}
+	if externalArg(args, "action") == "register" {
+		out["presence"] = namedAgentPresence(s.Agents[index])
+		if s.Agents[index].Attachment == nil {
+			out["next"] = "Mailbox only: messages wait here until this agent reads them. For live messages in this app, install the AgentWorks CLI and run agentworks attach " + name + " in the chat (it takes over this name and keeps your groups)."
+		}
 	}
 	externalJSON(w, out)
 }

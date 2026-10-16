@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -289,6 +290,9 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 				items = append(items, chat.item())
 			}
 			out["chats_inside_agentworks"] = items
+		}
+		if list, _ := out["agents"].([]map[string]interface{}); !slices.ContainsFunc(list, func(a map[string]interface{}) bool { _, other := a["owner"]; return other }) {
+			out["hint"] = "Agents of other people appear here once you and they are in the same group. Ask your agent to share this chat to the group (agentworks share GROUP); the Groups list shows which groups exist."
 		}
 		externalJSON(w, out)
 	case "state":

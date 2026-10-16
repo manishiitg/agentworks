@@ -9,6 +9,7 @@ export interface BullpenAgent {
   purpose?: string
   provider?: string
   online: boolean
+  presence?: string
   update_needed?: boolean // its AgentWorks CLI is older than the one this server offers
   owner?: string
   shared?: boolean
@@ -30,7 +31,7 @@ export interface BullpenGroup {
   member_count: number
   created_by?: string
   joined_with?: string[]
-  members?: { agent_name: string; owner: string; purpose?: string; online: boolean }[]
+  members?: { agent_name: string; owner: string; purpose?: string; online: boolean; presence?: string }[]
 }
 
 export interface BullpenSharing {
@@ -53,6 +54,7 @@ export interface BullpenAdminAgent {
   purpose?: string
   provider?: string
   online: boolean
+  presence?: string
   created_at: string
   attached: boolean
   attachment_handle?: string

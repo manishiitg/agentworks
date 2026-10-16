@@ -21,7 +21,7 @@ A hosted MCP client may guide installation but cannot install software on someon
 
 Use the installer published by that same server. It downloads the matching CLI and checks its checksum. Check for an existing installation with `agentworks version` first; use the update section for an existing copy.
 
-macOS or Linux, in Terminal (replace both example addresses):
+macOS or Linux, in Terminal (replace both example addresses with this server's real address, the one the person opens in their browser; never leave `<server>` or `example.com` in the command, the installer refuses it):
 
 ```sh
 curl -fsSL 'https://agentworks.example.com/api/downloads/cli/install-agentworks.sh' | sh -s -- --server 'https://agentworks.example.com' --no-login
@@ -33,7 +33,7 @@ Windows, in PowerShell (replace both example addresses):
 & ([scriptblock]::Create((Invoke-RestMethod 'https://agentworks.example.com/api/downloads/cli/install-agentworks.ps1'))) -Server 'https://agentworks.example.com' -NoLogin
 ```
 
-Both installers support Intel/AMD and ARM computers. The Unix installer puts the CLI in `~/.local/bin`; the Windows installer uses `%LOCALAPPDATA%\agentworks` and adds it to the user's PATH. Open a new terminal if the command is missing. On macOS/Linux, use `~/.local/bin/agentworks` or add that folder to PATH as the installer explains. Installing a Windows binary alone does not establish that the selected coding client supports live attachment there; follow its current setup page.
+Both installers support Intel/AMD and ARM computers. The Unix installer puts the CLI in `~/.local/bin`; the Windows installer uses `%LOCALAPPDATA%\agentworks` and adds it to the user's PATH. The macOS/Linux installer adds that folder to the person's shell startup file (`~/.zshrc` for zsh) and prints the line; open a new terminal window, or run the printed `export PATH=...` line, if the command is still missing. Installing a Windows binary alone does not establish that the selected coding client supports live attachment there; follow its current setup page.
 
 ## Sign in
 
