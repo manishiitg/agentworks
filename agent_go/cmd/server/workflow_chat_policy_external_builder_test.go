@@ -45,13 +45,15 @@ func TestExternalBuilderPolicyIsOperationScopedAndNeverNative(t *testing.T) {
 	if (&StreamingAPI{}).workflowChatNativeAgentTools(context.Background(), req, "shared-browser-chat", false) {
 		t.Fatal("external turn admitted native tools")
 	}
+	// The operation id is not part of the chat's role (PLAT-548): a new MCP Builder operation on the same chat keeps
+	// the same role and native process instead of restarting it and showing "Conversation restored".
 	req.ExternalBuilderOperationID = "op-2"
 	other := resolveWorkflowChatPolicy("shared-browser-chat", req, nil, false)
-	if p.sessionKey() == other.sessionKey() {
-		t.Fatal("different operation reused runtime authority")
+	if p.sessionKey() != other.sessionKey() {
+		t.Fatal("a new external Builder operation changed the chat's role")
 	}
-	if !chatPolicyRoleRequiresReconnect(true, p.sessionKey(), other.sessionKey(), true, nil) {
-		t.Fatal("operation change retained native process")
+	if chatPolicyRoleRequiresReconnect(true, p.sessionKey(), other.sessionKey(), true, nil) {
+		t.Fatal("a new external Builder operation restarted the native process")
 	}
 	req.ExternalBuilderOperationID = ""
 	web := resolveWorkflowChatPolicy("shared-browser-chat", req, nil, false)
