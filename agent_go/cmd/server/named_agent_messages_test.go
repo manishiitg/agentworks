@@ -52,7 +52,6 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 	}
 	owner, ownerToken := issue("owner", "Reviewer", []string{"crews:run", "workflows:read", "runs:execute"})
 	worker, workerToken := issue("owner", "Worker", []string{"crews:run", "workflows:read", "runs:execute"})
-	reader, _ := issue("owner", "Read only", []string{"workflows:read"})
 	foreign, _ := issue("other", "Foreign", []string{"crews:run"})
 	call := func(c *agentworksclient.Client, args map[string]any, wantOK bool) map[string]any {
 		t.Helper()
@@ -72,7 +71,7 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 		}
 		return out
 	}
-	call(reader, map[string]any{"action": "register", "agent_name": "reviewer"}, false)
+	// A person's sign-in carries the full scope set (owner 2026-10-16), so there is no read-only sign-in to refuse here.
 	call(owner, map[string]any{"action": "register", "agent_name": "Reviewer"}, true)
 	call(worker, map[string]any{"action": "register", "agent_name": "worker"}, true)
 	// A name registered by a CLI sign-in keeps receiving while its chat is closed (no attachment): only names

@@ -352,6 +352,10 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			agentMessageMu.Unlock()
 			return nil, fmt.Errorf("conversation unavailable or access denied")
 		}
+		// A renamed tab keeps being called by its current name in the other side's view of the conversation.
+		if label := strings.TrimSpace(caller.Label); label != "" && !c.Endpoints[side].External && c.Endpoints[side].Label != label {
+			c.Endpoints[side].Label = label
+		}
 		if target.TeamRecipientID != "" {
 			peer := c.Endpoints[1-side]
 			current := targetMessageEndpoint(userID, target)

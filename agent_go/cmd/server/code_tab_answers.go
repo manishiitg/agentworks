@@ -53,6 +53,12 @@ func (api *StreamingAPI) relayTabFinalAnswer(ctx context.Context, delivered agen
 			current = c
 		}
 	}
+	// The tab is called by its current name, not the one it had when the conversation started.
+	if identities, e := defaultProductConversationRegistryStore().agentIdentities(ctx, dest.UserID, codeproduct.ProfileID, dest.ID); e == nil {
+		if identity, ok := identities[dest.ChatKey]; ok && strings.TrimSpace(identity.Name) != "" {
+			dest.Label = strings.TrimSpace(identity.Name)
+		}
+	}
 	text := tabFinalAnswerText(current, m, source, dest, final)
 	if text == "" {
 		return
