@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
@@ -271,6 +274,80 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					return "", err
 				}
 				return jsonOut(map[string]interface{}{"name": firstNonEmptyTrimmed(identity.Name, project.Self.Name), "purpose": identity.Purpose})
+			}},
+		{"open_project_chat", "Open a new named tab (a new agent) in this Code, as the + in the app does, to give it part of the work. name is required and unique in this Code (an existing tab with that name is reused, not duplicated); task is an optional first message, sent like ask_project_chat. Up to "+strconv.Itoa(externalCrewMaxSideChats)+" side tabs; this Code's owner only.", map[string]interface{}{
+			"type": "object", "required": []string{"name"}, "properties": map[string]interface{}{
+				"name": map[string]interface{}{"type": "string", "maxLength": 120, "description": "A short name for the tab, e.g. tests or review."},
+				"task": map[string]interface{}{"type": "string", "description": "Optional first task, self-contained."},
+			}},
+			func(ctx context.Context, args map[string]interface{}) (string, error) {
+				ctx = trusted(ctx)
+				name, err := normalizeChatHistoryTitle(strings.TrimSpace(stringToolArg(args, "name")))
+				if err != nil || name == "" {
+					return "", fmt.Errorf("give the tab a short name")
+				}
+				project, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
+				if err != nil {
+					return "", err
+				}
+				if project.OwnerID != userID {
+					return "", fmt.Errorf("only the owner of this Code opens tabs")
+				}
+				binding, projectID, ok := api.externalCodeRunOwnProject(ctx, userID, project.ProjectID)
+				if !ok {
+					return "", fmt.Errorf("this Code project is unavailable")
+				}
+				chats, err := api.externalCodeRunChats(ctx, userID, projectID, binding)
+				if err != nil {
+					return "", err
+				}
+				claims := GetUserFromContext(ctx)
+				if claims == nil {
+					claims = &UserClaims{UserID: userID}
+				}
+				reused := true
+				chat := findCodeChat(chats, name)
+				if chat == nil {
+					reused = false
+					request := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
+					id, status, message := api.externalCodeRunOpenTab(request, claims, binding, projectID, chats, name)
+					if id == "" {
+						return "", fmt.Errorf("%s (%d)", message, status)
+					}
+					if again, e := api.externalCodeRunChats(ctx, userID, projectID, binding); e == nil {
+						chat = findCodeChat(again, id)
+					}
+					if chat == nil {
+						return "", fmt.Errorf("the tab was opened but could not be found; see list_project_chats")
+					}
+				}
+				out := map[string]interface{}{"id": chat.ID, "name": chat.Name, "reused": reused}
+				task := strings.TrimSpace(stringToolArg(args, "task"))
+				if task == "" {
+					out["next"] = "Hand it work with ask_project_chat chat=" + chat.ID + "."
+					return jsonOut(out)
+				}
+				if len([]rune(task)) > codeChatMessageMaxRune {
+					return "", fmt.Errorf("task is longer than %d characters; put the detail in a file in the folder and point to it", codeChatMessageMaxRune)
+				}
+				fresh, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
+				if err != nil {
+					return "", err
+				}
+				target, err := fresh.find(chat.ID)
+				if err != nil {
+					return "", err
+				}
+				base, err := resolveCaller(ctx)
+				if err != nil {
+					return "", err
+				}
+				sent, err := api.sendAgentMessage(ctx, userID, codeChatCaller(fresh, base), codeChatTarget(fresh, target, agentProfileRuntimeWorkspace(userID, base.Path)), task, "", "")
+				if err != nil {
+					return "", err
+				}
+				out["asked"] = sent
+				return jsonOut(out)
 			}},
 		{"ask_project_chat", "Send an explicit message to another chat (tab) of this Code. Busy chats receive it after their current turn. Returns an inbox/reply address, not a function call. The recipient chooses whether and when to reply with send_message; final chat text is not forwarded. Read messages with read_agent_messages(inbox_id). Other chats share this folder but not this conversation, so make the message self-contained.", map[string]interface{}{
 			"type": "object", "required": []string{"chat", "message"}, "properties": map[string]interface{}{

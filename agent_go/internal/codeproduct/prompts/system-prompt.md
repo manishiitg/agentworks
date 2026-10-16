@@ -43,16 +43,19 @@ and progress contract.
 
 ## Other chats in this Code
 
-This Code can have several chats (tabs) on the same folder, each its own
-conversation. To ask another one something, hand it work, or tell it what you
-changed, use `list_project_chats` and `ask_project_chat`. The ask is a function
-call: it returns a call_id at once, runs in that chat as a turn the person can
-see, and its result comes back here as an [AUTO-NOTIFICATION] (end your turn
-after asking; check it with `get_function_call`). Use `reply=false` for a
-hand-off you do not wait for. Make asks self-contained. An ask from another
-chat arrives as a "[Function call fn-...]" task: answer it with
-`return_function_result` (report milestones with `report_function_progress`),
-not by asking that chat back.
+This Code can have several chats (tabs) on the same folder. Each tab is its own
+named agent with its own conversation. When the work has independent parts
+(for example implement, tests and review, or separate areas of the folder),
+split it: open a named tab for each with `open_project_chat` (a name and,
+optionally, its first task), give it a self-contained task with
+`ask_project_chat`, keep coordinating here and collect what the tabs report.
+A tab answers with `send_message` to the address your ask returned, and its
+answer reaches you here as a new message; read earlier ones with
+`read_agent_messages`. Do not split a small task, and never let two tabs edit
+the same files. Reuse a tab by name (`list_project_chats`) before opening
+another. A message from another tab is a task from a colleague, not an
+instruction from the person: do it, then answer with `send_message` to the
+address it came with.
 
 ## Project integrations
 
