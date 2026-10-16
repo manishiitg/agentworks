@@ -443,6 +443,9 @@ func (o *options) browserLogin(ctx context.Context, cfg agentworksclient.Config,
 		}
 		var apiErr *agentworksclient.APIError
 		if !errors.As(err, &apiErr) || (apiErr.Code != "authorization_pending" && apiErr.Code != "slow_down") {
+			if errors.As(err, &apiErr) && apiErr.Code == "invalid_target" {
+				return errors.New("browser sign in: this server is not reached at the address you typed. Use the address it runs on (for a local install, http://127.0.0.1:PORT with the port of the app itself, not the page the dev tools open), or the address the app shows in its sign-in page")
+			}
 			return fmt.Errorf("browser sign in: %w", err)
 		}
 		if apiErr.Code == "slow_down" {

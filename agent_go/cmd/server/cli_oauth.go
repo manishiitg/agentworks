@@ -43,6 +43,21 @@ func cliOAuthResource(r *http.Request) (origin, resource string, ok bool) {
 	return origin, origin + "/api/external/v1", true
 }
 
+// cliOAuthSameResource is the audience check of the token request. On a local install every
+// loopback spelling of the same port (localhost, 127.0.0.1, [::1]) reaches this one server, so
+// they count as the same audience; the grant itself is always stored under the canonical one.
+func cliOAuthSameResource(posted, canonical string) bool {
+	if posted == canonical {
+		return true
+	}
+	a, errA := url.Parse(posted)
+	b, errB := url.Parse(canonical)
+	if errA != nil || errB != nil || a.Scheme != "http" || b.Scheme != "http" || a.User != nil || a.RawQuery != "" || a.Fragment != "" {
+		return false
+	}
+	return cliOAuthLoopback(a.Hostname()) && cliOAuthLoopback(b.Hostname()) && a.Port() == b.Port() && a.Path == b.Path
+}
+
 func cliOAuthLoopback(host string) bool {
 	if strings.EqualFold(host, "localhost") {
 		return true
@@ -165,7 +180,7 @@ func (api *StreamingAPI) handleCLIOAuthToken(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	_, resource, ok := cliOAuthResource(r)
-	if !ok || r.PostForm.Get("resource") != resource || r.PostForm.Get("client_id") != cliOAuthClientID {
+	if !ok || !cliOAuthSameResource(r.PostForm.Get("resource"), resource) || r.PostForm.Get("client_id") != cliOAuthClientID {
 		mcpOAuthError(w, http.StatusBadRequest, "invalid_target")
 		return
 	}

@@ -230,7 +230,7 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 		}
 	}
 	if index >= 0 && !namedAgentConnectionAllowed(s.Agents[index], claims) {
-		externalError(w, 404, "not_found", "Named agent unavailable or access denied.")
+		externalError(w, 404, "not_found", "The name "+name+" is already used by another sign-in of yours (an older connection or another computer). Pick a different name, or remove the name from the sign-in that created it.")
 		return
 	}
 	if externalArg(args, "action") == "unregister" {

@@ -255,3 +255,24 @@ func TestCLIOAuthMayPostTheSecretsRoute(t *testing.T) {
 		t.Fatal("more of the secrets path is open to the CLI token than the one POST")
 	}
 }
+
+// A local install accepts any loopback spelling of its own port as the token audience, and nothing else.
+func TestCLIOAuthSameResourceOnLoopback(t *testing.T) {
+	canonical := "http://127.0.0.1:18743/api/external/v1"
+	for posted, want := range map[string]bool{
+		canonical:                                  true,
+		"http://localhost:18743/api/external/v1":   true,
+		"http://[::1]:18743/api/external/v1":       true,
+		"http://localhost:51733/api/external/v1":   false,
+		"http://example.com:18743/api/external/v1": false,
+		"https://localhost:18743/api/external/v1":  false,
+		"http://localhost:18743/other":             false,
+	} {
+		if got := cliOAuthSameResource(posted, canonical); got != want {
+			t.Errorf("cliOAuthSameResource(%q) = %t, want %t", posted, got, want)
+		}
+	}
+	if cliOAuthSameResource("http://localhost/api/external/v1", "https://agents.example.com/api/external/v1") {
+		t.Error("a public server must keep its exact audience")
+	}
+}
