@@ -2950,3 +2950,197 @@ func TestPulseRepairDrainRequiresDurableWorklist(t *testing.T) {
 		t.Fatal("missing worklist must not silently bypass the completion contract")
 	}
 }
+
+// PLAT-871: same-slot prerequisites must be found at the exact nanosecond
+// boundary, and a failed prerequisite must terminate the whole dependent chain.
+func TestSchedulerSameSlotFailureEndsDependentChain(t *testing.T) {
+	ctx := context.Background()
+	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "schedule-state.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	svc := NewSchedulerService(nil)
+	svc.stateStore = store
+	at := time.Now().UTC().Truncate(time.Minute).Add(-time.Hour)
+	manifest := &WorkflowManifest{ID: "demo", Schedules: []WorkflowSchedule{
+		{ID: "first", Name: "Collect results", Enabled: true, CronExpression: "0 9 * * *", Timezone: "UTC"},
+		{ID: "second", Name: "Publish results", Enabled: true, CronExpression: "0 9 * * *", Timezone: "UTC", AfterScheduleID: "first"},
+		{ID: "third", Name: "Send summary", Enabled: true, CronExpression: "0 9 * * *", Timezone: "UTC", AfterScheduleID: "second"},
+	}}
+	raw, _ := json.Marshal(manifest)
+	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{"Workflow/demo/workflow.json": string(raw)}})
+	defer workspace.Close()
+	t.Setenv("WORKSPACE_API_URL", workspace.URL)
+	parent := buildScheduleContext("Workflow/demo", manifest, manifest.Schedules[0])
+	parent.ScheduledFor = at
+	if err := svc.claimScheduleRun(ctx, parent, "failed-first", at); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.recordScheduleFireDecision(ctx, parent, "started", "accepted", "failed-first", at); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Transition(ctx, schedulerstate.Transition{RunID: "failed-first", To: schedulerstate.StateFailed, ErrorMessage: "Workflow Review blocked the run", At: at.Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	// A duplicate queued fire must not hide the accepted run. Its failed
+	// outcome still releases a caller explicitly configured for any terminal.
+	parent.TriggerSource = "queued"
+	if err := svc.recordScheduleFireDecision(ctx, parent, "skipped_busy", "duplicate fire", "", at.Add(90*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	anyTerminal := buildScheduleContext("Workflow/demo", manifest, manifest.Schedules[1])
+	anyTerminal.ScheduledFor = at
+	anyTerminal.Schedule.AfterTerminalStatus = "any_terminal"
+	if got, reason := svc.scheduleDependencyDisposition(ctx, anyTerminal, at.Add(2*time.Minute)); got != scheduleDependencyReady {
+		t.Fatalf("duplicate skip hid accepted prerequisite: %v %s", got, reason)
+	}
+	for _, schedule := range manifest.Schedules[1:] {
+		sctx := buildScheduleContext("Workflow/demo", manifest, schedule)
+		sctx.ScheduledFor = at
+		if !svc.queueScheduleOccurrence(ctx, sctx, "waiting", at, "retry") {
+			t.Fatal("queue failed")
+		}
+		sctx.TriggerSource = "queued"
+		got, reason := svc.scheduleDependencyDisposition(ctx, sctx, at.Add(2*time.Minute))
+		if got != scheduleDependencyBlocked {
+			t.Fatalf("%s disposition=%v reason=%s", schedule.ID, got, reason)
+		}
+		svc.finishBlockedScheduleOccurrence(ctx, sctx, "blocked_dependency", reason, at.Add(2*time.Minute))
+		// A repeated delivery is idempotent, including its terminal timestamp.
+		svc.finishBlockedScheduleOccurrence(ctx, sctx, "blocked_dependency", reason, at.Add(3*time.Minute))
+		if _, err := store.GetPendingOccurrence(ctx, "workflow", "Workflow/demo", schedule.ID); err == nil {
+			t.Fatal("terminal dependent remains queued")
+		}
+		decision, err := store.FireDecisionForScheduleOccurrence(ctx, "workflow", "Workflow/demo", schedule.ID, at, at.Add(time.Nanosecond))
+		if err != nil || decision.Decision != "blocked_dependency" || !decision.FiredAt.Equal(at.Add(2*time.Minute)) {
+			t.Fatalf("terminal decision=%+v err=%v", decision, err)
+		}
+		if strings.Contains(decision.Reason, "schedule first") || strings.Contains(decision.Reason, "schedule second") {
+			t.Fatalf("person's reason contains IDs: %s", decision.Reason)
+		}
+	}
+	// The following date must not inherit yesterday's block.
+	next := buildScheduleContext("Workflow/demo", manifest, manifest.Schedules[1])
+	next.ScheduledFor = at.AddDate(0, 0, 1)
+	if got, _ := svc.scheduleDependencyDisposition(ctx, next, next.ScheduledFor); got != scheduleDependencyWaiting {
+		t.Fatalf("next date disposition=%v", got)
+	}
+}
+
+func TestSchedulerTimingEditsBoundCatchupWithOldDecision(t *testing.T) {
+	ctx := context.Background()
+	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{}})
+	defer workspace.Close()
+	t.Setenv("WORKSPACE_API_URL", workspace.URL)
+	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "schedule-state.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	svc := NewSchedulerService(nil)
+	svc.stateStore = store
+	at := time.Now().UTC().Truncate(time.Minute).Add(-4 * time.Hour)
+	sctx := &ScheduleContext{WorkspacePath: "Workflow/demo", Schedule: WorkflowSchedule{ID: "daily", CronExpression: "* * * * *", Timezone: "UTC", Enabled: true}}
+	sctx.ScheduledFor = at
+	if err := svc.recordScheduleFireDecision(ctx, sctx, "skipped_busy", "previous window", "", at); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureWorkflowScheduleExecutionTracker(ctx, sctx.WorkspacePath, sctx.Schedule, at); err != nil {
+		t.Fatal(err)
+	}
+	sctx.Schedule.Enabled = false
+	if err := EnsureWorkflowScheduleExecutionTracker(ctx, sctx.WorkspacePath, sctx.Schedule, at.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	sctx.Schedule.Enabled = true
+	enabledAt := at.Add(2*time.Hour + 20*time.Second)
+	if err := EnsureWorkflowScheduleExecutionTracker(ctx, sctx.WorkspacePath, sctx.Schedule, enabledAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.LoadSchedule(sctx); err != nil {
+		t.Fatal(err)
+	}
+	job := svc.jobs[scheduleRuntimeKey(sctx)]
+	if !job.lastFired.Equal(enabledAt) {
+		t.Fatalf("cursor=%s want enable time=%s", job.lastFired, enabledAt)
+	}
+	if got := dueCronOccurrences(job.cronSched, job.lastFired, enabledAt.Add(30*time.Second)); len(got) != 0 {
+		t.Fatalf("replayed slot while disabled: %v", got)
+	}
+	// A restart with unchanged settings still catches up inside this window.
+	if err := svc.LoadSchedule(sctx); err != nil {
+		t.Fatal(err)
+	}
+	job = svc.jobs[scheduleRuntimeKey(sctx)]
+	if got := dueCronOccurrences(job.cronSched, job.lastFired, enabledAt.Add(time.Minute)); len(got) != 1 {
+		t.Fatalf("unchanged restart lost eligible catch-up: %v", got)
+	}
+	sctx.Schedule.CronExpression = "*/2 * * * *"
+	editedAt := enabledAt.Add(time.Hour)
+	if err := EnsureWorkflowScheduleExecutionTracker(ctx, sctx.WorkspacePath, sctx.Schedule, editedAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.LoadSchedule(sctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := svc.jobs[scheduleRuntimeKey(sctx)].lastFired; !got.Equal(editedAt) {
+		t.Fatalf("retimed cursor=%s want=%s", got, editedAt)
+	}
+}
+
+func TestSchedulerRestartKeepsOutcomeAndAllowsNextOccurrence(t *testing.T) {
+	ctx := context.Background()
+	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "schedule-state.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	svc := NewSchedulerService(nil)
+	svc.stateStore = store
+	at := time.Now().UTC().Add(-15 * time.Minute)
+	sctx := &ScheduleContext{WorkspacePath: "Workflow/demo", Schedule: WorkflowSchedule{ID: "daily"}, ScheduledFor: at}
+	if err := svc.claimScheduleRun(ctx, sctx, "before-restart", at); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.recordScheduleFireDecision(ctx, sctx, "started", "accepted", "before-restart", at); err != nil {
+		t.Fatal(err)
+	}
+	svc.registerScheduleRunContext("before-restart")
+	entry := &ScheduleRunEntry{ID: "before-restart", ScheduleID: "daily", StartedAt: at, Status: "running"}
+	if _, _, finalize := svc.reconciledScheduleRunStatus(entry, time.Now().UTC()); finalize {
+		t.Fatal("live run without projected session was falsely interrupted")
+	}
+	svc.releaseScheduleRunContext("before-restart")
+	if _, err := store.InterruptActiveRuns(ctx, "interrupted: server restarted", at.Add(10*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if !svc.queueScheduleOccurrence(ctx, sctx, "stale queued launch", at, "retry") {
+		t.Fatal("queue failed")
+	}
+	svc.resumeQueuedScheduleOccurrences(ctx, time.Now().UTC())
+	if _, err := store.GetPendingOccurrence(ctx, "workflow", "Workflow/demo", "daily"); err == nil {
+		t.Fatal("interrupted occurrence remained queued for replay")
+	}
+	status, reason, finalize := svc.reconciledScheduleRunStatus(entry, time.Now().UTC())
+	if !finalize || status != "interrupted" || reason != "interrupted: server restarted" {
+		t.Fatalf("restart projection=%s/%s/%t", status, reason, finalize)
+	}
+	// No restart replay; the interrupted run's occurrence remains accounted for.
+	if cursor, ok := svc.latestCronOccurrence(sctx); !ok || !cursor.Equal(at) {
+		t.Fatalf("restart cursor=%s/%t", cursor, ok)
+	}
+	sctx.ScheduledFor = at.Add(24 * time.Hour)
+	if err := svc.claimScheduleRun(ctx, sctx, "next-occurrence", sctx.ScheduledFor); err != nil {
+		t.Fatalf("interrupted run blocked next slot: %v", err)
+	}
+	// A terminal workspace-outage failure must also survive a missing file session.
+	if err := store.ForceTerminal(ctx, schedulerstate.Transition{RunID: "next-occurrence", To: schedulerstate.StateFailed, ErrorMessage: "workspace connection refused", At: sctx.ScheduledFor.Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	entry.ID = "next-occurrence"
+	status, reason, finalize = svc.reconciledScheduleRunStatus(entry, time.Now().UTC())
+	if !finalize || status != "error" || reason != "workspace connection refused" {
+		t.Fatalf("lost terminal failure=%s/%s/%t", status, reason, finalize)
+	}
+}

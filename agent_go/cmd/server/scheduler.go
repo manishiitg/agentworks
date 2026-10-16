@@ -859,6 +859,12 @@ func (s *SchedulerService) LoadSchedule(sctx *ScheduleContext) error {
 				lastFired = windowStart
 			}
 		}
+		// An old decision is only a cursor within the current enabled timing
+		// window. Re-enabling or retiming must never replay a slot from before
+		// that edit; an unchanged restart still catches up inside its window.
+		if windowStart, ok := WorkflowScheduleTrackingWindowStart(context.Background(), sctx.WorkspacePath, sched.ID); ok && windowStart.After(lastFired) {
+			lastFired = windowStart
+		}
 
 		s.jobs[runtimeKey] = &registeredJob{
 			sctx:      &sctxCopy,
@@ -1047,6 +1053,14 @@ func (s *SchedulerService) GetRuntimeStateForWorkflow(workspacePath, scheduleID 
 			merged.WaitingUntil = &expiresAt
 			merged.WaitingReason = pending.Reason
 			merged.QueuedOccurrences = pending.OccurrenceCount
+		} else if decisions, err := s.stateStore.ListFireDecisions(context.Background(), "workflow", workspacePath, scheduleID, 1); err == nil && len(decisions) > 0 {
+			latest := decisions[0]
+			if (latest.Decision == "blocked_dependency" || latest.Decision == "expired_dependency_deadline") &&
+				(merged.LastRunAt == nil || latest.FiredAt.After(*merged.LastRunAt)) {
+				merged.LastStatus, merged.LastError = "error", latest.Reason
+				merged.WaitingSince, merged.WaitingUntil = nil, nil
+				merged.WaitingReason, merged.QueuedOccurrences = "", 0
+			}
 		}
 	}
 	s.stateStoreMu.RUnlock()
@@ -1131,12 +1145,16 @@ func (s *SchedulerService) reconcileWorkflowScheduleRuns(ctx context.Context, wo
 
 		runs[i].Status = status
 		runs[i].Error = errMsg
-		durationMs := now.Sub(runs[i].StartedAt).Milliseconds()
+		completedAt := now
+		if _, _, terminalAt, ok := s.durableScheduleRunProjection(ctx, runs[i].ID); ok && terminalAt != nil {
+			completedAt = *terminalAt
+		}
+		durationMs := completedAt.Sub(runs[i].StartedAt).Milliseconds()
 		if durationMs < 0 {
 			durationMs = 0
 		}
 		runs[i].DurationMs = &durationMs
-		runs[i].CompletedAt = &now
+		runs[i].CompletedAt = &completedAt
 		changed = true
 	}
 
@@ -1150,6 +1168,20 @@ func (s *SchedulerService) reconciledScheduleRunStatus(run *ScheduleRunEntry, no
 	if run == nil {
 		return "", "", false
 	}
+	// A workspace outage can lose the history write after SQLite saved the
+	// outcome. Preserve that result, even when no session reached the file.
+	if status, reason, _, ok := s.durableScheduleRunProjection(context.Background(), run.ID); ok {
+		if status == scheduleRunStatusWaitingForCapacity {
+			return "", "", false
+		}
+		return status, reason, true
+	}
+	s.runCancelsMu.Lock()
+	active := s.runCancels[run.ID] != nil
+	s.runCancelsMu.Unlock()
+	if active {
+		return "", "", false
+	}
 
 	if strings.TrimSpace(run.SessionID) == "" {
 		if now.Sub(run.StartedAt) > 10*time.Minute {
@@ -1158,6 +1190,9 @@ func (s *SchedulerService) reconciledScheduleRunStatus(run *ScheduleRunEntry, no
 		return "", "", false
 	}
 
+	if s.api == nil {
+		return "", "", false
+	}
 	session, exists := s.api.getActiveSession(run.SessionID)
 	if !exists {
 		return "error", "interrupted: session not active", true
@@ -1858,6 +1893,14 @@ func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor t
 			s.recordScheduleFireDecision(ctx, sctx, "skipped_disabled", "schedule is disabled", "", now.UTC())
 			return
 		}
+		if source := strings.TrimSpace(sctx.TriggerSource); source == "" || source == "cron" || source == "queued" {
+			if windowStart, ok := WorkflowScheduleTrackingWindowStart(ctx, sctx.WorkspacePath, schedID); ok && scheduledFor.Before(windowStart) {
+				if err := s.recordScheduleFireDecision(ctx, sctx, "skipped_schedule_changed", "this time passed before the schedule was enabled or its timing changed", "", now.UTC()); err == nil {
+					s.discardQueuedOccurrence(ctx, sctx)
+				}
+				return
+			}
+		}
 
 		if activeExec := s.findActiveExecutionBlockingSchedule(sctx.WorkspacePath, scheduleAllowsParallel(*currentSched)); activeExec != nil {
 			triggeredBy := activeExec.TriggeredBy
@@ -1905,12 +1948,11 @@ func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor t
 	freshCtx.QueuedOccurrenceCount = sctx.QueuedOccurrenceCount
 	if disposition, reason := s.scheduleDependencyDisposition(ctx, freshCtx, startTime); disposition != scheduleDependencyReady {
 		if disposition == scheduleDependencyBlocked {
-			s.discardQueuedOccurrence(ctx, freshCtx)
 			decision := "blocked_dependency"
 			if strings.Contains(reason, "deadline") {
 				decision = "expired_dependency_deadline"
 			}
-			_ = s.recordScheduleFireDecision(ctx, freshCtx, decision, reason, "", startTime)
+			s.finishBlockedScheduleOccurrence(ctx, freshCtx, decision, reason, startTime)
 			return
 		}
 		s.logf(freshCtx, "[SCHEDULER] ⏳ Queueing %s: %s", schedID, reason)
@@ -2155,6 +2197,9 @@ func (s *SchedulerService) scheduleDependencyDisposition(ctx context.Context, sc
 		run, err := store.RunForScheduleOccurrence(ctx, scopeType, scopeID, dependencyID, dayStart, dayEnd)
 		if err != nil {
 			if errors.Is(err, schedulerstate.ErrRunNotFound) {
+				if decision, decisionErr := store.FireDecisionForScheduleOccurrence(ctx, scopeType, scopeID, dependencyID, dayStart, dayEnd); decisionErr == nil && terminalScheduleFireDecision(decision.Decision) {
+					return scheduleDependencyBlocked, fmt.Sprintf("prerequisite schedule %s did not run: %s", dependencyID, decision.Reason)
+				}
 				waitingReasons = append(waitingReasons, fmt.Sprintf("waiting for prerequisite schedule %s occurrence on %04d-%02d-%02d", dependencyID, year, month, day))
 				continue
 			}
@@ -2198,6 +2243,52 @@ func (s *SchedulerService) scheduleDependencyDisposition(ctx context.Context, sc
 	return scheduleDependencyReady, ""
 }
 
+func terminalScheduleFireDecision(decision string) bool {
+	return strings.HasPrefix(decision, "skipped_") || strings.HasPrefix(decision, "blocked_") ||
+		strings.HasPrefix(decision, "expired_") || decision == "failed_to_start" ||
+		decision == "missed_scheduler_gap" || decision == "launch_outcome_unknown"
+}
+
+// End this occurrence before dropping its queue row. Dependents can then follow
+// the terminal decision even though no workflow run was created for this slot.
+func (s *SchedulerService) finishBlockedScheduleOccurrence(ctx context.Context, sctx *ScheduleContext, decision, reason string, at time.Time) {
+	s.stateStoreMu.RLock()
+	alreadyFinished := false
+	if s.stateStore != nil {
+		scopeType, scopeID, _ := scheduleStateScope(sctx)
+		prior, err := s.stateStore.FireDecisionForScheduleOccurrence(ctx, scopeType, scopeID, sctx.Schedule.ID, sctx.ScheduledFor, sctx.ScheduledFor.Add(time.Nanosecond))
+		alreadyFinished = err == nil && (prior.Decision == "blocked_dependency" || prior.Decision == "expired_dependency_deadline")
+	}
+	s.stateStoreMu.RUnlock()
+	if alreadyFinished {
+		s.discardQueuedOccurrence(ctx, sctx)
+		return
+	}
+	manifest, found, _ := ReadWorkflowManifest(ctx, sctx.WorkspacePath)
+	if found && manifest != nil {
+		for _, schedule := range manifest.Schedules {
+			if schedule.Name != "" {
+				reason = strings.ReplaceAll(reason, schedule.ID, schedule.Name)
+			}
+		}
+	}
+	if err := s.recordScheduleFireDecision(ctx, sctx, decision, reason, "", at); err != nil {
+		return
+	}
+	s.discardQueuedOccurrence(ctx, sctx)
+	s.updateRuntimeState(scheduleRuntimeKey(sctx), func(state *ScheduleRuntimeState) {
+		state.LastStatus, state.LastError = "error", reason
+		state.WaitingSince, state.WaitingUntil = nil, nil
+		state.WaitingReason, state.QueuedOccurrences = "", 0
+	})
+	s.logf(sctx, "[SCHEDULER] Schedule %s did not run scheduled_for=%s: %s", sctx.Schedule.ID, sctx.ScheduledFor.Format(time.RFC3339Nano), reason)
+	if manifest != nil {
+		if err := s.sendAfterRunNotification(ctx, sctx, manifest, "", "blocked", "This scheduled run did not start because "+reason+". Fix the earlier schedule in Builder, then run again.", 0); err != nil {
+			s.logf(sctx, "[SCHEDULER] Blocked occurrence notification failed: %v", err)
+		}
+	}
+}
+
 func (s *SchedulerService) resumeQueuedScheduleOccurrences(ctx context.Context, now time.Time) {
 	if !s.queuedResumeMu.TryLock() {
 		return
@@ -2216,6 +2307,19 @@ func (s *SchedulerService) resumeQueuedScheduleOccurrences(ctx context.Context, 
 		return
 	}
 	for _, item := range pending {
+		// A queued delivery may survive an interrupted launch, but it must not
+		// restart that same occurrence. Startup already released the old run's
+		// lease; retain its outcome and leave the lane for the next cron slot.
+		prior, priorErr := store.RunForScheduleOccurrence(ctx, item.ScopeType, item.ScopeID, item.ScheduleID, item.ScheduledFor, item.ScheduledFor.Add(time.Nanosecond))
+		if priorErr == nil && prior.State == schedulerstate.StateInterrupted {
+			sctx := buildScheduleContext(item.ScopeID, &WorkflowManifest{}, WorkflowSchedule{ID: item.ScheduleID})
+			sctx.TriggerSource, sctx.ScheduledFor = "queued", item.ScheduledFor
+			if err := s.recordScheduleFireDecision(ctx, sctx, "skipped_interrupted", "this occurrence was interrupted by a restart; the next scheduled run will start normally", prior.RunID, now); err == nil {
+				_ = store.DeletePendingOccurrence(ctx, item.ScopeType, item.ScopeID, item.ScheduleID)
+				s.logf(sctx, "[SCHEDULER] Not retrying interrupted occurrence run=%s scheduled_for=%s; waiting for the next scheduled time", prior.RunID, item.ScheduledFor.Format(time.RFC3339Nano))
+			}
+			continue
+		}
 		// Expiry is durable queue state and does not depend on the manifest still
 		// being readable. Drop expired rows first so a renamed/deleted workflow
 		// cannot leave an immortal pending occurrence behind.

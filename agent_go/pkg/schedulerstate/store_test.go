@@ -250,7 +250,7 @@ func TestFireDecisionUpdatesOneDurableOccurrence(t *testing.T) {
 	store := openTestStore(t)
 	ctx := context.Background()
 	scheduledFor := time.Date(2026, 8, 7, 10, 30, 0, 0, time.UTC)
-	for i, decision := range []string{"attempted", "started"} {
+	for i, decision := range []string{"attempted", "started", "skipped_busy"} {
 		if err := store.RecordFireDecision(ctx, FireDecision{
 			DecisionID: fmt.Sprintf("decision-%d", i), ScopeType: "workflow", ScopeID: "Workflow/demo",
 			ScheduleID: "daily", TriggerSource: "cron", Decision: decision,

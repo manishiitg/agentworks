@@ -188,8 +188,10 @@ func workflowReviewRevision(workspacePath string, items []workflowReviewItem) st
 	for _, item := range items {
 		fmt.Fprintf(h, "%s|%s\n", item.StepID, item.Reason)
 	}
-	root := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(strings.Trim(strings.TrimSpace(workspacePath), "/")), stepworkflow.PlanningFolderName)
-	for _, name := range []string{"plan.json", "step_config.json"} {
+	root := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(strings.Trim(strings.TrimSpace(workspacePath), "/")))
+	// Evaluation routes are part of the deterministic reference check too. A
+	// repaired evaluator must invalidate a blocked review without a plan edit.
+	for _, name := range []string{"planning/plan.json", "planning/step_config.json", "evaluation/evaluation_plan.json"} {
 		if raw, err := os.ReadFile(filepath.Join(root, name)); err == nil {
 			fmt.Fprintf(h, "%s:", name)
 			h.Write(raw)

@@ -85,6 +85,21 @@ func TestWorkflowReviewRunsOncePerPlanRevisionBeforeARun(t *testing.T) {
 	if gate := s.ensureWorkflowReviewedBeforeRun(ctx, ws, []string{"step-b"}, "manual"); !gate.Proceed || reviews != 2 {
 		t.Fatalf("unrelated step: gate=%+v reviews=%d, want proceed", gate, reviews)
 	}
+	// PLAT-871/825-36: fixing an evaluator in its own file is a new revision,
+	// even while the same step remains flagged for its review receipt.
+	evalDir := filepath.Join(root, ws, "evaluation")
+	if err := os.MkdirAll(evalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(evalDir, "evaluation_plan.json"), []byte(`{"steps":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if gate := s.ensureWorkflowReviewedBeforeRun(ctx, ws, nil, "cron"); gate.Proceed || reviews != 3 {
+		t.Fatalf("evaluation fix did not get a fresh review: gate=%+v reviews=%d", gate, reviews)
+	}
+	if gate := s.ensureWorkflowReviewedBeforeRun(ctx, ws, nil, "cron"); gate.Proceed || reviews != 3 {
+		t.Fatalf("unchanged evaluation fix was reviewed again: gate=%+v reviews=%d", gate, reviews)
+	}
 }
 
 // Drive the registered run tools against saved plan/review files: a test step

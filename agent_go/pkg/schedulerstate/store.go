@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -545,14 +546,18 @@ func (s *Store) RecordFireDecision(ctx context.Context, decision FireDecision) e
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO schedule_fire_decisions (
+	// Once accepted, this slot belongs to its run. A duplicate attempt or
+	// queue/skip update must not erase the link used by dependency and recovery.
+	result, err := tx.ExecContext(ctx, `INSERT INTO schedule_fire_decisions (
 		decision_id, scope_type, scope_id, schedule_id, trigger_source, decision, reason, run_id, scheduled_for, fired_at
 	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(scope_type, scope_id, schedule_id, trigger_source, scheduled_for) DO UPDATE SET
-		decision=excluded.decision, reason=excluded.reason, run_id=excluded.run_id, fired_at=excluded.fired_at`,
+		decision=excluded.decision, reason=excluded.reason, run_id=excluded.run_id, fired_at=excluded.fired_at
+		WHERE schedule_fire_decisions.decision<>'started' OR excluded.decision='started'`,
 		decision.DecisionID, decision.ScopeType, decision.ScopeID,
 		decision.ScheduleID, decision.TriggerSource, decision.Decision, decision.Reason, decision.RunID,
-		formatTime(decision.ScheduledFor), formatTime(decision.FiredAt)); err != nil {
+		formatTime(decision.ScheduledFor), formatTime(decision.FiredAt))
+	if err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM schedule_fire_decisions
@@ -566,7 +571,13 @@ func (s *Store) RecordFireDecision(ctx context.Context, decision FireDecision) e
 		decision.TriggerSource, fireDecisionRetentionPerSchedule); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if affected, err := result.RowsAffected(); err == nil && affected == 0 {
+		log.Printf("[SCHEDULER_STATE] preserved started receipt scope=%s/%s schedule=%s scheduled_for=%s refused_decision=%s", decision.ScopeType, decision.ScopeID, decision.ScheduleID, formatTime(decision.ScheduledFor), decision.Decision)
+	}
+	return nil
 }
 
 func (s *Store) ListFireDecisions(ctx context.Context, scopeType, scopeID, scheduleID string, limit int) ([]FireDecision, error) {
@@ -801,24 +812,67 @@ func (s *Store) LatestRunForSchedule(ctx context.Context, scopeType, scopeID, sc
 	return run, nil
 }
 
-// RunForScheduleOccurrence returns the run linked to the latest accepted fire
-// decision inside [start,end). The durable scheduled_for→run_id link prevents a
-// different manual or same-day run from releasing a dependent occurrence.
-func (s *Store) RunForScheduleOccurrence(ctx context.Context, scopeType, scopeID, scheduleID string, start, end time.Time) (Run, error) {
-	var runID string
-	err := s.db.QueryRowContext(ctx, `SELECT run_id FROM schedule_fire_decisions
-		WHERE scope_type=? AND scope_id=? AND schedule_id=? AND run_id<>''
-		  AND decision='started'
-		  AND scheduled_for>=? AND scheduled_for<?
-		ORDER BY scheduled_for DESC, fired_at DESC LIMIT 1`,
-		scopeType, scopeID, scheduleID, formatTime(start), formatTime(end)).Scan(&runID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Run{}, ErrRunNotFound
+// FireDecisionForScheduleOccurrence returns the latest occurrence in [start,end).
+// RFC3339Nano omits zero fractions: 04:00:00Z sorts after 04:00:00.000000001Z.
+// Narrow the query to whole seconds, then compare parsed times so legacy rows
+// and nanosecond boundaries retain their exact meaning.
+func (s *Store) FireDecisionForScheduleOccurrence(ctx context.Context, scopeType, scopeID, scheduleID string, start, end time.Time) (FireDecision, error) {
+	return s.fireDecisionForScheduleOccurrence(ctx, scopeType, scopeID, scheduleID, start, end, false)
+}
+
+func (s *Store) fireDecisionForScheduleOccurrence(ctx context.Context, scopeType, scopeID, scheduleID string, start, end time.Time, startedOnly bool) (FireDecision, error) {
+	query := `SELECT decision_id, trigger_source, decision, reason, run_id, scheduled_for, fired_at
+		FROM schedule_fire_decisions WHERE scope_type=? AND scope_id=? AND schedule_id=?
+		AND substr(scheduled_for,1,19)>=? AND substr(scheduled_for,1,19)<=?`
+	if startedOnly {
+		query += ` AND decision='started' AND run_id<>''`
 	}
+	rows, err := s.db.QueryContext(ctx, query,
+		scopeType, scopeID, scheduleID, start.UTC().Format("2006-01-02T15:04:05"), end.UTC().Format("2006-01-02T15:04:05"))
+	if err != nil {
+		return FireDecision{}, err
+	}
+	defer rows.Close()
+	var latest FireDecision
+	for rows.Next() {
+		d := FireDecision{ScopeType: scopeType, ScopeID: scopeID, ScheduleID: scheduleID}
+		var scheduledFor, firedAt string
+		if err := rows.Scan(&d.DecisionID, &d.TriggerSource, &d.Decision, &d.Reason, &d.RunID, &scheduledFor, &firedAt); err != nil {
+			return FireDecision{}, err
+		}
+		if d.ScheduledFor, err = parseTime(scheduledFor); err != nil {
+			return FireDecision{}, err
+		}
+		if d.FiredAt, err = parseTime(firedAt); err != nil {
+			return FireDecision{}, err
+		}
+		if d.ScheduledFor.Before(start) || !d.ScheduledFor.Before(end) {
+			continue
+		}
+		if latest.DecisionID == "" || d.ScheduledFor.After(latest.ScheduledFor) ||
+			(d.ScheduledFor.Equal(latest.ScheduledFor) && d.FiredAt.After(latest.FiredAt)) {
+			latest = d
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return FireDecision{}, err
+	}
+	if latest.DecisionID == "" {
+		return FireDecision{}, ErrRunNotFound
+	}
+	return latest, nil
+}
+
+// RunForScheduleOccurrence follows the exact durable occurrence-to-run link.
+func (s *Store) RunForScheduleOccurrence(ctx context.Context, scopeType, scopeID, scheduleID string, start, end time.Time) (Run, error) {
+	decision, err := s.fireDecisionForScheduleOccurrence(ctx, scopeType, scopeID, scheduleID, start, end, true)
 	if err != nil {
 		return Run{}, err
 	}
-	return s.GetRun(ctx, runID)
+	if decision.Decision != "started" || decision.RunID == "" {
+		return Run{}, ErrRunNotFound
+	}
+	return s.GetRun(ctx, decision.RunID)
 }
 
 // WaitingCapacityRuns discovers suspended invocations independently of cron jobs.

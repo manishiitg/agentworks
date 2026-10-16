@@ -278,6 +278,8 @@ func afterRunNotificationArgs(workflowName, scheduleName, status, errMsg string,
 	summaryStatus := "completed"
 	verb := "finished"
 	switch status {
+	case "blocked":
+		summaryStatus, verb = "blocked", "did not start"
 	case "error", "failed":
 		summaryStatus, verb = "failed", "failed"
 		if strings.Contains(errMsg, "Workflow Review found problems") {
