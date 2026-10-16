@@ -48,11 +48,11 @@ func (api *StreamingAPI) handleAgentSharing(w http.ResponseWriter, r *http.Reque
 	}
 	claims := GetUserFromContext(r.Context())
 	if !productpolicy.Enabled("bullpen") {
-		externalError(w, http.StatusForbidden, "sharing_refused", "Agent sharing (Bullpen) is not switched on for this server, so agents cannot join groups here yet. Ask your AgentWorks admin to turn it on.")
+		externalError(w, http.StatusForbidden, "sharing_refused", "Agent sharing (AgentBridge) is not switched on for this server, so agents cannot join groups here yet. Ask your AgentWorks admin to turn it on.")
 		return
 	}
 	if claims != nil && claims.UserID != "" && !userAllowedProduct(claims, "bullpen") {
-		externalError(w, http.StatusForbidden, "sharing_refused", "Your account does not have agent sharing (Bullpen) on this server. Ask your AgentWorks admin to give you access.")
+		externalError(w, http.StatusForbidden, "sharing_refused", "Your account does not have agent sharing (AgentBridge) on this server. Ask your AgentWorks admin to give you access.")
 		return
 	}
 	if claims == nil || claims.AccessToken == nil || claims.AccessToken.BoundAgentID != "" || claims.UserID == "" || !namedAgentOperationAllowed(claims, true) {

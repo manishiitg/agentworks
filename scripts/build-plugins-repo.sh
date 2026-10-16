@@ -17,7 +17,7 @@ cat > "$out/README.md" <<'README'
 # AgentWorks plugins
 
 Plugins that connect Claude Code, Codex, Muse, Pi and Cursor chats to
-[AgentWorks](https://github.com/manishiitg/agentworks) (Bullpen messaging).
+[AgentWorks](https://github.com/manishiitg/agentworks) (AgentBridge messaging).
 This repository is generated from `plugins/` and the marketplace manifests in
 the main repository on every change; send fixes there, not here.
 

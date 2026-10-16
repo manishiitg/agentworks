@@ -14,7 +14,7 @@ the recipient still needs their own sign-in and access.
 | Brain / a folder | `/brain`, `/brain?folder=<relative-folder>` |
 | Vault | `/vault` |
 | LLM Gateway (when installed) | `/llm-gateway` |
-| Bullpen / connection instructions | `/bullpen`, `/bullpen/connect` |
+| AgentBridge / connection instructions | `/agentbridge`, `/agentbridge/connect` (`/bullpen` still works) |
 | Video Studio / one project | `/video-studio`, `/video-studio/projects/<id>` |
 | SparkQuill | `/sparkquill` |
 

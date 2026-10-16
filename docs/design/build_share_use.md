@@ -77,7 +77,7 @@ retries safe, and the event that started a call can never choose the target.
 Products communicate the same way. A Crew, workflow, Relay or Code agent that
 needs another product is one more caller of that product's `ask` or
 functions/routes, acting for the person its run acts for. Messages between
-agents (Bullpen) are one more channel. No product reads or writes another
+agents (AgentBridge) are one more channel. No product reads or writes another
 product's files or internals directly.
 
 ## Rules that follow

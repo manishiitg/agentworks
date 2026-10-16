@@ -162,7 +162,7 @@ How the pieces fit:
   `/agentworks detach`, `agentworks detach` or closing the chat ends it. Attachment is absent from agent MCP tools. This is a tool-surface boundary;
   an agent with shell access to the person's CLI credentials can still exercise
   that credential. It is not OS isolation from that agent. `agentworks agents` lists attached
-  chats. Bullpen shows the account directory and connection instructions.
+  chats. AgentBridge shows the account directory and connection instructions.
 - Hooks run for every chat where they are installed, so for an unattached chat
   the hook only asks the local daemon "is this conversation attached?" and exits
   with no output and no network call; if the daemon is not running it exits at
@@ -229,9 +229,9 @@ CLI can provision narrow per-agent connections, use independent sign-ins/configs
 See [Claude channels](https://code.claude.com/docs/en/channels) and
 [the channel protocol](https://code.claude.com/docs/en/channels-reference).
 
-#### Bullpen and own-session CLI access
+#### AgentBridge and own-session CLI access
 
-Bullpen is a peer product inside AgentWorks. It shows registered names, provider,
+AgentBridge is a peer product inside AgentWorks. It shows registered names, provider,
 purpose and connection state for the signed-in account on the current server.
 The product respects installation and account product allowlists. It defaults on locally; hosted servers must explicitly enable it. The directory
 has no private chat bodies, attachment controls or extra messaging grants.

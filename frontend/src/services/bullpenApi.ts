@@ -113,7 +113,7 @@ export const bullpenApi = {
 
 export function bullpenError(error: unknown): string {
   const status = (error as { response?: { status?: number } })?.response?.status
-  if (status === 403) return 'Bullpen is not enabled for your account on this server.'
+  if (status === 403) return 'AgentBridge is not enabled for your account on this server.'
   if (status === 401) return 'Sign in again to see your agents.'
   if (status === 404) return 'This server needs an update before it can show the agent directory.'
   return 'Could not load your agents. Try refreshing.'

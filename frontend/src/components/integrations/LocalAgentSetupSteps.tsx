@@ -52,6 +52,6 @@ export function AgentMessagingStep({ app }: { app?: MessagingApp }) {
     <p className="text-xs text-muted-foreground">After installing the terminal app, run this setup command for your AI app.</p>
     {!app && <label className="block text-xs text-muted-foreground">AI app for messaging<select className="ml-2 rounded border border-border bg-background p-2" value={selected} onChange={event => setSelected(event.target.value as MessagingApp)}><option value="claude">Claude Code</option><option value="codex">Codex</option><option value="cursor">Cursor</option><option value="muse">Muse</option></select></label>}
     <CommandRow label="Set up agent messaging" command={`agentworks setup ${app ?? selected}`} />
-    <p className="text-xs text-muted-foreground">Then open <a className="text-primary underline" href="/bullpen/connect">Bullpen → Connect an agent</a> to sign in, check support for your app and computer, and connect the chat you choose.</p>
+    <p className="text-xs text-muted-foreground">Then open <a className="text-primary underline" href="/agentbridge/connect">AgentBridge → Connect an agent</a> to sign in, check support for your app and computer, and connect the chat you choose.</p>
   </section>
 }

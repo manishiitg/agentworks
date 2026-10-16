@@ -46,7 +46,7 @@ describe('MCP setup', () => {
       expect(host.textContent).toContain("curl -fsSL 'https://agentworks.example.com/api/downloads/cli/install-agentworks.sh' | sh -s -- --server 'https://agentworks.example.com' --no-login")
       expect(host.textContent).toContain('2. Connect your AI app')
       expect(host.textContent).toContain('agentworks setup claude')
-      expect(host.querySelector('a[href="/bullpen/connect"]')).not.toBeNull()
+      expect(host.querySelector('a[href="/agentbridge/connect"]')).not.toBeNull()
       await act(async () => button(host, 'Windows').click())
       expect(host.textContent).toContain("-Server 'https://agentworks.example.com' -NoLogin")
       expect(host.textContent).toContain('install-agentworks.ps1')

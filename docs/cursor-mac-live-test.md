@@ -28,7 +28,7 @@ MCP approval or workspace trust bypass is required.
 Open two CLI instances, preferably in different disposable projects. Type
 `/agentworks attach cursor-mac-one` in one and
 `/agentworks attach cursor-mac-two` in the other. Each must report its own
-name/native session and appear in Bullpen. Do not use another chat's UUID or
+name/native session and appear in AgentBridge. Do not use another chat's UUID or
 process override. Ask each agent to set a useful purpose.
 
 Ask a connected sender to send one uniquely marked message to the first name.

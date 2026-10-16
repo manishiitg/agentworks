@@ -294,7 +294,7 @@ func redactDebug(report string) string {
 	return report
 }
 
-// debugBridge reports the local messaging helper (Bullpen): whether it runs, which chats it holds and how each is
+// debugBridge reports the local messaging helper (AgentBridge): whether it runs, which chats it holds and how each is
 // reached, the plugins found on this computer, and the helper's own log. Names and states only, no message text.
 func debugBridge(ctx context.Context, b *strings.Builder) {
 	line := func(format string, args ...any) { fmt.Fprintf(b, format+"\n", args...) }

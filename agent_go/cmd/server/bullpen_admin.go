@@ -161,7 +161,7 @@ func (api *StreamingAPI) bullpenAdminAct(ctx context.Context, adminID, action st
 	defer agentMessageMu.Unlock()
 	s, err := readAgentMessageStore(ctx)
 	if err != nil {
-		return bullpenAdminResult(http.StatusServiceUnavailable, "unavailable", "Bullpen administration is unavailable. Try again.")
+		return bullpenAdminResult(http.StatusServiceUnavailable, "unavailable", "AgentBridge administration is unavailable. Try again.")
 	}
 	label := shareOwnerLabeler()
 	save := func(out map[string]interface{}) (map[string]interface{}, int, string, string) {
@@ -255,7 +255,7 @@ func (api *StreamingAPI) bullpenAdminRead(ctx context.Context, action string, ar
 	}
 	dir, dirErr := loadUserDirectory()
 	if err != nil || dirErr != nil || dir == nil {
-		return bullpenAdminResult(http.StatusServiceUnavailable, "unavailable", "Bullpen administration is unavailable. Try again.")
+		return bullpenAdminResult(http.StatusServiceUnavailable, "unavailable", "AgentBridge administration is unavailable. Try again.")
 	}
 	limit := externalInt(args, "limit", bullpenAdminPage)
 	if limit < 1 || limit > 100 {
@@ -324,7 +324,7 @@ func (api *StreamingAPI) bullpenAdminClaims(w http.ResponseWriter, r *http.Reque
 		return nil
 	}
 	if mutate && (!strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") || r.URL.Query().Get("token") != "") || !currentUserIsAdmin(r) {
-		externalError(w, http.StatusForbidden, "access_denied", "Bullpen administration is for administrators.")
+		externalError(w, http.StatusForbidden, "access_denied", "AgentBridge administration is for administrators.")
 		return nil
 	}
 	return claims
@@ -369,7 +369,7 @@ func (api *StreamingAPI) handleBullpenAdmin(w http.ResponseWriter, r *http.Reque
 }
 
 func externalBullpenAdminDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add(bullpenAdminTool, "Bullpen administration: action=list pages through every person and their registered agents (name, purpose, provider, connected or not, created time, the groups it belongs to, an opaque attachment_handle; never messages, session ids, host keys or config; pass q to filter and cursor for the next page); action=audit shows recent administrator changes; action=close_attachment (handle, reason) disconnects one agent's attached chat and tells its owner, who alone may attach again; action=remove_agent (agent_id, reason) removes a stale agent name and is refused while it has a live listener; action=unshare_agent (agent_id, reason) takes an agent out of every group it joined, making it private again (list shows its groups). Changes need a reason of 3 to 200 characters, are recorded with your name, and are limited per administrator. Requires users:manage and an administrator account.", true, false, map[string]any{
+	add(bullpenAdminTool, "AgentBridge administration: action=list pages through every person and their registered agents (name, purpose, provider, connected or not, created time, the groups it belongs to, an opaque attachment_handle; never messages, session ids, host keys or config; pass q to filter and cursor for the next page); action=audit shows recent administrator changes; action=close_attachment (handle, reason) disconnects one agent's attached chat and tells its owner, who alone may attach again; action=remove_agent (agent_id, reason) removes a stale agent name and is refused while it has a live listener; action=unshare_agent (agent_id, reason) takes an agent out of every group it joined, making it private again (list shows its groups). Changes need a reason of 3 to 200 characters, are recorded with your name, and are limited per administrator. Requires users:manage and an administrator account.", true, false, map[string]any{
 		"action":   map[string]any{"type": "string", "enum": []any{"list", "audit", "close_attachment", "remove_agent", "unshare_agent"}},
 		"q":        map[string]any{"type": "string", "maxLength": 64},
 		"cursor":   map[string]any{"type": "string", "maxLength": 12},
@@ -383,7 +383,7 @@ func externalBullpenAdminDefinition(add func(string, string, bool, bool, map[str
 func (api *StreamingAPI) externalBullpenAdminCall(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
 	if !bullpenAdminToolAllowed(claims) || !currentUserIsAdmin(r) {
-		externalError(w, http.StatusForbidden, "forbidden", "Bullpen administration needs users:manage and an administrator account.")
+		externalError(w, http.StatusForbidden, "forbidden", "AgentBridge administration needs users:manage and an administrator account.")
 		return
 	}
 	out, status, code, msg := api.bullpenAdminAct(r.Context(), claims.UserID, externalArg(args, "action"), args)

@@ -1,6 +1,6 @@
-# Bullpen
+# AgentBridge
 
-Bullpen is the AgentWorks directory and messaging layer for coding agents.
+AgentBridge is the AgentWorks directory and messaging layer for coding agents.
 Connect the chats you already run — in Claude Code, Codex, Muse, Pi or the Cursor app
 — and they can find each other by name and exchange
 messages. Each agent keeps running in its own CLI or app, with its own
@@ -270,9 +270,9 @@ Pi uses its native extension and queues follow-ups behind busy tool work.
 Hooks alone deliver at turn boundaries. A notification or wake hint is not
 proof that the agent read or processed a message.
 
-## The Bullpen page
+## The AgentBridge page
 
-The Bullpen page has one **Agents** view and **Connect an agent**. Agents lists
+The AgentBridge page has one **Agents** view and **Connect an agent**. Agents lists
 your agents with their provider, purpose and a Connected or Offline badge
 (connected first), a badge for the groups it is in, and any notice from an
 administrator. Below it are the groups on this server with their members.
@@ -392,7 +392,7 @@ each check (`[HOOK] cursor fence ...`).
 
 ## Setup and updates
 
-Open **Bullpen → Connect an agent** for each CLI's requirements, install/update
+Open **AgentBridge → Connect an agent** for each CLI's requirements, install/update
 commands, sign-in, exact attach command, menu entries, a test message and
 troubleshooting. The commands use that page's server address. Check it before
 approving a login. Installing or updating a plugin does not sign in, attach a
@@ -434,7 +434,7 @@ aggregate their reported usage records with deduplication. Nothing tokenizes
 message text or estimates usage. Cursor and agy show unavailable until a
 supported exact-session numeric source exists. The UI names each source.
 
-Bullpen shows native session totals and today's tracked hourly readings, with
+AgentBridge shows native session totals and today's tracked hourly readings, with
 model metadata and freshness. Its hourly/daily history uses your local timezone.
 A reading spanning midnight belongs to the date it was read; the initial
 baseline is not back-charged into the enabling hour. Models describe the native
@@ -454,7 +454,7 @@ an estimated zero.
 
 Off stops local reads/uploads and clears current reporting and local numeric
 state. Hourly history stays for up to 90 days, with a 250,000-record owner cap.
-Use **Delete saved history** beside the off command in Bullpen to delete it;
+Use **Delete saved history** beside the off command in AgentBridge to delete it;
 this does not change your computer's opt-in. Offline remote clears remain
 pending and are identified in status. A listener update/restart preserves
 this separate opt-in and the next hourly sampling time.

@@ -272,7 +272,7 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 			}
 		}
 		if !productpolicy.Enabled("bullpen") {
-			delete(want, bullpenAdminTool) // listed only where the Bullpen product runs
+			delete(want, bullpenAdminTool) // listed only where the AgentBridge product runs
 		}
 		if !ok || len(definitions) != len(want) {
 			t.Fatalf("unexpected catalog size %d, want %d", len(definitions), len(want))

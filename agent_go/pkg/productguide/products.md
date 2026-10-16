@@ -10,7 +10,7 @@ Agent conversations have two modes: **Builder** is the owner's workspace for bui
 <!-- /product --><!-- product:knowledgebase -->| Brain | Shared knowledge, files and reusable skill packages. |
 <!-- /product --><!-- product:mcp-gateway -->| Vault | Shared MCP integrations, secrets and centrally managed access. |
 <!-- /product --><!-- product:code -->| Code | Repository work and private coding-agent projects. |
-<!-- /product --><!-- product:bullpen -->| Bullpen | Connecting, finding and coordinating your external coding agents. |
+<!-- /product --><!-- product:bullpen -->| AgentBridge | Connecting, finding and coordinating your external coding agents. |
 <!-- /product -->
 Products can work together when this installation enables them and your current access allows it. Access to one product never grants access to another project's content or connected account.
 
@@ -70,9 +70,9 @@ Use Code for repository development: implementing changes, investigating failure
 - **Access:** a Code project belongs to one person. Others use what it publishes through its shared dashboard and the entry points the current tools expose. Repository and chat work remain with the owner; current review/account checks still apply.
 - **Example:** implement a bounded bug fix and inspect its changes and verification results.
 
-<!-- /product --><!-- product:bullpen -->### Bullpen
+<!-- /product --><!-- product:bullpen -->### AgentBridge
 
-Use Bullpen to connect and coordinate external agents while they keep working in their own coding clients.
+Use AgentBridge to connect and coordinate external agents while they keep working in their own coding clients.
 
 - **Abilities:** discover registered agents and their purposes, exchange messages, use groups and track delivery/admission/processing receipts.
 - **MCP/CLI route:** discover the current messaging tools; register or inspect your named mailbox; send with a stable submission ID and reply in the original inbox. The person can request attachment of their own detected coding chat through the CLI.
@@ -102,9 +102,9 @@ Use **Brain** for reusable knowledge, documents, procedures and skills. Use **Va
 
 Use **Code** to develop a repository, investigate failures or review code changes. Use a **Crew** for a reusable specialist that serves requests across projects.
 
-<!-- /product --><!-- /product --><!-- product:code --><!-- product:bullpen -->### Should I use Code or Bullpen?
+<!-- /product --><!-- /product --><!-- product:code --><!-- product:bullpen -->### Should I use Code or AgentBridge?
 
-Use **Code** for repository work in a coding-agent workspace. Use **Bullpen** to find and coordinate agents already working in their external coding clients.
+Use **Code** for repository work in a coding-agent workspace. Use **AgentBridge** to find and coordinate agents already working in their external coding clients.
 
 <!-- /product --><!-- /product --><!-- product:knowledgebase -->### Does Brain run the work described in a note or skill?
 

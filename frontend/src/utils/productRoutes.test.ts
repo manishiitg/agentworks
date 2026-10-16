@@ -4,7 +4,7 @@ import { isLegacyAppPath, LEGACY_APP_ROOTS, legacyAppRoot, parseProductRoute, pr
 
 describe('shareable product routes', () => {
   it('round trips every surface and the resource/view contract', () => {
-    const paths = [...Object.values(PRODUCT_PATHS), '/workflows', '/bullpen/connect', '/relays/example', '/relays/example/dashboard', '/workflows/example/dashboard', '/crew/projects/example?view=memory', '/code/projects/example/dashboard', '/video-studio/projects/example?view=production', '/brain?view=access&folder=Guides%2FGetting+started']
+    const paths = [...Object.values(PRODUCT_PATHS), '/workflows', '/agentbridge/connect', '/relays/example', '/relays/example/dashboard', '/workflows/example/dashboard', '/crew/projects/example?view=memory', '/code/projects/example/dashboard', '/video-studio/projects/example?view=production', '/brain?view=access&folder=Guides%2FGetting+started']
     for (const path of paths) {
       const route = parseProductRoute(path)
       expect(route, path).toBeTruthy()
@@ -25,7 +25,7 @@ describe('shareable product routes', () => {
 
   it('keeps every real top-level path resolving', () => {
     // Product roots and resources parse as routes.
-    for (const path of [...Object.values(PRODUCT_PATHS), '/workflows', '/bullpen/connect', '/goals', '/crew', '/code', '/brain', '/vault', '/relays', '/llm-gateway']) {
+    for (const path of [...Object.values(PRODUCT_PATHS), '/workflows', '/agentbridge/connect', '/goals', '/crew', '/code', '/brain', '/vault', '/relays', '/llm-gateway']) {
       expect(parseProductRoute(path), path).toBeTruthy()
     }
     // Old app pages keep the home fallback through the boundary.
@@ -52,5 +52,14 @@ describe('shareable product routes', () => {
     const roots = JSON.parse('[' + source.match(/case (.*):/)![1] + ']') as string[]
     const clientRoots = ['', 'workflows', ...Object.values(PRODUCT_PATHS).map(path => path.slice(1)), ...Object.keys(PRODUCT_ROUTE_ALIASES)]
     expect(roots.sort()).toEqual([...new Set(clientRoots)].sort())
+  })
+})
+
+describe('the Bullpen to AgentBridge rename', () => {
+  it('keeps the old address working and shows the new one', () => {
+    const route = parseProductRoute('/bullpen/connect')
+    expect(route).toEqual({ surface: 'bullpen', view: 'setup' })
+    expect(productRoutePath(route!)).toBe('/agentbridge/connect')
+    expect(parseProductRoute('/agentbridge')).toEqual({ surface: 'bullpen' })
   })
 })

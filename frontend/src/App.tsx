@@ -787,7 +787,7 @@ function AppWorkspace() {
           />
         )}
         {productSurface === 'bullpen' ? (
-          <Suspense fallback={<ProductSurfaceFallback label="Bullpen" />}><BullpenSurface /></Suspense>
+          <Suspense fallback={<ProductSurfaceFallback label="AgentBridge" />}><BullpenSurface /></Suspense>
         ) : productSurface === 'video-studio' ? (
           <Suspense fallback={<ProductSurfaceFallback label="Video Studio" />}><VideoStudioSurface /></Suspense>
         ) : productSurface === 'sparkquill' ? (

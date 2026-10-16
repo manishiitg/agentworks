@@ -67,7 +67,7 @@ func usageCommand(o *options) *cobra.Command {
 			if len(s.Caps) > 0 {
 				fmt.Fprintf(o.stdout, "Caps reached: %s\n", strings.Join(s.Caps, ", "))
 			}
-			fmt.Fprintln(o.stdout, "Hourly readings use the CLI's recorded numbers. Turning off clears current reporting; history remains for 90 days or until you delete it in Bullpen.")
+			fmt.Fprintln(o.stdout, "Hourly readings use the CLI's recorded numbers. Turning off clears current reporting; history remains for 90 days or until you delete it in AgentBridge.")
 			return nil
 		}})
 	}

@@ -3,10 +3,11 @@ import type { ProductSurface } from '../products/productSurfaceConfig'
 export type ProductRoute = { surface: ProductSurface; id?: string; view?: string; folder?: string; overview?: boolean }
 export const PRODUCT_PATHS: Record<ProductSurface, string> = {
   agentworks: '/goals', relays: '/relays', work: '/crew', code: '/code',
-  knowledgebase: '/brain', 'mcp-gateway': '/vault', 'llm-gateway': '/llm-gateway', bullpen: '/bullpen',
+  knowledgebase: '/brain', 'mcp-gateway': '/vault', 'llm-gateway': '/llm-gateway', bullpen: '/agentbridge',
   'video-studio': '/video-studio', sparkquill: '/sparkquill',
 }
-export const PRODUCT_ROUTE_ALIASES: Record<string, ProductSurface> = { agentworks: 'agentworks', work: 'work', knowledgebase: 'knowledgebase', 'mcp-gateway': 'mcp-gateway' }
+// The product was called Bullpen; its old address still opens it (and is shown as /agentbridge).
+export const PRODUCT_ROUTE_ALIASES: Record<string, ProductSurface> = { bullpen: 'bullpen', agentworks: 'agentworks', work: 'work', knowledgebase: 'knowledgebase', 'mcp-gateway': 'mcp-gateway' }
 const surfaces = Object.fromEntries(Object.entries(PRODUCT_PATHS).map(([id, path]) => [path.slice(1), id])) as Record<string, ProductSurface>
 const segment = (value: string) => value.length > 0 && value.length <= 256 && !/[%\\/\x00-\x1f\x7f]/.test(value) && value !== '.' && value !== '..'
 

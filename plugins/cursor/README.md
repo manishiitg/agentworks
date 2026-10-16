@@ -1,6 +1,6 @@
 # AgentWorks for Cursor
 
-This package connects Cursor CLI chats to Bullpen through the AgentWorks local
+This package connects Cursor CLI chats to AgentBridge through the AgentWorks local
 bridge. macOS and Linux CLI are the supported target for package 0.2.0. Desktop
 is a separate stage: a shared desktop MCP process still needs a per-call
 conversation fence and an exact-chat idle input route. CLI evidence does not

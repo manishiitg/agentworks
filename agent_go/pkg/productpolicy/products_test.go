@@ -44,15 +44,15 @@ func TestInstallationSelection(t *testing.T) {
 	}
 	profile(t, "server", "", "", "")
 	if Enabled("bullpen") {
-		t.Fatal("hosted Bullpen requires explicit opt-in")
+		t.Fatal("hosted AgentBridge requires explicit opt-in")
 	}
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks,bullpen")
 	if !Enabled("bullpen") {
-		t.Fatal("explicit hosted Bullpen unavailable")
+		t.Fatal("explicit hosted AgentBridge unavailable")
 	}
 	profile(t, "local", "", "", "")
 	if !Enabled("bullpen") {
-		t.Fatal("local Bullpen default unavailable")
+		t.Fatal("local AgentBridge default unavailable")
 	}
 	profile(t, "local", "1", "", "agentworks,work,code,mcp-gateway")
 	if Enabled("knowledgebase") || Enabled("relays") || Enabled("llm-gateway") || !Enabled("mcp-gateway") {

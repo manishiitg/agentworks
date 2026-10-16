@@ -629,7 +629,7 @@ chat:
       - get_token_usage
       - set_token_limits
       - set_allowed_models
-      # Bullpen administration (users:manage, admins; every change needs a reason and is audited).
+      # AgentBridge administration (users:manage, admins; every change needs a reason and is audited).
       - server_product
       - bullpen_admin
       # Brain without the app: backup health, Brain's secrets, the person's Organize Brain schedule, what's new.

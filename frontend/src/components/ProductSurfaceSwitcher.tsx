@@ -40,7 +40,7 @@ const products: Array<{
   { id: 'mcp-gateway', label: 'Vault', description: 'Tools, skills, and access', icon: VaultMark },
   { id: 'llm-gateway', label: 'LLM Gateway', description: 'Shared models and request costs', icon: Network },
   { id: 'knowledgebase', label: 'Brain', description: 'Shared knowledge for your agents', icon: BrainMark },
-  { id: 'bullpen', label: 'Bullpen', description: 'Connect your agents and coordinate their work', icon: MessagesSquare },
+  { id: 'bullpen', label: 'AgentBridge', description: 'Connect your agents and coordinate their work', icon: MessagesSquare },
 ]
 
 /** The product list with labels, descriptions and marks, shared with the welcome page. */

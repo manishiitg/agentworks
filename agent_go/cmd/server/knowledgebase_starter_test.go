@@ -72,7 +72,7 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	if guide["content"] != canonical || guide["source_version"] != productguide.GuideVersion {
 		t.Fatal("MCP guide differs from canonical versioned source", guide)
 	}
-	for _, excluded := range []string{"Goals", "SparkQuill", "Video Studio", "Bullpen"} {
+	for _, excluded := range []string{"Goals", "SparkQuill", "Video Studio", "AgentBridge"} {
 		if strings.Contains(canonical, excluded) {
 			t.Fatalf("unavailable or personal product %s advertised in the guide", excluded)
 		}
@@ -178,7 +178,7 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 		t.Fatal("runtime product allowlist and surface projection disagree")
 	}
 	for _, file := range knowledgebaseStarterFiles() {
-		for _, excluded := range []string{"Goals", "SparkQuill", "Video Studio", "Bullpen"} {
+		for _, excluded := range []string{"Goals", "SparkQuill", "Video Studio", "AgentBridge"} {
 			if strings.Contains(file.Content, excluded) {
 				t.Fatalf("starter %s advertises unavailable or personal product %s", file.Path, excluded)
 			}
@@ -236,12 +236,12 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	cli = dialExternalMCP(t, t.Context(), srv.URL+externalMCPPath)
 	initializeExternalMCP(t, t.Context(), cli)
 	read = remote("brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/product-guide.md"})["result"].(map[string]any)
-	if !strings.Contains(read["content"].(string), "### Bullpen") || strings.Contains(read["content"].(string), "SparkQuill") || strings.Contains(read["content"].(string), "Video Studio") {
+	if !strings.Contains(read["content"].(string), "### AgentBridge") || strings.Contains(read["content"].(string), "SparkQuill") || strings.Contains(read["content"].(string), "Video Studio") {
 		t.Fatal("enabled work product or personal-product exclusion incorrect in Brain guide")
 	}
 	enabledSetup := remote("help", map[string]any{"action": "topic", "topic": productguide.CLISetupTopic})
-	if enabledSetup["content"] != productguide.CLISetup(builderProductSelection(claims)) || !strings.Contains(enabledSetup["content"].(string), "## Connect the coding chat to Bullpen") {
-		t.Fatal("enabled Bullpen setup unavailable through MCP", enabledSetup)
+	if enabledSetup["content"] != productguide.CLISetup(builderProductSelection(claims)) || !strings.Contains(enabledSetup["content"].(string), "## Connect the coding chat to AgentBridge") {
+		t.Fatal("enabled AgentBridge setup unavailable through MCP", enabledSetup)
 	}
 	if err := seedBrainStarterFiles(t.Context(), service, admin, stateDir, originalFiles); err != nil {
 		t.Fatal(err)

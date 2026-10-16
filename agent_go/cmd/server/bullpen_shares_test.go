@@ -37,7 +37,7 @@ func TestAuthorizeShareStopsAtRevokeBlockAndExpiry(t *testing.T) {
 	if _, err := revoked.authorizeShare("share-1", 1, now); err == nil {
 		t.Fatal("revoked grant accepted")
 	}
-	active["guest"] = false // account deleted, disabled or without Bullpen
+	active["guest"] = false // account deleted, disabled or without AgentBridge
 	if _, err := s.authorizeShare("share-1", 1, now); err == nil {
 		t.Fatal("grant for an inactive or deleted account accepted")
 	}

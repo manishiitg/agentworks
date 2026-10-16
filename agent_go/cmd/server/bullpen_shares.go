@@ -89,7 +89,7 @@ func (s agentMessageStore) shareBlocked(owner, subject string) bool {
 }
 
 // shareAccountActive is true for an account that still exists, is enabled and
-// may open Bullpen. A deleted account is unknown to the directory, so it is
+// may open AgentBridge. A deleted account is unknown to the directory, so it is
 // refused instead of defaulting to active. Tests replace it.
 var shareAccountActive = func(userID string) bool {
 	dir, err := loadUserDirectory()

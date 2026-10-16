@@ -26,7 +26,7 @@ describe('protected deep-link boundary', () => {
       await act(async () => root.render(<ProductRouteBoundary account="reader" allowedProducts={['bullpen', 'code']}>Workspace</ProductRouteBoundary>))
       expect(activate).toHaveBeenCalledOnce()
       expect(host.textContent).toBe('Workspace')
-      expect(window.location.pathname).toBe('/bullpen')
+      expect(window.location.pathname).toBe('/agentbridge')
       mocks.resolve.mockRejectedValue({ response: { status: 401 } })
       window.history.replaceState({}, '', '/code/projects/example')
       await act(async () => window.dispatchEvent(new PopStateEvent('popstate')))
@@ -49,12 +49,12 @@ describe('protected deep-link boundary', () => {
     const mounted = vi.fn()
     const PrivateView = () => { mounted(); return <div>Private project data</div> }
     try {
-      window.history.replaceState({}, '', '/bullpen/connect')
+      window.history.replaceState({}, '', '/agentbridge/connect')
       await act(async () => root.render(<ProductRouteBoundary account="reader" allowedProducts={['code']}><PrivateView /></ProductRouteBoundary>))
       const deniedText = host.querySelector('[role=alert]')?.textContent
       expect(deniedText).toContain('not available')
       expect(mocks.resolve).not.toHaveBeenCalled()
-      expect(window.location.pathname).toBe('/bullpen/connect')
+      expect(window.location.pathname).toBe('/agentbridge/connect')
 
       mocks.resolve.mockRejectedValue({ response: { status: 404 } })
       window.history.replaceState({}, '', '/code/projects/missing')

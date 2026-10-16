@@ -1,4 +1,4 @@
-// Real Bullpen and MCP components/styles; browser checks run on GitHub.
+// Real AgentBridge and MCP components/styles; browser checks run on GitHub.
 import assert from 'node:assert/strict'
 import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
@@ -85,7 +85,7 @@ try {
     assert.equal(await page.getByRole('heading', { name: purpose, exact: true }).count(), 0)
     directoryStatus = 200; agents = []
     await page.getByRole('button', { name: 'Refresh agents', exact: true }).click()
-    await page.getByRole('heading', { name: 'Bring your first agent into Bullpen' }).waitFor()
+    await page.getByRole('heading', { name: 'Bring your first agent into AgentBridge' }).waitFor()
     await page.getByRole('button', { name: 'Set up messaging', exact: true }).click()
     await page.getByRole('heading', { name: 'Connect your AI agent' }).waitFor()
     assert.equal(await page.getByLabel('Selected AgentWorks server').textContent(), 'http://127.0.0.1:18743')
@@ -94,7 +94,7 @@ try {
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'Attach this chat to AgentWorks as codex-review.')
     await page.getByRole('button', { name: 'Windows', exact: true }).click()
     assert.match(await page.getByLabel('Install AgentWorks', { exact: true }).textContent(), /install-agentworks.ps1/)
-    assert.equal(await page.getByRole('link', { name: /Bullpen help/ }).getAttribute('href'), 'https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md')
+    assert.equal(await page.getByRole('link', { name: /AgentBridge help/ }).getAttribute('href'), 'https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md')
     const headings = ['Requirements', 'Install or update the plugin', 'Sign in to this server', 'Connect this chat', 'Commands and menus', 'Try a message', 'Troubleshooting']
     for (const client of ['Codex', 'Claude Code', 'Pi', 'Cursor', 'agy', 'Muse']) {
       await page.getByRole('button', { name: client, exact: true }).click()
@@ -147,22 +147,22 @@ try {
     assert.match(museSetup, /agentworks-muse:monitor/)
     await page.getByText('Updating an older installation', { exact: true }).click()
     assert.match(await page.getByLabel('Update Muse plugin', { exact: true }).textContent(), /marketplace update.*\n.*plugins remove.*\n.*plugins install/)
-    await page.getByRole('heading', { name: 'Bullpen', exact: true }).scrollIntoViewIfNeeded()
+    await page.getByRole('heading', { name: 'AgentBridge', exact: true }).scrollIntoViewIfNeeded()
     await page.screenshot({ path: path.join(output, 'bullpen-setup-' + name + '.png'), fullPage: true })
     await page.getByRole('heading', { name: 'Commands and menus', exact: true }).scrollIntoViewIfNeeded()
     await page.screenshot({ path: path.join(output, 'bullpen-muse-menu-' + name + '.png'), fullPage: true })
     await page.goto(url + '?mcp&theme=' + theme)
     await page.getByRole('button', { name: 'Create access token', exact: true }).waitFor()
-    assert.equal(await page.getByRole('button', { name: 'Open Bullpen', exact: true }).isVisible(), true)
+    assert.equal(await page.getByRole('button', { name: 'Open AgentBridge', exact: true }).isVisible(), true)
     assert.equal(await page.getByLabel('Coding agent setup').count(), 0)
     await page.getByText('What your connections can access', { exact: true }).click()
     assert.equal(await page.getByText('Crew authoring access', { exact: true }).isVisible(), true)
     await page.screenshot({ path: path.join(output, 'mcp-tools-' + name + '.png'), fullPage: true })
     await page.goto(url + '?mcp&restricted')
     await page.getByRole('button', { name: 'Create access token', exact: true }).waitFor()
-    assert.equal(await page.getByRole('button', { name: 'Open Bullpen', exact: true }).count(), 0)
+    assert.equal(await page.getByRole('button', { name: 'Open AgentBridge', exact: true }).count(), 0)
     assert.deepEqual(errors, [], name + ': no component errors')
     await page.close()
   }
-  console.log('Bullpen Chromium checks passed: account directory, full purpose, search/copy, failure/empty recovery, own-attach setup, MCP separation, product allowlist and responsive layout.')
+  console.log('AgentBridge Chromium checks passed: account directory, full purpose, search/copy, failure/empty recovery, own-attach setup, MCP separation, product allowlist and responsive layout.')
 } finally { await browser?.close(); await server.close() }

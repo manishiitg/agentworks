@@ -4,7 +4,7 @@ Use AgentWorks products<!-- product:knowledgebase --> and shared Brain knowledge
 
 For CLI installation, sign-in, updates or connecting a coding chat, read [the setup guide](references/cli-setup.md), also available as `help action=topic topic=cli-setup`. <!-- product:knowledgebase -->The same guide is at `Shared/AgentWorks/cli-setup.md` in Brain. <!-- /product -->Load it when the person asks for setup; use their actual server address.
 
-The website's local AI setup shows optional terminal-app installation, then connecting the AI app to MCP tools. <!-- product:bullpen -->Optional agent messaging follows through `agentworks setup` for the selected app and **Bullpen → Connect an agent**. <!-- /product -->MCP tools do not require the AgentWorks terminal app.
+The website's local AI setup shows optional terminal-app installation, then connecting the AI app to MCP tools. <!-- product:bullpen -->Optional agent messaging follows through `agentworks setup` for the selected app and **AgentBridge → Connect an agent**. <!-- /product -->MCP tools do not require the AgentWorks terminal app.
 
 ## Talking to people
 
