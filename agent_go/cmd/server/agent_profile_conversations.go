@@ -347,13 +347,21 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		return
 	}
 	projectID := strings.TrimSpace(mux.Vars(r)["project_id"])
+	// actingFor is whose Crew this is: the caller, or the MAIN owner when the caller deletes as a co-owner (owner,
+	// 2026-10-16: co-owners may delete). Its chats, registry entry and connections are the main owner's.
+	actingFor, coOwner := userID, false
 	binding, err := resolveProductConversationBinding(r.Context(), userID, profile, projectID)
+	if err != nil && strings.EqualFold(profile.ID, crewProfileID) {
+		if crew, crewErr := resolveCrewProjectBinding(r.Context(), userID, profile, projectID, ""); crewErr == nil && crew.CoOwner {
+			binding, err, actingFor, coOwner = crew.Binding, nil, crew.OwnerID, true
+		}
+	}
 	if err != nil {
 		writeAgentProfileError(w, http.StatusNotFound, "project not found")
 		return
 	}
 	store := defaultProductConversationRegistryStore()
-	current, hasCurrent, previous, err := store.history(r.Context(), userID, profile, binding)
+	current, hasCurrent, previous, err := store.history(r.Context(), actingFor, profile, binding)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -380,7 +388,7 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 			return
 		}
 	}
-	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(userID))
+	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(actingFor))
 	if err := client.DeleteFolder(r.Context(), binding.WorkspacePath); err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, "delete project folder: "+err.Error())
 		return
@@ -391,7 +399,7 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 			log.Printf("[OWNER_REGISTRY] could not remove %s/%s: %v", id.Product, id.Folder, err)
 		}
 	}
-	removed, err := store.removeSlot(r.Context(), userID, profile, binding)
+	removed, err := store.removeSlot(r.Context(), actingFor, profile, binding)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, "remove project conversation binding: "+err.Error())
 		return
@@ -400,22 +408,25 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 	for _, record := range removed {
 		// The project folder deletion normally removed the transcript itself;
 		// this also clears any durable index or compatibility copy elsewhere.
-		_, _ = DeleteChatHistorySession(userID, record.SessionID, "")
+		_, _ = DeleteChatHistorySession(actingFor, record.SessionID, "")
 		removedIDs = append(removedIDs, record.SessionID)
 	}
 	api.deleteDurableChatSessionsAfterBulkDelete("project delete", removedIDs)
 	if strings.EqualFold(profile.ID, crewProfileID) {
 		// Older context-path references do not prevent deletion.
-		go pruneDeletedCrewReferences(context.WithoutCancel(r.Context()), userID, binding.WorkspacePath)
+		go pruneDeletedCrewReferences(context.WithoutCancel(r.Context()), actingFor, binding.WorkspacePath)
 	}
 	if isProjectProfileID(profile.ID) {
 		// A deleted Crew or Code takes its MCP connections, and their logins,
 		// with it.
-		forgetPlaceConnections(agentProfileRuntimeWorkspace(userID, binding.WorkspacePath))
+		forgetPlaceConnections(agentProfileRuntimeWorkspace(actingFor, binding.WorkspacePath))
 	}
 	if strings.EqualFold(profile.ID, codeproduct.ProfileID) {
 		// A deleted Code takes its shells with it.
-		stopCodeShellsFor(sanitizeUserIDForPath(userID), projectID, nil)
+		stopCodeShellsFor(sanitizeUserIDForPath(actingFor), projectID, nil)
+	}
+	if coOwner {
+		log.Printf("[CREW_DELETE] project=%s deleted by=%s as co-owner of %s", projectID, sanitizeUserIDForPath(userID), actingFor)
 	}
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }
