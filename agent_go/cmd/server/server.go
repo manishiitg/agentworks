@@ -184,11 +184,9 @@ func claudeCodeTokenMissingForSingleProductDeployment(resolvedProfile *resolvedA
 	if resolvedProfile == nil || !strings.EqualFold(finalProvider, "claude-code") {
 		return false
 	}
-	// Code is private to each person and signs in with their own coding CLI login: on a multi-user server it
-	// never falls back to the CLI's ambient login (the platform account's), whatever else the server offers.
-	// A single-product deployment used to give Code this by itself; offering Crew next to it must not take it away.
-	codeOnMultiUserServer := IsMultiUserMode() && strings.EqualFold(strings.TrimSpace(resolvedProfile.Definition.ID), codeproduct.ProfileID)
-	if !isSingleProductServerDeployment() && !resolvedProfile.Definition.Runtime.RequireProviderToken && !codeOnMultiUserServer {
+	// Code uses the server's shared Claude login the way Crew does (owner, 2026-10-16: "ok fix it", after Code
+	// refused a message that Crew accepted); only a single-product deployment or a profile that opts in refuses.
+	if !isSingleProductServerDeployment() && !resolvedProfile.Definition.Runtime.RequireProviderToken {
 		return false
 	}
 	if resolvedProfile.APIKeys == nil || resolvedProfile.APIKeys.ClaudeCodeOAuthToken == nil {
