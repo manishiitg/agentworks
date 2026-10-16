@@ -159,8 +159,11 @@ func (p workflowChatPolicy) sessionKey() string {
 	if p.ProductProfileID != "" {
 		identity += "|profile:" + p.ProductProfileID
 	}
+	// Only THAT the turn runs under an external Builder operation's authority is part of the role, not which operation:
+	// every MCP builder chat request mints a new operation id on the same session, and a new id each turn made every turn
+	// look like a different chat (PLAT-548 round 2). The id still authorizes the turn elsewhere.
 	if p.AuthorityKey != "" {
-		identity += "|" + p.AuthorityKey
+		identity += "|external-authority"
 	}
 	sum := sha256.Sum256([]byte(identity))
 	return fmt.Sprintf("%x", sum[:16])

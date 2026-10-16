@@ -140,6 +140,9 @@ func TestAutoNotificationKeepsThePulseAndExternalBuilderRole(t *testing.T) {
 		t.Fatal("a notification into a Pulse chat restarted its native session")
 	}
 	external := resolveWorkflowChatPolicy("wfmsg-round2", QueryRequest{ExternalBuilderOperationID: "op-1"}, nil, false)
+	if next := resolveWorkflowChatPolicy("wfmsg-round2", QueryRequest{ExternalBuilderOperationID: "op-2"}, nil, false); next.sessionKey() != external.sessionKey() {
+		t.Fatal("two MCP builder turns with different operation ids must keep one role")
+	}
 	notice = resolveWorkflowChatPolicy("wfmsg-round2", QueryRequest{IsAutoNotification: true, TriggeredBy: "external"}, nil, false)
 	if chatPolicyRoleRequiresReconnect(true, external.sessionKey(), notice.sessionKey(), true, nil) {
 		t.Fatal("a notification into an external Builder chat restarted its native session")
