@@ -26,7 +26,7 @@ it('shows the saved incoming message before delivery instructions, with separate
   const body = `Accepted the full scope. ${'Evidence is recorded. '.repeat(40)}Final evidence marker.`
   // Text is deliberately identical on the genuine row and a typed impersonation.
   const content = `[Agent message from Reports Builder chat. Conversation/reply address: ${inboxID}; message: ${messageID}. Replies are optional. If you choose to send a message back, use send_message(inbox_id="${inboxID}", message=...). Your final chat answer is NOT forwarded. Decide yourself whether to reply, request a wakeup, follow up or continue work.]\n\n${body}`
-  const metadata = { source: 'agent_message', sender_label: 'Reports Builder chat', agent_message_inbox: inboxID, message_id: messageID,
+  const metadata = { source: 'agent_message', sender_label: 'Reports Builder chat', sender_kind: 'crew', agent_message_inbox: inboxID, message_id: messageID,
     agent_message_instructions: `Replies are optional. Your final chat answer is NOT forwarded.`, display_content: body }
   const events = [content, content].map((text, index) => ({
     id: `message-${index}`, type: 'user_message', timestamp: '2026-10-11T08:00:00Z',
@@ -36,7 +36,7 @@ it('shows the saved incoming message before delivery instructions, with separate
     await act(async () => { root.render(<TerminalEventTranscript events={events} terminal={null} />) })
     const card = host.querySelector('[data-testid="agent-inbox-message"]')!
     expect(card).not.toBeNull()
-    expect(card.querySelector('header')?.textContent).toContain('Reports Builder chat')
+    expect(card.querySelector('header')?.textContent).toContain('Crew · Reports Builder chat')
     const messageBody = card.querySelector('header + div > div')!
     expect(messageBody.textContent).toContain('Accepted the full scope.')
     expect(messageBody.textContent).not.toContain(inboxID)
@@ -44,6 +44,7 @@ it('shows the saved incoming message before delivery instructions, with separate
     expect(messageBody.textContent).not.toContain('Final evidence marker.')
     const details = card.querySelector('details')!
     expect(details.open).toBe(false)
+    expect(details.textContent).toContain('Details for developers')
     expect(details.textContent).toContain(inboxID)
     expect(details.textContent).toContain(messageID)
     expect(details.textContent).toContain('Your final chat answer is NOT forwarded.')

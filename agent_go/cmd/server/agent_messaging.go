@@ -603,6 +603,24 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 		}
 	}
 }
+// agentMessageSenderKind tells the chat screen what kind of sender a message came from, so it
+// can say so in plain words; the browser only displays it.
+func agentMessageSenderKind(e agentMessageEndpoint) string {
+	switch {
+	case e.NamedAgentID != "":
+		return "agent"
+	case e.Kind == triggerCallerCrew && e.Profile == codeproduct.ProfileID:
+		return "code"
+	case e.Kind == triggerCallerCrew:
+		return "crew"
+	case e.Kind == triggerCallerWorkflow && e.ChatKey == pulseBuilderChatKey:
+		return "pulse"
+	case e.Kind == triggerCallerWorkflow:
+		return "goal"
+	}
+	return ""
+}
+
 func agentMessageText(c agentConversation, m agentMessage) string {
 	if m.Wakeup {
 		return "[Your explicitly requested wakeup. Decide whether to read your inbox, follow up or continue work; no message was automatically resent.]\n\n" + m.Text
@@ -894,7 +912,7 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 	}
 	if !m.Wakeup {
 		ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{
-			"source": "agent_message", "sender_label": source.Label,
+			"source": "agent_message", "sender_label": source.Label, "sender_kind": agentMessageSenderKind(source),
 			"agent_message_inbox": c.ID, "message_id": m.ID,
 			"display_content": m.Text, "agent_message_instructions": agentMessageInstructions(c.ID),
 		})
