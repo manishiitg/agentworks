@@ -1558,8 +1558,16 @@ mkdir -p "$LOG_DIR"
 
 # Truncate the log files to start fresh
 echo "📝 Truncating log files for clean start..."
+# Keep the last three server logs (server_debug.log.1 is the previous start) so evidence from
+# before a restart is not lost.
+if [ -s "$LOG_PATH" ]; then
+    rm -f "$LOG_PATH.3"
+    [ -f "$LOG_PATH.2" ] && mv "$LOG_PATH.2" "$LOG_PATH.3"
+    [ -f "$LOG_PATH.1" ] && mv "$LOG_PATH.1" "$LOG_PATH.2"
+    mv "$LOG_PATH" "$LOG_PATH.1"
+fi
 > "$LOG_PATH"
-echo "✅ Server log file truncated: $LOG_PATH"
+echo "✅ Server log file started fresh (previous one kept as $LOG_PATH.1): $LOG_PATH"
 > "${LOG_DIR}/llm_debug.log"
 echo "✅ LLM log file truncated: ${LOG_DIR}/llm_debug.log"
 if [ "$WITH_WORKSPACE" = true ]; then

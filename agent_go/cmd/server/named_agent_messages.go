@@ -230,8 +230,27 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 		}
 	}
 	if index >= 0 && !namedAgentConnectionAllowed(s.Agents[index], claims) {
-		externalError(w, 404, "not_found", "The name "+name+" is already used by another sign-in of yours (an older connection or another computer). Pick a different name, or remove the name from the sign-in that created it.")
-		return
+		// The holding sign-in may be gone (revoked or expired); the same person then takes the name.
+		// While it is still active, say which one holds it and how to move the name.
+		holder, live := "", false
+		for _, id := range s.Agents[index].Connections {
+			if c, e := agentMessageConnectionClaims(r.Context(), id); e == nil && c.UserID == claims.UserID && c.AccessToken != nil {
+				live = true
+				if holder == "" {
+					holder = c.AccessToken.Name
+				}
+			}
+		}
+		if live {
+			who := "another sign-in of yours"
+			if holder != "" {
+				who = "your sign-in \"" + holder + "\""
+			}
+			externalError(w, 404, "not_found", "The name "+name+" is already used by "+who+". To move it to this chat, run attach "+name+" from this chat (the old one stops receiving), or free it by unregistering it from that sign-in. Or pick a different name.")
+			return
+		}
+		s.Agents[index].Connections = connections
+		s.Agents[index].Attachment = nil
 	}
 	if externalArg(args, "action") == "unregister" {
 		if index < 0 {
