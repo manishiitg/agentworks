@@ -1086,12 +1086,16 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 			return beginGoalWorkTurn(receivingSession, perms), nil
 		})
 	}
+	var result internalSessionTurnResult
 	if agentMessageTurn != nil {
-		_, err = agentMessageTurn(api, ctx, reqMap, session, dest.UserID)
+		result, err = agentMessageTurn(api, ctx, reqMap, session, dest.UserID)
 	} else {
-		_, err = api.startSessionInternalWithResult(ctx, reqMap, session, dest.UserID, nil)
+		result, err = api.startSessionInternalWithResult(ctx, reqMap, session, dest.UserID, nil)
 	}
-	return session, err // deliberately ignore the final answer
+	if err == nil && !m.Wakeup {
+		api.relayTabFinalAnswer(ctx, c, m, source, dest, result.FinalResponse)
+	}
+	return session, err
 }
 
 func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolRegistrar, userID, sessionID string, parentReq QueryRequest, resolveCaller func(context.Context) (triggerLinkCaller, error), declare func(string)) error {
