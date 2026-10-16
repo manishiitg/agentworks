@@ -126,3 +126,32 @@ func TestAutoNotificationKeepsTheInteractiveNativeConversation(t *testing.T) {
 		t.Fatal("different capabilities must still reconnect")
 	}
 }
+
+// PLAT-548 round 2 (owner's log, 2026-10-16): an auto-notification into a Pulse chat or an external Builder chat took the
+// full interactive capability set, so it looked like a different chat and threw the coding CLI's session away. It now keeps
+// the chat's own role (and not its tools), and still looks like itself once the chat's role is restored after a restart.
+func TestAutoNotificationKeepsThePulseAndExternalBuilderRole(t *testing.T) {
+	pulse := resolveWorkflowChatPolicy("schedule-goallead--round2-g1", QueryRequest{TriggeredBy: "cron", PulseLifecycleTurn: true}, nil, false)
+	notice := resolveWorkflowChatPolicy("schedule-goallead--round2-g1", QueryRequest{TriggeredBy: "cron", IsAutoNotification: true}, nil, false)
+	if notice.Origin != "notification" || notice.Capabilities["mcp_management"] || notice.Capabilities["user_management"] {
+		t.Fatalf("a notification into a Pulse chat must keep Pulse's capabilities and its own origin: %+v", notice)
+	}
+	if chatPolicyRoleRequiresReconnect(true, pulse.sessionKey(), notice.sessionKey(), true, nil) {
+		t.Fatal("a notification into a Pulse chat restarted its native session")
+	}
+	external := resolveWorkflowChatPolicy("wfmsg-round2", QueryRequest{ExternalBuilderOperationID: "op-1"}, nil, false)
+	notice = resolveWorkflowChatPolicy("wfmsg-round2", QueryRequest{IsAutoNotification: true, TriggeredBy: "external"}, nil, false)
+	if chatPolicyRoleRequiresReconnect(true, external.sessionKey(), notice.sessionKey(), true, nil) {
+		t.Fatal("a notification into an external Builder chat restarted its native session")
+	}
+	// After a restart nothing is remembered: the saved role is restored, and a chat that never ran keeps today's behaviour.
+	seedChatPolicyRole("wfmsg-restart", "external_builder", "op-9")
+	restored := resolveWorkflowChatPolicy("wfmsg-restart", QueryRequest{IsAutoNotification: true}, nil, false)
+	if restored.RoleOrigin != "external_builder" || restored.AuthorityKey != "op-9" {
+		t.Fatalf("restored role = %q/%q", restored.RoleOrigin, restored.AuthorityKey)
+	}
+	fresh := resolveWorkflowChatPolicy("never-seen", QueryRequest{IsAutoNotification: true}, nil, false)
+	if fresh.RoleOrigin != "notification" {
+		t.Fatalf("an unknown chat keeps today's role: %q", fresh.RoleOrigin)
+	}
+}

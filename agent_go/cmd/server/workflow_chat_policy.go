@@ -19,8 +19,13 @@ import (
 )
 
 type workflowChatPolicy struct {
-	Mode             string
-	Origin           string
+	Mode   string
+	Origin string
+	// RoleOrigin is the origin the chat's ROLE is judged by. It equals Origin, except for an auto-notification or agent
+	// message into an existing chat: that turn keeps the role (origin and authority) of the chat's last other turn, so
+	// it does not look like a different chat (PLAT-548, round 2). Origin itself stays "notification" for provenance and
+	// for the checks that only a typed turn passes.
+	RoleOrigin       string
 	Capabilities     map[string]bool
 	AuthorityKey     string
 	ProductProfileID string
@@ -69,7 +74,15 @@ func resolveWorkflowChatPolicy(session string, req QueryRequest, active *ActiveS
 	if workspace == "" && active != nil {
 		workspace = active.WorkspacePath
 	}
-	return workflowChatPolicy{KnowledgeKey: knowledgeRuntimeConfigKey(workspace), Mode: normalized, Origin: origin, Capabilities: agentworksproduct.ChatCapabilities(normalized, origin, readOnly), AuthorityKey: req.ExternalBuilderOperationID, ProductProfileID: strings.TrimSpace(req.AgentProfileID)}
+	roleOrigin, authority := origin, req.ExternalBuilderOperationID
+	if origin == "notification" {
+		if snapshot, ok := chatPolicyRoleSnapshotFor(session); ok {
+			roleOrigin, authority = snapshot.Origin, snapshot.Authority
+		}
+	} else if strings.TrimSpace(session) != "" {
+		chatPolicyRoles.Store(session, chatPolicyRoleSnapshot{Origin: origin, Authority: authority})
+	}
+	return workflowChatPolicy{KnowledgeKey: knowledgeRuntimeConfigKey(workspace), Mode: normalized, Origin: origin, RoleOrigin: roleOrigin, Capabilities: agentworksproduct.ChatCapabilities(normalized, roleOrigin, readOnly), AuthorityKey: authority, ProductProfileID: strings.TrimSpace(req.AgentProfileID)}
 }
 
 // describe is the readable form of the parts that make up sessionKey, for the log line that says why a chat's native
@@ -92,6 +105,28 @@ func (p workflowChatPolicy) describe() string {
 // lastChatPolicyDescription remembers, per session, the describe() of the previous turn's policy (log only).
 var lastChatPolicyDescription sync.Map
 
+// chatPolicyRoleSnapshot is the role (origin and authority) of a chat's last turn that was not an auto-notification.
+type chatPolicyRoleSnapshot struct{ Origin, Authority string }
+
+var chatPolicyRoles sync.Map // session ID -> chatPolicyRoleSnapshot
+
+func chatPolicyRoleSnapshotFor(session string) (chatPolicyRoleSnapshot, bool) {
+	value, ok := chatPolicyRoles.Load(session)
+	if !ok {
+		return chatPolicyRoleSnapshot{}, false
+	}
+	snapshot, ok := value.(chatPolicyRoleSnapshot)
+	return snapshot, ok
+}
+
+// seedChatPolicyRole restores the role of a chat after a restart from what its saved runtime recorded.
+func seedChatPolicyRole(session, origin, authority string) {
+	if strings.TrimSpace(session) == "" || strings.TrimSpace(origin) == "" {
+		return
+	}
+	chatPolicyRoles.LoadOrStore(session, chatPolicyRoleSnapshot{Origin: origin, Authority: authority})
+}
+
 func (p workflowChatPolicy) allows(capability string) bool { return p.Capabilities[capability] }
 
 func (p workflowChatPolicy) sessionKey() string {
@@ -104,6 +139,9 @@ func (p workflowChatPolicy) sessionKey() string {
 	// Keep provenance for routing/costs, but only reconnect if their actual
 	// capabilities differ. Interactive and child origins remain distinct.
 	roleOrigin := p.Origin
+	if p.RoleOrigin != "" {
+		roleOrigin = p.RoleOrigin
+	}
 	if roleOrigin == "pulse" {
 		roleOrigin = "scheduled"
 	}

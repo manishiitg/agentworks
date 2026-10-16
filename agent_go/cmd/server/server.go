@@ -8009,6 +8009,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		var preModeChangeSnapshot []llmtypes.MessageContent
 		if newWorkshopMode != "" {
 			activeForPolicy, _ := api.getActiveSession(sessionID)
+			// After a restart an auto-notification has no remembered role: take it from the saved runtime.
+			if _, known := chatPolicyRoleSnapshotFor(sessionID); !known && common.IsCLIProvider(finalProvider) && (req.IsAutoNotification || strings.EqualFold(strings.TrimSpace(req.TriggeredBy), "auto_notification")) {
+				if saved, _, err := ReadChatHistoryRuntimeForSession(currentUserID, sessionID, workflowPhaseFolder); err == nil && saved != nil {
+					seedChatPolicyRole(sessionID, saved.ChatPolicyRoleOrigin, saved.ChatPolicyRoleAuthority)
+				}
+			}
 			currentPolicy := resolveWorkflowChatPolicy(sessionID, req, activeForPolicy, currentUserIsReadOnly)
 			policyWorkflowKind := ""
 			if relayChat {
@@ -9153,6 +9159,9 @@ func (api *StreamingAPI) captureChatHistoryAgentRuntime(sessionID, provider, mod
 	api.conversationMux.RLock()
 	runtime.ChatPolicyKey = api.lastChatPolicyBySession[sessionID]
 	runtime.ChatPolicyRoleKey = api.lastChatPolicyRoleBySession[sessionID]
+	if snapshot, ok := chatPolicyRoleSnapshotFor(sessionID); ok {
+		runtime.ChatPolicyRoleOrigin, runtime.ChatPolicyRoleAuthority = snapshot.Origin, snapshot.Authority
+	}
 	runtime.AgentProfileKey = api.lastAgentProfileKeyBySession[sessionID]
 	runtime.AgentToolsMode = api.lastAgentToolsModeBySession[sessionID]
 	api.conversationMux.RUnlock()
