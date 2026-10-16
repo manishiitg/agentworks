@@ -119,6 +119,9 @@ func workspaceProxyHandler() http.Handler {
 				if level, manifest := workflowAccessForWorkspacePath(r.Context(), GetUserFromContext(r.Context()), folder); manifest != nil && level != WorkflowAccessOwner && level != WorkflowAccessWrite {
 					writeWorkflowPermissionDenied(w, "owner")
 					return
+				} else if manifest != nil && r.Method == http.MethodDelete && strings.TrimPrefix(strings.TrimPrefix(workspaceProxyRelativePath(r), "api/folders/"), "api/documents/") == folder {
+					// A whole workflow or Flow is being deleted: say who (co-owners may delete, owner 2026-10-16).
+					log.Printf("[WORKFLOW_DELETE] %s deleted by=%s main_owner=%s", folder, sanitizeUserIDForPath(GetUserIDFromContext(r.Context())), manifest.relayBuilder())
 				}
 			}
 		}

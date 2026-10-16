@@ -210,9 +210,9 @@ func TestWorkflowEditorsGrant(t *testing.T) {
 	}
 }
 
-// A Relay has one Builder (the creator while still listed, else the first listed owner); every other listed owner, every editor
-// and every reader runs it. A workflow keeps its owner and editor tiers.
-func TestRelayHasOneBuilder(t *testing.T) {
+// Every owner of a Flow builds it (owner, 2026-10-16); the main owner (the creator while still listed, else the first listed
+// owner) is who it runs as. Editors and readers run it. A workflow keeps its owner and editor tiers.
+func TestRelayOwnersAllBuildMainOwnerRunsIt(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[
 	  {"id":"a1","username":"alice","admin":true,"can_create":true,"products":[]},
@@ -224,22 +224,22 @@ func TestRelayHasOneBuilder(t *testing.T) {
 	alice, bob, carol, dan, erin := &UserClaims{UserID: "a1"}, &UserClaims{UserID: "b2"}, &UserClaims{UserID: "c3"}, &UserClaims{UserID: "d4"}, &UserClaims{UserID: "e5"}
 	access := &WorkflowAccess{Owners: []string{"c3", "b2"}, Editors: []string{"d4"}, Readers: []string{"e5"}}
 	relay := &WorkflowManifest{ID: "r1", Kind: "relay", CreatedBy: "b2", Access: access}
-	for who, want := range map[*UserClaims]WorkflowAccessLevel{bob: WorkflowAccessOwner, carol: WorkflowAccessRead, dan: WorkflowAccessRead, erin: WorkflowAccessRead, alice: WorkflowAccessOwner} {
+	for who, want := range map[*UserClaims]WorkflowAccessLevel{bob: WorkflowAccessOwner, carol: WorkflowAccessOwner, dan: WorkflowAccessRead, erin: WorkflowAccessRead, alice: WorkflowAccessOwner} {
 		if got := workflowAccessForManifest(who, relay); got != want {
 			t.Errorf("relay %s: got %s want %s", who.UserID, got, want)
 		}
 	}
-	// Creator no longer listed: the first listed owner builds.
-	moved := &WorkflowManifest{ID: "r2", Kind: "relay", CreatedBy: "x9", Access: &WorkflowAccess{Owners: []string{"c3", "b2"}}}
-	if got := workflowAccessForManifest(carol, moved); got != WorkflowAccessOwner {
-		t.Errorf("first listed owner builds: %s", got)
+	if relay.relayBuilder() != "b2" {
+		t.Errorf("the main owner is the creator: %s", relay.relayBuilder())
 	}
-	if got := workflowAccessForManifest(bob, moved); got != WorkflowAccessRead {
-		t.Errorf("second listed owner runs: %s", got)
+	// Creator no longer listed: the first listed owner is the main owner; the other still builds.
+	moved := &WorkflowManifest{ID: "r2", Kind: "relay", CreatedBy: "x9", Access: &WorkflowAccess{Owners: []string{"c3", "b2"}}}
+	if moved.relayBuilder() != "c3" || workflowAccessForManifest(bob, moved) != WorkflowAccessOwner {
+		t.Errorf("main owner %s; second owner access %s", moved.relayBuilder(), workflowAccessForManifest(bob, moved))
 	}
 	owners, editors, readers := relayAccessLists(relay)
-	if len(owners) != 1 || owners[0] != "b2" || len(editors) != 0 || len(readers) != 3 {
-		t.Errorf("shown as one owner and everyone else running: %v %v %v", owners, editors, readers)
+	if len(owners) != 2 || owners[0] != "b2" || owners[1] != "c3" || len(editors) != 0 || len(readers) != 2 {
+		t.Errorf("shown as owners (main first) and everyone else running: %v %v %v", owners, editors, readers)
 	}
 	workflow := &WorkflowManifest{ID: "w9", CreatedBy: "b2", Access: access}
 	if got := workflowAccessForManifest(carol, workflow); got != WorkflowAccessOwner {

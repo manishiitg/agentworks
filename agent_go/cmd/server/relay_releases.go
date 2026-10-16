@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"path"
 	"regexp"
@@ -32,10 +33,14 @@ type relayRelease struct {
 	SourceWorkspace string    `json:"source_workspace,omitempty"`
 	Hash            string    `json:"hash"`
 	PublishedAt     time.Time `json:"published_at"`
-	Functions       []string  `json:"functions"`
-	OutputStep      string    `json:"output_step_id"`
-	FileCount       int       `json:"file_count"`
-	Files           []string  `json:"files"`
+	// PublishedBy is the account that published it; Replaced says whose earlier version it replaced when that was another
+	// owner (Flows have several owners and one shared draft, so a publish can replace a colleague's version).
+	PublishedBy string   `json:"published_by,omitempty"`
+	Replaced    string   `json:"replaced,omitempty"`
+	Functions   []string `json:"functions"`
+	OutputStep  string   `json:"output_step_id"`
+	FileCount   int      `json:"file_count"`
+	Files       []string `json:"files"`
 }
 
 func relayReleaseWorkspace(workspace, version string) string {
@@ -398,6 +403,13 @@ func publishRelayRelease(ctx context.Context, workspace string) (*relayRelease, 
 		}
 	}
 	release := &relayRelease{Version: version, SourceWorkspace: workspace, Hash: hash, PublishedAt: time.Now().UTC(), Functions: functions, OutputStep: manifest.RelayOutputStepID, FileCount: len(keys), Files: keys}
+	if claims := GetUserFromContext(ctx); claims != nil {
+		release.PublishedBy = sanitizeUserIDForPath(claims.UserID)
+		if previous, _, err := activeRelayRelease(ctx, workspace); err == nil && previous.PublishedBy != "" && previous.PublishedBy != release.PublishedBy {
+			release.Replaced = fmt.Sprintf("replaced %s's version %s from %s; it is kept in history", crewEditLockName(previous.PublishedBy), previous.Version, previous.PublishedAt.UTC().Format("2006-01-02 15:04 UTC"))
+			log.Printf("[FLOW_PUBLISH] flow=%s %s by=%s", manifest.ID, release.Replaced, release.PublishedBy)
+		}
+	}
 	encoded, _ := json.Marshal(release)
 	if err := writeFileToWorkspace(ctx, path.Join(destination, "release.json"), string(encoded)); err != nil {
 		return nil, err

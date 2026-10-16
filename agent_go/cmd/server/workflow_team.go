@@ -535,7 +535,8 @@ func teamWorkspacePath(input string) (string, string) {
 }
 func workflowTeamAllowsConcurrent(root string) bool {
 	m, ok, e := ReadWorkflowManifest(context.Background(), root)
-	return e == nil && ok && m.Team != nil
+	// A Flow has no Builder lock: its owners build together (owner, 2026-10-16), and a publish says whose version it replaced.
+	return e == nil && ok && (m.Team != nil || m.Kind == "relay")
 }
 func teamManagedWrite(ctx context.Context, path, content string) (func(), error) {
 	root, rel := teamWorkspacePath(path)

@@ -69,6 +69,9 @@ func crewRoleOf(root, userID string) string {
 // caller's Builder turn runs as that owner for provider accounts and token limits (their cost is billed to the owner;
 // the cost record still names the caller).
 func coOwnerTurnOwner(ctx context.Context, callerID, workspacePath string) string {
+	if owner := flowOwnerTurnOwner(ctx, callerID, workspacePath); owner != "" {
+		return owner
+	}
 	ref, ok := resolveCrewPath(ctx, callerID, workspacePath)
 	if !ok || !ref.Shared || ref.OwnerID == "" || ref.OwnerID == sanitizeUserIDForPath(callerID) || !crewIsCoOwner(ref.Root, callerID) {
 		return ""

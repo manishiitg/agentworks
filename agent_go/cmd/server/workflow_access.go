@@ -86,9 +86,9 @@ func (m *WorkflowManifest) hasOwnershipRecord() bool {
 	return len(m.effectiveOwners()) > 0
 }
 
-// relayBuilder is the one person who builds a Flow (Builder mode, owner decision 2026-10-13: a Flow has a single owner, because
-// an editor's runs leave journals in their own slot that the owner cannot clean). It is the creator when the creator is still a
-// listed owner, else the first listed owner, so the answer is the same on every read. Everyone else is in Run mode.
+// relayBuilder is the MAIN owner of a Flow: the one it runs as (owner decision 2026-10-13: runs leave journals in one slot, the
+// owner's). It is the creator when the creator is still a listed owner, else the first listed owner, so the answer is the same on
+// every read. Other listed owners are co-owners: they build it too (2026-10-16) but runs still happen as this person.
 func (m *WorkflowManifest) relayBuilder() string {
 	owners := m.effectiveOwners()
 	if len(owners) == 0 {
@@ -200,14 +200,15 @@ func workflowAccessForManifest(claims *UserClaims, m *WorkflowManifest) Workflow
 		return account
 	}
 	if m.Kind == "relay" {
-		// A Flow has one Builder; any other listed owner or editor runs published versions like a reader.
-		if claims.UserID == m.relayBuilder() {
+		// Every owner of a Flow builds it (owner, 2026-10-16: co-owners); runs happen as the main owner, relayBuilder().
+		// Listed editors and readers run published versions.
+		if containsID(m.effectiveOwners(), claims.UserID) {
 			if !userAccessForClaims(claims).CanEdit {
 				return WorkflowAccessRead
 			}
 			return WorkflowAccessOwner
 		}
-		if containsID(m.effectiveOwners(), claims.UserID) || containsID(m.effectiveEditors(), claims.UserID) || containsID(m.effectiveReaders(), claims.UserID) || workflowRunEveryone(claims, m, product) {
+		if containsID(m.effectiveEditors(), claims.UserID) || containsID(m.effectiveReaders(), claims.UserID) || workflowRunEveryone(claims, m, product) {
 			return WorkflowAccessRead
 		}
 		return WorkflowAccessNone
@@ -616,15 +617,21 @@ func workflowManifestBlockedWriteForNonOwner(ctx context.Context, claims *UserCl
 	return folder + "/workflow.json"
 }
 
-// relayAccessLists is how a Flow's people are shown: its one Builder as the owner, nobody as an editor, and everyone else
-// (other listed owners, editors, readers) as running it.
+// relayAccessLists is how a Flow's people are shown: its owners (the main owner first), nobody as an editor, and everyone
+// else (editors, readers) as running it.
 func relayAccessLists(m *WorkflowManifest) (owners, editors, readers []string) {
 	builder := m.relayBuilder()
 	if builder != "" {
 		owners = []string{builder}
 	}
 	seen := map[string]bool{builder: true}
-	for _, list := range [][]string{m.effectiveOwners(), m.effectiveEditors(), m.effectiveReaders()} {
+	for _, id := range m.effectiveOwners() {
+		if !seen[id] {
+			seen[id] = true
+			owners = append(owners, id)
+		}
+	}
+	for _, list := range [][]string{m.effectiveEditors(), m.effectiveReaders()} {
 		for _, id := range list {
 			if !seen[id] {
 				seen[id] = true
