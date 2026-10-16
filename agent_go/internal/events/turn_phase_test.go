@@ -67,3 +67,26 @@ func TestTurnPhaseFollowsTheAgentNotTheClock(t *testing.T) {
 		}
 	}
 }
+
+// After a restart the live turn state is gone; the stored events decide whether a turn is still open (PLAT-861-228).
+func TestPersistedTurnOpenFollowsTheStoredEvents(t *testing.T) {
+	es := NewEventStore(100)
+	defer es.Stop()
+	const session = "stored-turn-session"
+	if es.PersistedTurnOpen(session) {
+		t.Fatal("an empty session has no open turn")
+	}
+	add(es, session, "user_message", nil)
+	add(es, session, "streaming_chunk", &mcpevents.StreamingChunkEvent{Content: "partial", Source: "transcript"})
+	if !es.PersistedTurnOpen(session) {
+		t.Fatal("a message with no end is an open turn")
+	}
+	add(es, session, "unified_completion", nil)
+	if es.PersistedTurnOpen(session) {
+		t.Fatal("a completed turn is not open")
+	}
+	add(es, session, "user_message", nil)
+	if !es.PersistedTurnOpen(session) {
+		t.Fatal("a new message opens the next turn")
+	}
+}

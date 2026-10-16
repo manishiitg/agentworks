@@ -93,6 +93,13 @@ func (api *StreamingAPI) handleCancelCurrentTurn(w http.ResponseWriter, r *http.
 	}
 
 	if err := api.verifySessionAccess(r, sessionID); err != nil {
+		// After a restart the live session table is empty while the chat's stored events still show a turn running.
+		// The stored owner of the chat decides who may end it; nobody else can.
+		if api.settleStoredTurnForOwner(r, sessionID) {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		log.Printf("[SESSION STOP] cancel-turn refused session=%s reason=%v", sessionID, err)
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
@@ -743,10 +750,19 @@ func (api *StreamingAPI) settleStoppedTurnWithNoOwner(sessionID string) {
 	if hasGoTurn || tracked {
 		return
 	}
+	api.emitInterruptedTurnEnd(sessionID, "stop_no_owner")
+	api.setSessionBusy(sessionID, false)
+	api.updateSessionStatus(sessionID, "completed")
+	log.Printf("[SESSION STOP] settled session=%s outcome=interrupted reason=no_turn_owner_after_stop", sessionID)
+}
+
+// emitInterruptedTurnEnd records an interrupted end with no reply in the session's events, so every screen leaves
+// "working".
+func (api *StreamingAPI) emitInterruptedTurnEnd(sessionID, source string) {
 	now := time.Now()
 	completion := unifiedevents.NewUnifiedCompletionEvent("coding_agent", "retained", "", "", "completed", 0, 1)
 	completion.SessionID = sessionID
-	completion.Metadata["source"] = "stop_no_owner"
+	completion.Metadata["source"] = source
 	completion.Metadata["execution_kind"] = "main_agent"
 	completion.Metadata["scope"] = "main_agent"
 	completion.Metadata[mcpagent.RetainedTurnOutcomeMetadataKey] = "interrupted"
@@ -761,7 +777,7 @@ func (api *StreamingAPI) settleStoppedTurnWithNoOwner(sessionID string) {
 		Data:          &unifiedevents.AgentEvent{Type: unifiedevents.EventType("unified_completion"), Timestamp: now, SessionID: sessionID, Data: completion},
 	})
 	end := &unifiedevents.StreamingEndEvent{
-		BaseEventData: unifiedevents.BaseEventData{Timestamp: now, Metadata: map[string]interface{}{"kind": "terminal", "source": "stop_no_owner"}},
+		BaseEventData: unifiedevents.BaseEventData{Timestamp: now, Metadata: map[string]interface{}{"kind": "terminal", "source": source}},
 		FinishReason:  "interrupted",
 	}
 	api.eventStore.AddEvent(sessionID, events.Event{
@@ -773,7 +789,24 @@ func (api *StreamingAPI) settleStoppedTurnWithNoOwner(sessionID string) {
 		ExecutionKind: "main_agent",
 		Data:          &unifiedevents.AgentEvent{Type: unifiedevents.StreamingEnd, Timestamp: now, SessionID: sessionID, Data: end},
 	})
-	api.setSessionBusy(sessionID, false)
-	api.updateSessionStatus(sessionID, "completed")
-	log.Printf("[SESSION STOP] settled session=%s outcome=interrupted reason=no_turn_owner_after_stop", sessionID)
+}
+
+// settleStoredTurnForOwner ends a turn that only the chat's stored events still show (the live session table is empty
+// after a restart). It acts only for the chat's recorded owner, and only when the stored events show a turn open.
+func (api *StreamingAPI) settleStoredTurnForOwner(r *http.Request, sessionID string) bool {
+	if api == nil || api.eventStore == nil {
+		return false
+	}
+	caller := strings.TrimSpace(GetUserIDFromContext(r.Context()))
+	owner, err := api.eventStore.DurableChatOwner(sessionID)
+	if err != nil || strings.TrimSpace(owner) == "" || caller == "" || owner != caller {
+		return false
+	}
+	if !api.eventStore.PersistedTurnOpen(sessionID) {
+		log.Printf("[SESSION STOP] cancel-turn session=%s: no live session and the stored events show no open turn", sessionID)
+		return true
+	}
+	api.emitInterruptedTurnEnd(sessionID, "stop_after_restart")
+	log.Printf("[SESSION STOP] settled session=%s outcome=interrupted reason=stored_turn_after_restart", sessionID)
+	return true
 }

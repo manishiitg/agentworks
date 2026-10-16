@@ -123,6 +123,22 @@ func (es *EventStore) TurnInProgress(sessionID string) bool {
 	return st != nil && time.Since(st.updated) <= turnPhaseStaleAfter
 }
 
+// PersistedTurnOpen reports whether the session's stored events end inside a turn: the newest turn marker is a user
+// message, not a turn end. It reads the stored events, so it also answers after a restart, when the live turn state is
+// gone.
+func (es *EventStore) PersistedTurnOpen(sessionID string) bool {
+	all := es.GetAllEventsRaw(sessionID)
+	for i := len(all) - 1; i >= 0; i-- {
+		switch all[i].Type {
+		case "unified_completion", "conversation_end", "conversation_error", "context_cancelled", "agent_error":
+			return false
+		case "user_message":
+			return true
+		}
+	}
+	return false
+}
+
 // EnableTurnPhase makes the store announce turn phases (the server calls it once on its own store).
 func (es *EventStore) EnableTurnPhase() {
 	es.mu.Lock()
