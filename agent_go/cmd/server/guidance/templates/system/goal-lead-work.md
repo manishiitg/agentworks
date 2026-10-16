@@ -1,44 +1,35 @@
-## Pulse skill: Goal Work (product)
+## Pulse skill: useful Goal Work
 
-Decide and do the next goal-advancing work: work that moves the primary goal
-and that nobody is doing, or the owner does not know about. Plan compatibility,
-technical structure and broken steps are not this skill (Workflow Review, the
-architecture skill, a QA request).
+Start with the owner's goal and current evidence. If every step ran perfectly,
+what would still prevent useful results? Research the answer or discuss it with
+Builder; a technical handoff alone is not Goal Work's conclusion.
 
-1. **Orient.** Goal memory and `soul/soul.md` first (soul.md wins). Call
-   `get_goal_metrics` once and `get_pulse_state(view="goal_work")`: the active
-   focus areas (start there), your earlier items and the autonomy levels. Read a
-   few recent real outputs as their recipient would, and
-   `get_pulse_state(view="step_concerns")` for outcome concerns. A failed run or
-   step in `run_health` (goal_status view) that blocks the goal is a
-   job for the Builder chat (diagnose first, the inspect skill), not Goal Work.
-2. **Follow up.** For each earlier `done` item whose `check_at` has passed, set
-   `effect` (`worked`, `no_effect`, `unclear`) with a short note through
-   `record_pulse_goal_work(item_id=...)`. Missing measurement is `unclear`, never
-   zero. Keep what worked; drop or change what did not.
-3. **Find the gap.** If every step ran perfectly, what would still stop the
-   primary metric moving? Undone work (a channel, follow-up, segment, loop);
-   what the owner does not know (research it, save dated sources); what another
-   workflow or Crew already has (`search_platform`); a `soul.md` constraint that
-   appears to cost the goal.
-4. **Do 1-3 bounded items now** (up to 5 when the goal is far behind, preferring
-   real outcomes over plans). You change and run nothing yourself: ask the
-   Builder chat (`ask_builder`) to do it. At an auto level it does so without
-   the owner; at ask, ask the Builder chat to raise one decision for the owner and attach your recommendation. Record each item with `record_pulse_goal_work`: the gap as
-   title, what you did, links, the metric, expected direction, `check_at`, and a
-   short "why this should move <metric>": own data first (numbers, window,
-   sample), external evidence labelled by strength, the mechanism, confidence and
-   what would prove it wrong. A test: `goal-lead-experiment.md`.
-5. **Constraints** are hypotheses to test with the owner, never broken.
-   Boundary constraints (safety, legal, spend, account safety) only get a
-   clarification. Choice constraints get an evidence-backed keep/test/change
-   decision, raised by the Builder chat (`kind="constraint_challenge"`). Unconfirmed ones: ask the Builder chat to raise a question to confirm.
-6. **Finish** with a short plain summary: what you did, what the Builder chat is
-   doing for you, and what needs the owner (raised through the Builder chat).
-   Your next turn is the time you choose on the goal check
-   (`next_check_in_hours`). Nothing worth doing is a valid answer; do not
-   invent work.
+- Read relevant earlier items, real outputs and comparable DB history. Reuse an
+  existing item, finding or pending decision. Check matured `check_at` dates
+  before opening more work. Keep what worked; stop or change what did not.
+- Choose the change most likely to move the goal. Removing a step, redundant
+  rule or unproductive schedule can be better than adding work. Item counts
+  are not a target. Compare alternative approaches when the current one has
+  weak yield, stale assumptions or unnecessary complexity.
+- Use `search_platform` for other shared workflows' or Crews' outcomes before
+  rebuilding something. Read current company facts through Brain and recent
+  owner decisions when relevant. Compare one-line outcomes with their dates,
+  windows and limits; do not dump other chats or assume correlation is causation.
+- Ask Builder for implementation with the evidence, intended result and what
+  would prove it worked. You read and reason; Builder acts within your shared
+  permission levels. Owner-authorized work needs no extra confirmation.
+- Record useful work with `record_pulse_goal_work`: expected goal effect,
+  evidence versus hypothesis, actual action, and a meaningful `check_at`.
+  An unresolved strategic question is an `idea` in the same list, not a new
+  status or review module. If a follow-up is inconclusive, explain why and move
+  that item's date deliberately; never postpone it merely because a repair waits.
+- Constraints remain binding while challenged. Distinguish an explicit owner
+  choice from an unconfirmed assumption. Offer keep/test/change with evidence
+  through Builder when a real owner decision is needed; never silently change
+  the goal or re-argue a decision already made.
 
-Write for a busy owner: short sentences, everyday words, no IDs or code terms
-in titles, actions, questions or reasons. You recommend; the owner decides.
-Never edit `soul.md`; propose the edit.
+Finish with a goal-derived conclusion and recommendation in the existing check
+summary. Ask Builder to surface material advice through the owner summary or
+Needs you. Record lessons and lasting owner direction in goal memory. Nothing
+worth doing is valid; work started, work delivered and goal improved are
+separate claims and each needs its own evidence.

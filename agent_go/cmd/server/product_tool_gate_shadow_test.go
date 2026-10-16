@@ -35,7 +35,7 @@ func TestShadowGateAdmitsEverythingAndRecordsWhatTheListMisses(t *testing.T) {
 func TestPulseToolGateIsReadOnlyPlusItsRecordsAndTheBuilder(t *testing.T) {
 	gate := newProductToolGateForAllowlist(pulseToolSurface, agentworksproduct.PulseTools())
 	gate.AllowWorkflowNotifications(true)
-	for _, name := range []string{"get_pulse_state", "query_workflow_db", "record_pulse_goal_check", "ask_builder", "get_function_call"} {
+	for _, name := range []string{"get_pulse_state", "query_workflow_db", "record_pulse_goal_check", "ask_builder", "get_function_call", "brain_read"} {
 		if !gate.Admit(name) {
 			t.Fatalf("Pulse must get %s", name)
 		}
@@ -48,7 +48,7 @@ func TestPulseToolGateIsReadOnlyPlusItsRecordsAndTheBuilder(t *testing.T) {
 	if got := agentworksproduct.PulseWritePaths(); len(got) != 2 || got[0] != "pulse/" || got[1] != "memory/" {
 		t.Fatalf("Pulse may write only pulse/ and memory/, product.yaml says %v", got)
 	}
-	for _, name := range []string{"update_step", "add_step", "execute_step", "run_full_workflow", "set_workflow_secret", "set_workflow_llm_config", "install_skill", "update_schedule", "agent_browser", "record_summary"} {
+	for _, name := range []string{"update_step", "add_step", "execute_step", "run_full_workflow", "set_workflow_secret", "set_workflow_llm_config", "install_skill", "update_schedule", "agent_browser", "record_summary", "brain_update"} {
 		if gate.Admit(name) {
 			t.Fatalf("Pulse must not get %s; it asks the Builder chat", name)
 		}

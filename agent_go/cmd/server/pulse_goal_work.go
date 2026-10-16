@@ -200,6 +200,41 @@ func readPulseGoalWorkItem(ctx context.Context, db *sql.DB, id string) (*PulseGo
 	return &item, nil
 }
 
+// nextPulseGoalWorkQuestion reuses the existing dated items in the single check
+// clock. A question already reached by a recorded check is left to Pulse to
+// assess/reschedule; an old item cannot cause a tight wake loop. No new ledger.
+func nextPulseGoalWorkQuestion(ctx context.Context, workspacePath string, after time.Time) (time.Time, error) {
+	_, db, err := openPulseModuleStateDB(ctx, workspacePath, false)
+	if err != nil || db == nil {
+		return time.Time{}, err
+	}
+	defer db.Close()
+	if err := ensurePulseGoalWorkSchema(ctx, db); err != nil {
+		return time.Time{}, err
+	}
+	rows, err := db.QueryContext(ctx, `SELECT check_at FROM pulse_goal_work
+		WHERE status IN ('idea','in_progress','done') AND effect IN ('','unclear') AND check_at <> ''`)
+	if err != nil {
+		return time.Time{}, err
+	}
+	defer rows.Close()
+	var earliest time.Time
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return time.Time{}, err
+		}
+		due := parseStoredTime(raw)
+		if due.IsZero() {
+			due, _ = time.Parse("2006-01-02", raw)
+		}
+		if due.After(after) && (earliest.IsZero() || due.Before(earliest)) {
+			earliest = due
+		}
+	}
+	return earliest, rows.Err()
+}
+
 // listPulseGoalWork returns items newest first. limit <= 0 means 200.
 func listPulseGoalWork(ctx context.Context, workspacePath string, limit int) ([]PulseGoalWorkItem, error) {
 	_, db, err := openPulseModuleStateDB(ctx, workspacePath, false)
@@ -269,7 +304,7 @@ func readPulseGoalWorkView(ctx context.Context, workspacePath string, limit int)
 		"goal_status":             goalStatus,
 		"goal_lead":               goalLeadAgentContext(ctx, workspacePath),
 		"autonomy":                pulseAutonomyForView(ctx, workspacePath),
-		"autonomy_note":           "The user's Pulse permissions: auto means do it yourself and record it; ask means prepare it and create a decision. run covers existing steps, outward covers new posts/messages/contacts, change covers plan, step and schedule edits.",
+		"autonomy_note":           "The owner's Pulse permissions: Builder acts on your direction within these levels; above them it prepares one owner decision. You read, judge and keep records, even at full autonomy.",
 		"focus_areas":             pulseFocusAreasForView(ctx, workspacePath),
 		"focus_areas_note":        "The user's current priorities for Goal Work. Start each pass here; they direct attention, they do not limit what you may consider or override soul.md goals and constraints.",
 		"focus_area_details":      focusAreasForView(ctx, workspacePath),

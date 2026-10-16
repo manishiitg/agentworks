@@ -107,6 +107,37 @@ func goalLeadOwnerAnswers(ctx context.Context, workspacePath string, since time.
 	return out
 }
 
+// Recent decisions are an optional focused comparison, not a preloaded packet
+// or a scan of private Builder transcripts. Ordinary direction reaches memory
+// through Builder's record tool or an explicit conversation.
+func goalLeadRecentOwnerDecisions(ctx context.Context, workspacePath string) []map[string]string {
+	out := []map[string]string{}
+	inputs, err := listReportHumanInputs(ctx, workspacePath, "", "")
+	if err != nil {
+		return out
+	}
+	sort.SliceStable(inputs, func(i, j int) bool {
+		return parseStoredTime(inputs[i].AnsweredAt).After(parseStoredTime(inputs[j].AnsweredAt))
+	})
+	for _, input := range inputs {
+		if input.Source == "user_suggestion" || parseStoredTime(input.AnsweredAt).IsZero() {
+			continue
+		}
+		answer := firstNonEmptyTrimmed(reportHumanInputOptionTitle(input.Options, input.SelectedOptionID), input.SelectedOptionID)
+		if note := strings.TrimSpace(input.Note); note != "" {
+			answer = strings.TrimSpace(answer + " — " + note)
+		}
+		out = append(out, map[string]string{
+			"question": goalLeadShortText(input.Question), "answer": goalLeadShortText(answer),
+			"answered_at": input.AnsweredAt, "applied": goalLeadShortText(input.OutcomeSummary),
+		})
+		if len(out) == 10 {
+			break
+		}
+	}
+	return out
+}
+
 // goalLeadSpend is spend over the last 7 days against the 7 before, from the
 // workflow's own cost ledger (costs/costs.sqlite, PLAT-184), and runs whose
 // cost is well above the 14-day median run cost. There is no budget field on a

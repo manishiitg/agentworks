@@ -1,12 +1,12 @@
 ## Pulse skill: check the measurement
 
-Measurement comes first: a goal that is not measured cannot be owned. Use this
-skill when there is no goal metric yet, and when a reading looks wrong, flat or
-missing, before concluding anything about the goal. A broken measure is not a
-stuck goal.
+Use this skill when there is no useful goal metric, or a reading looks wrong,
+flat or missing. A broken measure is not a stuck goal. Prefer measured evidence and set up a missing meaningful measurement with
+Builder, without postponing useful judgment about the approach.
 
 **Setting it up properly** (the `measurement-plan` guide has the platform
-rules): define the metric with `configure_goal_metrics` (meaning, source,
+rules): agree with Builder, which configures the metric with
+`configure_goal_metrics` (meaning, source,
 unit, scope, window, freshness and direction). An ordinary workflow step or
 separate measurement route records source-backed observations at the appropriate
 cadence. No declaration of which execution drives the metric is required.
@@ -30,7 +30,7 @@ definitions alone do not establish that measurement works.
    change of method (dashboard vs public profile) is a new baseline, not a
    change in the goal. Actual period boundaries must be compatible; a
    partial day is not a full-day baseline. Gaps and unavailable outcomes stay
-   explicit. `get_goal_status` exposes per-metric history and freshness;
+   explicit. `get_pulse_state(view="goal_status")` offers per-metric history and freshness;
    `get_goal_metrics` exposes the complete definitions and bounded history.
    Code differences are arithmetic evidence, not an automatic progress verdict.
 4. **Sanity check against the source.** When a reading looks off, check the
@@ -39,6 +39,11 @@ definitions alone do not establish that measurement works.
 5. **Attribution.** If `soul.md` asks what moves the goal (per action, per
    channel), check that runs record it. If not, that is a measurement gap.
 
-A wrong or missing measure is the first thing to fix: tell the Builder chat
-exactly what to record, in which step, and how to verify it on the next run.
-Record the finding in goal memory.
+Ask Builder to repair the existing recording step or measurement route and
+verify source-backed DB history. Collection must respect current access and
+account constraints; when automatic collection is unsuitable, use a dated
+manual reading instead of risking the account. When a baseline period ends,
+or a goal still has no target after two weeks, propose one useful target as
+an owner decision, reusing an existing pending question. Record the actual
+measurement limitation and what would settle it; independent goal work can
+continue within permission levels.

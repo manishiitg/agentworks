@@ -1,23 +1,19 @@
-## Pulse skill: run and judge an experiment
+## Pulse skill: test and learn
 
-Use it to test a change before keeping it, and to judge a test that is due.
+Use an experiment when a meaningful choice is uncertain, not as a compulsory
+step for every improvement. Test a coherent change, which may remove or combine
+work; define the metric and direction, comparable baseline, relevant sample or
+outcome window, and stop condition. Ask Builder to implement within existing
+permissions. Save the hypothesis and `check_at` on the existing Goal Work item.
 
-**Design (before it starts):** one change; the metric it should move and in
-which direction; a baseline (value, window, method); the sample or time it
-needs to show a real difference; a stop rule (end date, or harm to a
-guardrail such as account safety or cost). Write it to goal memory as an open
-bet, and ask the Builder chat to make the change.
+When due, compare like with like and check alternative explanations:
+- Worked: useful movement beyond normal variation without harming constraints.
+- No effect: enough comparable evidence, without meaningful improvement.
+- Unclear: too little evidence, changed measurement or confounding; name what
+  is missing and choose a useful new check date on the same item.
+- Premise wrong: the original problem was not supported; stop or re-baseline.
 
-**Judge (when it is due):** compare the test window with its baseline on the
-same measure.
-- **Worked:** the metric moved in the expected direction by more than its
-  normal week-to-week swing, with no guardrail harmed. Keep it.
-- **No effect:** no difference beyond the normal swing with enough sample.
-  Revert or try the next idea.
-- **Not enough data:** too few results, or the measure changed during the
-  test. Say so; extend it or re-baseline, never call it a win.
-- **Premise wrong:** the reason for the test turned out false (for example the
-  goal was not actually flat). Re-baseline or end it.
-
-Record the outcome in goal memory with the numbers, close the open bet, and
-tell the Builder chat what to keep or revert.
+Record the actual effect and numbers, close the open bet in memory, and tell
+Builder what to keep, remove or change. A completed change is not a successful
+experiment. Do not let a pending technical repair indefinitely postpone judgment
+of independent work or the overall approach.

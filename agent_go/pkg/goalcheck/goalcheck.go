@@ -135,7 +135,7 @@ type Facts struct {
 	SchedulesPaused      bool      `json:"schedules_paused"`
 	PauseFingerprint     string    `json:"pause_fingerprint,omitempty"`
 	// PauseAlreadyReported: the pause and these alarms were reported once;
-	// stay quiet until something changes.
+	// avoid repeating that notice; this does not suppress future goal judgment.
 	PauseAlreadyReported bool `json:"pause_already_reported,omitempty"`
 }
 
@@ -364,9 +364,9 @@ func summary(f Facts) string {
 	}
 	if f.SchedulesPaused {
 		if f.PauseAlreadyReported {
-			parts = append(parts, "Schedules are paused on purpose and this was already reported; nothing new to say until something changes.")
+			parts = append(parts, "The same disabled-schedule state was already reported. Whether the approach or an outcome needs review remains an agent judgment.")
 		} else {
-			parts = append(parts, "Schedules are paused on purpose; report this once.")
+			parts = append(parts, "Individual producing schedules are disabled. This does not establish a global or product pause, or authorize resuming work.")
 		}
 	}
 	return strings.Join(parts, " ")

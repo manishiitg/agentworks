@@ -195,6 +195,7 @@ pulse:
     - search_platform
     - search_playbooks
     - brain_browse
+    - brain_read
     - brain_access
     - list_accessible_workflows
     - get_contract_upgrades

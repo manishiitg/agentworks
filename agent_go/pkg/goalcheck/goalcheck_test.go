@@ -52,14 +52,18 @@ func TestSilenceAlarmOnSubstackData(t *testing.T) {
 		t.Fatalf("expected only measurement/run-silence alarms and retained execution evidence: %+v", facts)
 	}
 
-	// A deliberate pause is reported once, then stays quiet until something
-	// changes; a new run changes it.
+	// Deduplicate the pause notice without suppressing the agent's judgment;
+	// new execution evidence changes the fingerprint.
 	if facts.PauseAlreadyReported || facts.PauseFingerprint == "" {
 		t.Fatalf("first look at the pause must report it: %+v", facts)
 	}
 	in.ReportedPauseFingerprint = facts.PauseFingerprint
-	if again := Evaluate(in); !again.PauseAlreadyReported {
+	again := Evaluate(in)
+	if !again.PauseAlreadyReported {
 		t.Fatal("the same paused state was reported again")
+	}
+	if strings.Contains(again.Summary, "nothing new to say") {
+		t.Fatal("a repeated pause notice must not suppress goal judgment")
 	}
 	in.Runs = append(in.Runs, Run{RunID: "iteration-85-sched", StartedAt: fx.Now.Add(-time.Hour), FinishedAt: fx.Now, Status: "success", Routes: []string{"publish_review"}})
 	if changed := Evaluate(in); changed.PauseAlreadyReported {

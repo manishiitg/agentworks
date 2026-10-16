@@ -438,15 +438,14 @@ func goalLeadAgentContext(ctx context.Context, workspacePath string) map[string]
 		"goal_memory":            memory,
 		"goal_memory_note":       note,
 		"answer_mode":            pulseAnswerMode(ctx, workspacePath),
+		"recent_owner_decisions": goalLeadRecentOwnerDecisions(ctx, workspacePath),
 		"decisions_to_recommend": toRecommend,
 		"decisions_note":         "Pending decision requests. For each, call record_pulse_recommendation once (refresh it only on new evidence): the option, why, evidence, confidence, what it blocks, and safe_default_by only when that default is safe and within the autonomy levels. You never answer a decision; the owner accepts or changes your recommendation. Say you do not know the owner's preference instead of guessing it.",
 		"outcomes_due":           outcomesDue,
 		"outcomes_note":          "Decisions the owner answered over a day ago with no outcome yet: record what happened after with record_pulse_decision_outcome (from runs and goal readings), and a lesson in goal memory when there is one.",
-		// Phase 4: focus areas and the QA runs the Pulse asked for.
+		// Current focus areas; retired separate QA requests remain historical.
 		"focus_areas":      focusAreasForView(ctx, workspacePath),
 		"focus_areas_note": "Focus areas: what matters now, each with an end date and its own check. Track every active one (record_pulse_focus_area action=track), close done or expired ones with a lesson (action=close), and propose one only from evidence or the owner's words (action=propose, at most three open). Proposals wait for the owner's one-click confirm; never treat one as active before that.",
-		"qa_results":       recentGoalLeadQAResults(ctx, workspacePath, 5),
-		"qa_results_note":  "QA runs you asked for with record_pulse_qa_request: a separate run checks and repairs, and its short result is here. Judge the effect on the goal yourself; the run judged the steps.",
 		// No Technical turn runs after a goal workflow's runs any more: the
 		// failures it caught come here (goal_lead_owns_reviews.go).
 		"run_health":      goalLeadRunHealth(ctx, workspacePath, since),
@@ -579,6 +578,14 @@ func createGoalLeadTools() []llmtypes.Tool {
 					"source":         entry["source"],
 					"text":           entry["text"],
 					"date":           entry["date"],
+					"judgment": map[string]interface{}{
+						"type": "object", "description": "Add only: log a concern once. text says what, concrete evidence and the better option. Record pending until the owner actually accepts or overrules; this never changes authority or applies a decision.",
+						"properties": map[string]interface{}{
+							"evidence_type": map[string]interface{}{"type": "string", "enum": []string{"measurement", "recorded_decision", "company_fact", "account_risk", "run_result"}},
+							"outcome":       map[string]interface{}{"type": "string", "enum": []string{"pending", "accepted", "overruled"}},
+						},
+						"required": []string{"evidence_type", "outcome"},
+					},
 					"entries": map[string]interface{}{
 						"type":        "array",
 						"description": "consolidate only: the whole memory.",

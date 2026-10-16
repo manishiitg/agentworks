@@ -2980,7 +2980,7 @@ func createPulseWorklistTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 					"links":              map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "maxItems": 20, "description": "Workspace paths of the prepared work, usually under pulse/work/."},
 					"metric":             map[string]interface{}{"type": "string", "description": "Goal metric id or name this should move."},
 					"expected_direction": map[string]interface{}{"type": "string", "description": "e.g. increase, decrease."},
-					"check_at":           map[string]interface{}{"type": "string", "description": "When the effect should be visible (RFC3339 or date)."},
+					"check_at":           map[string]interface{}{"type": "string", "description": "When the effect or an unresolved approach question should be revisited (RFC3339 or date). The single Pulse check respects this date within its pace; update it deliberately after an inconclusive assessment."},
 					"effect":             map[string]interface{}{"type": "string", "enum": []string{"worked", "no_effect", "unclear"}},
 					"effect_note":        map[string]interface{}{"type": "string"},
 					"decision_id":        map[string]interface{}{"type": "string", "description": "create_human_input_request id when the user must approve or answer."},
@@ -3018,7 +3018,7 @@ func createPulseWorklistTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
 			Name:        "record_pulse_goal_check",
-			Description: "Record the goal check (the Pulse's first job, PLAT-697): your verdict from the evidence you chose to read or discuss with Builder; get_pulse_state(view=\"goal_status\") is optional. status: on_track (measured recently, moving or holding as expected, goal work running), at_risk, off_track, or not_measured. It is shown at the top of the Pulse tab. The code-computed alarms are stored with it; a paused workflow's pause is then not reported again until something changes.",
+			Description: "Record the goal check (the Pulse's first job, PLAT-697): your verdict from the evidence you chose to read or discuss with Builder; get_pulse_state(view=\"goal_status\") is optional. status: on_track (measured recently, moving or holding as expected, goal work running), at_risk, off_track, or not_measured. It is shown at the top of the Pulse tab. The code-computed alarms are stored with it. Include your conclusion and recommendation when the approach was reviewed. Paused producing schedules do not suppress future checks; avoid repeating an unchanged pause notification.",
 			Parameters: llmtypes.NewParameters(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -3026,10 +3026,10 @@ func createPulseWorklistTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 					"pulse_run_id":        map[string]interface{}{"type": "string", "description": "The current Pulse run id."},
 					"status":              map[string]interface{}{"type": "string", "enum": []string{"on_track", "at_risk", "off_track", "not_measured"}},
 					"key_number":          map[string]interface{}{"type": "string", "description": "The key goal number and its date in plain words, e.g. \"+2 subscribers on 7 Oct\"."},
-					"summary":             map[string]interface{}{"type": "string", "minLength": 1, "description": "One or two plain sentences for the owner: is the goal measured, moving, and its work running."},
+					"summary":             map[string]interface{}{"type": "string", "minLength": 1, "description": "One or two plain sentences for the owner: progress, your approach judgment/recommendation when reviewed, and the main uncertainty."},
 					"action_taken":        map[string]interface{}{"type": "string", "description": "What you did about it, if anything."},
 					"decision_id":         map[string]interface{}{"type": "string", "description": "The create_human_input_request id when you asked the owner."},
-					"next_check_in_hours": map[string]interface{}{"type": "number", "minimum": 1, "maximum": 168, "description": "When to check the goal next, in hours from now; held within the workflow's pace (calm 24-168, steady 6-72, aggressive 1-24). Pick it from when the goal can next move: soon after the next run that matters, a few hours while a fix is pending, days for a weekly workflow. Omitted: the pace default (calm 72, steady 24, aggressive 6)."},
+					"next_check_in_hours": map[string]interface{}{"type": "number", "minimum": 1, "maximum": 168, "description": "When to check the goal next, in hours from now; held within the workflow's pace (calm 24-168, steady 6-72, aggressive 1-24). Pick the earliest useful outcome or approach checkpoint as well as repairs. Earlier future Goal Work check_at dates bound this time within the same pace. Omitted: the pace default (calm 72, steady 24, aggressive 6)."},
 					"next_check_reason":   map[string]interface{}{"type": "string", "description": "Why that time, in a few words, e.g. \"after tomorrow's 09:00 publish run\"."},
 				},
 				"required": []string{"workspace_path", "status", "summary"},

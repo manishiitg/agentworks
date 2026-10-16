@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"path"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/mcpagent/executor"
 )
 
 // Goal memory (PLAT-697 phase 3, docs/design/pulse_goal_owner.md "Memory: the
@@ -271,12 +273,24 @@ func recordPulseGoalMemoryFromToolArgs(ctx context.Context, args map[string]inte
 	action := strings.ToLower(stringToolArg(args, "action"))
 	switch action {
 	case "", "add":
+		judgment, err := goalMemoryJudgment(args)
+		if err != nil {
+			return "", err
+		}
 		entry, err := goalMemoryEntryFromArgs(args)
 		if err != nil {
 			return "", err
 		}
 		if err := appendGoalMemory(workspacePath, entry.section, entry.line, false); err != nil {
 			return "", err
+		}
+		if judgment != nil {
+			what := []rune(strings.Join(strings.Fields(stringToolArg(args, "text")), " "))
+			if len(what) > 200 {
+				what = what[:200]
+			}
+			log.Printf("[GOAL_JUDGMENT] workflow=%q session=%q what=%q evidence_type=%q outcome=%q",
+				workspacePath, executor.SessionIDFromContext(ctx), string(what), judgment["evidence_type"], judgment["outcome"])
 		}
 		return "Goal memory entry added.", nil
 	case "consolidate":
@@ -347,4 +361,30 @@ func goalMemoryEntryFromArgs(args map[string]interface{}) (goalMemoryEntry, erro
 		date = parsed
 	}
 	return goalMemoryEntry{section: section, line: goalMemoryLine(date, source, text)}, nil
+}
+
+// A concern is already a memory entry. Optional metadata makes its usefulness
+// observable without another tool, ledger, permission or approval lifecycle.
+func goalMemoryJudgment(args map[string]interface{}) (map[string]string, error) {
+	raw, exists := args["judgment"]
+	if !exists {
+		return nil, nil
+	}
+	fields, ok := raw.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("judgment must contain evidence_type and outcome")
+	}
+	evidence := stringToolArg(fields, "evidence_type")
+	switch evidence {
+	case "measurement", "recorded_decision", "company_fact", "account_risk", "run_result":
+	default:
+		return nil, fmt.Errorf("judgment evidence_type must be measurement, recorded_decision, company_fact, account_risk or run_result")
+	}
+	outcome := stringToolArg(fields, "outcome")
+	switch outcome {
+	case "pending", "accepted", "overruled":
+	default:
+		return nil, fmt.Errorf("judgment outcome must be pending, accepted or overruled; only use an owner's actual answer")
+	}
+	return map[string]string{"evidence_type": evidence, "outcome": outcome}, nil
 }
