@@ -397,7 +397,9 @@ func (api *StreamingAPI) executeCrewSelectedMCP(ctx context.Context, root string
 		callCtx = context.WithValue(callCtx, placeScopedKey{}, true)
 		if resolved, handled, err := api.resolvePlaceAttachedMCP(callCtx, "", server); handled {
 			if err == nil && resolved != nil {
-				api.logPersonalSlackSend(callCtx, "", resolved.Name, tool)
+				if guardErr := api.guardPersonalSlackCall(callCtx, "", resolved.Name, tool); guardErr != nil {
+					return nil, guardErr
+				}
 			}
 			return resolved, err
 		}

@@ -44,7 +44,9 @@ func (api *StreamingAPI) resolveMCPServer(ctx context.Context, sessionID, server
 	}
 	if resolved, isCode, err := api.resolveCodeMCPServer(ctx, sessionID, server, tool); isCode {
 		if err == nil && resolved != nil {
-			api.logPersonalSlackSend(ctx, sessionID, resolved.Name, tool)
+			if guardErr := api.guardPersonalSlackCall(ctx, sessionID, resolved.Name, tool); guardErr != nil {
+				return nil, guardErr
+			}
 		}
 		return resolved, err
 	}
@@ -52,7 +54,9 @@ func (api *StreamingAPI) resolveMCPServer(ctx context.Context, sessionID, server
 	// any session of it (a chat of anyone with access, a run, a step, a schedule) resolves it.
 	if resolved, handled, err := api.resolvePlaceAttachedMCP(ctx, sessionID, server); handled {
 		if err == nil && resolved != nil {
-			api.logPersonalSlackSend(ctx, sessionID, resolved.Name, tool)
+			if guardErr := api.guardPersonalSlackCall(ctx, sessionID, resolved.Name, tool); guardErr != nil {
+				return nil, guardErr
+			}
 		}
 		return resolved, err
 	}

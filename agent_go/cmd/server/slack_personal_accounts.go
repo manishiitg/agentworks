@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-const slackAccountNotice = "Messages sent with your Slack show as from you. Anyone who can use this item can send as you through it."
+const slackAccountNotice = "Messages sent with your Slack show as from you. Anyone who can use this item can send as you through it, but only you can read or search your Slack."
 
 // Slack uses the existing sealed personal MCP login and explicit attachment
 // index. No tokens are copied into a product, tool reply or chat.
@@ -320,12 +320,58 @@ func (api *StreamingAPI) registerPersonalSlackAccountTool(reg definitionToolRegi
 	}, "mcp_server_tools")
 }
 
-// Read only public connection metadata; credentials stay in the sealed store.
-// Resolution logs a send attempt, not delivery. Slack's reply determines delivery.
-func (api *StreamingAPI) logPersonalSlackSend(ctx context.Context, session, server, tool string) {
-	api.logPersonalSlackCall(ctx, session, server, tool, "attempt")
+// slackSendSideTools are the only tools of a personal Slack account that someone other than its owner may use: send a
+// message or DM as the owner, and look people up. Everything else (read, history, search of channels, DMs, files and
+// canvases) is the owner's alone, and any tool not named here is treated the same way.
+var slackSendSideTools = map[string]bool{
+	"slack_send_message":         true,
+	"slack_send_message_draft":   true,
+	"slack_schedule_message":     true,
+	"slack_search_users":         true,
+	"slack_read_user_profile":    true,
+	"slack_get_user_profile":     true,
+	"slack_lookup_user_by_email": true,
 }
 
+// personalSlackToolAllowed is the whole rule: the account's owner may use every tool, anyone else only the send side.
+func personalSlackToolAllowed(caller, owner, tool string) bool {
+	return (caller != "" && caller == owner) || slackSendSideTools[strings.ToLower(strings.TrimSpace(tool))]
+}
+
+// personalSlackCallError is the plain refusal for a read-side tool called by someone who does not own the account.
+const personalSlackCallError = "Only the person who connected this Slack can read or search it. You can send messages with it and look people up."
+
+// guardPersonalSlackCall decides one tool call on a personal Slack account that is added to the item (owner decision
+// 2026-10-16, the decisions log): its owner may use every tool; anyone else only the send-side tools. It returns an error
+// for a refused call and logs the attempt or the refusal. Calls on any other server pass unchanged.
+func (api *StreamingAPI) guardPersonalSlackCall(ctx context.Context, session, server, tool string) error {
+	if strings.TrimSpace(tool) == "" || !isPlaceMCPInternalName(server) && !strings.HasPrefix(strings.ToLower(server), "slack") {
+		return nil
+	}
+	root := api.mcpPlaceRoot(ctx, session)
+	attachments, _ := placeMCPAttachmentsFor(root)
+	for _, a := range attachments {
+		if a.Scope != "user" || server != placeMCPInternalName(a.Owner, a.Server) && !strings.EqualFold(server, a.Server) {
+			continue
+		}
+		if _, err := personalSlackServer(a.Owner, a.Server); err != nil {
+			continue
+		}
+		caller := mcpCaller(ctx)
+		if caller == "" && session != "" && api.eventStore != nil {
+			caller = api.mcpSessionPerson(session)
+		}
+		if personalSlackToolAllowed(caller, a.Owner, tool) {
+			log.Printf("[SLACK_ACCOUNTS] account=%s owner=%s item=%s caller=%s session=%s tool=%s event=tool_attempt", a.Server, a.Owner, root, caller, session, tool)
+			continue
+		}
+		log.Printf("[SLACK_ACCOUNTS] account=%s owner=%s item=%s caller=%s session=%s tool=%s event=tool_refused reason=not_account_owner", a.Server, a.Owner, root, caller, session, tool)
+		return fmt.Errorf("%s", personalSlackCallError)
+	}
+	return nil
+}
+
+// Resolution logs a send attempt, not delivery. Slack's reply determines delivery.
 func (api *StreamingAPI) logPersonalSlackCall(ctx context.Context, session, server, tool, stage string) {
 	if strings.TrimSpace(tool) == "" || !isPlaceMCPInternalName(server) && !strings.HasPrefix(strings.ToLower(server), "slack") {
 		return

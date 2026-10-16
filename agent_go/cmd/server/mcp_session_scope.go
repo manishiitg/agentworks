@@ -45,7 +45,9 @@ func (api *StreamingAPI) resolveWorkshopMCPServer(ctx context.Context, sessionID
 	if isPlaceMCPInternalName(strings.TrimSpace(server)) {
 		_, overrides := attachedMCPServersForRoot(ctx, cfg.WorkspacePath)
 		if override, ok := overrides[strings.TrimSpace(server)]; ok && override.Server != nil {
-			api.logPersonalSlackSend(ctx, sessionID, server, tool)
+			if guardErr := api.guardPersonalSlackCall(ctx, sessionID, server, tool); guardErr != nil {
+				return nil, guardErr
+			}
 			return &executor.ResolvedMCPServer{Name: strings.TrimSpace(server), Config: *override.Server, ConnectionSessionID: strings.TrimSpace(server)}, nil
 		}
 		return nil, errPlaceMCPUnavailable
