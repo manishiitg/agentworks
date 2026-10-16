@@ -115,6 +115,9 @@ func (api *StreamingAPI) changeCrewOwners(claims *UserClaims, crew crewProjectBi
 		return crewOwnersState{}, http.StatusInternalServerError, "failed", "The owners could not be changed. Try again."
 	}
 	log.Printf("[CREW_OWNERS] crew=%s %s co_owner=%s by=%s changed=%t", id.Folder, action, target.ID, claims.UserID, changed)
+	if action == "remove" && changed {
+		api.stopRemovedOwnerSessions(target.ID, crew.Binding.WorkspacePath)
+	}
 	state := crewOwnersStateFor(crew, claims.UserID)
 	if action == "add" && !changed {
 		state.Note = fmt.Sprintf("%s is already an owner.", target.Email)

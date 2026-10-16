@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -51,4 +52,31 @@ func (api *StreamingAPI) handleDashboardOwners(w http.ResponseWriter, r *http.Re
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(state)
+}
+
+// stopRemovedOwnerSessions ends the running chats and Builder terminals a removed co-owner has in the Crew at root.
+// Their next message is refused anyway (access is read from the owner registry on every request); this also stops what
+// is already running, whose folder access was granted when it started.
+func (api *StreamingAPI) stopRemovedOwnerSessions(userID, root string) {
+	root = canonicalCrewWorkspaceRoot(root)
+	person := sanitizeUserIDForPath(userID)
+	if api == nil || root == "" || person == "" {
+		return
+	}
+	var ids []string
+	api.activeSessionsMux.RLock()
+	for id, session := range api.activeSessions {
+		if session == nil || sanitizeUserIDForPath(session.UserID) != person {
+			continue
+		}
+		at := canonicalCrewWorkspaceRoot(session.WorkspacePath)
+		if at == root || strings.HasPrefix(at, root+"/") {
+			ids = append(ids, id)
+		}
+	}
+	api.activeSessionsMux.RUnlock()
+	for _, id := range ids {
+		log.Printf("[CREW_OWNERS] crew=%s stopping session=%s of removed co_owner=%s", root, id, person)
+		api.cancelSessionRuntimeWork(id, "no longer an owner of this Crew", runtimePhaseCanceled)
+	}
 }
