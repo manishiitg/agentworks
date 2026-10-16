@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -704,6 +705,7 @@ func getChatHistoryConversationHandler(api *StreamingAPI) http.HandlerFunc {
 			data, err = ReadChatHistoryConversation(userID, sessionID, workspacePath)
 		}
 		if err != nil {
+			log.Printf("[CHAT_HISTORY] read session=%s user=%s workspace=%q result=not_found reason=%v", sessionID, userID, workspacePath, err)
 			http.Error(w, "Session not found", http.StatusNotFound)
 			return
 		}

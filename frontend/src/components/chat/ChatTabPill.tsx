@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Loader2, MessageSquare, Pencil, X } from 'lucide-react'
+import { foregroundTurnState } from '../../utils/foregroundTurnActivity'
+import { chatRuntimeActivity } from '../../utils/chatRuntimeActivity'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
 import type { ProductSurface } from '../../products/productSurfaceConfig'
@@ -47,9 +49,23 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     if (!tab.sessionId) return false
     return runtimeNeedsUserInput(state.activeSessionsCache.find(session => session.session_id === tab.sessionId))
   })
+  // The same busy signal as the chat header: a stored completion ends the spinner at once.
+  const running = useChatStore(state => {
+    const stored = state.chatTabs[tab.tabId]
+    if (!stored) return !!(tab.isStreaming || tab.hasRunningBgAgents)
+    const foreground = foregroundTurnState(stored.sessionId ? state.tabEvents[stored.sessionId] : undefined)
+    const session = stored.sessionId ? state.activeSessionsCache.find(item => item.session_id === stored.sessionId) : undefined
+    return chatRuntimeActivity({
+      isStreaming: stored.isStreaming,
+      hasRunningBgAgents: stored.hasRunningBgAgents,
+      isCompleted: stored.isCompleted,
+      foregroundTurnCompleted: foreground === 'completed',
+      foregroundTurnStarted: foreground === 'running',
+    }, session).state === 'running'
+  })
   const rawStatus: TabStatus = needsInput
     ? 'waiting'
-    : tab.isStreaming || tab.hasRunningBgAgents
+    : running
       ? 'busy'
       : tab.hasUnreadCompletion && !isActive ? 'completed' : 'ready'
   const [status, setStatus] = useState(rawStatus)

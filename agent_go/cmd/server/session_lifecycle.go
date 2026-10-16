@@ -5,18 +5,21 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 
 	mcpagent "github.com/manishiitg/mcpagent/agent"
+	unifiedevents "github.com/manishiitg/mcpagent/events"
 )
 
 var closeAllCodingCLISessionsForRuntimeCancel = closeAllCodingCLIInteractiveSessionsForOwner
@@ -116,6 +119,7 @@ func (api *StreamingAPI) handleCancelCurrentTurn(w http.ResponseWriter, r *http.
 
 	if !exists {
 		log.Printf("[SESSION DEBUG] No active LLM turn to cancel for session %s", sessionID)
+		go api.settleStoppedTurnWithNoOwner(sessionID)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -716,4 +720,60 @@ func closeCodingCLIAndReleaseTurnMarkers(sessionID, reason string) {
 	if runningServerAPI != nil {
 		runningServerAPI.releaseStoppedSessionTurnMarkers(sessionID)
 	}
+}
+
+// stoppedTurnSettleWait gives the provider's own end-of-turn reader time to settle a stopped turn first.
+var stoppedTurnSettleWait = 4 * time.Second
+
+// settleStoppedTurnWithNoOwner ends a turn the chat still shows as running after Stop when nothing is left to end it:
+// no Go turn, no watched retained turn, yet the server's turn state is still open (a Muse chat showed "Braiding" for
+// hours after Stop). It records an interrupted end with no reply, as the retained settle does, so every screen
+// returns to Ready; the browser only shows it.
+func (api *StreamingAPI) settleStoppedTurnWithNoOwner(sessionID string) {
+	time.Sleep(stoppedTurnSettleWait)
+	if api == nil || api.eventStore == nil || !api.eventStore.TurnInProgress(sessionID) {
+		return
+	}
+	api.agentCancelMux.Lock()
+	_, hasGoTurn := api.agentCancelFuncs[sessionID]
+	api.agentCancelMux.Unlock()
+	api.retainedMainTurnsMu.Lock()
+	tracked := !api.retainedMainTurns[sessionID].IsZero()
+	api.retainedMainTurnsMu.Unlock()
+	if hasGoTurn || tracked {
+		return
+	}
+	now := time.Now()
+	completion := unifiedevents.NewUnifiedCompletionEvent("coding_agent", "retained", "", "", "completed", 0, 1)
+	completion.SessionID = sessionID
+	completion.Metadata["source"] = "stop_no_owner"
+	completion.Metadata["execution_kind"] = "main_agent"
+	completion.Metadata["scope"] = "main_agent"
+	completion.Metadata[mcpagent.RetainedTurnOutcomeMetadataKey] = "interrupted"
+	completion.Metadata["final_response_missing"] = true
+	api.eventStore.AddEvent(sessionID, events.Event{
+		ID:            fmt.Sprintf("stop-no-owner-completion-%d", now.UnixNano()),
+		Type:          "unified_completion",
+		Timestamp:     now,
+		SessionID:     sessionID,
+		ExecutionID:   "main:" + sessionID,
+		ExecutionKind: "main_agent",
+		Data:          &unifiedevents.AgentEvent{Type: unifiedevents.EventType("unified_completion"), Timestamp: now, SessionID: sessionID, Data: completion},
+	})
+	end := &unifiedevents.StreamingEndEvent{
+		BaseEventData: unifiedevents.BaseEventData{Timestamp: now, Metadata: map[string]interface{}{"kind": "terminal", "source": "stop_no_owner"}},
+		FinishReason:  "interrupted",
+	}
+	api.eventStore.AddEvent(sessionID, events.Event{
+		ID:            fmt.Sprintf("stop-no-owner-stream-end-%d", now.UnixNano()),
+		Type:          "streaming_end",
+		Timestamp:     now,
+		SessionID:     sessionID,
+		ExecutionID:   "main:" + sessionID,
+		ExecutionKind: "main_agent",
+		Data:          &unifiedevents.AgentEvent{Type: unifiedevents.StreamingEnd, Timestamp: now, SessionID: sessionID, Data: end},
+	})
+	api.setSessionBusy(sessionID, false)
+	api.updateSessionStatus(sessionID, "completed")
+	log.Printf("[SESSION STOP] settled session=%s outcome=interrupted reason=no_turn_owner_after_stop", sessionID)
 }

@@ -1141,6 +1141,26 @@ func TestListWorkProjectChatHistoryResolvesOwnedProjectStorage(t *testing.T) {
 	}
 }
 
+// The Costs page opens a project's conversation with the project's plain path; the transcript sits under the person's
+// own storage root (PLAT-856-134).
+func TestReadChatHistoryConversationFindsOwnedWorkProjectTranscript(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", root)
+	const workspacePath = "Chats/Work/projects/demo-12345678"
+	dir := filepath.Join(root, "_users", "alice", filepath.FromSlash(workspacePath), "builder", "conversation", "2026-09-15")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"session_id":"product-chat-1","user_id":"alice","conversation_history":[],"updated_at":"2026-09-15T05:00:00Z"}`
+	if err := os.WriteFile(filepath.Join(dir, chatHistoryConversationFileName("product-chat-1")), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	data, err := ReadChatHistoryConversation("alice", "product-chat-1", workspacePath)
+	if err != nil || !strings.Contains(string(data), "product-chat-1") {
+		t.Fatalf("read = %q, %v; want the owned project transcript", data, err)
+	}
+}
+
 func TestAppendLiveInputUsesOwnedWorkProjectConversation(t *testing.T) {
 	const (
 		userID        = "alice"

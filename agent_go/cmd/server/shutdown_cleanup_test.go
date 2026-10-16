@@ -473,6 +473,27 @@ func TestHandleCancelCurrentTurnRecordsInterruptionBetweenTurns(t *testing.T) {
 	}
 }
 
+// Stop on a chat whose turn nothing owns any more (a Muse chat showed "Braiding" for hours) ends the turn on the server,
+// so the chat returns to Ready (PLAT-861-228).
+func TestStopSettlesATurnNothingOwns(t *testing.T) {
+	const sessionID = "muse-orphaned-turn"
+	store := internalevents.NewEventStore(100)
+	defer store.Stop()
+	store.EnableTurnPhase()
+	store.AddEvent(sessionID, internalevents.Event{ID: "u1", Type: "user_message", SessionID: sessionID, Timestamp: time.Now()})
+	if !store.TurnInProgress(sessionID) {
+		t.Fatal("setup: the turn should be open")
+	}
+	api := &StreamingAPI{eventStore: store, agentCancelFuncs: map[string]context.CancelFunc{}}
+	old := stoppedTurnSettleWait
+	stoppedTurnSettleWait = 0
+	defer func() { stoppedTurnSettleWait = old }()
+	api.settleStoppedTurnWithNoOwner(sessionID)
+	if store.TurnInProgress(sessionID) {
+		t.Fatal("the turn is still open after Stop found nothing to end it")
+	}
+}
+
 func TestHandleCancelCurrentTurnInterruptsMuseBeforeCancelWithoutClosingConversation(t *testing.T) {
 	const sessionID = "muse-conversation-stop"
 	agent := testCodingAgent(llm.ProviderMuseCLI, "muse-spark-1.3-contributor")

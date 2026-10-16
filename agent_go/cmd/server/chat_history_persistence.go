@@ -3033,6 +3033,17 @@ func ReadChatHistoryConversation(userID, sessionID, workspacePath string) (json.
 	}
 	workspacePath = normalizeChatHistoryWorkspacePath(workspacePath)
 	if workspacePath != "" {
+		// A Crew or Code project's transcripts sit under the signed-in person's own
+		// storage root, like the Recent list reads them. The Costs page passes the
+		// project's plain path, so look there first.
+		if ownedPath, isWorkProject := ownedWorkProjectWorkspacePath(userID, workspacePath); isWorkProject && ownedPath != workspacePath {
+			if data, ok, err := readWorkflowScopedChatHistoryConversationDirect(sessionID, ownedPath); ok || err != nil {
+				return data, err
+			}
+			if data, ok, err := readWorkflowScopedChatHistoryConversationFromWorkspace(sessionID, ownedPath); ok || err != nil {
+				return data, err
+			}
+		}
 		if data, ok, err := readWorkflowScopedChatHistoryConversationDirect(sessionID, workspacePath); ok || err != nil {
 			return data, err
 		}
