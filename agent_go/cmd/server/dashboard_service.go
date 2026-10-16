@@ -74,7 +74,7 @@ func dashboardScopeAllowed(claims *UserClaims, action string) bool {
 	if claims == nil || userAccessForClaims(claims).Disabled {
 		return false
 	}
-	if (dashboardMutation(action) || action == "share" || action == "export_motion") && !userAccessForClaims(claims).CanEdit {
+	if (dashboardMutation(action) || action == "share" || dashboardOwnersWrite(action) || action == "export_motion") && !userAccessForClaims(claims).CanEdit {
 		return false
 	}
 	if claims.AccessToken == nil {
@@ -83,7 +83,7 @@ func dashboardScopeAllowed(claims *UserClaims, action string) bool {
 	if !claims.AccessToken.Allows("dashboards:read") {
 		return false
 	}
-	if (dashboardMutation(action) || action == "share" || action == "export_motion") && !dashboardAuthoringAllowed(claims, nil) {
+	if (dashboardMutation(action) || action == "share" || dashboardOwnersWrite(action) || action == "export_motion") && !dashboardAuthoringAllowed(claims, nil) {
 		return false
 	}
 	if (action == "preview" || action == "export_motion") && !claims.AccessToken.Allows("runs:execute") {
@@ -282,6 +282,10 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 			logDashboardShareRefusal(claims, dashboardTarget{Root: args.Workspace}, args.Mode, "target", err, nil)
 		}
 		dashboardError(w, err)
+		return
+	}
+	if dashboardOwnersAction(args.Action) {
+		api.handleDashboardOwners(w, r, claims, target, args.Action, args.Emails)
 		return
 	}
 	if dashboardShareAction(args.Action) {

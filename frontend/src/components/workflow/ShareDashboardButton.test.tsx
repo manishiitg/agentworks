@@ -12,6 +12,7 @@ it('shows the server message when a share is refused with a structured error', a
   const host = document.createElement('div')
   const root = createRoot(host)
   post.mockResolvedValueOnce({ data: { mode: 'private', can_share: true } })
+  post.mockRejectedValueOnce({ response: { status: 404, data: {} } }) // the Owners section is for Crews only
   post.mockRejectedValueOnce({ response: { status: 409, data: { error: { code: 'conflict', message: 'Publish your unfinished dashboard, then share it.' } } } })
   try {
     await act(async () => root.render(<ShareDashboardButton workspacePath="Workflow/invoices" />))

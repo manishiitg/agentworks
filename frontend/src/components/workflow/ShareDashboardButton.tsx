@@ -10,6 +10,14 @@ type ShareState = {
   note?: string
 }
 
+type OwnersState = {
+  owner?: { id: string; email?: string; username?: string }
+  co_owners: { id: string; email?: string; username?: string }[]
+  can_manage: boolean
+}
+
+const who = (p: { id: string; email?: string; username?: string }) => p.email || p.username || p.id
+
 const OPTIONS: { mode: ShareState['mode']; label: string; hint: string }[] = [
   { mode: 'private', label: 'Only me', hint: 'Nobody else can open it.' },
   { mode: 'people', label: 'Chosen people', hint: 'One email per line. Each needs an account here.' },
@@ -25,6 +33,34 @@ export function ShareDashboardButton({ workspacePath }: { workspacePath: string 
   const [emails, setEmails] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [owners, setOwners] = useState<OwnersState | null>(null)
+  const [ownerEmail, setOwnerEmail] = useState('')
+
+  const loadOwners = useCallback(async () => {
+    try {
+      const { data } = await api.post<OwnersState>('/api/dashboards', { workspace: workspacePath, action: 'owners' })
+      setOwners(data && Array.isArray(data.co_owners) ? data : null)
+    } catch {
+      setOwners(null)
+    }
+  }, [workspacePath])
+
+  const changeOwner = async (action: 'owner_add' | 'owner_remove', email: string) => {
+    setBusy(true)
+    setMessage('')
+    try {
+      const { data } = await api.post<OwnersState & { note?: string }>('/api/dashboards', { workspace: workspacePath, action, emails: [email] })
+      setOwners(data)
+      setOwnerEmail('')
+      setMessage(data.note || 'Owners saved.')
+    } catch (error) {
+      const body = (error as { response?: { data?: { error?: string | { message?: string }; message?: string } } }).response?.data
+      const detail = typeof body?.error === 'string' ? body.error : body?.error?.message
+      setMessage(detail || body?.message || 'Could not change owners. Try again shortly.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -64,7 +100,7 @@ export function ShareDashboardButton({ workspacePath }: { workspacePath: string 
 
   return (
     <div className="relative">
-      <button type="button" onClick={() => setOpen(v => !v)} aria-label="Share" title="Share" aria-expanded={open}
+      <button type="button" onClick={() => { if (!open) void loadOwners(); setOpen(v => !v) }} aria-label="Share" title="Share" aria-expanded={open}
         className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background/95 px-2 text-xs text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground">
         <Users className="h-3.5 w-3.5" /> Share
       </button>
@@ -80,6 +116,27 @@ export function ShareDashboardButton({ workspacePath }: { workspacePath: string 
           {mode === 'people' && (
             <textarea value={emails} onChange={event => setEmails(event.target.value)} rows={4} aria-label="Emails to share with" placeholder="name@example.com"
               className="w-full rounded-md border border-border bg-background p-2 text-xs" />
+          )}
+          {owners && (
+            <div className="space-y-1 border-t border-border pt-2" aria-label="Owners">
+              <p className="font-medium">Owners</p>
+              <p className="text-xs text-muted-foreground">Owners build this together and can share or delete it. It still runs as the main owner.</p>
+              <ul className="text-xs">
+                {owners.owner && <li>{who(owners.owner)} <span className="text-muted-foreground">(main owner)</span></li>}
+                {owners.co_owners.map(p => (
+                  <li key={p.id} className="flex items-center justify-between">
+                    <span>{who(p)}</span>
+                    {owners.can_manage && <button type="button" disabled={busy} onClick={() => void changeOwner('owner_remove', who(p))} className="rounded px-1 text-muted-foreground hover:bg-muted">Remove</button>}
+                  </li>
+                ))}
+              </ul>
+              {owners.can_manage && (
+                <div className="flex gap-1">
+                  <input value={ownerEmail} onChange={event => setOwnerEmail(event.target.value)} aria-label="Add an owner by email" placeholder="name@example.com" className="min-w-0 flex-1 rounded-md border border-border bg-background p-1 text-xs" />
+                  <button type="button" disabled={busy || !ownerEmail.trim()} onClick={() => void changeOwner('owner_add', ownerEmail.trim())} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">Add</button>
+                </div>
+              )}
+            </div>
           )}
           {message && <p className="text-xs text-muted-foreground" role="status">{message}</p>}
           <div className="flex justify-end gap-2">

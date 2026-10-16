@@ -12,7 +12,12 @@ func TestCrewCoOwnerHasPermissionsButNotIdentity(t *testing.T) {
 	registry := newTestRegistry(t)
 	prev := defaultProjectOwnersOverride
 	defaultProjectOwnersOverride = registry
-	t.Cleanup(func() { defaultProjectOwnersOverride = prev })
+	t.Cleanup(func() {
+		defaultProjectOwnersOverride = prev
+		crewOwners.mu.Lock()
+		crewOwners.entries = map[string]crewOwnerEntry{}
+		crewOwners.mu.Unlock()
+	})
 	const folder = "demo-12345678"
 	root := "Crew/" + folder
 	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: folder, OwnerID: "owner", Shared: true}); err != nil {
@@ -56,16 +61,19 @@ func TestCrewCoOwnerHasPermissionsButNotIdentity(t *testing.T) {
 		t.Fatal("the workspace proxy gate ignores co-owners")
 	}
 
-	// The main owner's own Builder conversations on disk stay theirs: hidden from a co-owner, shown to the owner.
-	if !crewBuilderDiskHiddenFromUser("co", root) || crewBuilderDiskHiddenFromUser("owner", root) {
-		t.Fatal("a co-owner can read the main owner's Builder conversation transcripts")
+	// Every owner reads every Builder conversation on disk (owner, 2026-10-16); readers read none.
+	if crewBuilderDiskHiddenFromUser("co", root) || crewBuilderDiskHiddenFromUser("owner", root) || !crewBuilderDiskHiddenFromUser("ann", root) {
+		t.Fatal("Builder conversation transcripts must be readable by every owner and by no reader")
 	}
 
 	// The creator can never be removed, a co-owner can; both by email, by an owner.
 	crew := crewProjectBinding{OwnerID: "owner", OwnedByCaller: true}
 	crew.Binding.WorkspacePath = root
 	api := &StreamingAPI{}
-	claims := &UserClaims{UserID: "co", Username: "co"}
+	claims := &UserClaims{UserID: "owner", Username: "owner"}
+	if _, status, _, _ := api.changeCrewOwners(&UserClaims{UserID: "co", Username: "co"}, crew, "remove", "co@example.com"); status != http.StatusForbidden {
+		t.Fatalf("a co-owner changed the owners: status=%d", status)
+	}
 	if _, status, code, _ := api.changeCrewOwners(claims, crew, "remove", "owner@example.com"); status != http.StatusConflict || code != "creator" {
 		t.Fatalf("removing the creator: status=%d code=%q", status, code)
 	}

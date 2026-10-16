@@ -157,9 +157,9 @@ func resolveConversationBindingForUser(ctx context.Context, userID string, profi
 // from the reader's own central store only, never from the owner's
 // builder/conversation transcripts on disk.
 func crewBuilderDiskHiddenFromUser(userID, workflowPath string) bool {
-	// The main owner's own Builder conversations stay theirs: a co-owner builds the Crew but does not read them (owner-only history,
-	// co-owners decision 2026-10-15), so the strict owner check applies here.
-	return isProjectWorkspacePath(workflowPath) && !crewProjectOwnedByCallerStrict(userID, workflowPath)
+	// Every owner reads every Builder conversation of the Crew, the main owner's included (owner, 2026-10-16: "all owners see
+	// all Builder chats"). Run people (readers) still see none.
+	return isProjectWorkspacePath(workflowPath) && !crewProjectOwnedByCaller(userID, workflowPath)
 }
 
 // isCrewReaderTurn reports whether a turn addresses someone else's crew
