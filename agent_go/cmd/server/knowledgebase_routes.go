@@ -250,6 +250,8 @@ func knowledgebasePrincipal(r *http.Request, claims *UserClaims) knowledgebase.P
 func knowledgebaseHTTPError(w http.ResponseWriter, err error) {
 	var domain *knowledgebase.Error
 	if !errors.As(err, &domain) {
+		// The person sees a plain message; the log keeps the real cause (PLAT-856-126: 503s with no reason).
+		log.Printf("[KB_ERROR] unavailable: %v", err)
 		externalError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "Brain is temporarily unavailable.")
 		return
 	}
