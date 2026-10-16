@@ -75,6 +75,19 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 	call(reader, map[string]any{"action": "register", "agent_name": "reviewer"}, false)
 	call(owner, map[string]any{"action": "register", "agent_name": "Reviewer"}, true)
 	call(worker, map[string]any{"action": "register", "agent_name": "worker"}, true)
+	// Only an attached name receives (owner 2026-10-16: AgentBridge messaging needs the CLI).
+	agentMessageMu.Lock()
+	attachStore, attachErr := readAgentMessageStore(context.Background())
+	if attachErr != nil {
+		t.Fatal(attachErr)
+	}
+	for i := range attachStore.Agents {
+		attachStore.Agents[i].Attachment = &namedAgentAttachment{DeliveryContract: 2, ID: "attach-" + attachStore.Agents[i].Name, Provider: "claude", SessionID: "session-" + attachStore.Agents[i].Name}
+	}
+	if attachErr = saveAgentMessageStore(context.Background(), attachStore); attachErr != nil {
+		t.Fatal(attachErr)
+	}
+	agentMessageMu.Unlock()
 	if n := len(call(foreign, map[string]any{"action": "list_agents"}, true)["agents"].([]any)); n != 0 {
 		t.Fatal("foreign account saw directory")
 	}
