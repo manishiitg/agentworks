@@ -5,9 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -228,7 +230,8 @@ func (api *StreamingAPI) externalCodeRunCall(w http.ResponseWriter, r *http.Requ
 			externalError(w, http.StatusNotFound, "chat_not_found", "Pass a side tab (its name or chat_id from code action=chats) and a new name up to 120 characters.")
 			return
 		}
-		if err := RenameChatHistorySession(claims.UserID, target.SessionID, binding.WorkspacePath, chatName); err != nil {
+		_ = RenameChatHistorySession(claims.UserID, target.SessionID, binding.WorkspacePath, chatName)
+		if err := setCodeTabName(ctx, claims.UserID, target.Key, chatName); err != nil {
 			externalError(w, http.StatusBadGateway, "rename_failed", "The chat could not be renamed.")
 			return
 		}
@@ -395,6 +398,9 @@ type codeTurnItem struct {
 func codeChatTranscript(ctx context.Context, userID, sessionID, workspacePath string, after, limit int) ([]codeTurnItem, int, error) {
 	data, err := ReadChatHistoryConversation(userID, sessionID, workspacePath)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) || strings.Contains(strings.ToLower(err.Error()), "not found") {
+			return nil, after, nil // a tab nobody has written to yet has nothing to read
+		}
 		return nil, after, err
 	}
 	var doc struct {
@@ -568,9 +574,17 @@ func (api *StreamingAPI) externalCodeRunOpenTab(r *http.Request, claims *UserCla
 		return "", status, string(body)
 	}
 	if chatName != "" {
-		if err := nameNewSideChat(claims.UserID, binding.WorkspacePath, chatName, body); err != nil {
+		// A Code tab's name is its agent identity (what the tab list shows); the history title follows when the chat exists.
+		_ = nameNewSideChat(claims.UserID, binding.WorkspacePath, chatName, body)
+		if err := setCodeTabName(r.Context(), claims.UserID, projectID+codeChatSideMarker+id, chatName); err != nil {
 			return id, 0, "The tab is open but could not be named: " + err.Error()
 		}
 	}
 	return id, 0, ""
+}
+
+// setCodeTabName gives a Code tab its name as an agent identity, which is what the tab list and name lookups use.
+func setCodeTabName(ctx context.Context, userID, conversationKey, name string) error {
+	_, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, userID, codeproduct.ProfileID, conversationKey, &name, nil, "tab name")
+	return err
 }
