@@ -75,8 +75,8 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 	call(reader, map[string]any{"action": "register", "agent_name": "reviewer"}, false)
 	call(owner, map[string]any{"action": "register", "agent_name": "Reviewer"}, true)
 	call(worker, map[string]any{"action": "register", "agent_name": "worker"}, true)
-	// Only an attached name receives (owner 2026-10-16: AgentBridge messaging needs the CLI).
-	attachRegisteredAgentsForTest(t)
+	// A name registered by a CLI sign-in keeps receiving while its chat is closed (no attachment): only names
+	// never attached and held by MCP sign-ins are refused (owner 2026-10-16).
 	if n := len(call(foreign, map[string]any{"action": "list_agents"}, true)["agents"].([]any)); n != 0 {
 		t.Fatal("foreign account saw directory")
 	}

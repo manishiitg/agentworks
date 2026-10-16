@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -42,6 +43,42 @@ type namedMessageAgent struct {
 	Purpose          string                `json:"purpose,omitempty"`
 	PurposeUpdatedAt time.Time             `json:"purpose_updated_at,omitempty"`
 	Attachment       *namedAgentAttachment `json:"attachment,omitempty"`
+	// EverAttached: the CLI attached a chat to this name at some point (it may be detached or closed now).
+	EverAttached bool `json:"ever_attached,omitempty"`
+	// MailboxOnly is worked out when the store is read: a name never attached whose connections are all MCP
+	// sign-ins. Such names are hidden and refuse messages (owner 2026-10-16); a closed chat's name does neither.
+	MailboxOnly bool `json:"-"`
+}
+
+var mailboxOnlyCache sync.Map // agent ID + connections -> bool
+
+// classifyMailboxOnly marks names that were never attached and are held only by MCP sign-ins.
+// Any connection that is gone or is a CLI sign-in means "unknown, treat as a chat that closed".
+func classifyMailboxOnly(ctx context.Context, s *agentMessageStore) {
+	for i := range s.Agents {
+		a := &s.Agents[i]
+		if a.Attachment != nil {
+			a.EverAttached = true
+		}
+		if a.EverAttached || len(a.Connections) == 0 {
+			continue
+		}
+		key := a.ID + "|" + strings.Join(a.Connections, ",")
+		if v, ok := mailboxOnlyCache.Load(key); ok {
+			a.MailboxOnly = v.(bool)
+			continue
+		}
+		only := true
+		for _, id := range a.Connections {
+			c, err := agentMessageConnectionClaims(ctx, id)
+			if err != nil || c == nil || c.AccessToken == nil || c.AccessToken.Name == "AgentWorks CLI" {
+				only = false
+				break
+			}
+		}
+		mailboxOnlyCache.Store(key, only)
+		a.MailboxOnly = only
+	}
 }
 
 func normalizeMessageAgentName(name string) (string, error) {
@@ -161,7 +198,7 @@ func listNamedMessageAgents(ctx context.Context, userID string) (map[string]inte
 func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessageStore, withUsage bool) map[string]interface{} {
 	items := []map[string]interface{}{}
 	for _, a := range s.Agents {
-		if a.UserID == userID && a.Attachment != nil {
+		if a.UserID == userID && !a.MailboxOnly {
 			item := map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "groups": s.groupNamesOf(a.ID, a.UserID), "provider": func() string {
 				if a.Attachment != nil {
 					return a.Attachment.Provider

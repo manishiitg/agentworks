@@ -390,7 +390,7 @@ func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[
 			continue
 		}
 		for _, a := range s.Agents {
-			if a.ID != sh.AgentID || a.Attachment == nil {
+			if a.ID != sh.AgentID || a.MailboxOnly {
 				continue
 			}
 			owner := shareOwnerLabel(sh.OwnerUserID)

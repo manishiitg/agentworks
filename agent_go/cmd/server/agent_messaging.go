@@ -126,6 +126,9 @@ func readAgentMessageStore(ctx context.Context) (agentMessageStore, error) {
 	if exists {
 		err = json.Unmarshal([]byte(raw), &s)
 	}
+	if err == nil {
+		classifyMailboxOnly(ctx, &s)
+	}
 	return s, err
 }
 func saveAgentMessageStore(ctx context.Context, s agentMessageStore) error {
@@ -318,9 +321,9 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	}
 	if target.NamedAgentID != "" {
 		for _, a := range s.Agents {
-			if a.ID == target.NamedAgentID && a.Attachment == nil {
+			if a.ID == target.NamedAgentID && a.MailboxOnly {
 				agentMessageMu.Unlock()
-				return nil, fmt.Errorf("agent:%s is not connected. A name receives messages only after agentworks attach was run in its chat on its owner's computer", a.Name)
+				return nil, fmt.Errorf("agent:%s is not connected. This name was never attached with the AgentWorks CLI, so it cannot receive messages. Its owner runs agentworks attach in the chat that should receive them", a.Name)
 			}
 		}
 	}

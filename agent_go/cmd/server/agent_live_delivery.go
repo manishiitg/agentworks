@@ -83,7 +83,7 @@ func namedAgentPresence(a namedMessageAgent) string {
 	switch {
 	case namedAgentOnline(a):
 		return "Live"
-	case a.Attachment == nil:
+	case a.MailboxOnly:
 		return "Mailbox only"
 	}
 	return "Offline"
@@ -141,6 +141,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		if purpose != "" {
 			a.Purpose = purpose
 		}
+		a.EverAttached = true
 		a.Attachment = &namedAgentAttachment{DeliveryContract: 2, ID: "attach-" + uuid.NewString(), Provider: provider, SessionID: session, ConnectionID: claims.AccessToken.ID, ClientBuild: cleanClientBuild(externalArg(args, "client_build"))}
 	case "detach":
 		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") {
