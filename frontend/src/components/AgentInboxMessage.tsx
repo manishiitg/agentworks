@@ -17,7 +17,7 @@ export function agentInboxMessage(metadata?: Record<string, unknown>) {
 type AgentInboxContent = NonNullable<ReturnType<typeof agentInboxMessage>>
 const PREVIEW_LIMIT = 600
 // Plain words for the sender kind the server stamps; an unknown or empty kind adds nothing.
-const KIND_LABEL: Record<string, string> = { agent: 'Agent', crew: 'Crew', goal: 'Goal', code: 'Code', pulse: 'Pulse' }
+const KIND_LABEL: Record<string, string> = { agent: 'Agent', crew: 'Crew', goal: 'Goal', flow: 'Flow', code: 'Code', pulse: 'Pulse' }
 const BODY_ARTIFACT_KEYS = ['metadata.display_content'] as const
 
 export function AgentInboxMessage({ message, timestamp, artifact = null }: { message: AgentInboxContent; timestamp: string; artifact?: ChatArtifactRef | null }) {

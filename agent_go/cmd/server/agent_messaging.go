@@ -603,6 +603,7 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 		}
 	}
 }
+
 // agentMessageSenderKind tells the chat screen what kind of sender a message came from, so it
 // can say so in plain words; the browser only displays it.
 func agentMessageSenderKind(e agentMessageEndpoint) string {
@@ -619,6 +620,17 @@ func agentMessageSenderKind(e agentMessageEndpoint) string {
 		return "goal"
 	}
 	return ""
+}
+
+// agentMessageSenderKindIn separates a Flow (a relay) from a Goal: both are workflows.
+func agentMessageSenderKindIn(ctx context.Context, e agentMessageEndpoint) string {
+	kind := agentMessageSenderKind(e)
+	if kind == "goal" && e.Path != "" {
+		if manifest, exists, err := ReadWorkflowManifest(ctx, e.Path); err == nil && exists && manifest != nil && manifest.Kind == "relay" {
+			return "flow"
+		}
+	}
+	return kind
 }
 
 func agentMessageText(c agentConversation, m agentMessage) string {
@@ -912,7 +924,7 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 	}
 	if !m.Wakeup {
 		ctx = context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{
-			"source": "agent_message", "sender_label": source.Label, "sender_kind": agentMessageSenderKind(source),
+			"source": "agent_message", "sender_label": source.Label, "sender_kind": agentMessageSenderKindIn(ctx, source),
 			"agent_message_inbox": c.ID, "message_id": m.ID,
 			"display_content": m.Text, "agent_message_instructions": agentMessageInstructions(c.ID),
 		})
