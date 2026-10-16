@@ -60,12 +60,17 @@ func crewEditLockTake(root, userID, sessionID string, now time.Time) string {
 	defer crewEditLocks.Unlock()
 	entry := crewEditLocks.held[root]
 	if entry != nil && entry.userID != person && now.Sub(entry.last) < window {
+		log.Printf("[CREW_LOCK] crew=%s refused other=%s holder=%s held_for=%s idle=%s", root, person, entry.userID, now.Sub(entry.since).Round(time.Second), now.Sub(entry.last).Round(time.Second))
 		return fmt.Sprintf("%s is editing right now; you can change it when they're done or after %d minutes of no changes.", crewEditLockName(entry.userID), int(window/time.Minute))
 	}
 	if entry == nil || entry.userID != person {
+		reason := "free"
+		if entry != nil {
+			reason = fmt.Sprintf("took over from %s after %s without a change", entry.userID, now.Sub(entry.last).Round(time.Second))
+		}
 		entry = &crewEditLockEntry{userID: person, since: now}
 		crewEditLocks.held[root] = entry
-		log.Printf("[CREW_LOCK] crew=%s taken by=%s session=%s", root, person, sessionID)
+		log.Printf("[CREW_LOCK] crew=%s taken by=%s session=%s reason=%q", root, person, sessionID, reason)
 	}
 	entry.last = now
 	if sessionID != "" {
@@ -90,6 +95,43 @@ func crewEditLockRelease(root, userID string) {
 		delete(crewEditLocks.held, root)
 		log.Printf("[CREW_LOCK] crew=%s freed (owner %s removed)", root, person)
 	}
+}
+
+// crewEditLockReleaseRoot frees whatever lock the Crew at root has (the Crew was deleted).
+func crewEditLockReleaseRoot(root string) {
+	root = canonicalCrewWorkspaceRoot(root)
+	crewEditLocks.Lock()
+	defer crewEditLocks.Unlock()
+	if entry := crewEditLocks.held[root]; entry != nil {
+		delete(crewEditLocks.held, root)
+		log.Printf("[CREW_LOCK] crew=%s freed (Crew deleted, holder %s)", root, entry.userID)
+	}
+}
+
+// crewEditLockForProxyWrite is the lock check for a website file save through the workspace proxy: "" to go ahead, or
+// the refusal text. Only a write by an owner into a shared Crew's non-exempt path takes the lock.
+func crewEditLockForProxyWrite(r *http.Request, claims *UserClaims) string {
+	switch r.Method {
+	case http.MethodPut, http.MethodPatch, http.MethodPost, http.MethodDelete:
+	default:
+		return ""
+	}
+	rel := workspaceProxyRelativePath(r)
+	for _, prefix := range []string{"api/documents/", "api/folders/"} {
+		if strings.HasPrefix(rel, prefix) {
+			rel = strings.TrimPrefix(rel, prefix)
+			break
+		}
+	}
+	if claims == nil || !strings.HasPrefix(rel, "Crew/") {
+		return ""
+	}
+	rel = strings.TrimSuffix(strings.TrimSuffix(rel, "/diff"), "/move")
+	ref, ok := resolveCrewPath(r.Context(), claims.UserID, rel)
+	if !ok || !ref.Shared || crewAccessFor(claims, ref) != crewAccessOwner || crewEditLockExempt(ref.Rest) {
+		return ""
+	}
+	return crewEditLockTake(ref.Root, claims.UserID, "", time.Now())
 }
 
 // crewEditLockReleaseSession frees every lock a Builder chat took: its chat ended or its terminal closed.

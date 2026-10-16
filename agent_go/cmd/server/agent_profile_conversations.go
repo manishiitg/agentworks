@@ -425,6 +425,7 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		// A deleted Code takes its shells with it.
 		stopCodeShellsFor(sanitizeUserIDForPath(actingFor), projectID, nil)
 	}
+	crewEditLockReleaseRoot(binding.WorkspacePath)
 	if coOwner {
 		log.Printf("[CREW_DELETE] project=%s deleted by=%s as co-owner of %s", projectID, sanitizeUserIDForPath(userID), actingFor)
 	}

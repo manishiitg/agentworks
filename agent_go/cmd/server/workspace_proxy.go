@@ -122,6 +122,11 @@ func workspaceProxyHandler() http.Handler {
 				}
 			}
 		}
+		// One owner at a time edits a Crew (crew_edit_lock.go): a website save by a second owner is told who has it.
+		if message := crewEditLockForProxyWrite(r, GetUserFromContext(r.Context())); message != "" {
+			http.Error(w, message, http.StatusConflict)
+			return
+		}
 		// The workspace API scopes per-user paths by X-User-ID and has no
 		// auth of its own; it must carry the identity this server verified,
 		// never whatever the browser put in the header.
