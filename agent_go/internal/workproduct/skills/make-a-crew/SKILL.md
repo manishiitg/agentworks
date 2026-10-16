@@ -14,8 +14,11 @@ Two ways, both owned by the same person and both using the account's normal rule
 1. From this project: call `make_crew_from_this_project` (an optional `name`). It
    copies the project's text files, PROJECT_INSTRUCTIONS.md, skills, MCP connection
    and secret choices (names only, never values) and memory into a new Crew. Chat
-   history is never copied and this Code project stays unchanged. Read the reply:
-   `files_not_copied` lists what was too large or not text; offer to add those by hand.
+   history is never copied and this Code project stays unchanged. Read the reply and
+   tell the person in plain words which files came across (`copied_files`) before they
+   share the Crew, because a project can hold notes they would not want others to see;
+   offer to remove any with `update_crew` (remove_files). `files_not_copied` lists what
+   was too large or not text; offer to add those by hand.
 2. From scratch: call `create_crew` with a name, a one-line role and its standing
    instructions (purpose), then add files with `write_crew_file` and skills or
    schedules with `update_crew`. `export_crew` and `import_crew` move a Crew as a

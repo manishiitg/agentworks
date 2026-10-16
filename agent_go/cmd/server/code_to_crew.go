@@ -164,7 +164,12 @@ func (api *StreamingAPI) makeCrewFromCodeProject(ctx context.Context, userID, se
 	if err != nil {
 		return nil, fmt.Errorf("%s", externalCrewCreateError(crewID, err))
 	}
-	out := map[string]interface{}{"crew_id": crewID, "name": title, "files_copied": len(files), "link": crewAppLink(crewID)}
+	copied := make([]string, 0, len(files))
+	for rel := range files {
+		copied = append(copied, rel)
+	}
+	sort.Strings(copied)
+	out := map[string]interface{}{"crew_id": crewID, "name": title, "files_copied": len(files), "copied_files": copied, "link": crewAppLink(crewID)}
 	if len(skipped) > 0 {
 		out["files_not_copied"] = skipped
 		out["note"] = "Some files were too large, not text or over the Crew's limits; add them to the Crew by hand if needed."
