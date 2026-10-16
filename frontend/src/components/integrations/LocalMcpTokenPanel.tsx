@@ -3,9 +3,10 @@ import { Copy, Plug } from 'lucide-react'
 import { authApi, type PersonalAccessToken } from '../../services/api'
 import { SettingsCard } from '../ui/SettingsCard'
 import { Button } from '../ui/Button'
+import { AgentMessagingStep, InstallAgentWorksStep } from './LocalAgentSetupSteps'
 
 /** Local clients use the existing scoped token API; hosted setup retains OAuth. */
-export function LocalMcpTokenPanel({ endpoint }: { endpoint: string }) {
+export function LocalMcpTokenPanel({ endpoint, origin = new URL(endpoint, window.location.origin).origin }: { endpoint: string; origin?: string }) {
   const [access, setAccess] = useState<'full' | 'read'>('full')
   const [expiry, setExpiry] = useState(0)
   const [tokens, setTokens] = useState<PersonalAccessToken[]>([])
@@ -47,7 +48,9 @@ export function LocalMcpTokenPanel({ endpoint }: { endpoint: string }) {
   const config = JSON.stringify({ mcpServers: { agentworks: { url: endpoint, headers: { Authorization: 'Bearer <ACCESS_TOKEN>' } } } }, null, 2)
   const activeTokens = tokens.filter(token => !token.revoked_at && (token.non_expiring || new Date(token.expires_at).getTime() > Date.now()))
   return <div className="space-y-5">
-    <div><h3 className="text-base font-semibold">Connect a local AI agent</h3><p className="mt-1 text-sm text-muted-foreground">Create an access token and use it with your agent’s HTTP MCP connection. No browser sign-in is needed.</p></div>
+    <div><h3 className="text-base font-semibold">Connect a local AI agent</h3><p className="mt-1 text-sm text-muted-foreground">Create an access token and use it with your agent’s HTTP MCP connection. No browser sign-in or AgentWorks terminal app is needed for these tools.</p></div>
+    <InstallAgentWorksStep origin={origin} />
+    <h4 className="text-sm font-medium text-foreground">2. Connect your AI app</h4>
     <SettingsCard icon={<Plug className="h-4 w-4 text-primary" />} title="Local access token" description="Choose full access or Run access and when it expires. Your current folder, workflow and Crew permissions still apply.">
       <div className="space-y-3">
         <label className="block text-sm">Access<select aria-label="Local token access" value={access} disabled={busy} onChange={event => setAccess(event.target.value as 'full' | 'read')} className="ml-2 rounded border border-border bg-background p-2"><option value="full">Full access</option><option value="read">View only</option></select></label>
@@ -62,6 +65,7 @@ export function LocalMcpTokenPanel({ endpoint }: { endpoint: string }) {
       <pre className="overflow-x-auto rounded-md border border-border bg-muted/40 p-3 text-xs" aria-label="Local MCP client config">{config}</pre>
       <p className="mt-2 text-xs text-muted-foreground">Replace &lt;ACCESS_TOKEN&gt; with your copied token. This localhost endpoint is for agents on this computer.</p>
     </SettingsCard>
+    <AgentMessagingStep />
     {activeTokens.length > 0 && <SettingsCard title="Local access tokens" description="Revoke a token to disconnect its agent."><div className="space-y-2">{activeTokens.map(token => <div key={token.id} className="flex items-center justify-between gap-2 text-xs"><div><p>{token.name}</p><p className="text-muted-foreground">{token.non_expiring ? 'Valid until removed' : `Expires ${new Date(token.expires_at).toLocaleDateString()}`}</p></div><Button variant="outline" size="sm" disabled={busy} onClick={() => void revoke(token.id)}>Revoke</Button></div>)}</div></SettingsCard>}
   </div>
 }

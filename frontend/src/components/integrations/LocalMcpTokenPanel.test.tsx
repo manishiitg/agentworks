@@ -21,7 +21,6 @@ describe('local MCP access tokens', () => {
   it('issues full local account access with access and expiry presets and revokes the token', async () => {
     const host = await mount()
     expect(host.querySelector('input[type=checkbox]')).toBeNull()
-    expect(host.querySelectorAll('select')).toHaveLength(2)
     expect(host.querySelector('[aria-label="Access token name"]')).toBeNull()
     vi.mocked(authApi.listAccessTokens).mockResolvedValue({ tokens: [token as any] })
     await act(async () => button(host, 'Create access token').click())

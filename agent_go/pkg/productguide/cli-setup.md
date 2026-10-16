@@ -9,7 +9,13 @@ Use this guide when someone asks to install or update the AgentWorks CLI, sign i
 
 Use the server address the person already uses, or the Server address in the installed AgentWorks skill. Ask for it if unknown; never invent a server or use the example address below unchanged.
 
-<!-- product:bullpen -->Open **Bullpen → Connect an agent**, choose the coding client and operating system, and follow its current setup instructions. That page lists provider-specific plugins or extensions, tested versions and how messages arrive. <!-- /product -->For product tools in an MCP client, use the website's **Connect** page and complete the client's sign-in. A hosted MCP client may guide installation but cannot install software on someone's computer unless it has a separate local execution connection.
+For an AI app on the person's computer, open the website's **Connect AI agents** page (also shown as **Connect**) and choose **AI agent on this computer**:
+
+1. **Install the AgentWorks app for your terminal.** Use the same-server installer below. Installation is optional for MCP tools; skip it if you only want tool access.
+2. **Connect your AI app.** Choose the app on that page and use its existing MCP instructions and sign-in. MCP tools work without the AgentWorks terminal app.
+<!-- product:bullpen -->3. **Optional: let your agents message each other.** This needs the terminal app. Run `agentworks setup claude`, `agentworks setup codex`, `agentworks setup cursor` or `agentworks setup muse` for the selected app. Then open **Bullpen → Connect an agent** to finish sign-in and connect the chat you choose. That page lists current app/computer support, plugins or extensions, tested versions and how messages arrive. Setup does not sign in or attach a chat for you.
+<!-- /product -->
+A hosted MCP client may guide installation but cannot install software on someone's computer unless it has a separate local execution connection.
 
 ## Install on the person's computer
 

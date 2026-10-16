@@ -1,36 +1,16 @@
 import { useEffect, useState } from 'react'
-import { Check, Copy, Download, Globe, Plug, Terminal } from 'lucide-react'
+import { Copy, Download, Globe, Plug, Terminal } from 'lucide-react'
 import { SettingsCard } from '../ui/SettingsCard'
 import { Button } from '../ui/Button'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { LocalMcpTokenPanel } from './LocalMcpTokenPanel'
+import { AgentMessagingStep, CommandRow, CopyButton, InstallAgentWorksStep } from './LocalAgentSetupSteps'
 import api, { externalSkillApi, getApiBaseUrl } from '../../services/api'
 
 type Destination = 'local-assistant' | 'hosted-assistant'
 type LocalClient = 'claude-code' | 'codex' | 'cursor' | 'muse' | 'json-client'
 type HostedClient = 'chatgpt' | 'cowork'
 interface OAuthConnection { id: string; client_name: string; scopes: string[]; expires_at: string }
-
-function CopyButton({ text, label }: { text: string; label: string }) {
-  const [copied, setCopied] = useState(false)
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    } catch { setCopied(false) }
-  }
-  return <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={copied ? 'Copied' : `Copy: ${label}`} onClick={() => void copy()}>
-    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-  </Button>
-}
-
-function CommandRow({ command, label }: { command: string; label: string }) {
-  return <div className="flex items-center gap-2">
-    <code className="min-w-0 flex-1 overflow-x-auto rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-xs text-foreground" aria-label={label}>{command}</code>
-    <CopyButton text={command} label={label} />
-  </div>
-}
 
 function JsonBlock({ json, label, hint }: { json: string; label: string; hint: string }) {
   return <div className="space-y-1">
@@ -130,7 +110,7 @@ export function CliMcpSetupContent({ target = 'agentworks', endpoint }: { target
     { id: 'hosted-assistant', icon: Globe, title: 'Hosted AI app', description: 'ChatGPT or Claude Cowork.' },
   ] as const
 
-  if (useLocalToken) return <LocalMcpTokenPanel endpoint={mcpUrl} />
+  if (useLocalToken) return <LocalMcpTokenPanel endpoint={mcpUrl} origin={origin} />
 
   return <div className="space-y-5">
     <div className="space-y-3">
@@ -148,9 +128,11 @@ export function CliMcpSetupContent({ target = 'agentworks', endpoint }: { target
     </div>
     <SettingsCard icon={destination === 'local-assistant' ? <Plug className="h-4 w-4 text-primary" /> : <Globe className="h-4 w-4 text-primary" />}
       title={destination === 'local-assistant' ? 'Connect a local AI agent' : 'Connect a hosted AI app'}
-      description={destination === 'local-assistant' ? `Connect directly to ${serviceName} over HTTP MCP. No AgentWorks binary is needed.` : 'Use the MCP URL in an AI app that connects from the cloud.'}>
+      description={destination === 'local-assistant' ? `Connect directly to ${serviceName} over HTTP MCP. You can use the tools without installing the AgentWorks terminal app.` : 'Use the MCP URL in an AI app that connects from the cloud.'}>
       {destination === 'local-assistant' ? <div className="space-y-4">
+        {target === 'agentworks' && <InstallAgentWorksStep origin={origin} />}
         <div className="space-y-2">
+          {target === 'agentworks' && <h4 className="text-sm font-medium text-foreground">2. Connect your AI app</h4>}
           <p className="text-xs font-medium text-foreground">Choose your AI agent</p>
           <div className="flex flex-wrap gap-2" role="group" aria-label="Local MCP client">
             <Button variant={localClient === 'claude-code' ? 'default' : 'outline'} size="sm" aria-pressed={localClient === 'claude-code'} onClick={() => setLocalClient('claude-code')}>Claude Code</Button>
@@ -167,6 +149,7 @@ export function CliMcpSetupContent({ target = 'agentworks', endpoint }: { target
         </div>
         <p className="text-xs text-muted-foreground">Approve the OAuth connection in your browser when your agent asks. A local server URL works only for agents on this computer.</p>
         {target === 'agentworks' && localClient === 'claude-code' && <details className="rounded-md border border-border p-3 text-xs text-muted-foreground"><summary className="cursor-pointer font-medium text-foreground">Optional: use the AgentWorks skill</summary><p className="mt-2">The skill teaches Claude Code how to use the workflow tools. Once {serviceName} is connected, ask Claude to install it; it fetches the text through its own connection, so nothing is public and nothing is pasted.</p><div className="mt-2"><CommandRow label="Tell Claude" command="Install the AgentWorks skill: call get_skill and save its content to ~/.claude/skills/agentworks/SKILL.md" /></div><div className="mt-3 flex flex-wrap gap-2"><Button variant="ghost" size="sm" disabled={skillBusy !== null} onClick={() => void copySkill()}><Copy className="mr-1 h-3.5 w-3.5" />Copy skill text</Button></div>{skillMsg && <p className="mt-2">{skillMsg}</p>}</details>}
+        {target === 'agentworks' && <AgentMessagingStep app={localClient === 'claude-code' ? 'claude' : localClient === 'json-client' ? undefined : localClient} />}
       </div> : <div className="space-y-4">
         <div className="flex flex-wrap gap-2" role="group" aria-label="Hosted MCP client">
           <Button variant={hostedClient === 'chatgpt' ? 'default' : 'outline'} size="sm" aria-pressed={hostedClient === 'chatgpt'} onClick={() => setHostedClient('chatgpt')}>ChatGPT</Button>
