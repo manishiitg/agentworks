@@ -729,7 +729,7 @@ func wrapReadImageWithLLM(
 			},
 		}
 		var attachmentOptions []llmtypes.CallOption
-		if pathBasedImageAnalysisProvider(provider) {
+		if readsImageByPath(provider) {
 			absoluteImagePath := workspaceAbsolutePath(normalizeWorkspaceDocumentPath(imageData.Filepath))
 			if len(attachmentOnly) > 0 && attachmentOnly[0] {
 				var cleanup func()
@@ -772,6 +772,11 @@ func wrapReadImageWithLLM(
 
 		if attachmentOptions != nil {
 			callOptions = attachmentOptions
+		}
+		if strings.EqualFold(provider, string(llm.ProviderPiCLI)) {
+			// A Pi session's own model is the fallback analysis model; Pi reads the file by path, as a bounded
+			// one-shot rather than a second interactive terminal.
+			callOptions = append(callOptions, structuredOneShotCallOptions(llm.ProviderPiCLI)...)
 		}
 		resp, err := llmModel.GenerateContent(ctx, messages, callOptions...)
 		if err != nil {

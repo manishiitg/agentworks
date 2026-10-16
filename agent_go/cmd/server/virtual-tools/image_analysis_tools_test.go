@@ -121,3 +121,14 @@ func TestPathBasedImageAnalysisProviderIncludesNativeCLIs(t *testing.T) {
 		t.Fatal("pathBasedImageAnalysisProvider(vertex) = true, want false")
 	}
 }
+
+// A Pi session's own model is the image-analysis fallback; its adapter refuses image content, so the analysis passes the
+// file path instead (2026-10-15: every pasted image in a Pi Crew failed). Pi stays out of the explicit provider choices.
+func TestPiReadsImagesByPathButIsNotAnExplicitAnalysisProvider(t *testing.T) {
+	if !readsImageByPath("pi-cli") || !readsImageByPath("codex-cli") || readsImageByPath("muse-cli") {
+		t.Fatal("readsImageByPath must cover pi-cli and the three path CLIs only")
+	}
+	if pathBasedImageAnalysisProvider("pi-cli") {
+		t.Fatal("pi-cli must not become an explicit image analysis provider")
+	}
+}

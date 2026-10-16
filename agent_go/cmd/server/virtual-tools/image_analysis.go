@@ -22,6 +22,13 @@ func defaultImageAnalysisModelForProvider(provider string) string {
 	}
 }
 
+// readsImageByPath is true for the CLIs that open the image file themselves. Pi is not an explicit analysis provider
+// (the configured and requested choices stay the three above) but it is a session's own model: its adapter refuses image
+// content, so the analysis passes the file path as text and Pi's own file reader opens it.
+func readsImageByPath(provider string) bool {
+	return pathBasedImageAnalysisProvider(provider) || strings.EqualFold(strings.TrimSpace(provider), "pi-cli")
+}
+
 func inferImageAnalysisProviderFromModel(modelID string) string {
 	switch strings.ToLower(strings.TrimSpace(modelID)) {
 	// claude-sonnet-5 is retired; the claude-code adapter runs it as 5.5.
