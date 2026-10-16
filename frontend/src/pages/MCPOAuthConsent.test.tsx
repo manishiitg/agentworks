@@ -55,11 +55,11 @@ it('uses the Vault consent API with the shared platform login page', async () =>
   } finally { await view.cleanup() }
 })
 
-it('leads with a few plain lines and keeps the exact permissions behind details', async () => {
+it('says in one plain line that the app can do what the person can do on the website, with the exact permissions behind details', async () => {
   const view = await mount(['workflows:read', 'files:read', 'runs:execute', 'crews:read', 'crews:run', 'crews:write'], [])
   try {
-    const lines = [...view.host.querySelectorAll('main > div > ul > li')].map(li => li.textContent)
-    expect(lines).toEqual(['See and run your workflows', 'Use your Crews', 'Edit your own Crews and run their sandboxed commands, browser, database and connected tools (logged)'])
+    expect(view.host.querySelector('main > div > ul')).toBeNull()
+    expect(view.host.textContent).toContain('This app can do what you can do on the website, and nothing more.')
     expect(view.host.querySelector('details')).not.toBeNull()
     expect(view.host.querySelector('details')!.textContent).toContain('Read workflow files, including test code')
   } finally { await view.cleanup() }
@@ -92,7 +92,7 @@ it('asks for no workflow selection: Builder follows the account', async () => {
 it('explains Vault management separately from runtime tool access', async () => {
   const view = await mount(['vault:manage'], [])
   try {
-    expect(view.host.textContent).toContain('Manage Vault connections, groups and permissions (administrator)')
+    expect(view.host.textContent).toContain('This app can do what you can do on the website')
     expect(view.host.textContent).toContain('Secret values are not returned')
     expect(view.host.textContent).not.toContain('Use Vault MCP tools you are allowed to use')
   } finally { await view.cleanup() }

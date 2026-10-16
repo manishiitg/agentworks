@@ -135,6 +135,27 @@ func (api *StreamingAPI) handleMCPOAuthRegister(w http.ResponseWriter, r *http.R
 	_ = json.NewEncoder(w).Encode(map[string]any{"client_id": client.ID, "client_name": client.Name, "redirect_uris": client.RedirectURIs, "grant_types": []string{"authorization_code", "refresh_token"}, "response_types": []string{"code"}, "token_endpoint_auth_method": "none"})
 }
 
+// mcpOAuthPersonScopes is what a person's sign-in carries: everything the server supports that this account may use, whatever
+// the app asked for (owner 2026-10-16: the same access as the website, no MCP-only roles). The account rules in
+// mcpOAuthScopesFor drop what the person's account cannot have, and every tool still checks the person's role on the item.
+// personSignInScopes is true for a stored scope list made only of scopes an AgentWorks sign-in may hold; a grant with any
+// other scope (a device connection, the Vault MCP login) is a machine or separate grant and keeps what it has.
+func personSignInScopes(stored []string) bool {
+	if len(stored) == 0 {
+		return false
+	}
+	for _, scope := range stored {
+		if !slices.Contains(mcpOAuthScopes, scope) {
+			return false
+		}
+	}
+	return true
+}
+
+func mcpOAuthPersonScopes(user *UserClaims) []string {
+	return mcpOAuthScopesFor(user, slices.Clone(mcpOAuthScopes))
+}
+
 // mcpOAuthScopesFor is what this user may actually consent to: code:review
 // only for an admin or Code reviewer. Everyone else neither sees nor grants it
 // (the tools re-check the account on every call regardless).
@@ -311,7 +332,7 @@ func (api *StreamingAPI) handleMCPOAuthConsent(w http.ResponseWriter, r *http.Re
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": client.Name, "redirect_uri": request.RedirectURI, "scopes": mcpOAuthScopesFor(claims, request.Scopes), "editable_workflows": []map[string]string{}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": client.Name, "redirect_uri": request.RedirectURI, "scopes": mcpOAuthPersonScopes(claims), "editable_workflows": []map[string]string{}})
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -490,6 +511,13 @@ func mcpOAuthTokenForGrant(grant mcpOAuthGrant) accesstokens.Token {
 	}
 	// A grant with no workflow IDs reaches every workflow the account may use (Builder included, bounded by the
 	// account's live role); an older Builder grant keeps the IDs it was given.
-	allCrews := slices.Contains(grant.Scopes, "dashboards:read") || slices.Contains(grant.Scopes, "crews:read") || slices.Contains(grant.Scopes, "crews:run") || slices.Contains(grant.Scopes, "crews:write")
-	return accesstokens.Token{ID: "oauth-" + grant.FamilyID, Name: name, UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider, Scopes: grant.Scopes, WorkflowIDs: slices.Clone(grant.WorkflowIDs), AllWorkflows: len(grant.WorkflowIDs) == 0 && grant.BoundAgentID == "", AllCrews: allCrews, ExpiresAt: grant.Expires, BoundAgentName: grant.BoundAgentName, BoundAgentID: grant.BoundAgentID}
+	// A person's own sign-in is worked out from the person's CURRENT account on every call, not from what was stored when
+	// they signed in, so a connection made earlier gets full access without reconnecting and loses it the moment a role is
+	// removed. Bound-agent connections (messaging only) and grants that name workflows keep the scopes they were given.
+	scopes := grant.Scopes
+	if grant.BoundAgentID == "" && len(grant.WorkflowIDs) == 0 && personSignInScopes(grant.Scopes) {
+		scopes = mcpOAuthPersonScopes(&UserClaims{UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider})
+	}
+	allCrews := slices.Contains(scopes, "dashboards:read") || slices.Contains(scopes, "crews:read") || slices.Contains(scopes, "crews:run") || slices.Contains(scopes, "crews:write")
+	return accesstokens.Token{ID: "oauth-" + grant.FamilyID, Name: name, UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider, Scopes: scopes, WorkflowIDs: slices.Clone(grant.WorkflowIDs), AllWorkflows: len(grant.WorkflowIDs) == 0 && grant.BoundAgentID == "", AllCrews: allCrews, ExpiresAt: grant.Expires, BoundAgentName: grant.BoundAgentName, BoundAgentID: grant.BoundAgentID}
 }

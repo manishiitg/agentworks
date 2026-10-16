@@ -97,7 +97,9 @@ func TestMCPOAuthMigratesLegacyUnboundedGrants(t *testing.T) {
 			t.Fatal(err)
 		}
 		token := mcpOAuthTokenForGrant(grant)
-		if !token.AllWorkflows || token.BuilderAccess() || token.Allows("builder:chat") {
+		// A person's sign-in now carries every scope the account may use (owner 2026-10-16); what stays true is that a
+		// migrated legacy grant reaches every workflow the account may use, with the role on each deciding.
+		if !token.AllWorkflows {
 			t.Fatalf("legacy grant authority changed: %+v", token)
 		}
 	}

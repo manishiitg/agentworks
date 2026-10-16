@@ -87,3 +87,30 @@ func TestMCPOAuthCrewScopesFollowTheCrewProduct(t *testing.T) {
 		t.Errorf("an account with both products keeps every scope, got %v", got)
 	}
 }
+
+// A person's sign-in carries every scope the account may use, worked out from the CURRENT account on every call, whatever was
+// stored when they signed in or the app asked for (owner 2026-10-16: the same access as the website). A bound-agent
+// connection (messaging only) and a grant that names workflows keep what they were given.
+func TestPersonSignInCarriesTheFullScopeSetLive(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"member","username":"member","can_create":true,"products":["code","work"]}]}`)
+	person := mcpOAuthTokenForGrant(mcpOAuthGrant{UserID: "member", Username: "member", FamilyID: "f1", Scopes: []string{"workflows:read"}})
+	for _, want := range []string{"code:run", "builder:chat", "crews:run", "dashboards:read", "files:read", "runs:execute"} {
+		if !slices.Contains(person.Scopes, want) {
+			t.Errorf("a person's sign-in stored with one scope lacks %s: %v", want, person.Scopes)
+		}
+	}
+	for _, never := range []string{"users:manage", "vault:manage", "code:review", "llm:use", "devices:connect"} {
+		if slices.Contains(person.Scopes, never) {
+			t.Errorf("an ordinary member's sign-in was given %s: %v", never, person.Scopes)
+		}
+	}
+	bound := mcpOAuthTokenForGrant(mcpOAuthGrant{UserID: "member", Username: "member", FamilyID: "f2", Scopes: []string{"crews:run"}, BoundAgentID: "agent-1", BoundAgentName: "helper"})
+	if !slices.Equal(bound.Scopes, []string{"crews:run"}) {
+		t.Errorf("a bound-agent connection was widened: %v", bound.Scopes)
+	}
+	named := mcpOAuthTokenForGrant(mcpOAuthGrant{UserID: "member", Username: "member", FamilyID: "f3", Scopes: []string{"workflows:read"}, WorkflowIDs: []string{"w1"}})
+	if !slices.Equal(named.Scopes, []string{"workflows:read"}) {
+		t.Errorf("a grant that names workflows was widened: %v", named.Scopes)
+	}
+}

@@ -56,11 +56,10 @@ func (s *mcpOAuthStore) DecideCLIDevice(ctx context.Context, verificationCode st
 	if approve {
 		status = "approved"
 	}
-	requested, err := s.CLIDeviceRequest(ctx, verificationCode)
-	if err != nil {
+	if _, err := s.CLIDeviceRequest(ctx, verificationCode); err != nil {
 		return err
 	}
-	scopes, err := json.Marshal(mcpOAuthScopesFor(user, requested))
+	scopes, err := json.Marshal(mcpOAuthPersonScopes(user))
 	if err != nil {
 		return err
 	}

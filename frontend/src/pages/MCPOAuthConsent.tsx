@@ -19,7 +19,7 @@ const scopeDescriptions: Record<string, string> = {
   'crews:write': 'Create Crews and edit the Crews you own (identity, skills, MCP connections, references, functions, schedules, files, dashboards). Run sandboxed shell commands, control the Crew browser, mutate its database and use its connected tools; execution is recorded in your owner-only audit history. With access to all your Crews, manage approved account-wide folder attachments',
   'knowledgebase:read': 'Read shared Brain folders your identity can access',
   'knowledgebase:write': 'Save shared knowledge within your folder grants',
-  'code:run': 'Send messages into your own Code projects and read the replies, so the agent runs commands in your project\'s sandbox. Includes editing dashboards in your own projects within your current role. Never granted by default',
+  'code:run': 'Send messages into your own Code projects and read the replies, so the agent runs commands in your project\'s sandbox. Includes editing dashboards in your own projects within your current role',
   'code:review': 'Review every Code workspace: cost, chats and files. Every view is recorded in the audit log',
   'users:manage': 'See everyone\'s token use on the shared accounts and set their daily and weekly limits, as an administrator. Every change is recorded in the audit log',
 }
@@ -80,7 +80,9 @@ export function MCPOAuthConsent() {
         <p className="mt-1 text-sm text-muted-foreground">{consent ? (vault ? `${consent.client_name} wants access to your permitted MCP tools.` : consent.scopes.includes('vault:manage') ? `${consent.client_name} wants platform access, including Vault administration.` : consent.scopes.some(scope => scope.startsWith('crews:')) ? `${consent.client_name} wants access to your workflows and Crews.` : `${consent.client_name} wants access to your workflows.`) : 'Loading connection request…'}</p>
       </div>
       {consent && <>
-        <ul className="space-y-2 text-sm text-foreground">{scopeGroups.filter(group => group.scopes.some(scope => consent.scopes.includes(scope))).map(group => <li key={group.summary} className="rounded-md bg-muted p-3">{group.summary}</li>)}</ul>
+        {vault
+          ? <ul className="space-y-2 text-sm text-foreground">{scopeGroups.filter(group => group.scopes.some(scope => consent.scopes.includes(scope))).map(group => <li key={group.summary} className="rounded-md bg-muted p-3">{group.summary}</li>)}</ul>
+          : <p className="rounded-md bg-muted p-3 text-sm text-foreground">This app can do what you can do on the website, and nothing more. Your role on each Crew, workflow or project still decides what it may change.</p>}
         <details className="text-xs text-muted-foreground">
           <summary className="cursor-pointer">Show details</summary>
           <ul className="mt-2 space-y-1">{consent.scopes.map(scope => <li key={scope}>{scopeDescriptions[scope] || scope}</li>)}</ul>

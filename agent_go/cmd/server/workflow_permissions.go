@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -519,4 +520,15 @@ func (api *StreamingAPI) handleDeleteWorkflowUserPermission(w http.ResponseWrite
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// personMayAuthorWorkspace is the website's rule for changing a workflow: the person owns it or may edit it, and the
+// account may edit at all. A sign-in that carries Builder consent for every person (owner 2026-10-16) is not by itself
+// the right to author; this per-item role is.
+func personMayAuthorWorkspace(ctx context.Context, claims *UserClaims, workspace string) bool {
+	if claims == nil || !userAccessForClaims(claims).CanEdit {
+		return false
+	}
+	level, manifest := workflowAccessForWorkspacePath(ctx, claims, workspace)
+	return manifest != nil && (level == WorkflowAccessOwner || level == WorkflowAccessWrite)
 }

@@ -185,7 +185,7 @@ func knowledgeProjectConnectionCheck(ctx context.Context, project *knowledgeProj
 	}
 	if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken != nil {
 		token := claims.AccessToken
-		allowed := token.BuilderAccess() && token.AllowsWorkflow(project.ID)
+		allowed := token.BuilderAccess() && token.AllowsWorkflow(project.ID) && (project.Kind != string(common.SessionWorkspaceWorkflow) || personMayAuthorProject(claims, project))
 		if project.Kind != string(common.SessionWorkspaceWorkflow) {
 			allowed = token.Allows("crews:read") && token.Allows("crews:write") && token.AllowsCrew(project.ID)
 		}
@@ -486,4 +486,23 @@ func knowledgebaseSetProjectAccess(project *knowledgeProject, args map[string]an
 		return nil, err
 	}
 	return intent.Result, nil
+}
+
+// personMayAuthorProject is the website's rule for a workflow project: the person owns it or may edit it (read from the
+// saved manifest the project was loaded from), and the account may edit at all. Builder consent on a connection is not
+// by itself the right to author (owner 2026-10-16).
+func personMayAuthorProject(claims *UserClaims, project *knowledgeProject) bool {
+	if claims == nil || project == nil || !userAccessForClaims(claims).CanEdit {
+		return false
+	}
+	raw, err := os.ReadFile(project.Path)
+	if err != nil {
+		return false
+	}
+	var manifest WorkflowManifest
+	if json.Unmarshal(raw, &manifest) != nil {
+		return false
+	}
+	role := workflowAccessForManifest(claims, &manifest)
+	return role == WorkflowAccessOwner || role == WorkflowAccessWrite
 }

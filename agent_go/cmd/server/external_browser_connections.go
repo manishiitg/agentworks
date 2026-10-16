@@ -56,6 +56,10 @@ func (api *StreamingAPI) externalBrowserConnectionsCall(w http.ResponseWriter, r
 			externalError(w, 404, "not_found", "Workflow unavailable.")
 			return
 		}
+		if c.AccessToken != nil && !personMayAuthorWorkspace(r.Context(), c, root) {
+			externalError(w, 403, "forbidden", "You can only change the browser of a workflow you own or may edit; choose its browser in the app.")
+			return
+		}
 		profile = "workflow"
 	case cid != "":
 		if t := c.AccessToken; t != nil && (!t.Allows("crews:write") || !t.AllowsCrew(cid)) {

@@ -287,7 +287,7 @@ func knowledgeMigration(ctx context.Context, service *knowledgebase.Service, p k
 	if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken != nil {
 		token := claims.AccessToken
 		allowed := token.Allows("files:read") && token.AllowsWorkflow(project.ID) && (token.Allows("workflows:read") || token.Allows("runs:execute"))
-		allowed = allowed && token.BuilderAccess()
+		allowed = allowed && token.BuilderAccess() && (project.Kind != "workflow" || personMayAuthorProject(claims, project))
 		if project.Kind != "workflow" {
 			allowed = token.Allows("crews:read") && token.AllowsCrew(project.ID)
 			allowed = allowed && token.Allows("crews:write")

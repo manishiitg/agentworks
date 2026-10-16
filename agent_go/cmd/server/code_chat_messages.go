@@ -275,7 +275,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				return jsonOut(map[string]interface{}{"name": firstNonEmptyTrimmed(identity.Name, project.Self.Name), "purpose": identity.Purpose})
 			}},
-		{"open_project_chat", "Open a new named tab (a new agent) in this Code, as the + in the app does, to give it part of the work. name is required and unique in this Code (an existing tab with that name is reused, not duplicated); task is an optional first message, sent like ask_project_chat. Up to "+strconv.Itoa(externalCrewMaxSideChats)+" side tabs; this Code's owner only.", map[string]interface{}{
+		{"open_project_chat", "Open a new named tab (a new agent) in this Code, as the + in the app does, to give it part of the work. name is required and unique in this Code (an existing tab with that name is reused, not duplicated); task is an optional first message, sent like ask_project_chat. Up to " + strconv.Itoa(externalCrewMaxSideChats) + " side tabs; this Code's owner only.", map[string]interface{}{
 			"type": "object", "required": []string{"name"}, "properties": map[string]interface{}{
 				"name": map[string]interface{}{"type": "string", "maxLength": 120, "description": "A short name for the tab, e.g. tests or review."},
 				"task": map[string]interface{}{"type": "string", "description": "Optional first task, self-contained."},

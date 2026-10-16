@@ -233,7 +233,7 @@ func (s *mcpOAuthStore) Decide(ctx context.Context, raw string, user *UserClaims
 	}
 	if approve {
 		// Validate what will really be granted: the scopes this server and account allow, not everything requested.
-		granted := mcpOAuthScopesFor(user, req.Scopes)
+		granted := mcpOAuthPersonScopes(user)
 		workflowIDs = nil // no workflow selection: a connection follows the account's permissions
 		if err := validateMCPOAuthBuilderSelection(ctx, user, granted, workflowIDs); err != nil {
 			return req, "", &mcpOAuthRefusal{err}
@@ -260,7 +260,7 @@ func (s *mcpOAuthStore) Decide(ctx context.Context, raw string, user *UserClaims
 		return req, "", sql.ErrNoRows
 	}
 	if approve {
-		scopes, _ := json.Marshal(mcpOAuthScopesFor(user, req.Scopes))
+		scopes, _ := json.Marshal(mcpOAuthPersonScopes(user))
 		bounds, _ := json.Marshal(workflowIDs)
 		_, err = tx.ExecContext(ctx, `INSERT INTO codes (hash,client_id,redirect_uri,resource,scopes,challenge,user_id,username,email,provider,expires_at,workflow_ids) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, mcpOAuthHash(code), req.ClientID, req.RedirectURI, req.Resource, string(scopes), req.Challenge, user.UserID, user.Username, user.Email, user.Provider, time.Now().Add(5*time.Minute).Unix(), string(bounds))
 		if err != nil {

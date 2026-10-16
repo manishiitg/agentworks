@@ -131,7 +131,8 @@ func TestMCPOAuthAuthorizationRefreshAndRevocation(t *testing.T) {
 	if err := json.Unmarshal(issued.Body.Bytes(), &pair); err != nil {
 		t.Fatal(err)
 	}
-	if pair.Access == "" || pair.Refresh == "" || pair.Scope != "workflows:read files:read dashboards:read" {
+	granted := strings.Fields(pair.Scope)
+	if pair.Access == "" || pair.Refresh == "" || !slices.Contains(granted, "workflows:read") || !slices.Contains(granted, "files:read") || !slices.Contains(granted, "dashboards:read") {
 		t.Fatal(pair)
 	}
 	if w := request("POST", mcpOAuthTokenPath, form.Encode(), "", "application/x-www-form-urlencoded"); w.Code != 400 {
