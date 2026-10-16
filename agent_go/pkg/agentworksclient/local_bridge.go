@@ -1341,7 +1341,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			in.Target = networkTarget(in.Target, via.Network)
 		}
 		extras := []*localSession{}
-		if in.Action == "peers" {
+		if in.Action == "peers" || in.Action == "ping_person" && in.Network == "" {
 			for _, x := range b.extrasOf(key) {
 				if !x.Offline && x.client != nil {
 					extras = append(extras, &localSession{Attachment: x.Attachment, client: x.client, Network: x.Network})
@@ -1353,6 +1353,19 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		var reply LocalBridgeReply
 		b.unlocked(func() {
 			reply = b.mailboxCall(callCtx, snap, in, out)
+			if in.Action == "ping_person" {
+				// A ping names a message id; the person does not say which network it went through. Try the
+				// others when this network does not know the message.
+				for _, x := range extras {
+					if reply.Error == "" || !strings.Contains(reply.Error, "No message you sent has that ID") {
+						break
+					}
+					if again := b.mailboxCall(callCtx, &localSession{Attachment: x.Attachment, client: x.client}, in, out); again.Error == "" || !strings.Contains(again.Error, "No message you sent has that ID") {
+						reply = again
+					}
+				}
+				extras = nil
+			}
 			for _, x := range extras {
 				raw, err := x.client.Call(callCtx, "messages", map[string]any{"action": "list_agents", "agent_name": x.Attachment.AgentName})
 				if err == nil {
