@@ -801,7 +801,7 @@ func bridgeCommand(o *options) *cobra.Command {
 	serve.Flags().StringVar(&piRootOverride, "pi-root", "", "Pi SDK configured root")
 	_ = serve.Flags().MarkHidden("pi-root")
 	cmd.AddCommand(serve)
-	var provider, session, messageID, delivery, message, submission, target, inbox, purpose, cursorAttachment string
+	var provider, session, messageID, delivery, message, submission, target, inbox, purpose, cursorAttachment, filePath, fileID, saveDir string
 	var cursor int
 	call := &cobra.Command{Use: "message ACTION", Args: cobra.ExactArgs(1), Short: "Messaging for this exact attached provider session", RunE: func(cmd *cobra.Command, args []string) error {
 		host, err := providerHostKey(provider)
@@ -841,8 +841,8 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 			session = os.Getenv("CODEX_THREAD_ID")
 		}
-		if args[0] != "ack" && args[0] != "reply" && args[0] != "peers" && args[0] != "send" && args[0] != "read" && args[0] != "purpose" && args[0] != "ping_person" {
-			return errors.New("choose ack, reply, peers, send, read, purpose or ping_person")
+		if args[0] != "ack" && args[0] != "reply" && args[0] != "peers" && args[0] != "send" && args[0] != "read" && args[0] != "purpose" && args[0] != "ping_person" && args[0] != "get_file" {
+			return errors.New("choose ack, reply, peers, send, read, purpose, ping_person or get_file")
 		}
 		root, err := agentworksclient.DefaultLocalBridgeRoot()
 		if err != nil {
@@ -854,7 +854,16 @@ func bridgeCommand(o *options) *cobra.Command {
 				return err
 			}
 		}
-		request := agentworksclient.LocalBridgeRequest{Action: args[0], Provider: provider, SessionID: session, HostKey: host, MessageID: messageID, Delivery: delivery, Message: message, SubmissionID: submission, Target: target, InboxID: inbox, Purpose: purpose, Cursor: cursor}
+		request := agentworksclient.LocalBridgeRequest{Action: args[0], Provider: provider, SessionID: session, HostKey: host, MessageID: messageID, Delivery: delivery, Message: message, SubmissionID: submission, Target: target, InboxID: inbox, Purpose: purpose, Cursor: cursor, FileID: fileID, SaveDir: saveDir}
+		if filePath != "" {
+			if args[0] != "send" && args[0] != "reply" {
+				return errors.New("--file works with send and reply")
+			}
+			var e error
+			if request.FileName, request.FileBase64, e = agentworksclient.ReadMessageFile(filePath); e != nil {
+				return e
+			}
+		}
 		if provider == "cursor" {
 			request.AttachmentID = cursorAttachment
 		}
@@ -875,8 +884,16 @@ func bridgeCommand(o *options) *cobra.Command {
 		if !out.Attached || provider == "cursor" && !cursorAttached(out, session, cursorAttachment) {
 			return errors.New("this exact provider session is not attached")
 		}
+		if args[0] == "get_file" && out.Error == "" {
+			if err := agentworksclient.SaveReceivedFile(&out, saveDir); err != nil {
+				return err
+			}
+		}
 		return o.output(out)
 	}}
+	call.Flags().StringVar(&filePath, "file", "", "send and reply: one file (up to 5 MB) to send with the message")
+	call.Flags().StringVar(&fileID, "file-id", "", "get_file: the file_id named in the message (needs --inbox)")
+	call.Flags().StringVar(&saveDir, "out", "", "get_file: folder to save into (default ~/AgentWorks/received)")
 	call.Flags().StringVar(&provider, "provider", "", "Attached provider")
 	call.Flags().StringVar(&session, "session", "", "Exact session; Codex uses its host thread environment")
 	call.Flags().StringVar(&cursorAttachment, "attachment-id", "", "Cursor original offer attachment fence")

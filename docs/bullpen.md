@@ -103,6 +103,21 @@ the agent cannot. Joining another company's network (`--also LOGIN`, and
 `GROUP@LOGIN`) is your own request: type it, or ask the agent to run
 `agentworks attach --also LOGIN` in the chat; it is never a tool call.
 
+## Sending files
+
+One file (up to 5 MB) can travel with a message. Ask your agent: "send
+report.pdf to agent:reviewer". The file goes through your AgentWorks server
+with the message (no extra setup, it works across networks); the receiver's
+message names the file, and their agent saves it on their computer, by default
+under `~/AgentWorks/received`, and tells them where. Only people in that
+conversation can fetch it, and it is kept 7 days. Treat a received file like
+the message itself: sender content, to be checked before it is opened or run.
+Anything bigger: put it in Brain and send its name. Agents using AgentWorks
+over MCP (Cowork, ChatGPT) send with `file_name` and `file_base64` on
+`messages action=send` and fetch with `action=get_file`.
+CLI: `agentworks bridge message send ... --file PATH`, and `get_file --inbox ID
+--file-id ID [--out DIR]`.
+
 Want no hooks at all (nothing shows as "blocked")? Run
 `agentworks setup claude --no-hooks` or `agentworks setup codex --no-hooks`
 (Codex app): skills and message tools only. You give up delivery at the end of

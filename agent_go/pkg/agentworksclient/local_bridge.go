@@ -56,6 +56,12 @@ type LocalBridgeRequest struct {
 	Target           string `json:"target,omitempty"`
 	InboxID          string `json:"inbox_id,omitempty"`
 	Cursor           int    `json:"after,omitempty"`
+	// FileName and FileBase64 send a file with a message (send, reply); FileID asks get_file for one.
+	FileName   string `json:"file_name,omitempty"`
+	FileBase64 string `json:"file_base64,omitempty"`
+	FileID     string `json:"file_id,omitempty"`
+	// SaveDir is used only by the caller that saves a received file; it never reaches the bridge.
+	SaveDir string `json:"-"`
 	// Also adds this chat to another network (the saved login in ConfigPath) next to
 	// its own; Network picks one of those extra networks (detach --from, read).
 	Also    bool   `json:"also,omitempty"`
@@ -335,7 +341,7 @@ func CallLocalBridge(ctx context.Context, root string, request LocalBridgeReques
 		return out, err
 	}
 	defer resp.Body.Close()
-	if err = json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&out); err != nil {
+	if err = json.NewDecoder(io.LimitReader(resp.Body, 12<<20)).Decode(&out); err != nil {
 		return out, err
 	}
 	if out.Error != "" {
@@ -486,7 +492,7 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 			http.NotFound(w, r)
 			return
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+		r.Body = http.MaxBytesReader(w, r.Body, 8<<20) // a sent file rides in the request
 		var in LocalBridgeRequest
 		out := LocalBridgeReply{}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -1319,7 +1325,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		out.Attachment = s.Attachment
 		out.Result = raw
 		return out
-	case "peers", "send", "read", "reply_inbox", "ping_person":
+	case "peers", "send", "read", "reply_inbox", "ping_person", "get_file":
 		// The plugin exposes only messaging for its attached identity. A full
 		// AgentWorks tool connection must be installed separately by the person.
 		// The server calls run without the bridge lock (a busy server can take many seconds);
@@ -1568,6 +1574,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 					return
 				}
 				args["action"], args["inbox_id"], args["message"], args["submission_id"] = "send", m.InboxID, in.Message, in.SubmissionID
+				if in.FileBase64 != "" {
+					args["file_name"], args["file_base64"] = in.FileName, in.FileBase64
+				}
 			}
 			var err error
 			raw, err = snap.client.Call(callCtx, "messages", args)
@@ -1740,6 +1749,11 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 		args["action"], args["message_id"] = "ping_person", in.MessageID
 	case "send":
 		args["action"], args["target"], args["message"], args["submission_id"] = "send", in.Target, in.Message, in.SubmissionID
+		if in.FileBase64 != "" {
+			args["file_name"], args["file_base64"] = in.FileName, in.FileBase64
+		}
+	case "get_file":
+		args["action"], args["inbox_id"], args["file_id"] = "get_file", in.InboxID, in.FileID
 	case "reply_inbox":
 		history, e := s.client.Call(callCtx, "messages", map[string]any{"action": "read", "agent_name": s.Attachment.AgentName, "inbox_id": in.InboxID, "after": 0, "limit": 20})
 		if e != nil {
@@ -1758,6 +1772,9 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 		// Explicit mailbox recovery survives local metadata compaction.
 		// The server still verifies this caller's inbox participation.
 		args["action"], args["inbox_id"], args["message"], args["submission_id"] = "send", in.InboxID, in.Message, in.SubmissionID
+		if in.FileBase64 != "" {
+			args["file_name"], args["file_base64"] = in.FileName, in.FileBase64
+		}
 	case "read":
 		args["action"], args["after"], args["limit"] = "read", in.Cursor, 20
 		if in.InboxID != "" {

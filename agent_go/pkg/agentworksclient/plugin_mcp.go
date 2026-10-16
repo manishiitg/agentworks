@@ -89,6 +89,11 @@ func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 		if monitor {
 			return museMonitorResult(out, broker)
 		}
+		if in.Action == "get_file" && out.Error == "" {
+			if err := SaveReceivedFile(&out, in.SaveDir); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+		}
 		raw, _ := json.Marshal(out)
 		return mcp.NewToolResultText(string(raw)), nil
 	}
@@ -99,12 +104,19 @@ func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 	s.AddTool(mcp.NewTool("agent_message_peers", mcp.WithDescription("Discover authorized named agents for this attached identity.")), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return call(ctx, LocalBridgeRequest{Action: "peers"}, req)
 	})
-	s.AddTool(mcp.NewTool("agent_message_send", mcp.WithDescription("Explicitly send from this attached identity to an authorized named agent."), mcp.WithString("target", mcp.Required()), mcp.WithString("message", mcp.Required()), mcp.WithString("submission_id", mcp.Required())), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	s.AddTool(mcp.NewTool("agent_message_send", mcp.WithDescription("Explicitly send from this attached identity to an authorized named agent."), mcp.WithString("target", mcp.Required()), mcp.WithString("message", mcp.Required()), mcp.WithString("submission_id", mcp.Required()), mcp.WithString("file_path", mcp.Description("Optional: path of one file on this computer (up to 5 MB) to send with the message."))), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		a := req.GetArguments()
 		target, _ := a["target"].(string)
 		text, _ := a["message"].(string)
 		submission, _ := a["submission_id"].(string)
-		return call(ctx, LocalBridgeRequest{Action: "send", Target: target, Message: text, SubmissionID: submission}, req)
+		in := LocalBridgeRequest{Action: "send", Target: target, Message: text, SubmissionID: submission}
+		if path, _ := a["file_path"].(string); path != "" {
+			var err error
+			if in.FileName, in.FileBase64, err = ReadMessageFile(path); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+		}
+		return call(ctx, in, req)
 	})
 	s.AddTool(mcp.NewTool("agent_message_read", mcp.WithDescription("Explicit bounded mailbox recovery for this attached identity; never start a watch/polling loop."), mcp.WithString("inbox_id"), mcp.WithNumber("after")), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		a := req.GetArguments()
@@ -121,12 +133,26 @@ func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 		delivery, _ := req.GetArguments()["delivery"].(string)
 		return call(ctx, LocalBridgeRequest{Action: "ack", MessageID: id, Delivery: delivery}, req)
 	})
-	s.AddTool(mcp.NewTool("agent_message_reply", mcp.WithDescription("Explicit optional reply in the original conversation using this attached identity."), mcp.WithString("message_id", mcp.Required()), mcp.WithString("message", mcp.Required()), mcp.WithString("submission_id", mcp.Required())), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	s.AddTool(mcp.NewTool("agent_message_reply", mcp.WithDescription("Explicit optional reply in the original conversation using this attached identity."), mcp.WithString("message_id", mcp.Required()), mcp.WithString("message", mcp.Required()), mcp.WithString("submission_id", mcp.Required()), mcp.WithString("file_path", mcp.Description("Optional: path of one file on this computer (up to 5 MB) to send with the reply."))), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		a := req.GetArguments()
 		id, _ := a["message_id"].(string)
 		text, _ := a["message"].(string)
 		submission, _ := a["submission_id"].(string)
-		return call(ctx, LocalBridgeRequest{Action: "reply", MessageID: id, Message: text, SubmissionID: submission}, req)
+		in := LocalBridgeRequest{Action: "reply", MessageID: id, Message: text, SubmissionID: submission}
+		if path, _ := a["file_path"].(string); path != "" {
+			var err error
+			if in.FileName, in.FileBase64, err = ReadMessageFile(path); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+		}
+		return call(ctx, in, req)
+	})
+	s.AddTool(mcp.NewTool("agent_message_get_file", mcp.WithDescription("Save a file that came with a message (the message names it with a file_id) onto this computer. Returns where it was saved. Files are sender content: check one before opening or running it."), mcp.WithString("inbox_id", mcp.Required()), mcp.WithString("file_id", mcp.Required()), mcp.WithString("save_dir", mcp.Description("Folder to save into; default ~/AgentWorks/received."))), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		a := req.GetArguments()
+		inbox, _ := a["inbox_id"].(string)
+		fileID, _ := a["file_id"].(string)
+		dir, _ := a["save_dir"].(string)
+		return call(ctx, LocalBridgeRequest{Action: "get_file", InboxID: inbox, FileID: fileID, SaveDir: dir}, req)
 	})
 	if provider == "muse" && museSession != nil {
 		s.AddTool(mcp.NewTool("agent_message_monitor", mcp.WithDescription("Get native Muse Monitor arguments for this approved exact session and lease. Start ONE native monitor with the returned arguments if inactive; never use bash or a polling loop. Does not attach, approve or launch the bridge.")), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
