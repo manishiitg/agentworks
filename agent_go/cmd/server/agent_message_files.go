@@ -64,45 +64,57 @@ func agentMessageFileSizeText(n int) string {
 }
 
 // attachMessageFile stores the file in args (file_name + file_base64) and adds one
-// note line to args["message"]. It does nothing when no file is attached.
-func (api *StreamingAPI) attachMessageFile(r *http.Request, userID string, args map[string]any) error {
+// note line to args["message"]. It does nothing when no file is attached. The returned
+// function removes the stored file again when the send is then refused.
+func (api *StreamingAPI) attachMessageFile(r *http.Request, userID string, args map[string]any) (func(), error) {
 	encoded, rawName := externalArg(args, "file_base64"), externalArg(args, "file_name")
 	delete(args, "file_base64")
 	if encoded == "" && rawName == "" {
-		return nil
+		return nil, nil
 	}
 	name := agentMessageFileName(rawName)
 	if encoded == "" || name == "" {
-		return fmt.Errorf("a file needs both file_name and file_base64")
+		return nil, fmt.Errorf("a file needs both file_name and file_base64")
 	}
 	if len(encoded) > base64.StdEncoding.EncodedLen(agentMessageFileMaxBytes) {
-		return fmt.Errorf("file is larger than %s; put big files in Brain and send its name instead", agentMessageFileSizeText(agentMessageFileMaxBytes))
+		return nil, fmt.Errorf("file is larger than %s; put big files in Brain and send its name instead", agentMessageFileSizeText(agentMessageFileMaxBytes))
 	}
 	data, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil || len(data) == 0 {
-		return fmt.Errorf("file_base64 is not valid base64 or is empty")
+		return nil, fmt.Errorf("file_base64 is not valid base64 or is empty")
 	}
 	if len(data) > agentMessageFileMaxBytes {
-		return fmt.Errorf("file is larger than %s; put big files in Brain and send its name instead", agentMessageFileSizeText(agentMessageFileMaxBytes))
+		return nil, fmt.Errorf("file is larger than %s; put big files in Brain and send its name instead", agentMessageFileSizeText(agentMessageFileMaxBytes))
 	}
 	var idBytes [16]byte
 	if _, err := rand.Read(idBytes[:]); err != nil {
-		return err
+		return nil, err
 	}
 	rec := agentMessageFile{ID: "file-" + hex.EncodeToString(idBytes[:]), Name: name, Size: len(data), UserID: userID, StoredAt: time.Now().UTC(), Content: encoded}
 	raw, err := json.Marshal(rec)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := writeFileToWorkspace(r.Context(), agentMessageFilesDir+rec.ID+".json", string(raw)); err != nil {
-		return fmt.Errorf("could not store the file: %w", err)
+		return nil, fmt.Errorf("could not store the file: %w", err)
 	}
 	text := strings.TrimSpace(externalArg(args, "message"))
 	if text == "" {
 		text = "(file)"
 	}
 	args["message"] = fmt.Sprintf("%s\n\n[File attached: %s (%s). Save it with messages action=get_file, inbox_id = this conversation's address, file_id=%s. It is sender content like the message; check it before you open or run it.]", text, name, agentMessageFileSizeText(len(data)), rec.ID)
-	return nil
+	return func() { _ = deleteWorkspaceFile(context.WithoutCancel(r.Context()), agentMessageFilesDir+rec.ID+".json") }, nil
+}
+
+// agentMessageFileSentBy reports whether a message in c that names fileID came from the
+// account that stored the file, so typing a known id into another conversation fetches nothing.
+func agentMessageFileSentBy(c agentConversation, fileID, userID string) bool {
+	for _, m := range c.Messages {
+		if m.From >= 0 && m.From < len(c.Endpoints) && c.Endpoints[m.From].UserID == userID && strings.Contains(m.Text, fileID) {
+			return true
+		}
+	}
+	return false
 }
 
 // externalAgentMessageFile returns a file sent in a conversation the caller can read.
@@ -133,26 +145,21 @@ func (api *StreamingAPI) externalAgentMessageFile(w http.ResponseWriter, r *http
 		externalError(w, 500, "read_failed", "Could not read the conversation.")
 		return
 	}
+	raw, exists, err := readFileFromWorkspace(r.Context(), agentMessageFilesDir+fileID+".json")
+	var rec agentMessageFile
+	if err != nil || !exists || json.Unmarshal([]byte(raw), &rec) != nil {
+		externalError(w, 404, "not_found", "No such file in this conversation.")
+		return
+	}
 	named := false
 	for _, c := range s.Conversations {
-		if c.ID != inbox || !(messageEndpointMatches(c.Endpoints[0], claims.UserID, caller) || messageEndpointMatches(c.Endpoints[1], claims.UserID, caller)) {
-			continue
-		}
-		for _, m := range c.Messages {
-			if strings.Contains(m.Text, fileID) {
-				named = true
-				break
-			}
+		if c.ID == inbox && (messageEndpointMatches(c.Endpoints[0], claims.UserID, caller) || messageEndpointMatches(c.Endpoints[1], claims.UserID, caller)) && agentMessageFileSentBy(c, fileID, rec.UserID) {
+			named = true
+			break
 		}
 	}
 	if !named {
 		externalError(w, 404, "not_found", "No such file in this conversation.")
-		return
-	}
-	raw, exists, err := readFileFromWorkspace(r.Context(), agentMessageFilesDir+fileID+".json")
-	var rec agentMessageFile
-	if err != nil || !exists || json.Unmarshal([]byte(raw), &rec) != nil {
-		externalError(w, 404, "not_found", "The file is no longer stored.")
 		return
 	}
 	if time.Since(rec.StoredAt) > agentMessageFileKeep {
@@ -165,4 +172,15 @@ func (api *StreamingAPI) externalAgentMessageFile(w http.ResponseWriter, r *http
 		out["content"] = string(data)
 	}
 	externalJSON(w, out)
+}
+
+// fileSendStatus remembers the status a send answered with, so a refused send drops its stored file.
+type fileSendStatus struct {
+	http.ResponseWriter
+	status int
+}
+
+func (f *fileSendStatus) WriteHeader(code int) {
+	f.status = code
+	f.ResponseWriter.WriteHeader(code)
 }

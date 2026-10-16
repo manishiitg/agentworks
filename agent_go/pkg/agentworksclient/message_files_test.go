@@ -30,3 +30,27 @@ func TestSaveReceivedFileStaysInFolderAndKeepsExisting(t *testing.T) {
 		}
 	}
 }
+
+// Sign-in folders cannot be sent, whatever a peer message asks for.
+func TestReadMessageFileRefusesSignInFolders(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	for _, dir := range []string{filepath.Join(home, ".ssh"), filepath.Join(home, ".config", "agentworks")} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		f := filepath.Join(dir, "secret")
+		if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := ReadMessageFile(f); err == nil {
+			t.Errorf("%s was readable for sending", f)
+		}
+	}
+	ok := filepath.Join(home, "notes.txt")
+	_ = os.WriteFile(ok, []byte("hello"), 0o600)
+	if _, _, err := ReadMessageFile(ok); err != nil {
+		t.Errorf("an ordinary file was refused: %v", err)
+	}
+}

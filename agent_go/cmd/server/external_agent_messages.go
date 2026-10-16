@@ -276,9 +276,19 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 	case "get_file":
 		api.externalAgentMessageFile(w, r, args)
 	case "send":
-		if err := api.attachMessageFile(r, claims.UserID, args); err != nil {
+		dropFile, err := api.attachMessageFile(r, claims.UserID, args)
+		if err != nil {
 			externalError(w, 400, "message_refused", err.Error())
 			return
+		}
+		if dropFile != nil {
+			sw := &fileSendStatus{ResponseWriter: w, status: http.StatusOK}
+			w = sw
+			defer func() {
+				if sw.status >= 400 {
+					dropFile()
+				}
+			}()
 		}
 		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(externalArg(args, "target"))), "group:") {
 			api.externalSendGroup(w, r, args)

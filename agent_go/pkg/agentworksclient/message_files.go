@@ -15,6 +15,9 @@ const MessageFileMaxBytes = 5 << 20
 
 // ReadMessageFile reads the file a message should carry and returns its name and base64 bytes.
 func ReadMessageFile(path string) (name, encoded string, err error) {
+	if credentialFilePath(path) {
+		return "", "", errors.New("this file holds sign-in credentials; it cannot be sent")
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return "", "", fmt.Errorf("cannot read file: %w", err)
@@ -98,4 +101,33 @@ func SaveReceivedFile(out *LocalBridgeReply, dir string) error {
 		out.Result = summary
 		return nil
 	}
+}
+
+// credentialFilePath is the one real check on what a message may carry off this computer:
+// AgentWorks' own sign-in folders and ~/.ssh. Which other file to send is the person's call.
+func credentialFilePath(path string) bool {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	if real, e := filepath.EvalSymlinks(abs); e == nil {
+		abs = real
+	}
+	home, _ := os.UserHomeDir()
+	blocked := []string{filepath.Join(home, ".ssh"), filepath.Join(home, ".config", "agentworks")}
+	if cfg, e := os.UserConfigDir(); e == nil {
+		blocked = append(blocked, filepath.Join(cfg, "agentworks"))
+	}
+	for _, dir := range blocked {
+		if home == "" && strings.HasPrefix(dir, string(filepath.Separator)+".") {
+			continue
+		}
+		if real, e := filepath.EvalSymlinks(dir); e == nil {
+			dir = real
+		}
+		if abs == dir || strings.HasPrefix(abs, dir+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }

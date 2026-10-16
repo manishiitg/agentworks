@@ -27,3 +27,20 @@ func TestAgentMessageFileNameAndIDAreSafe(t *testing.T) {
 		t.Error("a generated id must match")
 	}
 }
+
+// Only a message from the account that stored a file can name it; quoting a known file id
+// in another account's own conversation fetches nothing.
+func TestAgentMessageFileIsBoundToItsSender(t *testing.T) {
+	id := "file-0123456789abcdef0123456789abcdef"
+	c := agentConversation{Endpoints: [2]agentMessageEndpoint{{UserID: "alice"}, {UserID: "bob"}}, Messages: []agentMessage{{From: 0, Text: "see " + id}}}
+	if !agentMessageFileSentBy(c, id, "alice") {
+		t.Error("the sender's own message must name the file")
+	}
+	if agentMessageFileSentBy(c, id, "bob") {
+		t.Error("a message from someone else must not count")
+	}
+	c.Messages = []agentMessage{{From: 1, Text: "I quote " + id}}
+	if agentMessageFileSentBy(c, id, "alice") {
+		t.Error("a quote of the id by another account must not count")
+	}
+}
