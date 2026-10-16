@@ -173,7 +173,7 @@ func TestMigrateWorkspaceDatabasesSkipsUnrelatedDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Scanned != 2 || report.Migrated != 1 || report.Skipped != 1 {
+	if report.Scanned != 1 || report.Migrated != 1 || report.Skipped != 0 { // Chats/ (Crew, Code) is not scanned at all
 		t.Fatalf("unexpected batch result: %+v", report)
 	}
 	db := openMigrationFixture(t, otherPath)

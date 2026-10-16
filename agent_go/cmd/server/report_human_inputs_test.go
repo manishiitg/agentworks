@@ -188,6 +188,28 @@ func TestOpenReportHumanInputDBUsesWALMode(t *testing.T) {
 	}
 }
 
+// A Code project's decisions database showed Pulse's tables (pulse_issues, pulse_reviews, ...) although Pulse
+// only reviews Goals: opening the decisions store created them. A Goal still gets them. (pulse_recommendations
+// belongs to the decisions themselves and stays.)
+func TestDecisionsStoreGivesPulseTablesToGoalsOnly(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	for path, want := range map[string]bool{"_users/u1/Chats/Code/projects/demo-1a2b": false, "Workflow/goal-check": true} {
+		_, db, err := openReportHumanInputDB(ctx, path, true)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		var n int
+		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name LIKE 'pulse%' AND name<>'pulse_recommendations'").Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		_ = db.Close()
+		if (n > 0) != want {
+			t.Fatalf("%s: %d Pulse tables, want present=%v", path, n, want)
+		}
+	}
+}
+
 func TestReportHumanInputPersistsStructuredApplyContract(t *testing.T) {
 	ctx := context.Background()
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())

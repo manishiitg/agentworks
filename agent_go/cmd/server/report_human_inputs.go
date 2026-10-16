@@ -176,8 +176,9 @@ func openReportHumanInputDB(ctx context.Context, workspacePath string, create bo
 	// A Crew is addressed several ways ("Chats/Work/projects/<id>" for its
 	// owner, "_users/<owner>/...", "Crew/<id>"); its decisions live once, at
 	// its physical root, so the owner and its other users meet the same store.
+	crew := false
 	if ref, ok := resolveCrewPath(ctx, GetUserIDFromContext(ctx), workspacePath); ok {
-		workspacePath = ref.Root
+		workspacePath, crew = ref.Root, true
 	}
 	normalized, dbPath, err := reportHumanInputDBPath(workspacePath)
 	if err != nil {
@@ -214,6 +215,11 @@ func openReportHumanInputDB(ctx context.Context, workspacePath string, create bo
 	if err := ensureReportHumanInputSchema(ctx, db); err != nil {
 		_ = db.Close()
 		return "", nil, err
+	}
+	// Pulse reviews Goals only. A Crew or Code project keeps its decisions here but gets no Pulse tables
+	// (they showed up as unexplained tables in the project's own database).
+	if crew || isProjectWorkspacePath(normalized) || strings.Contains("/"+strings.Trim(normalized, "/")+"/", "/Chats/Code/projects/") {
+		return normalized, db, nil
 	}
 	if _, err := pulsestore.Ensure(ctx, db, dbPath); err != nil {
 		_ = db.Close()

@@ -51,6 +51,10 @@ func MigrateWorkspaceDatabases(ctx context.Context, root string) (BatchResult, e
 			if first == "var" || first == "Users" {
 				return filepath.SkipDir
 			}
+			// Pulse reviews Goals only: Crew and the products under Chats/ (Code, Crew chats) never get its tables.
+			if first == "Crew" || name == "Chats" {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if entry.Name() != "db.sqlite" || filepath.Base(filepath.Dir(path)) != "db" {
