@@ -90,9 +90,24 @@ func setupCommand(o *options) *cobra.Command {
 		{"pi", "Pi", "the AgentWorks Pi package for your user in Pi", "Reload Pi, then type /agentworks attach in the chat.", "pi list (find the AgentWorks entry), then pi remove <that source>"},
 	} {
 		app := app
-		var noHooks bool
+		var noHooks, withHooks bool
 		sub := &cobra.Command{Use: app.provider, Args: cobra.NoArgs, Short: "Set up " + app.name + " for AgentWorks (every project)", Long: "Installs the AgentWorks plugin for " + app.name + " with its own plugin commands, for every project. Running it again is safe. It does not trust hooks, sign in or connect a chat; you do those next.", RunE: func(cmd *cobra.Command, _ []string) error {
 			o.setupAll = true
+			// Owner 2026-10-16: no hooks is the default for Claude Code and the Codex app ("hooks are not smooth").
+			// --hooks installs the full plugin (typed /agentworks shortcuts, delivery at the end of a turn,
+			// reconnect after a restart); the Codex command line needs it.
+			if withHooks && noHooks {
+				return errors.New("choose --hooks or --no-hooks, not both")
+			}
+			keptHooks := false
+			if app.provider == "claude" || app.provider == "codex" {
+				// Running setup again (or an update that does) never removes hooks someone already has: with no flag, the
+				// full plugin stays when it is installed; --no-hooks is how to switch them off.
+				if !withHooks && !noHooks && hooksPluginInstalled(app.provider) {
+					withHooks, keptHooks = true, true
+				}
+				noHooks = !withHooks
+			}
 			if noHooks && (app.provider == "claude" || app.provider == "codex") {
 				installed, undo, err := installToolsPlugin(cmd.Context(), o, app.provider)
 				if err != nil {
@@ -104,6 +119,9 @@ func setupCommand(o *options) *cobra.Command {
 				}
 				fmt.Fprintln(o.stdout, "Next: restart "+app.name+", then say \"connect this chat to AgentWorks\" in a chat. Nothing is typed and nothing shows as blocked.")
 				fmt.Fprintln(o.stdout, noHooksGivesUp)
+				if app.provider == "codex" {
+					fmt.Fprintln(o.stdout, "Using the Codex command line? Run agentworks setup codex --hooks.")
+				}
 				fmt.Fprintln(o.stdout, "To undo: "+undo)
 				return nil
 			}
@@ -114,6 +132,9 @@ func setupCommand(o *options) *cobra.Command {
 				return fmt.Errorf("%s setup was not completed: %w", app.name, err)
 			}
 			fmt.Fprintln(o.stdout, app.name+" is set up for AgentWorks: installed "+app.what+". This applies to every project.")
+			if keptHooks {
+				fmt.Fprintln(o.stdout, "Kept your hooks: the full AgentWorks plugin was already installed here. To switch them off, run agentworks setup "+app.provider+" --no-hooks.")
+			}
 			if line := addToolsServer(cmd.Context(), o, app.provider); line != "" {
 				fmt.Fprintln(o.stdout, line)
 			}
@@ -130,7 +151,8 @@ func setupCommand(o *options) *cobra.Command {
 			return nil
 		}}
 		if app.provider == "claude" || app.provider == "codex" {
-			sub.Flags().BoolVar(&noHooks, "no-hooks", false, "Install the tools only, with no hooks (nothing shows as blocked); you ask the agent to connect")
+			sub.Flags().BoolVar(&noHooks, "no-hooks", false, "Install the tools only, with no hooks (the default); you ask the agent to connect")
+			sub.Flags().BoolVar(&withHooks, "hooks", false, "Install the full plugin with hooks (typed /agentworks shortcuts, automatic reconnect); the Codex command line needs this")
 		}
 		cmd.AddCommand(sub)
 	}
