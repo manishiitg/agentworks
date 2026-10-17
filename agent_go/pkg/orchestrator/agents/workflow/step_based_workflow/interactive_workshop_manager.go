@@ -4316,7 +4316,8 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 			// Show the saved sender and enabled choices so Builder can configure it.
 			if gmailSvc := services.GetGmailService(); gmailSvc != nil {
-				connections := gmailSvc.ListConnections()
+				senderUserID, _ := ctx.Value(common.UserIDKey).(string)
+				connections := gmailSvc.ConnectionsUsableFrom(services.GmailUseScope{Workspace: iwm.controller.GetWorkspacePath(), UserID: senderUserID})
 				if notificationGmailConnectionID == "" {
 					sb.WriteString("- Gmail sender: not set — inherits the account default connection\n")
 				} else {

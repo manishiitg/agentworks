@@ -93,6 +93,19 @@ func TestWorkshopSenderSaveReachesSameTurnChild(t *testing.T) {
 				if err != nil || !strings.Contains(result, "added to this workflow") {
 					t.Fatalf("wrong-item selection accepted: %s / %v", result, err)
 				}
+				choices, err := draft.tools["get_workflow_config"].Execute(ctx, map[string]interface{}{})
+				if err != nil || strings.Contains(choices, "outside-item") {
+					t.Fatalf("ineligible sender metadata advertised: %s / %v", choices, err)
+				}
+				available := ""
+				for _, line := range strings.Split(choices, "\n") {
+					if strings.Contains(line, "Available Gmail senders") {
+						available = line
+					}
+				}
+				if !strings.Contains(available, "selected-mail") {
+					t.Fatalf("eligible sender missing from choices: %s", choices)
+				}
 			}
 			release, err := controller.switchWorkshopGroupSession("default")
 			if err != nil {
