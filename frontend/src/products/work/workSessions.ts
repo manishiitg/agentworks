@@ -96,7 +96,7 @@ export async function createWorkSession(title: string, description: string, icon
     root: product.projectsRoot,
     product: product.profileId,
     title,
-    // A Code has a name only: no purpose, role or icon.
+    // Optional identity details can be added after name-only creation.
     description: product.hasIdentity ? description : '',
     sessionPrefix: product.sessionPrefix,
     slugFallback: product.slugFallback,

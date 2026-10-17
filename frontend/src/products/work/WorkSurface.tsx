@@ -242,9 +242,9 @@ function useWorkSessions(product: ProjectProductConfig) {
   }, [product, allowedProducts, setSelectedId, updateSessions])
 
   const applyTemplateUpdate = useCallback((projectId: string, updated: WorkSession) => {
-    updateSessions(current => current.map(item => item.id === projectId ? updated : item))
+    updateSessions(current => current.map(item => item.product === updated.product && item.id === projectId ? updated : item))
     for (const tab of Object.values(useChatStore.getState().chatTabs)) {
-      if (!belongsToWorkProject(tab, projectId)) continue
+      if (tab.metadata?.agentProfileId !== updated.product || !belongsToWorkProject(tab, projectId)) continue
       useChatStore.getState().setTabConfig(tab.tabId, { selectedSkills: updated.selectedSkills })
       useChatStore.getState().setTabMetadata(tab.tabId, { agentProfileRuntimeDirty: true })
     }
@@ -252,7 +252,7 @@ function useWorkSessions(product: ProjectProductConfig) {
   }, [updateSessions])
 
   const installTemplate = useCallback(async (projectId: string, templateId: CrewTemplateId) => {
-    const session = sessions.find(item => item.id === projectId)
+    const session = sessions.find(item => item.product === product.profileId && item.id === projectId)
     if (!session) throw new Error(`This ${product.itemNoun} is no longer available.`)
     const updated = await installWorkSessionTemplate(session, templateId)
     applyTemplateUpdate(projectId, updated)
@@ -260,15 +260,15 @@ function useWorkSessions(product: ProjectProductConfig) {
   }, [product, sessions, applyTemplateUpdate])
 
   const removeTemplate = useCallback(async (projectId: string, templateId: CrewTemplateId) => {
-    const session = sessions.find(item => item.id === projectId)
+    const session = sessions.find(item => item.product === product.profileId && item.id === projectId)
     if (!session) throw new Error(`This ${product.itemNoun} is no longer available.`)
     const updated = await removeWorkSessionTemplate(session, templateId)
     applyTemplateUpdate(projectId, updated)
     return updated
   }, [product, sessions, applyTemplateUpdate])
 
-  const remove = useCallback(async (projectId: string) => {
-    const project = sessions.find(item => item.id === projectId)
+  const remove = useCallback(async (projectId: string, origin: WorkSession['product'] = product.profileId) => {
+    const project = sessions.find(item => item.product === origin && item.id === projectId)
     if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
     // Shared rows fail in deleteWorkSession below; skip the session stop for
     // the reader-side stub, which has no session of its own to stop.
@@ -283,7 +283,7 @@ function useWorkSessions(product: ProjectProductConfig) {
     await deleteWorkSession(project)
 
     const chatStore = useChatStore.getState()
-    const projectTabs = Object.values(chatStore.chatTabs).filter(tab => belongsToWorkProject(tab, projectId))
+    const projectTabs = Object.values(chatStore.chatTabs).filter(tab => tab.metadata?.agentProfileId === origin && belongsToWorkProject(tab, projectId))
     for (const tab of projectTabs) await useChatStore.getState().closeTab(tab.tabId, false)
 
     try {
@@ -291,16 +291,16 @@ function useWorkSessions(product: ProjectProductConfig) {
       window.localStorage.removeItem(`${WORK_SPLIT_PREFERENCE_KEY}:${projectId}`)
     } catch { /* UI preferences only. */ }
 
-    writeWorkspaceViewPreference(product.profileId, projectId, null)
-    const remaining = sessions.filter(item => item.id !== projectId)
+    writeWorkspaceViewPreference(origin, projectId, null)
+    const remaining = sessions.filter(item => item.product !== origin || item.id !== projectId)
     updateSessions(remaining)
-    if (selectedProjectIdFor(product) === projectId) {
-      replaceProductSelection(() => setSelectedId(remaining[0]?.id ?? null))
+    if (origin === product.profileId && selectedProjectIdFor(product) === projectId) {
+      replaceProductSelection(() => setSelectedId(remaining.find(item => item.product === product.profileId)?.id ?? null))
     }
   }, [product, sessions, setSelectedId, updateSessions])
 
   const updateLLMConfig = useCallback(async (projectId: string, selection: WorkRuntimeSelection) => {
-    const project = sessions.find(item => item.id === projectId)
+    const project = sessions.find(item => item.product === product.profileId && item.id === projectId)
     if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
     if (isWorkSessionRun(project)) throw new Error(`Only the ${product.noun} owner can change this.`)
     // The account travels with the provider: without it "Use account" saved only the provider,
@@ -312,41 +312,41 @@ function useWorkSessions(product: ProjectProductConfig) {
       reasoningEffort: selection.reasoningEffort,
     })
     const updated = await updateProductProjectLLMConfig(project, llmConfig, `Update ${product.noun} project model ${project.title}`, 'workflow.json')
-    updateSessions(current => current.map(item => item.id === projectId ? updated : item))
+    updateSessions(current => current.map(item => item.product === updated.product && item.id === projectId ? updated : item))
     return updated
   }, [product, sessions, updateSessions])
 
   const updateNativeAgentTools = useCallback(async (projectId: string, enabled: boolean) => {
-    const project = sessions.find(item => item.id === projectId)
+    const project = sessions.find(item => item.product === product.profileId && item.id === projectId)
     if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
     if (isWorkSessionRun(project)) throw new Error(`Only the ${product.noun} owner can change this.`)
     const updated = await updateProductProjectNativeAgentTools(project, enabled, `${enabled ? 'Enable' : 'Disable'} native agent tools for ${product.noun} project ${project.title}`, 'workflow.json')
-    updateSessions(current => current.map(item => item.id === projectId ? updated : item))
+    updateSessions(current => current.map(item => item.product === updated.product && item.id === projectId ? updated : item))
     return updated
   }, [product, sessions, updateSessions])
 
   const updateSelections = useCallback(async (projectId: string, patch: { selectedServers?: string[]; selectedSkills?: string[]; selectedSecrets?: string[]; selectedGlobalSecrets?: string[]; workflowContextPaths?: string[] }) => {
-    const project = sessions.find(item => item.id === projectId)
+    const project = sessions.find(item => item.product === product.profileId && item.id === projectId)
     if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
     if (isWorkSessionRun(project)) throw new Error(`Only the ${product.noun} owner can change this.`)
     const updated = await updateProductProjectSelections(project, patch, `Update ${product.noun} project integrations ${project.title}`, 'workflow.json')
-    updateSessions(current => current.map(item => item.id === projectId ? updated : item))
+    updateSessions(current => current.map(item => item.product === updated.product && item.id === projectId ? updated : item))
     return updated
   }, [product, sessions, updateSessions])
 
   const updateIdentity = useCallback(async (projectId: string, patch: ProductIdentityPatch) => {
-    const project = sessions.find(item => item.id === projectId)
+    const project = sessions.find(item => item.product === product.profileId && item.id === projectId)
     if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
     const updated = await updateWorkSessionIdentity(project, patch)
-    updateSessions(current => current.map(item => item.id === projectId ? updated : item))
+    updateSessions(current => current.map(item => item.product === updated.product && item.id === projectId ? updated : item))
     return updated
   }, [product, sessions, updateSessions])
 
   const updateLocalFiles = useCallback(async (projectId: string, localFiles: { device_id: string; resource_id: string } | undefined) => {
-    const project = sessions.find(item => item.id === projectId)
+    const project = sessions.find(item => item.product === product.profileId && item.id === projectId)
     if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
     const updated = await updateWorkSessionLocalFiles(project, localFiles)
-    updateSessions(current => current.map(item => item.id === projectId ? updated : item))
+    updateSessions(current => current.map(item => item.product === updated.product && item.id === projectId ? updated : item))
     return updated
   }, [product, sessions, updateSessions])
 
@@ -1398,7 +1398,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     if (!deleteCandidate || deletingProjectId) return
     setDeletingProjectId(deleteCandidate.id)
     try {
-      await remove(deleteCandidate.id)
+      await remove(deleteCandidate.id, deleteCandidate.product)
       setDeleteCandidate(null)
       useChatStore.getState().addToast(`Deleted ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}”.`, 'success')
     } catch (cause) {
