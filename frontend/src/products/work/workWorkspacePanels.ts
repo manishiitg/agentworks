@@ -38,7 +38,7 @@ export function workWorkspacePanels({
     ? WORK_PANELS.ops.filter((item) => item.id === 'files')
     : code
       ? [
-          ...WORK_PANELS.ops.filter((item) => item.id === 'files' || item.id === 'shell'),
+          ...WORK_PANELS.ops.filter((item) => item.id === 'files' || item.id === 'shell' || item.id === 'database'),
           ...pick(['browser']),
         ]
       : WORK_PANELS.ops
@@ -50,7 +50,7 @@ export function workWorkspacePanels({
           : !enabledPanels || enabledPanels.has(item.id) || item.id === 'suggestions'
       )
       .filter((item) => isWorkWorkspaceViewEnabled(item.id, undefined, localCodeSession))
-      .filter((item) => item.id !== 'suggestions' || (!code && !localCodeSession)),
+      .filter((item) => item.id !== 'suggestions' || !localCodeSession),
     ops: ops
       .filter((item) => !readOnly && (!enabledPanels || item.id === 'shell' || enabledPanels.has(item.id)))
       .filter((item) => item.id !== 'shell' || (showShell && !cowork))

@@ -1496,8 +1496,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
           ) : (
             <ProductWorkspaceShell
               splitRef={splitLayoutRef}
-              compactContext={!localCodeSession && !selected.shared && workspaceView==='context'}
-              toolbarWhenPanelClosed={!localCodeSession && !selected.shared}
+              compactContext={!localCodeSession && !isWorkSessionRun(selected) && workspaceView==='context'}
+              toolbarWhenPanelClosed={!localCodeSession && !isWorkSessionRun(selected)}
               chatOpen={chatOpen} panelOpen={panelOpen} splitRatio={shownSplitRatio}
               mobilePreview={reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
               onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => { if (!(isShared && sharedCrewHasDashboard === false)) setPanelOpen(true) }}

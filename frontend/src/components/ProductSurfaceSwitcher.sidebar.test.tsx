@@ -25,18 +25,18 @@ afterAll(() => vi.unstubAllGlobals())
 const render = () => act(async () => root.render(<ProductTopBar sidebar><ProductSurfaceSwitcher /></ProductTopBar>))
 describe('collapsible product navigation', () => {
   it.each(['workspace', 'service', 'standard'])('uses the same permitted product grid in a %s picker', async placement => {
-    auth.allowed = ['work', 'code']
+    auth.allowed = ['agentworks', 'work', 'code']
     await act(async () => root.render(placement === 'standard' ? <ProductSurfaceSwitcher /> : <ProductTopBar sidebar><ProductSurfaceSwitcher menuOnly={placement === 'workspace'} /></ProductTopBar>))
     if (placement !== 'workspace') await act(async () => host.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!.click())
     const menu = host.querySelector('[data-product-switch-menu]')!
-    expect([...menu.querySelectorAll('[data-product-option]')].map(button => button.getAttribute('aria-label'))).toEqual(['Crew', 'Code'])
+    expect([...menu.querySelectorAll('[data-product-option]')].map(button => button.getAttribute('aria-label'))).toEqual(['Goals', 'Crew'])
     expect(menu.textContent).not.toContain('Vault')
+    const goals = menu.querySelector<HTMLButtonElement>('[aria-label="Goals"]')!
     const crew = menu.querySelector<HTMLButtonElement>('[aria-label="Crew"]')!
-    const code = menu.querySelector<HTMLButtonElement>('[aria-label="Code"]')!
-    crew.focus()
-    await act(async () => crew.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true })))
-    expect(document.activeElement).toBe(code)
-    await act(async () => code.click())
+    goals.focus()
+    await act(async () => goals.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true })))
+    expect(document.activeElement).toBe(crew)
+    await act(async () => crew.click())
     expect(useProductSurfaceStore.getState().productSurface).toBe('code')
   })
   it('preserves deployment title and favicon when entering Vault', async () => {

@@ -49,13 +49,13 @@ async function renderMenu() {
 }
 const choices = () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')]
 
-it.each([['Goals', 'agentworks'], ['Crew', 'work'], ['Code', 'code'], ['Flows', 'relays']] as [string, ProductCreateSurface][])
+it.each([['Goals', 'agentworks'], ['Crew', 'code'], ['Flows', 'relays']] as [string, ProductCreateSurface][])
   ('opens the existing %s creation flow from the common entry', async (label, surface) => {
     const { host, open } = await renderMenu()
     expect(host.textContent).toBe('New project')
     expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
     await open()
-    expect(choices().map(item => item.getAttribute('aria-label'))).toEqual(['Goals', 'Flows', 'Crew', 'Code'])
+    expect(choices().map(item => item.getAttribute('aria-label'))).toEqual(['Goals', 'Flows', 'Crew'])
     await act(async () => choices().find(item => item.getAttribute('aria-label') === label)!.click())
     expect(openProduct).toHaveBeenCalledWith(surface)
     expect(useCommandDialogStore.getState().productCreateSurface).toBe(surface)
@@ -76,7 +76,7 @@ it('uses enabled products and per-product create permissions, and hides the entr
 it('rechecks a stale menu selection before routing or requesting creation', async () => {
   const { open } = await renderMenu()
   await open()
-  const code = choices().find(item => item.getAttribute('aria-label') === 'Code')!
+  const code = choices().find(item => item.getAttribute('aria-label') === 'Crew')!
   await act(async () => {
     useAuthStore.setState({ user: { id: 'alice', can_create: false } as never })
     code.click()
@@ -85,11 +85,11 @@ it('rechecks a stale menu selection before routing or requesting creation', asyn
   expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
 })
 
-it('follows a consolidated product catalog without retaining the removed Crew choice', async () => {
+it('shows one Crew choice when only the Code origin is enabled', async () => {
   window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'relays', 'code'] }
   const { open } = await renderMenu()
   await open()
-  expect(choices().map(item => item.getAttribute('aria-label'))).toEqual(['Goals', 'Flows', 'Code'])
+  expect(choices().map(item => item.getAttribute('aria-label'))).toEqual(['Goals', 'Flows', 'Crew'])
 })
 
 it('closes the product chooser when the account changes', async () => {

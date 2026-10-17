@@ -57,7 +57,7 @@ export function WorkContextPanel({
     onOpen('mcp')
   } }) : []
   const showSchedules = allowed('schedules')
-  const showSuggestions = profileId === 'work' && allowed('suggestions')
+  const showSuggestions = allowed('suggestions')
   const [snapshot, setSnapshot] = useState<{
     path: string
     profile: string
@@ -217,7 +217,7 @@ export function WorkContextPanel({
           </Row></Shortcut>
         </Section>
       )}
-      {profileId === 'work' && allowed('suggestions') && (
+      {showSuggestions && (
         <Section title="Reviews">
           <Shortcut id="suggestions" label="Suggestions" icon={Hand}><Row
             icon={Hand}
