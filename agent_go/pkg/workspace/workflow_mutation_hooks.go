@@ -6,6 +6,9 @@ import "context"
 // A policy must return a release function held until the write completes.
 // Standalone workspace clients retain their existing behavior.
 var FileReadReceipt func(context.Context, string, string)
+
+// FileReadPath selects server-owned source after the original logical path passed its guard.
+var FileReadPath func(context.Context, string) string
 var BeforeFileUpdate func(context.Context, string, string) (func(), error)
 var AdditionalPathPolicy func(context.Context, string, bool) error
 

@@ -5,7 +5,7 @@ import { Button } from '../../components/ui/Button'
 import { useChatStore } from '../../stores/useChatStore'
 import { localFileError } from './codeLocalFiles'
 
-type Receipt = { operation_id: string; state: string; workspace_id?: string; agent_id?: string; conversation_key?: string; error?: string; message?: string; tab_message?: string }
+type Receipt = { operation_id: string; state: string; workspace_id?: string; agent_id?: string; conversation_key?: string; error?: string; message?: string; tab_message?: string; excluded?: string[] }
 type Preview = { account: { provider: string; model: string; use: string }; share: { mode: string; people?: string[] }; continuity: string; message?: string }
 type Target = { workspace_id: string; name: string; mode: string }
 
@@ -81,6 +81,7 @@ export function CrewPublish({ sessionId, disabled }: { sessionId: string; disabl
     </>}
     {working && <p role="status" className="text-sm">{receipt.state === 'capturing' ? 'Saving files and this chat…' : 'Preparing your online Crew…'}</p>}
     {receipt?.state === 'live' && <p role="status" className="text-sm">{receipt.message} {receipt.tab_message}</p>}
+    {!!receipt?.excluded?.length && <details className="text-xs text-muted-foreground"><summary>{receipt.excluded.length} files or folders stayed on your computer</summary><ul className="mt-2 max-h-40 overflow-auto">{receipt.excluded.map(file => <li key={file}>{file}</li>)}</ul></details>}
     {receipt?.state === 'failed' && <><p role="alert" className="text-sm text-destructive">{receipt.error} Your earlier version is still live.</p><Button size="sm" disabled={busy} onClick={() => void publish()}>Retry this publication</Button></>}
     {receipt?.state === 'live' && <Button size="sm" variant="outline" onClick={() => { setDestination(receipt.workspace_id || ''); setLinkedAgent(receipt.agent_id || ''); setReceipt(undefined); setPreview(undefined); submission.current = '' }}>Publish latest files to this agent</Button>}
     {receipt && !working && <Button size="sm" variant="ghost" onClick={() => { setReceipt(undefined); setPreview(undefined); setDestination(''); setLinkedAgent(''); submission.current = '' }}>Choose a new destination</Button>}

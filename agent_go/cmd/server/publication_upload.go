@@ -464,7 +464,7 @@ func (api *StreamingAPI) preparePublication(upload *publicationUpload, claims Us
 
 	// Imported functions join the Crew's existing entry points without replacing
 	// another agent's function or the destination's authored functions.
-	if record.AgentID != "" {
+	{
 		var incoming crewFunctionsDoc
 		raw, e := os.ReadFile(filepath.Join(stage, "source", crewFunctionsFileName))
 		if e == nil {
@@ -480,7 +480,7 @@ func (api *StreamingAPI) preparePublication(upload *publicationUpload, claims Us
 		}
 		for _, fn := range incoming.Functions {
 			for _, prior := range existing {
-				if prior.Name == fn.Name && (prior.publication == nil || prior.publication.AgentID != record.AgentID) {
+				if prior.Name == fn.Name && (prior.publication == nil && record.AgentID != "" || prior.publication != nil && prior.publication.AgentID != record.AgentID) {
 					finishError(fmt.Errorf("Function %q already exists in this Crew. Rename the incoming function and publish again; the existing Crew was kept.", fn.Name))
 					return
 				}
@@ -571,7 +571,12 @@ func validatePublishedFunctions(file string) error {
 	if json.Unmarshal(raw, &doc) != nil {
 		return fmt.Errorf("functions.json must contain a supported functions document")
 	}
+	seen := map[string]bool{}
 	for _, fn := range doc.Functions {
+		if seen[fn.Name] {
+			return fmt.Errorf("Function %q is declared twice. Give each function a distinct name, then publish again.", fn.Name)
+		}
+		seen[fn.Name] = true
 		if err := (crewFunctionSpec{Name: fn.Name, Description: fn.Description, Instructions: fn.Instructions, InputSchema: fn.InputSchema, ResultSchema: fn.ResultSchema}).validate(); err != nil {
 			return err
 		}

@@ -138,6 +138,6 @@ func ownPublicationSource(ctx context.Context, o *options, root string) (publica
 	return publication.Source{History: publication.History{Provider: own.provider, SessionID: own.session, SourceCWD: want, CLIVersion: version, CapturedBytes: int64(len(raw))}, Raw: raw}, nil
 }
 
-func publicationIgnored(ctx context.Context, root string) map[string]bool {
+func publicationIgnored(ctx context.Context, root string) (map[string]bool, error) {
 	return publication.GitIgnored(ctx, root)
 }

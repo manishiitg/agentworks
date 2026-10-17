@@ -85,22 +85,32 @@ func runtimeSeedPath(p string) bool {
 }
 
 // Excluded is deliberately about paths, not secret-value scanning or rewriting chat.
-func Excluded(p string) bool {
+func Excluded(p string) bool          { return excluded(p, false) }
+func ExcludedDirectory(p string) bool { return excluded(p, true) }
+func excluded(p string, directory bool) bool {
 	if _, err := CleanPath(p); err != nil {
 		return true
 	}
 	parts := strings.Split(strings.ToLower(p), "/")
 	for i, part := range parts {
 		switch path.Ext(part) {
-		case ".pem", ".key", ".p12", ".pfx", ".kdbx", ".tfstate":
+		case ".pem", ".key", ".p12", ".pfx", ".kdbx", ".tfstate", ".env", ".ppk", ".jks", ".keystore", ".gpg", ".asc", ".tfvars":
 			return true
 		}
 		switch part {
-		case "node_modules", "__pycache__", "venv", "secrets", "keys", "builder", "chat_history", "browser-profile", "browser-data", "credentials.json", "token.json", "tokens.json":
+		case "credentials", "auth.json", "kubeconfig", ".htpasswd", ".netrc", ".pgpass", "node_modules", "__pycache__", "venv", "secrets", "keys", "builder", "chat_history", "browser-profile", "browser-data", "credentials.json", "token.json", "tokens.json":
 			return true
 		}
-		key := strings.TrimSuffix(part, ".pub")
-		if key == "id_rsa" || key == "id_ed25519" || key == "id_ecdsa" || strings.HasPrefix(part, "service-account") && strings.HasSuffix(part, ".json") {
+		// Value/config filenames are excluded. Keep source modules such as
+		// secrets.go and credential_helpers.ts: names alone are not secret values.
+		if i == len(parts)-1 && !directory && (strings.Contains(part, "secret") || strings.Contains(part, "credential")) {
+			switch path.Ext(part) {
+			case "", ".json", ".yaml", ".yml", ".env", ".ini", ".conf", ".config", ".properties", ".txt", ".toml", ".cfg":
+				return true
+			}
+		}
+		key := part
+		if key == "id_rsa" || key == "id_dsa" || key == "id_ed25519" || key == "id_ecdsa" || strings.HasPrefix(part, "service-account") && strings.HasSuffix(part, ".json") {
 			return true
 		}
 		if !strings.HasPrefix(part, ".") {
@@ -231,7 +241,7 @@ func build(ctx context.Context, root, state string, source Source, allow func(st
 		if p == "." {
 			return nil
 		}
-		if Excluded(p) || allow != nil && !allow(p) || entry.Type()&os.ModeSymlink != 0 {
+		if (entry.IsDir() && ExcludedDirectory(p) || !entry.IsDir() && Excluded(p)) || allow != nil && !allow(p) || entry.Type()&os.ModeSymlink != 0 {
 			manifest.Excluded = append(manifest.Excluded, p)
 			if entry.IsDir() {
 				return fs.SkipDir
@@ -260,6 +270,16 @@ func build(ctx context.Context, root, state string, source Source, allow func(st
 		if err != nil || !os.SameFile(info, opened) {
 			_ = in.Close()
 			return fmt.Errorf("file %q changed while publishing; retry", p)
+		}
+		linked, linkErr := publicationMultipleLinks(in, info)
+		if linkErr != nil {
+			in.Close()
+			return fmt.Errorf("Cannot verify file links for %q: %w", p, linkErr)
+		}
+		if linked {
+			in.Close()
+			manifest.Excluded = append(manifest.Excluded, p)
+			return nil
 		}
 		dest := filepath.Join(stage, "files", filepath.FromSlash(p))
 		if err := os.MkdirAll(filepath.Dir(dest), 0700); err != nil {

@@ -179,6 +179,28 @@ func TestPublishedAgentKeepsDestinationEditableAndPinsItsSource(t *testing.T) {
 	if shared.Code != 200 || !strings.Contains(shared.Body.String(), "SHARED_AGENT_SOURCE") {
 		t.Fatalf("shared source selector=%d %s", shared.Code, shared.Body.String())
 	}
+	// An imported agent still reads shared Crew resources when they were
+	// absent from its own import, including a Crew whose Main was published.
+	main := *p
+	main.AgentID, main.Revision = "", "main-revision"
+	main.SourcePaths = []string{"memory/team.md"}
+	if err := savePublishedProject(&main); err != nil {
+		t.Fatal(err)
+	}
+	memory := filepath.Join(docs, filepath.FromSlash(main.sourceRoot()), "memory/team.md")
+	if err := os.MkdirAll(filepath.Dir(memory), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(memory, []byte("SHARED_CREW_MEMORY"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	args["path"] = "memory/team.md"
+	sharedMemory := httptest.NewRecorder()
+	api.externalCrewCall(sharedMemory, request, "read_crew_file", args)
+	if sharedMemory.Code != 200 || !strings.Contains(sharedMemory.Body.String(), "SHARED_CREW_MEMORY") {
+		t.Fatalf("shared Main resource=%d %s", sharedMemory.Code, sharedMemory.Body.String())
+	}
+	args["path"] = "code/run.py"
 	if err := registry.SetRunPeople("code", "app-c0de0001", nil); err != nil {
 		t.Fatal(err)
 	}

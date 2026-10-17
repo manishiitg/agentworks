@@ -726,6 +726,7 @@ func init() {
 		return ctx
 	}
 	workspacepkg.FileReadReceipt = rememberTeamPlanRead
+	workspacepkg.FileReadPath = publishedReadPath
 	workspacepkg.FileWriteReceipt = teamPlanSaved
 	workspacepkg.BeforeFileUpdate = teamManagedWrite
 	workspacepkg.AdditionalPathPolicy = func(ctx context.Context, path string, write bool) error {

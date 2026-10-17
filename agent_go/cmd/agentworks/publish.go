@@ -106,7 +106,10 @@ func runPublish(ctx context.Context, o *options, name, resume, crew, agentID str
 			name = filepath.Base(root)
 		}
 		guard := wf.FolderGuard{ReadPaths: []string{"."}, BlockedPaths: grant.Blocked}
-		ignored := publicationIgnored(ctx, root)
+		ignored, e := publicationIgnored(ctx, root)
+		if e != nil {
+			return e
+		}
 		archive, _, e := publication.Build(ctx, root, state, source, func(p string) bool { return guard.Allows(p, false) && !ignored[p] })
 		if e != nil {
 			return e

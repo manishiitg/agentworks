@@ -65,8 +65,10 @@ func TestExecuteShellCommandUsesRealLandlockLauncher(t *testing.T) {
 		filepath.Join(readDir, "escape"),
 	)
 	request := models.ExecuteShellRequest{
-		Command:          command,
-		WorkingDirectory: "write",
+		Command: command,
+		// A published script runs from immutable source while saving results
+		// elsewhere. Selecting that cwd must not make it writable.
+		WorkingDirectory: "read",
 		FolderGuard: &models.FolderGuardConfig{
 			Enabled:      true,
 			ReadPaths:    []string{"read", "write"},

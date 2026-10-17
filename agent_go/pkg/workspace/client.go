@@ -738,6 +738,9 @@ func (c *Client) DownloadFile(ctx context.Context, filePath string) ([]byte, err
 	if err := c.ValidatePathWithContext(ctx, filePath, false); err != nil {
 		return nil, err
 	}
+	if FileReadPath != nil {
+		filePath = FileReadPath(ctx, filePath)
+	}
 	encodedPath := url.PathEscape(filePath)
 	return c.request(ctx, "GET", "/api/documents/"+encodedPath+"/raw", nil)
 }

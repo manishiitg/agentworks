@@ -183,7 +183,7 @@ func publishedWriteRefusal(ctx context.Context, raw string) string {
 			return "To change this agent's source, publish again from your computer."
 		}
 	}
-	if record.AgentID != "" && (raw == record.runtimeRoot() || strings.HasPrefix(raw, record.runtimeRoot()+"/")) || record.AgentID == "" && publishedRuntimeRelative(ref.Rest) {
+	if record.AgentID != "" && (ref.Path() == record.runtimeRoot() || strings.HasPrefix(ref.Path(), record.runtimeRoot()+"/")) || record.AgentID == "" && publishedRuntimeRelative(ref.Rest) {
 		return ""
 	}
 	// Platform-owned metadata and history keep their existing role-checked services;
@@ -211,6 +211,29 @@ func publishedReadPath(ctx context.Context, raw string) string {
 	record, err := readPublishedProject(ctx, ref.Root)
 	if err != nil || record == nil {
 		return raw
+	}
+	if record.AgentID != "" {
+		if ref.Path() == record.runtimeRoot() || strings.HasPrefix(ref.Path(), record.runtimeRoot()+"/") {
+			return raw
+		}
+		// Shared Crew resources remain readable. Imported copies belong to
+		// this source; an absent imported resource resolves through Main.
+		sharedResource := false
+		for _, folder := range []string{"skills", "knowledgebase", "memory", "learnings"} {
+			if ref.Rest == folder || strings.HasPrefix(ref.Rest, folder+"/") {
+				sharedResource = true
+			}
+		}
+		own := false
+		for _, file := range record.SourcePaths {
+			if file == ref.Rest || strings.HasPrefix(file, ref.Rest+"/") {
+				own = true
+				break
+			}
+		}
+		if sharedResource && !own {
+			return publishedReadPath(contextWithoutPublication(ctx), raw)
+		}
 	}
 	sourcePath := !publishedRuntimeRelative(ref.Rest)
 	for _, p := range record.SourcePaths {

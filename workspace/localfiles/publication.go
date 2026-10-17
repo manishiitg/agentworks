@@ -105,7 +105,10 @@ func (e *Executor) publicationSnapshot(ctx context.Context, g Grant, r Request) 
 		if r.PublicationInfoOnly {
 			return &PublicationSnapshot{ProjectID: projectID}, nil
 		}
-		ignored := publication.GitIgnored(ctx, g.Root)
+		ignored, err := publication.GitIgnored(ctx, g.Root)
+		if err != nil {
+			return nil, err
+		}
 		archive, _, err := publication.CaptureFiles(ctx, g.Root, state, projectID, func(p string) bool { return g.Guard.Allows(p, false) && !ignored[p] })
 		if err != nil {
 			return nil, err

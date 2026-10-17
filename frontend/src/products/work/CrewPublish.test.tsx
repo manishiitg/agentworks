@@ -18,7 +18,7 @@ it('discloses the destination and account before starting an import of the chose
     : args.action === 'publish_status' ? { state: 'idle' }
     : args.action === 'publish_preview'
       ? { account: { provider: 'company-runtime', model: 'company-model', use: 'Company quota applies' }, share: { mode: 'people' }, continuity: 'Continues from a private summary', message: 'Keeps Main and Share' }
-      : { operation_id: 'receipt', state: 'live', workspace_id: 'work:existing', agent_id: 'stable-agent', message: 'Files and chat saved' } }))
+      : { operation_id: 'receipt', state: 'live', workspace_id: 'work:existing', agent_id: 'stable-agent', message: 'Files and chat saved', excluded: ['.env', 'linked.txt'] } }))
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host)
   await act(async () => root?.render(<CrewPublish sessionId="local-chat" />))
   const click = async (text: string) => act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === text)!.click())
@@ -31,5 +31,7 @@ it('discloses the destination and account before starting an import of the chose
   await click('Publish now')
   expect(post).toHaveBeenCalledWith('/api/workspaces', expect.objectContaining({ action: 'publish', source_workspace_id: 'code:local-project', conversation_key: 'local-project:chat:chosen', workspace_id: 'work:existing', name: 'Invoices', submission_id: expect.any(String) }))
   expect(host.textContent).toContain('Files and chat saved')
+  expect(host.textContent).toContain('2 files or folders stayed on your computer')
+  expect(host.textContent).toContain('linked.txt')
   expect(host.querySelector('a')?.getAttribute('href')).toContain('/projects/existing')
 })

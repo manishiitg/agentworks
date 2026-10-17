@@ -271,8 +271,16 @@ func (api *StreamingAPI) handleReportRun(w http.ResponseWriter, r *http.Request)
 		}
 		defer code.Close()
 	}
-	codeRoot := filepath.Join(docsRoot, workspacePath, "code")
-	absScript := filepath.Join(docsRoot, workspacePath, script)
+	if publication, e := readPublishedProject(r.Context(), workspacePath); e != nil {
+		http.Error(w, "Publication source unavailable; try again.", 503)
+		return
+	} else if publication != nil {
+		r = r.WithContext(context.WithValue(r.Context(), publicationExecutionKey{}, publication))
+	}
+	sourceCode := publishedReadPath(r.Context(), filepath.ToSlash(filepath.Join(workspacePath, "code")))
+	sourceScript := publishedReadPath(r.Context(), filepath.ToSlash(filepath.Join(workspacePath, script)))
+	codeRoot := filepath.Join(docsRoot, filepath.FromSlash(sourceCode))
+	absScript := filepath.Join(docsRoot, filepath.FromSlash(sourceScript))
 	// A symlink must not lead a report outside its own code/ folder.
 	if resolved, err := filepath.EvalSymlinks(absScript); err != nil {
 		writeReportRunResult(w, http.StatusNotFound, map[string]any{"success": false, "error": fmt.Sprintf("script %s not found", script)})
@@ -346,7 +354,8 @@ func (api *StreamingAPI) runReportScript(ctx context.Context, userID, workspaceP
 	if dbErr != nil {
 		delete(env, "DB_PATH")
 	}
-	env["WORKFLOW_CODE_ROOT"] = filepath.Join(docsRoot, workspacePath, "code")
+	codePath := publishedReadPath(ctx, filepath.ToSlash(filepath.Join(workspacePath, "code")))
+	env["WORKFLOW_CODE_ROOT"] = filepath.Join(docsRoot, filepath.FromSlash(codePath))
 	deps := filepath.Join(docsRoot, workspacePath, ".sandbox-cache", "python-packages")
 	env["WORKFLOW_CODE_DEPS"] = deps
 	env["PYTHONPATH"] = env["WORKFLOW_CODE_ROOT"] + string(filepath.ListSeparator) + deps
@@ -373,7 +382,7 @@ func (api *StreamingAPI) runReportScript(ctx context.Context, userID, workspaceP
 	}
 	out, execErr := client.ExecuteShellCommand(runCtx, workspace.ExecuteShellCommandParams{
 		Command:          command,
-		WorkingDirectory: filepath.ToSlash(filepath.Join(workspacePath, "code")),
+		WorkingDirectory: codePath,
 		Timeout:          &timeoutSeconds,
 		ExtraEnv:         env,
 		// The script's tool calls act as this run's bridge session.
@@ -381,7 +390,7 @@ func (api *StreamingAPI) runReportScript(ctx context.Context, userID, workspaceP
 		DBReadSnapshot:  dbErr == nil,
 		FolderGuard: &workspace.FolderGuardConfig{
 			Enabled:    true,
-			ReadPaths:  []string{workspacePath},
+			ReadPaths:  []string{workspacePath, filepath.ToSlash(filepath.Dir(codePath))},
 			WritePaths: []string{cacheRel},
 		},
 	})

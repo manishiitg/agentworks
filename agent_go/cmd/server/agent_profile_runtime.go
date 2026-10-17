@@ -696,6 +696,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 
 	if publication != nil {
 		for _, name := range []string{projectinstructions.FileName, "AGENTS.md", "CLAUDE.md"} {
+			if publication.AgentID == "" && name == projectinstructions.FileName {
+				continue
+			}
 			if content, found, err := readFileFromWorkspace(ctx, publication.sourceRoot()+"/"+name); err == nil && found && strings.TrimSpace(content) != "" {
 				projectInstructions += "\n\n## Published agent instructions (" + name + ")\n" + projectinstructions.Section(content)
 			}

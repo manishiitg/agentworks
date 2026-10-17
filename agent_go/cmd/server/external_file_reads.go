@@ -80,6 +80,17 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 				if pub.AgentID != "" && strings.HasPrefix(actual, pub.runtimeRoot()+"/") {
 					rootPath = pub.runtimeRoot()
 				}
+				if pub.AgentID != "" && actual != rootPath+"/"+p {
+					// A resource absent from this agent's import may come from
+					// Main's published source, under the same admitted Crew.
+					main, e := readPublishedProject(contextWithoutPublication(ctx), req.Root)
+					if e != nil {
+						return wf.Result{}, e
+					}
+					if main != nil && actual == main.sourceRoot()+"/"+p {
+						rootPath, sourcePublication = main.sourceRoot(), main
+					}
+				}
 			}
 		}
 	}

@@ -42,7 +42,11 @@ func (c *Client) ReadWorkspaceFile(ctx context.Context, params ReadWorkspaceFile
 			return ReadFileResult{Filepath: params.Filepath, Content: raw}, nil
 		}
 	}
-	path := fmt.Sprintf("/api/documents/%s", params.Filepath)
+	physical := params.Filepath
+	if FileReadPath != nil {
+		physical = FileReadPath(ctx, physical)
+	}
+	path := fmt.Sprintf("/api/documents/%s", physical)
 	respBody, err := c.request(ctx, "GET", path, nil)
 	if err != nil {
 		var status *httpStatusError
