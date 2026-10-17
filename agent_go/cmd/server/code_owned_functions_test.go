@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -102,6 +103,20 @@ func TestCodePublishedFunctionsKeepLegacyPeersRemoved(t *testing.T) {
 	}
 	if _, err := resolveFunctionTarget(otherCtx, other, triggerLinkCaller{}, "code:target"); err != nil {
 		t.Fatalf("co-owner's published target refused: %v", err)
+	}
+
+	// The receiving Code can report progress for another person's published
+	// call; a sibling project cannot impersonate that target turn.
+	call := &crewFunctionCall{ID: "fn-published-other", UserID: "other", CallerKind: triggerCallerUser, CallerID: "other", TargetKind: triggerCallerCrew, TargetID: "target", TargetProfileID: "code", TargetPath: target, SessionID: "published-target", IsolatedExecution: true, Status: "running", CreatedAt: time.Now(), done: make(chan struct{})}
+	crewFunctionCalls.Lock()
+	crewFunctionCalls.m[call.ID] = call
+	crewFunctionCalls.Unlock()
+	targetTools := env.functionTools(t, target, "published-target", nil)
+	if _, err := targetTools["report_function_progress"].exec(ctx, map[string]interface{}{"call_id": call.ID, "message": "Working"}); err != nil {
+		t.Fatalf("published target could not report: %v", err)
+	}
+	if _, err := callers["code"]["report_function_progress"].exec(ctx, map[string]interface{}{"call_id": call.ID, "message": "Wrong project"}); err == nil {
+		t.Fatal("sibling Code impersonated a published target")
 	}
 
 }

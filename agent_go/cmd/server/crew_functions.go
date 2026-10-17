@@ -1628,6 +1628,14 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 				return nil, caller, err
 			}
 		}
+		// A published Code function is served by its own isolated target turn,
+		// including calls made by a different person. Legacy chat peer calls
+		// keep their original participant checks below.
+		if call.IsolatedExecution && call.TargetChat == "" && call.TargetProfileID == codeproduct.ProfileID &&
+			crewFunctionKey(call.TargetKind, call.TargetProfileID, call.TargetID) == crewFunctionKey(caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID) &&
+			canonicalCrewWorkspaceRoot(call.TargetPath) == canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(userID, caller.Path)) && crewProjectOwnedByCaller(userID, call.TargetPath) {
+			return call, caller, nil
+		}
 		if call.TargetProfileID == codeproduct.ProfileID && call.UserID != userID {
 			return nil, caller, fmt.Errorf("function call %s belongs to another caller", id)
 		}
