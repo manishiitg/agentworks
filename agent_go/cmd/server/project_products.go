@@ -22,12 +22,15 @@ type projectProduct struct {
 	// FallbackName is shown when the profile is not registered; the name in
 	// the product's product.yaml wins otherwise.
 	FallbackName string
+	// RunAudience is the origin's current support for non-owner Run access.
+	// Storage IDs remain distinct; behavior callers use this capability.
+	RunAudience bool
 }
 
 const crewProfileID = "work"
 
 var projectProducts = []projectProduct{
-	{ProfileID: crewProfileID, ProjectsRoot: workspaceref.CrewProjectsRoot, FallbackName: "Crew"},
+	{ProfileID: crewProfileID, ProjectsRoot: workspaceref.CrewProjectsRoot, FallbackName: "Crew", RunAudience: true},
 	{ProfileID: codeproduct.ProfileID, ProjectsRoot: codeproduct.ProjectsRoot, FallbackName: "Code"},
 }
 
@@ -96,4 +99,11 @@ func (api *StreamingAPI) projectProductName(userID, workspacePath string) string
 		}
 	}
 	return product.FallbackName
+}
+
+// projectSupportsRunAudience is separate from the legacy product identifier:
+// paths, manifests and native session IDs must not be renamed to change access.
+func projectSupportsRunAudience(profileID string) bool {
+	product, ok := projectProductForProfile(profileID)
+	return ok && product.RunAudience
 }

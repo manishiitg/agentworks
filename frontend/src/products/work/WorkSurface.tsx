@@ -977,13 +977,13 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const selectedLocalFiles = selected?.localFiles
   const selectedIsShared = !!selected?.shared
   useEffect(() => {
-    if (product.profileId !== 'code' || !localFilesProjectId) return
+    if (!product.supportsLocalFiles || !localFilesProjectId) return
     // Someone else's workspace never shows its owner's computer: not theirs to use, and the server refuses it.
     setProjectLocalFiles(localFilesProjectId, selectedIsShared ? null : selectedLocalFiles ?? null)
   }, [product.profileId, localFilesProjectId, selectedLocalFiles, selectedIsShared])
   const selectedMode = selected ? productMode(selected) : undefined
   useEffect(() => {
-    if (product.profileId === 'code' && localFilesProjectId && selectedMode) setProjectMode(localFilesProjectId, selectedMode)
+    if (product.supportsLocalFiles && localFilesProjectId && selectedMode) setProjectMode(localFilesProjectId, selectedMode)
   }, [product.profileId, localFilesProjectId, selectedMode])
   // An `agentworks start` link names the Code workspace that uses the folder: open that workspace and save the folder in it.
   // Only a workspace the user named is changed; no match (or several) says so and changes nothing.
@@ -1085,7 +1085,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const adminPage = useAppStore(state => state.adminPage)
   const activeSessionId = useChatStore(state => tabId ? state.chatTabs[tabId]?.sessionId : undefined)
   const filePreference = useCodeFilesPreference(activeSessionId || '')
-  const localCodeSession = product.profileId === 'code' && filePreference.location === 'computer'
+  const localCodeSession = product.supportsLocalFiles && filePreference.location === 'computer'
   const shownSplitRatio = localCodeSession ? Math.max(splitRatio, LOCAL_CODE_MIN_CHAT_SHARE) : splitRatio
   const legacyViewEvents = usePresentationEvents(activeSessionId ?? undefined, ['workflow.view'])
   const handledLegacyViewEvents = useRef<{ session?: string; count: number }>({ session: activeSessionId ?? undefined, count: legacyViewEvents.length })
@@ -1104,7 +1104,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   // Someone else's Crew offers only the read-only inspect surface, no
   // matter what the server's feature list enables for owned Crews.
   // Code's terminal: the owner's own Code only (Code is owner-only; nobody else's Code offers one).
-  const showShell = product.profileId === 'code' && !selected?.shared
+  const showShell = product.hasTerminal && !selected?.shared
   const isShared = Boolean(selected?.shared)
   // A Code has no Memory: someone else's Code offers only its files.
   const sharedPanels = SHARED_CREW_WORKSPACE_PANELS

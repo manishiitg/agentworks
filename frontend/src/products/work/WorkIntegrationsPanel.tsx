@@ -106,7 +106,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   const product = useProjectProduct()
   const chatSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   const filePreference = useCodeFilesPreference(chatSessionId || '')
-  const localCodeSession = product.profileId === 'code' && filePreference.location === 'computer'
+  const localCodeSession = product.supportsLocalFiles && filePreference.location === 'computer'
   const isAdmin = useAuthStore(state => state.user?.is_admin === true)
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const visibleTabs = projectIntegrationSections(allowedProducts).filter(option =>

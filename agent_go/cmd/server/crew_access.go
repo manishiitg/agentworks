@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"log"
 	"path/filepath"
 	"sort"
@@ -127,8 +126,8 @@ func crewProjectOwnedByCallerStrict(callerID, workspacePath string) bool {
 // manifest path, so registry operations on them never touch the owner's
 // manifest.
 func resolveConversationBindingForUser(ctx context.Context, userID string, profile agentprofiles.Profile, requestedKey string) (productConversationBinding, bool, error) {
-	if strings.EqualFold(strings.TrimSpace(profile.ID), codeproduct.ProfileID) {
-		// A Code conversation belongs only to its owner.
+	if isProjectProfileID(profile.ID) && !projectSupportsRunAudience(profile.ID) {
+		// A private-only origin conversation belongs only to its owner.
 		project, err := resolveCrewProjectBinding(ctx, userID, profile, requestedKey, "")
 		if err != nil {
 			return productConversationBinding{}, true, err
@@ -138,7 +137,7 @@ func resolveConversationBindingForUser(ctx context.Context, userID string, profi
 		}
 		return project.Binding, project.OwnedByCaller, nil
 	}
-	if !strings.EqualFold(strings.TrimSpace(profile.ID), "work") {
+	if !projectSupportsRunAudience(profile.ID) {
 		binding, err := resolveProductConversationBinding(ctx, userID, profile, requestedKey)
 		if err != nil {
 			return productConversationBinding{}, true, err
@@ -166,7 +165,7 @@ func crewBuilderDiskHiddenFromUser(userID, workflowPath string) bool {
 // project: a work-profile turn whose folder is a crew project the caller
 // does not own. Owner turns, landing chats, and non-crew turns are false.
 func isCrewReaderTurn(req QueryRequest, callerID string) bool {
-	if !strings.EqualFold(strings.TrimSpace(req.AgentProfileID), "work") {
+	if !projectSupportsRunAudience(req.AgentProfileID) {
 		return false
 	}
 	folder := strings.TrimSpace(req.SelectedFolder)
@@ -203,13 +202,9 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 		ensureProjectOwnerID(ctx, binding.WorkspacePath, callerID)
 		return crewProjectBinding{OwnerID: sanitizeUserIDForPath(callerID), OwnedByCaller: true, Binding: binding}, nil
 	}
-	// Code never resolves under another owner, including legacy shares.
-	if strings.EqualFold(strings.TrimSpace(profile.ID), codeproduct.ProfileID) {
-		return denied()
-	}
-	// Otherwise only Crews resolve under other owners; every other profile
-	// is the caller's own or nothing.
-	if !strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
+	// Only origins with a Run audience resolve under another owner. This is
+	// independent of the legacy product ID retained by storage and sessions.
+	if !projectSupportsRunAudience(profile.ID) {
 		return denied()
 	}
 	// Projects are private to their owner when project sharing is switched off (project_sharing.go).
