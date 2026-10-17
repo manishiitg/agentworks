@@ -325,7 +325,8 @@ func logUnsafeProjectPath(where string, err error) {
 
 // productOwnerMigrationReport counts what one startup scan did.
 type productOwnerMigrationReport struct {
-	Scanned int
+	AudienceBaselineReady bool
+	Scanned               int
 	// Registered counts registry entries written by this scan; Registry counts projects already registered.
 	Registered int
 	Registry   int
@@ -362,7 +363,7 @@ func migrateProductOwners(docsDir string) productOwnerMigrationReport {
 			}
 		}
 	}
-	if len(report.Failures) == 0 {
+	if report.AudienceBaselineReady {
 		registry := defaultProjectOwners()
 		if registry.dir != "" {
 			if err := os.MkdirAll(registry.dir, 0o700); err == nil {
@@ -390,10 +391,11 @@ func scanProductOwners(docsDir string) productOwnerMigrationReport {
 	}
 	defer docs.Close()
 	users, err := listProjectDirNames(docs, workspaceref.UsersDir)
-	if err != nil {
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		report.Failures = append(report.Failures, err.Error())
 		return report
 	}
+	report.AudienceBaselineReady = true
 	registry := defaultProjectOwners()
 	_, baselineErr := os.Stat(filepath.Join(registry.dir, "audience-baseline-v1"))
 	preserveLegacyAudience := registry.dir != "" && errors.Is(baselineErr, os.ErrNotExist)

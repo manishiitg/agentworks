@@ -14623,6 +14623,9 @@ func (e *queryAdmissionError) Unwrap() error { return e.err }
 // (bot_dry_run.go) share it, so a dry run admits exactly what a real turn
 // admits.
 func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest, currentUserID, sessionID string) (*resolvedAgentProfile, WorkflowAccessLevel, *queryAdmissionError) {
+	if product, _, ok := projectProductForPath(req.SelectedFolder); ok && req.AgentProfileID != "" && !strings.EqualFold(strings.TrimSpace(req.AgentProfileID), product.ProfileID) {
+		return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("project folder requires its matching conversation profile"), invalidProfile: true}
+	}
 	if api.codeLocalSession(sessionID) && (req.TriggeredBy != "" && req.TriggeredBy != "interactive" || req.BotPlatform != "" || req.IsAutoNotification || req.ParentSessionID != "" || req.SessionKind != "" || req.PulseLifecycleTurn || !websiteDeviceClaims(GetUserFromContext(ctx))) {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("Local Code sessions cannot receive automated or other-chat turns"), invalidProfile: true}
 	}

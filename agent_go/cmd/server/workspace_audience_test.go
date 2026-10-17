@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"strings"
 	"testing"
 )
 
@@ -72,5 +74,30 @@ func TestWorkspaceAudienceBaselineAndLazyCreation(t *testing.T) {
 	ensureProjectOwnerID(context.Background(), "_users/owner/Chats/Work/projects/lazy", "owner")
 	if rec, ok := registry.Lookup("work", "lazy"); !ok || !rec.Private || !rec.AudienceConfigured {
 		t.Fatal("lazy registration shared a new Crew")
+	}
+}
+
+func TestWorkspaceRejectsMismatchedConversationProfile(t *testing.T) {
+	api, _ := newCodePrivacyFixture(t)
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "other"})
+	for _, req := range []QueryRequest{
+		{AgentProfileID: "work", SelectedFolder: codePrivacyOwnerRoot},
+		{AgentProfileID: "code", SelectedFolder: "Crew/team-a"},
+	} {
+		if _, access, err := api.admitQueryTarget(ctx, &req, "other", "test"); err == nil || access != WorkflowAccessNone || !strings.Contains(err.Error(), "matching conversation profile") {
+			t.Fatalf("mismatched profile admitted: %v %v", access, err)
+		}
+	}
+}
+
+func TestWorkspaceCodeDashboardKeepsCodeOnlyTokenAndCrewBounds(t *testing.T) {
+	api, _ := newCodePrivacyFixture(t)
+	claims := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"dashboards:read", "code:run"}}}
+	if _, err := api.dashboardTarget(context.Background(), claims, codePrivacyOwnerRoot); err != nil {
+		t.Fatalf("Code-only dashboard refused: %v", err)
+	}
+	claims.AccessToken.CrewIDs = []string{"another"}
+	if _, err := api.dashboardTarget(context.Background(), claims, codePrivacyOwnerRoot); err == nil {
+		t.Fatal("Crew-limited token escaped its bound")
 	}
 }

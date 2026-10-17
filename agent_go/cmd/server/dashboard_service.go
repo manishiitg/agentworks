@@ -114,7 +114,7 @@ func (api *StreamingAPI) dashboardTarget(ctx context.Context, claims *UserClaims
 		if manifest.Title != "" {
 			title = manifest.Title
 		}
-		if claims.AccessToken != nil && (!claims.AccessToken.AllowsCrew(id) || product.ProfileID == "code" && !externalCodeRunAllowed(claims)) {
+		if claims.AccessToken != nil && (!workspaceDashboardTokenAllows(claims, product.ProfileID, id)) {
 			return target, dashboardFailure(404, "project unavailable")
 		}
 		kind := "crew"
@@ -489,4 +489,17 @@ func activeDashboardPreviewConnection(ctx context.Context, id string) (accesstok
 	}
 	defer store.Close()
 	return store.Active(ctx, id, time.Now())
+}
+
+// Code-only connections historically have no Crew audience field. Explicit
+// machine Crew allowlists still cap every project they address.
+func workspaceDashboardTokenAllows(claims *UserClaims, profileID, id string) bool {
+	if claims == nil || claims.AccessToken == nil {
+		return claims != nil
+	}
+	t := claims.AccessToken
+	if profileID == "code" {
+		return externalCodeRunAllowed(claims) && (len(t.CrewIDs) == 0 || t.AllowsCrew(id))
+	}
+	return t.AllowsCrew(id)
 }
