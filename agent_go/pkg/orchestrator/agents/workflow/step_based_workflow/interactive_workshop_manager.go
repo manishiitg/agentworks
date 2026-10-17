@@ -5104,6 +5104,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				(runChannelsProvided && runChannelsRaw != nil) || (pulseChannelsProvided && pulseChannelsRaw != nil) ||
 				(runRecipientsProvided && runRecipientsRaw != nil) || (pulseRecipientsProvided && pulseRecipientsRaw != nil) ||
 				(senderProvided && senderRaw != nil) {
+				workspacePath := iwm.controller.GetWorkspacePath()
 				parseInstructions := func(name string, raw interface{}, provided bool) (string, error) {
 					if !provided || raw == nil {
 						return "", nil
