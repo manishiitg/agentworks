@@ -107,8 +107,11 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 			return
 		}
 		answered := false
+		// Native providers use their own turn IDs. The accepted query's
+		// completed execution connects its saved reply to this ask.
+		completed := execution != nil && execution.Status == trackedExecutionStatusCompleted && !working
 		for _, item := range items {
-			if item.Role == "assistant" && (queryID == "" || item.Turn == queryID) {
+			if item.Role == "assistant" && (queryID == "" || item.Turn == queryID || completed) {
 				answered = true
 			}
 		}
