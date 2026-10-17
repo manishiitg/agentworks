@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -80,7 +81,19 @@ func handleSendEmail(ctx context.Context, args map[string]interface{}) (string, 
 		return "", fmt.Errorf("notification manager not available")
 	}
 
-	base := NotificationDestinationFromContext(ctx)
+	base, bindingSource := notificationDestinationWithSource(ctx)
+	item := "unbound"
+	selected := false
+	if base != nil && base.Gmail != nil {
+		selected = len(base.Gmail.ConnectionIDs) > 0
+		if strings.HasPrefix(base.Gmail.Workspace, "Workflow/") {
+			item = base.Gmail.Workspace
+		} else if base.Gmail.Workspace != "" {
+			item = "other-item"
+		}
+	}
+	// Routing evidence only: never include addresses, account values or person IDs.
+	log.Printf("[GMAIL_SEND_BINDING] item=%q selected_connection=%t destination_source=%s", item, selected, bindingSource)
 	if base != nil {
 		for _, channel := range base.ExcludeChannels {
 			if strings.EqualFold(strings.TrimSpace(channel), "gmail") {

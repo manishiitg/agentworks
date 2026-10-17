@@ -1096,9 +1096,16 @@ func humanFeedbackTimeoutFromArgs(args map[string]interface{}) time.Duration {
 // NotificationDestinationFromContext returns the best notification destination
 // hint available for the current tool execution context.
 func NotificationDestinationFromContext(ctx context.Context) *services.NotificationDestination {
+	dest, _ := notificationDestinationWithSource(ctx)
+	return dest
+}
+
+func notificationDestinationWithSource(ctx context.Context) (*services.NotificationDestination, string) {
+	source := "none"
 	var dest *services.NotificationDestination
 	if explicit, ok := ctx.Value(BotNotificationDestinationKey).(*services.NotificationDestination); ok && explicit != nil {
 		dest = cloneNotificationDestination(explicit)
+		source = "request"
 	}
 	// Coding-agent tools execute through a separate HTTP request context. The
 	// bridge preserves the trusted session ID, but not arbitrary values from the
@@ -1109,19 +1116,21 @@ func NotificationDestinationFromContext(ctx context.Context) *services.Notificat
 	}
 	if current := sessionNotificationDestination(sessionID); current != nil {
 		dest = current
+		source = "session"
 	}
 	if uid, ok := ctx.Value(common.UserIDKey).(string); ok && uid != "" {
 		if dest == nil {
 			dest = &services.NotificationDestination{}
+			source = "caller"
 		}
 		if dest.UserID == "" {
 			dest.UserID = uid
 		}
 	}
 	if notificationDestinationEmpty(dest) {
-		return nil
+		return nil, "none"
 	}
-	return dest
+	return dest, source
 }
 
 func cloneNotificationDestination(dest *services.NotificationDestination) *services.NotificationDestination {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
@@ -76,6 +77,17 @@ func TestWorkshopSenderSaveReachesSameTurnChild(t *testing.T) {
 			}
 			if saved.Capabilities.Notifications.Sender != sender {
 				t.Fatalf("saved sender=%q", saved.Capabilities.Notifications.Sender)
+			}
+			if !clear {
+				cfg := svc.GetConfig()
+				cfg.Connections = append(cfg.Connections, services.GmailConnection{ID: "outside-item", Personal: true, OwnerID: "owner", Enabled: true, Workspaces: []string{"Workflow/other"}})
+				if err := svc.SaveConfig(t.Context(), cfg); err != nil {
+					t.Fatal(err)
+				}
+				result, err := draft.tools["update_workflow_config"].Execute(ctx, map[string]interface{}{"notification_gmail_connection_id": "outside-item"})
+				if err != nil || !strings.Contains(result, "added to this workflow") {
+					t.Fatalf("wrong-item selection accepted: %s / %v", result, err)
+				}
 			}
 			release, err := controller.switchWorkshopGroupSession("default")
 			if err != nil {

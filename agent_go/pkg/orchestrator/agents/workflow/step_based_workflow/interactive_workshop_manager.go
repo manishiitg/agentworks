@@ -5247,8 +5247,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 							return "Error: Gmail connections are unavailable; cannot validate notification sender.", nil
 						}
 						conn, found := gmailSvc.GetConnection(senderID)
-						if !found || !conn.Enabled {
-							return "Error: Notify sender must be an enabled Gmail connection.", nil
+						userID, _ := ctx.Value(common.UserIDKey).(string)
+						if !found || !conn.Enabled || !conn.UsableFrom(services.GmailUseScope{Workspace: workspacePath, UserID: userID}) {
+							return "Error: Notify sender must be an enabled Gmail connection added to this workflow.", nil
 						}
 					}
 				}
@@ -5307,6 +5308,16 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 				if writeErr := iwm.controller.writeManagedWorkflowManifest(ctx, string(updated)); writeErr != nil {
 					return fmt.Sprintf("Failed to write workflow.json: %v", writeErr), nil
+				}
+
+				if senderProvided && senderRaw != nil {
+					// Mirror the live Slack refresh: a step started later in this same
+					// Builder turn must inherit the saved sender, including a clear.
+					if updated := virtualtools.UpdateSessionGmailSender(iwm.sessionID, workspacePath, senderID); updated != nil {
+						if destination, ok := ctx.Value(virtualtools.BotNotificationDestinationKey).(*services.NotificationDestination); ok && destination != nil && destination.WorkspacePath == workspacePath {
+							*destination = *updated
+						}
+					}
 				}
 
 				anyChanged = true
