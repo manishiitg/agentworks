@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   PRODUCT_SURFACE_LABELS,
+  navigationProductSurfaceIDs,
+  visibleProductSurfaceIDs,
   deploymentDefaultProductSurface,
   enabledProductSurfaces,
   gatewayAdminUrl,
@@ -221,4 +223,16 @@ it('allows an explicitly configured same-origin LLM default on a managed server'
  vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: { deploymentMode: 'server', enabledProductSurfaces: ['llm-gateway', 'work'], defaultProductSurface:'llm-gateway' } })
  expect(enabledProductSurfaces()).toEqual(['llm-gateway','work'])
  expect(deploymentDefaultProductSurface()).toBe('llm-gateway')
+})
+
+// A display merger never grants the other origin's entitlement.
+it.each([
+  [['work', 'code'], ['code']],
+  [['code'], ['code']],
+  [['work'], ['work']],
+  [[], []],
+])('shows one Crew entry without widening %j', (allowed, navigation) => {
+  vi.stubGlobal('window', { __APP_RUNTIME_CONFIG__: { enabledProductSurfaces: ['work', 'code'] } })
+  expect(visibleProductSurfaceIDs(allowed)).toEqual(allowed)
+  expect(navigationProductSurfaceIDs(allowed)).toEqual(navigation)
 })

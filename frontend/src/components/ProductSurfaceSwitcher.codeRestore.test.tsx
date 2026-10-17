@@ -53,7 +53,7 @@ it.each([false, true])('keeps Code selected from the Goals sidebar (delayed old 
     await act(async () => root.render(<Navigation delayedGoalRestore={delayedGoalRestore} />))
     for (let attempt = 0; attempt < 2; attempt++) {
       await act(async () => host.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!.click())
-      await act(async () => host.querySelector<HTMLButtonElement>('[role="menuitem"][aria-label="Code"]')!.click())
+      await act(async () => host.querySelector<HTMLButtonElement>('[role="menuitem"][aria-label="Crew"]')!.click())
       await act(async () => finishRefresh())
       expect(host.querySelector('h1')?.textContent).toBe('code')
       expect(useModeStore.getState().selectedModeCategory).toBe('multi-agent')

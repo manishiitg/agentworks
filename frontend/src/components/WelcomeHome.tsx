@@ -4,7 +4,7 @@ import { Button } from './ui/Button'
 import { PRODUCT_CARDS } from './ProductSurfaceSwitcher'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useLLMStore } from '../stores/useLLMStore'
-import { deploymentDefaultProductSurface, visibleProductSurfaceIDs, type ProductSurface } from '../products/productSurfaceConfig'
+import { deploymentDefaultProductSurface, navigationProductSurfaceIDs, type ProductSurface } from '../products/productSurfaceConfig'
 import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
 import { isGuideRemembered, rememberGuide } from '../utils/onboarding'
 import { getRuntimeAppName, runtimeBrandAsset, runtimeBrandingConfig } from '../runtime-branding'
@@ -19,11 +19,11 @@ const PERSONAL_PRODUCTS = new Set<string>(['video-studio', 'sparkquill'])
 export function WelcomeHome() {
   // Someone whose account opens exactly one product (a Code-only account) goes straight to it: the welcome page is for choosing
   // between products and connecting tools, and they have nothing to choose. The menu can still open it.
-  const [open, setOpen] = useState(() => !isGuideRemembered(WELCOME_HOME_DISMISSED_KEY) && visibleProductSurfaceIDs(useAuthStore.getState().user?.allowed_products).length !== 1)
+  const [open, setOpen] = useState(() => !isGuideRemembered(WELCOME_HOME_DISMISSED_KEY) && navigationProductSurfaceIDs(useAuthStore.getState().user?.allowed_products).length !== 1)
   const [copied, setCopied] = useState('')
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const products = useMemo(() => {
-    const visible = new Set(visibleProductSurfaceIDs(allowedProducts))
+    const visible = new Set(navigationProductSurfaceIDs(allowedProducts))
     // Personal products are never named in the shared welcome, even where enabled; they stay in the product switcher.
     return PRODUCT_CARDS.filter(product => visible.has(product.id) && !PERSONAL_PRODUCTS.has(product.id))
   }, [allowedProducts])

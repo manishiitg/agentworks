@@ -4,7 +4,7 @@ export type ProductSurface = (typeof PRODUCT_SURFACES)[number]
 
 export const PRODUCT_SURFACE_LABELS: Record<ProductSurface, string> = {
   agentworks: 'Goals', relays: 'Flows', 'video-studio': 'Video Studio',
-  sparkquill: 'SparkQuill', work: 'Crew', code: 'Code', 'mcp-gateway': 'Vault', 'llm-gateway': 'LLM Gateway', knowledgebase: 'Brain', bullpen: 'AgentBridge',
+  sparkquill: 'SparkQuill', work: 'Crew', code: 'Crew', 'mcp-gateway': 'Vault', 'llm-gateway': 'LLM Gateway', knowledgebase: 'Brain', bullpen: 'AgentBridge',
 }
 
 type ProductRuntimeConfig = {
@@ -115,4 +115,10 @@ export function intersectAllowedProductSurfaces(
 export function visibleProductSurfaceIDs(allowedProducts?: string[] | null): ProductSurface[] {
   const enabled = new Set(enabledProductSurfaces())
   return intersectAllowedProductSurfaces(PRODUCT_SURFACES.filter(surface => enabled.has(surface)), allowedProducts)
+}
+
+/** One Crew entry over the permitted legacy origins; never use this for access checks. */
+export function navigationProductSurfaceIDs(allowedProducts?: string[] | null): ProductSurface[] {
+  const origins = visibleProductSurfaceIDs(allowedProducts)
+  return origins.includes('code') ? origins.filter(surface => surface !== 'work') : origins
 }

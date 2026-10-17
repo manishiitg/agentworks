@@ -1,7 +1,7 @@
 import type { AuthUser } from '../services/api'
 import { useCommandDialogStore, type ProductCreateSurface } from '../stores/useCommandDialogStore'
 import { hasProductCreateAccess } from './workflowPermissions'
-import { gatewayAdminUrl, PRODUCT_SURFACE_LABELS, visibleProductSurfaceIDs, type ProductSurface } from '../products/productSurfaceConfig'
+import { gatewayAdminUrl, PRODUCT_SURFACE_LABELS, navigationProductSurfaceIDs, visibleProductSurfaceIDs, type ProductSurface } from '../products/productSurfaceConfig'
 import { useAppStore } from '../stores/useAppStore'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useLLMStore } from '../stores/useLLMStore'
@@ -15,6 +15,7 @@ export type QuickNavigationItem = {
   id: string
   label: string
   subtitle: string
+  searchText?: string
   isActive: boolean
   lastAccessedAt: number
   activeSession?: undefined
@@ -26,7 +27,7 @@ export type QuickNavigationItem = {
 
 const CREATION_LABELS: Record<ProductCreateSurface, string> = {
   agentworks: 'Create new workflow', relays: 'Create new Flow', work: 'Create new Crew',
-  code: 'Create new Code workspace', 'video-studio': 'Create new video project',
+  code: 'Create new Crew', 'video-studio': 'Create new video project',
 }
 
 const GLOBAL_PAGE_SURFACES: ProductSurface[] = ['agentworks', 'relays', 'work', 'code', 'mcp-gateway', 'bullpen']
@@ -39,9 +40,10 @@ export function quickNavigationItems(
 ): QuickNavigationItem[] {
   const products = visibleProductSurfaceIDs(user?.allowed_products)
   const common = { lastAccessedAt: 0, hasLocalActivity: false as const }
-  const items: QuickNavigationItem[] = products.map(surface => ({
+  const items: QuickNavigationItem[] = navigationProductSurfaceIDs(user?.allowed_products).map(surface => ({
     ...common, type: 'product', id: `product:${surface}`, label: PRODUCT_SURFACE_LABELS[surface],
-    subtitle: surface === 'knowledgebase' ? 'Product · shared knowledge for your agents' : 'Product · open workspace', isActive: surface === current, surface,
+    ...((surface === 'work' || surface === 'code') ? { searchText: 'Code Crew workspace' } : {}),
+    subtitle: surface === 'knowledgebase' ? 'Product · shared knowledge for your agents' : 'Product · open workspace', isActive: surface === current || (surface === 'code' || surface === 'work') && (current === 'code' || current === 'work'), surface,
   }))
   const menu = (action: NavigationAction, label: string, description: string) => {
     items.push({ ...common, type: 'menu', id: `menu:${action}`, label, subtitle: `Menu · ${description}`, isActive: false, action })
@@ -52,12 +54,12 @@ export function quickNavigationItems(
   browse('active', 'Running work')
   if (products.includes('agentworks')) { browse('workflows', 'All workflows'); browse('chats', 'All chats') }
   if (products.includes('relays')) browse('relays', 'All Flows')
-  if (products.includes('work')) browse('crew', 'All Crews')
-  if (products.includes('code')) browse('code', 'All Code projects')
+  if (products.includes('work') || products.includes('code')) browse('crew', 'All Crews')
   if (products.length) browse('products', 'All products')
   if (products.includes(current)) browse('panels', 'All panels and tabs')
-  const creationSurfaces = products.filter((surface): surface is ProductCreateSurface => surface in CREATION_LABELS)
+  const creatableOrigins = products.filter((surface): surface is ProductCreateSurface => surface in CREATION_LABELS)
     .filter(surface => hasProductCreateAccess(user, isMultiUserMode, surface))
+  const creationSurfaces = creatableOrigins.includes('code') ? creatableOrigins.filter(surface => surface !== 'work') : creatableOrigins
   if (creationSurfaces.length) browse('create', 'Create new…')
   for (const surface of creationSurfaces) {
     items.push({ ...common, type: 'menu', id: `create:${surface}`, label: CREATION_LABELS[surface],

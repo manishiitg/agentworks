@@ -200,7 +200,7 @@ it('shows Vault-specific icons only in Vault and opens its audit page', async ()
 
 it('lists every available product and opens its workspace from another product', async () => {
   const { host, onClose } = await renderNavigation('@products ')
-  expect(host.querySelectorAll('[data-navigation-id^="product:"]')).toHaveLength(7)
+  expect(host.querySelectorAll('[data-navigation-id^="product:"]')).toHaveLength(6)
   expect(host.textContent).not.toContain('Dominion')
   expect(host.textContent).toContain('Vault')
   expect(host.textContent).toContain('SparkQuill')
@@ -292,7 +292,7 @@ it('opens a parent panel with @panels and refuses stale panel selections after a
 
 it('offers creation for every supported product and routes each action from another product', async () => {
   const { host, onClose } = await renderNavigation('@create ')
-  const surfaces: ProductCreateSurface[] = ['agentworks', 'relays', 'video-studio', 'work', 'code']
+  const surfaces: ProductCreateSurface[] = ['agentworks', 'relays', 'video-studio', 'code']
   expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(surfaces.map(surface => `create:${surface}`))
   for (const surface of surfaces) {
     await act(async () => {
@@ -306,7 +306,7 @@ it('offers creation for every supported product and routes each action from anot
 })
 
 it('retains a Code creation request through lazy mounting, opens the real form once, and cancels superseded requests', async () => {
-  const { host, onClose } = await renderNavigation('Create new Code workspace')
+  const { host, onClose } = await renderNavigation('Create new Crew')
   await act(async () => host.querySelector('input')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
   expect(onClose).toHaveBeenCalledOnce()
   expect(useCommandDialogStore.getState().productCreateSurface).toBe('code')
@@ -321,7 +321,7 @@ it('retains a Code creation request through lazy mounting, opens the real form o
   const root = createRoot(formHost)
   cleanups.push(() => { act(() => root.unmount()); formHost.remove() })
   await act(async () => root.render(<CodeCreateHost />))
-  expect(formHost.querySelector('[role="dialog"]')?.textContent).toContain('New Code workspace')
+  expect(formHost.querySelector('[role="dialog"]')?.textContent).toContain('New Crew')
   expect(useCommandDialogStore.getState().productCreateSurface).toBeNull()
   await act(async () => formHost.querySelector<HTMLButtonElement>('[aria-label="Close"]')!.click())
   await act(async () => root.render(<CodeCreateHost />))
@@ -363,7 +363,7 @@ it.each([false, true])('filters Ctrl+K products for local server-product opt-in=
   })
   const surfaces = [...host.querySelectorAll('[data-navigation-id^="product:"]')].map(row => row.getAttribute('data-navigation-id'))
   expect(surfaces).toEqual(optIn
-    ? ['product:agentworks', 'product:relays', 'product:work', 'product:code', 'product:mcp-gateway', 'product:knowledgebase']
+    ? ['product:agentworks', 'product:relays', 'product:code', 'product:mcp-gateway', 'product:knowledgebase']
     : ['product:agentworks', 'product:work'])
 })
 
@@ -401,4 +401,13 @@ it('finds the Code Watchers tab and opens Automation on that section', async () 
   await act(async () => host.querySelector('input')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
   expect(open).toHaveBeenCalledWith('schedules', 'conditions')
   expect(onClose).toHaveBeenCalledOnce()
+})
+
+it('keeps the legacy Code search keyword opening the single Crew product', async () => {
+  const { host } = await renderNavigation('Code')
+  const products = host.querySelectorAll('[data-navigation-id^="product:"]')
+  expect(products).toHaveLength(1)
+  expect(products[0].textContent).toContain('Crew')
+  await act(async () => products[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
+  expect(useProductSurfaceStore.getState().productSurface).toBe('code')
 })

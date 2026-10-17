@@ -20,7 +20,7 @@ import { CODE_PRODUCT } from '../products/work/projectProduct'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { usePanelSwitcherStore } from '../stores/usePanelSwitcherStore'
 import { useAuthStore } from '../stores/useAuthStore'
-import { intersectAllowedProductSurfaces, isEnabledProductSurface } from '../products/productSurfaceConfig'
+import { intersectAllowedProductSurfaces, isEnabledProductSurface, visibleProductSurfaceIDs } from '../products/productSurfaceConfig'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
 import { openQuickNavigation, quickNavigationItems, type QuickNavigationItem, type QuickNavigationScope } from '../utils/quickNavigation'
 import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
@@ -319,7 +319,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   }, [isOpen, initialQuery])
 
   const panelItems = useMemo<PanelItem[]>(() => {
-    if (!isOpen || !navigationItems.some(item => item.surface === productSurface)) return []
+    if (!isOpen || !visibleProductSurfaceIDs(user?.allowed_products).includes(productSurface)) return []
     return (panelEntry?.panels ?? []).flatMap(panel => {
       const common = { type: 'panel' as const, isActive: false as const, lastAccessedAt: 0 as const, hasLocalActivity: false as const, panelId: panel.id }
       return [
@@ -330,7 +330,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         })),
       ]
     })
-  }, [isOpen, navigationItems, productSurface, panelEntry])
+  }, [isOpen, navigationItems, productSurface, panelEntry, user?.allowed_products])
 
   // All products share navigation; stable product metadata owns project routing.
   const allItems = useMemo<QuickSwitcherItem[]>(() => {
@@ -526,7 +526,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       if (a.type !== b.type) return itemTypeRank(a) - itemTypeRank(b)
       return a.label.localeCompare(b.label)
     })
-    const visibleProducts = new Set(navigationItems.flatMap(item => item.surface ? [item.surface] : []))
+    const visibleProducts = new Set(visibleProductSurfaceIDs(user?.allowed_products))
     return [...projectItems.filter(item => {
       if (item.type === 'crew') return visibleProducts.has('work')
       if (item.type === 'code') return visibleProducts.has('code')
@@ -537,7 +537,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       }
       return visibleProducts.has('agentworks') || visibleProducts.has('relays')
     }), ...navigationItems.filter(item => item.scope), ...navigationItems.filter(item => !item.scope), ...panelItems]
-  }, [isOpen, isWorkflowMode, isChatMode, productSurface, activePresetId, chatTabs, activeSessions, activeTabId, workflowPresets, recentPresetOrder, recentPresetAccessedAt, crewDirectory, codeDirectory, codeAvailable, navigationItems, panelItems])
+  }, [isOpen, isWorkflowMode, isChatMode, productSurface, activePresetId, chatTabs, activeSessions, activeTabId, workflowPresets, recentPresetOrder, recentPresetAccessedAt, crewDirectory, codeDirectory, codeAvailable, navigationItems, panelItems, user?.allowed_products])
 
   // Filter and sort
   const filteredItems = useMemo<QuickSwitcherItem[]>(() => {
@@ -557,7 +557,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           if (scope === 'product' || scope === 'products') return item.type === 'product'
           if (scope === 'panel' || scope === 'panels') return item.type === 'panel'
           if (scope === 'menu' || scope === 'menus') return item.type === 'menu' || item.type === 'panel'
-          if (scope === 'crew') return creates('work') || item.type === 'crew' || (item.type === 'active' && !item.activeScopeOnly && isWorkProductSession(item.session))
+          if (scope === 'crew') return creates('work') || creates('code') || item.type === 'crew' || item.type === 'code' || (item.type === 'active' && !item.activeScopeOnly && (isWorkProductSession(item.session) || isCodeProductSession(item.session)))
           if (scope === 'code') return creates('code') || item.type === 'code' || (item.type === 'active' && !item.activeScopeOnly && isCodeProductSession(item.session))
           if (scope === 'chat' || scope === 'chats') return item.type === 'chat'
           return item.type === 'chat' || item.type === 'workflow' || item.type === 'crew' || item.type === 'code'

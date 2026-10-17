@@ -10,8 +10,8 @@ export const CODE_MODE_CHOICES: Array<{ mode: ProductMode; title: string; text: 
   { mode: 'local', title: 'Local', text: 'Work on a project folder on your own computer, through the AgentWorks CLI.', icon: Laptop },
 ]
 
-// A Code workspace has a name only: no identity, purpose, icon or template.
-export function CreateCodeWorkspaceDialog({ onClose, onCreate, submitting, error, profileId = 'code', initialMode = 'dev', noun = 'Code workspace', allowLocal = true }: {
+// Creation needs only a name; identity details and templates are optional later.
+export function CreateCodeWorkspaceDialog({ onClose, onCreate, submitting, error, profileId = 'code', initialMode = 'dev', noun = 'Crew', allowLocal = true }: {
   onClose: () => void
   onCreate: (title: string, runsOn?: RunsOnSelection, mode?: ProductMode) => void | Promise<void>
   noun?: string

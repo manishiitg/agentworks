@@ -44,8 +44,8 @@ describe('collapsible product navigation', () => {
     expect(trigger.getAttribute('aria-label')).toBe('Switch product: Crew')
     const group = host.querySelector('[role="group"]')!
     await act(async () => group.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })))
-    expect(Array.from(host.querySelectorAll('[role="menuitem"]')).map(b => b.getAttribute('aria-label'))).toEqual(['Goals', 'Crew', 'Code', 'Vault'])
-    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Code"]')!.click())
+    expect(Array.from(host.querySelectorAll('[role="menuitem"]')).map(b => b.getAttribute('aria-label'))).toEqual(['Goals', 'Crew', 'Vault'])
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Crew"]')!.click())
     expect(useProductSurfaceStore.getState().productSurface).toBe('code')
     expect(host.querySelector('[role="menu"]')).toBeNull()
     await act(async () => trigger.click())

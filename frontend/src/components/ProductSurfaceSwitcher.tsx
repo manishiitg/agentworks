@@ -6,12 +6,11 @@ import { VideoStudioMark } from '../products/video-studio/VideoStudioMark'
 import { SparkQuillMark } from '../products/sparkquill/SparkQuillMark'
 import { WorkMark } from '../products/work/WorkMark'
 import { VaultMark } from '../products/mcp-gateway/VaultMark'
-import { CodeMark } from '../products/work/CodeMark'
 import { BrainMark } from '../products/knowledgebase/BrainMark'
 import { useProductSurfaceStore, type ProductSurface } from '../stores/useProductSurfaceStore'
 import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
 import { useAuthStore } from '../stores/useAuthStore'
-import { gatewayAdminUrl, visibleProductSurfaceIDs } from '../products/productSurfaceConfig'
+import { gatewayAdminUrl, navigationProductSurfaceIDs } from '../products/productSurfaceConfig'
 import { applyRuntimeBranding } from '../runtime-branding'
 import { cn } from '../lib/utils'
 
@@ -35,8 +34,8 @@ const products: Array<{
   { id: 'relays', label: 'Flows', description: 'Build and run an API callable agent graph', icon: Waypoints },
   { id: 'video-studio', label: 'Video Studio', description: 'Projects and video production', icon: VideoStudioMark },
   { id: 'sparkquill', label: 'SparkQuill', description: 'Family learning with Quill', icon: SparkQuillMark },
-  { id: 'work', label: 'Crew', description: 'Specialist agents with their own memory and skills, working together', icon: WorkMark },
-  { id: 'code', label: 'Code', description: 'A private coding workspace: files, editor, terminal and a coding agent', icon: CodeMark },
+  { id: 'work', label: 'Crew', description: 'Private or shared projects with agents, functions, files and tools', icon: WorkMark },
+  { id: 'code', label: 'Crew', description: 'Private or shared projects with agents, functions, files and tools', icon: WorkMark },
   { id: 'mcp-gateway', label: 'Vault', description: 'Tools, skills, and access', icon: VaultMark },
   { id: 'llm-gateway', label: 'LLM Gateway', description: 'Shared models and request costs', icon: Network },
   { id: 'knowledgebase', label: 'Brain', description: 'Shared knowledge for your agents', icon: BrainMark },
@@ -52,7 +51,7 @@ export function ProductSurfaceSwitcher({ className, standalone = false }: Produc
   const allowedProducts = useAuthStore((state) => state.user?.allowed_products)
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
-  const visibleProductIDs = useMemo(() => visibleProductSurfaceIDs(allowedProducts), [allowedProducts])
+  const visibleProductIDs = useMemo(() => navigationProductSurfaceIDs(allowedProducts), [allowedProducts])
   const gatewayUrl = gatewayAdminUrl()
   // The gateway renders inside the app like any other surface, but only
   // exists when a gateway URL is configured for this deployment.
@@ -60,7 +59,7 @@ export function ProductSurfaceSwitcher({ className, standalone = false }: Produc
     ? products.filter(product => product.id === 'mcp-gateway')
     : products.filter(product => visibleProductIDs.includes(product.id) && (product.id !== 'mcp-gateway' || gatewayUrl !== null)),
   [visibleProductIDs, gatewayUrl, standalone])
-  const currentProduct = visibleProducts.find((product) => product.id === (standalone ? 'mcp-gateway' : productSurface)) ?? visibleProducts[0] ?? products[0]
+  const currentProduct = visibleProducts.find((product) => product.id === (standalone ? 'mcp-gateway' : productSurface) || !standalone && (productSurface === 'work' || productSurface === 'code') && (product.id === 'work' || product.id === 'code')) ?? visibleProducts[0] ?? products[0]
   const CurrentIcon = currentProduct.icon
 
   useEffect(() => {
