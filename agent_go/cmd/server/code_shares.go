@@ -12,6 +12,7 @@ type codeRole string
 
 const (
 	codeRoleNone   codeRole = ""
+	codeRoleRun    codeRole = "run"
 	codeRoleEditor codeRole = "editor" // minimum used by existing mutation gates
 	codeRoleOwner  codeRole = "owner"
 )
@@ -21,6 +22,9 @@ func (r codeRole) atLeast(other codeRole) bool { return r == codeRoleOwner }
 func (r codeRole) workflowAccess() WorkflowAccessLevel {
 	if r == codeRoleOwner {
 		return WorkflowAccessOwner
+	}
+	if r == codeRoleRun {
+		return WorkflowAccessRead
 	}
 	return WorkflowAccessNone
 }
@@ -33,6 +37,26 @@ func codeRoleFor(ctx context.Context, callerID, ownerID, projectID string) codeR
 	if strings.TrimSpace(callerID) != "" && strings.TrimSpace(ownerID) != "" &&
 		sanitizeUserIDForPath(callerID) == sanitizeUserIDForPath(ownerID) {
 		return codeRoleOwner
+	}
+	records, err := defaultProjectOwners().All()
+	if err != nil {
+		return codeRoleNone
+	}
+	for _, record := range records {
+		if record.Product != "code" || record.OwnerID != sanitizeUserIDForPath(ownerID) ||
+			(record.ProjectID != strings.TrimSpace(projectID) && record.Folder != strings.TrimSpace(projectID)) {
+			continue
+		}
+		root := "_users/" + record.OwnerID + "/Chats/Code/projects/" + record.Folder
+		if !userAllowedProduct(&UserClaims{UserID: callerID}, "code") {
+			return codeRoleNone
+		}
+		if crewIsCoOwner(root, callerID) {
+			return codeRoleOwner
+		}
+		if crewSharedWith(root, callerID) {
+			return codeRoleRun
+		}
 	}
 	return codeRoleNone
 }

@@ -100,8 +100,8 @@ func TestCrewChatModesSeparatePromptSkillsAndSessionIdentity(t *testing.T) {
 	code := &resolvedAgentProfile{Definition: codeproduct.BuiltinAgentProfile(), Prompt: "Code prompt"}
 	req := QueryRequest{SelectedSkills: []string{"code-mcp"}}
 	before := agentProfileSessionKey(code)
-	if err := applyCrewChatMode(code, &req, true); err != nil || code.Prompt != "Code prompt" || before != agentProfileSessionKey(code) || len(req.SelectedSkills) != 1 {
-		t.Fatal("Crew mode selection changed Code")
+	if err := applyCrewChatMode(code, &req, true); err != nil || !strings.Contains(code.Prompt, "Crew Run") || before == agentProfileSessionKey(code) || code.Definition.Runtime.AgentTools.Mode != "mcp_only" || !slices.Contains(req.SelectedSkills, "crew-run") {
+		t.Fatal("shared Code did not get a separate restricted Run runtime")
 	}
 }
 

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -88,8 +89,11 @@ func (api *StreamingAPI) changeCrewOwners(claims *UserClaims, crew crewProjectBi
 	if !crewProjectOwnedByCallerStrict(claims.UserID, crew.Binding.WorkspacePath) {
 		return crewOwnersState{}, http.StatusForbidden, "forbidden", "Only the main owner of this Crew can add or remove owners."
 	}
+	if action == "add" && isCodeProjectPath(crew.Binding.WorkspacePath) && codeProjectMode(context.Background(), crew.Binding.WorkspacePath) == "local" {
+		return crewOwnersState{}, http.StatusBadRequest, "unsupported", "Local projects are private; shared execution is not available yet."
+	}
 	id, ok := projectIdentityOf(crew.Binding.WorkspacePath)
-	if !ok || id.Product != "work" || !id.Shared {
+	if !ok || !isProjectProfileID(id.Product) {
 		return crewOwnersState{}, http.StatusConflict, "unsupported", "This Crew is not at the shared Crew root yet, so it cannot have co-owners."
 	}
 	if email == "" {
@@ -111,9 +115,9 @@ func (api *StreamingAPI) changeCrewOwners(claims *UserClaims, crew crewProjectBi
 	var changed bool
 	var err error
 	if action == "add" {
-		changed, err = registry.AddCoOwner("work", id.Folder, target.ID)
+		changed, err = registry.AddCoOwner(id.Product, id.Folder, target.ID)
 	} else {
-		changed, err = registry.RemoveCoOwner("work", id.Folder, target.ID)
+		changed, err = registry.RemoveCoOwner(id.Product, id.Folder, target.ID)
 	}
 	if err != nil {
 		log.Printf("[CREW_OWNERS] %s %s on %s failed: %v", action, target.ID, id.Folder, err)

@@ -4084,7 +4084,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	currentUserIsReadOnly = readOnlyForRequest(access, req)
 	// One owner at a time edits a Crew (crew_edit_lock.go): an owner's Builder chat takes the lock, and another owner who
 	// tries while it is held is told who has it and when it frees.
-	if !currentUserIsReadOnly && resolvedProfile != nil && resolvedProfile.Definition.ID == crewProfileID && crewBuilderTurn(req) {
+	if !currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && crewBuilderTurn(req) {
 		if ref, ok := resolveCrewPath(r.Context(), currentUserID, req.SelectedFolder); ok && ref.Shared && crewAccessFor(GetUserFromContext(r.Context()), ref) == crewAccessOwner {
 			if message := crewEditLockTake(ref.Root, currentUserID, sessionID, time.Now()); message != "" {
 				logfWithContext(queryLogCtx, "[CREW_LOCK] %s refused for session %s: %s", sanitizeUserIDForPath(currentUserID), sessionID, message)
@@ -5945,7 +5945,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		cliReadPaths := []string{sharedChatWorkingDir}
 		cliWritePaths := []string{sharedChatWorkingDir}
-		crewReaderCLI := currentUserIsReadOnly && resolvedProfile != nil && resolvedProfile.Definition.ID == crewProfileID
+		crewReaderCLI := currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID)
 		if currentUserIsReadOnly && (isWorkflowPhase || crewReaderCLI) {
 			cliWritePaths = nil
 		}
@@ -7270,7 +7270,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				logfWithContext(queryLogCtx, "[AGENT PROFILE] Applied %s@%d system prompt", resolvedProfile.Definition.ID, resolvedProfile.Definition.Version)
-				if resolvedProfile.Definition.ID == crewProfileID && chatWorkingDir != sharedChatWorkingDir {
+				if isProjectProfileID(resolvedProfile.Definition.ID) && chatWorkingDir != sharedChatWorkingDir {
 					if err := llmAgent.AddInstructions(crewCLIWorkspaceInstructions(chatWorkingFolder)); err != nil {
 						sendError(fmt.Sprintf("Failed to apply Crew runtime instructions: %v", err), true)
 						return

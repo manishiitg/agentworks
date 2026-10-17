@@ -103,7 +103,8 @@ func (api *StreamingAPI) dashboardTarget(ctx context.Context, claims *UserClaims
 		}
 		id := path.Base(crew.Root)
 		title := id
-		manifest, err := readCrewProjectManifests(ctx, "work", crew.Root)
+		product, _, _ := projectProductForPath(crew.Root)
+		manifest, err := readCrewProjectManifests(ctx, product.ProfileID, crew.Root)
 		if err != nil {
 			return target, dashboardFailure(404, "project unavailable")
 		}
@@ -113,10 +114,14 @@ func (api *StreamingAPI) dashboardTarget(ctx context.Context, claims *UserClaims
 		if manifest.Title != "" {
 			title = manifest.Title
 		}
-		if claims.AccessToken != nil && !claims.AccessToken.AllowsCrew(id) {
+		if product.ProfileID == crewProfileID && claims.AccessToken != nil && !claims.AccessToken.AllowsCrew(id) {
 			return target, dashboardFailure(404, "project unavailable")
 		}
-		return dashboardTarget{Root: crew.Root, Kind: "crew", ID: id, Title: title, Edit: crewAccessFor(claims, crew) == crewAccessOwner && userAccessForClaims(claims).CanEdit}, nil
+		kind := "crew"
+		if product.ProfileID == "code" {
+			kind = "code"
+		}
+		return dashboardTarget{Root: crew.Root, Kind: kind, ID: id, Title: title, Edit: crewAccessFor(claims, crew) == crewAccessOwner && userAccessForClaims(claims).CanEdit}, nil
 	}
 	if ref := workspaceref.MustParse(clean); ref.Logical() != "" {
 		root, project, ok := ref.ProjectRoot()

@@ -29,7 +29,7 @@ func TestCreateCrewProjectIsAtTheSharedRoot(t *testing.T) {
 			t.Fatalf("workspace = %q", created.WorkspacePath)
 		}
 		folder := filepath.Base(created.WorkspacePath)
-		if rec, ok := registry.Lookup("work", folder); !ok || rec.OwnerID != "owner" || !rec.Shared {
+		if rec, ok := registry.Lookup("work", folder); !ok || rec.OwnerID != "owner" || !rec.Shared || !rec.Private || !rec.AudienceConfigured {
 			t.Fatalf("registry entry = %+v ok=%v", rec, ok)
 		}
 		raw := mock.files[created.WorkspacePath+"/product.json"]

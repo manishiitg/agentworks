@@ -104,7 +104,7 @@ func workflowRunEveryone(claims *UserClaims, m *WorkflowManifest, product string
 // dashboardShareOwner reports whether the caller owns the project behind the dashboard (sharing is the owner's act).
 func (api *StreamingAPI) dashboardShareOwner(ctx context.Context, claims *UserClaims, target dashboardTarget) bool {
 	switch target.Kind {
-	case "crew":
+	case "crew", "code":
 		crew, ok := resolveCrewPath(ctx, claims.UserID, target.Root)
 		return ok && crewAccessFor(claims, crew) == crewAccessOwner
 	case "workflow", "relay":
@@ -117,11 +117,11 @@ func (api *StreamingAPI) dashboardShareOwner(ctx context.Context, claims *UserCl
 func (api *StreamingAPI) readRunShare(ctx context.Context, claims *UserClaims, target dashboardTarget) (runShareState, error) {
 	state := runShareState{Mode: runSharePrivate}
 	switch target.Kind {
-	case "crew":
+	case "crew", "code":
 		if crewSharedWithOthers(target.Root) {
 			state.Mode = runShareEveryone
-		} else if id, ok := projectIdentityOf(target.Root); ok && id.Product == "work" {
-			if rec, found := defaultProjectOwners().Lookup("work", id.Folder); found && len(rec.RunPeople) > 0 {
+		} else if id, ok := projectIdentityOf(target.Root); ok && isProjectProfileID(id.Product) {
+			if rec, found := defaultProjectOwners().Lookup(id.Product, id.Folder); found && len(rec.RunPeople) > 0 {
 				state.Mode = runSharePeople
 				dir, _ := readUserDirectoryFile()
 				state.People = peopleForIDs(dir, rec.RunPeople)
@@ -170,6 +170,9 @@ func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, 
 		return runShareState{}, dashboardFailure(400, "mode must be everyone, people or private")
 	}
 	stage = "owner"
+	if target.Kind == "code" && codeProjectMode(ctx, target.Root) == "local" && mode != runSharePrivate {
+		return runShareState{}, dashboardFailure(400, "This project runs on your computer. Shared execution is not available yet.")
+	}
 	if !api.dashboardShareOwner(ctx, claims, target) {
 		return runShareState{}, dashboardFailure(403, "only the owner can share this project")
 	}
@@ -198,13 +201,13 @@ func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, 
 
 func (api *StreamingAPI) applyRunShareChange(ctx context.Context, claims *UserClaims, target dashboardTarget, mode string, emails []string) (runShareState, error) {
 	switch target.Kind {
-	case "crew":
+	case "crew", "code":
 		crew, ok := resolveCrewPath(ctx, claims.UserID, target.Root)
 		if !ok {
 			return runShareState{}, dashboardFailure(404, "project unavailable")
 		}
 		id, ok := projectIdentityOf(crew.Root)
-		if !ok || id.Product != "work" {
+		if !ok || !isProjectProfileID(id.Product) {
 			return runShareState{}, dashboardFailure(404, "project unavailable")
 		}
 		var ids []string
@@ -221,10 +224,7 @@ func (api *StreamingAPI) applyRunShareChange(ctx context.Context, claims *UserCl
 			}
 		}
 		registry := defaultProjectOwners()
-		if err := registry.SetPrivate(id.Product, id.Folder, mode != runShareEveryone); err != nil {
-			return runShareState{}, dashboardFailure(500, "could not save the sharing choice")
-		}
-		if err := registry.SetRunPeople(id.Product, id.Folder, ids); err != nil {
+		if err := registry.SetAudience(id.Product, id.Folder, mode != runShareEveryone, ids); err != nil {
 			return runShareState{}, dashboardFailure(500, "could not save the sharing choice")
 		}
 		log.Printf("[RUN_SHARE] %s set Crew %s/%s share=%s", sanitizeUserIDForPath(claims.UserID), id.Product, id.Folder, mode)

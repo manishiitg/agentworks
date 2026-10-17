@@ -483,7 +483,7 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 	// authority, the owner_id above is information for whoever reads the folder.
 	if err := defaultProjectOwners().Register(projectOwnerRecord{
 		Product: profileID, Folder: filepath.Base(filepath.ToSlash(workspacePath)), OwnerID: userID, ProjectID: crewID,
-		Shared: workspaceref.MustParse(filepath.ToSlash(workspacePath)).IsShared(),
+		Shared: workspaceref.MustParse(filepath.ToSlash(workspacePath)).IsShared(), Private: true, AudienceConfigured: true,
 	}); err != nil {
 		// A project in its owner's tree still resolves by its path; one at the shared root would belong to
 		// nobody, so only that creation fails.

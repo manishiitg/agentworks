@@ -88,8 +88,8 @@ func canonicalCrewWorkspaceRoot(workspacePath string) string {
 // project of any owner: a shared Crew/<id> path, a physical per-user path,
 // or the caller's own logical path, under Chats/Work/projects/<project>.
 func isCrewProjectPath(workspacePath string) bool {
-	_, _, ok := workspaceref.MustParse(workspacePath).AnyCrewProject()
-	return ok
+	product, _, ok := projectProductForPath(workspacePath)
+	return ok && projectSupportsRunAudience(product.ProfileID)
 }
 
 // crewProjectOwnedByCaller reports whether the caller owns the crew project
@@ -336,7 +336,7 @@ func crewReaderWorkspaceRoots(profileRoot string, reader bool) (readRoots, write
 // only ever narrow what an owner's turn may do.
 func crewGuestCallerForTurn(req QueryRequest, currentUserID string) string {
 	guest := strings.TrimSpace(req.CrewGuestCaller)
-	if guest == "" || !strings.EqualFold(strings.TrimSpace(req.AgentProfileID), "work") {
+	if guest == "" || !projectSupportsRunAudience(req.AgentProfileID) {
 		return ""
 	}
 	folder := strings.TrimSpace(req.SelectedFolder)

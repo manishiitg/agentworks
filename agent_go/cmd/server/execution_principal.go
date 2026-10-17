@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"path/filepath"
 	"strings"
 
@@ -133,30 +132,7 @@ func (api *StreamingAPI) conversationTargetAccess(ctx context.Context, req Query
 		}
 		return level, nil
 	}
-	if strings.EqualFold(strings.TrimSpace(req.AgentProfileID), codeproduct.ProfileID) || isCodeProjectPath(req.SelectedFolder) {
-		// Only its owner can run Code; audited inspection has separate routes.
-		if claims == nil || strings.TrimSpace(claims.UserID) == "" || api.agentProfiles == nil {
-			return WorkflowAccessNone, fmt.Errorf("Code access denied")
-		}
-		profile, err := api.agentProfiles.Resolve(codeproduct.ProfileID, req.AgentProfileVersion, claims.UserID)
-		if err != nil || !userAllowedProduct(claims, profile.Product) {
-			return WorkflowAccessNone, fmt.Errorf("Code access denied")
-		}
-		key := strings.TrimSpace(req.AgentProfileConversationKey)
-		if key == "" {
-			return WorkflowAccessNone, fmt.Errorf("Code conversation is required")
-		}
-		project, err := resolveCrewProjectBinding(ctx, claims.UserID, profile, key, req.SelectedFolder)
-		if err != nil || !workspacePathsMatchForUser(claims.UserID, project.Binding.WorkspacePath, req.SelectedFolder) {
-			return WorkflowAccessNone, fmt.Errorf("Code access denied")
-		}
-		role := codeRoleFor(ctx, claims.UserID, project.OwnerID, project.Binding.ResourceID)
-		if !role.atLeast(codeRoleEditor) {
-			return WorkflowAccessNone, fmt.Errorf("Code access denied")
-		}
-		return role.workflowAccess(), nil
-	}
-	if strings.EqualFold(strings.TrimSpace(req.AgentProfileID), "work") {
+	if isProjectProfileID(req.AgentProfileID) {
 		if claims == nil || strings.TrimSpace(claims.UserID) == "" || api.agentProfiles == nil {
 			return WorkflowAccessNone, fmt.Errorf("Crew access denied")
 		}

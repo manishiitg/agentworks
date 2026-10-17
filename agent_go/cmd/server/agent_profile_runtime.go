@@ -416,7 +416,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		crewRoot = project.Binding.WorkspacePath
 		// Only the owner reaches a Code turn (it is owner-only, see above) and
 		// gets native tools.
-		if project.Binding.ProjectNativeAgentTools && profile.ToolPolicy.IsAllowlist() {
+		if crewOwned && project.Binding.ProjectNativeAgentTools && profile.ToolPolicy.IsAllowlist() {
 			profile.Runtime.AgentTools.Mode = "full"
 		}
 		if !crewOwned {
@@ -946,7 +946,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 	}
 	// The existing Ask read tool also resolves captured published dashboard
 	// source. Ordinary native Crew chats retain their other tools and policy.
-	if activeWorkProject && resolved.Definition.ID == crewProfileID {
+	if activeWorkProject && isProjectProfileID(resolved.Definition.ID) {
 		gate.Declare(crewAskFilesToolName)
 		if err := api.registerCrewAskFilesTool(registrar, userID, workspacePath); err != nil {
 			return err
@@ -954,7 +954,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 	}
 	// Someone using another user's Crew can leave its owner a suggestion:
 	// a reader in their own chat, or a guest whose call runs as the owner.
-	if readOnly && activeWorkProject && resolved.Definition.ID == crewProfileID {
+	if readOnly && activeWorkProject && isProjectProfileID(resolved.Definition.ID) {
 		guest := ""
 		if len(req) > 0 {
 			guest = crewGuestCallerForTurn(req[0], userID)

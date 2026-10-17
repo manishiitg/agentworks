@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -154,12 +153,7 @@ func (api *StreamingAPI) handleListSharedProjects(w http.ResponseWriter, r *http
 		writeAgentProfileError(w, http.StatusNotFound, "shared projects not found")
 		return
 	}
-	// Code has no shared directory, even if legacy share records exist.
-	if strings.EqualFold(strings.TrimSpace(profile.ID), codeproduct.ProfileID) {
-		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"projects": []sharedProjectSummary{}})
-		return
-	}
-	if !strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
+	if !projectSupportsRunAudience(profile.ID) {
 		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"projects": []sharedProjectSummary{}})
 		return
 	}
@@ -272,7 +266,7 @@ func (api *StreamingAPI) handleReserveAgentProfileProject(w http.ResponseWriter,
 	folder := slugifyCrewTitle(body.Title) + "-" + id[:8]
 	workspacePath := workspaceref.SharedCrewRoot + "/" + folder
 	if err := defaultProjectOwners().Register(projectOwnerRecord{
-		Product: profile.ID, Folder: folder, OwnerID: claims.UserID, ProjectID: id, Shared: true,
+		Product: profile.ID, Folder: folder, OwnerID: claims.UserID, ProjectID: id, Shared: true, Private: true, AudienceConfigured: true,
 	}); err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, "register crew owner: "+err.Error())
 		return

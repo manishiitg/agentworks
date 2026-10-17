@@ -23,7 +23,7 @@ func (api *StreamingAPI) handleDashboardOwners(w http.ResponseWriter, r *http.Re
 		api.handleDashboardFlowOwners(w, r, claims, target, action, emails)
 		return
 	}
-	if target.Kind != "crew" {
+	if target.Kind != "crew" && target.Kind != "code" {
 		externalError(w, http.StatusNotFound, "not_found", "Co-owners are available for Crews and Flows.")
 		return
 	}

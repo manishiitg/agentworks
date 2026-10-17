@@ -31,7 +31,7 @@ const crewProfileID = "work"
 
 var projectProducts = []projectProduct{
 	{ProfileID: crewProfileID, ProjectsRoot: workspaceref.CrewProjectsRoot, FallbackName: "Crew", RunAudience: true},
-	{ProfileID: codeproduct.ProfileID, ProjectsRoot: codeproduct.ProjectsRoot, FallbackName: "Code"},
+	{ProfileID: codeproduct.ProfileID, ProjectsRoot: codeproduct.ProjectsRoot, FallbackName: "Code", RunAudience: true},
 }
 
 // isProjectProfileID reports whether profileID is a project product.

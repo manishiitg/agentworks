@@ -66,7 +66,7 @@ func parseCrewPath(callerID, raw string) (crewPathRef, bool) {
 	validID := func(id string) bool { return id != "" && !strings.HasPrefix(id, ".") }
 	ownedRef := workspaceref.MustParse(clean)
 	ownedRoot, ownedProject, ownedOK := ownedRef.Project()
-	ownedOK = ownedOK && ownedRef.HasOwner() && ownedRoot == workspaceref.CrewProjectsRoot && validID(ownedProject)
+	ownedOK = ownedOK && ownedRef.HasOwner() && (ownedRoot == workspaceref.CrewProjectsRoot || ownedRoot == workspaceref.CodeProjectsRoot) && validID(ownedProject)
 	switch {
 	case segments[0] == crewSharedRootName:
 		if len(segments) < 2 || !validID(segments[1]) {
@@ -79,9 +79,14 @@ func parseCrewPath(callerID, raw string) (crewPathRef, bool) {
 		}
 		owner := sanitizeUserIDForPath(callerID)
 		return crewPathRef{Root: legacyCrewRoot(owner, segments[3]), Rest: rest(4), OwnerID: owner}, true
+	case len(segments) >= 4 && segments[0] == "Chats" && segments[1] == "Code" && segments[2] == "projects" && validID(segments[3]):
+		if strings.TrimSpace(callerID) == "" {
+			return crewPathRef{}, false
+		}
+		return crewPathRef{Root: workspaceref.PhysicalPathOf(sanitizeUserIDForPath(callerID), workspaceref.CodeProjectsRoot, segments[3]), Rest: rest(4), OwnerID: sanitizeUserIDForPath(callerID)}, true
 	case ownedOK:
 		below := strings.Trim(strings.TrimPrefix(ownedRef.Logical(), ownedRoot+"/"+ownedProject), "/")
-		return crewPathRef{Root: legacyCrewRoot(ownedRef.Owner(), ownedProject), Rest: below, OwnerID: ownedRef.Owner()}, true
+		return crewPathRef{Root: workspaceref.PhysicalPathOf(ownedRef.Owner(), ownedRoot, ownedProject), Rest: below, OwnerID: ownedRef.Owner()}, true
 	}
 	return crewPathRef{}, false
 }
@@ -132,13 +137,17 @@ func crewAccessFor(claims *UserClaims, ref crewPathRef) crewAccessLevel {
 	if ref.OwnerID == sanitizeUserIDForPath(claims.UserID) {
 		return crewAccessOwner
 	}
+	product, _, ok := projectProductForPath(ref.Root)
+	if !ok || !userAllowedProduct(claims, product.ProfileID) {
+		return crewAccessNone
+	}
 	// A co-owner builds with the same rights as the main owner (crew_co_owners.go); identity stays the main owner's.
-	if userAllowedProduct(claims, "work") && crewIsCoOwner(ref.Root, claims.UserID) {
+	if crewIsCoOwner(ref.Root, claims.UserID) {
 		return crewAccessOwner
 	}
 	// Another user's Crew is read while it is shared (the default, DECISIONS 2026-10-08); when sharing is off or the
 	// owner made the Crew private, nobody else sees even that the Crew exists or is working.
-	if userAllowedProduct(claims, "work") && crewSharedWith(ref.Root, claims.UserID) {
+	if crewSharedWith(ref.Root, claims.UserID) {
 		return crewAccessReader
 	}
 	return crewAccessNone

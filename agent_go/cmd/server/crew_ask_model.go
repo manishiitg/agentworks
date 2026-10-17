@@ -35,7 +35,7 @@ func crewAskReadOnlyTurn(req QueryRequest, currentUserID string, readOnly bool) 
 	if isCrewReaderTurn(req, currentUserID) {
 		return true
 	}
-	return readOnly && strings.EqualFold(strings.TrimSpace(req.AgentProfileID), crewProfileID) && isCrewProjectPath(strings.TrimSpace(req.SelectedFolder))
+	return readOnly && isProjectProfileID(req.AgentProfileID) && isCrewProjectPath(strings.TrimSpace(req.SelectedFolder))
 }
 
 // crewAskNativeBridgeTools are the ask's allowed tools that must be native bridge tools: every non-core tool is otherwise

@@ -48,7 +48,7 @@ func crewCLIWorkspaceInstructions(folder string) string {
 // loading. Access and the downgrade-only pin choose the prompt and skill set;
 // client workshop_mode cannot promote a reader or guest.
 func applyCrewChatMode(profile *resolvedAgentProfile, req *QueryRequest, readOnly bool) error {
-	if profile == nil || profile.Definition.ID != crewProfileID {
+	if profile == nil || !isProjectProfileID(profile.Definition.ID) {
 		return nil
 	}
 	definition := profile.Definition

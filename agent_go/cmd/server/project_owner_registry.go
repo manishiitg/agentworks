@@ -54,6 +54,9 @@ type projectOwnerRecord struct {
 	// Private is the owner's restriction of a Crew to themselves; a Crew is shared with every user of the Crew product
 	// otherwise (crewSharedWithOthers).
 	Private bool `json:"private,omitempty"`
+	// AudienceConfigured distinguishes an explicit new audience from legacy Code
+	// records whose zero-value Private field was never an access grant.
+	AudienceConfigured bool `json:"audience_configured,omitempty"`
 	// RunPeople are the accounts a private Crew is shared with by name (dashboard sharing, PLAT-750). They use it as
 	// Run people do; everyone else is kept out as for any private Crew.
 	RunPeople []string `json:"run_people,omitempty"`
@@ -200,6 +203,9 @@ func (r *projectOwnerRegistry) Register(rec projectOwnerRecord) error {
 		key := projectOwnerKey(rec.Product, rec.Folder)
 		current, exists := projects[key]
 		if !exists {
+			if rec.Product == "code" && !rec.AudienceConfigured {
+				rec.Private, rec.AudienceConfigured = true, true
+			}
 			if rec.CreatedAt == "" {
 				rec.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 			}
@@ -210,6 +216,9 @@ func (r *projectOwnerRegistry) Register(rec projectOwnerRecord) error {
 			return false, fmt.Errorf("%w: %s is registered to %q, not %q", errProjectOwnerConflict, key, current.OwnerID, rec.OwnerID)
 		}
 		changed := false
+		if current.Product == "code" && !current.AudienceConfigured {
+			current.Private, current.AudienceConfigured, changed = true, true, true
+		}
 		if current.ProjectID == "" && rec.ProjectID != "" {
 			current.ProjectID, changed = rec.ProjectID, true
 		}
@@ -254,10 +263,10 @@ func (r *projectOwnerRegistry) SetPrivate(product, folder string, private bool) 
 		if !exists {
 			return false, fmt.Errorf("%s is not registered", key)
 		}
-		if current.Private == private {
+		if current.Private == private && current.AudienceConfigured {
 			return false, nil
 		}
-		current.Private = private
+		current.Private, current.AudienceConfigured = private, true
 		projects[key] = current
 		return true, nil
 	})
@@ -429,4 +438,20 @@ func registryListHas(list []string, v string) bool {
 		}
 	}
 	return false
+}
+
+// SetAudience commits the audience as one registry change; concurrent requests
+// never observe the previous selected people combined with a new mode.
+func (r *projectOwnerRegistry) SetAudience(product, folder string, private bool, people []string) error {
+	return r.modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+		key := projectOwnerKey(product, folder)
+		current, exists := projects[key]
+		if !exists {
+			return false, fmt.Errorf("%s is not registered", key)
+		}
+		current.Private, current.AudienceConfigured = private, true
+		current.RunPeople = append([]string(nil), people...)
+		projects[key] = current
+		return true, nil
+	})
 }

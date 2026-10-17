@@ -27,10 +27,10 @@ const (
 // crewCoOwnerIDs are the co-owners registered for the Crew at root, or nil.
 func crewCoOwnerIDs(root string) []string {
 	id, ok := projectIdentityOf(root)
-	if !ok || id.Product != "work" || !id.Shared {
+	if !ok || !isProjectProfileID(id.Product) {
 		return nil
 	}
-	rec, found := defaultProjectOwners().Lookup("work", id.Folder)
+	rec, found := defaultProjectOwners().Lookup(id.Product, id.Folder)
 	if !found {
 		return nil
 	}
@@ -73,7 +73,7 @@ func coOwnerTurnOwner(ctx context.Context, callerID, workspacePath string) strin
 		return owner
 	}
 	ref, ok := resolveCrewPath(ctx, callerID, workspacePath)
-	if !ok || !ref.Shared || ref.OwnerID == "" || ref.OwnerID == sanitizeUserIDForPath(callerID) || !crewIsCoOwner(ref.Root, callerID) {
+	if !ok || ref.OwnerID == "" || ref.OwnerID == sanitizeUserIDForPath(callerID) || !crewIsCoOwner(ref.Root, callerID) {
 		return ""
 	}
 	return ref.OwnerID
