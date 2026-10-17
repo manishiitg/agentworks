@@ -81,8 +81,7 @@ function usePendingCrewSuggestions(workspacePath: string, enabled: boolean, view
 }
 
 export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ sessionId = '', workspacePath, view, onViewChange, enabledPanels, readOnly, showShell = false, showActivityMonitor = true, compactContext = false }: { compactContext?: boolean; sessionId?: string; workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean; showActivityMonitor?: boolean }) {
-  // Suggestions are Crew's: people who use a Crew suggest changes to its
-  // owner. A Code has no such audience, so it never shows them.
+  // Both legacy origins use the merged Crew suggestion feature.
   const product = useProjectProduct()
   const isCode = product.profileId === 'code'
   const filePreference = useCodeFilesPreference(sessionId)

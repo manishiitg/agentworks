@@ -176,11 +176,12 @@ it('keeps the original Crew tools reachable without introducing a Terminal', asy
   }
 })
 
-it('uses Code configuration and existing setup panels without reading Crew suggestions', async () => {
+it('keeps Code-origin settings and includes the merged Crew suggestion feature', async () => {
   mocks.jobs.mockResolvedValue({
     jobs: [{ id: 'code-job', workspace_path: 'Code/one', name: 'Code check', enabled: true }],
     total: 1,
   })
+  mocks.inputs.mockResolvedValue({ success: true, inputs: [] })
   const groups = workWorkspacePanels({ profileId: 'code', showShell: true })
   const panels = [...groups.views, ...groups.ops, ...groups.setup]
   const host = document.createElement('div')
@@ -199,14 +200,14 @@ it('uses Code configuration and existing setup panels without reading Crew sugge
         />
       )
     )
-    expect(mocks.inputs).not.toHaveBeenCalled()
+    expect(mocks.inputs).toHaveBeenCalledWith('Code/one', 'pending', 'user_suggestion')
     expect(host.textContent).toContain('Code check')
     expect(host.textContent).toContain('Memory & skills')
     const workspace = Array.from(host.querySelectorAll('section')).find(section => section.querySelector('h2')?.textContent === 'Project tools')!
     await act(async () => Array.from(workspace.querySelectorAll('button')).find(button => button.textContent === 'Files')!.click())
     expect(open).toHaveBeenLastCalledWith('files')
     expect(host.textContent).not.toContain('Crew memory')
-    expect(host.textContent).not.toContain('Suggestions')
+    expect(host.textContent).toContain('Suggestions')
     expect(host.textContent).not.toContain('Pulse')
     const setup = host.querySelector('[aria-label="Workspace setup"]')!
     expect(setup.textContent).toBe('Project setupProject settingsApps & tools')
@@ -224,8 +225,8 @@ it('uses Code configuration and existing setup panels without reading Crew sugge
     )
     const menu = host.querySelector('[role="menu"]')!
     expect(menu.textContent).toContain('Terminal')
-    expect(menu.textContent).not.toContain('Suggestions')
-    expect(menu.textContent).not.toContain('Database')
+    expect(menu.textContent).toContain('Suggestions')
+    expect(menu.textContent).toContain('Database')
     await act(async () =>
       Array.from(menu.querySelectorAll('button'))
         .find((button) => button.textContent?.trim() === 'Terminal')!
