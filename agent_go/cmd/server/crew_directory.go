@@ -42,6 +42,7 @@ type sharedProjectSummary struct {
 	Description   string `json:"description,omitempty"`
 	Icon          string `json:"icon,omitempty"`
 	Name          string `json:"name,omitempty"`
+	Role          string `json:"role,omitempty"`
 	OwnerID       string `json:"owner_id"`
 	OwnerUsername string `json:"owner_username,omitempty"`
 	// WorkspacePath is the owner's physical crew root. The UI needs it
@@ -377,6 +378,7 @@ func summarizeSharedProject(ctx context.Context, claims *UserClaims, ownerID, pr
 		Description:     strings.TrimSpace(manifest.Description),
 		Icon:            strings.TrimSpace(manifest.Identity.Icon),
 		Name:            strings.TrimSpace(manifest.Identity.Name),
+		Role:            strings.TrimSpace(manifest.Identity.Role),
 		OwnerID:         ownerID,
 		OwnerUsername:   crewOwnerDisplayName(ownerID),
 		WorkspacePath:   projectRoot,
