@@ -1392,14 +1392,15 @@ func RegisterConsolidateKnowledgebaseTool(
 // workflowProgressBridge wraps an existing event bridge and intercepts step completion
 // events to send progress notifications to the main workshop agent via bgAgentRegistry.
 type workflowProgressBridge struct {
-	inner      mcpagent.AgentEventListener
-	session    *WorkshopChatSession
-	logger     loggerv2.Logger
-	parentID   string // parent execution ID for correlation
-	iteration  string
-	groupName  string
-	progressMu sync.Mutex
-	progressID map[string]string
+	inner          mcpagent.AgentEventListener
+	session        *WorkshopChatSession
+	logger         loggerv2.Logger
+	parentID       string // parent execution ID for correlation
+	iteration      string
+	groupName      string
+	progressMu     sync.Mutex
+	progressID     map[string]string
+	ownedSubAgents *workshopSubAgentCleanup
 }
 
 func (b *workflowProgressBridge) HandleEvent(ctx context.Context, event *baseevents.AgentEvent) error {
@@ -2048,20 +2049,25 @@ func RegisterRunFullWorkflowTool(
 
 				var result string
 				var execErr error
+				var progressBridge *workflowProgressBridge
 				defer func() {
 					skipNotify := finalizeExecStatus(exec, execCtx, &result, &execErr)
+					if progressBridge != nil {
+						progressBridge.finishProgressAfterChildrenStop()
+					}
 					if !skipNotify && session.executionNotifier != nil {
 						session.executionNotifier.OnExecutionComplete(execID, "Full Workflow Execution", result, execMeta, execErr)
 					}
 				}()
 
 				// Wrap event bridge with progress listener to send per-step notifications
-				progressBridge := &workflowProgressBridge{
-					inner:     cfg.EventBridge,
-					session:   session,
-					logger:    logger,
-					parentID:  execID,
-					iteration: iteration,
+				progressBridge = &workflowProgressBridge{
+					inner:          cfg.EventBridge,
+					session:        session,
+					logger:         logger,
+					parentID:       execID,
+					iteration:      iteration,
+					ownedSubAgents: &workshopSubAgentCleanup{},
 				}
 				if len(enabledGroupNames) > 0 {
 					progressBridge.groupName = enabledGroupNames[0]
@@ -2092,6 +2098,7 @@ func RegisterRunFullWorkflowTool(
 					return
 				}
 				defer workflowController.CloseWorkshopGroupSessions()
+				workflowController.workshopSubAgentCleanup = progressBridge.ownedSubAgents
 
 				// Wire sub-agent tracking so generic/predefined sub-agents spawned by the
 				// runner controller appear in the session's stepRegistry and are visible

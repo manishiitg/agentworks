@@ -408,6 +408,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 			}
 		}
 		if opts.Delegation.ExecCtx != nil {
+			hcpo.workshopSubAgentCleanup.track(opts.Delegation.ExecCtx)
 			// The step must never return while a child it owns is still running,
 			// whatever the exit path (PLAT-082's failure-path backstop).
 			defer func() {
