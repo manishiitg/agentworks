@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"path"
 	"strings"
@@ -140,7 +141,9 @@ func workspaceReadAllowed(ctx context.Context, claims *UserClaims, raw string, l
 			crewRef, found := resolveCrewPath(ctx, claims.UserID, clean)
 			return found && crewAccessFor(claims, crewRef) == crewAccessOwner
 		case root == workspaceref.CodeProjectsRoot:
-			return codeRoleFor(ctx, claims.UserID, ref.Owner(), project) != codeRoleNone
+			// Raw workspace routes expose Builder history and credentials. Run access
+			// uses the mediated shared-file/dashboard services and their privacy filter.
+			return codeRoleFor(ctx, claims.UserID, ref.Owner(), project) == codeRoleOwner
 		}
 		return false
 	}
@@ -173,6 +176,7 @@ func requireWorkspaceReadParam(logical logicalPathOwner, next http.HandlerFunc) 
 		}
 		if workspacePath := requestWorkflowWorkspacePath(r); workspacePath != "" &&
 			!workspaceReadAllowed(r.Context(), GetUserFromContext(r.Context()), workspacePath, logical, true) {
+			log.Printf("[WORKSPACE READ] actor=%s route=%s result=denied", sanitizeUserIDForPath(GetUserIDFromContext(r.Context())), r.URL.Path)
 			writeWorkflowPermissionDenied(w, "read")
 			return
 		}
@@ -190,6 +194,7 @@ func requireLogFileReadAccess(next http.HandlerFunc) http.HandlerFunc {
 		}
 		filePath := r.URL.Query().Get("file_path")
 		if filePath != "" && !workspaceReadAllowed(r.Context(), GetUserFromContext(r.Context()), filePath, logicalPathIsDefaultUser, false) {
+			log.Printf("[WORKSPACE READ] actor=%s route=%s result=denied", sanitizeUserIDForPath(GetUserIDFromContext(r.Context())), r.URL.Path)
 			writeWorkflowPermissionDenied(w, "read")
 			return
 		}

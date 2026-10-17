@@ -301,3 +301,61 @@ func TestUpdateRunningWorkflowRequiresVisibility(t *testing.T) {
 		t.Fatal("owner's patch was not applied")
 	}
 }
+
+// A Run share grants filtered product use, never the owner's raw workspace.
+func TestCodeRunCannotReadRawWorkspaceRoutes(t *testing.T) {
+	api, _ := newCodePrivacyFixture(t)
+	registry := withProjectOwnerRegistry(t)
+	withProjectSharing(t, true)
+	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.SetRunPeople("code", "app-c0de0001", []string{"other"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := codeRoleFor(context.Background(), "other", "owner", "app-c0de0001"); got != codeRoleRun {
+		t.Fatalf("fixture is not shared: %q", got)
+	}
+	router := mux.NewRouter()
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			id := r.Header.Get("X-Test-User")
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: id, Username: id})))
+		})
+	})
+	registerWorkflowReadRoutes(router.PathPrefix("/api").Subrouter(), api)
+	for _, rel := range []string{"builder/conversation/private.json", ".env"} {
+		target := "/api/workflow/logs/file?" + url.Values{"file_path": {codePrivacyOwnerRoot + "/" + rel}}.Encode()
+		if rec := readAs(t, router, "other", target); rec.Code != http.StatusForbidden {
+			t.Fatalf("Run read %s: %d %s", rel, rec.Code, rec.Body.String())
+		}
+		ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
+		if !workspaceReadAllowed(ctx, GetUserFromContext(ctx), codePrivacyOwnerRoot+"/"+rel, logicalPathIsDefaultUser, true) {
+			t.Fatalf("owner lost %s", rel)
+		}
+		// Shared asset links retain the same private-file filter.
+		req := profileRouteRequest(http.MethodGet, "/file?uid=owner", nil, "other")
+		rec := httptest.NewRecorder()
+		if _, _, _, handled, ok := api.crewReaderSharedAsset(rec, req, codePrivacyOwnerRoot+"/"+rel); !handled || ok || rec.Code != http.StatusForbidden {
+			t.Fatalf("private asset %s: handled=%v ok=%v status=%d", rel, handled, ok, rec.Code)
+		}
+	}
+	for _, route := range workflowReadRoutes {
+		if rec := readAs(t, router, "other", workflowReadTarget(route, codePrivacyOwnerRoot)); rec.Code != http.StatusForbidden {
+			t.Fatalf("Run route %s: %d %s", route, rec.Code, rec.Body.String())
+		}
+	}
+
+	// A shared file link is a mediated surface and still allows ordinary source.
+	req := profileRouteRequest(http.MethodGet, "/file?uid=owner", nil, "other")
+	if _, _, _, handled, ok := api.crewReaderSharedAsset(httptest.NewRecorder(), req, codePrivacyOwnerRoot+"/code/main.go"); !handled || !ok {
+		t.Fatal("Run lost its mediated source link")
+	}
+	if _, err := registry.AddCoOwner("code", "app-c0de0001", "other"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "other", Username: "other"})
+	if !workspaceReadAllowed(ctx, GetUserFromContext(ctx), codePrivacyOwnerRoot+"/builder/conversation/private.json", logicalPathIsDefaultUser, true) {
+		t.Fatal("co-owner lost Builder history")
+	}
+}
