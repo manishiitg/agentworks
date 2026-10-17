@@ -523,6 +523,8 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return reads || t.Allows("crews:read")
 	case "manage_crew_chats":
 		return t.Allows("crews:read") || t.Allows("crews:run")
+	case "get_secret_sources":
+		return reads || t.Allows("crews:read") || externalCodeRunAllowed(c)
 	case "get_settings", "update_settings", "manage_schedules", "manage_triggers", "list_needs_you", "answer_needs_you", "dismiss_needs_you", "manage_project":
 		// Workflow or Crew settings: each target rechecks its own scope and role.
 		return reads || t.Allows("crews:read") || t.Allows("crews:write")

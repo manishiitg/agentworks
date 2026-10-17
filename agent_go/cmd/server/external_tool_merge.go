@@ -31,8 +31,8 @@ var externalToolMerges = []externalToolMerge{
 		{"create", "create_dashboard"}, {"update", "update_dashboard"}, {"validate", "validate_dashboard"},
 		{"export_motion", "export_dashboard_motion"}, {"preview", "preview_dashboard"}, {"publish", "publish_dashboard"}, {"restore", "restore_dashboard"},
 	}},
-	{"settings", "Read and change the setup of a workflow, Flow or Crew: models, MCP servers, skills, secrets, Pulse, browser mode, notifications and after-run steps.", [][2]string{
-		{"get", "get_settings"}, {"update", "update_settings"},
+	{"settings", "Read and change the setup of a workflow, Flow or Crew; inspect saved secret sources for these and your own Code projects: models, MCP servers, skills, secrets, Pulse, browser mode, notifications and after-run steps.", [][2]string{
+		{"get", "get_settings"}, {"update", "update_settings"}, {"secret_sources", "get_secret_sources"},
 	}},
 	{"needs_you", "What is waiting on you across workflows and Crews: agent questions and open decisions. List them, then answer or dismiss one.", [][2]string{
 		{"list", "list_needs_you"}, {"answer", "answer_needs_you"}, {"dismiss", "dismiss_needs_you"},

@@ -730,6 +730,24 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if isExternalSettingsTool(tool.Name) {
+		if codeID := externalArg(call.Arguments, "code_id"); codeID != "" {
+			if tool.Name != "get_secret_sources" || externalArg(call.Arguments, "crew_id") != "" || externalArg(call.Arguments, "workflow_id") != "" {
+				externalError(w, 400, "invalid_arguments", "Choose exactly one product for secret_sources.")
+				return
+			}
+			claims := GetUserFromContext(r.Context())
+			if !externalCodeRunAllowed(claims) {
+				externalError(w, 403, "insufficient_scope", "This connection cannot inspect your Code projects. Open the project's Settings in the app.")
+				return
+			}
+			binding, _, ok := api.externalCodeRunOwnProject(r.Context(), claims.UserID, codeID)
+			if !ok {
+				externalError(w, 404, "not_found", "Code project not found. Choose one of your own projects.")
+				return
+			}
+			externalJSON(w, api.secretSources(r.Context(), claims.UserID, binding.WorkspacePath))
+			return
+		}
 		hasCrew, hasWorkflow := externalArg(call.Arguments, "crew_id") != "", externalArg(call.Arguments, "workflow_id") != ""
 		if hasCrew == hasWorkflow {
 			externalError(w, 400, "invalid_arguments", "Pass exactly one of workflow_id or crew_id.")
@@ -780,7 +798,7 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		api.externalCreateRelay(w, r, call.Arguments)
 		return
 	}
-	discovered, err := DiscoverWorkflowManifests(r.Context())
+	discovered, err := discoverWorkflowManifests(r.Context(), tool.Name != "get_secret_sources")
 	if err != nil {
 		externalError(w, 502, "workspace_unavailable", err.Error())
 		return

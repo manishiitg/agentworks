@@ -1,5 +1,5 @@
 import { OpenVaultButton } from '../integrations/OpenVaultButton'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import axios from 'axios'
 import {
   KeyRound,
@@ -21,6 +21,8 @@ import ConfirmationDialog from '../ui/ConfirmationDialog'
 import { secretsApi } from '../../api/secrets'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { PROJECT_SECRETS_REFRESH_EVENT } from '../../utils/secretMutationRefresh'
+
+const SecretSourceView = lazy(() => import('./SecretSourceView'))
 
 interface SecretSelectionSectionProps {
   selectedSecrets: string[]
@@ -75,6 +77,7 @@ export function SecretSelectionSection({
   const [shareName, setShareName] = useState('')
   const [shareGroupIds, setShareGroupIds] = useState<string[]>([])
   const [shareNotice, setShareNotice] = useState('')
+  const [showSources, setShowSources] = useState(false)
   const [localSource, setSource] = useState<'project' | 'vault'>('project')
   const source = projectSource ?? localSource
   const loadGeneration = useRef(0)
@@ -548,6 +551,14 @@ export function SecretSelectionSection({
           </Button>
         </div>
       </div>
+      {mode === 'project' && workflowPath && projectSource !== 'vault' && (
+        <div className="space-y-2">
+          <Button size="sm" variant="ghost" aria-expanded={showSources} onClick={() => setShowSources(open => !open)}>
+            {showSources ? 'Hide secret sources' : 'Where do these secrets come from?'}
+          </Button>
+          {showSources && <Suspense fallback={<p className="text-xs">Loading secret sources…</p>}><SecretSourceView workflowPath={workflowPath} /></Suspense>}
+        </div>
+      )}
       {mode === 'project' && isVault && (
         <div className="flex justify-end">
           <OpenVaultButton />

@@ -36,7 +36,18 @@ export interface WorkflowProviderCredentialStatus {
 const workflowProviderCredentialUrl = (provider: WorkflowCredentialProvider) =>
   `/api/workflow-provider-credentials/${provider}`;
 
+export interface SecretSources {
+  status: 'available' | 'partial' | 'unavailable';
+  note: string;
+  warnings: string[];
+  secrets: { name: string; display_name: string; explanation: string }[];
+}
+
 export const secretsApi = {
+  getSecretSources: async (workspacePath: string): Promise<SecretSources> => {
+    const response = await api.get('/api/secrets/workflow/sources', { params: { workspace_path: workspacePath } });
+    return response.data;
+  },
   setVaultSecretAccess: async (groupId: string, name: string, allowed: boolean): Promise<void> => {
     await api.post('/api/secrets/vault/access', { group_id: groupId, name, allowed });
   },

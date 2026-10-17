@@ -2814,6 +2814,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/secrets/global/reveal", api.handleRevealGlobalSecret).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/secrets/workflow/store", api.handleStoreWorkflowSecret).Methods("PUT", "OPTIONS")
 	apiRouter.HandleFunc("/secrets/workflow/store/{name}", api.handleDeleteWorkflowSecret).Methods("DELETE", "OPTIONS")
+	apiRouter.HandleFunc("/secrets/workflow/sources", api.handleSecretSources).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/secrets/workflow/stored", api.handleListStoredWorkflowSecrets).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow-provider-credentials/claude-code", api.handleGetWorkflowClaudeCodeCredential).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/workflow-provider-credentials/claude-code", api.handleStoreWorkflowClaudeCodeCredential).Methods("PUT", "OPTIONS")

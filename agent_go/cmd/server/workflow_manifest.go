@@ -1527,6 +1527,11 @@ func manifestPath(workspacePath string) string {
 // ReadWorkflowManifest reads and parses workflow.json from a workspace.
 // Returns (manifest, true, nil) if found, (nil, false, nil) if not found, (nil, false, error) on error.
 func ReadWorkflowManifest(ctx context.Context, workspacePath string) (*WorkflowManifest, bool, error) {
+	return readWorkflowManifest(ctx, workspacePath, true)
+}
+
+// readWorkflowManifest can inspect existing settings without persisting read-time migrations.
+func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigrations bool) (*WorkflowManifest, bool, error) {
 	content, exists, err := readFileFromWorkspace(ctx, manifestPath(workspacePath))
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to read workflow.json: %w", err)
@@ -1622,7 +1627,7 @@ func ReadWorkflowManifest(ctx context.Context, workspacePath string) (*WorkflowM
 	// its schedules carry no group_names, so the rewrite failed validation on
 	// every read, and had it passed it would have dropped the product fields.
 	heldRoot, _ := ctx.Value(teamLockHeldKey{}).(string)
-	mayPersistManifestMigrations := heldRoot != workspacePath && !isProductRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/")
+	mayPersistManifestMigrations := persistMigrations && heldRoot != workspacePath && !isProductRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/")
 	if mayPersistManifestMigrations && (hadMissingLabel || hadEmptyScheduleID || llmConfigMigrated || hasStaleFields) && len(m.MalformedConfig) == 0 {
 		if hasStaleFields {
 			log.Printf("[MANIFEST] %s: pruning retired field(s) no longer in schema — top-level=%v execution_defaults=%v capabilities=%v",
@@ -2174,6 +2179,10 @@ func ensureManifestSlices(m *WorkflowManifest) {
 // DiscoverWorkflowManifests scans all workspace folders to find those with workflow.json.
 // It calls the workspace API to list top-level folders, then checks each for a manifest.
 func DiscoverWorkflowManifests(ctx context.Context) ([]DiscoveredWorkflow, error) {
+	return discoverWorkflowManifests(ctx, true)
+}
+
+func discoverWorkflowManifests(ctx context.Context, persistMigrations bool) ([]DiscoveredWorkflow, error) {
 	// List all workspace folders via the workspace API
 	folders, err := listWorkspaceFolders(ctx)
 	if err != nil {
@@ -2182,7 +2191,7 @@ func DiscoverWorkflowManifests(ctx context.Context) ([]DiscoveredWorkflow, error
 
 	var results []DiscoveredWorkflow
 	for _, folder := range folders {
-		manifest, exists, err := ReadWorkflowManifest(ctx, folder)
+		manifest, exists, err := readWorkflowManifest(ctx, folder, persistMigrations)
 		if err != nil {
 			log.Printf("[WARN] DiscoverWorkflowManifests: error reading manifest from %s: %v", folder, err)
 			continue
