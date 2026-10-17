@@ -38,6 +38,11 @@ func TestCodePublishedFunctionsKeepLegacyPeersRemoved(t *testing.T) {
 	env.mock.files[source+"/product.json"] = `{"schema_version":1,"product":"code","id":"source","title":"Source","session_id":"code-source"}`
 	env.mock.files[target+"/product.json"] = `{"schema_version":1,"product":"code","id":"target","title":"Target","session_id":"code-target"}`
 	env.mock.mu.Unlock()
+	registry := withProjectOwnerRegistry(t)
+	withProjectSharing(t, true)
+	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: "target", OwnerID: "owner", ProjectID: "target"}); err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
 	claims := &UserClaims{UserID: "owner"}
 
@@ -70,4 +75,33 @@ func TestCodePublishedFunctionsKeepLegacyPeersRemoved(t *testing.T) {
 	if _, err := resolveFunctionTarget(ctx, claims, codeCaller, "#code:target"); err == nil {
 		t.Fatal("a Code resolved another Code")
 	}
+	// Explicit published-function targets use current person access; they do
+	// not revive the old implicit #code peer route tested above.
+	if _, err := resolveFunctionTarget(ctx, claims, codeCaller, "code:target"); err != nil {
+		t.Fatalf("owner's published target refused: %v", err)
+	}
+	other := &UserClaims{UserID: "other"}
+	otherCtx := context.WithValue(context.Background(), UserContextKey, other)
+	if _, err := resolveFunctionTarget(otherCtx, other, triggerLinkCaller{}, "code:target"); err == nil {
+		t.Fatal("private Code admitted another caller")
+	}
+	if err := registry.SetAudience("code", "target", true, []string{"other"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveFunctionTarget(otherCtx, other, triggerLinkCaller{}, "code:target"); err != nil {
+		t.Fatalf("selected Run caller refused: %v", err)
+	}
+	if err := registry.SetAudience("code", "target", true, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveFunctionTarget(otherCtx, other, triggerLinkCaller{}, "code:target"); err == nil {
+		t.Fatal("unshared caller kept function access")
+	}
+	if _, err := registry.AddCoOwner("code", "target", "other"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveFunctionTarget(otherCtx, other, triggerLinkCaller{}, "code:target"); err != nil {
+		t.Fatalf("co-owner's published target refused: %v", err)
+	}
+
 }

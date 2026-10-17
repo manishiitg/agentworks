@@ -1,12 +1,11 @@
 ---
 name: make-a-crew
-description: Use when the person wants to share this work with other people, turn it into something others use, or build a new Crew.
+description: Explain live Share, or make an independent Crew copy only when explicitly requested.
 ---
 
-A Crew is how work from a Code project becomes something other people use: it has
-instructions, files, skills, functions that others and other agents can call, and a
-page you can share. Offer it when the person talks about sharing this work or making
-it usable by others; make it only when they say yes. Never make one unasked.
+Sharing uses this project's live **Share** setting: Only me, Chosen people or Everyone. Keep the same files, chats, functions, Memory and selected accounts. Do not copy into another product just to share it. Use `share` with the stable workspace ID, or the dashboard's Share button. Local projects stay private in this version.
+
+Use the legacy copy helper only when the person explicitly asks for a separate, independent project. Creation and copying keep the account's existing product/create permissions.
 
 Two ways, both owned by the same person and both using the account's normal rules
 (a person who cannot create Crews gets a plain refusal; say so and stop):
@@ -19,8 +18,7 @@ Two ways, both owned by the same person and both using the account's normal rule
    share the Crew, because a project can hold notes they would not want others to see;
    offer to remove any with `update_crew` (remove_files). `files_not_copied` lists what
    was too large or not text; offer to add those by hand.
-2. From scratch: call `create_crew` with a name, a one-line role and its standing
-   instructions (purpose), then add files with `write_crew_file` and skills or
+2. From scratch: call `create_crew` with a name; role and standing instructions (purpose) are optional, then add files with `write_crew_file` and skills or
    schedules with `update_crew`. `export_crew` and `import_crew` move a Crew as a
    portable spec.
 

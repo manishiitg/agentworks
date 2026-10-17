@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -23,6 +24,9 @@ func TestWorkspaceMemoryDefaultsAndSwitch(t *testing.T) {
 		}
 		if agentprofiles.HasFeature(profile, "memory") != enabled {
 			t.Fatal("runtime ignored saved memory setting")
+		}
+		if sectionByName(t, "project-memory").Applies(promptContext{HasProfile: true, ProjectMemoryDisabled: !agentprofiles.HasFeature(profile, "memory")}) != enabled {
+			t.Fatal("Memory instruction gate disagrees with saved setting")
 		}
 		raw, _, err := readFileFromWorkspace(ctx, codePrivacyOwnerRoot+"/workflow.json")
 		var manifest productProjectManifest
@@ -51,5 +55,16 @@ func TestWorkspaceMCPAliasesUseNativeServices(t *testing.T) {
 				t.Fatalf("%s lost native Code target: %s %v %v", family, member.Name, args, err)
 			}
 		}
+	}
+}
+
+func TestWorkspaceCodeOnlyCreateScope(t *testing.T) {
+	claims := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"code:run"}}}
+	if !workspaceCreateTokenAllowed(claims, "code") || workspaceCreateTokenAllowed(claims, "work") {
+		t.Fatal("creation scope crossed origin")
+	}
+	claims.AccessToken.CrewIDs = []string{"one-project"}
+	if workspaceCreateTokenAllowed(claims, "code") {
+		t.Fatal("bounded machine token created outside its project list")
 	}
 }

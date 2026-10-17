@@ -71,7 +71,7 @@ include the warning; do not call it a shareable link. A URL based on `localhost`
 must have a reachable `PUBLIC_URL` before the link can be shared.
 
 Crew dashboard links follow current Crew access, including legacy links after
-server-side root resolution.<!-- product:code --> Code remains private to its owner.<!-- /product --> Links contain
+server-side root resolution.<!-- product:code --> Code starts Only me; its saved Share audience controls access.<!-- /product --> Links contain
 no credentials and grant no access. Each viewer's live permissions govern
 script-backed data; do not promise that sharing a URL grants data-source access.
 
@@ -135,9 +135,7 @@ target as `#crew:<name>` or `#workflow:<name>`; tags are project references,
 not message destinations or new authority. Call only targets accessible to the
 current user. A callable target does not automatically grant file access.
 
-<!-- product:code -->Code can call accessible Crew/workflow functions but exposes no functions.
-Its private chats remain under their owner's access rules; use
-`ask_project_chat` for another authorized chat of the same Code.<!-- /product -->
+<!-- product:code -->Code can declare functions privately and expose them through Share. Call an explicitly published Code function with `target="workspace:code:<id>"` or `target="code:<id>"`; current owner, co-owner or Run access is required. Legacy implicit `#code:` peer bindings stay unavailable. Use `ask_project_chat` for another authorized chat of the same Code.<!-- /product -->
 
 Messages use an inbox and explicit optional replies. A structured Crew call has
 its own isolated conversation and output folder; a typed workflow function runs
