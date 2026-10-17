@@ -114,7 +114,7 @@ func (api *StreamingAPI) dashboardTarget(ctx context.Context, claims *UserClaims
 		if manifest.Title != "" {
 			title = manifest.Title
 		}
-		if product.ProfileID == crewProfileID && claims.AccessToken != nil && !claims.AccessToken.AllowsCrew(id) {
+		if claims.AccessToken != nil && (!claims.AccessToken.AllowsCrew(id) || product.ProfileID == "code" && !externalCodeRunAllowed(claims)) {
 			return target, dashboardFailure(404, "project unavailable")
 		}
 		kind := "crew"

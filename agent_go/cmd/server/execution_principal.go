@@ -151,6 +151,9 @@ func (api *StreamingAPI) conversationTargetAccess(ctx context.Context, req Query
 		if err != nil || !workspacePathsMatchForUser(claims.UserID, crew.Binding.WorkspacePath, req.SelectedFolder) {
 			return WorkflowAccessNone, fmt.Errorf("Crew access denied")
 		}
+		if isCodeProjectPath(crew.Binding.WorkspacePath) && codeProjectMode(ctx, crew.Binding.WorkspacePath) == "local" && crew.OwnerID != sanitizeUserIDForPath(claims.UserID) {
+			return WorkflowAccessNone, fmt.Errorf("Local projects run only for their owner; shared execution is not available yet")
+		}
 		if !crew.OwnedByCaller {
 			return WorkflowAccessRead, nil
 		}

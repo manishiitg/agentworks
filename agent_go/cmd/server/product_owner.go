@@ -296,7 +296,7 @@ func ensureProjectOwnerID(ctx context.Context, root, callerID string) {
 		log.Printf("[OWNER_MISMATCH] %s/%s is registered to %q; not registering %q", id.Product, id.Folder, registered, owner)
 		return
 	}
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: id.Product, Folder: id.Folder, OwnerID: owner}); err != nil {
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: id.Product, Folder: id.Folder, OwnerID: owner, Private: true, AudienceConfigured: true}); err != nil {
 		log.Printf("[OWNER_REGISTRY] %s/%s: %v", id.Product, id.Folder, err)
 		return
 	}
@@ -362,6 +362,21 @@ func migrateProductOwners(docsDir string) productOwnerMigrationReport {
 			}
 		}
 	}
+	if len(report.Failures) == 0 {
+		registry := defaultProjectOwners()
+		if registry.dir != "" {
+			if err := os.MkdirAll(registry.dir, 0o700); err == nil {
+				file, createErr := os.OpenFile(filepath.Join(registry.dir, "audience-baseline-v1"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+				if createErr == nil {
+					_ = file.Close()
+				} else if !errors.Is(createErr, os.ErrExist) {
+					report.Failures = append(report.Failures, createErr.Error())
+				}
+			} else {
+				report.Failures = append(report.Failures, err.Error())
+			}
+		}
+	}
 	return report
 }
 
@@ -370,14 +385,18 @@ func scanProductOwners(docsDir string) productOwnerMigrationReport {
 	report := productOwnerMigrationReport{}
 	docs, err := os.OpenRoot(docsDir)
 	if err != nil {
+		report.Failures = append(report.Failures, err.Error())
 		return report
 	}
 	defer docs.Close()
 	users, err := listProjectDirNames(docs, workspaceref.UsersDir)
 	if err != nil {
+		report.Failures = append(report.Failures, err.Error())
 		return report
 	}
 	registry := defaultProjectOwners()
+	_, baselineErr := os.Stat(filepath.Join(registry.dir, "audience-baseline-v1"))
+	preserveLegacyAudience := registry.dir != "" && errors.Is(baselineErr, os.ErrNotExist)
 	for _, user := range users {
 		if sanitizeUserIDForPath(user) != user {
 			continue
@@ -392,6 +411,8 @@ func scanProductOwners(docsDir string) productOwnerMigrationReport {
 				if errors.Is(err, errUnsafeProjectPath) {
 					report.Unsafe++
 					logUnsafeProjectPath(user+"/"+projectsRoot, err)
+				} else if !errors.Is(err, os.ErrNotExist) {
+					report.Failures = append(report.Failures, err.Error())
 				}
 				continue
 			}
@@ -436,8 +457,13 @@ func scanProductOwners(docsDir string) productOwnerMigrationReport {
 					_ = project.Close()
 					continue
 				} else if registered != "" {
+					if product == "code" {
+						if err := registry.Register(projectOwnerRecord{Product: product, Folder: folder, OwnerID: user, ProjectID: strings.TrimSpace(manifestID.ID), Private: !(product == "work" && preserveLegacyAudience), AudienceConfigured: true}); err != nil {
+							report.Failures = append(report.Failures, err.Error())
+						}
+					}
 					report.Registry++
-				} else if err := registry.Register(projectOwnerRecord{Product: product, Folder: folder, OwnerID: user, ProjectID: strings.TrimSpace(manifestID.ID)}); err != nil {
+				} else if err := registry.Register(projectOwnerRecord{Product: product, Folder: folder, OwnerID: user, ProjectID: strings.TrimSpace(manifestID.ID), Private: !(product == "work" && preserveLegacyAudience), AudienceConfigured: true}); err != nil {
 					report.Failures = append(report.Failures, fmt.Sprintf("%s: %v", where, err))
 					_ = project.Close()
 					continue

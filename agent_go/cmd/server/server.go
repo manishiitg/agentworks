@@ -4085,7 +4085,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// One owner at a time edits a Crew (crew_edit_lock.go): an owner's Builder chat takes the lock, and another owner who
 	// tries while it is held is told who has it and when it frees.
 	if !currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && crewBuilderTurn(req) {
-		if ref, ok := resolveCrewPath(r.Context(), currentUserID, req.SelectedFolder); ok && ref.Shared && crewAccessFor(GetUserFromContext(r.Context()), ref) == crewAccessOwner {
+		if ref, ok := resolveCrewPath(r.Context(), currentUserID, req.SelectedFolder); ok && (ref.Shared || len(crewCoOwnerIDs(ref.Root)) > 0) && crewAccessFor(GetUserFromContext(r.Context()), ref) == crewAccessOwner {
 			if message := crewEditLockTake(ref.Root, currentUserID, sessionID, time.Now()); message != "" {
 				logfWithContext(queryLogCtx, "[CREW_LOCK] %s refused for session %s: %s", sanitizeUserIDForPath(currentUserID), sessionID, message)
 				http.Error(w, message, http.StatusConflict)
@@ -14657,7 +14657,7 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 	api.backfillWorkflowPhaseFolder(ctx, req)
 	// Only the verified Work binding may enter another person's Crew. A
 	// profile-less workflow payload must not bypass Crew access/tool policy.
-	if isCrewProjectPath(req.SelectedFolder) && !crewProjectOwnedByCaller(currentUserID, req.SelectedFolder) && !strings.EqualFold(strings.TrimSpace(req.AgentProfileID), "work") {
+	if isCrewProjectPath(req.SelectedFolder) && !crewProjectOwnedByCaller(currentUserID, req.SelectedFolder) && !isProjectProfileID(req.AgentProfileID) {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("another person's Crew requires its verified Work conversation")}
 	}
 	access, err := api.conversationTargetAccess(ctx, *req)
