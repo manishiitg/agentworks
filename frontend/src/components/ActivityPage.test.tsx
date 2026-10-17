@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { describe, expect, it, vi, afterAll } from 'vitest'
 vi.hoisted(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} }))
 
-vi.mock('../stores/useLLMStore', () => ({ useLLMStore: { getState: () => ({ setShowLLMModal: vi.fn() }) } }))
+vi.mock('../stores/useLLMStore', () => ({ useLLMStore: Object.assign((select: (state: unknown) => unknown) => select({ showLLMModal: false }), { getState: () => ({ setShowLLMModal: vi.fn() }) }) }))
 vi.mock('../stores/useGlobalPresetStore', () => ({ useGlobalPresetStore: { getState: () => ({ getActivePreset: () => null }) } }))
 vi.mock('./EmployeeDashboard', () => ({ EmployeeDashboard: () => <input aria-label="Find updates" /> }))
 import ActivityPage from './ActivityPage'
@@ -25,7 +25,7 @@ describe('Activity page', () => {
       expect(host.querySelector('[aria-label="Find updates"]')).not.toBeNull()
       expect(host.querySelector('[role="tablist"]')).toBeNull()
       expect(host.querySelector('#activity-tab-schedules')).toBeNull()
-      const back = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Back to Goals')!
+      const back = host.querySelector<HTMLButtonElement>('[aria-label="Back to Goals"]')!
       await act(async () => back.click())
       expect(useAppStore.getState().showWorkflowsOverview).toBe(false)
       expect(useAppStore.getState().activityWorkflowPath).toBeNull()

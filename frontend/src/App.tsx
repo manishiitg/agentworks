@@ -40,7 +40,6 @@ declare global {
 import { apiLogEntries, summarizeApiTimings } from './utils/apiTiming'
 import ToastHost from './components/ui/ToastHost'
 import QuickSwitcher, { preloadQuickSwitcher } from './components/QuickSwitcherHost'
-import { HomePage } from './components/HomePage'
 import { useWorkspaceReturnStore } from './stores/useWorkspaceReturnStore'
 import { WelcomeHome } from './components/WelcomeHome'
 import { setPendingLocalLink } from './products/work/codeLocalFiles'
@@ -104,7 +103,7 @@ const hasOpenWorkspaceCollapsingPopup = () => {
 
 function AppWorkspace() {
   const returnNote = useWorkspaceReturnStore(state => state.note || state.saveError)
-  const homeOpen = useWorkspaceReturnStore(state => state.homeOpen)
+  const firstVisit = useWorkspaceReturnStore(state => state.firstVisit)
   const productSurface = useProductSurfaceStore(state => state.productSurface)
   const setProductSurface = useProductSurfaceStore(state => state.setProductSurface)
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
@@ -782,8 +781,8 @@ function AppWorkspace() {
             render on every surface, not only the ones that mount a chat. */}
         <ToastHost />
         {/* First visit: products, MCP and providers instead of an empty product surface. */}
-        <WelcomeHome autoOpen={false} />
-        {!homeOpen && returnNote && <div role="status" className="fixed right-4 top-4 z-50 flex max-w-md items-start gap-3 rounded-lg border border-border bg-popover p-3 text-sm text-popover-foreground shadow-lg"><span>{returnNote}</span><button type="button" aria-label="Dismiss workspace notice" onClick={() => useWorkspaceReturnStore.setState({ note: '', saveError: '' })}>×</button></div>}
+        <WelcomeHome autoOpen={firstVisit} />
+        {returnNote && <div role="status" className="fixed right-4 top-4 z-50 flex max-w-md items-start gap-3 rounded-lg border border-border bg-popover p-3 text-sm text-popover-foreground shadow-lg"><span>{returnNote}</span><button type="button" aria-label="Dismiss workspace notice" onClick={() => useWorkspaceReturnStore.setState({ note: '', saveError: '' })}>×</button></div>}
         {showQuickSwitcher && (
           <QuickSwitcher
             isOpen
@@ -791,7 +790,7 @@ function AppWorkspace() {
             initialQuery={quickSwitcherInitialQuery}
           />
         )}
-        {homeOpen ? <HomePage /> : productSurface === 'bullpen' ? (
+        {productSurface === 'bullpen' ? (
           <Suspense fallback={<ProductSurfaceFallback label="AgentBridge" />}><BullpenSurface /></Suspense>
         ) : productSurface === 'video-studio' ? (
           <Suspense fallback={<ProductSurfaceFallback label="Video Studio" />}><VideoStudioSurface /></Suspense>

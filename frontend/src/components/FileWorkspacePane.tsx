@@ -34,6 +34,9 @@ type FileWorkspacePaneProps = {
   hideManagedEntriesByDefault?: boolean
   testId?: string
   headerAction?: ReactNode
+  /** A product can name its read-only library without changing the shared viewer. */
+  treeHeader?: ReactNode
+  emptyState?: ReactNode
   /** Offers Edit in the file viewer (the person's own project files). */
   editable?: boolean
   /** Sends a request to the project's agent (commit, pull and push go through it). */
@@ -57,6 +60,8 @@ function FileWorkspacePaneBody({
   hideManagedEntriesByDefault = false,
   testId,
   headerAction,
+  treeHeader,
+  emptyState,
   editable = false,
   onAsk,
 }: FileWorkspacePaneProps) {
@@ -153,7 +158,7 @@ function FileWorkspacePaneBody({
               <div className="min-h-0 flex-1"><GitChangesList workspacePath={gitPath!} onAsk={onAsk} /></div>
             )}
             <div className="min-h-0 flex-1" hidden={gitEnabled && changesOpen && hasRepos}>
-              {source ? <ReadOnlyFileTree source={source} title={title || 'Files'} headerAction={split ? undefined : headerAction} /> : <Workspace
+              {source ? <ReadOnlyFileTree source={source} title={title || 'Files'} headerAction={split ? undefined : headerAction} header={treeHeader} emptyState={emptyState} /> : <Workspace
                 scopedWorkspacePath={workspacePath}
                 hiddenRootFolders={hiddenRootFolders}
                 hideAddToChat={hideAddToChat}

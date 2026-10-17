@@ -1,4 +1,5 @@
-import { ProductNavigationLabel, useProductNavigationSidebar } from '../workspace/ProductTopBar'
+import { useProductSettingsMenu } from '../workspace/ProductSettingsMenu'
+import { ProductNavigationDescription, ProductNavigationLabel, useProductNavigationSidebar } from '../workspace/ProductTopBar'
 import { Cpu } from 'lucide-react'
 import { useLLMStore } from '../../stores'
 import { useAppStore } from '../../stores/useAppStore'
@@ -6,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 
 export default function ProvidersControl() {
   const sidebar = useProductNavigationSidebar()
+  const inSettings = useProductSettingsMenu()
   const isOpen = useLLMStore(state => state.showLLMModal)
   const open = useLLMStore(state => state.setShowLLMModal)
 
@@ -14,6 +16,7 @@ export default function ProvidersControl() {
       <TooltipTrigger asChild>
         <button
           type="button"
+          role={inSettings ? 'menuitem' : undefined}
           data-product-navigation-action
           onClick={() => { useAppStore.getState().setAdminPage(null); open(true) }}
           data-tour="global-providers"
@@ -26,10 +29,11 @@ export default function ProvidersControl() {
           }`}
         >
           <Cpu className="h-4 w-4 shrink-0" />
-          <ProductNavigationLabel>Providers</ProductNavigationLabel>
+          <ProductNavigationLabel>AI models &amp; accounts</ProductNavigationLabel>
+          <ProductNavigationDescription>Models, CLIs and API keys</ProductNavigationDescription>
         </button>
       </TooltipTrigger>
-      <TooltipContent side={sidebar ? 'right' : 'bottom'}>Providers</TooltipContent>
+      <TooltipContent side={sidebar ? 'right' : 'bottom'}>AI models &amp; accounts</TooltipContent>
     </Tooltip>
   )
 }

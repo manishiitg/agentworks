@@ -24,6 +24,21 @@ afterEach(async () => { await act(async () => root.unmount()); host.remove(); de
 afterAll(() => vi.unstubAllGlobals())
 const render = () => act(async () => root.render(<ProductTopBar sidebar><ProductSurfaceSwitcher /></ProductTopBar>))
 describe('collapsible product navigation', () => {
+  it.each(['workspace', 'service', 'standard'])('uses the same permitted product grid in a %s picker', async placement => {
+    auth.allowed = ['work', 'code']
+    await act(async () => root.render(placement === 'standard' ? <ProductSurfaceSwitcher /> : <ProductTopBar sidebar><ProductSurfaceSwitcher menuOnly={placement === 'workspace'} /></ProductTopBar>))
+    if (placement !== 'workspace') await act(async () => host.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!.click())
+    const menu = host.querySelector('[data-product-switch-menu]')!
+    expect([...menu.querySelectorAll('[data-product-option]')].map(button => button.getAttribute('aria-label'))).toEqual(['Crew', 'Code'])
+    expect(menu.textContent).not.toContain('Vault')
+    const crew = menu.querySelector<HTMLButtonElement>('[aria-label="Crew"]')!
+    const code = menu.querySelector<HTMLButtonElement>('[aria-label="Code"]')!
+    crew.focus()
+    await act(async () => crew.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true })))
+    expect(document.activeElement).toBe(code)
+    await act(async () => code.click())
+    expect(useProductSurfaceStore.getState().productSurface).toBe('code')
+  })
   it('preserves deployment title and favicon when entering Vault', async () => {
     Object.assign(window.__APP_RUNTIME_CONFIG__!, { appName: 'customer', faviconUrl: '/brand/icon.svg' })
     const icon = document.createElement('link'); icon.rel = 'icon'; document.head.append(icon)
@@ -40,7 +55,7 @@ describe('collapsible product navigation', () => {
   it('shows the current icon and reveals permitted products on hover', async () => {
     await render()
     expect(host.querySelectorAll('[role="group"][aria-label="Products"] button').length).toBe(1)
-    const trigger = host.querySelector<HTMLButtonElement>('button')!
+    const trigger = host.querySelector<HTMLButtonElement>('[aria-label^="Switch product:"]')!
     expect(trigger.getAttribute('aria-label')).toBe('Switch product: Crew')
     const group = host.querySelector('[role="group"]')!
     await act(async () => group.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })))
@@ -62,7 +77,7 @@ describe('collapsible product navigation', () => {
     expect(host.querySelector('[role="menu"]')).not.toBeNull()
     await act(async () => group.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body })))
     expect(host.querySelector('[role="menu"]')).toBeNull()
-    await act(async () => host.querySelector<HTMLButtonElement>('button')!.click())
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label^="Switch product:"]')!.click())
     expect(host.querySelector('[role="menu"]')).not.toBeNull()
     await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     expect(host.querySelector('[role="menu"]')).toBeNull()
@@ -70,14 +85,14 @@ describe('collapsible product navigation', () => {
   it('keeps the account product allowlist applied', async () => {
     auth.allowed = ['work']; await render()
     expect(host.querySelectorAll('[role="group"][aria-label="Products"] button').length).toBe(1)
-    expect(host.querySelector('button')?.getAttribute('aria-label')).toBe('Switch product: Crew')
-    await act(async () => host.querySelector<HTMLButtonElement>('button')!.click())
+    expect(host.querySelector('[aria-label^="Switch product:"]')?.getAttribute('aria-label')).toBe('Switch product: Crew')
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label^="Switch product:"]')!.click())
     expect(host.querySelector('[role="menu"]')).toBeNull()
   })
   it('hides Vault when the deployment has no gateway', async () => {
     window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'work', 'code', 'mcp-gateway'] }
     await render()
-    await act(async () => host.querySelector<HTMLButtonElement>('button')!.click())
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label^="Switch product:"]')!.click())
     expect(host.querySelector('button[aria-label="Vault"]')).toBeNull()
   })
 })

@@ -4,6 +4,15 @@ export const UI_CONTROL_CONTRACT = {
   "product": "agentworks",
   "views": [
     {
+      "id": "context",
+      "label": "Context",
+      "actions": [
+        "open",
+        "refresh"
+      ],
+      "targets": []
+    },
+    {
       "id": "report",
       "label": "Dashboard",
       "target_kind": "report_tab",
@@ -97,7 +106,7 @@ export const UI_CONTROL_CONTRACT = {
     },
     {
       "id": "human-actions",
-      "label": "Human actions",
+      "label": "Decisions",
       "actions": [
         "open",
         "refresh"

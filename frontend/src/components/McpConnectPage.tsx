@@ -1,4 +1,4 @@
-import { WorkspaceBackButton } from './workspace/WorkspaceBackButton'
+import { WorkspacePageHeader } from './workspace/WorkspacePageHeader'
 import { Plug } from 'lucide-react'
 import McpConnectBody from './topbar/McpConnectBody'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -13,14 +13,7 @@ export default function McpConnectPage() {
   const codeReview = user?.is_code_reviewer === true || (user?.is_admin === true && isMultiUserMode)
   return (
     <section aria-label="Connect an AI agent" className="flex h-full min-h-0 flex-col bg-background">
-      <header className="shrink-0 border-b border-border px-4 sm:px-6">
-        <div className="flex flex-wrap items-center gap-3 py-3">
-          <WorkspaceBackButton />
-          <span aria-hidden="true" className="h-4 w-px bg-border" />
-          <Plug className="h-4 w-4 text-primary" />
-          <h1 className="text-sm font-semibold text-foreground">Connect AI agents</h1>
-        </div>
-      </header>
+      <WorkspacePageHeader page="mcp" title="Connect AI tools" icon={Plug} />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-5xl p-4 sm:p-6">
           <McpConnectBody codeReview={codeReview} />

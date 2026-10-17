@@ -84,14 +84,14 @@ const SECTION_COPY: Record<WorkflowCapabilitySection, { title: string; descripti
     savesViaManifest: false,
   },
   mcp: {
-    title: 'Integrations',
+    title: 'Apps & tools',
     description: 'Select the apps, skills, Slack, WhatsApp, and Gmail access this workflow may use.',
     // Selection changes persist immediately, so this long directory can use
     // one uninterrupted scroll surface without a fixed Save footer.
     savesViaManifest: false,
   },
   identity: {
-    title: 'Identity',
+    title: 'Details & instructions',
     description: 'Name, icon, purpose, connected work, LLMs, and platform upgrades for this workflow.',
     savesViaManifest: false,
   },
@@ -303,7 +303,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
       {section !== 'browser' && (
         <WorkspaceViewHeader
           icon={SectionIcon}
-          title={section === 'mcp' && !integrationMenu ? <WorkspaceViewBreadcrumbs parent="Integrations" current={mcpTabs.find(option => option.value === activeMcpTab)?.label} onBack={() => setIntegrationMenu(true)} /> : copy.title}
+          title={section === 'mcp' && !integrationMenu ? <WorkspaceViewBreadcrumbs parent="Apps & tools" current={mcpTabs.find(option => option.value === activeMcpTab)?.label} onBack={() => setIntegrationMenu(true)} /> : copy.title}
           helpTopic={section === 'mcp'
             ? `Integrations · ${mcpTabs.find(option => option.value === activeMcpTab)?.label ?? 'MCPs'}`
             : section === 'identity'

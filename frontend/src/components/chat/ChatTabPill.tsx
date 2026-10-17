@@ -1,5 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react'
-import { Loader2, MessageSquare, Pencil, X } from 'lucide-react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { ChevronDown, Loader2, MessageSquare, Pencil, X } from 'lucide-react'
+import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
+import { readableGeneratedChatTitle } from '../../utils/generatedChatTitle'
 import { foregroundTurnState } from '../../utils/foregroundTurnActivity'
 import { chatRuntimeActivity } from '../../utils/chatRuntimeActivity'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
@@ -43,7 +45,20 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
   tab, isActive, canClose, isBlank, displayName: displayNameOverride, titleOverride, productSurface,
   onTabClick, onCloseTab, onRename, onMakeInteractive, readOnly = false, closeStopsSession = false,
 }) => {
-  const displayName = displayNameOverride ?? tab.name
+  const rawName = displayNameOverride ?? tab.name
+  const displayName = readableGeneratedChatTitle(rawName, tab.metadata?.isScheduledRun) ||
+    (tab.metadata?.isScheduledRun && /^(?:Manual )?Pulse$/i.test(rawName) ? rawName === 'Manual Pulse' ? 'Manual review' : 'Automatic review' : rawName)
+  const rawTooltip = titleOverride || tab.name || displayName
+  const tooltip = readableGeneratedChatTitle(rawTooltip, tab.metadata?.isScheduledRun) || rawTooltip
+  const workspacePickable = !!productSurface && ['agentworks', 'relays', 'work', 'code'].includes(productSurface)
+  const workspaceTrigger = useRef<HTMLButtonElement | null>(null)
+  const pickerOpen = useProductNavigationToolbarStore(state => state.pickerOpen)
+  const registerWorkspaceTrigger = useCallback((node: HTMLButtonElement | null) => {
+    const previous = workspaceTrigger.current
+    workspaceTrigger.current = node
+    if (node || useProductNavigationToolbarStore.getState().workspaceTrigger === previous)
+      useProductNavigationToolbarStore.setState({ workspaceTrigger: node })
+  }, [])
   // The same signal as the activity monitor and the chat's own footer.
   const needsInput = useChatStore(state => {
     if (!tab.sessionId) return false
@@ -106,23 +121,29 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       setIsSavingName(false)
     }
   }
+  const activate = () => {
+    if (workspacePickable && isActive) window.dispatchEvent(new Event('open-workspace-picker'))
+    else onTabClick(tab.tabId)
+  }
 
   return (<>
     <div
-      onClick={() => onTabClick(tab.tabId)}
-      onKeyDown={(event) => event.key === 'Enter' && onTabClick(tab.tabId)}
+      onClick={activate}
+      onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate() } }}
       role="button"
       tabIndex={0}
       data-tab-active={isActive ? 'true' : undefined}
-      className={`group flex min-w-0 cursor-pointer items-center gap-1.5 rounded-t-md px-2 py-1 text-xs font-medium outline-none transition-colors ${
-        isActive
+      className={`group flex min-w-0 cursor-pointer items-center gap-1.5 px-2 font-medium outline-none transition-colors ${productSurface ? 'rounded-lg py-1.5 text-sm' : 'rounded-t-md py-1 text-xs'} ${
+        productSurface
+          ? isActive ? 'text-foreground hover:bg-muted' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+          : isActive
           ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100'
           : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100'
       }`}
     >
       {productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
       {isPulseConversationSession(tab.sessionId) && <PulseIcon className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Pulse" role="img" />}
-      {!isBlank && (status === 'busy'
+      {!isBlank && (!productSurface || status !== 'ready') && (status === 'busy'
         ? <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" aria-label={dot.label} role="img" />
         : <span className={`${status === 'ready' ? 'h-1.5 w-1.5' : 'h-2 w-2'} shrink-0 rounded-full ${dot.cls}`} title={dot.label} aria-label={dot.label} role="img" />)}
       {isRenaming ? (
@@ -144,12 +165,22 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
         />
       ) : (
         <span
-          className="min-w-0 max-w-[14rem] truncate whitespace-nowrap"
-          title={titleOverride || tab.name || displayName}
+          className={`min-w-0 truncate whitespace-nowrap ${productSurface ? 'max-w-[18rem] font-semibold' : 'max-w-[14rem]'}`}
+          title={tooltip}
         >
           {displayName}
         </span>
       )}
+      {productSurface && <>
+        {status !== 'ready' && <span className="text-[10px] font-normal text-muted-foreground">{status === 'busy' ? 'Working' : status === 'waiting' ? 'Needs you' : status === 'completed' ? 'Done' : null}</span>}
+        {workspacePickable && <button ref={registerWorkspaceTrigger} type="button" data-workspace-setup-trigger aria-label="Switch workspace" aria-haspopup="menu" aria-expanded={pickerOpen}
+          title="Switch workspace or product"
+          onClick={event => { event.stopPropagation(); window.dispatchEvent(new Event('open-workspace-picker')) }}
+          onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') event.stopPropagation() }}
+          className="grid h-5 w-5 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <ChevronDown aria-hidden="true" className="h-3 w-3" />
+        </button>}
+      </>}
       {onRename && !isBlank && (
         <button
           type="button"

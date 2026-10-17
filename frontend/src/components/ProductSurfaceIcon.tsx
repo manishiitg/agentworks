@@ -17,7 +17,7 @@ const icons: Record<ProductSurface, ComponentType<{ className?: string; title?: 
 
 export function ProductSurfaceIcon({ surface, className = 'h-4 w-4' }: { surface: ProductSurface; className?: string }) {
   const Icon = icons[surface]
-  return <span data-product-icon={surface} aria-label={PRODUCT_SURFACE_LABELS[surface]} className="inline-flex shrink-0">
+  return <span data-product-icon={surface} aria-label={PRODUCT_SURFACE_LABELS[surface]} title={PRODUCT_SURFACE_LABELS[surface]} className="inline-flex shrink-0">
     <Icon className={className} title={PRODUCT_SURFACE_LABELS[surface]} />
   </span>
 }

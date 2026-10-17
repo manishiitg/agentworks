@@ -1,6 +1,6 @@
+import { WorkspacePageHeader } from './workspace/WorkspacePageHeader'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Check, KeyRound, Loader2, Plug, Plus, RefreshCw, Trash2, Users, Vault } from 'lucide-react'
-import { WorkspaceBackButton } from './workspace/WorkspaceBackButton'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 import { Badge } from './ui/badge'
@@ -461,15 +461,9 @@ export default function MyVaultsPage() {
   const owned = (vaults ?? []).filter(vault => vault.role === 'owner').length
   return (
     <section aria-label="My vaults" className="flex h-full min-h-0 flex-col bg-background">
-      <header className="shrink-0 border-b border-border px-4 sm:px-6">
-        <div className="flex flex-wrap items-center gap-3 py-3">
-          <WorkspaceBackButton />
-          <span aria-hidden="true" className="h-4 w-px bg-border" />
-          <Vault className="h-4 w-4 text-primary" />
-          <h1 className="text-sm font-semibold text-foreground">My vaults</h1>
-          <SettingsCount>{owned} of {maxOwned} owned</SettingsCount>
-        </div>
-      </header>
+      <WorkspacePageHeader page="vaults" title="My vaults" icon={Vault}>
+        <SettingsCount>{owned} of {maxOwned} owned</SettingsCount>
+      </WorkspacePageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl space-y-4 p-4 text-xs sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">

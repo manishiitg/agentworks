@@ -35,3 +35,33 @@ it('fits a wordmark inside the rail when the deployment has no mark', async () =
   expect(host.querySelector('img')?.className).toContain('w-full object-contain')
   expect(host.querySelector('img')?.className).not.toContain('w-auto')
 })
+
+it('uses the default AgentWorks mark and name in the sidebar without custom branding', async () => {
+  delete window.__APP_RUNTIME_CONFIG__
+  await act(async () => root.render(<RuntimeBrandLogo variant="sidebar-header" />))
+  expect(host.textContent).toBe('AgentWorks')
+  expect(host.querySelector('svg')).not.toBeNull()
+  expect(host.querySelector('img')).toBeNull()
+})
+
+it('pairs a custom square mark with the configured name in the sidebar', async () => {
+  window.__APP_RUNTIME_CONFIG__ = { appName: 'Acme', markUrl: '/brand/acme.svg' }
+  await act(async () => root.render(<RuntimeBrandLogo variant="sidebar-header" />))
+  expect(host.textContent).toBe('Acme')
+  expect(host.querySelector('img')?.getAttribute('src')).toBe('/brand/acme.svg')
+  expect(host.querySelector('svg')).toBeNull()
+})
+
+it('uses the configured light and dark wordmarks for the sidebar header', async () => {
+  await act(async () => root.render(<RuntimeBrandLogo variant="sidebar-header" />))
+  expect(Array.from(host.querySelectorAll('img')).map(image => image.getAttribute('src'))).toEqual(['/brand/logo.svg', '/brand/logo-white.svg'])
+  expect(host.querySelector('img')?.alt).toBe('customer')
+  expect(host.querySelector('[data-runtime-brand="sidebar"]')?.getAttribute('title')).toBe('customer')
+})
+
+it('shows a custom name without introducing the default mark when no custom image exists', async () => {
+  window.__APP_RUNTIME_CONFIG__ = { appName: 'Acme' }
+  await act(async () => root.render(<RuntimeBrandLogo variant="sidebar-header" />))
+  expect(host.textContent).toBe('Acme')
+  expect(host.querySelector('svg, img')).toBeNull()
+})

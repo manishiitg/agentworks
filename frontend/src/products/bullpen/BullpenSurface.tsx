@@ -4,6 +4,7 @@ import { AgentUsage, BullpenUsageOverview } from './BullpenUsage'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { BookOpen, Check, Copy, MessagesSquare, RefreshCw, Search, Terminal, UsersRound } from 'lucide-react'
 import { ModePresetBar } from '../../components/ModePresetBar'
+import { WorkspacePageHeader } from '../../components/workspace/WorkspacePageHeader'
 import LlmModalHost from '../../components/topbar/LlmModalHost'
 import { AgentMessagingSetupPanel } from './AgentMessagingSetupPanel'
 import { AdminPanel } from './AdminPanel'
@@ -108,12 +109,15 @@ export function BullpenSurface() {
   useRegisterPanelSwitcher('bullpen', views, id => setView(id as 'agents' | 'setup'))
   return <div className="flex h-dvh min-h-0 min-w-0 bg-background text-foreground" data-testid="bullpen-surface">
     <ModePresetBar reduced walkthroughPaused />
-    <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-      {showProviders ? <LlmModalHost /> : adminPage ? <Suspense fallback={<p className="p-6">Opening settings…</p>}><AdminPages /></Suspense> : <div className="w-full p-4 sm:p-6">
-        <header className="mb-6 border-b border-border pb-5"><div className="flex items-center gap-3"><MessagesSquare className="h-6 w-6 text-primary" /><h1 className="text-2xl font-semibold tracking-tight">AgentBridge</h1></div><p className="mt-2 text-sm text-muted-foreground">Your connected agents, in one place.</p>
-          <nav aria-label="AgentBridge views" className="mt-5 flex flex-wrap gap-2">{views.map(({ id, label, icon: Icon }) => <Button key={id} variant={view === id ? 'default' : 'ghost'} size="sm" aria-pressed={view === id} onClick={() => setView(id)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}<a href="https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><BookOpen className="h-4 w-4" aria-hidden="true" />AgentBridge help<span className="sr-only"> (opens in a new tab)</span></a></nav>
-        </header>
+    <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      {showProviders ? <LlmModalHost /> : adminPage ? <Suspense fallback={<p className="p-6">Opening settings…</p>}><AdminPages /></Suspense> : <div className="flex h-full min-h-0 w-full flex-col">
+        <WorkspacePageHeader title="AgentBridge" icon={MessagesSquare} showBack={false} below={
+          <nav aria-label="AgentBridge views" className="flex flex-wrap gap-2">{views.map(({ id, label, icon: Icon }) => <Button key={id} variant={view === id ? 'default' : 'ghost'} size="sm" aria-pressed={view === id} onClick={() => setView(id)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}<a href="https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><BookOpen className="h-4 w-4" aria-hidden="true" />AgentBridge help<span className="sr-only"> (opens in a new tab)</span></a></nav>
+        } />
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+        <p className="mb-5 text-sm text-muted-foreground">Your connected agents, in one place.</p>
         {view === 'setup' ? <AgentMessagingSetupPanel onOpenMcp={() => useAppStore.getState().setAdminPage('mcp')} /> : user ? <AgentDirectory key={user.id} isAdmin={user.role === 'admin'} onConnect={() => setView('setup')} /> : <p>Sign in to see your agents.</p>}
+        </div>
       </div>}
     </main>
   </div>

@@ -155,7 +155,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
     <div className="flex h-full min-h-0 flex-col bg-background">
       <WorkspaceViewHeader
         icon={Server}
-        title={integrationMenu ? 'Integrations' : <WorkspaceViewBreadcrumbs parent="Integrations" current={visibleTabs.find(option => option.value === activeTab)?.label} onBack={() => setIntegrationMenu(true)} />}
+        title={integrationMenu ? 'Apps & tools' : <WorkspaceViewBreadcrumbs parent="Apps & tools" current={visibleTabs.find(option => option.value === activeTab)?.label} onBack={() => setIntegrationMenu(true)} />}
         helpTopic={`Integrations · ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'MCPs'}`}
         actions={(
           <WorkspaceViewActions

@@ -3,6 +3,7 @@ import type { FocusedPane } from '../../stores/useWorkflowStore'
 import type { ReportPreviewDevice } from '../../utils/reportPreviewPreference'
 
 export interface WorkspaceLayoutInput {
+  compactContext?: boolean
   showChatArea: boolean
   showWorkspacePane: boolean
   focusedPane: FocusedPane
@@ -35,6 +36,7 @@ export interface WorkspaceLayout {
  * flex-1 scroll regions to content height, and freeze pane scrolling.
  */
 /** Grid track for the workspace pane in Mobile preview. */
+export const CONTEXT_PANE_COLUMN = 'clamp(240px, 26vw, 316px)'
 export const MOBILE_PREVIEW_PANE_COLUMN = 'min(494px, calc(100% - 240px))'
 
 export function resolveWorkspaceLayout(input: WorkspaceLayoutInput): WorkspaceLayout {
@@ -47,7 +49,7 @@ export function resolveWorkspaceLayout(input: WorkspaceLayoutInput): WorkspaceLa
     isWorkspaceViewActive,
   } = input
 
-  const workspacePaneVisible = !showChatArea || showWorkspacePane
+  const workspacePaneVisible = Boolean(input.compactContext) || !showChatArea || showWorkspacePane
   // The device tier controls the OUTER workspace pane for every workspace view,
   // not only Plan and Report.
   //   mobile  → preview/files 480px column, chat takes the rest (review-style)
@@ -79,7 +81,7 @@ export function resolveWorkspaceLayout(input: WorkspaceLayoutInput): WorkspaceLa
   // frame plus its padding and border. A saved drag ratio must not widen it,
   // or the phone frame floats in empty space inside a wide pane.
   const splitLayoutStyle = showChatArea && workspacePaneVisible
-    ? ({ '--workflow-split-columns': shouldUseMobileReportPane
+    ? ({ '--workflow-split-columns': input.compactContext ? `minmax(240px, 1fr) ${CONTEXT_PANE_COLUMN}` : shouldUseMobileReportPane
       ? `minmax(240px, 1fr) ${MOBILE_PREVIEW_PANE_COLUMN}`
       : `minmax(240px, ${workspaceSplitRatio}fr) minmax(240px, ${1 - workspaceSplitRatio}fr)` } as CSSProperties)
     : undefined
@@ -87,9 +89,9 @@ export function resolveWorkspaceLayout(input: WorkspaceLayoutInput): WorkspaceLa
     ? 'flex-1 min-h-0 min-w-0'
     : !workspacePaneVisible
       ? 'hidden'
-      : `min-h-0 min-w-0 w-full col-start-1 row-start-2 md:w-auto md:col-start-2 md:row-start-2 ${focusedPane === 'chat' ? 'hidden md:flex' : ''} ${isWorkspaceViewActive ? 'md:border-l md:border-border' : ''}`
+      : `min-h-0 min-w-0 w-full col-start-1 row-start-2 md:w-auto md:col-start-2 md:row-start-2 ${focusedPane === 'chat' ? 'hidden md:flex' : ''} ${isWorkspaceViewActive && !input.compactContext ? 'md:border-l md:border-border' : ''}`
   const chatPaneClassName = `${chatPaneVisibilityClass} col-start-1 row-start-2 min-h-0 min-w-0 overflow-hidden flex-col bg-background transition-all duration-300 ${
-    workspacePaneVisible
+    workspacePaneVisible && !input.compactContext
       ? `border-b border-border md:col-start-1 md:row-start-2 md:border-b-0 md:border-r ${shouldUseMobileReportPane ? 'flex-1 md:flex-[1.35]' : 'flex-1 basis-1/2'}`
       : 'flex-1'
   }`

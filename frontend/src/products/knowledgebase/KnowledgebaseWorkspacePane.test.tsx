@@ -35,7 +35,8 @@ async function openEntry(host: HTMLElement) {
 describe('Brain shared Files view', () => {
   it('uses the shared explorer and viewer while fetching only permission-checked KB content', async () => {
     const { host } = await mount({ folder: '' })
-    expect(host.textContent).toContain('Explorer')
+    expect(host.textContent).toContain('Knowledge your agents can reuse.')
+    expect(host.textContent).not.toContain('Explorer')
     expect(host.querySelector('[aria-label="Search files"]')).not.toBeNull()
     expect(host.querySelector('[aria-label="Filter knowledge tag"]')).toBeNull()
     expect(host.textContent).not.toContain('Knowledge library')
@@ -83,5 +84,23 @@ describe('Brain shared Files view', () => {
     await render({ view: 'models', modelSettings: <div>Shared model settings</div> })
     expect(host.textContent).toContain('Shared model settings')
     expect(mocks.access).not.toHaveBeenCalled(); expect(mocks.folders).not.toHaveBeenCalled(); expect(mocks.entries).not.toHaveBeenCalled()
+  })
+  it('explains an empty library and keeps connection setup separate from content writes', async () => {
+    mocks.folders.mockResolvedValue({ folders: [] }); mocks.entries.mockResolvedValue({ entries: [] })
+    const onConnect = vi.fn()
+    const { host, render } = await mount({ folder: '', onConnect })
+    expect(host.textContent).toContain('No knowledge available yet')
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Connect AI tools')!.click())
+    expect(onConnect).toHaveBeenCalledOnce()
+    expect(mocks.gitPost).not.toHaveBeenCalled()
+    await render({ folder: '', onConnect: undefined, onAsk: undefined })
+    expect(host.textContent).toContain('Files and folders shared with you appear here.')
+    expect(host.textContent).not.toContain('Connect AI tools')
+  })
+  it('keeps library errors visible instead of showing the onboarding empty state', async () => {
+    mocks.folders.mockRejectedValue(new Error('Library unavailable'))
+    const { host } = await mount({ folder: '', onConnect: vi.fn() })
+    expect(host.textContent).toContain('Library unavailable')
+    expect(host.textContent).not.toContain('No knowledge available yet')
   })
 })

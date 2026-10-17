@@ -25,9 +25,9 @@ export const WORK_PANELS: Record<'views' | 'ops' | 'setup', ProductPanel<WorkWor
   views: [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'plan', label: 'Plan', icon: Route },
-    { id: 'memory', label: 'Memory', icon: Brain },
+    { id: 'memory', label: 'Memory & skills', icon: Brain },
     { id: 'browser', label: 'Browser', icon: Monitor },
-    { id: 'schedules', label: 'Automation', icon: Zap },
+    { id: 'schedules', label: 'Schedules & triggers', icon: Zap },
     // Change requests from other users of this Crew; the owner reviews them.
     { id: 'suggestions', label: 'Suggestions', icon: Lightbulb },
   ],
@@ -39,14 +39,14 @@ export const WORK_PANELS: Record<'views' | 'ops' | 'setup', ProductPanel<WorkWor
     { id: 'costs', label: 'Costs and usage', icon: DollarSign },
   ],
   setup: [
-    { id: 'identity', label: 'Identity', icon: Fingerprint },
-    { id: 'mcp', label: 'Integrations', icon: Server },
+    { id: 'identity', label: 'Details & instructions', icon: Fingerprint },
+    { id: 'mcp', label: 'Apps & tools', icon: Server },
   ],
 }
 
 /** Brain (KnowledgebaseSurface). */
 export const BRAIN_PANELS: ProductPanel<KnowledgebaseView>[] = [
-  { id: 'library', label: 'Files', icon: BookOpen },
+  { id: 'library', label: 'Library', icon: BookOpen },
   { id: 'access', label: 'Access', icon: ShieldCheck },
   { id: 'models', label: 'Models', icon: BrainCircuit },
   { id: 'secrets', label: 'Secrets', icon: KeyRound },

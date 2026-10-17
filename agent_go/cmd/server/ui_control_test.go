@@ -170,8 +170,8 @@ func boundUI(t *testing.T) (*uiControlBroker, *uiBinding) {
 func TestUIControlOnlyAdvertisesActualActions(t *testing.T) {
 	// 25 views before the knowledge/bots/llm consolidation; 18 after it, with
 	// workflow upgrades inside Identity rather than a standalone view; 19 with
-	// the Human actions view (decisions and suggestions waiting for a person).
-	if len(uiControlContract.Views) != 19 {
+	// the Human actions view; 20 with compact context.
+	if len(uiControlContract.Views) != 20 {
 		t.Fatal("registry coverage changed")
 	}
 	for _, v := range uiControlContract.Views {

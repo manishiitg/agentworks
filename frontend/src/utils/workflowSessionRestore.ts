@@ -341,7 +341,8 @@ async function restoreScheduledWorkflowRunChat(
   // when a sparse activity record omits its title.
   const existingJobName = findTabForSession(useChatStore.getState().chatTabs, session.session_id)
     ?.metadata?.scheduledJobName
-  const jobName = session.title?.trim() ||
+  const sessionTitle = session.title?.trim()
+  const jobName = (sessionTitle && !/ · Scheduled run$/i.test(sessionTitle) ? sessionTitle : '') ||
     existingJobName?.trim() ||
     options.runningWorkflow?.title?.trim() ||
     options.runningWorkflow?.preset_name?.trim() ||

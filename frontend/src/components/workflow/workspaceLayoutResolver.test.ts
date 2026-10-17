@@ -11,6 +11,19 @@ const base: WorkspaceLayoutInput = {
 }
 
 describe('resolveWorkspaceLayout', () => {
+  it('keeps the context bubble visible despite an older closed-pane preference', () => {
+    const layout = resolveWorkspaceLayout({ ...base, compactContext: true, showWorkspacePane: false })
+    expect(layout.workspacePaneVisible).toBe(true)
+    expect(layout.renderCanvasStandalone).toBe(false)
+    expect(layout.splitLayoutStyle).toEqual({ '--workflow-split-columns': 'minmax(240px, 1fr) clamp(240px, 26vw, 316px)' })
+  })
+  it('keeps context compact independently of saved preview size and drag ratio', () => {
+    const layout = resolveWorkspaceLayout({ ...base, compactContext: true, reportPreviewPreference: 'mobile', workspaceSplitRatio: 0.8 })
+    expect(layout.splitLayoutStyle).toEqual({ '--workflow-split-columns': 'minmax(240px, 1fr) clamp(240px, 26vw, 316px)' })
+    expect(layout.chatPaneClassName).not.toContain('border-r')
+    expect(layout.canvasPaneClassName).not.toContain('border-l')
+  })
+
   it('renders a single flex column with no chat', () => {
     const layout = resolveWorkspaceLayout({ ...base, showChatArea: false })
     expect(layout.showChat).toBe(false)

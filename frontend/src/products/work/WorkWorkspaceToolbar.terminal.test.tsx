@@ -8,7 +8,7 @@ vi.mock('../../components/GlobalActivityMonitor', () => ({ GlobalActivityMonitor
 
 import { setProjectMode, writeCodeFilesPreference } from './codeLocalFiles'
 import { useChatStore } from '../../stores/useChatStore'
-import { WorkWorkspaceToolbar } from './WorkWorkspacePane'
+import { WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
 import { CODE_PRODUCT, CREW_PRODUCT, ProjectProductProvider } from './projectProduct'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -18,7 +18,7 @@ let host: HTMLDivElement
 beforeEach(() => { host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host) })
 afterEach(() => { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals() })
 
-const render = (product: typeof CODE_PRODUCT, props: { showShell?: boolean; readOnly?: boolean; showActivityMonitor?: boolean; sessionId?: string; enabledPanels?: Set<string> }) => act(() => {
+const render = (product: typeof CODE_PRODUCT, props: { view?: WorkWorkspaceView; compactContext?: boolean; showShell?: boolean; readOnly?: boolean; showActivityMonitor?: boolean; sessionId?: string; enabledPanels?: Set<string> }) => act(() => {
   root.render(
     <ProjectProductProvider value={product}>
       <WorkWorkspaceToolbar workspacePath="p" view="files" onViewChange={() => undefined} {...props} />
@@ -68,13 +68,38 @@ it('a Cowork project leads with Dashboard, Browser and Automation, keeps Files, 
   act(() => setProjectMode('proj-cowork', 'cowork'))
   expect(hasTerminal()).toBe(false)
   const labels = [...host.querySelectorAll('button')].map(button => button.getAttribute('aria-label') || '')
-  for (const wanted of ['Dashboard', 'Browser', 'Automation', 'Files']) expect(labels.some(label => label.includes(wanted)), wanted).toBe(true)
+  for (const wanted of ['Dashboard', 'Browser', 'Schedules & triggers', 'Files']) expect(labels.some(label => label.includes(wanted)), wanted).toBe(true)
   expect(labels.findIndex(label => label.includes('Browser'))).toBeLessThan(labels.findIndex(label => label.includes('Files')))
   useChatStore.setState({ chatTabs: {} })
 })
 
 it("offers someone else's Crew only its dashboard: no Files, Memory or Terminal", () => {
   render(CREW_PRODUCT, { readOnly: true, showShell: true, enabledPanels: new Set(['dashboard']) })
-  const names = Array.from(host.querySelectorAll('button')).map(button => button.getAttribute('aria-label') || button.textContent || '').join('|')
+  const names = Array.from(host.querySelectorAll('button')).filter(button => !button.closest('[hidden]')).map(button => button.getAttribute('aria-label') || button.textContent || '').join('|')
   expect(names).not.toMatch(/Files|Memory|Terminal/)
+})
+
+it('keeps compact Crew navigation at the top and does not gain a Terminal', () => {
+  render(CREW_PRODUCT, { compactContext: true, showShell: false })
+  expect(hasTerminal()).toBe(false)
+  expect(host.querySelector('[aria-label="Back to context"]')).not.toBeNull()
+  expect(host.querySelector('[aria-label="Dashboard"]')).toBeNull()
+  expect(host.querySelector('[aria-label="Browser"]')).toBeNull()
+  expect(host.querySelector('[aria-label="More workspace tools"]')).not.toBeNull()
+})
+
+it('keeps Code Terminal beside context without duplicating the bubble Files link', () => {
+  render(CODE_PRODUCT, { compactContext: true, showShell: true })
+  expect(hasTerminal()).toBe(true)
+  expect(host.querySelector('[aria-label="Back to context"]')).not.toBeNull()
+  const labels = Array.from(host.querySelectorAll('button')).filter(button => !button.closest('[hidden]')).map(button => button.getAttribute('aria-label') || button.textContent)
+  expect(labels.some(label => label?.includes('Files'))).toBe(false)
+  expect(host.querySelector('[aria-label="More workspace tools"]')).not.toBeNull()
+})
+
+it('has no hide-context control while the compact Crew bubble is visible', () => {
+  render(CREW_PRODUCT, { compactContext: true, view: 'context' })
+  expect(host.querySelector('[aria-label="Workspace context"]')).toBeNull()
+  expect(host.querySelector('[aria-label="Back to context"]')).toBeNull()
+  expect(host.querySelector('[aria-label="More workspace tools"]')).not.toBeNull()
 })

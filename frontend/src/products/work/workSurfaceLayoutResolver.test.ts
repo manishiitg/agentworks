@@ -3,6 +3,19 @@ import { MOBILE_PREVIEW_PANE_COLUMN } from '../../components/workflow/workspaceL
 import { resolveWorkSurfaceLayout } from './workSurfaceLayoutResolver'
 
 describe('resolveWorkSurfaceLayout', () => {
+  it('keeps the context bubble visible despite an older closed-pane preference', () => {
+    const layout = resolveWorkSurfaceLayout({ chatOpen: true, panelOpen: false, splitRatio: 0.5, compactContext: true })
+    expect(layout.showPanel).toBe(true)
+    expect(layout.showDivider).toBe(false)
+    expect(layout.gridStyle).toEqual({ '--work-split-columns': 'minmax(240px, 1fr) clamp(240px, 26vw, 316px)' })
+  })
+  it('gives context a compact column without a resize divider or chat border', () => {
+    const layout = resolveWorkSurfaceLayout({ chatOpen: true, panelOpen: true, splitRatio: 0.8, mobilePreview: true, compactContext: true })
+    expect(layout.gridStyle).toEqual({ '--work-split-columns': 'minmax(240px, 1fr) clamp(240px, 26vw, 316px)' })
+    expect(layout.showDivider).toBe(false)
+    expect(layout.chatClassName).not.toContain('border-r')
+  })
+
   it('splits chat and panel with the configured ratio', () => {
     const layout = resolveWorkSurfaceLayout({ chatOpen: true, panelOpen: true, splitRatio: 0.4 })
     expect(layout.showChat).toBe(true)

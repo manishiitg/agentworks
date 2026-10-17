@@ -36,11 +36,12 @@ it("shows the full chat name on hover when the tab truncates it", async () => {
   expect(label?.getAttribute("title")).toBe("project-a Flow Tester — sprint regression checks");
 });
 
-it.each(['agentworks', 'relays', 'work', 'code', 'mcp-gateway'] as ProductSurface[])('shows the %s product mark while retaining the status dot and name', async surface => {
+it.each(['agentworks', 'relays', 'work', 'code', 'mcp-gateway'] as ProductSurface[])('shows the %s product mark and workspace name without an idle status dot', async surface => {
   const host = await renderTab('sales-outreach', undefined, surface);
   expect(host.querySelector('[data-product-icon]')?.getAttribute('data-product-icon')).toBe(surface);
-  expect(host.querySelector('[aria-label="Ready"]')).not.toBeNull();
+  expect(host.querySelector('[aria-label="Ready"]')).toBeNull();
   expect(host.textContent).toContain('sales-outreach');
+  expect(host.textContent).not.toContain('Ready');
 });
 
 it("shows the stored name on hover when a shorter display name is shown", async () => {
@@ -48,6 +49,14 @@ it("shows the stored name on hover when a shorter display name is shown", async 
   const label = Array.from(host.querySelectorAll("span")).find(el => el.textContent === "Daily Notion");
   expect(label?.getAttribute("title")).toBe("Daily Notion status for the web team");
 });
+
+it('keeps generated run prompts out of the visible tab and its tooltip without changing the saved name', async () => {
+  const original = 'WORKFLOW REVIEW BEFORE A RUN. workspace_path="Workflow/trading", pulse_run_id="one"'
+  const host = await renderTab(original)
+  expect(host.textContent).toContain('Scheduled review')
+  expect(host.textContent).not.toContain('workspace_path=')
+  expect(host.querySelector('[title="Scheduled review"]')).not.toBeNull()
+})
 
 it('warns before stopping a chat, while view tabs close without stopping confirmation', async () => {
   const onClose = vi.fn()
@@ -102,3 +111,13 @@ it("shows working, waiting and idle on an unfocused tab", async () => {
 
   expect((await render({}))?.getAttribute("aria-label")).toBe("Ready");
 });
+
+it('makes the workspace name prominent beside its product icon, with the product named on hover', async () => {
+  const host = await renderTab('Company CA', undefined, 'work')
+  expect(host.textContent).not.toContain('Crew/Company CA')
+  expect(host.querySelector('[data-product-icon]')?.getAttribute('title')).toBe('Crew')
+  expect(host.querySelector('[data-product-icon]')?.getAttribute('aria-label')).toBe('Crew')
+  const name = [...host.querySelectorAll('span')].find(node => node.textContent === 'Company CA')!
+  expect(name.className).toContain('font-semibold')
+  expect(name.closest('[role="button"]')?.className).toContain('text-sm')
+})

@@ -17,7 +17,7 @@ const PRODUCT_SWITCHER_STEP: WalkthroughStep = {
 }
 
 const productSwitcherBody = () => {
-  const available = document.querySelector('[aria-label="Switch product"]')?.getAttribute('data-tour-products')?.split(' ') ?? []
+  const available = document.querySelector('[data-tour-products]')?.getAttribute('data-tour-products')?.split(' ') ?? []
   const descriptions: Record<string, string> = {
     agentworks: 'Goals for repeatable work with a success metric',
     work: 'Crew for a specialist teammate that remembers a project',
@@ -354,7 +354,15 @@ const SURFACE_LABELS: Record<WalkthroughSurface, { product: string; section: str
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
 const visibleTargetForSelector = (selector: string): Element | null => {
-  const candidates = Array.from(document.querySelectorAll(selector))
+  // Permission-gated actions still exist inside Settings when its menu is
+  // closed. Keep their guide steps available through the visible launcher.
+  const candidates = Array.from(document.querySelectorAll(selector)).flatMap(element => {
+    const localLauncher = element.closest('[data-product-settings]')?.querySelector('[data-product-settings-trigger]')
+    const launchers = element.closest('[data-picker-setup]')
+      ? [document.querySelector('[data-workspace-setup-trigger]'), localLauncher]
+      : [localLauncher]
+    return [element, ...launchers.filter((launcher): launcher is Element => Boolean(launcher))]
+  })
   return candidates.find(element => {
     const rect = element.getBoundingClientRect()
     const styles = window.getComputedStyle(element)
@@ -429,6 +437,7 @@ export const WorkflowWalkthrough: React.FC<WorkflowWalkthroughProps> = ({ isOpen
     }
     const target = visibleTargetForSelector(selector)
     if (target) {
+      if (target.matches('[data-product-settings-trigger], [data-workspace-setup-trigger]')) window.dispatchEvent(new Event('open-product-settings'))
       const rect = target.getBoundingClientRect()
       setTargetRect(previous => previous &&
         previous.left === rect.left && previous.top === rect.top &&

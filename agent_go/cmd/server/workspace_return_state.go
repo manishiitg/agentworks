@@ -94,8 +94,8 @@ func readWorkspaceReturnState(r *http.Request) (workspaceReturnState, error) {
 		return result, nil
 	}
 	corrupt := func() (workspaceReturnState, error) {
-		log.Printf("[WORKSPACE_STATE] user=%s invalid saved preferences; opening Home", GetUserIDFromContext(r.Context()))
-		return workspaceReturnState{Version: 1, Recent: []workspaceDestination{}, Note: "Your saved workspace could not be read. Choose another item from Home."}, nil
+		log.Printf("[WORKSPACE_STATE] user=%s invalid saved preferences; opening an available workspace", GetUserIDFromContext(r.Context()))
+		return workspaceReturnState{Version: 1, Recent: []workspaceDestination{}, Note: "Your saved workspace could not be read. Choose another workspace."}, nil
 	}
 	if len(raw) > 32768 {
 		return corrupt()
@@ -229,7 +229,7 @@ func (api *StreamingAPI) handleWorkspaceReturnState(w http.ResponseWriter, r *ht
 	var available bool
 	state.Last, available = api.validateWorkspaceReturn(r, state.Last, work)
 	if !available {
-		state.Note = "Your last workspace is no longer available. Choose another item from Home."
+		state.Note = "Your last workspace is no longer available. Choose another workspace."
 	}
 	recent := []workspaceDestination{}
 	for i := range state.Recent {

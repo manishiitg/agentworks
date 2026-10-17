@@ -1,24 +1,44 @@
-import type { HTMLAttributes } from 'react'
+import { useCallback, useRef, type HTMLAttributes } from 'react'
+import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
+import { useAppStore } from '../../stores/useAppStore'
+import { useLLMStore } from '../../stores/useLLMStore'
+import { cn } from '../../lib/utils'
 
 /** Shared AgentWorks toolbar row used above chat/workspace split surfaces. */
-export function WorkspaceTopToolbar({ className = '', ...props }: HTMLAttributes<HTMLDivElement>) {
+export function WorkspaceTopToolbar({ className = '', children, navigationKind = 'workspace', navigationActive = true, ...props }: HTMLAttributes<HTMLDivElement> & { navigationKind?: 'workspace' | 'page'; navigationActive?: boolean }) {
+  const globalPage = useAppStore(state => state.showWorkflowsOverview || state.showSchedulesOverview || state.adminPage !== null)
+  const providers = useLLMStore(state => state.showLLMModal)
+  const ownSlot = useRef<HTMLDivElement | null>(null)
+  const register = useCallback((node: HTMLDivElement | null) => {
+    const previous = ownSlot.current
+    ownSlot.current = node
+    if (node || useProductNavigationToolbarStore.getState().target === previous) {
+      useProductNavigationToolbarStore.setState({ target: node, targetKind: node ? navigationKind : null })
+    }
+  }, [navigationKind])
+  const ownLeadingSlot = useRef<HTMLDivElement | null>(null)
+  const registerLeading = useCallback((node: HTMLDivElement | null) => {
+    const previous = ownLeadingSlot.current
+    ownLeadingSlot.current = node
+    if (node || useProductNavigationToolbarStore.getState().leadingTarget === previous) {
+      useProductNavigationToolbarStore.setState({ leadingTarget: node })
+    }
+  }, [])
+  const showNavigation = navigationActive && (navigationKind === 'page' || (!globalPage && !providers))
   return (
     <div
       {...props}
       data-terminal-focus-chrome="toolbar"
-      // z-30, not z-10: this wrapper establishes its own stacking context
-      // (position + z-index), so a dropdown opened from it (e.g. Setup,
-      // its own z-50) only outranks OTHER content within this context, not
-      // canvas-level floating controls outside it (WorkflowCanvas's top-right
-      // icon group is z-20, sitting in a sibling context) -- confirmed live
-      // via elementFromPoint at the overlap point landing on the icon group's
-      // "Ask AI" button despite the open menu's z-50. z-30 clears every
-      // canvas-level control (max z-20 today) while staying below true
-      // modals (VariablesSidebar/FilePreviewModal use z-50/z-[60]).
+      // Above the canvas and resize rail (z-30), below the chat sidebar (z-40)
+      // and dialogs (z-50). Dropdowns must receive clicks over the split rail.
       // Below md the tabs and toolbar controls wrap onto a second row instead
       // of overflowing over the tabs (a 390 px phone hid the project tab and
       // covered "+ New chat" with Dashboard). Desktop keeps one nowrap row.
-      className={`relative z-30 flex min-h-10 min-w-0 flex-wrap items-center gap-3 overflow-visible border-b border-border bg-background px-3 py-1.5 md:flex-nowrap ${className}`}
-    />
+      className={cn('relative z-[35] flex min-h-10 min-w-0 flex-wrap items-center gap-3 overflow-visible border-b border-border bg-background px-3 py-1.5 md:flex-nowrap', className)}
+    >
+      {showNavigation && <div ref={registerLeading} data-product-navigation-leading-slot className="flex shrink-0 items-center empty:hidden" />}
+      {children}
+      {showNavigation && <div ref={register} data-product-navigation-slot className="ml-auto flex min-w-0 max-w-full flex-wrap items-center" />}
+    </div>
   )
 }

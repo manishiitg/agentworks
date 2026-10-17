@@ -1,3 +1,4 @@
+import { useSidebarHistoryStore } from './useSidebarHistoryStore'
 import { useWorkspaceReturnStore } from './useWorkspaceReturnStore'
 import { useCommandDialogStore } from './useCommandDialogStore'
 import { create } from 'zustand'
@@ -29,14 +30,15 @@ export const useProductSurfaceStore = create<ProductSurfaceState>()(
       pendingWorkView: null,
       setProductSurface: (productSurface) => {
         if (get().productSurface !== productSurface) {
+          useSidebarHistoryStore.setState(state => ({ generation: state.generation + 1, request: state.request?.surface === productSurface ? state.request : null }))
           useCommandDialogStore.getState().requestProductCreate(null)
           useWorkspaceReturnStore.setState({ restore: null })
         }
         set({ productSurface })
       },
       setLastVideoProjectId: (lastVideoProjectId) => set({ lastVideoProjectId }),
-      setSelectedWorkProjectId: (selectedWorkProjectId) => set({ selectedWorkProjectId }),
-      setSelectedCodeProjectId: (selectedCodeProjectId) => set({ selectedCodeProjectId }),
+      setSelectedWorkProjectId: (selectedWorkProjectId) => { if (get().selectedWorkProjectId !== selectedWorkProjectId) useSidebarHistoryStore.setState(state => ({ generation: state.generation + 1, request: state.request?.surface === 'work' && state.request.projectId === selectedWorkProjectId ? state.request : null })); set({ selectedWorkProjectId }) },
+      setSelectedCodeProjectId: (selectedCodeProjectId) => { if (get().selectedCodeProjectId !== selectedCodeProjectId) useSidebarHistoryStore.setState(state => ({ generation: state.generation + 1, request: state.request?.surface === 'code' && state.request.projectId === selectedCodeProjectId ? state.request : null })); set({ selectedCodeProjectId }) },
       setPendingWorkView: (pendingWorkView) => set({ pendingWorkView }),
     }),
     {

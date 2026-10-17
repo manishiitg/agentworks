@@ -8,7 +8,7 @@ export function usePointerDrag() {
   const stop = useCallback(() => cleanup.current?.(false), [])
   useEffect(() => stop, [stop])
 
-  const start = useCallback((event: ReactPointerEvent<HTMLElement>, handlers: DragHandlers) => {
+  const start = useCallback((event: ReactPointerEvent<HTMLElement>, handlers: DragHandlers, axis: 'x' | 'y' = 'x') => {
     if (event.button !== 0 || !event.isPrimary) return false
     cleanup.current?.(true)
     // React clears currentTarget after dispatch. Never retain the synthetic event.
@@ -36,7 +36,7 @@ export function usePointerDrag() {
       if (event.pointerId !== pointerId) return
       // Recover even if the release happened outside the browser window.
       if ((event.buttons & 1) === 0) { finish(true); return }
-      handlers.onMove(event.clientX)
+      handlers.onMove(axis === 'y' ? event.clientY : event.clientX)
     }
     const end = (event: PointerEvent) => { if (event.pointerId === pointerId) finish(true) }
     const blur = () => finish(true)

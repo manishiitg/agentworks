@@ -1,4 +1,3 @@
-import { openHome } from '../stores/useWorkspaceReturnStore'
 import type { AuthUser } from '../services/api'
 import { useCommandDialogStore, type ProductCreateSurface } from '../stores/useCommandDialogStore'
 import { hasProductCreateAccess } from './workflowPermissions'
@@ -10,7 +9,7 @@ import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { openProductWorkspace } from './productWorkspaceNavigation'
 
 export type QuickNavigationScope = 'active' | 'workflows' | 'relays' | 'crew' | 'code' | 'chats' | 'products' | 'panels' | 'create'
-export type NavigationAction = 'home' | 'active' | 'browse' | 'activity' | 'schedules' | 'providers' | 'users' | 'mcp' | 'vault-audit' | 'vault-connect' | 'create'
+export type NavigationAction = 'active' | 'browse' | 'activity' | 'schedules' | 'providers' | 'users' | 'mcp' | 'vault-audit' | 'vault-connect' | 'create'
 export type QuickNavigationItem = {
   type: 'product' | 'menu'
   id: string
@@ -24,11 +23,22 @@ export type QuickNavigationItem = {
   surface?: ProductSurface
   action?: NavigationAction
   scope?: QuickNavigationScope
+  /** Present for primary project creators shown in the sidebar's New project menu. */
+  projectDescription?: string
 }
 
 const CREATION_LABELS: Record<ProductCreateSurface, string> = {
   agentworks: 'Create new workflow', relays: 'Create new Flow', work: 'Create new Crew',
   code: 'Create new Crew', 'video-studio': 'Create new video project',
+}
+
+// Keep this beside the shared creation commands so a product consolidation has
+// one inventory to update; the sidebar does not maintain separate destinations.
+const PROJECT_CREATION_DESCRIPTIONS: Partial<Record<ProductCreateSurface, string>> = {
+  agentworks: 'Work toward a measurable goal.',
+  work: 'A specialist for repeat work.',
+  code: 'Work with an AI agent on a project.',
+  relays: 'Run repeatable steps automatically.',
 }
 
 const GLOBAL_PAGE_SURFACES: ProductSurface[] = ['agentworks', 'relays', 'work', 'code', 'mcp-gateway', 'bullpen']
@@ -52,7 +62,6 @@ export function quickNavigationItems(
   const browse = (scope: QuickNavigationScope, label: string) => {
     items.push({ ...common, type: 'menu', id: `browse:${scope}`, label, subtitle: 'Browse · show the full list', isActive: false, action: scope === 'active' ? 'active' : 'browse', scope })
   }
-  menu('home', 'Home', 'Needs my attention, existing work and running activity')
   browse('active', 'Running work')
   if (products.includes('agentworks')) { browse('workflows', 'All workflows'); browse('chats', 'All chats') }
   if (products.includes('relays')) browse('relays', 'All Flows')
@@ -65,14 +74,15 @@ export function quickNavigationItems(
   if (creationSurfaces.length) browse('create', 'Create new…')
   for (const surface of creationSurfaces) {
     items.push({ ...common, type: 'menu', id: `create:${surface}`, label: CREATION_LABELS[surface],
-      subtitle: `Create · ${PRODUCT_SURFACE_LABELS[surface]} · open the creation form`, isActive: false, action: 'create', surface })
+      subtitle: `Create · ${PRODUCT_SURFACE_LABELS[surface]} · open the creation form`, isActive: false, action: 'create', surface,
+      projectDescription: PROJECT_CREATION_DESCRIPTIONS[surface] })
   }
   if (products.includes('agentworks')) menu('activity', 'Activity', 'Automation activity and recent runs')
   if (products.some(surface => surface === 'agentworks' || surface === 'work')) {
     menu('schedules', 'Schedules and triggers', 'Scheduled work and automation triggers')
   }
   if (products.some(surface => GLOBAL_PAGE_SURFACES.includes(surface))) {
-    menu('providers', 'Providers', 'AI accounts, models and costs')
+    menu('providers', 'AI models & accounts', 'AI accounts, models and costs')
     if (user?.is_admin) menu('users', 'Users and access', 'Manage users and permissions')
     if (user) menu('mcp', 'Connect an AI agent (MCP)', 'Connect an agent to this server')
   }
@@ -94,7 +104,6 @@ export function openQuickNavigation(item: QuickNavigationItem): boolean {
     return true
   }
   if (!item.action || item.scope) return false
-  if (item.action === 'home') { openHome(); return true }
   if (item.action === 'create') {
     // Resolve the admitted destination again instead of trusting a stale row.
     const destination = quickNavigationItems(user, current).find(candidate => candidate.id === item.id)?.surface
@@ -119,7 +128,7 @@ export function openQuickNavigation(item: QuickNavigationItem): boolean {
   const app = useAppStore.getState()
   if (item.action === 'providers') useLLMStore.getState().setShowLLMModal(true)
   else if (item.action === 'users' || item.action === 'mcp') app.setAdminPage(item.action)
-  else if (item.action === 'activity') app.setShowWorkflowsOverview(true)
+  else if (item.action === 'activity') { app.setActivityWorkflowPath(null); app.setShowWorkflowsOverview(true) }
   else if (item.action === 'schedules') app.setShowSchedulesOverview(true)
   return true
 }

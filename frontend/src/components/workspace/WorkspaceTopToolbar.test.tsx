@@ -13,6 +13,7 @@ it('wraps below desktop width so every control stays reachable, and stays one ro
     root.render(<WorkspaceTopToolbar><span>tabs</span><span>toolbar</span></WorkspaceTopToolbar>)
   })
   const bar = container.firstElementChild!
+  expect(bar.className).toContain('z-[35]')
   expect(bar.className).toContain('flex-wrap')
   expect(bar.className).toContain('md:flex-nowrap')
   expect(bar.className).not.toMatch(/(?<!md:)flex-nowrap/)

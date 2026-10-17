@@ -1,3 +1,4 @@
+import { closeWorkspaceChatTab } from '../../utils/closeWorkspaceChatTab'
 import React, { useMemo, useEffect, useCallback, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
@@ -34,12 +35,10 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
     chatTabs,
     activeTabId,
     tabEvents,
-    closeTab,
   } = useChatStore(useShallow(state => ({
     chatTabs: state.chatTabs,
     activeTabId: state.activeTabId,
     tabEvents: state.tabEvents,
-    closeTab: state.closeTab,
   })))
 
   const setShowChatArea = useWorkflowStore(state => state.setShowChatArea)
@@ -116,17 +115,10 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
   }, [onSelectChat, setFocusedPane])
 
   const handleCloseTab = useCallback((tabId: string) => {
-    const nextWorkflowTabId = activeTabId === tabId
-      ? activeWorkflowTabs.find(tab => tab.tabId !== tabId)?.tabId ?? null
-      : null
-
-    const stopsSession = useChatStore.getState().chatTabs[tabId]?.metadata?.isViewOnly !== true
-    void closeTab(tabId, stopsSession).then(() => {
-      if (nextWorkflowTabId) {
-        activateTab(nextWorkflowTabId)
-      }
+    void closeWorkspaceChatTab(tabId).catch(() => {
+      useChatStore.getState().addToast('Could not close this chat. Try again.', 'error')
     })
-  }, [activeTabId, activeWorkflowTabs, closeTab])
+  }, [])
 
   // Make the scheduled/bot conversation interactive without changing its
   // identity. The backend routes the next message to this session's retained

@@ -30,7 +30,7 @@ export default function HumanActionsView({ workspacePath }: { workspacePath: str
     <div className="flex h-full min-h-0 flex-col bg-background">
       <WorkspaceViewHeader
         icon={Hand}
-        title="Human actions"
+        title="Decisions"
         subtitle="Decisions waiting for your direction, with previous answers and outcomes"
       />
       <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">

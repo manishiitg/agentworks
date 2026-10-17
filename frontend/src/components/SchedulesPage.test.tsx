@@ -42,7 +42,7 @@ describe('Schedules page', () => {
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {
       await act(async () => root.render(<SchedulesPage />))
-      const back = Array.from(host.querySelectorAll('header button')).find(button => button.textContent?.trim() === `Back to ${label}`) as HTMLButtonElement
+      const back = host.querySelector<HTMLButtonElement>(`header button[aria-label="Back to ${label}"]`)!
       expect(back).toBeDefined()
       await act(async () => back.click())
       expect(storeState.setShowSchedulesOverview).toHaveBeenCalledWith(false)

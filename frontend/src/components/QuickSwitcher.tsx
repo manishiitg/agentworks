@@ -1,3 +1,4 @@
+import { panelSearchAliases } from './workspace/workspacePanelGroups'
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { isWorkSideChatTab } from '../products/work/workTabs'
 import { Activity, CalendarClock, Code2, Cpu, Layers, LayoutGrid, MessageSquare, NotebookText, PanelRight, Plus, Plug, PlugZap, ScrollText, Search, Users, X } from 'lucide-react'
@@ -323,10 +324,10 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     return (panelEntry?.panels ?? []).flatMap(panel => {
       const common = { type: 'panel' as const, isActive: false as const, lastAccessedAt: 0 as const, hasLocalActivity: false as const, panelId: panel.id }
       return [
-        { ...common, id: `panel:${panel.id}`, label: panel.label, subtitle: `Panel${panel.group ? ` · ${panel.group}` : ''}`, searchText: `${panel.label} ${panel.id} ${panel.group ?? ''}` },
+        { ...common, id: `panel:${panel.id}`, label: panel.label, subtitle: `Panel${panel.group ? ` · ${panel.group}` : ''}`, searchText: `${panel.label} ${panel.id} ${panel.group ?? ''} ${panelSearchAliases[panel.id] ?? ''}` },
         ...(panel.sections ?? []).map(section => ({
           ...common, id: `panel:${panel.id}:${section.id}`, label: section.label, subtitle: `Panel tab · ${panel.label}`, sectionId: section.id,
-          searchText: `${section.label} ${section.id} ${section.keywords ?? ''} ${panel.label}`,
+          searchText: `${section.label} ${section.id} ${section.keywords ?? ''} ${panel.label} ${panelSearchAliases[panel.id] ?? ''}`,
         })),
       ]
     })
@@ -567,7 +568,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     if (!q) return scoped
 
     const filtered = scoped.filter(item => item.type === 'panel'
-      ? q.split(/\s+/).every(word => `${item.label} ${item.subtitle} ${item.searchText}`.toLowerCase().includes(word))
+      ? q.split(/\s+/).every(word => `${item.label} ${item.subtitle} ${item.searchText} ${'action' in item ? item.action : ''}`.toLowerCase().includes(word))
       :
       item.label.toLowerCase().includes(q) ||
       item.subtitle.toLowerCase().includes(q) ||

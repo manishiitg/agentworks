@@ -1,3 +1,4 @@
+import { useProductSettingsMenu } from '../workspace/ProductSettingsMenu'
 import { ProductNavigationLabel, useProductNavigationSidebar } from '../workspace/ProductTopBar'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Inbox } from 'lucide-react'
@@ -16,6 +17,7 @@ interface GlobalActivityButtonProps {
 
 export function GlobalActivityButton({ workspacePaths, active, onOpen }: GlobalActivityButtonProps) {
   const sidebar = useProductNavigationSidebar()
+  const inSettings = useProductSettingsMenu()
   const [hasRecentActivity, setHasRecentActivity] = useState(false)
   const refreshSequence = useRef(0)
   const pathKey = workspacePaths.join('\u0000')
@@ -53,6 +55,7 @@ export function GlobalActivityButton({ workspacePaths, active, onOpen }: GlobalA
       <TooltipTrigger asChild>
         <button
           type="button"
+          role={inSettings ? 'menuitem' : undefined}
           data-product-navigation-action
           onClick={onOpen}
           data-tour="global-activity"

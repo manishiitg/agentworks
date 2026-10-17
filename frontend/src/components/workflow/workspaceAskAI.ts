@@ -11,6 +11,7 @@ import { getGoogleAppsSetupInstructions, isGmailInboundUIEnabled } from './bots/
 // calls, skill paths, or config keys. Anything Builder needs that a
 // small-business owner should not see belongs in WORKSPACE_ASK_AI_INSTRUCTIONS.
 export const WORKSPACE_ASK_AI_MESSAGE = {
+  context: 'Help me understand this workflow’s schedules, outputs, sources and pending decisions.',
   report: "Help me understand my results page. Explain what happened and what the numbers mean in plain words, and ask what I want to look into or improve.",
   flow: "Walk me through the plan for my helper — what it does, step by step. If there is no plan yet, help me build one. Point out anything missing or risky, and ask what I want to change before changing anything.",
   costs: "Help me understand what my helper costs to run — and bring it down if I want. Explain in plain words where the money goes and what's costing the most, then ask what I want to change.",
