@@ -78,6 +78,9 @@ func externalCrewCallResponse(ctx context.Context, call *crewFunctionCall, wait 
 		timer.Stop()
 	}
 	out := call.snapshot()
+	if target, ok := out["target"].(map[string]interface{}); ok {
+		delete(target, "workspace_path")
+	}
 	addFunctionCallPending(out, call)
 	if status, _ := out["status"].(string); status != "completed" && status != "failed" {
 		// A poll that waits is cheap: it returns the moment the call finishes (PLAT-837).

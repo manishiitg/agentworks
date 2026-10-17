@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
@@ -97,4 +99,52 @@ func TestWorkspaceFunctionAuthoringKeepsProjectIdentity(t *testing.T) {
 		return
 	}
 	t.Fatal("functions tool missing")
+}
+
+func TestWorkspaceExternalResultsKeepRunPresentationAndCallBoundaries(t *testing.T) {
+	api, _ := newCodePrivacyFixture(t)
+	registry := withProjectOwnerRegistry(t)
+	withProjectSharing(t, true)
+	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.SetRunPeople("code", "app-c0de0001", []string{"other"}); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("POST", "/api/external/v1/call", nil)
+	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "other"}))
+	recorder := httptest.NewRecorder()
+	api.externalWorkspaceCall(recorder, req, map[string]any{"action": "get", "workspace_id": "code:c0de0001-0000"})
+	var out map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &out); err != nil || recorder.Code != 200 {
+		t.Fatalf("shared get: %d %s", recorder.Code, recorder.Body.String())
+	}
+	panels, _ := out["ui_panels"].([]any)
+	if out["mode"] != "run" || len(panels) != 1 || panels[0] != "dashboard" {
+		t.Fatalf("Run exposed Builder panels: %v", out)
+	}
+	call := &crewFunctionCall{ID: "call", TargetKind: triggerCallerCrew, TargetLabel: "Project", TargetPath: codePrivacyOwnerRoot, Status: "completed", Result: map[string]any{"marker": "ok"}}
+	result := externalCrewCallResponse(context.Background(), call, 0)
+	target := result["target"].(map[string]any)
+	if _, exposed := target["workspace_path"]; exposed || target["name"] != "Project" || result["result"] == nil {
+		t.Fatalf("function result exposed its physical root or lost its result: %v", result)
+	}
+}
+
+func TestWorkspaceFailedTurnDoesNotHideOrReplaceNewerTurns(t *testing.T) {
+	now := time.Now()
+	api := &StreamingAPI{trackedWorkflowExecutions: map[string]*TrackedWorkflowExecution{
+		"failed": {ExecutionID: "failed", SessionID: "chat", StartedAt: now, Status: trackedExecutionStatusFailed},
+		"other":  {ExecutionID: "other", SessionID: "another-chat", StartedAt: now.Add(time.Second), Status: trackedExecutionStatusFailed},
+	}}
+	if failure := api.externalWorkspaceTurnFailure("chat", ""); failure == nil || failure.ExecutionID != "failed" {
+		t.Fatal("launch failure with no transcript disappeared")
+	}
+	if failure := api.externalWorkspaceTurnFailure("chat", "new"); failure != nil {
+		t.Fatal("a new ask inherited an old failure")
+	}
+	api.trackedWorkflowExecutions["new"] = &TrackedWorkflowExecution{ExecutionID: "new", SessionID: "chat", StartedAt: now.Add(time.Second), Status: trackedExecutionStatusCompleted}
+	if failure := api.externalWorkspaceTurnFailure("chat", ""); failure != nil {
+		t.Fatal("an old failure replaced the latest completed turn")
+	}
 }

@@ -211,3 +211,28 @@ func TestExternalFileSearchFindsNamesAndDeepTextAndExplainsEmptyResults(t *testi
 		t.Fatalf("a shallow search must report depth_limited, not truncated: %+v, %v", shallow, err)
 	}
 }
+
+func TestWorkspaceCodeFileReadsKeepCrewPrivacyAndPathGuards(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	root := "_users/owner/Chats/Code/projects/example"
+	for _, dir := range []string{"qa", "builder/conversation"} {
+		if err := os.MkdirAll(filepath.Join(docs, root, dir), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, content := range map[string]string{"qa/guard.txt": "marker", "builder/conversation/private.json": "private"} {
+		if err := os.WriteFile(filepath.Join(docs, root, name), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := externalFileRequest(context.Background(), wf.Request{Root: root, Operation: "read", Path: "qa/guard.txt"})
+	if err != nil || got.Content != "marker" {
+		t.Fatalf("Code project read: %+v %v", got, err)
+	}
+	for _, name := range []string{"../sibling/qa/guard.txt", "builder/conversation/private.json"} {
+		if _, err := externalFileRequest(context.Background(), wf.Request{Root: root, Operation: "read", Path: name}); err == nil {
+			t.Fatalf("private/escaping path admitted: %s", name)
+		}
+	}
+}

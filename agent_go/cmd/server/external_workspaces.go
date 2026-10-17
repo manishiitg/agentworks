@@ -191,7 +191,11 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		}
 		share, _ := api.readRunShare(r.Context(), claims, target)
 		share.CanShare = api.dashboardShareOwner(r.Context(), claims, target)
-		externalJSON(w, map[string]any{"workspace_id": manifest.Product + ":" + manifest.ID, "id": manifest.ID, "profile_id": manifest.Product, "name": manifest.displayTitle(), "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller], "share": share, "ui_panels": api.workspaceEffectivePanels(r.Context(), claims.UserID, manifest.Product, binding.Binding.WorkspacePath), "identity": manifest.Identity, "purpose": manifest.Description, "memory_enabled": workspaceMemoryEnabled(r.Context(), manifest.Product, binding.Binding.WorkspacePath)})
+		panels := []string{"dashboard"}
+		if binding.OwnedByCaller {
+			panels = api.workspaceEffectivePanels(r.Context(), claims.UserID, manifest.Product, binding.Binding.WorkspacePath)
+		}
+		externalJSON(w, map[string]any{"workspace_id": manifest.Product + ":" + manifest.ID, "id": manifest.ID, "profile_id": manifest.Product, "name": manifest.displayTitle(), "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller], "share": share, "ui_panels": panels, "identity": manifest.Identity, "purpose": manifest.Description, "memory_enabled": workspaceMemoryEnabled(r.Context(), manifest.Product, binding.Binding.WorkspacePath)})
 		return
 	}
 	memberArgs := map[string]any{}

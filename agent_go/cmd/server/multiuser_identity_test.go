@@ -485,3 +485,44 @@ func TestEditedManifestOwnerNeverChangesOwnershipOrLaunchIdentity(t *testing.T) 
 func TestMultiUserAccessSharedCrewRoot(t *testing.T) {
 	runMultiUserAccessAssertions(t, sharedIdentityLayout())
 }
+
+func TestWorkspaceCodeLaunchUsesCurrentShareWithoutChangingOwner(t *testing.T) {
+	f := newMultiUserFixture(t, legacyIdentityLayout())
+	root := f.Layout.CodePhysical(fixtureUserA, fixtureCodeFolder)
+	in := turnRunAsInput{ProfileID: "code", WorkingFolder: root, CallerID: fixtureUserB}
+	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); err == nil {
+		t.Fatal("private Code admitted another person")
+	}
+	if err := defaultProjectOwners().SetAudience("code", fixtureCodeFolder, true, []string{fixtureUserB}); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); err != nil {
+		t.Fatalf("shared Code refused: %v", err)
+	}
+	if got := decideTurnRunAs(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); got.User != fixtureUserA {
+		t.Fatalf("sharing changed launch owner: %+v", got)
+	}
+	copy := in
+	copy.WorkingFolder = f.Layout.CodePhysical(fixtureUserB, fixtureCodeFolder)
+	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), copy, defaultRunAsDeps()); err == nil {
+		t.Fatal("sharing admitted a copied root in another person's tree")
+	}
+	if err := defaultProjectOwners().SetAudience("code", fixtureCodeFolder, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); err == nil {
+		t.Fatal("unshare did not revoke launch")
+	}
+	if _, err := defaultProjectOwners().AddCoOwner("code", fixtureCodeFolder, fixtureUserB); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); err != nil {
+		t.Fatalf("co-owner launch refused: %v", err)
+	}
+	if _, err := defaultProjectOwners().RemoveCoOwner("code", fixtureCodeFolder, fixtureUserB); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); err == nil {
+		t.Fatal("removed co-owner retained launch access")
+	}
+}

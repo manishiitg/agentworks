@@ -138,7 +138,8 @@ var errProjectOwnerMismatch = errors.New("this Code workspace is registered to a
 // checkProjectLaunchOwner refuses to start a private Code CLI when the owner the platform resolves for the project
 // (the registry, else the path; never the manifest) is not the caller whose own tree admitted it. It runs BEFORE
 // the launch, so no CLI starts, and there is no fallback: a mismatch is an explicit error. A Code is the owner's
-// alone; a mismatch means a copied or planted project, never a legitimate state.
+// alone unless explicitly shared. Current access to the exact registered root permits a
+// shared caller; a copied or planted project still fails.
 func checkProjectLaunchOwner(ctx context.Context, in turnRunAsInput, deps runAsDeps) error {
 	if in.WorkflowPhase || !strings.EqualFold(in.ProfileID, codeproduct.ProfileID) {
 		return nil
@@ -154,6 +155,13 @@ func checkProjectLaunchOwner(ctx context.Context, in turnRunAsInput, deps runAsD
 	}
 	owner := deps.projectOwner(ctx, physical)
 	if owner != "" && owner != sanitizeUserIDForPath(in.CallerID) {
+		// Sharing changes who may use the project, never its authoritative
+		// owner or launch identity. A copied project in another tree still fails.
+		ref, ok := resolveCrewPath(ctx, in.CallerID, physical)
+		if ok && sanitizeUserIDForPath(workspaceref.MustParse(physical).Owner()) == owner && ref.Rest == "" && ref.OwnerID == owner && canonicalCrewWorkspaceRoot(ref.Root) == canonicalCrewWorkspaceRoot(physical) &&
+			crewAccessFor(&UserClaims{UserID: in.CallerID}, ref) != crewAccessNone {
+			return nil
+		}
 		log.Printf("[OWNER_MISMATCH] Code launch refused: %s resolves to owner %q but the caller is %q", physical, owner, in.CallerID)
 		return errProjectOwnerMismatch
 	}

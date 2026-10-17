@@ -91,11 +91,20 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 	deadline := time.Now().Add(externalCrewWait(args))
 	for {
 		items, last, readErr := codeChatTranscript(r.Context(), claims.UserID, chat.SessionID, project.Binding.WorkspacePath, after, 100)
+		working := api.conversationTurnOccupied(chat.SessionID)
+		if !working {
+			if failure := api.externalWorkspaceTurnFailure(chat.SessionID, queryID); failure != nil {
+				out["status"], out["working"] = "failed", false
+				out["error"] = map[string]any{"code": "turn_failed", "message": "The conversation could not complete. Try again, or ask a Builder to check the run logs."}
+				out["query_id"], out["messages"], out["next_after"] = failure.ExecutionID, items, max(after, last)
+				externalJSON(w, out)
+				return
+			}
+		}
 		if readErr != nil && action != "ask" {
 			externalFailure(w, readErr)
 			return
 		}
-		working := api.conversationTurnOccupied(chat.SessionID)
 		answered := false
 		for _, item := range items {
 			if item.Role == "assistant" && (queryID == "" || item.Turn == queryID) {
@@ -116,4 +125,21 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 		case <-time.After(500 * time.Millisecond):
 		}
 	}
+}
+
+// A rejected launch may have no transcript. Use the authoritative execution
+// record so an empty chat is not reported as a successful completed turn.
+func (api *StreamingAPI) externalWorkspaceTurnFailure(sessionID, queryID string) *TrackedWorkflowExecution {
+	api.trackedWorkflowExecutionsMux.Lock()
+	defer api.trackedWorkflowExecutionsMux.Unlock()
+	var latest *TrackedWorkflowExecution
+	for _, execution := range api.trackedWorkflowExecutions {
+		if execution != nil && execution.SessionID == sessionID && (queryID == "" || execution.ExecutionID == queryID) && (latest == nil || execution.StartedAt.After(latest.StartedAt)) {
+			latest = execution
+		}
+	}
+	if latest == nil || latest.Status != trackedExecutionStatusFailed {
+		return nil
+	}
+	return cloneTrackedExecution(latest)
 }
