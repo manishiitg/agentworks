@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -68,11 +69,15 @@ func (api *StreamingAPI) crewHumanAnswerScope(ctx context.Context, session, requ
 	return ref.Root, claims, true, nil
 }
 
-func (api *StreamingAPI) registerCrewHumanAnswerTool(registrar definitionToolRegistrar, gate *productToolGate) error {
+func (api *StreamingAPI) registerCrewHumanDecisionTools(registrar definitionToolRegistrar, gate *productToolGate) error {
 	tools, executors, categories := createReportHumanInputTools()
-	const name = "answer_human_input_request"
+	registered := 0
 	for _, tool := range tools {
-		if tool.Function == nil || tool.Function.Name != name {
+		if tool.Function == nil {
+			continue
+		}
+		name := tool.Function.Name
+		if name != "answer_human_input_request" && name != "get_human_input_request" && name != "mark_human_input_consumed" {
 			continue
 		}
 		var params map[string]interface{}
@@ -83,9 +88,33 @@ func (api *StreamingAPI) registerCrewHumanAnswerTool(registrar definitionToolReg
 		if err = json.Unmarshal(raw, &params); err != nil {
 			return err
 		}
+		execute := executors[name].(func(context.Context, map[string]interface{}) (string, error))
+		if name != "answer_human_input_request" {
+			shared := execute
+			execute = func(ctx context.Context, args map[string]interface{}) (string, error) {
+				requested, _ := args["workspace_path"].(string)
+				workspace, claims, err := humanAnswerScope(ctx, requested)
+				if err != nil {
+					return "", err
+				}
+				// These retained tools belong only to an interactive Crew Builder.
+				// The shared workflow executors keep their existing wider callers.
+				if _, crew := resolveCrewPath(ctx, claims.UserID, workspace); !crew {
+					return "", fmt.Errorf("open this Crew's Builder chat to review or complete its decisions")
+				}
+				scoped := maps.Clone(args)
+				scoped["workspace_path"] = workspace
+				return shared(ctx, scoped)
+			}
+		}
 		gate.Declare(name)
-		return registrar.RegisterCustomTool(name, tool.Function.Description, params,
-			executors[name].(func(context.Context, map[string]interface{}) (string, error)), categories[name])
+		if err := registrar.RegisterCustomTool(name, tool.Function.Description, params, execute, categories[name]); err != nil {
+			return err
+		}
+		registered++
 	}
-	return fmt.Errorf("Crew decision answer tool is unavailable")
+	if registered != 3 {
+		return fmt.Errorf("Crew decision lifecycle tools are unavailable")
+	}
+	return nil
 }

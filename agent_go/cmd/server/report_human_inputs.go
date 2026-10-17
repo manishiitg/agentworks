@@ -991,11 +991,11 @@ func createReportHumanInputTools() ([]llmtypes.Tool, map[string]interface{}, map
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
 			Name:        "get_human_input_request",
-			Description: "Read one existing Pulse/report decision by its exact workflow path and input id. Use this before applying an answered decision so its context, selected option, evidence, and lifecycle status are read from the canonical typed record rather than inferred from a summary or queried directly from SQLite.",
+			Description: "Read one existing decision by its exact workspace path and input id. Use this before applying an answered decision so its context, selected option, evidence, and lifecycle status are read from the canonical typed record rather than inferred from a summary or queried directly from SQLite.",
 			Parameters: llmtypes.NewParameters(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"workspace_path": map[string]interface{}{"type": "string", "description": "Exact workflow-relative path, for example Workflow/latency-report."},
+					"workspace_path": map[string]interface{}{"type": "string", "description": "Exact workspace path, for example Workflow/latency-report or Crew/example."},
 					"input_id":       map[string]interface{}{"type": "string", "description": "Exact decision id supplied by the scheduler, Pulse state, or chat context."},
 				},
 				"required": []string{"workspace_path", "input_id"},
@@ -1010,7 +1010,7 @@ func createReportHumanInputTools() ([]llmtypes.Tool, map[string]interface{}, map
 			Parameters: llmtypes.NewParameters(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"workspace_path":   map[string]interface{}{"type": "string", "description": "Workflow-relative path, for example Workflow/social-media."},
+					"workspace_path":   map[string]interface{}{"type": "string", "description": "Workspace path, for example Workflow/social-media or Crew/example."},
 					"input_id":         map[string]interface{}{"type": "string", "description": "The input id returned by create_human_input_request."},
 					"outcome_summary":  map[string]interface{}{"type": "string", "description": "What you did with the answer, in one sentence."},
 					"outcome_evidence": map[string]interface{}{"type": "string", "description": "Result you checked: saved artifact/revision, external result ID/URL and observed state, or the owner's explicit rejection. Approval itself, a planned action, a queued task or a start receipt is not completion evidence."},
