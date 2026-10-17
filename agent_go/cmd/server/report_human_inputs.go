@@ -1024,11 +1024,11 @@ func createReportHumanInputTools() ([]llmtypes.Tool, map[string]interface{}, map
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
 			Name:        "answer_human_input_request",
-			Description: "Record the current user's explicit answer to an existing pending Pulse/report decision. Call this only after the user clearly selects an option or gives a final free-text answer; never infer an answer from discussion. This changes the request to answered so a later Pulse or Goal Advisor run can apply it. It does not apply the decision or mark it consumed.",
+			Description: "Record the current user's explicit answer to an existing pending decision or suggestion in this Builder workspace. Call this only after the user clearly selects an option or gives a final free-text answer; never infer an answer from discussion. This saves the answer and returns any instructions for applying it in this same turn. It does not mark the request consumed.",
 			Parameters: llmtypes.NewParameters(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"workspace_path":     map[string]interface{}{"type": "string", "description": "Workflow-relative path, for example Workflow/social-media."},
+					"workspace_path":     map[string]interface{}{"type": "string", "description": "This Builder's workspace, for example Workflow/social-media or Crew/example."},
 					"input_id":           map[string]interface{}{"type": "string", "description": "Exact decision id supplied in the chat context."},
 					"selected_option_id": map[string]interface{}{"type": "string", "description": "Exact option id supplied in the chat context when the user selects an option."},
 					"note":               map[string]interface{}{"type": "string", "description": "The user's final free-text answer or optional note. Free text is accepted only when the request allows it."},

@@ -20,11 +20,11 @@ import (
 //   - background and review agents (their tool sessions are registered in
 //     workshop_tool_sessions.go), which includes every Pulse reviewer;
 //   - scheduled runs and Pulse lifecycle turns (sched_/schedule- sessions);
-//   - any session with no workflow or no authenticated owner.
+//   - any session with no Builder workspace or no authenticated owner.
 //
-// The workflow and the person come from the calling session through
-// pulseToolScope (write access required), never from workspace_path or the
-// model (reported 2026-09-27 against 4eb7fbad1).
+// The workspace and the person come from trusted session state, never from
+// workspace_path or the model. Crew Builders recheck the project registry;
+// workflow Builders use pulseToolScope with write access required.
 func humanAnswerScope(ctx context.Context, requestedWorkspace string) (string, *UserClaims, error) {
 	sessionID := strings.TrimSpace(executor.SessionIDFromContext(ctx))
 	if sessionID == "" {
@@ -37,6 +37,9 @@ func humanAnswerScope(ctx context.Context, requestedWorkspace string) (string, *
 	}
 	if sessionID == "" || isScheduledSession(sessionID) {
 		return "", nil, fmt.Errorf("%s (a scheduled or unattended run cannot answer it)", refusal)
+	}
+	if workspacePath, claims, crew, err := pulsePlatformAPI.crewHumanAnswerScope(ctx, sessionID, requestedWorkspace); crew {
+		return workspacePath, claims, err
 	}
 	workspacePath, claims, err := pulsePlatformAPI.pulseToolScope(ctx, requestedWorkspace, true)
 	if err != nil {

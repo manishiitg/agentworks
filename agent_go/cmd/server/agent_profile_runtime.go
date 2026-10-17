@@ -911,6 +911,16 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		}
 	}
 	activeWorkProject := isProjectProfileID(resolved.Definition.ID) && isActiveWorkProjectWorkspace(userID, workspacePath)
+	if activeWorkProject && !readOnly && len(req) > 0 {
+		active, _ := api.getActiveSession(sessionID)
+		if crewHumanAnswerTurn(sessionID, req[0], active, readOnly) {
+			if _, _, crew, err := api.crewHumanAnswerScope(context.Background(), sessionID, workspacePath); crew && err == nil {
+				if err := api.registerCrewHumanAnswerTool(registrar, gate); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	if isProjectProfileID(resolved.Definition.ID) && agentprofiles.HasFeature(resolved.Definition, "attached-folders") {
 		if err := api.registerWorkFolderTools(registrar, userID, sessionID); err != nil {
 			return err
