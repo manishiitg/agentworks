@@ -91,9 +91,10 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 	deadline := time.Now().Add(externalCrewWait(args))
 	for {
 		items, last, readErr := codeChatTranscript(r.Context(), claims.UserID, chat.SessionID, project.Binding.WorkspacePath, after, 100)
-		working := api.conversationTurnOccupied(chat.SessionID)
+		execution := api.externalWorkspaceTurnExecution(chat.SessionID, queryID)
+		working := api.sessionTurnRunning(chat.SessionID) || execution != nil && execution.Status == trackedExecutionStatusRunning
 		if !working {
-			if failure := api.externalWorkspaceTurnFailure(chat.SessionID, queryID); failure != nil {
+			if failure := execution; failure != nil && failure.Status == trackedExecutionStatusFailed {
 				out["status"], out["working"] = "failed", false
 				out["error"] = map[string]any{"code": "turn_failed", "message": "The conversation could not complete. Try again, or ask a Builder to check the run logs."}
 				out["query_id"], out["messages"], out["next_after"] = failure.ExecutionID, items, max(after, last)
@@ -129,7 +130,7 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 
 // A rejected launch may have no transcript. Use the authoritative execution
 // record so an empty chat is not reported as a successful completed turn.
-func (api *StreamingAPI) externalWorkspaceTurnFailure(sessionID, queryID string) *TrackedWorkflowExecution {
+func (api *StreamingAPI) externalWorkspaceTurnExecution(sessionID, queryID string) *TrackedWorkflowExecution {
 	api.trackedWorkflowExecutionsMux.Lock()
 	defer api.trackedWorkflowExecutionsMux.Unlock()
 	var latest *TrackedWorkflowExecution
@@ -137,9 +138,6 @@ func (api *StreamingAPI) externalWorkspaceTurnFailure(sessionID, queryID string)
 		if execution != nil && execution.SessionID == sessionID && (queryID == "" || execution.ExecutionID == queryID) && (latest == nil || execution.StartedAt.After(latest.StartedAt)) {
 			latest = execution
 		}
-	}
-	if latest == nil || latest.Status != trackedExecutionStatusFailed {
-		return nil
 	}
 	return cloneTrackedExecution(latest)
 }

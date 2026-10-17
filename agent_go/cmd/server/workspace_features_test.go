@@ -137,14 +137,18 @@ func TestWorkspaceFailedTurnDoesNotHideOrReplaceNewerTurns(t *testing.T) {
 		"failed": {ExecutionID: "failed", SessionID: "chat", StartedAt: now, Status: trackedExecutionStatusFailed},
 		"other":  {ExecutionID: "other", SessionID: "another-chat", StartedAt: now.Add(time.Second), Status: trackedExecutionStatusFailed},
 	}}
-	if failure := api.externalWorkspaceTurnFailure("chat", ""); failure == nil || failure.ExecutionID != "failed" {
+	if failure := api.externalWorkspaceTurnExecution("chat", ""); failure == nil || failure.ExecutionID != "failed" || failure.Status != trackedExecutionStatusFailed {
 		t.Fatal("launch failure with no transcript disappeared")
 	}
-	if failure := api.externalWorkspaceTurnFailure("chat", "new"); failure != nil {
+	if failure := api.externalWorkspaceTurnExecution("chat", "new"); failure != nil {
 		t.Fatal("a new ask inherited an old failure")
 	}
 	api.trackedWorkflowExecutions["new"] = &TrackedWorkflowExecution{ExecutionID: "new", SessionID: "chat", StartedAt: now.Add(time.Second), Status: trackedExecutionStatusCompleted}
-	if failure := api.externalWorkspaceTurnFailure("chat", ""); failure != nil {
+	if execution := api.externalWorkspaceTurnExecution("chat", ""); execution == nil || execution.ExecutionID != "new" || execution.Status != trackedExecutionStatusCompleted {
 		t.Fatal("an old failure replaced the latest completed turn")
+	}
+	api.trackedWorkflowExecutions["new"].Status = trackedExecutionStatusRunning
+	if execution := api.externalWorkspaceTurnExecution("chat", "new"); execution == nil || execution.Status != trackedExecutionStatusRunning {
+		t.Fatal("a newly accepted turn looked idle before its runner acquired the lane")
 	}
 }

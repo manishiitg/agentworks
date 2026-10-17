@@ -15,6 +15,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	agentevents "github.com/manishiitg/mcpagent/events"
@@ -1224,6 +1225,55 @@ func TestWorkProjectChatHistoryConversationPathUsesProjectBuilderFolder(t *testi
 
 	if got, ok := workProjectChatHistoryConversationPath("default", "Chats/Video/projects/demo", "chat-3", timestamp); ok || got != "" {
 		t.Fatalf("other product path = %q, ok=%v; want unchanged global storage", got, ok)
+	}
+}
+
+func TestWorkspaceSharedConversationHistoryUsesCallerStoreAndAuthoritativeBuilderRoot(t *testing.T) {
+	f := newMultiUserFixture(t, legacyIdentityLayout())
+	now := time.Now()
+	for _, origin := range []struct{ profile, root, folder string }{
+		{"code", f.Layout.CodePhysical(fixtureUserA, fixtureCodeFolder), fixtureCodeFolder},
+		{"work", f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder), fixtureCrewFolder},
+	} {
+		if got, ok := workProjectChatHistoryConversationPath(fixtureUserB, origin.root, "run-chat", now); ok || got != "" {
+			t.Fatalf("%s Run history entered Builder storage: %s", origin.profile, got)
+		}
+		if _, err := defaultProjectOwners().AddCoOwner(origin.profile, origin.folder, fixtureUserB); err != nil {
+			t.Fatal(err)
+		}
+		got, ok := workProjectChatHistoryConversationPath(fixtureUserB, origin.root, "builder-chat", now)
+		if !ok || !strings.HasPrefix(got, origin.root+"/builder/conversation/") || strings.Count(got, "_users/") != 1 {
+			t.Fatalf("%s co-owner history lost the authoritative root: %s", origin.profile, got)
+		}
+		if _, err := defaultProjectOwners().RemoveCoOwner(origin.profile, origin.folder, fixtureUserB); err != nil {
+			t.Fatal(err)
+		}
+	}
+	root := f.Layout.CodePhysical(fixtureUserA, fixtureCodeFolder)
+	var event internalevents.Event
+	if err := json.Unmarshal([]byte(`{"type":"unified_completion","sequence":7,"data":{"type":"unified_completion","data":{"final_result":"Run reply","metadata":{"turn_id":"query-run"}}}}`), &event); err != nil {
+		t.Fatal(err)
+	}
+	history := []llmtypes.MessageContent{{Role: llmtypes.ChatMessageTypeAI, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "Run reply"}}}}
+	f.API.persistChatConversationToPathWithTerminalSession("run-chat", "", "multi-agent", fixtureUserB, history, &ChatHistoryAgentRuntime{WorkspacePath: root}, []internalevents.Event{event}, "")
+	items, last, err := codeChatTranscript(f.Ctx(fixtureUserB), fixtureUserB, "run-chat", root, 0, 100)
+	if err != nil || len(items) != 1 || items[0].Role != "assistant" || items[0].Text != "Run reply" || last != 7 {
+		t.Fatalf("caller could not read its shared Code reply: %v %d %v", items, last, err)
+	}
+	if _, err := ReadChatHistoryConversation(fixtureUserA, "run-chat", root); err == nil {
+		t.Fatal("the project owner read the Run person's private conversation")
+	}
+	legacy := workspaceref.PhysicalPath(fixtureUserB, canonicalChatHistoryWorkspacePath(fixtureUserB, root))
+	legacyRecord := `{"session_id":"legacy-run","user_id":"` + fixtureUserB + `","runtime":{"workspace_path":"` + root + `"},"updated_at":"2026-10-16T12:00:00Z","conversation_history":[]}`
+	f.put(workflowBuilderConversationLogPath(legacy, "legacy-run", now), legacyRecord)
+	if data, err := ReadChatHistoryConversation(fixtureUserB, "legacy-run", root); err != nil || !strings.Contains(string(data), "legacy-run") {
+		t.Fatalf("previous shared history disappeared: %s %v", data, err)
+	}
+	// A stale legacy copy must not replace the current central transcript.
+	f.put(workflowBuilderConversationLogPath(legacy, "run-chat", now), strings.ReplaceAll(legacyRecord, "legacy-run", "run-chat"))
+	items, _, err = codeChatTranscript(f.Ctx(fixtureUserB), fixtureUserB, "run-chat", root, 0, 100)
+	if err != nil || len(items) != 1 || items[0].Text != "Run reply" {
+		t.Fatalf("legacy copy hid the current reply: %v %v", items, err)
 	}
 }
 

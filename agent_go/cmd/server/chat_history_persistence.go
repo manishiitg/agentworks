@@ -435,16 +435,15 @@ func ReadChatHistoryResumeSnapshot(userID, sessionID, workspacePath string) (jso
 	return json.RawMessage(data), true, nil
 }
 
-// workProjectChatHistoryConversationPath keeps Work's Builder transcripts in
-// the project, matching AgentWorks' workspace-owned conversation layout. Other
-// product chats continue to use the user's central chat_history directory.
+// workProjectChatHistoryConversationPath keeps Builder transcripts in the
+// authoritative project. Run conversations stay in the caller's central store.
 func workProjectChatHistoryConversationPath(userID, workspacePath, sessionID string, t time.Time) (string, bool) {
 	canonicalWorkspace := canonicalChatHistoryWorkspacePath(userID, workspacePath)
-	if !isProjectWorkspacePath(canonicalWorkspace) {
+	if !isProjectWorkspacePath(canonicalWorkspace) || !crewProjectOwnedByCaller(userID, workspacePath) {
 		return "", false
 	}
 
-	userWorkspacePath := workspaceref.PhysicalPath(userID, canonicalWorkspace)
+	userWorkspacePath := workspaceref.MustParse(canonicalWorkspace).PhysicalKeepOwner(userID)
 	return workflowBuilderConversationLogPath(userWorkspacePath, sanitizeChatHistorySessionID(sessionID), t), true
 }
 
@@ -1123,9 +1122,8 @@ func (api *StreamingAPI) liveConversationPath(userID, sessionID, workspacePath s
 			workspacePath = strings.TrimSpace(active.WorkspacePath)
 		}
 		api.activeSessionsMux.RUnlock()
-		if canonical := canonicalChatHistoryWorkspacePath(userID, workspacePath); isProjectWorkspacePath(canonical) {
-			// Project transcripts are stored under the user's physical path (see workProjectChatHistoryConversationPath).
-			workspacePath = workspaceref.PhysicalPath(userID, canonical)
+		if canonical := canonicalChatHistoryWorkspacePath(userID, workspacePath); isProjectWorkspacePath(canonical) && crewProjectOwnedByCaller(userID, workspacePath) {
+			workspacePath = workspaceref.MustParse(canonical).PhysicalKeepOwner(userID)
 		} else {
 			workspacePath = ""
 		}
@@ -1848,6 +1846,14 @@ func listWorkflowScopedChatHistorySessionsFromDisk(userID, chatHistoryRootPath, 
 	if !skipBuilderDisk {
 		if builderSessions, ok := listWorkflowBuilderHistoryFromDisk(userID, builderWorkspacePath, readBudget, kind); ok {
 			all = append(all, builderSessions...)
+		}
+	} else {
+		// Earlier shared turns wrapped the project in the caller's own root,
+		// including a second _users prefix for owner-tree projects. Keep these
+		// private transcripts discoverable; never scan the owner's Builder store.
+		legacy := workspaceref.PhysicalPath(userID, canonicalChatHistoryWorkspacePath(userID, workflowPath))
+		if sessions, ok := listWorkflowBuilderHistoryFromDisk(userID, legacy, readBudget, kind); ok {
+			all = append(all, sessions...)
 		}
 	}
 
@@ -3032,6 +3038,24 @@ func ReadChatHistoryConversation(userID, sessionID, workspacePath string) (json.
 		return nil, fmt.Errorf("conversation not found")
 	}
 	workspacePath = normalizeChatHistoryWorkspacePath(workspacePath)
+	if crewBuilderDiskHiddenFromUser(userID, workspacePath) {
+		// Run replies belong to this caller. Prefer the current central copy,
+		// with a fallback only to the old malformed path inside their own tree.
+		if data, ok, err := readUserChatHistoryConversationDirect(userID, sessionID); ok || err != nil {
+			return data, err
+		}
+		if data, ok, err := readUserChatHistoryConversationFromWorkspace(userID, sessionID); ok || err != nil {
+			return data, err
+		}
+		legacy := workspaceref.PhysicalPath(userID, canonicalChatHistoryWorkspacePath(userID, workspacePath))
+		if data, ok, err := readWorkflowScopedChatHistoryConversationDirect(sessionID, legacy); ok || err != nil {
+			return data, err
+		}
+		if data, ok, err := readWorkflowScopedChatHistoryConversationFromWorkspace(sessionID, legacy); ok || err != nil {
+			return data, err
+		}
+		return nil, fmt.Errorf("conversation not found")
+	}
 	if workspacePath != "" {
 		// A Crew or Code project's transcripts sit under the signed-in person's own
 		// storage root, like the Recent list reads them. The Costs page passes the
