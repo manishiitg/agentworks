@@ -1,3 +1,4 @@
+import { closeWorkspaceChatTab } from '../../utils/closeWorkspaceChatTab'
 import { useWorkspaceReturn } from '../../hooks/useWorkspaceReturn'
 import { currentProductRoute, routeView } from '../../utils/productRoutes'
 import { useProductUrlView } from '../../hooks/useProductUrlView'
@@ -73,14 +74,14 @@ const WORK_SPLIT_PREFERENCE_KEY = 'work_workspace_split_ratio'
 const LOCAL_CODE_MIN_CHAT_SHARE = 0.72
 const WORK_VIEW_PREFERENCE_KEY = 'work_workspace_view'
 const WORK_UI_PRESENTATION_VIEWS = {
-  report: 'dashboard', plan: 'plan', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
+  context: 'context', report: 'dashboard', plan: 'plan', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
   suggestions: 'suggestions', identity: 'identity', mcp: 'mcp', shell: 'shell',
   // Legacy agent + preference ids land on the consolidated Setup views.
   skills: 'mcp', secrets: 'identity', llm: 'identity', bots: 'mcp', email: 'mcp', folders: 'identity',
 } as const satisfies Record<string, WorkWorkspaceView>
 type WorkUIPresentationView = keyof typeof WORK_UI_PRESENTATION_VIEWS
 const WORK_UI_LABELS: Record<WorkUIPresentationView, string> = {
-  report: 'Dashboard', plan: 'Plan', memory: 'Memory', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automation', schedules: 'Automation', files: 'Files',
+  context: 'Context', report: 'Dashboard', plan: 'Plan', memory: 'Memory', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automation', schedules: 'Automation', files: 'Files',
   suggestions: 'Suggestions', identity: 'Identity', mcp: 'Integrations', shell: 'Terminal',
   skills: 'Skills', secrets: 'Secrets', llm: 'Agent configuration', bots: 'Bots', email: 'Gmail', folders: 'Attached folders',
 }
@@ -564,10 +565,9 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
   profileId: string
   allowSideChats: boolean
 }) {
-  const { chatTabs, activeTabId, closeTab } = useChatStore(useShallow(state => ({
+  const { chatTabs, activeTabId } = useChatStore(useShallow(state => ({
     chatTabs: state.chatTabs,
     activeTabId: state.activeTabId,
-    closeTab: state.closeTab,
   })))
   const [opening, setOpening] = useState(false)
   const canonicalSessionId = chatTabs[canonicalTabId]?.sessionId
@@ -581,40 +581,7 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
   const sideChats = tabs.filter(tab => isWorkSideChatTab(tab, projectId))
   const selectTab = (nextTabId: string) => { activateTab(nextTabId) }
   const closeProjectTab = (closingTabId: string) => {
-    const closing = chatTabs[closingTabId]
-    const side = isWorkSideChatTab(closing, projectId)
-    // A side chat that is still working keeps its tab, so the result of what it
-    // started is not delivered to a chat nobody can see.
-    if (side && (closing?.isStreaming || closing?.hasRunningBgAgents)) {
-      useChatStore.getState().addToast('This chat is still working. Stop it first, then close the tab.', 'error')
-      return
-    }
-    void (async () => {
-      // Idle side chats still retain browser clients and warm coding sessions.
-      // Stop this chat before dismissing it so its resources cannot outlive it.
-      if (side && closing?.sessionId) {
-        try {
-          await agentApi.stopSession(closing.sessionId)
-        } catch (cause) {
-          const status = (cause as { response?: { status?: number } })?.response?.status
-          if (status !== 404) throw cause
-        }
-      }
-      // The server forgets the closed tab too, so other chats can no longer
-      // message it and reminders set from it run in the main chat.
-      const closingKey = closing?.metadata?.agentProfileConversationKey
-      if (side && closingKey) {
-        try {
-          await agentApi.closeAgentProfileSideChat(profileId, closingKey)
-        } catch (cause) {
-          const status = (cause as { response?: { status?: number } })?.response?.status
-          if (status !== 404) throw cause
-        }
-      }
-      // Side chats have already been stopped above; view tabs only hide the view.
-      await closeTab(closingTabId, false)
-      if (activeTabId === closingTabId) activateTab(canonicalTabId)
-    })().catch(() => {
+    void closeWorkspaceChatTab(closingTabId, canonicalTabId).catch(() => {
       useChatStore.getState().addToast('Could not stop this chat. Try closing it again.', 'error')
     })
   }
@@ -748,7 +715,7 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
     if (active && typeof (active as HTMLElement).scrollIntoView === 'function') (active as HTMLElement).scrollIntoView({ inline: 'nearest', block: 'nearest' })
   }, [activeTabId, tabs.length])
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-1 px-1">
+    <div className="flex min-w-0 flex-1 items-center gap-1">
       <div ref={stripRef} className="flex min-w-0 items-center gap-1 overflow-x-auto [&>*]:shrink-0" data-testid="work-chat-tab-strip">
       {tabs.map(tab => <AgentWorksChatTabItem
         key={tab.tabId}
@@ -789,8 +756,8 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
 function WorkNewChatGuide({ sharedBy, product, cowork }: { sharedBy?: string; product: ProjectProductConfig; cowork?: boolean }) {
   if (cowork) {
     return <ProductChatLandingCard
-      title="What should we work on?"
-      description="This is your private assistant. No code needed. Ask it to:"
+      title="Continue your work"
+      description="Use this project for ongoing work. Your results and tools stay together."
       examples={[
         'Build a dashboard from my data and keep it up to date',
         'Open a website in the browser and do a task for me',
@@ -801,8 +768,8 @@ function WorkNewChatGuide({ sharedBy, product, cowork }: { sharedBy?: string; pr
   }
   if (!product.hasIdentity) {
     return <ProductChatLandingCard
-      title="Start coding"
-      description={`This is the chat for this ${product.itemNoun}. Ask it to:`}
+      title="Work on this project"
+      description="Use this conversation to build, investigate or improve the existing project."
       examples={[
         'Clone a repository into code/ and explain how it works',
         'Build, run, test and debug in the workspace terminal',
@@ -816,8 +783,8 @@ function WorkNewChatGuide({ sharedBy, product, cowork }: { sharedBy?: string; pr
       title={`Explore ${sharedBy}’s ${product.noun}`}
       description={`This ${product.noun} is shared with you on Run. Ask it to:`}
       examples={[
-        `Explain how the ${product.noun} works and what it can do`,
-        'Walk through its files, memory, and configuration',
+        `Ask what this ${product.noun} can help you with`,
+        'Ask a question about its dashboard',
         'Run its attached workflows when you ask',
       ]}
       footer="Your conversation stays private to you — the owner never sees it."
@@ -825,11 +792,11 @@ function WorkNewChatGuide({ sharedBy, product, cowork }: { sharedBy?: string; pr
     />
   }
   return <ProductChatLandingCard
-    title={`Start your ${product.noun} chat`}
-    description={`This is the persistent conversation for this ${product.noun} project. Ask ${product.noun} to:`}
+    title={`Work with this ${product.noun}`}
+    description="Keep working in this project. Its memory, results and connected tools stay together."
     examples={[
       'Research, write, analyze, or plan ongoing work',
-      'Work with project files, code, browser, terminal, and connected tools',
+      'Use this project’s knowledge, browser and connected tools',
       'Create dashboards, schedules, webhooks, bots, or project memory',
     ]}
     shortcutHint
@@ -972,6 +939,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }, [selected, updateLLMConfig])
   const { tabId, canonicalTabId, error: chatError } = useWorkChatTab(product, selected, persistLegacyRuntime)
 
+
+
   // Code: the computer and folder come from the workspace's product.json (`local_files`), so Local mode survives a refresh.
   const localFilesProjectId = selected?.id
   const selectedLocalFiles = selected?.localFiles
@@ -1092,6 +1061,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const selectWorkspaceView = useCallback((view: WorkWorkspaceView, navigation = true) => {
     const allowedView = isWorkWorkspaceViewEnabled(view, undefined, localCodeSession) ? view : 'files'
     setWorkspaceView(allowedView)
+    setPanelOpen(true)
     if (navigation) setViewNavigationRevision(value => value + 1)
     writeWorkWorkspaceView(selected?.id, product.profileId, allowedView)
   }, [selected?.id, product.profileId, localCodeSession])
@@ -1266,7 +1236,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }, [product.defaultView, product.profileId, selected?.id, selected?.shared, selected?.workspacePath])
 
   useWorkspaceReturn(product.profileId, selected?.id, selected ? workspaceView : undefined,
-    { chat_open: chatOpen, panel_open: panelOpen, split_ratio: splitRatio, navigation_mode: 'fixed', preview_device: reportPreviewPreference, mobile_pane_width: mobilePaneWidth ?? undefined },
+    { chat_open: chatOpen, panel_open: (!localCodeSession && !selected?.shared && workspaceView === 'context') || panelOpen, split_ratio: splitRatio, navigation_mode: 'fixed', preview_device: reportPreviewPreference, mobile_pane_width: mobilePaneWidth ?? undefined },
     saved => {
       setChatOpen(saved.chat_open); setPanelOpen(saved.panel_open)
       splitRatioRef.current = saved.split_ratio; setSplitRatioState(saved.split_ratio); writeWorkSplitRatio(selected?.id, saved.split_ratio)
@@ -1286,7 +1256,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     // Code is files-first: it never lands on the dashboard on its own.
     if (!product.hasIdentity || !landingProjectId || !landingWorkspacePath || landingIsShared || routeSuppliedView || readWorkWorkspaceView(landingProjectId, product.profileId)) return
     let cancelled = false
-    void loadWorkspaceLandingView(landingWorkspacePath, { dashboardAllowed }).then(view => {
+    void (product.profileId === 'work' ? Promise.resolve('context' as const) : loadWorkspaceLandingView(landingWorkspacePath, { dashboardAllowed })).then(view => {
       if (cancelled || selectedProjectIdFor(product) !== landingProjectId || readWorkWorkspaceView(landingProjectId, product.profileId)) return
       setWorkspaceView(view)
     })
@@ -1526,11 +1496,13 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
           ) : (
             <ProductWorkspaceShell
               splitRef={splitLayoutRef}
+              compactContext={!localCodeSession && !selected.shared && workspaceView==='context'}
+              toolbarWhenPanelClosed={!localCodeSession && !selected.shared}
               chatOpen={chatOpen} panelOpen={panelOpen} splitRatio={shownSplitRatio}
               mobilePreview={reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
               onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => { if (!(isShared && sharedCrewHasDashboard === false)) setPanelOpen(true) }}
               tabs={tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} profileId={product.profileId} allowSideChats={product.profileId === 'code' && !isWorkSessionRun(selected)} /> : <div className="min-w-0 flex-1" />}
-              toolbar={<WorkWorkspaceToolbar sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={isWorkSessionRun(selected)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} />}
+              toolbar={<WorkWorkspaceToolbar compactContext={!localCodeSession && !isWorkSessionRun(selected)} sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={isWorkSessionRun(selected)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} />}
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView, localCodeSession) } as React.HTMLAttributes<HTMLElement>}
               chat={<>
@@ -1571,7 +1543,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                           tabId={tabId}
                           compact
                           landingContent={<WorkNewChatGuide product={product} cowork={product.profileId === 'code' && selectedMode === 'cowork'} sharedBy={isWorkSessionRun(selected) && selected.shared ? (selected.shared.ownerUsername || selected.shared.ownerId) : undefined} />}
-                          composerPlaceholder="Describe what you want to build… (@ files, # references)"
+                          composerPlaceholder={product.profileId === 'code' ? 'What would you like to work on? (@ files, # references)' : 'Ask this Crew to help with your work…'}
                           showProductSteerAction
                           showProductTerminalControl
                           // Code only, and only its owner: New chat replaces this project's conversation in the same

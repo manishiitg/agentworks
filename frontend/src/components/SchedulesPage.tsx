@@ -1,4 +1,4 @@
-import { WorkspaceBackButton } from './workspace/WorkspaceBackButton'
+import { WorkspacePageHeader } from './workspace/WorkspacePageHeader'
 import { lazy, Suspense, useState } from 'react'
 import { CalendarClock, Webhook } from 'lucide-react'
 import { useLLMStore } from '../stores/useLLMStore'
@@ -55,21 +55,15 @@ export default function SchedulesPage() {
 
   return (
     <section aria-label="Schedules and triggers" className="flex h-full min-h-0 flex-col bg-background">
-      <header className="shrink-0 border-b border-border px-4 sm:px-6">
-        <div className="flex flex-wrap items-center gap-3 py-3">
-          <WorkspaceBackButton />
-          <span aria-hidden="true" className="h-4 w-px bg-border" />
-          <CalendarClock className="h-4 w-4 text-primary" />
-          <h1 className="text-base font-semibold text-foreground">Schedules and triggers</h1>
-        </div>
-        <div role="tablist" aria-label="Schedules and triggers" className="flex flex-wrap gap-1 pb-2">
+      <WorkspacePageHeader page="schedules" title="Schedules and triggers" icon={CalendarClock} below={
+        <div role="tablist" aria-label="Schedules and triggers" className="flex flex-wrap gap-1">
           {tabs.map(tab => <button key={tab.id} type="button" role="tab" aria-selected={activeTab === tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${activeTab === tab.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
             <tab.icon className="h-3.5 w-3.5" />{tab.label}
           </button>)}
         </div>
-      </header>
+      } />
       <div role="tabpanel" className="min-h-0 flex-1">
         <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading overview…</div>}>
           {activeTab === 'schedules' && <Schedules key={productSurface} embedded active={showSchedules && !showProviders}

@@ -196,7 +196,11 @@ configure_local_product_profile() {
         if [ -n "${AGENTWORKS_GATEWAY_BINARY:-}" ]; then
             default_surfaces='["agentworks", "relays", "work", "code", "mcp-gateway", "knowledgebase", "bullpen", "llm-gateway"]'
         fi
-        ENABLED_PRODUCT_SURFACES_JSON="${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-$default_surfaces}"
+        # Runtime JS needs JSON; backend product policy needs the same list as CSV.
+        local resolved_surfaces
+        resolved_surfaces="$(python3 -c 'import json,sys; raw=sys.argv[1]; values=json.loads(raw) if raw.lstrip().startswith("[") else raw.split(","); print(json.dumps([v.strip() for v in values if isinstance(v,str) and v.strip()]))' "${AGENTWORKS_ENABLED_PRODUCT_SURFACES:-$default_surfaces}")" || return 1
+        ENABLED_PRODUCT_SURFACES_JSON="$resolved_surfaces"
+        export AGENTWORKS_ENABLED_PRODUCT_SURFACES="$(python3 -c 'import json,sys; print(",".join(json.loads(sys.argv[1])))' "$resolved_surfaces")"
     else
         export AGENTWORKS_LOCAL_SERVER_PRODUCTS=0
         export VITE_DEPLOYMENT_MODE=local

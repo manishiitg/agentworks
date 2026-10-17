@@ -1,4 +1,5 @@
-import { ProductNavigationLabel, useProductNavigationSidebar } from '../workspace/ProductTopBar'
+import { useProductSettingsMenu } from '../workspace/ProductSettingsMenu'
+import { ProductNavigationDescription, ProductNavigationLabel, useProductNavigationSidebar } from '../workspace/ProductTopBar'
 import { Plug } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -13,6 +14,7 @@ import { useLLMStore } from '../../stores/useLLMStore'
  */
 export default function McpControl() {
   const sidebar = useProductNavigationSidebar()
+  const inSettings = useProductSettingsMenu()
   const user = useAuthStore(state => state.user)
   const active = useAppStore(state => state.adminPage === 'mcp')
   const setAdminPage = useAppStore(state => state.setAdminPage)
@@ -24,6 +26,7 @@ export default function McpControl() {
       <TooltipTrigger asChild>
         <button
           type="button"
+          role={inSettings ? 'menuitem' : undefined}
           data-product-navigation-action
           onClick={() => { useLLMStore.getState().setShowLLMModal(false); setAdminPage('mcp') }}
           aria-label="Connect an AI agent (MCP)"
@@ -32,7 +35,8 @@ export default function McpControl() {
           className={`relative rounded-md p-1.5 transition-colors ${active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
         >
           <Plug className="h-4 w-4 shrink-0" />
-          <ProductNavigationLabel>Connect AI agent</ProductNavigationLabel>
+          <ProductNavigationLabel>Connect AI tools</ProductNavigationLabel>
+          <ProductNavigationDescription>CLI, Cowork &amp; ChatGPT</ProductNavigationDescription>
         </button>
       </TooltipTrigger>
       <TooltipContent side={sidebar ? 'right' : 'bottom'}>Connect an AI agent (MCP)</TooltipContent>

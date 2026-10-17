@@ -31,10 +31,13 @@ import { WORK_SIDE_CHAT_LIMIT, isWorkSideChatTab, workSideChatKey } from '../pro
  * slate that loads the selected chat instead of mixing two conversations.
  */
 export function useResumePreviousChat() {
-  return useCallback(async (session: ChatHistorySession) => {
+  return useCallback(async (session: ChatHistorySession, options?: { isCurrent?: () => boolean }) => {
+    const isCurrent = options?.isCurrent || (() => true)
+    if (!isCurrent()) return
     const isExecutionHistory = Boolean(session.bot_platform) ||
       isScheduledChatHistorySession(session) || session.session_id.includes(':trigger:')
-    const chatStore = useChatStore.getState()
+    const liveStore = useChatStore.getState()
+    const chatStore = { ...liveStore, switchTab: (id: string) => { if (isCurrent()) liveStore.switchTab(id) } }
     let targetTabId = chatStore.activeTabId || undefined
     let targetTab = targetTabId ? chatStore.chatTabs[targetTabId] : undefined
 
@@ -196,6 +199,7 @@ export function useResumePreviousChat() {
       return
     }
 
+    if (!isCurrent()) return
     if (createResumedTab) {
       const builderConfig = targetTab.config
       const resumedTabId = await chatStore.createChatTab(chatHistorySessionTitle(session), {

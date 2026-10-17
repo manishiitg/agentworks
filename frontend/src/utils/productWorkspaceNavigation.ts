@@ -1,5 +1,3 @@
-import { useWorkspaceReturnStore } from '../stores/useWorkspaceReturnStore'
-import { PRODUCT_PATHS } from './productRoutes'
 import { useCommandDialogStore } from '../stores/useCommandDialogStore'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useAppStore } from '../stores/useAppStore'
@@ -35,9 +33,5 @@ export function openProductWorkspace(surface: ProductSurface) {
     app.setAgentMode('multi-agent')
   }
   useProductSurfaceStore.getState().setProductSurface(surface)
-  if (useWorkspaceReturnStore.getState().homeOpen) {
-    useWorkspaceReturnStore.setState({ homeOpen: false })
-    window.history.pushState({}, '', PRODUCT_PATHS[surface])
-    window.dispatchEvent(new PopStateEvent('popstate'))
-  }
+
 }

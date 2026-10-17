@@ -8,13 +8,8 @@ export const useWorkspaceReturnStore = create<{
   ready: boolean
   record: WorkspaceState | null
   restore: WorkspaceDestination | null
-  homeOpen: boolean
+  firstVisit: boolean
   note: string
   navigationMode: 'fixed' | 'auto-hide'
   saveError: string
-}>(() => ({ ready: false, record: null, restore: null, homeOpen: false, note: '', navigationMode: 'fixed', saveError: '' }))
-
-export function openHome() {
-  window.history.pushState({}, '', '/home')
-  window.dispatchEvent(new PopStateEvent('popstate'))
-}
+}>(() => ({ ready: false, record: null, restore: null, firstVisit: false, note: '', navigationMode: 'fixed', saveError: '' }))

@@ -1,5 +1,6 @@
 import {
   BellRing,
+  Settings2,
   BookMarked,
   BookOpen,
   CalendarClock,
@@ -66,12 +67,13 @@ export type WorkspaceViewDef = {
 }
 
 const VIEWS = [
+  { id: 'context', kind: 'inspector', label: 'Project overview', icon: Settings2, pane: true },
   // -- canvas / preview (dispatched by WorkspaceViewHost) ------------------
   { id: 'report', kind: 'preview', label: 'Dashboard', icon: LayoutDashboard, toolbarGroup: 'views', pane: true },
   { id: 'flow', kind: 'canvas', label: 'Plan', icon: Route, toolbarGroup: 'views', pane: true },
   // -- inspectors (toolbar "views" cluster, in button order) ---------------
   { id: 'costs', kind: 'inspector', label: 'Costs', icon: DollarSign, toolbarGroup: 'views', pane: true },
-  { id: 'execution-logs', kind: 'inspector', label: 'Execution logs', icon: FileText, toolbarGroup: 'views', pane: true },
+  { id: 'execution-logs', kind: 'inspector', label: 'Run logs', icon: FileText, toolbarGroup: 'views', pane: true },
   { id: 'knowledge', kind: 'inspector', label: 'Knowledge', icon: BookOpen, toolbarGroup: 'views', pane: true },
   { id: 'webhooks', kind: 'inspector', label: 'Webhooks', icon: Webhook, toolbarGroup: 'views', pane: true },
   { id: 'schedules', kind: 'inspector', label: 'Schedules', icon: CalendarClock, toolbarGroup: 'views', pane: true },
@@ -83,8 +85,8 @@ const VIEWS = [
   // so the legacy `toolbarGroup: 'pulse'` here
   // is categorization only -- nothing filters on it the way `views` and
   // `capabilities` are filtered into their auto-rendered clusters below.
-  { id: 'pulse', kind: 'inspector', label: 'Pulse', icon: PulseIcon, toolbarGroup: 'pulse', pane: true },
-  { id: 'human-actions', kind: 'inspector', label: 'Human actions', icon: Hand, toolbarGroup: 'pulse', pane: true },
+  { id: 'pulse', kind: 'inspector', label: 'Pulse reviews', icon: PulseIcon, toolbarGroup: 'pulse', pane: true },
+  { id: 'human-actions', kind: 'inspector', label: 'Decisions', icon: Hand, toolbarGroup: 'pulse', pane: true },
   { id: 'backup', kind: 'inspector', label: 'Backup', icon: Cloud, toolbarGroup: 'pulse', pane: true },
   { id: 'publish', kind: 'inspector', label: 'Publish', icon: Globe, toolbarGroup: 'pulse', pane: true },
   { id: 'notify', kind: 'inspector', label: 'Notify', icon: BellRing, toolbarGroup: 'pulse', pane: true },
@@ -93,11 +95,11 @@ const VIEWS = [
   // in the toolbar because its visibility is permission-gated.
   { id: 'access', kind: 'inspector', label: 'Access', icon: ShieldCheck, toolbarGroup: 'pulse', pane: true },
   // -- capability sections (WorkflowCapabilitiesPanel) -------------------------
-  { id: 'identity', kind: 'capability', label: 'Identity', icon: Fingerprint, toolbarGroup: 'capabilities', pane: true, managesOwnScroll: true },
-  { id: 'mcp', kind: 'capability', label: 'Integrations', icon: Server, toolbarGroup: 'capabilities', pane: true, managesOwnScroll: true },
+  { id: 'identity', kind: 'capability', label: 'Details & instructions', icon: Fingerprint, toolbarGroup: 'capabilities', pane: true, managesOwnScroll: true },
+  { id: 'mcp', kind: 'capability', label: 'Apps & tools', icon: Server, toolbarGroup: 'capabilities', pane: true, managesOwnScroll: true },
   { id: 'playbooks', kind: 'capability', label: 'Workflow playbooks', icon: BookMarked, toolbarGroup: 'capabilities', pane: true, managesOwnScroll: true },
   { id: 'browser', kind: 'capability', label: 'Browser', icon: Monitor, toolbarGroup: 'views', pane: true },
-  { id: 'workshop', kind: 'inspector', label: 'Automation', icon: Zap, toolbarGroup: 'views', pane: true },
+  { id: 'workshop', kind: 'inspector', label: 'Schedules & triggers', icon: Zap, toolbarGroup: 'views', pane: true },
 ] as const satisfies readonly WorkspaceViewDef[]
 
 export type WorkspaceViewId = typeof VIEWS[number]['id']
@@ -108,6 +110,17 @@ export type WorkspaceViewId = typeof VIEWS[number]['id']
 export type WorkspaceView = WorkspaceViewDef & { id: WorkspaceViewId }
 
 export const WORKSPACE_VIEWS: readonly WorkspaceView[] = VIEWS
+
+/** Flow panels preserve the existing Relay inventory; Context only summarizes it. */
+export const RELAY_WORKSPACE_VIEWS = new Set<WorkspaceViewId>([
+  'context', 'flow', 'report', 'workshop', 'costs', 'execution-logs', 'files', 'identity', 'mcp', 'access',
+])
+
+export function workflowContextViews(relayMode: boolean, isMultiUser: boolean) {
+  return WORKSPACE_VIEWS.filter(view => view.id !== 'context'
+    && (view.id !== 'access' || isMultiUser)
+    && (!relayMode || RELAY_WORKSPACE_VIEWS.has(view.id)))
+}
 
 /** Views rendered by the generic Views toolbar loop. Plan stays in this list
  * even before the workflow has steps: opening it is how a new workflow reaches

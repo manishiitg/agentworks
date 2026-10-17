@@ -36,6 +36,9 @@ export type ProjectProductConfig = {
   defaultView: WorkWorkspaceView
   /** localStorage key namespace for per-project UI preferences. */
   preferenceNamespace: string
+  /** Explicit canonical key/legacy origin when Crew and Code consolidate. IDs and labels alone never imply a migration. */
+  shortcutPreferenceProduct?: ProjectProductId
+  shortcutPreferenceLegacyProduct?: ProjectProductId
 }
 
 export const CREW_PRODUCT: ProjectProductConfig = {
@@ -53,7 +56,7 @@ export const CREW_PRODUCT: ProjectProductConfig = {
   listsSharedProjects: true,
   // No switch (owner decision 2026-09-29): native agent tools are always on.
   hasNativeAgentToolsSetting: false,
-  defaultView: 'identity',
+  defaultView: 'context',
   preferenceNamespace: 'work',
 }
 

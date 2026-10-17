@@ -1,13 +1,8 @@
-import React, { useEffect, useRef, useMemo, useCallback, useState } from 'react'
+import { workspacePanelGroup } from '../../workspace/workspacePanelGroups'
+import { WorkspaceContextButton } from '../../workspace/WorkspaceContextButton'
+import { WorkflowContextTools } from '../WorkflowContextPanel'
+import React, { useEffect, useRef, useMemo, useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import {
-  Cloud,
-  Globe,
-  ShieldCheck,
-  Activity,
-  Hand,
-  BellRing,
-} from 'lucide-react'
 import { useWorkflowStore, type RunFolder } from '../../../stores/useWorkflowStore'
 import { PRIMARY_WORKSPACE_TOOLBAR_VIEWS, WORKSPACE_VIEWS, type WorkspaceViewId } from '../workspaceViews'
 import { useChatStore } from '../../../stores/useChatStore'
@@ -16,20 +11,10 @@ import type { VariablesManifest } from '../../../services/api-types'
 import type { PlanningResponse } from '../../../utils/stepConfigMatching'
 import type { WorkflowExecutionStatus } from '../hooks/useWorkflowExecution'
 import type { ExecutionOptions } from '../../../services/api-types'
-import { agentApi } from '../../../services/api'
-import { getBackupDotClass } from '../backupStatus'
-import { getPublishDotClass } from '../publishStatus'
-import { getNotificationDotClass } from '../notificationStatus'
-import { loadWorkflowNotificationInfo, type WorkflowNotificationState } from '../../../services/workflow-notifications'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip'
-import { hasWorkflowOwnerAccess } from '../../../utils/workflowPermissions'
-import { usePendingDecisionState } from '../hooks/usePendingDecisionCount'
-import { useDefaultHumanActionsView } from '../hooks/useDefaultHumanActionsView'
-import { useCanWriteWorkflow } from '../../../hooks/useCanWriteWorkflow'
+import { TooltipProvider } from '../../ui/tooltip'
 import { GlobalActivityMonitor } from '../../GlobalActivityMonitor'
 import { useModeStore } from '../../../stores/useModeStore'
 import { WorkspaceTopToolbar } from '../../workspace/WorkspaceTopToolbar'
-import { WorkspaceToolbarFrame } from '../../workspace/WorkspaceToolbarFrame'
 import { useRegisterPanelSwitcher, type PanelSwitcherPanel } from '../../../stores/usePanelSwitcherStore'
 import { RELAY_INTEGRATION_SECTION_IDS, WORKFLOW_PANEL_SECTIONS } from '../../../products/productPanels'
 
@@ -41,67 +26,17 @@ function withPanelSections(panels: PanelSwitcherPanel[], relayMode: boolean): Pa
     return sections.length ? { ...panel, sections } : panel
   })
 }
-import { WorkspaceToolbarGroup } from '../../workspace/WorkspaceToolbarGroup'
-import { ReportDocumentSwitcher } from '../ReportDocumentSwitcher'
-import { WorkflowActivityButton } from '../../topbar/WorkflowActivityButton'
 import { useAppStore } from '../../../stores/useAppStore'
 import { useLLMStore } from '../../../stores/useLLMStore'
-import { useBrowserToolbarConnection } from '../../../hooks/useBrowserToolbarConnection'
 
 // Execution phase ID - special phase that should be displayed separately
 const EXECUTION_PHASE_ID = 'execution'
 const PRIMARY_TOOLBAR_VIEW_IDS = new Set<WorkspaceViewId>(['pulse', 'browser'])
 const OPERATIONS_TOOLBAR_VIEW_IDS = new Set<WorkspaceViewId>(['flow', 'workshop', 'knowledge', 'costs', 'execution-logs', 'files', 'backup', 'publish', 'notify'])
 const SETUP_TOOLBAR_LABELS: Partial<Record<WorkspaceViewId, string>> = {
-  identity: 'Identity',
+  identity: 'Details & instructions',
   playbooks: 'Playbooks',
-  mcp: 'Integrations',
-}
-
-// Icon button inside an inline Ops/Setup group: same size and tooltip behavior
-// as the always-visible primary buttons, with an optional status dot.
-function ToolbarInlineItem({ label, Icon, active, onClick, indicatorClass, statusLabel, ...attrs }: {
-  label: string
-  Icon: React.ComponentType<{ className?: string }>
-  active: boolean
-  onClick: () => void
-  indicatorClass?: string
-  statusLabel?: string
-} & Record<`data-${string}`, string | undefined>) {
-  const button = (
-    <button
-      type="button"
-      onClick={onClick}
-      {...attrs}
-      className={`flex h-6 w-7 items-center justify-center rounded transition-colors ${active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'}`}
-      aria-label={label}
-      aria-description={statusLabel}
-      title={statusLabel ? `${label} · ${statusLabel}` : undefined}
-      aria-pressed={active}
-    >
-      <span className="relative shrink-0">
-        <Icon className="h-3.5 w-3.5" />
-        {indicatorClass && <span aria-hidden="true" className={`absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full border border-border ${indicatorClass}`} />}
-      </span>
-    </button>
-  )
-  if (active) return button
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent side="bottom"><p>{label}{statusLabel ? ` · ${statusLabel}` : ''}</p></TooltipContent>
-    </Tooltip>
-  )
-}
-
-// Product-tour / test hooks on specific toolbar buttons. Kept here rather
-// than in the view registry because they describe this toolbar's buttons,
-// not the views themselves.
-// Primary views and setup controls stay expanded. Ops starts collapsed and
-// expands inline when the user opens it.
-
-const CAPABILITY_BUTTON_ATTRS: Partial<Record<WorkspaceViewId, { 'data-tour': string; 'data-testid': string }>> = {
-  mcp: { 'data-tour': 'bot-connector', 'data-testid': 'tour-bot-connector' },
+  mcp: 'Apps & tools',
 }
 
 interface WorkflowToolbarProps {
@@ -133,22 +68,14 @@ interface WorkflowToolbarProps {
 
 export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   relayMode = false,
-  pythonRelay = false,
   status,
   workspacePath,
   presetQueryId,
   variablesManifest,
   isLoadingWorkspaceState = false,
   chatTabsSlot,
-  monitorOn,
   className = ''
 }) => {
-  const [operationsOpen, setOperationsOpen] = useState(false)
-  const { count: pendingDecisionCount, loaded: pendingDecisionsLoaded } = usePendingDecisionState(workspacePath)
-  const canWriteWorkflow = useCanWriteWorkflow(workspacePath)
-  const browserConnected = useBrowserToolbarConnection(workspacePath, 'workflow', !relayMode, canWriteWorkflow)
-  const canManageAccess = useAuthStore(state => state.isMultiUserMode && (state.user?.is_admin === true || hasWorkflowOwnerAccess(state.user, state.isMultiUserMode)))
-
   // Workspace store for opening folders
 
   // Workflow store - use useShallow to prevent unnecessary re-renders
@@ -185,92 +112,20 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
     [relayMode],
   )
 
-  // Backup/publish/notify status dots -- lightweight polls independent of
-  // whether the pane is showing that view.
-  const [backupState, setBackupState] = useState<string>('loading')
-  const [publishState, setPublishState] = useState<string>('not_configured')
-  const [notificationState, setNotificationState] = useState<WorkflowNotificationState | 'loading'>('loading')
   // Share is for this workflow's owners (or an admin), multi-user mode only.
   const isMultiUser = useAuthStore(state => state.isMultiUserMode)
   // ⌘/Ctrl+K searches the same panels this toolbar shows (owner, 2026-10-07).
   const panelSwitcherPanels = useMemo<PanelSwitcherPanel[]>(() => withPanelSections([
+    { id: 'context', label: 'Project overview', group: 'Views' },
     { id: 'report', label: 'Dashboard', group: 'Views' },
-    ...(relayMode ? [] : [{ id: 'pulse', label: 'Pulse', group: 'Views' }, { id: 'human-actions', label: 'Human actions', group: 'Views' }]),
-    ...workspaceViewDefinitions.map(view => ({ id: view.id, label: relayMode && view.id === 'flow' ? 'Graph' : view.label, group: 'Views' })),
+    ...(relayMode ? [] : [{ id: 'pulse', label: 'Pulse reviews', group: 'Views' }, { id: 'human-actions', label: 'Decisions', group: 'Views' }]),
+    ...workspaceViewDefinitions.map(view => ({ id: view.id, label: relayMode && view.id === 'flow' ? 'Flow' : view.label, group: 'Views' })),
     ...operationsWorkspaceViewDefinitions.map(view => ({ id: view.id, label: relayMode && view.id === 'workshop' ? 'Triggers' : view.label, group: 'Ops' })),
     ...(relayMode ? [] : [{ id: 'backup', label: 'Backup', group: 'Ops' }, { id: 'publish', label: 'Publish', group: 'Ops' }, { id: 'notify', label: 'Notifications', group: 'Ops' }]),
     ...capabilityViewDefinitions.map(view => ({ id: view.id, label: SETUP_TOOLBAR_LABELS[view.id] ?? view.label, group: 'Setup' })),
     ...(isMultiUser ? [{ id: 'access', label: 'Access', group: 'Setup' }] : []),
-  ], relayMode), [relayMode, workspaceViewDefinitions, operationsWorkspaceViewDefinitions, capabilityViewDefinitions, isMultiUser])
+  ], relayMode).map(panel => ({ ...panel, group: workspacePanelGroup(panel.id) })), [relayMode, workspaceViewDefinitions, operationsWorkspaceViewDefinitions, capabilityViewDefinitions, isMultiUser])
   useRegisterPanelSwitcher(workspacePath ? (relayMode ? 'relays' : 'agentworks') : null, panelSwitcherPanels, (id, section) => openWorkspaceView(id as WorkspaceViewId, section))
-  // Lightweight backup-status poll so the toolbar dot reflects health at a glance.
-  const refreshBackupState = useCallback(async () => {
-    if (!workspacePath) {
-      setBackupState('not_configured')
-      return
-    }
-    try {
-      const resp = await agentApi.getWorkflowBackup(workspacePath)
-      setBackupState(resp.effective_state || 'not_configured')
-    } catch {
-      // Leave the last known state; a transient fetch failure shouldn't flip the dot.
-    }
-  }, [workspacePath])
-
-  useEffect(() => {
-    setBackupState('loading')
-    void refreshBackupState()
-  }, [refreshBackupState])
-
-  const refreshPublishState = useCallback(async () => {
-    if (!workspacePath) {
-      setPublishState('not_configured')
-      return
-    }
-    try {
-      const resp = await agentApi.getWorkflowPublish(workspacePath)
-      setPublishState(resp.effective_state || 'not_configured')
-    } catch {
-      // Leave the last known state.
-    }
-  }, [workspacePath])
-
-  useEffect(() => {
-    refreshPublishState()
-  }, [refreshPublishState])
-
-  const refreshNotificationState = useCallback(async () => {
-    if (!workspacePath) {
-      setNotificationState('not_configured')
-      return
-    }
-    try {
-      const info = await loadWorkflowNotificationInfo(workspacePath)
-      setNotificationState(info.effectiveState)
-    } catch {
-      setNotificationState('not_configured')
-    }
-  }, [workspacePath])
-
-  useEffect(() => {
-    void refreshNotificationState()
-  }, [refreshNotificationState])
-
-  // Backup/publish/notify each load richer status than this toolbar's own
-  // lightweight poll while their pane view is open; catch the dot up once the
-  // user navigates away, rather than leaving it stale until workspacePath
-  // next changes.
-  const prevWorkspaceViewRef = useRef(workflowWorkspaceView)
-  useEffect(() => {
-    const prev = prevWorkspaceViewRef.current
-    if (prev !== workflowWorkspaceView) {
-      if (prev === 'backup') void refreshBackupState()
-      if (prev === 'publish') void refreshPublishState()
-      if (prev === 'notify') void refreshNotificationState()
-    }
-    prevWorkspaceViewRef.current = workflowWorkspaceView
-  }, [workflowWorkspaceView, refreshBackupState, refreshPublishState, refreshNotificationState])
-
   // Main workflow execution phase for the canvas toolbar
   const targetExecutionPhaseId = EXECUTION_PHASE_ID
   
@@ -322,7 +177,6 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
     }
   }, [presetQueryId, loadSavedSettings])
 
-  useDefaultHumanActionsView(workspacePath, pendingDecisionsLoaded, pendingDecisionCount)
 
   // Restore selection from localStorage after workspace state finishes loading
   // This ensures localStorage values are restored AFTER all API data is loaded
@@ -412,117 +266,19 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
       <div data-tour="workflow-tools" data-testid="tour-workflow-tools" className="ml-auto flex shrink-0 items-center gap-1">
         <TooltipProvider delayDuration={150}>
           {workflowMode && !globalPageOpen && !providersOpen && <GlobalActivityMonitor />}
-          {/* Report stays visible beside the expanded tool groups. */}
-          {workspacePath && <ReportDocumentSwitcher workspacePath={workspacePath} active={activeWorkspaceView === 'report'} onOpen={() => openWorkspaceView('report')} />}
-
-          {/* One continuous pill: frequent views | operations | setup icons. */}
-          {(workspacePath || canWriteWorkflow) && (
-          <WorkspaceToolbarFrame>
-          {/* Setup and primary views stay open; Ops expands on demand. */}
-          {workspacePath && (
-            <WorkspaceToolbarGroup
-              label="Views"
-              data-tour="workflow-views"
-              hideLabel
-              hideToggleWhenOpen
-              open
-              title={relayMode ? `Flow views: ${pythonRelay ? 'Source and calls' : 'Graph'}` : 'Views: Pulse, Needs you, Activity and Browser'}
-            >
-              <div className="inline-flex items-center gap-0.5 px-0.5">
-                {!relayMode && <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => openWorkspaceView('pulse')}
-                      className={`relative flex h-6 w-7 items-center justify-center rounded transition-colors ${activeWorkspaceView === 'pulse' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'}`}
-                      aria-label="Pulse"
-                      aria-pressed={activeWorkspaceView === 'pulse'}
-                    >
-                      <Activity aria-hidden="true" className={`h-3.5 w-3.5 ${monitorOn ? 'text-primary' : ''}`} />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom"><p>Pulse</p></TooltipContent>
-                </Tooltip>}
-                {!relayMode && <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => openWorkspaceView('human-actions')}
-                      className={`relative flex h-6 w-7 items-center justify-center rounded transition-colors ${activeWorkspaceView === 'human-actions' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'}`}
-                      aria-label={pendingDecisionCount > 0 ? `Human actions, ${pendingDecisionCount} pending` : 'Human actions'}
-                      aria-pressed={activeWorkspaceView === 'human-actions'}
-                    >
-                      <Hand aria-hidden="true" className={`h-3.5 w-3.5 ${pendingDecisionCount > 0 ? 'text-amber-500' : ''}`} />
-                      {pendingDecisionCount > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[8px] font-bold leading-none text-background">{pendingDecisionCount > 9 ? '9+' : pendingDecisionCount}</span>}
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom"><p>{pendingDecisionCount > 0 ? `${pendingDecisionCount} human ${pendingDecisionCount === 1 ? 'action' : 'actions'} pending` : 'Human actions'}</p></TooltipContent>
-                </Tooltip>}
-                {!relayMode && <WorkflowActivityButton
-                  workspacePath={workspacePath}
-                  onOpen={() => {
-                    useLLMStore.getState().setShowLLMModal(false)
-                    const app = useAppStore.getState()
-                    app.setShowSchedulesOverview(false)
-                    app.setActivityWorkflowPath(workspacePath)
-                    app.setShowWorkflowsOverview(true)
-                  }}
-                />}
-                {workspaceViewDefinitions.map(({ id: view, icon: Icon, label }) => (
-                  <ToolbarInlineItem key={view} label={relayMode && view === 'flow' ? (pythonRelay ? 'Flow' : 'Graph') : label} Icon={Icon} indicatorClass={view === 'browser' && browserConnected ? 'bg-emerald-500' : undefined} statusLabel={view === 'browser' ? browserConnected ? 'Connected' : 'Not connected' : undefined} active={view === activeWorkspaceView} onClick={() => openWorkspaceView(view)} />
-                ))}
-              </div>
-            </WorkspaceToolbarGroup>
-          )}
-
-        {/* Operational views keep status and history separate from setup. */}
-        {workspacePath && (
-          <WorkspaceToolbarGroup
-            label="Ops"
-            data-tour="workflow-operations"
-            open={operationsOpen}
-            onToggle={() => setOperationsOpen(open => !open)}
-            active={operationsWorkspaceViewDefinitions.some(view => view.id === activeWorkspaceView) || (!relayMode && ['backup', 'publish', 'notify'].includes(activeWorkspaceView))}
-            title={relayMode ? 'Flow operations: triggers, costs, execution logs and files' : 'Operations: plan, automation, knowledge, costs, execution logs, files, backup, publish and notifications'}
-          >
-            <div className="inline-flex items-center gap-0.5">
-              {operationsWorkspaceViewDefinitions.map(({ id: view, icon: Icon, label }) => (
-                <ToolbarInlineItem key={view} label={relayMode && view === 'workshop' ? 'Triggers' : label} Icon={Icon} active={view === activeWorkspaceView} onClick={() => openWorkspaceView(view)} />
-              ))}
-              {!relayMode && <ToolbarInlineItem label="Backup" Icon={Cloud} active={activeWorkspaceView === 'backup'} onClick={() => openWorkspaceView('backup')} indicatorClass={getBackupDotClass(backupState)} />}
-              {!relayMode && <ToolbarInlineItem label="Publish" Icon={Globe} active={activeWorkspaceView === 'publish'} onClick={() => openWorkspaceView('publish')} indicatorClass={getPublishDotClass(publishState)} />}
-              {!relayMode && <ToolbarInlineItem label="Notifications" Icon={BellRing} active={activeWorkspaceView === 'notify'} onClick={() => openWorkspaceView('notify')} indicatorClass={getNotificationDotClass(notificationState)} data-testid="workflow-notification-settings-button" />}
-            </div>
-          </WorkspaceToolbarGroup>
-        )}
-
-        {/* Workflow capabilities remain discoverable for readers. Each panel
-            owns its read-only state and disables mutations in place. Setup
-            has no toggle: it stays expanded next to Views/Ops. */}
-        {workspacePath && (
-          <WorkspaceToolbarGroup
-            label="Setup"
-            data-tour="workflow-setup"
-            hideToggleWhenOpen
-            open
-            title={relayMode ? 'Flow setup: identity, models, and integrations' : 'Setup: identity, integrations, playbooks and access'}
-          >
-            <div className="inline-flex items-center gap-0.5">
-              {capabilityViewDefinitions.map(({ id, icon: Icon, label }) => {
-                const active = workflowWorkspaceView === id
-                return <ToolbarInlineItem key={id} label={SETUP_TOOLBAR_LABELS[id] ?? label} Icon={Icon} active={active} onClick={() => openWorkspaceView(id)} {...CAPABILITY_BUTTON_ATTRS[id]} />
-              })}
-              {/* Access lives with the rest of setup: one button, one panel
-                  with two tabs -- who may see or edit THIS workflow, and (for
-                  admins) the deployment's accounts, roles and products. */}
-              {isMultiUser && workspacePath && (
-                <ToolbarInlineItem label={canManageAccess ? 'Access and users' : 'Access'} Icon={ShieldCheck} active={workflowWorkspaceView === 'access'} onClick={() => openWorkspaceView('access')} />
-              )}
-            </div>
-          </WorkspaceToolbarGroup>
-        )}
-          </WorkspaceToolbarFrame>
-          )}
+          {workspacePath && <>
+            <WorkspaceContextButton
+              inContext={activeWorkspaceView === 'context'}
+              onClick={() => useWorkflowStore.getState().openWorkspaceView('context')}
+            />
+            <WorkflowContextTools relayMode={relayMode} onOpenActivity={relayMode ? undefined : () => {
+              useLLMStore.getState().setShowLLMModal(false)
+              const app = useAppStore.getState()
+              app.setShowSchedulesOverview(false)
+              app.setActivityWorkflowPath(workspacePath)
+              app.setShowWorkflowsOverview(true)
+            }} />
+          </>}
 
         </TooltipProvider>
       </div>

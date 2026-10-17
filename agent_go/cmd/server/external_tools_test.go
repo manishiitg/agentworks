@@ -102,7 +102,7 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 			return
 		}
 
-		if strings.HasSuffix(rel, "/preferences/workspace-state.json") {
+		if strings.HasSuffix(rel, "/preferences/workspace-state.json") || strings.Contains(rel, "/preferences/context-shortcuts/") {
 			c.Params = append(c.Params, gin.Param{Key: "filepath", Value: "/" + rel})
 			workspacehandlers.GetDocument(c)
 			return
@@ -126,7 +126,7 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 			workspacehandlers.UpdateDocument(c)
 			return
 		}
-		if strings.HasSuffix(rel, "/preferences/workspace-state.json") {
+		if strings.HasSuffix(rel, "/preferences/workspace-state.json") || strings.Contains(rel, "/preferences/context-shortcuts/") {
 			c.Params = append(c.Params, gin.Param{Key: "filepath", Value: "/" + rel})
 			workspacehandlers.UpdateDocument(c)
 			return

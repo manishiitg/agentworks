@@ -65,3 +65,9 @@ it('repairs a previously overwritten label using the scheduler title', async () 
   expect(useChatStore.getState().chatTabs.run.name).toBe(scheduleName)
   expect(useChatStore.getState().chatTabs.run.metadata?.scheduledJobName).toBe(scheduleName)
 })
+
+it('does not replace a recovered job name with a legacy generic scheduled-run title', async () => {
+  await openCanonicalActivitySession({ ...run, title: 'trading · Scheduled run' }, { source: 'chat-sidebar' })
+  expect(useChatStore.getState().chatTabs.run.name).toBe(scheduleName)
+  expect(useChatStore.getState().chatTabs.run.metadata?.scheduledJobName).toBe(scheduleName)
+})

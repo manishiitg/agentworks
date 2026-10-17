@@ -1,0 +1,561 @@
+import ConnectedAgentsSidebar from './ConnectedAgentsSidebar'
+import { useResumePreviousChat } from '../../hooks/useResumePreviousChat'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { ChevronDown, Inbox, Loader2, MessageSquare, Search, X } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
+import { useAuthStore } from '../../stores/useAuthStore'
+import { useChatStore } from '../../stores/useChatStore'
+import { useAppStore } from '../../stores/useAppStore'
+import { useLLMStore } from '../../stores/useLLMStore'
+import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
+import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
+import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
+import { useSidebarHistoryStore } from '../../stores/useSidebarHistoryStore'
+import { agentApi } from '../../services/api'
+import { canCloseWorkspaceChatTab, closeWorkspaceChatTab } from '../../utils/closeWorkspaceChatTab'
+import { schedulerApi } from '../../api/scheduler'
+import type { ActiveSessionInfo, ChatHistorySession, ScheduledJob } from '../../services/api-types'
+import {
+  enabledProductSurfaces,
+  intersectAllowedProductSurfaces,
+  PRODUCT_SURFACE_LABELS,
+} from '../../products/productSurfaceConfig'
+import { useLiveRefetch } from '../../hooks/useLiveRefetch'
+import {
+  sidebarChats,
+  sidebarWorkspaceGroups,
+  sidebarChatDisplayTitle,
+  isGeneratedSidebarPrompt,
+  type SidebarChat,
+  type SidebarProject,
+} from '../../utils/sidebarChats'
+import { openGlobalActivitySession, openGlobalTab } from '../../utils/globalProductNavigation'
+import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
+import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
+import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
+import { RuntimeBrandLogo } from '../branding/RuntimeBrandLogo'
+import { openQuickNavigation, quickNavigationItems } from '../../utils/quickNavigation'
+import { NewProjectMenu } from './NewProjectMenu'
+export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: ReactNode; footer?: ReactNode }) {
+  const user = useAuthStore((state) => state.user)
+  const workspace = useWorkspaceConnectionStore((state) => state.activeWorkspaceId)
+  const scope = `${workspace}:${user?.id || ''}`
+  const { tabs, active, selectedTab } = useChatStore(
+    useShallow((state) => ({
+      tabs: state.chatTabs,
+      active: state.activeSessionsCache,
+      selectedTab: state.activeTabId,
+    }))
+  )
+  const product = useProductSurfaceStore((state) => state.productSurface)
+  const globalPageOpen = useAppStore(state => state.showWorkflowsOverview || state.showSchedulesOverview || state.adminPage !== null)
+  const activityOpen = useAppStore(state => state.showWorkflowsOverview && !state.showSchedulesOverview && state.adminPage === null)
+  const providersOpen = useLLMStore(state => state.showLLMModal)
+  const recentPresetOrder = useGlobalPresetStore((state) => state.recentPresetOrder)
+  const presets = useGlobalPresetStore((state) => state.workflowPresets)
+  const [snapshot, setSnapshot] = useState<{
+    scope: string
+    sessions: ChatHistorySession[]
+    error: boolean
+  } | null>(null)
+  const [directory, setDirectory] = useState<{
+    scope: string
+    projects: SidebarProject[]
+  } | null>(null)
+  const [scheduleCatalog, setScheduleCatalog] = useState<{
+    scope: string
+    jobs: ScheduledJob[]
+  } | null>(null)
+  const pendingHistory = useSidebarHistoryStore((state) => state.request)
+  const resumeHistory = useResumePreviousChat()
+  const [limit, setLimit] = useState(30)
+  const [tick, setTick] = useState(0)
+  const [opening, setOpening] = useState<string | null>(null)
+  const [closing, setClosing] = useState<string | null>(null)
+  const [collapsed, setCollapsed] = useState<string[]>([])
+  const [visibleRecent, setVisibleRecent] = useState(8)
+  const allowed = intersectAllowedProductSurfaces(enabledProductSurfaces(), user?.allowed_products)
+  useLiveRefetch(
+    () => {
+      setTick((value) => value + 1)
+      void useChatStore.getState().getActiveSessions()
+    },
+    {
+      kinds: ['sessions', 'schedules'],
+      fallbackMs: 30000,
+      safetyMs: 60000,
+      minIntervalMs: 2000,
+    }
+  )
+  useEffect(() => {
+    setLimit(30)
+    setCollapsed([])
+    setVisibleRecent(8)
+  }, [scope])
+  useEffect(() => {
+    let disposed = false
+    const identity = captureChatIdentity()
+    void useChatStore.getState().getActiveSessions()
+    const scopedPresets = [...presets]
+      .sort((a, b) => {
+        const ai = recentPresetOrder.indexOf(a.id),
+          bi = recentPresetOrder.indexOf(b.id)
+        return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi)
+      })
+      .filter(
+        (preset) =>
+          preset.selectedFolder?.filepath &&
+          allowed.includes(preset.workflowKind === 'relay' ? 'relays' : 'agentworks') &&
+          (!user?.allowed_workflow_ids || user.allowed_workflow_ids.includes(preset.id))
+      )
+      .slice(0, 6)
+    void Promise.allSettled([
+      agentApi.listChatHistorySessions(limit),
+      ...scopedPresets.map((preset) =>
+        agentApi.listChatHistorySessions(5, 0, preset.selectedFolder!.filepath)
+      ),
+    ])
+      .then((results) => {
+        if (!disposed && isChatIdentityCurrent(identity))
+          setSnapshot({
+            scope,
+            sessions: results.flatMap((result) =>
+              result.status === 'fulfilled' ? result.value.sessions || [] : []
+            ),
+            error: results.some((result) => result.status === 'rejected'),
+          })
+      })
+      .catch(() => {
+        if (!disposed && isChatIdentityCurrent(identity))
+          setSnapshot({ scope, sessions: [], error: true })
+      })
+    return () => {
+      disposed = true
+    }
+  }, [scope, limit, tick, presets.map((preset) => preset.id).join(','), allowed.join(',')])
+  useEffect(() => {
+    let disposed = false
+    void import('../../products/work/workSessions')
+      .then(async (module) => {
+        const { CODE_PRODUCT } = await import('../../products/work/projectProduct')
+        const results = await Promise.allSettled([
+          allowed.includes('work') ? module.loadWorkSessionsIncludingShared() : Promise.resolve([]),
+          allowed.includes('code')
+            ? module.loadWorkSessionsIncludingShared(CODE_PRODUCT)
+            : Promise.resolve([]),
+        ])
+        if (!disposed)
+          setDirectory({
+            scope,
+            projects: results.flatMap((result, index) =>
+              result.status === 'fulfilled'
+                ? result.value.map((item) => ({
+                    id: item.id,
+                    workspacePath: item.workspacePath,
+                    title: item.identity?.name || item.title,
+                    surface: index === 0 ? ('work' as const) : ('code' as const),
+                  }))
+                : []
+            ),
+          })
+      })
+      .catch(() => {
+        if (!disposed) setDirectory({ scope, projects: [] })
+      })
+    return () => {
+      disposed = true
+    }
+  }, [scope, allowed.join(',')])
+  useEffect(() => {
+    let disposed = false
+    const identity = captureChatIdentity()
+    const entities = [
+      ...(allowed.includes('agentworks') || allowed.includes('relays') ? ['workflow'] : []),
+      ...(allowed.includes('work') || allowed.includes('code') ? ['product'] : []),
+    ]
+    void Promise.allSettled(
+      entities.map((entity_type) => schedulerApi.listJobs({ entity_type, limit: 1000 }))
+    ).then((results) => {
+      if (!disposed && isChatIdentityCurrent(identity))
+        setScheduleCatalog({
+          scope,
+          jobs: results.flatMap((result) =>
+            result.status === 'fulfilled' ? result.value.jobs || [] : []
+          ),
+        })
+    })
+    return () => {
+      disposed = true
+    }
+  }, [scope, tick, allowed.join(',')])
+  useEffect(() => {
+    const request = pendingHistory
+    const tab = selectedTab ? tabs[selectedTab] : undefined
+    const meta = tab?.metadata
+    const profile = meta?.agentProfileId === 'caplayer' ? 'mcp-gateway' : meta?.agentProfileId
+    if (
+      !request ||
+      product !== request.surface ||
+      profile !== request.surface ||
+      !tab ||
+      (request.projectId && meta?.agentProfileProjectId !== request.projectId)
+    )
+      return
+    if (!isChatIdentityCurrent(request.identity)) {
+      useSidebarHistoryStore.setState({ request: null })
+      return
+    }
+    const generation = useSidebarHistoryStore.getState().generation
+    useSidebarHistoryStore.setState({ request: null })
+    const isCurrent = () =>
+      isChatIdentityCurrent(request.identity) &&
+      useSidebarHistoryStore.getState().generation === generation &&
+      useProductSurfaceStore.getState().productSurface === request.surface
+    void resumeHistory(request.session, { isCurrent }).catch(() => {
+      if (isCurrent()) useChatStore.getState().addToast('Could not open this saved chat.', 'error')
+    })
+  }, [pendingHistory, selectedTab, tabs, product, resumeHistory])
+  const history = snapshot?.scope === scope ? snapshot : null
+  const rows = useMemo(
+    () =>
+      sidebarChats({
+        tabs,
+        active,
+        recent: history?.sessions || [],
+        presets,
+        allowed,
+        projects: directory?.scope === scope ? directory.projects : [],
+        allowedWorkflowIds: user?.allowed_workflow_ids,
+        jobs: scheduleCatalog?.scope === scope ? scheduleCatalog.jobs : [],
+      }),
+    [
+      tabs,
+      active,
+      history,
+      presets,
+      allowed.join(','),
+      directory,
+      scope,
+      user?.allowed_workflow_ids,
+      scheduleCatalog,
+    ]
+  )
+  useEffect(() => {
+    // Repair legacy generic schedule labels in the shared tab model so the
+    // header, Ctrl+K and this sidebar retain the same recovered job identity.
+    const state = useChatStore.getState()
+    for (const row of rows) {
+      if (!row.tabId || !row.scheduled || / · Scheduled run$/i.test(row.title)) continue
+      const tab = state.chatTabs[row.tabId]
+      if (!tab || tab.sessionId !== row.id || tab.name === row.title) continue
+      if (!/^(Schedule|Scheduled run)$/i.test(tab.name) && !/ · Scheduled run$/i.test(tab.name))
+        continue
+      state.renameTab(row.tabId, row.title)
+      state.setTabMetadata(row.tabId, { scheduledJobName: row.title })
+    }
+  }, [rows])
+  const open = async (row: SidebarChat) => {
+    if (
+      !intersectAllowedProductSurfaces(
+        enabledProductSurfaces(),
+        useAuthStore.getState().user?.allowed_products
+      ).includes(row.surface)
+    )
+      return
+    const workflows = useAuthStore.getState().user?.allowed_workflow_ids
+    if (
+      (row.surface === 'agentworks' || row.surface === 'relays') &&
+      workflows &&
+      (!row.workflowId || !workflows.includes(row.workflowId))
+    )
+      return
+    useSidebarHistoryStore.setState((state) => ({
+      request: null,
+      generation: state.generation + 1,
+    }))
+    setOpening(row.id)
+    try {
+      if (row.tabId) {
+        openProductWorkspace(row.surface)
+        openGlobalTab(row.tabId)
+        return
+      }
+      if (row.history && row.surface !== 'agentworks' && row.surface !== 'relays') {
+        const state = useProductSurfaceStore.getState()
+        if (row.surface === 'work' && row.projectId) state.setSelectedWorkProjectId(row.projectId)
+        else if (row.surface === 'code' && row.projectId)
+          state.setSelectedCodeProjectId(row.projectId)
+        else if (row.surface === 'video-studio' && row.projectId)
+          state.setLastVideoProjectId(row.projectId)
+        useSidebarHistoryStore.setState({
+          request: {
+            surface: row.surface,
+            projectId: row.projectId,
+            session: row.history,
+            identity: captureChatIdentity(),
+          },
+        })
+        openProductWorkspace(row.surface)
+        return
+      }
+      const session: ActiveSessionInfo = row.activity || {
+        session_id: row.id,
+        observer_id: '',
+        agent_mode: row.history?.agent_mode || 'workflow',
+        status: row.history?.status || 'completed',
+        title: row.title,
+        workspace_path: row.workspace,
+        created_at: row.history?.created_at || '',
+        last_activity: row.history?.updated_at || '',
+        bot_platform: row.history?.bot_platform,
+        runtime: row.history?.runtime,
+      }
+      await openGlobalActivitySession(session, {
+        title: row.title,
+        source: 'chat-sidebar',
+      })
+    } finally {
+      setOpening(null)
+    }
+  }
+  const toggleSection = (id: string) =>
+    setCollapsed((groups) =>
+      groups.includes(id) ? groups.filter((item) => item !== id) : [...groups, id]
+    )
+  const workspaces = sidebarWorkspaceGroups(rows)
+  const recent = rows.filter((row) => row.group === 'Recent')
+  const renderChat = (row: SidebarChat, workspaceTitle?: string, genericChatNumber?: number, workspaceEntry?: string) => {
+    const selected = row.tabId === selectedTab && product === row.surface && !globalPageOpen && !providersOpen
+    const scheduled = row.scheduled || / · Scheduled run$/i.test(row.title)
+    const title = workspaceEntry || sidebarChatDisplayTitle({ ...row, scheduled }, workspaceTitle, genericChatNumber)
+    const duplicateWorkspaceName = workspaceEntry && workspaces.filter(item => item.title === workspaceEntry).length > 1
+    const displayTime = scheduled ? row.runTime || 0 : row.group === 'Recent' ? row.time : 0
+    const date =
+      displayTime > 0
+        ? new Date(displayTime).toLocaleString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : ''
+    const details = [
+      duplicateWorkspaceName ? PRODUCT_SURFACE_LABELS[row.surface] : '',
+      row.originLabel && !title.startsWith(row.originLabel) ? row.originLabel : '',
+      row.waiting ? 'Needs you' : row.group === 'Running' ? 'Working' : '',
+      scheduled ? date : '',
+    ]
+      .filter(Boolean)
+      .join(' · ')
+    const tab = row.tabId ? tabs[row.tabId] : undefined
+    const canClose = !!tab && canCloseWorkspaceChatTab(tab, tabs)
+    return (
+      <div key={row.id} className="group relative">
+        <button
+          type="button"
+          title={`${isGeneratedSidebarPrompt(row.title) ? title : row.title} · ${PRODUCT_SURFACE_LABELS[row.surface]}${date ? ` · ${date}` : ''}`}
+          aria-current={selected ? 'page' : undefined}
+          onClick={() => {
+            void open(row).catch(() =>
+              useChatStore.getState().addToast('Could not open this chat.', 'error')
+            )
+          }}
+          className={`mb-0.5 flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${canClose ? 'pr-8' : ''} ${selected ? 'bg-foreground/[0.08] text-foreground' : 'text-foreground/75 hover:bg-muted hover:text-foreground'}`}
+        >
+          <span className="shrink-0 opacity-60" aria-hidden="true">
+            {workspaceEntry || !workspaceTitle ? (
+              <ProductSurfaceIcon surface={row.surface} className="h-4 w-4" />
+            ) : (
+              <MessageSquare className="h-3.5 w-3.5" />
+            )}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13px] leading-5">{title}</span>
+            {details && (
+              <span
+                className={`mt-1 block truncate text-[10px] leading-3 ${row.waiting ? 'text-amber-500' : 'text-muted-foreground'}`}
+              >
+                {details}
+              </span>
+            )}
+          </span>
+          {opening === row.id || (row.group === 'Running' && !row.waiting) ? (
+            <Loader2 aria-label="Running" className="h-3 w-3 shrink-0 animate-spin text-primary" />
+          ) : row.waiting ? (
+            <span
+              aria-label="Needs input"
+              className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
+            />
+          ) : null}
+        </button>
+        {canClose && (
+          <button
+            type="button"
+            aria-label={`Close ${title}`}
+            disabled={closing === row.id}
+            title={tab?.metadata?.isViewOnly ? 'Close tab · the run continues' : 'Close chat'}
+            className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => {
+              if (!row.tabId) return
+              setClosing(row.id)
+              void closeWorkspaceChatTab(row.tabId)
+                .catch(() =>
+                  useChatStore.getState().addToast('Could not close this chat. Try again.', 'error')
+                )
+                .finally(() => setClosing(null))
+            }}
+          >
+            <X className="h-3 w-3" aria-hidden="true" />
+          </button>
+        )}
+      </div>
+    )
+  }
+  return (
+    <aside
+      aria-label="Chats across products"
+      className="flex min-h-0 w-full shrink-0 flex-col border-r border-border/70 bg-muted/20"
+    >
+      <div className="flex h-[50px] shrink-0 items-center gap-2 px-3">
+        <RuntimeBrandLogo variant="sidebar-header" className="flex-1" />
+        <div className="flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          aria-label="Search all chats (Ctrl+K or Command+K)"
+          title="Search all chats · ⌘K / Ctrl+K"
+          onClick={() => window.dispatchEvent(new CustomEvent('open-quick-switcher'))}
+          className="flex h-7 items-center gap-1 rounded-md px-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Search className="h-3.5 w-3.5" />
+          <kbd className="text-[10px] text-muted-foreground">{navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl K'}</kbd>
+        </button>
+        {toggle}
+        </div>
+      </div>
+      <div className="shrink-0 px-2 pb-1"><NewProjectMenu /></div>
+      {allowed.includes('agentworks') && <div className="shrink-0 px-2 pb-3">
+        <button type="button" aria-label="Activity" aria-current={activityOpen && !providersOpen ? 'page' : undefined}
+          onClick={() => {
+            const destination = quickNavigationItems(useAuthStore.getState().user, useProductSurfaceStore.getState().productSurface).find(item => item.action === 'activity')
+            if (destination) openQuickNavigation(destination)
+          }}
+          className={`flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${activityOpen && !providersOpen ? 'bg-foreground/[0.08] text-foreground' : 'text-foreground/75'}`}>
+          <Inbox className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          Activity
+        </button>
+      </div>}
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-2">
+        {workspaces.map((workspace, index) => {
+          const hidden = collapsed.includes(workspace.id)
+          const running = workspace.chats.filter(
+            (row) => row.group === 'Running' && !row.waiting
+          ).length
+          const waiting = workspace.chats.filter((row) => row.waiting).length
+          const unnamedChats = workspace.chats
+            .filter((row) => row.title === workspace.title && !row.scheduled)
+            .map((row) => row.id)
+            .sort()
+          const panelId = `sidebar-workspace-${index}`
+          const only = workspace.chats.length === 1 ? workspace.chats[0] : null
+          const onlyTab = only?.tabId ? tabs[only.tabId] : undefined
+          const primaryOnly = only && !only.scheduled && (!onlyTab || !canCloseWorkspaceChatTab(onlyTab, tabs)) && (only.builder || only.title === workspace.title)
+          if (primaryOnly) return renderChat(only, undefined, undefined, workspace.title)
+          return (
+            <section key={workspace.id} className="mb-2">
+              <button
+                type="button"
+                aria-expanded={!hidden}
+                aria-controls={panelId}
+                title={`${PRODUCT_SURFACE_LABELS[workspace.surface]} · ${workspace.title} · ${workspace.chats.length} ${workspace.chats.length === 1 ? 'chat' : 'chats'}${running ? ` · ${running} running` : ''}${waiting ? ` · ${waiting} need input` : ''}`}
+                onClick={() => toggleSection(workspace.id)}
+                className="group mb-0.5 flex min-h-9 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ProductSurfaceIcon surface={workspace.surface} className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate font-medium">{workspace.title}</span>
+                {workspaces.filter(item => item.title === workspace.title).length > 1 && <span className="text-[10px] text-muted-foreground">{PRODUCT_SURFACE_LABELS[workspace.surface]}</span>}
+                {(running > 0 || waiting > 0) && <span
+                  className={`shrink-0 text-[10px] tabular-nums ${waiting ? 'text-amber-500' : running ? 'text-primary' : 'text-muted-foreground/60'}`}
+                >
+                  {[running ? `${running} working` : '', waiting ? `${waiting} needs you` : '']
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>}
+                <ChevronDown
+                  className={`h-3 w-3 shrink-0 text-muted-foreground/60 transition-transform ${hidden ? '-rotate-90' : ''}`}
+                  aria-hidden="true"
+                />
+              </button>
+              <div id={panelId} hidden={hidden} className="ml-4 pl-1">
+                {workspace.chats.map((row) =>
+                  renderChat(
+                    row,
+                    workspace.title,
+                    unnamedChats.length > 1 && unnamedChats.includes(row.id)
+                      ? unnamedChats.indexOf(row.id) + 1
+                      : undefined
+                  )
+                )}
+              </div>
+            </section>
+          )
+        })}
+        {allowed.includes('bullpen') && <ConnectedAgentsSidebar />}
+        {recent.length > 0 && (
+          <section className="mt-5">
+            <button
+              type="button"
+              aria-expanded={!collapsed.includes('Recent')}
+              aria-controls="sidebar-chats-recent"
+              onClick={() => toggleSection('Recent')}
+              className="mb-1 flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ChevronDown
+                className={`h-3 w-3 ${collapsed.includes('Recent') ? '-rotate-90' : ''}`}
+                aria-hidden="true"
+              />
+              <span>Recent chats</span>
+            </button>
+            <div id="sidebar-chats-recent" hidden={collapsed.includes('Recent')}>
+              {recent.slice(0, visibleRecent).map((row) => renderChat(row))}
+              {recent.length > visibleRecent && (
+                <button
+                  type="button"
+                  className="ml-7 mt-1 rounded px-1 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setVisibleRecent((value) => value + 8)}
+                >
+                  Show more
+                </button>
+              )}
+            </div>
+          </section>
+        )}
+        {!history && (
+          <p className="px-2 py-3 text-xs text-muted-foreground">Loading recent chats…</p>
+        )}
+        {history?.error && (
+          <button
+            className="px-2 py-3 text-xs text-muted-foreground underline"
+            onClick={() => setTick((value) => value + 1)}
+          >
+            Some recent chats could not load · Retry
+          </button>
+        )}
+        {history && !history.error && !rows.length && (
+          <p className="px-2 py-3 text-xs text-muted-foreground">No chats yet.</p>
+        )}
+        {history &&
+          history.sessions.length >= limit &&
+          limit < 150 &&
+          visibleRecent >= recent.length && (
+            <button
+              className="w-full rounded px-2 py-2 text-left text-xs text-muted-foreground hover:bg-muted"
+              onClick={() => setLimit((value) => value + 30)}
+            >
+              Load more recent chats
+            </button>
+          )}
+      </div>
+      {footer && <div className="shrink-0 border-t border-border/60 bg-background/60 p-2">{footer}</div>}
+    </aside>
+  )
+}

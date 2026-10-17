@@ -35,7 +35,7 @@ export async function flushWorkspaceState() {
 
 export function queueWorkspaceState(destination: WorkspaceDestination) {
   const state = useWorkspaceReturnStore.getState()
-  if (!state.ready || state.homeOpen || state.restore || state.account !== useAuthStore.getState().user?.id || (state.workspace !== undefined && state.workspace !== useWorkspaceConnectionStore.getState().activeWorkspaceId)) return
+  if (!state.ready || state.restore || state.account !== useAuthStore.getState().user?.id || (state.workspace !== undefined && state.workspace !== useWorkspaceConnectionStore.getState().activeWorkspaceId)) return
   pending = { account: state.account!, workspace: state.workspace, destination }
   clearTimeout(timer)
   timer = setTimeout(() => { void flushWorkspaceState() }, 700)

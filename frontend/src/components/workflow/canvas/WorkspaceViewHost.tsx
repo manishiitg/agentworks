@@ -15,6 +15,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { ReactFlowProvider } from '@xyflow/react'
 import { useChatStore } from '../../../stores/useChatStore'
 import { WorkflowToolbar } from './WorkflowToolbar'
+import { RelayContextPanel } from '../RelayContextPanel'
 import { AskAIButton } from '../AskAIButton'
 import { getWorkspaceAskAIMessage } from '../workspaceAskAI'
 import { ReportView } from '../ReportViewer'
@@ -66,6 +67,7 @@ const NO_DISABLED_PULSE_REVIEWERS: PulseReviewerModule[] = []
 // eager bundle carries the flow canvas and nothing else from this list. The
 // single <Suspense> around the inspector slot below shows the same muted
 // "Loading…" line the views use for their own data loading.
+const WorkflowContextPanel = lazy(() => import('../WorkflowContextPanel').then(module => ({ default: module.WorkflowContextPanel })))
 const CostsPopup = lazy(() => import('../CostsPopup'))
 const ExecutionLogsPopup = lazy(() => import('../ExecutionLogsPopup'))
 const RelayExecutionLogsView = lazy(() => import('../RelayExecutionLogsView'))
@@ -154,6 +156,8 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
   // is a type error, not a silent fallthrough into some other view.
   const renderInspector = (view: InspectorViewId) => {
     switch (view) {
+      case 'context':
+        return relayMode ? <RelayContextPanel workspacePath={workspacePath}/> : <WorkflowContextPanel workspacePath={workspacePath}/>
       case 'costs':
         return (
           <CostsPopup
@@ -853,7 +857,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
           data-ui-workspace={embeddedPlanOnly ? undefined : workspacePath ?? undefined}
           data-ui-view={effectiveView}
           data-testid="tour-workflow-canvas-pane"
-          className={`${gridToolbar ? 'flex-1 col-start-1 row-start-2 md:col-start-2' : 'flex-1'} ${paneClassName} flex min-h-0 flex-col ${isInspectorKind ? 'overflow-hidden border-l border-border' : ''}`}
+          className={`${gridToolbar ? 'flex-1 col-start-1 row-start-2 md:col-start-2' : 'flex-1'} ${paneClassName} flex min-h-0 flex-col ${isInspectorKind && effectiveView !== 'context' ? 'overflow-hidden border-l border-border' : ''}`}
         >
           <div className={`min-h-0 flex-1 ${effectiveView === 'workshop' ? 'flex overflow-hidden' : ''}`}>{body}</div>
           {!isInspectorKind && !toolbarOnly && <span hidden data-ui-view-mounted />}

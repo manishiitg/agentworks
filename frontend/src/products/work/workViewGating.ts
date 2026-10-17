@@ -14,6 +14,7 @@ export function isWorkWorkspaceViewEnabled(view: WorkWorkspaceView, enabledPanel
     if (view === 'identity') return !enabledPanels || enabledPanels.has('models')
     if (view !== 'costs') return false
   }
+  if (view === 'context') return true
   if (!enabledPanels) return true
   if (view === 'identity' || view === 'plan' || view === 'suggestions') return true
   if (view === 'shell') return true

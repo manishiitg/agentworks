@@ -217,7 +217,7 @@ describe('CodingProvidersPanel', () => {
       expect(terminal?.textContent).toBe('Terminal setup-1')
       await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })))
       expect(onClose).not.toHaveBeenCalled()
-      await act(async () => Array.from(host.querySelectorAll('header button')).find(button => button.textContent?.trim() === 'Back to Goals')!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+      await act(async () => host.querySelector<HTMLButtonElement>('header button[aria-label="Back to Goals"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
       expect(onClose).toHaveBeenCalledOnce()
       expect(openProductWorkspace).toHaveBeenCalledWith('agentworks')
       await act(async () => root.render(renderPage(false)))

@@ -1,4 +1,5 @@
-import { ProductNavigationLabel, useProductNavigationSidebar } from '../workspace/ProductTopBar'
+import { useProductSettingsMenu } from '../workspace/ProductSettingsMenu'
+import { ProductNavigationDescription, ProductNavigationLabel, useProductNavigationSidebar } from '../workspace/ProductTopBar'
 import { Vault } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -13,6 +14,7 @@ import { visibleProductSurfaceIDs, isLocalProductInstallation } from '../../prod
  */
 export default function VaultsControl() {
   const sidebar = useProductNavigationSidebar()
+  const inSettings = useProductSettingsMenu()
   const user = useAuthStore(state => state.user)
   const active = useAppStore(state => state.adminPage === 'vaults')
   const setAdminPage = useAppStore(state => state.setAdminPage)
@@ -23,6 +25,7 @@ export default function VaultsControl() {
       <TooltipTrigger asChild>
         <button
           type="button"
+          role={inSettings ? 'menuitem' : undefined}
           data-product-navigation-action
           onClick={() => { useLLMStore.getState().setShowLLMModal(false); setAdminPage('vaults') }}
           aria-label="My vaults"
@@ -32,6 +35,7 @@ export default function VaultsControl() {
         >
           <Vault className="h-4 w-4 shrink-0" />
           <ProductNavigationLabel>My vaults</ProductNavigationLabel>
+          <ProductNavigationDescription>Secrets &amp; connections</ProductNavigationDescription>
         </button>
       </TooltipTrigger>
       <TooltipContent side={sidebar ? 'right' : 'bottom'}>My vaults</TooltipContent>

@@ -7,12 +7,12 @@ import { usePointerDrag } from './usePointerDrag'
 const cleanups: (() => void)[] = []
 afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); vi.unstubAllGlobals() })
 
-function mountDrag() {
+function mountDrag(axis: 'x' | 'y' = 'x') {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   const onMove = vi.fn(), onEnd = vi.fn()
   function Divider() {
     const { start } = usePointerDrag()
-    return <button onPointerDown={event => start(event, { onMove, onEnd })}>Resize</button>
+    return <button onPointerDown={event => start(event, { onMove, onEnd }, axis)}>Resize</button>
   }
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
@@ -48,6 +48,17 @@ it('resizes only while pressed, then removes listeners after React clears curren
   pointer('pointerup', { buttons: 0 })
   expect(onMove).toHaveBeenCalledTimes(2)
   expect(onEnd).toHaveBeenCalledTimes(2)
+})
+
+it('tracks the vertical position for shortcut reordering and stops after release', () => {
+  const { pointer, onMove, onEnd } = mountDrag('y')
+  pointer('pointerdown')
+  pointer('pointermove', { clientX: 450, clientY: 210 })
+  expect(onMove).toHaveBeenLastCalledWith(210)
+  pointer('pointerup', { buttons: 0 })
+  pointer('pointermove', { clientY: 500 })
+  expect(onMove).toHaveBeenCalledTimes(1)
+  expect(onEnd).toHaveBeenCalledTimes(1)
 })
 
 it.each(['pointercancel', 'lostpointercapture', 'blur', 'released-buttons', 'unmount'])('stops interrupted dragging on %s', reason => {

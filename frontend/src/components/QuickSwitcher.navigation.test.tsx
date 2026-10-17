@@ -167,7 +167,7 @@ it('browses all workflows or Relays from footer icons without requiring typed sc
 })
 
 it.each([
-  ['Users and access', 'users'], ['Connect an AI agent (MCP)', 'mcp'], ['Providers', 'providers'],
+  ['Users and access', 'users'], ['Connect an AI agent (MCP)', 'mcp'], ['AI models & accounts', 'providers'],
 ])('opens %s directly from its footer icon', async (label, destination) => {
   const { host, onClose } = await renderNavigation('')
   useAppStore.setState({ adminPage: null })
@@ -180,10 +180,11 @@ it.each([
 
 it.each(['activity', 'schedules'])('opens %s from the scrollable navigation rows', async action => {
   const { host, onClose } = await renderNavigation('')
-  useAppStore.setState({ showWorkflowsOverview: false, showSchedulesOverview: false })
+  useAppStore.setState({ showWorkflowsOverview: false, showSchedulesOverview: false, activityWorkflowPath: 'Workflow/previous-filter' })
   await act(async () => host.querySelector(`[data-navigation-id="menu:${action}"]`)!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
   expect(useProductSurfaceStore.getState().productSurface).toBe('agentworks')
   expect(action === 'activity' ? useAppStore.getState().showWorkflowsOverview : useAppStore.getState().showSchedulesOverview).toBe(true)
+  if (action === 'activity') expect(useAppStore.getState().activityWorkflowPath).toBeNull()
   expect(onClose).toHaveBeenCalled()
 })
 
@@ -222,7 +223,7 @@ it('opens Users via Enter from an unrelated product', async () => {
 
 it('hides unavailable products and admin-only menus and opens Providers on an allowed surface', async () => {
   const { host } = await renderNavigation('@menus ', ['code'], false)
-  expect(host.textContent).toContain('Providers')
+  expect(host.textContent).toContain('AI models & accounts')
   expect(host.textContent).not.toContain('Users and access')
   expect(host.textContent).toContain('Connect an AI agent') // MCP is for every signed-in person (owner, 2026-10-09)
   expect(host.textContent).not.toContain('Schedules and triggers')
@@ -410,4 +411,17 @@ it('keeps the legacy Code search keyword opening the single Crew product', async
   expect(products[0].textContent).toContain('Crew')
   await act(async () => products[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
   expect(useProductSurfaceStore.getState().productSurface).toBe('code')
+})
+
+it('finds Apps & tools through its previous Integrations name without exposing other products', async () => {
+  const open = vi.fn()
+  const { host } = await renderNavigation('integrations', ['code'], false, () => {
+    useProductSurfaceStore.setState({ productSurface: 'code' })
+    usePanelSwitcherStore.getState().register('code', { panels: [{ id: 'mcp', label: 'Apps & tools' }], open })
+    usePanelSwitcherStore.getState().register('work', { panels: [{ id: 'mcp', label: 'Hidden Crew tools' }], open: vi.fn() })
+  })
+  expect(host.querySelector('[data-navigation-id="panel:mcp"]')?.textContent).toContain('Apps & tools')
+  expect(host.textContent).not.toContain('Hidden Crew tools')
+  await act(async () => host.querySelector('[data-navigation-id="panel:mcp"]')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
+  expect(open).toHaveBeenCalledWith('mcp', undefined)
 })

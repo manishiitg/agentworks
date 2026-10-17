@@ -1,3 +1,5 @@
+import { ProductSettingsMenu } from './workspace/ProductSettingsMenu'
+import { useProductNavigationToolbarStore } from '../stores/useProductNavigationToolbarStore'
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { workflowTriggerLabel } from '../utils/workflowSessionKinds'
 import { useShallow } from 'zustand/react/shallow'
@@ -191,7 +193,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
   const setSelectedFile = useWorkspaceStore(state => state.setSelectedFile)
   const setShowFileContent = useWorkspaceStore(state => state.setShowFileContent)
   const showProviders = useLLMStore(state => state.showLLMModal)
-  const isOrganizationView = showWorkflowsOverview
   const isGlobalPage = showWorkflowsOverview || showProviders || showSchedulesOverview || adminPage !== null
   const currentWalkthroughSurface: WalkthroughSurface = productWalkthroughSurface
     ?? (showWorkflowsOverview || showSchedulesOverview || selectedModeCategory !== 'workflow'
@@ -306,13 +307,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
       openWorkflowWalkthrough(pausedSurface)
     }
   }, [currentWalkthroughSurface, isRelaySurface, openWorkflowWalkthrough, showPresetModal, showWorkflowWalkthrough, walkthroughPaused, walkthroughSurface])
-
-  const returnToWorkspace = useCallback(() => {
-    useLLMStore.getState().setShowLLMModal(false)
-    setShowWorkflowsOverview(false)
-    setShowSchedulesOverview(false)
-    setAdminPage(null)
-  }, [setShowWorkflowsOverview, setShowSchedulesOverview, setAdminPage])
 
   // Handle ESC and Enter keys for shortcuts modal
   useEffect(() => {
@@ -633,20 +627,18 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
     }
   }, [showPresetDropdown, selectedModeCategory, presetsLoading, refreshPresets, getPresetsForMode])
 
-  useEffect(() => {
-    if (isOrganizationView && showPresetDropdown) {
-      setShowPresetDropdown(false)
-    }
-  }, [isOrganizationView, showPresetDropdown])
+  const workspaceTitleNavigation = useProductNavigationToolbarStore(state => !!state.workspaceTrigger && !!state.target && state.targetKind !== 'page')
+  const sidebarHasBrand = useProductNavigationToolbarStore(state => !!state.sidebarSettingsTarget)
+  const hasWorkspacePicker = Boolean(productControl) || selectedModeCategory === 'workflow'
 
   return (
     <>
       <ProductTopBar sidebar>
           {/* Product and current automation */}
           <ProductTopBarMain>
-            <RuntimeBrandLogo className="mr-1" />
+            {!sidebarHasBrand && <RuntimeBrandLogo className="mr-1" />}
             {/* Product-level navigation stays separate from AgentWorks modes. */}
-            <ProductSurfaceSwitcher className="mr-1" />
+            {!workspaceTitleNavigation && !hasWorkspacePicker && <ProductSurfaceSwitcher className="mr-1" />}
             {!activityMonitorInWorkspace && (reduced || isGlobalPage || selectedModeCategory !== 'workflow' || !activePreset) && <GlobalActivityMonitor />}
 
             {productControl}
@@ -686,10 +678,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
                         ? (currentSessionStatusLabel ? `${activePreset.label} · ${currentSessionStatusLabel}` : activePreset.label)
                         : isRelaySurface ? 'Select Flow' : 'Select Automation'}
                       open={showPresetDropdown}
-                      onToggle={() => {
-                        if (isGlobalPage) returnToWorkspace()
-                        handlePresetDropdownToggle()
-                      }}
+                      onToggle={handlePresetDropdownToggle}
                       onClose={() => setShowPresetDropdown(false)}
                       onAdd={handleAddWorkflow}
                       addLabel={isRelaySurface ? 'Add Flow' : 'Add automation'}
@@ -795,9 +784,15 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
                 return null
               })()}
             </div>
-            {(hasProductActivity || hasProductSchedules) && <TooltipProvider delayDuration={400}>
-              <div data-product-navigation-section="product-actions" aria-label="Product actions" className="flex flex-col gap-1 border-t border-border pt-3">
-              {hasProductActivity && <GlobalActivityButton
+          </ProductTopBarMain>
+
+          {/* Shared actions stay at the top right in every product. */}
+          <TooltipProvider delayDuration={400}>
+            <ProductTopBarActions>
+              <ProductSettingsMenu activity={<>
+                {(hasProductActivity || hasProductSchedules) && <TooltipProvider delayDuration={400}>
+              <div data-product-navigation-section="product-actions" aria-label="Product actions" className="flex flex-col items-stretch gap-1">
+              {hasProductActivity && !sidebarHasBrand && <GlobalActivityButton
                 workspacePaths={workflowActivityPaths}
                 active={showWorkflowsOverview && !showProviders && !showSchedulesOverview}
                 onOpen={() => {
@@ -819,6 +814,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
                       setShowWorkflowsOverview(false)
                       setShowSchedulesOverview(true)
                     }}
+                    role="menuitem"
                     data-tour="global-schedules"
                     aria-label={schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}
                     aria-pressed={showSchedulesOverview && !showProviders && !showWorkflowsOverview}
@@ -834,26 +830,21 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
                     )}
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="right">{schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}</TooltipContent>
+                <TooltipContent side="bottom">{schedulerPaused ? 'Schedules and triggers (schedules paused)' : 'Schedules and triggers'}</TooltipContent>
               </Tooltip>}
 
               </div>
             </TooltipProvider>}
-          </ProductTopBarMain>
+              {productActions && <div data-product-navigation-divider="product-platform">{productActions}</div>}
 
-          {/* Shared actions remain at the bottom in every product. */}
-          <TooltipProvider delayDuration={400}>
-            <ProductTopBarActions>
-              {productActions && <div className="mb-2 border-b border-border pb-3" data-product-navigation-divider="product-platform">{productActions}</div>}
-
+</>}>
               <ProvidersControl />
 
               <McpControl />
 
               <VaultsControl />
               <UsersControl />
-
-              <span className="mx-0.5 h-px w-full bg-border" />
+              </ProductSettingsMenu>
               <WorkspaceTopBarControls
                 onOpenWalkthrough={isRelaySurface ? undefined : openWorkflowWalkthrough}
                 onOpenShortcuts={() => setShowShortcuts(true)}

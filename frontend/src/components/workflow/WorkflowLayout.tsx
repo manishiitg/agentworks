@@ -1,18 +1,17 @@
 import { useWorkspaceReturn } from '../../hooks/useWorkspaceReturn'
 import { useWorkflowFilesViewSync } from './hooks/useWorkflowFilesViewSync'
-import { ShortcutHint } from '../chat/ShortcutHint'
 import { openHistoryExecutionLogs } from '../../utils/historyExecutionLogs'
 import { WorkflowGoalSetupBar } from './WorkflowGoalSetupBar'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import React, { useMemo, useCallback, useRef, useEffect, forwardRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { PanelLeftOpen, PanelRightOpen, Sparkles } from 'lucide-react'
+import { Braces, CalendarClock, CheckCheck, ChevronRight, Network, PanelLeftOpen, PanelRightOpen, RefreshCw, Sparkles } from 'lucide-react'
 import { WorkflowCanvas, type WorkflowCanvasRef } from './canvas'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { useModeStore } from '../../stores/useModeStore'
 import { normalizeEventViewMode, useChatStore, waitForChatStoreHydration, type ChatTab } from '../../stores/useChatStore'
 import { hasSavedWorkflowWorkspaceView, useWorkflowStore } from '../../stores/useWorkflowStore'
-import { ensureDefaultDashboard, loadWorkspaceLandingView } from './workspaceLandingView'
+import { ensureDefaultDashboard } from './workspaceLandingView'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { resolveWorkflowHistoryPath } from '../../utils/workflowHistoryPath'
@@ -59,6 +58,7 @@ import { WorkspaceSplitRail } from '../workspace/WorkspaceSplitDivider'
 import { RelayIntro } from './RelayIntro'
 import { ReportView } from './ReportViewer'
 import { AutomationHubPanel } from '../automation/AutomationHubPanel'
+import { RELAY_WORKSPACE_VIEWS } from './workspaceViews'
 
 // Helper component to get observerId and render ChatArea
 // Always renders ChatArea (even without observerId) so it can handle initialization
@@ -110,34 +110,32 @@ const ChatAreaWithObserverId = forwardRef<ChatAreaRef, {
   )
 })
 
-const WorkflowNewChatGuide: React.FC<{ relayMode?: boolean; pythonRelay?: boolean }> = ({ relayMode = false, pythonRelay = false }) => (
-  <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto px-6 py-10">
-    <div className="w-full max-w-lg rounded-xl border border-border bg-muted/20 p-5">
-      <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-        <Sparkles className="h-4 w-4 text-primary" />
-        {relayMode ? 'Build your Flow in chat' : 'Start your workflow chat'}
+const WorkflowNewChatGuide: React.FC<{ relayMode?: boolean }> = ({ relayMode = false }) => {
+  const steps = relayMode
+    ? [{ icon: Braces, label: 'Input', example: 'Support request' }, { icon: Network, label: 'Agents & tools', example: 'Classify & route' }, { icon: CheckCheck, label: 'Result', example: 'JSON reply' }]
+    : [{ icon: Sparkles, label: 'Plan', example: '' }, { icon: CalendarClock, label: 'Schedule', example: '' }, { icon: RefreshCw, label: 'Improve', example: '' }]
+  return (
+    <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto px-6 py-8">
+      <div className="w-full max-w-sm text-center">
+        <div className="mb-5 flex items-center justify-center gap-2" aria-label={relayMode ? 'Example Flow: support request, agents classify and route, JSON reply' : 'Plan, schedule, improve'}>
+          {steps.map(({ icon: Icon, label, example }, index) => (
+            <React.Fragment key={label}>
+              {index > 0 && <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground/40" />}
+              <div className="flex w-16 min-w-0 flex-col items-center gap-2">
+                <div className="grid h-10 w-10 place-items-center rounded-xl border border-border bg-muted/40"><Icon aria-hidden="true" className="h-4 w-4 text-primary" /></div>
+                <span className="text-[11px] text-muted-foreground">{label}</span>
+                {example && <span className="text-[10px] text-muted-foreground/70">{example}</span>}
+              </div>
+            </React.Fragment>
+          ))}
+        </div>
+        <h2 className="text-base font-semibold tracking-tight text-foreground">{relayMode ? 'Your reusable workflow' : 'Keep work moving'}</h2>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">{relayMode ? 'Build, test or improve this Flow here. Its runs and results stay with this project.' : 'Run, review or improve this workflow here. Return to the same project whenever you need it.'}</p>
       </div>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">
-        {relayMode ? 'Describe what your Flow receives, what it should do, and what it returns. Ask the builder to:' : 'This is your persistent conversation for this workflow. Ask the builder to:'}
-      </p>
-      <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-        {relayMode ? <>
-          <li>• Add agents with your own system prompts and message templates</li>
-          <li>• {pythonRelay ? 'Connect agents, tools and decisions, and explain the steps' : 'Connect them with scripts and define the final JSON output'}</li>
-          <li>• Run a test with sample JSON and inspect the result and logs</li>
-          <li>• Set up API triggers and publish a version</li>
-        </> : <>
-          <li>• Build or change the workflow and its plan</li>
-          <li>• Create a schedule, webhook, bot, dashboard, or database</li>
-          <li>• Review a run, investigate a problem, or improve the workflow</li>
-        </>}
-      </ul>
-      <ShortcutHint />
     </div>
-  </div>
-)
+  )
+}
 
-const RELAY_WORKSPACE_VIEWS = new Set(['flow', 'report', 'workshop', 'costs', 'execution-logs', 'files', 'identity', 'mcp', 'access'])
 import { agentApi, workflowManifestApi } from '../../services/api'
 import {
   type ActiveSessionInfo,
@@ -899,14 +897,13 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     if (relayMode || selectedModeCategory !== 'workflow' || !activePresetId || !workspacePath || hasSavedWorkflowWorkspaceView(activePresetId)) return
     let cancelled = false
     const presetId = activePresetId
-    void (runsOnly ? ensureDefaultDashboard(workspacePath) : Promise.resolve()).then(() => loadWorkspaceLandingView(workspacePath)).then(landing => {
+    void (runsOnly ? ensureDefaultDashboard(workspacePath) : Promise.resolve()).then(() => {
       if (cancelled || useGlobalPresetStore.getState().activePresetIds.workflow !== presetId || hasSavedWorkflowWorkspaceView(presetId)) return
-      const view = landing === 'dashboard' ? 'report' : landing === 'plan' ? 'flow' : 'identity'
+      const view = 'context' as const
       useAppStore.getState().setWorkspaceMinimized(true)
       useWorkflowStore.setState({
         workflowWorkspaceView: view,
         showWorkspacePane: true,
-        ...(view === 'report' || view === 'flow' ? { lastCanvasView: view } : {}),
       })
     })
     return () => { cancelled = true }
@@ -1100,6 +1097,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     reportPreviewPreference,
     workspaceSplitRatio,
     isWorkspaceViewActive: isWorkspacePaneView(workflowWorkspaceView),
+    compactContext: workflowWorkspaceView === 'context',
   })
   const workspacePaneVisible = layout.workspacePaneVisible
   // Below md, layout.canvasPaneClassName above toggles this pane between `hidden`
@@ -1306,10 +1304,12 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   })
 
   useWorkspaceReturn(relayMode ? 'relays' : 'agentworks', activePresetId ?? undefined, workflowWorkspaceView ?? undefined,
-    { chat_open: showChatArea, panel_open: showWorkspacePane, split_ratio: workspaceSplitRatio, navigation_mode: 'fixed', preview_device: reportPreviewPreference, focused_pane: focusedPane },
+    { chat_open: showChatArea, panel_open: workflowWorkspaceView === 'context' || showWorkspacePane, split_ratio: workspaceSplitRatio, navigation_mode: 'fixed', preview_device: reportPreviewPreference, focused_pane: focusedPane },
     saved => {
       setShowChatArea(saved.chat_open); setShowWorkspacePane(saved.panel_open)
-      setWorkspaceMinimized(!saved.panel_open)
+      // This flag controls the Files sidebar, not the workspace panel. Opening
+      // it for Human actions/Pulse/etc. makes Files-view sync replace that view.
+      setWorkspaceMinimized(!saved.panel_open || useWorkflowStore.getState().workflowWorkspaceView !== 'files')
       if (saved.focused_pane) setFocusedPane(saved.focused_pane)
       const device = saved.preview_device ?? reportPreviewPreference
       // The validated server record hydrates this device's existing local cache.
@@ -2388,7 +2388,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
       {/* Right-edge tab to re-open the preview pane after it's been collapsed
           (the on-pane collapse button hides it). Only when chat is shown and the
           pane is hidden. */}
-      {showChatArea && !workspacePaneVisible && (
+      {showChatArea && !workspacePaneVisible && relayMode && (
         <button
           type="button"
           onClick={() => setShowWorkspacePane(true)}
@@ -2517,7 +2517,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
                   onNewChat={onNewChat}
                   hideHeader
                   compact
-                  workflowLandingContent={<WorkflowNewChatGuide relayMode={relayMode} pythonRelay={activeWorkflowManifest?.relay_runtime === 'python'} />}
+                  workflowLandingContent={<WorkflowNewChatGuide relayMode={relayMode} />}
                   // Writers only: a reader of a shared workflow has no Builder chat to replace. The previous
                   // conversation stays in Previous chats (each Builder session keeps its own transcript file).
                   showNewChatAction={activeWorkflowAccess !== 'read'}
@@ -2529,7 +2529,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
 
         {workspacePaneVisible && canvasElement}
 
-        {showChatArea && workspacePaneVisible && (
+        {showChatArea && workspacePaneVisible && workflowWorkspaceView !== 'context' && (
           <WorkspaceSplitRail
             ratio={workspaceSplitRatio}
             onPointerDown={handleSplitPointerDown}

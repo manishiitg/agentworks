@@ -49,4 +49,31 @@ describe('WelcomeHome', () => {
     expect(host.querySelector('[role="dialog"]')).not.toBeNull()
     await act(async () => root.unmount())
   })
+
+  it('keeps permitted services secondary to workspaces and excludes inaccessible products', async () => {
+    ;(window as { __APP_RUNTIME_CONFIG__?: unknown }).__APP_RUNTIME_CONFIG__ = { gatewayUrl: 'http://localhost:18136', enabledProductSurfaces: ['work', 'mcp-gateway', 'knowledgebase', 'bullpen'] }
+    useAuthStore.setState({ user: { allowed_products: ['work', 'mcp-gateway', 'bullpen'] } } as never)
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    await act(async () => root.render(<WelcomeHome />))
+    const workspaces = host.querySelector('section[aria-labelledby="welcome-products"]')
+    expect(workspaces?.textContent).toContain('Crew')
+    expect(workspaces?.textContent).not.toContain('Vault')
+    const services = host.querySelector('details')!
+    expect(services.open).toBe(false)
+    expect(services.textContent).toContain('Vault')
+    expect(services.textContent).toContain('AgentBridge')
+    expect(services.textContent).not.toContain('Brain')
+    await act(async () => root.unmount())
+  })
+
+  it('opens shared services immediately when there are no workspace products', async () => {
+    ;(window as { __APP_RUNTIME_CONFIG__?: unknown }).__APP_RUNTIME_CONFIG__ = { gatewayUrl: 'http://localhost:18136', enabledProductSurfaces: ['mcp-gateway', 'knowledgebase'] }
+    useAuthStore.setState({ user: { allowed_products: ['mcp-gateway', 'knowledgebase'] } } as never)
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+    await act(async () => root.render(<WelcomeHome />))
+    expect(host.querySelector('section[aria-labelledby="welcome-products"]')).toBeNull()
+    expect(host.querySelector('details')?.open).toBe(true)
+    expect(host.querySelector('[aria-label="Shared services"]')?.textContent).toContain('Vault')
+    await act(async () => root.unmount())
+  })
 })

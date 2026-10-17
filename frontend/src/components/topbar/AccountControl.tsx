@@ -100,6 +100,10 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts }: A
             Shared with me
           </button>}
           <button type="button" role="menuitem" className={itemClass} onClick={() => { setOpen(false); setBrowserConnections(true) }}><Globe className="h-4 w-4 text-muted-foreground" />Browser connections</button>
+          <button type="button" role="menuitem" className={itemClass} onClick={() => { setOpen(false); window.dispatchEvent(new Event('open-welcome-home')) }}>
+            <HelpCircle className="h-4 w-4 text-muted-foreground" />
+            Getting started
+          </button>
           {onOpenWalkthrough && <button type="button" role="menuitem" className={itemClass} onClick={() => {
             setOpen(false)
             onOpenWalkthrough()
