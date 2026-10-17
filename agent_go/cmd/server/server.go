@@ -6788,6 +6788,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			protectManagedCodingAgentProjectionWrites(sessionID, chatWorkingFolder)
 			// PLAT-364: the guard above is final, so the CLI can be confined to it.
 			applyCLILandlock(llmAgent, sessionID, currentUserID, finalProvider, chatWorkingDir, cliSecurityPolicy)
+			if resolvedProfile != nil && resolvedProfile.IsolateCodeCLI {
+				log.Printf("[PROJECT_CLI] session=%s actor=%s profile=code mode=%s cwd=%s linked_project=%s", sessionID, sanitizeUserIDForPath(currentUserID), llmAgent.CodingAgentToolsMode(), chatWorkingDir, sharedChatWorkingDir)
+			}
 
 			// Report the selected filesystem skills, not a restriction. Every
 			// branch above grants its workspace's skills, and this list is used
