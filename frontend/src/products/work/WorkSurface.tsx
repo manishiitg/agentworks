@@ -659,6 +659,61 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
       setOpening(false)
     }
   }
+  // A tab another chat opened (open_project_chat, the code tool) is known to the server only: open the ones this browser
+  // does not show yet, on load and while the project is on screen. The active tab stays the one the person is in.
+  const openingRef = useRef(false)
+  openingRef.current = opening
+  useEffect(() => {
+    if (!allowSideChats) return
+    let cancelled = false
+    let busy = false
+    const sync = async () => {
+      if (busy || openingRef.current || document.visibilityState === 'hidden') return
+      busy = true
+      try {
+        const listed = await agentApi.listAgentProfileSideChats(profileId, projectId)
+        for (const chat of listed) {
+          const state = useChatStore.getState()
+          const primary = state.chatTabs[canonicalTabId]
+          if (cancelled || openingRef.current || !primary) return
+          const tabs = Object.values(state.chatTabs)
+          if (tabs.some(tab => tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id)) continue
+          if (tabs.filter(tab => isWorkSideChatTab(tab, projectId)).length >= WORK_SIDE_CHAT_LIMIT) return
+          const previousActive = state.activeTabId
+          const tabId = await state.createChatTab(chat.name, {
+            ...primary.metadata,
+            agentProfileBuilder: false,
+            agentProfileConversationKey: chat.conversation_key,
+            agentProfileConversationId: chat.conversation_id,
+            agentProfileMCPSelectionInitialized: true,
+          }, chat.session_id)
+          useChatStore.getState().renameTab(tabId, chat.name)
+          useChatStore.getState().setTabConfig(tabId, {
+            selectedServers: primary.config.selectedServers,
+            selectedSkills: primary.config.selectedSkills,
+          })
+          if (previousActive) activateTab(previousActive)
+          await hydrateTabEvents(chat.session_id, {
+            workspacePath: primary.metadata?.agentProfileWorkspace,
+            fallbackToChatHistory: true,
+            preferChatHistory: true,
+          })
+        }
+      } catch {
+        // The list is a convenience; the next pass tries again.
+      } finally {
+        busy = false
+      }
+    }
+    void sync()
+    const timer = window.setInterval(() => { void sync() }, 15000)
+    window.addEventListener('focus', sync)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+      window.removeEventListener('focus', sync)
+    }
+  }, [allowSideChats, canonicalTabId, profileId, projectId])
   // Alt+1..5 / Option+1..5 pick a chat, Alt+Shift+T / Option+Shift+T opens one
   // (PLAT-571), only while Code is the product on screen and never for a key
   // the terminal already took (it marks its own Alt keys handled).

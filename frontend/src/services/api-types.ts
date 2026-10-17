@@ -257,6 +257,14 @@ export interface AgentProfileConversationRequest {
   session_id?: string
 }
 
+/** An open side tab of a Code or Crew project as the server knows it. */
+export interface AgentProfileSideChat {
+  conversation_key: string
+  conversation_id?: string
+  session_id: string
+  name: string
+}
+
 export interface AgentProfileConversationResponse {
   conversation_id: string
   conversation_key: string

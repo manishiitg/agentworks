@@ -50,6 +50,7 @@ import type {
   AgentProfileChatRequest,
   AgentProfileConversationRequest,
   AgentProfileConversationResponse,
+  AgentProfileSideChat,
   SharedProjectFileEntry,
   SharedProjectSummary,
   CodeAdminWorkspace,
@@ -155,6 +156,7 @@ export type {
   AgentProfileChatRequest,
   AgentProfileConversationRequest,
   AgentProfileConversationResponse,
+  AgentProfileSideChat,
   GetEventsResponse,
   MCPServerConfig,
   ChatSession,
@@ -1254,6 +1256,12 @@ export const agentApi = {
       request,
       { headers, skipSessionContext: existingSessionId === null },
     )
+    return response.data
+  },
+
+  /** The open side tabs of a Code or Crew project as the server knows them (a tab another chat opened exists only there). */
+  listAgentProfileSideChats: async (profileId: string, projectId: string): Promise<AgentProfileSideChat[]> => {
+    const response = await api.get(`/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats`, { params: { project_id: projectId } })
     return response.data
   },
 
