@@ -38,6 +38,7 @@ func TestCLIPlanAndFileArguments(t *testing.T) {
 	}{
 		{[]string{"messages", "register", "--agent", "reviewer", "--allow-connection", "connection-other"}, "", "messages", map[string]any{"action": "register", "agent_name": "reviewer", "allowed_connection_ids": []string{"connection-other"}}},
 		{[]string{"messages", "list"}, "", "messages", map[string]any{"action": "list_agents"}},
+		{[]string{"tools", "call", "messages", "--input", "-"}, `{"action":"list_agents"}`, "messages", map[string]any{"action": "list_agents"}},
 		{[]string{"messages", "read", "--agent", "reviewer", "--after", "42", "--wait", "25"}, "", "messages", map[string]any{"action": "read", "agent_name": "reviewer", "after": 42, "wait_seconds": 25}},
 		{[]string{"plan", "get", "--workflow", "wf-1"}, "", "get_plan", map[string]any{"workflow_id": "wf-1"}},
 		{[]string{"plan", "list", "--workflow", "wf-1"}, "", "plan", map[string]any{"workflow_id": "wf-1", "action": "list"}},

@@ -801,7 +801,7 @@ func (o *options) call(cmd *cobra.Command, name string) error {
 	if err != nil {
 		return err
 	}
-	if name == "messages" {
+	if name == "messages" && cmd.Name() != "call" {
 		arguments["action"] = cmd.Name()
 		if cmd.Name() == "list" {
 			arguments["action"] = "list_agents"
