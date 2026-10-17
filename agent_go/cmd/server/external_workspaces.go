@@ -209,7 +209,12 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		if binding.OwnedByCaller {
 			panels = api.workspaceEffectivePanels(r.Context(), claims.UserID, manifest.Product, binding.Binding.WorkspacePath)
 		}
-		externalJSON(w, map[string]any{"workspace_id": manifest.Product + ":" + manifest.ID, "id": manifest.ID, "profile_id": manifest.Product, "name": manifest.displayTitle(), "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller], "share": share, "ui_panels": panels, "identity": manifest.Identity, "purpose": manifest.Description, "memory_enabled": workspaceMemoryEnabled(r.Context(), manifest.Product, binding.Binding.WorkspacePath)})
+		published, err := publicationSourceSummaries(r.Context(), agentProfileRuntimeWorkspace(binding.OwnerID, binding.Binding.WorkspacePath))
+		if err != nil {
+			externalFailure(w, err)
+			return
+		}
+		externalJSON(w, map[string]any{"workspace_id": manifest.Product + ":" + manifest.ID, "published_agents": published, "id": manifest.ID, "profile_id": manifest.Product, "name": manifest.displayTitle(), "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller], "share": share, "ui_panels": panels, "identity": manifest.Identity, "purpose": manifest.Description, "memory_enabled": workspaceMemoryEnabled(r.Context(), manifest.Product, binding.Binding.WorkspacePath)})
 		return
 	}
 	memberArgs := map[string]any{}

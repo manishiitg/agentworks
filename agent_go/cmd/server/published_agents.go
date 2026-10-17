@@ -196,3 +196,33 @@ func (api *StreamingAPI) externalPublishedAgents(w http.ResponseWriter, r *http.
 	}
 	externalError(w, 404, "not_found", "Choose an agent with workspace action=agents.")
 }
+
+// A shared Crew includes its agents' source files under the existing file-read
+// permission. Selecting an agent never selects its private Builder transcript.
+func publicationFileContext(ctx context.Context, root, agentID string) (context.Context, error) {
+	if agentID == "" {
+		return ctx, nil
+	}
+	if agentID == "main" {
+		agentID = ""
+	}
+	p, err := readPublishedAgent(contextWithoutPublication(ctx), root, agentID)
+	if err != nil {
+		return nil, err
+	}
+	if p == nil {
+		return nil, fmt.Errorf("Choose a published agent from workspace get, or omit agent_id for the Crew's own files.")
+	}
+	return context.WithValue(ctx, publicationExecutionKey{}, p), nil
+}
+func publicationSourceSummaries(ctx context.Context, root string) ([]map[string]any, error) {
+	agents, err := publishedAgents(contextWithoutPublication(ctx), root)
+	if err != nil {
+		return nil, err
+	}
+	out := []map[string]any{}
+	for _, p := range agents {
+		out = append(out, map[string]any{"agent_id": firstNonEmptyTrimmed(p.AgentID, "main"), "name": p.Name, "source": "published", "revision": p.Revision})
+	}
+	return out, nil
+}

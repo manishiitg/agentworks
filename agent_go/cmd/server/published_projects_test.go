@@ -113,7 +113,7 @@ func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 // Adding an agent must not freeze or overwrite the existing Crew. Its source
 // and private context stay separate from Main, while republish keeps the ID.
 func TestPublishedAgentKeepsDestinationEditableAndPinsItsSource(t *testing.T) {
-	_, _ = newCodePrivacyFixture(t)
+	api, _ := newCodePrivacyFixture(t)
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	registry := withProjectOwnerRegistry(t)
 	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000"}); err != nil {
@@ -158,6 +158,36 @@ func TestPublishedAgentKeepsDestinationEditableAndPinsItsSource(t *testing.T) {
 	if got := publishedReadPath(running, p.Root+"/code/run.py"); got != p.sourceRoot()+"/code/run.py" {
 		t.Fatal("running agent changed revision:", got)
 	}
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	sourceFile := filepath.Join(docs, filepath.FromSlash(next.sourceRoot()), "code/run.py")
+	if err := os.MkdirAll(filepath.Dir(sourceFile), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sourceFile, []byte("SHARED_AGENT_SOURCE"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	withProjectSharing(t, true)
+	if err := registry.SetRunPeople("code", "app-c0de0001", []string{"other"}); err != nil {
+		t.Fatal(err)
+	}
+	other := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "other", Username: "other"})
+	request := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(other)
+	args := map[string]any{"crew_id": "code:" + p.WorkspaceID, "agent_id": p.AgentID, "path": "code/run.py"}
+	shared := httptest.NewRecorder()
+	api.externalCrewCall(shared, request, "read_crew_file", args)
+	if shared.Code != 200 || !strings.Contains(shared.Body.String(), "SHARED_AGENT_SOURCE") {
+		t.Fatalf("shared source selector=%d %s", shared.Code, shared.Body.String())
+	}
+	if err := registry.SetRunPeople("code", "app-c0de0001", nil); err != nil {
+		t.Fatal(err)
+	}
+	revoked := httptest.NewRecorder()
+	api.externalCrewCall(revoked, request, "read_crew_file", args)
+	if revoked.Code < 400 || strings.Contains(revoked.Body.String(), "SHARED_AGENT_SOURCE") {
+		t.Fatal("agent source survived Share revocation")
+	}
+
 	loaded, err := readPublishedAgent(ctx, p.Root, p.AgentID)
 	if err != nil || loaded.Revision != next.Revision || loaded.AgentID != p.AgentID {
 		t.Fatalf("republish lost stable identity: %+v %v", loaded, err)

@@ -181,6 +181,7 @@ func externalTools() ([]externalTool, error) {
 		add("get_crew", "Describe one Crew: identity, description, model, and its functions (typed entry points other Crews and connections can call). Requires crews:read.", false, false, crewID(nil), "crew_id")
 		crewFiles := func(search bool) map[string]any {
 			p := page()
+			p["agent_id"] = externalString("Optional published agent ID from workspace get. Reads that agent's source and permitted results; imported chats stay private.")
 			// An empty path is allowed (it means the Crew root); minLength 1 refused it and the root could not be listed.
 			p["path"] = map[string]any{"type": "string", "description": "Crew-relative directory to start from. Omit, or pass \"\" or \".\", for the Crew root."}
 			p["depth"] = externalInteger(1, 8)
@@ -192,7 +193,7 @@ func externalTools() ([]externalTool, error) {
 		}
 		add("list_crew_files", "List a Crew's project files (crew-relative paths), paginated. Start from a folder with path, go deeper with depth (up to 8), and find files by name with glob (e.g. **/*Login*). Private areas (chat transcripts under builder/, db/, the Crew's manifests, hidden folders) are never listed. Requires crews:read.", false, false, crewFiles(false), "crew_id")
 		add("search_crew_files", "Search the text inside a Crew's project files for query (case-insensitive), optionally limited to path and glob. Returns matching files and lines, paginated. Private areas are never searched. Requires crews:read.", false, false, crewFiles(true), "crew_id", "query")
-		add("read_crew_file", "Read a Crew project file: text up to 2 MiB returns content and smaller binary files return content_base64. Larger files up to 11 MiB return size/revision metadata without content, for guarded replacement or authenticated download. Private areas and symlinks are refused. Requires crews:read.", false, false, crewID(map[string]any{"path": externalString("Crew-relative file path from list_crew_files.")}), "crew_id", "path")
+		add("read_crew_file", "Read a Crew project file: text up to 2 MiB returns content and smaller binary files return content_base64. Larger files up to 11 MiB return size/revision metadata without content, for guarded replacement or authenticated download. Private areas and symlinks are refused. Requires crews:read.", false, false, crewID(map[string]any{"path": externalString("Crew-relative file path from list_crew_files."), "agent_id": externalString("Optional published agent ID from workspace get.")}), "crew_id", "path")
 		add("list_crew_functions", "List a Crew's functions: name, description, input and result schemas, declared internal triggers only; conversational ask uses messages. Requires crews:read.", false, false, crewID(nil), "crew_id")
 		// crews:run — the call runs as a turn in this user's own continuing
 		// conversation with the Crew, never its main chat.

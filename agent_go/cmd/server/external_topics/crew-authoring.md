@@ -238,3 +238,9 @@ Native Claude Code/Codex chats can use the bundled publish skill or
 follows the saved project/agent identity and keeps online working data, chats
 and Share. Change imported source through another publish; save generated
 results in the authorized runtime folders. Existing Crew editing stays as it was.
+
+Sharing includes published agents' source files under existing file permissions.
+`workspace get` includes their stable IDs. Use `files action=list|search|read`
+with the Crew selector and `agent_id` to inspect that source and permitted
+results. This does not select a Builder chat; imported raw history remains
+Builder-only, downloaded from **Agents → Saved chat** on the website.

@@ -352,7 +352,12 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 			externalError(w, 404, "not_found", "File not found or private.")
 			return
 		}
-		result, err := externalFileRequest(ctx, wf.Request{
+		fileCtx, err := publicationFileContext(ctx, agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath), str("agent_id"))
+		if err != nil {
+			externalError(w, 404, "not_found", err.Error())
+			return
+		}
+		result, err := externalFileRequest(fileCtx, wf.Request{
 			Root: agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath), Operation: operation,
 			Path: str("path"), Query: str("query"), Glob: str("glob"),
 			Offset: externalInt(args, "offset", 0), Limit: externalInt(args, "limit", 100), Depth: externalInt(args, "depth", 4),
@@ -370,7 +375,12 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 			externalError(w, 404, "not_found", "File not found or private.")
 			return
 		}
-		result, err := externalFileRequest(ctx, wf.Request{Root: agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath), Path: str("path"), Operation: "read"})
+		fileCtx, err := publicationFileContext(ctx, agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath), str("agent_id"))
+		if err != nil {
+			externalError(w, 404, "not_found", err.Error())
+			return
+		}
+		result, err := externalFileRequest(fileCtx, wf.Request{Root: agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath), Path: str("path"), Operation: "read"})
 		if err != nil {
 			externalFailure(w, err)
 			return
