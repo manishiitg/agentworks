@@ -5313,11 +5313,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				if senderProvided && senderRaw != nil {
 					// Mirror the live Slack refresh: a step started later in this same
 					// Builder turn must inherit the saved sender, including a clear.
-					if updated := virtualtools.UpdateSessionGmailSender(iwm.sessionID, workspacePath, senderID); updated != nil {
-						if destination, ok := ctx.Value(virtualtools.BotNotificationDestinationKey).(*services.NotificationDestination); ok && destination != nil && destination.WorkspacePath == workspacePath {
-							*destination = *updated
-						}
-					}
+					// Tool resolution reads this locked registry before the request's
+					// context snapshot; do not mutate that shared snapshot in place.
+					virtualtools.UpdateSessionGmailSender(iwm.sessionID, workspacePath, senderID)
 				}
 
 				anyChanged = true

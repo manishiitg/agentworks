@@ -132,16 +132,16 @@ func UpdateSessionSlackWebhook(sessionID string, webhook *services.SlackWebhookD
 // UpdateSessionGmailSender applies a validated workflow sender edit to the
 // current session only. Children created afterward inherit this new selection.
 // Explicit clear must replace, rather than merge, the old sender and overrides.
-func UpdateSessionGmailSender(sessionID, workspacePath, senderID string) *services.NotificationDestination {
+func UpdateSessionGmailSender(sessionID, workspacePath, senderID string) bool {
 	sessionID, workspacePath = strings.TrimSpace(sessionID), strings.TrimSpace(workspacePath)
 	if sessionID == "" || workspacePath == "" {
-		return nil
+		return false
 	}
 	sessionNotificationDestinations.Lock()
 	defer sessionNotificationDestinations.Unlock()
 	dest := cloneNotificationDestination(sessionNotificationDestinations.values[sessionID])
 	if dest == nil || dest.WorkspacePath != workspacePath {
-		return nil
+		return false
 	}
 	if dest.Gmail == nil {
 		dest.Gmail = &services.GmailDest{}
@@ -154,7 +154,7 @@ func UpdateSessionGmailSender(sessionID, workspacePath, senderID string) *servic
 	dest.RunSummaryGmailConnectionIDs = nil
 	dest.PulseSummaryGmailConnectionIDs = nil
 	sessionNotificationDestinations.values[sessionID] = dest
-	return cloneNotificationDestination(dest)
+	return true
 }
 
 // DeleteSessionNotificationDestination releases state when the owning runtime
