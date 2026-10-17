@@ -24,6 +24,7 @@ func TestNonOwnerCodeUsesIsolatedBridgeRuntime(t *testing.T) {
 		}
 		ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: fixtureUserB, Username: fixtureUserB})
 		req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "code", AgentProfileConversationKey: fixtureCodeID, SelectedFolder: root}
+		req.AgentProfileContext.ProjectTitle = "Shared runtime fixture"
 		profile, err := api.resolveAgentProfileForQuery(ctx, &req, fixtureUserB, "qa-code")
 		if err != nil {
 			t.Fatal(err)
