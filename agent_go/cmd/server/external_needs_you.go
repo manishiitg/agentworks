@@ -25,10 +25,14 @@ func externalNeedsYouDefinitions(add func(string, string, bool, bool, map[string
 	add("list_needs_you", "List what is waiting on you across workflows, Flows and Crews: live agent questions (a paused chat, run, scheduled run or function call, with when it expires) and open decisions (with Pulse's recommendation when there is one) and suggestions sent to you as owner. Urgent first. Answer with answer_needs_you.", false, false, filter)
 	add("answer_needs_you", "Answer or dismiss one item from list_needs_you. Pass option (an option id or title) or answer (free text), or dismiss=true for a decision. A live question goes back to the paused chat or run, which continues; a decision is recorded as answered by you via MCP and applied by the Builder as from the app. If someone already answered, says so.", true, false, map[string]any{
 		"id":      externalString("Item id from needs_you action=list."),
-		"option":  externalString("Chosen option id or title."),
+		"option":  externalString("Chosen option id or title, or your own choice when allow_free_text is true."),
 		"answer":  map[string]any{"type": "string", "maxLength": 8000, "description": "Free-text answer or note."},
 		"dismiss": map[string]any{"type": "boolean", "description": "Dismiss a decision without answering."},
 	}, "id")
+	add("dismiss_needs_you", "Dismiss an open decision or suggestion with a reason, using the same access as Needs you in the app. This records who dismissed it and why; it does not answer, approve or apply it. Live questions cannot be dismissed.", true, false, map[string]any{
+		"id":     externalString("Item id from needs_you action=list."),
+		"reason": map[string]any{"type": "string", "minLength": 1, "maxLength": 8000, "description": "Why this decision no longer needs an answer, for example it was superseded."},
+	}, "id", "reason")
 }
 
 type needsYouPlace struct {
@@ -75,7 +79,7 @@ func (api *StreamingAPI) needsYouPlaces(ctx context.Context, claims *UserClaims,
 func (api *StreamingAPI) externalNeedsYou(w http.ResponseWriter, r *http.Request, name string, args map[string]any, visible []DiscoveredWorkflow) {
 	ctx := r.Context()
 	claims := GetUserFromContext(ctx)
-	if t := claims.AccessToken; t != nil && name == "answer_needs_you" && !t.Allows("runs:execute") && !t.Allows("crews:run") && !t.Allows("builder:chat") {
+	if t := claims.AccessToken; t != nil && name != "list_needs_you" && !t.Allows("runs:execute") && !t.Allows("crews:run") && !t.Allows("builder:chat") {
 		externalError(w, 403, "insufficient_scope", "This connection cannot answer questions.")
 		return
 	}
@@ -173,6 +177,14 @@ func (api *StreamingAPI) externalNeedsYou(w http.ResponseWriter, r *http.Request
 	option := strings.TrimSpace(externalArg(args, "option"))
 	answer := strings.TrimSpace(externalArg(args, "answer"))
 	dismiss, _ := args["dismiss"].(bool)
+	if name == "dismiss_needs_you" {
+		dismiss = true
+		answer = strings.TrimSpace(externalArg(args, "reason"))
+		if answer == "" {
+			externalError(w, 400, "invalid_arguments", "Give a reason for dismissing this decision.")
+			return
+		}
+	}
 	for _, q := range questions {
 		if q.request.UniqueID != id {
 			continue
@@ -215,8 +227,14 @@ func (api *StreamingAPI) externalNeedsYou(w http.ResponseWriter, r *http.Request
 				}
 			}
 			if req.SelectedOptionID == "" {
-				externalError(w, 400, "invalid_arguments", "Unknown option; use an option id or title from needs_you action=list.")
-				return
+				if !d.input.AllowFreeText {
+					externalError(w, 400, "invalid_arguments", "This decision needs one of its listed choices. Choose an option from needs_you action=list, or dismiss it with a reason if it is outdated.")
+					return
+				}
+				req.Note = option
+				if answer != "" {
+					req.Note += "\n\n" + answer
+				}
 			}
 		}
 		var (

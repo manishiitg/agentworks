@@ -35,7 +35,7 @@ var externalToolMerges = []externalToolMerge{
 		{"get", "get_settings"}, {"update", "update_settings"},
 	}},
 	{"needs_you", "What is waiting on you across workflows and Crews: agent questions and open decisions. List them, then answer or dismiss one.", [][2]string{
-		{"list", "list_needs_you"}, {"answer", "answer_needs_you"},
+		{"list", "list_needs_you"}, {"answer", "answer_needs_you"}, {"dismiss", "dismiss_needs_you"},
 	}},
 	{"account", "Shared-account token use, daily and weekly limits, and which models an account may use. Limits and models are admin-only.", [][2]string{
 		{"usage", "get_token_usage"}, {"set_limits", "set_token_limits"}, {"set_allowed_models", "set_allowed_models"},

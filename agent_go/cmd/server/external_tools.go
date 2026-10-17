@@ -799,7 +799,7 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	// Global tools need no workflow. They run before workflow resolution so a
 	// restricted token can still obtain guidance and context.
 	switch tool.Name {
-	case "list_needs_you", "answer_needs_you":
+	case "list_needs_you", "answer_needs_you", "dismiss_needs_you":
 		api.externalNeedsYou(w, r, tool.Name, args, visible)
 		return
 	case "get_agent_context":

@@ -795,9 +795,12 @@ func dismissReportHumanInput(ctx context.Context, workspacePath, inputID string,
 	if err := recordPulseOwnerResponseTx(ctx, tx, normalized, input.ID, "dismissed", "", now); err != nil {
 		return nil, err
 	}
+	// A dismissal is not an answer. Keep its explanation in the existing
+	// lifecycle event without overwriting a previous answer's note.
+	details, _ := json.Marshal(map[string]string{"reason": strings.TrimSpace(req.Note)})
 	if err := writeReportHumanInputEvent(ctx, tx, normalized, reportHumanInputEvent{
 		InputID: input.ID, EventType: "dismissed", Status: "dismissed", ActorID: req.AnsweredBy,
-		ActorKind: req.AnsweredByKind, Channel: req.AnsweredVia, SessionID: req.SessionID, CreatedAt: now,
+		ActorKind: req.AnsweredByKind, Channel: req.AnsweredVia, SessionID: req.SessionID, Details: string(details), CreatedAt: now,
 	}); err != nil {
 		return nil, err
 	}

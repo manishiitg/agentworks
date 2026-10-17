@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"slices"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
@@ -25,6 +27,20 @@ func TestExternalBuilderConnectedServersAndBridgeToolGate(t *testing.T) {
 	}
 	if !gate.Admit("update_step") || !gate.Admit("read_file") {
 		t.Fatal("managed Builder tools were removed")
+	}
+	_, bridge := externalBuilderTransport(claims)
+	tools, _, _ := createReportHumanInputTools()
+	for _, tool := range tools {
+		name := tool.Function.Name
+		if name == "answer_human_input_request" {
+			if gate.Admit(name) || slices.Contains(bridge, name) {
+				t.Fatal("MCP Builder can answer a decision that needs the person; use needs_you")
+			}
+			continue
+		}
+		if !gate.Admit(name) || !slices.Contains(bridge, name) || !agentworksproduct.ChatAllowsTool("builder", name) {
+			t.Fatalf("decision tool missing from Builder registration or direct bridge: %s", name)
+		}
 	}
 	if got := externalBuilderMCPServers(QueryRequest{}, []string{"gmail"}); len(got) != 1 || got[0] != "gmail" {
 		t.Fatalf("ordinary browser servers changed: %v", got)
