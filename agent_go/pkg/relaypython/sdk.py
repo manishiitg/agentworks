@@ -187,7 +187,7 @@ class Context:
                 call["completed_at"] = time.time()
                 self._save_trace()
 
-    async def call_agent(self, *, system_prompt, user_message=None, messages=None,
+    async def call_agent(self, *, user_message=None, system_prompt=None, messages=None,
                          model=None, name=None, tools=(), skills=(), mcp=(),
                          output_schema=None, max_turns=20, recovery=None):
         if recovery not in (None, "restart"):
@@ -196,8 +196,10 @@ class Context:
             messages = [user_message] if user_message is not None else []
         elif user_message is not None:
             raise ValueError("Use messages or user_message, not both")
-        if not isinstance(system_prompt, str) or not messages or not all(isinstance(v, str) for v in messages):
-            raise ValueError("system_prompt must be text and messages must be a nonempty list of text")
+        if system_prompt is not None and not isinstance(system_prompt, str):
+            raise ValueError("system_prompt must be text when supplied")
+        if not isinstance(messages, list) or not messages or not all(isinstance(v, str) and v.strip() for v in messages):
+            raise ValueError("Provide user_message or messages with nonempty text")
         handlers, definitions = {}, []
         for fn in tools:
             if not hasattr(fn, "__relay_tool__"):
@@ -217,13 +219,16 @@ class Context:
                     "status": "running", "started_at": time.time(), "tools": []}
             self._trace["calls"].append(call)
             self._save_trace()
-            _json_write(self._ipc / (call_id + ".request.json"), {
-                "id": call_id, "name": call["name"], "system_prompt": system_prompt,
+            request = {
+                "id": call_id, "name": call["name"],
                 "messages": messages, "model": model, "tools": definitions,
                 "skills": list(skills), "mcp": list(mcp), "output_schema": output_schema,
                 "max_turns": max_turns,
                 "recovery": recovery,
-            })
+            }
+            if system_prompt is not None:
+                request["system_prompt"] = system_prompt
+            _json_write(self._ipc / (call_id + ".request.json"), request)
             handled = set()
             try:
                 while True:

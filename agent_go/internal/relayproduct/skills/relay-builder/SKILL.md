@@ -48,8 +48,7 @@ from agentworks import agent
 async def extract_invoice(text):
     """Extract the invoice fields."""
     return await agent(
-        name="extract", system_prompt="Extract invoice fields. Return JSON only.",
-        user_message=text,
+        name="extract", user_message=f"Extract invoice fields. Return JSON only.\n\n{text}",
         output_schema={"type": "object", "required": ["amount"],
                        "properties": {"amount": {"type": "number"}}},
     )
@@ -57,8 +56,8 @@ async def extract_invoice(text):
 @DBOS.step(name="review_invoice")
 async def review_invoice(invoice):
     """Review invoices over 1000."""
-    return await agent(name="review", system_prompt="Review the invoice. Return JSON.",
-                       user_message=json.dumps(invoice))
+    return await agent(name="review",
+                       user_message=f"Review the invoice. Return JSON.\n\n{json.dumps(invoice)}")
 
 @DBOS.workflow(max_recovery_attempts=3)
 async def run(INPUT):
@@ -68,8 +67,9 @@ async def run(INPUT):
     return {"invoice": invoice}
 ```
 
-The thin `agentworks` module supplies agent, classifier, mcp, tool, vault, variables, run_dir
-and async admit. It supplies no workflow or step decorators. Use `from agentworks
+The thin `agentworks` module supplies inline agent, classifier, mcp, tool, vault, variables, run_dir
+and async admit. Python controls the process; Flows do not call Crew agents. Use a Goal
+when the work needs both a Flow and a Crew. It supplies no workflow or step decorators. Use `from agentworks
 import tool` for model-callable Python tools. Implement real services; do not leave
 placeholder responses. Platform agent/MCP calls must run within a step of the root
 run workflow; platform calls in child workflows are currently unsupported.
@@ -130,8 +130,9 @@ Publishing freezes source/configuration; selected secret access remains live.
 
 ## Agent calls and tools
 
-- agent is keyword-only. system_prompt is text. Pass user_message or messages
-  (nonempty ordered text list), never both. Each call gets a new session. Messages inside
+- agent is keyword-only. Start with user_message; system_prompt is optional text for
+  separate instructions. Pass user_message or messages (nonempty ordered text list),
+  never both; blank messages are rejected. Each call gets a new session. Messages inside
   that call share context; separate calls do not. There is no resume_agent.
 - model is provider:model_id or {provider, model_id, connection_id, options}; omitted
   uses the configured Builder model. Use current supported provider/model names.

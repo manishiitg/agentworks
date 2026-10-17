@@ -91,6 +91,11 @@ func (api *StreamingAPI) callPythonRelayAgent(ctx context.Context, sctx *Schedul
 	if len(call.Messages) == 0 || len(call.Messages) > 100 || call.MaxTurns < 1 || call.MaxTurns > 100 {
 		return nil, fmt.Errorf("call_agent needs 1-100 messages and max_turns 1-100")
 	}
+	for _, message := range call.Messages {
+		if strings.TrimSpace(message) == "" {
+			return nil, fmt.Errorf("provide a task with nonempty text for the Flow agent")
+		}
+	}
 	model, err := pythonRelayCallModel(call, sctx.Capabilities)
 	if err != nil {
 		return nil, err

@@ -61,6 +61,14 @@ func TestPythonChainCallsToolsAndReturnsData(t *testing.T) {
 from relay_sdk import tool
 
 async def run(INPUT, ctx):
+    for arguments in ({}, {"user_message": " "}, {"messages": [""]},
+                      {"messages": "task"}, {"user_message": "task", "system_prompt": 7}):
+        try:
+            await ctx.call_agent(**arguments)
+        except ValueError:
+            pass
+        else:
+            raise RuntimeError("invalid task was admitted")
     @tool
     async def lookup(customer_id: str):
         """Read the configured customer."""
@@ -74,7 +82,7 @@ async def run(INPUT, ctx):
         return {"customer_id": customer_id, "token": ctx.vault("DEMO"), "label": ctx.variables["label"]}
     extracted = await ctx.call_agent(name="extract", system_prompt="Exact prompt", messages=["first", "second"], tools=[lookup])
     if extracted["score"] > 5:
-        reviewed = await ctx.call_agent(name="review", system_prompt="Review", user_message=json.dumps(extracted))
+        reviewed = await ctx.call_agent(name="review", user_message=json.dumps(extracted))
     else:
         raise RuntimeError("wrong branch")
     mcp = await ctx.call_mcp(server="authorized", tool="fetch", arguments={"id": INPUT["id"]})
@@ -100,8 +108,16 @@ async def run(INPUT, ctx):
 			}
 			return map[string]interface{}{"score": 7}, nil
 		case 2:
-			if call.Name != "review" || len(call.Tools) != 0 {
+			if call.Name != "review" || len(call.Tools) != 0 || call.SystemPrompt != "" {
 				t.Errorf("separate call inherited tools: %+v", call)
+			}
+			raw, readErr := os.ReadFile(filepath.Join(c.root, "Workflow/demo/runs/iteration-1-hook/.relay_ipc/call-2.request.json"))
+			var request map[string]json.RawMessage
+			if readErr != nil || json.Unmarshal(raw, &request) != nil {
+				t.Fatalf("read actual agent request: %s %v", raw, readErr)
+			}
+			if _, exists := request["system_prompt"]; exists {
+				t.Fatal("user-message-only call sent an empty system prompt")
 			}
 			return map[string]interface{}{"ok": true}, nil
 		case 3:

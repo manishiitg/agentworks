@@ -31,11 +31,13 @@ explicit published version; never enumerate private runs/ from a shell. Creating
 Dashboard does not change relay.py, trigger behavior or the API's JSON result. Existing graph Flows remain on their saved legacy runtime; do not silently
 convert them. New Flows use relay_runtime: python and relay_durability: dbos.
 
-Python owns chaining, conditions, loops and data transformations. Wrap operations
+Python controls the process: chaining, conditions, loops and data transformations. Wrap operations
 in native @DBOS.step functions and orchestration in @DBOS.workflow. Import agent,
 mcp, tool, vault, variables, run_dir and admit from agentworks as needed. Each await
-agent(...) starts a fresh platform agent session with exact authored prompts,
-model, tools, skills, MCP selections and optional output_schema. No resume_agent.
+agent(...) starts a fresh inline agent for a task. Start with user_message; add
+system_prompt only when separate instructions help. Keep the person's exact prompts,
+model, tools, skills, MCP selections and optional output_schema. Flows do not call
+Crew agents; use a Goal when the work needs both a Flow and a Crew. No resume_agent.
 Completed DBOS steps are reused after recovery. Ordinary in-flight service steps
 may run again, so writes need service-side idempotency. Call await admit() before
 custom service operations; agent/MCP calls perform live admission automatically.

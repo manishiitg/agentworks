@@ -33,7 +33,7 @@ async def choose_team(message):
 
 @DBOS.step(name="reply")
 async def reply(label):
-    return await agent(system_prompt="Draft a reply", user_message=label)
+    return await agent(user_message="Draft a reply for " + label)
 
 @DBOS.workflow()
 async def run(INPUT):
@@ -47,7 +47,7 @@ async def run(INPUT):
 	agentCalls := 0
 	cfg.CallAgent = func(ctx context.Context, call Call, tool ToolCaller) (interface{}, error) {
 		agentCalls++
-		if len(call.Messages) != 1 || call.Messages[0] != "billing" {
+		if len(call.Messages) != 1 || call.Messages[0] != "Draft a reply for billing" || call.SystemPrompt != "" {
 			t.Fatalf("classifier result did not reach the agent: %+v", call)
 		}
 		return map[string]interface{}{"reply": "Billing reply"}, nil
