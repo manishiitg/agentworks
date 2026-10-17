@@ -784,7 +784,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, o
 
 	if variableValues != nil {
 		hcpo.variableValues = variableValues
-		SyncVariablesToWorkspaceEnv(hcpo.BaseOrchestrator, variableValues)
+		SyncGroupVariablesToWorkspaceEnv(hcpo.BaseOrchestrator, hcpo.variablesManifest, variableValues)
 		hcpo.GetLogger().Info(fmt.Sprintf("✅ [VARIABLE LOADING] Set hcpo.variableValues with %d variables", len(variableValues)))
 	} else {
 		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ [VARIABLE LOADING] variableValues is nil - no variables loaded"))

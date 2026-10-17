@@ -111,7 +111,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 			g := hcpo.variablesManifest.Groups[0]
 			merged := MergeGroupWithDefaults(hcpo.variablesManifest, g.Values)
 			hcpo.variableValues = merged
-			SyncVariablesToWorkspaceEnv(hcpo.BaseOrchestrator, merged)
+			SyncGroupVariablesToWorkspaceEnv(hcpo.BaseOrchestrator, hcpo.variablesManifest, merged)
 			hcpo.GetLogger().Info(fmt.Sprintf("[WORKSHOP] Auto-loaded variable values from single group %q (%d vars, %d after merge with defaults)", g.Name, len(g.Values), len(merged)))
 		} else {
 			vals, loadErr := LoadVariableValues(ctx, hcpo.BaseOrchestrator, hcpo.GetWorkspacePath(), hcpo.GetWorkspacePath())
@@ -119,7 +119,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 				hcpo.GetLogger().Warn(fmt.Sprintf("[WORKSHOP] Failed to load variable values: %v", loadErr))
 			} else if vals != nil {
 				hcpo.variableValues = vals
-				SyncVariablesToWorkspaceEnv(hcpo.BaseOrchestrator, vals)
+				SyncGroupVariablesToWorkspaceEnv(hcpo.BaseOrchestrator, hcpo.variablesManifest, vals)
 				hcpo.GetLogger().Info(fmt.Sprintf("[WORKSHOP] Loaded %d variable values via fallback", len(vals)))
 			}
 		}
@@ -439,7 +439,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) applyWorkshopExecuteOptions(ctx conte
 			if groupValues != nil {
 				merged := MergeGroupWithDefaults(hcpo.variablesManifest, groupValues)
 				hcpo.variableValues = merged
-				SyncVariablesToWorkspaceEnv(hcpo.BaseOrchestrator, merged)
+				SyncGroupVariablesToWorkspaceEnv(hcpo.BaseOrchestrator, hcpo.variablesManifest, merged)
 				hcpo.GetLogger().Info(fmt.Sprintf("[WORKSHOP] Loaded %d variable values for group %s (resolved=%s, %d after merge with defaults): %v", len(groupValues), opts.GroupName, resolvedGroupName, len(merged), merged))
 			} else {
 				// Group not found — return a clear error so the agent asks the user for the correct group name.

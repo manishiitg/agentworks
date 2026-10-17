@@ -364,6 +364,17 @@ func (bo *BaseOrchestrator) SetWorkspaceVariables(values map[string]string) {
 // removes variables that were renamed or deleted so builder shells cannot see
 // stale values from an earlier manifest or group.
 func (bo *BaseOrchestrator) ReplaceWorkspaceVariables(values map[string]string) {
+	bo.replaceWorkspaceVariables(values, nil)
+}
+
+// ReplaceDeclaredWorkspaceVariables also clears declared variables absent from
+// this execution when its environment was inherited from another orchestrator.
+// Other environment namespaces and runtime identity entries stay untouched.
+func (bo *BaseOrchestrator) ReplaceDeclaredWorkspaceVariables(values map[string]string, declaredNames []string) {
+	bo.replaceWorkspaceVariables(values, declaredNames)
+}
+
+func (bo *BaseOrchestrator) replaceWorkspaceVariables(values map[string]string, declaredNames []string) {
 	copied := make(map[string]string, len(values))
 	for name, value := range values {
 		if name != "" {
@@ -375,6 +386,11 @@ func (bo *BaseOrchestrator) ReplaceWorkspaceVariables(values map[string]string) 
 	if bo.workspaceEnvRef != nil {
 		for name := range bo.workspaceVars {
 			delete(bo.workspaceEnvRef, "VAR_"+name)
+		}
+		for _, name := range declaredNames {
+			if name != "" {
+				delete(bo.workspaceEnvRef, "VAR_"+name)
+			}
 		}
 		for name, value := range copied {
 			bo.workspaceEnvRef["VAR_"+name] = value

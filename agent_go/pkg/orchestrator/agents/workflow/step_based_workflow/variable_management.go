@@ -134,9 +134,8 @@ func MergeGroupWithDefaults(manifest *VariablesManifest, groupValues map[string]
 	return merged
 }
 
-// SyncVariablesToWorkspaceEnv injects the current variableValues into workspaceEnvRef
-// with a SECRET_ prefix so they pass through the workspace API whitelist filter.
-// This makes workflow variables available as $VAR_NAME in execute_shell_command.
+// SyncVariablesToWorkspaceEnv merges a partial variable update as VAR_* entries.
+// Fully resolved groups use SyncGroupVariablesToWorkspaceEnv instead.
 func SyncVariablesToWorkspaceEnv(bo *orchestrator.BaseOrchestrator, variableValues map[string]string) {
 	if bo == nil || len(variableValues) == 0 {
 		return
@@ -158,6 +157,23 @@ func SyncVariablesToWorkspaceEnv(bo *orchestrator.BaseOrchestrator, variableValu
 	}
 	bo.UnlockWorkspaceEnv()
 	bo.GetLogger().Info(fmt.Sprintf("[VARIABLES] Synced %d variable values as VAR_* env vars: %v", len(variableValues), keys))
+}
+
+// SyncGroupVariablesToWorkspaceEnv replaces the complete resolved group. A
+// declared optional value that this group leaves unset cannot inherit a prior
+// group's override, including across separate orchestrators sharing tool env.
+func SyncGroupVariablesToWorkspaceEnv(bo *orchestrator.BaseOrchestrator, manifest *VariablesManifest, values map[string]string) {
+	if bo == nil {
+		return
+	}
+	var names []string
+	if manifest != nil {
+		for _, variable := range manifest.Variables {
+			names = append(names, variable.Name)
+		}
+	}
+	bo.ReplaceDeclaredWorkspaceVariables(values, names)
+	bo.GetLogger().Info(fmt.Sprintf("[VARIABLES] Replaced resolved group snapshot: values=%d declared=%d", len(values), len(names)))
 }
 
 // SyncExactVariablesToWorkspaceEnv publishes a fully resolved variable group to
