@@ -4076,6 +4076,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, admitErr.Error(), status)
 		return
 	}
+	if resolvedProfile != nil && resolvedProfile.Publication != nil {
+		r = r.WithContext(context.WithValue(r.Context(), publicationExecutionKey{}, resolvedProfile.Publication))
+	}
+
 	if err := api.prepareCodeChatAttachments(r.Context(), &req, resolvedProfile, currentUserID, sessionID); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -5960,7 +5964,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			p := resolvedProfile.Publication
 			cliReadPaths = append(cliReadPaths, p.Root)
 			if !crewReaderCLI {
-				cliWritePaths = publishedRuntimeRoots(p.Root)
+				cliWritePaths = publishedRuntimeRoots(p.runtimeRoot())
 			}
 		}
 		if isWorkflowPhase && isGoalLeadSessionID(sessionID) {
@@ -6631,8 +6635,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 					if resolvedProfile.Publication != nil && !crewReadOnlyTurn {
 						guardWriteRoot = ""
-						guardReadOnly = append([]string{profileWrite}, guardReadOnly...)
-						guardWrite = publishedRuntimeRoots(profileRoot)
+						guardReadOnly = append([]string{profileWrite, resolvedProfile.Publication.sourceRoot() + "/"}, guardReadOnly...)
+						guardWrite = publishedRuntimeRoots(resolvedProfile.Publication.runtimeRoot())
 					}
 					executorWrite := append(append(append([]string{}, chatHistoryGrants...), workGrantWrite...), crewRefWrite...)
 					if resolvedProfile.Publication != nil {
@@ -6648,6 +6652,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					workspace.SetSessionWorkingDir(sessionID, profileRoot)
 					if source := publicationSourceForProfile(resolvedProfile); source != "" {
 						workspace.SetSessionWorkingDir(sessionID, source)
+					}
+					if p := resolvedProfile.Publication; p != nil {
+						common.ReplaceSessionShellEnvPrefix(sessionID, "AGENTWORKS_PUBLICATION_", map[string]string{"AGENTWORKS_PUBLICATION_SOURCE": codingAgentWorkspaceWorkingDir(p.sourceRoot()), "AGENTWORKS_PUBLICATION_RUNTIME": codingAgentWorkspaceWorkingDir(p.runtimeRoot())})
 					}
 					if brainGrant != "" {
 						syncBrainAfterFileTools(workspaceExecutors, currentUserID)

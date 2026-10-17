@@ -108,6 +108,10 @@ func (api *StreamingAPI) codeShellFolderGuard(ctx context.Context, userID, root 
 	write := strings.TrimSuffix(root, "/") + "/"
 	reads := append([]string{write}, agentProfileReadOnlyFolders(sandbox, nil)...)
 	writes := []string{write}
+	if p, err := readPublishedProject(ctx, root); err == nil && p != nil {
+		writes = publishedRuntimeRoots(p.runtimeRoot())
+		reads = append(reads, p.sourceRoot()+"/")
+	}
 	grantRead, grantWrite, _, _ := workFolderGuardInputs(ctx)
 	reads = appendUniqueStrings(reads, grantRead...)
 	writes = appendUniqueStrings(writes, grantWrite...)
@@ -260,7 +264,14 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 	// Tracked before it starts, so a failed start or upgrade never leaves an
 	// untracked shell: the idle reaper stops it.
 	codeShellTrack(shellID, ownerID, projectID, userID)
-	socket, err := codeShellStart(withCodeShellUser(r.Context(), userID), shellID, root, api.codeShellFolderGuard(r.Context(), userID, root), cols, rows)
+	workDir := root
+	if p, e := readPublishedProject(r.Context(), root); e != nil {
+		http.Error(w, "Publication status unavailable; try again.", 503)
+		return
+	} else if p != nil {
+		workDir = p.runtimeRoot() + "/outputs"
+	}
+	socket, err := codeShellStart(withCodeShellUser(r.Context(), userID), shellID, workDir, api.codeShellFolderGuard(r.Context(), userID, root), cols, rows)
 	if err != nil {
 		log.Printf("[CODE_SHELL] start %s: %v", shellID, err)
 		http.Error(w, "could not start the shell", http.StatusServiceUnavailable)

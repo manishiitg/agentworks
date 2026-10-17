@@ -481,6 +481,25 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		req.SelectedFolder = workspacePath
 	}
 
+	var publication *publishedProject
+	if isProjectProfileID(profile.ID) {
+		agentID := publicationAgentID(req.AgentProfileConversationKey)
+		if agentID != "" && !crewOwned {
+			return nil, fmt.Errorf("Open a published agent from a Crew you may build. Use the shared dashboard for Run work.")
+		}
+		publication, err = readPublishedAgent(ctx, agentProfileRuntimeWorkspace(userID, workspacePath), agentID)
+		if err != nil {
+			return nil, err
+		}
+		if agentID != "" && publication == nil {
+			return nil, fmt.Errorf("This published agent is unavailable. Choose one from the Crew's Agents list.")
+		}
+		if publication != nil {
+			ctx = context.WithValue(ctx, publicationExecutionKey{}, publication)
+			req.Provider, req.ModelID, req.ConnectionID = publication.Provider, publication.ModelID, publication.ConnectionID
+		}
+	}
+
 	promptContext := req.AgentProfileContext
 	promptContext.ProjectTitle = strings.TrimSpace(promptContext.ProjectTitle)
 	if promptContext.ProjectTitle == "" {
@@ -664,12 +683,21 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	projectInstructions := ""
 	if !isGlobalScope && isProjectProfileID(profile.ID) {
 		file := agentProfileRuntimeWorkspace(userID, workspacePath) + "/" + projectinstructions.FileName
-		if content, found, err := readFileFromWorkspace(ctx, file); err != nil {
+		if content, found, err := readFileFromWorkspace(contextWithoutPublication(ctx), file); err != nil {
 			log.Printf("[PROJECT INSTRUCTIONS] Failed to read %s: %v", file, err)
 		} else if found {
 			projectInstructions = projectinstructions.Section(content)
 		}
 	}
+
+	if publication != nil {
+		for _, name := range []string{projectinstructions.FileName, "AGENTS.md", "CLAUDE.md"} {
+			if content, found, err := readFileFromWorkspace(ctx, publication.sourceRoot()+"/"+name); err == nil && found && strings.TrimSpace(content) != "" {
+				projectInstructions += "\n\n## Published agent instructions (" + name + ")\n" + projectinstructions.Section(content)
+			}
+		}
+	}
+
 	var resolvedKeys *llm.ProviderAPIKeys
 	requestHasExplicitModel := strings.TrimSpace(req.Provider) != "" && strings.TrimSpace(req.ModelID) != ""
 	if provider, modelID := resolveProfileRuntimeModel(profile.Runtime, req.Provider, req.ModelID); provider != "" && modelID != "" {
@@ -698,7 +726,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		// Interactive chats only: a schedule, webhook, bot or automatic notice keeps the account the
 		// project names (else the server's) instead of silently spending someone's personal plan.
 		interactiveTurn := strings.TrimSpace(req.TriggeredBy) == "" && strings.TrimSpace(req.BotPlatform) == "" && !req.IsAutoNotification
-		if strings.TrimSpace(req.ConnectionID) == "" && !isGlobalScope && interactiveTurn {
+		if publication == nil && strings.TrimSpace(req.ConnectionID) == "" && !isGlobalScope && interactiveTurn {
 			req.ConnectionID = ownDefaultProviderAccountID(ctx, userID, provider)
 		}
 		req.LLMConfig = &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: provider, ModelID: modelID, Options: llmOptions, ConnectionID: req.ConnectionID}}
@@ -750,10 +778,6 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		connections = chatMCPConnections(ctx, profile.ID, userID, req.SelectedFolder)
 		knowledgeKey = knowledgeRuntimeConfigKey(workspacePath)
 	}
-	publication, publicationErr := readPublishedProject(ctx, agentProfileRuntimeWorkspace(userID, workspacePath))
-	if publicationErr != nil {
-		return nil, publicationErr
-	}
 	if publication != nil {
 		req.Provider, req.ModelID, req.ConnectionID = publication.Provider, publication.ModelID, publication.ConnectionID
 		if req.LLMConfig != nil {
@@ -767,7 +791,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 		resolvedKeys = keys
 		identityKey += ":published:" + publication.Revision
-		rendered += "\n\n" + publishedSourceNotice
+		rendered += "\n\n" + publishedSourceNotice + "\nThis published agent saves working data under " + publication.runtimeRoot() + ". AGENTWORKS_PUBLICATION_SOURCE and AGENTWORKS_PUBLICATION_RUNTIME name its source and working-data directories in scripts."
 		if publishedBuilderHandoff(req, !crewOwned) {
 			rendered += "\n\nPrivate Builder handoff summary:\n" + publicationHistorySummary(publication)
 		}

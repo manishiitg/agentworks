@@ -16,6 +16,9 @@ import (
 //go:embed skills/agentworks/SKILL.md
 var installedSkillFile embed.FS
 
+//go:embed skills/publish/SKILL.md
+var publicationSkillFile embed.FS
+
 const EntrySkillVersion = "1.0.6"
 
 // EntrySkillFiles is shared by CLI installation and hosted skill packages.
@@ -35,9 +38,17 @@ func EntrySkillFiles() map[string]string {
 // customized copy is never clobbered silently.
 func InstallSkill(dir string, force bool) (string, error) {
 	target := filepath.Join(dir, "agentworks", "SKILL.md")
-	files := EntrySkillFiles()
+	files := map[string]string{}
+	for relative, content := range EntrySkillFiles() {
+		files[filepath.Join("agentworks", relative)] = content
+	}
+	publication, err := publicationSkillFile.ReadFile("skills/publish/SKILL.md")
+	if err != nil {
+		return "", err
+	}
+	files[filepath.Join("publish", "SKILL.md")] = string(publication)
 	for relative := range files {
-		path := filepath.Join(dir, "agentworks", filepath.FromSlash(relative))
+		path := filepath.Join(dir, filepath.FromSlash(relative))
 		if _, err := os.Lstat(path); err == nil && !force {
 			return "", fmt.Errorf("skill already installed at %s (use force to overwrite)", path)
 		} else if err != nil && !os.IsNotExist(err) {
@@ -45,7 +56,7 @@ func InstallSkill(dir string, force bool) (string, error) {
 		}
 	}
 	for relative, content := range files {
-		path := filepath.Join(dir, "agentworks", filepath.FromSlash(relative))
+		path := filepath.Join(dir, filepath.FromSlash(relative))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return "", err
 		}

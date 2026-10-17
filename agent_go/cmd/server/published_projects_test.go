@@ -62,3 +62,57 @@ func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 		t.Fatal("private handoff crossed interactive Builder boundary")
 	}
 }
+
+// Adding an agent must not freeze or overwrite the existing Crew. Its source
+// and private context stay separate from Main, while republish keeps the ID.
+func TestPublishedAgentKeepsDestinationEditableAndPinsItsSource(t *testing.T) {
+	_, _ = newCodePrivacyFixture(t)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	registry := withProjectOwnerRegistry(t)
+	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000"}); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
+	p := &publishedProject{Root: codePrivacyOwnerRoot, WorkspaceID: "c0de0001-0000", ProfileID: "code", OwnerID: "owner", PublisherID: "owner", AgentID: "37b46a91-e76d-4b5c-8e05-ad78acbc1fd3", Name: "Invoices", ProjectID: "source", Revision: "revision-one", SourcePaths: []string{"code/run.py", "assets/logo.png"}}
+	if err := savePublishedProject(p); err != nil {
+		t.Fatal(err)
+	}
+	if main, err := readPublishedProject(ctx, p.Root); err != nil || main != nil {
+		t.Fatalf("agent replaced Main: %v %v", main, err)
+	}
+	if got := publishedWriteRefusal(ctx, p.Root+"/PROJECT_INSTRUCTIONS.md"); got != "" {
+		t.Fatal("ordinary Crew editing changed:", got)
+	}
+	if strings.HasPrefix(p.sourceRoot(), p.Root+"/") {
+		t.Fatal("imported source is under the existing writable Crew")
+	}
+	if publicationAgentID(p.conversationKey()) != p.AgentID {
+		t.Fatal("project identity was lost in the private tab binding")
+	}
+	running := context.WithValue(ctx, publicationExecutionKey{}, p)
+	if got := publishedWriteRefusal(running, p.Root+"/code/run.py"); got == "" {
+		t.Fatal("published agent source became writable")
+	}
+	if got := publishedWriteRefusal(running, p.sourceRoot()+"/assets/logo.png"); got == "" {
+		t.Fatal("physical source bypassed the publication rule")
+	}
+	if got := publishedWriteRefusal(running, p.runtimeRoot()+"/reports/result.txt"); got != "" {
+		t.Fatal(got)
+	}
+	if got := publishedReadPath(running, p.Root+"/assets/logo.png"); got != p.sourceRoot()+"/assets/logo.png" {
+		t.Fatal("source asset was replaced by runtime assets:", got)
+	}
+	next := *p
+	next.Revision = "revision-two"
+	next.Name = "Invoices updated"
+	if err := savePublishedProject(&next); err != nil {
+		t.Fatal(err)
+	}
+	if got := publishedReadPath(running, p.Root+"/code/run.py"); got != p.sourceRoot()+"/code/run.py" {
+		t.Fatal("running agent changed revision:", got)
+	}
+	loaded, err := readPublishedAgent(ctx, p.Root, p.AgentID)
+	if err != nil || loaded.Revision != next.Revision || loaded.AgentID != p.AgentID {
+		t.Fatalf("republish lost stable identity: %+v %v", loaded, err)
+	}
+}

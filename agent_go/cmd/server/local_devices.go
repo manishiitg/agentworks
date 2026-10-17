@@ -180,7 +180,7 @@ func codeLocalFilesInstructions(target *codeLocalFileTarget) string {
 	if target == nil {
 		return "\nThis Code chat is in Local mode, with no folder selected yet. Conversation, this chat’s uploaded attachments and the Local CLI connection, Costs and Models views are available. Ask the user to connect their CLI and select a folder before file work. MCP connections, skills, secrets, background agents and server file/terminal/browser tools are disabled. Never substitute server files.\n"
 	}
-	return fmt.Sprintf("\nThis Code session's file access is connected to the user's computer: device_id=%q, resource_id=%q. Use the existing execute_shell_command for local inspection, reads, writes, builds, tests and git, and diff_patch_workspace_file for edits. These tools are bound to this laptop folder internally and run on the laptop. Paths are relative to its root, or absolute underneath it. Read files with shell commands such as cat, sed or head. No separate local tools or device arguments are needed. Shell is enabled automatically; read-only folder grants remain read-only in the sandbox. The same chat, agent, model, project settings and server runtime remain in use. File contents and command output returned by tools reach the server/model and may be retained in server conversation history under its normal administrator and Code reviewer access rules. Dashboard/database, schedules/webhook triggers and built-in Slack, WhatsApp and Gmail/Google integrations are unavailable in this local mode; do not substitute shell commands, other connections or background work for those disabled features. Only this folder's local file and granted shell tools, read-only chat attachments, conversation, UI controls, Costs and Models are available. MCP connections, reusable skills, project/Vault secrets, background delegation and server terminal/browser tools are disabled for this turn. Do not attempt to load or use saved connections, skills or secrets. The right side shows CLI connection controls instead of a file browser. If the device is offline, ordinary conversation can continue but local file and shell actions fail; report the connection issue and never substitute server files or copy the project to the server.\n", target.DeviceID, target.ResourceID)
+	return fmt.Sprintf("\nThis Code session's file access is connected to the user's computer: device_id=%q, resource_id=%q. Use the existing execute_shell_command for local inspection, reads, writes, builds, tests and git, and diff_patch_workspace_file for edits. These tools are bound to this laptop folder internally and run on the laptop. Paths are relative to its root, or absolute underneath it. Read files with shell commands such as cat, sed or head. No separate local tools or device arguments are needed. Shell is enabled automatically; read-only folder grants remain read-only in the sandbox. The same chat, agent, model, project settings and server runtime remain in use. File contents and command output returned by tools reach the server/model and may be retained in server conversation history under its normal administrator and Code reviewer access rules. Dashboard/database, schedules/webhook triggers and built-in Slack, WhatsApp and Gmail/Google integrations are unavailable in this local mode; do not substitute shell commands, other connections or background work for those disabled features. Only this folder's local file and granted shell tools, read-only chat attachments, conversation, UI controls, Costs and Models are available. MCP connections, reusable skills, project/Vault secrets, background delegation and server terminal/browser tools are disabled for this turn. Do not attempt to load or use saved connections, skills or secrets. The right side shows CLI connection controls instead of a file browser. If the device is offline, ordinary conversation can continue but local file and shell actions fail; report the connection issue and never substitute server files. Only when the person asks to publish, use publish_project: save files and exact chat into a new hosted Crew or a named agent in an existing Crew, privately retain the chat and continue from a summary on the disclosed company account. Publishing is separate from Local file access and keeps the source Local project private.\n", target.DeviceID, target.ResourceID)
 }
 func (api *StreamingAPI) validateCodeLocalFiles(claims *UserClaims, target *codeLocalFileTarget) error {
 	if !websiteDeviceClaims(claims) || !target.valid() {
@@ -362,7 +362,7 @@ func (api *StreamingAPI) localDeviceList(claims *UserClaims) []localfiles.Hello 
 	return devices
 }
 func (api *StreamingAPI) localDeviceCall(ctx context.Context, claims *UserClaims, deviceID string, request localfiles.Request) (localfiles.Response, error) {
-	if !websiteDeviceClaims(claims) {
+	if !websiteDeviceClaims(claims) && !publicationDeviceRequestAllowed(claims, request) {
 		return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Local devices require their owner's website login"}
 	}
 	// Resolve the account live, including read-only status and disabled accounts.
@@ -521,6 +521,10 @@ func (api *StreamingAPI) registerLocalWorkspaceTools(registrar definitionToolReg
 	if readOnly || !userAccessForClaims(claims).CanEdit {
 		return nil
 	}
+	if err := api.registerLocalPublicationTool(registrar, gate, claims, sessionID, selected); err != nil {
+		return err
+	}
+
 	tools := workspace.GetShellToolDefinitions()
 	if !shellSupported {
 		tools = nil
@@ -613,4 +617,11 @@ func (api *StreamingAPI) registerLocalWorkspaceTools(registrar definitionToolReg
 		}
 	}
 	return nil
+}
+
+// Publication is the only file-export request admitted from an existing Builder
+// MCP connection. Its caller still proves an exact own Local project/chat above;
+// all device ownership, live connection and folder grants remain checked here.
+func publicationDeviceRequestAllowed(claims *UserClaims, request localfiles.Request) bool {
+	return request.Operation == "publish_snapshot" && publicationGate(claims) == nil && claims.AccessToken != nil && claims.AccessToken.Allows("code:run") && len(claims.AccessToken.CrewIDs) == 0
 }

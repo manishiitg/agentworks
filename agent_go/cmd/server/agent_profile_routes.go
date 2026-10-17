@@ -782,6 +782,20 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 	if err != nil {
 		return ProductConversationRecord{}, err
 	}
+
+	if agentID := publicationAgentID(requestedKey); agentID != "" {
+		if !owned {
+			return ProductConversationRecord{}, fmt.Errorf("Open this agent from a Crew you may build; shared use is through its dashboard and functions.")
+		}
+		record, err := readPublishedAgent(r.Context(), agentProfileRuntimeWorkspace(userID, binding.WorkspacePath), agentID)
+		if err != nil {
+			return ProductConversationRecord{}, err
+		}
+		if record == nil {
+			return ProductConversationRecord{}, fmt.Errorf("This agent is unavailable. Choose one from the Crew's Agents list.")
+		}
+	}
+
 	if owned {
 		if err := initializeProductConversationWorkspace(r.Context(), userID, profile, binding); err != nil {
 			return ProductConversationRecord{}, err

@@ -93,7 +93,7 @@ func applyCrewChatMode(profile *resolvedAgentProfile, req *QueryRequest, readOnl
 	profile.Definition = definition
 	profile.Prompt = strings.TrimSpace(rendered)
 	if profile.Publication != nil {
-		profile.Prompt += "\n\n" + publishedSourceNotice
+		profile.Prompt += "\n\n" + publishedSourceNotice + "\nThis published agent saves working data under " + profile.Publication.runtimeRoot() + ". Use AGENTWORKS_PUBLICATION_RUNTIME in scripts for working data; imported source is read-only."
 		if publishedBuilderHandoff(req, readOnly) {
 			profile.Prompt += "\n\nPrivate Builder handoff summary:\n" + publicationHistorySummary(profile.Publication)
 		}

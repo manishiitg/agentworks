@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,24 +25,26 @@ import (
 )
 
 type publicationUpload struct {
-	ID             string            `json:"operation_id"`
-	ActorID        string            `json:"actor_id"`
-	SubmissionID   string            `json:"submission_id"`
-	ProjectID      string            `json:"project_id"`
-	Name           string            `json:"name"`
-	ProfileID      string            `json:"profile_id"`
-	WorkspaceID    string            `json:"workspace_id,omitempty"`
-	NewWorkspaceID string            `json:"new_workspace_id,omitempty"`
-	State          string            `json:"state"`
-	Offset         int64             `json:"offset"`
-	StartedAt      time.Time         `json:"started_at"`
-	UpdatedAt      time.Time         `json:"updated_at"`
-	Record         *publishedProject `json:"record,omitempty"`
-	Excluded       []string          `json:"excluded,omitempty"`
-	FileCount      int               `json:"file_count,omitempty"`
-	RawBytes       int64             `json:"raw_bytes,omitempty"`
-	RawSHA256      string            `json:"raw_sha256,omitempty"`
-	Error          string            `json:"error,omitempty"`
+	WebsiteSource  *publicationWebsiteSource `json:"website_source,omitempty"`
+	ID             string                    `json:"operation_id"`
+	ActorID        string                    `json:"actor_id"`
+	SubmissionID   string                    `json:"submission_id"`
+	ProjectID      string                    `json:"project_id"`
+	Name           string                    `json:"name"`
+	ProfileID      string                    `json:"profile_id"`
+	WorkspaceID    string                    `json:"workspace_id,omitempty"`
+	NewWorkspaceID string                    `json:"new_workspace_id,omitempty"`
+	State          string                    `json:"state"`
+	Offset         int64                     `json:"offset"`
+	StartedAt      time.Time                 `json:"started_at"`
+	UpdatedAt      time.Time                 `json:"updated_at"`
+	Record         *publishedProject         `json:"record,omitempty"`
+	Excluded       []string                  `json:"excluded,omitempty"`
+	FileCount      int                       `json:"file_count,omitempty"`
+	RawBytes       int64                     `json:"raw_bytes,omitempty"`
+	TabError       string                    `json:"tab_error,omitempty"`
+	RawSHA256      string                    `json:"raw_sha256,omitempty"`
+	Error          string                    `json:"error,omitempty"`
 }
 
 var publicationLocks sync.Map
@@ -93,6 +96,12 @@ func publicationReceipt(upload *publicationUpload) map[string]any {
 	out := map[string]any{"limits": map[string]any{"bytes": publication.MaxBytes, "file_bytes": publication.MaxFileBytes, "files": publication.MaxFiles, "chunk_bytes": publication.ChunkBytes}, "operation_id": upload.ID, "state": upload.State, "uploaded_bytes": upload.Offset, "updated_at": upload.UpdatedAt, "native_resume": "not_attempted", "next": "Check workspace action=publish_status with this operation_id."}
 	if upload.Record != nil {
 		out["workspace_id"], out["revision"] = upload.Record.ProfileID+":"+upload.Record.WorkspaceID, upload.Record.Revision
+		out["agent_id"] = firstNonEmptyTrimmed(upload.Record.AgentID, "main")
+		out["conversation_key"] = upload.Record.conversationKey()
+		out["name"] = upload.Record.Name
+		if upload.TabError != "" {
+			out["tab_message"] = upload.TabError
+		}
 		out["account"] = map[string]any{"provider": upload.Record.Provider, "model": upload.Record.ModelID, "kind": "company", "use": "Company account quota and billing apply; activity is attributed to the person publishing or calling this Crew."}
 	}
 	if upload.State == "live" {
@@ -114,7 +123,7 @@ func publicationGate(claims *UserClaims) error {
 	return nil
 }
 
-func (api *StreamingAPI) publicationChoice(ctx context.Context, claims *UserClaims, profileID string) (*publishedProject, error) {
+func (api *StreamingAPI) publicationChoice(ctx context.Context, claims *UserClaims, profileID string, existing ...bool) (*publishedProject, error) {
 	if profileID == "" {
 		for _, p := range projectProducts {
 			if workspaceOriginAllowed(claims, p.ProfileID) && userAccessForClaims(claims).CanCreateIn(p.ProfileID) {
@@ -123,7 +132,7 @@ func (api *StreamingAPI) publicationChoice(ctx context.Context, claims *UserClai
 			}
 		}
 	}
-	if !isProjectProfileID(profileID) || !workspaceOriginAllowed(claims, profileID) || !userAccessForClaims(claims).CanCreateIn(profileID) || !workspaceCreateTokenAllowed(claims, profileID) {
+	if !isProjectProfileID(profileID) || !workspaceOriginAllowed(claims, profileID) || (len(existing) == 0 || !existing[0]) && (!userAccessForClaims(claims).CanCreateIn(profileID) || !workspaceCreateTokenAllowed(claims, profileID)) {
 		return nil, fmt.Errorf("This connection cannot create that Crew. Choose a product you may build in.")
 	}
 	profile, err := api.agentProfiles.Resolve(profileID, 0, claims.UserID)
@@ -157,6 +166,7 @@ func (api *StreamingAPI) handlePublicationUpload(w http.ResponseWriter, r *http.
 			Name         string `json:"name"`
 			ProfileID    string `json:"profile_id"`
 			WorkspaceID  string `json:"workspace_id"`
+			AgentID      string `json:"agent_id"`
 		}
 		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&in) != nil || len(in.SubmissionID) < 1 || len(in.SubmissionID) > 128 || len(in.ProjectID) < 1 || len(in.ProjectID) > 128 || strings.TrimSpace(in.Name) == "" || len(in.Name) > 200 {
 			externalError(w, 400, "invalid_arguments", "Give a project name, stable project identity and submission ID.")
@@ -172,35 +182,12 @@ func (api *StreamingAPI) handlePublicationUpload(w http.ResponseWriter, r *http.
 			externalJSON(w, publicationReceipt(prior))
 			return
 		}
-		var choice *publishedProject
-		if in.WorkspaceID != "" {
-			binding, _, ok := api.resolveExternalWorkspace(r.Context(), claims, in.WorkspaceID)
-			if !ok || !binding.OwnedByCaller {
-				externalError(w, 404, "not_found", "Choose a published Crew you may build.")
-				return
-			}
-			var e error
-			choice, e = readPublishedProject(r.Context(), binding.Binding.WorkspacePath)
-			if e != nil || choice == nil || choice.ProjectID != in.ProjectID {
-				externalError(w, 409, "source_mismatch", "This is a different project. Choose the matching published Crew or create a new one.")
-				return
-			}
-		} else {
-			// Stable owner/project identity works across computers; absolute paths are not identity.
-			choice = api.findPublishedProject(r.Context(), claims, in.ProjectID)
-		}
-		if choice != nil && !publicationOriginTokenAllowed(claims, choice.ProfileID, choice.WorkspaceID) {
-			externalError(w, 403, "forbidden", "This connection needs existing Builder access to publish.")
+		choice, e := api.publicationTarget(r.Context(), claims, in.ProfileID, in.WorkspaceID, in.AgentID, in.ProjectID, in.Name)
+		if e != nil {
+			externalError(w, 400, "target_unavailable", e.Error())
 			return
 		}
-		if choice == nil {
-			var e error
-			choice, e = api.publicationChoice(r.Context(), claims, in.ProfileID)
-			if e != nil {
-				externalError(w, 400, "account_unavailable", e.Error())
-				return
-			}
-		}
+
 		upload := &publicationUpload{ID: operation, ActorID: claims.UserID, SubmissionID: in.SubmissionID, ProjectID: in.ProjectID, Name: strings.TrimSpace(in.Name), ProfileID: choice.ProfileID, WorkspaceID: choice.WorkspaceID, NewWorkspaceID: uuid.NewString(), State: "uploading", StartedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(), Record: choice}
 		if err := savePublicationUpload(upload); err != nil {
 			externalError(w, 500, "storage_error", "The publication receipt could not be saved; retry.")
@@ -217,6 +204,9 @@ func (api *StreamingAPI) handlePublicationUpload(w http.ResponseWriter, r *http.
 		return
 	}
 	if r.Method == http.MethodGet {
+		if upload.State == "capturing" && upload.WebsiteSource != nil {
+			api.startWebsitePublication(*upload, *claims)
+		}
 		if upload.State == "preparing" {
 			api.startPublication(*upload, *claims)
 		}
@@ -312,7 +302,7 @@ func (api *StreamingAPI) findPublishedProject(ctx context.Context, claims *UserC
 			continue
 		}
 		var rec publishedProject
-		if json.Unmarshal(raw, &rec) != nil || rec.OwnerID != sanitizeUserIDForPath(claims.UserID) || rec.ProjectID != projectID {
+		if json.Unmarshal(raw, &rec) != nil || firstNonEmptyTrimmed(rec.PublisherID, rec.OwnerID) != sanitizeUserIDForPath(claims.UserID) || rec.ProjectID != projectID {
 			continue
 		}
 		binding, _, ok := api.resolveExternalWorkspace(ctx, claims, rec.ProfileID+":"+rec.WorkspaceID)
@@ -395,6 +385,8 @@ func (api *StreamingAPI) preparePublication(upload *publicationUpload, claims Us
 		record.WorkspaceID = id
 		record.Root = agentProfileRuntimeWorkspace(binding.OwnerID, binding.Binding.WorkspacePath)
 		record.OwnerID = binding.OwnerID
+		record.PublisherID = sanitizeUserIDForPath(upload.ActorID)
+		record.Name = upload.Name
 	} else {
 		binding, _, ok := api.resolveExternalWorkspace(ctx, &claims, record.ProfileID+":"+record.WorkspaceID)
 		if !ok || !binding.OwnedByCaller {
@@ -402,6 +394,8 @@ func (api *StreamingAPI) preparePublication(upload *publicationUpload, claims Us
 			return
 		}
 	}
+	record.PublisherID = sanitizeUserIDForPath(upload.ActorID)
+	record.Name = upload.Name
 	record.ProjectID = manifest.ProjectID
 	record.Revision = upload.ID
 	record.UpdatedAt = time.Now().UTC()
@@ -423,12 +417,38 @@ func (api *StreamingAPI) preparePublication(upload *publicationUpload, claims Us
 		finishError(err)
 		return
 	}
+
+	// Imported functions join the Crew's existing entry points without replacing
+	// another agent's function or the destination's authored functions.
+	if record.AgentID != "" {
+		var incoming crewFunctionsDoc
+		raw, e := os.ReadFile(filepath.Join(stage, "source", crewFunctionsFileName))
+		if e == nil {
+			_ = json.Unmarshal(raw, &incoming)
+		} else if !errors.Is(e, os.ErrNotExist) {
+			finishError(e)
+			return
+		}
+		existing, e := readCrewFunctions(contextWithoutPublication(ctx), triggerTarget{Kind: triggerCallerCrew, Path: record.Root, CrewID: record.WorkspaceID, CrewProfile: record.ProfileID, CrewOwner: record.OwnerID})
+		if e != nil {
+			finishError(e)
+			return
+		}
+		for _, fn := range incoming.Functions {
+			for _, prior := range existing {
+				if prior.Name == fn.Name && (prior.publication == nil || prior.publication.AgentID != record.AgentID) {
+					finishError(fmt.Errorf("Function %q already exists in this Crew. Rename the incoming function and publish again; the existing Crew was kept.", fn.Name))
+					return
+				}
+			}
+		}
+	}
 	if err = validatePublishedFunctions(filepath.Join(stage, "source", "functions.json")); err != nil {
 		finishError(err)
 		return
 	}
 	source := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(record.sourceRoot()))
-	if active, e := readPublishedProject(ctx, record.Root); e != nil {
+	if active, e := readPublishedAgent(ctx, record.Root, record.AgentID); e != nil {
 		finishError(e)
 		return
 	} else if active != nil && active.Revision == record.Revision {
@@ -445,7 +465,17 @@ func (api *StreamingAPI) preparePublication(upload *publicationUpload, claims Us
 		finishError(err)
 		return
 	}
-	if err = preparePublicationRuntime(ctx, &record, source); err != nil {
+	if err = preparePublicationRuntime(ctx, &record, source, manifest); err != nil {
+		finishError(err)
+		return
+	}
+	// Recheck authority and the disclosed company account immediately before activation.
+	binding, _, allowed := api.resolveExternalWorkspace(ctx, &claims, record.ProfileID+":"+record.WorkspaceID)
+	if !allowed || !binding.OwnedByCaller || !publicationOriginTokenAllowed(&claims, record.ProfileID, record.WorkspaceID) {
+		finishError(fmt.Errorf("Builder access changed; your previous version is still live."))
+		return
+	}
+	if _, err = api.admitProviderAccount(ctx, providerAccountScope{Principal: record.OwnerID, WorkspacePath: record.Root, Product: record.ProfileID}, record.Provider, record.ConnectionID); err != nil {
 		finishError(err)
 		return
 	}
@@ -462,6 +492,11 @@ func (api *StreamingAPI) preparePublication(upload *publicationUpload, claims Us
 	upload.RawBytes = manifest.History.CapturedBytes
 	upload.RawSHA256 = manifest.History.SHA256
 	upload.State = "live"
+	if record.AgentID != "" {
+		if _, tabErr := api.openPublishedAgent(httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx), &record); tabErr != nil {
+			upload.TabError = tabErr.Error()
+		}
+	}
 	upload.UpdatedAt = time.Now().UTC()
 	if err = savePublicationUpload(upload); err != nil {
 		log.Printf("[CREW_PUBLISH] operation=%s revision=%s activation_saved receipt_error=true", upload.ID, record.Revision)
@@ -531,28 +566,69 @@ func copyPublicationDirectory(from, to string, mode fs.FileMode) error {
 	})
 }
 
-func preparePublicationRuntime(ctx context.Context, record *publishedProject, source string) error {
-	for _, rel := range []string{"db", "reports", "tool_output_folder", ".calls", "shared", "outputs"} {
-		stable := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(record.Root), rel)
-		seed := filepath.Join(source, rel)
-		if info, err := os.Stat(seed); err == nil && info.IsDir() {
-			if _, err = os.Stat(stable); errors.Is(err, os.ErrNotExist) {
-				if err = copyPublicationDirectory(seed, stable, 0755); err != nil {
-					return err
-				}
-			}
-			if err = os.RemoveAll(seed); err != nil {
-				return err
-			}
+func preparePublicationRuntime(ctx context.Context, record *publishedProject, source string, manifest publication.Manifest) error {
+	record.SourcePaths = nil
+	for _, file := range manifest.Files {
+		if file.Role != "runtime_seed" {
+			record.SourcePaths = append(record.SourcePaths, file.Path)
 		}
-		if err := createWorkspaceFolder(ctx, record.Root+"/"+rel); err != nil {
-			return err
-		}
-		if err := os.Symlink(stable, seed); err != nil && !errors.Is(err, os.ErrExist) {
+	}
+	// Seed only missing files on the first publication. A republish never resets live data.
+	active, err := readPublishedAgent(ctx, record.Root, record.AgentID)
+	if err != nil {
+		return err
+	}
+	for _, rel := range []string{"db", "assets", "reports", "tool_output_folder", ".calls", "shared", "outputs"} {
+		if err := createWorkspaceFolder(ctx, record.runtimeRoot()+"/"+rel); err != nil {
 			return err
 		}
 	}
-	return createWorkspaceFolder(ctx, record.Root+"/assets")
+	for _, file := range manifest.Files {
+		if file.Role != "runtime_seed" {
+			continue
+		}
+		from := filepath.Join(source, filepath.FromSlash(file.Path))
+		if active == nil {
+			to := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(record.runtimeRoot()), filepath.FromSlash(file.Path))
+			if err := os.MkdirAll(filepath.Dir(to), 0755); err != nil {
+				return err
+			}
+			out, err := os.OpenFile(to, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+			if errors.Is(err, os.ErrExist) {
+				return fmt.Errorf("Runtime seed %q already exists. Exclude that seed or use a new Crew; live data was kept.", file.Path)
+			}
+			if err != nil {
+				return err
+			}
+			raw, err := os.ReadFile(from)
+			if err == nil {
+				_, err = out.Write(raw)
+			}
+			closeErr := out.Close()
+			if err != nil {
+				return err
+			}
+			if closeErr != nil {
+				return closeErr
+			}
+		}
+		if err := os.Remove(from); err != nil {
+			return err
+		}
+	}
+	// Source categories retain their immutable directories. Empty runtime categories are links
+	// for ordinary scripts; a mixed source/runtime folder uses explicit AGENTWORKS_RUNTIME_ROOT.
+	for _, rel := range []string{"db", "assets", "reports", "tool_output_folder", ".calls", "shared", "outputs"} {
+		seed := filepath.Join(source, rel)
+		_ = os.Remove(seed) // succeeds only for an empty directory
+		if _, err := os.Lstat(seed); errors.Is(err, os.ErrNotExist) {
+			stable := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(record.runtimeRoot()), rel)
+			if err := os.Symlink(stable, seed); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func publicationTokenPath(r *http.Request) bool {

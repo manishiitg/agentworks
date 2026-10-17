@@ -22,6 +22,12 @@ const publishedSourceNotice = "This Crew was published from its owner's computer
 // This record is outside workspace-docs, not an editable project manifest.
 // A laptop project ID locates a target only within the authenticated owner's records.
 type publishedProject struct {
+	// AgentID is project-scoped; it is never a person's conversation-slot ID.
+	// Empty means the Main of a Crew created by publication.
+	SourcePaths  []string  `json:"source_paths,omitempty"`
+	AgentID      string    `json:"agent_id,omitempty"`
+	Name         string    `json:"name,omitempty"`
+	PublisherID  string    `json:"publisher_id,omitempty"`
 	WorkspaceID  string    `json:"workspace_id"`
 	ProfileID    string    `json:"profile_id"`
 	Root         string    `json:"root"`
@@ -36,6 +42,10 @@ type publishedProject struct {
 
 type publicationExecutionKey struct{}
 
+func contextWithoutPublication(ctx context.Context) context.Context {
+	return context.WithValue(ctx, publicationExecutionKey{}, (*publishedProject)(nil))
+}
+
 func publicationStateRoot() (string, error) {
 	base, err := workflowCLIStateRoot()
 	if err != nil {
@@ -44,21 +54,35 @@ func publicationStateRoot() (string, error) {
 	return filepath.Join(base, "crew-publications"), nil
 }
 
-func publicationRecordPath(root string) (string, error) {
+func publicationRecordPath(root string, agentID ...string) (string, error) {
 	state, err := publicationStateRoot()
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256([]byte(canonicalCrewWorkspaceRoot(root)))
+	key := canonicalCrewWorkspaceRoot(root)
+	if len(agentID) > 0 && agentID[0] != "" {
+		key += "\x00" + agentID[0]
+	}
+	sum := sha256.Sum256([]byte(key))
 	return filepath.Join(state, "projects", hex.EncodeToString(sum[:])+".json"), nil
 }
 
 func readPublishedProject(ctx context.Context, root string) (*publishedProject, error) {
+	return readPublishedAgent(ctx, root, "")
+}
+
+func readPublishedAgent(ctx context.Context, root, agentID string) (*publishedProject, error) {
 	ref, ok := resolveCrewPath(ctx, GetUserIDFromContext(ctx), root)
 	if !ok {
 		return nil, nil
 	}
-	file, err := publicationRecordPath(ref.Root)
+	// This value is installed only after turn/function admission, never decoded
+	// from a public request. It keeps both agent and source revision together.
+	if pinned, _ := ctx.Value(publicationExecutionKey{}).(*publishedProject); pinned != nil && canonicalCrewWorkspaceRoot(pinned.Root) == canonicalCrewWorkspaceRoot(ref.Root) && resolveProjectOwner(ctx, ref.Root) == pinned.OwnerID {
+		copy := *pinned
+		return &copy, nil
+	}
+	file, err := publicationRecordPath(ref.Root, agentID)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +94,7 @@ func readPublishedProject(ctx context.Context, root string) (*publishedProject, 
 		return nil, err
 	}
 	var record publishedProject
-	if json.Unmarshal(raw, &record) != nil || canonicalCrewWorkspaceRoot(record.Root) != canonicalCrewWorkspaceRoot(ref.Root) || record.OwnerID == "" || record.Revision == "" || strings.ContainsAny(record.Revision, "/\\.") || resolveProjectOwner(ctx, ref.Root) != record.OwnerID {
+	if json.Unmarshal(raw, &record) != nil || record.AgentID != agentID || canonicalCrewWorkspaceRoot(record.Root) != canonicalCrewWorkspaceRoot(ref.Root) || record.OwnerID == "" || record.Revision == "" || strings.ContainsAny(record.Revision, "/\\.") || resolveProjectOwner(ctx, ref.Root) != record.OwnerID {
 		return nil, fmt.Errorf("cannot verify this Crew's publication record")
 	}
 	if pinned, _ := ctx.Value(publicationExecutionKey{}).(*publishedProject); pinned != nil && pinned.Root == record.Root && pinned.OwnerID == record.OwnerID {
@@ -81,7 +105,24 @@ func readPublishedProject(ctx context.Context, root string) (*publishedProject, 
 }
 
 func (p *publishedProject) sourceRoot() string {
+	if p.AgentID != "" {
+		return "_users/" + p.OwnerID + "/crew-published/" + p.WorkspaceID + "/" + p.AgentID + "/" + p.Revision + "/source"
+	}
 	return p.Root + "/.published/" + p.Revision + "/source"
+}
+
+func (p *publishedProject) runtimeRoot() string {
+	if p.AgentID != "" {
+		return p.Root + "/outputs/agents/" + p.AgentID
+	}
+	return p.Root
+}
+
+func (p *publishedProject) conversationKey() string {
+	if p.AgentID != "" {
+		return p.WorkspaceID + codeChatSideMarker + "agent-" + p.AgentID
+	}
+	return p.WorkspaceID
 }
 
 func (p *publishedProject) historyDir() (string, error) {
@@ -114,9 +155,17 @@ func publishedRuntimeRoots(root string) []string {
 
 // Source mutations use the same decision at proxy, MCP, native and function surfaces.
 func publishedWriteRefusal(ctx context.Context, raw string) string {
+	clean := workspaceProxyCleanPath(raw)
+	parts := strings.Split(clean, "/")
+	if len(parts) >= 3 && parts[0] == "_users" && parts[2] == "crew-published" {
+		return "To change this agent's source, publish again from your computer."
+	}
 	ref, ok := resolveCrewPath(ctx, GetUserIDFromContext(ctx), raw)
 	if !ok {
 		return ""
+	}
+	if ref.Rest == ".published" || strings.HasPrefix(ref.Rest, ".published/") {
+		return "To change this agent's source, publish again from your computer."
 	}
 	record, err := readPublishedProject(ctx, ref.Root)
 	if err != nil {
@@ -128,7 +177,12 @@ func publishedWriteRefusal(ctx context.Context, raw string) string {
 	if strings.HasPrefix(ref.Rest, ".published/") {
 		return "To change this Crew's source, publish again from your computer."
 	}
-	if publishedRuntimeRelative(ref.Rest) {
+	for _, p := range record.SourcePaths {
+		if ref.Rest == p || strings.HasPrefix(p, strings.TrimSuffix(ref.Rest, "/")+"/") {
+			return "To change this agent's source, publish again from your computer."
+		}
+	}
+	if record.AgentID != "" && (raw == record.runtimeRoot() || strings.HasPrefix(raw, record.runtimeRoot()+"/")) || record.AgentID == "" && publishedRuntimeRelative(ref.Rest) {
 		return ""
 	}
 	// Platform-owned metadata and history keep their existing role-checked services;
@@ -143,7 +197,7 @@ func publishedWriteRefusal(ctx context.Context, raw string) string {
 // results stay at the stable project root. Session working-dir pins an in-flight turn.
 func publishedReadPath(ctx context.Context, raw string) string {
 	ref, ok := resolveCrewPath(ctx, GetUserIDFromContext(ctx), raw)
-	if !ok || ref.Rest == "" || strings.HasPrefix(ref.Rest, ".published/") || publishedRuntimeRelative(ref.Rest) {
+	if !ok || ref.Rest == "" || strings.HasPrefix(ref.Rest, ".published/") {
 		return raw
 	}
 	switch ref.Rest {
@@ -157,8 +211,21 @@ func publishedReadPath(ctx context.Context, raw string) string {
 	if err != nil || record == nil {
 		return raw
 	}
+	sourcePath := !publishedRuntimeRelative(ref.Rest)
+	for _, p := range record.SourcePaths {
+		if p == ref.Rest || strings.HasPrefix(p, strings.TrimSuffix(ref.Rest, "/")+"/") {
+			sourcePath = true
+			break
+		}
+	}
+	if !sourcePath {
+		if record.AgentID != "" {
+			return path.Join(record.runtimeRoot(), ref.Rest)
+		}
+		return raw
+	}
 	source := record.sourceRoot()
-	if cfg := common.GetSessionShellConfig(chatSessionIDFromContext(ctx)); cfg != nil && strings.HasPrefix(cfg.WorkingDir, record.Root+"/.published/") {
+	if cfg := common.GetSessionShellConfig(chatSessionIDFromContext(ctx)); cfg != nil && cfg.WorkingDir == record.sourceRoot() {
 		source = strings.TrimSuffix(cfg.WorkingDir, "/")
 	}
 	return path.Join(source, ref.Rest)
@@ -194,7 +261,7 @@ func publicationHistorySummary(record *publishedProject) string {
 }
 
 func savePublishedProject(record *publishedProject) error {
-	file, err := publicationRecordPath(record.Root)
+	file, err := publicationRecordPath(record.Root, record.AgentID)
 	if err != nil {
 		return err
 	}

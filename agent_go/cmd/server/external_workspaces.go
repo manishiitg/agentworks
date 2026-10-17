@@ -12,13 +12,17 @@ import (
 // storage/routing identities, never a second set of workspace permissions.
 func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add("workspace", "Your private and shared Code/Crew projects. list/get inspect current access; create starts Only me. ask and chat actions use your own conversations; update/export/import use existing Builder authority. Old tools remain supported. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
-		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "create", "update", "export", "import", "ask", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop"}},
+		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "create", "update", "export", "import", "ask", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "agents", "open_agent", "publish", "publish_preview", "publish_status"}},
 		"workspace_id": externalString("Stable work:<id> or code:<id> from workspace action=list; an unambiguous old ID also works."),
 		"profile_id":   externalString("Creation origin: work or code. Omit to use a product you can create in."),
 		"name":         externalString("Project or new chat name."), "message": externalString("Message for ask."),
-		"session_id": externalString("An earlier chat session from action=chats, for read/delete."),
-		"chat_id":    externalString("A chat name/id you can access; omit to use your caller conversation."),
-		"query":      externalString("Optional list filter."), "submission_id": externalString("Stable submission ID for a retry of the same ask."),
+		"session_id":          externalString("An earlier chat session from action=chats, for read/delete."),
+		"agent_id":            externalString("Stable published agent ID from agents or a publish receipt, for open_agent or republish."),
+		"operation_id":        externalString("Saved publication receipt for publish_status."),
+		"source_workspace_id": externalString("Your Local project to publish; its own website chat supplies private history."),
+		"conversation_key":    externalString("Your exact Local conversation key. Publishing never guesses another chat."),
+		"chat_id":             externalString("A chat name/id you can access; omit to use your caller conversation."),
+		"query":               externalString("Optional list filter."), "submission_id": externalString("Stable submission ID for a retry of the same ask."),
 		"wait_seconds": externalInteger(0, 25), "after": externalInteger(0, 1<<30),
 		"changes": map[string]any{"type": "object"}, "spec": map[string]any{"type": "object"},
 	}, "action")
@@ -82,6 +86,11 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		return
 	}
 	action := externalArg(args, "action")
+	if action == "publish" || action == "publish_preview" || action == "publish_status" {
+		api.externalWorkspacePublish(w, r, args)
+		return
+	}
+
 	if action == "list" {
 		items := []map[string]any{}
 		for _, product := range projectProducts {
@@ -155,6 +164,11 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		externalError(w, 404, "not_found", "Project unavailable; use workspace action=list to choose one you can use.")
 		return
 	}
+	if action == "agents" || action == "open_agent" {
+		api.externalPublishedAgents(w, r, args, binding, manifest)
+		return
+	}
+
 	if action == "update" {
 		if changes, ok := args["changes"].(map[string]any); ok {
 			if value, present := changes["memory_enabled"]; present {

@@ -31,6 +31,7 @@ const (
 )
 
 type File struct {
+	Role       string `json:"role,omitempty"`
 	Path       string `json:"path"`
 	Size       int64  `json:"size"`
 	SHA256     string `json:"sha256"`
@@ -58,9 +59,10 @@ type Manifest struct {
 
 // Source is supplied by the invoking chat's verified provider adapter, never a remote path.
 type Source struct {
-	ProjectID string
-	History   History
-	Raw       []byte
+	ProjectID        string
+	RuntimeSeedPaths []string
+	History          History
+	Raw              []byte
 }
 
 func CleanPath(p string) (string, error) {
@@ -68,6 +70,18 @@ func CleanPath(p string) (string, error) {
 		return "", fmt.Errorf("invalid publication path")
 	}
 	return p, nil
+}
+
+func runtimeSeedPath(p string) bool {
+	if p == "db/reports" || strings.HasPrefix(p, "db/reports/") {
+		return false
+	}
+	for _, root := range []string{"db", "assets", "reports", "tool_output_folder", "shared", "outputs"} {
+		if p == root || strings.HasPrefix(p, root+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // Excluded is deliberately about paths, not secret-value scanning or rewriting chat.
@@ -78,7 +92,7 @@ func Excluded(p string) bool {
 	parts := strings.Split(strings.ToLower(p), "/")
 	for i, part := range parts {
 		switch path.Ext(part) {
-		case ".pem", ".key", ".p12", ".pfx", ".kdbx", ".tfstate", ".sqlite", ".sqlite3", ".db":
+		case ".pem", ".key", ".p12", ".pfx", ".kdbx", ".tfstate":
 			return true
 		}
 		switch part {
@@ -128,7 +142,7 @@ func (m Manifest) validateFiles() error {
 	total := m.History.CapturedBytes
 	seen := map[string]bool{}
 	for _, file := range m.Files {
-		if Excluded(file.Path) || seen[file.Path] || file.Size < 0 || file.Size > MaxFileBytes || len(file.SHA256) != 64 {
+		if (file.Role != "" && file.Role != "source" && file.Role != "runtime_seed") || file.Role == "runtime_seed" && !runtimeSeedPath(file.Path) || Excluded(file.Path) || seen[file.Path] || file.Size < 0 || file.Size > MaxFileBytes || len(file.SHA256) != 64 {
 			return fmt.Errorf("invalid, private or duplicate publication file %q", file.Path)
 		}
 		if _, err := hex.DecodeString(file.SHA256); err != nil {
@@ -164,6 +178,28 @@ func build(ctx context.Context, root, state string, source Source, allow func(st
 		return "", manifest, err
 	}
 	defer project.Close()
+	var settings struct {
+		RuntimeSeeds []string `json:"runtime_seed_paths"`
+	}
+	if raw, err := project.ReadFile(".agentworks/publish.json"); err == nil {
+		if json.Unmarshal(raw, &settings) != nil {
+			return "", manifest, fmt.Errorf("Restore this project's publish settings before publishing.")
+		}
+	}
+	fileRole := func(p string) string {
+		if strings.HasPrefix(p, "db/") && !strings.HasPrefix(p, "db/reports/") {
+			return "runtime_seed"
+		}
+		for _, rel := range append(settings.RuntimeSeeds, source.RuntimeSeedPaths...) {
+			if _, err := CleanPath(rel); err != nil || !runtimeSeedPath(rel) {
+				continue
+			}
+			if p == rel || strings.HasPrefix(p, strings.TrimSuffix(rel, "/")+"/") {
+				return "runtime_seed"
+			}
+		}
+		return "source"
+	}
 	stage, err := os.MkdirTemp(state, "publication-")
 	if err != nil {
 		return "", manifest, err
@@ -245,7 +281,7 @@ func build(ctx context.Context, root, state string, source Source, allow func(st
 			return fmt.Errorf("file %q changed while publishing; retry", p)
 		}
 		total += n
-		manifest.Files = append(manifest.Files, File{Path: p, Size: n, SHA256: hex.EncodeToString(h.Sum(nil)), Executable: info.Mode()&0111 != 0})
+		manifest.Files = append(manifest.Files, File{Role: fileRole(p), Path: p, Size: n, SHA256: hex.EncodeToString(h.Sum(nil)), Executable: info.Mode()&0111 != 0})
 		return nil
 	})
 	if err != nil {
@@ -310,7 +346,25 @@ func digest(b []byte) string { sum := sha256.Sum256(b); return hex.EncodeToStrin
 // imported instructions, tool calls or hooks. Full raw history remains separately available to Builders.
 func HandoffTranscript(raw []byte) string {
 	var messages []string
-	scan := bufio.NewScanner(strings.NewReader(string(raw)))
+	transcript := raw
+	var history struct {
+		Messages []json.RawMessage `json:"messages"`
+		History  []json.RawMessage `json:"conversation_history"`
+	}
+	if json.Unmarshal(raw, &history) == nil {
+		if len(history.Messages) == 0 {
+			history.Messages = history.History
+		}
+		if len(history.Messages) > 0 {
+			var rows strings.Builder
+			for _, message := range history.Messages {
+				rows.Write(message)
+				rows.WriteByte('\n')
+			}
+			transcript = []byte(rows.String())
+		}
+	}
+	scan := bufio.NewScanner(strings.NewReader(string(transcript)))
 	scan.Buffer(make([]byte, 64<<10), int(MaxFileBytes))
 	for scan.Scan() {
 		var row map[string]any
@@ -325,8 +379,20 @@ func HandoffTranscript(raw []byte) string {
 			message = row
 		}
 		role, _ := message["role"].(string)
+		if role == "" {
+			role, _ = message["Role"].(string)
+		}
+		if role == "human" {
+			role = "user"
+		}
 		if role != "user" && role != "assistant" {
 			continue
+		}
+		if _, ok := message["content"]; !ok {
+			message["content"] = message["Parts"]
+			if message["content"] == nil {
+				message["content"] = message["parts"]
+			}
 		}
 		var parts []string
 		switch content := message["content"].(type) {
@@ -336,6 +402,8 @@ func HandoffTranscript(raw []byte) string {
 			for _, item := range content {
 				if p, ok := item.(map[string]any); ok {
 					if text, ok := p["text"].(string); ok {
+						parts = append(parts, text)
+					} else if text, ok := p["Text"].(string); ok {
 						parts = append(parts, text)
 					}
 				}

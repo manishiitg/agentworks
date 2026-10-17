@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Check, Copy, Download, FolderOpen, Laptop, Loader2, RefreshCw, Terminal, WifiOff } from 'lucide-react'
+import { CrewPublish } from './CrewPublish'
 import { Button } from '../../components/ui/Button'
 import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import { SettingsCard } from '../../components/ui/SettingsCard'
@@ -149,6 +150,7 @@ export function CodeLocalFilesSettings({ sessionId, workspaceName }: { sessionId
       </div>
       <div className="flex flex-wrap gap-2 rounded-md bg-emerald-500/5 px-3 py-2 text-xs"><span className="flex items-center gap-1.5"><FolderOpen className="h-3.5 w-3.5" />{resource.writable ? 'Project: read and write' : 'Project: read only'}</span>{resource.downloads && <span className="flex items-center gap-1.5"><Download className="h-3.5 w-3.5" />Downloads: read and write</span>}{resource.shell && <span className="flex items-center gap-1.5"><Terminal className="h-3.5 w-3.5" />Shell commands enabled on this computer</span>}</div>
       {updateNotice}
+      <CrewPublish sessionId={sessionId} disabled={busy || !resource.publication} />
       <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={refreshing} onClick={refresh}><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />Verify connection</Button><Button size="sm" variant="ghost" onClick={() => setDetails(true)}>Details</Button></div>
       {busy && <p className="text-xs text-muted-foreground">Wait for the current turn to finish before changing the file connection.</p>}
       {settingError && <p role="alert" className="text-sm text-destructive">{settingError}</p>}

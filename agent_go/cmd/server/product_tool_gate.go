@@ -101,7 +101,7 @@ func newProductToolGate(resolved *resolvedAgentProfile) *productToolGate {
 				return resolved.CodeLocalFiles == nil
 			case "read_image":
 				return len(resolved.CodeChatAttachments) == 0
-			case "list_ui_capabilities", "get_ui_state", "perform_ui_action", "request_clarification":
+			case "list_ui_capabilities", "get_ui_state", "perform_ui_action", "request_clarification", "publish_project":
 				return false
 			default:
 				return true

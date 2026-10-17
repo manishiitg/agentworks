@@ -106,15 +106,12 @@ func crewFunctionsPath(ctx context.Context, target triggerTarget) string {
 	return crewFunctionRoot(ctx, target) + "/" + crewFunctionsFileName
 }
 
-func readCrewFunctions(ctx context.Context, target triggerTarget) ([]crewFunction, error) {
-	publication, err := readPublishedProject(ctx, crewFunctionRoot(ctx, target))
-	if err != nil {
-		return nil, err
-	}
+func readCrewFunctionSource(ctx context.Context, target triggerTarget, publication *publishedProject) ([]crewFunction, error) {
+	file := crewFunctionsPath(ctx, target)
 	if publication != nil {
-		ctx = context.WithValue(ctx, publicationExecutionKey{}, publication)
+		file = publication.sourceRoot() + "/" + crewFunctionsFileName
 	}
-	raw, exists, err := readFileFromWorkspace(ctx, crewFunctionsPath(ctx, target))
+	raw, exists, err := readFileFromWorkspace(contextWithoutPublication(ctx), file)
 	if err != nil {
 		return nil, fmt.Errorf("read functions of %s %q: %w", target.Kind, target.Label, err)
 	}
@@ -131,7 +128,80 @@ func readCrewFunctions(ctx context.Context, target triggerTarget) ([]crewFunctio
 	return doc.Functions, nil
 }
 
+func readCrewFunctions(ctx context.Context, target triggerTarget) ([]crewFunction, error) {
+	root := crewFunctionRoot(ctx, target)
+	publication, err := readPublishedProject(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	own, err := readCrewFunctionSource(ctx, target, publication)
+	if err != nil {
+		return nil, err
+	}
+	if pinned, _ := ctx.Value(publicationExecutionKey{}).(*publishedProject); pinned != nil && pinned.Root == root && pinned.AgentID != "" {
+		return own, nil
+	}
+	if target.Kind != triggerCallerCrew {
+		return own, nil
+	}
+	agents, err := publishedAgents(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	names := map[string]bool{}
+	for _, fn := range own {
+		names[fn.Name] = true
+	}
+	for _, p := range agents {
+		if p.AgentID == "" {
+			continue
+		}
+		fns, err := readCrewFunctionSource(ctx, target, &p)
+		if err != nil {
+			return nil, err
+		}
+		for _, fn := range fns {
+			if names[fn.Name] {
+				return nil, fmt.Errorf("Two published agents declare function %q. Rename it at its source and publish again.", fn.Name)
+			}
+			names[fn.Name] = true
+			own = append(own, fn)
+		}
+	}
+	return own, nil
+}
+
 func writeCrewFunctions(ctx context.Context, target triggerTarget, functions []crewFunction) error {
+	// Agent definitions remain owned by their publication. Ordinary Crew
+	// authoring may change its own functions without copying imported ones.
+	existing, err := readCrewFunctions(ctx, target)
+	if err != nil {
+		return err
+	}
+	imported := map[string]crewFunction{}
+	for _, fn := range existing {
+		if fn.publication != nil && fn.publication.AgentID != "" {
+			imported[fn.Name] = fn
+		}
+	}
+	kept := make([]crewFunction, 0, len(functions))
+	for _, fn := range functions {
+		if original, ok := imported[fn.Name]; ok {
+			before, _ := json.Marshal(original)
+			after, _ := json.Marshal(fn)
+			if string(before) != string(after) {
+				return fmt.Errorf("Function %q belongs to a published agent. Change its source and publish again.", fn.Name)
+			}
+			delete(imported, fn.Name)
+			continue
+		}
+		kept = append(kept, fn)
+	}
+	if len(imported) > 0 {
+		return fmt.Errorf("Remove a published function at its source and publish again.")
+	}
+	functions = kept
+
 	sort.Slice(functions, func(i, j int) bool { return functions[i].Name < functions[j].Name })
 	encoded, err := json.MarshalIndent(crewFunctionsDoc{Version: 1, Functions: functions}, "", "  ")
 	if err != nil {

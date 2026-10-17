@@ -18,9 +18,11 @@ import (
 )
 
 type publicationMarker struct {
-	ProjectID   string `json:"project_id"`
-	Server      string `json:"server,omitempty"`
-	WorkspaceID string `json:"workspace_id,omitempty"`
+	AgentID      string   `json:"agent_id,omitempty"`
+	RuntimeSeeds []string `json:"runtime_seed_paths,omitempty"`
+	ProjectID    string   `json:"project_id"`
+	Server       string   `json:"server,omitempty"`
+	WorkspaceID  string   `json:"workspace_id,omitempty"`
 }
 type pendingPublication struct {
 	Root      string            `json:"root"`
@@ -30,14 +32,18 @@ type pendingPublication struct {
 }
 
 func publishCommand(o *options) *cobra.Command {
-	var name, resume string
-	cmd := &cobra.Command{Use: "publish", Short: "Publish this project's files and this exact chat to a hosted Crew", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return runPublish(cmd.Context(), o, name, resume) }}
+	var name, resume, crew, agentID string
+	cmd := &cobra.Command{Use: "publish", Short: "Publish this project's files and this exact chat to a hosted Crew", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		return runPublish(cmd.Context(), o, name, resume, crew, agentID)
+	}}
 	cmd.Flags().StringVar(&name, "name", "", "Crew name (default: project folder name)")
+	cmd.Flags().StringVar(&crew, "crew", "", "Add an agent to this existing Crew (workspace ID from workspace list)")
+	cmd.Flags().StringVar(&agentID, "agent-id", "", "Republish this stable agent ID in the selected Crew")
 	cmd.Flags().StringVar(&resume, "resume", "", "Resume this publication receipt after an interrupted upload")
 	return cmd
 }
 
-func runPublish(ctx context.Context, o *options, name, resume string) error {
+func runPublish(ctx context.Context, o *options, name, resume, crew, agentID string) error {
 	if err := o.useShareConfig(); err != nil {
 		return err
 	}
@@ -108,8 +114,17 @@ func runPublish(ctx context.Context, o *options, name, resume string) error {
 		target := ""
 		if pending.Marker.Server == cfg.Server {
 			target = pending.Marker.WorkspaceID
+			if agentID == "" {
+				agentID = pending.Marker.AgentID
+			}
 		}
-		receipt, e := client.Publication(ctx, http.MethodPost, "", map[string]any{"submission_id": uuid.NewString(), "project_id": source.ProjectID, "name": name, "workspace_id": target})
+		if crew != "" {
+			target = crew
+			if crew != pending.Marker.WorkspaceID && agentID == pending.Marker.AgentID {
+				agentID = ""
+			}
+		}
+		receipt, e := client.Publication(ctx, http.MethodPost, "", map[string]any{"submission_id": uuid.NewString(), "project_id": source.ProjectID, "name": name, "workspace_id": target, "agent_id": agentID})
 		if e != nil {
 			_ = os.RemoveAll(filepath.Dir(archive))
 			return e
@@ -127,7 +142,14 @@ func runPublish(ctx context.Context, o *options, name, resume string) error {
 		if err = fsutil.WriteJSONAtomic(markerFile, pending.Marker, 0600); err != nil {
 			return err
 		}
-		fmt.Fprintln(o.stderr, "Publishing with the company account. Company quota and billing apply; this publication is attributed to you. Starts Only me. Receipt:", pending.Operation)
+		account, _ := json.Marshal(receipt["account"])
+		fmt.Fprintln(o.stderr, "Runs on the disclosed company account:", string(account))
+		if target == "" {
+			fmt.Fprintln(o.stderr, "New Crew starts Only me.")
+		} else {
+			fmt.Fprintln(o.stderr, "Existing Crew instructions and Share are preserved.")
+		}
+		fmt.Fprintln(o.stderr, "Publication receipt:", pending.Operation)
 	}
 	receipt, err := client.Publication(ctx, http.MethodGet, pending.Operation, nil)
 	if err != nil {
@@ -180,6 +202,10 @@ func runPublish(ctx context.Context, o *options, name, resume string) error {
 		return fmt.Errorf("publication %s: %v; retry with --resume %s", pending.Operation, receipt["error"], pending.Operation)
 	}
 	pending.Marker.WorkspaceID, _ = receipt["workspace_id"].(string)
+	pending.Marker.AgentID, _ = receipt["agent_id"].(string)
+	if pending.Marker.AgentID == "main" {
+		pending.Marker.AgentID = ""
+	}
 	if err = fsutil.WriteJSONAtomic(filepath.Join(root, ".agentworks", "publish.json"), pending.Marker, 0600); err != nil {
 		return err
 	}

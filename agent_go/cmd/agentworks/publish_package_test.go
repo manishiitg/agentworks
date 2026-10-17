@@ -58,6 +58,10 @@ func TestPublicationPackageRoundTrip(t *testing.T) {
 	if err != nil || !bytes.Equal(b, raw) {
 		t.Fatal("raw Builder history changed or was lost")
 	}
+	website := []byte(`{"conversation_history":[{"Role":"human","Parts":[{"Text":"Remember WEBSITE_CONTEXT_856145"}]}]}`)
+	if !strings.Contains(publication.HandoffTranscript(website), "WEBSITE_CONTEXT_856145") {
+		t.Fatal("website history was omitted from the private handoff")
+	}
 	// A corrupt byte must prevent activation by making import fail.
 	b, err = os.ReadFile(archive)
 	if err != nil {
