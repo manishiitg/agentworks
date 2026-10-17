@@ -1,3 +1,4 @@
+import { useProjectProduct } from './projectProduct'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
@@ -57,6 +58,7 @@ const toolbarButton = 'inline-flex h-6 w-6 items-center justify-center rounded t
 // Up to SHELL_MAX_TABS terminals per Code, each its own shell (same sandbox, same home). The tab strip sits above the active one;
 // the others stay connected while hidden, so switching back keeps their output. The open tabs are remembered per Code.
 export function CodeShellPanel({ projectId }: { projectId: string }) {
+  const { profileId } = useProjectProduct()
   const [state, setState] = useState<ShellTabs>(() => readShellTabs(projectId, storage()))
   useEffect(() => { setState(readShellTabs(projectId, storage())) }, [projectId])
   const update = useCallback((next: ShellTabs) => {
@@ -72,7 +74,7 @@ export function CodeShellPanel({ projectId }: { projectId: string }) {
     if (state.tabs.length <= 1) return
     update(closeShellTab(state, tab))
     // Closing a tab ends its shell (and whatever it started); the others keep running.
-    void api.post(`/api/agent-profiles/code/projects/${encodeURIComponent(projectId)}/shell/stop${tab > 1 ? `?tab=${tab}` : ''}`).catch(() => undefined)
+    void api.post(`/api/agent-profiles/${profileId}/projects/${encodeURIComponent(projectId)}/shell/stop${tab > 1 ? `?tab=${tab}` : ''}`).catch(() => undefined)
   }
   // Tab shortcuts typed in any terminal (new terminal, switch to 1..3).
   const onTabAction = (action: ShellAction) => {
@@ -112,6 +114,7 @@ export function CodeShellPanel({ projectId }: { projectId: string }) {
 }
 
 function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { projectId: string; tab: number; active: boolean; tabStrip: ReactNode; onTabAction: (action: ShellAction) => void }) {
+  const { profileId } = useProjectProduct()
   const { theme } = useTheme()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -188,7 +191,7 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
     const encoder = new TextEncoder()
     const connect = () => {
       if (disposed) return
-      const socket = new WebSocket(shellStreamUrl(projectId, term.cols || 80, term.rows || 24, getApiBaseUrl() || window.location.origin, getAuthToken(), tab))
+      const socket = new WebSocket(shellStreamUrl(projectId, term.cols || 80, term.rows || 24, getApiBaseUrl() || window.location.origin, getAuthToken(), tab, profileId))
       socket.binaryType = 'arraybuffer'
       socketRef.current = socket
       socket.onopen = () => {
@@ -271,7 +274,7 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
       searchRef.current = null
       term.dispose()
     }
-  }, [projectId, tab, generation])
+  }, [projectId, tab, generation, profileId])
 
   // A tab shown again is fitted to the space it now has (a hidden one has none) and takes the keyboard.
   useEffect(() => {
@@ -336,7 +339,7 @@ function CodeShellTerminal({ projectId, tab, active, tabStrip, onTabAction }: { 
     setState('stopped')
     socketRef.current?.close()
     try {
-      await api.post(`/api/agent-profiles/code/projects/${encodeURIComponent(projectId)}/shell/stop${tab > 1 ? `?tab=${tab}` : ''}`)
+      await api.post(`/api/agent-profiles/${profileId}/projects/${encodeURIComponent(projectId)}/shell/stop${tab > 1 ? `?tab=${tab}` : ''}`)
     } catch {
       // The shell also stops on its own after 30 idle minutes.
     }

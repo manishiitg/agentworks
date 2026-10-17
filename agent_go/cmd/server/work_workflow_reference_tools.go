@@ -52,8 +52,12 @@ func listAccessibleCrewProjects(ctx context.Context, userID, query string) ([]ma
 
 // listCrewProjectsForOwner lists one owner's Crew projects as seen by userID.
 func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string) ([]map[string]interface{}, error) {
-	root := agentProfileRuntimeWorkspace(ownerID, "Chats/Work/projects")
-	if sanitizeUserIDForPath(ownerID) != sanitizeUserIDForPath(userID) && root == agentProfileRuntimeWorkspace(userID, "Chats/Work/projects") {
+	return listWorkspaceProjectsForOwner(ctx, userID, ownerID, query, projectProducts[0])
+}
+
+func listWorkspaceProjectsForOwner(ctx context.Context, userID, ownerID, query string, product projectProduct) ([]map[string]interface{}, error) {
+	root := agentProfileRuntimeWorkspace(ownerID, product.ProjectsRoot)
+	if sanitizeUserIDForPath(ownerID) != sanitizeUserIDForPath(userID) && root == agentProfileRuntimeWorkspace(userID, product.ProjectsRoot) {
 		// Single-account layouts share one Chats root; don't list it twice.
 		return nil, nil
 	}
@@ -67,7 +71,10 @@ func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string
 		paths = nil
 	}
 	// Crews that moved to the shared root (PLAT-442 step 4) belong to their manifest owner.
-	shared, err := listSharedCrewManifestPaths(ctx, store, ownerID)
+	shared := []string{}
+	if product.ProfileID == crewProfileID {
+		shared, err = listSharedCrewManifestPaths(ctx, store, ownerID)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("list Crew projects: %w", err)
 	}
@@ -91,7 +98,7 @@ func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string
 		}
 		seen[candidate] = true
 		// Another owner's Crew is listed only while it is shared with others (not made private, sharing on).
-		if access != "owner" && !crewSharedWith(strings.TrimSuffix(candidate, "/product.json"), userID) {
+		if access != "owner" && !crewSharedWith(strings.TrimSuffix(candidate, "/product.json"), userID) && !crewIsCoOwner(strings.TrimSuffix(candidate, "/product.json"), userID) {
 			continue
 		}
 		raw, found, readErr := store.read(ctx, candidate)
@@ -102,7 +109,10 @@ func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string
 			continue
 		}
 		var manifest productProjectManifest
-		if json.Unmarshal([]byte(raw), &manifest) != nil || !strings.EqualFold(strings.TrimSpace(manifest.Product), "work") {
+		if json.Unmarshal([]byte(raw), &manifest) != nil || !strings.EqualFold(strings.TrimSpace(manifest.Product), product.ProfileID) {
+			continue
+		}
+		if product.ProfileID == "code" && codeProjectMode(ctx, strings.TrimSuffix(candidate, "/product.json")) == "local" {
 			continue
 		}
 		id := strings.TrimSpace(manifest.ID)
@@ -127,6 +137,7 @@ func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string
 				Name: identityName,
 				Icon: identityIcon,
 			},
+			"profile_id":     product.ProfileID,
 			"description":    strings.TrimSpace(manifest.Description),
 			"workspace_path": workspacePath,
 			"access":         access,
@@ -499,4 +510,25 @@ func updateWorkWorkflowReferences(ctx context.Context, workspacePath string, mut
 		return nil, err
 	}
 	return next, nil
+}
+
+// Project discovery shares audience rules while keeping the two origin grants.
+func listAccessibleWorkspaceProjects(ctx context.Context, claims *UserClaims, query string) ([]map[string]interface{}, error) {
+	if claims == nil {
+		return nil, nil
+	}
+	rows := []map[string]interface{}{}
+	for _, product := range projectProducts {
+		if !userAllowedProduct(claims, product.ProfileID) {
+			continue
+		}
+		for _, owner := range append([]string{claims.UserID}, crewProjectOwnerCandidates(claims.UserID)...) {
+			items, err := listWorkspaceProjectsForOwner(ctx, claims.UserID, owner, query, product)
+			if err != nil {
+				return nil, err
+			}
+			rows = append(rows, items...)
+		}
+	}
+	return rows, nil
 }

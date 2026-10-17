@@ -94,7 +94,12 @@ type triggerLinkCaller struct {
 func resolveTriggerTarget(ctx context.Context, claims *UserClaims, raw string) (triggerTarget, error) {
 	query := strings.TrimSpace(raw)
 	query = strings.TrimPrefix(query, "#")
-	wantKind := ""
+	wantKind, wantProfile := "", ""
+	if rest, ok := strings.CutPrefix(query, "workspace:"); ok {
+		if origin, id, ok := strings.Cut(rest, ":"); ok && isProjectProfileID(origin) {
+			wantKind, wantProfile, query = triggerCallerCrew, origin, id
+		}
+	}
 	lower := strings.ToLower(query)
 	for _, kind := range []string{triggerCallerCrew, triggerCallerWorkflow} {
 		if strings.HasPrefix(lower, kind+":") {
@@ -123,11 +128,15 @@ func resolveTriggerTarget(ctx context.Context, claims *UserClaims, raw string) (
 	}
 	var found []triggerTarget
 	if wantKind != triggerCallerWorkflow {
-		crews, err := listAccessibleCrewProjects(ctx, userID, "")
+		crews, err := listAccessibleWorkspaceProjects(ctx, claims, "")
 		if err != nil {
 			return triggerTarget{}, err
 		}
 		for _, crew := range crews {
+			profileID, _ := crew["profile_id"].(string)
+			if wantProfile != "" && profileID != wantProfile {
+				continue
+			}
 			id, _ := crew["id"].(string)
 			name, _ := crew["name"].(string)
 			crewPath, _ := crew["workspace_path"].(string)
@@ -142,7 +151,7 @@ func resolveTriggerTarget(ctx context.Context, claims *UserClaims, raw string) (
 			if crewOwner, ok := crewProjectOwnerID(crewPath); ok {
 				owner = crewOwner
 			}
-			found = append(found, triggerTarget{Kind: triggerCallerCrew, Path: crewPath, Label: firstNonEmptyTrimmed(identity, name), CrewID: id, CrewProfile: "work", CrewOwner: owner})
+			found = append(found, triggerTarget{Kind: triggerCallerCrew, Path: crewPath, Label: firstNonEmptyTrimmed(identity, name), CrewID: id, CrewProfile: profileID, CrewOwner: owner})
 		}
 	}
 	if wantKind != triggerCallerCrew {
@@ -240,21 +249,22 @@ func (api *StreamingAPI) connectTriggerTarget(ctx context.Context, userID string
 		if api.productSchedules == nil {
 			return "", false, fmt.Errorf("Crew calls are unavailable")
 		}
-		if target.CrewProfile == codeproduct.ProfileID {
-			return "", false, errCodeHasNoFunctions
+		if target.CrewProfile == codeproduct.ProfileID && codeProjectMode(ctx, target.Path) == "local" {
+			return "", false, fmt.Errorf("Local projects cannot receive remote function calls")
 		}
 		triggers, err := api.productSchedules.projectWebhookConfigs(ctx, target.ownerOr(userID), target.CrewProfile, target.CrewID)
 		if err != nil {
 			return "", false, err
 		}
 		for _, trigger := range triggers {
-			if trigger.IsInternal() && trigger.Enabled && trigger.Caller.matchesAnyPresented(caller.Stamp) {
+			if trigger.IsInternal() && trigger.Enabled && (target.CrewProfile != codeproduct.ProfileID || trigger.WorkspaceFunction) && trigger.Caller.matchesAnyPresented(caller.Stamp) {
 				return trigger.ID, false, nil
 			}
 		}
 		stamp := caller.Stamp
 		response, _, err := api.productSchedules.saveProductWebhookConfig(ctx, target.ownerOr(userID), productWebhookRequest{
-			ProfileID: target.CrewProfile, ProjectID: target.CrewID,
+			WorkspaceFunction: target.CrewProfile == codeproduct.ProfileID,
+			ProfileID:         target.CrewProfile, ProjectID: target.CrewID,
 			Name: "Called by " + caller.Label, Message: crewTargetMessage(caller),
 			Enabled: true, RunDestination: runDestinationIsolated, Kind: triggerKindInternal, Caller: &stamp,
 		}, "")

@@ -5,7 +5,8 @@ import type { LLMProvider, PresetLLMConfig, SharedProjectSummary } from '../../s
 import { responseContent, slugifyTitle } from '../../utils/plannerFiles'
 import { loadAgentProfileProviderOptions } from '../../utils/agentProfileCapabilities'
 import { llmConfigService } from '../../services/llm-config-api'
-import { CREW_PRODUCT, projectProductConfig, type ProjectProductConfig, type ProjectProductId } from './projectProduct'
+import { CREW_PRODUCT, CODE_PRODUCT, projectProductConfig, type ProjectProductConfig, type ProjectProductId } from './projectProduct'
+import { visibleProductSurfaceIDs } from '../productSurfaceConfig'
 import { crewTemplates, getCrewTemplate, type CrewTemplateId } from './crewTemplates'
 
 export type WorkSession = ProductProject<ProjectProductId>
@@ -124,7 +125,7 @@ export async function createWorkSession(title: string, description: string, icon
 }
 
 export async function installWorkSessionTemplate(session: WorkSession, templateId: CrewTemplateId): Promise<WorkSession> {
-  if (session.shared) throw new Error('Only the Crew owner can install templates.')
+  if (isWorkSessionRun(session)) throw new Error('Only the Crew owner can install templates.')
   const template = getCrewTemplate(templateId)
   if (session.templates.some(item => item.id === template.id)) throw new Error(`${template.name} is already installed in this Crew.`)
   for (const [relativePath, content] of Object.entries(template.files)) {
@@ -145,7 +146,7 @@ export async function installWorkSessionTemplate(session: WorkSession, templateI
 }
 
 export async function removeWorkSessionTemplate(session: WorkSession, templateId: CrewTemplateId): Promise<WorkSession> {
-  if (session.shared) throw new Error('Only the Crew owner can remove templates.')
+  if (isWorkSessionRun(session)) throw new Error('Only the Crew owner can remove templates.')
   if (session.product !== 'work') throw new Error('This project does not support Crew templates.')
   const template = getCrewTemplate(templateId)
   return removeProductProjectTemplate(session, templateId,
@@ -154,7 +155,7 @@ export async function removeWorkSessionTemplate(session: WorkSession, templateId
 }
 
 export async function deleteWorkSession(session: WorkSession): Promise<void> {
-  if (session.shared) throw new Error('Shared Crew projects can only be deleted by their owner.')
+  if (isWorkSessionRun(session)) throw new Error('Shared Crew projects can only be deleted by their owner.')
   try {
     await agentApi.deleteAgentProfileProject(session.product, session.id)
   } catch (cause) {
@@ -203,6 +204,7 @@ export function sharedProjectToWorkSession(row: SharedProjectSummary, product: P
     secretSelectionInitialized: true,
     runtimeConfigInitialized: true,
     shared: {
+      canBuild: row.can_build === true,
       ownerId: row.owner_id,
       ownerUsername: row.owner_username || undefined,
       triggers: row.triggers || [],
@@ -235,11 +237,26 @@ export async function loadWorkSessionsIncludingShared(product: ProjectProductCon
 
 /** Code: the computer and folder this workspace works in (product.json `local_files`); undefined = the server's files. */
 export async function updateWorkSessionLocalFiles(session: WorkSession, localFiles: { device_id: string; resource_id: string } | undefined): Promise<WorkSession> {
-  if (session.shared) throw new Error('Only the owner can change this.')
+  if (isWorkSessionRun(session)) throw new Error('Only the owner can change this.')
   return updateProductProjectLocalFiles(session, localFiles, `Set files location for ${session.title}`)
 }
 
 export async function updateWorkSessionIdentity(session: WorkSession, patch: ProductIdentityPatch): Promise<WorkSession> {
-  if (session.shared) throw new Error('Only the Crew owner can change this.')
+  if (isWorkSessionRun(session)) throw new Error('Only the Crew owner can change this.')
   return updateProductProjectIdentity(session, patch, `Update ${projectProductConfig(session.product).noun} project identity ${session.title}`)
+}
+
+export function isWorkSessionRun(session: WorkSession | null | undefined): boolean {
+  return Boolean(session?.shared && !session.shared.canBuild)
+}
+
+// Both legacy entry links open the same list, preserving origin permissions.
+export async function loadCombinedWorkSessions(primary: ProjectProductConfig, allowedProducts?: string[] | null): Promise<WorkSession[]> {
+  const visible = visibleProductSurfaceIDs(allowedProducts)
+  const other = primary.profileId === 'work' ? CODE_PRODUCT : CREW_PRODUCT
+  const [own, rest] = await Promise.all([
+    loadWorkSessionsIncludingShared(primary),
+    visible.includes(other.profileId) ? loadWorkSessionsIncludingShared(other).catch(() => [] as WorkSession[]) : Promise.resolve([]),
+  ])
+  return [...own, ...rest]
 }

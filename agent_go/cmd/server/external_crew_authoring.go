@@ -168,11 +168,11 @@ func crewIdentityChecks(name, icon, role, purpose string) error {
 	if utf8.RuneCountInString(icon) > 8 {
 		return fmt.Errorf("crew icon must be at most 8 characters")
 	}
-	if role == "" || utf8.RuneCountInString(role) > 120 {
-		return fmt.Errorf("crew role is required (at most 120 characters)")
+	if utf8.RuneCountInString(role) > 120 {
+		return fmt.Errorf("crew role must be at most 120 characters")
 	}
-	if purpose == "" || utf8.RuneCountInString(purpose) > crewPurposeLimit {
-		return fmt.Errorf("crew purpose is required (at most %d characters)", crewPurposeLimit)
+	if utf8.RuneCountInString(purpose) > crewPurposeLimit {
+		return fmt.Errorf("crew purpose must be at most %d characters", crewPurposeLimit)
 	}
 	return nil
 }
@@ -350,7 +350,12 @@ func (api *StreamingAPI) externalCrewAuthoringCall(w http.ResponseWriter, r *htt
 	ctx := r.Context()
 	claims := GetUserFromContext(ctx)
 	if externalCrewWriteTools[name] {
-		if status, message := externalCrewAuthorGate(claims); status != 0 {
+		if strings.HasPrefix(externalArg(args, "crew_id"), "code:") {
+			if !userAllowedProduct(claims, "code") || !userAccessForClaims(claims).CanEdit || userAccessForClaims(claims).Disabled {
+				externalError(w, 403, "forbidden", "Only an authorized Builder can change this project.")
+				return
+			}
+		} else if status, message := externalCrewAuthorGate(claims); status != 0 {
 			externalError(w, status, "forbidden", message)
 			return
 		}
@@ -432,7 +437,7 @@ func (api *StreamingAPI) externalCrewAuthoringCall(w http.ResponseWriter, r *htt
 			externalError(w, http.StatusBadRequest, "update_failed", err.Error())
 			return
 		}
-		crew, manifest, summary, ok = api.externalCrewResolve(ctx, claims, manifest.ID)
+		crew, manifest, summary, ok = api.externalCrewResolve(ctx, claims, workspaceExternalID(manifest.Product, manifest.ID))
 		if !ok {
 			externalJSON(w, map[string]any{"crew_id": manifest.ID, "updated": true})
 			return
@@ -468,6 +473,10 @@ func remarshalExternalArgs(raw any, out any) error {
 // schedules. The spec is fully checked first; a later storage failure
 // returns the new Crew's ID so the author can finish it with update_crew.
 func (api *StreamingAPI) createCrewFromSpec(ctx context.Context, claims *UserClaims, spec crewSpec, enableSchedules bool) (string, error) {
+	return api.createWorkspaceFromSpec(ctx, claims, "work", spec, enableSchedules)
+}
+
+func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *UserClaims, profileID string, spec crewSpec, enableSchedules bool) (string, error) {
 	spec, templates, err := normalizeCrewSpec(spec)
 	if err != nil {
 		return "", err
@@ -491,7 +500,7 @@ func (api *StreamingAPI) createCrewFromSpec(ctx context.Context, claims *UserCla
 		return "", fmt.Errorf("the Crew product is unavailable")
 	}
 	userID := claims.UserID
-	profile, err := api.agentProfiles.Resolve("work", 0, userID)
+	profile, err := api.agentProfiles.Resolve(profileID, 0, userID)
 	if err != nil {
 		return "", err
 	}
@@ -499,13 +508,13 @@ func (api *StreamingAPI) createCrewFromSpec(ctx context.Context, claims *UserCla
 	if err != nil {
 		return "", fmt.Errorf("invalid Crew projects root: %w", err)
 	}
-	runtimeRoot := crewCreationRoot("work", agentProfileRuntimeWorkspace(userID, projectsRoot))
+	runtimeRoot := crewCreationRoot(profileID, agentProfileRuntimeWorkspace(userID, projectsRoot))
 	crewID := uuid.NewString()
 	workspacePath := runtimeRoot + "/" + slugifyCrewTitle(spec.Name) + "-" + crewID[:8]
 	if projectExistsAtPath(ctx, workspacePath) {
 		return "", fmt.Errorf("crew folder collision; retry")
 	}
-	if _, err := writeCrewCreationManifests(ctx, userID, profile, "work", "", spec.Name, spec.Purpose, spec.Role, spec.Icon, crewID, workspacePath, nil); err != nil {
+	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, spec.Role, spec.Icon, crewID, workspacePath, nil); err != nil {
 		return "", err
 	}
 	for _, template := range templates {
@@ -516,11 +525,11 @@ func (api *StreamingAPI) createCrewFromSpec(ctx context.Context, claims *UserCla
 	if err := writeCrewSpecFiles(ctx, workspacePath, spec.Files); err != nil {
 		return crewID, err
 	}
-	if err := applyCrewCreationSelections(ctx, "work", workspacePath, spec.SelectedSkills, nil, nil, nil); err != nil {
+	if err := applyCrewCreationSelections(ctx, profileID, workspacePath, spec.SelectedSkills, nil, nil, nil); err != nil {
 		return crewID, err
 	}
 	if len(spec.Functions) > 0 {
-		target := triggerTarget{Kind: triggerCallerCrew, Path: workspacePath, Label: spec.Name, CrewID: crewID, CrewProfile: "work", CrewOwner: sanitizeUserIDForPath(userID)}
+		target := triggerTarget{Kind: triggerCallerCrew, Path: workspacePath, Label: spec.Name, CrewID: crewID, CrewProfile: profileID, CrewOwner: sanitizeUserIDForPath(userID)}
 		functions := []crewFunction{}
 		now := time.Now().UTC()
 		for _, fn := range spec.Functions {
@@ -535,7 +544,7 @@ func (api *StreamingAPI) createCrewFromSpec(ctx context.Context, claims *UserCla
 		if !enableSchedules {
 			schedule.Enabled = false
 		}
-		if _, err := api.productSchedules.CreateProjectSchedule(ctx, userID, "work", crewID, schedule); err != nil {
+		if _, err := api.productSchedules.CreateProjectSchedule(ctx, userID, profileID, crewID, schedule); err != nil {
 			return crewID, fmt.Errorf("schedule %q: %w", schedule.Name, err)
 		}
 	}
@@ -622,7 +631,7 @@ func (api *StreamingAPI) updateCrewFromSpec(ctx context.Context, claims *UserCla
 			return err
 		}
 	}
-	target := triggerTarget{Kind: triggerCallerCrew, Path: root, Label: manifest.displayTitle(), CrewID: manifest.ID, CrewProfile: "work", CrewOwner: crew.OwnerID}
+	target := triggerTarget{Kind: triggerCallerCrew, Path: root, Label: manifest.displayTitle(), CrewID: manifest.ID, CrewProfile: manifest.Product, CrewOwner: crew.OwnerID}
 	var functions []crewFunction
 	if update.Functions != nil {
 		var err error
@@ -699,7 +708,7 @@ func (api *StreamingAPI) updateCrewFromSpec(ctx context.Context, claims *UserCla
 		}
 	}
 	if update.Skills != nil {
-		if err := updateProductSelectedSkills(ctx, "work", root, func(current []string) []string {
+		if err := updateProductSelectedSkills(ctx, manifest.Product, root, func(current []string) []string {
 			if update.Skills.Set != nil {
 				current = skillSet
 			}
@@ -740,13 +749,13 @@ func (api *StreamingAPI) updateCrewFromSpec(ctx context.Context, claims *UserCla
 	if update.Schedules != nil {
 		userID := claims.UserID
 		for _, schedule := range scheduleAdds {
-			if _, err := api.productSchedules.CreateProjectSchedule(ctx, userID, "work", manifest.ID, schedule); err != nil {
+			if _, err := api.productSchedules.CreateProjectSchedule(ctx, userID, manifest.Product, manifest.ID, schedule); err != nil {
 				return fmt.Errorf("schedule %q: %w", schedule.Name, err)
 			}
 		}
 		for _, spec := range update.Schedules.Update {
 			var applyErr error
-			if _, err := api.productSchedules.UpdateProjectSchedule(ctx, userID, projectScheduleJobID("work", manifest.ID, strings.TrimSpace(spec.ID)), func(schedule *productschedule.Schedule) {
+			if _, err := api.productSchedules.UpdateProjectSchedule(ctx, userID, projectScheduleJobID(manifest.Product, manifest.ID, strings.TrimSpace(spec.ID)), func(schedule *productschedule.Schedule) {
 				applyErr = spec.applyTo(schedule)
 			}); err != nil {
 				return fmt.Errorf("schedule %q: %w", spec.ID, err)
@@ -759,7 +768,7 @@ func (api *StreamingAPI) updateCrewFromSpec(ctx context.Context, claims *UserCla
 			if !scheduleExists[strings.TrimSpace(id)] {
 				continue
 			}
-			if err := api.productSchedules.DeleteProjectSchedule(ctx, userID, projectScheduleJobID("work", manifest.ID, strings.TrimSpace(id))); err != nil {
+			if err := api.productSchedules.DeleteProjectSchedule(ctx, userID, projectScheduleJobID(manifest.Product, manifest.ID, strings.TrimSpace(id))); err != nil {
 				return fmt.Errorf("schedule %q: %w", id, err)
 			}
 		}
@@ -861,7 +870,7 @@ func exportCrewSpec(ctx context.Context, crew crewProjectBinding, manifest produ
 	if len(files) > 0 {
 		spec.Files = files
 	}
-	target := triggerTarget{Kind: triggerCallerCrew, Path: root, Label: manifest.displayTitle(), CrewID: manifest.ID, CrewProfile: "work", CrewOwner: crew.OwnerID}
+	target := triggerTarget{Kind: triggerCallerCrew, Path: root, Label: manifest.displayTitle(), CrewID: manifest.ID, CrewProfile: manifest.Product, CrewOwner: crew.OwnerID}
 	functions, err := readCrewFunctions(ctx, target)
 	if err != nil {
 		return spec, err

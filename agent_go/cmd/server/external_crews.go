@@ -124,6 +124,13 @@ func (api *StreamingAPI) externalCrewsVisible(ctx context.Context, claims *UserC
 // connection may use it. Unknown and out-of-bound Crews are one not-found.
 func (api *StreamingAPI) externalCrewResolve(ctx context.Context, claims *UserClaims, crewID string) (crewProjectBinding, productProjectManifest, map[string]interface{}, bool) {
 	crewID = strings.TrimSpace(crewID)
+	if strings.HasPrefix(crewID, "code:") {
+		binding, manifest, ok := api.resolveExternalWorkspace(ctx, claims, crewID)
+		if !ok {
+			return crewProjectBinding{}, productProjectManifest{}, nil, false
+		}
+		return binding, manifest, map[string]interface{}{"id": manifest.ID, "name": manifest.displayTitle(), "workspace_path": binding.Binding.WorkspacePath}, true
+	}
 	if crewID == "" || api == nil || api.agentProfiles == nil {
 		return crewProjectBinding{}, productProjectManifest{}, nil, false
 	}
@@ -157,7 +164,7 @@ func (api *StreamingAPI) externalCrewResolve(ctx context.Context, claims *UserCl
 }
 
 func externalCrewFunctionSummaries(ctx context.Context, crew crewProjectBinding, manifest productProjectManifest, label string) []map[string]interface{} {
-	target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: "work", CrewOwner: crew.OwnerID}
+	target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: manifest.Product, CrewOwner: crew.OwnerID}
 	functions, err := readCrewFunctions(ctx, target)
 	if err != nil {
 		functions = nil
@@ -226,10 +233,10 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		// get_workflow_function_call, under workflow access. Without the kind
 		// check a Crew-only token read the user's workflow results (PLAT-366).
 		mine := call.UserID == claims.UserID && call.CallerKind == triggerCallerUser
-		isCrew := call.TargetKind == triggerCallerCrew && call.TargetProfileID != codeproduct.ProfileID
-		targetID := call.TargetID
+		isCrew := call.TargetKind == triggerCallerCrew && (call.TargetProfileID != codeproduct.ProfileID || call.IsolatedExecution && call.TargetChat == "")
+		targetID := workspaceExternalID(call.TargetProfileID, call.TargetID)
 		call.mu.Unlock()
-		if !isCrew || (claims.AccessToken != nil && !claims.AccessToken.AllowsCrew(targetID)) {
+		if !isCrew || (claims.AccessToken != nil && !claims.AccessToken.AllowsCrew(workspaceTokenProjectID(targetID))) {
 			externalError(w, 404, "not_found", "Function call not found.")
 			return
 		}
@@ -290,10 +297,10 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		}
 		externalJSON(w, map[string]any{"status": "submitted_for_owner_review", "crew_id": manifest.ID, "suggestion_id": input.ID})
 	case "ask_crew":
-		target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: "work", CrewOwner: crew.OwnerID}
+		target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: manifest.Product, CrewOwner: crew.OwnerID}
 		api.externalSendMessage(w, r, args, target)
 	case "call_crew_function":
-		target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: "work", CrewOwner: crew.OwnerID}
+		target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: manifest.Product, CrewOwner: crew.OwnerID}
 		functions, err := readCrewFunctions(ctx, target)
 		if err != nil {
 			externalError(w, 502, "workspace_unavailable", "Cannot read the Crew's functions.")
@@ -327,7 +334,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		externalJSON(w, out)
 	case "list_crew_function_calls":
 		loadExternalSavedFunctionCalls(ctx)
-		externalJSON(w, map[string]any{"crew_id": manifest.ID, "calls": externalCrewFunctionCalls(manifest.ID, claims.UserID, crew.OwnedByCaller, externalInt(args, "limit", crewFunctionRecentCallsLimit))})
+		externalJSON(w, map[string]any{"crew_id": manifest.ID, "calls": externalCrewFunctionCalls(workspaceExternalID(manifest.Product, manifest.ID), claims.UserID, crew.OwnedByCaller, externalInt(args, "limit", crewFunctionRecentCallsLimit))})
 	case "list_crew_functions":
 		externalJSON(w, map[string]any{"crew_id": manifest.ID, "functions": externalCrewFunctionSummaries(ctx, crew, manifest, label)})
 	case "list_crew_files", "search_crew_files":
@@ -411,7 +418,7 @@ func externalCrewFunctionCalls(crewID, userID string, owner bool, limit int) []m
 	rows := []row{}
 	for _, call := range calls {
 		call.mu.Lock()
-		if call.TargetKind != triggerCallerCrew || call.TargetID != strings.TrimSpace(crewID) || call.TargetProfileID == codeproduct.ProfileID {
+		if call.TargetKind != triggerCallerCrew || workspaceExternalID(call.TargetProfileID, call.TargetID) != strings.TrimSpace(crewID) || call.TargetProfileID == codeproduct.ProfileID && (!call.IsolatedExecution || call.TargetChat != "") {
 			call.mu.Unlock()
 			continue
 		}

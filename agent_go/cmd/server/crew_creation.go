@@ -148,14 +148,8 @@ func (s *ProductScheduleService) CreateCrewProject(ctx context.Context, req Crea
 	if len([]rune(strings.TrimSpace(req.Icon))) > 8 {
 		return CreatedCrew{}, fmt.Errorf("crew icon must be at most 8 characters")
 	}
-	if strings.TrimSpace(req.Role) == "" {
-		return CreatedCrew{}, fmt.Errorf("crew role is required")
-	}
 	if len([]rune(strings.TrimSpace(req.Role))) > 120 {
 		return CreatedCrew{}, fmt.Errorf("crew role must be at most 120 characters")
-	}
-	if strings.TrimSpace(req.Purpose) == "" {
-		return CreatedCrew{}, fmt.Errorf("crew purpose is required")
 	}
 	if len([]rune(strings.TrimSpace(req.Purpose))) > 2000 {
 		return CreatedCrew{}, fmt.Errorf("crew purpose must be at most 2000 characters")

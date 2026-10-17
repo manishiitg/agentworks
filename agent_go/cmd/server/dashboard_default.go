@@ -147,8 +147,12 @@ func defaultDashboardHTML(info defaultDashboardInfo) string {
 func (api *StreamingAPI) defaultDashboardInfoFor(ctx context.Context, claims *UserClaims, target dashboardTarget) (defaultDashboardInfo, error) {
 	info := defaultDashboardInfo{Kind: target.Kind, Title: target.Title}
 	switch target.Kind {
-	case "crew":
-		crew, manifest, summary, ok := api.externalCrewResolve(ctx, claims, target.ID)
+	case "crew", "code":
+		origin := crewProfileID
+		if target.Kind == "code" {
+			origin = "code"
+		}
+		crew, manifest, summary, ok := api.externalCrewResolve(ctx, claims, workspaceExternalID(origin, target.ID))
 		if !ok {
 			return info, dashboardFailure(404, "project unavailable")
 		}

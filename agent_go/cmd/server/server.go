@@ -2587,9 +2587,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/mcp", api.handleAdminCodeMCP).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shares", api.handlePutCodeShares).Methods("PUT")
 	// A Code workspace's plain shell: sandboxed, one per person with editor access.
-	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shell/stream", api.handleCodeShellStream).Methods("GET")
+	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/shell/stream", api.handleCodeShellStream).Methods("GET")
 	codeShellReaperOnce.Do(func() { go codeShellReaper() })
-	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shell/stop", api.handleCodeShellStop).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/shell/stop", api.handleCodeShellStop).Methods("POST", "OPTIONS")
 	// Platform OAuth client secrets written inline before they moved to
 	// sealed client files.
 	if err := api.migratePlatformClientSecrets(); err != nil {
@@ -3183,6 +3183,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/devices", api.handleLocalDevices).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/tools", api.handleExternalTools).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/call", api.handleExternalCall).Methods("POST")
+	apiRouter.HandleFunc("/workspaces", api.handleWorkspaces).Methods("POST")
 	apiRouter.HandleFunc("/relays/{id}/runs", api.handleStartRelayRun).Methods("POST")
 	apiRouter.HandleFunc("/relays/{id}/runs/{run}", api.handleGetRelayRun).Methods("GET")
 	apiRouter.HandleFunc("/relays/{id}/releases", api.handleListRelayReleases).Methods("GET")
@@ -7358,17 +7359,18 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			promptCtx := promptContext{
 				// The CLI that actually runs: a workflow's manifest LLM replaces the
 				// requested one (the log named the request's CLI, not Muse/Codex).
-				Provider:            finalProvider,
-				HasProfile:          resolvedProfile != nil,
-				IsWorkflowPhase:     isWorkflowPhase,
-				CrewReadOnly:        crewReaderCLI,
-				MemoryReadOnly:      currentUserIsReadOnly,
-				ShellRoot:           shellRoot,
-				PerUserChatsFolder:  perUserChatsFolder,
-				WorkflowPhaseFolder: workflowPhaseFolder,
-				ProfileWorkspace:    agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder),
-				CapabilitySection:   buildLLMCapabilityPromptSection(r.Context()),
-				AuthenticatedUser:   authenticatedChatUserPrompt(GetUserFromContext(r.Context())),
+				Provider:              finalProvider,
+				HasProfile:            resolvedProfile != nil,
+				IsWorkflowPhase:       isWorkflowPhase,
+				CrewReadOnly:          crewReaderCLI,
+				MemoryReadOnly:        currentUserIsReadOnly,
+				ProjectMemoryDisabled: resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && !agentprofiles.HasFeature(resolvedProfile.Definition, "memory"),
+				ShellRoot:             shellRoot,
+				PerUserChatsFolder:    perUserChatsFolder,
+				WorkflowPhaseFolder:   workflowPhaseFolder,
+				ProfileWorkspace:      agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder),
+				CapabilitySection:     buildLLMCapabilityPromptSection(r.Context()),
+				AuthenticatedUser:     authenticatedChatUserPrompt(GetUserFromContext(r.Context())),
 				// Capability details are loaded through this tool, so do not
 				// advertise its pointer merely because auth setup is admitted.
 				HasLLMCapabilityTools: toolGate.Admit("list_llm_capabilities"),

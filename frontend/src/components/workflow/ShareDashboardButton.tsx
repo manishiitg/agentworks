@@ -7,6 +7,7 @@ type ShareState = {
   people?: { id: string; email?: string; username?: string }[]
   unknown_emails?: string[]
   can_share: boolean
+  accounts?: { kind: string; name: string; use: string }[]
   note?: string
 }
 
@@ -107,6 +108,14 @@ export function ShareDashboardButton({ workspacePath }: { workspacePath: string 
       {open && (
         <div role="dialog" aria-label="Share" className="absolute right-0 mt-1 w-72 space-y-2 rounded-md border border-border bg-background p-3 text-sm shadow-lg">
           <p className="text-xs text-muted-foreground">People you share with open its dashboard, can ask it, use its functions and read its files (not secrets).</p>
+          {state.accounts && state.accounts.length > 0 && <div className="space-y-1 border-b border-border pb-2" aria-label="Selected accounts">
+            <p className="text-xs font-medium">Accounts this project uses</p>
+            {state.accounts.map((account, index) => <div key={`${account.kind}:${index}`} className="text-xs">
+              <p>{account.kind}: <strong>{account.name}</strong></p>
+              <p className="text-muted-foreground">{account.use}</p>
+            </div>)}
+            <p className="text-xs text-muted-foreground">Choose an available company model account in Settings → Models, or manage app accounts in Integrations. Sharing keeps your current selections.</p>
+          </div>}
           {OPTIONS.map(option => (
             <label key={option.mode} className="flex cursor-pointer items-start gap-2">
               <input type="radio" name="share-mode" className="mt-1" checked={mode === option.mode} onChange={() => setMode(option.mode)} />
@@ -120,7 +129,7 @@ export function ShareDashboardButton({ workspacePath }: { workspacePath: string 
           {owners && (
             <div className="space-y-1 border-t border-border pt-2" aria-label="Owners">
               <p className="font-medium">Owners</p>
-              <p className="text-xs text-muted-foreground">Owners build this together and can share or delete it. It still runs as the main owner.</p>
+              <p className="text-xs text-muted-foreground">Owners build this together and can share or delete it. All Builders see every Builder chat, including existing history. It still runs as the main owner.</p>
               <ul className="text-xs">
                 {owners.owner && <li>{who(owners.owner)} <span className="text-muted-foreground">(main owner)</span></li>}
                 {owners.co_owners.map(p => (

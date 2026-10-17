@@ -99,8 +99,12 @@ func (api *StreamingAPI) externalCodeRunOwnProject(ctx context.Context, userID, 
 }
 
 // externalCodeRunChats lists a project's chats: the main chat first, then the side chats, newest first.
-func (api *StreamingAPI) externalCodeRunChats(ctx context.Context, userID, projectID string, binding productConversationBinding) ([]codeChat, error) {
-	records, err := defaultProductConversationRegistryStore().projectChats(ctx, userID, codeproduct.ProfileID, projectID)
+func (api *StreamingAPI) externalCodeRunChats(ctx context.Context, userID, projectID string, binding productConversationBinding, profileIDs ...string) ([]codeChat, error) {
+	profileID := codeproduct.ProfileID
+	if len(profileIDs) > 0 {
+		profileID = profileIDs[0]
+	}
+	records, err := defaultProductConversationRegistryStore().projectChats(ctx, userID, profileID, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +114,7 @@ func (api *StreamingAPI) externalCodeRunChats(ctx context.Context, userID, proje
 			titles[session.SessionID] = strings.TrimSpace(session.Title)
 		}
 	}
-	identities, _ := defaultProductConversationRegistryStore().agentIdentities(ctx, userID, codeproduct.ProfileID, projectID)
+	identities, _ := defaultProductConversationRegistryStore().agentIdentities(ctx, userID, profileID, projectID)
 	var chats []codeChat
 	for _, record := range records {
 		if !workspacePathsMatchForUser(userID, record.WorkspacePath, binding.WorkspacePath) {
@@ -551,7 +555,11 @@ func externalCallerTabName(ctx context.Context, claims *UserClaims) string {
 
 // externalCodeRunOpenTab opens a new side tab, optionally named, as the + in the app does. It returns the tab id, or an
 // HTTP status and plain message when it cannot.
-func (api *StreamingAPI) externalCodeRunOpenTab(r *http.Request, claims *UserClaims, binding productConversationBinding, projectID string, chats []codeChat, chatName string) (string, int, string) {
+func (api *StreamingAPI) externalCodeRunOpenTab(r *http.Request, claims *UserClaims, binding productConversationBinding, projectID string, chats []codeChat, chatName string, profileIDs ...string) (string, int, string) {
+	profileID := codeproduct.ProfileID
+	if len(profileIDs) > 0 {
+		profileID = profileIDs[0]
+	}
 	ids := make([]string, len(chats))
 	names := []string{}
 	for i, c := range chats {
@@ -569,14 +577,14 @@ func (api *StreamingAPI) externalCodeRunOpenTab(r *http.Request, claims *UserCla
 	raw := make([]byte, 4)
 	_, _ = rand.Read(raw)
 	id := hex.EncodeToString(raw)
-	status, body := scheduleHandler(r, api.handleResolveAgentProfileConversation, http.MethodPost, "/api/agent-profiles/code/conversation", map[string]string{"id": codeproduct.ProfileID}, nil, AgentProfileConversationRequest{ConversationKey: projectID + codeChatSideMarker + id})
+	status, body := scheduleHandler(r, api.handleResolveAgentProfileConversation, http.MethodPost, "/api/agent-profiles/code/conversation", map[string]string{"id": profileID}, nil, AgentProfileConversationRequest{ConversationKey: projectID + codeChatSideMarker + id})
 	if status >= 400 {
 		return "", status, string(body)
 	}
 	if chatName != "" {
 		// A Code tab's name is its agent identity (what the tab list shows); the history title follows when the chat exists.
 		_ = nameNewSideChat(claims.UserID, binding.WorkspacePath, chatName, body)
-		if err := setCodeTabName(r.Context(), claims.UserID, projectID+codeChatSideMarker+id, chatName); err != nil {
+		if err := setCodeTabName(r.Context(), claims.UserID, projectID+codeChatSideMarker+id, chatName, profileID); err != nil {
 			return id, 0, "The tab is open but could not be named: " + err.Error()
 		}
 	}
@@ -584,7 +592,11 @@ func (api *StreamingAPI) externalCodeRunOpenTab(r *http.Request, claims *UserCla
 }
 
 // setCodeTabName gives a Code tab its name as an agent identity, which is what the tab list and name lookups use.
-func setCodeTabName(ctx context.Context, userID, conversationKey, name string) error {
-	_, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, userID, codeproduct.ProfileID, conversationKey, &name, nil, "tab name")
+func setCodeTabName(ctx context.Context, userID, conversationKey, name string, profileIDs ...string) error {
+	profileID := codeproduct.ProfileID
+	if len(profileIDs) > 0 {
+		profileID = profileIDs[0]
+	}
+	_, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, userID, profileID, conversationKey, &name, nil, "tab name")
 	return err
 }

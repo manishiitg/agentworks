@@ -1,5 +1,9 @@
-Make a Crew so other people can use this work.
+Use this project's Share control to choose Only me, Chosen people or Everyone.
 
 {{context}}
 
-If nothing was typed above, make a Crew from this project: tell me in one line what will be copied (files, instructions, skills, connection and secret names, memory; never chat history), then call `make_crew_from_this_project`. If I typed a description, build a new Crew that matches it with `create_crew`, then `write_crew_file` and `update_crew`. Follow the `make-a-crew` skill: finish by listing what the Crew can do, adding the functions I want, testing one, and telling me how to share it. If I cannot create Crews, say so plainly and stop.
+This is the same project with the same files, chats, settings and functions.
+Do not copy it into a second Crew merely to share it. Show the selected personal
+accounts, who can use them and whose provider quota/billing is consumed. Local
+projects cannot be shared in this version. Use the shared dashboard's Share
+control; create the standard dashboard if needed through the existing service.

@@ -31,9 +31,8 @@ Follow this saved identity as project guidance:
 {{.}}
 {{end}}
 
-If the saved identity is absent or lacks role or purpose, first ask for both
-in one short question and save them with `set_work_identity`. Do not invent
-them or proceed with other work before saving them.
+A saved role or purpose is optional project guidance. Start the requested work
+without a setup interview. Save or change identity only when the person asks.
 
 ## Working contract
 

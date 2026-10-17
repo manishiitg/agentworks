@@ -112,7 +112,7 @@ func (api *StreamingAPI) resolveDashboardQuestionResource(ctx context.Context, c
 	out.Snapshot = result.Snapshot
 	owner := false
 	switch target.Kind {
-	case "crew":
+	case "crew", "code":
 		crew, ok := resolveCrewPath(ctx, claims.UserID, target.Root)
 		if !ok {
 			return out, dashboardFailure(404, "dashboard unavailable")
@@ -121,8 +121,6 @@ func (api *StreamingAPI) resolveDashboardQuestionResource(ctx context.Context, c
 	case "workflow", "relay":
 		access, _ := workflowAccessForWorkspacePath(ctx, claims, target.Root)
 		owner = access == WorkflowAccessOwner
-	case "code":
-		owner = true // dashboardTarget already requires the Code owner.
 	}
 	askScope := true
 	owner = owner && dashboardAuthoringAllowed(claims, &target)

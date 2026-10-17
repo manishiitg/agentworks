@@ -40,10 +40,17 @@ type runSharePerson struct {
 	Username string `json:"username,omitempty"`
 }
 
+type runShareAccount struct {
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+	Use  string `json:"use"`
+}
+
 type runShareState struct {
-	Mode    string           `json:"mode"`
-	People  []runSharePerson `json:"people,omitempty"`
-	Unknown []string         `json:"unknown_emails,omitempty"`
+	Accounts []runShareAccount `json:"accounts,omitempty"`
+	Mode     string            `json:"mode"`
+	People   []runSharePerson  `json:"people,omitempty"`
+	Unknown  []string          `json:"unknown_emails,omitempty"`
 	// Previous is who had access before this change, so the owner or agent sees exactly who was removed.
 	Previous *runShareState `json:"previous,omitempty"`
 	// CanShare tells the screen whether to offer sharing: only the project's owner can.
@@ -142,6 +149,9 @@ func (api *StreamingAPI) readRunShare(ctx context.Context, claims *UserClaims, t
 		}
 	default:
 		return state, dashboardFailure(404, "sharing is not available for this kind of project")
+	}
+	if (target.Kind == "crew" || target.Kind == "code") && api.dashboardShareOwner(ctx, claims, target) {
+		state.Accounts = api.workspaceShareAccounts(ctx, target)
 	}
 	return state, nil
 }
@@ -317,7 +327,7 @@ func (api *StreamingAPI) handleDashboardShare(w http.ResponseWriter, r *http.Req
 		dashboardError(w, err)
 		return
 	}
-	state.CanShare = target.Kind != "code" && api.dashboardShareOwner(r.Context(), claims, target) && dashboardAuthoringAllowed(claims, &target)
+	state.CanShare = !(target.Kind == "code" && codeProjectMode(r.Context(), target.Root) == "local") && api.dashboardShareOwner(r.Context(), claims, target) && dashboardAuthoringAllowed(claims, &target)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(state)
 }

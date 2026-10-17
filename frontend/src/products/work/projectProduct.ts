@@ -48,7 +48,7 @@ export const CREW_PRODUCT: ProjectProductConfig = {
   itemNoun: 'Crew member',
   hasIdentity: true,
   hasTemplates: true,
-  hasTerminal: false,
+  hasTerminal: true,
   supportsLocalFiles: false,
   listsSharedProjects: true,
   // No switch (owner decision 2026-09-29): native agent tools are always on.
@@ -65,11 +65,11 @@ export const CODE_PRODUCT: ProjectProductConfig = {
   slugFallback: 'code',
   noun: 'Code',
   itemNoun: 'Code workspace',
-  hasIdentity: false,
-  hasTemplates: false,
+  hasIdentity: true,
+  hasTemplates: true,
   hasTerminal: true,
   supportsLocalFiles: true,
-  listsSharedProjects: false,
+  listsSharedProjects: true,
   // Native agent tools are always on in a Code (owner decision 2026-09-29):
   // no switch, and the server ignores a stored "off".
   hasNativeAgentToolsSetting: false,

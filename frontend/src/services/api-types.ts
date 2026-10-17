@@ -303,6 +303,7 @@ export interface SharedProjectSchedule {
 }
 
 export interface SharedProjectSummary {
+  can_build?: boolean
   id: string
   title: string
   description?: string

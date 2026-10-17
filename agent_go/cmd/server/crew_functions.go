@@ -211,10 +211,6 @@ func callableFunctions(ctx context.Context, target triggerTarget) ([]crewFunctio
 	if err != nil {
 		return nil, err
 	}
-	// A Code project has no functions of its own (an older declaration may remain).
-	if target.CrewProfile == codeproduct.ProfileID {
-		return functions, nil
-	}
 	return functions, nil
 }
 
@@ -1360,7 +1356,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		}
 		return resolveFunctionTarget(ctx, claims, caller, name)
 	}
-	targetSchema := map[string]interface{}{"type": "string", "description": "The Crew or workflow name/tag/path. <!-- product:code -->A Code project has no functions.<!-- /product -->"}
+	targetSchema := map[string]interface{}{"type": "string", "description": "The project or workflow name/tag/path. For a shared Code project use workspace:code:<id>."}
 	callFunction := func(ctx context.Context, caller triggerLinkCaller, target triggerTarget, function string, args map[string]interface{}, submissionID string, notify bool, timeout, wait time.Duration) (string, error) {
 		if args == nil {
 			args = map[string]interface{}{}
@@ -1447,7 +1443,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 	}
 	schemaSchema := map[string]interface{}{"type": "object", "description": "JSON Schema subset: type object|array|string|number|integer|boolean, properties, required, items, enum."}
 
-	if err := register("define_function", "Declare or update a typed function on this workspace (omit target), or another Crew. <!-- product:code -->Code projects have no functions.<!-- /product --> Workflow functions are managed in the workflow Builder. Callers use call_function and receive a result validated against result_schema.", map[string]interface{}{
+	if err := register("define_function", "Declare or update a typed function on this workspace (omit target), or another Crew. Project functions work privately or through Share. Workflow functions are managed in the workflow Builder. Callers use call_function and receive a result validated against result_schema.", map[string]interface{}{
 		"type": "object", "required": []string{"name", "description", "instructions"}, "properties": map[string]interface{}{
 			"target":        targetSchema,
 			"name":          map[string]interface{}{"type": "string", "description": "snake_case name, e.g. run_login_flow."},
@@ -1480,8 +1476,8 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		if target.Kind == triggerCallerWorkflow {
 			return "", errWorkflowFunctionsAreTriggers(target)
 		}
-		if target.CrewProfile == codeproduct.ProfileID || (caller.Stamp.ProfileID == codeproduct.ProfileID && args["target"] == nil) {
-			return "", errCodeHasNoFunctions
+		if !crewProjectOwnedByCaller(userID, target.Path) {
+			return "", fmt.Errorf("Only a project Builder can change its functions")
 		}
 		functions, err := readCrewFunctions(ctx, target)
 		if err != nil {
@@ -1513,8 +1509,8 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		if target.Kind == triggerCallerWorkflow {
 			return "", errWorkflowFunctionsAreTriggers(target)
 		}
-		if target.CrewProfile == codeproduct.ProfileID && caller.Stamp.ProfileID != codeproduct.ProfileID {
-			return "", fmt.Errorf("declare or remove Code functions in its owner's Code chat")
+		if !crewProjectOwnedByCaller(userID, target.Path) {
+			return "", fmt.Errorf("Only a project Builder can change its functions")
 		}
 		functions, err := readCrewFunctions(ctx, target)
 		if err != nil {
@@ -1635,7 +1631,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		if call.TargetProfileID == codeproduct.ProfileID && call.UserID != userID {
 			return nil, caller, fmt.Errorf("function call %s belongs to another caller", id)
 		}
-		if call.TargetProfileID == codeproduct.ProfileID {
+		if call.TargetProfileID == codeproduct.ProfileID && call.TargetChat != "" {
 			ownerID, ok := crewProjectOwnerID(call.TargetPath)
 			source := triggerLinkCaller{Stamp: triggerCaller{Type: call.CallerKind, ProfileID: call.CallerProfileID, ID: call.CallerID}, Path: call.CallerPath}
 			if !ok || authorizeOwnedCodeCaller(ctx, userID, ownerID, source) != nil ||
@@ -1665,9 +1661,6 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 					canonicalCrewWorkspaceRoot(call.TargetPath) != canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(userID, caller.Path)) {
 					return nil, caller, fmt.Errorf("private Code access denied")
 				}
-			} else if call.TargetProfileID == codeproduct.ProfileID {
-				// Only calls between chats of one Code exist; no call targets another Code.
-				return nil, caller, fmt.Errorf("private Code access denied")
 			}
 		}
 		return call, caller, nil

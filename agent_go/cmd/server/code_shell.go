@@ -97,7 +97,11 @@ func codeShellTab(r *http.Request) (int, bool) {
 func (api *StreamingAPI) codeShellFolderGuard(ctx context.Context, userID, root string) *workspace.FolderGuardConfig {
 	sandbox := codeproduct.BuiltinAgentProfile().Runtime.Sandbox
 	if api != nil && api.agentProfiles != nil {
-		if profile, err := api.agentProfiles.Resolve(codeproduct.ProfileID, 0, userID); err == nil {
+		product, _, ok := projectProductForPath(root)
+		if !ok {
+			product.ProfileID = codeproduct.ProfileID
+		}
+		if profile, err := api.agentProfiles.Resolve(product.ProfileID, 0, userID); err == nil {
 			sandbox = profile.Runtime.Sandbox
 		}
 	}
@@ -134,7 +138,14 @@ func (api *StreamingAPI) codeShellTargetFull(r *http.Request) (userID, shellID, 
 	if claims == nil || strings.TrimSpace(claims.UserID) == "" || projectID == "" || api == nil || api.agentProfiles == nil {
 		return "", "", "", "", "", http.StatusNotFound, "Code workspace not found"
 	}
-	profile, err := api.agentProfiles.Resolve(codeproduct.ProfileID, 0, claims.UserID)
+	profileID := strings.TrimSpace(mux.Vars(r)["id"])
+	if profileID == "" {
+		profileID = codeproduct.ProfileID
+	}
+	if !isProjectProfileID(profileID) {
+		return "", "", "", "", "", http.StatusNotFound, "Project not found"
+	}
+	profile, err := api.agentProfiles.Resolve(profileID, 0, claims.UserID)
 	if err != nil || !userAllowedProduct(claims, profile.Product) {
 		return "", "", "", "", "", http.StatusNotFound, "Code workspace not found"
 	}
@@ -142,11 +153,18 @@ func (api *StreamingAPI) codeShellTargetFull(r *http.Request) (userID, shellID, 
 	if err != nil {
 		return "", "", "", "", "", http.StatusNotFound, "Code workspace not found"
 	}
-	if !codeRoleFor(r.Context(), claims.UserID, project.OwnerID, project.Binding.ResourceID).atLeast(codeRoleEditor) {
-		return "", "", "", "", "", http.StatusForbidden, "the shell needs editor access to this Code workspace"
+	if !project.OwnedByCaller || !userAccessForClaims(claims).CanEdit {
+		return "", "", "", "", "", http.StatusForbidden, "Only a project Builder can use its terminal"
+	}
+	if mode := codeProjectMode(r.Context(), project.Binding.WorkspacePath); profileID == "code" && (mode == "cowork" || mode == "local") {
+		return "", "", "", "", "", http.StatusForbidden, "The terminal is available in server Dev projects. Open your Local folder on your computer."
 	}
 	root = agentProfileRuntimeWorkspace(project.OwnerID, project.Binding.WorkspacePath)
-	return claims.UserID, codeShellID(project.OwnerID, projectID, claims.UserID, tab), root, project.OwnerID, projectID, 0, ""
+	shellProjectID := projectID
+	if profileID != "code" {
+		shellProjectID = profileID + ":" + projectID
+	}
+	return claims.UserID, codeShellID(project.OwnerID, shellProjectID, claims.UserID, tab), root, project.OwnerID, projectID, 0, ""
 }
 
 // codeShellStart starts (or reuses) the sandboxed shell; the workspace call is
@@ -290,7 +308,7 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 			case <-roleCtx.Done():
 				return
 			case <-ticker.C:
-				if !codeRoleFor(roleCtx, userID, ownerID, projectID).atLeast(codeRoleEditor) {
+				if !projectTerminalBuilder(roleCtx, userID, root) {
 					log.Printf("[CODE_SHELL] %s lost access to %s/%s; closing shell %s", userID, ownerID, projectID, shellID)
 					// Both ends: the in-sandbox attach client exits too.
 					_ = shell.Close()
@@ -559,4 +577,15 @@ func stopIdleCodeShells(now time.Time) []string {
 		cancel()
 	}
 	return idle
+}
+
+func projectTerminalBuilder(ctx context.Context, userID, root string) bool {
+	claims := &UserClaims{UserID: userID}
+	product, _, ok := projectProductForPath(root)
+	ref, valid := resolveCrewPath(ctx, userID, root)
+	if !ok || !valid || !userAllowedProduct(claims, product.ProfileID) || !userAccessForClaims(claims).CanEdit || crewAccessFor(claims, ref) != crewAccessOwner {
+		return false
+	}
+	mode := codeProjectMode(ctx, root)
+	return product.ProfileID != "code" || mode != "local" && mode != "cowork"
 }
