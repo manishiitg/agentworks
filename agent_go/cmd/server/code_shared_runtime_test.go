@@ -8,40 +8,37 @@ import (
 )
 
 func TestNonOwnerCodeUsesIsolatedBridgeRuntime(t *testing.T) {
-	api, _ := newCodePrivacyFixture(t)
-	registry := withProjectOwnerRegistry(t)
+	f := newMultiUserFixture(t, legacyIdentityLayout())
+	api := f.API
+	registry := defaultProjectOwners()
 	withProjectSharing(t, true)
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.SetRunPeople("code", "app-c0de0001", []string{"other"}); err != nil {
+	root := f.Layout.CodePhysical(fixtureUserA, fixtureCodeFolder)
+	if err := registry.SetRunPeople("code", fixtureCodeFolder, []string{fixtureUserB}); err != nil {
 		t.Fatal(err)
 	}
 	for _, co := range []bool{false, true} {
 		if co {
-			if _, err := registry.AddCoOwner("code", "app-c0de0001", "other"); err != nil {
+			if _, err := registry.AddCoOwner("code", fixtureCodeFolder, fixtureUserB); err != nil {
 				t.Fatal(err)
 			}
 		}
-		ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "other", Username: "other"})
-		req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "code", AgentProfileConversationKey: "c0de0001-0000", SelectedFolder: codePrivacyOwnerRoot}
-		profile, err := api.resolveAgentProfileForQuery(ctx, &req, "other", "qa-code")
+		ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: fixtureUserB, Username: fixtureUserB})
+		req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "code", AgentProfileConversationKey: fixtureCodeID, SelectedFolder: root}
+		profile, err := api.resolveAgentProfileForQuery(ctx, &req, fixtureUserB, "qa-code")
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !profile.IsolateCodeCLI || profile.Definition.Runtime.AgentTools.Mode != "mcp_only" {
 			t.Fatalf("co-owner=%v inherited native owner tools: %+v", co, profile.Definition.Runtime.AgentTools)
 		}
-		cli, source, err := turnCLIWorkingDir("code", false, req.SelectedFolder, "other", "qa-code", "codex-cli", "", !co, profile.IsolateCodeCLI)
+		cli, source, err := turnCLIWorkingDir("code", false, req.SelectedFolder, fixtureUserB, "qa-code", "codex-cli", "", !co, profile.IsolateCodeCLI)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if cli == source {
 			t.Fatal("non-owner launched in owner source folder")
 		}
-		got := decideTurnRunAs(ctx, turnRunAsInput{ProfileID: "code", WorkingFolder: req.SelectedFolder, CallerID: "other", CLIWorkingDir: cli, SharedWorkingDir: source}, runAsDeps{projectOwner: func(context.Context, string) string { return "owner" }, slotOf: func(string) string { return "owner-slot" }})
+		got := decideTurnRunAs(ctx, turnRunAsInput{ProfileID: "code", WorkingFolder: req.SelectedFolder, CallerID: fixtureUserB, CLIWorkingDir: cli, SharedWorkingDir: source}, runAsDeps{projectOwner: func(context.Context, string) string { return fixtureUserA }, slotOf: func(string) string { return "owner-slot" }})
 		if got.User != "" || got.Slot != "" {
 			t.Fatalf("non-owner inherited owner slot: %+v", got)
 		}
@@ -50,7 +47,7 @@ func TestNonOwnerCodeUsesIsolatedBridgeRuntime(t *testing.T) {
 		}
 		local := req
 		local.CodeChatMode = "local"
-		if _, err := api.resolveAgentProfileForQuery(ctx, &local, "other", "qa-code"); err == nil {
+		if _, err := api.resolveAgentProfileForQuery(ctx, &local, fixtureUserB, "qa-code"); err == nil {
 			t.Fatal("non-owner selected Local mode")
 		}
 	}
@@ -65,7 +62,7 @@ func TestProductTriggerRechecksShareAndLegacyAccountIdentity(t *testing.T) {
 		t.Fatal("fixture root missing")
 	}
 	_, folder, _ := projectProductForPath(ref.Root)
-	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: folder, OwnerID: "owner", ProjectID: "crew-aaa"}); err != nil {
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: folder, OwnerID: "owner", ProjectID: "crew-aaa", Private: true, AudienceConfigured: true}); err != nil {
 		t.Fatal(err)
 	}
 	if err := registry.SetRunPeople("work", folder, []string{"reader"}); err != nil {
