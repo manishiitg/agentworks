@@ -3184,6 +3184,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/external/v1/tools", api.handleExternalTools).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/call", api.handleExternalCall).Methods("POST")
 	apiRouter.HandleFunc("/workspaces", api.handleWorkspaces).Methods("POST")
+	apiRouter.HandleFunc("/external/v1/publication-history", api.handlePublicationHistory).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/publications", api.handlePublicationUpload).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/publications/{operation}", api.handlePublicationUpload).Methods("GET", "PUT", "POST")
 	apiRouter.HandleFunc("/relays/{id}/runs", api.handleStartRelayRun).Methods("POST")

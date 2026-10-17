@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +14,7 @@ func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 	api, _ := newCodePrivacyFixture(t)
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	registry := withProjectOwnerRegistry(t)
+	withProjectSharing(t, true)
 	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000"}); err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +66,44 @@ func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 	}
 	if err = os.WriteFile(filepath.Join(history, "summary.md"), []byte("PRIVATE_HANDOFF"), 0600); err != nil {
 		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(history, "raw.jsonl"), []byte("PRIVATE_RAW_HISTORY"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// The test's current record is the newer revision; the old archive still
+	// belongs to its original receipt rather than becoming a shared file.
+	latestHistory, _ := next.historyDir()
+	if err := os.MkdirAll(latestHistory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(latestHistory, "raw.jsonl"), []byte("PRIVATE_RAW_HISTORY"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/external/v1/publication-history?workspace_id=code:c0de0001-0000&agent_id=main", nil).WithContext(ctx)
+	ownerDownload := httptest.NewRecorder()
+	api.handlePublicationHistory(ownerDownload, request)
+	if ownerDownload.Code != 200 || !strings.Contains(ownerDownload.Body.String(), "PRIVATE_RAW_HISTORY") {
+		t.Fatalf("Builder history download=%d %s", ownerDownload.Code, ownerDownload.Body.String())
+	}
+	if err := registry.SetRunPeople("code", "app-c0de0001", []string{"other"}); err != nil {
+		t.Fatal(err)
+	}
+	other := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "other", Username: "other"})
+	if binding, _, ok := api.resolveExternalWorkspace(other, GetUserFromContext(other), "code:c0de0001-0000"); !ok || binding.OwnedByCaller {
+		t.Fatal("history refusal did not exercise a shared Run caller")
+	}
+	denied := httptest.NewRecorder()
+	api.handlePublicationHistory(denied, request.WithContext(other))
+	if denied.Code < 400 || strings.Contains(denied.Body.String(), "PRIVATE_RAW_HISTORY") {
+		t.Fatal("private imported history reached another caller")
+	}
+	if _, err := registry.AddCoOwner("code", "app-c0de0001", "other"); err != nil {
+		t.Fatal(err)
+	}
+	builderDownload := httptest.NewRecorder()
+	api.handlePublicationHistory(builderDownload, request.WithContext(other))
+	if builderDownload.Code != 200 || !strings.Contains(builderDownload.Body.String(), "PRIVATE_RAW_HISTORY") {
+		t.Fatalf("co-owner lost Builder history: %d %s", builderDownload.Code, builderDownload.Body.String())
 	}
 	if !publishedBuilderHandoff(&QueryRequest{}, false) || publishedBuilderHandoff(&QueryRequest{}, true) || publishedBuilderHandoff(&QueryRequest{TriggeredBy: "function"}, false) {
 		t.Fatal("private handoff crossed interactive Builder boundary")

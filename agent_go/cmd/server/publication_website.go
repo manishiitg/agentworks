@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -191,10 +192,16 @@ func (api *StreamingAPI) externalWorkspacePublish(w http.ResponseWriter, r *http
 		return
 	}
 	upload := publicationUpload{ID: id, ActorID: claims.UserID, SubmissionID: submission, ProjectID: projectID, Name: name, ProfileID: choice.ProfileID, WorkspaceID: choice.WorkspaceID, NewWorkspaceID: uuid.NewString(), State: "capturing", StartedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(), Record: choice, WebsiteSource: &source}
+	if audience, ok := preview["share"].(runShareState); ok {
+		upload.Audience = &audience
+	} else {
+		upload.Audience = &runShareState{Mode: runSharePrivate}
+	}
 	if err := savePublicationUpload(&upload); err != nil {
 		externalFailure(w, err)
 		return
 	}
+	log.Printf("[CREW_PUBLISH] operation=%s actor=%s state=capturing source_workspace=%s source_session=%s native_resume=not_attempted", upload.ID, sanitizeUserIDForPath(claims.UserID), source.WorkspaceID, sourceChat.SessionID)
 	api.startWebsitePublication(upload, *claims)
 	externalJSON(w, publicationReceipt(&upload))
 }
@@ -213,6 +220,7 @@ func (api *StreamingAPI) startWebsitePublication(upload publicationUpload, claim
 		fail := func(err error) {
 			defer lockPublication(upload.ID)()
 			upload.State = "failed"
+			log.Printf("[CREW_PUBLISH] operation=%s actor=%s state=failed stage=capture", upload.ID, sanitizeUserIDForPath(upload.ActorID))
 			upload.Error = err.Error()
 			upload.UpdatedAt = time.Now().UTC()
 			_ = savePublicationUpload(&upload)
@@ -470,4 +478,55 @@ func (api *StreamingAPI) registerLocalPublicationTool(registrar definitionToolRe
 		}
 		return out.Body.String(), nil
 	}, 30*time.Second, "workspace_advanced")
+}
+
+// The raw archive never becomes a shared project file. Every download uses the
+// current Builder role and connection scope, including after Share changes.
+func (api *StreamingAPI) handlePublicationHistory(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserFromContext(r.Context())
+	if err := publicationGate(claims); err != nil {
+		externalError(w, 403, "forbidden", err.Error())
+		return
+	}
+	binding, manifest, ok := api.resolveExternalWorkspace(r.Context(), claims, r.URL.Query().Get("workspace_id"))
+	if !ok || !binding.OwnedByCaller || !publicationOriginTokenAllowed(claims, manifest.Product, manifest.ID) {
+		externalError(w, 404, "not_found", "Open the Crew as a Builder to download its imported chat. Shared use is through its dashboard and Ask.")
+		return
+	}
+	id := r.URL.Query().Get("agent_id")
+	if id == "main" {
+		id = ""
+	}
+	p, err := readPublishedAgent(contextWithoutPublication(r.Context()), agentProfileRuntimeWorkspace(binding.OwnerID, binding.Binding.WorkspacePath), id)
+	if err != nil || p == nil {
+		externalError(w, 404, "not_found", "This agent has no imported chat. Choose one from the Crew's Agents list.")
+		return
+	}
+	name := "raw.jsonl"
+	if r.URL.Query().Get("kind") == "summary" {
+		name = "summary.md"
+	} else if r.URL.Query().Get("kind") != "" && r.URL.Query().Get("kind") != "raw" {
+		externalError(w, 400, "invalid_arguments", "Choose raw or summary history.")
+		return
+	}
+	dir, err := p.historyDir()
+	if err != nil {
+		externalFailure(w, err)
+		return
+	}
+	file, err := os.Open(filepath.Join(dir, name))
+	if err != nil {
+		externalError(w, 404, "not_found", "The imported chat is unavailable. Check this Crew's publication receipt.")
+		return
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		externalError(w, 404, "not_found", "Imported chat unavailable.")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="imported-`+name+`"`)
+	http.ServeContent(w, r, "imported-"+name, info.ModTime(), file)
 }

@@ -683,7 +683,11 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	projectInstructions := ""
 	if !isGlobalScope && isProjectProfileID(profile.ID) {
 		file := agentProfileRuntimeWorkspace(userID, workspacePath) + "/" + projectinstructions.FileName
-		if content, found, err := readFileFromWorkspace(contextWithoutPublication(ctx), file); err != nil {
+		instructionsCtx := ctx
+		if publication != nil && publication.AgentID != "" {
+			instructionsCtx = contextWithoutPublication(ctx)
+		}
+		if content, found, err := readFileFromWorkspace(instructionsCtx, file); err != nil {
 			log.Printf("[PROJECT INSTRUCTIONS] Failed to read %s: %v", file, err)
 		} else if found {
 			projectInstructions = projectinstructions.Section(content)

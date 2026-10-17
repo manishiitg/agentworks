@@ -149,6 +149,8 @@ func runPublish(ctx context.Context, o *options, name, resume, crew, agentID str
 		} else {
 			fmt.Fprintln(o.stderr, "Existing Crew instructions and Share are preserved.")
 		}
+		audience, _ := json.Marshal(receipt["share"])
+		fmt.Fprintln(o.stderr, "Share:", string(audience))
 		fmt.Fprintln(o.stderr, "Publication receipt:", pending.Operation)
 	}
 	receipt, err := client.Publication(ctx, http.MethodGet, pending.Operation, nil)

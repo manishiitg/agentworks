@@ -27,6 +27,7 @@ import (
 )
 
 type publicationUpload struct {
+	Audience       *runShareState            `json:"audience,omitempty"`
 	WebsiteSource  *publicationWebsiteSource `json:"website_source,omitempty"`
 	ID             string                    `json:"operation_id"`
 	ActorID        string                    `json:"actor_id"`
@@ -111,6 +112,9 @@ func loadPublicationUpload(id, actor string) (*publicationUpload, error) {
 
 func publicationReceipt(upload *publicationUpload) map[string]any {
 	out := map[string]any{"limits": map[string]any{"bytes": publication.MaxBytes, "file_bytes": publication.MaxFileBytes, "files": publication.MaxFiles, "chunk_bytes": publication.ChunkBytes}, "operation_id": upload.ID, "state": upload.State, "uploaded_bytes": upload.Offset, "updated_at": upload.UpdatedAt, "native_resume": "not_attempted", "next": "Check workspace action=publish_status with this operation_id."}
+	if upload.Audience != nil {
+		out["share"] = upload.Audience
+	}
 	if upload.Record != nil {
 		out["workspace_id"], out["revision"] = upload.Record.ProfileID+":"+upload.Record.WorkspaceID, upload.Record.Revision
 		out["agent_id"] = firstNonEmptyTrimmed(upload.Record.AgentID, "main")
@@ -206,6 +210,15 @@ func (api *StreamingAPI) handlePublicationUpload(w http.ResponseWriter, r *http.
 		}
 
 		upload := &publicationUpload{ID: operation, ActorID: claims.UserID, SubmissionID: in.SubmissionID, ProjectID: in.ProjectID, Name: strings.TrimSpace(in.Name), ProfileID: choice.ProfileID, WorkspaceID: choice.WorkspaceID, NewWorkspaceID: uuid.NewString(), State: "uploading", StartedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(), Record: choice}
+		if choice.Root != "" {
+			if target, e := api.dashboardTarget(r.Context(), claims, choice.Root); e == nil {
+				if audience, e := api.readRunShare(r.Context(), claims, target); e == nil {
+					upload.Audience = &audience
+				}
+			}
+		} else {
+			upload.Audience = &runShareState{Mode: runSharePrivate}
+		}
 		if err := savePublicationUpload(upload); err != nil {
 			externalError(w, 500, "storage_error", "The publication receipt could not be saved; retry.")
 			return
@@ -521,6 +534,11 @@ func (api *StreamingAPI) preparePublication(upload *publicationUpload, claims Us
 		return
 	}
 	defer lockPublication(upload.ID)()
+	if target, e := api.dashboardTarget(ctx, &claims, record.Root); e == nil {
+		if audience, e := api.readRunShare(ctx, &claims, target); e == nil {
+			upload.Audience = &audience
+		}
+	}
 	upload.Record = &record
 	upload.WorkspaceID = record.WorkspaceID
 	upload.FileCount = len(manifest.Files)
@@ -706,6 +724,9 @@ func preparePublicationRuntime(ctx context.Context, record *publishedProject, so
 }
 
 func publicationTokenPath(r *http.Request) bool {
+	if r.URL.Path == "/api/external/v1/publication-history" {
+		return r.Method == http.MethodGet
+	}
 	const prefix = "/api/external/v1/publications"
 	if r.URL.Path == prefix {
 		return r.Method == http.MethodPost
