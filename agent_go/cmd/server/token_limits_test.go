@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -226,5 +228,85 @@ func TestSlackChannelBotTurnCountsTowardTargetOwner(t *testing.T) {
 	}
 	if again := env.api.sharedAccountTokenUsageFor(directoryUserFor("alice", "", "")); again.DailyUsed != 1100 {
 		t.Fatalf("a DM turn counted to the owner: %+v", again)
+	}
+}
+
+// Cached context counts at 10% for limits while the cost ledger retains its
+// actual tokens. Cover both inclusive/exclusive input reporting and a bot turn
+// billed to the same person, through admission and both usage surfaces.
+func TestTokenLimitsDiscountCacheReads(t *testing.T) {
+	env := newProviderAccountsEnv(t, "")
+	ledger, err := costledger.NewSQLiteLedger(filepath.Join(t.TempDir(), "costs.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ledger.Close() })
+	env.api.costLedger = ledger
+	resetUsage := func() {
+		sharedTokenUsageCache.Lock()
+		sharedTokenUsageCache.byUser = map[string]cachedSharedTokenUsage{}
+		sharedTokenUsageCache.Unlock()
+	}
+	resetUsage()
+	t.Cleanup(resetUsage)
+	if w := env.do(t, env.api.handleAdminUpdateUser, http.MethodPut, "/api/admin/users/alice", "admin", map[string]any{"token_limits": map[string]int64{"daily": 1500, "weekly": 1500}}, map[string]string{"id": "alice"}); w.Code != http.StatusOK {
+		t.Fatalf("set overall limit: %d %s", w.Code, w.Body.String())
+	}
+	for _, provider := range []string{"claude-code", "codex-cli"} {
+		if w := env.do(t, env.api.handleProviderConnection, http.MethodPatch, "/api/provider-connections/global:"+provider, "admin", map[string]any{"token_limits": map[string]int64{"daily": 600, "weekly": 600}}, map[string]string{"connectionID": "global:" + provider}); w.Code != http.StatusNoContent {
+			t.Fatalf("set account limit: %d %s", w.Code, w.Body.String())
+		}
+		entry := costledger.Entry{EventID: provider, Timestamp: time.Now().UTC(), UserID: "alice", Scope: "chat", Provider: provider, ModelID: "cached-model", AccountID: "global:" + provider, LLMCallCount: 1, PromptTokens: 100, CacheReadTokens: 1000, CacheWriteTokens: 200, CompletionTokens: 100, TotalCostUSD: 1.25, BillingBasis: "provider_actual", OperationMetadata: map[string]any{"prompt_tokens_include_cache": false}}
+		if provider == "codex-cli" {
+			entry.PromptTokens = 1300 // fresh 100 + cached read 1000 + cache write 200
+			entry.OperationMetadata["prompt_tokens_include_cache"] = true
+		} else {
+			entry.UserID, entry.BillingUserID = "channel-bot", "alice"
+		}
+		if err := ledger.Append(entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+	person := directoryUserFor("alice", "", "")
+	usage := env.api.sharedAccountTokenUsageFor(person)
+	if usage.DailyUsed != 1000 || usage.WeeklyUsed != 1000 || usage.DailyViaBot != 500 || usage.WeeklyViaBot != 500 || usage.DailyCacheReadTokens != 2000 || usage.WeeklyCacheReadTokens != 2000 || !strings.Contains(usage.CountingNote, "10%") {
+		t.Fatalf("discounted usage/bot/cache breakdown: %+v", usage)
+	}
+	for _, provider := range []string{"claude-code", "codex-cli"} {
+		account := usage.Accounts[provider]
+		if account.DailyUsed != 500 || account.WeeklyUsed != 500 || account.DailyCacheReadTokens != 1000 || account.WeeklyCacheReadTokens != 1000 {
+			t.Fatalf("account usage: %+v", account)
+		}
+		if _, err := env.api.admitProviderAccount(context.Background(), providerAccountScope{Principal: "alice"}, provider, "global:"+provider); err != nil {
+			t.Fatalf("cache reads wrongly exhausted %s: %v", provider, err)
+		}
+	}
+	if external := env.api.tokenLimitUsageOf(person, ""); external.DailyUsed != usage.DailyUsed || external.DailyCacheReadTokens != 2000 || external.CountingNote != usage.CountingNote {
+		t.Fatalf("MCP/website usage differ: %+v", external)
+	}
+	day, _, week, _ := tokenLimitWindows(time.Now())
+	raw, err := ledger.AccountTokens("alice", "global:", day, week)
+	if err != nil || raw.Day != 2800 || raw.Week != 2800 || raw.ForTokenLimits().Day != 1000 {
+		t.Fatalf("raw ledger usage changed: %+v, %v", raw, err)
+	}
+	models, err := ledger.AccountModelTokens("alice", "global:", day, week)
+	if err != nil || models["global:codex-cli"]["cached-model"].ForTokenLimits().Day != 500 {
+		t.Fatalf("model limit counting differs: %+v, %v", models, err)
+	}
+	summary, err := ledger.Summarize("", "")
+	if err != nil || summary.Total.InputTokens != 2600 || summary.Total.CompletionTokens != 200 || summary.Total.CacheReadTokens != 2000 || summary.Total.CacheWriteTokens != 400 || summary.Total.TotalCostUSD != 2.5 {
+		t.Fatalf("discount changed actual costs/tokens: %+v, %v", summary, err)
+	}
+	w := httptest.NewRecorder()
+	env.api.externalTokenUsageRange(w, []*UserRecord{person}, day.Format("2006-01-02"), day.Format("2006-01-02"))
+	var ranged struct {
+		People []struct {
+			Tokens          int64            `json:"tokens"`
+			CacheReadTokens int64            `json:"cache_read_tokens"`
+			ByAccount       map[string]int64 `json:"by_account"`
+		} `json:"people"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &ranged); err != nil || len(ranged.People) != 1 || ranged.People[0].Tokens != usage.DailyUsed || ranged.People[0].CacheReadTokens != 2000 || ranged.People[0].ByAccount["global:codex-cli"] != 500 {
+		t.Fatalf("date-range usage differs: %s (%v)", w.Body.String(), err)
 	}
 }

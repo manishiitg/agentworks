@@ -48,6 +48,9 @@ func sharedAccountModelTokensUsed(person, provider string, now time.Time) (map[s
 		return nil, err
 	}
 	byModel := all[serverAccountIDPrefix+provider]
+	for model, raw := range byModel {
+		byModel[model] = raw.ForTokenLimits()
+	}
 	modelTokenUsageCache.Lock()
 	modelTokenUsageCache.byKey[key] = modelUsageCacheEntry{byModel: byModel, dayStart: dayStart, at: now}
 	modelTokenUsageCache.Unlock()
@@ -135,11 +138,13 @@ func applyModelTokenLimit(ctx context.Context, provider, connectionID, model str
 
 // modelTokenUsage is one person's use of one model against its limit.
 type modelTokenUsage struct {
-	DailyUsed   int64  `json:"daily_used"`
-	WeeklyUsed  int64  `json:"weekly_used"`
-	DailyLimit  int64  `json:"daily_limit,omitempty"`
-	WeeklyLimit int64  `json:"weekly_limit,omitempty"`
-	State       string `json:"state"`
+	DailyUsed             int64  `json:"daily_used"`
+	WeeklyUsed            int64  `json:"weekly_used"`
+	DailyLimit            int64  `json:"daily_limit,omitempty"`
+	WeeklyLimit           int64  `json:"weekly_limit,omitempty"`
+	State                 string `json:"state"`
+	DailyCacheReadTokens  int64  `json:"daily_cache_read_tokens,omitempty"`
+	WeeklyCacheReadTokens int64  `json:"weekly_cache_read_tokens,omitempty"`
 }
 
 // accountModelLimitsView is the per-model default limits of account (every
@@ -173,7 +178,7 @@ func (api *StreamingAPI) personModelUsage(rec *UserRecord, settings providerAcco
 			continue
 		}
 		used := usage[model]
-		out[model] = &modelTokenUsage{DailyUsed: used.Day, WeeklyUsed: used.Week, DailyLimit: l.Daily, WeeklyLimit: l.Weekly, State: tokenLimitState(used.Day, l.Daily, used.Week, l.Weekly)}
+		out[model] = &modelTokenUsage{DailyUsed: used.Day, WeeklyUsed: used.Week, DailyCacheReadTokens: used.CacheReadDay, WeeklyCacheReadTokens: used.CacheReadWeek, DailyLimit: l.Daily, WeeklyLimit: l.Weekly, State: tokenLimitState(used.Day, l.Daily, used.Week, l.Weekly)}
 	}
 	return out
 }

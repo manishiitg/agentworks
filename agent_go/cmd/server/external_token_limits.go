@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 )
 
 // Shared-account token limits over the external API and MCP (PLAT-690; the
@@ -105,7 +106,7 @@ func externalTokenLimitDefinitions(add func(name, description string, write, sco
 	account := func(what string) map[string]any {
 		return map[string]any{"type": "string", "enum": stringsToAny(supportedLLMProviders), "description": what}
 	}
-	add("get_token_usage", "Shared server-account token usage per person against their admin-set limits: tokens used today and this week (UTC; weeks start Monday), daily_limit/weekly_limit (0 = unlimited), state ok|warning (80%)|over, and reset times. The top-level figures are the person's overall cap across all shared accounts; accounts has each shared account (by provider) with its own use, effective limits, the account default (default_limits) and the person's override. account_defaults lists every account's default. Only tokens spent on the server's shared accounts count; a person's own accounts never do. Slack channel bot turns count to the owner of the workflow, Crew or Code they answer for (daily_via_bot/weekly_via_bot is that part). Without user_id/email it lists every active person; account limits accounts to one shared account. Models: account_allowed_models is each shared account's own model list (null = all models); each person's allowed_models has, per shared account that limits their models, models (their effective list; null = all models) and source (account = the account's list, person = their own override); an account not listed there allows them every model. Pass from/to (YYYY-MM-DD, UTC, inclusive) for each person's shared-account token totals over that range instead. Read-only; every call is recorded in the Code review audit log. Requires code:review and an admin or Code reviewer account, or users:manage and an admin account.", false, false, who(map[string]any{"from": date, "to": date, "account": account("Only this shared account (provider, e.g. codex-cli).")}))
+	add("get_token_usage", "Shared server-account token usage per person against their admin-set limits: usage toward limits today and this week (UTC; weeks start Monday); cache reads count at 10%, fresh input/cache writes/output in full; daily_cache_read_tokens and weekly_cache_read_tokens show raw cache reads, daily_limit/weekly_limit (0 = unlimited), state ok|warning (80%)|over, and reset times. The top-level figures are the person's overall cap across all shared accounts; accounts has each shared account (by provider) with its own use, effective limits, the account default (default_limits) and the person's override. account_defaults lists every account's default. Only tokens spent on the server's shared accounts count; a person's own accounts never do. Slack channel bot turns count to the owner of the workflow, Crew or Code they answer for (daily_via_bot/weekly_via_bot is that part). Without user_id/email it lists every active person; account limits accounts to one shared account. Models: account_allowed_models is each shared account's own model list (null = all models); each person's allowed_models has, per shared account that limits their models, models (their effective list; null = all models) and source (account = the account's list, person = their own override); an account not listed there allows them every model. Pass from/to (YYYY-MM-DD, UTC, inclusive) for each person's shared-account token totals over that range instead. Read-only; every call is recorded in the Code review audit log. Requires code:review and an admin or Code reviewer account, or users:manage and an admin account.", false, false, who(map[string]any{"from": date, "to": date, "account": account("Only this shared account (provider, e.g. codex-cli).")}))
 	add("set_token_limits", "Set daily and/or weekly token limits on the shared server accounts. Without account: a person's overall cap across all shared accounts. With account (provider, e.g. codex-cli) and a person: that person's override of the account's default (a field set replaces that field of the default; 0 or null falls back to it; -1 is unlimited for this person even when the account has a default). With account and no person: the account's default per-person limit for everyone. With account, model and no person: that one model's default per-person limit on the account, counted on top of the account's (a person at it is moved to another allowed model, else refused; 0 or null removes the model's limit). Integers; 0 or null is unlimited; an omitted field stays as it is. Identify a person by user_id or email. Returns the new limits and current usage. Recorded in the Code review audit log. Requires users:manage and an admin account.", true, false, who(map[string]any{"daily": limit("Daily (UTC day)"), "weekly": limit("Weekly (Monday-start UTC week)"), "account": account("The shared account (provider) whose limit to set; omit for the overall cap."), "model": externalString("With account and no person: set the limit of this one model (a model ID from the provider's list) instead of the account's.")}))
 	add("set_allowed_models", "Set which models may run on a shared server account (provider, e.g. codex-cli). With account and no person: the account's list for everyone (models null or [] = all models). With account and a person (user_id or email): that person's override (a list replaces the account's list for them; null or [] clears it back to the account's; [\"*\"] or all_models true = every model for this person). A turn whose model is not allowed runs on the first allowed one; it never fails. Model ids are checked against the provider's model catalog when the server has one. Returns the new lists. Recorded in the Code review audit log. Requires users:manage and an admin account.", true, false, who(map[string]any{
 		"account":    account("The shared account (provider) whose models to set."),
@@ -138,7 +139,10 @@ type tokenLimitPersonUsage struct {
 	ModelUsage map[string]*modelTokenUsage `json:"model_usage,omitempty"`
 	// AllowedModels is, per shared account that limits this person's models,
 	// their effective list (PLAT-714).
-	AllowedModels map[string]personAllowedModels `json:"allowed_models,omitempty"`
+	AllowedModels         map[string]personAllowedModels `json:"allowed_models,omitempty"`
+	CountingNote          string                         `json:"counting_note"`
+	DailyCacheReadTokens  int64                          `json:"daily_cache_read_tokens,omitempty"`
+	WeeklyCacheReadTokens int64                          `json:"weekly_cache_read_tokens,omitempty"`
 }
 
 // personAllowedModels is one person's models on one shared account.
@@ -207,7 +211,7 @@ func (api *StreamingAPI) tokenLimitUsageOf(rec *UserRecord, account string) toke
 		accounts = map[string]*accountTokenUsage{account: one}
 	}
 	settings, _ := loadProviderAccountSettings(context.Background())
-	return tokenLimitPersonUsage{tokenLimitPerson: personOf(rec), DailyLimit: u.DailyLimit, WeeklyLimit: u.WeeklyLimit, DailyUsed: u.DailyUsed, WeeklyUsed: u.WeeklyUsed, State: u.State, DailyViaBot: u.DailyViaBot, WeeklyViaBot: u.WeeklyViaBot, Accounts: accounts, AllowedModels: personAllowedModelsOf(rec, settings, account), ModelUsage: api.personModelUsage(rec, settings, account)}
+	return tokenLimitPersonUsage{tokenLimitPerson: personOf(rec), DailyLimit: u.DailyLimit, WeeklyLimit: u.WeeklyLimit, DailyUsed: u.DailyUsed, WeeklyUsed: u.WeeklyUsed, State: u.State, DailyViaBot: u.DailyViaBot, WeeklyViaBot: u.WeeklyViaBot, Accounts: accounts, AllowedModels: personAllowedModelsOf(rec, settings, account), ModelUsage: api.personModelUsage(rec, settings, account), CountingNote: tokenLimitCountingNote, DailyCacheReadTokens: u.DailyCacheReadTokens, WeeklyCacheReadTokens: u.WeeklyCacheReadTokens}
 }
 
 func stringsToAny(values []string) []any {
@@ -360,8 +364,8 @@ func (api *StreamingAPI) externalTokenLimitCall(w http.ResponseWriter, r *http.R
 }
 
 // externalTokenUsageRange totals each person's server-account tokens in a
-// date range from the ledger's account-attributed events. A token is input
-// (cached input once) plus output, as the limits count it.
+// date range from raw account-attributed events, applying the same cache-read
+// discount as admission after summing each account. Costs stay unchanged.
 func (api *StreamingAPI) externalTokenUsageRange(w http.ResponseWriter, people []*UserRecord, from, to string) {
 	ledger := api.tokenLimitLedger()
 	if ledger == nil {
@@ -375,16 +379,18 @@ func (api *StreamingAPI) externalTokenUsageRange(w http.ResponseWriter, people [
 	}
 	type totals struct {
 		tokenLimitPerson
-		Tokens       int64            `json:"tokens"`
-		InputTokens  int64            `json:"input_tokens"`
-		OutputTokens int64            `json:"output_tokens"`
-		Calls        int              `json:"calls"`
-		ByAccount    map[string]int64 `json:"by_account"`
+		Tokens             int64            `json:"tokens"`
+		InputTokens        int64            `json:"input_tokens"`
+		OutputTokens       int64            `json:"output_tokens"`
+		Calls              int              `json:"calls"`
+		ByAccount          map[string]int64 `json:"by_account"`
+		CacheReadTokens    int64            `json:"cache_read_tokens"`
+		cacheReadByAccount map[string]int64
 	}
 	byUser := make(map[string]*totals, len(people))
 	out := make([]*totals, 0, len(people))
 	for _, rec := range people {
-		t := &totals{tokenLimitPerson: personOf(rec), ByAccount: map[string]int64{}}
+		t := &totals{tokenLimitPerson: personOf(rec), ByAccount: map[string]int64{}, cacheReadByAccount: map[string]int64{}}
 		byUser[rec.ID] = t
 		out = append(out, t)
 	}
@@ -400,11 +406,19 @@ func (api *StreamingAPI) externalTokenUsageRange(w http.ResponseWriter, people [
 		in, outTokens := int64(agg.InputTokens), int64(agg.CompletionTokens)
 		t.InputTokens += in
 		t.OutputTokens += outTokens
-		t.Tokens += in + outTokens
 		t.Calls += agg.CallCount
 		t.ByAccount[key.AccountID] += in + outTokens
+		t.CacheReadTokens += int64(agg.CacheReadTokens)
+		t.cacheReadByAccount[key.AccountID] += int64(agg.CacheReadTokens)
 	}
-	externalJSON(w, map[string]any{"from": summary.From, "to": summary.To, "timezone": tokenLimitTimezone, "accounts": "shared server accounts (account IDs " + serverAccountIDPrefix + "*)", "people": out})
+	for _, person := range out {
+		for account, tokens := range person.ByAccount {
+			counted := costledger.TokensForLimits(tokens, person.cacheReadByAccount[account])
+			person.ByAccount[account] = counted
+			person.Tokens += counted
+		}
+	}
+	externalJSON(w, map[string]any{"from": summary.From, "to": summary.To, "timezone": tokenLimitTimezone, "counting_note": tokenLimitCountingNote, "accounts": "shared server accounts (account IDs " + serverAccountIDPrefix + "*)", "people": out})
 }
 
 // tokenLimitArg reads daily/weekly: absent = keep, null = 0 (unlimited, or

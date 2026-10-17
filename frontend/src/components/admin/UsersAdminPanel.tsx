@@ -117,7 +117,7 @@ function TokenLimitsCell({ user, disabled, onSave, accountProviders, onSaveAccou
       {field('Weekly', weekly, setWeekly)}
       {invalid && <p className="text-destructive">Use a number like 500k or 5M.</p>}
       {usage && (
-        <p className={tone} title="Overall: tokens (input + output) on all shared server accounts together. Day and week are UTC; weeks start Monday.">
+        <p className={tone} title={['Overall usage toward limits on all shared server accounts together. Day and week are UTC; weeks start Monday.', usage.counting_note, usage.counting_note ? `Raw cache reads: ${formatTokens(usage.daily_cache_read_tokens)} today; ${formatTokens(usage.weekly_cache_read_tokens)} this week.` : ''].filter(Boolean).join(' ')}>
           All: today {used(usage.daily_used, usage.daily_limit)} · week {used(usage.weekly_used, usage.weekly_limit)}
         </p>
       )}
@@ -238,7 +238,7 @@ function AccountLimitsList({ user, disabled, accountProviders, onSave }: {
         }
         const hasLimit = Boolean(a?.daily_limit || a?.weekly_limit)
         return (
-          <p key={provider} className={tone}>
+          <p key={provider} className={tone} title={[user.token_usage?.counting_note, user.token_usage?.counting_note && a ? `Raw cache reads: ${formatTokens(a.daily_cache_read_tokens)} today; ${formatTokens(a.weekly_cache_read_tokens)} this week.` : ''].filter(Boolean).join(' ')}>
             <Button type="button" variant="link" size="xs" disabled={disabled} onClick={() => startEdit(provider)} className="h-auto p-0 font-normal text-inherit underline-offset-2 disabled:no-underline"
               title={`Edit ${user.username}'s limit on the shared ${label} account. Default: ${def?.daily || def?.weekly ? [def?.daily ? `${formatTokens(def.daily)} a day` : '', def?.weekly ? `${formatTokens(def.weekly)} a week` : ''].filter(Boolean).join(', ') : 'none'}.`}>
               {label}{o ? (o.daily === TOKEN_LIMIT_UNLIMITED && o.weekly === TOKEN_LIMIT_UNLIMITED ? ' (unlimited)' : ' (own limit)') : ''}

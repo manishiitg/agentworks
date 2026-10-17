@@ -47,6 +47,8 @@ export function SharedTokenUsageChip({ accountProvider }: { accountProvider?: st
       ? 'border-amber-500/50 text-amber-700 dark:text-amber-300'
       : 'border-border text-muted-foreground'
   const detail: string[] = [`Tokens on ${shown.scope}.`]
+  if (usage.counting_note) detail.push(usage.counting_note)
+  if (shown.daily_cache_read_tokens || shown.weekly_cache_read_tokens) detail.push(`Raw cache reads: ${formatTokens(shown.daily_cache_read_tokens)} today; ${formatTokens(shown.weekly_cache_read_tokens)} this week.`)
   if (shown.daily_limit) detail.push(`Today: ${formatTokens(shown.daily_used)} of ${formatTokens(shown.daily_limit)} (resets ${resetLabel(usage.day_resets_at, false)})`)
   if (shown.weekly_limit) detail.push(`This week: ${formatTokens(shown.weekly_used)} of ${formatTokens(shown.weekly_limit)} (resets ${resetLabel(usage.week_resets_at, true)})`)
   detail.push(shown.state === 'over' ? `New messages on ${shown.scope} are paused; switch to another account in Models.` : 'Your own accounts are not limited.')
@@ -93,6 +95,8 @@ export function SharedTokenUsageNotice({ className = '', accountProvider }: { cl
       ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
       : 'border-border bg-muted/40 text-muted-foreground'
   const detail: string[] = []
+  if (usage?.counting_note) detail.push(usage.counting_note)
+  if (shown?.daily_cache_read_tokens || shown?.weekly_cache_read_tokens) detail.push(`Raw cache reads: ${formatTokens(shown.daily_cache_read_tokens)} today; ${formatTokens(shown.weekly_cache_read_tokens)} this week`)
   if (shown?.daily_limit) detail.push(`Today: ${formatTokens(shown.daily_used)} of ${formatTokens(shown.daily_limit)}`)
   if (shown?.weekly_limit) detail.push(`This week: ${formatTokens(shown.weekly_used)} of ${formatTokens(shown.weekly_limit)}`)
   return (

@@ -516,12 +516,34 @@ type sqliteStore interface {
 // the current day and week. A token here is input (cached input counted
 // once) plus output; reasoning is part of output for the CLIs that report it.
 type AccountTokenUsage struct {
-	Day  int64 `json:"day"`
-	Week int64 `json:"week"`
+	Day                 int64 `json:"day"`
+	Week                int64 `json:"week"`
+	CacheReadDay        int64 `json:"cache_read_day,omitempty"`
+	CacheReadWeek       int64 `json:"cache_read_week,omitempty"`
+	viaBotCacheReadDay  int64
+	viaBotCacheReadWeek int64
 	// ViaBotDay and ViaBotWeek are the part of Day and Week billed to this
 	// person from Slack channel bot turns (entries with a BillingUserID).
 	ViaBotDay  int64 `json:"via_bot_day,omitempty"`
 	ViaBotWeek int64 `json:"via_bot_week,omitempty"`
+}
+
+// TokensForLimits applies the owner's cache-read discount to normalized input
+// plus output. Round the cached part up to a whole token once per account/window.
+// Stored usage and cost aggregates keep their actual token counts.
+func TokensForLimits(tokens, cacheReads int64) int64 {
+	cacheReads = min(max(cacheReads, 0), max(tokens, 0))
+	return tokens - cacheReads + (cacheReads+9)/10
+}
+
+// ForTokenLimits returns a discounted copy of raw ledger usage. Both the
+// admission check and its usage view consume this copy; cost views stay raw.
+func (usage AccountTokenUsage) ForTokenLimits() AccountTokenUsage {
+	usage.Day = TokensForLimits(usage.Day, usage.CacheReadDay)
+	usage.Week = TokensForLimits(usage.Week, usage.CacheReadWeek)
+	usage.ViaBotDay = TokensForLimits(usage.ViaBotDay, usage.viaBotCacheReadDay)
+	usage.ViaBotWeek = TokensForLimits(usage.ViaBotWeek, usage.viaBotCacheReadWeek)
+	return usage
 }
 
 // AccountTokens sums userID's tokens (their own turns, and bot turns whose
@@ -535,6 +557,10 @@ func (l *Ledger) AccountTokens(userID, accountPrefix string, dayStart, weekStart
 	for _, usage := range byAccount {
 		total.Day += usage.Day
 		total.Week += usage.Week
+		total.CacheReadDay += usage.CacheReadDay
+		total.CacheReadWeek += usage.CacheReadWeek
+		total.viaBotCacheReadDay += usage.viaBotCacheReadDay
+		total.viaBotCacheReadWeek += usage.viaBotCacheReadWeek
 		total.ViaBotDay += usage.ViaBotDay
 		total.ViaBotWeek += usage.ViaBotWeek
 	}

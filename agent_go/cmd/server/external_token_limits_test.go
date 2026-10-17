@@ -50,7 +50,9 @@ func TestTokenLimitToolsAdminSetsReviewerReadsOthersRefused(t *testing.T) {
 	}
 	// weekly set, daily omitted = unchanged; then null clears daily.
 	codeReviewCall(api, admin, "set_token_limits", map[string]any{"user_id": "tl-alice", "weekly": 900})
-	if w = codeReviewCall(api, admin, "set_token_limits", map[string]any{"user_id": "tl-alice", "daily": nil}); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"daily_limit":0,"weekly_limit":900`) || !strings.Contains(w.Body.String(), `"state":"over"`) {
+	w = codeReviewCall(api, admin, "set_token_limits", map[string]any{"user_id": "tl-alice", "daily": nil})
+	set = tokenLimitPersonUsage{}
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &set) != nil || set.DailyLimit != 0 || set.WeeklyLimit != 900 || set.State != "over" {
 		t.Fatalf("partial updates = %d %s", w.Code, w.Body.String())
 	}
 
@@ -59,14 +61,32 @@ func TestTokenLimitToolsAdminSetsReviewerReadsOthersRefused(t *testing.T) {
 	if w = codeReviewCall(api, admin, "set_token_limits", map[string]any{"account": "codex-cli", "daily": 2000}); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"default_limits":{"daily":2000}`) {
 		t.Fatalf("account default = %d %s", w.Code, w.Body.String())
 	}
-	if w = codeReviewCall(api, admin, "set_token_limits", map[string]any{"user_id": "tl-alice", "account": "codex-cli", "weekly": 7000}); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"codex-cli":{"label":"Codex","daily_used":0,"weekly_used":0,"daily_limit":2000,"weekly_limit":7000,"default_limits":{"daily":2000},"override":{"weekly":7000}`) {
+	w = codeReviewCall(api, admin, "set_token_limits", map[string]any{"user_id": "tl-alice", "account": "codex-cli", "weekly": 7000})
+	set = tokenLimitPersonUsage{}
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &set) != nil {
+		t.Fatalf("account override = %d %s", w.Code, w.Body.String())
+	}
+	codex := set.Accounts["codex-cli"]
+	if codex == nil || codex.Label != "Codex" || codex.DailyUsed != 0 || codex.WeeklyUsed != 0 || codex.DailyLimit != 2000 || codex.WeeklyLimit != 7000 || codex.Default == nil || codex.Default.Daily != 2000 || codex.Override == nil || codex.Override.Weekly != 7000 {
 		t.Fatalf("account override = %d %s", w.Code, w.Body.String())
 	}
 
 	// A reviewer reads (only global: tokens count) but cannot write.
 	reviewer := codeReviewToken("rev", "code:review")
 	w = codeReviewCall(api, reviewer, "get_token_usage", map[string]any{})
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"user_id":"tl-alice","username":"tl-alice","email":"alice@example.com","daily_limit":0,"weekly_limit":900,"daily_used":1000,"weekly_used":1000`) {
+	var response struct {
+		People []tokenLimitPersonUsage `json:"people"`
+	}
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &response) != nil {
+		t.Fatalf("reviewer usage = %d %s", w.Code, w.Body.String())
+	}
+	var alice *tokenLimitPersonUsage
+	for i := range response.People {
+		if response.People[i].UserID == "tl-alice" {
+			alice = &response.People[i]
+		}
+	}
+	if alice == nil || alice.Username != "tl-alice" || alice.Email != "alice@example.com" || alice.DailyLimit != 0 || alice.WeeklyLimit != 900 || alice.DailyUsed != 1000 || alice.WeeklyUsed != 1000 {
 		t.Fatalf("reviewer usage = %d %s", w.Code, w.Body.String())
 	}
 	day := now.Format("2006-01-02")

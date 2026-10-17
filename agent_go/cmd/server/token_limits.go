@@ -100,11 +100,14 @@ func tokenLimitWindows(now time.Time) (dayStart, dayEnd, weekStart, weekEnd time
 	return dayStart, dayStart.AddDate(0, 0, 1), weekStart, weekStart.AddDate(0, 0, 7)
 }
 
+const tokenLimitCountingNote = "Cache reads count at 10% toward these limits. Fresh input, cache writes and output count in full."
+
 // sharedAccountTokenUsage is what the admin page and the person's own
 // Models panel show. The top-level figures are the overall cap across every
 // shared account; Accounts has each shared account's own figures.
 type sharedAccountTokenUsage struct {
 	Timezone     string `json:"timezone"`
+	CountingNote string `json:"counting_note"`
 	DailyUsed    int64  `json:"daily_used"`
 	WeeklyUsed   int64  `json:"weekly_used"`
 	DailyLimit   int64  `json:"daily_limit,omitempty"`
@@ -115,8 +118,10 @@ type sharedAccountTokenUsage struct {
 	State string `json:"state"`
 	// DailyViaBot and WeeklyViaBot are the part of the used figures that came
 	// from Slack channel bot turns on this person's workflows, Crews or Code.
-	DailyViaBot  int64 `json:"daily_via_bot,omitempty"`
-	WeeklyViaBot int64 `json:"weekly_via_bot,omitempty"`
+	DailyViaBot           int64 `json:"daily_via_bot,omitempty"`
+	WeeklyViaBot          int64 `json:"weekly_via_bot,omitempty"`
+	DailyCacheReadTokens  int64 `json:"daily_cache_read_tokens,omitempty"`
+	WeeklyCacheReadTokens int64 `json:"weekly_cache_read_tokens,omitempty"`
 	// Accounts is keyed by provider (e.g. "codex-cli"): every shared account
 	// the person used this week or that has a limit for them.
 	Accounts map[string]*accountTokenUsage `json:"accounts,omitempty"`
@@ -134,8 +139,10 @@ type accountTokenUsage struct {
 	Override    *UserTokenLimits `json:"override,omitempty"`
 	State       string           `json:"state"`
 	// DailyViaBot and WeeklyViaBot: see sharedAccountTokenUsage.
-	DailyViaBot  int64 `json:"daily_via_bot,omitempty"`
-	WeeklyViaBot int64 `json:"weekly_via_bot,omitempty"`
+	DailyViaBot           int64 `json:"daily_via_bot,omitempty"`
+	WeeklyViaBot          int64 `json:"weekly_via_bot,omitempty"`
+	DailyCacheReadTokens  int64 `json:"daily_cache_read_tokens,omitempty"`
+	WeeklyCacheReadTokens int64 `json:"weekly_cache_read_tokens,omitempty"`
 }
 
 type cachedSharedTokenUsage struct {
@@ -168,6 +175,9 @@ func (api *StreamingAPI) sharedAccountTokensUsed(userID string, now time.Time) (
 		return cached.byAccount, nil
 	}
 	usage, err := api.tokenLimitLedger().AccountTokensByAccount(userID, serverAccountIDPrefix, dayStart, weekStart)
+	for account, raw := range usage {
+		usage[account] = raw.ForTokenLimits()
+	}
 	if err != nil {
 		return usage, err
 	}
@@ -182,6 +192,8 @@ func totalAccountTokens(byAccount map[string]costledger.AccountTokenUsage) costl
 	for _, usage := range byAccount {
 		total.Day += usage.Day
 		total.Week += usage.Week
+		total.CacheReadDay += usage.CacheReadDay
+		total.CacheReadWeek += usage.CacheReadWeek
 		total.ViaBotDay += usage.ViaBotDay
 		total.ViaBotWeek += usage.ViaBotWeek
 	}
@@ -331,7 +343,7 @@ func (api *StreamingAPI) sharedAccountTokenUsageFor(rec *UserRecord) *sharedAcco
 	}
 	now := tokenLimitNow()
 	_, dayEnd, _, weekEnd := tokenLimitWindows(now)
-	out := &sharedAccountTokenUsage{Timezone: tokenLimitTimezone, DayResetsAt: dayEnd.Format(time.RFC3339), WeekResetsAt: weekEnd.Format(time.RFC3339), State: "ok"}
+	out := &sharedAccountTokenUsage{Timezone: tokenLimitTimezone, CountingNote: tokenLimitCountingNote, DayResetsAt: dayEnd.Format(time.RFC3339), WeekResetsAt: weekEnd.Format(time.RFC3339), State: "ok"}
 	if limits := rec.TokenLimits.normalized(); limits != nil {
 		out.DailyLimit, out.WeeklyLimit = limits.Daily, limits.Weekly
 	}
@@ -341,6 +353,7 @@ func (api *StreamingAPI) sharedAccountTokenUsageFor(rec *UserRecord) *sharedAcco
 	}
 	total := totalAccountTokens(byAccount)
 	out.DailyUsed, out.WeeklyUsed = total.Day, total.Week
+	out.DailyCacheReadTokens, out.WeeklyCacheReadTokens = total.CacheReadDay, total.CacheReadWeek
 	out.DailyViaBot, out.WeeklyViaBot = total.ViaBotDay, total.ViaBotWeek
 	out.State = tokenLimitState(out.DailyUsed, out.DailyLimit, out.WeeklyUsed, out.WeeklyLimit)
 
@@ -358,7 +371,7 @@ func (api *StreamingAPI) sharedAccountTokenUsageFor(rec *UserRecord) *sharedAcco
 	}
 	for provider := range providers {
 		used := byAccount[serverAccountIDPrefix+provider]
-		account := &accountTokenUsage{Label: sharedAccountLabel(provider), DailyUsed: used.Day, WeeklyUsed: used.Week, DailyViaBot: used.ViaBotDay, WeeklyViaBot: used.ViaBotWeek, Default: defaults[provider], Override: overrides[provider]}
+		account := &accountTokenUsage{Label: sharedAccountLabel(provider), DailyUsed: used.Day, WeeklyUsed: used.Week, DailyViaBot: used.ViaBotDay, WeeklyViaBot: used.ViaBotWeek, Default: defaults[provider], Override: overrides[provider], DailyCacheReadTokens: used.CacheReadDay, WeeklyCacheReadTokens: used.CacheReadWeek}
 		if limits := effectiveAccountTokenLimits(defaults[provider], overrides[provider]); limits != nil {
 			account.DailyLimit, account.WeeklyLimit = limits.Daily, limits.Weekly
 		}

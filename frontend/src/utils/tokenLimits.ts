@@ -57,6 +57,8 @@ export function resetLabel(iso: string | undefined, weekly: boolean): string {
 export interface TokenFigures {
   daily_used: number
   weekly_used: number
+  daily_cache_read_tokens?: number
+  weekly_cache_read_tokens?: number
   daily_limit?: number
   weekly_limit?: number
   state: 'ok' | 'warning' | 'over'

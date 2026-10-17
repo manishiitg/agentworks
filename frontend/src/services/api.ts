@@ -2888,8 +2888,11 @@ export interface TokenLimits {
 /** A person's tokens on the shared server accounts against their limits (GET /api/me/token-usage). */
 export interface SharedAccountTokenUsage {
   timezone: string
+  counting_note?: string
   daily_used: number
   weekly_used: number
+  daily_cache_read_tokens?: number
+  weekly_cache_read_tokens?: number
   daily_limit?: number
   weekly_limit?: number
   day_resets_at: string
@@ -2904,6 +2907,8 @@ export interface SharedAccountUsage {
   label: string
   daily_used: number
   weekly_used: number
+  daily_cache_read_tokens?: number
+  weekly_cache_read_tokens?: number
   daily_limit?: number
   weekly_limit?: number
   default_limits?: TokenLimits

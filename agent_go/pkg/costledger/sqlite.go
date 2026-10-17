@@ -572,8 +572,8 @@ INSERT OR IGNORE INTO cost_events (
 // billing_user_id existed count to user_id, as they always did.
 func (s *sqliteLedger) accountTokens(userID, accountPrefix string, dayStart, weekStart time.Time) (map[string]AccountTokenUsage, error) {
 	usage := map[string]AccountTokenUsage{}
-	err := s.scanAccountTokens(userID, accountPrefix, dayStart, weekStart, func(accountID, _ string, tokens int64, viaBot, today bool) {
-		usage[accountID] = addAccountTokens(usage[accountID], tokens, viaBot, today)
+	err := s.scanAccountTokens(userID, accountPrefix, dayStart, weekStart, func(accountID, _ string, tokens, cacheReads int64, viaBot, today bool) {
+		usage[accountID] = addAccountTokens(usage[accountID], tokens, cacheReads, viaBot, today)
 	})
 	return usage, err
 }
@@ -583,30 +583,34 @@ func (s *sqliteLedger) accountTokens(userID, accountPrefix string, dayStart, wee
 // account ID and then model.
 func (s *sqliteLedger) accountModelTokens(userID, accountPrefix string, dayStart, weekStart time.Time) (map[string]map[string]AccountTokenUsage, error) {
 	usage := map[string]map[string]AccountTokenUsage{}
-	err := s.scanAccountTokens(userID, accountPrefix, dayStart, weekStart, func(accountID, model string, tokens int64, viaBot, today bool) {
+	err := s.scanAccountTokens(userID, accountPrefix, dayStart, weekStart, func(accountID, model string, tokens, cacheReads int64, viaBot, today bool) {
 		if usage[accountID] == nil {
 			usage[accountID] = map[string]AccountTokenUsage{}
 		}
-		usage[accountID][model] = addAccountTokens(usage[accountID][model], tokens, viaBot, today)
+		usage[accountID][model] = addAccountTokens(usage[accountID][model], tokens, cacheReads, viaBot, today)
 	})
 	return usage, err
 }
 
-func addAccountTokens(account AccountTokenUsage, tokens int64, viaBot, today bool) AccountTokenUsage {
+func addAccountTokens(account AccountTokenUsage, tokens, cacheReads int64, viaBot, today bool) AccountTokenUsage {
 	account.Week += tokens
+	account.CacheReadWeek += cacheReads
 	if viaBot {
 		account.ViaBotWeek += tokens
+		account.viaBotCacheReadWeek += cacheReads
 	}
 	if today {
 		account.Day += tokens
+		account.CacheReadDay += cacheReads
 		if viaBot {
 			account.ViaBotDay += tokens
+			account.viaBotCacheReadDay += cacheReads
 		}
 	}
 	return account
 }
 
-func (s *sqliteLedger) scanAccountTokens(userID, accountPrefix string, dayStart, weekStart time.Time, visit func(accountID, model string, tokens int64, viaBot, today bool)) error {
+func (s *sqliteLedger) scanAccountTokens(userID, accountPrefix string, dayStart, weekStart time.Time, visit func(accountID, model string, tokens, cacheReads int64, viaBot, today bool)) error {
 	rows, err := s.db.Query(`
 SELECT account_id, occurred_at, prompt_tokens, completion_tokens, cache_read_tokens, cache_write_tokens,
        requested_provider, effective_provider, operation_metadata_json, billing_user_id != '',
@@ -640,7 +644,7 @@ WHERE (billing_user_id = ? OR (billing_user_id = '' AND user_id = ?)) AND substr
 		if at, err := time.Parse(time.RFC3339Nano, occurredAt); err == nil && !at.Before(day) {
 			today = true
 		}
-		visit(accountID, model, int64(entryInputTokens(e)+e.CompletionTokens), viaBot, today)
+		visit(accountID, model, int64(entryInputTokens(e)+e.CompletionTokens), int64(e.CacheReadTokens), viaBot, today)
 	}
 	return rows.Err()
 }
