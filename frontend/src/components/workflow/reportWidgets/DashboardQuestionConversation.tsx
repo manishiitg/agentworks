@@ -42,11 +42,11 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
   const accepted = useRef(new Map<string, string>())
   const opening = useRef<Promise<string> | null>(null)
   // Native project chat enforces Builder/Run permissions on every request.
-  // Code has no project Ask adapter yet.
-  const canAsk = Boolean(viewer && capability.can_ask && ['crew', 'workflow', 'relay'].includes(product))
+  // Merged Crew projects retain their work/code origin for native conversation routing.
+  const canAsk = Boolean(viewer && capability.can_ask && ['crew', 'code', 'workflow', 'relay'].includes(product))
   // Function buttons run the project's published functions as this person; the
-  // server resolves the project from the dashboard record (Crew and workflow).
-  const canUseFunctions = Boolean(viewer && capability.can_view && ['crew', 'workflow'].includes(product))
+  // server resolves the project from the dashboard record, including either Crew origin.
+  const canUseFunctions = Boolean(viewer && capability.can_view && ['crew', 'code', 'workflow'].includes(product))
   // "/" in this chat lists the project's published functions (not the person's own
   // commands); choosing one opens the same form as a function button.
   const [functionList, setFunctionList] = useState<{ name: string; description?: string }[]>([])

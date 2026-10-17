@@ -12,14 +12,15 @@ export async function openProjectAskConversation(project: { product: string; pro
   const identity = captureChatIdentity()
   await waitForChatStoreHydration()
   assertChatIdentityCurrent(identity)
-  if (project.product === 'crew') {
+  if (project.product === 'crew' || project.product === 'code') {
+    const profileId = project.product === 'code' ? 'code' : 'work'
     // Explicitly omit the unrelated active tab's session. The standard profile
     // endpoint resolves this caller's canonical project conversation.
-    const conversation = await agentApi.resolveAgentProfileConversation('work', { conversation_key: project.projectId }, null)
+    const conversation = await agentApi.resolveAgentProfileConversation(profileId, { conversation_key: project.projectId }, null)
     assertChatIdentityCurrent(identity)
     const store = useChatStore.getState()
     const tabId = await store.createChatTab('Chat', {
-      mode: 'multi-agent', agentProfileId: 'work', agentProfileBuilder: false,
+      mode: 'multi-agent', agentProfileId: profileId, agentProfileBuilder: false,
       agentProfileWorkspace: project.workspacePath, agentProfileProjectId: project.projectId,
       agentProfileConversationKey: conversation.conversation_key,
       agentProfileConversationId: conversation.conversation_id, agentProfileChatContract: 'profile-v1',

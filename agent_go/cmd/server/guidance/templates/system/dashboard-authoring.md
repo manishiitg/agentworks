@@ -9,7 +9,7 @@ external_tools: ["*dashboard*", "get_report_link"]
 Follow the user’s design and motion preferences. These instructions describe
 platform operations and data access.
 
-Sharing a product means sharing its dashboard: people use the published work there through Ask and available function buttons. Crew<!-- product:code -->, Code<!-- /product --><!-- product:relays --> and Flows<!-- /product --> have one owner; workflows retain their existing owners and editors. Use the current dashboard sharing controls and returned links; a copied URL alone does not give access. Describe people as Builder or Run in replies, never as permission-level labels.
+Sharing a product means sharing its dashboard: people use the published work there through Ask and available function buttons. Crew includes projects formerly called Code; existing Builder and Run roles apply to both origins. Use the current dashboard sharing controls and returned links; a copied URL alone does not give access. Describe people as Builder or Run in replies, never as permission-level labels.
 
 For external MCP, call `get_api_spec` to discover tool schemas, then `call_tool`
 with the chosen name and arguments. App Builder tools are bound to their project;
@@ -17,7 +17,7 @@ external operations use the authorized `workspace` returned by discovery.
 
 1. `list_dashboards` lists accessible documents, project roots and live URLs.
    Omit workspace for cross-project discovery; use limit/offset for pagination.
-   Goals, <!-- product:relays -->Flows and <!-- /product -->Crews use current project access.<!-- product:code --> Code is owner-only.<!-- /product -->
+   Goals, <!-- product:relays -->Flows and <!-- /product -->Crews (including projects formerly called Code) use current project access.
 2. `get_dashboard` returns source and revision. Existing HTML documents can be
    read using their returned document_path; adopt them by creating a new managed
    bundle from that source. Existing files are preserved.
@@ -105,9 +105,11 @@ panel, to make the chat light or dark whatever the app's own mode is. Add
 `data-report-chat-fit="viewport"` to a panel to keep it inside the visible window so its
 composer never sits below the fold.
 
-Preview has no conversation: `chat.available` is false. Code has no native
-project Ask adapter yet; leave its chat widgets unavailable. Check availability
-before calling widget controls. These widgets require the managed dashboard
+Crew includes projects formerly called Code. Both use these same widgets and
+the signed-in person’s existing project conversation; Run access stays in Run
+mode. Keep the project identity returned by discovery; do not convert it to
+another origin. Preview has no conversation: `chat.available` is false. Check
+availability before calling widget controls. These widgets require the managed dashboard
 host; loose HTML documents do not acquire native chat through markup alone.
 
 ## Function buttons
@@ -127,7 +129,10 @@ dialog. The page cannot run a function itself: there is no script method, only
 the person's click and Run. The function must be one the signed-in person can
 already use in this project (the owner's published functions); a button naming
 anything else shows that it is unavailable. Button text, placement and styling
-are the designer's choice. Crew and workflow dashboards only.<!-- product:relays --> Flow dashboards have no function buttons yet.<!-- /product --><!-- product:code --> Code dashboards have no function buttons yet.<!-- /product -->
+are the designer's choice. Both Crew project origins and workflow dashboards
+support these buttons. The chat’s `/` menu lists the same published functions.
+Current project access and each function’s allowed people are checked by the
+server when called.<!-- product:relays --> Flow dashboards have no function buttons yet.<!-- /product -->
 
 ## Live HTML and scripts
 

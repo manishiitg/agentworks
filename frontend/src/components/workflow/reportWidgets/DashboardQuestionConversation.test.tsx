@@ -5,13 +5,13 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { DashboardQuestionConversation } from './DashboardQuestionConversation'
 import { ReportEmbedProvider, type ReportDataApi } from './reportEmbedContext'
 
-const { get, openAsk, send, auth } = vi.hoisted(() => ({ get: vi.fn(), openAsk: vi.fn(), send: vi.fn(), auth: { id: 'reader' } }))
-vi.mock('../../../services/api', () => ({ default: { get } }))
+const { get, post, openAsk, send, auth } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), openAsk: vi.fn(), send: vi.fn(), auth: { id: 'reader' } }))
+vi.mock('../../../services/api', () => ({ default: { get, post } }))
 vi.mock('../../../utils/projectAskConversation', () => ({ openProjectAskConversation: openAsk }))
 vi.mock('../../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToChat: send }))
 vi.mock('../../../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { id: auth.id } }) }))
 vi.mock('../../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ addToast: vi.fn() }) } }))
-vi.mock('../../ChatArea', () => ({ default: ({ tabId }: { tabId: string }) => <div data-native-tab={tabId}>Existing project history and replies</div> }))
+vi.mock('../../ChatArea', () => ({ default: ({ tabId, slashCommands = [] }: { tabId: string; slashCommands?: { command: string; execute: () => void }[] }) => <div data-native-tab={tabId}>Existing project history and replies{slashCommands.map(command => <button key={command.command} onClick={command.execute}>/{command.command}</button>)}</div> }))
 vi.mock('./reportHostRuntime', () => ({ withReportBootstrap: (html: string) => html, applyReportTheme: vi.fn(), installReportHost: vi.fn() }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanup: (() => Promise<void>)[] = []
@@ -63,7 +63,7 @@ async function submit() {
   await act(async () => document.querySelector('dialog form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
 }
 
-it.each(['crew', 'workflow', 'relay'])('lets an authorized %s Run user ask about a selected value in their native conversation', async product => {
+it.each(['crew', 'code', 'workflow', 'relay'])('lets an authorized %s Run user ask about a selected value in their native conversation', async product => {
   get.mockResolvedValue({ data: { ...view, product, capability: { can_view: true, can_ask: true, mode: 'question_only' } } })
   openAsk.mockResolvedValue('existing-run-chat'); send.mockResolvedValue({ tabId: 'existing-run-chat' })
   const current = await mount(product, 'question_only')
@@ -74,7 +74,7 @@ it.each(['crew', 'workflow', 'relay'])('lets an authorized %s Run user ask about
   expect(document.body.textContent).toContain('Existing project history and replies')
 })
 
-it.each([['crew', false], ['workflow', false], ['relay', false], ['code', true]] as const)('keeps %s Ask unavailable when capability is %s or no native adapter exists', async (product, canAsk) => {
+it.each([['crew', false], ['code', false], ['workflow', false], ['relay', false], ['unknown', true]] as const)('keeps %s Ask unavailable when capability is %s or no native adapter exists', async (product, canAsk) => {
   const current = await mount(product, 'question_only', canAsk)
   expect(current.host.querySelector('[aria-label="Open dashboard chat"]')).toBeNull()
   expect(get.mock.calls.filter(([url]) => !String(url).endsWith('/functions'))).toEqual([]); expect(openAsk).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled()
@@ -102,9 +102,9 @@ it('uses the existing Ask tab and preserves the clicked publication across refre
   expect(document.querySelector('dialog form')).toBeNull()
 })
 
-it('rechecks Ask availability before opening or submitting to the project chat', async () => {
-  get.mockResolvedValue({ data: { ...view, capability: { can_view: true, can_ask: false } } })
-  const current = await mount()
+it.each(['crew', 'code', 'workflow'])('rechecks %s Ask availability before opening or submitting to the project chat', async product => {
+  get.mockResolvedValue({ data: { ...view, product, capability: { can_view: true, can_ask: false } } })
+  const current = await mount(product)
   await editQuestion(current.frame); await submit()
   expect(openAsk).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled()
   expect(document.querySelector('[role="alert"]')?.textContent).toContain('no longer available')
@@ -124,9 +124,9 @@ it('does not show a previous account’s Ask after an in-flight conversation loo
   expect(send).not.toHaveBeenCalled()
 })
 
-it('renders native chat in a designer-selected slot in the host document without appending a layout', async () => {
-  get.mockResolvedValue({ data: view }); openAsk.mockResolvedValue('designer-chat')
-  const current = await mount('workflow', 'owner', true, '<p id="total">42</p><section id="custom" data-report-chat-panel></section><button data-report-chat-button data-report-chat-target="#custom">Help</button>')
+it.each(['crew', 'code', 'workflow'])('renders %s native chat in a designer-selected slot in the host document without appending a layout', async product => {
+  get.mockResolvedValue({ data: { ...view, product } }); openAsk.mockResolvedValue('designer-chat')
+  const current = await mount(product, 'owner', true, '<p id="total">42</p><section id="custom" data-report-chat-panel></section><button data-report-chat-button data-report-chat-target="#custom">Help</button>')
   expect(current.host.querySelector('[aria-label="Open dashboard chat"]')).toBeNull()
   expect(document.querySelector('[data-native-tab]')?.getAttribute('data-native-tab')).toBe('designer-chat')
   expect(current.frame.contentDocument!.querySelector('[data-native-tab]')).toBeNull()
@@ -134,4 +134,28 @@ it('renders native chat in a designer-selected slot in the host document without
   expect(current.host.querySelector<HTMLElement>('[aria-label="Dashboard chat widget"]')?.style.width).toBe('360px')
   expect(current.host.textContent).toContain('Existing project history and replies')
   expect(send).not.toHaveBeenCalled()
+})
+
+it.each([['crew', 'owner'], ['code', 'owner'], ['crew', 'question_only'], ['code', 'question_only']])('uses the same native function form and chat menu for a %s-origin Crew in %s mode', async (product, mode) => {
+  const functions = [{ name: 'count_items', input_schema: { type: 'object', properties: { count: { type: 'integer' } }, required: ['count'] } }, { name: 'restricted', can_call: false }]
+  get.mockImplementation(async (url: string) => ({ data: url.endsWith('/functions') ? { functions } : { ...view, product, capability: { can_view: true, can_ask: true, mode } } }))
+  post.mockResolvedValue({ data: { status: 'completed', result: { count: 3 } } })
+  openAsk.mockResolvedValue('caller-chat')
+  const current = await mount(product, mode, true, '<p id="total">42</p><button data-report-action="count_items" data-report-action-defaults=\'{"count":3}\'>Count items</button><button data-report-action="restricted">Restricted</button>')
+  const buttons = current.frame.contentDocument!.querySelectorAll('button')
+  expect(buttons[0].disabled).toBe(false)
+  expect(buttons[1].disabled).toBe(true)
+  expect(post).not.toHaveBeenCalled()
+  await act(async () => buttons[0].click())
+  expect(document.querySelector('[data-testid="report-action-dialog"]')).not.toBeNull()
+  expect(post).not.toHaveBeenCalled()
+  await act(async () => document.querySelector('[data-testid="report-action-dialog"] form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+  expect(post).toHaveBeenCalledExactlyOnceWith('/api/dashboards/dashboard-1/functions/call', { function: 'count_items', args: { count: 3 }, submission_id: expect.any(String) })
+  expect(document.querySelector('[data-testid="report-action-result"]')?.textContent).toContain('"count": 3')
+  await act(async () => click('Close'))
+  await act(async () => click('Ask'))
+  expect(openAsk).toHaveBeenCalledWith({ product, projectId: 'project-1', workspacePath: 'Workflow/demo' })
+  await act(async () => click('/count_items'))
+  expect(document.querySelector('[data-testid="report-action-dialog"]')).not.toBeNull()
+  expect(post).toHaveBeenCalledTimes(1)
 })

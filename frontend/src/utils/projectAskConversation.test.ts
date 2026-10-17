@@ -11,12 +11,12 @@ vi.mock('./workspacePaneChat', () => ({ resolveWorkspacePaneChatTab: mocks.workf
 vi.mock('./chatIdentity', () => ({ captureChatIdentity: () => 1, assertChatIdentityCurrent: vi.fn() }))
 afterEach(() => vi.resetAllMocks())
 
-it('binds a Crew to the ordinary caller conversation and reuses its saved session', async () => {
+it.each([['crew', 'work', 'Crew/team'], ['code', 'code', '_users/owner/Chats/Code/projects/team']])('binds a %s-origin Crew to its ordinary caller conversation and reuses its saved session', async (product, profile, workspacePath) => {
   mocks.resolve.mockResolvedValue({ session_id: 'caller-session', conversation_key: 'crew-1', conversation_id: 'caller-conversation' })
   mocks.create.mockResolvedValue('existing-tab')
-  expect(await openProjectAskConversation({ product: 'crew', projectId: 'crew-1', workspacePath: 'Crew/team' })).toBe('existing-tab')
-  expect(mocks.resolve).toHaveBeenCalledWith('work', { conversation_key: 'crew-1' }, null)
-  expect(mocks.create).toHaveBeenCalledWith('Chat', expect.objectContaining({ agentProfileConversationKey: 'crew-1', agentProfileConversationId: 'caller-conversation', agentProfileChatContract: 'profile-v1' }), 'caller-session')
+  expect(await openProjectAskConversation({ product, projectId: 'crew-1', workspacePath })).toBe('existing-tab')
+  expect(mocks.resolve).toHaveBeenCalledWith(profile, { conversation_key: 'crew-1' }, null)
+  expect(mocks.create).toHaveBeenCalledWith('Chat', expect.objectContaining({ agentProfileId: profile, agentProfileBuilder: false, agentProfileWorkspace: workspacePath, agentProfileProjectId: 'crew-1', agentProfileConversationKey: 'crew-1', agentProfileConversationId: 'caller-conversation', agentProfileChatContract: 'profile-v1' }), 'caller-session')
   expect(mocks.hydrate).not.toHaveBeenCalled()
 })
 

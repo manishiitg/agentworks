@@ -143,9 +143,11 @@ the signed-in person's existing conversation on both app dashboards and shared
 published links. Right-click Ask about a value still requires explicit Submit
 and captures the selected value and dashboard publication.
 
-Preview has no conversation: `chat.available` is false. Code has no native
-project Ask adapter yet; leave its chat widgets unavailable. Check availability
-before calling widget controls. These widgets require the managed dashboard
+Crew includes projects formerly called Code. Both use these same widgets and
+the signed-in person’s existing project conversation; Run access stays in Run
+mode. Keep the project identity returned by discovery; do not convert it to
+another origin. Preview has no conversation: `chat.available` is false. Check
+availability before calling widget controls. These widgets require the managed dashboard
 viewer; loose HTML documents do not acquire native chat through markup alone.
 
 ## Managed dashboards and external MCP
@@ -163,8 +165,9 @@ published revision and checks the current draft revision. Never directly edit
 managed revision files or their state.
 
 `list_dashboards` discovers accessible dashboards and URLs. `get_dashboard_link`
-returns an authenticated published URL; users need current project access. Code
-stays owner-only. Existing HTML documents remain discoverable; use their returned
+returns an authenticated published URL; users need current project access.
+Crew includes projects formerly called Code; keep the returned project identity.
+Existing HTML documents remain discoverable; use their returned
 `document_path` for get/validate/preview/link. To manage an existing document with
 revisions, read it and create a new managed dashboard from its source.
 

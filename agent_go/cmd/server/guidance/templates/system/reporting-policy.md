@@ -165,9 +165,11 @@ panel, to make the chat light or dark whatever the app's own mode is. Add
 `data-report-chat-fit="viewport"` to a panel to keep it inside the visible window so its
 composer never sits below the fold.
 
-Preview has no conversation: `chat.available` is false. Code has no native
-project Ask adapter yet; leave its chat widgets unavailable. Check availability
-before calling widget controls. These widgets require the managed dashboard
+Crew includes projects formerly called Code. Both use these same widgets and
+the signed-in person’s existing project conversation; Run access stays in Run
+mode. Keep the project identity returned by discovery; do not convert it to
+another origin. Preview has no conversation: `chat.available` is false. Check
+availability before calling widget controls. These widgets require the managed dashboard
 viewer; loose HTML documents do not acquire native chat through markup alone.
 
 ### Responding to `report:focus` (tabbed Dashboards)
@@ -541,4 +543,7 @@ dialog. The page cannot run a function itself: there is no script method, only
 the person's click and Run. The function must be one the signed-in person can
 already use in this project (the owner's published functions); a button naming
 anything else shows that it is unavailable. Button text, placement and styling
-are the designer's choice. Crew and workflow dashboards only.<!-- product:relays --> Flow dashboards have no function buttons yet.<!-- /product --><!-- product:code --> Code dashboards have no function buttons yet.<!-- /product -->
+are the designer's choice. Both Crew project origins and workflow dashboards
+support these buttons. The chat’s `/` menu lists the same published functions.
+Current project access and each function’s allowed people are checked by the
+server when called.<!-- product:relays --> Flow dashboards have no function buttons yet.<!-- /product -->
