@@ -161,5 +161,5 @@ func checkResourceIntentDrift(problems map[string]string, evaluated map[string]b
 			Evidence: "The description's ## Resources section is not right: " + reason + ". Fix it in this review: rewrite the four lines from what the step really reads and writes (db/README.md writers, its Output, its scripts and its access settings), in plain words for the workflow's owner; change no access; then run check_plan_no_loss and record it fixed."}
 	}
 	return StepDriftCheck{CheckID: resourceIntentDriftCheckID, Status: stepDriftCheckStatusPass,
-		Evidence: "The ## Resources section states the knowledge base, database, Brain and learnings use and agrees with the step's access settings. Whether each line is true to what the step does is a judgement for step_prompt_quality."}
+		Evidence: "The ## Resources section states the knowledge base, database, Brain and learnings use without contradicting named references. Whether each line is true to what the step does is a judgement for step_prompt_quality."}
 }
