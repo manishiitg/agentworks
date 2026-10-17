@@ -117,7 +117,7 @@ func unescapeJSStringLiteral(s string) string {
 	return replacer.Replace(s)
 }
 
-// CheckReportQueryCompatibility dry-runs every window.report.query(...) call
+// CheckReportQueryCompatibility prepares every literal window.report.query(...) SQL statement
 // found in db/reports/index.html against the workflow's live db.sqlite. A step
 // changing what it writes (renaming/dropping a column or table) breaks the
 // report silently in the UI; this catches it mechanically, no LLM needed.
@@ -150,32 +150,18 @@ func CheckReportQueryCompatibility(ctx context.Context, workspacePath string, re
 
 	var failures []string
 	for _, q := range queries {
-		rows, err := db.QueryContext(ctx, q)
-		if err != nil {
+		if err := preparePlanDriftSQL(ctx, db, q); err != nil {
 			preview := q
 			if len(preview) > 120 {
 				preview = preview[:120] + "..."
 			}
 			failures = append(failures, fmt.Sprintf("%q -> %v", preview, err))
-			continue
-		}
-		// QueryContext returns an open result set even though this check only
-		// needs SQLite to prepare/execute the statement. Leaving it open keeps
-		// the read connection alive and can make the deferred db.Close wait
-		// until the caller's context expires, which previously made the managed
-		// plan-drift review time out on otherwise-valid reports.
-		if err := rows.Close(); err != nil {
-			preview := q
-			if len(preview) > 120 {
-				preview = preview[:120] + "..."
-			}
-			failures = append(failures, fmt.Sprintf("%q -> close result set: %v", preview, err))
 		}
 	}
 
 	if len(failures) == 0 {
 		check.Status = "pass"
-		check.Evidence = fmt.Sprintf("all %d report query(...) call(s) ran cleanly against the current db.sqlite schema", len(queries))
+		check.Evidence = fmt.Sprintf("all %d report query(...) call(s) prepared against the current db.sqlite schema", len(queries))
 		return check, nil
 	}
 	check.Status = "fail"
@@ -399,23 +385,21 @@ func scriptedStaticSQLArgument(code string, pos int) (string, bool) {
 	return "", false
 }
 
-// countSQLPlaceholders counts standalone `?` bind placeholders in a SQL
-// string (naive — does not distinguish a `?` inside a quoted literal, which
-// would be unusual for a bind-parameterized query in the first place).
-func countSQLPlaceholders(sqlText string) int {
-	return strings.Count(sqlText, "?")
+// preparePlanDriftSQL asks SQLite to compile the complete statement as EXPLAIN.
+// The pinned driver prepares eagerly, resolving tables/columns without execution
+// or binding runtime values. This also handles positional, numbered and named
+// parameters and question marks in SQL literals/comments using SQLite's parser.
+func preparePlanDriftSQL(ctx context.Context, db *sql.DB, query string) error {
+	stmt, err := db.PrepareContext(ctx, "EXPLAIN "+query)
+	if err != nil {
+		return err
+	}
+	return stmt.Close()
 }
 
-// CheckScriptedCodeDBQueries dry-runs every extracted query from a scripted
-// step's main.py against the live db.sqlite via EXPLAIN (not the query
-// itself) with every ?-placeholder bound to NULL — EXPLAIN still requires
-// SQLite to resolve every referenced table/column to build the bytecode
-// program, so a renamed/dropped table or column is still caught, without
-// executing the statement or needing real parameter values (verified: NULL-
-// bound EXPLAIN surfaces "no such table"/"no such column" identically to a
-// real run, confirmed against a throwaway local database before shipping
-// this check). This still never risks a write: EXPLAIN never executes, and
-// the connection itself is opened query_only as an additional guard.
+// CheckScriptedCodeDBQueries prepares every complete extracted static SQL statement
+// from main.py against the live schema. Dynamic expressions remain outside the
+// extractor's coverage. EXPLAIN is never executed, and the connection is query_only.
 func CheckScriptedCodeDBQueries(ctx context.Context, workspacePath, stepID string, readFile func(context.Context, string) (string, error)) (StepDriftCheck, error) {
 	check := StepDriftCheck{CheckID: scriptedCodeDriftCheckID}
 
@@ -445,8 +429,7 @@ func CheckScriptedCodeDBQueries(ctx context.Context, workspacePath, stepID strin
 
 	var failures []string
 	for _, q := range queries {
-		placeholderArgs := make([]interface{}, countSQLPlaceholders(q))
-		if _, err := db.ExecContext(ctx, "EXPLAIN "+q, placeholderArgs...); err != nil {
+		if err := preparePlanDriftSQL(ctx, db, q); err != nil {
 			preview := q
 			if len(preview) > 120 {
 				preview = preview[:120] + "..."

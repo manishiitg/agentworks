@@ -493,15 +493,6 @@ func TestExtractScriptedCodeQueriesHandlesRealWorldShapes(t *testing.T) {
 	}
 }
 
-func TestCountSQLPlaceholders(t *testing.T) {
-	if n := countSQLPlaceholders("SELECT * FROM t WHERE a=? AND b=?"); n != 2 {
-		t.Fatalf("countSQLPlaceholders = %d, want 2", n)
-	}
-	if n := countSQLPlaceholders("SELECT * FROM t"); n != 0 {
-		t.Fatalf("countSQLPlaceholders = %d, want 0", n)
-	}
-}
-
 func TestExtractScriptedCodeQueriesAdjacentLiterals(t *testing.T) {
 	code := `conn.execute(
     "INSERT INTO leads " # comment between adjacent literals
@@ -917,5 +908,70 @@ func TestCheckOrphanedTablesRecognizesReportAndReadmeReferences(t *testing.T) {
 	}
 	if check.Status != "pass" {
 		t.Fatalf("status = %q, want pass; evidence=%s", check.Status, check.Evidence)
+	}
+}
+
+// The report checker used to execute parameterized SQL with zero arguments, and
+// scripted checks counted literal question marks as parameters. Prepare against
+// real SQLite instead, preserving complete adjacent literals and real failures.
+func TestPlanDriftSchemaChecksPrepareParameterizedSQL(t *testing.T) {
+	workspace := "Workflow/parameterized-report"
+	dbPath := setupPlanDriftDBTest(t, workspace)
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("CREATE TABLE messages(id INTEGER PRIMARY KEY, body TEXT); INSERT INTO messages VALUES (1,'original')"); err != nil {
+		t.Fatal(err)
+	}
+	report := `window.report.query("SELECT body FROM messages WHERE id=? AND (?='' OR body=?)",[id,body||'',body||'']);
+window.report.query("SELECT '?' AS question, body FROM messages WHERE id=?3 -- ? is a comment",[null,null,id]);
+window.report.query("SELECT body FROM messages WHERE id=:id",{id});`
+	code := `conn.execute(
+  "UPDATE messages " # adjacent literals must stay complete
+  "SET body=:body "
+  """WHERE id=?2 AND '?'='?'""", params)
+conn.execute("SELECT " + dynamic_columns)`
+	readFile := func(_ context.Context, path string) (string, error) {
+		switch path {
+		case workspace + "/db/reports/index.html":
+			return report, nil
+		case workspace + "/code/work/main.py":
+			return code, nil
+		case workspace + "/workflow.json":
+			return `{"code_layout_version":1}`, nil
+		}
+		return "", os.ErrNotExist
+	}
+	for _, broken := range []bool{false, true} {
+		if broken {
+			report = strings.ReplaceAll(report, "SELECT body", "SELECT absent_column")
+			code = strings.Replace(code, "SET body", "SET absent_column", 1)
+		}
+		reportCheck, err := CheckReportQueryCompatibility(t.Context(), workspace, readFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		scriptCheck, err := CheckScriptedCodeDBQueries(t.Context(), workspace, "work", readFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, check := range []StepDriftCheck{reportCheck, scriptCheck} {
+			want := "pass"
+			if broken {
+				want = "fail"
+			}
+			if check.Status != want {
+				t.Fatalf("%s: %s; %s", check.CheckID, check.Status, check.Evidence)
+			}
+			if broken && !strings.Contains(check.Evidence, "absent_column") {
+				t.Fatalf("lost real schema error: %s", check.Evidence)
+			}
+		}
+	}
+	var body string
+	if err := db.QueryRow("SELECT body FROM messages WHERE id=1").Scan(&body); err != nil || body != "original" {
+		t.Fatalf("schema check executed saved SQL: %q / %v", body, err)
 	}
 }
