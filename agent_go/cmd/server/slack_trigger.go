@@ -205,7 +205,7 @@ func (api *StreamingAPI) executeSlackTrigger(ctx context.Context, route ChannelR
 	sctx := buildScheduleContext(route.WorkspacePath, manifest, schedule)
 	sctx.WebhookInput = input
 	sctx.TriggerSource = "slack"
-	req := api.scheduler.buildWorkshopRequest(ctx, sctx)
+	req := api.scheduler.buildWorkshopRequest(ctx, sctx, "")
 	opts, err := configureDirectWebhookRequest(req, sctx, folder)
 	if err != nil {
 		return err

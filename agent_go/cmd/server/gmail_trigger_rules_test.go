@@ -43,7 +43,7 @@ func TestGmailBuilderRulesPreserveAddressAndResolveExactSavedActions(t *testing.
 		}
 		sctx := buildScheduleContext(route.WorkspacePath, manifest, selected)
 		sctx.WebhookInput = input
-		opts, err := configureDirectWebhookRequest(api.scheduler.buildWorkshopRequest(ctx, sctx), sctx, "iteration-1-hook")
+		opts, err := configureDirectWebhookRequest(api.scheduler.buildWorkshopRequest(ctx, sctx, ""), sctx, "iteration-1-hook")
 		if err != nil || opts.RouteSelections["triage"] != id || len(opts.EnabledGroupNames) != 1 || opts.EnabledGroupNames[0] != "prod" {
 			t.Fatalf("email redirected saved rule: %+v %v", opts, err)
 		}

@@ -11,7 +11,8 @@ import type {
   CostOverviewUser,
 } from '../../services/api-types'
 import { formatTokens } from '../workflow/costs/helpers'
-import { inputTokens, tokenSummary, pricingCoverageText } from '../../utils/costTokens'
+import { inputTokens, tokenSummary, pricingCoverageText, costAmountLabel } from '../../utils/costTokens'
+import CostsScheduleSection from '../workflow/costs/CostsScheduleSection'
 import { costAgentLabel } from '../workflow/costs/CostsModelSection'
 
 type Group = 'user' | 'workflow' | 'crew' | 'code' | 'product' | 'bot' | 'mcp' | 'other'
@@ -61,7 +62,7 @@ const currency = (amount: number) => {
 }
 
 const amountLabel = (usage: Pick<CostAggregate, 'total_cost_usd' | 'unpriced_call_count'>) =>
-  usage.total_cost_usd === 0 && (usage.unpriced_call_count ?? 0) > 0 ? 'Not priced' : currency(usage.total_cost_usd)
+  costAmountLabel(usage, currency)
 
 const orderByCost = <T extends CostAggregate>(values: T[]) => values.sort((a, b) =>
   b.total_cost_usd - a.total_cost_usd || b.call_count - a.call_count)
@@ -248,6 +249,10 @@ export default function CostExplorer({ data, days, itemLabel }: {
           <PricingDetail usage={usage} />
           <Breakdown title="Activity" rows={scopeRows} />
           <Breakdown title="Models" rows={modelRows} />
+
+          {selected.item?.by_source && <div className="mt-5">
+            <CostsScheduleSection scopedCosts={{ by_source: selected.item.by_source }} />
+          </div>}
 
           {selected.user && (selected.user.by_work?.length ?? 0) > 0 && <section className="mt-5">
             <h4 className="mb-2 text-sm font-semibold text-gray-900 dark:text-gray-100">Where this user worked</h4>

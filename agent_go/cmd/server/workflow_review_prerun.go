@@ -406,7 +406,7 @@ func (s *SchedulerService) runWorkflowReviewSession(ctx context.Context, workspa
 		outcome.detail = fmt.Sprintf("could not record the review's worklist: %v", err)
 		return outcome
 	}
-	baseReq := s.buildWorkshopRequest(ctx, sctx)
+	baseReq := s.buildWorkshopRequest(ctx, sctx, "")
 	turn := func(query string) error {
 		reqMap := cloneStringInterfaceMap(baseReq)
 		markPulseLifecycleTurn(reqMap)

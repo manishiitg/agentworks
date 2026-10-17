@@ -1830,7 +1830,7 @@ func TestPulseLifecycleTurnKeepsBuilderLLMAndTagsTheTurn(t *testing.T) {
 	}
 
 	svc := &SchedulerService{}
-	reqMap := svc.buildWorkshopRequest(context.Background(), sctx)
+	reqMap := svc.buildWorkshopRequest(context.Background(), sctx, "")
 	markPulseLifecycleTurn(reqMap)
 
 	if got := reqMap["pulse_lifecycle_turn"]; got != true {
@@ -1866,7 +1866,7 @@ func TestBuildWorkshopRequestDisablesLiveInputDeliveryForSchedulerTurns(t *testi
 		Capabilities:  WorkflowCapabilities{},
 	}
 
-	reqMap := svc.buildWorkshopRequest(context.Background(), sctx)
+	reqMap := svc.buildWorkshopRequest(context.Background(), sctx, "")
 	if got := reqMap["disable_live_input_delivery"]; got != true {
 		t.Fatalf("disable_live_input_delivery = %#v, want true", got)
 	}

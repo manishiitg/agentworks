@@ -519,7 +519,7 @@ func (api *StreamingAPI) botWorkflowTurn(ctx context.Context, query string, rout
 	if strings.TrimSpace(dmUserID) != "" {
 		principalID = strings.TrimSpace(dmUserID)
 	}
-	req := api.scheduler.buildWorkshopRequest(ctx, &ScheduleContext{WorkspacePath: route.WorkspacePath, WorkflowID: route.WorkflowID, WorkflowLabel: manifest.Label, OwnerUserID: principalID, Capabilities: manifest.Capabilities, Schedule: WorkflowSchedule{Name: manifest.Label}, TriggerSource: "bot:" + thread.Platform})
+	req := api.scheduler.buildWorkshopRequest(ctx, &ScheduleContext{WorkspacePath: route.WorkspacePath, WorkflowID: route.WorkflowID, WorkflowLabel: manifest.Label, OwnerUserID: principalID, Capabilities: manifest.Capabilities, Schedule: WorkflowSchedule{Name: manifest.Label}, TriggerSource: "bot:" + thread.Platform}, "")
 	req["query"] = query
 	services.ApplyBotThreadFields(req, thread.Platform, thread)
 	req["bot_route_grant"] = route.BotGrant

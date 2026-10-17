@@ -23,6 +23,7 @@ func TestBuildCostOverviewFoldsAndFiltersByAccess(t *testing.T) {
 		if err := ledger.Append(costledger.Entry{
 			EventID: id, Timestamp: ts, WorkflowID: workflowID, Scope: scope, SessionID: "chat-" + id,
 			Provider: provider, ModelID: model, LLMCallCount: 1,
+			SourceID: "daily-check", SourceLabel: "Daily check", SourceRunID: "source-run",
 			PromptTokens: 100, TotalCostUSD: usd, BillingBasis: "provider_actual",
 		}); err != nil {
 			t.Fatal(err)
@@ -59,6 +60,9 @@ func TestBuildCostOverviewFoldsAndFiltersByAccess(t *testing.T) {
 	}
 	if sales.ByScope["pulse"] == nil || sales.ByScope["pulse"].TotalCostUSD != 1 {
 		t.Fatalf("sales pulse scope = %+v", sales.ByScope)
+	}
+	if len(sales.BySource) != 1 || sales.BySource["daily-check"].TotalCostUSD != 3 || sales.BySource["daily-check"].RunCount != 1 {
+		t.Fatalf("visible source totals = %+v, want only visible usage and one shared run across path aliases", sales.BySource)
 	}
 	crew := member.Items[1]
 	if crew.ID != "_users/alice/Chats/Work/projects/writer-ab12" || crew.Kind != costOverviewKindCrew || crew.OwnerID != "alice" || crew.Name != "writer-ab12" {

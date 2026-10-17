@@ -620,7 +620,7 @@ func (api *StreamingAPI) dispatchInboundEmail(ctx context.Context, d *gmailinbou
 			return fmt.Errorf("workflow unavailable")
 		}
 		d.SessionID = key
-		req = api.scheduler.buildWorkshopRequest(userCtx, &ScheduleContext{WorkspacePath: r.WorkspacePath, WorkflowID: r.ProjectID, WorkflowLabel: m.Label, OwnerUserID: r.OwnerID, Capabilities: m.Capabilities, Schedule: WorkflowSchedule{Name: d.Message.Subject}, TriggerSource: "email"})
+		req = api.scheduler.buildWorkshopRequest(userCtx, &ScheduleContext{WorkspacePath: r.WorkspacePath, WorkflowID: r.ProjectID, WorkflowLabel: m.Label, OwnerUserID: r.OwnerID, Capabilities: m.Capabilities, Schedule: WorkflowSchedule{Name: d.Message.Subject}, TriggerSource: "email"}, "")
 		req["query"] = "Run the saved workflow using this email as the request. Collect missing required inputs in this conversation.\n\n" + query
 		req["workshop_mode"] = "run"
 		req["execution_options"].(map[string]interface{})["workshop_mode"] = "run"

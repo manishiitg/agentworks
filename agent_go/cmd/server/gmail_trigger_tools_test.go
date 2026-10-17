@@ -196,7 +196,7 @@ func TestGmailSavedBindingFailsClosedAndRejectsPublicWebhook(t *testing.T) {
 	}
 	sctx := buildScheduleContext(route.WorkspacePath, manifest, sched)
 	sctx.WebhookInput = input
-	opts, err := configureDirectWebhookRequest(api.scheduler.buildWorkshopRequest(ctx, sctx), sctx, "iteration-1-hook")
+	opts, err := configureDirectWebhookRequest(api.scheduler.buildWorkshopRequest(ctx, sctx, ""), sctx, "iteration-1-hook")
 	if err != nil || opts.RouteSelections["triage"] != "support" || opts.EnabledGroupNames[0] != "prod" {
 		t.Fatalf("email changed execution: %+v %v", opts, err)
 	}

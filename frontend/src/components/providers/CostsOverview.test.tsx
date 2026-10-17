@@ -81,6 +81,24 @@ it('labels unpriced workflow cost as unknown instead of zero', async () => {
   expect(button(container, 'project-a')?.textContent).toContain('Not priced')
 })
 
+it('separates a schedule run from its model calls and marks partial money totals', async () => {
+  const recorded = usage({ total_cost_usd: 0.42, call_count: 27, unpriced_call_count: 25 })
+  vi.mocked(agentApi.getCostOverview).mockResolvedValue({
+    total: recorded, by_provider: {}, by_model: {},
+    items: [{ id: 'Workflow/project-a', kind: 'workflow', name: 'project-a', ...recorded,
+      by_source: { check: { ...recorded, label: 'Receipt check', scope: 'schedule', run_count: 1 } } }],
+    by_user: [], includes_other: false,
+  } as CostOverview)
+  const container = await render()
+  await click(button(container, 'Workflows'))
+  expect(container.textContent).toContain('$0.42 (incomplete)')
+  expect(container.textContent).toContain('Recorded AI calls')
+  const row = [...container.querySelectorAll('tr')].find(value => value.textContent?.includes('Receipt check'))
+  const cells = [...(row?.querySelectorAll('td') ?? [])].map(value => value.textContent)
+  expect(cells.slice(0, 3)).toEqual(['Receipt check', '1', '27'])
+  expect(container.textContent).toContain('not the provider’s quota counter')
+})
+
 it('shows cost by account with the split by work and person', async () => {
   vi.mocked(agentApi.getCostOverview).mockResolvedValue({
     total: usage({ total_cost_usd: 5, call_count: 2 }), by_provider: {}, by_model: {}, items: [], by_user: [], includes_other: false,

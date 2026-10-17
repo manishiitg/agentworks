@@ -4,7 +4,7 @@ import { ADMIN_MANAGED_ACCOUNT_LABEL } from '../../utils/providerAccountLabels'
 import { ChevronRight, CircleAlert, Loader2 } from 'lucide-react'
 import type { CostAggregate, ProviderAccountCost, ProviderCostGroup } from '../../services/api-types'
 import { llmConfigService } from '../../services/llm-config-api'
-import { tokenSummary } from '../../utils/costTokens'
+import { tokenSummary, costAmountLabel } from '../../utils/costTokens'
 import { costAgentLabel } from '../workflow/costs/CostsModelSection'
 
 const currency = (amount: number) => {
@@ -17,7 +17,7 @@ const currency = (amount: number) => {
 }
 
 const costText = (usage: CostAggregate) =>
-  usage.total_cost_usd === 0 && (usage.unpriced_call_count ?? 0) > 0 ? 'Not priced' : currency(usage.total_cost_usd ?? 0)
+  costAmountLabel(usage, currency)
 
 const tokenText = (usage: CostAggregate) =>
   tokenSummary(usage)

@@ -1,4 +1,14 @@
 import type { CostAggregate } from '../services/api-types'
+
+// A priced subtotal is not the total when other usage has no known price.
+export const costAmountLabel = (
+  usage: Pick<CostAggregate, 'total_cost_usd' | 'unpriced_call_count' | 'missing_usage_call_count'>,
+  format: (amount: number) => string,
+): string => {
+  const incomplete = Math.max(usage.unpriced_call_count ?? 0, usage.missing_usage_call_count ?? 0) > 0
+  if (incomplete && usage.total_cost_usd === 0) return 'Not priced'
+  return `${format(usage.total_cost_usd)}${incomplete ? ' (incomplete)' : ''}`
+}
 import { formatTokens } from '../components/workflow/costs/helpers'
 
 export const inputTokens = (usage?: Partial<CostAggregate>) => {

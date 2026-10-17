@@ -97,7 +97,10 @@ func TestMCPCostsAttributionAndAccess(t *testing.T) {
 	emit := func(session, user, root string, attr costledger.Attribution, input, output, cache int, usd float64, includes bool, hour int) {
 		t.Helper()
 		observer := newCostObserver(ledger, session, user, "multi-agent", withCostAttribution("chat", root, "", "query-"+session), withCostModel("openai", "test-model"), costobserver.WithProductAttribution(attr), withCostAccount("personal-account-canary"))
-		err := observer.HandleEvent(t.Context(), &unifiedevents.AgentEvent{Type: unifiedevents.TokenUsage, Timestamp: time.Date(2026, 10, 13, hour, 0, 0, 0, time.UTC), SpanID: "span-" + session, Data: &unifiedevents.TokenUsageEvent{Provider: "openai", ModelID: "test-model", PromptTokens: input, CompletionTokens: output, GenerationInfo: map[string]interface{}{"cost_usd": usd, "cache_read_input_tokens": cache, "prompt_tokens_include_cache": includes}}})
+		if session == "function-session" || session == "private-code-chat" {
+			observer = newCostObserver(ledger, session, user, "multi-agent", withCostAttribution("chat", root, "", "query-"+session), withCostModel("openai", "test-model"), costobserver.WithProductAttribution(attr), costobserver.WithSource("/private/source-key-canary", "Receipt check", "receipt-run"))
+		}
+		err := observer.HandleEvent(t.Context(), &unifiedevents.AgentEvent{Type: unifiedevents.TokenUsage, Timestamp: time.Date(2026, 10, 13, hour, 0, 0, 0, time.UTC), SpanID: "span-" + session, Data: &unifiedevents.TokenUsageEvent{Provider: "openai", ModelID: "test-model", PromptTokens: input, CompletionTokens: output, GenerationInfo: map[string]interface{}{"cost_usd": usd, "cache_read_input_tokens": cache, "prompt_tokens_include_cache": includes, "llm_call_count": 7}}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -109,7 +112,7 @@ func TestMCPCostsAttributionAndAccess(t *testing.T) {
 	emit("private-code-chat", "owner", privateCode, codeA, 1000, 0, 0, 10, false, 3)
 	emit("member-personal", "member", "", costledger.Attribution{AttributionVersion: 1, ActorID: "member", Activity: "person_chat"}, 7, 0, 0, 0.3, false, 4)
 	emit("owner-personal", "owner", "", costledger.Attribution{AttributionVersion: 1, ActorID: "owner", Activity: "person_chat"}, 11, 0, 0, 0.3, false, 5)
-	if err := ledger.Append(costledger.Entry{EventID: "legacy", Timestamp: time.Date(2026, 10, 13, 6, 0, 0, 0, time.UTC), UserID: "owner", WorkflowID: shared, Scope: "workflow_execution", Provider: "openai", ModelID: "test-model", LLMCallCount: 1, PromptTokens: 9, TotalCostUSD: 0.4, BillingBasis: "provider_actual", OperationMetadata: map[string]interface{}{"secret": "private-prompt-canary", "account_name": "private-account-name-canary"}}); err != nil {
+	if err := ledger.Append(costledger.Entry{EventID: "legacy", SourceID: "/private/source-key-canary", SourceLabel: "Receipt check", Timestamp: time.Date(2026, 10, 13, 6, 0, 0, 0, time.UTC), UserID: "owner", WorkflowID: shared, Scope: "workflow_execution", Provider: "openai", ModelID: "test-model", LLMCallCount: 1, PromptTokens: 9, TotalCostUSD: 0.4, BillingBasis: "provider_actual", OperationMetadata: map[string]interface{}{"secret": "private-prompt-canary", "account_name": "private-account-name-canary"}}); err != nil {
 		t.Fatal(err)
 	}
 	memberCtx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "member"})
@@ -144,7 +147,7 @@ func TestMCPCostsAttributionAndAccess(t *testing.T) {
 		result := callRemoteTool(t, t.Context(), cli, externalMCPToolCall, map[string]any{"name": "costs", "arguments": args})
 		requireRemoteSuccess(t, result, "costs")
 		raw := marshalStructured(t, result)
-		for _, canary := range []string{"personal-account-canary", "private-prompt-canary", "private-account-name-canary", "Private Code", "private-code-chat", "owner-personal", "private-owner-chat"} {
+		for _, canary := range []string{"personal-account-canary", "private-prompt-canary", "private-account-name-canary", "Private Code", "private-code-chat", "owner-personal", "private-owner-chat", "/private/source-key-canary"} {
 			if strings.Contains(raw, canary) {
 				t.Fatalf("cost response leaked %s", canary)
 			}
@@ -159,6 +162,39 @@ func TestMCPCostsAttributionAndAccess(t *testing.T) {
 	total := breakdown["total"].(map[string]any)
 	if total["input_tokens"] != float64(179) || math.Abs(total["cost_usd"].(float64)-2.0) > 1e-8 || len(breakdown["rows"].([]any)) != 1 || breakdown["omitted"].(map[string]any)["input_tokens"] != float64(20) {
 		t.Fatal("visible total/top remainder incorrect", breakdown)
+	}
+	sources := remote(map[string]any{"action": "breakdown", "group_by": "source"})
+	var sourceID string
+	for _, raw := range sources["rows"].([]any) {
+		row := raw.(map[string]any)
+		if row["label"] != "Receipt check" {
+			continue
+		}
+		sourceID = row["id"].(string)
+		usage := row["usage"].(map[string]any)
+		if usage["input_tokens"] != float64(109) || usage["llm_calls"] != float64(8) || usage["accounting_events"] != float64(2) || row["run_count"] != float64(1) {
+			t.Fatal("source totals mixed private products or event/call counts", row)
+		}
+	}
+	if sourceID == "" {
+		t.Fatal("named source missing", sources)
+	}
+	sourceDetail := remote(map[string]any{"action": "detail", "source_id": sourceID})
+	if len(sourceDetail["rows"].([]any)) != 2 {
+		t.Fatal("source filter mixed executions", sourceDetail)
+	}
+	for _, raw := range sourceDetail["rows"].([]any) {
+		sourceRow := raw.(map[string]any)
+		if sourceRow["source_label"] != "Receipt check" {
+			t.Fatal("source detail missing label", sourceRow)
+		}
+		if sourceRow["link_ids"].(map[string]any)["source_run_id"] == "receipt-run" {
+			if sourceRow["run_count"] != float64(1) {
+				t.Fatal("source run lost", sourceRow)
+			}
+		} else if sourceRow["run_count"] != nil {
+			t.Fatal("legacy event without run identity counted as a run", sourceRow)
+		}
 	}
 	people := remote(map[string]any{"action": "breakdown", "group_by": "person"})
 	for _, raw := range people["rows"].([]any) {
@@ -202,6 +238,10 @@ func TestMCPCostsAttributionAndAccess(t *testing.T) {
 	revoked := remote(map[string]any{"action": "breakdown"})
 	if revoked["total"].(map[string]any)["input_tokens"] != float64(20) {
 		t.Fatal("revoked sharing retained product costs", revoked)
+	}
+	revokedSource := remote(map[string]any{"action": "detail", "source_id": sourceID})
+	if revokedSource["total"].(map[string]any)["input_tokens"] != float64(0) {
+		t.Fatal("source filter bypassed revoked sharing", revokedSource)
 	}
 	admin := &UserClaims{UserID: "admin"}
 	all, err := api.queryCosts(t.Context(), admin, costsQuery{From: "2026-10-13", To: "2026-10-13"})

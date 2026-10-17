@@ -140,7 +140,7 @@ func (s *SchedulerService) executeWebhookJob(ctx context.Context, sctx *Schedule
 		sctx.ProducedRunEvidence = true
 		return sessionID, runFolder, err
 	}
-	req := s.buildWorkshopRequest(ctx, sctx)
+	req := s.buildWorkshopRequest(ctx, sctx, runID)
 	opts, err := configureDirectWebhookRequest(req, sctx, runFolder)
 	if err != nil {
 		return sessionID, runFolder, err

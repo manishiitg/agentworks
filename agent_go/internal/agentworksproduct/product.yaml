@@ -635,7 +635,8 @@ chat:
       - bullpen_admin
       # Brain without the app: backup health, Brain's secrets, the person's Organize Brain schedule, what's new.
       - brain_admin
-      # Cross-product recorded token attribution, under current sharing and consent.
+      # Cross-product recorded token attribution, including named automation source
+      # breakdown/detail with opaque source references, under current sharing and consent.
       - costs
       - users
     prompt:

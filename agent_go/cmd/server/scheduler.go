@@ -113,6 +113,11 @@ func workflowScheduleRuntimeKey(workspacePath, scheduleID string) string {
 	return strings.Join([]string{"workflow", filepath.Clean(strings.TrimSpace(workspacePath)), strings.TrimSpace(scheduleID)}, scheduleScopeSeparator)
 }
 
+// Cost source keys reach summaries over the API; keep filesystem paths out.
+func workflowScheduleCostSourceID(workspacePath, scheduleID string) string {
+	return fmt.Sprintf("workflow-schedule:%x", sha256.Sum256([]byte(workflowScheduleRuntimeKey(workspacePath, scheduleID))))
+}
+
 func scheduleRuntimeKey(sctx *ScheduleContext) string {
 	if sctx == nil {
 		return ""
@@ -2863,7 +2868,7 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 			s.logf(sctx, "[PULSE] post-run pulse panic (recovered): %v", r)
 		}
 	}()
-	baseReqMap := s.buildWorkshopRequest(ctx, sctx)
+	baseReqMap := s.buildWorkshopRequest(ctx, sctx, scheduleRunID)
 	if err := initializePulseFinalCommandStates(ctx, sctx.WorkspacePath, pulseRunID); err != nil {
 		s.sessionLogf(sctx, sessionID, "[PULSE] failed to initialize final command state: %v", err)
 		return
@@ -3968,7 +3973,7 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 	s.sessionLogf(sctx, sessionID, "[SCHEDULER] Scheduled workflow: executing %d messages for %s (session=%s workspace=%s run_folder=%s pulse_only=%t)",
 		len(messages), sctx.Schedule.ID, sessionID, sctx.WorkspacePath, runFolder, sctx.PulseOnly)
 
-	baseReqMap := s.buildWorkshopRequest(ctx, sctx)
+	baseReqMap := s.buildWorkshopRequest(ctx, sctx, runID)
 	if sctx.WebhookInput != nil {
 		baseReqMap["execution_options"].(map[string]interface{})["selected_run_folder"] = runFolder
 		s.stateStoreMu.RLock()
@@ -4636,7 +4641,7 @@ func markPulseLifecycleTurn(reqMap map[string]interface{}) {
 // buildWorkshopRequest creates the base request map for scheduled workflow
 // execution. Writable scheduled turns use Workshop; the server pins read-only
 // workflow access to Run.
-func (s *SchedulerService) buildWorkshopRequest(ctx context.Context, sctx *ScheduleContext) map[string]interface{} {
+func (s *SchedulerService) buildWorkshopRequest(ctx context.Context, sctx *ScheduleContext, costRunID string) map[string]interface{} {
 	reqMap := map[string]interface{}{
 		"agent_mode":                  "workflow_phase",
 		"phase_id":                    workflowtypes.WorkflowStatusWorkflowBuilder,
@@ -4653,6 +4658,13 @@ func (s *SchedulerService) buildWorkshopRequest(ctx context.Context, sctx *Sched
 		"disable_live_input_delivery": true,
 		// Retain the coding CLI across consecutive turns with the same authority.
 		"keep_native_session_alive": true,
+	}
+	// Workflow schedules use this launch path rather than product_schedules.
+	// Name the source before requests are cloned for later turns and children.
+	if id := strings.TrimSpace(sctx.Schedule.ID); id != "" {
+		reqMap["cost_source_id"] = workflowScheduleCostSourceID(sctx.WorkspacePath, id)
+		reqMap["cost_source_label"] = firstNonEmptyTrimmed(sctx.Schedule.Name, "Scheduled run")
+		reqMap["cost_source_run_id"] = strings.TrimSpace(costRunID)
 	}
 	if len(sctx.Capabilities.CDPPorts) > 0 {
 		reqMap["cdp_ports"] = append([]int(nil), sctx.Capabilities.CDPPorts...)

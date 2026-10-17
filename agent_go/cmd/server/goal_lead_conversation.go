@@ -522,7 +522,7 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	if strings.TrimSpace(sctx.OwnerUserID) == "" {
 		return "", sessionID, fmt.Errorf("workflow %s has no owner for its Pulse to run as", workspacePath)
 	}
-	reqMap := sched.buildWorkshopRequest(ctx, sctx)
+	reqMap := sched.buildWorkshopRequest(ctx, sctx, "")
 	// A Pulse turn on the workflow's Builder runtime: the same authority and
 	// session key on every turn, so the native session is resumed, never
 	// relaunched for a role change.

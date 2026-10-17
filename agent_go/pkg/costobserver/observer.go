@@ -404,6 +404,14 @@ func (o *Observer) recordLLMGeneration(event *unifiedevents.AgentEvent, generati
 	entry.EffectiveModelID = effectiveModel
 	entry.TurnCount = 1
 	entry.LLMCallCount = 1
+	// Coding CLIs can make several model generations inside one bounded turn.
+	// Only an explicitly native per-turn count can replace the default one;
+	// cumulative counters from other event paths must not multiply usage.
+	if stringValue(metadata["llm_call_count_source"]) == "native_model_generations" {
+		if count := ToInt(metadata["llm_call_count"]); count > 0 {
+			entry.LLMCallCount = count
+		}
+	}
 	entry.LLMGenerationDurationMS = generation.Duration.Milliseconds()
 	entry.PromptTokens = generation.UsageMetrics.PromptTokens
 	entry.CompletionTokens = generation.UsageMetrics.CompletionTokens
@@ -412,6 +420,12 @@ func (o *Observer) recordLLMGeneration(event *unifiedevents.AgentEvent, generati
 	entry.CacheWriteTokens = cacheWrite
 	if includes, ok := metadata["prompt_tokens_include_cache"].(bool); ok {
 		entry.OperationMetadata = map[string]interface{}{"prompt_tokens_include_cache": includes}
+	}
+	if source := stringValue(metadata["llm_call_count_source"]); source == "native_model_generations" {
+		if entry.OperationMetadata == nil {
+			entry.OperationMetadata = map[string]interface{}{}
+		}
+		entry.OperationMetadata["llm_call_count_source"] = source
 	}
 	// A usage row read from the CLI's own transcript (a turn typed into the running terminal) names that run/message,
 	// so the row can be traced to it and a later backfill can skip what is already recorded.

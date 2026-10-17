@@ -44,7 +44,7 @@ func TestRelayCapacityResumeRestoresPublishedInputAndCheckpoint(t *testing.T) {
 	if len(resume.Schedule.GroupNames) != 0 || resume.RelayLegacyGroupName != "original-group" {
 		t.Fatalf("legacy configuration became group execution: %+v", resume)
 	}
-	request := s.buildWorkshopRequest(context.Background(), resume)
+	request := s.buildWorkshopRequest(context.Background(), resume, "")
 	opts, err := configureDirectWebhookRequest(request, resume, run.RunFolder)
 	if err != nil || len(opts.EnabledGroupNames) != 0 || opts.RelayLegacyGroupName != "original-group" || opts.WebhookVariables["INPUT"] != input.Variables["INPUT"] {
 		t.Fatalf("resume options lost group-free binding: %+v %v", opts, err)

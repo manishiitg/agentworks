@@ -2218,6 +2218,7 @@ export interface CostOverviewItem extends CostOverviewAggregate {
   owner_email?: string
   by_scope?: Record<string, CostAggregate>
   by_model?: Record<string, CostAggregate>
+  by_source?: Record<string, CostSourceAggregate>
   by_user?: CostOverviewActor[]
   by_bot?: CostOverviewBot[]
   by_mcp?: CostOverviewMCP[]

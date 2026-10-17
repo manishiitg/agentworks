@@ -16,10 +16,10 @@ import (
 )
 
 type costsQuery struct {
-	Action, GroupBy, From, To                                                      string
-	ProductKind, ProductID, ProductOwnerID, Activity, PersonID, Model, DashboardID string
-	Top, Limit                                                                     int
-	Cursor                                                                         string
+	Action, GroupBy, From, To                                                                string
+	ProductKind, ProductID, ProductOwnerID, Activity, PersonID, Model, DashboardID, SourceID string
+	Top, Limit                                                                               int
+	Cursor                                                                                   string
 }
 
 type costsProduct struct {
@@ -47,6 +47,7 @@ type costsUsage struct {
 	Calls            int     `json:"llm_calls"`
 	Unpriced         int     `json:"unpriced_calls,omitempty"`
 	MissingUsage     int     `json:"missing_usage_calls,omitempty"`
+	AccountingEvents int     `json:"accounting_events"`
 	GenerationMS     int64   `json:"llm_generation_duration_ms,omitempty"`
 }
 
@@ -54,7 +55,7 @@ func costsUsageOf(a costledger.Aggregate) costsUsage {
 	return costsUsage{a.InputTokens, a.CompletionTokens, a.ReasoningTokens,
 		a.CacheReadTokens, a.CacheWriteTokens, a.TotalCostUSD,
 		a.ProviderActualCostUSD, a.TokenEstimateCostUSD, a.SubscriptionShadowUSD,
-		a.CallCount, a.UnpricedCallCount, a.MissingUsageCallCount, a.LLMGenerationDurationMS}
+		a.CallCount, a.UnpricedCallCount, a.MissingUsageCallCount, a.AccountingEventCount, a.LLMGenerationDurationMS}
 }
 
 type costsRow struct {
@@ -70,9 +71,12 @@ type costsRow struct {
 	FirstAt       time.Time         `json:"first_seen,omitempty"`
 	LastAt        time.Time         `json:"last_seen,omitempty"`
 	References    map[string]string `json:"link_ids,omitempty"`
+	SourceLabel   string            `json:"source_label,omitempty"`
+	RunCount      int               `json:"run_count,omitempty"`
 	Usage         costsUsage        `json:"usage"`
 	aggregate     costledger.Aggregate
 	models        map[string]bool
+	runIDs        map[string]bool
 }
 
 type costsResponse struct {
@@ -106,7 +110,7 @@ func normalizeCostsQuery(q costsQuery, now time.Time) (costsQuery, error) {
 		q.GroupBy = "product"
 	}
 	switch q.GroupBy {
-	case "product", "activity", "person", "model", "day":
+	case "product", "activity", "person", "model", "day", "source":
 	default:
 		return q, fmt.Errorf("invalid group_by")
 	}
@@ -130,8 +134,8 @@ func normalizeCostsQuery(q costsQuery, now time.Time) (costsQuery, error) {
 	if q.Top < 1 || q.Top > 100 || q.Limit < 1 || q.Limit > 100 {
 		return q, fmt.Errorf("top and limit must be between 1 and 100")
 	}
-	if q.Action == "detail" && q.ProductID == "" && q.ProductKind == "" && q.Activity == "" && q.PersonID == "" && q.DashboardID == "" {
-		return q, fmt.Errorf("detail requires a product, activity, person or dashboard filter from breakdown")
+	if q.Action == "detail" && q.ProductID == "" && q.ProductKind == "" && q.Activity == "" && q.PersonID == "" && q.DashboardID == "" && q.SourceID == "" {
+		return q, fmt.Errorf("detail requires a product, activity, person, dashboard or source filter from breakdown")
 	}
 	return q, nil
 }
@@ -301,6 +305,16 @@ func (api *StreamingAPI) queryCosts(ctx context.Context, c *UserClaims, q costsQ
 		if provider != "" {
 			modelKey = provider + ":" + model
 		}
+		// Only expose a query reference, never a stored source key (legacy keys
+		// may contain paths). Product identity keeps independent sources apart.
+		sourceRef := "unattributed"
+		if strings.TrimSpace(e.SourceID) != "" {
+			sourceRef = costsKey("source", p.Kind, p.ID, p.OwnerID, e.SourceID)
+		}
+		sourceLabel := firstNonEmptyTrimmed(e.SourceLabel, "Scheduled run")
+		if sourceRef == "unattributed" {
+			sourceLabel = "Unattributed"
+		}
 		filterKind := p.Kind
 		if p.ID == "" {
 			filterKind = "unattributed"
@@ -308,7 +322,7 @@ func (api *StreamingAPI) queryCosts(ctx context.Context, c *UserClaims, q costsQ
 		if q.ProductID != "" && p.ID != q.ProductID || q.ProductKind != "" && filterKind != q.ProductKind ||
 			q.ProductOwnerID != "" && p.OwnerID != q.ProductOwnerID || q.Activity != "" && activity != q.Activity ||
 			q.PersonID != "" && firstNonEmptyTrimmed(actor, "unattributed") != q.PersonID || q.Model != "" && q.Model != modelKey && q.Model != model ||
-			q.DashboardID != "" && e.OriginDashboardID != q.DashboardID {
+			q.DashboardID != "" && e.OriginDashboardID != q.DashboardID || q.SourceID != "" && sourceRef != q.SourceID {
 			return nil
 		}
 		total.AddEntry(e)
@@ -336,7 +350,7 @@ func (api *StreamingAPI) queryCosts(ctx context.Context, c *UserClaims, q costsQ
 		person := costsPerson{firstNonEmptyTrimmed(actor, "unattributed"), personName}
 		key, label := "", ""
 		if q.Action == "detail" {
-			key = costsKey(p.Kind, p.ID, p.OwnerID, actor, activity, e.SessionID, firstNonEmptyTrimmed(e.ExecutionID, e.RunID, e.EventID))
+			key = costsKey(p.Kind, p.ID, p.OwnerID, actor, activity, sourceRef, e.SessionID, firstNonEmptyTrimmed(e.ExecutionID, e.RunID, e.EventID))
 			label = activity
 		} else {
 			switch q.GroupBy {
@@ -352,6 +366,8 @@ func (api *StreamingAPI) queryCosts(ctx context.Context, c *UserClaims, q costsQ
 				key, label = firstNonEmptyTrimmed(actor, "unattributed"), personName
 			case "model":
 				key, label = modelKey, modelKey
+			case "source":
+				key, label = sourceRef, sourceLabel
 			case "day":
 				key, label = e.Timestamp.UTC().Format("2006-01-02"), e.Timestamp.UTC().Format("2006-01-02")
 			}
@@ -359,7 +375,7 @@ func (api *StreamingAPI) queryCosts(ctx context.Context, c *UserClaims, q costsQ
 		row := groups[key]
 		if row == nil {
 			row = &costsRow{ID: key, Label: label, FirstAt: e.Timestamp, LastAt: e.Timestamp, models: map[string]bool{}}
-			if q.GroupBy == "product" || q.Action == "detail" {
+			if q.GroupBy == "product" || q.GroupBy == "source" && sourceRef != "unattributed" || q.Action == "detail" {
 				row.Product = &product
 			}
 			if q.GroupBy == "person" || q.Action == "detail" {
@@ -368,9 +384,16 @@ func (api *StreamingAPI) queryCosts(ctx context.Context, c *UserClaims, q costsQ
 			if q.GroupBy == "activity" || q.Action == "detail" {
 				row.Activity = activity
 			}
+			if sourceRef != "unattributed" && (q.GroupBy == "source" || q.Action == "detail") {
+				row.SourceLabel = sourceLabel
+				row.runIDs = map[string]bool{}
+			}
 			if q.Action == "detail" {
 				row.DashboardID, row.DashboardName = e.OriginDashboardID, e.OriginDashboardName
 				row.References = map[string]string{}
+				if sourceRef != "unattributed" {
+					row.References["source_id"] = sourceRef
+				}
 				if e.FunctionCallID != "" {
 					row.References["call_id"] = e.FunctionCallID
 				}
@@ -380,6 +403,9 @@ func (api *StreamingAPI) queryCosts(ctx context.Context, c *UserClaims, q costsQ
 				// Numeric usage is shared product evidence; personal conversation
 				// identifiers remain with their actor. Never include prompts/paths.
 				if actor == c.UserID || activity != "person_chat" && activity != "builder" && activity != "unattributed" {
+					if e.SourceRunID != "" {
+						row.References["source_run_id"] = e.SourceRunID
+					}
 					if e.SessionID != "" {
 						row.References["session_id"] = e.SessionID
 					}
@@ -389,6 +415,13 @@ func (api *StreamingAPI) queryCosts(ctx context.Context, c *UserClaims, q costsQ
 				}
 			}
 			groups[key] = row
+		}
+		if row.runIDs != nil {
+			runID := firstNonEmptyTrimmed(e.SourceRunID, e.ExecutionID, e.RunID)
+			if runID != "" {
+				row.runIDs[runID] = true
+			}
+			row.RunCount = len(row.runIDs)
 		}
 		row.aggregate.AddEntry(e)
 		if e.Timestamp.Before(row.FirstAt) {

@@ -5,6 +5,7 @@ import CostPricingNotice from '../../providers/CostPricingNotice'
 import { DollarSign, Coins } from 'lucide-react'
 import { formatStartedAt } from '../../../utils/duration'
 import { formatUSD, formatTokens } from './helpers'
+import { costAmountLabel } from '../../../utils/costTokens'
 import type { CostsData } from './useCostsData'
 import { WorkspaceViewHeader } from '../WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from '../WorkspaceViewIconButton'
@@ -44,7 +45,7 @@ const CostsHeader: React.FC<CostsHeaderProps> = ({
       below={overallSummary ? (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs">
         <div className="font-semibold text-foreground">
-          {overallSummary.totalCost === 0 && (scopedCosts?.total.unpriced_call_count ?? 0) > 0 ? 'Not priced' : formatUSD(overallSummary.totalCost)}
+          {costAmountLabel({ ...scopedCosts?.total, total_cost_usd: overallSummary.totalCost }, formatUSD)}
         </div>
         {!scopedCosts && <div className="flex items-center gap-1.5 text-muted-foreground">
           <Coins className="w-3.5 h-3.5" />

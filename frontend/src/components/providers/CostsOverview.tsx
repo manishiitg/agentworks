@@ -7,7 +7,7 @@ import { formatTokens } from '../workflow/costs/helpers'
 import { costAgentLabel } from '../workflow/costs/CostsModelSection'
 import type { WorkSession } from '../../products/work/workSessions'
 import CostExplorer from './CostExplorer'
-import { inputTokens, pricingCoverageText } from '../../utils/costTokens'
+import { inputTokens, pricingCoverageText, costAmountLabel } from '../../utils/costTokens'
 import { AccountCostList } from './AccountCosts'
 
 const RANGES = [
@@ -173,7 +173,7 @@ export default function CostsOverview() {
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
-              { label: 'Tracked cost', value: overviewCurrency(total?.total_cost_usd ?? 0) },
+              { label: 'Tracked cost', value: costAmountLabel(total ?? { total_cost_usd: 0 }, overviewCurrency) },
               { label: 'Fresh input', value: formatTokens(Math.max(0, inputTokens(total) - (total?.cache_read_tokens ?? 0) - (total?.cache_write_tokens ?? 0))) },
               { label: 'Output tokens', value: formatTokens(total?.completion_tokens ?? 0) },
               { label: 'Cached input', value: formatTokens(total?.cache_read_tokens ?? 0) },

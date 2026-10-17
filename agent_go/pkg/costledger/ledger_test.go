@@ -1,6 +1,7 @@
 package costledger
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"net/http/httptest"
@@ -458,5 +459,29 @@ func TestWorkflowAllTimeInputAndCoverageMatchWindowAggregates(t *testing.T) {
 	}
 	if allTime.Total.InputTokens != 435 || allTime.Total.MissingUsageCallCount != 1 || allTime.Total.InputTokens != window.Total.InputTokens || allTime.Total.MissingUsageCallCount != window.Total.MissingUsageCallCount || allTime.ByScope["chat"].InputTokens != 435 {
 		t.Fatalf("all-time and window usage diverged: all time %+v, window %+v", allTime.Total, window.Total)
+	}
+}
+
+// Private run IDs disappear in cached/JSON summaries, but their counts must not.
+func TestSourceAggregateMergePreservesDecodedRunCounts(t *testing.T) {
+	original := &SourceAggregate{RunCount: 2, runIDs: map[string]struct{}{"a": {}, "b": {}}}
+	raw, err := json.Marshal(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded SourceAggregate
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	var merged SourceAggregate
+	merged.Merge(original)
+	merged.Merge(original)
+	if merged.RunCount != 2 {
+		t.Fatalf("same live runs counted twice: %d", merged.RunCount)
+	}
+	merged.Merge(&decoded)
+	merged.Merge(&SourceAggregate{RunCount: 1, runIDs: map[string]struct{}{"c": {}}})
+	if merged.RunCount != 5 {
+		t.Fatalf("decoded or later counts lost: %d", merged.RunCount)
 	}
 }

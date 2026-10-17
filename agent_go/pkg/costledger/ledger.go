@@ -364,17 +364,21 @@ type SourceAggregate struct {
 }
 
 func addEntryToSourceBucket(summary *Summary, scope string, e Entry) {
+	addEntryToSources(&summary.BySource, scope, e)
+}
+
+func addEntryToSources(sources *map[string]*SourceAggregate, scope string, e Entry) {
 	sourceID := strings.TrimSpace(e.SourceID)
 	if sourceID == "" {
 		return
 	}
-	if summary.BySource == nil {
-		summary.BySource = make(map[string]*SourceAggregate)
+	if *sources == nil {
+		*sources = make(map[string]*SourceAggregate)
 	}
-	bucket := summary.BySource[sourceID]
+	bucket := (*sources)[sourceID]
 	if bucket == nil {
 		bucket = &SourceAggregate{Scope: scope, runIDs: map[string]struct{}{}}
-		summary.BySource[sourceID] = bucket
+		(*sources)[sourceID] = bucket
 	}
 	bucket.Aggregate.add(e)
 	if label := strings.TrimSpace(e.SourceLabel); label != "" {
@@ -388,6 +392,32 @@ func addEntryToSourceBucket(summary *Summary, scope string, e Entry) {
 		bucket.runIDs[runID] = struct{}{}
 		bucket.RunCount = len(bucket.runIDs)
 	}
+}
+
+// Merge combines source usage without counting a multi-turn run twice.
+func (a *SourceAggregate) Merge(source *SourceAggregate) {
+	a.Aggregate.Merge(source.Aggregate)
+	if source.Label != "" {
+		a.Label = source.Label
+	}
+	if a.Scope == "" {
+		a.Scope = source.Scope
+	}
+	// Decoded summaries retain counts but not private run identities. Once
+	// either side has such counts, preserve them rather than pretending the
+	// remaining identities describe every run.
+	if (a.runIDs == nil && a.RunCount > 0) || (source.runIDs == nil && source.RunCount > 0) {
+		a.RunCount += source.RunCount
+		a.runIDs = nil
+		return
+	}
+	if a.runIDs == nil {
+		a.runIDs = make(map[string]struct{})
+	}
+	for id := range source.runIDs {
+		a.runIDs[id] = struct{}{}
+	}
+	a.RunCount = len(a.runIDs)
 }
 
 // UserAggregate is one actor's spend within one raw workflow ID.
@@ -416,8 +446,9 @@ type MCPAggregate struct {
 // (run/pulse/builder/chat) and model splits the consolidated cost view needs.
 type WorkflowAggregate struct {
 	Aggregate
-	ByScope map[string]*Aggregate `json:"by_scope,omitempty"`
-	ByModel map[string]*Aggregate `json:"by_model,omitempty"`
+	ByScope  map[string]*Aggregate       `json:"by_scope,omitempty"`
+	ByModel  map[string]*Aggregate       `json:"by_model,omitempty"`
+	BySource map[string]*SourceAggregate `json:"by_source,omitempty"`
 }
 
 // Merge folds source into a. The provider identity survives only while
@@ -1103,6 +1134,7 @@ func addEntryToWorkflowBucket(summary *Summary, scope string, e Entry) {
 		summary.ByWorkflow[workflowID] = bucket
 	}
 	bucket.Aggregate.add(e)
+	addEntryToSources(&bucket.BySource, scope, e)
 	scopeBucket, ok := bucket.ByScope[scope]
 	if !ok {
 		scopeBucket = &Aggregate{}

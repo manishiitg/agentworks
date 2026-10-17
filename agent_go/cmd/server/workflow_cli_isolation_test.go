@@ -191,7 +191,7 @@ func TestScheduledWorkflowUsesPrivateRunRuntimeAndSeparateMaintenanceRuntime(t *
 		WorkspacePath: "Workflow/testing",
 		Schedule:      WorkflowSchedule{ID: "daily", Name: "Daily", WorkshopMode: "run"}, // legacy metadata is ignored
 	}
-	base := (&SchedulerService{}).buildWorkshopRequest(context.Background(), sctx)
+	base := (&SchedulerService{}).buildWorkshopRequest(context.Background(), sctx, "")
 	execOpts, ok := base["execution_options"].(map[string]interface{})
 	if !ok || execOpts["workshop_mode"] != "workshop" {
 		t.Fatalf("scheduled request execution_options = %#v, want Workshop mode", base["execution_options"])

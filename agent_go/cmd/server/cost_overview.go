@@ -173,6 +173,18 @@ func mergeWorkflowAggregate(target *costledger.WorkflowAggregate, source *costle
 	}
 	mergeAggregateMap(target.ByScope, source.ByScope)
 	mergeAggregateMap(target.ByModel, source.ByModel)
+	if len(source.BySource) > 0 && target.BySource == nil {
+		target.BySource = make(map[string]*costledger.SourceAggregate)
+	}
+	for id, sourceUsage := range source.BySource {
+		if sourceUsage == nil {
+			continue
+		}
+		if target.BySource[id] == nil {
+			target.BySource[id] = &costledger.SourceAggregate{}
+		}
+		target.BySource[id].Merge(sourceUsage)
+	}
 }
 
 func mergeAggregateMap(target, source map[string]*costledger.Aggregate) {
