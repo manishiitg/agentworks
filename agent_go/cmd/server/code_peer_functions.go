@@ -19,6 +19,9 @@ var errCodeHasNoFunctions = fmt.Errorf("Code is private and has no functions: no
 // only for a chat of that same Code (answering a call it made to a sibling
 // chat); every other call into a Code project is refused.
 func resolveFunctionTarget(ctx context.Context, claims *UserClaims, caller triggerLinkCaller, raw string) (triggerTarget, error) {
+	if strings.HasPrefix(strings.TrimSpace(raw), "code:") {
+		return resolveTriggerTarget(ctx, claims, "workspace:"+strings.TrimSpace(raw))
+	}
 	query := strings.TrimPrefix(strings.TrimSpace(raw), "#")
 	if strings.HasPrefix(strings.ToLower(query), "code:") || isCodeProjectPath(query) {
 		if !strings.EqualFold(caller.Stamp.ProfileID, codeproduct.ProfileID) {

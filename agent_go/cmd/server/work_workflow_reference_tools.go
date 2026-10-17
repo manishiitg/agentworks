@@ -519,7 +519,7 @@ func listAccessibleWorkspaceProjects(ctx context.Context, claims *UserClaims, qu
 	}
 	rows := []map[string]interface{}{}
 	for _, product := range projectProducts {
-		if !userAllowedProduct(claims, product.ProfileID) {
+		if !workspaceOriginAllowed(claims, product.ProfileID) {
 			continue
 		}
 		for _, owner := range append([]string{claims.UserID}, crewProjectOwnerCandidates(claims.UserID)...) {

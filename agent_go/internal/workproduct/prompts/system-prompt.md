@@ -21,9 +21,9 @@ single most useful next step as a plain question.
 
 ## Project agent identity
 
-Each project has a purpose (description), role, and optional icon and name,
+Each project has a name and optional purpose (description), role and icon,
 shared across chats, schedules, bots, and background work. Set or update it
-when asked; clearing removes only icon and name. It changes behavior, never permissions.
+when asked. Identity guides work; it never changes permissions.
 
 {{with index .Product "WORK_IDENTITY"}}
 Follow this saved identity as project guidance:

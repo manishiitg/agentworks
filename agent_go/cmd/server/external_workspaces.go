@@ -31,7 +31,7 @@ func externalWorkspaceAllowed(claims *UserClaims) bool {
 	if token := claims.AccessToken; token != nil && (token.BoundAgentID != "" || token.BoundAgentName != "" || !(token.Allows("crews:read") || token.Allows("crews:run") || token.Allows("crews:write") || token.Allows("code:run"))) {
 		return false
 	}
-	return userAllowedProduct(claims, "work") || userAllowedProduct(claims, "code")
+	return workspaceOriginAllowed(claims, "work") || workspaceOriginAllowed(claims, "code")
 }
 
 func (api *StreamingAPI) resolveExternalWorkspace(ctx context.Context, claims *UserClaims, raw string) (crewProjectBinding, productProjectManifest, bool) {
@@ -46,7 +46,7 @@ func (api *StreamingAPI) resolveExternalWorkspace(ctx context.Context, claims *U
 	var manifest productProjectManifest
 	found := false
 	for _, product := range projectProducts {
-		if origin != "" && product.ProfileID != origin || !userAllowedProduct(claims, product.ProfileID) {
+		if origin != "" && product.ProfileID != origin || !workspaceOriginAllowed(claims, product.ProfileID) {
 			continue
 		}
 		if token := claims.AccessToken; token != nil && !workspaceDashboardTokenAllows(claims, product.ProfileID, id) {
@@ -85,7 +85,7 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 	if action == "list" {
 		items := []map[string]any{}
 		for _, product := range projectProducts {
-			if !userAllowedProduct(claims, product.ProfileID) {
+			if !workspaceOriginAllowed(claims, product.ProfileID) {
 				continue
 			}
 			profile, err := api.agentProfiles.Resolve(product.ProfileID, 0, claims.UserID)
@@ -104,7 +104,7 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 					if !ok {
 						continue
 					}
-					items = append(items, map[string]any{"workspace_id": key, "id": doc.ID, "profile_id": product.ProfileID, "name": doc.displayTitle(), "workspace_path": binding.Binding.WorkspacePath, "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller]})
+					items = append(items, map[string]any{"workspace_id": key, "id": doc.ID, "profile_id": product.ProfileID, "name": doc.displayTitle(), "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller]})
 				}
 			}
 		}
@@ -115,17 +115,17 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		origin := externalArg(args, "profile_id")
 		if origin == "" {
 			for _, product := range projectProducts {
-				if userAllowedProduct(claims, product.ProfileID) && userAccessForClaims(claims).CanCreateIn(product.ProfileID) {
+				if workspaceOriginAllowed(claims, product.ProfileID) && userAccessForClaims(claims).CanCreateIn(product.ProfileID) {
 					origin = product.ProfileID
 					break
 				}
 			}
 		}
-		if !isProjectProfileID(origin) || !userAllowedProduct(claims, origin) || !userAccessForClaims(claims).CanCreateIn(origin) || !userAccessForClaims(claims).CanEdit {
+		if !isProjectProfileID(origin) || !workspaceOriginAllowed(claims, origin) || !userAccessForClaims(claims).CanCreateIn(origin) || !userAccessForClaims(claims).CanEdit {
 			externalError(w, 403, "forbidden", "This account cannot create that project. An administrator can change its create permissions.")
 			return
 		}
-		if token := claims.AccessToken; token != nil && (!token.AllCrews || !token.Allows("crews:write")) {
+		if !workspaceCreateTokenAllowed(claims, origin) {
 			externalError(w, 403, "insufficient_scope", "Creating a project needs your existing Builder access.")
 			return
 		}
@@ -141,13 +141,13 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 			externalError(w, 400, "creation_failed", externalCrewCreateError(id, err))
 			return
 		}
-		binding, _, ok := api.resolveExternalWorkspace(r.Context(), claims, origin+":"+id)
+		_, _, ok := api.resolveExternalWorkspace(r.Context(), claims, origin+":"+id)
 		if !ok {
 			externalError(w, 502, "workspace_unavailable", "The project was created but could not be opened; use action=list.")
 			return
 		}
 
-		externalJSON(w, map[string]any{"workspace_id": origin + ":" + id, "id": id, "profile_id": origin, "name": spec.Name, "workspace_path": binding.Binding.WorkspacePath, "share": map[string]any{"mode": "private"}})
+		externalJSON(w, map[string]any{"workspace_id": origin + ":" + id, "id": id, "profile_id": origin, "name": spec.Name, "share": map[string]any{"mode": "private"}})
 		return
 	}
 	binding, manifest, ok := api.resolveExternalWorkspace(r.Context(), claims, externalArg(args, "workspace_id"))
@@ -191,7 +191,7 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		}
 		share, _ := api.readRunShare(r.Context(), claims, target)
 		share.CanShare = api.dashboardShareOwner(r.Context(), claims, target)
-		externalJSON(w, map[string]any{"workspace_id": manifest.Product + ":" + manifest.ID, "id": manifest.ID, "profile_id": manifest.Product, "name": manifest.displayTitle(), "workspace_path": binding.Binding.WorkspacePath, "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller], "share": share, "ui_panels": api.workspaceEffectivePanels(r.Context(), claims.UserID, manifest.Product, binding.Binding.WorkspacePath), "identity": manifest.Identity, "purpose": manifest.Description, "memory_enabled": workspaceMemoryEnabled(r.Context(), manifest.Product, binding.Binding.WorkspacePath)})
+		externalJSON(w, map[string]any{"workspace_id": manifest.Product + ":" + manifest.ID, "id": manifest.ID, "profile_id": manifest.Product, "name": manifest.displayTitle(), "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller], "share": share, "ui_panels": api.workspaceEffectivePanels(r.Context(), claims.UserID, manifest.Product, binding.Binding.WorkspacePath), "identity": manifest.Identity, "purpose": manifest.Description, "memory_enabled": workspaceMemoryEnabled(r.Context(), manifest.Product, binding.Binding.WorkspacePath)})
 		return
 	}
 	memberArgs := map[string]any{}
@@ -256,4 +256,31 @@ func workspaceExternalID(profileID, id string) string {
 
 func workspaceTokenProjectID(id string) string {
 	return strings.TrimPrefix(strings.TrimPrefix(id, "work:"), "code:")
+}
+
+func workspaceCreateTokenAllowed(claims *UserClaims, origin string) bool {
+	if claims == nil {
+		return false
+	}
+	if token := claims.AccessToken; token != nil {
+		if origin == "code" {
+			return token.Allows("code:run") && len(token.CrewIDs) == 0 && token.BoundAgentID == "" && token.BoundAgentName == ""
+		}
+		return token.AllCrews && token.Allows("crews:write") && token.BoundAgentID == "" && token.BoundAgentName == ""
+	}
+	return true
+}
+
+// These existing services resolve the target and its origin before admitting
+// an operation. Crew-origin creation remains separately gated by Crew.
+func sharedWorkspaceMember(name string) bool {
+	switch name {
+	case "get_crew", "list_crew_files", "search_crew_files", "read_crew_file", "write_crew_file", "list_crew_functions", "call_crew_function", "get_crew_function_call", "list_crew_function_calls", "reply_crew_function_call", "update_crew", "export_crew":
+		return true
+	}
+	return false
+}
+
+func workspaceOriginAllowed(claims *UserClaims, profileID string) bool {
+	return productEnabled(profileID) && userAllowedProduct(claims, profileID)
 }

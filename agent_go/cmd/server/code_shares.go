@@ -73,7 +73,7 @@ func (api *StreamingAPI) handleGetCodeShares(w http.ResponseWriter, r *http.Requ
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	writeAgentProfileError(w, http.StatusGone, "Code workspaces are private to their owner; sharing is no longer available")
+	writeAgentProfileError(w, http.StatusGone, "Use Share on this project's dashboard or share action=set over MCP. This legacy sharing endpoint is retired.")
 }
 
 func (api *StreamingAPI) handlePutCodeShares(w http.ResponseWriter, r *http.Request) {

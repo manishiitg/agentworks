@@ -328,7 +328,7 @@ func externalCrewAuthorGate(claims *UserClaims) (int, string) {
 	if workflowAccessForClaims(claims) == WorkflowAccessRead {
 		return http.StatusForbidden, "Read-only accounts cannot create or edit Crews."
 	}
-	if !userAllowedProduct(claims, "work") {
+	if !productEnabled("work") || !userAllowedProduct(claims, "work") {
 		return http.StatusForbidden, "The Crew product is not available to this account."
 	}
 	return 0, ""

@@ -1,4 +1,8 @@
-# Code — a private coding workspace on the shared server
+# Code — project origin and compatibility
+
+> **Current contract, PLAT-856:** Code and Crew use one project model. New projects start Only me; Share changes the audience in place. Server projects support published functions, optional role/purpose, templates and an optional Memory setting (existing Code defaults off, Crew on). Owners and co-owners build; other authorized people use dashboard/chat/functions in Run mode. Native tools and Terminal remain Builder-only, with Cowork and Local restrictions retained. Co-owners can see all Builder chats. Selected provider/app accounts and their current grants stay in place; Share names them and explains provider quota/billing versus caller attribution. Local projects remain private and cannot receive remote function calls. Existing IDs, names and storage paths remain compatibility identities. MCP uses one `workspace` action family and workspace aliases on the existing native services. Legacy implicit same-owner Code peer bindings remain disabled.
+>
+> The dated design below is historical. Its always-private, no-functions, no-identity and separate-product claims are superseded by this contract. Existing audited inspection policy is preserved.
 
 > **Update 2026-10-09:** Code has no functions. Nothing calls into a Code project and a Code declares none (Code is private, Crews and workflows are shared); a Code may still call Crews and workflows, and its chats reach each other with `ask_project_chat`. This supersedes the declared-function and peer-call parts below.
 >

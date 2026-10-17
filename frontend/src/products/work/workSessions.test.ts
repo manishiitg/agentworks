@@ -125,25 +125,25 @@ describe('createWorkSession', () => {
     )
   })
 
-  it('creates a private Code workspace with a name only', async () => {
+  it('creates a Code project with a name and optional setup', async () => {
     updatePlannerFile.mockClear()
     listSharedProjects.mockClear()
-    const session = await createWorkSession('billing service', 'ignored purpose', '🧭', 'finance-analyst', CODE_PRODUCT)
+    const session = await createWorkSession('billing service', '', undefined, undefined, CODE_PRODUCT)
 
     expect(session.workspacePath).toMatch(/^Chats\/Code\/projects\/billing-service-/)
     expect(session.product).toBe('code')
     expect(session.sessionId).toBe(`code:project:${session.id}`)
     const product = JSON.parse(updatePlannerFile.mock.calls.find(call => call[0] === `${session.workspacePath}/product.json`)![1] as string)
     expect(product.product).toBe('code')
-    expect(product).not.toHaveProperty('identity')
+    expect(product.identity).toEqual({ name: 'billing service', icon: 'B' })
     expect(product).not.toHaveProperty('templates')
     expect(product.description).toBe('')
-    // No template files: a Code never installs Crew templates.
+    // Name-only creation does not install an optional template.
     expect(updatePlannerFile.mock.calls.every(call => !String(call[0]).includes('/skills/'))).toBe(true)
-    // Code never requests or displays a shared directory.
+    // Both origins use the shared directory with server-owned access checks.
     loadProductProjects.mockResolvedValueOnce([])
     const listed = await loadWorkSessionsIncludingShared(CODE_PRODUCT)
-    expect(listSharedProjects).not.toHaveBeenCalled()
+    expect(listSharedProjects).toHaveBeenCalledWith('code')
     expect(listed).toEqual([])
   })
 
@@ -567,6 +567,7 @@ describe('sharedProjectToWorkSession', () => {
     expect(session.secretSelectionInitialized).toBe(true)
     expect(session.runtimeConfigInitialized).toBe(true)
     expect(session.shared).toEqual({
+      canBuild: false,
       ownerId: 'owner-1',
       ownerUsername: 'ada',
       triggers: [{ id: 'trig-1', name: 'Nightly', enabled: true }],

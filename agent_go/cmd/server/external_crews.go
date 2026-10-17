@@ -131,7 +131,7 @@ func (api *StreamingAPI) externalCrewResolve(ctx context.Context, claims *UserCl
 		}
 		return binding, manifest, map[string]interface{}{"id": manifest.ID, "name": manifest.displayTitle(), "workspace_path": binding.Binding.WorkspacePath}, true
 	}
-	if crewID == "" || api == nil || api.agentProfiles == nil {
+	if !productEnabled("work") || crewID == "" || api == nil || api.agentProfiles == nil {
 		return crewProjectBinding{}, productProjectManifest{}, nil, false
 	}
 	crews, err := api.externalCrewsVisible(ctx, claims, "")
