@@ -459,7 +459,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		// The verified non-owned binding root is the one cross-owner path
 		// a turn may address; its shape was verified by the projects-root
 		// scan that produced it.
-		if crewOwned || !isProjectWorkspacePath(folderForClean) {
+		if crewRoot == "" || !isProjectWorkspacePath(folderForClean) || !workspacePathsMatchForUser(userID, folderForClean, crewRoot) {
 			return nil, err
 		}
 		workspacePath = strings.Trim(filepath.ToSlash(strings.TrimSpace(folderForClean)), "/")

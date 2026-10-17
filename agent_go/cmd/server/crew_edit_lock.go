@@ -123,12 +123,12 @@ func crewEditLockForProxyWrite(r *http.Request, claims *UserClaims) string {
 			break
 		}
 	}
-	if claims == nil || !strings.HasPrefix(rel, "Crew/") {
+	if claims == nil || !isCrewProjectPath(rel) {
 		return ""
 	}
 	rel = strings.TrimSuffix(strings.TrimSuffix(rel, "/diff"), "/move")
 	ref, ok := resolveCrewPath(r.Context(), claims.UserID, rel)
-	if !ok || !ref.Shared || crewAccessFor(claims, ref) != crewAccessOwner || crewEditLockExempt(ref.Rest) {
+	if !ok || (!ref.Shared && len(crewCoOwnerIDs(ref.Root)) == 0) || crewAccessFor(claims, ref) != crewAccessOwner || crewEditLockExempt(ref.Rest) {
 		return ""
 	}
 	return crewEditLockTake(ref.Root, claims.UserID, "", time.Now())

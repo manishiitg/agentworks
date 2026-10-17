@@ -101,3 +101,32 @@ func TestWorkspaceCodeDashboardKeepsCodeOnlyTokenAndCrewBounds(t *testing.T) {
 		t.Fatal("Crew-limited token escaped its bound")
 	}
 }
+
+func TestWorkspaceCodeCoOwnerUsesVerifiedOwnerFolder(t *testing.T) {
+	api, _ := newCodePrivacyFixture(t)
+	registry := withProjectOwnerRegistry(t)
+	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := registry.AddCoOwner("code", "app-c0de0001", "other"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "other"})
+	req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: "code", AgentProfileConversationKey: "c0de0001-0000", SelectedFolder: codePrivacyOwnerRoot}
+	req.AgentProfileContext.ProjectTitle = "App"
+	resolved, err := api.resolveAgentProfileForQuery(ctx, &req, "other", "co-owner-test")
+	if err != nil || resolved == nil || req.SelectedFolder != codePrivacyOwnerRoot {
+		t.Fatalf("co-owner lost its verified project: %v %+v", err, req)
+	}
+	sibling := req
+	sibling.SelectedFolder = "_users/owner/Chats/Code/projects/sibling"
+	if _, err := api.resolveAgentProfileForQuery(ctx, &sibling, "other", "co-owner-sibling"); err == nil {
+		t.Fatal("co-owner of one project reached its owner's sibling folder")
+	}
+	if _, err := registry.RemoveCoOwner("code", "app-c0de0001", "other"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := api.resolveAgentProfileForQuery(ctx, &req, "other", "co-owner-revoked"); err == nil {
+		t.Fatal("removed co-owner kept next-turn access")
+	}
+}
