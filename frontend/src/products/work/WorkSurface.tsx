@@ -28,6 +28,7 @@ import { activateTab } from '../../utils/activateTab'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { loadWorkProductCommands } from './workData'
 import { CREW_PRODUCT, ProjectProductProvider, type ProjectProductConfig } from './projectProduct'
+import { CrewPublishedAgents } from './CrewPublishedAgents'
 import { CreateCodeWorkspaceDialog } from './CreateCodeWorkspaceDialog'
 import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
@@ -516,6 +517,7 @@ function useWorkChatTab(
       candidate.metadata?.agentProfileBuilder !== true &&
       (candidate.metadata?.agentProfileConversationKey === session.id || isWorkSideChatTab(candidate, session.id)))
     for (const tab of projectTabs) {
+    if (tab.metadata?.agentProfileConversationKey?.startsWith(`${session.id}:chat:agent-`)) continue
     const savedRuntime = workLLMSelectionFromConfig(session.llmConfig)
     const metadata = {
       agentProfileWorkspace: session.workspacePath,
@@ -676,7 +678,14 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
           const primary = state.chatTabs[canonicalTabId]
           if (cancelled || openingRef.current || !primary) return
           const tabs = Object.values(state.chatTabs)
-          if (tabs.some(tab => tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id)) continue
+          const existing = tabs.find(tab => tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id)
+          if (existing) {
+            if (chat.agent_id) {
+              state.setTabMetadata(existing.tabId, { agentProfileEngine: chat.provider, agentProfileModelID: chat.model_id, agentProfileConnectionID: chat.connection_id, agentProfileChatProvider: chat.provider, agentProfileChatConnectionID: chat.connection_id })
+              if (existing.name !== chat.name) state.renameTab(existing.tabId, chat.name)
+            }
+            continue
+          }
           if (tabs.filter(tab => isWorkSideChatTab(tab, projectId)).length >= WORK_SIDE_CHAT_LIMIT) return
           const previousActive = state.activeTabId
           const tabId = await state.createChatTab(chat.name, {
@@ -684,6 +693,7 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
             agentProfileBuilder: false,
             agentProfileConversationKey: chat.conversation_key,
             agentProfileConversationId: chat.conversation_id,
+            ...(chat.agent_id ? { agentProfileEngine: chat.provider, agentProfileModelID: chat.model_id, agentProfileConnectionID: chat.connection_id, agentProfileChatProvider: chat.provider, agentProfileChatConnectionID: chat.connection_id } : {}),
             agentProfileMCPSelectionInitialized: true,
           }, chat.session_id)
           useChatStore.getState().renameTab(tabId, chat.name)
@@ -764,6 +774,24 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
         onRenameTab={isWorkSideChatTab(tab, projectId) ? renameSideChat : undefined}
       />)}
       </div>
+      {allowSideChats && <CrewPublishedAgents profileId={profileId} projectId={projectId} onOpen={async chat => {
+        const state = useChatStore.getState()
+        const existing = Object.values(state.chatTabs).find(tab => tab.sessionId === chat.session_id)
+        if (existing) { activateTab(existing.tabId); return }
+        const primary = state.chatTabs[canonicalTabId]
+        if (!primary) return
+        const id = await state.createChatTab(chat.name, { ...primary.metadata, agentProfileBuilder: false,
+          agentProfileConversationKey: chat.conversation_key, agentProfileConversationId: chat.conversation_id,
+          agentProfileEngine: chat.provider, agentProfileModelID: chat.model_id, agentProfileConnectionID: chat.connection_id,
+          agentProfileChatProvider: chat.provider, agentProfileChatConnectionID: chat.connection_id,
+          agentProfileMCPSelectionInitialized: true,
+        }, chat.session_id)
+        useChatStore.getState().renameTab(id, chat.name)
+        useChatStore.getState().setTabConfig(id, { selectedServers: primary.config.selectedServers, selectedSkills: primary.config.selectedSkills })
+        activateTab(id)
+        await hydrateTabEvents(chat.session_id, { workspacePath: primary.metadata?.agentProfileWorkspace, fallbackToChatHistory: true, preferChatHistory: true })
+      }} />}
+
       {allowSideChats && (
         <button
           type="button"

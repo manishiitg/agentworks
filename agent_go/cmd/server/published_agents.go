@@ -27,6 +27,9 @@ func publicationAgentID(key string) string {
 }
 
 func (api *StreamingAPI) publicationTarget(ctx context.Context, claims *UserClaims, profileID, workspaceID, agentID, projectID, name string) (*publishedProject, error) {
+	if len([]rune(strings.TrimSpace(name))) > productAgentNameMaxRunes {
+		return nil, fmt.Errorf("Give the Crew or agent a name of at most %d characters.", productAgentNameMaxRunes)
+	}
 	if err := publicationGate(claims); err != nil {
 		return nil, err
 	}
@@ -77,7 +80,11 @@ func (api *StreamingAPI) publicationTarget(ctx context.Context, claims *UserClai
 			}
 		}
 	} else {
-		choice = api.findPublishedProject(ctx, claims, projectID)
+		var err error
+		choice, err = api.findPublishedProject(ctx, claims, projectID)
+		if err != nil {
+			return nil, err
+		}
 		if choice == nil {
 			var err error
 			choice, err = api.publicationChoice(ctx, claims, profileID)
@@ -184,7 +191,7 @@ func (api *StreamingAPI) externalPublishedAgents(w http.ResponseWriter, r *http.
 			externalError(w, 409, "chat_unavailable", err.Error())
 			return
 		}
-		externalJSON(w, map[string]any{"workspace_id": manifest.Product + ":" + manifest.ID, "agent_id": externalArg(args, "agent_id"), "chat_id": strings.TrimPrefix(chat.ConversationKey, manifest.ID+codeChatSideMarker), "conversation_key": chat.ConversationKey, "conversation_id": chat.ConversationID, "session_id": chat.SessionID, "name": p.Name})
+		externalJSON(w, map[string]any{"workspace_id": manifest.Product + ":" + manifest.ID, "agent_id": externalArg(args, "agent_id"), "chat_id": strings.TrimPrefix(chat.ConversationKey, manifest.ID+codeChatSideMarker), "conversation_key": chat.ConversationKey, "conversation_id": chat.ConversationID, "session_id": chat.SessionID, "name": p.Name, "provider": p.Provider, "model_id": p.ModelID, "connection_id": p.ConnectionID})
 		return
 	}
 	externalError(w, 404, "not_found", "Choose an agent with workspace action=agents.")

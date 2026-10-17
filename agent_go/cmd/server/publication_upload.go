@@ -3,6 +3,8 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -49,6 +51,8 @@ type publicationUpload struct {
 
 var publicationLocks sync.Map
 var activePublications sync.Map
+var publicationCancels sync.Map
+var publicationStoreLocks [64]sync.Mutex
 
 func lockPublication(id string) func() {
 	value, _ := publicationLocks.LoadOrStore(id, &sync.Mutex{})
@@ -69,6 +73,19 @@ func publicationOperationDir(id string) (string, error) {
 }
 
 func savePublicationUpload(upload *publicationUpload) error {
+	var bucket uint32
+	for _, ch := range upload.ID {
+		bucket = bucket*31 + uint32(ch)
+	}
+	mu := &publicationStoreLocks[bucket%uint32(len(publicationStoreLocks))]
+	mu.Lock()
+	defer mu.Unlock()
+	if upload.State != "deleted" {
+		if prior, e := loadPublicationUpload(upload.ID, upload.ActorID); e == nil && prior.State == "deleted" {
+			return fmt.Errorf("This Crew was deleted; the old publication will not be replayed.")
+		}
+	}
+
 	dir, err := publicationOperationDir(upload.ID)
 	if err != nil {
 		return err
@@ -213,7 +230,7 @@ func (api *StreamingAPI) handlePublicationUpload(w http.ResponseWriter, r *http.
 		externalJSON(w, publicationReceipt(upload))
 		return
 	}
-	if upload.State == "live" || upload.State == "preparing" {
+	if upload.State == "live" || upload.State == "preparing" || upload.State == "deleted" {
 		externalJSON(w, publicationReceipt(upload))
 		return
 	}
@@ -290,11 +307,12 @@ func (api *StreamingAPI) handlePublicationUpload(w http.ResponseWriter, r *http.
 	externalJSON(w, publicationReceipt(upload))
 }
 
-func (api *StreamingAPI) findPublishedProject(ctx context.Context, claims *UserClaims, projectID string) *publishedProject {
+func (api *StreamingAPI) findPublishedProject(ctx context.Context, claims *UserClaims, projectID string) (*publishedProject, error) {
 	root, err := publicationStateRoot()
 	if err != nil {
-		return nil
+		return nil, err
 	}
+	var found *publishedProject
 	paths, _ := filepath.Glob(filepath.Join(root, "projects", "*.json"))
 	for _, file := range paths {
 		raw, e := os.ReadFile(file)
@@ -307,10 +325,14 @@ func (api *StreamingAPI) findPublishedProject(ctx context.Context, claims *UserC
 		}
 		binding, _, ok := api.resolveExternalWorkspace(ctx, claims, rec.ProfileID+":"+rec.WorkspaceID)
 		if ok && binding.OwnedByCaller && canonicalCrewWorkspaceRoot(binding.Binding.WorkspacePath) == canonicalCrewWorkspaceRoot(rec.Root) {
-			return &rec
+			if found != nil {
+				return nil, fmt.Errorf("This project was published to several Crews. Choose its destination with --crew or workspace_id.")
+			}
+			copy := rec
+			found = &copy
 		}
 	}
-	return nil
+	return found, nil
 }
 
 func (api *StreamingAPI) startPublication(upload publicationUpload, claims UserClaims) {
@@ -322,6 +344,8 @@ func (api *StreamingAPI) startPublication(upload publicationUpload, claims UserC
 
 func (api *StreamingAPI) preparePublication(upload *publicationUpload, claims UserClaims) {
 	ctx, cancel := context.WithTimeout(context.Background(), publication.TransferTimeout)
+	publicationCancels.Store(upload.ID, cancel)
+	defer publicationCancels.Delete(upload.ID)
 	defer cancel()
 	current, err := accessTokenClaims(accesstokens.Token{UserID: claims.UserID, Username: claims.Username, Email: claims.Email, Provider: claims.Provider})
 	if err == nil {
@@ -366,6 +390,9 @@ func (api *StreamingAPI) preparePublication(upload *publicationUpload, claims Us
 	// Serialise target activation across computers while keeping admitted calls on immutable versions.
 	defer lockPublication("project:" + upload.Record.OwnerID + ":" + manifest.ProjectID)()
 	record := *upload.Record
+	if latest, e := loadPublicationUpload(upload.ID, upload.ActorID); e == nil && latest.State == "deleted" {
+		return
+	}
 	if upload.WorkspaceID == "" {
 		// The receipt persisted this ID before creating anything, so retry after a restart finds one target.
 		id := upload.NewWorkspaceID
@@ -393,6 +420,10 @@ func (api *StreamingAPI) preparePublication(upload *publicationUpload, claims Us
 			finishError(fmt.Errorf("You can no longer publish to this Crew."))
 			return
 		}
+	}
+	defer lockPublication("target:" + canonicalCrewWorkspaceRoot(record.Root))()
+	if latest, e := loadPublicationUpload(upload.ID, upload.ActorID); e == nil && latest.State == "deleted" {
+		return
 	}
 	record.PublisherID = sanitizeUserIDForPath(upload.ActorID)
 	record.Name = upload.Name
@@ -467,6 +498,11 @@ func (api *StreamingAPI) preparePublication(upload *publicationUpload, claims Us
 	}
 	if err = preparePublicationRuntime(ctx, &record, source, manifest); err != nil {
 		finishError(err)
+		return
+	}
+	if latest, e := loadPublicationUpload(upload.ID, upload.ActorID); e == nil && latest.State == "deleted" {
+		_ = os.RemoveAll(history)
+		_ = os.RemoveAll(filepath.Dir(source))
 		return
 	}
 	// Recheck authority and the disclosed company account immediately before activation.
@@ -573,6 +609,17 @@ func preparePublicationRuntime(ctx context.Context, record *publishedProject, so
 			record.SourcePaths = append(record.SourcePaths, file.Path)
 		}
 	}
+	history, err := record.historyDir()
+	if err != nil {
+		return err
+	}
+	journal := filepath.Join(history, "runtime-seeds.json")
+	seeds := map[string]string{}
+	if raw, e := os.ReadFile(journal); e == nil {
+		if json.Unmarshal(raw, &seeds) != nil {
+			return fmt.Errorf("This publication's runtime seed receipt is invalid; start a new publication.")
+		}
+	}
 	// Seed only missing files on the first publication. A republish never resets live data.
 	active, err := readPublishedAgent(ctx, record.Root, record.AgentID)
 	if err != nil {
@@ -580,6 +627,25 @@ func preparePublicationRuntime(ctx context.Context, record *publishedProject, so
 	}
 	for _, rel := range []string{"db", "assets", "reports", "tool_output_folder", ".calls", "shared", "outputs"} {
 		if err := createWorkspaceFolder(ctx, record.runtimeRoot()+"/"+rel); err != nil {
+			return err
+		}
+	}
+	if active == nil {
+		// Report collisions before copying any seed. The receipt makes a lost
+		// response retry of this same operation safe without resetting data.
+		for _, file := range manifest.Files {
+			if file.Role != "runtime_seed" {
+				continue
+			}
+			to := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(record.runtimeRoot()), filepath.FromSlash(file.Path))
+			if _, e := os.Lstat(to); e == nil && seeds[file.Path] != file.SHA256 {
+				return fmt.Errorf("Runtime seed %q already exists. Exclude it or use a new Crew; live data was kept.", file.Path)
+			} else if e != nil && !errors.Is(e, os.ErrNotExist) {
+				return e
+			}
+			seeds[file.Path] = file.SHA256
+		}
+		if err := fsutil.WriteJSONAtomic(journal, seeds, 0600); err != nil {
 			return err
 		}
 	}
@@ -595,7 +661,15 @@ func preparePublicationRuntime(ctx context.Context, record *publishedProject, so
 			}
 			out, err := os.OpenFile(to, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 			if errors.Is(err, os.ErrExist) {
-				return fmt.Errorf("Runtime seed %q already exists. Exclude that seed or use a new Crew; live data was kept.", file.Path)
+				raw, e := os.ReadFile(to)
+				sum := sha256.Sum256(raw)
+				if e != nil || hex.EncodeToString(sum[:]) != seeds[file.Path] {
+					return fmt.Errorf("Runtime data %q changed since this publication. Start a new publication; live data was kept.", file.Path)
+				}
+				if err := os.Remove(from); err != nil {
+					return err
+				}
+				continue
 			}
 			if err != nil {
 				return err

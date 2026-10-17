@@ -154,6 +154,18 @@ func (api *StreamingAPI) dashboardTarget(ctx context.Context, claims *UserClaims
 	return dashboardTarget{Root: clean, Kind: kind, ID: manifest.ID, Title: manifest.Label, Edit: (access == WorkflowAccessOwner || access == WorkflowAccessWrite) && userAccessForClaims(claims).CanEdit}, nil
 }
 func dashboardWorkspaceRequest(ctx context.Context, req dashboards.Request) (dashboards.Result, error) {
+	if !dashboardMutation(req.Action) {
+		if publication, e := readPublishedProject(ctx, req.Root); e != nil {
+			return dashboards.Result{}, e
+		} else if publication != nil {
+			for _, file := range publication.SourcePaths {
+				if strings.HasPrefix(file, "db/reports/") {
+					req.Root = publication.sourceRoot()
+					break
+				}
+			}
+		}
+	}
 	var out dashboards.Result
 	data, err := json.Marshal(req)
 	if err != nil {
@@ -203,7 +215,7 @@ func (api *StreamingAPI) resolveDashboardDocument(r *http.Request, root, p strin
 }
 func (api *StreamingAPI) dashboardValidation(ctx context.Context, claims *UserClaims, target dashboardTarget, p string) (string, error) {
 	client := api.reportPreviewWorkspaceClient(ctx, claims, target.Root)
-	data, err := client.DownloadFile(ctx, target.Root+"/"+p)
+	data, err := client.DownloadFile(ctx, publishedReadPath(ctx, target.Root+"/"+p))
 	if err != nil {
 		return "", err
 	}
@@ -213,7 +225,7 @@ func (api *StreamingAPI) dashboardValidation(ctx context.Context, claims *UserCl
 			return err
 		},
 		FileExists: func(ctx context.Context, p string) (bool, error) {
-			_, err := client.DownloadFile(ctx, target.Root+"/"+p)
+			_, err := client.DownloadFile(ctx, publishedReadPath(ctx, target.Root+"/"+p))
 			if err == nil {
 				return true, nil
 			}
@@ -304,6 +316,15 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	if (dashboardMutation(args.Action) || args.Action == "preview") && !target.Edit {
 		externalError(w, 403, "forbidden", "project edit access required")
 		return
+	}
+	if dashboardMutation(args.Action) {
+		if p, e := readPublishedProject(r.Context(), target.Root); e != nil {
+			dashboardError(w, e)
+			return
+		} else if p != nil {
+			externalError(w, 409, "published_source", "To change this dashboard, publish again from your computer.")
+			return
+		}
 	}
 	includeDraft := dashboardAuthoringAllowed(claims, &target)
 	if dashboardMutation(args.Action) && !includeDraft {

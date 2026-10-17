@@ -12,6 +12,10 @@ type AgentProfileSideChat struct {
 	ConversationID  string `json:"conversation_id,omitempty"`
 	SessionID       string `json:"session_id"`
 	Name            string `json:"name"`
+	AgentID         string `json:"agent_id,omitempty"`
+	Provider        string `json:"provider,omitempty"`
+	ModelID         string `json:"model_id,omitempty"`
+	ConnectionID    string `json:"connection_id,omitempty"`
 }
 
 // handleListAgentProfileSideChats lists the caller's open side tabs of one project: GET /api/agent-profiles/{id}/side-chats
@@ -49,7 +53,14 @@ func (api *StreamingAPI) handleListAgentProfileSideChats(w http.ResponseWriter, 
 		}
 		id := strings.TrimPrefix(record.ConversationKey, projectID+codeChatSideMarker)
 		name := firstNonEmptyTrimmed(identities[record.ConversationKey].Name, titles[record.SessionID], "Chat "+id)
-		out = append(out, AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name})
+		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name}
+		if agentID := publicationAgentID(record.ConversationKey); agentID != "" {
+			if p, e := readPublishedAgent(contextWithoutPublication(r.Context()), agentProfileRuntimeWorkspace(userID, slot.binding.WorkspacePath), agentID); e == nil && p != nil {
+				row.AgentID, row.Provider, row.ModelID, row.ConnectionID = p.AgentID, p.Provider, p.ModelID, p.ConnectionID
+				row.Name = p.Name
+			}
+		}
+		out = append(out, row)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].ConversationKey < out[j].ConversationKey })
 	writeAgentProfileJSON(w, http.StatusOK, out)

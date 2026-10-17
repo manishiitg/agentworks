@@ -17,6 +17,8 @@ import (
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
+type publicationFileReadKey struct{}
+
 // External file tools read the shared workspace directly. The agent has the
 // same docs mount as the workspace service, so reads need no HTTP proxy or
 // workspace-wide write lock. The caller has already passed workflow access.
@@ -59,12 +61,15 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	if err := wf.ValidateGlob(req.Glob); err != nil {
 		return wf.Result{}, &externalUpstreamError{400, err.Error()}
 	}
-	if crewRoot {
+	var sourcePublication *publishedProject
+	skipPublication, _ := ctx.Value(publicationFileReadKey{}).(bool)
+	if crewRoot && !skipPublication {
 		pub, e := readPublishedProject(ctx, rootPath)
 		if e != nil {
 			return wf.Result{}, e
 		}
 		if pub != nil {
+			sourcePublication = pub
 			if p == "." {
 				rootPath = pub.sourceRoot()
 			} else {
@@ -113,6 +118,33 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 		return wf.Result{File: file}, err
 	case "list", "search":
 		result, err := externalListFiles(ctx, root, p, req, crewRoot)
+		if err == nil && sourcePublication != nil && rootPath == sourcePublication.sourceRoot() {
+			runtimeReq := req
+			// Agent runtime paths have their own namespace. An ordinary Crew's
+			// shared read surface still exposes only its ordinary logical root.
+			runtimeReq.Root = sourcePublication.runtimeRoot()
+			if sourcePublication.AgentID != "" {
+				runtimeReq.Root = req.Root
+				runtimeReq.Path = path.Join("outputs/agents", sourcePublication.AgentID, p)
+			}
+			live, e := externalFileRequest(context.WithValue(ctx, publicationFileReadKey{}, true), runtimeReq)
+			if e != nil {
+				return wf.Result{}, e
+			}
+			sourceFiles := map[string]bool{}
+			for _, file := range sourcePublication.SourcePaths {
+				sourceFiles[file] = true
+			}
+			for _, entry := range live.Entries {
+				if sourcePublication.AgentID != "" {
+					entry.Path = strings.TrimPrefix(entry.Path, "outputs/agents/"+sourcePublication.AgentID+"/")
+				}
+				if publishedRuntimeRelative(entry.Path) && !sourceFiles[entry.Path] {
+					result.Entries = append(result.Entries, entry)
+				}
+			}
+			result.Truncated = result.Truncated || live.Truncated
+		}
 		return externalGuardReadResult(result, err, guard)
 	default:
 		return wf.Result{}, &externalUpstreamError{400, "unsupported file operation"}

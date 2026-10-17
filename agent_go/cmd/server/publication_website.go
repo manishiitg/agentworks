@@ -70,7 +70,33 @@ func (api *StreamingAPI) externalWorkspacePublish(w http.ResponseWriter, r *http
 		return
 	}
 	if externalArg(args, "action") == "publish_status" {
-		upload, err := loadPublicationUpload(externalArg(args, "operation_id"), claims.UserID)
+		operation := externalArg(args, "operation_id")
+		if operation == "" {
+			state, e := publicationStateRoot()
+			if e != nil {
+				externalFailure(w, e)
+				return
+			}
+			files, _ := filepath.Glob(filepath.Join(state, "uploads", "*", "operation.json"))
+			var latest *publicationUpload
+			for _, file := range files {
+				raw, e := os.ReadFile(file)
+				var saved publicationUpload
+				if e != nil || json.Unmarshal(raw, &saved) != nil || saved.ActorID != claims.UserID || saved.WebsiteSource == nil {
+					continue
+				}
+				if saved.WebsiteSource.WorkspaceID == externalArg(args, "source_workspace_id") && saved.WebsiteSource.ConversationKey == externalArg(args, "conversation_key") && (latest == nil || saved.UpdatedAt.After(latest.UpdatedAt)) {
+					copy := saved
+					latest = &copy
+				}
+			}
+			if latest == nil {
+				externalJSON(w, map[string]any{"state": "idle"})
+				return
+			}
+			operation = latest.ID
+		}
+		upload, err := loadPublicationUpload(operation, claims.UserID)
 		if err != nil {
 			externalError(w, 404, "not_found", "Publication unavailable. Check the receipt from your own publish.")
 			return
@@ -85,12 +111,26 @@ func (api *StreamingAPI) externalWorkspacePublish(w http.ResponseWriter, r *http
 		return
 	}
 	source := publicationWebsiteSource{WorkspaceID: externalArg(args, "source_workspace_id"), ConversationKey: externalArg(args, "conversation_key"), Destination: externalArg(args, "workspace_id"), AgentID: externalArg(args, "agent_id"), NewCrew: externalArg(args, "workspace_id") == ""}
-	if _, _, err := api.publicationWebsiteSource(r, source); err != nil {
+	sourceChat, localTarget, sourceErr := api.publicationWebsiteSource(r, source)
+	if sourceErr != nil {
+		err := sourceErr
 		externalError(w, 400, "source_unavailable", err.Error())
 		return
 	}
 	projectID := uuid.NewSHA1(uuid.NameSpaceOID, []byte(claims.UserID+"\x00"+source.WorkspaceID)).String()
-	name := strings.TrimSpace(externalArg(args, "name"))
+	// Read only the portable identity before showing the target/account. No
+	// project bytes or transcript leave the computer during this preview.
+	info, e := api.localDeviceCall(r.Context(), claims, localTarget.DeviceID, localfiles.Request{ResourceID: localTarget.ResourceID, Operation: "publish_snapshot", Path: ".", RequestID: uuid.NewString(), ProjectID: projectID, PublicationInfoOnly: true})
+	if e != nil {
+		externalError(w, 400, "computer_unavailable", e.Error())
+		return
+	}
+	if info.Publication == nil || info.Publication.ProjectID == "" {
+		externalError(w, 400, "computer_unavailable", "Reconnect the current CLI, then publish again.")
+		return
+	}
+	projectID = info.Publication.ProjectID
+	name := firstNonEmptyTrimmed(externalArg(args, "name"), sourceChat.Title, "Published work")
 	if name == "" || len(name) > 200 {
 		externalError(w, 400, "invalid_arguments", "Give the new Crew or agent a short name.")
 		return
@@ -131,9 +171,18 @@ func (api *StreamingAPI) externalWorkspacePublish(w http.ResponseWriter, r *http
 	id := uuid.NewSHA1(uuid.NameSpaceOID, []byte(claims.UserID+"\x00"+submission)).String()
 	defer lockPublication(id)()
 	if prior, e := loadPublicationUpload(id, claims.UserID); e == nil {
-		if prior.WebsiteSource == nil || *prior.WebsiteSource != source || prior.Name != name {
+		if prior.WebsiteSource == nil || *prior.WebsiteSource != source || prior.Name != name || prior.ProjectID != projectID {
 			externalError(w, 409, "submission_conflict", "Use this receipt for its original publication, or start a new submission.")
 			return
+		}
+		if prior.State == "failed" {
+			prior.State = "capturing"
+			prior.Error = ""
+			prior.UpdatedAt = time.Now().UTC()
+			if err := savePublicationUpload(prior); err != nil {
+				externalFailure(w, err)
+				return
+			}
 		}
 		if prior.State == "capturing" {
 			api.startWebsitePublication(*prior, *claims)
@@ -157,6 +206,8 @@ func (api *StreamingAPI) startWebsitePublication(upload publicationUpload, claim
 	go func() {
 		defer activePublications.Delete(upload.ID)
 		ctx, cancel := context.WithTimeout(context.Background(), publication.TransferTimeout)
+		publicationCancels.Store(upload.ID, cancel)
+		defer publicationCancels.Delete(upload.ID)
 		defer cancel()
 		ctx = context.WithValue(ctx, UserContextKey, &claims)
 		fail := func(err error) {
@@ -301,31 +352,91 @@ func (api *StreamingAPI) startWebsitePublication(upload publicationUpload, claim
 
 // Imported history is private state. This helper is called by the existing
 // permanent project deletion service after it has admitted the Builder.
-func deletePublicationState(ctx context.Context, root string) error {
-	agents, err := publishedAgents(ctx, root)
+func deletePublicationState(ctx context.Context, root string, target ...string) error {
+	agents, err := publishedAgents(contextWithoutPublication(ctx), root)
 	if err != nil {
 		return err
 	}
+	state, err := publicationStateRoot()
+	if err != nil {
+		return err
+	}
+	operations, err := filepath.Glob(filepath.Join(state, "uploads", "*", "operation.json"))
+	if err != nil {
+		return err
+	}
+	revisions := map[string]bool{}
 	for _, p := range agents {
-		history, err := p.historyDir()
+		revisions[p.Revision] = true
+	}
+	for _, file := range operations {
+		raw, err := os.ReadFile(file)
 		if err != nil {
 			return err
 		}
-		if err = os.RemoveAll(history); err != nil {
+		var upload publicationUpload
+		if json.Unmarshal(raw, &upload) != nil || upload.Record == nil {
+			continue
+		}
+		matches := canonicalCrewWorkspaceRoot(upload.Record.Root) == canonicalCrewWorkspaceRoot(root)
+		if len(target) == 2 && upload.ProfileID == target[0] && (upload.WorkspaceID == target[1] || upload.NewWorkspaceID == target[1]) {
+			matches = true
+		}
+		for _, p := range agents {
+			if upload.ProfileID == p.ProfileID && (upload.WorkspaceID == p.WorkspaceID || upload.NewWorkspaceID == p.WorkspaceID) {
+				matches = true
+			}
+		}
+		if !matches {
+			continue
+		}
+		revisions[upload.ID] = true
+		if cancel, ok := publicationCancels.Load(upload.ID); ok {
+			cancel.(context.CancelFunc)()
+		}
+		// Keep a small tombstone so an old lost-response retry cannot recreate
+		// a project the person deliberately deleted. Remove all saved raw bytes.
+		upload.State = "deleted"
+		upload.Error = "This Crew was deleted. Start a new publication to create another Crew."
+		if err := savePublicationUpload(&upload); err != nil {
+			return err
+		}
+		dir := filepath.Dir(file)
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			if entry.Name() != "operation.json" {
+				if err := os.RemoveAll(filepath.Join(dir, entry.Name())); err != nil {
+					return err
+				}
+			}
+		}
+		if err := savePublicationUpload(&upload); err != nil {
+			return err
+		}
+	}
+	for revision := range revisions {
+		if _, err := uuid.Parse(revision); err != nil {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(state, "history", revision)); err != nil {
+			return err
+		}
+	}
+	for _, p := range agents {
+		// The parent of revision/source holds this agent's immutable versions.
+		source := filepath.Dir(filepath.Dir(filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(p.sourceRoot()))))
+		if err := os.RemoveAll(source); err != nil {
 			return err
 		}
 		file, err := publicationRecordPath(p.Root, p.AgentID)
 		if err != nil {
 			return err
 		}
-		if err = os.Remove(file); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
 			return err
-		}
-		if p.AgentID != "" {
-			source := filepath.Dir(filepath.Dir(filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(p.sourceRoot()))))
-			if err = os.RemoveAll(source); err != nil {
-				return err
-			}
 		}
 	}
 	return nil

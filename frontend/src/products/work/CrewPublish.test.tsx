@@ -15,6 +15,7 @@ afterEach(() => { act(() => root?.unmount()); root = undefined; document.body.in
 it('discloses the destination and account before starting an import of the chosen private chat', async () => {
   post.mockImplementation(async (_url, args) => ({ data: args.action === 'list'
     ? { workspaces: [{ workspace_id: 'work:existing', name: 'Finance', mode: 'builder' }] }
+    : args.action === 'publish_status' ? { state: 'idle' }
     : args.action === 'publish_preview'
       ? { account: { provider: 'company-runtime', model: 'company-model', use: 'Company quota applies' }, share: { mode: 'people' }, continuity: 'Continues from a private summary', message: 'Keeps Main and Share' }
       : { operation_id: 'receipt', state: 'live', workspace_id: 'work:existing', agent_id: 'stable-agent', message: 'Files and chat saved' } }))

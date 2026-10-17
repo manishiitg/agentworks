@@ -93,6 +93,16 @@ func authorizedSharedAsset(w http.ResponseWriter, r *http.Request, full string) 
 }
 
 func sharedAssetRequest(r *http.Request, root, p, operation string) (*http.Response, error) {
+	if publication, e := readPublishedProject(r.Context(), root); e != nil {
+		return nil, e
+	} else if publication != nil && p != "." {
+		actual := publishedReadPath(r.Context(), path.Join(root, p))
+		if strings.HasPrefix(actual, publication.sourceRoot()+"/") {
+			root = publication.sourceRoot()
+		} else if publication.AgentID != "" && strings.HasPrefix(actual, publication.runtimeRoot()+"/") {
+			root = publication.runtimeRoot()
+		}
+	}
 	body, _ := json.Marshal(struct {
 		Root      string          `json:"root"`
 		Path      string          `json:"path"`

@@ -388,9 +388,17 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 			return
 		}
 	}
+	publicationRoot := agentProfileRuntimeWorkspace(actingFor, binding.WorkspacePath)
+	defer lockPublication("target:" + canonicalCrewWorkspaceRoot(publicationRoot))()
+	deleteCtx := context.WithValue(r.Context(), publicationLifecycleKey{}, publicationRoot)
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(actingFor))
-	if err := client.DeleteFolder(r.Context(), binding.WorkspacePath); err != nil {
+	if err := client.DeleteFolder(deleteCtx, binding.WorkspacePath); err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, "delete project folder: "+err.Error())
+		return
+	}
+	if err := deletePublicationState(r.Context(), publicationRoot, profile.ID, projectID); err != nil {
+		log.Printf("[CREW_PUBLISH] workspace=%s cleanup=incomplete", projectID)
+		writeAgentProfileError(w, 500, "The Crew folder was removed, but imported publication history cleanup needs a retry.")
 		return
 	}
 	if id, ok := projectIdentityOf(binding.WorkspacePath); ok {

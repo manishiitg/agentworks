@@ -52,6 +52,9 @@ func workspaceProxyHandler() http.Handler {
 	// carrying two Access-Control-Allow-Origin values is rejected by every
 	// browser. Strip the upstream's so only ours remain.
 	proxy.ModifyResponse = func(resp *http.Response) error {
+		if err := publicationProxyResponse(resp); err != nil {
+			return err
+		}
 		for name := range resp.Header {
 			if strings.HasPrefix(strings.ToLower(name), "access-control-") {
 				resp.Header.Del(name)
@@ -140,6 +143,14 @@ func workspaceProxyHandler() http.Handler {
 		// A write to a workflow's dashboard files refreshes open Report views.
 		if rel := workspaceProxyRelativePath(r); isWorkflowWorkspaceProxyWrite(r) && liveFeedReportPath(rel) {
 			defer publishReportChanged(strings.TrimPrefix(strings.TrimPrefix(rel, "api/documents/"), "api/folders/"))
+		}
+		// Headers are server-owned routing metadata, never caller authority.
+		r.Header.Del("X-Publication-Project")
+		r.Header.Del("X-Publication-Source")
+		r.Header.Del("X-Publication-Logical")
+		if source, logical := publicationProxyRead(r); source != "" {
+			r.Header.Set("X-Publication-Source", source)
+			r.Header.Set("X-Publication-Logical", logical)
 		}
 		// Strip /api/wp prefix: /api/wp/api/documents → /api/documents
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/api/wp")

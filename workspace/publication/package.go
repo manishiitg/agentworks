@@ -109,6 +109,10 @@ func Excluded(p string) bool {
 		// Hidden state is private by default. Only these project-content roots
 		// are portable; their credential-like descendants remain excluded above.
 		switch part {
+		case ".dashboard-state":
+			if i != 2 || len(parts) < 3 || parts[0] != "db" || parts[1] != "reports" {
+				return true
+			}
 		case ".agents", ".github":
 			if i != 0 {
 				return true

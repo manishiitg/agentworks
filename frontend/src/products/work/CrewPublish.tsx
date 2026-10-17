@@ -16,6 +16,7 @@ export function CrewPublish({ sessionId, disabled }: { sessionId: string; disabl
   const [open, setOpen] = useState(false)
   const [targets, setTargets] = useState<Target[]>([])
   const [destination, setDestination] = useState('')
+  const [linkedAgent, setLinkedAgent] = useState('')
   const [name, setName] = useState('')
   const [preview, setPreview] = useState<Preview>()
   const [receipt, setReceipt] = useState<Receipt>()
@@ -24,16 +25,20 @@ export function CrewPublish({ sessionId, disabled }: { sessionId: string; disabl
   const submission = useRef('')
   const sourceId = tab?.metadata?.agentProfileProjectId
   const key = tab?.metadata?.agentProfileConversationKey
-  const args = { source_workspace_id: `code:${sourceId}`, conversation_key: key, workspace_id: destination, name }
+  const args = { source_workspace_id: `code:${sourceId}`, conversation_key: key, workspace_id: destination, agent_id: linkedAgent, name }
   useEffect(() => {
     if (!open) return
     let active = true
     setName(tab?.metadata?.agentProfileProjectTitle || 'Published work')
+    void api.post<Receipt>('/api/workspaces', { action: 'publish_status', source_workspace_id: `code:${sourceId}`, conversation_key: key })
+      .then(({ data }) => { if (active && data.operation_id) setReceipt(data) })
+      .catch(cause => { if (active) setError(localFileError(cause)) })
     void api.post<{ workspaces: Target[] }>('/api/workspaces', { action: 'list' })
       .then(({ data }) => { if (active) setTargets(data.workspaces.filter(item => item.mode === 'builder' && item.workspace_id !== `code:${sourceId}`)) })
       .catch(cause => { if (active) setError(localFileError(cause)) })
     return () => { active = false }
-  }, [open, sourceId, tab?.metadata?.agentProfileProjectTitle])
+  }, [open, sourceId, key, tab?.metadata?.agentProfileProjectTitle])
+  useEffect(() => { setReceipt(undefined); setDestination(''); setLinkedAgent(''); setPreview(undefined); setError(''); submission.current = '' }, [sourceId, key])
   useEffect(() => { setPreview(undefined); submission.current = '' }, [name, destination, sourceId, key])
   useEffect(() => {
     if (!receipt || !['capturing', 'uploading', 'preparing'].includes(receipt.state)) return
@@ -66,7 +71,7 @@ export function CrewPublish({ sessionId, disabled }: { sessionId: string; disabl
     <p className="text-sm font-medium">Publish your files and this chat</p>
     <p className="text-xs text-muted-foreground">Crew keeps working while your computer is offline. Source changes through publishing again; working results stay online.</p>
     {!receipt && <>
-      <label className="block text-sm">Destination<select className="mt-1 block w-full rounded border border-border bg-background p-2" value={destination} onChange={event => setDestination(event.target.value)} disabled={busy}>
+      <label className="block text-sm">Destination<select className="mt-1 block w-full rounded border border-border bg-background p-2" value={destination} onChange={event => { setDestination(event.target.value); setLinkedAgent('') }} disabled={busy}>
         <option value="">New Crew · Only me</option>
         {targets.map(target => <option key={target.workspace_id} value={target.workspace_id}>Add agent to {target.name}</option>)}
       </select></label>
@@ -76,7 +81,9 @@ export function CrewPublish({ sessionId, disabled }: { sessionId: string; disabl
     </>}
     {working && <p role="status" className="text-sm">{receipt.state === 'capturing' ? 'Saving files and this chat…' : 'Preparing your online Crew…'}</p>}
     {receipt?.state === 'live' && <p role="status" className="text-sm">{receipt.message} {receipt.tab_message}</p>}
-    {receipt?.state === 'failed' && <p role="alert" className="text-sm text-destructive">{receipt.error} Your earlier version is still live.</p>}
+    {receipt?.state === 'failed' && <><p role="alert" className="text-sm text-destructive">{receipt.error} Your earlier version is still live.</p><Button size="sm" disabled={busy} onClick={() => void publish()}>Retry this publication</Button></>}
+    {receipt?.state === 'live' && <Button size="sm" variant="outline" onClick={() => { setDestination(receipt.workspace_id || ''); setLinkedAgent(receipt.agent_id || ''); setReceipt(undefined); setPreview(undefined); submission.current = '' }}>Publish latest files to this agent</Button>}
+    {receipt && !working && <Button size="sm" variant="ghost" onClick={() => { setReceipt(undefined); setPreview(undefined); setDestination(''); setLinkedAgent(''); submission.current = '' }}>Choose a new destination</Button>}
     {receipt?.workspace_id && receipt.state === 'live' && <a className="text-sm underline" href={productRoutePath({ surface: receipt.workspace_id.startsWith('code:') ? 'code' : 'work', id: receipt.workspace_id.split(':')[1] })}>Open Crew</a>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {receipt && error && <Button size="sm" variant="outline" onClick={() => setReceipt({ ...receipt })}>Check progress</Button>}

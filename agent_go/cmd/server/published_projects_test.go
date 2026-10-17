@@ -9,7 +9,7 @@ import (
 )
 
 func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
-	_, _ = newCodePrivacyFixture(t)
+	api, _ := newCodePrivacyFixture(t)
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	registry := withProjectOwnerRegistry(t)
 	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000"}); err != nil {
@@ -19,6 +19,12 @@ func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 	record := &publishedProject{Root: codePrivacyOwnerRoot, WorkspaceID: "c0de0001-0000", ProfileID: "code", OwnerID: "owner", ProjectID: "stable-project", Revision: "rev-1"}
 	if err := savePublishedProject(record); err != nil {
 		t.Fatal(err)
+	}
+	terminal := api.codeShellFolderGuard(ctx, "owner", record.Root)
+	for _, write := range terminal.WritePaths {
+		if strings.TrimSuffix(write, "/") == record.Root || strings.HasPrefix(record.sourceRoot(), strings.TrimSuffix(write, "/")+"/") {
+			t.Fatal("Terminal can write published source:", write)
+		}
 	}
 	for _, rel := range []string{"code/main.py", "functions.json", "skills/prepare/SKILL.md", "PROJECT_INSTRUCTIONS.md", ".published/rev-1/source/code/main.py"} {
 		if publishedWriteRefusal(ctx, record.Root+"/"+rel) == "" {

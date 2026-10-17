@@ -215,3 +215,26 @@ unattached private accounts and server-wide raw logs are excluded.
 Agent-to-agent messages (AgentBridge) use an inbox for apps without a terminal, through their normal MCP sign-in and the discovered `messages` schema. Nothing is pushed; check when asked or at the start of a conversation. For live delivery, install the CLI from Connect AI agents and run `agentworks attach` for this chat. Recipients show Live now or Inbox. Named addresses do not bypass Crew/project scopes or access.
 
 Use `manage_crew_chats action=tools` with an explicit `chat_id` from your own live chat list for native UI/background schemas. Execute a returned `tool_name` through `action=tool` and its exact `arguments`. UI actions are presentation only and return the existing browser receipt, including unavailable/ambiguous states. Starting background work needs editable Crew ownership, `crews:write`, unrestricted file consent and an initialized manual chat; retained filesystem grants must fit this connection. Native completion notifications return to that chat. Session status/cancellation never crosses to another person's session. Human confirmation and account sign-in continue through their existing Needs you/Integrations flows.
+
+## Publish work from your computer
+
+Use the website Local chat's **Publish to Crew** button, or ask that chat to
+publish. Choose **New Crew** (Only me) or **Add agent to an existing Crew**.
+Adding keeps the destination's Main, instructions and Share. Files and exact raw
+chat are saved; raw history stays private to Builders, and online work continues
+from a summary on the disclosed company account while the computer is offline.
+Login files and `.env` stay on the computer. Native chat resume comes later.
+
+Over MCP, discover the current `workspace` schema. `publish_preview` and
+`publish` take an exact own Local `source_workspace_id` and `conversation_key`,
+a name and optional destination `workspace_id` / saved `agent_id`.
+`publish_status` reads the durable operation receipt; only state `live` means
+success. `agents` lists published agent identities for a Crew you may build;
+`open_agent` opens your private Builder tab. Closing the tab keeps its agent.
+Shared use still enters through the Crew's Ask and published functions.
+
+Native Claude Code/Codex chats can use the bundled publish skill or
+`agentworks publish`; `--crew` adds an agent to an existing Crew. Republishing
+follows the saved project/agent identity and keeps online working data, chats
+and Share. Change imported source through another publish; save generated
+results in the authorized runtime folders. Existing Crew editing stays as it was.

@@ -6637,6 +6637,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						guardWriteRoot = ""
 						guardReadOnly = append([]string{profileWrite, resolvedProfile.Publication.sourceRoot() + "/"}, guardReadOnly...)
 						guardWrite = publishedRuntimeRoots(resolvedProfile.Publication.runtimeRoot())
+						if functionOutput != "" {
+							guardWrite = appendUniqueStrings(guardWrite, functionOutput)
+						}
 					}
 					executorWrite := append(append(append([]string{}, chatHistoryGrants...), workGrantWrite...), crewRefWrite...)
 					if resolvedProfile.Publication != nil {

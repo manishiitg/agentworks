@@ -316,6 +316,9 @@ func readFileFromWorkspaceQueryWithLimit(ctx context.Context, filePath, rawQuery
 // deleteWorkspaceFile deletes a file from the workspace via the workspace API.
 // Returns nil if the file doesn't exist (404) or was successfully deleted.
 func deleteWorkspaceFile(ctx context.Context, configPath string) error {
+	if reason := publishedWriteRefusal(ctx, configPath); reason != "" {
+		return fmt.Errorf("%s", reason)
+	}
 	if e := teamStructuralMutation(ctx, configPath); e != nil {
 		return e
 	}

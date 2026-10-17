@@ -72,18 +72,19 @@ func (h Hello) Validate() error {
 }
 
 type Request struct {
-	Offset           int64           `json:"offset,omitempty"`
-	ProjectID        string          `json:"project_id,omitempty"`
-	Identity         wf.EditIdentity `json:"identity"`
-	ID               string          `json:"id"`
-	ResourceID       string          `json:"resource_id"`
-	Operation        string          `json:"operation"`
-	Path             string          `json:"path"`
-	Command          string          `json:"command,omitempty"`
-	TimeoutSeconds   int             `json:"timeout_seconds,omitempty"`
-	Content          string          `json:"content,omitempty"`
-	ExpectedRevision string          `json:"expected_revision,omitempty"`
-	RequestID        string          `json:"request_id,omitempty"`
+	PublicationInfoOnly bool            `json:"publication_info_only,omitempty"`
+	Offset              int64           `json:"offset,omitempty"`
+	ProjectID           string          `json:"project_id,omitempty"`
+	Identity            wf.EditIdentity `json:"identity"`
+	ID                  string          `json:"id"`
+	ResourceID          string          `json:"resource_id"`
+	Operation           string          `json:"operation"`
+	Path                string          `json:"path"`
+	Command             string          `json:"command,omitempty"`
+	TimeoutSeconds      int             `json:"timeout_seconds,omitempty"`
+	Content             string          `json:"content,omitempty"`
+	ExpectedRevision    string          `json:"expected_revision,omitempty"`
+	RequestID           string          `json:"request_id,omitempty"`
 }
 type Response struct {
 	Publication *PublicationSnapshot `json:"publication,omitempty"`

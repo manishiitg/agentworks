@@ -252,7 +252,7 @@ func (api *StreamingAPI) handleReportPreviewFile(w http.ResponseWriter, r *http.
 		return
 	}
 	full := filepath.ToSlash(filepath.Join(workspacePath, relative))
-	data, err := api.reportPreviewWorkspaceClient(r.Context(), claims, workspacePath).DownloadFile(r.Context(), full)
+	data, err := api.reportPreviewWorkspaceClient(r.Context(), claims, workspacePath).DownloadFile(r.Context(), publishedReadPath(r.Context(), full))
 	if err != nil {
 		status := http.StatusNotFound
 		if !strings.Contains(strings.ToLower(err.Error()), "not found") && !strings.Contains(err.Error(), "404") {

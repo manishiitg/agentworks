@@ -41,6 +41,7 @@ type publishedProject struct {
 }
 
 type publicationExecutionKey struct{}
+type publicationLifecycleKey struct{}
 
 func contextWithoutPublication(ctx context.Context) context.Context {
 	return context.WithValue(ctx, publicationExecutionKey{}, (*publishedProject)(nil))
@@ -97,18 +98,15 @@ func readPublishedAgent(ctx context.Context, root, agentID string) (*publishedPr
 	if json.Unmarshal(raw, &record) != nil || record.AgentID != agentID || canonicalCrewWorkspaceRoot(record.Root) != canonicalCrewWorkspaceRoot(ref.Root) || record.OwnerID == "" || record.Revision == "" || strings.ContainsAny(record.Revision, "/\\.") || resolveProjectOwner(ctx, ref.Root) != record.OwnerID {
 		return nil, fmt.Errorf("cannot verify this Crew's publication record")
 	}
-	if pinned, _ := ctx.Value(publicationExecutionKey{}).(*publishedProject); pinned != nil && pinned.Root == record.Root && pinned.OwnerID == record.OwnerID {
-		copy := *pinned
-		return &copy, nil
-	}
 	return &record, nil
 }
 
 func (p *publishedProject) sourceRoot() string {
-	if p.AgentID != "" {
-		return "_users/" + p.OwnerID + "/crew-published/" + p.WorkspaceID + "/" + p.AgentID + "/" + p.Revision + "/source"
+	agent := p.AgentID
+	if agent == "" {
+		agent = "main"
 	}
-	return p.Root + "/.published/" + p.Revision + "/source"
+	return "_users/" + p.OwnerID + "/crew-published/" + p.WorkspaceID + "/" + agent + "/" + p.Revision + "/source"
 }
 
 func (p *publishedProject) runtimeRoot() string {
@@ -162,6 +160,9 @@ func publishedWriteRefusal(ctx context.Context, raw string) string {
 	}
 	ref, ok := resolveCrewPath(ctx, GetUserIDFromContext(ctx), raw)
 	if !ok {
+		return ""
+	}
+	if deleting, _ := ctx.Value(publicationLifecycleKey{}).(string); deleting != "" && deleting == ref.Root && ref.Rest == "" {
 		return ""
 	}
 	if ref.Rest == ".published" || strings.HasPrefix(ref.Rest, ".published/") {
