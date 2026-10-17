@@ -2134,7 +2134,7 @@ func (s *SchedulerService) markScheduleWaiting(sctx *ScheduleContext, reason str
 		}
 	}
 	s.stateStoreMu.RUnlock()
-	s.updateRuntimeState(scheduleRuntimeKey(sctx), func(state *ScheduleRuntimeState) {
+	s.updateScheduleQueueState(scheduleRuntimeKey(sctx), func(state *ScheduleRuntimeState) {
 		state.LastStatus = "waiting_for_workflow"
 		state.LastError = reason
 		state.WaitingSince = &now
@@ -2276,7 +2276,7 @@ func (s *SchedulerService) finishBlockedScheduleOccurrence(ctx context.Context, 
 		return
 	}
 	s.discardQueuedOccurrence(ctx, sctx)
-	s.updateRuntimeState(scheduleRuntimeKey(sctx), func(state *ScheduleRuntimeState) {
+	s.updateScheduleQueueState(scheduleRuntimeKey(sctx), func(state *ScheduleRuntimeState) {
 		state.LastStatus, state.LastError = "error", reason
 		state.WaitingSince, state.WaitingUntil = nil, nil
 		state.WaitingReason, state.QueuedOccurrences = "", 0
@@ -2331,7 +2331,7 @@ func (s *SchedulerService) resumeQueuedScheduleOccurrences(ctx context.Context, 
 			expiredCtx.TriggerSource = "queued"
 			expiredCtx.ScheduledFor = item.ScheduledFor
 			_ = s.recordScheduleFireDecision(ctx, expiredCtx, "expired_busy", "queued occurrence exceeded max_start_delay", "", now)
-			s.updateRuntimeState(workflowScheduleRuntimeKey(item.ScopeID, item.ScheduleID), func(state *ScheduleRuntimeState) {
+			s.updateScheduleQueueState(workflowScheduleRuntimeKey(item.ScopeID, item.ScheduleID), func(state *ScheduleRuntimeState) {
 				state.LastStatus = "error"
 				state.LastError = "queued occurrence exceeded max_start_delay"
 				state.WaitingSince = nil
@@ -2427,6 +2427,9 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		schedID, sctx.Schedule.Name, startTime.Format(time.RFC3339), sctx.Schedule.GroupNames)
 	if err := ctx.Err(); err != nil {
 		s.updateRuntimeState(runtimeKey, func(state *ScheduleRuntimeState) {
+			if state.ActiveRunID != runID {
+				return
+			}
 			state.ActiveRunID = ""
 			state.LastStatus = "stopped"
 			state.LastError = "stopped by user before execution started"
@@ -2443,9 +2446,36 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 	s.runtimeStatesMu.RLock()
 	activeState := s.runtimeStates[runtimeKey]
 	ownsActiveRun := activeState != nil && activeState.LastStatus == "running" && activeState.ActiveRunID == runID
+	observedRunID, observedStatus := "", ""
+	if activeState != nil {
+		observedRunID, observedStatus = activeState.ActiveRunID, activeState.LastStatus
+	}
 	s.runtimeStatesMu.RUnlock()
 	if !ownsActiveRun {
-		return "", errors.Join(errWorkshopSequenceInterrupted, fmt.Errorf("scheduled run %s no longer owns %s", runID, runtimeKey))
+		reason := "schedule ownership changed before execution started"
+		settleCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		settleErr := errors.New("schedule state store is unavailable")
+		s.stateStoreMu.RLock()
+		if s.stateStore != nil {
+			settleErr = s.stateStore.Transition(settleCtx, schedulerstate.Transition{
+				RunID: runID, ExpectedFrom: schedulerstate.StateStarting, To: schedulerstate.StateFailed,
+				Reason: reason, ErrorMessage: reason, At: time.Now().UTC(),
+			})
+		}
+		s.stateStoreMu.RUnlock()
+		cancel()
+		if settleErr == nil {
+			s.updateRuntimeState(runtimeKey, func(state *ScheduleRuntimeState) {
+				if state.ActiveRunID == runID {
+					state.ActiveRunID = ""
+					state.LastStatus, state.LastError = "error", reason
+				}
+			})
+			s.logf(sctx, "[SCHEDULER_STATE] rejected run=%s before execution; observed_run=%s observed_status=%s; starting claim finalized as failed", runID, observedRunID, observedStatus)
+		} else {
+			s.logf(sctx, "[SCHEDULER_STATE] rejected run=%s before execution; observed_run=%s observed_status=%s; starting claim not changed: %v", runID, observedRunID, observedStatus, settleErr)
+		}
+		return "", fmt.Errorf("scheduled run %s no longer owns %s: %s", runID, runtimeKey, reason)
 	}
 
 	// Clear session/error fields — status is already "running" (set atomically by caller)
@@ -4749,6 +4779,17 @@ func (s *SchedulerService) updateRuntimeState(scheduleID string, update func(*Sc
 		update(state)
 	}
 	return *state
+}
+
+// Queue events describe a pending occurrence, not the active run. In particular,
+// expiring an older queued slot must not revoke a newer run's in-memory owner.
+func (s *SchedulerService) updateScheduleQueueState(scheduleID string, update func(*ScheduleRuntimeState)) {
+	s.updateRuntimeState(scheduleID, func(state *ScheduleRuntimeState) {
+		if state.ActiveRunID != "" {
+			return
+		}
+		update(state)
+	})
 }
 
 // activateScheduleRunLocked publishes the active run and its cancellation

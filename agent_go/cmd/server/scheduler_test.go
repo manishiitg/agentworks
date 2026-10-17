@@ -3144,3 +3144,83 @@ func TestSchedulerRestartKeepsOutcomeAndAllowsNextOccurrence(t *testing.T) {
 		t.Fatalf("lost terminal failure=%s/%s/%t", status, reason, finalize)
 	}
 }
+
+// PLAT-871-8: an old queue expiry and a new cron activation in the same tick
+// must not revoke the new run or strand its durable starting claim.
+func TestScheduleQueueExpiryPreservesNewRunOwnership(t *testing.T) {
+	ctx := context.Background()
+	store, err := schedulerstate.Open(filepath.Join(t.TempDir(), "schedule-state.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	svc := NewSchedulerService(nil)
+	svc.stateStore = store
+	at := time.Now().UTC()
+	sctx := buildScheduleContext("Workflow/demo", &WorkflowManifest{ID: "demo"}, WorkflowSchedule{ID: "daily"})
+	sctx.ScheduledFor = at.Truncate(time.Minute)
+	key := scheduleRuntimeKey(sctx)
+	if err := store.UpsertPendingOccurrence(ctx, schedulerstate.PendingOccurrence{
+		ScopeType: "workflow", ScopeID: sctx.WorkspacePath, ScheduleID: "daily", Policy: "queue_latest",
+		ScheduledFor: at.Add(-10 * time.Minute), QueuedAt: at.Add(-10 * time.Minute), ExpiresAt: at.Add(-time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	svc.runtimeStatesMu.Lock()
+	runCtx := svc.activateScheduleRunLocked(svc.getRuntimeStateLocked(key), "new-cron", at)
+	svc.runtimeStatesMu.Unlock()
+	if err := svc.claimScheduleRun(ctx, sctx, "new-cron", at); err != nil {
+		t.Fatal(err)
+	}
+	// Let queue expiry land after activation, as happened in the failing tick.
+	svc.resumeQueuedScheduleOccurrences(ctx, at)
+	state := svc.getRuntimeStateByKey(key)
+	if state.ActiveRunID != "new-cron" || state.LastStatus != "running" {
+		t.Fatalf("expiry revoked new owner: %+v", state)
+	}
+	if _, err := store.GetPendingOccurrence(ctx, "workflow", sctx.WorkspacePath, "daily"); err == nil {
+		t.Fatal("old queue row was not expired")
+	}
+	// A later queued slot's waiting projection must preserve the active owner too.
+	svc.markScheduleWaiting(sctx, "next slot is waiting", at.Add(time.Hour))
+	if state := svc.getRuntimeStateByKey(key); state.ActiveRunID != "new-cron" || state.LastStatus != "running" {
+		t.Fatalf("waiting revoked owner: %+v", state)
+	}
+	// Reproduce legacy corrupted runtime state: rejection must close THIS starting
+	// claim, so it cannot hold the workflow overnight after the goroutine exits.
+	svc.updateRuntimeState(key, func(state *ScheduleRuntimeState) { state.LastStatus = "error" })
+	sctx.PulseOnly = true // no workflow or retention work is executed by this rejected invocation
+	if _, err := svc.runJob(runCtx, sctx, "new-cron"); err == nil {
+		t.Fatal("lost-owner run was allowed to execute")
+	}
+	run, err := store.GetRun(ctx, "new-cron")
+	if err != nil || run.State != schedulerstate.StateFailed {
+		t.Fatalf("starting claim stranded: %+v, %v", run, err)
+	}
+	// The next slot can claim the same lane, and an old callback cannot settle it.
+	if err := svc.claimScheduleRun(ctx, sctx, "next-cron", at.Add(time.Minute)); err != nil {
+		t.Fatalf("next slot blocked: %v", err)
+	}
+	svc.runtimeStatesMu.Lock()
+	nextCtx := svc.activateScheduleRunLocked(svc.getRuntimeStateLocked(key), "next-cron", at.Add(time.Minute))
+	svc.runtimeStatesMu.Unlock()
+	defer svc.releaseScheduleRunContext("next-cron")
+	if _, err := svc.runJob(ctx, sctx, "new-cron"); err == nil {
+		t.Fatal("old callback started")
+	}
+	if state := svc.getRuntimeStateByKey(key); state.ActiveRunID != "next-cron" || state.LastStatus != "running" {
+		t.Fatalf("old callback touched newer owner: %+v", state)
+	}
+	if next, err := store.GetRun(ctx, "next-cron"); err != nil || next.State != schedulerstate.StateStarting {
+		t.Fatalf("new claim changed: %+v %v", next, err)
+	}
+	if nextCtx.Err() != nil {
+		t.Fatal("old callback canceled newer run")
+	}
+	if err := store.Transition(ctx, schedulerstate.Transition{RunID: "next-cron", To: schedulerstate.StateWorkflowRunning}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Transition(ctx, schedulerstate.Transition{RunID: "next-cron", ExpectedFrom: schedulerstate.StateStarting, To: schedulerstate.StateFailed}); !errors.Is(err, schedulerstate.ErrInvalidTransition) {
+		t.Fatalf("settled a claim beyond starting: %v", err)
+	}
+}

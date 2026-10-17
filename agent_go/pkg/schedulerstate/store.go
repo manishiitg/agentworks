@@ -88,6 +88,7 @@ type Run struct {
 
 type Transition struct {
 	RunID        string
+	ExpectedFrom State
 	To           State
 	Reason       string
 	SessionID    string
@@ -410,6 +411,9 @@ func (s *Store) Transition(ctx context.Context, transition Transition) error {
 		return err
 	}
 	from := State(current)
+	if transition.ExpectedFrom != "" && from != transition.ExpectedFrom {
+		return fmt.Errorf("%w: expected %s, found %s", ErrInvalidTransition, transition.ExpectedFrom, from)
+	}
 	if from == transition.To {
 		return tx.Commit()
 	}
