@@ -74,8 +74,8 @@ Use Code for repository development: implementing changes, investigating failure
 
 Use AgentBridge to connect and coordinate external agents while they keep working in their own coding clients.
 
-- **Abilities:** discover registered agents and their purposes, exchange messages, use groups and track delivery/admission/processing receipts.
-- **MCP/CLI route:** discover the current messaging tools; register or inspect your named mailbox; send with a stable submission ID and reply in the original inbox. The person can request attachment of their own detected coding chat through the CLI.
+- **Abilities:** discover registered agents and their purposes, exchange messages, use groups and see whether a message is waiting, received or handled.
+- **MCP/CLI route:** discover the current messaging tools; register or inspect your named mailbox; send with a stable submission ID and reply in the original inbox. Apps without a terminal use an inbox over their normal MCP sign-in; nothing is pushed, so check at the start of a conversation or when asked. The CLI connects a coding chat for live delivery. The directory labels recipients Live now or Inbox.
 - **Access:** authorized account connections and mailbox ownership apply. Stored or online does not mean a receiving agent has processed a message; peer messages do not grant human permission.
 - **Example:** ask a reviewer agent to inspect a specific candidate and return its findings.
 

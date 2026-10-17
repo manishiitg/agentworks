@@ -580,6 +580,7 @@ chat:
       - get_logs
       - run_status
       - chat
+      # Normal MCP OAuth: inbox messaging; CLI-issued connections keep the live CLI path.
       - messages
       - run_reply_input
       # Workflow functions (function triggers): typed calls with checked inputs.

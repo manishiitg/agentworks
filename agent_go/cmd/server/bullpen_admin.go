@@ -287,6 +287,7 @@ func (api *StreamingAPI) bullpenAdminRead(ctx context.Context, action string, ar
 				match = true
 			}
 			item := map[string]interface{}{"agent_id": a.ID, "agent_name": a.Name, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "created_at": a.CreatedAt, "attached": a.Attachment != nil, "groups": s.groupNamesOf(a.ID, a.UserID)}
+			addAgentPresence(item, a)
 			if a.Attachment != nil {
 				item["provider"] = a.Attachment.Provider
 				item["attachment_handle"] = attachmentHandle(a.ID, a.Attachment.ID)

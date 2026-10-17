@@ -440,7 +440,7 @@ func (api *StreamingAPI) handleExternalTools(w http.ResponseWriter, r *http.Requ
 	allowed := make([]externalTool, 0, len(catalog))
 	for _, tool := range catalog {
 		if externalTokenAllows(GetUserFromContext(r.Context()), tool) {
-			allowed = append(allowed, knowledgebaseToolForClaims(GetUserFromContext(r.Context()), tool))
+			allowed = append(allowed, externalMessageToolForRequest(r, knowledgebaseToolForClaims(GetUserFromContext(r.Context()), tool)))
 		}
 	}
 	if names := r.URL.Query()["names"]; len(names) > 0 {
@@ -548,9 +548,11 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	if len(logAction) > 40 {
 		logAction = logAction[:40]
 	}
-	if token := GetUserFromContext(r.Context()).AccessToken; call.Name == "messages" && agentMailCall(call.Arguments) && token != nil && token.BoundAgentID == "" && !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer "+cliOAuthAccessPrefix) {
-		externalError(w, 403, "cli_required", agentBridgeNeedsCLIText)
-		return
+	if call.Name == "messages" {
+		if err := authorizeAgentMailRequest(r, call.Arguments); err != nil {
+			externalError(w, 403, "cli_required", err.Error())
+			return
+		}
 	}
 	if token := GetUserFromContext(r.Context()).AccessToken; token != nil && token.BoundAgentID != "" {
 		if call.Name != "messages" || !slices.Contains([]string{"list_agents", "send", "read", "ack", "update_purpose", "ping_person", "get_file"}, externalArg(call.Arguments, "action")) || externalArg(call.Arguments, "agent_name") != token.BoundAgentName {

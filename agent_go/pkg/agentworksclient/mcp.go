@@ -25,7 +25,7 @@ const MCPInstructions = `You are connected to an AgentWorks server: use only cur
 	`Call get_agent_context for token capabilities and the guidance version, and load only the guidance topics relevant to the task via list_guidance_topics/get_guidance_topic. ` +
 	`To run: call a run-mode tool such as execute_step (its reply carries session_id), then poll run_status for completion. ` +
 	`Send conversational messages with messages action=send (chat and ask_crew are aliases). Keep inbox_id to continue and read explicit optional replies with messages action=read; normal final chat text is not forwarded and there is no conversational call_id. ` +
-	`AgentBridge messaging needs the AgentWorks CLI on the person's computer: it works only for a chat attached with agentworks attach; over plain MCP the messages tool is refused. ` +
+	`Apps without a terminal can register an inbox agent through their normal MCP sign-in. Check the inbox when the person asks or at the start of a conversation; nothing is pushed. The AgentWorks CLI can connect a coding chat for live delivery. Use the returned Live now or Inbox presence and plain message receipt; sending alone does not prove the recipient has it. ` +
 	`Declared functions are isolated internal triggers: call one, then read status, execution messages and output files using its call_id. ` +
 	`Answer from what you read and make requested changes only through listed tools/actions within current consent and project roles.`
 

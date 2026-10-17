@@ -296,7 +296,7 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 		t.Fatal("child obtained full catalog")
 	}
 	grant, e := store.Authenticate(context.Background(), cfg.Token)
-	if e != nil || grant.BoundAgentName != "hook-reviewer" || grant.BoundAgentID == "" {
+	if e != nil || grant.BoundAgentName != "hook-reviewer" || grant.BoundAgentID == "" || grant.ClientID != cliOAuthClientID || mcpOAuthTokenForGrant(grant).OAuthClientID != cliOAuthClientID {
 		t.Fatal("child lacks stable identity binding")
 	}
 	refreshCfg, e := receiver.CreateAgentConnection(context.Background(), "other-agent")

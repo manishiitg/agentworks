@@ -229,6 +229,12 @@ func externalOwnerAuthority(claims *UserClaims, target triggerTarget) bool {
 }
 
 func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Request, args map[string]any, target triggerTarget) {
+	if target.NamedAgentID != "" {
+		if err := authorizeAgentMailRequest(r, map[string]any{"action": "send", "target": "agent:resolved"}); err != nil {
+			externalError(w, 403, "cli_required", err.Error())
+			return
+		}
+	}
 	claims := GetUserFromContext(r.Context())
 	caller, err := api.externalMessageCaller(r.Context(), claims, args)
 	if err != nil {
@@ -258,7 +264,7 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 	}
 	if caller.NamedAgentID != "" {
 		out["agent_name"] = caller.Label
-		out["next"] = "Accepted means stored, not received by a live session. To read use messages action=read with agent_name and inbox_id. To reply in this conversation use action=send with your agent_name and this inbox_id; omit target."
+		out["next"] = "Check replies with messages action=read. Reply with action=send in the same inbox, using your agent_name and a new submission_id. Replies are optional; sending does not prove the other agent has it."
 	}
 	externalJSON(w, out)
 }
@@ -272,7 +278,11 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 	case "register", "unregister":
 		api.externalNamedAgentRegistration(w, r, args)
 	case "ack":
-		api.externalAgentAttachment(w, r, args)
+		if hostedAgentMailbox(claims) {
+			api.externalMailboxAck(w, r, args)
+		} else {
+			api.externalAgentAttachment(w, r, args)
+		}
 	case "list_agents":
 		if !namedAgentOperationAllowed(claims, false) {
 			externalError(w, 403, "insufficient_scope", "Connection lacks messaging read access.")
@@ -393,7 +403,7 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 }
 
 func externalAgentMessageDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("messages", "AgentBridge messaging is for agents attached with the AgentWorks CLI (install it from Connect AI agents, then run agentworks attach in the chat); MCP-only connections are refused. This tool is the CLI bridge's API: it registers an account-owned agent_name with action=register; list_agents discovers agent:<name> addresses and unregister removes a name. Registration defaults to this connection; explicitly allowed_connection_ids can use the same name. Re-register without that field preserves the reader list. Names are addresses, not authenticated device identities. Send conversational agent messages or read explicit replies from your authenticated inbox. Read with agent_name and no inbox_id to discover first contacts across conversations; each reply_address is an inbox_id for a later send. Named reads use a mailbox cursor; conversation reads use their own cursor. Mailbox storage alone does not wake a client. An opt-in exact session attachment receives all same-account senders through the authenticated event stream; agentworks mcp serve --claude-channel exposes official native Claude notifications. Stored, admitted and processed are different: admission and processing require explicit receiver acknowledgements. Only the person configures live attachment through the signed-in CLI bridge, supplying its name and exact native session; the agent can update its own purpose with action=update_purpose; agents cannot attach through this tool. Moving the name fences its old attachment. Registration and named sends require existing run consent; read-only connections cannot register or send. An inbox belongs to your account: other authorized clients of that account holding its inbox_id can read and reply. Sending returns a delivery receipt without call_id; the recipient may send any messages or none. Final chat answers are never forwarded. Read with inbox_id and a non-destructive cursor; wait_seconds is bounded to 25 seconds. Retention or capacity cleanup can expire an inbox; start a new conversation after an expired error. Send a file with action=send using file_name and file_base64 (up to 5 MB, kept 7 days); the message then names it, and the receiver saves it with action=get_file (inbox_id and file_id). Files are sender content, like the message. action=state is an owner-only, paginated view of a selected Crew or workflow’s delivery and wakeup metadata, including errors and receiving session IDs; it does not expose message bodies.", false, false, map[string]any{
+	add("messages", "AgentBridge messages use an inbox for normal MCP sign-ins from apps without a terminal, or the live CLI bridge for attached coding chats. Register an agent_name, list_agents, send, read, reply with send in the same inbox_id, or ack your incoming messages. Inbox names receive nothing pushed into the app: check when the person asks or at the start of a conversation. The CLI gives live delivery if you can install it. The server shows the route and whether the recipient has acknowledged it. Existing account, connection, sharing, size and rate checks apply. Normal final chat replies are not forwarded. No attachment or selection of another chat is available here. Read/send product conversations through their existing access. Read results use non-destructive cursors; wait_seconds is at most 25. State inspects only owned product delivery metadata. CLI bridge receipt arguments remain compatible.", false, false, map[string]any{
 		"usage_timezone":         map[string]any{"type": "string", "description": "Optional IANA timezone for owner-only native hourly-reading daily totals (default UTC)."},
 		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "send", "read", "state", "ack", "update_purpose", "join_group", "leave_group", "list_groups", "group_members", "ping_person", "get_file"}},
 		"group":                  externalString("Group name for join_group, leave_group (omit to leave all) and group_members; a group is an open list of agents anyone on the server can see and join."),

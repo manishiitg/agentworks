@@ -14,11 +14,11 @@ import (
 
 // Bump the corresponding semantic version when changing either source.
 // Fingerprints additionally identify the exact installation-specific content.
-const GuideVersion = "1.0.4"
-const SkillVersion = "1.0.8"
+const GuideVersion = "1.0.5"
+const SkillVersion = "1.0.9"
 const SkillName = "agentworks-mcp"
 const SkillDescription = "Choose AgentWorks products, use live MCP tools and guidance, or follow CLI installation and connection setup."
-const CLISetupVersion = "1.0.1"
+const CLISetupVersion = "1.0.2"
 const CLISetupTopic = "cli-setup"
 const CLISetupDescription = "Install or update the AgentWorks CLI, sign in and connect a supported coding chat."
 

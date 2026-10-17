@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -11,20 +12,27 @@ import (
 
 // receiptState names the state of one message and a one-line explanation.
 func receiptState(m agentMessage, destAgent *namedMessageAgent, destNamed bool) (string, string) {
+	name := "The agent"
+	if destAgent != nil {
+		name = destAgent.Name
+	}
 	switch m.Delivery {
 	case "processed":
-		return "handled", "Handled: the receiving agent processed it."
-	case "admitted", "typed":
-		return "delivered", "Delivered: the receiving chat accepted it; it has not said it finished."
+		return "handled", fmt.Sprintf("%s has it and has handled it.", name)
+	case "admitted", "typed", "delivered":
+		return "delivered", fmt.Sprintf("%s has it.", name)
 	case "failed", "interrupted":
-		return "not_delivered", "Not delivered: the receiving chat could not take it. Send it again if it still matters."
+		return "not_delivered", "The receiving chat could not take it. Check the conversation before trying again."
 	case "suppressed":
-		return "not_delivered", "Not delivered: access ended (the share, group or login changed) before the receiving chat took it."
+		return "not_delivered", "Access ended before the receiving chat took it."
 	}
 	if destNamed && (destAgent == nil || !namedAgentOnline(*destAgent)) {
-		return "waiting_offline", "Not delivered yet: the receiving agent is offline. It will see the message when it is connected again."
+		return "waiting_offline", fmt.Sprintf("Saved in %s's inbox; %s sees it when it next checks.", name, name)
 	}
-	return "sent", "Sent: stored on the server, waiting for the receiving chat to take it."
+	if destNamed {
+		return "sent", fmt.Sprintf("Sent to %s's open chat; waiting for %s to pick it up.", name, name)
+	}
+	return "sent", "Sent to the product's chat; waiting for it to pick it up."
 }
 
 func (s agentMessageStore) destAgentOf(e agentMessageEndpoint) (*namedMessageAgent, bool) {
@@ -43,7 +51,13 @@ func (s agentMessageStore) destAgentOf(e agentMessageEndpoint) (*namedMessageAge
 func (s agentMessageStore) receiptFields(m agentMessage, dest agentMessageEndpoint) map[string]interface{} {
 	agent, named := s.destAgentOf(dest)
 	state, text := receiptState(m, agent, named)
-	out := map[string]interface{}{"state": state, "state_text": text, "sent_at": m.SentAt}
+	out := map[string]interface{}{"state": state, "state_text": text, "message": text, "sent_at": m.SentAt}
+	if named {
+		out["delivery_mode"] = "inbox"
+		if agent != nil {
+			out["delivery_mode"] = agentDeliveryMode(*agent)
+		}
+	}
 	if !m.AdmittedAt.IsZero() {
 		out["delivered_at"] = m.AdmittedAt
 	}

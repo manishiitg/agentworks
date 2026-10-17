@@ -18,7 +18,7 @@ import (
 //	<<<BEGIN <message_id>>>
 //	<body>
 //	<<<END <message_id>>>
-//	reply: inbox <inbox_id> · ack: message <message_id> · lease <attachment_id>
+//	reply: inbox <inbox_id> · ack: message <message_id> · connection <attachment_id>
 //
 // Every body is fenced with the 103 rule (<<<BEGIN/END <message_id>>>);
 // marker-looking lines inside the body are backslash-escaped, so the fence
@@ -119,6 +119,9 @@ func agentMessageBlock(m agentworksclient.AgentLiveMessage, attachmentID string)
 		fmt.Fprintf(&b, "[network %s, another server; a reply goes back there] ", network)
 	}
 	b.WriteString(agentMessageSenderLine(m))
+	if arrival := sanitizeAgentMessageToken(m.ArrivalText); arrival != "" {
+		fmt.Fprintf(&b, "\n%s", arrival)
+	}
 	b.WriteByte('\n')
 	messageID := sanitizeAgentMessageToken(m.MessageID)
 	inboxID := sanitizeAgentMessageToken(m.InboxID)
@@ -128,7 +131,7 @@ func agentMessageBlock(m agentworksclient.AgentLiveMessage, attachmentID string)
 		fmt.Fprintf(&b, "\n[message truncated: read the full text with agent_message_read inbox %s]", inboxID)
 	}
 	fmt.Fprintf(&b, "\n<<<END %s>>>\n", messageID)
-	fmt.Fprintf(&b, "reply: inbox %s · ack: message %s · lease %s",
+	fmt.Fprintf(&b, "reply: inbox %s · ack: message %s · connection %s",
 		inboxID, messageID, sanitizeAgentMessageToken(attachmentID))
 	return b.String()
 }

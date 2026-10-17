@@ -224,21 +224,18 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 			fmt.Fprintf(&b, "… %d more; use agentworks agents --json.\n", len(data.Agents)-i)
 			break
 		}
-		presence, route := "offline", "stored"
-		if a.Presence == "Mailbox only" {
-			presence = "mailbox only"
+		presence, route := a.Presence, "Inbox"
+		if presence == "" {
+			presence = "Status unavailable"
 		}
 		if a.Online {
-			presence, route = "online", "on another computer"
+			route = "Live chat"
 		}
 		detail := ""
 		for _, s := range local.AgentStates {
 			if s.AgentID == a.ID {
-				if !s.Online {
-					presence = "offline"
-				}
-				route = s.Route
-				detail = fmt.Sprintf("; %d pending; last: %s", s.Pending, clean(s.LastDelivery))
+				route = "This computer"
+				detail = fmt.Sprintf("; %d waiting", s.Pending)
 				if s.LastError != "" {
 					detail += "; " + clean(s.LastError)
 				}

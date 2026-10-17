@@ -9,16 +9,12 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
-
-// agentBridgeNeedsCLIText is what an MCP-only connection hears (owner 2026-10-16): AgentBridge names exist only through the CLI.
-const agentBridgeNeedsCLIText = "AgentBridge messaging needs the AgentWorks CLI on your computer: install it from Connect AI agents and run agentworks attach in the chat that should receive messages."
 
 // agentMailCall is a messages call that uses an AgentBridge agent name or group; talking to a Crew or workflow
 // (ask_crew, chat, send with crew_id) stays open to MCP clients.
@@ -45,40 +41,6 @@ type namedMessageAgent struct {
 	Attachment       *namedAgentAttachment `json:"attachment,omitempty"`
 	// EverAttached: the CLI attached a chat to this name at some point (it may be detached or closed now).
 	EverAttached bool `json:"ever_attached,omitempty"`
-	// MailboxOnly is worked out when the store is read: a name never attached whose connections are all MCP
-	// sign-ins. Such names are hidden and refuse messages (owner 2026-10-16); a closed chat's name does neither.
-	MailboxOnly bool `json:"-"`
-}
-
-var mailboxOnlyCache sync.Map // agent ID + connections -> bool
-
-// classifyMailboxOnly marks names that were never attached and are held only by MCP sign-ins.
-// Any connection that is gone or is a CLI sign-in means "unknown, treat as a chat that closed".
-func classifyMailboxOnly(ctx context.Context, s *agentMessageStore) {
-	for i := range s.Agents {
-		a := &s.Agents[i]
-		if a.Attachment != nil {
-			a.EverAttached = true
-		}
-		if a.EverAttached || len(a.Connections) == 0 {
-			continue
-		}
-		key := a.ID + "|" + strings.Join(a.Connections, ",")
-		if v, ok := mailboxOnlyCache.Load(key); ok {
-			a.MailboxOnly = v.(bool)
-			continue
-		}
-		only := true
-		for _, id := range a.Connections {
-			c, err := agentMessageConnectionClaims(ctx, id)
-			if err != nil || c == nil || c.AccessToken == nil || c.AccessToken.Name == "AgentWorks CLI" {
-				only = false
-				break
-			}
-		}
-		mailboxOnlyCache.Store(key, only)
-		a.MailboxOnly = only
-	}
 }
 
 func normalizeMessageAgentName(name string) (string, error) {
@@ -198,13 +160,14 @@ func listNamedMessageAgents(ctx context.Context, userID string) (map[string]inte
 func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessageStore, withUsage bool) map[string]interface{} {
 	items := []map[string]interface{}{}
 	for _, a := range s.Agents {
-		if a.UserID == userID && !a.MailboxOnly {
-			item := map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "groups": s.groupNamesOf(a.ID, a.UserID), "provider": func() string {
+		if a.UserID == userID {
+			item := map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "delivery_mode": agentDeliveryMode(a), "groups": s.groupNamesOf(a.ID, a.UserID), "provider": func() string {
 				if a.Attachment != nil {
 					return a.Attachment.Provider
 				}
 				return ""
 			}()}
+			addAgentPresence(item, a)
 			if agentUpdateNeeded(a) {
 				item["update_needed"] = true
 			}
@@ -350,6 +313,10 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 	out := map[string]any{"agent_name": name, "target": "agent:" + name, "status": externalArg(args, "action") + "ed"}
 	if externalArg(args, "action") == "register" {
 		out["agent_id"] = s.Agents[index].ID
+		addAgentPresence(out, s.Agents[index])
+		if hostedAgentMailbox(claims) {
+			out["message"] = hostedInboxInstructions
+		}
 		out["allowed_connection_ids"] = s.Agents[index].Connections
 	}
 	if claims.AccessToken != nil {
@@ -483,6 +450,9 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 						continue
 					}
 					item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "reply_address": c.ID, "message_id": m.ID, "sequence": m.AgentSequence, "conversation_sequence": m.Sequence, "sender": endpointDisplayLabel(c.Endpoints[m.From], claims.UserID), "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "live_transport": m.LiveTransport, "native_session_id": m.LiveSession}
+					for k, v := range messageArrivalFields(m) {
+						item[k] = v
+					}
 					if person := crossPersonOwner(c.Endpoints[m.From], claims.UserID); person != "" {
 						item["from_person"], item["untrusted"] = person, true
 					}

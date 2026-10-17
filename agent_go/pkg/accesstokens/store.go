@@ -37,6 +37,8 @@ var Scopes = []string{"llm:use", "dashboards:read", "workflows:read", "files:rea
 var workflowScopes = []string{"workflows:read", "files:read", "runs:execute", "builder:chat"}
 
 type Token struct {
+	// OAuthClientID is derived only from the verified server-side OAuth grant.
+	OAuthClientID string `json:"-"`
 	// LocalPreset is set only by the authenticated single-user preset route.
 	// Persist it so later client logins also keep this independent grant.
 	LocalPreset bool `json:"-"`

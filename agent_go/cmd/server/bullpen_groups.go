@@ -188,7 +188,7 @@ func (s agentMessageStore) groupAgentItems(userID string) []map[string]interface
 				continue
 			}
 			for _, a := range s.Agents {
-				if a.ID != m.AgentID || a.UserID != m.UserID || a.MailboxOnly {
+				if a.ID != m.AgentID || a.UserID != m.UserID {
 					continue
 				}
 				owner := label(a.UserID)
@@ -198,7 +198,7 @@ func (s agentMessageStore) groupAgentItems(userID string) []map[string]interface
 					continue
 				}
 				seen[target] = len(items)
-				items = append(items, map[string]interface{}{"agent_name": owner + "/" + a.Name, "target": target, "owner": owner, "shared": true, "scope": "group", "groups": []string{g.Name}, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a)})
+				items = append(items, withAgentPresence(a, map[string]interface{}{"agent_name": owner + "/" + a.Name, "target": target, "owner": owner, "shared": true, "scope": "group", "groups": []string{g.Name}, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "delivery_mode": agentDeliveryMode(a)}))
 			}
 		}
 	}
@@ -215,14 +215,14 @@ func (s agentMessageStore) groupsView(viewerID string, withMembers bool) []map[s
 		members := []map[string]interface{}{}
 		for _, m := range g.Members {
 			for _, a := range s.Agents {
-				if a.ID != m.AgentID || a.UserID != m.UserID || a.MailboxOnly {
+				if a.ID != m.AgentID || a.UserID != m.UserID {
 					continue
 				}
 				if m.UserID == viewerID {
 					joined = append(joined, a.Name)
 				}
 				if withMembers {
-					members = append(members, map[string]interface{}{"agent_name": label(a.UserID) + "/" + a.Name, "owner": label(a.UserID), "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a)})
+					members = append(members, withAgentPresence(a, map[string]interface{}{"agent_name": label(a.UserID) + "/" + a.Name, "owner": label(a.UserID), "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "delivery_mode": agentDeliveryMode(a)}))
 				}
 			}
 		}
@@ -562,6 +562,8 @@ func (api *StreamingAPI) externalSendGroup(w http.ResponseWriter, r *http.Reques
 		Message  string `json:"message_id,omitempty"`
 		Inbox    string `json:"inbox_id,omitempty"`
 		Delivery string `json:"delivery,omitempty"`
+		Mode     string `json:"delivery_mode,omitempty"`
+		Text     string `json:"message,omitempty"`
 		Error    string `json:"error,omitempty"`
 	}
 	label := shareOwnerLabeler()
@@ -594,9 +596,9 @@ func (api *StreamingAPI) externalSendGroup(w http.ResponseWriter, r *http.Reques
 			failed = append(failed, receipt{Agent: display, Error: sendErr.Error()})
 			continue
 		}
-		sent = append(sent, receipt{Agent: display, Message: fmt.Sprint(out["message_id"]), Inbox: fmt.Sprint(out["inbox_id"]), Delivery: fmt.Sprint(out["delivery"])})
+		sent = append(sent, receipt{Agent: display, Message: fmt.Sprint(out["message_id"]), Inbox: fmt.Sprint(out["inbox_id"]), Delivery: fmt.Sprint(out["delivery"]), Mode: fmt.Sprint(out["delivery_mode"]), Text: fmt.Sprint(out["state_text"])})
 	}
-	raw, _ := json.Marshal(map[string]any{"group": g.Name, "sent_to": sent, "failed": failed, "note": "Accepted means stored for each member; read replies with messages action=read."})
+	raw, _ := json.Marshal(map[string]any{"group": g.Name, "sent_to": sent, "failed": failed, "note": "Each recipient has a receipt showing whether the message waits in an inbox, was sent to an open chat, or the agent has it. Read replies with messages action=read."})
 	var out map[string]any
 	_ = json.Unmarshal(raw, &out)
 	externalJSON(w, out)

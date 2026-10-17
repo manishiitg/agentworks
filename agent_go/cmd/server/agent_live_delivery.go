@@ -77,16 +77,12 @@ func notifyAgentLiveChanged() {
 	agentLiveEvents.Unlock()
 }
 
-// namedAgentPresence is the words people see: "Live" (an attached chat is connected), "Mailbox only"
-// (registered over MCP, never attached: messages wait until it reads them) or "Offline" (was attached, not connected now).
+// Presence is projected by the server for every directory surface.
 func namedAgentPresence(a namedMessageAgent) string {
-	switch {
-	case namedAgentOnline(a):
-		return "Live"
-	case a.MailboxOnly:
-		return "Mailbox only"
+	if namedAgentOnline(a) {
+		return "Live now"
 	}
-	return "Offline"
+	return "Inbox"
 }
 
 func namedAgentOnline(a namedMessageAgent) bool {
@@ -338,6 +334,11 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 				return
 			}
 			frame := map[string]any{"type": "message", "attachment_id": id, "message_id": m.ID, "inbox_id": c.ID, "sender": endpointDisplayLabel(source, dest.UserID), "sender_id": source.NamedAgentID, "message": m.Text, "sequence": m.AgentSequence, "delivery": m.Delivery, "sent_at": m.SentAt}
+			offered := m
+			offered.LiveAttachment = id
+			for k, v := range messageArrivalFields(offered) {
+				frame[k] = v
+			}
 			if status {
 				frame["sender"], frame["sender_id"], frame["kind"] = "AgentWorks", "", m.Kind
 			}

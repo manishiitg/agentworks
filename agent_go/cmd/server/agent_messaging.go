@@ -53,6 +53,7 @@ type agentMessageEndpoint struct {
 	ShareVersion int    `json:"share_version,omitempty"`
 }
 type agentMessage struct {
+	InboxAtSend        bool      `json:"inbox_at_send,omitempty"`
 	AgentSequence      int       `json:"agent_sequence,omitempty"`
 	ID                 string    `json:"message_id"`
 	Sequence           int       `json:"sequence"`
@@ -125,9 +126,6 @@ func readAgentMessageStore(ctx context.Context) (agentMessageStore, error) {
 	}
 	if exists {
 		err = json.Unmarshal([]byte(raw), &s)
-	}
-	if err == nil {
-		classifyMailboxOnly(ctx, &s)
 	}
 	return s, err
 }
@@ -319,14 +317,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		agentMessageMu.Unlock()
 		return nil, err
 	}
-	if target.NamedAgentID != "" {
-		for _, a := range s.Agents {
-			if a.ID == target.NamedAgentID && a.MailboxOnly {
-				agentMessageMu.Unlock()
-				return nil, fmt.Errorf("agent:%s is not connected. This name was never attached with the AgentWorks CLI, so it cannot receive messages. Its owner runs agentworks attach in the chat that should receive them", a.Name)
-			}
-		}
-	}
+
 	index, side := -1, 0
 	if strings.HasPrefix(inboxID, agentStatusConversationPrefix) || strings.HasPrefix(inboxID, "wakeup-inbox-") {
 		agentMessageMu.Unlock()
@@ -403,6 +394,9 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 							return nil, err
 						}
 						receipt := agentMessageReceipt(prior.ID, m)
+						for k, v := range s.receiptFields(m, peer) {
+							receipt[k] = v
+						}
 						agentMessageMu.Unlock()
 						return receipt, nil
 					}
@@ -464,6 +458,9 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 					return nil, fmt.Errorf("submission_id already used for a different message")
 				}
 				out := agentMessageReceipt(c.ID, m)
+				for k, v := range s.receiptFields(m, dest) {
+					out[k] = v
+				}
 				agentMessageMu.Unlock()
 				api.kickAgentMessages(inboxID)
 				return out, nil
@@ -497,6 +494,8 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		m.Delivery = "stored"
 	}
 	if dest.NamedAgentID != "" {
+		a, _ := s.destAgentOf(dest)
+		m.InboxAtSend = a == nil || !namedAgentOnline(*a)
 		s.NextAgentSequence++
 		m.AgentSequence = s.NextAgentSequence
 	}
@@ -580,6 +579,9 @@ func (api *StreamingAPI) readAgentMessages(ctx context.Context, userID string, c
 					continue
 				}
 				item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "message_id": m.ID, "sequence": m.Sequence, "sender": endpointDisplayLabel(c.Endpoints[m.From], userID), "reply_address": c.ID, "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "delivery_error": m.Error}
+				for k, v := range messageArrivalFields(m) {
+					item[k] = v
+				}
 				if person := crossPersonOwner(c.Endpoints[m.From], userID); person != "" {
 					item["from_person"], item["untrusted"] = person, true
 				}

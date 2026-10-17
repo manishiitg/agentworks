@@ -117,7 +117,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	allowed := make([]externalTool, 0, len(catalog))
 	for _, tool := range catalog {
 		if externalTokenAllows(claims, tool) {
-			allowed = append(allowed, knowledgebaseToolForClaims(claims, tool))
+			allowed = append(allowed, externalMessageToolForRequest(r, knowledgebaseToolForClaims(claims, tool)))
 		}
 	}
 	instructions := externalMCPReadOnlyInstructions

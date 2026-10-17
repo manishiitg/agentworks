@@ -31,12 +31,14 @@ type AgentLiveMessage struct {
 	// FromPerson is the owner's server username for a cross-person shared
 	// message (861-103); Untrusted marks it untrusted. Both are absent for
 	// same-account senders.
-	FromPerson string `json:"from_person"`
-	Untrusted  bool   `json:"untrusted"`
-	SenderID   string `json:"sender_id"`
-	Message    string `json:"message"`
-	Sequence   int    `json:"sequence"`
-	Delivery   string `json:"delivery"`
+	FromPerson   string `json:"from_person"`
+	Untrusted    bool   `json:"untrusted"`
+	SenderID     string `json:"sender_id"`
+	Message      string `json:"message"`
+	Sequence     int    `json:"sequence"`
+	Delivery     string `json:"delivery"`
+	ArrivalText  string `json:"arrival_text,omitempty"`
+	DeliveryMode string `json:"delivery_mode,omitempty"`
 	// Kind is "status" for a line the server wrote itself (a sender is told a message is still waiting): it is shown
 	// as a plain status, needs no reply, and is acknowledged by the bridge. SentAt is when the sender sent the message.
 	Kind   string `json:"kind,omitempty"`

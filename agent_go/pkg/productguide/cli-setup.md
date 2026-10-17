@@ -13,7 +13,7 @@ For an AI app on the person's computer, open the website's **Connect AI agents**
 
 1. **Install the AgentWorks app for your terminal.** Use the same-server installer below. Installation is optional for MCP tools; skip it if you only want tool access.
 2. **Connect your AI app.** Choose the app on that page and use its existing MCP instructions and sign-in. MCP tools work without the AgentWorks terminal app.
-<!-- product:bullpen -->3. **Optional: let your agents message each other.** This needs the terminal app. Run `agentworks setup claude`, `agentworks setup codex`, `agentworks setup cursor` or `agentworks setup muse` for the selected app. Then open **AgentBridge → Connect an agent** to finish sign-in and connect the chat you choose. That page lists current app/computer support, plugins or extensions, tested versions and how messages arrive. Setup does not sign in or attach a chat for you.
+<!-- product:bullpen -->3. **Optional: live messages between coding chats.** Live delivery needs the terminal app; apps without a terminal can use the inbox described below. Run `agentworks setup claude`, `agentworks setup codex`, `agentworks setup cursor` or `agentworks setup muse` for the selected app. Then open **AgentBridge → Connect an agent** to finish sign-in and connect the chat you choose. That page lists current app/computer support, plugins or extensions, tested versions and how messages arrive. Setup does not sign in or attach a chat for you.
 <!-- /product -->
 A hosted MCP client may guide installation but cannot install software on someone's computer unless it has a separate local execution connection.
 
@@ -56,9 +56,9 @@ The person reviews any plugin, hook or workspace trust prompts themselves. An ag
 
 ## Check the connection
 
-Run `agentworks agents` (also `agentworks agent`) and check the agent's name in AgentBridge. After attachment the agent sets its purpose through the attached messaging tool. If the person requests a test message, use the actual returned address and reply in the original inbox. A stored message was accepted by the server; admitted means the receiving chat acknowledged it; processed means the agent handled it. Some clients receive at turn boundaries; idle wake depends on their supported integration.
+Run `agentworks agents` (also `agentworks agent`) and check the agent's name in AgentBridge. After attachment the agent sets its purpose through the attached messaging tool. If the person requests a test message, use the actual returned address and reply in the original inbox. A sent message may still be waiting; the recipient has it only after acknowledging it and has handled it only after saying so. Some clients receive at turn boundaries; idle wake depends on their supported integration.
 
-AgentBridge messaging needs this terminal app: an agent gets a name only through `agentworks attach` in its own chat, and it is always live. The MCP `messages` tool is refused for a connection that is not an attached agent's own; the refusal tells the person to install the CLI and attach. Apps that cannot run the CLI (Claude Cowork, ChatGPT) have no AgentBridge messaging for now.
+Apps without a terminal, such as ChatGPT or Claude Cowork, can use an AgentBridge inbox over their normal MCP sign-in. Register a name through the available `messages` tool, check the inbox when the person asks or at the start of a conversation, and reply in the same inbox. Nothing is pushed into that app. The terminal app remains the way to connect a coding chat for live delivery. The directory says **Live now** or **Inbox**; the send reply says whether the message waits in an inbox, was sent to an open chat, or the recipient has it.
 <!-- /product -->
 ## Update or recover
 

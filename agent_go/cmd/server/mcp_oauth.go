@@ -519,5 +519,5 @@ func mcpOAuthTokenForGrant(grant mcpOAuthGrant) accesstokens.Token {
 		scopes = mcpOAuthPersonScopes(&UserClaims{UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider})
 	}
 	allCrews := slices.Contains(scopes, "dashboards:read") || slices.Contains(scopes, "crews:read") || slices.Contains(scopes, "crews:run") || slices.Contains(scopes, "crews:write")
-	return accesstokens.Token{ID: "oauth-" + grant.FamilyID, Name: name, UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider, Scopes: scopes, WorkflowIDs: slices.Clone(grant.WorkflowIDs), AllWorkflows: len(grant.WorkflowIDs) == 0 && grant.BoundAgentID == "", AllCrews: allCrews, ExpiresAt: grant.Expires, BoundAgentName: grant.BoundAgentName, BoundAgentID: grant.BoundAgentID}
+	return accesstokens.Token{OAuthClientID: grant.ClientID, ID: "oauth-" + grant.FamilyID, Name: name, UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider, Scopes: scopes, WorkflowIDs: slices.Clone(grant.WorkflowIDs), AllWorkflows: len(grant.WorkflowIDs) == 0 && grant.BoundAgentID == "", AllCrews: allCrews, ExpiresAt: grant.Expires, BoundAgentName: grant.BoundAgentName, BoundAgentID: grant.BoundAgentID}
 }
