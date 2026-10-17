@@ -307,6 +307,10 @@ func externalResolveMerged(tool externalTool, args map[string]any) (externalTool
 		} else {
 			args["functions"] = map[string]any{"upsert": []any{fn}}
 		}
+		// These fields describe the function, not the project being updated.
+		for key := range fn {
+			delete(args, key)
+		}
 	}
 	if action == "" && len(tool.actionOrder) == 1 {
 		action = tool.actionOrder[0]

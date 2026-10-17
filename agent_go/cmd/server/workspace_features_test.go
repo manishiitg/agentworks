@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"strings"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -67,4 +68,33 @@ func TestWorkspaceCodeOnlyCreateScope(t *testing.T) {
 	if workspaceCreateTokenAllowed(claims, "code") {
 		t.Fatal("bounded machine token created outside its project list")
 	}
+}
+
+func TestWorkspaceFunctionAuthoringKeepsProjectIdentity(t *testing.T) {
+	catalog, err := externalTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range catalog {
+		if tool.Name != "functions" {
+			continue
+		}
+		for _, action := range []string{"define", "update", "delete"} {
+			member, args, err := externalResolveMerged(tool, map[string]any{"action": action, "workspace_id": "code:example", "name": "reconcile", "description": "Function description", "instructions": "Function instructions", "input_schema": map[string]any{"type": "object"}, "result_schema": map[string]any{"type": "object"}})
+			if err != nil || member.Name != "update_crew" || args["crew_id"] != "code:example" {
+				t.Fatalf("%s: %s %v", action, member.Name, err)
+			}
+			for _, key := range []string{"name", "description", "instructions", "input_schema", "result_schema"} {
+				if _, exists := args[key]; exists {
+					t.Fatalf("%s can change project field %s: %v", action, key, args)
+				}
+			}
+			raw, err := json.Marshal(args["functions"])
+			if err != nil || !strings.Contains(string(raw), "reconcile") {
+				t.Fatalf("%s lost the function name: %s %v", action, raw, err)
+			}
+		}
+		return
+	}
+	t.Fatal("functions tool missing")
 }
