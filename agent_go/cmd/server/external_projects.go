@@ -135,7 +135,7 @@ func (api *StreamingAPI) externalCrewProjectCall(w http.ResponseWriter, r *http.
 			return
 		}
 	}
-	crew, _, summary, ok := api.externalCrewResolve(ctx, claims, crewID)
+	crew, manifest, summary, ok := api.externalCrewResolve(ctx, claims, crewID)
 	if !ok {
 		externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
 		return
@@ -149,14 +149,14 @@ func (api *StreamingAPI) externalCrewProjectCall(w http.ResponseWriter, r *http.
 		return
 	}
 	respond := func(status int, body []byte) { externalScheduleRespond(w, status, body) }
-	vars := map[string]string{"id": "work", "project_id": crewID}
+	vars := map[string]string{"id": manifest.Product, "project_id": manifest.ID}
 	switch action {
 	case "delete":
 		if externalArg(args, "confirm") != crewID {
 			externalError(w, 400, "confirm_required", "Deleting is permanent. Repeat the crew_id in confirm to delete "+crewID+".")
 			return
 		}
-		respond(scheduleHandler(r, api.handleDeleteAgentProfileProject, http.MethodDelete, "/api/agent-profiles/work/projects/"+url.PathEscape(crewID), vars, nil, nil))
+		respond(scheduleHandler(r, api.handleDeleteAgentProfileProject, http.MethodDelete, "/api/agent-profiles/"+manifest.Product+"/projects/"+url.PathEscape(manifest.ID), vars, nil, nil))
 	case "set_access":
 		externalError(w, 409, "use_share_dashboard", "Share this Crew from its dashboard: call share_dashboard, or open the dashboard and press Share.")
 	case "install_template":

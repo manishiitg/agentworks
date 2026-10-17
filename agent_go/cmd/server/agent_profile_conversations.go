@@ -351,7 +351,7 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 	// 2026-10-16: co-owners may delete). Its chats, registry entry and connections are the main owner's.
 	actingFor, coOwner := userID, false
 	binding, err := resolveProductConversationBinding(r.Context(), userID, profile, projectID)
-	if err != nil && strings.EqualFold(profile.ID, crewProfileID) {
+	if err != nil && isProjectProfileID(profile.ID) {
 		if crew, crewErr := resolveCrewProjectBinding(r.Context(), userID, profile, projectID, ""); crewErr == nil && crew.CoOwner {
 			binding, err, actingFor, coOwner = crew.Binding, nil, crew.OwnerID, true
 		}
