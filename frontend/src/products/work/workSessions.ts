@@ -184,7 +184,7 @@ export function sharedProjectToWorkSession(row: SharedProjectSummary, product: P
     title: row.title || `Untitled ${product.noun}`,
     description: row.description || '',
     templates: [],
-    identity: row.icon || row.name ? { icon: row.icon || undefined, name: row.name || undefined } : undefined,
+    identity: row.icon || row.name || row.role ? { icon: row.icon || undefined, name: row.name || undefined, ...(row.role ? { role: row.role } : {}) } : undefined,
     // No session binding: opening a shared Crew resolves the reader's own
     // conversation server-side, never the owner's live session.
     sessionId: '',
