@@ -592,6 +592,7 @@ chat:
       - suggest_workflow_change
       # Crews (crews:read / crews:run, bounded by the token's Crew list).
       - list_crews
+      - workspace
       - get_crew
       - get_crew_costs
       - list_crew_files

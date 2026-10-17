@@ -52,6 +52,7 @@ type promptSection struct {
 type promptContext struct {
 	// Narrow tool profiles must not promise file access or project memory.
 	WorkspaceFilesDisabled bool
+	ProjectMemoryDisabled  bool
 	Provider               string
 	ProfileID              string
 	HasProfile             bool
@@ -142,7 +143,9 @@ var promptSections = []promptSection{
 		// root and therefore do not receive a misleading persistence promise.
 		Name: "project-memory",
 
-		Applies: func(c promptContext) bool { return !c.WorkspaceFilesDisabled && (c.HasProfile || c.IsWorkflowPhase) },
+		Applies: func(c promptContext) bool {
+			return !c.WorkspaceFilesDisabled && !c.ProjectMemoryDisabled && (c.HasProfile || c.IsWorkflowPhase)
+		},
 		Build: func(c promptContext) string {
 			return instructions.ProjectMemoryPrompt(c.MemoryReadOnly || c.CrewReadOnly || (c.IsWorkflowPhase && c.WorkflowMode == "run"))
 		},

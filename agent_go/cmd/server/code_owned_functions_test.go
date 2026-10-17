@@ -23,7 +23,7 @@ func privateCodeWorkflowTools(t *testing.T, env crewFunctionEnv, actor string) m
 // project declares no functions. A Code may still call a Crew, and a chat
 // of a Code still resolves its own Code (to answer a call it made to a
 // sibling chat).
-func TestCodeProjectsHaveNoFunctions(t *testing.T) {
+func TestCodePublishedFunctionsKeepLegacyPeersRemoved(t *testing.T) {
 	env := newCrewFunctionEnv(t)
 	profile := agentprofiles.Profile{ID: codeproduct.ProfileID, Name: "Code", Version: 1, BuiltIn: true, Product: "code", SystemPromptTemplate: "hi",
 		Runtime: agentprofiles.RuntimePolicy{Conversation: agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject},
@@ -54,10 +54,11 @@ func TestCodeProjectsHaveNoFunctions(t *testing.T) {
 			}
 		}
 	}
-	// A Code project declares no functions of its own either.
-	if _, err := callers["code"]["define_function"].exec(ctx, map[string]interface{}{"name": "check", "description": "d", "instructions": "i"}); err == nil || !strings.Contains(err.Error(), "Code is private") {
-		t.Fatalf("a Code declared a function on itself: %v", err)
+	// New published functions work privately; implicit same-owner peers stay removed.
+	if _, err := callers["code"]["define_function"].exec(ctx, map[string]interface{}{"name": "check", "description": "d", "instructions": "i"}); err != nil {
+		t.Fatalf("a Code could not declare a private published function: %v", err)
 	}
+
 	// A chat of a Code still resolves that Code (answering a sibling-chat ask), never another.
 	codeCaller, err := crewTriggerLinkCaller(source)(ctx)
 	if err != nil {

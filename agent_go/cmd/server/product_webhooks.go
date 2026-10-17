@@ -30,14 +30,15 @@ import (
 // authenticated delivery becomes one turn in either the Crew chat or the
 // trigger's own durable isolated conversation.
 type productWebhookTrigger struct {
-	ID             string                 `json:"id"`
-	Name           string                 `json:"name"`
-	Enabled        bool                   `json:"enabled"`
-	Message        string                 `json:"message"`
-	RunDestination string                 `json:"run_destination,omitempty"`
-	Webhook        *WorkflowWebhookConfig `json:"webhook,omitempty"`
-	Kind           string                 `json:"kind,omitempty"`
-	Caller         *triggerCaller         `json:"caller,omitempty"`
+	WorkspaceFunction bool                   `json:"workspace_function,omitempty"`
+	ID                string                 `json:"id"`
+	Name              string                 `json:"name"`
+	Enabled           bool                   `json:"enabled"`
+	Message           string                 `json:"message"`
+	RunDestination    string                 `json:"run_destination,omitempty"`
+	Webhook           *WorkflowWebhookConfig `json:"webhook,omitempty"`
+	Kind              string                 `json:"kind,omitempty"`
+	Caller            *triggerCaller         `json:"caller,omitempty"`
 }
 
 // IsInternal reports whether the trigger is invokable only through internal dispatch.
@@ -55,16 +56,17 @@ func (t productWebhookTrigger) ownConversation() bool {
 }
 
 type productWebhookRequest struct {
-	ProfileID      string         `json:"profile_id"`
-	ProjectID      string         `json:"project_id"`
-	Name           string         `json:"name"`
-	Enabled        bool           `json:"enabled"`
-	Message        string         `json:"message"`
-	AuthMode       string         `json:"auth_mode"`
-	RotateSecret   bool           `json:"rotate_secret"`
-	RunDestination string         `json:"run_destination,omitempty"`
-	Kind           string         `json:"kind,omitempty"`
-	Caller         *triggerCaller `json:"caller,omitempty"`
+	WorkspaceFunction bool           `json:"-"` // Set only by the typed function service.
+	ProfileID         string         `json:"profile_id"`
+	ProjectID         string         `json:"project_id"`
+	Name              string         `json:"name"`
+	Enabled           bool           `json:"enabled"`
+	Message           string         `json:"message"`
+	AuthMode          string         `json:"auth_mode"`
+	RotateSecret      bool           `json:"rotate_secret"`
+	RunDestination    string         `json:"run_destination,omitempty"`
+	Kind              string         `json:"kind,omitempty"`
+	Caller            *triggerCaller `json:"caller,omitempty"`
 }
 
 type productWebhookResponse struct {
@@ -265,7 +267,7 @@ func (s *ProductScheduleService) listProductWebhooks(w http.ResponseWriter, r *h
 	responses := make([]productWebhookResponse, 0, len(manifest.Triggers))
 	for _, trigger := range manifest.Triggers {
 		// Code has no function bindings; any old hidden one stays out of the list.
-		if strings.EqualFold(profileID, codeproduct.ProfileID) && trigger.IsInternal() {
+		if strings.EqualFold(profileID, codeproduct.ProfileID) && trigger.IsInternal() && !trigger.WorkspaceFunction {
 			continue
 		}
 		responses = append(responses, productWebhookDTO(trigger))
@@ -332,7 +334,7 @@ func (s *ProductScheduleService) saveProductWebhookConfig(ctx context.Context, u
 	}
 	// The public Automation writer only creates Code webhooks. Code has no
 	// function bindings: other workflows and Crews cannot call a Code.
-	if strings.EqualFold(profile.ID, "code") && strings.TrimSpace(req.Kind) != "" {
+	if strings.EqualFold(profile.ID, "code") && strings.TrimSpace(req.Kind) != "" && !req.WorkspaceFunction {
 		return productWebhookResponse{}, false, fmt.Errorf("a Code takes webhook triggers only; other workflows and Crews cannot call a Code")
 	}
 	index := -1
@@ -352,11 +354,12 @@ func (s *ProductScheduleService) saveProductWebhookConfig(ctx context.Context, u
 	if err != nil {
 		return productWebhookResponse{}, false, err
 	}
-	trigger := productWebhookTrigger{ID: id, Name: strings.TrimSpace(req.Name), Enabled: req.Enabled, Message: strings.TrimSpace(req.Message), RunDestination: runDestination(isolated)}
+	trigger := productWebhookTrigger{WorkspaceFunction: req.WorkspaceFunction, ID: id, Name: strings.TrimSpace(req.Name), Enabled: req.Enabled, Message: strings.TrimSpace(req.Message), RunDestination: runDestination(isolated)}
 	if index >= 0 {
 		trigger.Webhook = manifest.Triggers[index].Webhook
 		trigger.Kind = manifest.Triggers[index].Kind
 		trigger.Caller = manifest.Triggers[index].Caller
+		trigger.WorkspaceFunction = manifest.Triggers[index].WorkspaceFunction || req.WorkspaceFunction
 		if strings.TrimSpace(req.RunDestination) == "" {
 			trigger.RunDestination = firstNonEmptyTrimmed(manifest.Triggers[index].RunDestination, runDestinationCrewChat)
 		}
@@ -365,7 +368,7 @@ func (s *ProductScheduleService) saveProductWebhookConfig(ctx context.Context, u
 		trigger.Kind = normalizeTriggerKind(req.Kind)
 	}
 	// A kept kind counts too: a Code trigger is never internal.
-	if strings.EqualFold(profile.ID, "code") && trigger.IsInternal() {
+	if strings.EqualFold(profile.ID, "code") && trigger.IsInternal() && !trigger.WorkspaceFunction {
 		return productWebhookResponse{}, false, fmt.Errorf("a Code takes webhook triggers only; other workflows and Crews cannot call a Code")
 	}
 	if trigger.IsInternal() {
@@ -858,10 +861,6 @@ func (s *ProductScheduleService) getInternalProductTriggerRun(ctx context.Contex
 // reader's workflow run invokes the owner's crew through the same bound
 // trigger, and delivery below runs in the crew owner's namespace.
 func (s *ProductScheduleService) findInternalProductTrigger(ctx context.Context, userID, profileID, projectID, triggerID string) (agentprofiles.Profile, productConversationBinding, productProjectManifest, *productWebhookTrigger, error) {
-	// Nothing calls a Code project: it has no function bindings (owner, 2026-10-09).
-	if strings.EqualFold(profileID, codeproduct.ProfileID) {
-		return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, nil, ErrInternalTriggerNotFound
-	}
 	profile, binding, manifest, _, err := s.projectManifestAnyOwner(ctx, userID, normalizeInternalProfileID(profileID), projectID)
 	if err != nil {
 		return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, nil, fmt.Errorf("%w: %w", ErrInternalTriggerNotFound, err)
@@ -869,6 +868,9 @@ func (s *ProductScheduleService) findInternalProductTrigger(ctx context.Context,
 	trigger, err := selectInternalProductTrigger(manifest.Triggers, triggerID)
 	if err != nil {
 		return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, nil, err
+	}
+	if profile.ID == codeproduct.ProfileID && (!trigger.WorkspaceFunction || codeProjectMode(ctx, binding.WorkspacePath) == "local") {
+		return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, nil, ErrInternalTriggerNotFound
 	}
 	return profile, binding, manifest, trigger, nil
 }

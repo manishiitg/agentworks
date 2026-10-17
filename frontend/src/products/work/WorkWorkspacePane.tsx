@@ -86,7 +86,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   const isCode = product.profileId === 'code'
   const filePreference = useCodeFilesPreference(sessionId)
   const localCodeSession = isCode && filePreference.location === 'computer'
-  const hasSuggestions = !isCode && !localCodeSession
+  const hasSuggestions = !localCodeSession
   // A Code's toolbar reads: Dashboard | Files, Terminal, Browser | Automation, Costs | Setup (owner 2026-10-03). Its working tools
   // are the Ops group; Automation and Costs share the next one; the Database view is not offered.
   // A Cowork project (a private assistant for business work) reads: Dashboard, Browser, Automation, Memory, Costs | Files | Setup.
@@ -102,7 +102,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   const opsButtons = isCowork
     ? OPS_BUTTONS.filter(item => item.id === 'files')
     : isCode
-      ? [...OPS_BUTTONS.filter(item => item.id === 'files' || item.id === 'shell'), ...VIEW_BUTTONS.filter(item => item.id === 'browser')]
+      ? [...OPS_BUTTONS.filter(item => item.id === 'files' || item.id === 'shell' || item.id === 'database'), ...VIEW_BUTTONS.filter(item => item.id === 'browser')]
       : OPS_BUTTONS
   // Someone else's Crew shows its dashboard (and the chat beside it); Files, Memory and the terminal are the owner's.
   const visibleViews = (readOnly
@@ -442,7 +442,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
         <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>
           {view === 'dashboard' && <ReportView
             workspacePath={workspacePath}
-            dashboardConversation={product.profileId === 'work'}
+            dashboardConversation
             emptyIdentity={{ icon: projectIdentity?.icon, name: projectIdentity?.name || projectTitle, projectName: projectTitle }}
             emptyDescription="Bring tasks, plans, notes, research and progress into one dashboard. Ask AI to build it in your preferred style, with interactive charts, animation or a video explainer."
             emptyAction={<AskAIButton

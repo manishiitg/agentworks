@@ -25,8 +25,8 @@ export function shellReconnectDelayMs(attempt: number): number {
   return Math.min(8000, 1000 * 2 ** Math.max(0, attempt))
 }
 
-export function shellStreamUrl(projectId: string, cols: number, rows: number, apiBase: string, token: string | null, tab = 1): string {
-  const url = new URL(`/api/agent-profiles/code/projects/${encodeURIComponent(projectId)}/shell/stream`, apiBase.replace(/^http/i, 'ws'))
+export function shellStreamUrl(projectId: string, cols: number, rows: number, apiBase: string, token: string | null, tab = 1, profileId = 'code'): string {
+  const url = new URL(`/api/agent-profiles/${encodeURIComponent(profileId)}/projects/${encodeURIComponent(projectId)}/shell/stream`, apiBase.replace(/^http/i, 'ws'))
   url.searchParams.set('cols', String(cols))
   url.searchParams.set('rows', String(rows))
   if (tab > 1) url.searchParams.set('tab', String(tab))

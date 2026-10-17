@@ -515,6 +515,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		promptContext.Product = productVars
 		identityKey = productVars["WORK_IDENTITY_KEY"]
 	}
+	if err := applyWorkspaceMemoryFeature(ctx, &profile, workspacePath); err != nil {
+		return nil, err
+	}
 	var localDisabledTools []string
 	if profile.ID == codeproduct.ProfileID {
 		mode, err := resolveCodeChatMode(req.CodeChatMode, req.CodeLocalFiles)

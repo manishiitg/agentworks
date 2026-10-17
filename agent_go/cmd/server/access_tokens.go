@@ -384,8 +384,11 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if c.AccessToken != nil && c.AccessToken.BoundAgentID != "" {
 		return tool.Name == "messages" && namedAgentOperationAllowed(c, false)
 	}
-	if isExternalCrewTool(tool.Name) && !productEnabled("work") || isExternalCodeReviewTool(tool.Name) && !productEnabled("code") {
+	if isExternalCrewTool(tool.Name) && !productEnabled("work") && !productEnabled("code") || isExternalCodeReviewTool(tool.Name) && !productEnabled("code") {
 		return false
+	}
+	if tool.Name == "workspace" {
+		return externalWorkspaceAllowed(c)
 	}
 	if tool.Name == "browser_connections" {
 		return externalBrowserConnectionsAllowed(c)

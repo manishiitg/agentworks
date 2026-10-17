@@ -36,6 +36,7 @@ import (
 // connection IDs are never serialized.
 
 type sharedProjectSummary struct {
+	CanBuild      bool   `json:"can_build"`
 	ID            string `json:"id"`
 	Title         string `json:"title"`
 	Description   string `json:"description,omitempty"`
@@ -316,7 +317,10 @@ func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agent
 		// root and as a top-level item, yielding the same manifest twice.
 		seenManifests[candidate] = true
 		projectRoot := strings.TrimSuffix(candidate, "/product.json")
-		if sharedOnly && !crewSharedWith(projectRoot, claims.UserID) {
+		if sharedOnly && !crewSharedWith(projectRoot, claims.UserID) && !crewIsCoOwner(projectRoot, claims.UserID) {
+			continue
+		}
+		if sharedOnly && profile.ID == "code" && codeProjectMode(ctx, projectRoot) == "local" {
 			continue
 		}
 		manifest, err := readCrewProjectManifests(ctx, profile.ID, projectRoot)
@@ -367,6 +371,7 @@ var errSharedProjectNotFound error = sharedProjectNotFoundError{}
 
 func summarizeSharedProject(ctx context.Context, claims *UserClaims, ownerID, projectRoot string, manifest productProjectManifest) sharedProjectSummary {
 	row := sharedProjectSummary{
+		CanBuild:        crewProjectOwnedByCaller(claims.UserID, projectRoot),
 		ID:              manifest.ID,
 		Title:           manifest.Title,
 		Description:     strings.TrimSpace(manifest.Description),

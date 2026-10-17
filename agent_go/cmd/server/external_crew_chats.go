@@ -80,7 +80,11 @@ type externalCrewChat struct {
 
 // crewChats lists the caller's live chats with a Crew: main first.
 func (api *StreamingAPI) crewChats(r *http.Request, userID, crewID, workspace string) []externalCrewChat {
-	records, err := defaultProductConversationRegistryStore().projectChats(r.Context(), userID, "work", crewID)
+	product, _, ok := projectProductForPath(workspace)
+	if !ok {
+		return nil
+	}
+	records, err := defaultProductConversationRegistryStore().projectChats(r.Context(), userID, product.ProfileID, workspaceTokenProjectID(crewID))
 	if err != nil {
 		return nil
 	}
@@ -139,12 +143,12 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 				scope = "crews:write"
 			}
 		}
-		if !t.Allows(scope) || !t.AllowsCrew(crewID) {
+		if !t.Allows(scope) || !t.AllowsCrew(workspaceTokenProjectID(crewID)) {
 			externalError(w, 403, "insufficient_scope", "This connection does not allow "+action+" on this Crew.")
 			return
 		}
 	}
-	crew, _, _, ok := api.externalCrewResolve(ctx, claims, crewID)
+	crew, manifest, _, ok := api.externalCrewResolve(ctx, claims, crewID)
 	if !ok {
 		externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
 		return
@@ -153,10 +157,11 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 		api.externalCrewSessionToolsCall(w, r, args, crew)
 		return
 	}
+	crewID = manifest.ID
 	workspace := crew.Binding.WorkspacePath
 	chats := api.crewChats(r, claims.UserID, crewID, workspace)
 	respond := func(status int, body []byte) { externalScheduleRespond(w, status, body) }
-	vars := map[string]string{"id": "work"}
+	vars := map[string]string{"id": manifest.Product}
 	earlier := func() []map[string]any {
 		status, body := scheduleHandler(r, api.handleListAgentProfileConversations, http.MethodGet, "/api/agent-profiles/work/conversations", vars, url.Values{"conversation_key": {crewID}}, nil)
 		if status >= 400 {
@@ -269,7 +274,7 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 			externalError(w, 400, "invalid_arguments", "delete needs the session_id of an earlier chat.")
 			return
 		}
-		respond(scheduleHandler(r, api.handleDeleteAgentProfileConversation, http.MethodDelete, "/api/agent-profiles/work/conversations/"+url.PathEscape(sessionID), map[string]string{"id": "work", "session_id": sessionID}, url.Values{"conversation_key": {crewID}}, nil))
+		respond(scheduleHandler(r, api.handleDeleteAgentProfileConversation, http.MethodDelete, "/api/agent-profiles/work/conversations/"+url.PathEscape(sessionID), map[string]string{"id": manifest.Product, "session_id": sessionID}, url.Values{"conversation_key": {crewID}}, nil))
 	default:
 		externalError(w, 400, "invalid_arguments", "Unknown action.")
 	}

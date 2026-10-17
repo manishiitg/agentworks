@@ -17,7 +17,7 @@ import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHead
 import { StatusBanner } from '../../components/workflow/bots/StatusBanner'
 import { productMode, type ProductIdentity } from '../../platform/chat/productProjects'
 import type { ProductIdentityPatch } from '../../platform/chat/productProjects'
-import { workFolderApi } from '../../services/api'
+import api, { workFolderApi } from '../../services/api'
 import type { PresetLLMConfig, WorkFolderGrant } from '../../services/api-types'
 import { loadWorkSessions } from './workSessions'
 import { CODE_PRODUCT, useProjectProduct } from './projectProduct'
@@ -174,10 +174,6 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, proje
 
   const save = async () => {
     if (!dirty || saving) return
-    if (!roleDraft.trim() || !purposeDraft.trim()) {
-      setError('Role and purpose are both required.')
-      return
-    }
     setSaving(true)
     setError(null)
     try {
@@ -410,7 +406,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
   )
 }
 
-export function WorkIdentityPanel({ workspacePath, shared, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedSecrets, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, modelsOnly = false }: {
+export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedSecrets, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onAsk, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, modelsOnly = false }: {
   workspacePath: string
   /** A Crew opened by a reader: the project instructions editor is the owner's. */
   shared?: boolean
@@ -442,7 +438,7 @@ export function WorkIdentityPanel({ workspacePath, shared, projectTitle, project
   const product = useProjectProduct()
   const sessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId || '')
   const askMessages = identityTabAskAIMessage(product.noun, product.hasIdentity)
-  const visibleTabs = IDENTITY_TABS.filter(option => (!modelsOnly || option.value === 'models') && (option.value !== 'location' || !product.hasIdentity) && isWorkIdentityTabEnabled(option.value, enabledPanels))
+  const visibleTabs = IDENTITY_TABS.filter(option => (!modelsOnly || option.value === 'models') && (option.value !== 'location' || product.supportsLocalFiles) && isWorkIdentityTabEnabled(option.value, enabledPanels))
   const [tab, setTab] = usePersistentTab<WorkIdentityTab>('agentworks.tab.crew-identity', 'general', IDENTITY_TABS.map(option => option.value))
   useEffect(() => {
     if (!openLocalFilesSettings) return
@@ -488,6 +484,8 @@ export function WorkIdentityPanel({ workspacePath, shared, projectTitle, project
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
         />}
+        {activeTab === 'general' && product.supportsLocalFiles && <ModeRow sessionId={sessionId} />}
+        {activeTab === 'general' && !shared && projectId && <WorkspaceMemorySetting projectId={projectId} />}
         {activeTab === 'general' && !shared && <div className="mt-4"><ProjectInstructionsCard workspacePath={workspacePath} /></div>}
         {activeTab === 'location' && <Suspense fallback={<p className="text-sm text-muted-foreground">Loading connection settings…</p>}><CodeLocalFilesSettings sessionId={sessionId} workspaceName={projectIdentity?.name?.trim() || projectTitle} /></Suspense>}
         {activeTab === 'models' && <div className="space-y-4">
@@ -537,4 +535,32 @@ function NativeAgentToolsSetting({ enabled, onChange }: { enabled: boolean; onCh
       {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
     </SettingsCard>
   )
+}
+
+function WorkspaceMemorySetting({ projectId }: { projectId: string }) {
+  const product = useProjectProduct()
+  const [enabled, setEnabled] = useState<boolean | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const workspaceId = `${product.profileId}:${projectId}`
+  useEffect(() => {
+    let cancelled = false
+    void api.post<{ memory_enabled: boolean }>('/api/workspaces', { action: 'get', workspace_id: workspaceId })
+      .then(({ data }) => { if (!cancelled) setEnabled(data.memory_enabled) })
+      .catch(() => { if (!cancelled) setError('Memory settings could not be loaded.') })
+    return () => { cancelled = true }
+  }, [workspaceId])
+  return <SettingsCard title="Memory" description="Keep project notes between conversations. Sharing keeps the same notes.">
+    <ToggleRow label="Project memory" checked={enabled === true} disabled={enabled === null || busy}
+      onCheckedChange={async checked => {
+        setBusy(true); setError('')
+        try {
+          await api.post('/api/workspaces', { action: 'update', workspace_id: workspaceId, changes: { memory_enabled: checked } })
+          setEnabled(checked)
+          window.dispatchEvent(new CustomEvent('agentworks:project-settings-changed', { detail: { projectId } }))
+        } catch { setError('Could not save Memory. Try again shortly.') }
+        finally { setBusy(false) }
+      }} />
+    {error && <p role="status" className="text-xs text-destructive">{error}</p>}
+  </SettingsCard>
 }

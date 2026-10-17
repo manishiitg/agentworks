@@ -46,6 +46,7 @@ export type ProductProject<P extends string = string> = {
 }
 
 export type ProductProjectShare = {
+  canBuild?: boolean
   ownerId: string
   ownerUsername?: string
   triggers: SharedProjectTrigger[]

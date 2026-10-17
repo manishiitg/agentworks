@@ -529,12 +529,12 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 		if name == "update_settings" {
 			scope = "crews:write"
 		}
-		if !t.Allows(scope) || !t.AllowsCrew(crewID) {
+		if !t.Allows(scope) || !t.AllowsCrew(workspaceTokenProjectID(crewID)) {
 			externalError(w, 403, "insufficient_scope", "This connection does not allow "+name+" on this Crew.")
 			return
 		}
 	}
-	crew, _, _, ok := api.externalCrewResolve(ctx, claims, crewID)
+	crew, project, _, ok := api.externalCrewResolve(ctx, claims, crewID)
 	if !ok {
 		externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
 		return
@@ -544,7 +544,7 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 		externalJSON(w, api.secretSources(ctx, claims.UserID, root))
 		return
 	}
-	raw, manifestPath, err := ensureProjectRuntimeManifest(ctx, "work", root)
+	raw, manifestPath, err := ensureProjectRuntimeManifest(ctx, project.Product, root)
 	if err != nil {
 		externalError(w, 502, "workspace_unavailable", "Crew settings could not be read.")
 		return

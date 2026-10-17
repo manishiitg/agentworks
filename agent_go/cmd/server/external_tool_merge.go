@@ -57,7 +57,7 @@ var externalToolMerges = []externalToolMerge{
 	{"functions", "Workflow and Crew internal function triggers: isolated executions with checked inputs. List, call, inspect execution status/messages, read private output files and answer a pending input question.", [][2]string{
 		{"list", "list_workflow_functions|list_crew_functions"}, {"call", "call_workflow_function|call_crew_function"},
 		{"status", "get_workflow_function_call|get_crew_function_call"}, {"read", "get_workflow_function_call|get_crew_function_call"}, {"reply", "reply_workflow_function_call|reply_crew_function_call"},
-		{"calls", "list_crew_function_calls"},
+		{"calls", "list_crew_function_calls"}, {"define", "update_crew"}, {"update", "update_crew"}, {"delete", "update_crew"},
 	}},
 	{"suggest_change", "Suggest a change to a workflow (workflow_id) or a Crew (crew_id) for its owner to review; it never changes anything itself.", [][2]string{
 		{"suggest", "suggest_workflow_change|suggest_crew_change"},
@@ -128,6 +128,16 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 		}
 		if len(order) == 0 {
 			continue
+		}
+		if merge.name == "functions" || merge.name == "files" || merge.name == "share" || merge.name == "settings" || merge.name == "dashboard" {
+			props["workspace_id"] = externalString("Stable work:<id> or code:<id> from workspace action=list.")
+		}
+		if merge.name == "functions" {
+			for _, key := range []string{"name", "description", "instructions"} {
+				props[key] = externalString("Published function " + key)
+			}
+			props["input_schema"] = map[string]any{"type": "object"}
+			props["result_schema"] = map[string]any{"type": "object"}
 		}
 		props["action"] = map[string]any{"type": "string", "enum": stringsToAny(order)}
 		catalog = append(catalog, externalTool{
@@ -222,6 +232,13 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 	if len(allowed) == 0 {
 		return tool, false
 	}
+	if original, _ := tool.InputSchema["properties"].(map[string]any); original != nil {
+		for _, key := range []string{"workspace_id", "name", "description", "instructions", "input_schema", "result_schema"} {
+			if v, ok := original[key]; ok {
+				props[key] = v
+			}
+		}
+	}
 	props["action"] = map[string]any{"type": "string", "enum": stringsToAny(allowed)}
 	out := tool
 	if len(allowed) > 1 {
@@ -265,7 +282,32 @@ func externalResolveMerged(tool externalTool, args map[string]any) (externalTool
 	if tool.actions == nil {
 		return tool, args, nil
 	}
+	if id := externalArg(args, "workspace_id"); id != "" {
+		copyArgs := map[string]any{}
+		for k, v := range args {
+			copyArgs[k] = v
+		}
+		args = copyArgs
+		if externalArg(args, "crew_id") != "" || externalArg(args, "workflow_id") != "" {
+			return tool, args, fmt.Errorf("pass workspace_id or another target, not both")
+		}
+		args["crew_id"] = strings.TrimPrefix(id, "work:")
+		delete(args, "workspace_id")
+	}
 	action := externalArg(args, "action")
+	if tool.Name == "functions" && (action == "define" || action == "update" || action == "delete") {
+		fn := map[string]any{}
+		for _, key := range []string{"name", "description", "instructions", "input_schema", "result_schema"} {
+			if v, ok := args[key]; ok {
+				fn[key] = v
+			}
+		}
+		if action == "delete" {
+			args["functions"] = map[string]any{"delete": []any{args["name"]}}
+		} else {
+			args["functions"] = map[string]any{"upsert": []any{fn}}
+		}
+	}
 	if action == "" && len(tool.actionOrder) == 1 {
 		action = tool.actionOrder[0]
 	}

@@ -898,6 +898,7 @@ type productProjectManifest struct {
 		// limited to the crew's folders. On by default: nil means on, only an
 		// explicit false turns it off.
 		NativeAgentTools *bool `json:"native_agent_tools,omitempty"`
+		MemoryEnabled    *bool `json:"memory_enabled,omitempty"`
 	} `json:"capabilities,omitempty"`
 }
 
