@@ -16,12 +16,21 @@ import (
 func GitIgnored(ctx context.Context, root string) (map[string]bool, error) {
 	out := map[string]bool{}
 	var paths []string
+	hasIgnoreRules := false
 	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if d.Name() == ".gitignore" {
+			hasIgnoreRules = true
+		}
+		if d.Name() == ".git" && d.IsDir() {
+			if _, e := os.Lstat(filepath.Join(p, "info", "exclude")); !errors.Is(e, os.ErrNotExist) {
+				hasIgnoreRules = true
+			}
 		}
 		if p == root {
 			return nil
@@ -43,6 +52,23 @@ func GitIgnored(ctx context.Context, root string) (map[string]bool, error) {
 		return nil, fmt.Errorf("Cannot read this project's ignore rules. Check folder access and publish again: %w", err)
 	}
 	if len(paths) == 0 {
+		return out, nil
+	}
+	// Parent ignore files can also govern a project inside a repository.
+	for dir := root; ; dir = filepath.Dir(dir) {
+		for _, name := range []string{".gitignore", ".git/info/exclude"} {
+			if _, e := os.Lstat(filepath.Join(dir, filepath.FromSlash(name))); !errors.Is(e, os.ErrNotExist) {
+				hasIgnoreRules = true
+			}
+		}
+		if filepath.Dir(dir) == dir {
+			break
+		}
+	}
+	if _, e := exec.LookPath("git"); errors.Is(e, exec.ErrNotFound) {
+		if hasIgnoreRules {
+			return nil, fmt.Errorf("This project has a .gitignore or Git exclude file but Git isn't installed. Install Git, or remove the ignore file, then publish again.")
+		}
 		return out, nil
 	}
 	input := strings.Join(paths, "\x00") + "\x00"

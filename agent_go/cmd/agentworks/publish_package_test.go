@@ -105,6 +105,12 @@ func TestPublicationPackageRoundTrip(t *testing.T) {
 	if _, err := publication.GitIgnored(context.Background(), root); err == nil {
 		t.Fatal("missing Git silently dropped ignore rules")
 	}
+	if err := os.Remove(filepath.Join(root, ".gitignore")); err != nil {
+		t.Fatal(err)
+	}
+	if ignored, err := publication.GitIgnored(context.Background(), root); err != nil || len(ignored) != 0 {
+		t.Fatalf("plain folder without ignore rules required Git: %v", err)
+	}
 	// A corrupt byte must prevent activation by making import fail.
 	b, err = os.ReadFile(archive)
 	if err != nil {
