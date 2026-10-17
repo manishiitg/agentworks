@@ -146,11 +146,10 @@ func openReferenceMapFlags(workspacePath string, byID map[string]StepConfig, pla
 				}
 			}
 		}
-		// A step whose Resources section lost the 1.0.49 contract, or contradicts its own access settings.
+		// A step whose Resources section lost the 1.0.49 contract or contradicts its named references.
 		if workflowAtContract(root, ResourceIntentContractVersion) {
 			if raw, err := os.ReadFile(filepath.Join(root, PlanningFolderName, "plan.json")); err == nil {
-				configRaw, _ := os.ReadFile(filepath.Join(root, PlanningFolderName, "step_config.json"))
-				problems, _ := ResourceIntentProblems(raw, string(configRaw))
+				problems, _ := ResourceIntentProblems(raw)
 				for id, reason := range problems {
 					key := "resource_intent|step:" + id
 					strictNow = append(strictNow, key)

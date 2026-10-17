@@ -6162,11 +6162,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				if err := ValidateResourceIntentContractStamp(content); err != nil {
 					return "", err
 				}
-				if config, cfgErr := iwm.controller.ReadWorkspaceFile(ctx, "planning/step_config.json"); cfgErr == nil {
-					if err := ValidateResourceIntentAgainstStepConfig(content, config); err != nil {
-						return "", err
-					}
-				}
 			}
 			if version == AgentStepContractVersion {
 				content, err := iwm.controller.ReadWorkspaceFile(ctx, "planning/plan.json")

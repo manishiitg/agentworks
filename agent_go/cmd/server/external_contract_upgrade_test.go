@@ -80,14 +80,18 @@ func TestExternalContractUpgradeOverMCP(t *testing.T) {
 	// Saying "none" for a resource the description itself names is a contradiction, not a review.
 	f.call(t, owner, "plan", map[string]any{"action": "update_step", "expected_revision": revision, "request_id": "resources-contradiction", "arguments": map[string]any{"step_id": "chat", "changes": map[string]any{"description": "## Goal\nGreet the person once.\n\n## Resources\n- Knowledge base: none\n- Database: none\n- Brain: none\n- Learnings: none\n\n## Guides\nknowledgebase/tone.md", "reason": "Resource intent review."}}}, 200)
 	f.call(t, owner, "workflow_upgrade", intentStamp, 409)
-	// A line that claims use of a store the step's own configuration switches off is a contradiction too.
-	f.write(t, "Workflow/invoices/planning/step_config.json", `{"steps":[{"id":"chat","agent_configs":{"knowledgebase_access":"none"}}]}`)
+	// Store settings do not forbid reading named workflow guides. Keep them unchanged through the stamp.
+	config := `{"steps":[{"id":"chat","agent_configs":{"knowledgebase_access":"none","learnings_access":"none"}}]}`
+	f.write(t, "Workflow/invoices/planning/step_config.json", config)
+	f.write(t, "Workflow/invoices/knowledgebase/tone.md", "Use a clear greeting.")
+	f.write(t, "Workflow/invoices/learnings/_global/references/greeting.md", "Greet once.")
 	revision = externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
-	f.call(t, owner, "plan", map[string]any{"action": "update_step", "expected_revision": revision, "request_id": "resources-config-contradiction", "arguments": map[string]any{"step_id": "chat", "changes": map[string]any{"description": "## Goal\nGreet the person once.\n\n## Resources\n- Knowledge base: reads the tone guide\n- Database: none\n- Brain: none\n- Learnings: none", "reason": "Resource intent review."}}}, 200)
-	f.call(t, owner, "workflow_upgrade", intentStamp, 409)
-	revision = externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
-	f.call(t, owner, "plan", map[string]any{"action": "update_step", "expected_revision": revision, "request_id": "resources-reviewed", "arguments": map[string]any{"step_id": "chat", "changes": map[string]any{"description": "## Goal\nGreet the person once.\n\n## Resources\n- Knowledge base: none\n- Database: none\n- Brain: none\n- Learnings: none", "reason": "Resource intent review."}}}, 200)
+	f.call(t, owner, "plan", map[string]any{"action": "update_step", "expected_revision": revision, "request_id": "resources-reviewed", "arguments": map[string]any{"step_id": "chat", "changes": map[string]any{"description": "## Goal\nGreet the person once.\n\n## Resources\n- Knowledge base: reads the tone guide; no writes\n- Database: none\n- Brain: none\n- Learnings: reads the named greeting guide; no contributions\n\n## Guides\nknowledgebase/tone.md\nlearnings/_global/references/greeting.md", "reason": "Resource intent review."}}}, 200)
+	configBeforeStamp := f.read(t, "Workflow/invoices/planning/step_config.json")
 	f.call(t, owner, "workflow_upgrade", intentStamp, 200)
+	if f.read(t, "Workflow/invoices/planning/step_config.json") != configBeforeStamp {
+		t.Fatal("resource-intent stamp changed configured access")
+	}
 	after = f.call(t, owner, "workflow_upgrade", map[string]any{"action": "status"}, 200).Body.String()
 	if !strings.Contains(after, `"pending":[]`) {
 		t.Fatalf("reviewed migration remains due: %s", after)

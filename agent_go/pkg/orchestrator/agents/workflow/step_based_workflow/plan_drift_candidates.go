@@ -391,12 +391,11 @@ func CollectPlanDriftCandidates(ctx context.Context, workspacePath string) ([]Pl
 	// raw plan even when the typed decode failed.
 	descriptions, descErr := planStepDescriptionsFromPlanJSON(planRaw)
 
-	// Resources (contract 1.0.49): objective structure and agreement with the step's access settings.
+	// Resources (contract 1.0.49): objective structure and agreement with named references.
 	var intentProblems map[string]string
 	var intentEvaluated map[string]bool
 	if root := refMapRoot(workspacePath); workflowAtContract(root, ResourceIntentContractVersion) {
-		stepConfigRaw, _ := os.ReadFile(filepath.Join(root, PlanningFolderName, "step_config.json"))
-		intentProblems, intentEvaluated = ResourceIntentProblems(planRaw, string(stepConfigRaw))
+		intentProblems, intentEvaluated = ResourceIntentProblems(planRaw)
 	}
 
 	candidates := make([]PlanDriftCandidate, 0, len(pendingStepIDs)+1)
