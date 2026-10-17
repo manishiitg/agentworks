@@ -53,7 +53,7 @@ func codeRoleFor(ctx context.Context, callerID, ownerID, projectID string) codeR
 		if codeProjectMode(ctx, root) == "local" {
 			return codeRoleNone
 		}
-		if !userAllowedProduct(&UserClaims{UserID: callerID}, "code") {
+		if !userAllowedProduct(currentProjectCallerClaims(ctx, callerID), "code") {
 			return codeRoleNone
 		}
 		if crewIsCoOwner(root, callerID) {

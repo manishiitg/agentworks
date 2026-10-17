@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime"
 	"net/http"
 	"path/filepath"
@@ -861,9 +862,17 @@ func (s *ProductScheduleService) getInternalProductTriggerRun(ctx context.Contex
 // reader's workflow run invokes the owner's crew through the same bound
 // trigger, and delivery below runs in the crew owner's namespace.
 func (s *ProductScheduleService) findInternalProductTrigger(ctx context.Context, userID, profileID, projectID, triggerID string) (agentprofiles.Profile, productConversationBinding, productProjectManifest, *productWebhookTrigger, error) {
-	profile, binding, manifest, _, err := s.projectManifestAnyOwner(ctx, userID, normalizeInternalProfileID(profileID), projectID)
+	profile, binding, manifest, ownerID, err := s.projectManifestAnyOwner(ctx, userID, normalizeInternalProfileID(profileID), projectID)
 	if err != nil {
 		return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, nil, fmt.Errorf("%w: %w", ErrInternalTriggerNotFound, err)
+	}
+	if ownerID != sanitizeUserIDForPath(userID) {
+		claims := currentProjectCallerClaims(ctx, userID)
+		ref, ok := resolveCrewPath(ctx, userID, binding.WorkspacePath)
+		if !ok || crewAccessFor(claims, ref) == crewAccessNone {
+			log.Printf("[PRODUCT_TRIGGER_ACCESS] actor=%s profile=%s project=%s result=denied reason=current_share", sanitizeUserIDForPath(userID), profile.ID, manifest.ID)
+			return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, nil, ErrInternalTriggerNotFound
+		}
 	}
 	trigger, err := selectInternalProductTrigger(manifest.Triggers, triggerID)
 	if err != nil {

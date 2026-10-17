@@ -72,12 +72,12 @@ func slotHeldBy(user string) string {
 // turnCLIWorkingDir is the folder a turn's CLI starts in and the turn's own folder on disk. A Goal chat and a Crew
 // chat start in an isolated runtime folder under the app's state root that links to the project; every other turn
 // starts in its own folder.
-func turnCLIWorkingDir(profileID string, workflowPhase bool, folder, user, session, provider, workflowMode string, readOnly bool) (cliDir, sharedDir string, err error) {
+func turnCLIWorkingDir(profileID string, workflowPhase bool, folder, user, session, provider, workflowMode string, readOnly bool, isolateCode ...bool) (cliDir, sharedDir string, err error) {
 	sharedDir = codingAgentWorkspaceWorkingDir(folder)
 	switch {
 	case workflowPhase:
 		cliDir, err = workflowCLIWorkingDir(folder, user, session, provider, workflowMode)
-	case profileID == crewProfileID:
+	case profileID == crewProfileID || profileID == codeproduct.ProfileID && (readOnly || len(isolateCode) > 0 && isolateCode[0]):
 		cliDir, err = crewCLIWorkingDir(folder, user, session, provider, readOnly)
 	default:
 		cliDir = sharedDir
@@ -159,7 +159,7 @@ func checkProjectLaunchOwner(ctx context.Context, in turnRunAsInput, deps runAsD
 		// owner or launch identity. A copied project in another tree still fails.
 		ref, ok := resolveCrewPath(ctx, in.CallerID, physical)
 		if ok && sanitizeUserIDForPath(workspaceref.MustParse(physical).Owner()) == owner && ref.Rest == "" && ref.OwnerID == owner && canonicalCrewWorkspaceRoot(ref.Root) == canonicalCrewWorkspaceRoot(physical) &&
-			crewAccessFor(&UserClaims{UserID: in.CallerID}, ref) != crewAccessNone {
+			crewAccessFor(currentProjectCallerClaims(ctx, in.CallerID), ref) != crewAccessNone {
 			return nil
 		}
 		log.Printf("[OWNER_MISMATCH] Code launch refused: %s resolves to owner %q but the caller is %q", physical, owner, in.CallerID)

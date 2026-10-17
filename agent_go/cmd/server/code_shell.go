@@ -580,7 +580,7 @@ func stopIdleCodeShells(now time.Time) []string {
 }
 
 func projectTerminalBuilder(ctx context.Context, userID, root string) bool {
-	claims := &UserClaims{UserID: userID}
+	claims := currentProjectCallerClaims(ctx, userID)
 	product, _, ok := projectProductForPath(root)
 	ref, valid := resolveCrewPath(ctx, userID, root)
 	if !ok || !valid || !userAllowedProduct(claims, product.ProfileID) || !userAccessForClaims(claims).CanEdit || crewAccessFor(claims, ref) != crewAccessOwner {

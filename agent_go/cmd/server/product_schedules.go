@@ -1234,7 +1234,10 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 	runID := firstNonEmptyTrimmed(options.RunID, uuid.NewString())
 	var binding productConversationBinding
 	var bindErr error
-	if routeErr := s.validateProjectCallConversation(runCtx, job); routeErr != nil {
+	if job.GuestCallerID != "" && !currentProductCallerHasAccess(runCtx, job.GuestCallerID, job.WorkspacePath) {
+		bindErr = fmt.Errorf("This Crew is no longer shared with the caller. Ask its owner for access.")
+		scheduleLogf("[PRODUCT_TRIGGER_ACCESS] actor=%s profile=%s project=%s result=denied reason=current_share", sanitizeUserIDForPath(job.GuestCallerID), job.Profile.ID, job.ProjectID)
+	} else if routeErr := s.validateProjectCallConversation(runCtx, job); routeErr != nil {
 		bindErr = routeErr
 	} else if job.ProjectID != "" && job.Schedule.Isolated {
 		kind := firstNonEmptyTrimmed(job.AutomationKind, "schedule")
@@ -1330,6 +1333,10 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 	finalResponse := ""
 	tokenUsage := &workflowtypes.CrewRunTokenUsage{}
 	for i := 0; i < len(messages); i++ {
+		if job.GuestCallerID != "" && !currentProductCallerHasAccess(runCtx, job.GuestCallerID, job.WorkspacePath) {
+			runErr = fmt.Errorf("This Crew is no longer shared with the caller. Ask its owner for access.")
+			break
+		}
 		message := messages[i]
 		if err := runCtx.Err(); err != nil {
 			runErr = err

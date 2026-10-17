@@ -31,6 +31,8 @@ import (
 )
 
 type resolvedAgentProfile struct {
+	IsolateCodeCLI bool
+
 	Definition      agentprofiles.Profile
 	SelectedServers []string
 	Prompt          string
@@ -398,12 +400,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	crewRoot := ""
 	folderForClean := selectedFolder
 	if strings.EqualFold(strings.TrimSpace(profile.ID), codeproduct.ProfileID) {
-		// A Code is private to its owner and resolves only in the caller's own
-		// tree (sharing is a removed legacy: code_shares.go answers 410);
-		// turn access was checked by conversationTargetAccess. Like a Crew, a Code always runs
-		// with native agent tools: there is no switch (owner decision
-		// 2026-09-29; the CLIs' own reads are not sandboxed yet, PLAT-364
-		// part 2).
+		// Sharing admits Builder or Run access without changing the main owner's
+		// personal workspace. Non-owner launches use the linked Crew runtime.
+
 		conversationKey := strings.TrimSpace(req.AgentProfileConversationKey)
 		if conversationKey == "" {
 			return nil, fmt.Errorf("agent_profile_conversation_key is required for Code")
@@ -414,9 +413,13 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		}
 		crewOwned = project.OwnedByCaller
 		crewRoot = project.Binding.WorkspacePath
-		// Only the owner reaches a Code turn (it is owner-only, see above) and
-		// gets native tools.
-		if crewOwned && project.Binding.ProjectNativeAgentTools && profile.ToolPolicy.IsAllowlist() {
+		// Native tools may load project-local provider configuration. Non-owner
+		// Builders retain all role-checked bridge tools in an isolated runtime.
+		strictOwner := crewProjectOwnedByCallerStrict(userID, crewRoot)
+		if !strictOwner {
+			profile.Runtime.AgentTools.Mode = "mcp_only"
+		}
+		if strictOwner && project.Binding.ProjectNativeAgentTools && profile.ToolPolicy.IsAllowlist() {
 			profile.Runtime.AgentTools.Mode = "full"
 		}
 		if !crewOwned {
@@ -525,6 +528,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			return nil, err
 		}
 		req.CodeChatMode = mode
+		if mode == "local" && !crewProjectOwnedByCallerStrict(userID, agentProfileRuntimeWorkspace(userID, workspacePath)) {
+			return nil, fmt.Errorf("Only this project’s main owner can connect Local files. Open your own Local project instead.")
+		}
 	}
 	if profile.ID == codeproduct.ProfileID && req.CodeChatMode != "local" && codeProjectMode(ctx, workspacePath) == "cowork" {
 		applyCoworkProfile(&profile)
@@ -741,7 +747,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		connections = chatMCPConnections(ctx, profile.ID, userID, req.SelectedFolder)
 		knowledgeKey = knowledgeRuntimeConfigKey(workspacePath)
 	}
-	return &resolvedAgentProfile{Definition: profile, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions,
+	return &resolvedAgentProfile{IsolateCodeCLI: profile.ID == "code" && !crewProjectOwnedByCallerStrict(userID, agentProfileRuntimeWorkspace(userID, workspacePath)), Definition: profile, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions,
 		CodeLocalDisabledTools: localDisabledTools, CodeChatMode: req.CodeChatMode,
 		ChatConnections: connections, ChatSecrets: api.chatSecretNames(ctx, userID, req)}, nil
 }

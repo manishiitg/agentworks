@@ -5927,7 +5927,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if resolvedProfile != nil {
 			turnProfileID = resolvedProfile.Definition.ID
 		}
-		chatWorkingDir, sharedChatWorkingDir, isolationErr := turnCLIWorkingDir(turnProfileID, isWorkflowPhase, chatWorkingFolder, currentUserID, sessionID, finalProvider, workflowCLIMode(&req, currentUserIsReadOnly), currentUserIsReadOnly)
+		chatWorkingDir, sharedChatWorkingDir, isolationErr := turnCLIWorkingDir(turnProfileID, isWorkflowPhase, chatWorkingFolder, currentUserID, sessionID, finalProvider, workflowCLIMode(&req, currentUserIsReadOnly), currentUserIsReadOnly, resolvedProfile != nil && resolvedProfile.IsolateCodeCLI)
 		if isolationErr != nil {
 			sendError(isolationErr.Error(), true)
 			return
