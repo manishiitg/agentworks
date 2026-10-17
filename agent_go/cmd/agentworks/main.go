@@ -156,6 +156,7 @@ func newCommand(o *options) *cobra.Command {
 	}
 	toolsCmd.AddCommand(call)
 	root.AddCommand(toolsCmd)
+	root.AddCommand(publishCommand(o))
 	root.AddCommand(brainCommand(o))
 	root.AddCommand(secretCommand(o))
 	for _, group := range cliOperationGroups {

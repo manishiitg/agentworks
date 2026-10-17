@@ -3184,6 +3184,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/external/v1/tools", api.handleExternalTools).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/call", api.handleExternalCall).Methods("POST")
 	apiRouter.HandleFunc("/workspaces", api.handleWorkspaces).Methods("POST")
+	apiRouter.HandleFunc("/external/v1/publications", api.handlePublicationUpload).Methods("POST")
+	apiRouter.HandleFunc("/external/v1/publications/{operation}", api.handlePublicationUpload).Methods("GET", "PUT", "POST")
 	apiRouter.HandleFunc("/relays/{id}/runs", api.handleStartRelayRun).Methods("POST")
 	apiRouter.HandleFunc("/relays/{id}/runs/{run}", api.handleGetRelayRun).Methods("GET")
 	apiRouter.HandleFunc("/relays/{id}/releases", api.handleListRelayReleases).Methods("GET")
@@ -5927,7 +5929,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if resolvedProfile != nil {
 			turnProfileID = resolvedProfile.Definition.ID
 		}
-		chatWorkingDir, sharedChatWorkingDir, isolationErr := turnCLIWorkingDir(turnProfileID, isWorkflowPhase, chatWorkingFolder, currentUserID, sessionID, finalProvider, workflowCLIMode(&req, currentUserIsReadOnly), currentUserIsReadOnly, resolvedProfile != nil && resolvedProfile.IsolateCodeCLI)
+		cliWorkspaceFolder := chatWorkingFolder
+		if source := publicationSourceForProfile(resolvedProfile); source != "" {
+			cliWorkspaceFolder = source
+		}
+		chatWorkingDir, sharedChatWorkingDir, isolationErr := turnCLIWorkingDir(turnProfileID, isWorkflowPhase, cliWorkspaceFolder, currentUserID, sessionID, finalProvider, workflowCLIMode(&req, currentUserIsReadOnly), currentUserIsReadOnly, resolvedProfile != nil && (resolvedProfile.IsolateCodeCLI || resolvedProfile.Publication != nil))
 		if isolationErr != nil {
 			sendError(isolationErr.Error(), true)
 			return
@@ -5949,6 +5955,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		crewReaderCLI := currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID)
 		if currentUserIsReadOnly && (isWorkflowPhase || crewReaderCLI) {
 			cliWritePaths = nil
+		}
+		if resolvedProfile != nil && resolvedProfile.Publication != nil {
+			p := resolvedProfile.Publication
+			cliReadPaths = append(cliReadPaths, p.Root)
+			if !crewReaderCLI {
+				cliWritePaths = publishedRuntimeRoots(p.Root)
+			}
 		}
 		if isWorkflowPhase && isGoalLeadSessionID(sessionID) {
 			// Pulse writes only its own folders (product.yaml pulse.write_paths).
@@ -6616,7 +6629,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 							guardWrite = append(guardWrite, brainGrant)
 						}
 					}
+					if resolvedProfile.Publication != nil && !crewReadOnlyTurn {
+						guardWriteRoot = ""
+						guardReadOnly = append([]string{profileWrite}, guardReadOnly...)
+						guardWrite = publishedRuntimeRoots(profileRoot)
+					}
 					executorWrite := append(append(append([]string{}, chatHistoryGrants...), workGrantWrite...), crewRefWrite...)
+					if resolvedProfile.Publication != nil {
+						executorWrite = append(executorWrite, guardWrite...)
+					}
 					if crewRunOutput != "" {
 						executorWrite = append(executorWrite, crewRunOutput)
 					}
@@ -6625,6 +6646,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 					workspaceExecutors = wrapExecutorsWithPlanFolderGuard(workspaceExecutors, guardWriteRoot, guardReadOnly, executorWrite...)
 					workspace.SetSessionWorkingDir(sessionID, profileRoot)
+					if source := publicationSourceForProfile(resolvedProfile); source != "" {
+						workspace.SetSessionWorkingDir(sessionID, source)
+					}
 					if brainGrant != "" {
 						syncBrainAfterFileTools(workspaceExecutors, currentUserID)
 						workspace.SetSessionWorkingDir(sessionID, brainFolderName)

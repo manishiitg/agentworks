@@ -33,6 +33,9 @@ import (
 type resolvedAgentProfile struct {
 	IsolateCodeCLI bool
 
+	// Publication is loaded from the server-owned record after project admission.
+	// Its immutable revision pins this execution; it is never client supplied.
+	Publication     *publishedProject
 	Definition      agentprofiles.Profile
 	SelectedServers []string
 	Prompt          string
@@ -747,7 +750,29 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		connections = chatMCPConnections(ctx, profile.ID, userID, req.SelectedFolder)
 		knowledgeKey = knowledgeRuntimeConfigKey(workspacePath)
 	}
-	return &resolvedAgentProfile{IsolateCodeCLI: profile.ID == "code" && !crewProjectOwnedByCallerStrict(userID, agentProfileRuntimeWorkspace(userID, workspacePath)), Definition: profile, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions,
+	publication, publicationErr := readPublishedProject(ctx, agentProfileRuntimeWorkspace(userID, workspacePath))
+	if publicationErr != nil {
+		return nil, publicationErr
+	}
+	if publication != nil {
+		req.Provider, req.ModelID, req.ConnectionID = publication.Provider, publication.ModelID, publication.ConnectionID
+		if req.LLMConfig != nil {
+			req.LLMConfig.Primary.Provider = publication.Provider
+			req.LLMConfig.Primary.ModelID = publication.ModelID
+			req.LLMConfig.Primary.ConnectionID = publication.ConnectionID
+		}
+		keys, err := api.connectionAPIKeys(ctx, providerAccountScope{Principal: publication.OwnerID, WorkspacePath: publication.Root, Product: publication.ProfileID}, publication.Provider, publication.ConnectionID)
+		if err != nil {
+			return nil, err
+		}
+		resolvedKeys = keys
+		identityKey += ":published:" + publication.Revision
+		rendered += "\n\n" + publishedSourceNotice
+		if publishedBuilderHandoff(req, !crewOwned) {
+			rendered += "\n\nPrivate Builder handoff summary:\n" + publicationHistorySummary(publication)
+		}
+	}
+	return &resolvedAgentProfile{IsolateCodeCLI: profile.ID == "code" && !crewProjectOwnedByCallerStrict(userID, agentProfileRuntimeWorkspace(userID, workspacePath)), Definition: profile, Publication: publication, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions,
 		CodeLocalDisabledTools: localDisabledTools, CodeChatMode: req.CodeChatMode,
 		ChatConnections: connections, ChatSecrets: api.chatSecretNames(ctx, userID, req)}, nil
 }

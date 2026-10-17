@@ -728,7 +728,14 @@ func init() {
 	workspacepkg.FileReadReceipt = rememberTeamPlanRead
 	workspacepkg.FileWriteReceipt = teamPlanSaved
 	workspacepkg.BeforeFileUpdate = teamManagedWrite
-	workspacepkg.AdditionalPathPolicy = teamRawPathPolicy
+	workspacepkg.AdditionalPathPolicy = func(ctx context.Context, path string, write bool) error {
+		if write {
+			if reason := publishedWriteRefusal(ctx, path); reason != "" {
+				return fmt.Errorf("%s", reason)
+			}
+		}
+		return teamRawPathPolicy(ctx, path, write)
+	}
 }
 func teamProtectedSource(rel string) bool {
 	rel = strings.ToLower(rel)

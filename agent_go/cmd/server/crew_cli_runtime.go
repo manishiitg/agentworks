@@ -92,5 +92,11 @@ func applyCrewChatMode(profile *resolvedAgentProfile, req *QueryRequest, readOnl
 	}
 	profile.Definition = definition
 	profile.Prompt = strings.TrimSpace(rendered)
+	if profile.Publication != nil {
+		profile.Prompt += "\n\n" + publishedSourceNotice
+		if publishedBuilderHandoff(req, readOnly) {
+			profile.Prompt += "\n\nPrivate Builder handoff summary:\n" + publicationHistorySummary(profile.Publication)
+		}
+	}
 	return nil
 }

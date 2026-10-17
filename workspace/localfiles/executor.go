@@ -38,6 +38,7 @@ func Open(deviceID string, grants []Grant) (*Executor, error) {
 		// Local folders always support shell commands; writable controls edits. The advertised
 		// field is protocol capability metadata, not a separate permission.
 		grants[i].Shell = true
+		grants[i].Publication = true
 		grants[i].Patch = grants[i].Writable || grants[i].Downloads
 		var err error
 		grants[i].Root, err = filepath.Abs(grants[i].Root)
@@ -170,6 +171,8 @@ func (e *Executor) Execute(ctx context.Context, r Request) Response {
 	}
 	var err error
 	switch r.Operation {
+	case "publish_snapshot":
+		result.Publication, err = e.publicationSnapshot(ctx, g, r)
 	case "read":
 		var file wf.File
 		file, err = e.editors[g.ID].Read(".", r.Path, &g.Guard)

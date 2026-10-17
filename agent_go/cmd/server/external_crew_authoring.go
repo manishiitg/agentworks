@@ -476,7 +476,7 @@ func (api *StreamingAPI) createCrewFromSpec(ctx context.Context, claims *UserCla
 	return api.createWorkspaceFromSpec(ctx, claims, "work", spec, enableSchedules)
 }
 
-func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *UserClaims, profileID string, spec crewSpec, enableSchedules bool) (string, error) {
+func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *UserClaims, profileID string, spec crewSpec, enableSchedules bool, reservedID ...string) (string, error) {
 	spec, templates, err := normalizeCrewSpec(spec)
 	if err != nil {
 		return "", err
@@ -510,6 +510,12 @@ func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *Us
 	}
 	runtimeRoot := crewCreationRoot(profileID, agentProfileRuntimeWorkspace(userID, projectsRoot))
 	crewID := uuid.NewString()
+	if len(reservedID) > 0 {
+		if _, err := uuid.Parse(reservedID[0]); err != nil {
+			return "", fmt.Errorf("invalid reserved project identity")
+		}
+		crewID = reservedID[0]
+	}
 	workspacePath := runtimeRoot + "/" + slugifyCrewTitle(spec.Name) + "-" + crewID[:8]
 	if projectExistsAtPath(ctx, workspacePath) {
 		return "", fmt.Errorf("crew folder collision; retry")
@@ -584,6 +590,9 @@ type crewUpdate struct {
 // applies identity, files, skills, functions and schedules in that order.
 func (api *StreamingAPI) updateCrewFromSpec(ctx context.Context, claims *UserClaims, crew crewProjectBinding, manifest productProjectManifest, update crewUpdate) error {
 	root := crew.Binding.WorkspacePath
+	if reason := publishedWriteRefusal(ctx, root); reason != "" {
+		return fmt.Errorf("%s", reason)
+	}
 	trimmed := func(value *string) *string {
 		if value == nil {
 			return nil

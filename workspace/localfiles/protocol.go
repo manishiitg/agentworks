@@ -20,11 +20,12 @@ type Resource struct {
 	ID string `json:"id"`
 	// Capabilities distinguish older CLIs. New executors always support shell;
 	// writable folders also support guarded patches. These are not opt-in flags.
-	Patch     bool           `json:"patch,omitempty"`
-	Shell     bool           `json:"shell,omitempty"`
-	Writable  bool           `json:"writable"`
-	Downloads bool           `json:"downloads,omitempty"`
-	Guard     wf.FolderGuard `json:"guard"`
+	Publication bool           `json:"publication,omitempty"`
+	Patch       bool           `json:"patch,omitempty"`
+	Shell       bool           `json:"shell,omitempty"`
+	Writable    bool           `json:"writable"`
+	Downloads   bool           `json:"downloads,omitempty"`
+	Guard       wf.FolderGuard `json:"guard"`
 }
 type Hello struct {
 	Version  int    `json:"version"`
@@ -71,6 +72,8 @@ func (h Hello) Validate() error {
 }
 
 type Request struct {
+	Offset           int64           `json:"offset,omitempty"`
+	ProjectID        string          `json:"project_id,omitempty"`
 	Identity         wf.EditIdentity `json:"identity"`
 	ID               string          `json:"id"`
 	ResourceID       string          `json:"resource_id"`
@@ -83,15 +86,16 @@ type Request struct {
 	RequestID        string          `json:"request_id,omitempty"`
 }
 type Response struct {
-	Patches []wf.WriteReceipt `json:"patches,omitempty"`
-	Shell   *ShellResult      `json:"shell,omitempty"`
-	Code    string            `json:"code,omitempty"`
-	ID      string            `json:"id"`
-	Status  int               `json:"status"`
-	Error   string            `json:"error,omitempty"`
-	File    *wf.File          `json:"file,omitempty"`
-	Entries []wf.Entry        `json:"entries,omitempty"`
-	Receipt *wf.WriteReceipt  `json:"receipt,omitempty"`
+	Publication *PublicationSnapshot `json:"publication,omitempty"`
+	Patches     []wf.WriteReceipt    `json:"patches,omitempty"`
+	Shell       *ShellResult         `json:"shell,omitempty"`
+	Code        string               `json:"code,omitempty"`
+	ID          string               `json:"id"`
+	Status      int                  `json:"status"`
+	Error       string               `json:"error,omitempty"`
+	File        *wf.File             `json:"file,omitempty"`
+	Entries     []wf.Entry           `json:"entries,omitempty"`
+	Receipt     *wf.WriteReceipt     `json:"receipt,omitempty"`
 }
 
 const DefaultShellTimeout = 60

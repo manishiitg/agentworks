@@ -59,6 +59,15 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	if err := wf.ValidateGlob(req.Glob); err != nil {
 		return wf.Result{}, &externalUpstreamError{400, err.Error()}
 	}
+	if crewRoot && !publishedRuntimeRelative(p) {
+		publication, publicationErr := readPublishedProject(ctx, rootPath)
+		if publicationErr != nil {
+			return wf.Result{}, publicationErr
+		}
+		if publication != nil {
+			rootPath = publication.sourceRoot()
+		}
+	}
 	base, err := os.OpenRoot(getWorkspaceDocsAbsPath())
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {

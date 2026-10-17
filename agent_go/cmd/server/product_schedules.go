@@ -1274,6 +1274,9 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 		if functionCall != nil {
 			functionCall.mu.Lock()
 			functionCall.SessionID = sessionID
+			if functionCall.Publication != nil {
+				runCtx = context.WithValue(runCtx, publicationExecutionKey{}, functionCall.Publication)
+			}
 			functionCall.mu.Unlock()
 			functionCall.persist()
 			runCtx = costActivityContext(runCtx, functionCall.UserID, "function_call", functionCall.ID)

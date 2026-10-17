@@ -427,7 +427,10 @@ func (api *StreamingAPI) localDeviceCall(ctx context.Context, claims *UserClaims
 				return localfiles.Response{}, &wf.FileError{Status: 400, Message: err.Error()}
 			}
 		}
-		if request.Operation != "read" && request.Operation != "list" && !write && !shell {
+		if request.Operation == "publish_snapshot" && (!resource.Publication || !userAccessForClaims(current).CanEdit) {
+			return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Update and reconnect the CLI, then publish from a project you may build."}
+		}
+		if request.Operation != "read" && request.Operation != "list" && request.Operation != "publish_snapshot" && !write && !shell {
 			return localfiles.Response{}, &wf.FileError{Status: 400, Message: "Unsupported device operation"}
 		}
 		if write && (request.RequestID == "" || request.ExpectedRevision == "" || len(request.RequestID) > 128 || len(request.Content) > wf.MaxFileBytes) {

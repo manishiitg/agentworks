@@ -37,6 +37,16 @@ func (api *StreamingAPI) externalCrewFilesCall(w http.ResponseWriter, r *http.Re
 		return
 	}
 	root := agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath)
+	if reason := publishedWriteRefusal(r.Context(), root+"/"+externalArg(args, "path")); reason != "" {
+		externalError(w, 403, "published_source", reason)
+		return
+	}
+	if destination := externalArg(args, "destination"); destination != "" {
+		if reason := publishedWriteRefusal(r.Context(), root+"/"+destination); reason != "" {
+			externalError(w, 403, "published_source", reason)
+			return
+		}
+	}
 	p, err := wf.CleanRelative(externalArg(args, "path"))
 	guard := externalFileGuard(r.Context(), true)
 	if err != nil || wf.ProtectedWrite(p) || !guard.Allows(p, true) {

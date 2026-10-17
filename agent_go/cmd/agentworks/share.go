@@ -32,16 +32,18 @@ const shareAuthFailed = "sign-in"
 
 // shareState is what a running share leaves on disk so stop, status and a second start can find it.
 type shareState struct {
-	PID       int       `json:"pid"`
-	Device    string    `json:"device"`
-	Alias     string    `json:"alias"`
-	Workspace string    `json:"workspace,omitempty"`
-	Folder    string    `json:"folder"`
-	Server    string    `json:"server"`
-	Started   time.Time `json:"started"`
-	Connected bool      `json:"connected"`
-	Error     string    `json:"error,omitempty"`
-	Log       string    `json:"log,omitempty"`
+	Publication bool      `json:"publication,omitempty"`
+	Blocked     []string  `json:"blocked,omitempty"`
+	PID         int       `json:"pid"`
+	Device      string    `json:"device"`
+	Alias       string    `json:"alias"`
+	Workspace   string    `json:"workspace,omitempty"`
+	Folder      string    `json:"folder"`
+	Server      string    `json:"server"`
+	Started     time.Time `json:"started"`
+	Connected   bool      `json:"connected"`
+	Error       string    `json:"error,omitempty"`
+	Log         string    `json:"log,omitempty"`
 }
 
 // useShareConfig keeps the local connection's sign-in apart from remote MCP credentials, as the setup docs describe.
@@ -336,7 +338,7 @@ func runShareForeground(ctx context.Context, o *options, f startFlags, folder, d
 		teed.stderr = io.MultiWriter(o.stderr, rot)
 		o = &teed
 	}
-	st := shareState{PID: os.Getpid(), Device: device, Alias: alias, Workspace: workspace, Folder: folder, Server: server, Started: time.Now(), Log: logPath}
+	st := shareState{Publication: true, Blocked: f.blocked, PID: os.Getpid(), Device: device, Alias: alias, Workspace: workspace, Folder: folder, Server: server, Started: time.Now(), Log: logPath}
 	writeShareState(statePath, st)
 	defer os.Remove(statePath)
 	p := shareParams(f, device, alias, folder)
@@ -444,7 +446,7 @@ func serveShareCommand(o *options) *cobra.Command {
 			}
 		}
 		server := o.serverURL
-		st := shareState{PID: os.Getpid(), Device: f.device, Alias: alias, Workspace: workspace, Folder: folder, Server: server, Started: time.Now(), Log: logPath}
+		st := shareState{Publication: true, Blocked: f.blocked, PID: os.Getpid(), Device: f.device, Alias: alias, Workspace: workspace, Folder: folder, Server: server, Started: time.Now(), Log: logPath}
 		writeShareState(statePath, st)
 		p := shareParams(f, f.device, alias, folder)
 		p.connected = func() { st.Connected = true; writeShareState(statePath, st) }

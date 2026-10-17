@@ -152,6 +152,7 @@ func workspacePathExists(ctx context.Context, folderPath string) bool {
 // readFileFromWorkspace reads a file from the workspace API and returns its content as a string
 // Returns (content, true, nil) if file exists, (empty, false, nil) if file doesn't exist (404), or (empty, false, error) on error
 func readFileFromWorkspace(ctx context.Context, filePath string) (string, bool, error) {
+	filePath = publishedReadPath(ctx, filePath)
 	if raw, exists, handled := stagedTeamRead(ctx, filePath); handled {
 		return raw, exists, nil
 	}
@@ -361,6 +362,9 @@ func deleteWorkspaceFile(ctx context.Context, configPath string) error {
 
 // writeFileToWorkspace writes content to a file in the workspace via the workspace API
 func writeFileToWorkspace(ctx context.Context, filePath, content string) error {
+	if refusal := publishedWriteRefusal(ctx, filePath); refusal != "" {
+		return fmt.Errorf("%s", refusal)
+	}
 	if handled, e := stageTeamWrite(ctx, filePath, content); handled {
 		return e
 	}

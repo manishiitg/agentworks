@@ -93,6 +93,11 @@ func serverOwnedWrite(clean string) bool {
 func (p workspaceProxyPolicy) denies(key, raw string) string {
 	write := p.write && !workspaceProxySourceKeys[key]
 	clean := workspaceProxyCleanPath(raw)
+	if write {
+		if reason := publishedWriteRefusal(p.ctx, clean); reason != "" {
+			return reason
+		}
+	}
 	deleteTarget := clean
 	if p.clearFolder {
 		deleteTarget = strings.TrimSuffix(deleteTarget, "/files")

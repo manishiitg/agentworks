@@ -73,6 +73,7 @@ func crewFunctionWait(raw interface{}) time.Duration {
 var crewFunctionNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,47}$`)
 
 type crewFunction struct {
+	publication  *publishedProject
 	Name         string                 `json:"name"`
 	Description  string                 `json:"description,omitempty"`
 	InputSchema  map[string]interface{} `json:"input_schema,omitempty"`
@@ -106,6 +107,13 @@ func crewFunctionsPath(ctx context.Context, target triggerTarget) string {
 }
 
 func readCrewFunctions(ctx context.Context, target triggerTarget) ([]crewFunction, error) {
+	publication, err := readPublishedProject(ctx, crewFunctionRoot(ctx, target))
+	if err != nil {
+		return nil, err
+	}
+	if publication != nil {
+		ctx = context.WithValue(ctx, publicationExecutionKey{}, publication)
+	}
 	raw, exists, err := readFileFromWorkspace(ctx, crewFunctionsPath(ctx, target))
 	if err != nil {
 		return nil, fmt.Errorf("read functions of %s %q: %w", target.Kind, target.Label, err)
@@ -116,6 +124,9 @@ func readCrewFunctions(ctx context.Context, target triggerTarget) ([]crewFunctio
 	var doc crewFunctionsDoc
 	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
 		return nil, fmt.Errorf("functions.json of %s %q is not valid JSON: %w", target.Kind, target.Label, err)
+	}
+	for i := range doc.Functions {
+		doc.Functions[i].publication = publication
 	}
 	return doc.Functions, nil
 }
@@ -347,6 +358,7 @@ type crewFunctionCall struct {
 	TargetProfileID   string                      `json:"target_profile_id,omitempty"`
 	TargetLabel       string                      `json:"target_label"`
 	TargetPath        string                      `json:"target_path"`
+	Publication       *publishedProject           `json:"publication,omitempty"`
 	Chain             []string                    `json:"chain"`
 	Root              string                      `json:"root"`
 	TriggerID         string                      `json:"trigger_id"`
@@ -903,6 +915,7 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		RunMode: crewRunModeFromContext(ctx), admissionHeld: target.Kind == triggerCallerCrew,
 	}
 	call.ExecutionScope, _ = ctx.Value(structuredFunctionExecutionScopeKey{}).(string)
+	call.Publication = fn.publication
 	fromPath := caller.Path
 	if caller.Stamp.ProfileID == codeproduct.ProfileID {
 		fromPath = ""
