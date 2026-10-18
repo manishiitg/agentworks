@@ -229,21 +229,13 @@ until index.html has passed validation. Do not run the workflow. If a source is
 missing or the consolidation is ambiguous, report the blocker and do not stamp.
 Otherwise call set_workflow_contract_version(version="1.0.23") and stop.`
 
-const upgradeDedicatedPulseSchedule = `WORKFLOW CONTRACT UPGRADE: POST-RUN PULSE ENABLEMENT.
+const upgradeDedicatedPulseSchedule = `WORKFLOW CONTRACT UPGRADE: WORKFLOW-WIDE PULSE.
 
-Recurring Pulse is represented by workflow.json pulse.enabled. It has no
-independent cron: after each normal scheduled workflow run, Pulse Gate decides
-whether Review+Fix work is due for that run's evidence. Legacy post_run_monitor,
-post_run_monitor_mode, and pulse_review_only schedules are obsolete.
+Recurring Pulse is represented by workflow.json pulse.enabled. It has no independent cron. The same continuing Pulse chooses its useful goal checks; normal scheduled runs do not start Gate, reviewers or a fixer. When OFF, Pulse only saves weekly suggestions and cannot act.
 
-Read the raw workflow.json before changing anything. Preserve prior enablement:
-if post_run_monitor was true or an enabled pulse_review_only schedule exists,
-set pulse.enabled=true. Otherwise leave Pulse disabled. Remove every
-pulse_review_only schedule; do not change any normal workflow schedule.
-Calling set_workflow_contract_version rewrites the manifest through the current
-schema and removes the retired fields.
+Read workflow.json and list_schedules. The server's one-time conversion preserves prior effective enablement and housekeeping, and removes obsolete post_run_monitor, post_run_monitor_mode and pulse_review_only fields. Preserve the canonical pulse.enabled and outward_actions settings, including an explicit OFF. Never recreate retired schedule modes or reviewer schedules. Do not change ordinary schedules, their timing, routes or enabled state. Do not run the workflow or Pulse.
 
-Do not run the workflow. Call set_workflow_contract_version(version="1.0.27") and stop.`
+Verify the saved canonical settings and call set_workflow_contract_version(version="1.0.27") and stop.`
 
 const upgradeSchedulePromptContract = `WORKFLOW CONTRACT UPGRADE: CURRENT SCHEDULE INSTRUCTIONS.
 

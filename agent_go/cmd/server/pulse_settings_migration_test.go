@@ -67,4 +67,17 @@ func TestPulseSettingsMigrationKeepsOutwardAuthority(t *testing.T) {
 	if result.Pulse.Enabled || len(result.Schedules) != 1 || !result.Schedules[0].AfterRun.Backup {
 		t.Fatalf("explicit OFF or old housekeeping lost: %s", migrated)
 	}
+	for _, prior := range []struct {
+		pulse string
+		on    bool
+	}{
+		{`{}`, true}, {`{"enabled":false,"outward_actions":"ask"}`, false},
+	} {
+		migrated, _ := workflowtypes.NormalizePulseSettingsJSON([]byte(`{"post_run_monitor":true,"post_run_monitor_mode":"per_run","pulse":` + prior.pulse + `}`))
+		var doc struct{ Pulse struct{ Enabled bool } }
+		if err := json.Unmarshal(migrated, &doc); err != nil || doc.Pulse.Enabled != prior.on || strings.Contains(string(migrated), "post_run_monitor") {
+			t.Fatalf("old monitor conversion: %s %v", migrated, err)
+		}
+	}
+
 }

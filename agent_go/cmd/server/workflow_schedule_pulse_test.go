@@ -16,7 +16,7 @@ func TestExplicitSchedulePulseMigration(t *testing.T) {
 	if len(plan) != 9 || plan[0].to != workflowContractExplicitSchedulePulseVersion || plan[0].label != "upgrade-explicit-schedule-pulse" || plan[1].to != workflowContractNestedAgentArtifactsVersion || plan[2].to != workflowContractManagedDBScriptsVersion || plan[3].to != workflowContractStepDescriptionLayoutVersion {
 		t.Fatalf("unexpected migration: %+v", plan)
 	}
-	for _, want := range []string{"after_run", "disabled schedules", "calendar schedules", "retained", "Do not change cron", "Do not execute the workflow", "do not stamp", "token cost", "multiple runs"} {
+	for _, want := range []string{"after_run", "disabled schedules", "calendar schedules", "retained", "Do not change cron", "Do not execute the workflow", "do not stamp", "token cost"} {
 		if !strings.Contains(plan[0].query, want) {
 			t.Errorf("missing migration requirement %q", want)
 		}

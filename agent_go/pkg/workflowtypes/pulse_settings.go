@@ -34,7 +34,9 @@ func NormalizePulseSettingsJSON(raw []byte) ([]byte, bool) {
 	var enabled bool
 	_ = json.Unmarshal(pulse["enabled"], &enabled)
 	_, canonical := pulse["outward_actions"]
-	legacyEnabled := enabled
+	var postRunMonitor bool
+	_ = json.Unmarshal(doc["post_run_monitor"], &postRunMonitor)
+	legacyEnabled := enabled || postRunMonitor
 	for _, schedule := range schedules {
 		var on, review bool
 		var mode string
@@ -58,6 +60,12 @@ func NormalizePulseSettingsJSON(raw []byte) ([]byte, bool) {
 	for _, key := range []string{"autonomy", "pace", "schedule", "disabled_review_modules"} {
 		if _, ok := pulse[key]; ok {
 			delete(pulse, key)
+			changed = true
+		}
+	}
+	for _, key := range []string{"post_run_monitor", "post_run_monitor_mode"} {
+		if _, ok := doc[key]; ok {
+			delete(doc, key)
 			changed = true
 		}
 	}

@@ -12626,6 +12626,9 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			return sb.String(), nil
 		},
 		CreateSchedule: func(ctx context.Context, workspacePath, name, cronExpr, timezone string, groupNames []string, routeSelections map[string]string, mode string, messages []string, directMessagesReason string, workshopMode string, resumePrevious *bool, pulseReviewOnly bool, policy todo_creation_human.ScheduleRuntimePolicy) (string, error) {
+			if pulseReviewOnly {
+				return "", fmt.Errorf("Pulse is workflow-wide. Use update_workflow_config(pulse_enabled=true), with no separate review schedule")
+			}
 			mode = scheduleModeOrDefault(mode)
 			if mode == "multi-agent" {
 				return "", fmt.Errorf("workflow schedules must use workflow mode")
@@ -12872,7 +12875,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				sched.ResumePrevious = resumePrevious
 			}
 			if pulseReviewOnly != nil {
-				sched.PulseReviewOnly = *pulseReviewOnly
+				return "", fmt.Errorf("Pulse is workflow-wide. Use update_workflow_config(pulse_enabled=true), with no separate review schedule")
 			}
 			if policy != nil {
 				if policy.SetExecutionMode {

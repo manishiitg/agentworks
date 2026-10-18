@@ -1205,67 +1205,6 @@ func TestUpdateScheduleClearsMessagesOnlyWhenExplicitlySet(t *testing.T) {
 // validateScheduleGroupNamesForWorkspace revalidation (which runs
 // independent of whether this call touched group_names at all) both had to
 // be guarded, not just the one the caller happens to exercise first.
-func TestCreateAndUpdatePulseReviewOnlyScheduleSkipsGroupNamesRequirement(t *testing.T) {
-	workspacePath := "Workflow/social-media"
-	manifest := &WorkflowManifest{
-		SchemaVersion: WorkflowManifestSchemaVersion,
-		ID:            "social-media",
-		Label:         "Social Media",
-	}
-	manifestJSON, err := json.Marshal(manifest)
-	if err != nil {
-		t.Fatalf("marshal manifest: %v", err)
-	}
-	mock := &mockWorkspaceAPI{files: map[string]string{
-		workspacePath + "/workflow.json": string(manifestJSON),
-		// Deliberately no variables/variables.json — a PulseReviewOnly schedule
-		// must never need it, unlike an ordinary workflow-execution schedule.
-	}}
-	workspace := httptest.NewServer(mock)
-	defer workspace.Close()
-	t.Setenv("WORKSPACE_API_URL", workspace.URL)
-
-	callbacks := (&StreamingAPI{}).buildSchedulerCallbacks()
-	readManifest := func() WorkflowManifest {
-		mock.mu.Lock()
-		content := mock.files[workspacePath+"/workflow.json"]
-		mock.mu.Unlock()
-		var current WorkflowManifest
-		if err := json.Unmarshal([]byte(content), &current); err != nil {
-			t.Fatalf("unmarshal persisted manifest: %v", err)
-		}
-		return current
-	}
-
-	if _, err := callbacks.CreateSchedule(context.Background(), workspacePath, "Periodic Pulse Review", "0 3 * * *", "Asia/Kolkata",
-		nil, nil, "workshop", nil, "", "run", nil, true, todo_creation_human.ScheduleRuntimePolicy{}); err != nil {
-		t.Fatalf("CreateSchedule(pulseReviewOnly=true) error = %v, want success without group_names", err)
-	}
-	current := readManifest()
-	if len(current.Schedules) != 1 {
-		t.Fatalf("schedules = %d, want 1", len(current.Schedules))
-	}
-	if !current.Schedules[0].PulseReviewOnly {
-		t.Fatal("persisted schedule must have pulse_review_only=true")
-	}
-	if len(current.Schedules[0].GroupNames) != 0 {
-		t.Fatalf("group_names = %v, want empty for a pulse_review_only schedule", current.Schedules[0].GroupNames)
-	}
-	jobID := current.Schedules[0].ID
-
-	newCron := "0 4 * * *"
-	if _, err := callbacks.UpdateSchedule(context.Background(), jobID, "", newCron, "", nil, false, nil, false, nil, "", nil, false, nil, "", nil, nil, nil); err != nil {
-		t.Fatalf("UpdateSchedule() on an existing pulse_review_only schedule, changing only cron, error = %v", err)
-	}
-	current = readManifest()
-	if current.Schedules[0].CronExpression != newCron {
-		t.Fatalf("cron_expression = %q, want %q", current.Schedules[0].CronExpression, newCron)
-	}
-	if !current.Schedules[0].PulseReviewOnly {
-		t.Fatal("pulse_review_only must survive an unrelated update")
-	}
-}
-
 func TestPostRunMonitorUsesDynamicModulesAndSingleFinalizer(t *testing.T) {
 	steps := pulseLifecycleSteps()
 	// Goal Work (strategic-review) runs first; platform upkeep follows. Workflow

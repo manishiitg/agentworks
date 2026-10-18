@@ -77,7 +77,7 @@ export function PulseOffCard({ pulseOn, hasSoul, runSetup, saving, onTurnOn }: {
         </div>
         <div className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
           <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
-          <span>Pulse only reads. The Builder makes changes within the permission levels you set; anything big comes to you under Needs you. Talk to it any time with #pulse in the Builder chat, or turn it off.</span>
+          <span>Pulse only reads. The Builder makes changes within its current permissions; anything big comes to you under Needs you. Talk to it any time with #pulse in the Builder chat, or turn it off.</span>
         </div>
       </section>
 

@@ -74,7 +74,7 @@ it('updates the header walkthrough when the Pulse tab changes', async () => {
 
   await act(async () => (host.querySelector('[data-testid="pulse-workspace"] button:last-child') as HTMLButtonElement).click());
   expect(host.querySelector('[aria-label="Walkthrough: Pulse · Platform health"]')).not.toBeNull();
-  expect(host.querySelector('[role="dialog"]')?.textContent).toContain('Workflow Review, Technical, and Architecture');
+  expect(host.querySelector('[role="dialog"]')?.textContent).toContain('Pulse checks plan consistency');
 });
 
 // Owner 2026-10-08: Pulse off (or on without a goal in soul.md) means the owner

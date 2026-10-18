@@ -60,7 +60,7 @@ func TestPulsePermissionsIsEnforcedAtToolDispatch(t *testing.T) {
 	if err != nil || !common.OutwardHeld(ctx) {
 		t.Fatalf("outward=ask must reach the tool as held, err=%v", err)
 	}
-	for _, tool := range []string{"send_message", "ask_builder", "schedule_message_wakeup", "create_human_input_request", "record_pulse_goal_work", "record_goal_observations"} {
+	for _, tool := range []string{"send_message", "ask_builder", "schedule_message_wakeup", "create_human_input_request", "record_pulse_goal_work", "record_goal_observations", "send_email", "delete_schedule"} {
 		if _, err := inTurn(`{"pulse":{"enabled":false}}`, tool); err == nil || !strings.Contains(err.Error(), "Pulse is off") {
 			t.Fatalf("OFF report action %s escaped: %v", tool, err)
 		}

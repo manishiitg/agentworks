@@ -1323,7 +1323,6 @@ func GetToolsForWorkshopMode(mode string) []string {
 		"record_pulse_result",
 		"resolve_run_concern",
 		"mark_changelog_artifact_reviewed",
-		"record_pulse_next_run",
 		"record_pulse_fast_request",
 		"record_pulse_goal_work",
 		"record_pulse_goal_check",

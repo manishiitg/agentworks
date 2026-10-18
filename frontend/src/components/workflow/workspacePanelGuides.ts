@@ -195,7 +195,7 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
   }),
   'Pulse · Platform health': () => ({
     purpose: 'Inspect the checks that keep this automation and its runtime healthy.',
-    howTo: 'Check the Workflow Review, Technical, and Architecture results. Open a maintenance issue to see its fix, verification, and activity.',
+    howTo: 'Pulse checks plan consistency and workflow problems in its continuing conversation. Open a saved issue to see its fix, verification, and activity. Earlier review results remain as history.',
   }),
   'Pulse · Issue Fix': () => ({
     purpose: 'See what Pulse tried to change for this issue.',

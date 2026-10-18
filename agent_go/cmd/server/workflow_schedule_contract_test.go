@@ -127,8 +127,8 @@ func TestUpgradePostRunPulseEnablementPromptShape(t *testing.T) {
 	for _, want := range []string{
 		"workflow.json pulse.enabled",
 		"It has no independent cron",
-		"after each normal scheduled workflow run, Pulse Gate decides",
-		"Remove every pulse_review_only schedule",
+		"normal scheduled runs do not start Gate",
+		"including an explicit OFF",
 		`set_workflow_contract_version(version="1.0.27")`,
 	} {
 		if !strings.Contains(normalized, want) {

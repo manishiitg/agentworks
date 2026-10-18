@@ -109,13 +109,13 @@ var goalWorkNeverTools = map[string]bool{
 // whose effect depends on their arguments (slack, google_workspace_cli,
 // workflow summary delivery with other recipients) are held inside the tool through
 // common.WithOutwardHeld.
-var goalWorkOutwardTools = map[string]bool{"send_slack_message": true}
+var goalWorkOutwardTools = map[string]bool{"send_slack_message": true, "send_email": true}
 
 // goalWorkToolRefusal returns the refusal for a tool call made in a Goal Work
 // turn held to perms, or nil when the call may run.
 func goalWorkToolRefusal(tool string, perms stepworkflow.GoalWorkPermissions) error {
 	tool = strings.TrimSpace(tool)
-	if !perms.Run && ((strings.HasPrefix(tool, "record_pulse_") && tool != "record_pulse_goal_check") || pulseReportActionTools[tool]) {
+	if !perms.Run && ((strings.HasPrefix(tool, "record_pulse_") && tool != "record_pulse_goal_check") || pulseReportActionTools[tool] || goalWorkNeverTools[tool]) {
 		return fmt.Errorf("%s is unavailable while Pulse is off: save suggestions in the weekly report without edits or action requests. The owner can turn Pulse on to act", tool)
 	}
 	switch {
