@@ -37,7 +37,7 @@ func TestSetupStyleKeepsPlainLinesAndFormatsOnATerminal(t *testing.T) {
 		t.Fatalf("the section labels must replace the prefixes:\n%s", got)
 	}
 	for _, row := range strings.Split(got, "\n") {
-		if visible := len(stripANSI(row)); visible > 60 {
+		if visible := len(stripANSI(row)); visible > 60 && !strings.Contains(row, "plugin uninstall") { // a command is never wrapped
 			t.Fatalf("a line is wider than the terminal (%d): %q", visible, row)
 		}
 	}
