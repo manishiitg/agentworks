@@ -565,7 +565,7 @@ func TestConcurrentTakeOffersHandOverEachMessageOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := &localBridge{sessions: map[string]*localSession{}, changed: make(chan struct{})}
+	b := &localBridge{root: t.TempDir(), sessions: map[string]*localSession{}, changed: make(chan struct{})}
 	s := &localSession{Attachment: AgentAttachment{AgentName: "a", ID: "att", Provider: "claude", SessionID: "s1"}, client: client, Offers: map[string]localOffer{}}
 	for i, id := range []string{"m1", "m2", "m3"} {
 		s.Offers[id] = localOffer{AgentLiveMessage: AgentLiveMessage{MessageID: id, Sequence: i}}
