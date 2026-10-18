@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -14,6 +15,8 @@ type crewAgentCatalog struct {
 	SchemaVersion int                 `json:"schema_version"`
 	Agents        []crewAgentTemplate `json:"agents"`
 }
+
+var errUnknownCrewTemplate = errors.New("unknown Crew template")
 
 type crewAgentTemplate struct {
 	ID             string            `json:"id"`
@@ -60,7 +63,7 @@ func loadCrewAgentTemplate(id string) (*crewAgentTemplate, error) {
 			return item, nil
 		}
 	}
-	return nil, fmt.Errorf("unknown Crew template %q", id)
+	return nil, fmt.Errorf("%w %q", errUnknownCrewTemplate, id)
 }
 
 // applyCrewAgentTemplate is idempotent across Builder retries. The

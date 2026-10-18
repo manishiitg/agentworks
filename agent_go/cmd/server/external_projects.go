@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"net/url"
@@ -182,6 +183,11 @@ func (api *StreamingAPI) externalCrewProjectCall(w http.ResponseWriter, r *http.
 		externalError(w, 409, "use_share_dashboard", "Share this Crew from its dashboard: call share_dashboard, or open the dashboard and press Share.")
 	case "install_template", "remove_template":
 		template, err := loadCrewAgentTemplate(externalArg(args, "template_id"))
+		if err != nil && !errors.Is(err, errUnknownCrewTemplate) {
+			log.Printf("[CREW_TEMPLATE] action=%s project=%s catalog=unavailable error=%q", action, crewID, err)
+			externalError(w, http.StatusServiceUnavailable, "catalog_unavailable", "Crew templates are unavailable. Ask an administrator to update this server, then try again.")
+			return
+		}
 		if err != nil || template == nil {
 			externalError(w, 400, "invalid_arguments", "Unknown template_id; see the Crew Agent catalog.")
 			return

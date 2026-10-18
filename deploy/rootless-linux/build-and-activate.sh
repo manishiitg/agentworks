@@ -304,6 +304,12 @@ python3 "$REPO_ROOT/deploy/common/build-mcp-catalog.py" "$REPO_ROOT/agent_go/con
 chmod 0644 "$BUILD_DIR/configs/mcp_servers_$PRODUCT.json"
 node "$BUILD_DIR/check-release-assets.mjs" "$BUILD_DIR/frontend"
 
+# Crew templates are a core Builder feature even when optional workflow
+# playbooks are not shipped. Keep their native catalog beside the frontend.
+mkdir -p "$BUILD_DIR/playbooks/crew-agents"
+cp -R "$REPO_ROOT/playbooks/crew-agents/." "$BUILD_DIR/playbooks/crew-agents/"
+test -f "$BUILD_DIR/playbooks/crew-agents/qa/catalog.json"
+
 if [[ "${COPY_PLAYBOOKS:-false}" == "true" ]]; then
   # With --prebuilt, REPO_ROOT is the shared build's source: read-only for the product account, and the playbook tests create temporary folders
   # next to the playbooks (server C's first prebuilt deploy failed with PermissionError there, 2026-10-04). The build validated that source once

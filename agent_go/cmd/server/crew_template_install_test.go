@@ -123,4 +123,12 @@ func TestCrewTemplateWebsiteMCPPreservesWork(t *testing.T) {
 	if denied.Code == http.StatusOK {
 		t.Fatal("another person's Run access changed templates")
 	}
+
+	// A missing deployed catalog is a server problem, not an unknown choice;
+	// a refused removal must keep the existing receipt and edited files.
+	t.Setenv("AGENTWORKS_PLAYBOOKS_DIR", t.TempDir())
+	unavailable := call("remove_template", finance.ID, true)
+	if unavailable.Code != http.StatusServiceUnavailable || !strings.Contains(unavailable.Body.String(), "catalog_unavailable") || len(crewInstalledTemplates(ctx, root)) != 1 {
+		t.Fatalf("missing catalog was misreported or detached the template: %d %s", unavailable.Code, unavailable.Body.String())
+	}
 }
