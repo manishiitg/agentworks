@@ -3,6 +3,19 @@ import { normalizeProductChatFailure } from './productChatFailure'
 import { submissionFailure } from './submissionFailure'
 
 describe('submissionFailure', () => {
+  it('shows the Pulse refusal as the card message rather than only in technical details', () => {
+    const message = "Pulse is off for this workflow. Turn it on in the workflow's Pulse settings to use it."
+    const failure = submissionFailure({
+      message: 'Request failed with status code 409',
+      response: { status: 409, data: { error: { code: 'pulse_unavailable', message } } },
+    })
+    const card = normalizeProductChatFailure(failure.message, {
+      code: failure.code,
+      technicalDetails: failure.technicalDetails,
+    })
+    expect(card).toMatchObject({ code: 'pulse_unavailable', title: 'Pulse is unavailable', message, retryable: false })
+  })
+
   it('preserves a diagnostic 409 response for the Technical details card', () => {
     const failure = submissionFailure({
       message: 'Request failed with status code 409',

@@ -4,6 +4,7 @@ export type ProductChatFailureCode =
   | 'rate_limited'
   | 'provider_unavailable'
   | 'configuration_error'
+  | 'pulse_unavailable'
   | 'cancelled'
   | 'internal_error'
 
@@ -103,6 +104,17 @@ export function normalizeProductChatFailure(rawError: string, hints: FailureHint
   const resetLabel = museResetLabelFrom(evidence)
   const actionUrl = museUpgradeUrlFrom(evidence)
   const providerLabel = provider || 'The AI provider'
+
+  // This is a server refusal with a plain next step, not a provider failure.
+  if (normalizedCode === 'pulse_unavailable') {
+    return {
+      code: 'pulse_unavailable',
+      title: 'Pulse is unavailable',
+      message: raw,
+      retryable: false,
+      technicalDetails,
+    }
+  }
 
   if (normalizedCode === 'quota_exhausted' || QUOTA_MARKERS.some((pattern) => pattern.test(evidence))) {
     return {
