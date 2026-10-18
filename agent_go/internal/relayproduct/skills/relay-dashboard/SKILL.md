@@ -17,7 +17,7 @@ This skill describes platform usage. Inspect existing documents before editing.
   multiple documents. Optional `db/reports/views.json` controls titles, order
   and default: `{"schema_version":1,"default":"overview","views":[{"id":"overview","title":"Overview","path":"db/reports/index.html","order":0}]}`.
 - Open the **Dashboard** button in Flows. Graph remains the default Flow view.
-  The Dashboard uses the same host runtime as Goals, Crew and Code.
+  The Dashboard uses the same host runtime as Goals and Crew.
 - Put data loading inside `window.report.ready(async () => { ... })`.
   The callback runs again on refresh. Keep one-time animation initialization
   separate from data updates; cancel old loops and ignore stale async results.
@@ -40,7 +40,7 @@ This skill describes platform usage. Inspect existing documents before editing.
   16 KB args and four concurrent platform report runs. Python can import helpers
   under `code/` and installed sandbox dependencies.
 - The script uses the Flow's selected MCP tools, secrets and variables under
-  the authenticated viewer's live permissions. Access to the Flow does not
+  the signed-in person's live permissions. Access to the Flow does not
   grant credentials. Use `POST $MCP_MCP/<server>/<tool>` with `$MCP_AUTH` for
   selected MCP tools and `SECRET_*`/`VAR_*` for admitted values. Never print secrets.
   Scripts should only read external sources; use explicit chat actions for changes.
@@ -55,7 +55,7 @@ This skill describes platform usage. Inspect existing documents before editing.
   draft and published histories are separate. Limits are 1–50. Render an empty
   state before the first run, and a clear error when data cannot be fetched.
   Never enumerate `runs/` from a shell or report script: slot filesystem
-  privacy prevents listing it. The authenticated reader returns only this
+  privacy prevents listing it. The authenticated endpoint returns only this
   Flow's recorded summaries and JSON results, without its private journals,
   agent prompts or tool arguments. It never starts a run.
 - Dashboard scripts run independently of `relay.py`: they do not get the Flow
@@ -148,7 +148,7 @@ the signed-in person’s existing project conversation; Run access stays in Run
 mode. Keep the project identity returned by discovery; do not convert it to
 another origin. Preview has no conversation: `chat.available` is false. Check
 availability before calling widget controls. These widgets require the managed dashboard
-viewer; loose HTML documents do not acquire native chat through markup alone.
+page; loose HTML documents do not acquire native chat through markup alone.
 
 ## Managed dashboards and external MCP
 
@@ -171,11 +171,10 @@ Existing HTML documents remain discoverable; use their returned
 `document_path` for get/validate/preview/link. To manage an existing document with
 revisions, read it and create a new managed dashboard from its source.
 
-External MCP clients use `get_api_spec` then `call_tool`. Request explicit
-`dashboards:read` plus existing product authoring consent for drafts/publication:
-`builder:chat` for workflows, `relays:write` or Builder consent for Flows,
-`crews:write` for Crews, and `code:run` for owned Code projects. Workflow/Flow
-consent retains its companion read/run scopes and Builder enablement. Current
+External MCP clients use `get_api_spec` then `call_tool`. MCP uses the same
+access as the website. Request explicit `dashboards:read` plus the returned
+project's existing product authoring consent for drafts and publication.
+Workflow/Flow consent retains its companion read/run scopes and Builder enablement. Current
 account/product and project owner permissions (and workflow editor permissions), ID bounds and folder caps still
 apply. Connections without existing authoring consent gain no editing rights;
 connections receive no replacement scopes automatically.
