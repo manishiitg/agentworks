@@ -81,20 +81,33 @@ export default function (pi: ExtensionAPI) {
       execute: async (_id, args) => ({ content: [{ type: 'text', text: JSON.stringify(await execute(args)) }], details: undefined }),
     });
   };
-  register('agent_message_ack', 'Explicitly acknowledge an intact message in this exact attached session: admitted on receipt, processed after handling. Native display alone never acknowledges it.',
-    Type.Object({ message_id: Type.String(), delivery: Type.Union([Type.Literal('admitted'), Type.Literal('processed')]) }),
-    args => delivery.action('ack', args.message_id, { delivery: args.delivery }));
-  register('agent_message_reply', 'Explicit optional reply in the original inbox using this attached identity. Contact requires person authorization. Reuse submission_id after an uncertain retry.',
-    Type.Object({ message_id: Type.String(), message: Type.String(), submission_id: Type.String() }),
-    args => delivery.action('reply', args.message_id, { message: args.message, submission_id: args.submission_id }));
-  register('agent_message_peers', 'Discover authorized named agents for this attached identity.', Type.Object({}),
-    () => delivery.control('peers'));
-  register('agent_message_set_purpose', 'Set your own one-line purpose (up to 512 characters); at most once per minute. Does not attach or grant permission.',
-    Type.Object({ purpose: Type.String({ maxLength: 512 }) }), args => delivery.control('purpose', args));
-  register('agent_message_send', 'Explicitly send from this attached identity to a named agent the person authorized contacting. Reuse submission_id after an uncertain retry.',
-    Type.Object({ target: Type.String(), message: Type.String(), submission_id: Type.String() }),
-    args => delivery.control('send', args));
-  register('agent_message_read', 'Explicit bounded mailbox recovery for this attached identity. Never start a watch or polling loop.',
-    Type.Object({ inbox_id: Type.Optional(Type.String()), after: Type.Optional(Type.Integer({ minimum: 0 })) }),
-    args => delivery.control('read', args));
+  // One tool, many actions: the model sees a single `agentworks` tool and picks what to do with `action`.
+  const actions: Record<string, { needs: string[]; run: (args: any) => Promise<any> }> = {
+    ack: { needs: ['message_id', 'delivery'], run: args => delivery.action('ack', args.message_id, { delivery: args.delivery }) },
+    reply: { needs: ['message_id', 'message', 'submission_id'], run: args => delivery.action('reply', args.message_id, { message: args.message, submission_id: args.submission_id }) },
+    peers: { needs: [], run: () => delivery.control('peers') },
+    set_purpose: { needs: ['purpose'], run: args => delivery.control('purpose', { purpose: args.purpose }) },
+    send: { needs: ['target', 'message', 'submission_id'], run: args => delivery.control('send', { target: args.target, message: args.message, submission_id: args.submission_id }) },
+    read: { needs: [], run: args => delivery.control('read', { inbox_id: args.inbox_id, after: args.after }) },
+  };
+  register('agentworks',
+    'AgentWorks messaging for this attached Pi session. Set action: ack (message_id, delivery=admitted on receipt or processed after handling; native display alone never acknowledges), reply (message_id, message, submission_id; optional reply, reuse submission_id after an uncertain retry), peers (discover authorized named agents), set_purpose (purpose, one line up to 512 characters, at most once per minute), send (target, message, submission_id; only agents the person authorized contacting), read (optional inbox_id and after; explicit bounded mailbox recovery, never a polling loop).',
+    Type.Object({
+      action: Type.Union(Object.keys(actions).map(name => Type.Literal(name))),
+      message_id: Type.Optional(Type.String()),
+      delivery: Type.Optional(Type.Union([Type.Literal('admitted'), Type.Literal('processed')])),
+      message: Type.Optional(Type.String()),
+      submission_id: Type.Optional(Type.String()),
+      target: Type.Optional(Type.String()),
+      purpose: Type.Optional(Type.String({ maxLength: 512 })),
+      inbox_id: Type.Optional(Type.String()),
+      after: Type.Optional(Type.Integer({ minimum: 0 })),
+    }),
+    async args => {
+      const entry = actions[args?.action];
+      if (!entry) throw new Error(`action must be one of: ${Object.keys(actions).join(', ')}`);
+      const missing = entry.needs.filter(name => args[name] === undefined || args[name] === '');
+      if (missing.length) throw new Error(`action=${args.action} needs: ${missing.join(', ')}`);
+      return entry.run(args);
+    });
 }

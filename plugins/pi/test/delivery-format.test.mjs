@@ -13,7 +13,7 @@ test('delivered text counts code points, not UTF-16 units', () => {
   const atBound = render({ message_id: 'bound-id', message: 'a'.repeat(19999) + '😀TAILMARKER' });
   assert.ok(atBound.includes('😀'));
   assert.ok(!atBound.includes('TAILMARKER'));
-  assert.ok(atBound.includes('[message truncated: read the full text with agent_message_read inbox inbox]'));
+  assert.ok(atBound.includes('[message truncated: read the full text with the agentworks tool (action=read) inbox inbox]'));
 });
 
 test('delivered text strips CR and C1 controls, keeps tab', () => {

@@ -13,7 +13,7 @@ namespaced spelling is `/agentworks-muse:agentworks`.
 
 If trusted hook context says `AgentWorks Muse setup: person attach completed`,
 the hook already performed the person's action. Set your purpose and load the
-`agentworks-muse-monitor` skill; call `agent_message_monitor` and arm one native
+`agentworks-muse-monitor` skill; call `the agentworks tool (action=monitor)` and arm one native
 Monitor using its returned exact-session/lease arguments if inactive. Do not
 repeat attachment, approval or trust changes through a tool.
 

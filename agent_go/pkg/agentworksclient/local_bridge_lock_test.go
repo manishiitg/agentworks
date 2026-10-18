@@ -335,7 +335,7 @@ func TestAckOfAMessageOnlySeenAsANoticeSaysToReceiveFirst(t *testing.T) {
 	b.sessions[localBridgeKey("muse", "s1")] = &localSession{Attachment: AgentAttachment{AgentName: "a", ID: "att", Provider: "muse", SessionID: "s1"}, HostKey: "h", client: client,
 		Offers: map[string]localOffer{"m1": {MuseHinted: true, AgentLiveMessage: AgentLiveMessage{MessageID: "m1"}}}}
 	reply := b.handle(context.Background(), context.Background(), LocalBridgeRequest{Action: "ack", Provider: "muse", SessionID: "s1", HostKey: "h", MessageID: "m1", Delivery: "admitted"})
-	if !strings.Contains(reply.Error, "agent_message_receive") {
+	if !strings.Contains(reply.Error, "action=receive") {
 		t.Fatalf("ack of a notice-only message = %q", reply.Error)
 	}
 	if b.sessions[localBridgeKey("muse", "s1")].Offers["m1"].Offered {

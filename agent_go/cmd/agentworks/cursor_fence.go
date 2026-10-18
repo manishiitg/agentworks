@@ -29,7 +29,7 @@ const (
 	cursorFenceScanLimit = 4096
 )
 
-var cursorMessageTools = []string{"agent_message_set_purpose", "agent_message_peers", "agent_message_send", "agent_message_read", "agent_message_ack", "agent_message_reply", "agent_attach_chat", "agent_detach_chat", "agent_share_chat", "agent_unshare_chat", "agent_message_ping_person"}
+var cursorMessageTools = []string{"agentworks"} // the one AgentWorks chat tool; its action is in the arguments the fence also covers
 
 type cursorFence struct {
 	Conversation string `json:"conversation_id"`
@@ -43,7 +43,7 @@ func cursorFenceDirectory(root string) string {
 }
 
 // cursorMessageTool maps the hook's tool name (Cursor may prefix it with the
-// server name) to one of the messaging tools; anything else is not ours.
+// server name) to one of the messaging tool; anything else is not ours.
 func cursorMessageTool(name string) string {
 	for _, tool := range cursorMessageTools {
 		if name == tool || strings.HasSuffix(name, "_"+tool) || strings.HasSuffix(name, "-"+tool) || strings.HasSuffix(name, ":"+tool) {

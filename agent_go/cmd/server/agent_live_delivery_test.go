@@ -185,7 +185,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	}
 	for messageIndex, id := range []any{newPeerReceipt["message_id"], receipt["message_id"]} {
 		for i, delivery := range []string{"admitted", "processed"} {
-			write(map[string]any{"jsonrpc": "2.0", "id": 100 + messageIndex*2 + i, "method": "tools/call", "params": map[string]any{"name": "agent_message_ack", "arguments": map[string]any{"message_id": id, "delivery": delivery}}})
+			write(map[string]any{"jsonrpc": "2.0", "id": 100 + messageIndex*2 + i, "method": "tools/call", "params": map[string]any{"name": "agentworks", "arguments": map[string]any{"action": "ack", "message_id": id, "delivery": delivery}}})
 			response := next()
 			res, ok := response["result"].(map[string]any)
 			if !ok || res["isError"] == true {
@@ -200,7 +200,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 			t.Fatalf("explicit receipt missing: %v", m)
 		}
 	}
-	write(map[string]any{"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": map[string]any{"name": "agent_message_reply", "arguments": map[string]any{"message_id": receipt["message_id"], "message": "reviewed", "submission_id": "review-reply"}}})
+	write(map[string]any{"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": map[string]any{"name": "agentworks", "arguments": map[string]any{"action": "reply", "message_id": receipt["message_id"], "message": "reviewed", "submission_id": "review-reply"}}})
 	if response := next(); response["result"].(map[string]any)["isError"] == true {
 		t.Fatalf("reply failed: %v", response)
 	}

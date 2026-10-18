@@ -11,7 +11,7 @@ Required MCP server `agentworks` failed during startup: the transport closed une
 
 See the diagnostic details below. This release uses a native idle Monitor and
 retains turn-boundary hooks as a fallback. Update the CLI and plugin together;
-the CLI must also expose `agent_message_monitor`, `agent_message_receive` and
+the CLI must also expose `the agentworks tool (action=monitor)`, `the agentworks tool (action=receive)` and
 `agentworks bridge message watch`.
 
 This native Muse plugin packages an AgentWorks MCP connection, messaging skill,
@@ -184,7 +184,7 @@ terminal typing.
 Muse's native Monitor uses one persistent, credential-free watch on the local
 bridge. After the hook completes the person's attach, it supplies trusted
 setup context and its `agentworks-muse-monitor` skill tells Muse to call
-`agent_message_monitor` and start the native **monitor** tool with the returned
+`the agentworks tool (action=monitor)` and start the native **monitor** tool with the returned
 arguments (`persistent: true`, `wake_delay_ms: 0`, `show_lines: true`). Only the successful Muse attach continues into a model turn to arm its consumer;
 failed/queued commands remain blocked and other providers retain their handling.
 A normal prompt also supplies pending setup after restart. Native tool approval
@@ -211,7 +211,7 @@ changed lease/session/host, host death, revocation or bridge shutdown closes it.
 The roster reports `muse_monitor` only while that consumer is connected. A
 reported route or Monitor line does not prove admission.
 
-On a hint Muse calls `agent_message_receive` to obtain a bounded authorized body
+On a hint Muse calls `the agentworks tool (action=receive)` to obtain a bounded authorized body
 batch through its exact-session MCP, then acknowledges `admitted`, handles the
 peer data, optionally replies in the original inbox and acknowledges `processed`.
 The watch never marks a body offered or clears it. Individual ambiguous hints do not replay

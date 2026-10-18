@@ -137,7 +137,7 @@ func TestAgentDeliveryGuidanceEnvelope(t *testing.T) {
 	}}
 	cut := pluginMessageText(long, "claude_session")
 	if strings.Contains(cut, "TAIL") || !strings.Contains(cut,
-		"[message truncated: read the full text with agent_message_read inbox original-inbox]") {
+		"[message truncated: read the full text with the agentworks tool (action=read) inbox original-inbox]") {
 		t.Fatal("long body was not cut with a full-text pointer")
 	}
 	if !strings.Contains(cut, "<<<BEGIN long-id>>>") || !strings.Contains(cut, "<<<END long-id>>>") {

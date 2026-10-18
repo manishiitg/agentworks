@@ -252,8 +252,8 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if plugin.GetTool("list_workflows") != nil || plugin.GetTool("messages") != nil || plugin.GetTool("attach_agent") != nil {
 		t.Fatal("messaging plugin exposed broad tools or attachment")
 	}
-	peers := plugin.GetTool("agent_message_peers")
-	if out, e := peers.Handler(context.Background(), mcp.CallToolRequest{}); e != nil || !out.IsError {
+	peers := plugin.GetTool("agentworks")
+	if out, e := peers.Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"action": "peers"}}}); e != nil || !out.IsError {
 		t.Fatal("unattached plugin used the default CLI login")
 	}
 	local := func(in agentworksclient.LocalBridgeRequest) agentworksclient.LocalBridgeReply {
@@ -310,11 +310,11 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 		t.Fatalf("attached directory failed: %+v %v", out, e)
 	}
 	// Purpose updates use only this exact child's existing identity, without attachment authority.
-	purposeTool := plugin.GetTool("agent_message_set_purpose")
-	if result, e := purposeTool.Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"purpose": "Review workflow communication"}}}); e != nil || result.IsError {
+	purposeTool := plugin.GetTool("agentworks")
+	if result, e := purposeTool.Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"action": "set_purpose", "purpose": "Review workflow communication"}}}); e != nil || result.IsError {
 		t.Fatalf("own purpose update failed: %+v %v", result, e)
 	}
-	if result, e := purposeTool.Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"purpose": "Change again"}}}); e != nil || !result.IsError {
+	if result, e := purposeTool.Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"action": "set_purpose", "purpose": "Change again"}}}); e != nil || !result.IsError {
 		t.Fatal("purpose changes were not rate limited")
 	}
 	if _, e := child.Call(context.Background(), "messages", map[string]any{"action": "update_purpose", "agent_name": "hook-reviewer", "attachment_id": "retired-lease", "purpose": "Old session"}); e == nil {
@@ -331,8 +331,8 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	codexPeers := codexPlugin.GetTool("agent_message_peers")
-	if out, e := codexPeers.Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"session_id": "11111111-2222-4333-8444-555555555555"}}}); e != nil || !out.IsError {
+	codexPeers := codexPlugin.GetTool("agentworks")
+	if out, e := codexPeers.Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"action": "peers", "session_id": "11111111-2222-4333-8444-555555555555"}}}); e != nil || !out.IsError {
 		t.Fatal("model arguments selected an MCP thread")
 	}
 	threads := []string{"11111111-2222-4333-8444-555555555555", "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"}
@@ -571,7 +571,7 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 		t.Fatal("person attach failed")
 	}
 	setupContext := local(drain)
-	if setupContext.SetupContext == "" || !strings.Contains(setupContext.SetupContext, "agent_message_set_purpose") || !strings.Contains(setupContext.SetupContext, "hook-reviewer") {
+	if setupContext.SetupContext == "" || !strings.Contains(setupContext.SetupContext, "action=set_purpose") || !strings.Contains(setupContext.SetupContext, "hook-reviewer") {
 		t.Fatal("attach setup omitted purpose/roster", setupContext)
 	}
 	if got := local(drain); got.SetupContext != "" {
@@ -791,7 +791,7 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	}
 	select {
 	case out := <-nativeOffers:
-		if out.SetupContext == "" || len(out.Messages) != 0 || !strings.Contains(out.SetupContext, "agent_message_set_purpose") {
+		if out.SetupContext == "" || len(out.Messages) != 0 || !strings.Contains(out.SetupContext, "action=set_purpose") {
 			t.Fatal("Claude native setup did not start without a peer message", out)
 		}
 	case <-time.After(5 * time.Second):
@@ -891,13 +891,17 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	}
 	tool := func(name string, args map[string]any, wantError bool) *mcp.CallToolResult {
 		t.Helper()
-		result, e := musePlugin.GetTool(name).Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: args}})
+		callArgs := map[string]any{"action": name}
+		for k, v := range args {
+			callArgs[k] = v
+		}
+		result, e := musePlugin.GetTool("agentworks").Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: callArgs}})
 		if e != nil || result.IsError != wantError {
 			t.Fatalf("Muse %s: %+v %v", name, result, e)
 		}
 		return result
 	}
-	config := tool("agent_message_monitor", nil, false).Content[0].(mcp.TextContent).Text
+	config := tool("monitor", nil, false).Content[0].(mcp.TextContent).Text
 	if !strings.Contains(config, "--session") || !strings.Contains(config, museLease) || !strings.Contains(config, `"wake_delay_ms":0`) {
 		t.Fatal("unpinned Monitor config", config)
 	}
@@ -953,7 +957,7 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if out := local(renewMuse); !out.MonitorActive || !out.NativeDelivery || out.Attachment.ID != museLease {
 		t.Fatal("bare Muse reconnect lost its active Monitor or lease", out)
 	}
-	if active := tool("agent_message_monitor", nil, false).Content[0].(mcp.TextContent).Text; !strings.Contains(active, `"monitor_active":true`) || strings.Contains(active, `"command"`) {
+	if active := tool("monitor", nil, false).Content[0].(mcp.TextContent).Text; !strings.Contains(active, `"monitor_active":true`) || strings.Contains(active, `"command"`) {
 		t.Fatal("duplicate Monitor startup suggested", active)
 	}
 	for _, bad := range []agentworksclient.LocalBridgeRequest{
@@ -985,7 +989,7 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("SSE did not wake the idle Unix watch")
 	}
-	tool("agent_message_ack", map[string]any{"message_id": museFirst["message_id"], "delivery": "admitted"}, true)
+	tool("ack", map[string]any{"message_id": museFirst["message_id"], "delivery": "admitted"}, true)
 	watchCancel()
 	<-watchDone
 	waitActive(false)
@@ -1017,14 +1021,14 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("restarted watch did not receive new SSE offer")
 	}
-	received := tool("agent_message_receive", nil, false)
+	received := tool("receive", nil, false)
 	var bodies agentworksclient.LocalBridgeReply
 	if e = json.Unmarshal([]byte(received.Content[0].(mcp.TextContent).Text), &bodies); e != nil || len(bodies.Messages) != 2 || bodies.Messages[0].MessageID != museFirst["message_id"] {
 		t.Fatal("Muse bodies unavailable or misrouted", bodies, e)
 	}
-	tool("agent_message_ack", map[string]any{"message_id": museFirst["message_id"], "delivery": "admitted"}, false)
-	tool("agent_message_reply", map[string]any{"message_id": museFirst["message_id"], "message": "Received through Muse Monitor", "submission_id": "muse-monitor-reply"}, false)
-	tool("agent_message_ack", map[string]any{"message_id": museFirst["message_id"], "delivery": "processed"}, false)
+	tool("ack", map[string]any{"message_id": museFirst["message_id"], "delivery": "admitted"}, false)
+	tool("reply", map[string]any{"message_id": museFirst["message_id"], "message": "Received through Muse Monitor", "submission_id": "muse-monitor-reply"}, false)
+	tool("ack", map[string]any{"message_id": museFirst["message_id"], "delivery": "processed"}, false)
 	responses = call(freshSender, map[string]any{"action": "read", "agent_name": "fresh-sender", "inbox_id": museFirst["inbox_id"]})["messages"].([]any)
 	if len(responses) != 1 || responses[0].(map[string]any)["message"] != "Received through Muse Monitor" || responses[0].(map[string]any)["inbox_id"] != museFirst["inbox_id"] {
 		t.Fatal("Muse reply lost its original inbox", responses)
@@ -1063,7 +1067,7 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	watchCancel()
 	<-watchDone
 	waitActive(false)
-	config = tool("agent_message_monitor", nil, false).Content[0].(mcp.TextContent).Text
+	config = tool("monitor", nil, false).Content[0].(mcp.TextContent).Text
 	var options struct {
 		Monitor struct {
 			Command string `json:"command"`
@@ -1113,13 +1117,13 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	config = tool("agent_message_monitor", nil, false).Content[0].(mcp.TextContent).Text
+	config = tool("monitor", nil, false).Content[0].(mcp.TextContent).Text
 	for _, suffix := range []string{"", ".broker", ".lock", ".fifo"} {
 		if _, e = os.Lstat(stale + suffix); !errors.Is(e, os.ErrNotExist) {
 			t.Fatal("stale Muse subscription retained", suffix, e)
 		}
 	}
-	if again := tool("agent_message_monitor", nil, false).Content[0].(mcp.TextContent).Text; again != config {
+	if again := tool("monitor", nil, false).Content[0].(mcp.TextContent).Text; again != config {
 		t.Fatal("live staged broker was removed or duplicated", again, config)
 	}
 	museCancel()

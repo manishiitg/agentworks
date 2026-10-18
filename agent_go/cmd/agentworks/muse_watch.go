@@ -14,11 +14,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const museMonitorSetup = "Muse AgentWorks delivery setup: call agent_message_monitor and start ONE native monitor with its returned arguments if monitor_active is false. Use the monitor tool, persistent=true, wake_delay_ms=0, show_lines=true. This consumer uses the already person-approved attachment; it cannot attach or approve. Load the agentworks-muse-monitor skill. Do not run a shell listener or a polling loop."
+const museMonitorSetup = "Muse AgentWorks delivery setup: call the agentworks tool (action=monitor) and start ONE native monitor with its returned arguments if monitor_active is false. Use the monitor tool, persistent=true, wake_delay_ms=0, show_lines=true. This consumer uses the already person-approved attachment; it cannot attach or approve. Load the agentworks-muse-monitor skill. Do not run a shell listener or a polling loop."
 
 // Trusted provider setup never includes peer-written roster/purpose text.
 func museAttachSetup(out agentworksclient.LocalBridgeReply) string {
-	return fmt.Sprintf("AgentWorks Muse setup: person attach completed. This exact native session %q is attached as agent:%q. All account senders are accepted.\n%s\nSet your own purpose with agent_message_set_purpose and fetch peers with agent_message_peers as tool output. Never repeat attachment or trust changes through a tool.", out.Attachment.SessionID, out.Attachment.AgentName, museMonitorSetup)
+	return fmt.Sprintf("AgentWorks Muse setup: person attach completed. This exact native session %q is attached as agent:%q. All account senders are accepted.\n%s\nSet your own purpose with the agentworks tool (action=set_purpose) and fetch peers with the agentworks tool (action=peers) as tool output. Never repeat attachment or trust changes through a tool.", out.Attachment.SessionID, out.Attachment.AgentName, museMonitorSetup)
 }
 
 func museWatchCommand(o *options) *cobra.Command {
@@ -28,7 +28,7 @@ func museWatchCommand(o *options) *cobra.Command {
 			return errors.New("watch supports only the Muse native Monitor")
 		}
 		if session == "" || lease == "" || subscription == "" {
-			return errors.New("use the exact Monitor command returned by agent_message_monitor")
+			return errors.New("use the exact Monitor command returned by the agentworks tool (action=monitor)")
 		}
 		record, err := agentworksclient.ReadMuseMonitorSubscription(subscription)
 		if err != nil {

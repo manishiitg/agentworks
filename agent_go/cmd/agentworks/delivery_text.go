@@ -128,7 +128,7 @@ func agentMessageBlock(m agentworksclient.AgentLiveMessage, attachmentID string)
 	body, truncated := sanitizeAgentMessageBody(m.Message)
 	fmt.Fprintf(&b, "<<<BEGIN %s>>>\n%s", messageID, body)
 	if truncated {
-		fmt.Fprintf(&b, "\n[message truncated: read the full text with agent_message_read inbox %s]", inboxID)
+		fmt.Fprintf(&b, "\n[message truncated: read the full text with the agentworks tool (action=read) inbox %s]", inboxID)
 	}
 	fmt.Fprintf(&b, "\n<<<END %s>>>\n", messageID)
 	fmt.Fprintf(&b, "reply: inbox %s · ack: message %s · connection %s",

@@ -208,46 +208,46 @@ func TestCursorDesktopFenceIsOneShotAndPerChat(t *testing.T) {
 	now := time.Now()
 	const chatA, chatB = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"
 	host := cursorHostKey(4242, strings.Repeat("a", 64))
-	ack := map[string]any{"message_id": "m1", "delivery": "admitted"}
-	if err := writeCursorFence(root, host, chatA, "agentworks-messages-agent_message_ack", `{"delivery":"admitted","message_id":"m1"}`, now); err != nil {
+	ack := map[string]any{"action": "ack", "message_id": "m1", "delivery": "admitted"}
+	if err := writeCursorFence(root, host, chatA, "agentworks-messages_agentworks", `{"action":"ack","delivery":"admitted","message_id":"m1"}`, now); err != nil {
 		t.Fatal(err)
 	}
-	if chat, err := consumeCursorFence(root, host, "agent_message_ack", ack, now); err != nil || chat != chatA {
+	if chat, err := consumeCursorFence(root, host, "agentworks", ack, now); err != nil || chat != chatA {
 		t.Fatal("announced call was not matched to its chat", chat, err)
 	}
-	if _, err := consumeCursorFence(root, host, "agent_message_ack", ack, now); err == nil {
+	if _, err := consumeCursorFence(root, host, "agentworks", ack, now); err == nil {
 		t.Fatal("a fence was used twice")
 	}
 	// Two identical calls in a row from one chat: each announced call is served once.
 	for i := 0; i < 2; i++ {
-		if err := writeCursorFence(root, host, chatA, "agent_message_read", "{}", now); err != nil {
+		if err := writeCursorFence(root, host, chatA, "agentworks", `{"action":"read"}`, now); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for i := 0; i < 2; i++ {
-		if chat, err := consumeCursorFence(root, host, "agent_message_read", map[string]any{}, now); err != nil || chat != chatA {
+		if chat, err := consumeCursorFence(root, host, "agentworks", map[string]any{"action": "read"}, now); err != nil || chat != chatA {
 			t.Fatal("a repeated call from one chat lost its record", i, err)
 		}
 	}
 	// Identical calls from two chats cannot be told apart: refuse, never pick one.
 	for _, chat := range []string{chatA, chatB} {
-		if err := writeCursorFence(root, host, chat, "agent_message_peers", "", now); err != nil {
+		if err := writeCursorFence(root, host, chat, "agentworks", `{"action":"peers"}`, now); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := consumeCursorFence(root, host, "agent_message_peers", nil, now); err == nil {
+	if _, err := consumeCursorFence(root, host, "agentworks", map[string]any{"action": "peers"}, now); err == nil {
 		t.Fatal("an ambiguous call was served")
 	}
-	if err := writeCursorFence(root, host, chatB, "agent_message_read", `{"inbox_id":"i"}`, now.Add(-3*time.Minute)); err != nil {
+	if err := writeCursorFence(root, host, chatB, "agentworks", `{"action":"read","inbox_id":"i"}`, now.Add(-3*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := consumeCursorFence(root, host, "agent_message_read", map[string]any{"inbox_id": "i"}, now); err == nil {
+	if _, err := consumeCursorFence(root, host, "agentworks", map[string]any{"action": "read", "inbox_id": "i"}, now); err == nil {
 		t.Fatal("an expired fence was served")
 	}
-	if err := writeCursorFence(root, host, chatB, "agent_message_read", `{"inbox_id":"i"}`, now); err != nil {
+	if err := writeCursorFence(root, host, chatB, "agentworks", `{"action":"read","inbox_id":"i"}`, now); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := consumeCursorFence(root, cursorHostKey(4243, strings.Repeat("b", 64)), "agent_message_read", map[string]any{"inbox_id": "i"}, now); err == nil {
+	if _, err := consumeCursorFence(root, cursorHostKey(4243, strings.Repeat("b", 64)), "agentworks", map[string]any{"action": "read", "inbox_id": "i"}, now); err == nil {
 		t.Fatal("another Cursor app consumed this app's fence")
 	}
 }

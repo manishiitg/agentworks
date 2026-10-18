@@ -16,7 +16,7 @@ can message the attached session; there is no sender allow field.
 Use `/agentworks agents` or `/agentworks detach` to manage this exact chat.
 Claude also accepts the namespaced `/agentworks:agentworks` spelling.
 The prompt hook consumes these commands before model execution and learns the
-exact session ID from the host hook input. The AgentWorks tools (`agent_attach_chat`, `agent_share_chat` and others) do the same when the person asks the agent in plain words; joining another network stays the person's own typed command.
+exact session ID from the host hook input. The AgentWorks tools (`the agentworks tool (action=attach)`, `the agentworks tool (action=share)` and others) do the same when the person asks the agent in plain words; joining another network stays the person's own typed command.
 This is a tool boundary, not OS isolation from shell access to CLI credentials.
 
 Default hooks run without channel launch flags. Unattached hooks make no network
@@ -51,7 +51,7 @@ process-bound `agentworks bridge message` fallback. See [native transports](../.
 
 Terminal attach discovers live Claude registrations and verifies Codex candidates with the exact desktop owner before offering a person selection. Technical process/session overrides are hidden from normal help. Native idle wake uses the chat's existing approval/sandbox settings. The desktop IPC is a same-OS-user trust boundary. Native batches above 96 KiB require explicit inbox recovery. CLI updates and stop/start restore still-live existing attachments without rotating their identity or repeating AgentWorks guidance. A provider process restart requires the person to type attach again. Claude itself adds a notice to every native session message; AgentWorks cannot suppress that host notice.
 
-The person chooses only the attachment name. The attached agent can describe its work with `agent_message_set_purpose` or `agentworks bridge message purpose --provider claude --purpose "WHAT YOU WORK ON"`. Purpose updates cannot attach, rename or grant permissions.
+The person chooses only the attachment name. The attached agent can describe its work with `the agentworks tool (action=set_purpose)` or `agentworks bridge message purpose --provider claude --purpose "WHAT YOU WORK ON"`. Purpose updates cannot attach, rename or grant permissions.
 
 ### Updates from GitHub
 

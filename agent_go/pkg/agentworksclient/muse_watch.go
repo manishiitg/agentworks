@@ -192,7 +192,7 @@ func (b *localBridge) serveMuseWatch(serverCtx context.Context, w http.ResponseW
 		notice := ready
 		notice.Kind = "pending"
 		notice.Pending = pendingCount
-		notice.Note = "Messages are waiting. Call agent_message_receive in this chat to read them, then ack."
+		notice.Note = "Messages are waiting. Call the agentworks tool (action=receive) in this chat to read them, then ack."
 		if encoder.Encode(notice) != nil {
 			return
 		}
@@ -291,7 +291,7 @@ func (b *localBridge) serveMuseWatch(serverCtx context.Context, w http.ResponseW
 		hint.MessageID = boundedMuseHint(m.MessageID)
 		hint.InboxID = boundedMuseHint(m.InboxID)
 		hint.Sender = boundedMuseHint(m.Sender)
-		hint.Note = "Notice only, without the message text. Call agent_message_receive in this chat to read it, then ack."
+		hint.Note = "Notice only, without the message text. Call the agentworks tool (action=receive) in this chat to read it, then ack."
 		if encoder.Encode(hint) != nil {
 			return
 		}

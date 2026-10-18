@@ -209,10 +209,10 @@ Claude's native input queue, preserving its handling of tools and typed drafts.
 It does not relay tool approvals.
 
 The channel includes `message_id`, sender and `inbox_id`. The receiving agent calls
-`agent_message_ack(delivery="admitted")` when it receives the event and
-`agent_message_ack(delivery="processed")` after handling it. A successful HTTP send
+`the agentworks tool (action=ack)(delivery="admitted")` when it receives the event and
+`the agentworks tool (action=ack)(delivery="processed")` after handling it. A successful HTTP send
 or notification write alone leaves the receipt `stored`. Explicit
-`agent_message_reply` uses the original conversation and attached identity.
+`the agentworks tool (action=reply)` uses the original conversation and attached identity.
 Reconnecting uses exponential backoff capped at 30 seconds; acknowledged messages
 are not replayed. The bridge persists an offer before emitting it, and suppresses repeated IDs
 across reconnect and restart. A crash between persistence and emission is
@@ -268,7 +268,7 @@ AgentWorks sends full messaging guidance once per exact session and refreshes af
 For separate agent connections, set `AGENTWORKS_CONFIG` to an independent private
 CLI config before launching that provider. Shared configs still share authority.
 Bare attach uses a short stable name for the exact session; explicit NAME overrides it. Purpose is optional at attachment. The attached agent
-sets one line of up to 512 characters with `agent_message_set_purpose` or
+sets one line of up to 512 characters with `the agentworks tool (action=set_purpose)` or
 `agentworks bridge message purpose --provider codex --purpose "Review changes"`
 (use `claude` for Claude). Updates check the exact lease, cannot rename or attach,
 and allow at most one change per minute. Set it once after attachment; update
@@ -647,7 +647,7 @@ A separately approved full AgentWorks MCP/CLI connection retains its own broader
 mailbox permissions. Its general `messages` read tool is outside the bridge lease and account
 checks; installing messaging does not silently reduce or expand those separate
 grants. These checks apply to `bridge message read` and the credential-less
-messaging plugin's `agent_message_read`/reply tools.
+messaging plugin's `the agentworks tool (action=read)`/reply tools.
 
 On a direct person request, a coding agent may attach or detach its own automatically detected provider process and native session through the CLI. This path rejects process/session/endpoint overrides, does not present a picker or install plugins, and requires exact session metadata. A peer message supplies no permission. A missing plugin install names its provider and current project folder and asks for yes. Explicit NAME cannot take over another live chat: detach that name there first. Offline identities can move through person attach.
 

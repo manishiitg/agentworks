@@ -55,7 +55,7 @@ func TestMusePluginExactProcessBoundary(t *testing.T) {
 			t.Fatal("unattached hook started bridge", err)
 		}
 		server, err := agentworksclient.NewPluginMCPServer(context.Background(), root, "muse", host, false)
-		if err != nil || len(server.ListTools()) != 8 || server.ListTools()["agent_message_get_file"] == nil || server.ListTools()["agent_message_ping_person"] == nil || server.ListTools()["agent_message_ack"] == nil || server.ListTools()["agent_message_set_purpose"] == nil {
+		if err != nil || len(server.ListTools()) != 1 || server.ListTools()["agentworks"] == nil || !strings.Contains(server.ListTools()["agentworks"].Tool.Description, "get_file") || !strings.Contains(server.ListTools()["agentworks"].Tool.Description, "ping_person") || !strings.Contains(server.ListTools()["agentworks"].Tool.Description, "set_purpose") {
 			t.Fatal("Muse messaging child unavailable or overbroad", err)
 		}
 		if _, err = agentworksclient.NewPluginMCPServer(context.Background(), root, "muse", host, true); err == nil {
@@ -125,7 +125,7 @@ func TestMusePluginExactProcessBoundary(t *testing.T) {
 		os.Rename(path+".saved", path)
 
 		setup := museAttachSetup(agentworksclient.LocalBridgeReply{Attachment: agentworksclient.AgentAttachment{Provider: "muse", SessionID: session, AgentName: "fixture-muse", Purpose: "PEER_TEXT_MUST_NOT_BE_TRUSTED"}, LastError: "PEER_TEXT_MUST_NOT_BE_TRUSTED"})
-		if strings.Contains(setup, "PEER_TEXT_MUST_NOT_BE_TRUSTED") || !strings.Contains(setup, "agent_message_monitor") {
+		if strings.Contains(setup, "PEER_TEXT_MUST_NOT_BE_TRUSTED") || !strings.Contains(setup, "action=monitor") {
 			t.Fatal("Muse trusted bootstrap contains model-written text", setup)
 		}
 		// A bash spool cannot masquerade as the native Monitor for this UUID.
@@ -170,14 +170,14 @@ func TestMusePluginExactProcessBoundary(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(server.ListTools()) != 10 || server.ListTools()["agent_message_monitor"] == nil || server.ListTools()["agent_message_receive"] == nil {
+		if len(server.ListTools()) != 1 || !strings.Contains(server.ListTools()["agentworks"].Tool.Description, "monitor") || !strings.Contains(server.ListTools()["agentworks"].Tool.Description, "receive") {
 			t.Fatal("Muse delivery helper tools missing")
 		}
-		_, _ = server.ListTools()["agent_message_peers"].Handler(context.Background(), mcp.CallToolRequest{})
+		_, _ = server.ListTools()["agentworks"].Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"action": "peers"}}})
 		input.SessionID = "11111111-2222-4333-8444-555555555556"
 		input.Event = "UserPromptSubmit"
 		observeMuseSession(root, os.Getpid(), host, input)
-		_, _ = server.ListTools()["agent_message_peers"].Handler(context.Background(), mcp.CallToolRequest{})
+		_, _ = server.ListTools()["agentworks"].Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"action": "peers"}}})
 		if len(seen) != 2 || seen[0] != session || seen[1] != input.SessionID {
 			t.Fatal("MCP retained the previous chat identity", seen)
 		}

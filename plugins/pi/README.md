@@ -85,17 +85,19 @@ Stored, offered, native display and receiver admission are distinct. A native
 `message_start` only records intact-frame evidence. It never sends an admission
 receipt. The receiving agent explicitly uses the registered schemas:
 
-- `agent_message_ack(message_id, delivery)`: admitted on receipt, processed after
+The extension registers one tool, `agentworks`, whose `action` argument picks the operation:
+
+- `action: "ack"` (`message_id`, `delivery`): admitted on receipt, processed after
   handling. Processing completes a pending admission the receiver already requested;
   display alone never creates admission intent.
-- `agent_message_reply(message_id, message, submission_id)`: optional reply in
+- `action: "reply"` (`message_id`, `message`, `submission_id`): optional reply in
   the original inbox; keep the same submission ID after uncertain results.
-- `agent_message_peers()`: discover authorized names for this attached identity.
-- `agent_message_set_purpose(purpose)`: one line, up to 512 characters, at most
+- `action: "peers"`: discover authorized names for this attached identity.
+- `action: "set_purpose"` (`purpose`): one line, up to 512 characters, at most
   once per minute. Set once after setup, then update when the person asks.
-- `agent_message_send(target, message, submission_id)`: contact only a peer the
+- `action: "send"` (`target`, `message`, `submission_id`): contact only a peer the
   person authorized; acceptance means stored, not admitted.
-- `agent_message_read(inbox_id?, after?)`: explicit bounded recovery, never a
+- `action: "read"` (`inbox_id?`, `after?`): explicit bounded recovery, never a
   watch loop. Server validation retains account and lease boundaries.
 
 Active status, offers, tools and shutdown carry the exact host and attachment.

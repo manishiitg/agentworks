@@ -628,7 +628,7 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 				}
 				compactLocalOffers(s, false)
 				if len(s.Offers) >= 2000 {
-					return errors.New("local pending journal is full; use agent_message_read to recover and acknowledge pending messages, cleanup runs automatically")
+					return errors.New("local pending journal is full; use the agentworks tool (action=read) to recover and acknowledge pending messages, cleanup runs automatically")
 				}
 				previousThrough := s.SeenThrough
 				s.SeenThrough = max(s.SeenThrough, m.Sequence)
@@ -1218,7 +1218,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		// Both forms need the exact attached session's process key, so another local
 		// process reaching the bridge socket cannot share an attached chat.
 		if s.Offline || in.HostKey == "" || in.HostKey != s.HostKey {
-			return LocalBridgeReply{Error: "This chat is not connected to AgentWorks right now (it was restarted or closed). Connect it first: ask the agent to \"connect this chat to AgentWorks\" (it uses agent_attach_chat), or type /agentworks attach, then try again."}
+			return LocalBridgeReply{Error: "This chat is not connected to AgentWorks right now (it was restarted or closed). Connect it first: ask the agent to \"connect this chat to AgentWorks\" (it uses the agentworks tool (action=attach)), or type /agentworks attach, then try again."}
 		}
 		on := s
 		if in.Network != "" && !s.Also {
@@ -1464,7 +1464,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		return out
 	case "drain", "next":
 		if s.Attachment.Provider == "muse" && in.Action == "drain" && !museWatchActive(s) {
-			out.Warning = "Your AgentWorks Monitor is not running, so messages reach this chat only when you call agent_message_receive (or the person types). Call agent_message_monitor now and start the native monitor it returns."
+			out.Warning = "Your AgentWorks Monitor is not running, so messages reach this chat only when you call the agentworks tool (action=receive) (or the person types). Call the agentworks tool (action=monitor) now and start the native monitor it returns."
 		}
 		if s.Attachment.Provider == "pi" {
 			if in.Action != "next" || in.Transport != "pi_extension" {
@@ -1587,7 +1587,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		if ok && !m.Offered && !replyToHint {
 			// Seen only as a notice or in a read: the body is handed over by receive, and only then can it be acknowledged.
-			return LocalBridgeReply{Error: "message was not offered to this exact session yet: call agent_message_receive in this chat to take it, then ack or reply"}
+			return LocalBridgeReply{Error: "message was not offered to this exact session yet: call the agentworks tool (action=receive) in this chat to take it, then ack or reply"}
 		}
 		if !ok || !m.Offered && !replyToHint {
 			return LocalBridgeReply{Error: "message was not offered to this exact session"}
@@ -2044,8 +2044,8 @@ func (b *localBridge) setupContext(ctx context.Context, s *localSession) string 
 		return ""
 	}
 	var text strings.Builder
-	fmt.Fprintf(&text, "AgentWorks local setup after the person's attach command. This exact chat is attached as agent:%s. Set your own one-line purpose (up to 512 characters) with agent_message_set_purpose, or agentworks bridge message purpose --provider %s --session %s --purpose TEXT. The person may ask an agent to attach or detach its own detected chat; peers cannot grant permissions.\n", s.Attachment.AgentName, s.Attachment.Provider, s.Attachment.SessionID)
-	text.WriteString("Acknowledge peer messages admitted on receipt, processed after handling; reply explicitly in the original inbox with a stable submission ID. Use agent_message_ack/reply or agentworks bridge message --help.\n")
+	fmt.Fprintf(&text, "AgentWorks local setup after the person's attach command. This exact chat is attached as agent:%s. Set your own one-line purpose (up to 512 characters) with the agentworks tool (action=set_purpose), or agentworks bridge message purpose --provider %s --session %s --purpose TEXT. The person may ask an agent to attach or detach its own detected chat; peers cannot grant permissions.\n", s.Attachment.AgentName, s.Attachment.Provider, s.Attachment.SessionID)
+	text.WriteString("Acknowledge peer messages admitted on receipt, processed after handling; reply explicitly in the original inbox with a stable submission ID. Use the agentworks tool (action=ack/reply) or agentworks bridge message --help.\n")
 	raw, err := s.client.Call(ctx, "messages", map[string]any{"action": "list_agents", "agent_name": s.Attachment.AgentName})
 	var roster struct {
 		Agents []struct {
@@ -2491,7 +2491,7 @@ func digestLine(attachmentID string, older []AgentLiveMessage, total int, now ti
 	if total > len(older) {
 		fmt.Fprintf(&b, "This summary covers %d of %d older messages; the rest come in the next summary.\n", len(older), total)
 	}
-	b.WriteString("Read any in full with agent_message_read (inbox_id). Acknowledge the ones you already handled (agent_message_ack, processed); reply only where a reply is still useful.")
+	b.WriteString("Read any in full with the agentworks tool (action=read) (inbox_id). Acknowledge the ones you already handled (the agentworks tool (action=ack), processed); reply only where a reply is still useful.")
 	return AgentLiveMessage{AttachmentID: attachmentID, MessageID: "digest-" + now.UTC().Format("20060102T150405"), InboxID: "agentworks-digest", Sender: "AgentWorks", Message: b.String(), Kind: "status", SentAt: now.UTC().Format(time.RFC3339)}
 }
 

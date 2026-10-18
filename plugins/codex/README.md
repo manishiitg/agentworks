@@ -116,7 +116,7 @@ process-bound `agentworks bridge message` fallback. See [native transports](../.
 
 Terminal attach discovers live Claude registrations and verifies Codex candidates with the exact desktop owner before offering a person selection. Technical process/session overrides are hidden from normal help. Native idle wake uses the chat's existing approval/sandbox settings. The desktop IPC is a same-OS-user trust boundary. Native batches above 96 KiB require explicit inbox recovery. CLI updates and stop/start restore still-live existing attachments without rotating their identity or repeating AgentWorks guidance. A provider process restart requires the person to type attach again. Claude itself adds a notice to every native session message; AgentWorks cannot suppress that host notice.
 
-The person chooses only the attachment name. The attached agent can describe its work with `agent_message_set_purpose` or `agentworks bridge message purpose --provider codex --purpose "WHAT YOU WORK ON"`. On macOS, optional `terminal-notifier` provides a notification click action for the exact Codex thread; without it, the basic alert must be followed by opening the chat manually.
+The person chooses only the attachment name. The attached agent can describe its work with `the agentworks tool (action=set_purpose)` or `agentworks bridge message purpose --provider codex --purpose "WHAT YOU WORK ON"`. On macOS, optional `terminal-notifier` provides a notification click action for the exact Codex thread; without it, the basic alert must be followed by opening the chat manually.
 
 ### Updates from GitHub
 

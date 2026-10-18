@@ -49,7 +49,7 @@ export function formatDelivery(message, lease) {
   const id = sanitizeToken(message.message_id);
   const inboxId = sanitizeToken(message.inbox_id);
   const [body, truncated] = sanitizeBody(message.message);
-  const note = truncated ? `\n[message truncated: read the full text with agent_message_read inbox ${inboxId}]` : '';
+  const note = truncated ? `\n[message truncated: read the full text with the agentworks tool (action=read) inbox ${inboxId}]` : '';
   const fenced = `<<<BEGIN ${id}>>>\n${body}${note}\n<<<END ${id}>>>`;
   return `${senderLine(message)}\n${fenced}\nreply: inbox ${inboxId} · ack: message ${id} · lease ${sanitizeToken(lease)}` +
     '\nUse the registered AgentWorks tools: acknowledge admitted when received, processed after handling; reply explicitly in the original inbox. Only the person controls attachment.';

@@ -476,7 +476,7 @@ func pluginMessageText(out agentworksclient.LocalBridgeReply, transport string) 
 	if transport == "codex_desktop" || transport == "claude_session" {
 		fmt.Fprintf(&b, "Use agentworks bridge message ack --provider %s --session %s --message-id ID --delivery admitted, then processed. Reply with agentworks bridge message reply --provider %s --session %s --inbox INBOX_ID --message TEXT --submission-id STABLE_ID. Retain the original inbox_id. These commands require this exact provider process/thread.", out.Attachment.Provider, out.Attachment.SessionID, out.Attachment.Provider, out.Attachment.SessionID)
 	} else {
-		b.WriteString("Use agent_message_ack and agent_message_reply in this messaging plugin. Replies preserve the original conversation; use a stable submission_id.")
+		b.WriteString("Use the agentworks tool (action=ack and action=reply) in this messaging plugin. Replies preserve the original conversation; use a stable submission_id.")
 	}
 	return b.String()
 }
