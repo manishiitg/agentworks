@@ -1600,6 +1600,7 @@ export interface SessionStatusResponse {
 }
 
 export interface SessionExecutionTreeNode {
+  inspection?: ExecutionInspectionTarget
   execution_id: string
   parent_execution_id?: string
   session_id: string

@@ -152,16 +152,40 @@ func TestInspectionTargetsOnlyWorkflowSteps(t *testing.T) {
 	if api.executionInspectionTarget("chat", "generic") != nil || api.executionInspectionTarget("chat", "review") != nil {
 		t.Fatal("ordinary background work advertised step inspection")
 	}
+	checkTreeTargets := func(want int) {
+		t.Helper()
+		tree := api.buildSessionExecutionTree(api.activeSessions["chat"])
+		count := 0
+		var walk func(*SessionExecutionTreeNode)
+		walk = func(node *SessionExecutionTreeNode) {
+			if node.Inspection != nil {
+				count++
+				if node.ExecutionID != "step" || node.Inspection.SessionID != "chat" || node.Inspection.ExecutionID != node.ExecutionID || node.Inspection.WorkspacePath != "Workflow/example" {
+					t.Fatalf("execution tree advertised a different inspector: %+v", node.Inspection)
+				}
+			}
+			for _, child := range node.Children {
+				walk(child)
+			}
+		}
+		walk(tree.Root)
+		if count != want {
+			t.Fatalf("execution tree advertised %d inspection targets; want %d", count, want)
+		}
+	}
+	checkTreeTargets(1)
 	if err := writeFileToWorkspace(context.Background(), "Workflow/example/workflow.json", `{"kind":"relay"}`); err != nil {
 		t.Fatal(err)
 	}
 	if api.executionInspectionTarget("chat", "step") != nil || workflowStepInspectionWorkspace(context.Background(), "Workflow/example") {
 		t.Fatal("Relay advertised workflow step inspection")
 	}
+	checkTreeTargets(0)
 	api.activeSessions["chat"].WorkspacePath = "_users/default/Chats/Work/projects/example"
 	if api.executionInspectionTarget("chat", "step") != nil {
 		t.Fatal("Crew advertised workflow step inspection")
 	}
+	checkTreeTargets(0)
 }
 
 // Uses the actual durable transcript writer and HTTP reader. Two dispatches of

@@ -35,6 +35,9 @@ import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIden
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { RuntimeBrandLogo } from '../branding/RuntimeBrandLogo'
 import { NewProjectMenu } from './NewProjectMenu'
+import SidebarStepInspections from './SidebarStepInspections'
+import { inspectionKey } from '../../utils/stepInspection'
+import { workflowTriggerLabel } from '../../utils/workflowSessionKinds'
 export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: ReactNode; footer?: ReactNode }) {
   const user = useAuthStore((state) => state.user)
   const workspace = useWorkspaceConnectionStore((state) => state.activeWorkspaceId)
@@ -275,6 +278,12 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     try {
       if (row.tabId) {
         openProductWorkspace(row.surface)
+        const parent = useChatStore.getState().chatTabs[row.tabId]
+        if (parent?.metadata?.stepInspections?.activeId) {
+          useChatStore.getState().setTabMetadata(row.tabId, {
+            stepInspections: { ...parent.metadata.stepInspections, activeId: null },
+          })
+        }
         openGlobalTab(row.tabId)
         return
       }
@@ -322,8 +331,10 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     )
   const workspaces = sidebarWorkspaceGroups(rows)
   const recent = rows.filter((row) => row.group === 'Recent')
-  const renderChat = (row: SidebarChat, workspaceTitle?: string, genericChatNumber?: number, workspaceEntry?: string) => {
-    const selected = row.tabId === selectedTab && product === row.surface && !globalPageOpen && !providersOpen
+  const renderChat = (row: SidebarChat, workspaceTitle?: string, genericChatNumber?: number, workspaceEntry?: string, visible = true) => {
+    const tab = row.tabId ? tabs[row.tabId] : undefined
+    const inspecting = tab?.metadata?.stepInspections?.items.some(item => inspectionKey(item) === tab.metadata?.stepInspections?.activeId)
+    const selected = row.tabId === selectedTab && product === row.surface && !globalPageOpen && !providersOpen && !inspecting
     const scheduled = row.scheduled || / · Scheduled run$/i.test(row.title)
     const title = workspaceEntry || sidebarChatDisplayTitle({ ...row, scheduled }, workspaceTitle, genericChatNumber)
     const duplicateWorkspaceName = workspaceEntry && workspaces.filter(item => item.title === workspaceEntry).length > 1
@@ -337,18 +348,20 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
             minute: '2-digit',
           })
         : ''
+    const trigger = workflowTriggerLabel({ sessionId: row.id, triggeredBy: row.activity?.triggered_by })
+    const origin = row.originLabel || (trigger === 'Scheduled' ? 'Schedule' : trigger) || (row.builder ? 'Main chat' : '')
     const details = [
       duplicateWorkspaceName ? PRODUCT_SURFACE_LABELS[row.surface] : '',
-      row.originLabel && !title.startsWith(row.originLabel) ? row.originLabel : '',
+      origin && !title.startsWith(origin) ? origin : '',
       row.waiting ? 'Needs you' : row.group === 'Running' ? 'Working' : '',
       scheduled ? date : '',
     ]
       .filter(Boolean)
       .join(' · ')
-    const tab = row.tabId ? tabs[row.tabId] : undefined
     const canClose = !!tab && canCloseWorkspaceChatTab(tab, tabs)
     return (
-      <div key={row.id} className="group relative">
+      <div key={row.id}>
+      <div className="group relative">
         <button
           type="button"
           title={`${isGeneratedSidebarPrompt(row.title) ? title : row.title} · ${PRODUCT_SURFACE_LABELS[row.surface]}${date ? ` · ${date}` : ''}`}
@@ -406,6 +419,15 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
             <X className="h-3 w-3" aria-hidden="true" />
           </button>
         )}
+      </div>
+      {row.surface === 'agentworks' && <SidebarStepInspections
+        row={row}
+        workspace={row.workspace || presets.find(preset => preset.id === row.workflowId)?.selectedFolder?.filepath || ''}
+        scope={scope}
+        visible={visible}
+        selected={product === row.surface && !globalPageOpen && !providersOpen}
+        onOpen={() => open(row)}
+      />}
       </div>
     )
   }
@@ -479,7 +501,9 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
                     workspace.title,
                     unnamedChats.length > 1 && unnamedChats.includes(row.id)
                       ? unnamedChats.indexOf(row.id) + 1
-                      : undefined
+                      : undefined,
+                    undefined,
+                    !hidden
                   )
                 )}
               </div>
@@ -503,7 +527,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
               <span>Recent chats</span>
             </button>
             <div id="sidebar-chats-recent" hidden={collapsed.includes('Recent')}>
-              {recent.slice(0, visibleRecent).map((row) => renderChat(row))}
+              {recent.slice(0, visibleRecent).map((row) => renderChat(row, undefined, undefined, undefined, !collapsed.includes('Recent')))}
               {recent.length > visibleRecent && (
                 <button
                   type="button"

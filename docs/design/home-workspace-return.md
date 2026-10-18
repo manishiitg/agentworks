@@ -287,3 +287,9 @@ Screenshots are saved outside the repository under `/Users/mipl/ai-work/` as `ag
 ### Project-only MCP connection follow-up
 
 MCP access now opens the project-specific browser approval flow described in [project-mcp-connections.md](project-mcp-connections.md). The earlier installation-wide setup remains in global Connect. The left chat sidebar no longer contains Goals-only Activity; Goal activity is in the Goals workspace picker and Ctrl+K, with the existing server data and access rules.
+
+### Goal step inspection in the sidebar
+
+Inspectable Goal executions appear beneath the chat or run that started them. The parent retains its Main chat, Schedule, WhatsApp, Slack or other recorded source; steps are not promoted to separate chats. Running steps show progress, completed/failed executions retain their recorded state, and selection opens the existing exact-execution inspector after activating its parent. Clicking the parent returns to chat without discarding its draft or saved inspection tabs. Internal tasks remain inside the step inspector.
+
+Discovery uses explicit server-issued inspection receipts from the authorized execution tree and recorded chat cards. It never guesses a latest run from a step name, folder or tool argument. Queries are scoped to account/server and parent session, pause under collapsed navigation, and poll only running parents. Existing Goal product/workflow checks, session ownership and inspector authorization remain in place; Crew and Flows do not gain Goal inspection views.

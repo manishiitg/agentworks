@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   selectedTab: null as string | null,
   history: vi.fn(),
   openTab: vi.fn(),
+  setMetadata: vi.fn(),
   openActivity: vi.fn(),
   openProduct: vi.fn(),
   resume: vi.fn(),
@@ -34,7 +35,7 @@ vi.mock('../../stores/useChatStore', () => ({
   useChatStore: Object.assign(
     (select: any) =>
       select({ chatTabs: mocks.tabs, activeSessionsCache: mocks.active, activeTabId: mocks.selectedTab }),
-    { getState: () => ({ chatTabs: mocks.tabs, renameTab: vi.fn(), setTabMetadata: vi.fn(), getActiveSessions: mocks.activeSessions, addToast: vi.fn() }) }
+    { getState: () => ({ chatTabs: mocks.tabs, renameTab: vi.fn(), setTabMetadata: mocks.setMetadata, getActiveSessions: mocks.activeSessions, addToast: vi.fn() }) }
   ),
 }))
 vi.mock('../../stores/useGlobalPresetStore', () => ({
@@ -56,6 +57,7 @@ vi.mock('../../api/scheduler', () => ({ schedulerApi: { listJobs: async () => ({
 vi.mock('../../services/api', () => ({ agentApi: { listChatHistorySessions: mocks.history } }))
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: vi.fn() }))
 vi.mock('../../hooks/useResumePreviousChat', () => ({ useResumePreviousChat: () => mocks.resume }))
+vi.mock('./SidebarStepInspections', () => ({ default: () => null }))
 vi.mock('../../utils/chatIdentity', () => ({
   captureChatIdentity: () => 1,
   isChatIdentityCurrent: () => true,
@@ -224,5 +226,24 @@ it('keeps Goals activity out of the shared chat sidebar', async () => {
     mocks.user.allowed_products = ['work']
     await rerender()
     expect(host.querySelector('[aria-label="Activity"]')).toBeNull()
+  })
+})
+
+it('labels the parent source and returns from inspection to the parent chat', async () => {
+  const target = { session_id:'main', execution_id:'step', workspace_path:'Workflow/goal', name:'Research', step_id:'research', started_at:'2026-10-18T00:00:00Z' }
+  mocks.tabs = {
+    main: {tabId:'main',sessionId:'main',name:'Planning',createdAt:1,metadata:{mode:'workflow',phaseId:'workflow-builder',presetQueryId:'goal',agentProfileProjectTitle:'My goal',stepInspections:{items:[target],activeId:JSON.stringify(['Workflow/goal','main','step'])}}},
+    scheduled: {tabId:'scheduled',sessionId:'schedule-cron--job_1',name:'Daily briefing',createdAt:2,metadata:{mode:'workflow',presetQueryId:'goal',agentProfileProjectTitle:'My goal',isScheduledRun:true}},
+    whatsapp: {tabId:'whatsapp',sessionId:'bot-whatsapp-one',name:'Customer question',createdAt:3,metadata:{mode:'workflow',presetQueryId:'goal',agentProfileProjectTitle:'My goal',botPlatform:'whatsapp'}},
+  }
+  mocks.history.mockResolvedValue({sessions:[]})
+  await render(async host=>{
+    expect(host.querySelector('[title="Daily briefing · Goals"]')?.textContent).toContain('Schedule')
+    expect(host.querySelector('[title="Customer question · Goals"]')?.textContent).toContain('WhatsApp')
+    const main=host.querySelector<HTMLButtonElement>('[title="Planning · Goals"]')!
+    expect(main.textContent).toContain('Main chat')
+    await act(async()=>main.click())
+    expect(mocks.setMetadata).toHaveBeenCalledWith('main',{stepInspections:{items:[target],activeId:null}})
+    expect(mocks.openTab).toHaveBeenCalledWith('main')
   })
 })

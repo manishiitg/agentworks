@@ -9,6 +9,7 @@ import (
 	"time"
 
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 
 	"github.com/gorilla/mux"
 )
@@ -24,18 +25,19 @@ const (
 )
 
 type SessionExecutionTreeNode struct {
-	ExecutionID       string                      `json:"execution_id"`
-	ParentExecutionID string                      `json:"parent_execution_id,omitempty"`
-	SessionID         string                      `json:"session_id"`
-	Source            string                      `json:"source,omitempty"`
-	Kind              string                      `json:"kind"`
-	Name              string                      `json:"name"`
-	Status            string                      `json:"status"`
-	StartedAt         time.Time                   `json:"started_at"`
-	CompletedAt       *time.Time                  `json:"completed_at,omitempty"`
-	Error             string                      `json:"error,omitempty"`
-	Metadata          map[string]string           `json:"metadata,omitempty"`
-	Children          []*SessionExecutionTreeNode `json:"children,omitempty"`
+	ExecutionID       string                                `json:"execution_id"`
+	ParentExecutionID string                                `json:"parent_execution_id,omitempty"`
+	SessionID         string                                `json:"session_id"`
+	Source            string                                `json:"source,omitempty"`
+	Kind              string                                `json:"kind"`
+	Name              string                                `json:"name"`
+	Status            string                                `json:"status"`
+	StartedAt         time.Time                             `json:"started_at"`
+	CompletedAt       *time.Time                            `json:"completed_at,omitempty"`
+	Error             string                                `json:"error,omitempty"`
+	Metadata          map[string]string                     `json:"metadata,omitempty"`
+	Children          []*SessionExecutionTreeNode           `json:"children,omitempty"`
+	Inspection        *orchEvents.ExecutionInspectionTarget `json:"inspection,omitempty"`
 }
 
 type SessionExecutionTreeSummary struct {
@@ -540,6 +542,12 @@ func (api *StreamingAPI) buildSessionExecutionTree(session *ActiveSessionInfo) *
 	for nodeID, node := range nodes {
 		if node == nil || nodeID == rootID {
 			continue
+		}
+		// Reuse the same server-issued receipt as the chat's Inspect action.
+		// Main turns, Crew/Flow work and unrecorded event-only nodes cannot
+		// become step inspectors just because their name resembles a step.
+		if node.Source == "background_agent_registry" && workflowStepInspectionKind(node.Kind) {
+			node.Inspection = api.executionInspectionTarget(session.SessionID, node.ExecutionID)
 		}
 		parent := nodes[node.ParentExecutionID]
 		if parent == nil {
