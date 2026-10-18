@@ -24,7 +24,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 
 	"github.com/google/uuid"
-	"github.com/robfig/cron/v3"
 )
 
 // Current manifest schema version. This is the JSON shape version.
