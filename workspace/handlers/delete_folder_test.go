@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/utils"
+	"github.com/manishiitg/coding-agent-loop/workspace/workspaceref"
 
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
@@ -135,5 +136,59 @@ func TestDeleteFolderRequiresConfirmation(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 without confirm=true, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// PLAT-847-7: releases are a sibling namespace, not inside the deleted draft.
+func TestDeleteRelayIncludesOnlyItsSiblingReleases(t *testing.T) {
+	t.Setenv("AGENTWORKS_SLOTS", "")
+	docs := filepath.Join(t.TempDir(), "docs")
+	draft := filepath.Join(docs, "Workflow", "relay-fixture")
+	releases := filepath.Join(docs, filepath.FromSlash(workspaceref.RelayReleaseRoot("Workflow/relay-fixture")))
+	other := filepath.Join(docs, filepath.FromSlash(workspaceref.RelayReleaseRoot("Workflow/other")))
+	for _, dir := range []string{draft, filepath.Join(releases, "v1", "runs", "run-1", ".relay_dbos"), other} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(draft, "workflow.json"), []byte(`{"kind":"relay"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "keep"), []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// A redirected namespace must leave the draft available for retry.
+	moved := releases + "-real"
+	if err := os.Rename(releases, moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, releases); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := removeFolderAtomically(docs, draft); err == nil {
+		t.Fatal("accepted redirected release root")
+	}
+	if _, err := os.Stat(filepath.Join(draft, "workflow.json")); err != nil {
+		t.Fatalf("draft changed on refusal: %v", err)
+	}
+	if err := os.Remove(releases); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(moved, releases); err != nil {
+		t.Fatal(err)
+	}
+	if pending, err := removeFolderAtomically(docs, draft); err != nil || pending {
+		t.Fatalf("delete: pending=%v err=%v", pending, err)
+	}
+	for _, dir := range []string{draft, releases} {
+		if _, err := os.Lstat(dir); !os.IsNotExist(err) {
+			t.Fatalf("deleted root remains: %s %v", dir, err)
+		}
+	}
+	for _, dir := range []string{other, filepath.Join(outside, "keep")} {
+		if _, err := os.Stat(dir); err != nil {
+			t.Fatalf("unrelated path changed: %s %v", dir, err)
+		}
 	}
 }

@@ -194,8 +194,13 @@ func (api *StreamingAPI) startRelayRun(w http.ResponseWriter, r *http.Request, d
 				continue
 			}
 			content, exists, readErr := readFileFromWorkspace(r.Context(), webhookInputPath(candidate.workspace, runID))
-			if readErr != nil || !exists {
+			if readErr != nil {
 				http.Error(w, "existing Flow request is temporarily unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			if !exists {
+				log.Printf("[RELAY_IDEMPOTENCY] workflow=%s run_id=%s version=%s input_missing=true; refusing to replay an earlier invocation", manifest.ID, runID, candidate.version)
+				http.Error(w, "This request belongs to an earlier Flow run whose saved inputs are no longer available. Start a new run with a new request key. The earlier run will not be repeated.", http.StatusConflict)
 				return
 			}
 			if !relayCallPayloadMatches(content, request.Function, request.Input, claims.UserID) {

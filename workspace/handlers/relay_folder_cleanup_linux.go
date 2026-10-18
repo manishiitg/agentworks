@@ -4,10 +4,10 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -23,68 +23,48 @@ import (
 type relaySlotJournal struct {
 	path string
 	slot string
+	info os.FileInfo
+	uid  uint32
 }
 
-func cleanupRelaySlotRunFiles(ctx context.Context, docsRoot, target string) error {
+func cleanupRelaySlotRunFiles(ctx context.Context, docsRoot, target string) (bool, error) {
 	if !slots.Enabled() {
-		return nil
+		return false, nil
 	}
-	// Only a Relay root, never a parent folder containing other projects.
-	rel, err := filepath.Rel(docsRoot, target)
-	if err != nil || len(strings.Split(rel, string(filepath.Separator))) != 2 || !strings.HasPrefix(rel, "Workflow/") {
-		return nil
+	releases, isRelay, err := relayDeletionReleases(docsRoot, target)
+	if err != nil || !isRelay {
+		return false, err
 	}
-	root, err := os.OpenRoot(target)
+	journals, err := relaySlotJournals(target, releases, func(uid uint32) string {
+		return relayCleanupSlot(uid, user.LookupId)
+	})
 	if err != nil {
-		return err
-	}
-	defer root.Close()
-	raw, err := root.ReadFile("workflow.json")
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	var manifest struct {
-		Kind string `json:"kind"`
-	}
-	if err := json.Unmarshal(raw, &manifest); err != nil {
-		return err
-	}
-	if manifest.Kind != "relay" {
-		return nil
-	}
-	assigned, err := slots.Assigned()
-	if err != nil {
-		return err
-	}
-	owners := map[uint32]string{}
-	for _, slot := range assigned {
-		account, err := user.Lookup(slot)
-		if err != nil {
-			return err
-		}
-		uid, err := strconv.ParseUint(account.Uid, 10, 32)
-		if err != nil {
-			return err
-		}
-		owners[uint32(uid)] = slot
-	}
-	journals, err := relaySlotJournals(target, owners)
-	if err != nil {
-		return err
+		return false, err
 	}
 	cleanupCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
+	pending := false
 	for _, journal := range journals {
+		if journal.slot == "" {
+			log.Printf("[RELAY_DELETE] Private journal needs administrator cleanup: uid=%d path=%s", journal.uid, journal.path)
+			pending = true
+			continue
+		}
 		runDir := filepath.Dir(journal.path)
 		resolved, err := filepath.EvalSymlinks(runDir)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if resolved != runDir {
-			return fmt.Errorf("Relay cleanup refuses redirected run directories")
+			return false, fmt.Errorf("Relay cleanup refuses redirected run directories")
+		}
+		current, err := os.Lstat(journal.path)
+		if err != nil {
+			return false, err
+		}
+		stat, ok := current.Sys().(*syscall.Stat_t)
+		if !ok || !current.IsDir() || current.Mode()&os.ModeSymlink != 0 || stat.Uid != journal.uid || !os.SameFile(current, journal.info) {
+			return false, fmt.Errorf("Flow private journal changed before cleanup: %s", journal.path)
 		}
 		iso := &security.Isolator{Slot: journal.slot, BaseDir: docsRoot, WorkDir: runDir,
 			ReadPaths: []string{runDir}, WritePaths: []string{runDir}, StrictAllowlist: true}
@@ -93,21 +73,34 @@ func cleanupRelaySlotRunFiles(ctx context.Context, docsRoot, target string) erro
 		command := "flock -n -E 75 " + shellQuote(filepath.Join(journal.path, "executor.lock")) + " rm -rf -- " + shellQuote(journal.path)
 		cmd, release, err := iso.ExecuteIsolated(cleanupCtx, command, nil)
 		if err != nil {
-			return err
+			return false, err
 		}
 		output, runErr := cmd.CombinedOutput()
 		release()
 		if runErr != nil {
-			return fmt.Errorf("remove private Relay journal as %s: %w: %s", journal.slot, runErr, strings.TrimSpace(string(output)))
+			return false, fmt.Errorf("remove private Relay journal as %s: %w: %s", journal.slot, runErr, strings.TrimSpace(string(output)))
 		}
+		log.Printf("[RELAY_DELETE] Removed private journal: slot=%s path=%s", journal.slot, journal.path)
 		if _, err := os.Lstat(journal.path); !errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("private Relay journal still exists after slot cleanup")
+			return false, fmt.Errorf("private Relay journal still exists after slot cleanup")
 		}
 	}
-	return nil
+	return pending, nil
 }
 
-func relaySlotJournals(target string, owners map[uint32]string) ([]relaySlotJournal, error) {
+// Unassigning a slot removes its table entry, but the OS account still owns its
+// files. Resolve only the journal's actual UID, never an authored account name.
+// The configured deployment prefix and existing slotctl rules remain in force.
+func relayCleanupSlot(uid uint32, lookup func(string) (*user.User, error)) string {
+	uidText := strconv.FormatUint(uint64(uid), 10)
+	account, err := lookup(uidText)
+	if err != nil || account == nil || account.Uid != uidText || !slots.ValidSlot(account.Username) {
+		return ""
+	}
+	return account.Username
+}
+
+func relaySlotJournals(target, releases string, ownerSlot func(uint32) string) ([]relaySlotJournal, error) {
 	// Resolve only real directories. An authored symlink cannot redirect this
 	// maintenance operation to another Relay or to an account's private files.
 	checkDir := func(dir string) (bool, error) {
@@ -127,10 +120,14 @@ func relaySlotJournals(target string, owners map[uint32]string) ([]relaySlotJour
 		return nil, err
 	}
 	runRoots := []string{filepath.Join(target, "runs")}
-	releases := filepath.Join(target, ".relay_releases")
-	if exists, err := checkDir(releases); err != nil {
-		return nil, err
-	} else if exists {
+	if releases != "" {
+		exists, err := checkDir(releases)
+		if err != nil {
+			return nil, err
+		}
+		if !exists {
+			return nil, fmt.Errorf("Flow release directory disappeared before cleanup: %s", releases)
+		}
 		versions, err := os.ReadDir(releases)
 		if err != nil {
 			return nil, err
@@ -139,7 +136,11 @@ func relaySlotJournals(target string, owners map[uint32]string) ([]relaySlotJour
 			if !version.IsDir() {
 				continue
 			}
-			runRoots = append(runRoots, filepath.Join(releases, version.Name(), "runs"))
+			versionRoot := filepath.Join(releases, version.Name())
+			if _, err := checkDir(versionRoot); err != nil {
+				return nil, err
+			}
+			runRoots = append(runRoots, filepath.Join(versionRoot, "runs"))
 		}
 	}
 	var out []relaySlotJournal
@@ -157,7 +158,11 @@ func relaySlotJournals(target string, owners map[uint32]string) ([]relaySlotJour
 			if !entry.IsDir() {
 				continue
 			}
-			journal := filepath.Join(runs, entry.Name(), ".relay_dbos")
+			runDir := filepath.Join(runs, entry.Name())
+			if _, err := checkDir(runDir); err != nil {
+				return nil, err
+			}
+			journal := filepath.Join(runDir, ".relay_dbos")
 			if exists, err := checkDir(journal); err != nil {
 				return nil, err
 			} else if !exists {
@@ -171,8 +176,9 @@ func relaySlotJournals(target string, owners map[uint32]string) ([]relaySlotJour
 			if !ok {
 				return nil, fmt.Errorf("Relay journal ownership unavailable")
 			}
-			if slot := owners[stat.Uid]; slot != "" {
-				out = append(out, relaySlotJournal{path: journal, slot: slot})
+			slot := ownerSlot(stat.Uid)
+			if slot != "" || stat.Uid != uint32(os.Geteuid()) {
+				out = append(out, relaySlotJournal{path: journal, slot: slot, uid: stat.Uid, info: info})
 			}
 		}
 	}

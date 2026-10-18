@@ -4,4 +4,4 @@ package handlers
 
 import "context"
 
-func cleanupRelaySlotRunFiles(_ context.Context, _, _ string) error { return nil }
+func cleanupRelaySlotRunFiles(_ context.Context, _, _ string) (bool, error) { return false, nil }

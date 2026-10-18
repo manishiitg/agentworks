@@ -17,7 +17,7 @@ func TestRelayBuilderUsesOwnPromptSkillAndToolGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"You are the Flow Builder", "Workflow/relay-test", "Current authenticated user"} {
+	for _, required := range []string{"You are the Flow Builder", "Workflow/relay-test", "Current authenticated user", "then do what the owner asked in the same", "No confirmation question, wait or extra gate", "existing chat history records it"} {
 		if !strings.Contains(prompt, required) {
 			t.Fatalf("Relay prompt missing %q", required)
 		}

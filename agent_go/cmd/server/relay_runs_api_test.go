@@ -120,4 +120,11 @@ func TestRelayRunPollsDurableStoreAfterServiceRestart(t *testing.T) {
 	if w := start(`{"function":"process","input":{"value":2},"idempotency_key":"request-1"}`); w.Code != 409 {
 		t.Fatalf("changed input reused key: %d %s", w.Code, w.Body.String())
 	}
+	apiFiles.mu.Lock()
+	delete(apiFiles.files, webhookInputPath(workspace, runID))
+	apiFiles.mu.Unlock()
+	if w := start(`{"function":"process","input":{"value":1},"idempotency_key":"request-1"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Start a new run") {
+		t.Fatalf("deleted invocation must be a permanent conflict without replay: %d %s", w.Code, w.Body.String())
+	}
+
 }
