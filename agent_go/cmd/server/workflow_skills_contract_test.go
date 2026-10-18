@@ -35,6 +35,9 @@ func TestWorkflowSkillsMigrationOverMCPAndBuilder(t *testing.T) {
 	prose := "# Existing how-to\n" + strings.Repeat("Preserve this reusable technique verbatim.\n", 18000)
 	asset := string([]byte{0, 255, 128, 42, 10})
 	sources := map[string]string{"learnings/chat/guide.md": prose, "learnings/_global/references/auth.md": "Read the verified authentication receipt.\n", "learnings/chat/assets/example.bin": asset}
+	for n := 0; n < 140; n++ {
+		sources[fmt.Sprintf("learnings/chat/assets/case-%03d.bin", n)] = asset
+	}
 	for p, raw := range sources {
 		f.write(t, "Workflow/invoices/"+p, raw)
 	}
@@ -121,6 +124,21 @@ func TestWorkflowSkillsMigrationOverMCPAndBuilder(t *testing.T) {
 	}
 	// Stored copy tampering cannot be waved through by stamping or overwritten
 	// by retry; an owner must reconcile the separately edited guide first.
+	manifestBefore := f.read(t, "Workflow/invoices/workflow.json")
+	var editedManifest map[string]interface{}
+	if err := json.Unmarshal([]byte(manifestBefore), &editedManifest); err != nil {
+		t.Fatal(err)
+	}
+	editedManifest["workflow_skills_migration"].(map[string]interface{})["folder"] = "workflow-how-to"
+	changed, _ := json.Marshal(editedManifest)
+	f.write(t, "Workflow/invoices/workflow.json", string(changed))
+	migrate["request_id"] = "retry-wrong-skill-folder"
+	migrate["expected_revision"] = revision()
+	f.call(t, owner, "plan", migrate, 400)
+	if f.read(t, "Workflow/invoices/skills/workflow-how-to/SKILL.md") != "Existing skill must stay unchanged" {
+		t.Fatal("forged migration folder overwrote user skill")
+	}
+	f.write(t, "Workflow/invoices/workflow.json", manifestBefore)
 	copyPath := "Workflow/invoices/" + folder + "references/chat/guide.md"
 	f.write(t, copyPath, "Separately edited guide")
 	f.call(t, owner, "workflow_upgrade", stamp, 409)
@@ -180,6 +198,26 @@ func TestWorkflowSkillsMigrationOverMCPAndBuilder(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(f.docs, "Workflow/invoices/skills/workflow-how-to-3")); !os.IsNotExist(err) {
 		t.Fatal("conflicted migration copied files", err)
+	}
+	emptyIndex := "Workflow/invoices/skills/workflow-how-to-3/SKILL.md"
+	createdEmpty := func(ctx context.Context, args map[string]interface{}) (string, error) {
+		result, err := execute(ctx, args)
+		if err == nil {
+			f.write(t, emptyIndex, "")
+		}
+		return result, err
+	}
+	if _, err := executeWorkflowSkillsBuilderTool(t.Context(), "Workflow/invoices", "owner", builderArgs, createdEmpty); err == nil {
+		t.Fatal("migration overwrote a newly created empty file")
+	}
+	if f.read(t, emptyIndex) != "" || f.read(t, "Workflow/invoices/workflow.json") != concurrentManifest {
+		t.Fatal("empty-file conflict changed data")
+	}
+	if err := os.Remove(filepath.Join(f.docs, emptyIndex)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(f.docs, "Workflow/invoices/skills/workflow-how-to-3")); err != nil {
+		t.Fatal("unexpected partial migration files", err)
 	}
 	if _, err := executeWorkflowSkillsBuilderTool(t.Context(), "Workflow/invoices", "owner", builderArgs, execute); err != nil {
 		t.Fatal("Builder migration after reassignment", err)

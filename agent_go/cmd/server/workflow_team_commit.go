@@ -28,10 +28,17 @@ func stageTeamWrite(ctx context.Context, path, content string) (bool, error) {
 	if root != r.root {
 		return true, fmt.Errorf("team plan tools cannot write another workspace")
 	}
+	maxFiles, maxTotal := 128, 32<<20
+	if migration, _ := ctx.Value(workflowSkillsEditKey{}).(bool); migration {
+		maxFiles, maxTotal = 1024, 64<<20
+	}
 	if len(content) > 8<<20 {
 		return true, fmt.Errorf("team edit exceeds size limit")
 	}
-	if _, replacing := r.pending[path]; !replacing && len(r.pending) >= 128 {
+	if _, replacing := r.pending[path]; !replacing && len(r.pending) >= maxFiles {
+		if migration, _ := ctx.Value(workflowSkillsEditKey{}).(bool); migration {
+			return true, fmt.Errorf("this workflow has too many guide files for one upgrade (limit 1024 including audit files); ask the Builder to organize related references into fewer files, then retry; the migration has not changed source files")
+		}
 		return true, fmt.Errorf("team edit exceeds file limit")
 	}
 	total := len(content)
@@ -40,7 +47,10 @@ func stageTeamWrite(ctx context.Context, path, content string) (bool, error) {
 			total += len(previous)
 		}
 	}
-	if total > 32<<20 {
+	if total > maxTotal {
+		if migration, _ := ctx.Value(workflowSkillsEditKey{}).(bool); migration {
+			return true, fmt.Errorf("workflow guides exceed the 64 MiB upgrade limit; ask the Builder to move large result files into db/assets and keep their references in the guides, then retry; the migration has not changed source files")
+		}
 		return true, fmt.Errorf("team edit exceeds total size limit")
 	}
 	r.pending[path] = content
@@ -152,14 +162,19 @@ func commitTeamEditWithFiles(ctx context.Context, result string,
 		if migrating, _ := ctx.Value(workflowSkillsEditKey{}).(bool); migrating && !strings.HasPrefix(p, r.root+"/planning/changelog/") && !strings.HasPrefix(p, r.root+"/planning/revisions/") {
 			r.mu.Lock()
 			baseline, readBefore := r.reads[p]
+			existed, existenceKnown := r.readExists[p]
 			r.mu.Unlock()
-			if !readBefore || raw != baseline {
+			if !readBefore || !existenceKnown || found != existed || raw != baseline {
 				return fmt.Errorf("guide migration source or settings changed; reread and reconcile before retrying")
 			}
 		}
 		previous[p] = raw
 		exists[p] = found
-		unlock, e := teamManagedWrite(ctx, p, pending[p])
+		policyCtx := ctx
+		if migrating, _ := ctx.Value(workflowSkillsEditKey{}).(bool); migrating {
+			policyCtx = context.WithValue(ctx, workflowSkillsPolicyKey{}, true)
+		}
+		unlock, e := teamManagedWrite(policyCtx, p, pending[p])
 		if e != nil {
 			return e
 		}

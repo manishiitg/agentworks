@@ -220,7 +220,7 @@ func (api *StreamingAPI) externalPlanMutationCall(w http.ResponseWriter, r *http
 		if action == "migrate_workflow_skills" {
 			raw, exists, e := readWorkflowSkillsFile(root, rel)
 			if e == nil {
-				rememberTeamPlanRead(callCtx, p, raw)
+				rememberWorkflowSkillsRead(callCtx, p, raw, exists)
 			}
 			return raw, exists, e
 		}

@@ -3162,7 +3162,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/workflow/run-folder", api.handleCreateRunFolder).Methods("POST", "OPTIONS")
 	// /workflow/progress endpoint removed — steps_done.json progress tracking no longer consumed by frontend
 	apiRouter.HandleFunc("/workflow/run-folder", requireWorkflowWriteAccess(api.handleDeleteRunFolder)).Methods("DELETE", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/learnings", requireWorkflowWriteAccess(api.handleDeleteStepLearnings)).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/variable-groups", requireWorkflowWriteAccess(api.handleUpdateVariableGroups)).Methods("POST", "PUT", "OPTIONS")
 	// Workflow data reads, each behind a per-workflow read check.
 	registerWorkflowReadRoutes(apiRouter, api)
@@ -7578,7 +7577,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					// Older workflows keep their guide attachment until the explicit
 					// skills upgrade. Current workflows use selected local skills.
 					if !relayChat {
-						if manifest, found, readErr := ReadWorkflowManifest(r.Context(), phaseWorkspacePath); readErr == nil && found && !todo_creation_human.UsesWorkflowSkills(manifest.Version) {
+						if manifest, found, readErr := ReadWorkflowManifest(r.Context(), phaseWorkspacePath); readErr != nil || !found || !todo_creation_human.UsesWorkflowSkills(manifest.Version) {
 							if globalSkill := skills.LoadGlobalSkill(getWorkspaceAPIURL(), phaseWorkspacePath); globalSkill != nil {
 								_ = llmAgent.AttachSkill(globalSkill)
 							}

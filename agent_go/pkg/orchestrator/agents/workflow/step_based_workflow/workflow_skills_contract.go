@@ -175,8 +175,8 @@ func migrationAppendSkill(object map[string]interface{}, field, folder string) {
 	object[field] = append(values, folder)
 }
 
-// Repoint authored live references after verifying the copied bytes. Audit
-// notes keep the original wording; no instruction text is copied into runtime prompts.
+// Repoint live references as part of the staged migration. The stamp verifies
+// persisted copies. Audit notes retain their wording outside runtime prompts.
 func rewriteWorkflowSkillReferences(value interface{}, migration *WorkflowSkillsMigration) {
 	var walk func(interface{})
 	rewrite := func(text string) string {
@@ -411,6 +411,16 @@ func createMigrateWorkflowSkillsExecutor(workspacePath string, logger loggerv2.L
 				return "", err
 			}
 		}
+		if previous.Folder != "" {
+			indexPath := normalizePathForWorkspaceAPI(filepath.Join("skills", migration.Folder, "SKILL.md"), workspacePath)
+			if index, e := readFile(ctx, indexPath); e == nil {
+				if previous.IndexSHA256 == "" || skillsMigrationHash([]byte(index)) != previous.IndexSHA256 {
+					return "", fmt.Errorf("the previous migration folder is now a different or edited skill; ask the Builder to reconcile its index before retrying")
+				}
+			} else if !workspacepkg.IsFileNotFound(e) {
+				return "", e
+			}
+		}
 		titles := migrateWorkflowSkillSelections(plan, config, &migration)
 		writeManifest := func() error {
 			manifest["workflow_skills_migration"] = migration
@@ -456,11 +466,7 @@ func createMigrateWorkflowSkillsExecutor(workspacePath string, logger loggerv2.L
 			if e = writeFile(ctx, target, string(raw)); e != nil {
 				return "", e
 			}
-			copiedText, e := readFile(ctx, target)
-			copied := []byte(copiedText)
-			if e != nil || skillsMigrationHash(copied) != file.SHA256 {
-				return "", fmt.Errorf("cannot verify copied guide %s", file.Source)
-			}
+
 		}
 		if migration.Folder != "" {
 			indexPath := normalizePathForWorkspaceAPI(filepath.Join("skills", migration.Folder, "SKILL.md"), workspacePath)

@@ -479,6 +479,7 @@ type teamPlanReceiptKey struct{}
 type teamPlanReceipt struct {
 	mu                   sync.Mutex
 	reads                map[string]string
+	readExists           map[string]bool
 	expectedPlanRevision string
 	root                 string
 	staging              bool
@@ -552,7 +553,11 @@ func teamManagedWrite(ctx context.Context, path, content string) (func(), error)
 	if permit, _ := ctx.Value(teamManifestPermitKey{}).(bool); rel == "workflow.json" && permit {
 		return func() {}, nil
 	}
-	m, ok, e := ReadWorkflowManifest(ctx, root)
+	policyCtx := ctx
+	if currentPolicy, _ := ctx.Value(workflowSkillsPolicyKey{}).(bool); currentPolicy {
+		policyCtx = context.WithValue(ctx, teamPlanReceiptKey{}, nil)
+	}
+	m, ok, e := ReadWorkflowManifest(policyCtx, root)
 	if e != nil {
 		return nil, e
 	}
@@ -585,7 +590,7 @@ func teamManagedWrite(ctx context.Context, path, content string) (func(), error)
 	}
 	fail := func(e error) (func(), error) { release(); return nil, e }
 	// Reload policy inside the same lock as writes and ownership transfer.
-	m, ok, e = ReadWorkflowManifest(ctx, root)
+	m, ok, e = ReadWorkflowManifest(policyCtx, root)
 	if e != nil || !ok || m.Team == nil {
 		return fail(fmt.Errorf("workflow team policy changed; retry"))
 	}

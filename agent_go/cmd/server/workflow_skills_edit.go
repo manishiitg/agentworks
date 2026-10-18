@@ -14,6 +14,21 @@ import (
 
 type workflowSkillsEditKey struct{}
 type teamCommitReadKey struct{}
+type workflowSkillsPolicyKey struct{}
+
+// Migration receipts distinguish an absent target from a newly created empty
+// file, so a concurrent edit cannot be overwritten under the commit lock.
+func rememberWorkflowSkillsRead(ctx context.Context, p, raw string, exists bool) {
+	rememberTeamPlanRead(ctx, p, raw)
+	if receipt, ok := ctx.Value(teamPlanReceiptKey{}).(*teamPlanReceipt); ok {
+		receipt.mu.Lock()
+		defer receipt.mu.Unlock()
+		if receipt.readExists == nil {
+			receipt.readExists = map[string]bool{}
+		}
+		receipt.readExists[p] = exists
+	}
+}
 
 // The typed migration uses the existing staged edit and anchored commit for
 // both text and binary assets. Nothing is copied before full authorization.
@@ -102,7 +117,7 @@ func executeWorkflowSkillsBuilderTool(ctx context.Context, rootPath, user string
 		}
 		raw, exists, err := readWorkflowSkillsFile(root, rel)
 		if err == nil {
-			rememberTeamPlanRead(c, p, raw)
+			rememberWorkflowSkillsRead(c, p, raw, exists)
 		}
 		return raw, exists, err
 	}

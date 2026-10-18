@@ -2399,14 +2399,6 @@ export const agentApi = {
     return response.data
   },
 
-  // Delete learnings for a specific step
-  deleteStepLearnings: async (workspacePath: string, stepId: string): Promise<{ success: boolean; message: string }> => {
-    const response = await api.delete('/api/workflow/learnings', {
-      params: { workspace_path: workspacePath, step_id: stepId }
-    })
-    return response.data
-  },
-
   // Get learning metadata for all steps
   getAllStepLearnings: async (workspacePath: string): Promise<{ success: boolean; learnings: Record<string, Record<string, unknown> | null> }> => {
     const response = await api.get('/api/workflow/learnings/all', {
