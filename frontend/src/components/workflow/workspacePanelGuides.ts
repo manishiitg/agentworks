@@ -21,10 +21,6 @@ const AGENTWORKS_GUIDES: Record<string, GuideCopy> = {
     purpose: 'Manage the ways work starts and review earlier conversations.',
     howTo: 'Use the tabs for chats, schedules, webhooks, functions, and bots. A schedule starts work at a time; a webhook or function starts it from another system.',
   },
-  'Automation Learnings': {
-    purpose: 'See observations the automation has kept from earlier work.',
-    howTo: 'Review what it learned and ask AI to correct anything stale. These notes can inform future runs.',
-  },
   'Automation Schedules': {
     purpose: 'See timed jobs across your automations and whether they are running or paused.',
     howTo: 'Open a schedule to inspect its next run and history. Use the controls here to pause, resume, or refresh scheduling status.',
@@ -347,7 +343,7 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
 const GROUPS: Record<WorkspacePanelSurface, Record<WorkspacePanelGroup, readonly string[]>> = {
   agentworks: {
     'Main toolbar': ['Automation', 'Automation Schedules', 'Browser', 'Dashboard', 'Pulse', 'Schedules', 'Webhooks'],
-    Ops: ['Automation Learnings', 'Backup', 'Plan', 'Cost Analysis', 'Database', 'Execution Logs', 'File', 'Files', 'Knowledge', 'Knowledgebase', 'Notify', 'Publish', 'Workspace'],
+    Ops: ['Backup', 'Plan', 'Cost Analysis', 'Database', 'Execution Logs', 'File', 'Files', 'Knowledge', 'Knowledgebase', 'Notify', 'Publish', 'Workspace'],
     Setup: ['Access', 'Attached folders', 'Browser automation', 'Identity', 'Integrations', 'Project agent configuration', 'Workflow playbooks'],
   },
   code: {

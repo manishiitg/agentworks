@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -149,7 +150,7 @@ func TestWorkflowSkillsMigrationOverMCPAndBuilder(t *testing.T) {
 	f.write(t, "Workflow/invoices/planning/plan.json", teamPlan)
 	f.write(t, "Workflow/invoices/planning/step_config.json", `{"steps":[{"id":"chat","agent_configs":{"learnings_access":"read","knowledgebase_access":"none"}}]}`)
 	execute := func(ctx context.Context, args map[string]interface{}) (string, error) {
-		return stepworkflow.ExecuteExternalBuilderPlanTool(ctx, "migrate_workflow_skills", args, "Workflow/invoices", f.api.logger, nil, nil, nil)
+		return stepworkflow.ExecuteExternalBuilderPlanTool(ctx, "migrate_workflow_skills", args, "Workflow/invoices", f.api.logger, func(context.Context, string) (string, error) { return "", fmt.Errorf("unexpected legacy reader") }, func(context.Context, string, string) error { return fmt.Errorf("unexpected legacy writer") }, nil)
 	}
 	builderArgs := map[string]interface{}{"expected_plan_revision": teamRevision(teamPlan)}
 	if _, err := executeWorkflowSkillsBuilderTool(t.Context(), "Workflow/invoices", "owner", builderArgs, execute); err == nil {

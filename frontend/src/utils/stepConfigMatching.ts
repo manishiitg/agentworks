@@ -16,20 +16,15 @@ export interface AgentConfigs {
   execution_llm?: AgentLLMConfig;
   execution_tier?: 'high' | 'medium' | 'low';
   lock_code?: boolean;                        // Freeze main.py against LLM rewrites
-  // DEPRECATED: backend removed these fields (replaced by learnings_access).
-  // Kept on the interface only so legacy node-display code compiles; the backend
-  // never reads them. New frontend code should consult learnings_access directly.
+  // Historical learning settings decode for old saved plans and execution logs.
+  // Contract1.0.50 retires automatic learning, and1.0.51 moves guides into
+  // workflow-local enabled_skills. New authoring never uses these settings.
   disable_learning?: boolean;
   learning_detail_level?: string;
   learning_after_loop_iteration?: boolean;
   keep_learning_full?: boolean;
-  // Primary gate for learnings_/_global/ access. "read" (default when unset) —
-  // step sees global SKILL.md in its prompt; "read-write" — also contributes
-  // (requires non-empty learning_objective); "none" — no read, no write.
-  // Mirrors knowledgebase_access. Auto-inferred to "read-write" on save when
-  // learning_objective is non-empty and this field is unset (backend migration).
   learnings_access?: 'read' | 'read-write' | 'none';
-  learning_objective?: string;                // Extraction instruction for the post-step learning agent; required when learnings_access="read-write"
+  learning_objective?: string;
   selected_servers?: string[];
   selected_tools?: string[];
   enabled_custom_tools?: string[];

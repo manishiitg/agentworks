@@ -16,7 +16,7 @@ const FALLBACK_SUPPORTED_STRATEGIES: WorkflowBackupStrategyInfo[] = [
   {
     id: 'git',
     label: 'GitHub / remote Git (recommended)',
-    description: 'Protects config, planning, knowledge, and learnings off this device.',
+    description: 'Protects config, planning, knowledge, and skills off this device.',
     best_for: ['workflow', 'planning', 'knowledgebase', 'learnings']
   },
   {

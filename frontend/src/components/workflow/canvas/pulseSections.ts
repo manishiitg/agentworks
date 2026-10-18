@@ -11,7 +11,7 @@ export const PULSE_MODULE_COMMANDS: PulseCommandDefinition[] = [
   { id: 'technical_review', label: 'Health', description: 'Investigates correctness failures, invalid outputs and regressions' },
   { id: 'architecture_review', label: 'Architecture', description: 'Improves prompts, orchestration, scripts, learning, knowledge, data, reports and efficiency' },
   { id: 'strategic_review', label: 'Strategy', description: 'Audits hidden strategic mechanisms and conditionally explores materially different approaches' },
-  { id: 'plan_drift_review', label: 'Workflow Review', description: 'Runs before each run when the plan changed: checks steps for DB, report, learnings, KB, and validation_schema drift' },
+  { id: 'plan_drift_review', label: 'Workflow Review', description: 'Runs before each run when the plan changed: checks steps for DB, report, skills, KB, and validation_schema drift' },
 ]
 
 export const PULSE_FIXED_COMMANDS: PulseCommandDefinition[] = [

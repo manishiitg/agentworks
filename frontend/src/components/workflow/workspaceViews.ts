@@ -35,7 +35,7 @@ import { PulseIcon } from './pulseIcon'
  *   - `canvas`     the React Flow plan (`flow`).
  *   - `preview`    the report preview (`report`) -- no React Flow tree.
  *   - `files`      the file browser.
- *   - `inspector`  a full-pane inspector (costs, logs, learnings, ...).
+ *   - `inspector`  a full-pane inspector (costs, logs, ...).
  *   - `capability` a section of `WorkflowCapabilitiesPanel`.
  *
  * `flow` and `report` are the two "canvas views": the store's
