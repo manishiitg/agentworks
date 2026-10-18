@@ -117,12 +117,8 @@ var All = []Module{
 		Authority: "propose",
 	},
 	{
-		// Plan Drift Review ("Workflow Review") is event-triggered rather than
-		// time-cadenced: it is due whenever a step has no current drift_review
-		// record, one flagged needs_review==true by a plan edit, or a new
-		// broken reference. Since PLAT-697 phase 0 it runs before each workflow
-		// run (cmd/server/workflow_review_prerun.go), never in a Pulse pass;
-		// it keeps its module identity for its receipts and history.
+		// Plan Drift is evidence for the same Pulse goal-work turn. Its
+		// durable identity is kept for receipts/history, never a pre-run gate.
 		ID:        PlanDriftReviewID,
 		Label:     "Plan drift review",
 		StepLabel: "plan-drift-review",
@@ -136,10 +132,8 @@ var All = []Module{
 // ExecutionOrder is the canonical reviewer sequence of a Pulse pass.
 // Strategic Review is Goal Work, Pulse's main job
 // (docs/design/pulse_goal_work.md), so it runs first; platform upkeep follows.
-// Plan Drift ("Workflow Review") is not part of a Pulse pass: it runs before
-// every workflow run (PLAT-697 phase 0, docs/design/pulse_goal_owner.md). It
-// stays a registered module above because its receipts and history keep
-// their identity.
+// Plan Drift is checked inside the same Pulse turn, not dispatched as
+// a separate reviewer. It keeps its identity for evidence and history.
 var ExecutionOrder = []string{
 	StrategicReviewID,
 	ArchitectureReviewID,

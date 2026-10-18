@@ -411,9 +411,8 @@ export function PulseWorkspace({
   }
 
   const openIssueCount = pulseWorkspaceQueueCounts(findings).all
-  // Workflow Review runs before every run, not in Pulse (PLAT-697 phase 0): it
-  // never holds Goal Work or the other reviews, so the Pulse tab shows no
-  // "due" state for it, only its latest result under Platform health.
+  // Plan Drift evidence belongs to Pulse and never holds execution.
+  // Keep previous results available under Platform health.
   return (
     <div className="space-y-4">
       <div role="tablist" aria-label="Pulse views" className="flex gap-1 rounded-lg border bg-muted/30 p-1">

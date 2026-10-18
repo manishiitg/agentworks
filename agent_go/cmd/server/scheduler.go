@@ -554,8 +554,8 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 				s.launchDueGoalChecks(context.Background())
 				// QA runs the Pulse asked for (PLAT-697 phase 4).
 				s.launchGoalLeadQARequests(context.Background())
-				// Workflow Review runs only right before a run, never on its
-				// own in the background (owner, 2026-10-08).
+				// Plan Drift is checked inside the same Pulse goal-work turn;
+				// ordinary workflow runs never dispatch an AI reviewer.
 			}()
 			lastTick = t
 		}
@@ -2994,7 +2994,7 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 		s.sessionLogf(sctx, sessionID, "[PULSE] daily goal check for %s, in the Pulse conversation", sctx.WorkspacePath)
 	} else if sctx.PulseFixRun {
 		// A fix run records its own worklist instead of running the Gate agent
-		// and runs Technical Review+Fix only. Workflow Review runs before runs
+		// and runs Technical Review+Fix only. Plan Drift belongs in Pulse
 		// and backup/publish/notify are per-schedule after-run options
 		// (PLAT-697 phase 0), so neither is part of a fix run.
 		if err := recordPulseFixRunWorklist(ctx, sctx.WorkspacePath, pulseRunID, sctx.PulseFixReason); err != nil {
@@ -3006,9 +3006,9 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 	} else {
 		// One Pulse for every Pulse workflow (owner, 2026-10-08): the pass is a
 		// Goal Work turn in the workflow's Pulse conversation. No Gate, no
-		// separate Architecture or Technical reviews, no finalizer; Workflow
-		// Review runs before runs and housekeeping is per-schedule.
-		steps = []pulseLifecycleStep{{label: "goal-work", goalLead: true, query: fmt.Sprintf("PULSE GOAL WORK. pulse_run_id=%q. Do a Goal Work pass now with the goal-lead-work skill: follow up earlier items, find what would move the goal, and get 1-3 bounded items done through the Builder chat (ask_builder). Record each item with record_pulse_goal_work. Nothing worth doing is a valid answer.", pulseRunID)}}
+		// separate Architecture or Technical reviews or finalizer. Plan Drift
+		// belongs in this same turn; housekeeping is per-schedule.
+		steps = []pulseLifecycleStep{{label: "goal-work", goalLead: true, query: fmt.Sprintf("PULSE GOAL WORK. pulse_run_id=%q. Do a Goal Work pass now with the goal-lead-work skill: check plan drift evidence yourself, follow up earlier items, find what would move the goal, and get one bounded improvement change set done through the Builder chat (ask_builder). Record each item with record_pulse_goal_work. Nothing worth doing is a valid answer.", pulseRunID)}}
 		s.sessionLogf(sctx, sessionID, "[PULSE] Goal Work turn for %s, in the Pulse conversation", sctx.WorkspacePath)
 	}
 
@@ -3390,7 +3390,7 @@ func pulseModuleReviewParts(module string) (label, reference, contract string) {
 	case pulseModuleArchitectureReview:
 		label, reference, contract = "architecture-review", "architecture-review", "Improve the construction of a working workflow, including evidence-based execution tier/model choices. Use actual quality, retries, cost and latency evidence; preserve explicit user pins and propose measured trials with a checkpoint and rollback through architecture decisions. Runtime does not change tiers from run counts. Research and propose bounded improvements. The one exception (PLAT-556, see architecture-review.md): with focus prompt_design, learning_quality or knowledgebase_design you may apply a pure text-moving consolidation yourself when check_plan_no_loss passes, then run the step once and keep it only if validation passes (else restore_step_from_changelog), and you may set a settled learnings_access=read-write step to read; record each with record_pulse_result consolidations. Behaviour, rule, output and topology changes stay owner proposals. If the worklist evidence carries architecture_scope_excludes, do not touch those steps: Plan Drift owns them this pass."
 	case pulseModuleStrategicReview:
-		label, reference, contract = "strategic-review", "strategy-auditor", "GOAL WORK: this is Pulse's main job. Do work that moves the user's goals, not only proposals. Read soul.md and get_goal_metrics early, follow up earlier Goal Work items (get_pulse_state view=goal_work), find what would move the primary metric that nobody is doing or the user does not know, and complete 1-3 bounded items now within the permission levels below, which the tools enforce for this turn (prepare under pulse/work/; run existing steps, act outward or change the workflow yourself only where that level is auto; where it is ask, put it to the user as a ready decision request). Record each with record_pulse_goal_work. Challenge soul.md constraints only with evidence through a keep/test/change decision; boundary constraints only get clarification; never break one meanwhile. This module is not blocked by a due Plan Drift; when Drift is due, Run and Change are held for this turn: prepare and research but do not run steps or edit the workflow."
+		label, reference, contract = "strategic-review", "strategy-auditor", "GOAL WORK: this is Pulse's main job. Do work that moves the user's goals, not only proposals. Read soul.md and get_goal_metrics early, follow up earlier Goal Work items (get_pulse_state view=goal_work), find what would move the primary metric that nobody is doing or the user does not know, and complete 1-3 bounded items now within the permission levels below, which the tools enforce for this turn (prepare under pulse/work/; run existing steps, act outward or change the workflow yourself only where that level is auto; where it is ask, put it to the user as a ready decision request). Record each with record_pulse_goal_work. Challenge soul.md constraints only with evidence through a keep/test/change decision; boundary constraints only get clarification; never break one meanwhile. Check due Plan Drift evidence yourself within this turn. Drift does not withhold Run or Change and never holds ordinary execution."
 	}
 	return label, reference, contract
 }

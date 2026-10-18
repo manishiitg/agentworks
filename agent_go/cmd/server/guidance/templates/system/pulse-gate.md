@@ -18,15 +18,13 @@ The canonical modules are:
   the user's goals (work nobody is doing, or the user does not know about),
   follows up earlier Goal Work, and challenges soul.md constraints with
   evidence. It is never folded into Technical Review.
-- `plan_drift_review`: the **Workflow Review**. It runs before every workflow
-  run, not in Pulse (PLAT-697 phase 0): unchanged plans start at once, a
-  changed plan is reviewed first. Record it not due with a cooldown (the
-  backend records it not due whatever you send). Its latest result
-  (`get_pulse_state(view="module")` `workflow_review`) is evidence for the other
-  modules, never a reason to hold them.
+- `plan_drift_review`: plan consistency after a change. Mark it due when
+  changed steps, reference breaks or missing dependency receipts need attention.
+  Pulse checks this evidence itself in its goal-work turn and asks Builder for
+  repairs. It never launches a separate pre-run reviewer or holds execution.
+  Saved `workflow_review` results are historical evidence, not a run gate.
 
-The role boundary is fixed: the Workflow Review (before runs) preserves an
-approved plan after a change; Architecture proposes a better technical structure; Technical repairs
+Plan Drift checks consistency inside Pulse after a change; Architecture proposes a better technical structure; Technical repairs
 concrete execution failures; Goal Work (strategic_review) moves the user's goals
 forward by doing the work. Architecture and Technical are platform
 upkeep; Goal Work is what the user relies on Pulse for.
@@ -247,9 +245,9 @@ review slot or displace eligible Strategic Review. Record the evidence for this
 judgment in the worklist reason/evidence, not a new issue per failed tool call.
 
 Plan-change dependency receipts (`plan_change_dependencies`) and
-`plan_drift_candidates` are the Workflow Review's own evidence. It runs before
-the next run, so no module here waits for it: decide Technical, Architecture
-and Goal Work on their own merits.
+`plan_drift_candidates` are Pulse evidence. Check relevant inconsistencies in
+this same goal-work turn. Ordinary execution never waits for these findings;
+keep the existing structural guard for inputs that cannot be read.
 
 When DB, knowledgebase, or learnings integrity is selected, explicitly name the
 Stores Health scope in the reason. Stores Health remains a technical lens, not

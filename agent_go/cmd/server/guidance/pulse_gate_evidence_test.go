@@ -25,10 +25,9 @@ func TestPulseGateAssessesImpactAndAccumulatesEvidence(t *testing.T) {
 		"All three non-drift reviews may be skipped",
 		"New critical regressions, security/data-loss risks",
 		"Ordinary recovered errors do not override it",
-		// Workflow Review runs before every run, not in Pulse (PLAT-697
-		// phase 0); no module waits for it.
-		"It runs before every workflow",
-		"no module here waits for it",
+		// Plan Drift is evidence inside the same Pulse turn, never a run gate.
+		"Pulse checks this evidence itself in its goal-work turn",
+		"Ordinary execution never waits",
 	} {
 		if !strings.Contains(gate, want) {
 			t.Errorf("missing Gate contract: %q", want)

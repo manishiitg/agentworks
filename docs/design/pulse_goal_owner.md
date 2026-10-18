@@ -15,7 +15,7 @@ is an optional aggregate, and run/step read tools allow focused investigation.
 Go stores evidence and delivers explicit messages; the agents judge what matters.
 
 
-Status: phases 0-4 built (0: Workflow Review before runs, backup/publish/notify as schedule options; 1: goal check, silence alarm, one message; 2: enforced autonomy; 3: recommendations on decisions, goal memory in `memory/goal.md`, decision log; 4: Pulse as its own persistent chat kind, see "Phase 4 as built"; QA and Architecture owned by Pulse for workflows with a goal, see that section; ask_builder and more goal facts, see that section); phases 5-6 design. Owner: the Pulse session. Ticket: PLAT-697.
+Status: phases 0-4 built (0: Plan Drift within Pulse, backup/publish/notify as schedule options; 1: goal check, silence alarm, one message; 2: enforced autonomy; 3: recommendations on decisions, goal memory in `memory/goal.md`, decision log; 4: Pulse as its own persistent chat kind, see "Phase 4 as built"; QA and Architecture owned by Pulse for workflows with a goal, see that section; ask_builder and more goal facts, see that section); phases 5-6 design. Owner: the Pulse session. Ticket: PLAT-697.
 
 Name (owner, 2026-10-07, second decision): users and agents see **Pulse**, e.g. "Substack Pulse". It was called
 "Goal Lead" while phases 0-4 were built; code names (`goal_lead_*` files, tables and types) keep that name.
@@ -102,7 +102,7 @@ read/write, Run read-only + server-executed actions; `project_instruction_files.
 | Read runs, outputs, db, plan, `soul.md` | the workflow link, read access |
 | Run steps or the workflow | existing run tools; only when `run` is auto |
 | Change plan, steps, schedules | Builder typed tools, only when `change` is auto; otherwise a prepared recommendation |
-| Larger plan changes | ask the workflow's own Builder chat by function call; Workflow Review checks before the next run |
+| Larger plan changes | ask the workflow's own Builder chat by function call; Pulse checks dependent artifacts in its turn |
 | Its memory and focus areas | its own runtime folder in the workflow's Pulse area |
 | `soul.md` | read only; edits are proposed to the owner |
 
@@ -171,7 +171,7 @@ As a small Crew, the Pulse agent has skills (loaded when needed) and sub-agents 
   that would flood the persistent conversation), returning a short result.
 - **Independent check:** whether its own change worked is judged by a separate run, never by the Pulse agent itself
   (proposer is not the evaluator).
-- Workflow Review is outside Pulse (phase 0).
+- Plan Drift is checked by the same Pulse agent; ordinary execution never waits for AI review.
 
 ## Memory: the goal over time
 
@@ -215,33 +215,17 @@ Required first (both found 2026-10-07 on a0d687b63; the first two are done in ph
 The full review (Drift, Technical, Architecture) keeps its own self-deciding schedule (at most daily, at least
 weekly).
 
-## Phase 0: Workflow Review leaves Pulse; manual runs choose review
+## Plan Drift inside Pulse
 
-Plan Drift ("Workflow Review") checks that the plan, steps, references and contracts still fit together. That is a
-change check, not goal work. Inside Pulse it runs on Pulse's clock (late after a change, wasted when nothing
-changed) and, when due, it runs alone and withholds Run/Change from Goal Work, so housekeeping delays the goal.
+Plan Drift checks that changed steps, references and contracts still fit together.
+Pulse checks this evidence in its goal-work turn and asks Builder to repair concrete
+inconsistencies. There is no separate pre-run reviewer, review-first/run-now choice,
+or hold based on a saved AI review. Old review records remain readable as history.
 
-Decision (owner, 2026-10-07; manual-run policy revised 2026-10-12, PLAT-825/825-26):
-scheduled runs retain a pre-run check; interactive testing does not require an AI review.
-
-- **Individual step tests:** run directly with basic validation and permissions. Stale drift evidence alone
-  does not launch an AI reviewer or hold the test.
-- **Person-attended Builder/Run full-workflow runs:** if drift is due, ask "Review first, or run now?" The user's
-  `review_plan` choice either starts the existing background review or runs without clearing review debt.
-  Clean plans run directly.
-- **Unattended full runs** (schedules, functions, bots/external requests, Pulse turns): the code-only reference map
-  (`CollectReferenceMap`, flags version) decides whether the plan changed or has new breaks since the last review.
-  Unchanged and clean: the run starts immediately, no AI call.
-- **Review selected or required by a schedule:** the Workflow Review agent runs first, fixes what it safely can, and the run starts on the
-  reviewed plan. A break it cannot fix stops the run with the reason, and the Builder chat gets the finding (the
-  workflow's agents fix workflows).
-- **Also on change:** after a Builder edit, an upgrade, or a platform rule change (flags version bump), so most runs
-  find it already done.
-- Pulse no longer schedules or waits for Drift. It reads the latest Workflow Review result as one input to "is the
-  goal moving?".
-
-Cost: one code check per run; an AI review only when something changed. Guard against loops: one review per plan
-revision; a run never re-triggers a review for the same revision.
+Each execution makes a quick deterministic reference observation without a model
+call. Advice is logged for Pulse. Ordinary execution validation, permissions and
+the existing unreadable-input guard remain. The owner explicitly retained that
+structural guard while removing AI review holds (2026-10-18, PLAT-825/871).
 
 ## What leaves Pulse
 
@@ -254,13 +238,13 @@ Pulse today also carries housekeeping: its finalizer runs Backup → Publish →
 | Publish | refreshing the published dashboard snapshot | an after-run option in Publish settings ("republish after each run") |
 | Notify | run finished / failed / report ready | the run's notification settings; separate from the Pulse's daily goal message |
 | Recent activity | log of runs, edits, reviews | the workflow's Activity / History tab; the Pulse shows only its own decisions |
-| Plan Drift (Workflow Review) | plan consistency after changes | the pre-run check (phase 0) |
+| Plan Drift (Workflow Review) | plan consistency after changes | the same Pulse goal-work turn |
 
 - `pulse_mode` (off / basic / full) goes away: a schedule has after-run checkboxes (backup, publish, notify). The
   Pulse runs on its own triggers, never through a schedule's mode.
 - Backup and publish no longer wait on or depend on an AI pass.
 - Two kinds of messages: run notifications (per run, optional) and the Pulse's goal message (daily, per goal).
-- After this "Pulse" as a bundle is gone: Workflow Review before runs, housekeeping after runs, history in Activity,
+- After this "Pulse" as a bundle is gone: Plan Drift inside Pulse, housekeeping after runs, history in Activity,
   and the Pulse owning the goal with QA and Architecture as its skills and sub-agents.
 
 ## Scope and phases
@@ -268,7 +252,7 @@ Pulse today also carries housekeeping: its finalizer runs Backup → Publish →
 Goals are per workflow today (`soul.md`, `configure_goal_metrics`); nothing links workflows that share a goal. Start
 with one owner per workflow goal; a goal spanning workflows is a later phase.
 
-0. Workflow Review out of Pulse, as a pre-run check; Backup, Publish, Notify and recent activity out of Pulse (above).
+0. Plan Drift inside the same Pulse turn; Backup, Publish, Notify and recent activity out of Pulse (above).
 1. Goal check + silence alarm + one message. Pilot: Substack.
 2. Enforce autonomy levels in tools; fix the Goal Work contract text.
 3. Pulse answers decision requests within its levels; goal memory; decision log.

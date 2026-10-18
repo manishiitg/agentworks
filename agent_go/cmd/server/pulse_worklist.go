@@ -37,9 +37,8 @@ const (
 	// current strategy and conditional discovery of materially different
 	// approaches. Those are sequence turns, not independent modules.
 	pulseModuleStrategicReview = pulsemodules.StrategicReviewID
-	// pulseModulePlanDriftReview is the Workflow Review. It runs before each
-	// workflow run, not in Pulse (PLAT-697 phase 0, workflow_review_prerun.go);
-	// keepWorkflowReviewOutOfPulse records it not due in every Pulse worklist.
+	// pulseModulePlanDriftReview records plan consistency evidence checked by
+	// Pulse itself. It never starts a pre-run reviewer or holds execution.
 	pulseModulePlanDriftReview = pulsemodules.PlanDriftReviewID
 )
 
@@ -1344,28 +1343,6 @@ func applyDisabledPulseReviewModules(ctx context.Context, workspacePath string, 
 		updated[index].CooldownRuns = 1
 	}
 	return updated, nil
-}
-
-// keepWorkflowReviewOutOfPulse records plan_drift_review as not due in a
-// Pulse Gate's worklist (the fix run records it not due itself): Workflow Review runs before each workflow run, triggered by
-// the run itself and by plan changes (PLAT-697 phase 0,
-// workflow_review_prerun.go), never inside a Pulse pass, so no Pulse module
-// waits for it or is deferred by it. The module row keeps its identity for the
-// review's own receipts.
-func keepWorkflowReviewOutOfPulse(decisions []PulseWorklistDecision) []PulseWorklistDecision {
-	out := append([]PulseWorklistDecision(nil), decisions...)
-	for index := range out {
-		if normalizePulseModule(out[index].Module) != pulseModulePlanDriftReview {
-			continue
-		}
-		out[index].Due = false
-		out[index].Reason = "Workflow Review runs before each run, not in Pulse."
-		out[index].Evidence = []string{"workflow_review:pre_run"}
-		out[index].NextCheckAt = ""
-		out[index].NextCheckAfterRunID = ""
-		out[index].CooldownRuns = 1
-	}
-	return out
 }
 
 func pulsePlanDriftDue(decisions []PulseWorklistDecision) bool {
@@ -2843,9 +2820,6 @@ func createPulseWorklistTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 			shadowResult := loopclosure.Check(ctx, normalized, time.Now().UTC())
 			mode := stringToolArg(args, "mode")
 			modeReason := stringToolArg(args, "mode_reason")
-			// Workflow Review runs before runs, never in a Pulse pass (PLAT-697
-			// phase 0): whatever Gate decided for it, it is not due here.
-			decisions = keepWorkflowReviewOutOfPulse(decisions)
 			// A goal workflow's Pulse conversation owns QA and architecture
 			// (PLAT-697): its pass runs neither as a turn.
 			if workflowHasGoal(ctx, normalized) {
@@ -3149,9 +3123,8 @@ func readPulseModuleStateView(ctx context.Context, workspacePath, pulseRunID str
 	planDependencyIntake := step_based_workflow.BuildPlanChangeDependencyIntake(planBacklog)
 	// Steps with no drift_review record, or one flagged needs_review==true,
 	// with the deterministic Group 1/2 checks Go could run for each already
-	// computed — evidence for the Workflow Review turn (which runs before
-	// runs, PLAT-697 phase 0), so it starts from pre-computed results instead
-	// of re-deriving them.
+	// computed — evidence for the same Pulse goal-work turn, avoiding
+	// repeated mechanical checks.
 	planDriftCandidates, planDriftErr := step_based_workflow.CollectPlanDriftCandidates(ctx, workspacePath)
 	planDriftErrorText := ""
 	if planDriftErr != nil {
@@ -3266,7 +3239,7 @@ func readPulseModuleStateView(ctx context.Context, workspacePath, pulseRunID str
 		// an input to "is the goal moving", never a reason to hold work.
 		"workflow_review":                LatestWorkflowReview(workspacePath),
 		"plan_drift_candidates_error":    planDriftErrorText,
-		"plan_drift_candidates_note":     "Steps with no drift_review record, one flagged needs_review==true, or one below the contract version required for its step_type (evidence from any prior review is preserved on the step's own record in step_config.json, not duplicated here), each with Go-precomputed Check 1/2/4/9 results (report query compatibility, validation_schema db[] rules from step_config.json only, scripted-code queries, db/README.md contract). Checks 5 (validation_schema file rules) and 13 (orphaned tables) are not precomputed here; the plan_drift_review reviewer checks those directly when the actual change can affect them. Prompt-quality and reference-backed step-type checks are required only for a first baseline or when their prompt/schema/guidance, step type, topology, or relevant execution boundary changed. A title-only or unrelated configuration edit may receive a compact compatibility receipt. Plan Drift preserves the approved plan; general design optimization belongs to Architecture. Applied fixes close without a future-run verification queue. A failed precomputed check is still evidence, not a filed finding — the reviewer turn records the merged result via record_plan_drift_review and files a Pulse finding for anything unresolved. A candidate with step_id==\"" + step_based_workflow.WorkflowDriftReviewStepID + "\" is not a real plan step: it means one or more steps were deleted since the last workflow-level audit, and dependent-artifact fallout from that deletion needs tracing — see plan-drift-review.md's workflow-level deletion audit section; clear it the same way, via record_plan_drift_review(step_id=\"" + step_based_workflow.WorkflowDriftReviewStepID + "\", ...). A non-empty plan_drift_candidates_error means this scan itself failed (unreadable/malformed plan.json or step_config.json) — the candidate list above is empty because it is unknown, not because nothing is due. Workflow Review runs before each run, not in a Pulse pass: Gate records plan_drift_review not due.",
+		"plan_drift_candidates_note":     "Steps with no drift_review record, one flagged needs_review==true, or one below the contract version required for its step_type (evidence from any prior review is preserved on the step's own record in step_config.json, not duplicated here), each with Go-precomputed Check 1/2/4/9 results (report query compatibility, validation_schema db[] rules from step_config.json only, scripted-code queries, db/README.md contract). Checks 5 (validation_schema file rules) and 13 (orphaned tables) are not precomputed here; the plan_drift_review reviewer checks those directly when the actual change can affect them. Prompt-quality and reference-backed step-type checks are required only for a first baseline or when their prompt/schema/guidance, step type, topology, or relevant execution boundary changed. A title-only or unrelated configuration edit may receive a compact compatibility receipt. Plan Drift preserves the approved plan; general design optimization belongs to Architecture. Applied fixes close without a future-run verification queue. A failed precomputed check is still evidence, not a filed finding — the reviewer turn records the merged result via record_plan_drift_review and files a Pulse finding for anything unresolved. A candidate with step_id==\"" + step_based_workflow.WorkflowDriftReviewStepID + "\" is not a real plan step: it means one or more steps were deleted since the last workflow-level audit, and dependent-artifact fallout from that deletion needs tracing — see plan-drift-review.md's workflow-level deletion audit section; clear it the same way, via record_plan_drift_review(step_id=\"" + step_based_workflow.WorkflowDriftReviewStepID + "\", ...). A non-empty plan_drift_candidates_error means this scan itself failed (unreadable/malformed plan.json or step_config.json) — the candidate list above is empty because it is unknown, not because nothing is due. Pulse checks this evidence in its same goal-work turn. Never suppress it merely because ordinary runs no longer dispatch a reviewer; it does not hold execution.",
 		"deterministic_intake_note":      "Read-only typed evidence, not automatic Pulse issues or Fixer authorization. Runtime errors do not force Technical Review: Gate must assess step concerns, required outcomes, recovery, material impact, prior review dispositions, and new comparable runs since last_ran_at. A completed status alone does not prove recovery; missing concerns or incomplete coverage do not prove health. Skip with a concrete evidence/recheck boundary when another review has no useful new evidence; a new critical failure must not wait for sample accumulation. Failed plan_change_dependencies requires the exclusive Plan Drift prerequisite to inspect and close those exact structured receipts before any other reviewer runs. coverage_status must be verified before an empty findings list means clean.",
 		"module_review_history":          reviewHistory,
 		"review_history_note":            "What each reviewer concluded the last few times it ran, most recently run first. A module absent from this list has not run in the retained window at all. Use it to justify each skip: a module that keeps returning real findings is a poor candidate for another cooldown, and one that has come back clean repeatedly is a good one. A verdict here is the reviewer's conclusion, which is not the same as whether anything was then fixed.",

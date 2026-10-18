@@ -1,7 +1,6 @@
-import { ArrowRight, Brain, CalendarClock, Check, MessageSquare, SearchCheck, ShieldCheck, Target, Wrench } from 'lucide-react'
+import { ArrowRight, Brain, CalendarClock, Check, MessageSquare, ShieldCheck, Target, Wrench } from 'lucide-react'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { describeCron } from '../scheduler/scheduleRuns/cron'
-import { timeAgo } from '../scheduler/scheduleRuns/helpers'
 import { PulseIcon } from './pulseIcon'
 import type { ScheduleAfterRun, WorkflowRunSetup } from '../../services/api-types'
 
@@ -34,8 +33,6 @@ export function PulseOffCard({ pulseOn, hasSoul, runSetup, saving, onTurnOn }: {
 }) {
   const openSchedules = () => useWorkflowStore.getState().openWorkspaceView('schedules')
   const schedules = runSetup?.schedules ?? []
-  const review = runSetup?.workflow_review
-  const reviewedAt = review?.finished_at || review?.started_at
   return (
     <div data-testid="pulse-off-card" className="mx-auto max-w-3xl space-y-4">
       <section className="rounded-xl border border-primary/25 bg-gradient-to-b from-primary/10 to-transparent px-4 py-6 text-center sm:px-8">
@@ -104,11 +101,6 @@ export function PulseOffCard({ pulseOn, hasSoul, runSetup, saving, onTurnOn }: {
             <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
             <span className="min-w-0 flex-1">Runs from a chat</span>
             <span className="shrink-0 text-muted-foreground">after: {afterRunText(runSetup?.manual_after_run)}</span>
-          </li>
-          <li className="flex items-center gap-2 px-3 py-2 text-foreground">
-            <SearchCheck className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <span className="min-w-0 flex-1">Workflow Review checks a changed plan before each run</span>
-            <span className="shrink-0 text-muted-foreground">{reviewedAt ? `last ${timeAgo(reviewedAt)}` : 'not run yet'}</span>
           </li>
         </ul>
       </section>

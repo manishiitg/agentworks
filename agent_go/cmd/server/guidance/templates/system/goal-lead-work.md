@@ -7,6 +7,12 @@ Builder; a technical handoff alone is not Goal Work's conclusion.
 - Read relevant earlier items, real outputs and comparable DB history. Reuse an
   existing item, finding or pending decision. Check matured `check_at` dates
   before opening more work. Keep what worked; stop or change what did not.
+- Check plan consistency in this same turn: use `get_pulse_state(view="module")`
+  for `plan_drift_candidates` and plan-change dependency evidence. Read only the
+  changed steps and their dependents, ask Builder to repair concrete breaks,
+  and record the result with the existing drift/dependency receipt tools. Do
+  not launch a separate reviewer or hold a run for AI review. Required inputs
+  still must be readable.
 - Choose the change most likely to move the goal. Removing a step, redundant
   rule or unproductive schedule can be better than adding work. Item counts
   are not a target. Compare alternative approaches when the current one has

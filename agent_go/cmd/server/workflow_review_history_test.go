@@ -6,11 +6,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
-// A prior failed/stale AI review must never prevent a requested run. Drive the
-// registered tool boundary with real saved review/config files; keep the normal
-// contract/graph guards, and preserve the old review as history.
+// A saved failed/stale review must not intercept the real scheduled Builder
+// tool registration. Use an incomplete run request so the real executor proves
+// it was reached without starting background work or calling a model. Before
+// removal, installWorkflowPhaseTools wrapped this exact tool with AI review.
 func TestSavedWorkflowReviewNeverHoldsExecution(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
@@ -27,30 +31,35 @@ func TestSavedWorkflowReviewNeverHoldsExecution(t *testing.T) {
 	}
 	write("plan.json", `{"steps":[{"id":"step-a","type":"scripted","description":"Produce a result."}]}`)
 	write("step_config.json", `{"steps":[{"id":"step-a","agent_configs":{"drift_review":{"needs_review":true,"contract_version":3,"checks":[]}}}]}`)
+	const sessionID = "schedule-cron--saved-review-regression"
+	logger := loggerv2.NewNoop()
+	session, err := workflow.NewWorkshopChatSession(context.Background(), &workflow.WorkshopConfig{
+		Logger: logger, WorkspacePath: ws,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	api := &StreamingAPI{logger: logger}
+	api.workshopChatSessions.Store(sessionID, session)
 	draft := &productSurfaceDraft{}
-	guard := workflowContractExecutionGuardRegistrar{definitionRegistrar: draft, workspacePath: ws}
-	started := 0
-	for _, name := range []string{"execute_step", "run_full_workflow"} {
-		if err := guard.RegisterCustomTool(name, "Run", map[string]interface{}{"type": "object"}, func(context.Context, map[string]interface{}) (string, error) {
-			started++
-			return "execution started", nil
-		}, "workflow"); err != nil {
-			t.Fatal(err)
-		}
+	if err := api.installWorkflowPhaseTools(context.Background(), draft, sessionID,
+		"test-user", "workflow-builder", ws, "", map[string]string{"WorkshopMode": "workshop"},
+		nil, nil, nil, nil, nil, QueryRequest{TriggeredBy: "cron"}, false); err != nil {
+		t.Fatal(err)
+	}
+	run, ok := draft.tools["run_full_workflow"]
+	if !ok {
+		t.Fatal("real scheduled Builder run tool was not registered")
 	}
 	for _, outcome := range []string{"unresolved", "incomplete", "running"} {
 		write("workflow_review.json", `{"version":1,"reviewed_revisions":["unchanged-plan"],"latest":{"revision":"unchanged-plan","outcome":"`+outcome+`","unresolved":[{"step_id":"step-a","reason":"The plan changed or a prior drift check remains unresolved"}]}}`)
-		for _, name := range []string{"execute_step", "run_full_workflow"} {
-			out, err := draft.tools[name].exec(context.Background(), map[string]interface{}{"step_id": "step-a"})
-			if err != nil || !strings.Contains(out, "execution started") {
-				t.Fatalf("%s held by %s review: %q %v", name, outcome, out, err)
-			}
+		out, err := run.exec(context.Background(), map[string]interface{}{})
+		if err != nil || !strings.Contains(out, "group_name is required") {
+			t.Fatalf("real run executor intercepted by %s review: %q %v", outcome, out, err)
 		}
 		if latest := LatestWorkflowReview(ws); latest == nil || latest.Outcome != outcome {
 			t.Fatalf("old %s review history was changed: %+v", outcome, latest)
 		}
-	}
-	if started != 6 {
-		t.Fatalf("started %d runs, want 6", started)
 	}
 }

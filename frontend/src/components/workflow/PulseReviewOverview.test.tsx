@@ -80,16 +80,16 @@ it('shows the stored date, run, or cooldown boundary for skipped reviewers', asy
   } finally { await act(async () => root.unmount()) }
 })
 
-it('requires the Workflow Review before manual reviewers and keeps the drift action available', async () => {
+it('keeps run actions available when plan consistency needs attention', async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
   const container = document.createElement('div'); const root = createRoot(container)
   const onRunReviewModule = vi.fn()
   try {
     await act(async () => root.render(<PulseReviewOverview moduleStates={[]} coverage={[]} findings={[]} audits={[]}
       moduleFilter="strategic_review" onSelectModule={() => {}} planDriftDue onRunReviewModule={onRunReviewModule} />))
-    expect(container.querySelector<HTMLButtonElement>('[aria-label="Run Strategy review now"]')!.disabled).toBe(true)
-    expect(container.querySelector<HTMLButtonElement>('[aria-label="Run Technical review now"]')!.disabled).toBe(true)
-    expect(container.querySelector<HTMLButtonElement>('[aria-label="Run Architecture review now"]')!.disabled).toBe(true)
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Run Strategy review now"]')!.disabled).toBe(false)
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Run Technical review now"]')!.disabled).toBe(false)
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Run Architecture review now"]')!.disabled).toBe(false)
     expect(container.querySelectorAll('[aria-label="Workflow Review due"]')).toHaveLength(1)
     expect([...container.querySelectorAll('button')].filter(button => button.textContent?.startsWith('Workflow Review ·'))).toHaveLength(0)
     expect(container.textContent!.indexOf('Technical')).toBeLessThan(container.textContent!.indexOf('Workflow Review is due'))

@@ -84,19 +84,22 @@ type refText struct {
 }
 
 type referenceMap struct {
-	root     string
-	order    []*refStep
-	steps    map[string]*refStep
-	evals    []refText
-	docs     []refText
-	retired  map[string]bool
-	evalIDs  map[string]bool
-	index    map[string]bool // basenames of workflow files (code, learnings, knowledgebase, soul, db, evaluation, reports)
-	issues   []RefMapIssue
-	seen     map[string]bool
-	scanned  int
-	producer map[string][]string // context_output file -> step ids
-	declarer map[string][]string // declared file -> step ids
+	// Optional bounded script reader for the quick run observation only. Full
+	// Pulse/reference and strict graph checks keep their existing file reads.
+	readScript func(string) ([]byte, error)
+	root       string
+	order      []*refStep
+	steps      map[string]*refStep
+	evals      []refText
+	docs       []refText
+	retired    map[string]bool
+	evalIDs    map[string]bool
+	index      map[string]bool // basenames of workflow files (code, learnings, knowledgebase, soul, db, evaluation, reports)
+	issues     []RefMapIssue
+	seen       map[string]bool
+	scanned    int
+	producer   map[string][]string // context_output file -> step ids
+	declarer   map[string][]string // declared file -> step ids
 }
 
 var (
@@ -482,7 +485,11 @@ func (m *referenceMap) checkRelativeScriptDependency(s *refStep, dep string) {
 	if s.typ != string(StepTypeScripted) || filepath.IsAbs(dep) || strings.HasPrefix(dep, "$") {
 		return
 	}
-	raw, err := os.ReadFile(filepath.Join(m.root, "code", s.id, "main.py"))
+	read := m.readScript
+	if read == nil {
+		read = os.ReadFile
+	}
+	raw, err := read(filepath.Join(m.root, "code", s.id, "main.py"))
 	src := string(raw)
 	if err != nil || strings.Contains(src, "STEP_OUTPUT_DIR") && (strings.Contains(src, "is_absolute") || strings.Contains(src, "isabs")) {
 		return

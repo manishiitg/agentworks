@@ -14,8 +14,8 @@ import (
 // passes for PLAT-556 decision 2 and the success metric: an over-budget step
 // makes Architecture due although Gate skipped it; a completed review of the
 // unchanged state is not forced again; every pass records a metric. (The
-// Plan Drift deferral of decision 4 is retired: Workflow Review runs before
-// runs, PLAT-697 phase 0.)
+// Plan Drift deferral of decision 4 is retired: Pulse checks it in the
+// same turn without withholding execution.)
 func TestPromptBudgetMakesArchitectureDue(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
