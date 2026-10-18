@@ -174,7 +174,7 @@ export function selectReportDocument(workspacePath: string, path: string): void 
 }
 
 export function useReportDocuments(workspacePath: string): ReportDocumentCatalog & { loading: boolean; refresh: () => void } {
-  const [catalog, setCatalog] = useState<ReportDocumentCatalog>({ documents: [], defaultPath: DEFAULT_REPORT_PATH })
+  const [catalog, setCatalog] = useState<ReportDocumentCatalog & { workspacePath: string }>({ workspacePath, documents: [], defaultPath: DEFAULT_REPORT_PATH })
   const [loading, setLoading] = useState(true)
   const [nonce, setNonce] = useState(0)
   const refresh = useCallback(() => setNonce(value => value + 1), [])
@@ -182,7 +182,7 @@ export function useReportDocuments(workspacePath: string): ReportDocumentCatalog
     let cancelled = false
     setLoading(true)
     void loadReportDocumentCatalog(workspacePath).then(next => {
-      if (!cancelled) setCatalog(next)
+      if (!cancelled) setCatalog({ ...next, workspacePath })
     }).finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [nonce, workspacePath])
@@ -190,20 +190,24 @@ export function useReportDocuments(workspacePath: string): ReportDocumentCatalog
     window.addEventListener(WORKFLOW_REPORT_REFRESH_EVENT, refresh)
     return () => window.removeEventListener(WORKFLOW_REPORT_REFRESH_EVENT, refresh)
   }, [refresh])
-  return { ...catalog, loading, refresh }
+  // Effects run after the first render of a different project. Never expose
+  // the previous catalog to effects that persist a default for this project.
+  const current = catalog.workspacePath === workspacePath
+    ? catalog : { documents: [], defaultPath: DEFAULT_REPORT_PATH }
+  return { ...current, loading: loading || catalog.workspacePath !== workspacePath, refresh }
 }
 
 export function useSelectedReportDocument(workspacePath: string, explicitPath?: string): string {
-  const [selected, setSelected] = useState(() => explicitPath || readReportDocumentSelection(workspacePath))
-  useEffect(() => setSelected(explicitPath || readReportDocumentSelection(workspacePath)), [explicitPath, workspacePath])
+  const [selected, setSelected] = useState(() => ({ workspacePath, path: readReportDocumentSelection(workspacePath) }))
+  useEffect(() => setSelected({ workspacePath, path: readReportDocumentSelection(workspacePath) }), [explicitPath, workspacePath])
   useEffect(() => {
     if (explicitPath) return
     const onSelection = (event: Event) => {
       const detail = (event as CustomEvent<{ workspacePath?: string; path?: string }>).detail
-      if (detail?.workspacePath === workspacePath && detail.path) setSelected(detail.path)
+      if (detail?.workspacePath === workspacePath && detail.path) setSelected({ workspacePath, path: detail.path })
     }
     window.addEventListener(REPORT_SELECTION_EVENT, onSelection)
     return () => window.removeEventListener(REPORT_SELECTION_EVENT, onSelection)
   }, [explicitPath, workspacePath])
-  return selected
+  return explicitPath || (selected.workspacePath === workspacePath ? selected.path : readReportDocumentSelection(workspacePath))
 }

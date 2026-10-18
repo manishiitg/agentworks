@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path"
@@ -395,6 +396,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	}
 	result, err := dashboardWorkspaceRequest(r.Context(), req)
 	if err != nil {
+		log.Printf("[DASHBOARD_REQUEST] failed: action=%q kind=%q project_id=%q dashboard_id=%q document_path=%q status=%d", args.Action, target.Kind, target.ID, args.ID, args.Document, wf.StatusCode(err))
 		dashboardError(w, err)
 		return
 	}
@@ -411,6 +413,28 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if args.Action == "list" {
+		// A new private Crew needs the same starting dashboard as a shared
+		// one. Only its Builder with existing authoring consent creates it;
+		// Run requests, bounded file connections, Local projects and published
+		// laptop source never acquire writes through catalog discovery.
+		if len(result.Dashboards) == 0 && includeDraft && req.Guard == nil && (target.Kind == "crew" || target.Kind == "code") && codeProjectMode(r.Context(), target.Root) != "local" {
+			publication, err := readPublishedProject(r.Context(), target.Root)
+			if err != nil {
+				dashboardError(w, err)
+				return
+			}
+			if publication == nil {
+				if _, _, err := api.ensureDefaultDashboard(r.Context(), claims, target); err != nil {
+					dashboardError(w, err)
+					return
+				}
+				result, err = dashboardWorkspaceRequest(r.Context(), req)
+				if err != nil {
+					dashboardError(w, err)
+					return
+				}
+			}
+		}
 		rows := []map[string]any{}
 		resources := []dashboardQuestionDiscovery{}
 		for _, d := range result.Dashboards {
