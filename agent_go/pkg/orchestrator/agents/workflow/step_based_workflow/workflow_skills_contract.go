@@ -290,18 +290,7 @@ func migrateWorkflowSkillSelections(plan, config map[string]interface{}, migrati
 					migrationAppendSkill(ac, "enabled_skills", migration.Folder)
 				}
 				delete(ac, "learnings_access")
-				for _, key := range []string{"lock_learnings", "lock_learnings_reason", "disable_learning", "learning_detail_level", "learning_after_loop_iteration", "keep_learning_full"} {
-					if value, present := ac[key]; present {
-						if migration.RetiredStepSettings == nil {
-							migration.RetiredStepSettings = map[string]map[string]interface{}{}
-						}
-						if migration.RetiredStepSettings[id] == nil {
-							migration.RetiredStepSettings[id] = map[string]interface{}{}
-						}
-						migration.RetiredStepSettings[id][key] = value
-						delete(ac, key)
-					}
-				}
+
 				if sc != nil {
 					sc["agent_configs"] = ac
 				}
@@ -314,6 +303,28 @@ func migrateWorkflowSkillSelections(plan, config map[string]interface{}, migrati
 		}
 	}
 	walk(plan)
+	// Retired/removed steps can leave harmless configuration records behind.
+	// Audit their old flags too, without attaching a skill to a nonexistent task.
+	for _, raw := range configs {
+		sc, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		id, _ := sc["id"].(string)
+		ac, _ := sc["agent_configs"].(map[string]interface{})
+		for _, key := range []string{"learnings_access", "lock_learnings", "lock_learnings_reason", "disable_learning", "learning_detail_level", "learning_after_loop_iteration", "keep_learning_full"} {
+			if value, present := ac[key]; present {
+				if migration.RetiredStepSettings == nil {
+					migration.RetiredStepSettings = map[string]map[string]interface{}{}
+				}
+				if migration.RetiredStepSettings[id] == nil {
+					migration.RetiredStepSettings[id] = map[string]interface{}{}
+				}
+				migration.RetiredStepSettings[id][key] = value
+				delete(ac, key)
+			}
+		}
+	}
 	config["steps"] = configs
 	return titles
 }
