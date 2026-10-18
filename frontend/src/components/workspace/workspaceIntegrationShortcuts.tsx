@@ -7,13 +7,14 @@ import { WorkspaceContextShortcut, type WorkspaceShortcut } from './workspaceSho
 
 const DEFAULT_CONNECTIONS = new Set(['mcp:connected', 'mcp:secrets', 'mcp:gmail', 'mcp:slack'])
 
-/** Mirrors the sections admitted by the existing Apps & tools panel. Links only;
+/** Mirrors the sections admitted by the existing MCPs & secrets panel. Links only;
  * the destination retains its read/write, account and connection permissions. */
-export function workspaceIntegrationShortcuts({ allowedProducts, relayMode = false, workMode = false, enabledPanels, onOpen }: {
+export function workspaceIntegrationShortcuts({ allowedProducts, relayMode = false, workMode = false, enabledPanels, includeCli = false, onOpen }: {
   allowedProducts?: string[] | null
   relayMode?: boolean
   workMode?: boolean
   enabledPanels?: Set<string>
+  includeCli?: boolean
   onOpen: (section: string) => void
 }): WorkspaceShortcut[] {
   const sections = projectIntegrationSections(allowedProducts, relayMode).filter(section =>
@@ -25,7 +26,7 @@ export function workspaceIntegrationShortcuts({ allowedProducts, relayMode = fal
   const pluginIcons = { connected: Puzzle, available: Puzzle, secrets: KeyRound, skills: Sparkles, vault: ShieldCheck }
   return [
     ...plugins.map(section => ({ id: `mcp:${section.value}`, label: section.value === 'connected' ? 'MCPs' : section.label, icon: pluginIcons[section.value] })),
-    ...sections.filter(section => section.value !== 'apps' && section.value !== 'cli').map(section => ({ id: `mcp:${section.value}`, label: section.label, icon: section.icon })),
+    ...sections.filter(section => section.value !== 'apps' && (includeCli || section.value !== 'cli')).map(section => ({ id: `mcp:${section.value}`, label: section.label, icon: section.icon })),
   ].map(item => ({ ...item, onClick: () => onOpen(item.id.slice(4)), content: <WorkspaceContextRow icon={item.icon} onClick={() => onOpen(item.id.slice(4))}>{item.label}</WorkspaceContextRow> }))
 }
 

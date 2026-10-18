@@ -212,17 +212,15 @@ it('opens single-chat workspaces directly and distinguishes matching names acros
   })
 })
 
-it('shows Activity as the selected page, routes through shared navigation, and respects product access', async () => {
+it('keeps Goals activity out of the shared chat sidebar', async () => {
   mocks.app.showWorkflowsOverview = true
   mocks.tabs = { code: { tabId: 'code', sessionId: 'code:project:one', name: 'Accounting', createdAt: 1, metadata: { agentProfileId: 'code', agentProfileProjectId: 'one', agentProfileProjectTitle: 'Accounting' } } }
   mocks.selectedTab = 'code'
   mocks.history.mockResolvedValue({ sessions: [] })
   await render(async (host, rerender) => {
-    const activity = host.querySelector<HTMLButtonElement>('[aria-label="Activity"]')!
-    expect(activity.getAttribute('aria-current')).toBe('page')
+    expect(host.querySelector('[aria-label="Activity"]')).toBeNull()
     expect(host.querySelector('[title="Accounting · Code"]')?.hasAttribute('aria-current')).toBe(false)
-    await act(async () => activity.click())
-    expect(mocks.openNavigation).toHaveBeenCalledWith({ id: 'menu:activity', action: 'activity' })
+    expect(mocks.openNavigation).not.toHaveBeenCalled()
     mocks.user.allowed_products = ['work']
     await rerender()
     expect(host.querySelector('[aria-label="Activity"]')).toBeNull()

@@ -24,3 +24,16 @@ it('shows the server message when a share is refused with a structured error', a
     await act(async () => root.unmount())
   }
 })
+
+it('does not expose sharing controls when the server refuses sharing, including the inline host', async () => {
+  const host = document.createElement('div')
+  const root = createRoot(host)
+  post.mockResolvedValue({ data: { mode: 'private', can_share: false } })
+  try {
+    await act(async () => root.render(<ShareDashboardButton workspacePath="Workflow/reader" inline label="Manage people & access" />))
+    expect(host.querySelector('button')).toBeNull()
+    expect(host.querySelector('[role="dialog"]')).toBeNull()
+  } finally {
+    await act(async () => root.unmount())
+  }
+})

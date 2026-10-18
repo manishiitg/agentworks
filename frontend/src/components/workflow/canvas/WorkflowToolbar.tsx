@@ -36,7 +36,7 @@ const OPERATIONS_TOOLBAR_VIEW_IDS = new Set<WorkspaceViewId>(['flow', 'workshop'
 const SETUP_TOOLBAR_LABELS: Partial<Record<WorkspaceViewId, string>> = {
   identity: 'Details & instructions',
   playbooks: 'Playbooks',
-  mcp: 'Apps & tools',
+  mcp: 'Connections',
 }
 
 interface WorkflowToolbarProps {
@@ -125,7 +125,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
     ...capabilityViewDefinitions.map(view => ({ id: view.id, label: SETUP_TOOLBAR_LABELS[view.id] ?? view.label, group: 'Setup' })),
     ...(isMultiUser ? [{ id: 'access', label: 'Access', group: 'Setup' }] : []),
   ], relayMode).map(panel => ({ ...panel, group: workspacePanelGroup(panel.id) })), [relayMode, workspaceViewDefinitions, operationsWorkspaceViewDefinitions, capabilityViewDefinitions, isMultiUser])
-  useRegisterPanelSwitcher(workspacePath ? (relayMode ? 'relays' : 'agentworks') : null, panelSwitcherPanels, (id, section) => openWorkspaceView(id as WorkspaceViewId, section))
+  useRegisterPanelSwitcher(workspacePath ? (relayMode ? 'relays' : 'agentworks') : null, panelSwitcherPanels, (id, section) => openWorkspaceView(id as WorkspaceViewId, id === 'mcp' ? section ?? 'overview' : section))
   // Main workflow execution phase for the canvas toolbar
   const targetExecutionPhaseId = EXECUTION_PHASE_ID
   
@@ -271,13 +271,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
               inContext={activeWorkspaceView === 'context'}
               onClick={() => useWorkflowStore.getState().openWorkspaceView('context')}
             />
-            <WorkflowContextTools relayMode={relayMode} onOpenActivity={relayMode ? undefined : () => {
-              useLLMStore.getState().setShowLLMModal(false)
-              const app = useAppStore.getState()
-              app.setShowSchedulesOverview(false)
-              app.setActivityWorkflowPath(workspacePath)
-              app.setShowWorkflowsOverview(true)
-            }} />
+            <WorkflowContextTools relayMode={relayMode} />
           </>}
 
         </TooltipProvider>

@@ -21,12 +21,12 @@ function fixture(version = 'v1', canAsk = true) {
   return { product: { id: 'relay-1', name: 'Invoice OCR', purpose: 'Process invoices' }, version, can_ask: canAsk, fetched_at: '2026-10-13T10:00:00Z', runs: [{ run: 'iteration-2-hook', run_id: 'ocr-2', caller: 'finance-b', version, status: 'failed', error: version === 'v1' ? 'Missing invoice date' : 'Later error', attempt: 1, started_at: 10, duration_s: 2, input: { invoice_id: 'invoice-42' }, result: { valid: false }, steps: [{ id: 'validate', name: 'Validate invoice', status: 'failed', error: 'Missing invoice date', started_at: 10, completed_at: 12, output: { valid: false } }] }] }
 }
 
-async function mount() {
+async function mount(renderEmptyState?: (canCreate: boolean) => React.ReactNode) {
   releases.mockResolvedValue({ active_version: 'v1', releases: [{ version: 'v1' }] })
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   cleanups.push(async () => { await act(async () => root.unmount()); host.remove() })
-  const render = async (refreshToken = 0) => { await act(async () => root.render(<DefaultRelayDashboard workspacePath="Workflow/ocr" refreshToken={refreshToken} />)) }
+  const render = async (refreshToken = 0) => { await act(async () => root.render(<DefaultRelayDashboard workspacePath="Workflow/ocr" refreshToken={refreshToken} renderEmptyState={renderEmptyState} />)) }
   await render()
   return { host, render }
 }
@@ -99,4 +99,39 @@ it('discards a previous account’s in-flight conversation lookup', async () => 
   await act(async () => finish('previous-owner-chat'))
   expect(host.querySelector('[data-native-tab]')).toBeNull()
   expect(send).not.toHaveBeenCalled()
+})
+
+it('shows the empty introduction for an owner without removing version and Ask controls', async () => {
+  get.mockResolvedValue({ data: { ...fixture(), can_draft: true, runs: [] } })
+  const { host } = await mount(canCreate => <section aria-label="Dashboard introduction">Common dashboard examples{canCreate && <button>Create dashboard</button>}</section>)
+  expect(host.querySelector('[aria-label="Dashboard introduction"]')).not.toBeNull()
+  expect(host.textContent).toContain('Create dashboard')
+  expect(host.querySelector('select')).not.toBeNull()
+  expect([...host.querySelectorAll('option')].some(option => option.value === 'draft')).toBe(true)
+  expect(host.textContent).toContain('No recorded runs for this version.')
+  expect(host.textContent).toContain('Open Ask')
+  expect(openAsk).not.toHaveBeenCalled()
+  expect(send).not.toHaveBeenCalled()
+})
+
+it('uses the server capability to withhold authoring from a reader’s empty dashboard', async () => {
+  auth.id = 'reader'
+  get.mockResolvedValue({ data: { ...fixture('v1', false), can_draft: false, runs: [] } })
+  const { host } = await mount(canCreate => <section>Common dashboard examples{canCreate && <button>Create dashboard</button>}</section>)
+  expect(host.textContent).toContain('Common dashboard examples')
+  expect(host.textContent).not.toContain('Create dashboard')
+  expect([...host.querySelectorAll('option')].some(option => option.value === 'draft')).toBe(false)
+  expect(host.textContent).toContain('Ask is unavailable for this Flow.')
+})
+
+it('keeps recorded runs primary and does not treat a failed fetch as an empty dashboard', async () => {
+  const empty = vi.fn(() => <div>Common dashboard examples</div>)
+  get.mockResolvedValue({ data: fixture() })
+  const { host, render } = await mount(empty)
+  expect(host.textContent).toContain('Missing invoice date')
+  expect(empty).not.toHaveBeenCalled()
+  get.mockRejectedValue(new Error('Access denied'))
+  await render(1)
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain('Access denied')
+  expect(empty).not.toHaveBeenCalled()
 })

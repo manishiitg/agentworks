@@ -3,7 +3,9 @@ import { WorkspaceToolsMenu, WorkspaceToolsGroup } from '../workspace/WorkspaceT
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { WorkspaceContextBrowser } from '../workspace/WorkspaceContextBrowser'
 import { WorkspaceAutomationLinks } from '../workspace/WorkspaceAutomationLinks'
-import { integrationShortcutContent, workspaceIntegrationShortcuts } from '../workspace/workspaceIntegrationShortcuts'
+import { WorkspaceMoreTools, isProjectSettingsPanel } from '../workspace/WorkspaceMoreTools'
+import { useAppStore } from '../../stores/useAppStore'
+import { useLLMStore } from '../../stores/useLLMStore'
 import {
   WorkspaceContextCard,
   WorkspaceContextRow as Row,
@@ -19,6 +21,8 @@ import {
   Hand,
   LayoutDashboard,
   MessageSquareText,
+  Plug,
+  Users,
 } from 'lucide-react'
 import { schedulerApi } from '../../api/scheduler'
 import type { ScheduledJob } from '../../services/api-types'
@@ -41,8 +45,6 @@ export function WorkflowContextPanel({ workspacePath }: { workspacePath: string 
   const decisions = usePendingDecisionState(workspacePath)
   const canWrite = useCanWriteWorkflow(workspacePath)
   const multiUser = useAuthStore(state => state.isMultiUserMode)
-  const allowedProducts = useAuthStore(state => state.user?.allowed_products)
-  const connections = workspaceIntegrationShortcuts({ allowedProducts, onOpen: section => open('mcp', section) })
   const manifest = useWorkflowManifestStore(
     (state) => state.workflows.find((item) => item.workspace_path === workspacePath)?.manifest
   )
@@ -87,7 +89,10 @@ export function WorkflowContextPanel({ workspacePath }: { workspacePath: string 
     manifest?.schedules?.some((schedule) => schedule.pulse_review_only && schedule.enabled) ??
     false
   return (
-    <WorkspaceContextCard product="agentworks" summary="Results, scheduled work and reviews for this project." availableShortcuts={[...workflowContextViews(false, multiUser).map(item => ({ ...item, onClick: () => open(item.id) })), ...connections]}>
+    <WorkspaceContextCard product="agentworks" consolidateConnections summary="Results, scheduled work and reviews for this project." availableShortcuts={workflowContextViews(false, multiUser).filter(item => !isProjectSettingsPanel(item.id)).map(item => ({ ...item, onClick: () => open(item.id, item.id === 'mcp' ? 'overview' : undefined) }))} moreTools={<WorkspaceMoreTools items={[
+      ...workflowContextViews(false, multiUser).filter(item => item.id !== 'mcp' && !isProjectSettingsPanel(item.id)).map(item => ({ ...item, onClick: () => open(item.id) })),
+      { id: 'global-activity', label: 'Activity', icon: Activity, onClick: () => openProjectActivity(workspacePath) },
+    ]} />}>
       <Shortcut id="report" label="Dashboard" icon={LayoutDashboard}>
       <Section title="Results">
         <Row
@@ -221,43 +226,21 @@ export function WorkflowContextPanel({ workspacePath }: { workspacePath: string 
           Chat history
         </Row></Shortcut>
       </Section>
-      {integrationShortcutContent(connections)}
-      <div aria-label="Workspace setup" className="border-t border-border pt-3">
-        <h3 className="mb-1 text-[11px] font-medium text-muted-foreground">Project setup</h3>
-        {WORKSPACE_VIEWS.filter((item) => item.id === 'identity' || item.id === 'mcp').map((item) => (
-          <Shortcut key={item.id} id={item.id} label={item.label} icon={item.icon}><Row icon={item.icon} onClick={() => open(item.id)}>
-            {item.label}
-          </Row></Shortcut>
-        ))}
-      </div>
+      <Shortcut id="mcp" label="Connections & sharing" icon={Plug}><div className="border-t border-border pt-3"><Row icon={Plug} hint="What this agent can use" onClick={() => open('mcp', 'overview')}>Connections</Row><Row icon={Users} hint="People, dashboard and ways to use this project" onClick={() => open('mcp', 'use-share')}>Use &amp; share</Row></div></Shortcut>
     </WorkspaceContextCard>
   )
 }
 
 /** Kept outside the pane so tools remain reachable when the pane is closed. */
-export function WorkflowContextTools({ onOpenActivity, relayMode = false }: { onOpenActivity?: () => void; relayMode?: boolean }) {
+export function WorkflowContextTools({ relayMode = false }: { relayMode?: boolean }) {
   const open = useWorkflowStore((state) => state.openWorkspaceView)
   const activeView = useWorkflowStore((state) => state.workflowWorkspaceView ?? state.lastCanvasView)
   const isMultiUser = useAuthStore((state) => state.isMultiUserMode)
+  const views = workflowContextViews(relayMode, isMultiUser)
   return (
-    <WorkspaceToolsMenu>
+    <WorkspaceToolsMenu label="Project settings">
       {(close) => <>
-            {onOpenActivity && (
-              <button
-                type="button"
-                role="menuitem"
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-muted"
-                onClick={() => {
-                  onOpenActivity()
-                  close()
-                }}
-              >
-                <Activity className="h-3.5 w-3.5 text-muted-foreground" />
-                Activity
-                <ChevronRight className="ml-auto h-3 w-3 text-muted-foreground" />
-              </button>
-            )}
-            {groupWorkspacePanels(workflowContextViews(relayMode, isMultiUser)).map(group => <WorkspaceToolsGroup key={group.title} title={group.title}>
+            {groupWorkspacePanels(views.filter(item => isProjectSettingsPanel(item.id)).sort((a, b) => a.id === 'identity' ? -1 : b.id === 'identity' ? 1 : 0)).map(group => <WorkspaceToolsGroup key={group.title} title={group.title}>
             {group.items.map((item) => (
               <button
                 type="button"
@@ -271,7 +254,7 @@ export function WorkflowContextTools({ onOpenActivity, relayMode = false }: { on
                 }}
               >
                 <item.icon className="h-3.5 w-3.5 text-muted-foreground" />
-                {relayMode && item.id === 'flow' ? 'Flow' : relayMode && item.id === 'workshop' ? 'Triggers' : item.id === 'human-actions' ? 'Decisions' : item.label}
+                {item.id === 'identity' ? 'Project settings' : item.label}
                 <ChevronRight className="ml-auto h-3 w-3 text-muted-foreground" />
               </button>
             ))}
@@ -279,4 +262,12 @@ export function WorkflowContextTools({ onOpenActivity, relayMode = false }: { on
       </>}
     </WorkspaceToolsMenu>
   )
+}
+
+function openProjectActivity(workspacePath: string) {
+  useLLMStore.getState().setShowLLMModal(false)
+  const app = useAppStore.getState()
+  app.setShowSchedulesOverview(false)
+  app.setActivityWorkflowPath(workspacePath)
+  app.setShowWorkflowsOverview(true)
 }

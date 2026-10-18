@@ -10,12 +10,11 @@ type Entry = { status: 'loading' | 'ready' | 'error'; record?: ContextShortcutPr
 export const useContextShortcutStore = create<{ entries: Record<string, Entry> }>(() => ({ entries: {} }))
 let requestID = 0
 
-const CONNECTION_SHORTCUTS = ['mcp:connected', 'mcp:secrets', 'mcp:gmail', 'mcp:slack']
 export const DEFAULT_CONTEXT_SHORTCUTS: Record<ShortcutProduct, readonly string[]> = {
-  agentworks: ['report', 'workshop:schedules', 'knowledge', 'pulse', 'human-actions', 'browser', 'workshop:chats', ...CONNECTION_SHORTCUTS, 'identity', 'mcp'],
-  relays: ['flow', 'report', 'workshop:triggers', 'workshop:conditions', 'costs', 'execution-logs', 'files', 'workshop:chats', ...CONNECTION_SHORTCUTS, 'identity', 'mcp'],
-  work: ['dashboard', 'schedules', 'memory', 'suggestions', 'browser', 'schedules:chats', ...CONNECTION_SHORTCUTS, 'identity', 'mcp'],
-  code: ['dashboard', 'schedules', 'memory', 'files', 'browser', 'schedules:chats', ...CONNECTION_SHORTCUTS, 'identity', 'mcp'],
+  agentworks: ['report', 'workshop:schedules', 'knowledge', 'pulse', 'human-actions', 'browser', 'workshop:chats', 'mcp'],
+  relays: ['flow', 'report', 'workshop:triggers', 'workshop:conditions', 'costs', 'execution-logs', 'files', 'workshop:chats', 'mcp'],
+  work: ['dashboard', 'schedules', 'memory', 'suggestions', 'browser', 'schedules:chats', 'mcp'],
+  code: ['dashboard', 'schedules', 'memory', 'files', 'browser', 'schedules:chats', 'mcp'],
 }
 
 export function useContextShortcuts(product: ShortcutProduct, legacy?: ShortcutProduct) {

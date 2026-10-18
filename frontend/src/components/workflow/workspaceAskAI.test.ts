@@ -15,15 +15,17 @@ describe("integration tab Ask AI messages", () => {
     }
     expect(getIntegrationTabAskAIMessage("apps")).toContain("Integrations · MCPs");
     expect(getIntegrationTabAskAIMessage("skills")).toContain("Integrations · Skills");
-    expect(getIntegrationTabAskAIMessage("slack")).toContain("Integrations · Slack");
+    expect(getIntegrationTabAskAIMessage("slack")).toContain("Connections · Slack");
     expect(getIntegrationTabAskAIMessage("whatsapp")).toContain("Integrations · WhatsApp");
     expect(getIntegrationTabAskAIMessage("gmail")).toContain("Integrations · Gmail");
   });
 
-  it("keeps the slack routing guide in the hidden builder instructions", () => {
+  it("keeps sending accounts separate from incoming Slack app routing", () => {
     const message = getIntegrationTabAskAIMessage("slack");
-    expect(message).toContain("connect Slack");
-    expect(message).toContain("slack-bot-routing.md");
+    expect(message).toContain("Slack account");
+    expect(message).toContain("Use & share");
+    expect(message).toContain("account send/read rules");
+    expect(message).not.toContain("slack-bot-routing.md");
   });
 });
 

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { WorkingTipsContext } from '../../chat/workingTipsContext'
 import api from '../../../services/api'
 import { workflowWebhooksApi } from '../../../api/workflowWebhooks'
@@ -34,7 +34,7 @@ function questionMessage(draft: QuestionDraft) {
 }
 
 /** Default content inside the existing dashboard viewer, backed by recorded data. */
-export default function DefaultRelayDashboard({ workspacePath, refreshToken }: { workspacePath: string; refreshToken: number }) {
+export default function DefaultRelayDashboard({ workspacePath, refreshToken, renderEmptyState }: { workspacePath: string; refreshToken: number; renderEmptyState?: (canCreate: boolean) => ReactNode }) {
   const viewer = useAuthStore(state => state.user?.id ?? '')
   const identity = workspacePath + '\n' + viewer
   const [loaded, setLoaded] = useState<{ identity: string; data: RelayData } | null>(null)
@@ -116,6 +116,7 @@ export default function DefaultRelayDashboard({ workspacePath, refreshToken }: {
   }
 
   return <div className="space-y-5 p-4 pt-14 sm:p-6 sm:pt-14">
+    {data && !loading && !error && data.runs.length === 0 && before === 0 && !data.truncated && renderEmptyState?.(data.can_draft === true)}
     <header>
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Flow dashboard</p>
       <h1 className="mt-1 text-xl font-semibold">{data?.product.name || 'Flow'}</h1>

@@ -50,7 +50,7 @@ const INTEGRATION_TAB_ASK_AI_MESSAGE: Record<IntegrationTabId, { label: string; 
   },
   folders: {
     label: 'Integrations · Folders & workflows',
-    summary: "Help me attach things to this workflow: folders on this server or other workflows as read-only context. For shared knowledge, use Integrations → Brain instead. Ask what it needs and why, then set it up; folder access should be read-only unless writing is truly needed.",
+    summary: "Help me attach things to this workflow: folders on this server or other workflows as read-only context. For shared knowledge, use Connections → Add connection → Brain instead. Ask what it needs and why, then set it up; folder access should be read-only unless writing is truly needed.",
   },
   secrets: { label: 'Integrations · Secrets', summary: 'Help me select project secrets or permitted Vault secrets. Never ask me to paste secret values in chat.' },
   apps: {
@@ -62,9 +62,9 @@ const INTEGRATION_TAB_ASK_AI_MESSAGE: Record<IntegrationTabId, { label: string; 
     summary: "Help me find, create, or configure a skill for this workflow. Ask what capability or guidance it should provide.",
   },
   slack: {
-    label: 'Integrations · Slack',
-    summary: "Help me connect Slack to this workflow. Inspect current settings, explain the connection and route setup, and ask which channel I need.",
-    instructions: "Load builder-reference/references/slack-bot-routing.md before advising. Use run mode without asking for a grant. Never request tokens in chat.",
+    label: 'Connections · Slack',
+    summary: "Help me choose the Slack account this workflow uses to read or send messages. Explain current account permissions before changing the selection. Incoming Slack app conversations are configured in Use & share.",
+    instructions: "Inspect authorized personal Slack accounts and current project selection. Preserve the server's account send/read rules. Never request tokens in chat.",
   },
   whatsapp: {
     label: 'Integrations · WhatsApp',

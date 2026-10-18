@@ -1,12 +1,13 @@
 import { ProjectSecretsPanel } from '../../components/integrations/ProjectSecretsPanel'
 import { useRef, useState } from 'react'
-import { Server } from 'lucide-react'
+import { Server, Users } from 'lucide-react'
+import SlackAccountsPanel from '../../components/integrations/SlackAccountsPanel'
+import { UseSharePanel, UseShareBack, type UseShareChannel } from '../../components/integrations/UseSharePanel'
 import SkillsManagerPanel from '../../components/skills/SkillsManagerPanel'
 import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
 import WorkflowEmailPanel from '../../components/workflow/WorkflowEmailPanel'
 import { CliMcpSetupPanel } from '../../components/integrations/CliMcpSetupPanel'
-import { WorkspaceViewBreadcrumbs } from '../../components/workflow/WorkspaceViewBreadcrumbs'
-import { IntegrationSectionPicker } from '../../components/integrations/IntegrationSectionPicker'
+import { IntegrationNavigation, integrationNavigationOptions } from '../../components/integrations/IntegrationNavigation'
 import { projectIntegrationSections } from '../../components/integrations/integrationSections'
 import { ProjectPluginsPanel, projectPluginTabs, useProjectPluginTab } from '../../components/integrations/ProjectPluginsPanel'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
@@ -23,6 +24,7 @@ import { isWorkIntegrationTabEnabled } from './workViewGating'
 import { isProjectProductId, useProjectProduct } from './projectProduct'
 import { getGoogleAppsAskAIMessage, useGmailInboundUIEnabled } from '../../components/workflow/bots/gmailAskAI'
 import { useCodeFilesPreference } from './codeLocalFiles'
+import { ConnectedProjectAccounts } from '../../components/integrations/ConnectedProjectAccounts'
 
 export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
 
@@ -30,21 +32,18 @@ function integrationTabAskAIMessage(noun: string, incomingGmail: boolean): Recor
   return {
     apps: `Help me with this ${noun} project's connected apps. Explain what's connected and ask what I want to add or change.`,
     brain: `Explain how Brain stores shared knowledge for this ${noun} project and how its agents can use notes, reference files and reusable skills. Check the current project access: can open and edit (the default, within existing folder permissions), can open only, or off. Explain team sharing through Brain folder roles. Ask what I want before changing settings or permissions.`,
-    folders: `Help me attach things to this ${noun} project: folders or workflows and Crews as read-only context. Ask what is needed and why, then set it up; folder access should be read-only unless writing is truly needed. For shared knowledge, use Integrations → Brain instead.`,
+    folders: `Help me attach things to this ${noun} project: folders or workflows and Crews as read-only context. Ask what is needed and why, then set it up; folder access should be read-only unless writing is truly needed. For shared knowledge, open Connections, then choose Brain from Add connection.`,
     secrets: `Help me select project or permitted Vault secrets for this ${noun} project. Never ask for secret values in chat.`,
     skills: `Help me with this ${noun} project's skills. Explain what's available and ask what I want to add or change.`,
-    slack: `Help me with this ${noun} project's Slack bot. Explain what's connected and ask what I want to change.`,
+    slack: `Help me choose the Slack account this ${noun} uses to read or send messages. Explain current account permissions before changing the selection. Incoming Slack app conversations are configured in Use & share. Never request tokens in chat.`,
     whatsapp: `Help me with this ${noun} project's WhatsApp bot. Explain what's connected and ask what I want to change.`,
     gmail: getGoogleAppsAskAIMessage(`${noun} project`, incomingGmail),
     cli: 'Help me connect an AI agent to this installation through MCP. Explain the HTTP MCP URL and browser sign-in, and ask which AI app I use.',
   }
 }
 
-// Code: Slack (its own bot, 1:1 DMs) and WhatsApp (owner). Its MCPs tab is
-// the shared MCP browser, scoped to this Code's private and permitted Vault connections;
-// the always-on MCP "Connect" tab is hidden. Google (Gmail, Drive, Calendar, Docs,
-// Sheets, Slides) is the Google apps tab: the Code's own private gog accounts.
-const CODE_HIDDEN_INTEGRATION_TABS = new Set<WorkIntegrationTab>(['cli'])
+// Both Crew origins retain their own account, bot and feature restrictions.
+// MCP client setup is an existing installation-wide path in Use & share.
 
 export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange, vault = false, selectedSecrets = [], onSelectedSecretsChange = () => {}, view }: {
   view?: 'connected' | 'available'
@@ -83,7 +82,7 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
   )
 }
 
-export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, onSelectedServersChange, onSelectedSkillsChange, workflowContextPaths, onWorkflowContextPathsChange, selectedSecrets = [], selectedGlobalSecrets = [], onSelectedSecretsChange, onSelectedGlobalSecretsChange }: {
+export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, onSelectedServersChange, onSelectedSkillsChange, workflowContextPaths, onWorkflowContextPathsChange, selectedSecrets = [], selectedGlobalSecrets = [], onSelectedSecretsChange, onSelectedGlobalSecretsChange, onOpenDashboard }: {
   workspacePath: string
   projectId: string
   projectTitle: string
@@ -94,6 +93,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   onSelectedSecretsChange?: (names: string[]) => Promise<unknown>
   onSelectedGlobalSecretsChange?: (names: string[]) => Promise<unknown>
   enabledPanels?: Set<string>
+  onOpenDashboard?: () => void
   onAsk: (message: string) => Promise<void>
   onSelectedServersChange: (servers: string[]) => Promise<unknown>
   onSelectedSkillsChange: (skills: string[]) => Promise<unknown>
@@ -110,21 +110,33 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   const isAdmin = useAuthStore(state => state.user?.is_admin === true)
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const visibleTabs = projectIntegrationSections(allowedProducts).filter(option =>
-    isWorkIntegrationTabEnabled(option.value, enabledPanels, localCodeSession) &&
-    !(product.profileId === 'code' && CODE_HIDDEN_INTEGRATION_TABS.has(option.value)))
+    isWorkIntegrationTabEnabled(option.value, enabledPanels, localCodeSession))
   const [tab, setTab] = useState<WorkIntegrationTab>('apps')
   const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0]?.value ?? 'apps'
   // Every tab loads on mount, so Refresh always remounts.
   const [tabNonce, setTabNonce] = useState(0)
-  const [integrationMenu, setIntegrationMenu] = useState(true)
-  const [pluginTab, setPluginTab] = useProjectPluginTab()
+  const [preferredPluginTab, setPluginTab] = useProjectPluginTab()
+  const [overview, setOverview] = useState(true)
+  const [sharing, setSharing] = useState(false)
+  const [shareChannel, setShareChannel] = useState<UseShareChannel | 'overview'>('overview')
   const pluginTabs = projectPluginTabs(allowedProducts).filter(option => !enabledPanels || (option.value === 'secrets' ? enabledPanels.has('secrets') : option.value === 'skills' ? enabledPanels.has('skills') : option.value === 'vault' || enabledPanels.has('mcp')))
+  const pluginTab = overview && pluginTabs.some(option => option.value === 'connected') ? 'connected' : preferredPluginTab
   const activePluginTab = pluginTabs.some(option => option.value === pluginTab) ? pluginTab : pluginTabs[0]?.value ?? 'connected'
-  // ⌘/Ctrl+K opens this panel on a tab (Slack, Gmail, Secrets…).
-  useWorkspaceViewTarget('mcp', target => {
-    if (visibleTabs.some(option => option.value === target)) { setTab(target as WorkIntegrationTab); setIntegrationMenu(false) }
-    else if (pluginTabs.some(option => option.value === target)) { setTab('apps'); setPluginTab(target as typeof pluginTab); setIntegrationMenu(false) }
-  })
+  const navigationOptions = integrationNavigationOptions(visibleTabs, pluginTabs)
+  const selectConnection = (target: string) => {
+    if (target === 'use-share' || target === 'people') { setSharing(true); setShareChannel('overview'); return }
+    if (target === 'cli' || (target === 'slack-app' && visibleTabs.some(option => option.value === 'slack')) || (target === 'whatsapp' && visibleTabs.some(option => option.value === 'whatsapp'))) { setSharing(true); setShareChannel(target as UseShareChannel); return }
+    if (target === 'overview' || target === 'apps') { setSharing(false); setOverview(true); setTab('apps'); return }
+    if (!visibleTabs.some(option => option.value === target) && !pluginTabs.some(option => option.value === target)) return
+    setSharing(false); setOverview(false)
+    if (visibleTabs.some(option => option.value === target)) setTab(target as WorkIntegrationTab)
+    else if (pluginTabs.some(option => option.value === target)) { setTab('apps'); setPluginTab(target as typeof pluginTab) }
+  }
+  // Existing bubble and Ctrl+K targets open their resource directly.
+  useWorkspaceViewTarget('mcp', selectConnection)
+  const activeConnection = activeTab === 'apps' ? activePluginTab : activeTab
+  const connectionLabel = navigationOptions.find(option => option.value === (activeConnection === 'available' ? 'connected' : activeConnection))?.label ?? 'MCPs'
+  const mcpTabs = pluginTabs.filter(option => option.value === 'connected' || option.value === 'available').map(option => ({ ...option, label: option.value === 'connected' ? 'Connected' : 'Available' }))
   const selectedServers = useChatStore(state => state.chatTabs[tabId]?.config.selectedServers || [])
   const selectedSkills = useChatStore(state => state.chatTabs[tabId]?.config.selectedSkills || [])
 
@@ -154,26 +166,30 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
       <WorkspaceViewHeader
-        icon={Server}
-        title={integrationMenu ? 'Apps & tools' : <WorkspaceViewBreadcrumbs parent="Apps & tools" current={visibleTabs.find(option => option.value === activeTab)?.label} onBack={() => setIntegrationMenu(true)} />}
-        helpTopic={`Integrations · ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'MCPs'}`}
+        icon={sharing ? Users : Server}
+        title={sharing ? 'Use & share' : 'Connections'}
+        helpTopic={sharing ? shareChannel === 'overview' ? 'Use & share' : `Use & share · ${shareChannel === 'cli' ? 'MCP access' : shareChannel === 'slack-app' ? 'Slack app' : 'WhatsApp'}` : overview ? 'Connections' : `${activeTab === 'slack' ? 'Connections' : 'Integrations'} · ${connectionLabel}`}
         actions={(
           <WorkspaceViewActions
             workspacePath={workspacePath}
-            message={activeTab === 'apps' && activePluginTab === 'vault'
+            message={sharing ? 'Help me share this project with people or make it available through its existing channels. Explain current access before changing sharing, routes or permissions.' : activeTab === 'apps' && activePluginTab === 'vault'
               ? `Help me choose from my Vault groups' permitted connections and secrets for this ${product.noun} project. Check my current access and selection; never show secret values.`
               : integrationTabAskAIMessage(product.noun, incomingGmail)[activeTab === 'apps' && (activePluginTab === 'secrets' || activePluginTab === 'skills') ? activePluginTab : activeTab]}
             onAsk={onAsk}
             onRefresh={() => setTabNonce(nonce => nonce + 1)}
-            refreshLabel={`Refresh ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'view'}`}
+            refreshLabel={sharing ? 'Refresh sharing and channels' : overview ? 'Refresh connections' : `Refresh ${connectionLabel}`}
           />
         )}
-        tabs={!integrationMenu && activeTab === 'apps' ? { value: activePluginTab, onChange: value => setPluginTab(value as typeof pluginTab), options: [...pluginTabs], ariaLabel: 'Integrations' } : undefined}
+        below={sharing ? shareChannel !== 'overview' && <UseShareBack label={shareChannel === 'cli' ? 'MCP access' : shareChannel === 'slack-app' ? 'Slack app' : 'WhatsApp'} onBack={() => selectConnection('use-share')} /> : <IntegrationNavigation options={navigationOptions} value={activeConnection} onChange={selectConnection} overview={overview} onOverview={() => selectConnection('overview')} canEdit={!workspacePath.startsWith('_users/')} />}
+        tabs={!sharing && !overview && activeTab === 'apps' && (activePluginTab === 'connected' || activePluginTab === 'available') ? { value: activePluginTab, onChange: selectConnection, options: mcpTabs, ariaLabel: 'MCP servers' } : undefined}
       />
-      <div key={`${activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
-        {integrationMenu ? <IntegrationSectionPicker options={visibleTabs} onSelect={value => { setTab(value as WorkIntegrationTab); setIntegrationMenu(false) }} /> : <>
+      <div key={`${sharing ? shareChannel : activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
+        {sharing ? <>
+          {shareChannel === 'overview' ? <UseSharePanel workspacePath={workspacePath} slack={visibleTabs.some(option => option.value === 'slack')} whatsapp={visibleTabs.some(option => option.value === 'whatsapp')} onChannel={selectConnection} onDashboard={onOpenDashboard} /> : shareChannel === 'cli' ? <CliMcpSetupPanel /> : <WorkflowBotsPanel channelOnly workspacePath={workspacePath} fixedChannel={shareChannel === 'slack-app' ? 'slack' : 'whatsapp'} scopeNoun="project" ownBotOnly={product.profileId === 'code'} onAsk={onAsk} target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }} />}
+        </> : <>
+        {overview && <ConnectedProjectAccounts workspacePath={workspacePath} options={navigationOptions} onOpen={selectConnection} />}
         {activeTab === 'apps' && <ProjectPluginsPanel tab={activePluginTab}
-          connections={(!enabledPanels || enabledPanels.has('mcp')) ? (view => product.profileId === 'code' ? (<ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun="Code" canEdit={!workspacePath.startsWith('_users/')} onAsk={onAsk} selectedServers={selectedServers} onSelectedServersChange={async servers => {
+          connections={(!enabledPanels || enabledPanels.has('mcp')) ? (view => product.profileId === 'code' ? (<ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun={product.noun} canEdit={!workspacePath.startsWith('_users/')} onAsk={onAsk} selectedServers={selectedServers} onSelectedServersChange={async servers => {
               await onSelectedServersChange(servers)
               const store = useChatStore.getState()
               for (const chat of Object.values(store.chatTabs)) {
@@ -189,7 +205,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
           onAsk={onAsk}
           onSelectedServersChange={onSelectedServersChange}
         />)) : undefined}
-          secrets={(!enabledPanels || enabledPanels.has('secrets')) ? <ProjectSecretsPanel placeNoun={product.profileId === 'code' ? 'Code' : 'Crew'}
+          secrets={(!enabledPanels || enabledPanels.has('secrets')) ? <ProjectSecretsPanel placeNoun={product.noun}
             selectedSecrets={selectedSecrets} workspacePath={workspacePath} onSecretChange={names => onSelectedSecretsChange?.(names)}
             selectedGlobalSecrets={selectedGlobalSecrets} onGlobalSecretChange={onSelectedGlobalSecretsChange ? names => onSelectedGlobalSecretsChange(names ?? []) : undefined} /> : undefined}
           skills={(!enabledPanels || enabledPanels.has('skills')) ? (<SkillsManagerPanel
@@ -222,21 +238,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
           onAsk={onAsk}
           askMessage={integrationTabAskAIMessage(product.noun, incomingGmail).folders}
         />}
-        {activeTab === 'slack' && <WorkflowBotsPanel
-          workspacePath={workspacePath}
-          fixedChannel="slack"
-          scopeNoun="project"
-          ownBotOnly={product.profileId === 'code'}
-          onAsk={onAsk}
-          target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }}
-        />}
-        {activeTab === 'whatsapp' && <WorkflowBotsPanel
-          workspacePath={workspacePath}
-          fixedChannel="whatsapp"
-          scopeNoun="project"
-          onAsk={onAsk}
-          target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }}
-        />}
+        {activeTab === 'slack' && <SlackAccountsPanel workspacePath={workspacePath} />}
         {activeTab === 'gmail' && (
           <>
             {/* The deployment's Google app: an admin stores the Google OAuth client once. */}
@@ -250,7 +252,6 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
             />
           </>
         )}
-        {activeTab === 'cli' && <CliMcpSetupPanel />}
         </>}
       </div>
     </div>

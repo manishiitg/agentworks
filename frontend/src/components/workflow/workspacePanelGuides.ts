@@ -189,6 +189,9 @@ const CREW_GUIDES: Record<string, GuideCopy> = {
 // These views keep one header while changing the body with tabs. The header's
 // walkthrough follows the active tab instead of repeating the umbrella copy.
 const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> = {
+  'Use & share': () => ({ purpose: 'Choose who can use this project and where they can reach it.', howTo: 'Manage people and dashboard access with the existing sharing controls. Open an available channel to set up incoming conversations or MCP/API access. Connections is where you choose the accounts, tools and resources the agent itself uses.' }),
+  'Connections · Slack': () => ({ purpose: 'Choose the Slack account this agent uses to read or send messages.', howTo: 'Review the available account and its server-provided send/read permissions. Connect or select only the account you intend this project to use. To let people talk to the agent through a Slack app, open Use & share instead.' }),
+  Connections: () => ({ purpose: 'Review the accounts, apps and resources available to this project.', howTo: 'Existing accounts and MCPs are shown first. Use Add connection to set up an app or manage secrets, skills and other resources. Nothing is connected until you complete its existing setup flow.' }),
   'Pulse · For you': () => ({
     purpose: 'Track progress toward this automation’s goal and see work that needs your decision.',
     howTo: 'Review Goal Work, its focus areas, and open items. Run a Goal Work pass when you want Pulse to assess progress now.',
@@ -247,7 +250,7 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
   }),
   'Integrations · Folders & workflows': surface => ({
     purpose: `Folders on this server, other workflows and Crews this ${surface === 'crew' ? 'Crew member' : 'workflow'} can use, and whether it can change them.`,
-    howTo: 'Review attached sources and their access level. Add a source when the work needs information outside its own files. Shared knowledge is set up under Tools & secrets, in Brain.',
+    howTo: 'Review attached sources and their access level. Add a source when the work needs information outside its own files. Choose Brain from Add connection in Connections for shared knowledge.',
   }),
   'Integrations · Brain': surface => ({
     purpose: `Shared knowledge for this ${surface === 'crew' ? 'Crew member' : 'workflow'}: read & write (the default: agents organize folders themselves wherever the owner may write), read only, only chosen folders, or off.`,
@@ -263,7 +266,7 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
   }),
   'Integrations · Plugins': surface => ({
     purpose: `Private app connections, project secrets, skills and shared Vault access for this ${surface === 'crew' ? 'project' : 'workflow'}.`,
-    howTo: 'Use Back to return to other integrations. Choose a tab in this header to change the type of resource.',
+    howTo: 'Use Add connection to choose an app, MCP, secret or other project resource.',
     steps: [
       'Connected shows the connections of this place; Available lets you add another account with its own login.',
       'Secrets and Skills manage resources for this project.',
@@ -369,7 +372,8 @@ export function getWorkspacePanelGuide(topic: string, surface: WorkspacePanelSur
   const key = topic.startsWith('Schedules for ') ? 'Schedules' : topic
   const parentTopic = key.split(' · ')[0]
   const copySurface = surface === 'code' ? 'crew' : surface
-  const original = TAB_GUIDES[key]?.(copySurface) ?? (copySurface === 'crew' ? CREW_GUIDES : AGENTWORKS_GUIDES)[key]
+  const guideKey = key === 'Use & share · Slack app' ? 'Integrations · Slack' : key === 'Use & share · WhatsApp' ? 'Integrations · WhatsApp' : key === 'Use & share · MCP access' ? 'Integrations · Connect' : key
+  const original = TAB_GUIDES[guideKey]?.(copySurface) ?? (copySurface === 'crew' ? CREW_GUIDES : AGENTWORKS_GUIDES)[key]
   const codeWording = (text: string) => text.replace(/Crew member/g, 'coding workspace').replace(/Crew project/g, 'coding workspace').replace(/\bCrew\b/g, 'coding agent')
   const copy = surface === 'code' && original
     ? { purpose: codeWording(original.purpose), howTo: codeWording(original.howTo), steps: original.steps?.map(codeWording) }

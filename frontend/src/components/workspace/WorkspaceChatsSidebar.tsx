@@ -1,7 +1,7 @@
 import ConnectedAgentsSidebar from './ConnectedAgentsSidebar'
 import { useResumePreviousChat } from '../../hooks/useResumePreviousChat'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { ChevronDown, Inbox, Loader2, MessageSquare, Search, X } from 'lucide-react'
+import { ChevronDown, Loader2, MessageSquare, Search, X } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useChatStore } from '../../stores/useChatStore'
@@ -34,7 +34,6 @@ import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { RuntimeBrandLogo } from '../branding/RuntimeBrandLogo'
-import { openQuickNavigation, quickNavigationItems } from '../../utils/quickNavigation'
 import { NewProjectMenu } from './NewProjectMenu'
 export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: ReactNode; footer?: ReactNode }) {
   const user = useAuthStore((state) => state.user)
@@ -49,7 +48,6 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   )
   const product = useProductSurfaceStore((state) => state.productSurface)
   const globalPageOpen = useAppStore(state => state.showWorkflowsOverview || state.showSchedulesOverview || state.adminPage !== null)
-  const activityOpen = useAppStore(state => state.showWorkflowsOverview && !state.showSchedulesOverview && state.adminPage === null)
   const providersOpen = useLLMStore(state => state.showLLMModal)
   const recentPresetOrder = useGlobalPresetStore((state) => state.recentPresetOrder)
   const presets = useGlobalPresetStore((state) => state.workflowPresets)
@@ -433,17 +431,6 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
         </div>
       </div>
       <div className="shrink-0 px-2 pb-1"><NewProjectMenu /></div>
-      {allowed.includes('agentworks') && <div className="shrink-0 px-2 pb-3">
-        <button type="button" aria-label="Activity" aria-current={activityOpen && !providersOpen ? 'page' : undefined}
-          onClick={() => {
-            const destination = quickNavigationItems(useAuthStore.getState().user, useProductSurfaceStore.getState().productSurface).find(item => item.action === 'activity')
-            if (destination) openQuickNavigation(destination)
-          }}
-          className={`flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${activityOpen && !providersOpen ? 'bg-foreground/[0.08] text-foreground' : 'text-foreground/75'}`}>
-          <Inbox className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-          Activity
-        </button>
-      </div>}
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-2">
         {workspaces.map((workspace, index) => {
           const hidden = collapsed.includes(workspace.id)

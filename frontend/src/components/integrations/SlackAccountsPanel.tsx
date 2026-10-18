@@ -21,7 +21,7 @@ export default function SlackAccountsPanel({ workspacePath }: { workspacePath: s
     try {
       const response = await api.get<SlackAccounts>('/api/integrations/slack/accounts', { params: { workspace_path: workspacePath } })
       setData(response.data); setError(null)
-    } catch { setError('Could not load Slack accounts. Ask this item’s Builder to open Integrations → Slack.') }
+    } catch { setError('Could not load Slack accounts. Ask this item’s Builder to open Connections → Add connection → Slack.') }
   }, [workspacePath])
   useEffect(() => { void refresh() }, [refresh])
   useEffect(() => {
@@ -37,7 +37,7 @@ export default function SlackAccountsPanel({ workspacePath }: { workspacePath: s
       if (response.data.message || response.data.next) setMessage(response.data.message || response.data.next)
       await refresh()
     } catch (cause) {
-      setError((cause as { response?: { data?: { error?: string } } }).response?.data?.error || 'Could not update the Slack account. Try again from Integrations → Slack.')
+      setError((cause as { response?: { data?: { error?: string } } }).response?.data?.error || 'Could not update the Slack account. Try again from Connections → Add connection → Slack.')
     } finally { setBusy(false) }
   }
   const signInReady = data?.sign_in_ready !== false

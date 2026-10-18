@@ -23,7 +23,7 @@ export function groupWorkspacePanels<T extends { id: string }>(panels: readonly 
 /** Keep familiar/technical names searchable after making visible labels clearer. */
 export const panelSearchAliases: Record<string, string> = {
   context: 'Context overview', identity: 'Identity settings purpose instructions',
-  mcp: 'Integrations connections MCP apps secrets', memory: 'Memory skills',
+  mcp: 'Connections Use & share sharing people channels Integrations MCP apps tools secrets tools & secrets Apps & tools MCPs & secrets', memory: 'Memory skills',
   workshop: 'Automation schedules webhooks watchers bots chats', schedules: 'Automation',
   pulse: 'Pulse automatic reviews', 'execution-logs': 'Execution logs run history',
 }

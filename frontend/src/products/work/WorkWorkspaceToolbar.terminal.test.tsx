@@ -85,7 +85,7 @@ it('keeps compact Crew navigation at the top and does not gain a Terminal', () =
   expect(host.querySelector('[aria-label="Back to context"]')).not.toBeNull()
   expect(host.querySelector('[aria-label="Dashboard"]')).toBeNull()
   expect(host.querySelector('[aria-label="Browser"]')).toBeNull()
-  expect(host.querySelector('[aria-label="More workspace tools"]')).not.toBeNull()
+  expect(host.querySelector('[aria-label="Project settings"]')).not.toBeNull()
 })
 
 it('keeps Code Terminal beside context without duplicating the bubble Files link', () => {
@@ -94,12 +94,12 @@ it('keeps Code Terminal beside context without duplicating the bubble Files link
   expect(host.querySelector('[aria-label="Back to context"]')).not.toBeNull()
   const labels = Array.from(host.querySelectorAll('button')).filter(button => !button.closest('[hidden]')).map(button => button.getAttribute('aria-label') || button.textContent)
   expect(labels.some(label => label?.includes('Files'))).toBe(false)
-  expect(host.querySelector('[aria-label="More workspace tools"]')).not.toBeNull()
+  expect(host.querySelector('[aria-label="Project settings"]')).not.toBeNull()
 })
 
 it('has no hide-context control while the compact Crew bubble is visible', () => {
   render(CREW_PRODUCT, { compactContext: true, view: 'context' })
   expect(host.querySelector('[aria-label="Workspace context"]')).toBeNull()
   expect(host.querySelector('[aria-label="Back to context"]')).toBeNull()
-  expect(host.querySelector('[aria-label="More workspace tools"]')).not.toBeNull()
+  expect(host.querySelector('[aria-label="Project settings"]')).not.toBeNull()
 })

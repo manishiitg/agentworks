@@ -2,7 +2,10 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Ellipsis } from 'lucide-react'
 
 /** Existing workspace views only; app setup lives in the workspace picker. */
-export function WorkspaceToolsMenu({ children }: { children: (close: () => void) => ReactNode }) {
+export function WorkspaceToolsMenu({ children, label = 'More workspace tools' }: {
+  children: (close: () => void) => ReactNode
+  label?: string
+}) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
@@ -30,7 +33,7 @@ export function WorkspaceToolsMenu({ children }: { children: (close: () => void)
     return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', key); document.removeEventListener('click', select) }
   }, [open])
   return <nav ref={root} aria-label="Workspace tools" className="relative inline-flex shrink-0 items-center">
-    <button ref={trigger} type="button" aria-label="More workspace tools" title="More options" aria-haspopup="menu" aria-expanded={open}
+    <button ref={trigger} type="button" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open}
       onClick={() => setOpen(value => !value)}
       onKeyDown={event => {
         if (event.key === 'ArrowDown') {
@@ -41,7 +44,7 @@ export function WorkspaceToolsMenu({ children }: { children: (close: () => void)
       className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <Ellipsis className="h-4 w-4" aria-hidden="true" />
     </button>
-    <div hidden={!open} role="menu" aria-label="More workspace tools"
+    <div hidden={!open} role="menu" aria-label={label}
       className="absolute right-0 top-full z-50 mt-2 max-h-[75vh] w-60 max-w-[calc(100vw-24px)] overflow-auto rounded-xl border border-border bg-popover p-1 shadow-xl">
       {children(() => setOpen(false))}
     </div>

@@ -14,8 +14,8 @@ export const PROJECT_INTEGRATION_SECTIONS: IntegrationSectionOption[] = [
   { value: 'apps', label: 'Tools & secrets', description: 'MCPs, secrets, skills and Vault.', icon: Blocks },
   { value: 'brain', label: 'Brain', description: 'Shared knowledge for your agents: open and edit by default, open only, or off.', icon: Brain, requiredProduct: 'knowledgebase' },
   { value: 'folders', label: 'Folders & workflows', description: 'Folders on this server and other workflows this one can use.', icon: FolderOpen },
-  { value: 'slack', label: 'Slack', description: 'Messages and notifications in Slack.', icon: Slack },
-  { value: 'whatsapp', label: 'WhatsApp', description: 'Messages and notifications in WhatsApp.', icon: MessageCircle },
+  { value: 'slack', label: 'Slack', description: 'The account this agent uses to read or send Slack messages.', icon: Slack },
+  { value: 'whatsapp', label: 'WhatsApp', description: 'Use & share: let people message this project in WhatsApp.', icon: MessageCircle },
   { value: 'gmail', label: 'Google apps', description: 'Gmail, Drive, Calendar and other Google apps.', icon: Grid2X2 },
   { value: 'cli', label: 'Use in AI apps', description: 'Connect Claude, ChatGPT or a local AI agent.', icon: AppWindow },
 ]

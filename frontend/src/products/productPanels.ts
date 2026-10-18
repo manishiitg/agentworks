@@ -40,7 +40,7 @@ export const WORK_PANELS: Record<'views' | 'ops' | 'setup', ProductPanel<WorkWor
   ],
   setup: [
     { id: 'identity', label: 'Details & instructions', icon: Fingerprint },
-    { id: 'mcp', label: 'Apps & tools', icon: Server },
+    { id: 'mcp', label: 'Connections', icon: Server },
   ],
 }
 
@@ -66,13 +66,15 @@ export const VAULT_PANELS = [
 /** A tab inside a panel. The panel opens on it from ⌘/Ctrl+K. */
 export interface PanelSection { id: string; label: string; keywords?: string }
 
-/** Integrations (workflows, Relays, Crew and Code). The MCP sub-tabs live under "Tools & secrets". */
+/** Existing integration target IDs, flattened by MCPs & secrets navigation. */
 export const INTEGRATION_SECTIONS: PanelSection[] = [
-  ...PROJECT_INTEGRATION_SECTIONS.map(section => ({ id: section.value, label: section.label, keywords: section.description })),
+  { id: 'use-share', label: 'Use & share', keywords: 'share sharing people access dashboard channels' },
+  { id: 'slack-app', label: 'Slack app', keywords: 'use share bot incoming channel conversations' },
+  ...PROJECT_INTEGRATION_SECTIONS.map(section => ({ id: section.value, label: section.value === 'apps' ? 'Connection overview' : section.value === 'cli' ? 'MCP access' : section.label, keywords: section.value === 'apps' ? `${section.description} Tools & secrets Apps & tools` : section.description })),
   ...projectPluginTabs().map(tab => ({ id: tab.value, label: tab.label, keywords: 'mcp tools' })),
 ]
 /** Integrations sections a Relay offers (its panel shows only these). */
-export const RELAY_INTEGRATION_SECTION_IDS = new Set(['apps', 'gmail', ...projectPluginTabs().map(tab => tab.value)])
+export const RELAY_INTEGRATION_SECTION_IDS = new Set(['use-share', 'cli', 'apps', 'gmail', 'slack', ...projectPluginTabs().map(tab => tab.value)])
 
 export const WORKFLOW_IDENTITY_SECTIONS: PanelSection[] = [
   { id: 'general', label: 'General', keywords: 'name soul persona identity' },
@@ -125,5 +127,5 @@ export const VAULT_PANEL_SECTIONS: Partial<Record<string, PanelSection[]>> = { p
 /** The same admitted tabs are registered by the toolbar and searched by Ctrl+K. */
 export function workPanelSections(panelId: string, isCode: boolean): PanelSection[] {
   const sections = WORK_PANEL_SECTIONS[panelId] ?? []
-  return sections.filter(section => !(isCode && panelId === 'mcp' && section.id === 'cli') && !(!isCode && panelId === 'identity' && section.id === 'location'))
+  return sections.filter(section => !(!isCode && panelId === 'identity' && section.id === 'location'))
 }

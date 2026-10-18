@@ -6,13 +6,14 @@ import type { ShortcutProduct } from '../../services/contextShortcuts'
 import { collectContextShortcuts, contextShortcutOptions, type WorkspaceShortcut } from './workspaceShortcuts'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 
-export function WorkspaceShortcutContents({ product, legacy, summary, children, available }: {
-  product: ShortcutProduct; legacy?: ShortcutProduct; summary?: string; children: ReactNode; available?: readonly WorkspaceShortcut[]
+export function WorkspaceShortcutContents({ product, legacy, summary, children, available, moreTools, consolidateConnections = false }: {
+  product: ShortcutProduct; legacy?: ShortcutProduct; summary?: string; children: ReactNode; available?: readonly WorkspaceShortcut[]; moreTools?: ReactNode; consolidateConnections?: boolean
 }) {
   const preferences = useContextShortcuts(product, legacy)
   const options = contextShortcutOptions(children, available)
   const byID = new Map(options.map(item => [item.id, item]))
-  const defaults = [...new Set([...DEFAULT_CONTEXT_SHORTCUTS[product], ...collectContextShortcuts(children).map(item => item.id)])]
+  const normalize = (ids: readonly string[]) => normalizeConnectionShortcuts(ids, consolidateConnections && byID.has('mcp'))
+  const defaults = normalize([...DEFAULT_CONTEXT_SHORTCUTS[product], ...collectContextShortcuts(children).map(item => item.id)])
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<{ order: string[]; selected: Set<string>; reset: boolean }>({ order: [], selected: new Set(), reset: false })
   const [busy, setBusy] = useState(false)
@@ -30,7 +31,7 @@ export function WorkspaceShortcutContents({ product, legacy, summary, children, 
     const record = await preferences.load()
     if (generation !== editingGeneration.current) return
     if (record) {
-      const selected = record.shortcuts ?? defaults
+      const selected = normalize(record.shortcuts ?? defaults)
       setDraft({ order: [...new Set([...selected, ...options.map(item => item.id)])], selected: new Set(selected), reset: record.shortcuts === null })
     }
     setBusy(false)
@@ -58,7 +59,7 @@ export function WorkspaceShortcutContents({ product, legacy, summary, children, 
   }
   const visibleDraft = draft.order.filter(id => byID.has(id))
   const saved = preferences.entry?.record?.shortcuts
-  const selectedOptions = saved?.map(id => byID.get(id)).filter((item): item is WorkspaceShortcut => Boolean(item))
+  const selectedOptions = saved ? normalize(saved).map(id => byID.get(id)).filter((item): item is WorkspaceShortcut => Boolean(item)) : undefined
   const content = !selectedOptions ? children : selectedOptions.length ? <div className="space-y-1">
     {selectedOptions.map(item => <div key={item.id}>{item.content ?? <button type="button" onClick={() => byID.get(item.id)?.onClick?.()} className="flex w-full items-center gap-2.5 rounded-md px-1 py-1.5 text-left text-xs text-foreground/85 hover:bg-background/40"><item.icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span>{item.label}</span></button>}</div>)}
   </div> : <p className="py-3 text-xs text-muted-foreground">Add the shortcuts you want to keep here.</p>
@@ -107,6 +108,7 @@ export function WorkspaceShortcutContents({ product, legacy, summary, children, 
       </div>
     </div> : <>
       {content}
+      {moreTools}
       {preferences.entry?.status === 'error' && <p role="status" className="text-[11px] text-muted-foreground">Could not load saved shortcuts. <button type="button" onClick={() => void preferences.load()} className="underline">Retry</button></p>}
       <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
         {preferences.available && <button type="button" onClick={() => void begin()} className="flex items-center gap-1.5 rounded py-1 text-[11px] text-muted-foreground hover:text-foreground"><SlidersHorizontal className="h-3.5 w-3.5" />Edit shortcuts</button>}
@@ -114,4 +116,10 @@ export function WorkspaceShortcutContents({ product, legacy, summary, children, 
       </div>
     </>}
   </>
+}
+
+const LEGACY_CONNECTION_IDS = new Set(['connected', 'available', 'secrets', 'skills', 'vault', 'brain', 'folders', 'slack', 'whatsapp', 'gmail', 'cli'].map(id => `mcp:${id}`))
+/** Presentation-only consolidation. Unavailable/unknown choices stay in the saved draft. */
+export function normalizeConnectionShortcuts(ids: readonly string[], enabled: boolean) {
+  return [...new Set(ids.map(id => enabled && LEGACY_CONNECTION_IDS.has(id) ? 'mcp' : id))]
 }

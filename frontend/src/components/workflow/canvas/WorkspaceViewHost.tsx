@@ -19,6 +19,7 @@ import { RelayContextPanel } from '../RelayContextPanel'
 import { AskAIButton } from '../AskAIButton'
 import { getWorkspaceAskAIMessage } from '../workspaceAskAI'
 import { ReportView } from '../ReportViewer'
+import { DashboardCreateDraftButton } from '../DashboardEmptyState'
 import { usePlanData } from '../hooks/usePlanData'
 import { useWorkflowExecution } from '../hooks/useWorkflowExecution'
 import { useWorkspaceState } from '../hooks/useWorkspaceState'
@@ -101,6 +102,8 @@ const dispatchReportExport = () => window.dispatchEvent(new CustomEvent(WORKFLOW
 // ---------------------------------------------------------------------------
 
 function ReportBody({ workspacePath, relayMode }: { workspacePath: string | null; relayMode: boolean }) {
+  const access = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.my_access)
+  const canCreate = access === 'owner' || access === 'write'
   // In Mobile the report sits in a narrow 480px column; when chat is focused we
   // keep the report mobile-framed so it fits. Laptop keeps its desktop report
   // beside a separate compact chat column, so it needs no report-width cap.
@@ -115,6 +118,7 @@ function ReportBody({ workspacePath, relayMode }: { workspacePath: string | null
         workspacePath={workspacePath}
         dashboardConversation
         defaultRelayDashboard={relayMode}
+        emptyAction={canCreate ? <DashboardCreateDraftButton target={{ workspacePath }} /> : undefined}
         focusTier={reportFocusTier}
         headerAction={<AskAIButton workspacePath={workspacePath} message={getWorkspaceAskAIMessage('report')} iconOnly />}
       />}

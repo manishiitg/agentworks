@@ -3,7 +3,8 @@
 // tabs, sections, a sidebar, or a single scrolling page.
 
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BarChart3, Loader2, RefreshCw } from 'lucide-react'
+import { Loader2, RefreshCw } from 'lucide-react'
+import { DashboardEmptyState } from './DashboardEmptyState'
 import api, { agentApi, workspaceApi, getApiBaseUrl } from '../../services/api'
 import { useReportFilePreviewStore } from '../../stores/useReportFilePreviewStore'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
@@ -21,7 +22,6 @@ import { createReportQuery } from './reportWidgets/reportQuery'
 import { isStreamableReportMediaPath } from './reportWidgets/reportMedia'
 import { allowedReportPath, normalizeReportSource, renderReportMarkdown, reportMarkdownBasePath } from './reportWidgets/reportMarkdown'
 import { useReportChat } from './reportWidgets/useReportChat'
-import { EntityIdentityIcon } from '../ui/EntityIdentityIcon'
 
 import { WORKFLOW_REPORT_REFRESH_EVENT } from './reportRefreshEvent'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
@@ -60,7 +60,6 @@ interface ReportViewProps {
   documentPath?: string
   emptyDescription?: string
   emptyAction?: React.ReactNode
-  emptyIdentity?: { icon?: string; name: string; projectName: string }
   sendChatMessage?: ReportDataApi['sendChatMessage']
   /** Standalone viewing links have no project chat destination. */
   allowContentQuestions?: boolean
@@ -226,7 +225,7 @@ async function loadReportDocument(workspacePath: string, documentPath = 'db/repo
   return { path, html, label: title || 'Dashboard', questions }
 }
 
-function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, emptyDescription, emptyAction, emptyIdentity, sendChatMessage, headerAction, hideToolbar = false, allowContentQuestions = true, dashboardConversation = false, defaultRelayDashboard = false }: ReportViewProps) {
+function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, emptyDescription, emptyAction, sendChatMessage, headerAction, hideToolbar = false, allowContentQuestions = true, dashboardConversation = false, defaultRelayDashboard = false }: ReportViewProps) {
   const [report, setReport] = useState<ReportDocument | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -286,7 +285,7 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
       <div className="relative flex h-full w-full flex-col overflow-hidden bg-background text-foreground">
         {!hideToolbar && <div className="absolute right-3 top-3 z-20 flex gap-1">
           {guideAsk ? null : headerAction}
-          <ShareDashboardButton workspacePath={workspacePath} />
+          {!loading && !error && (report?.html || defaultRelayDashboard) && <ShareDashboardButton workspacePath={workspacePath} />}
           <WorkspacePanelGuideButton topic="Dashboard" ask={guideAsk} />
           <button type="button" onClick={refresh} aria-label="Refresh dashboard" title="Refresh dashboard" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/95 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground">
             <RefreshCw className="h-3.5 w-3.5" />
@@ -296,35 +295,14 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
         <div
           tabIndex={0}
           aria-label="Dashboard content"
-          className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain"
+          className={`min-h-0 flex-1 overflow-y-auto overscroll-y-contain ${!loading && !error && !report && !defaultRelayDashboard ? 'flex flex-col' : ''}`}
         >
-          <div className={shellClass}>
+          <div className={`${shellClass} ${!loading && !error && !report && !defaultRelayDashboard ? 'flex flex-1 items-center justify-center' : ''}`}>
             {loading && !report && <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading dashboard…</div>}
             {error && <div className="m-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">Failed to load report: {error}</div>}
-            {!loading && !error && !report && defaultRelayDashboard && <Suspense fallback={<p className="p-6 text-sm text-muted-foreground">Opening Flow dashboard…</p>}><DefaultRelayDashboard workspacePath={workspacePath} refreshToken={refreshNonce} /></Suspense>}
+            {!loading && !error && !report && defaultRelayDashboard && <Suspense fallback={<p className="p-6 text-sm text-muted-foreground">Opening Flow dashboard…</p>}><DefaultRelayDashboard workspacePath={workspacePath} refreshToken={refreshNonce} renderEmptyState={canCreate => <DashboardEmptyState description={emptyDescription} action={canCreate ? emptyAction : undefined} />} /></Suspense>}
             {!loading && !error && !report && !defaultRelayDashboard && (
-              <div className="m-3 flex flex-col items-center gap-3 rounded-xl border border-dashed border-border p-8 text-center">
-                {emptyIdentity ? (
-                  <div className="flex flex-col items-center gap-2">
-                    <EntityIdentityIcon icon={emptyIdentity.icon} label={emptyIdentity.name} className="h-12 w-12 rounded-xl text-2xl shadow-sm" />
-                    <div>
-                      <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Project identity</div>
-                      <div className="mt-0.5 text-lg font-semibold">{emptyIdentity.name}</div>
-                      {emptyIdentity.projectName !== emptyIdentity.name && <div className="mt-0.5 text-xs text-muted-foreground">Project name: {emptyIdentity.projectName}</div>}
-                    </div>
-                  </div>
-                ) : <BarChart3 className="h-8 w-8 text-muted-foreground" />}
-                <div>
-                  <div className="font-semibold">No dashboard yet</div>
-                  <p className="mt-1 text-sm text-muted-foreground">{emptyDescription ?? 'Run the workflow or ask the Builder to set up its dashboard. It will appear here when it is ready.'}</p>
-                </div>
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                  {emptyAction}
-                  <button type="button" onClick={refresh} className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted">
-                    <RefreshCw className="h-3.5 w-3.5" /> Check again
-                  </button>
-                </div>
-              </div>
+              <DashboardEmptyState description={emptyDescription} action={emptyAction} />
             )}
             {!loading && report && !report.html && <div className="m-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">Could not read {report.label}.</div>}
             {report?.html && (report.questions

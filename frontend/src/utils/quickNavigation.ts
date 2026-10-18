@@ -77,7 +77,7 @@ export function quickNavigationItems(
       subtitle: `Create · ${PRODUCT_SURFACE_LABELS[surface]} · open the creation form`, isActive: false, action: 'create', surface,
       projectDescription: PROJECT_CREATION_DESCRIPTIONS[surface] })
   }
-  if (products.includes('agentworks')) menu('activity', 'Activity', 'Automation activity and recent runs')
+  if (products.includes('agentworks')) menu('activity', 'Goal activity', 'Goals · updates, decisions and recent runs')
   if (products.some(surface => surface === 'agentworks' || surface === 'work')) {
     menu('schedules', 'Schedules and triggers', 'Scheduled work and automation triggers')
   }

@@ -5,14 +5,14 @@ import type { WorkspaceShortcut } from './workspaceShortcuts'
 import type { ShortcutProduct } from '../../services/contextShortcuts'
 export { WorkspaceContextShortcut } from './workspaceShortcuts'
 
-export function WorkspaceContextCard({ children, summary, title = 'Project overview', product, legacyProduct, availableShortcuts }: { children: ReactNode; summary?: string; title?: string; product?: ShortcutProduct; legacyProduct?: ShortcutProduct; availableShortcuts?: readonly WorkspaceShortcut[] }) {
+export function WorkspaceContextCard({ children, summary, title = 'Project overview', product, legacyProduct, availableShortcuts, moreTools, consolidateConnections }: { children: ReactNode; summary?: string; title?: string; product?: ShortcutProduct; legacyProduct?: ShortcutProduct; availableShortcuts?: readonly WorkspaceShortcut[]; moreTools?: ReactNode; consolidateConnections?: boolean }) {
   return (
     <div className="p-3 sm:p-4">
       <aside
         aria-label="Workspace context"
         className="space-y-3 rounded-2xl border border-border bg-muted/70 p-4 shadow-sm dark:bg-zinc-800/80"
       >
-        {product ? <WorkspaceShortcutContents product={product} legacy={legacyProduct} summary={summary} available={availableShortcuts}>{children}</WorkspaceShortcutContents> : <><header className="border-b border-border pb-3">
+        {product ? <WorkspaceShortcutContents product={product} legacy={legacyProduct} summary={summary} available={availableShortcuts} moreTools={moreTools} consolidateConnections={consolidateConnections}>{children}</WorkspaceShortcutContents> : <><header className="border-b border-border pb-3">
           <h2 className="text-sm font-semibold text-foreground">{title}</h2>
           {summary && <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{summary}</p>}
         </header>

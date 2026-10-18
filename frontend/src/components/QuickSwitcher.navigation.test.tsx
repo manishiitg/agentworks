@@ -413,14 +413,14 @@ it('keeps the legacy Code search keyword opening the single Crew product', async
   expect(useProductSurfaceStore.getState().productSurface).toBe('code')
 })
 
-it('finds Apps & tools through its previous Integrations name without exposing other products', async () => {
+it('finds Connections through its previous Integrations name without exposing other products', async () => {
   const open = vi.fn()
   const { host } = await renderNavigation('integrations', ['code'], false, () => {
     useProductSurfaceStore.setState({ productSurface: 'code' })
-    usePanelSwitcherStore.getState().register('code', { panels: [{ id: 'mcp', label: 'Apps & tools' }], open })
+    usePanelSwitcherStore.getState().register('code', { panels: [{ id: 'mcp', label: 'Connections' }], open })
     usePanelSwitcherStore.getState().register('work', { panels: [{ id: 'mcp', label: 'Hidden Crew tools' }], open: vi.fn() })
   })
-  expect(host.querySelector('[data-navigation-id="panel:mcp"]')?.textContent).toContain('Apps & tools')
+  expect(host.querySelector('[data-navigation-id="panel:mcp"]')?.textContent).toContain('Connections')
   expect(host.textContent).not.toContain('Hidden Crew tools')
   await act(async () => host.querySelector('[data-navigation-id="panel:mcp"]')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
   expect(open).toHaveBeenCalledWith('mcp', undefined)

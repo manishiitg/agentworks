@@ -18,6 +18,7 @@ import { WorkspaceContextCard, WorkspaceContextShortcut as Shortcut } from './Wo
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { useContextShortcutStore } from '../../hooks/useContextShortcuts'
+import { normalizeConnectionShortcuts } from './WorkspaceShortcutContents'
 import type { ShortcutProduct } from '../../services/contextShortcuts'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -86,6 +87,22 @@ it('filters saved shortcuts through current workspace permissions and preserves 
   expect(checkbox('Dashboard')).toBeDefined()
   await click('Done')
   expect(mocks.save.mock.calls[0][1].shortcuts).toEqual(['shell', 'files', 'dashboard'])
+})
+
+it('consolidates old connection shortcuts only where Connections is available and keeps settings in their own menu', async () => {
+  mocks.get.mockResolvedValue({ version: 1, revision: 3, shortcuts: ['mcp:secrets', 'mcp:gmail', 'identity', 'files'] })
+  await act(async () => root!.render(<WorkspaceContextCard product="work" consolidateConnections>
+    <Shortcut id="mcp" label="Connections" icon={Files}><button>Connections</button></Shortcut>
+  </WorkspaceContextCard>))
+  expect([...host.querySelectorAll('button')].filter(button => button.textContent === 'Connections')).toHaveLength(1)
+  expect(mocks.save).not.toHaveBeenCalled()
+  await click('Edit shortcuts')
+  expect(checkbox('Connections')?.checked).toBe(true)
+  expect(checkbox('Secrets')).toBeUndefined()
+  await click('Done')
+  expect(mocks.save.mock.calls[0][1].shortcuts).toEqual(['mcp', 'identity', 'files'])
+  expect(normalizeConnectionShortcuts(['mcp:secrets', 'mcp:gmail'], false)).toEqual(['mcp:secrets', 'mcp:gmail'])
+  expect(normalizeConnectionShortcuts(['mcp:future'], true)).toEqual(['mcp:future'])
 })
 
 it('handles an intentionally empty layout and persists Reset to default as null', async () => {

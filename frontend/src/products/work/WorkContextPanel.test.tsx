@@ -60,25 +60,14 @@ it('keeps schedules and suggestions scoped to this Crew and opens its actual vie
     })
     expect(mocks.select).toHaveBeenCalledWith('Crew/one', 'db/reports/index.html')
     expect(open).toHaveBeenLastCalledWith('dashboard')
-    const setup = host.querySelector('[aria-label="Workspace setup"]')!
-    expect(setup.textContent).toBe('Project setupDetails & instructionsApps & tools')
-    for (const [label, view] of [
-      ['Details & instructions', 'identity'],
-      ['Apps & tools', 'mcp'],
-    ]) {
-      await act(async () =>
-        Array.from(setup.querySelectorAll('button'))
-          .find((button) => button.textContent === label)!
-          .click()
-      )
-      expect(open).toHaveBeenLastCalledWith(view)
-    }
+    expect(host.querySelector('[aria-label="Workspace setup"]')).toBeNull()
     expect(host.querySelector('[aria-label="All views"]')).not.toBeNull()
-    for (const [label, section] of [['MCPs', 'connected'], ['Secrets', 'secrets'], ['Google apps', 'gmail'], ['Slack', 'slack']]) {
-      await act(async () => Array.from(host.querySelectorAll('button')).find(button => button.textContent === label)!.click())
-      expect(setWorkspaceViewTarget).toHaveBeenLastCalledWith('mcp', section)
-      expect(open).toHaveBeenLastCalledWith('mcp')
-    }
+    await act(async () => Array.from(host.querySelectorAll('button')).find(button => button.textContent === 'Connections')!.click())
+    expect(setWorkspaceViewTarget).toHaveBeenLastCalledWith('mcp', 'overview')
+    expect(open).toHaveBeenLastCalledWith('mcp')
+    await act(async () => Array.from(host.querySelectorAll('button')).find(button => button.textContent?.trim() === 'More tools')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })))
+    expect(document.querySelector('[aria-label="All project tools"]')?.textContent).toContain('Files')
+
   } finally {
     await act(async () => root.unmount())
     host.remove()
@@ -99,8 +88,8 @@ it('does not display disabled report/memory/schedule panels or a false zero afte
     expect(host.textContent).not.toContain('Scheduled work')
     expect(host.textContent).not.toContain('Up to date')
     expect(host.textContent).toContain('Suggestions')
-    expect(host.textContent).toContain('Details & instructions')
-    expect(host.textContent).not.toContain('Apps & tools')
+    expect(host.textContent).not.toContain('Details & instructions')
+    expect(host.textContent).not.toContain('MCPs & secrets')
     for (const label of ['MCPs', 'Secrets', 'Google apps', 'Slack']) expect(host.textContent).not.toContain(label)
     expect(mocks.jobs).not.toHaveBeenCalled()
   } finally {
@@ -127,53 +116,17 @@ it('does not read schedule or suggestion summaries when neither panel is admitte
   }
 })
 
-it('keeps the original Crew tools reachable without introducing a Terminal', async () => {
-  const host = document.createElement('div')
-  document.body.append(host)
-  const root = createRoot(host)
-  const open = vi.fn()
+it('keeps the triple-dot menu limited to admitted project settings', async () => {
+  const host = document.createElement('div'); const root = createRoot(host); const open = vi.fn()
   try {
     await act(async () => root.render(<WorkContextTools view="memory" onOpen={open} />))
-    expect(host.querySelector('[aria-label="Dashboard"]')).toBeNull()
-    expect(host.querySelector('[aria-label="Browser"]')).toBeNull()
-    expect(host.querySelector('[aria-label="Terminal"]')).toBeNull()
-    await act(async () =>
-      (host.querySelector('[aria-label="More workspace tools"]') as HTMLButtonElement).click()
-    )
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Project settings"]')!.click())
     const menu = host.querySelector('[role="menu"]')!
-    expect(menu.querySelector('[aria-current="page"]')?.textContent).toContain('Memory & skills')
-    expect(menu.textContent).toContain('Files')
-    expect(menu.textContent).toContain('Details & instructions')
-    for (const label of [
-      'Dashboard',
-      'Memory',
-      'Browser',
-      'Schedules & triggers',
-      'Suggestions',
-      'Plan',
-      'Apps & tools',
-    ])
-      expect(menu.textContent).toContain(label)
-    expect(menu.textContent).not.toContain('Terminal')
-    await act(async () =>
-      Array.from(menu.querySelectorAll('button'))
-        .find((button) => button.textContent?.includes('Schedules & triggers'))!
-        .click()
-    )
-    expect(open).toHaveBeenLastCalledWith('schedules')
-    await act(async () =>
-      (host.querySelector('[aria-label="More workspace tools"]') as HTMLButtonElement).click()
-    )
-    await act(async () =>
-      Array.from(host.querySelector('[role="menu"]')!.querySelectorAll('button'))
-        .find((button) => button.textContent?.includes('Details & instructions'))!
-        .click()
-    )
-    expect(open).toHaveBeenCalledWith('identity')
-  } finally {
-    await act(async () => root.unmount())
-    host.remove()
-  }
+    expect([...menu.querySelectorAll('[role="menuitem"]')].map(item => item.textContent?.trim())).toEqual(['Project settings'])
+    await act(async () => menu.querySelector<HTMLButtonElement>('button')!.click())
+    expect(open).toHaveBeenLastCalledWith('identity')
+    expect(menu.hasAttribute('hidden')).toBe(true)
+  } finally { await act(async () => root.unmount()); host.remove() }
 })
 
 it('keeps Code-origin settings and includes the merged Crew suggestion feature', async () => {
@@ -209,32 +162,30 @@ it('keeps Code-origin settings and includes the merged Crew suggestion feature',
     expect(host.textContent).not.toContain('Crew memory')
     expect(host.textContent).toContain('Suggestions')
     expect(host.textContent).not.toContain('Pulse')
-    const setup = host.querySelector('[aria-label="Workspace setup"]')!
-    expect(setup.textContent).toBe('Project setupProject settingsApps & tools')
-    await act(async () =>
-      Array.from(setup.querySelectorAll('button'))
-        .find((button) => button.textContent === 'Project settings')!
-        .click()
-    )
-    expect(open).toHaveBeenLastCalledWith('identity')
-    await act(async () =>
-      root.render(<WorkContextTools view="context" profileId="code" panels={panels} onOpen={open} />)
-    )
-    await act(async () =>
-      (host.querySelector('[aria-label="More workspace tools"]') as HTMLButtonElement).click()
-    )
-    const menu = host.querySelector('[role="menu"]')!
-    expect(menu.textContent).toContain('Terminal')
-    expect(menu.textContent).toContain('Suggestions')
-    expect(menu.textContent).toContain('Database')
-    await act(async () =>
-      Array.from(menu.querySelectorAll('button'))
-        .find((button) => button.textContent?.trim() === 'Terminal')!
-        .click()
-    )
+    await act(async () => Array.from(host.querySelectorAll('button')).find(button => button.textContent?.trim() === 'More tools')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })))
+    const tools = document.querySelector('[aria-label="All project tools"]')!
+    for (const label of ['Terminal', 'Database', 'Suggestions', 'Files']) expect(tools.textContent).toContain(label)
+    await act(async () => Array.from(tools.querySelectorAll<HTMLElement>('[role="menuitem"]')).find(button => button.textContent?.trim() === 'Terminal')!.click())
     expect(open).toHaveBeenLastCalledWith('shell')
+    await act(async () => root.render(<WorkContextTools view="context" profileId="code" panels={panels} onOpen={open} />))
+    const menu = host.querySelector('[role="menu"]')!
+    expect(menu.textContent).toContain('Project settings')
+    for (const label of ['Terminal', 'Database', 'Suggestions', 'Connections']) expect(menu.textContent).not.toContain(label)
+
   } finally {
     await act(async () => root.unmount())
     host.remove()
   }
+})
+
+it('does not introduce settings or tool links beyond a restricted workspace inventory', async () => {
+  const host = document.createElement('div'); const root = createRoot(host)
+  try {
+    const groups = workWorkspacePanels({ readOnly: true })
+    const panels = [...groups.views, ...groups.ops, ...groups.setup]
+    await act(async () => root.render(<WorkContextTools view="dashboard" panels={panels} onOpen={vi.fn()} />))
+    expect(host.querySelector('[role="menu"]')?.textContent).not.toContain('Project settings')
+    await act(async () => root.render(<WorkContextPanel workspacePath="Crew/one" panels={panels} onOpen={vi.fn()} />))
+    for (const label of ['Connections', 'Terminal', 'Database', 'Secrets', 'Slack']) expect(host.textContent).not.toContain(label)
+  } finally { await act(async () => root.unmount()); host.remove() }
 })

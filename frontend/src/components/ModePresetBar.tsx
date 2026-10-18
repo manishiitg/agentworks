@@ -3,7 +3,7 @@ import { useProductNavigationToolbarStore } from '../stores/useProductNavigation
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { workflowTriggerLabel } from '../utils/workflowSessionKinds'
 import { useShallow } from 'zustand/react/shallow'
-import { Settings, Copy, Eye, CalendarClock } from 'lucide-react'
+import { Settings, Copy, Eye, CalendarClock, Inbox } from 'lucide-react'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useProductCreateRequest } from '../hooks/useProductCreateRequest'
 import { hasProductCreateAccess, isWorkflowReadOnly } from '../utils/workflowPermissions'
@@ -35,7 +35,6 @@ import UsersControl from './topbar/UsersControl'
 import VaultsControl from './topbar/VaultsControl'
 import ProvidersControl from './topbar/ProvidersControl'
 import { TopBarEntitySelector } from './topbar/TopBarEntitySelector'
-import { GlobalActivityButton } from './topbar/GlobalActivityButton'
 import { WorkflowIcon } from './workflow/WorkflowIcon'
 import ConfirmationDialog from './ui/ConfirmationDialog'
 import {
@@ -149,9 +148,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
     : getActivePreset(presetModeCategory)
   const activePreset = selectedPreset && (selectedPreset.workflowKind === 'relay') === isRelaySurface ? selectedPreset : null
   const activeWorkspacePath = activePreset?.selectedFolder?.filepath?.replace(/\/+$/, '')
-  const workflowActivityPaths = React.useMemo(() => workflowPresets
-    .map(preset => preset.selectedFolder?.filepath?.replace(/\/+$/, ''))
-    .filter((path): path is string => Boolean(path)), [workflowPresets])
   const activeWorkflowAccess = useWorkflowManifestStore(state =>
     activeWorkspacePath ? state.workflows.find(workflow => workflow.workspace_path === activeWorkspacePath)?.my_access : undefined,
   )
@@ -709,6 +705,16 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
                               </div>
                             )}
 
+                            {hasProductActivity && <button type="button" aria-label="Goal activity"
+                              onClick={() => {
+                                setShowPresetDropdown(false)
+                                useLLMStore.getState().setShowLLMModal(false)
+                                setAdminPage(null); setShowSchedulesOverview(false); setActivityWorkflowPath(null); setShowWorkflowsOverview(true)
+                              }}
+                              className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
+                              <Inbox className="h-4 w-4" aria-hidden="true" /><span>Goal activity</span>
+                            </button>}
+
                             {/* Loading state */}
                             {presetsLoading && (
                               <div className="p-2 text-sm text-gray-500 dark:text-gray-400 text-center">
@@ -792,18 +798,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
               <ProductSettingsMenu activity={<>
                 {(hasProductActivity || hasProductSchedules) && <TooltipProvider delayDuration={400}>
               <div data-product-navigation-section="product-actions" aria-label="Product actions" className="flex flex-col items-stretch gap-1">
-              {hasProductActivity && !sidebarHasBrand && <GlobalActivityButton
-                workspacePaths={workflowActivityPaths}
-                active={showWorkflowsOverview && !showProviders && !showSchedulesOverview}
-                onOpen={() => {
-                  useLLMStore.getState().setShowLLMModal(false)
-                  setAdminPage(null)
-                  setShowSchedulesOverview(false)
-                  setActivityWorkflowPath(null)
-                  setShowWorkflowsOverview(true)
-                }}
-              />}
-
               {hasProductSchedules && <Tooltip>
                 <TooltipTrigger asChild>
                   <button

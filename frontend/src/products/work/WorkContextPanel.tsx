@@ -14,6 +14,8 @@ import {
   Hand,
   LayoutDashboard,
   MessageSquareText,
+  Plug,
+  Users,
 } from 'lucide-react'
 import {
   WorkspaceContextCard,
@@ -31,8 +33,7 @@ import { WORK_PANELS } from '../productPanels'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { projectProductConfig } from './projectProduct'
-import { useAuthStore } from '../../stores/useAuthStore'
-import { integrationShortcutContent, workspaceIntegrationShortcuts } from '../../components/workspace/workspaceIntegrationShortcuts'
+import { WorkspaceMoreTools, isProjectSettingsPanel } from '../../components/workspace/WorkspaceMoreTools'
 
 export function WorkContextPanel({
   workspacePath,
@@ -51,11 +52,6 @@ export function WorkContextPanel({
 }) {
   const allowed = (view: WorkWorkspaceView) =>
     panels ? panels.some((item) => item.id === view) : isWorkWorkspaceViewEnabled(view, enabledPanels)
-  const allowedProducts = useAuthStore(state => state.user?.allowed_products)
-  const connections = allowed('mcp') ? workspaceIntegrationShortcuts({ allowedProducts, workMode: true, enabledPanels, onOpen: section => {
-    setWorkspaceViewTarget('mcp', section)
-    onOpen('mcp')
-  } }) : []
   const showSchedules = allowed('schedules')
   const showSuggestions = allowed('suggestions')
   const [snapshot, setSnapshot] = useState<{
@@ -109,7 +105,7 @@ export function WorkContextPanel({
   const fallback = workWorkspacePanels({ profileId, enabledPanels })
   const available = (panels ?? [...fallback.views, ...fallback.ops, ...fallback.setup]).filter(item => allowed(item.id))
   return (
-    <WorkspaceContextCard product={policy.shortcutPreferenceProduct ?? profileId} legacyProduct={policy.shortcutPreferenceLegacyProduct} availableShortcuts={[...available.map(item => ({ ...item, onClick: () => onOpen(item.id) })), ...connections]} summary="Your ongoing work and available project tools.">
+    <WorkspaceContextCard product={policy.shortcutPreferenceProduct ?? profileId} legacyProduct={policy.shortcutPreferenceLegacyProduct} consolidateConnections availableShortcuts={available.filter(item => !isProjectSettingsPanel(item.id)).map(item => ({ ...item, onClick: () => { if (item.id === 'mcp') setWorkspaceViewTarget('mcp', 'overview'); onOpen(item.id) } }))} moreTools={<WorkspaceMoreTools items={available.filter(item => item.id !== 'mcp' && !isProjectSettingsPanel(item.id)).map(item => ({ ...item, onClick: () => onOpen(item.id) }))} />} summary="Results, scheduled work and tools for this project.">
       {allowed('dashboard') && (
         <Shortcut id="dashboard" label="Dashboard" icon={LayoutDashboard}>
         <Section title="Results">
@@ -256,17 +252,12 @@ export function WorkContextPanel({
           )}
         </Section>
       )}
-      {integrationShortcutContent(connections)}
-      <div aria-label="Workspace setup" className="border-t border-border pt-3">
-        <h3 className="mb-1 text-[11px] font-medium text-muted-foreground">Project setup</h3>
-        {WORK_PANELS.setup
-          .filter((item) => allowed(item.id))
-          .map((item) => (
-            <Shortcut key={item.id} id={item.id} label={profileId === 'code' && item.id === 'identity' ? 'Project settings' : item.label} icon={item.icon}><Row icon={item.icon} onClick={() => onOpen(item.id)}>
-              {profileId === 'code' && item.id === 'identity' ? 'Project settings' : item.label}
-            </Row></Shortcut>
-          ))}
-      </div>
+      {allowed('mcp') && <Shortcut id="mcp" label="Connections & sharing" icon={Plug}>
+        <div className="border-t border-border pt-3">
+          <Row icon={Plug} hint="What this agent can use" onClick={() => { setWorkspaceViewTarget('mcp', 'overview'); onOpen('mcp') }}>Connections</Row>
+          <Row icon={Users} hint="People, dashboard and ways to use this project" onClick={() => { setWorkspaceViewTarget('mcp', 'use-share'); onOpen('mcp') }}>Use &amp; share</Row>
+        </div>
+      </Shortcut>}
     </WorkspaceContextCard>
   )
 }
@@ -288,9 +279,9 @@ export function WorkContextTools({
   const secondary = panels ?? [...fallback.views, ...fallback.ops, ...fallback.setup]
 
   return (
-    <WorkspaceToolsMenu>
+    <WorkspaceToolsMenu label="Project settings">
       {(close) => <>
-            {groupWorkspacePanels(secondary).map(group => <WorkspaceToolsGroup key={group.title} title={group.title}>
+            {groupWorkspacePanels(secondary.filter(item => isProjectSettingsPanel(item.id))).map(group => <WorkspaceToolsGroup key={group.title} title={group.title}>
             {group.items.map((item) => (
               <button
                 type="button"
@@ -304,7 +295,7 @@ export function WorkContextTools({
                 }}
               >
                 <item.icon className="h-3.5 w-3.5 text-muted-foreground" />
-                {profileId === 'code' && item.id === 'identity' ? 'Project settings' : item.label}
+                {item.id === 'identity' ? 'Project settings' : item.label}
                 <ChevronRight className="ml-auto h-3 w-3 text-muted-foreground" />
               </button>
             ))}

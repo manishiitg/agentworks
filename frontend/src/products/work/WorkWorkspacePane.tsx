@@ -4,6 +4,7 @@ import { WorkContextPanel, WorkContextTools } from './WorkContextPanel'
 import { WorkspaceContextButton } from '../../components/workspace/WorkspaceContextButton'
 import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { DollarSign, Laptop, Settings } from 'lucide-react'
+import { DashboardCreateDraftButton } from '../../components/workflow/DashboardEmptyState'
 import { AskAIButton } from '../../components/workflow/AskAIButton'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspacePanelGuideContext } from '../../components/workflow/WorkspacePanelGuideContext'
@@ -102,7 +103,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   // rest see who has access); Crews have no Share view.
   // Ops and Setup are always open and show icons only.
   // No empty frame when every view moved elsewhere.
-  // A Code hides the "Use in AI apps" integration tab (CODE_HIDDEN_INTEGRATION_TABS).
+  // Existing integration targets are kept while sharing has its own destination.
   const sectionsFor = (id: string) => workPanelSections(id, isCode)
   useRegisterPanelSwitcher(isCode ? 'code' : 'work', [
     ...(compactContext && !localCodeSession && !readOnly ? [{ id: 'context', label: 'Project overview', group: 'Work & results' }] : []),
@@ -111,7 +112,8 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
     ...visibleSetup.map(item => ({ id: item.id, label: isCode && item.id === 'identity' ? 'Project settings' : item.label, group: 'Project setup', sections: sectionsFor(item.id) })),
   ].map(panel => ({ ...panel, group: workspacePanelGroup(panel.id) })), (id, section) => {
     // The Integrations, Identity and Automation panels pick up this target (useWorkspaceViewTarget).
-    if (section) setWorkspaceViewTarget(id === 'schedules' ? 'workshop' : id as 'mcp' | 'identity', section)
+    if (id === 'mcp') setWorkspaceViewTarget('mcp', section ?? 'overview')
+    else if (section) setWorkspaceViewTarget(id === 'schedules' ? 'workshop' : id as 'identity', section)
     onViewChange(id as WorkWorkspaceView)
   })
   const viewsGroup = visibleViews.some(item => item.id !== 'dashboard') && <div className="inline-flex items-center gap-0.5 px-0.5">
@@ -405,6 +407,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           workspacePath={workspacePath}
           projectId={projectId}
           projectTitle={projectTitle}
+          onOpenDashboard={contextPanels.views.some(item => item.id === 'dashboard') ? () => onViewChange('dashboard') : undefined}
           projectTemplates={projectTemplates}
           tabId={tabId}
           enabledPanels={enabledPanels}
@@ -425,14 +428,8 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           {view === 'dashboard' && <ReportView
             workspacePath={workspacePath}
             dashboardConversation
-            emptyIdentity={{ icon: projectIdentity?.icon, name: projectIdentity?.name || projectTitle, projectName: projectTitle }}
-            emptyDescription="Bring tasks, plans, notes, research and progress into one dashboard. Ask AI to build it in your preferred style, with interactive charts, animation or a video explainer."
-            emptyAction={<AskAIButton
-              workspacePath={workspacePath}
-              label="Ask AI to create"
-              message={`Create a dashboard for this ${noun} project using relevant tasks, plans, notes, research and progress already available. Follow any design or motion preferences I've shared. Use live data where useful and validate the dashboard before finishing.`}
-              onAsk={async message => { await ask(message) }}
-            />}
+            emptyDescription={readOnly ? 'A dashboard will appear here when the owner shares one.' : 'Live data, forms, agent actions and visual stories. Describe what your team needs in chat.'}
+            emptyAction={!readOnly && <DashboardCreateDraftButton target={product.profileId === 'code' ? { tabId } : { profileId: product.profileId, conversationKey: projectId }} />}
             sendChatMessage={sendDashboardMessage}
             headerAction={<AskAIButton
               workspacePath={workspacePath}

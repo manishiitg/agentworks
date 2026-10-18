@@ -22,6 +22,7 @@ vi.mock("./bots/AddChannel", () => ({
 vi.mock("./bots/SlackSetup", () => ({
   SlackSetup: () => <div data-testid="slack-settings">settings</div>,
 }));
+vi.mock("../integrations/SlackAccountsPanel", () => ({ default: () => <div data-testid="sending-account">Sending account permissions</div> }));
 
 // The real button pulls the chat stores into the module graph, which trips a
 // circular-import TDZ under SSR transform; the tabs don't depend on it.
@@ -44,14 +45,14 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-async function renderPanel(fixedChannel?: "slack" | "whatsapp") {
+async function renderPanel(fixedChannel?: "slack" | "whatsapp", channelOnly = false) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   await act(async () =>
     root.render(
       <TooltipProvider>
-        <WorkflowBotsPanel workspacePath="/workflows/demo" fixedChannel={fixedChannel} />
+        <WorkflowBotsPanel workspacePath="/workflows/demo" fixedChannel={fixedChannel} channelOnly={channelOnly} />
       </TooltipProvider>,
     ),
   );
@@ -91,4 +92,13 @@ it("gives Slack its own one-question tab with no channel row", async () => {
   expect(slack.querySelector('[data-testid="channel-slack"]')).toBeNull();
   const whatsapp = await renderPanel("whatsapp");
   expect(whatsapp.querySelector('[data-testid="slack-settings"]')).toBeNull();
+});
+
+it("shows only incoming bot setup in Use & share while preserving the legacy mixed host", async () => {
+  const legacy = await renderPanel("slack");
+  expect(legacy.querySelector('[data-testid="sending-account"]')).not.toBeNull();
+  const incoming = await renderPanel("slack", true);
+  expect(incoming.querySelector('[data-testid="sending-account"]')).toBeNull();
+  expect(incoming.querySelector('[data-testid="slack-settings"]')).not.toBeNull();
+  expect(incoming.querySelector('details')).toBeNull();
 });

@@ -96,7 +96,7 @@ const VIEWS = [
   { id: 'access', kind: 'inspector', label: 'Access', icon: ShieldCheck, toolbarGroup: 'pulse', pane: true },
   // -- capability sections (WorkflowCapabilitiesPanel) -------------------------
   { id: 'identity', kind: 'capability', label: 'Details & instructions', icon: Fingerprint, toolbarGroup: 'capabilities', pane: true, managesOwnScroll: true },
-  { id: 'mcp', kind: 'capability', label: 'Apps & tools', icon: Server, toolbarGroup: 'capabilities', pane: true, managesOwnScroll: true },
+  { id: 'mcp', kind: 'capability', label: 'Connections', icon: Server, toolbarGroup: 'capabilities', pane: true, managesOwnScroll: true },
   { id: 'playbooks', kind: 'capability', label: 'Workflow playbooks', icon: BookMarked, toolbarGroup: 'capabilities', pane: true, managesOwnScroll: true },
   { id: 'browser', kind: 'capability', label: 'Browser', icon: Monitor, toolbarGroup: 'views', pane: true },
   { id: 'workshop', kind: 'inspector', label: 'Schedules & triggers', icon: Zap, toolbarGroup: 'views', pane: true },

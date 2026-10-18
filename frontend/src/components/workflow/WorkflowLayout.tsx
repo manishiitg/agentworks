@@ -5,7 +5,7 @@ import { WorkflowGoalSetupBar } from './WorkflowGoalSetupBar'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import React, { useMemo, useCallback, useRef, useEffect, forwardRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { Braces, CalendarClock, CheckCheck, ChevronRight, Network, PanelLeftOpen, PanelRightOpen, RefreshCw, Sparkles } from 'lucide-react'
+import { PanelLeftOpen, PanelRightOpen } from 'lucide-react'
 import { WorkflowCanvas, type WorkflowCanvasRef } from './canvas'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { useModeStore } from '../../stores/useModeStore'
@@ -110,30 +110,22 @@ const ChatAreaWithObserverId = forwardRef<ChatAreaRef, {
   )
 })
 
+import { FlowStarterIllustration } from './FlowStarterIllustration'
+import { GoalStarterGuide } from '../chat/ProductStarterGuide'
+
 const WorkflowNewChatGuide: React.FC<{ relayMode?: boolean }> = ({ relayMode = false }) => {
-  const steps = relayMode
-    ? [{ icon: Braces, label: 'Input', example: 'Support request' }, { icon: Network, label: 'Agents & tools', example: 'Classify & route' }, { icon: CheckCheck, label: 'Result', example: 'JSON reply' }]
-    : [{ icon: Sparkles, label: 'Plan', example: '' }, { icon: CalendarClock, label: 'Schedule', example: '' }, { icon: RefreshCw, label: 'Improve', example: '' }]
-  return (
-    <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto px-6 py-8">
-      <div className="w-full max-w-sm text-center">
-        <div className="mb-5 flex items-center justify-center gap-2" aria-label={relayMode ? 'Example Flow: support request, agents classify and route, JSON reply' : 'Plan, schedule, improve'}>
-          {steps.map(({ icon: Icon, label, example }, index) => (
-            <React.Fragment key={label}>
-              {index > 0 && <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground/40" />}
-              <div className="flex w-16 min-w-0 flex-col items-center gap-2">
-                <div className="grid h-10 w-10 place-items-center rounded-xl border border-border bg-muted/40"><Icon aria-hidden="true" className="h-4 w-4 text-primary" /></div>
-                <span className="text-[11px] text-muted-foreground">{label}</span>
-                {example && <span className="text-[10px] text-muted-foreground/70">{example}</span>}
-              </div>
-            </React.Fragment>
-          ))}
+  if (relayMode) {
+    return (
+      <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto px-6 py-8">
+        <div className="w-full max-w-lg text-center">
+          <FlowStarterIllustration />
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground">What would you like to automate?</h2>
+          <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-muted-foreground">Describe the task. Build and test the steps together in chat.</p>
         </div>
-        <h2 className="text-base font-semibold tracking-tight text-foreground">{relayMode ? 'Your reusable workflow' : 'Keep work moving'}</h2>
-        <p className="mt-2 text-xs leading-5 text-muted-foreground">{relayMode ? 'Build, test or improve this Flow here. Its runs and results stay with this project.' : 'Run, review or improve this workflow here. Return to the same project whenever you need it.'}</p>
       </div>
-    </div>
-  )
+    )
+  }
+  return <GoalStarterGuide />
 }
 
 import { agentApi, workflowManifestApi } from '../../services/api'
@@ -2453,7 +2445,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
                 {missingSecrets.length === 1 ? 'This workflow uses a secret that has no value: ' : 'This workflow uses secrets that have no value: '}
                 <span className="font-medium">{missingSecrets.join(', ')}</span>.
                 {' '}Runs still start, but anything that needs {missingSecrets.length === 1 ? 'it' : 'them'} will get an empty value.
-                {' '}Add the value in Integrations → Connections → Secrets, or remove the selection.
+                {' '}Add the value in Connections → Add connection → Secrets, or remove the selection.
               </div>
             )}
 
@@ -2517,7 +2509,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
                   onNewChat={onNewChat}
                   hideHeader
                   compact
-                  workflowLandingContent={<WorkflowNewChatGuide relayMode={relayMode} />}
+                  workflowLandingContent={workflowWorkspaceView === 'report' && workspacePaneVisible ? <></> : <WorkflowNewChatGuide relayMode={relayMode} />}
                   // Writers only: a reader of a shared workflow has no Builder chat to replace. The previous
                   // conversation stays in Previous chats (each Builder session keeps its own transcript file).
                   showNewChatAction={activeWorkflowAccess !== 'read'}

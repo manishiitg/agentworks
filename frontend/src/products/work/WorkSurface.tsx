@@ -10,6 +10,7 @@ import { Loader2, Plus, Trash2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { ProductChatLandingCard } from '../../components/chat/ProductChatLandingCard'
+import { CrewStarterGuide } from '../../components/chat/ProductStarterGuide'
 import { NewTabHint } from '../../components/chat/ShortcutHint'
 import { ProductIntro } from '../../components/ProductIntro'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
@@ -782,18 +783,7 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
 }
 
 function WorkNewChatGuide({ sharedBy, product, cowork }: { sharedBy?: string; product: ProjectProductConfig; cowork?: boolean }) {
-  if (cowork) {
-    return <ProductChatLandingCard
-      title="Continue your work"
-      description="Use this project for ongoing work. Your results and tools stay together."
-      examples={[
-        'Build a dashboard from my data and keep it up to date',
-        'Open a website in the browser and do a task for me',
-        'Run a report on a schedule and send me the result',
-      ]}
-      shortcutHint={<NewTabHint />}
-    />
-  }
+  if (cowork) return <CrewStarterGuide />
   if (!product.hasIdentity) {
     return <ProductChatLandingCard
       title="Work on this project"
@@ -819,16 +809,7 @@ function WorkNewChatGuide({ sharedBy, product, cowork }: { sharedBy?: string; pr
       shortcutHint
     />
   }
-  return <ProductChatLandingCard
-    title={`Work with this ${product.noun}`}
-    description="Keep working in this project. Its memory, results and connected tools stay together."
-    examples={[
-      'Research, write, analyze, or plan ongoing work',
-      'Use this project’s knowledge, browser and connected tools',
-      'Create dashboards, schedules, webhooks, bots, or project memory',
-    ]}
-    shortcutHint
-  />
+  return <CrewStarterGuide />
 }
 
 function WorkTopBarControl({
@@ -1571,7 +1552,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         <ChatArea
                           tabId={tabId}
                           compact
-                          landingContent={<WorkNewChatGuide product={product} cowork={product.profileId === 'code' && selectedMode === 'cowork'} sharedBy={isWorkSessionRun(selected) && selected.shared ? (selected.shared.ownerUsername || selected.shared.ownerId) : undefined} />}
+                          landingContent={workspaceView === 'dashboard' && panelOpen ? <></> : <WorkNewChatGuide product={product} cowork={product.profileId === 'code' && selectedMode === 'cowork'} sharedBy={isWorkSessionRun(selected) && selected.shared ? (selected.shared.ownerUsername || selected.shared.ownerId) : undefined} />}
                           composerPlaceholder={product.profileId === 'code' ? 'What would you like to work on? (@ files, # references)' : 'Ask this Crew to help with your work…'}
                           showProductSteerAction
                           showProductTerminalControl

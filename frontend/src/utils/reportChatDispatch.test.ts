@@ -13,7 +13,7 @@ vi.mock('../stores/useWorkflowStore', () => ({ useWorkflowStore: { getState: () 
 vi.mock('./workflowNavigation', () => ({ selectWorkflowPreset: mocks.select }))
 vi.mock('./activateTab', () => ({ activateTab: mocks.activate }))
 import { sendReportHumanInputQuestionToChat } from './reportHumanInputChat'
-import { sendWorkspacePaneMessageToChat } from './workspacePaneChat'
+import { openWorkspacePaneChatWithDraft, sendWorkspacePaneMessageToChat } from './workspacePaneChat'
 
 function chat(tabId: string, extra = {}) {
   return { tabId, isStreaming: false, metadata: { mode: 'workflow', presetQueryId: 'one' }, ...extra }
@@ -39,6 +39,14 @@ beforeEach(() => {
 })
 
 describe('shared Ask in chat dispatch for reports', () => {
+  it('prepares a dashboard draft without sending and preserves the user’s existing draft and queue', async () => {
+    mocks.chat.chatTabs.existing = chat('existing')
+    await openWorkspacePaneChatWithDraft({ workspacePath: 'Workflow/one', message: 'Help me create a dashboard.' })
+    expect(mocks.chat.setTabConfig).toHaveBeenCalledExactlyOnceWith('existing', { inputText: 'Help me create a dashboard.\n\nMy unsent draft' })
+    expect(mocks.chat.createChatTab).not.toHaveBeenCalled()
+    expect(mocks.chat.getActiveSessions).not.toHaveBeenCalled()
+    expect(mocks.activate).toHaveBeenCalledWith('existing')
+  })
   it('appends to the running interactive chat queue without taking over a scheduled run', async () => {
     mocks.chat.chatTabs = {
       running: chat('running', { isStreaming: true }),

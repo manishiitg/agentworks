@@ -25,6 +25,8 @@ type WorkflowBotsPanelProps = {
   fixedChannel?: BotChannel
   /** Slack: only this target's own app, 1:1 direct messages (a Code). */
   ownBotOnly?: boolean
+  /** The agent's sending account lives in Connections; this view owns incoming conversations. */
+  channelOnly?: boolean
 }
 
 type BotChannel = 'slack' | 'whatsapp'
@@ -37,7 +39,7 @@ const CHANNEL_TABS: Array<{ value: BotChannel; label: string }> = [
 // Composition over useWorkflowBots: status card, route chips, add-channel
 // rows, and the Slack/WhatsApp drill-ins. Never owns a scroll container:
 // every host (the Integrations Bots tab, the Work project pane) scrolls.
-export default function WorkflowBotsPanel({ workspacePath, target, scopeNoun = 'workflow', onAsk, fixedChannel, ownBotOnly = false }: WorkflowBotsPanelProps) {
+export default function WorkflowBotsPanel({ workspacePath, target, scopeNoun = 'workflow', onAsk, fixedChannel, ownBotOnly = false, channelOnly = false }: WorkflowBotsPanelProps) {
   const bots = useWorkflowBots(workspacePath, target, 'bots')
   const { setup, setSetup, workflowId, workflowRoutes, routeError, waRoutingError } = bots
   const [internalChannel, setInternalChannel] = usePersistentTab<BotChannel>('agentworks.tab.bots-channel', 'slack', ['slack', 'whatsapp'])
@@ -83,7 +85,7 @@ export default function WorkflowBotsPanel({ workspacePath, target, scopeNoun = '
             {setup !== 'slack' && <span className="text-xs font-normal text-muted-foreground">· shared across AgentWorks</span>}
           </div>
         </div>
-        {setup === 'slack' && workspacePath && <Suspense fallback={null}><SlackAccountsPanel key={workspacePath} workspacePath={workspacePath} /></Suspense>}
+        {!channelOnly && setup === 'slack' && workspacePath && <Suspense fallback={null}><SlackAccountsPanel key={workspacePath} workspacePath={workspacePath} /></Suspense>}
         {setup === 'slack' ? <SlackSetup bots={bots} headerAction={askSlackSetup} homeTabAction={askSlackHomeTab} /> : <WhatsAppSetup bots={bots} />}
       </div>
     )
@@ -102,12 +104,12 @@ export default function WorkflowBotsPanel({ workspacePath, target, scopeNoun = '
     return (
       <div className="space-y-4">
         {tabs}
-        <>{workspacePath && <Suspense fallback={null}><SlackAccountsPanel key={workspacePath} workspacePath={workspacePath} /></Suspense>}
+        <>{!channelOnly && workspacePath && <Suspense fallback={null}><SlackAccountsPanel key={workspacePath} workspacePath={workspacePath} /></Suspense>}
           {/* The bot is a separate feature: collapsed so sending as yourself stays the first thing people see. */}
-          <details className="rounded-md border border-border p-3">
+          {channelOnly ? <SlackSetup bots={bots} headerAction={askSlackSetup} homeTabAction={askSlackHomeTab} ownBotOnly={ownBotOnly} /> : <details className="rounded-md border border-border p-3">
             <summary className="cursor-pointer text-sm font-medium">Let people message this in Slack (a bot)</summary>
             <div className="mt-3"><SlackSetup bots={bots} headerAction={askSlackSetup} homeTabAction={askSlackHomeTab} ownBotOnly={ownBotOnly} /></div>
-          </details></>
+          </details>}</>
       </div>
     )
   }

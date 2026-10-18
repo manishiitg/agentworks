@@ -23,8 +23,7 @@ it('opens existing Flow destinations and scoped outputs without adding Goals-onl
       ['Flow & runs', 'flow'], ['API triggers', 'workshop', 'triggers'],
       ['Condition triggers', 'workshop', 'conditions'], ['Costs', 'costs'],
       ['Run logs', 'execution-logs'], ['Files', 'files'],
-      ['Chat history', 'workshop', 'chats'], ['Details & instructions', 'identity'], ['Apps & tools', 'mcp'],
-      ['MCPs', 'mcp', 'connected'], ['Secrets', 'mcp', 'secrets'], ['Google apps', 'mcp', 'gmail'], ['Slack', 'mcp', 'slack'],
+      ['Chat history', 'workshop', 'chats'], ['Connections', 'mcp', 'overview'],
     ]) {
       await act(async () => Array.from(host.querySelectorAll('button')).find(button => button.textContent?.trim() === label)!.click())
       expect(mocks.open).toHaveBeenLastCalledWith(...(section ? [destination, section] : [destination]))
@@ -35,7 +34,9 @@ it('opens existing Flow destinations and scoped outputs without adding Goals-onl
       expect(mocks.select).toHaveBeenLastCalledWith('Workflow/relays/one', label === 'Dashboard' ? 'db/reports/index.html' : 'db/reports/review.html')
     }
     for (const label of ['Pulse', 'Decisions', 'Browser', 'Schedules', 'Functions', 'Terminal']) expect(host.textContent).not.toContain(label)
-    expect(host.querySelector('[aria-label="Workspace setup"]')!.textContent).toBe('Project setupDetails & instructionsApps & tools')
+    expect(host.querySelector('[aria-label="Workspace setup"]')).toBeNull()
+    await act(async () => Array.from(host.querySelectorAll('button')).find(button => button.textContent?.trim() === 'More tools')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })))
+    expect(document.querySelector('[aria-label="All project tools"]')?.textContent).toContain('Flow')
     expect(host.querySelector('[aria-label="All views"]')).not.toBeNull()
   } finally { await act(async () => root.unmount()) }
 })
@@ -46,12 +47,11 @@ it.each([false, true])('keeps the complete Flow menu and existing Access visibil
   const root = createRoot(host)
   try {
     await act(async () => root.render(<WorkflowContextTools relayMode />))
-    await act(async () => (host.querySelector('[aria-label="More workspace tools"]') as HTMLButtonElement).click())
+    await act(async () => (host.querySelector('[aria-label="Project settings"]') as HTMLButtonElement).click())
     const labels = Array.from(host.querySelectorAll('[role="menuitem"]')).map(button => button.textContent?.trim())
-    expect(labels).toEqual(expect.arrayContaining(['Flow', 'Dashboard', 'Triggers', 'Costs', 'Run logs', 'Files', 'Details & instructions', 'Apps & tools']))
-    expect(labels.includes('Access')).toBe(multiUser)
-    for (const label of ['Browser', 'Pulse', 'Decisions', 'Schedules', 'Knowledge', 'Backup', 'Publish', 'Notify', 'Workflow playbooks']) expect(labels).not.toContain(label)
-    await act(async () => Array.from(host.querySelectorAll('[role="menuitem"]')).find(button => button.textContent?.trim() === 'Triggers')!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-    expect(mocks.open).toHaveBeenLastCalledWith('workshop')
+    expect(labels).toEqual(multiUser ? ['Project settings', 'Access'] : ['Project settings'])
+    await act(async () => Array.from(host.querySelectorAll('[role="menuitem"]')).find(button => button.textContent?.trim() === 'Project settings')!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    expect(mocks.open).toHaveBeenLastCalledWith('identity')
+
   } finally { await act(async () => root.unmount()) }
 })

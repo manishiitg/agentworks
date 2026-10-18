@@ -27,7 +27,7 @@ const OPTIONS: { mode: ShareState['mode']; label: string; hint: string }[] = [
 
 /** Share this dashboard (and so its Crew, workflow or Relay). The server decides who may share and what a share gives;
  * the screen only sends the choice and shows the answer. Hidden unless the server says this person can share. */
-export function ShareDashboardButton({ workspacePath }: { workspacePath: string }) {
+export function ShareDashboardButton({ workspacePath, label = 'Share', inline = false }: { workspacePath: string; label?: string; inline?: boolean }) {
   const [state, setState] = useState<ShareState | null>(null)
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<ShareState['mode']>('private')
@@ -101,12 +101,12 @@ export function ShareDashboardButton({ workspacePath }: { workspacePath: string 
 
   return (
     <div className="relative">
-      <button type="button" onClick={() => { if (!open) void loadOwners(); setOpen(v => !v) }} aria-label="Share" title="Share" aria-expanded={open}
+      <button type="button" onClick={() => { if (!open) void loadOwners(); setOpen(v => !v) }} aria-label={label} title={label} aria-expanded={open}
         className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background/95 px-2 text-xs text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground">
-        <Users className="h-3.5 w-3.5" /> Share
+        <Users className="h-3.5 w-3.5" /> {label}
       </button>
       {open && (
-        <div role="dialog" aria-label="Share" className="absolute right-0 mt-1 w-72 space-y-2 rounded-md border border-border bg-background p-3 text-sm shadow-lg">
+        <div role="dialog" aria-label="Share" className={`${inline ? 'relative mt-3 w-full' : 'absolute right-0 mt-1 w-72'} space-y-2 rounded-md border border-border bg-background p-3 text-sm shadow-lg`}>
           <p className="text-xs text-muted-foreground">People you share with open its dashboard, can ask it, use its functions and read its files (not secrets).</p>
           {state.accounts && state.accounts.length > 0 && <div className="space-y-1 border-b border-border pb-2" aria-label="Selected accounts">
             <p className="text-xs font-medium">Accounts this project uses</p>
@@ -114,7 +114,7 @@ export function ShareDashboardButton({ workspacePath }: { workspacePath: string 
               <p>{account.kind}: <strong>{account.name}</strong></p>
               <p className="text-muted-foreground">{account.use}</p>
             </div>)}
-            <p className="text-xs text-muted-foreground">Choose an available company model account in Settings → Models, or manage app accounts in Integrations. Sharing keeps your current selections.</p>
+            <p className="text-xs text-muted-foreground">Choose an available company model account in Project settings → Models, or manage app accounts in Connections. Sharing keeps your current selections.</p>
           </div>}
           {OPTIONS.map(option => (
             <label key={option.mode} className="flex cursor-pointer items-start gap-2">

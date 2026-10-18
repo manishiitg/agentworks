@@ -227,7 +227,7 @@ it("shows shared KB access in Attached folders and refreshes the KB view after d
   expect(panels[1].querySelector("ul")).toBeNull();
   expect(panels[1].textContent).not.toContain("Attach knowledge");
   expect(panels[1].textContent).not.toContain("Detach");
-  expect(panels[1].textContent).toContain("Integrations → Tools & secrets → Brain");
+  expect(panels[1].textContent).toContain("Connections → Add connection → Brain");
   expect(panels[1].querySelectorAll('[role="group"] button')).toHaveLength(2);
   expect(panels[0].querySelector("select")).toBeNull();
   await act(async () => {
