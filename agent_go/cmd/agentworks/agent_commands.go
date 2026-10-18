@@ -1213,6 +1213,9 @@ func shareCommand(o *options, unshare bool) *cobra.Command {
 			verb = "unshare"
 		}
 		if agent != "" {
+			if network != "" {
+				return errors.New("@LOGIN works on this chat's own agent; run the command in the chat without --agent")
+			}
 			if err := personAgentTerminal(); err != nil {
 				return err
 			}

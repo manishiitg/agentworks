@@ -2486,7 +2486,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/bullpen/usage", api.handleBullpenUsage).Methods("GET", "DELETE")
 	apiRouter.HandleFunc("/external/v1/agents/usage", api.handleAgentUsageReport).Methods("POST")
 	apiRouter.HandleFunc("/bullpen/shares", api.handleBullpenShares).Methods("GET")
-	apiRouter.HandleFunc("/bullpen/shares", api.handleBullpenShareCreate).Methods("POST")
 	apiRouter.HandleFunc("/bullpen/shares/{id}", api.handleBullpenShareRevoke).Methods("DELETE")
 	apiRouter.HandleFunc("/bullpen/blocks", api.handleBullpenBlock).Methods("POST")
 	apiRouter.HandleFunc("/bullpen/notices", api.handleBullpenNotices).Methods("GET")

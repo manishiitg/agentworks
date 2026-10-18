@@ -63,6 +63,7 @@ func (api *StreamingAPI) handleAgentSharing(w http.ResponseWriter, r *http.Reque
 	var in struct {
 		Action    string `json:"action"`
 		AgentName string `json:"agent_name"`
+		Group     string `json:"group"` // sent only by a helper older than the network model
 	}
 	if json.NewDecoder(r.Body).Decode(&in) != nil {
 		externalError(w, http.StatusBadRequest, "invalid_arguments", "Send action and agent_name.")
@@ -72,7 +73,7 @@ func (api *StreamingAPI) handleAgentSharing(w http.ResponseWriter, r *http.Reque
 		externalError(w, http.StatusBadRequest, "invalid_arguments", "Name one of your agents.")
 		return
 	}
-	out, status, code, msg := api.publishAction(r.Context(), claims.UserID, in.Action, in.AgentName)
+	out, status, code, msg := api.publishAction(r.Context(), claims.UserID, in.Action, in.AgentName, in.Group != "")
 	if code != "" {
 		externalError(w, status, code, msg)
 		return

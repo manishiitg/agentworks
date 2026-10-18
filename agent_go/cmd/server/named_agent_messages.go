@@ -16,7 +16,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// agentMailCall is a messages call that uses an AgentBridge agent name or group; talking to a Crew or workflow
+// agentMailCall is a messages call that uses an AgentBridge agent name; talking to a Crew or workflow
 // (ask_crew, chat, send with crew_id) stays open to MCP clients.
 func agentMailCall(args map[string]any) bool {
 	target := strings.ToLower(strings.TrimSpace(externalArg(args, "target")))

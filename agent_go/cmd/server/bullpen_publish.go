@@ -37,7 +37,7 @@ func (s agentMessageStore) registeredAgent(agentID, userID string) bool {
 // migrateGroupsToPublished turns every member of an old group into a published
 // agent and drops the groups. Undelivered mail sent inside a group is
 // suppressed and the group conversations stop passing the share check, so they
-// end with the plain "shared agent unavailable" notice; stored text is kept.
+// end with a plain "isn't published any more" notice; stored text is kept.
 func (api *StreamingAPI) migrateGroupsToPublished(ctx context.Context) {
 	agentMessageMu.Lock()
 	defer agentMessageMu.Unlock()
@@ -61,10 +61,23 @@ func (api *StreamingAPI) migrateGroupsToPublished(ctx context.Context) {
 	_ = saveAgentMessageStore(ctx, s)
 }
 
+// oldHelperReply adds the fields a helper older than the network model prints.
+func oldHelperReply(out map[string]interface{}, oldHelper bool, state string) map[string]interface{} {
+	if !oldHelper {
+		return out
+	}
+	out["state"], out["name"], out["group"] = state, "network", "network"
+	if state == "left" {
+		out["left"] = []string{"network"}
+	}
+	return out
+}
+
 // publishAction runs share (publish) and unshare (unpublish) for one of the
 // person's own agents. It is what the person's CLI login and the chat command
-// reach; an older helper may still send a group name, which is ignored.
-func (api *StreamingAPI) publishAction(ctx context.Context, ownerID, action, agentName string) (map[string]interface{}, int, string, string) {
+// reach. An older helper still sends a group name: it is ignored, and the reply also uses the
+// words that helper prints (joined/left "network") so it does not say nothing happened.
+func (api *StreamingAPI) publishAction(ctx context.Context, ownerID, action, agentName string, oldHelper bool) (map[string]interface{}, int, string, string) {
 	agent, err := normalizeMessageAgentName(agentName)
 	if err != nil {
 		return nil, http.StatusBadRequest, "invalid_arguments", "Name one of your agents."
@@ -73,13 +86,13 @@ func (api *StreamingAPI) publishAction(ctx context.Context, ownerID, action, age
 	case "share", "publish":
 		out, status, code, msg := api.createShare(ctx, ownerID, agent, shareScopeServer, serverShareLifetime)
 		if code == "already_shared" {
-			return map[string]interface{}{"agent_name": agent, "state": "published"}, 0, "", ""
+			return oldHelperReply(map[string]interface{}{"agent_name": agent, "state": "published"}, oldHelper, "joined"), 0, "", ""
 		}
 		if code != "" {
 			return nil, status, code, msg
 		}
 		out["state"] = "published"
-		return out, 0, "", ""
+		return oldHelperReply(out, oldHelper, "joined"), 0, "", ""
 	case "unshare", "unpublish":
 		agentMessageMu.Lock()
 		defer agentMessageMu.Unlock()
@@ -97,7 +110,7 @@ func (api *StreamingAPI) publishAction(ctx context.Context, ownerID, action, age
 					return nil, http.StatusServiceUnavailable, "unavailable", "Publishing is unavailable. Try again."
 				}
 			}
-			return map[string]interface{}{"agent_name": a.Name, "state": "unpublished", "was_published": n > 0}, 0, "", ""
+			return oldHelperReply(map[string]interface{}{"agent_name": a.Name, "state": "unpublished", "was_published": n > 0}, oldHelper, "left"), 0, "", ""
 		}
 		return nil, http.StatusNotFound, "unknown_agent", "You have no agent with that name."
 	}

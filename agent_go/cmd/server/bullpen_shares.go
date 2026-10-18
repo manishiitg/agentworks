@@ -128,7 +128,7 @@ func (sh agentShare) live(now time.Time) bool {
 // check calls: the grant exists with the same revocation version, is not
 // revoked or expired, the sender is not blocked, and neither account is disabled.
 func (s agentMessageStore) authorizeShare(shareID string, version int, now time.Time) (agentShare, error) {
-	denied := fmt.Errorf("shared agent unavailable or access denied")
+	denied := errAgentNotPublished
 	for _, sh := range s.Shares {
 		if sh.ID != shareID {
 			continue
@@ -151,6 +151,10 @@ func (s agentMessageStore) authorizeShare(shareID string, version int, now time.
 	return agentShare{}, denied
 }
 
+// errAgentNotPublished is what a sender is told when a conversation's grant has ended (the agent was
+// unpublished, or the retired group it was in is gone).
+var errAgentNotPublished = fmt.Errorf("That agent isn't published any more; ask its owner to publish it again.")
+
 // conversationShareErr is the fence for every operation on a cross-account
 // conversation: both ends must carry the same live grant, belong to its owner
 // and subject, and be registered agents. Conversations without a grant pass.
@@ -159,7 +163,7 @@ func (s agentMessageStore) conversationShareErr(c agentConversation, now time.Ti
 	if a.ShareID == "" && b.ShareID == "" {
 		return nil
 	}
-	denied := fmt.Errorf("shared agent unavailable or access denied")
+	denied := errAgentNotPublished
 	if a.ShareID != b.ShareID || a.ShareVersion != b.ShareVersion || !a.External || !b.External || a.NamedAgentID == "" || b.NamedAgentID == "" {
 		return denied
 	}
@@ -291,6 +295,9 @@ func (api *StreamingAPI) externalAuthorizeSharedPeer(ctx context.Context, claims
 	s, err := readAgentMessageStore(ctx)
 	if err != nil {
 		return denied
+	}
+	if !send && strings.HasPrefix(peer.ShareID, "group:") && peer.UserID != claims.UserID {
+		return nil // an old group conversation stays readable by the two people in it
 	}
 	sh, err := s.authorizeShare(peer.ShareID, peer.ShareVersion, time.Now().UTC())
 	if err != nil || peer.UserID == claims.UserID {
@@ -489,47 +496,6 @@ func (api *StreamingAPI) handleBullpenShares(w http.ResponseWriter, r *http.Requ
 	})
 	w.Header().Set("Cache-Control", "no-store")
 	externalJSON(w, map[string]interface{}{"shares": shares, "blocks": blocks, "shared_with_me": s.sharedAgentItems(claims.UserID, now), "incoming": s.incomingShareActivity(claims.UserID, label)})
-}
-
-func (api *StreamingAPI) handleBullpenShareCreate(w http.ResponseWriter, r *http.Request) {
-	claims := api.bullpenShareClaims(w, r, true)
-	if claims == nil {
-		return
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
-	var in struct {
-		AgentName    string `json:"agent_name"`
-		Person       string `json:"person"`
-		ExpiresHours int    `json:"expires_in_hours"`
-	}
-	if json.NewDecoder(r.Body).Decode(&in) != nil {
-		externalError(w, http.StatusBadRequest, "invalid_arguments", "Choose an agent and a person.")
-		return
-	}
-	name, err := normalizeMessageAgentName(in.AgentName)
-	dir, dirErr := loadUserDirectory()
-	if err != nil || dirErr != nil || dir == nil {
-		externalError(w, http.StatusBadRequest, "invalid_arguments", "Choose an agent and a person.")
-		return
-	}
-	subject := dir.byUsername(in.Person)
-	if subject == nil || subject.Disabled || subject.ID == claims.UserID {
-		externalError(w, http.StatusBadRequest, "unknown_person", "No active person with that username.")
-		return
-	}
-	ttl := shareDefaultTTL
-	if in.ExpiresHours > 0 {
-		ttl = shareMaxTTL
-		if in.ExpiresHours < int(shareMaxTTL/time.Hour) {
-			ttl = time.Duration(in.ExpiresHours) * time.Hour
-		}
-	}
-	out, status, code, msg := api.createShare(r.Context(), claims.UserID, name, subject.ID, ttl)
-	if code != "" {
-		externalError(w, status, code, msg)
-		return
-	}
-	externalJSON(w, out)
 }
 
 func (api *StreamingAPI) createShare(ctx context.Context, owner, agentName, subject string, ttl time.Duration) (map[string]interface{}, int, string, string) {

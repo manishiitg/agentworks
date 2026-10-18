@@ -180,6 +180,10 @@ func TestPublishAgentToTheNetworkBetweenAccounts(t *testing.T) {
 	if out, _, code, msg := env.api.bullpenAdminAct(ctx, "root", "unshare_agent", map[string]any{"agent_id": agentID, "reason": "test of admin unshare"}); code != "" || out["state"] != "unshared" {
 		t.Fatalf("admin unshare: %v %s %s", out, code, msg)
 	}
+	// A helper older than the network model prints its own words, so the reply carries them too.
+	if out, _, code, _ := env.api.publishAction(ctx, "alice", "share", "helper", true); code != "" || out["state"] != "joined" || out["name"] != "network" {
+		t.Fatalf("an old helper must still be told the agent joined: %v %s", out, code)
+	}
 	// The retired groups: a member becomes published, a ghost member is dropped, and the groups are gone.
 	agentMessageMu.Lock()
 	s, _ := readAgentMessageStore(ctx)
