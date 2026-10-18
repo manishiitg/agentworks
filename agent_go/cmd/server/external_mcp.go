@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -234,15 +235,17 @@ func (api *StreamingAPI) externalMCPCall(ctx context.Context, r *http.Request, n
 
 // externalMCPCallLogLine is the one log line of an outside MCP tool call: the
 // tool, the outcome and, when it failed, the error code and message. Never the
-// arguments or any value in them (a refused secret write must not leave the
-// secret in the log); only the top-level action name of a merged tool.
+// tool arguments or content (a refused secret write must not leave its value
+// in the log). Workspace tools additionally name only their UUID selectors.
 func externalMCPCallLogLine(name string, args map[string]any, result *mcp.CallToolResult) string {
 	target := name
 	action := ""
+	selectors := args
 	if name == externalMCPToolCall {
 		target, _ = args["name"].(string)
 		if inner, ok := args["arguments"].(map[string]any); ok {
 			action, _ = inner["action"].(string)
+			selectors = inner
 		}
 	}
 	clip := func(value string, limit int) string {
@@ -256,6 +259,7 @@ func externalMCPCallLogLine(name string, args map[string]any, result *mcp.CallTo
 	if action != "" {
 		line += " action=" + clip(action, 40)
 	}
+	line += externalMCPWorkspaceSelectors(target, selectors)
 	if result == nil || !result.IsError {
 		return line + " outcome=ok"
 	}
@@ -271,6 +275,43 @@ func externalMCPCallLogLine(name string, args map[string]any, result *mcp.CallTo
 		code, message = text[:i], text[i+2:]
 	}
 	return fmt.Sprintf("%s outcome=refused code=%s error=%q", line, clip(code, 40), clip(message, 240))
+}
+
+// Log requested project/agent identities even when access was revoked before
+// resolution. Only UUID identifiers are accepted here, never paths, message
+// text, file contents or arbitrary argument values. The authenticated request
+// log context supplies the caller; these selectors do not claim admission.
+func externalMCPWorkspaceSelectors(tool string, args map[string]any) string {
+	switch tool {
+	case "workspace", "files", "share", "dashboard", "read_crew_file", "list_crew_files", "search_crew_files", "write_crew_file", "share_dashboard", "get_dashboard_share":
+	default:
+		return ""
+	}
+	workspace := externalArg(args, "workspace_id")
+	if workspace == "" {
+		workspace = externalArg(args, "crew_id")
+		if workspace != "" && !strings.Contains(workspace, ":") {
+			workspace = "work:" + workspace
+		}
+	}
+	if workspace == "" {
+		workspace = externalArg(args, "workspace")
+	}
+	origin, id, ok := strings.Cut(workspace, ":")
+	if !ok || origin != "work" && origin != "code" {
+		return ""
+	}
+	parsed, err := uuid.Parse(id)
+	if err != nil {
+		return ""
+	}
+	fields := fmt.Sprintf(" workspace_id=%q", origin+":"+parsed.String())
+	if agent := externalArg(args, "agent_id"); agent == "main" {
+		fields += ` agent_id="main"`
+	} else if parsed, err := uuid.Parse(agent); err == nil {
+		fields += fmt.Sprintf(" agent_id=%q", parsed.String())
+	}
+	return fields
 }
 
 func (api *StreamingAPI) externalMCPDispatch(ctx context.Context, r *http.Request, name string, allowed []externalTool, request mcp.CallToolRequest) *mcp.CallToolResult {

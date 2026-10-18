@@ -158,13 +158,8 @@ func dashboardWorkspaceRequest(ctx context.Context, req dashboards.Request) (das
 	if !dashboardMutation(req.Action) {
 		if publication, e := readPublishedProject(ctx, req.Root); e != nil {
 			return dashboards.Result{}, e
-		} else if publication != nil {
-			for _, file := range publication.SourcePaths {
-				if strings.HasPrefix(file, "db/reports/") {
-					req.Root = publication.sourceRoot()
-					break
-				}
-			}
+		} else if publishedDashboardSource(publication) {
+			req.Root = publication.sourceRoot()
 		}
 	}
 	var out dashboards.Result
@@ -194,6 +189,17 @@ func dashboardWorkspaceRequest(ctx context.Context, req dashboards.Request) (das
 	}
 	err = json.NewDecoder(io.LimitReader(response.Body, 16<<20)).Decode(&out)
 	return out, err
+}
+
+func publishedDashboardSource(publication *publishedProject) bool {
+	if publication != nil {
+		for _, file := range publication.SourcePaths {
+			if strings.HasPrefix(file, "db/reports/") && strings.HasSuffix(strings.ToLower(file), ".html") {
+				return true
+			}
+		}
+	}
+	return false
 }
 func (api *StreamingAPI) resolveDashboardDocument(r *http.Request, root, p string) (string, error) {
 	if !strings.HasPrefix(p, dashboards.Prefix) && !strings.HasPrefix(p, "code/reports/managed/") {

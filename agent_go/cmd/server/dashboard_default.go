@@ -256,6 +256,37 @@ func (api *StreamingAPI) ensureDefaultDashboard(ctx context.Context, claims *Use
 	return defaultDashboardID, true, nil
 }
 
+// Publication is a Builder action. Refresh only the platform's generated
+// overview after its declared functions change; authored pages and unfinished
+// drafts remain the person's, including dashboards in immutable source.
+func (api *StreamingAPI) refreshPublicationDashboard(ctx context.Context, claims *UserClaims, target dashboardTarget) error {
+	publication, err := readPublishedProject(ctx, target.Root)
+	if err != nil {
+		return err
+	}
+	if publishedDashboardSource(publication) {
+		return nil
+	}
+	listed, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: target.Root, Action: "list", IncludeDraft: true})
+	if err != nil {
+		return err
+	}
+	for _, dashboard := range listed.Dashboards {
+		if !dashboard.Managed || dashboard.ID != defaultDashboardID {
+			return nil
+		}
+		current, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: target.Root, Action: "get", ID: defaultDashboardID, IncludeDraft: true})
+		if err != nil {
+			return err
+		}
+		if current.Snapshot == nil || !unmodifiedDefaultDashboard(current.Snapshot.Files["index.html"]) {
+			return nil
+		}
+	}
+	_, _, err = api.ensureDefaultDashboard(ctx, claims, target)
+	return err
+}
+
 func (api *StreamingAPI) handleDefaultDashboard(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Workspace string `json:"workspace"`

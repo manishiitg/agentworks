@@ -1393,6 +1393,9 @@ type crewFunctionToolOptions struct {
 	ExecutionScope string
 	FunctionTools  agentprofiles.ExecutionFunctionTools
 	CheckTarget    func(context.Context, triggerTarget, bool) error
+	// Only the admitted interactive Builder registers this path. Executions
+	// retain their product caller and the existing self-call/chain guards.
+	InteractiveOwnCalls bool
 }
 
 func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolRegistrar, userID, sessionID string, parentReq QueryRequest, resolveCaller func(context.Context) (triggerLinkCaller, error), declare func(string), options crewFunctionToolOptions) error {
@@ -1480,7 +1483,15 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 			}
 			return "", fmt.Errorf("%s %q has no function %q; it has: %s", target.Kind, target.Label, function, strings.Join(crewFunctionNames(functions), ", "))
 		}
-		call, err := api.startCrewFunctionCall(context.WithValue(ctx, structuredFunctionCallerSessionKey{}, sessionID), userID, caller, target, fn, args, timeout, submissionID)
+		callCaller := caller
+		if options.InteractiveOwnCalls && options.ExecutionScope == "" && caller.Stamp.Type == triggerCallerCrew && caller.isTarget(target) && crewProjectOwnedByCaller(userID, target.Path) {
+			// The person asked their own Crew to use a published entry point.
+			// This is the same caller as a dashboard button or external MCP,
+			// rather than a new Crew-to-itself execution chain.
+			callCaller = externalCrewCaller(claims)
+			callCaller.Path, callCaller.Chat = caller.Path, caller.Chat
+		}
+		call, err := api.startCrewFunctionCall(context.WithValue(ctx, structuredFunctionCallerSessionKey{}, sessionID), userID, callCaller, target, fn, args, timeout, submissionID)
 		if err != nil {
 			return "", err
 		}
@@ -1649,7 +1660,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		return err
 	}
 
-	if err := register("call_function", "Call a typed function of another Crew or workflow. Arguments are validated against its input schema; the target starts a fresh isolated trigger execution and returns its final message plus file outputs, validated when a result schema is declared. It returns status=running and a call_id; the result arrives later as an [AUTO-NOTIFICATION] unless notify=false. Pass wait_seconds only for a quick function. Reuse submission_id after an uncertain retry. Poll with get_function_call and answer pending_inputs with reply_function_call.", map[string]interface{}{
+	if err := register("call_function", "Call a declared function of a Crew or workflow. In an interactive Builder chat you may also call this Crew's own published functions as the signed-in person. Arguments are validated against its input schema; the target starts a fresh isolated execution and returns its final message plus file outputs. It returns status=running and a call_id; the result arrives later as an [AUTO-NOTIFICATION] unless notify=false. Reuse submission_id after an uncertain retry. Poll with get_function_call and answer pending_inputs with reply_function_call.", map[string]interface{}{
 		"type": "object", "required": []string{"target", "function"}, "properties": map[string]interface{}{
 			"target":          targetSchema,
 			"function":        map[string]interface{}{"type": "string", "description": "Function name from list_functions."},
@@ -1761,6 +1772,10 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 	isCaller := func(call *crewFunctionCall, caller triggerLinkCaller) bool {
 		if call.CallerChatSession != "" && call.CallerChatSession != sessionID {
 			return false
+		}
+		ownTarget := triggerTarget{Kind: call.TargetKind, CrewProfile: call.TargetProfileID, CrewID: call.TargetID}
+		if options.InteractiveOwnCalls && call.CallerKind == triggerCallerUser && call.CallerID == userID && call.UserID == userID && caller.isTarget(ownTarget) && canonicalCrewWorkspaceRoot(call.TargetPath) == canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(userID, caller.Path)) && crewProjectOwnedByCaller(userID, call.TargetPath) {
+			return true
 		}
 		return crewFunctionKey(call.CallerKind, call.CallerProfileID, call.CallerID) == crewFunctionKey(caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID)
 	}

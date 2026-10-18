@@ -1002,10 +1002,12 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			// Typed functions (PLAT-357): generated per-function tools for the
 			// Crews/workflows tagged in this message or attached to the Crew.
 			functionReq := QueryRequest{SelectedFolder: workspacePath}
+			options := crewFunctionToolOptions{}
 			if len(req) > 0 {
 				functionReq.WorkflowContextPaths = req[0].WorkflowContextPaths
+				options.InteractiveOwnCalls = publishedBuilderHandoff(&req[0], false)
 			}
-			if err := api.registerCrewFunctionTools(registrar, userID, sessionID, functionReq, crewTriggerLinkCaller(workspacePath), gate.Declare); err != nil {
+			if err := api.registerCrewFunctionToolSet(registrar, userID, sessionID, functionReq, crewTriggerLinkCaller(workspacePath), gate.Declare, options); err != nil {
 				return err
 			}
 		}

@@ -535,6 +535,11 @@ func (api *StreamingAPI) preparePublication(upload *publicationUpload, claims Us
 	}
 	defer lockPublication(upload.ID)()
 	if target, e := api.dashboardTarget(ctx, &claims, record.Root); e == nil {
+		if e := api.refreshPublicationDashboard(ctx, &claims, target); e != nil {
+			// Activation is already saved. Keep the working publication live
+			// and identify the dashboard follow-up without exposing content.
+			log.Printf("[CREW_PUBLISH] operation=%s revision=%s dashboard_refresh=failed", upload.ID, record.Revision)
+		}
 		if audience, e := api.readRunShare(ctx, &claims, target); e == nil {
 			upload.Audience = &audience
 		}

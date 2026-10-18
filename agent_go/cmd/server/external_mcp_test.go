@@ -401,4 +401,16 @@ func TestExternalMCPCallLogLineNamesToolAndOutcomeButNoArguments(t *testing.T) {
 	if spec := externalMCPCallLogLine("get_api_spec", map[string]any{}, mcp.NewToolResultText("x")); !strings.Contains(spec, "call=get_api_spec tool=get_api_spec") {
 		t.Fatalf("spec line = %q", spec)
 	}
+	workspace := "work:00000000-0000-4000-8000-000000000001"
+	agent := "00000000-0000-4000-8000-000000000002"
+	selected := map[string]any{"name": "files", "arguments": map[string]any{"action": "read", "workspace_id": workspace, "agent_id": agent, "path": "PRIVATE_PATH_ONLY", "content": "PRIVATE_CONTENT_ONLY"}}
+	line = externalMCPCallLogLine("call_tool", selected, mcp.NewToolResultError("not_found: File not found or private."))
+	for _, wanted := range []string{`workspace_id="` + workspace + `"`, `agent_id="` + agent + `"`, "action=read", "outcome=refused"} {
+		if !strings.Contains(line, wanted) {
+			t.Fatalf("scoped refusal lost identity %q: %s", wanted, line)
+		}
+	}
+	if strings.Contains(line, "PRIVATE_PATH_ONLY") || strings.Contains(line, "PRIVATE_CONTENT_ONLY") {
+		t.Fatalf("scoped log contains file arguments: %s", line)
+	}
 }
