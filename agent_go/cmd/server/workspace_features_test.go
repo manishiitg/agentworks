@@ -54,19 +54,83 @@ func TestNewCrewMemoryDefaultsPreserveExistingProjects(t *testing.T) {
 		{"work", "dev", true}, {"code", "dev", true}, {"code", "cowork", true}, {"code", "local", false},
 	} {
 		t.Run(tc.origin+"/"+tc.mode, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/api/agent-profiles/"+tc.origin+"/projects/reserve", strings.NewReader(`{"title":"Memory default","mode":"`+tc.mode+`"}`)).WithContext(ctx)
+			body := `{"name":"Memory default","purpose":"Keep project facts","icon":"M","role":"Assistant","mode":"` + tc.mode + `","llm_config":{"schema_version":2,"mode":"explicit","builder_llm":{"provider":"codex-cli","model_id":"gpt-6-luna","connection_id":"company-account","options":{"reasoning_effort":"high"}}}}`
+			req := httptest.NewRequest(http.MethodPost, "/api/agent-profiles/"+tc.origin+"/projects", strings.NewReader(body)).WithContext(ctx)
 			req = mux.SetURLVars(req, map[string]string{"id": tc.origin})
 			rec := httptest.NewRecorder()
-			f.API.handleReserveAgentProfileProject(rec, req)
+			f.API.handleCreateAgentProfileProject(rec, req)
 			var result struct {
-				Defaults struct {
-					Memory *bool `json:"memory_enabled"`
-				} `json:"runtime_defaults"`
+				ID       string `json:"id"`
+				Root     string `json:"workspace_path"`
+				Manifest struct {
+					Product string `json:"product"`
+					Mode    string `json:"mode"`
+					Session string `json:"session_id"`
+				} `json:"product_manifest"`
+				Runtime struct {
+					Capabilities struct {
+						Memory *bool `json:"memory_enabled"`
+						LLM    *struct {
+							Builder *struct {
+								Model      string `json:"model_id"`
+								Connection string `json:"connection_id"`
+							} `json:"builder_llm"`
+						} `json:"llm_config"`
+					} `json:"capabilities"`
+				} `json:"runtime_manifest"`
 			}
-			if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &result) != nil || result.Defaults.Memory == nil || *result.Defaults.Memory != tc.enabled {
+			if rec.Code != http.StatusCreated || json.Unmarshal(rec.Body.Bytes(), &result) != nil || result.Runtime.Capabilities.Memory == nil || *result.Runtime.Capabilities.Memory != tc.enabled {
 				t.Fatalf("creation policy: %d %s", rec.Code, rec.Body.String())
 			}
+			if !strings.HasPrefix(result.Root, "Crew/") || result.Manifest.Product != tc.origin || result.Manifest.Mode != tc.mode || result.Manifest.Session != tc.origin+":project:"+result.ID {
+				t.Fatalf("creation lost origin/mode/session: %s", rec.Body.String())
+			}
+			saved, ok := defaultProjectOwners().Lookup(tc.origin, strings.TrimPrefix(result.Root, "Crew/"))
+			if !ok || saved.OwnerID != fixtureUserA || saved.CanonicalRoot != result.Root || !saved.Private || !saved.AudienceConfigured {
+				t.Fatalf("untrusted creation identity: %+v", saved)
+			}
+			if result.Runtime.Capabilities.LLM == nil || result.Runtime.Capabilities.LLM.Builder == nil || result.Runtime.Capabilities.LLM.Builder.Model != "gpt-6-luna" || result.Runtime.Capabilities.LLM.Builder.Connection != "company-account" {
+				t.Fatal("creation lost the selected model/account")
+			}
+			if enabled := workspaceMemoryEnabled(ctx, tc.origin, result.Root); enabled != tc.enabled {
+				t.Fatalf("saved memory=%v want %v", enabled, tc.enabled)
+			}
+
 		})
+	}
+	// MCP chooses the supported origin for a Cowork request without changing
+	// the caller's existing product/create authority.
+	mcp := httptest.NewRecorder()
+	f.API.externalWorkspaceCall(mcp, httptest.NewRequest(http.MethodPost, "/mcp", nil).WithContext(ctx), map[string]any{"action": "create", "spec": map[string]any{"name": "MCP Cowork", "mode": "cowork"}})
+	var mcpCreated struct {
+		WorkspaceID string `json:"workspace_id"`
+	}
+	if mcp.Code != http.StatusOK || json.Unmarshal(mcp.Body.Bytes(), &mcpCreated) != nil || !strings.HasPrefix(mcpCreated.WorkspaceID, "code:") {
+		t.Fatalf("MCP creation: %d %s", mcp.Code, mcp.Body.String())
+	}
+	// A co-owner creating a sibling is the creator; the current Crew's main
+	// owner/provider account never lends its create authority or identity.
+	if _, err := defaultProjectOwners().AddCoOwner("code", fixtureCodeFolder, fixtureUserB); err != nil {
+		t.Fatal(err)
+	}
+	created, err := f.API.projectCreationTool("code", fixtureUserB, "creation-test", agentprofiles.ToolBinding{})(f.Ctx(fixtureUserB), map[string]any{"name": "Sibling"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sibling struct {
+		Root string `json:"workspace_path"`
+	}
+	if json.Unmarshal([]byte(created), &sibling) != nil || projectStorageOwner(sibling.Root) != fixtureUserB {
+		t.Fatalf("sibling borrowed its owner's identity: %s", created)
+	}
+	// Native tool execution keeps the authenticated turn's restricted token,
+	// even when the tool context has no request or has broader account claims.
+	if _, err := f.API.projectCreationTool("code", fixtureUserB, "missing-claims", agentprofiles.ToolBinding{})(context.Background(), map[string]any{"name": "Refused"}); err == nil {
+		t.Fatal("a native creation tool invented full account authority")
+	}
+	bounded := &UserClaims{UserID: fixtureUserB, AccessToken: &accesstokens.Token{Scopes: []string{"code:run"}, CrewIDs: []string{fixtureCodeFolder}}}
+	if _, err := f.API.projectCreationTool("code", fixtureUserB, "bounded-claims", agentprofiles.ToolBinding{}, bounded)(f.Ctx(fixtureUserB), map[string]any{"name": "Refused"}); err == nil {
+		t.Fatal("native creation dropped the current token's project limit")
 	}
 	for _, profile := range []agentprofiles.Profile{f.Crew, f.Code} {
 		root := "Crew/new-" + profile.ID + "-default"
@@ -82,6 +146,55 @@ func TestNewCrewMemoryDefaultsPreserveExistingProjects(t *testing.T) {
 	}
 	if workspaceMemoryEnabled(ctx, "code", f.Layout.CodePhysical(fixtureUserA, fixtureCodeFolder)) || !workspaceMemoryEnabled(ctx, "work", f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)) {
 		t.Fatal("new-project default changed existing projects")
+	}
+}
+
+// A failed initial manifest is removed; failed optional setup keeps the new
+// identity and returns it with a warning so retrying does not make duplicates.
+func TestCrewCreationFailureKeepsOneUsableIdentity(t *testing.T) {
+	f := newMultiUserFixture(t, legacyIdentityLayout())
+	failSuffix := "/product.json"
+	failedRoot := ""
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/api/documents/Crew/") && strings.HasSuffix(r.URL.Path, failSuffix) {
+			failedRoot = strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/documents/"), failSuffix)
+			http.Error(w, "setup write unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		f.Mock.ServeHTTP(w, r)
+	}))
+	defer proxy.Close()
+	t.Setenv("WORKSPACE_API_URL", proxy.URL)
+	ctx := f.Ctx(fixtureUserA)
+	if id, err := f.API.createWorkspaceFromSpec(ctx, GetUserFromContext(ctx), "code", crewSpec{Name: "Initial failure"}, false); err == nil || id != "" {
+		t.Fatalf("initial manifest failure = %q %v", id, err)
+	}
+	if failedRoot == "" {
+		t.Fatal("manifest failure was not reached")
+	}
+	if _, exists := defaultProjectOwners().Lookup("code", strings.TrimPrefix(failedRoot, "Crew/")); exists {
+		t.Fatal("failed creation left an owner record")
+	}
+	for path := range f.Mock.files {
+		if strings.HasPrefix(path, failedRoot+"/") {
+			t.Fatalf("failed creation left %s", path)
+		}
+	}
+	failSuffix = "/README.md"
+	req := httptest.NewRequest(http.MethodPost, "/api/agent-profiles/code/projects", strings.NewReader(`{"name":"Partial setup","files":{"README.md":"Project notes"}}`)).WithContext(ctx)
+	req = mux.SetURLVars(req, map[string]string{"id": "code"})
+	rec := httptest.NewRecorder()
+	f.API.handleCreateAgentProfileProject(rec, req)
+	var out struct {
+		ID       string   `json:"id"`
+		Root     string   `json:"workspace_path"`
+		Warnings []string `json:"warnings"`
+	}
+	if rec.Code != http.StatusCreated || json.Unmarshal(rec.Body.Bytes(), &out) != nil || out.ID == "" || len(out.Warnings) != 1 {
+		t.Fatalf("partial setup must return its created project: %d %s", rec.Code, rec.Body.String())
+	}
+	if projectStorageOwner(out.Root) != fixtureUserA || f.Mock.files[out.Root+"/product.json"] == "" || f.Mock.files[out.Root+"/workflow.json"] == "" {
+		t.Fatal("partial setup lost its usable identity")
 	}
 }
 

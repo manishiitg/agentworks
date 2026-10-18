@@ -1377,6 +1377,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     setCreateError(null)
     try {
       const created = await create(title, description, icon, templateId, runsOn, mode)
+      if (created.creationWarnings?.length) useChatStore.getState().addToast(created.creationWarnings.join(' '), 'warning')
       if (templateId) {
         setPanelOpen(true)
         setWorkspaceView('files')

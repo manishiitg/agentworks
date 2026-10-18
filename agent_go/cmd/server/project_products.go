@@ -57,6 +57,10 @@ func projectProductForPath(workspacePath string) (projectProduct, string, bool) 
 	ref := workspaceref.MustParse(workspacePath)
 	// A Crew at the shared root (Crew/<id>, PLAT-442 step 4) is a Crew project like any other.
 	if project, shared := ref.SharedProject(); shared {
+		if rec, found := defaultProjectOwners().sharedRootRecord(project); found {
+			product, ok := projectProductForProfile(rec.Product)
+			return product, project, ok
+		}
 		product, _ := projectProductForProfile(crewProfileID)
 		return product, project, true
 	}

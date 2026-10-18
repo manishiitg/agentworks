@@ -62,18 +62,18 @@ func foldCrewScopePath(workspacePath string) string {
 		return workspacePath
 	}
 	ref := workspaceref.MustParse(filepath.ToSlash(trimmed))
-	if ref.IsShared() {
+	if ref.IsShared() || ref.HasOwner() {
+		return followCrewAlias("", workspacePath)
+	}
+	product, folder, ok := projectProductForPath(workspacePath)
+	if !ok {
 		return workspacePath
 	}
-	folder, shared, ok := ref.AnyCrewProject()
-	if !ok || shared {
-		return workspacePath
-	}
-	moved := crewPathAliases.lookupFolder(context.Background(), folder)
+	moved := crewPathAliases.lookupFolder(context.Background(), folder, product.ProfileID)
 	if moved == "" {
 		return workspacePath
 	}
-	rest := strings.TrimPrefix(ref.Logical(), workspaceref.CrewProjectsRoot+"/"+folder)
+	rest := strings.TrimPrefix(ref.Logical(), product.ProjectsRoot+"/"+folder)
 	return moved + rest
 }
 
@@ -91,11 +91,15 @@ func (api *StreamingAPI) ownSharedCrewListings(ctx context.Context, userID strin
 	var out []services.SharedCrewListing
 	for _, manifestPath := range manifests {
 		root := strings.TrimSuffix(manifestPath, "/product.json")
-		manifest, err := readCrewProjectManifests(ctx, crewProfileID, root)
+		product, _, known := projectProductForPath(root)
+		if !known {
+			continue
+		}
+		manifest, err := readCrewProjectManifests(ctx, product.ProfileID, root)
 		if err != nil {
 			continue
 		}
-		out = append(out, services.SharedCrewListing{ID: manifest.ID, Title: firstNonEmptyTrimmed(manifest.Title, manifest.Identity.Name), WorkspacePath: root})
+		out = append(out, services.SharedCrewListing{ID: manifest.ID, Title: firstNonEmptyTrimmed(manifest.Title, manifest.Identity.Name), WorkspacePath: root, ProfileID: product.ProfileID})
 	}
 	return out
 }

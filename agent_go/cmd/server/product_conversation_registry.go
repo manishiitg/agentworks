@@ -954,14 +954,15 @@ func resolveProductProjectBindingWithStore(
 	}
 	runtimeRoot := agentProfileRuntimeWorkspace(userID, projectsRoot)
 	binding, err := resolveProductProjectBindingInRoot(ctx, profile, runtimeRoot, conversationKey, resourceProjectID, store, nil)
-	if err == nil || !errors.Is(err, errProjectNotFound) || !strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
+	if err == nil || !errors.Is(err, errProjectNotFound) || !isProjectProfileID(profile.ID) {
 		return binding, err
 	}
 	// A Crew that has moved to the shared root (PLAT-442 step 4) is found there by its manifest owner: the
 	// caller's own, whichever way the move happened. Reading it never depends on the creation flag.
 	owner := sanitizeUserIDForPath(userID)
 	shared, sharedErr := resolveProductProjectBindingInRoot(ctx, profile, workspaceref.SharedCrewRoot, conversationKey, resourceProjectID, store, func(folder string) bool {
-		return sharedCrewOwner(folder) == owner
+		record, found := defaultProjectOwners().sharedRootRecord(folder)
+		return found && record.Product == profile.ID && record.OwnerID == owner && projectStorageRoot(record) == workspaceref.SharedProjectPath(folder)
 	})
 	if sharedErr == nil {
 		return shared, nil

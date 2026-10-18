@@ -4,8 +4,6 @@ import (
 	"context"
 	"net/http"
 	"strings"
-
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // Code is private to its owner. Legacy config/code-shares.json is retained
@@ -49,7 +47,7 @@ func codeRoleFor(ctx context.Context, callerID, ownerID, projectID string) codeR
 			(record.ProjectID != strings.TrimSpace(projectID) && record.Folder != strings.TrimSpace(projectID)) {
 			continue
 		}
-		root := workspaceref.PhysicalPathOf(record.OwnerID, workspaceref.CodeProjectsRoot, record.Folder)
+		root := projectStorageRoot(record)
 		if codeProjectMode(ctx, root) == "local" {
 			return codeRoleNone
 		}

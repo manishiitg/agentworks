@@ -30,6 +30,12 @@ func (f *multiUserFixture) withLegacyCrew() string {
 	f.put(root+"/workflow.json", `{"schema_version":1,"id":"`+fixtureLegacyCrewID+`","label":"Beta","capabilities":{}}`)
 	f.put(root+"/code/notes.md", "beta notes")
 	migrateProductOwners(f.Docs)
+	// This fixture represents a pre-existing shared Crew. A new registration
+	// after the audience baseline correctly starts private, so name its
+	// historical audience explicitly rather than relying on creation defaults.
+	if err := defaultProjectOwners().SetAudience("work", fixtureLegacyCrewFolder, false, nil); err != nil {
+		f.t.Fatal(err)
+	}
 	return root
 }
 

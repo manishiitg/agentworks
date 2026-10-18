@@ -46,6 +46,9 @@ func contextReferenceReadRoot(userID, folder string) (string, bool) {
 	if strings.ContainsAny(folder, "\\\x00") {
 		return "", false
 	}
+	if ref, ok := resolveCrewPath(context.Background(), userID, folder); ok && ref.Rest == "" {
+		return ref.Root, true
+	}
 	parts := strings.Split(folder, "/")
 	switch {
 	case len(parts) == 2 && parts[0] == "Workflow" && parts[1] != "" && parts[1] != "." && parts[1] != "..":
@@ -139,6 +142,7 @@ func authorizeContextPathsWithReadRoots(ctx context.Context, paths []string, ski
 			logContextDenial(claims, folder, "not a workflow or crew path")
 			return nil, nil, denied
 		}
+		project, _, projectPath := projectProductForPath(readRoot)
 		switch {
 		case len(parts) == 2 && parts[0] == "Workflow" && parts[1] != "" && parts[1] != "." && parts[1] != "..":
 			if skipMissing {
@@ -157,7 +161,7 @@ func authorizeContextPathsWithReadRoots(ctx context.Context, paths []string, ski
 				}
 				return nil, nil, denied
 			}
-		case isCrewContextShape(parts):
+		case isCrewContextShape(parts) && (!projectPath || project.ProfileID == "work"):
 			if claims == nil || strings.TrimSpace(claims.UserID) == "" {
 				logContextDenial(claims, folder, "no user for a crew attachment")
 				return nil, nil, denied
@@ -176,11 +180,14 @@ func authorizeContextPathsWithReadRoots(ctx context.Context, paths []string, ski
 				logContextDenial(claims, folder, "crew product.json is not a Work crew")
 				return nil, nil, denied
 			}
-		case isCodeContextShape(parts):
+		case projectPath && project.ProfileID == "code":
 			// One of the person's own Code projects, as read-only context for another of their Code projects. Never for a Crew
 			// (a Crew is shareable: its readers would see a private project's files).
 			if allowed, _ := ctx.Value(codeContextAllowedKey{}).(bool); !allowed || claims == nil || strings.TrimSpace(claims.UserID) == "" {
 				logContextDenial(claims, folder, "a Code project can be attached only to a Code project")
+				return nil, nil, denied
+			}
+			if projectStorageOwner(readRoot) != sanitizeUserIDForPath(claims.UserID) {
 				return nil, nil, denied
 			}
 			rawManifest, exists, err := readFileFromWorkspace(ctx, readRoot+"/product.json")

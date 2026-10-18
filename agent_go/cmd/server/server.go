@@ -2571,6 +2571,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}", api.handleDeleteAgentProfileProject).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/shared-projects", api.handleListSharedProjects).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/reserve", api.handleReserveAgentProfileProject).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/agent-profiles/{id}/projects", api.handleCreateAgentProfileProject).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/own-shared-projects", api.handleListOwnSharedProjects).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/project-sharing", api.handleGetProjectSharing).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/sharing", api.handlePutProjectSharing).Methods("PUT", "OPTIONS")
@@ -5995,6 +5996,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// provider for the CLI's folder; the launch policy carries it too.
 		turnRunAs, runAsErr := declareTurnRunAs(r.Context(), turnRunAsInput{
 			ProfileID:        turnProfileID,
+			ConversationKey:  req.AgentProfileConversationKey,
 			WorkflowPhase:    isWorkflowPhase,
 			WorkingFolder:    chatWorkingFolder,
 			CLIWorkingDir:    chatWorkingDir,
@@ -7096,6 +7098,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[CUSTOM TOOLS] Registered %d custom tools with agent", registeredCount)
 
 			crewReadOnly := currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID)
+			if resolvedProfile != nil {
+				resolvedProfile.ToolCallerClaims = GetUserFromContext(r.Context())
+			}
 			if err := api.registerAgentProfileTools(llmAgent, toolGate, resolvedProfile, currentUserID, sessionID, req.SelectedFolder, crewReadOnly, req); err != nil {
 				logfWithContext(queryLogCtx, "[AGENT PROFILE] Failed to register tools: %v", err)
 				sendError(fmt.Sprintf("Failed to register agent profile tools: %v", err), true)

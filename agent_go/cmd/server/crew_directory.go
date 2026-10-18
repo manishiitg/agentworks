@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
@@ -17,7 +16,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // Crew directory (Crew Run mode): every crew has a single owner and is
@@ -194,7 +192,7 @@ func (api *StreamingAPI) handleListOwnSharedProjects(w http.ResponseWriter, r *h
 		return
 	}
 	profile, err := api.agentProfiles.Resolve(profileID, 0, claims.UserID)
-	if err != nil || !userAllowedProduct(claims, profile.Product) || !strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
+	if err != nil || !userAllowedProduct(claims, profile.Product) || !isProjectProfileID(profile.ID) {
 		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"projects": []map[string]string{}})
 		return
 	}
@@ -204,7 +202,7 @@ func (api *StreamingAPI) handleListOwnSharedProjects(w http.ResponseWriter, r *h
 		WorkspacePath string `json:"workspace_path"`
 	}
 	rows := []ownProject{}
-	manifests, err := listSharedCrewManifestPaths(r.Context(), defaultProductProjectStore(), claims.UserID)
+	manifests, err := listSharedCrewManifestPaths(r.Context(), defaultProductProjectStore(), claims.UserID, profile.ID)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, "list projects: "+err.Error())
 		return
@@ -272,25 +270,21 @@ func (api *StreamingAPI) handleReserveAgentProfileProject(w http.ResponseWriter,
 		return
 	}
 	defaults := newProjectRuntimeDefaults(profile.ID, body.Mode)
-	if !isCrew {
-		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"shared": false, "runtime_defaults": defaults})
+	if status, message := projectCreationGate(claims, profile.ID); status != 0 {
+		writeAgentProfileError(w, status, message)
 		return
 	}
-	id := uuid.NewString()
-	folder := slugifyCrewTitle(body.Title) + "-" + id[:8]
-	workspacePath := workspaceref.SharedCrewRoot + "/" + folder
-	if err := defaultProjectOwners().Register(projectOwnerRecord{
-		Product: profile.ID, Folder: folder, OwnerID: claims.UserID, ProjectID: id, Shared: true, Private: true, AudienceConfigured: true,
-	}); err != nil {
-		writeAgentProfileError(w, http.StatusInternalServerError, "register crew owner: "+err.Error())
+	id, err := api.createWorkspaceFromSpec(r.Context(), claims, profile.ID, crewSpec{Name: body.Title, Mode: body.Mode}, false)
+	if err != nil {
+		writeAgentProfileError(w, http.StatusBadRequest, externalCrewCreateError(id, err))
 		return
 	}
-	if err := createWorkspaceFolder(r.Context(), workspacePath); err != nil {
-		writeAgentProfileError(w, http.StatusInternalServerError, "create crew folder: "+err.Error())
+	created, err := api.createdProjectResponse(r.Context(), claims, profile.ID, id)
+	if err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, externalCrewCreateError(id, err))
 		return
 	}
-	ensureSharedCrewFolderAccess(folder, claims.UserID)
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"shared": true, "id": id, "workspace_path": workspacePath, "runtime_defaults": defaults})
+	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"shared": true, "id": id, "workspace_path": created["workspace_path"], "runtime_defaults": defaults})
 }
 
 func listSharedProjectsForOwner(ctx context.Context, claims *UserClaims, profile agentprofiles.Profile, ownerID string) []sharedProjectSummary {
@@ -312,8 +306,8 @@ func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agent
 		collectWorkspaceFilePaths(listing, &paths)
 	}
 	// Crews that moved to the shared root belong to their registered owner (PLAT-442 step 4).
-	if strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
-		if shared, sharedErr := listSharedCrewManifestPaths(ctx, defaultProductProjectStore(), ownerID); sharedErr == nil {
+	if isProjectProfileID(profile.ID) {
+		if shared, sharedErr := listSharedCrewManifestPaths(ctx, defaultProductProjectStore(), ownerID, profile.ID); sharedErr == nil {
 			paths = append(paths, shared...)
 		}
 	}

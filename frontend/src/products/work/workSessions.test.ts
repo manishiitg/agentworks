@@ -3,13 +3,15 @@ import { CODE_PRODUCT } from './projectProduct'
 
 const updatePlannerFile = vi.hoisted(() => vi.fn().mockResolvedValue({}))
 const getPlannerFileContent = vi.hoisted(() => vi.fn())
+const createServerProject = vi.hoisted(() => vi.fn())
+const serverFiles = vi.hoisted(() => new Map<string, string>())
 const createPlannerFolder = vi.hoisted(() => vi.fn().mockResolvedValue({}))
 const deleteAgentProfileProject = vi.hoisted(() => vi.fn().mockResolvedValue({ success: true }))
 const listSharedProjects = vi.hoisted(() => vi.fn())
 const loadProductProjects = vi.hoisted(() => vi.fn())
 
 vi.mock('../../services/api', () => ({
-  agentApi: { createPlannerFolder, deleteAgentProfileProject, getPlannerFileContent, listSharedProjects, updatePlannerFile },
+  agentApi: { createProductProject: createServerProject, createPlannerFolder, deleteAgentProfileProject, getPlannerFileContent, listSharedProjects, updatePlannerFile },
   getApiBaseUrl: () => '',
   getAuthToken: () => null,
 }))
@@ -37,6 +39,19 @@ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
 import { updateProductProjectLLMConfig, updateProductProjectSelections } from '../../platform/chat/productProjects'
 import type { SharedProjectSummary } from '../../services/api-types'
 import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, loadWorkSessionsIncludingShared, parseSessionManifest, sessionSlug, sharedProjectToWorkSession, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
+
+// The backend owns creation. This response fixture lets consumer tests keep
+// testing selection forwarding and later template edits without a browser writer.
+createServerProject.mockImplementation(async (product: string, spec: { name: string; purpose: string; icon?: string; role?: string; mode?: string; templates?: { id: string; version: number }[]; selected_skills?: string[]; llm_config?: unknown; files?: Record<string, string> }) => {
+  const id = 'server-project'
+  const root = 'Crew/server-project'
+  const manifest = { schema_version: 1, product, id, title: spec.name, description: spec.purpose, identity: { name: spec.name, icon: spec.icon, role: spec.role }, templates: spec.templates, mode: spec.mode, session_id: `${product}:project:${id}` }
+  const runtime = { capabilities: { selected_servers: [], selected_skills: spec.selected_skills || [], selected_secrets: [], selected_global_secret_names: [], llm_config: spec.llm_config }, workflow_context_paths: [] }
+  serverFiles.set(`${root}/product.json`, JSON.stringify(manifest))
+  serverFiles.set(`${root}/workflow.json`, JSON.stringify(runtime))
+  for (const [path, content] of Object.entries(spec.files || {})) serverFiles.set(`${root}/${path}`, content as string)
+  return { id, workspace_path: root, product_manifest: manifest, runtime_manifest: runtime }
+})
 
 describe('sessionSlug', () => {
   it('slugifies titles and falls back', () => {
@@ -96,312 +111,21 @@ describe('parseSessionManifest', () => {
 })
 
 describe('createWorkSession', () => {
-  it('creates its own project folder without requiring a workspace selection', async () => {
-    const session = await createWorkSession('New project', '', '🧭')
-
-    expect(session.workspacePath).toMatch(/^Chats\/Work\/projects\/new-project-/)
-    const runtimeCall = updatePlannerFile.mock.calls.find(call => call[0] === `${session.workspacePath}/workflow.json`)
-    const productCall = updatePlannerFile.mock.calls.find(call => call[0] === `${session.workspacePath}/product.json`)
-    expect(runtimeCall).toBeTruthy()
-    expect(productCall).toBeTruthy()
-    const runtime = JSON.parse(runtimeCall![1] as string)
-    const product = JSON.parse(productCall![1] as string)
-    expect(product).not.toHaveProperty('workspace_id')
-    expect(product).not.toHaveProperty('capabilities')
-    expect(product.identity).toEqual({ name: 'New project', icon: '🧭' })
-    expect(session.identity).toEqual({ name: 'New project', icon: '🧭' })
-    expect(runtime.capabilities.llm_config.builder_llm).toMatchObject({
-      provider: 'muse-cli',
-      model_id: 'muse-spark-1.3-contributor',
-    })
-    expect(runtime.capabilities.selected_servers).toEqual([])
-    expect(runtime.capabilities.selected_skills).toEqual([])
-    expect(runtime.capabilities.selected_secrets).toEqual([])
-    expect(runtime.capabilities.selected_global_secret_names).toEqual([])
-    expect(runtime.workflow_context_paths).toEqual([])
-    expect(createPlannerFolder).toHaveBeenCalledWith(
-      `${session.workspacePath}/code`,
-      expect.stringContaining('Initialize Crew project code folder'),
-    )
-  })
-
-  it('creates a Code project with a name and optional setup', async () => {
+  it('forwards model, mode, identity and a selected template to server creation', async () => {
     updatePlannerFile.mockClear()
-    listSharedProjects.mockClear()
-    const session = await createWorkSession('billing service', '', undefined, undefined, CODE_PRODUCT)
-
-    expect(session.workspacePath).toMatch(/^Chats\/Code\/projects\/billing-service-/)
+    createPlannerFolder.mockClear()
+    const session = await createWorkSession('Finance desk', 'Review records.', '📊', 'finance-analyst', CODE_PRODUCT, { provider: 'codex-cli', modelId: 'gpt-6-luna', connectionId: 'company-account' }, 'cowork')
+    expect(createServerProject).toHaveBeenLastCalledWith('code', expect.objectContaining({ name: 'Finance desk', purpose: 'Review records.', icon: '📊', mode: 'cowork', templates: [{ id: 'finance-analyst', version: 1 }], selected_skills: ['finance-analyst'], llm_config: expect.objectContaining({ builder_llm: expect.objectContaining({ provider: 'codex-cli', model_id: 'gpt-6-luna', connection_id: 'company-account' }) }) }))
+    expect(session.workspacePath).toBe('Crew/server-project')
     expect(session.product).toBe('code')
-    expect(session.sessionId).toBe(`code:project:${session.id}`)
-    const product = JSON.parse(updatePlannerFile.mock.calls.find(call => call[0] === `${session.workspacePath}/product.json`)![1] as string)
-    expect(product.product).toBe('code')
-    expect(product.identity).toEqual({ name: 'billing service', icon: 'B' })
-    expect(product).not.toHaveProperty('templates')
-    expect(product.description).toBe('')
-    // Name-only creation does not install an optional template.
-    expect(updatePlannerFile.mock.calls.every(call => !String(call[0]).includes('/skills/'))).toBe(true)
-    // Both origins use the shared directory with server-owned access checks.
-    loadProductProjects.mockResolvedValueOnce([])
-    const listed = await loadWorkSessionsIncludingShared(CODE_PRODUCT)
-    expect(listSharedProjects).toHaveBeenCalledWith('code')
-    expect(listed).toEqual([])
-  })
-
-  it('creates a Finance Analyst with its local skill and no active integrations or automations', async () => {
-    updatePlannerFile.mockClear()
-    const session = await createWorkSession('My Finance Analyst', 'Review the shop’s finances.', '📊', 'finance-analyst')
-    const writes = new Map(updatePlannerFile.mock.calls.map(call => [call[0] as string, call[1] as string]))
-    const product = JSON.parse(writes.get(`${session.workspacePath}/product.json`)!)
-    const runtime = JSON.parse(writes.get(`${session.workspacePath}/workflow.json`)!)
-
-    expect(product.templates).toEqual([{ id: 'finance-analyst', version: 1 }])
-    expect(product.identity.role).toBe('Finance analyst for this business')
-    expect(product.description).toBe('Review the shop’s finances.')
-    expect(runtime.capabilities.selected_skills).toEqual(['finance-analyst'])
-    expect(runtime.capabilities.selected_servers).toEqual([])
-    expect(runtime.schedules).toEqual([])
-    expect(runtime.triggers).toEqual([])
-    expect(writes.get(`${session.workspacePath}/skills/finance-analyst/SKILL.md`)).toContain('Show the calculation behind every key figure')
-    expect(writes.get(`${session.workspacePath}/TEMPLATE_SETUP.md`)).toContain('These are suggestions')
-    const setup = JSON.parse(writes.get(`${session.workspacePath}/TEMPLATE_SETUP.json`)!)
-    expect(setup).toMatchObject({ schema_version: 1, template_id: 'finance-analyst', template_version: 1, completed_steps: [] })
-    expect(setup.checks).toHaveLength(9)
-    expect(session.templates).toEqual([{ id: 'finance-analyst', version: 1 }])
-    expect(session.selectedSkills).toEqual(['finance-analyst'])
-  })
-
-  it.each([
-    ['billing-operations-coordinator', 'Billing Operations Coordinator', 1],
-    ['revenue-close-analyst', 'Revenue & Close Analyst', 1],
-    ['spend-payables-coordinator', 'Spend & Payables Coordinator', 2],
-  ] as const)('creates the %s finance specialist ready for chat setup, without financial actions', async (id, name, version) => {
-    updatePlannerFile.mockClear()
-    const session = await createWorkSession(name, `Review ${name.toLowerCase()} records.`, undefined, id)
-    const writes = new Map(updatePlannerFile.mock.calls.map(call => [call[0] as string, call[1] as string]))
-    const runtime = JSON.parse(writes.get(`${session.workspacePath}/workflow.json`)!)
-    const setup = JSON.parse(writes.get(`${session.workspacePath}/templates/${id}/TEMPLATE_SETUP.json`)!)
-
-    expect(session.templates).toEqual([{ id, version }])
-    expect(runtime.capabilities.selected_skills).toEqual([id])
-    expect(runtime.capabilities.selected_servers).toEqual([])
-    expect(runtime.schedules).toEqual([])
-    expect(runtime.triggers).toEqual([])
-    expect(setup).toMatchObject({ template_id: id, completed_steps: [] })
-    expect(setup.checks).toHaveLength(9)
-    expect(writes.get(`${session.workspacePath}/skills/${id}/SKILL.md`)).toContain('## Setup in chat')
-  })
-
-  it('creates an Engineering Operations Analyst with pending metric setup and no active route', async () => {
-    updatePlannerFile.mockClear()
-    const id = 'engineering-operations-analyst'
-    const session = await createWorkSession('Engineering Operations Analyst', 'Review one team metric.', undefined, id)
-    const writes = new Map(updatePlannerFile.mock.calls.map(call => [call[0] as string, call[1] as string]))
-    const runtime = JSON.parse(writes.get(`${session.workspacePath}/workflow.json`)!)
-    const setup = JSON.parse(writes.get(`${session.workspacePath}/templates/${id}/TEMPLATE_SETUP.json`)!)
-    expect(session.templates).toEqual([{ id, version: 1 }])
-    expect(runtime.capabilities.selected_skills).toEqual([id])
-    expect(runtime.schedules).toEqual([])
-    expect(runtime.triggers).toEqual([])
-    expect(setup).toMatchObject({ template_id: id, completed_steps: [] })
-    expect(setup.checks).toHaveLength(9)
-    expect(writes.get(`${session.workspacePath}/skills/${id}/SKILL.md`)).toContain('engineering-metric-observation/v1')
-  })
-
-  it.each([
-    ['competitor-intelligence-analyst', 'Competitor Intelligence Analyst'],
-    ['campaign-performance-analyst', 'Campaign Performance Analyst'],
-    ['growth-experiment-planner', 'Growth Experiment Planner'],
-  ] as const)('creates the %s Marketing Crew with pending setup and no campaign action', async (id, name) => {
-    updatePlannerFile.mockClear()
-    const session = await createWorkSession(name, 'Review a source-linked marketing result.', undefined, id)
-    const writes = new Map(updatePlannerFile.mock.calls.map(call => [call[0] as string, call[1] as string]))
-    const runtime = JSON.parse(writes.get(`${session.workspacePath}/workflow.json`)!)
-    const setup = JSON.parse(writes.get(`${session.workspacePath}/templates/${id}/TEMPLATE_SETUP.json`)!)
-    expect(session.templates).toEqual([{ id, version: 2 }])
-    expect(runtime.capabilities.selected_skills).toEqual([id])
-    expect(runtime.capabilities.selected_servers).toEqual([])
-    expect(runtime.schedules).toEqual([])
-    expect(runtime.triggers).toEqual([])
-    expect(setup).toMatchObject({ template_id: id, completed_steps: [] })
-    expect(setup.checks).toHaveLength(9)
-    expect(writes.get(`${session.workspacePath}/skills/${id}/SKILL.md`)).toContain('## Setup through chat')
-  })
-
-  it.each([
-    ['lead-intake-qualifier', 'Lead Intake & Qualifier', 1],
-    ['account-researcher', 'Account Researcher', 1],
-    ['sales-followup-coordinator', 'Sales Follow-up Coordinator', 3],
-  ] as const)('creates the %s Sales specialist with its checklist and no outbound route', async (id, name, version) => {
-    updatePlannerFile.mockClear()
-    const session = await createWorkSession(name, `Review ${name.toLowerCase()} records.`, undefined, id)
-    const writes = new Map(updatePlannerFile.mock.calls.map(call => [call[0] as string, call[1] as string]))
-    const runtime = JSON.parse(writes.get(`${session.workspacePath}/workflow.json`)!)
-    const setup = JSON.parse(writes.get(`${session.workspacePath}/templates/${id}/TEMPLATE_SETUP.json`)!)
-    expect(session.templates).toEqual([{ id, version }])
-    expect(runtime.capabilities.selected_skills).toEqual([id])
-    expect(runtime.capabilities.selected_servers).toEqual([])
-    expect(runtime.schedules).toEqual([])
-    expect(runtime.triggers).toEqual([])
-    expect(setup).toMatchObject({ template_id: id, completed_steps: [] })
-    expect(setup.checks).toHaveLength(9)
-    expect(writes.get(`${session.workspacePath}/skills/${id}/SKILL.md`)).toContain('## Setup through chat')
-  })
-
-  it.each([
-    ['customer-onboarding-coordinator', 'Customer Onboarding Coordinator', 1],
-    ['product-adoption-analyst', 'Product Adoption Analyst', 3],
-    ['customer-health-coordinator', 'Customer Health Coordinator', 1],
-    ['renewal-coordinator', 'Renewal Coordinator', 1],
-  ] as const)('creates the %s Customer Success Crew with pending setup', async (id, name, version) => {
-    updatePlannerFile.mockClear()
-    const session = await createWorkSession(name, 'Help customers reach first value.', undefined, id)
-    const writes = new Map(updatePlannerFile.mock.calls.map(call => [call[0] as string, call[1] as string]))
-    const runtime = JSON.parse(writes.get(`${session.workspacePath}/workflow.json`)!)
-    const setup = JSON.parse(writes.get(`${session.workspacePath}/templates/${id}/TEMPLATE_SETUP.json`)!)
-    expect(session.templates).toEqual([{ id, version }])
-    expect(runtime.capabilities.selected_skills).toEqual([id])
-    expect(runtime.capabilities.selected_servers).toEqual([])
-    expect(runtime.schedules).toEqual([])
-    expect(runtime.triggers).toEqual([])
-    expect(setup).toMatchObject({ template_id: id, completed_steps: [] })
-    expect(setup.checks).toHaveLength(9)
-  })
-
-  it('creates Product Feedback Coordinator with route-scoped pending setup and no issue action', async () => {
-    updatePlannerFile.mockClear()
-    const id = 'product-feedback-coordinator'
-    const session = await createWorkSession('Product Feedback Coordinator', 'Review one product decision.', undefined, id)
-    const writes = new Map(updatePlannerFile.mock.calls.map(call => [call[0] as string, call[1] as string]))
-    const runtime = JSON.parse(writes.get(`${session.workspacePath}/workflow.json`)!)
-    const setup = JSON.parse(writes.get(`${session.workspacePath}/templates/${id}/TEMPLATE_SETUP.json`)!)
-    expect(session.templates).toEqual([{ id, version: 3 }])
-    expect(runtime.capabilities.selected_skills).toEqual([id])
-    expect(runtime.capabilities.selected_servers).toEqual([])
-    expect(runtime.schedules).toEqual([])
-    expect(runtime.triggers).toEqual([])
-    expect(setup).toMatchObject({ template_id: id, template_version: 3, completed_steps: [] })
-    expect(setup.checks).toHaveLength(9)
-  })
-
-  it.each([
-    ['browser-journey-qa-analyst', 'Browser Journey QA Analyst'],
-    ['flaky-test-investigator', 'Flaky Test Investigator'],
-    ['release-quality-assistant', 'Release Quality Assistant'],
-  ] as const)('creates the %s QA Crew without activating a test or status route', async (id, name) => {
-    updatePlannerFile.mockClear()
-    const session = await createWorkSession(name, 'Review exact QA evidence.', undefined, id)
-    const writes = new Map(updatePlannerFile.mock.calls.map(call => [call[0] as string, call[1] as string]))
-    const runtime = JSON.parse(writes.get(session.workspacePath + '/workflow.json')!)
-    const setup = JSON.parse(writes.get(session.workspacePath + '/templates/' + id + '/TEMPLATE_SETUP.json')!)
-    expect(session.templates).toEqual([{ id, version: 2 }])
-    expect(runtime.capabilities.selected_skills).toEqual([id])
-    expect(runtime.capabilities.selected_servers).toEqual([])
-    expect(runtime.schedules).toEqual([])
-    expect(runtime.triggers).toEqual([])
-    expect(setup).toMatchObject({ template_id: id, completed_steps: [] })
-    expect(setup.checks).toHaveLength(9)
-  })
-
-  it.each([
-    ['security-findings-analyst', 'Security Findings Analyst'],
-    ['access-review-analyst', 'Access Review Analyst'],
-    ['security-remediation-coordinator', 'Security Remediation Coordinator'],
-  ] as const)('creates the %s Security Crew without activating a scan or change', async (id, name) => {
-    updatePlannerFile.mockClear()
-    const session = await createWorkSession(name, 'Review authorized security evidence.', undefined, id)
-    const writes = new Map(updatePlannerFile.mock.calls.map(call => [call[0] as string, call[1] as string]))
-    const runtime = JSON.parse(writes.get(session.workspacePath + '/workflow.json')!)
-    const setup = JSON.parse(writes.get(session.workspacePath + '/templates/' + id + '/TEMPLATE_SETUP.json')!)
-    expect(session.templates).toEqual([{ id, version: 2 }])
-    expect(runtime.capabilities.selected_skills).toEqual([id])
-    expect(runtime.capabilities.selected_servers).toEqual([])
-    expect(runtime.schedules).toEqual([])
-    expect(runtime.triggers).toEqual([])
-    expect(setup).toMatchObject({ template_id: id, completed_steps: [] })
-    expect(setup.checks).toHaveLength(9)
-  })
-
-  it.each([
-    ['gtm-strategy-analyst', 'GTM Strategy Analyst'],
-    ['launch-coordinator', 'Launch Coordinator'],
-  ] as const)('creates the %s GTM Crew without activating distribution or outreach', async (id, name) => {
-    updatePlannerFile.mockClear()
-    const session = await createWorkSession(name, 'Review a sourced GTM plan.', undefined, id)
-    const writes = new Map(updatePlannerFile.mock.calls.map(call => [call[0] as string, call[1] as string]))
-    const runtime = JSON.parse(writes.get(session.workspacePath + '/workflow.json')!)
-    const setup = JSON.parse(writes.get(session.workspacePath + '/templates/' + id + '/TEMPLATE_SETUP.json')!)
-    expect(session.templates).toEqual([{ id, version: 2 }])
-    expect(runtime.capabilities.selected_skills).toEqual([id])
-    expect(runtime.capabilities.selected_servers).toEqual([])
-    expect(runtime.schedules).toEqual([])
-    expect(runtime.triggers).toEqual([])
-    expect(setup).toMatchObject({ template_id: id, completed_steps: [] })
-    expect(setup.checks).toHaveLength(9)
-  })
-
-  it.each([
-    ['support-triage-assistant', 'Support Triage Assistant'],
-    ['support-reply-drafter', 'Support Reply Drafter'],
-    ['escalation-coordinator', 'Escalation Coordinator'],
-    ['feedback-review-analyst', 'Feedback & Review Analyst'],
-  ] as const)('creates the %s Customer Support Crew without a case write or message', async (id, name) => {
-    updatePlannerFile.mockClear()
-    const session = await createWorkSession(name, 'Review a support case.', undefined, id)
-    const writes = new Map(updatePlannerFile.mock.calls.map(call => [call[0] as string, call[1] as string]))
-    const runtime = JSON.parse(writes.get(session.workspacePath + '/workflow.json')!)
-    const setup = JSON.parse(writes.get(session.workspacePath + '/templates/' + id + '/TEMPLATE_SETUP.json')!)
-    expect(session.templates).toEqual([{ id, version: 2 }])
-    expect(runtime.capabilities.selected_skills).toEqual([id])
-    expect(runtime.capabilities.selected_servers).toEqual([])
-    expect(runtime.schedules).toEqual([])
-    expect(runtime.triggers).toEqual([])
-    expect(setup).toMatchObject({ template_id: id, completed_steps: [] })
-    expect(setup.checks).toHaveLength(9)
-  })
-
-  it.each([
-    ['chief-of-staff', 'Chief of Staff'],
-    ['meeting-actions-coordinator', 'Meeting Actions Coordinator'],
-    ['project-status-reporter', 'Project Status Reporter'],
-    ['order-operations-coordinator', 'Order Operations Coordinator'],
-    ['vendor-researcher', 'Vendor Researcher'],
-    ['document-intake-assistant', 'Document Intake Assistant'],
-  ] as const)('creates the %s Operations Crew without activating external actions', async (id, name) => {
-    updatePlannerFile.mockClear()
-    const session = await createWorkSession(name, 'Review a sourced operations result.', undefined, id)
-    const writes = new Map(updatePlannerFile.mock.calls.map(call => [call[0] as string, call[1] as string]))
-    const runtime = JSON.parse(writes.get(session.workspacePath + '/workflow.json')!)
-    const setup = JSON.parse(writes.get(session.workspacePath + '/templates/' + id + '/TEMPLATE_SETUP.json')!)
-    expect(session.templates).toEqual([{ id, version: 2 }])
-    expect(runtime.capabilities.selected_skills).toEqual([id])
-    expect(runtime.capabilities.selected_servers).toEqual([])
-    expect(runtime.schedules).toEqual([])
-    expect(runtime.triggers).toEqual([])
-    expect(setup).toMatchObject({ template_id: id, completed_steps: [] })
-    expect(setup.checks).toHaveLength(9)
-  })
-
-  it('creates a Website Growth Starter with a separate setup checklist and no active connections', async () => {
-    updatePlannerFile.mockClear()
-    const session = await createWorkSession('Our Website Growth Crew', 'Grow relevant website visits.', '🌱', 'website-growth-starter')
-    const writes = new Map(updatePlannerFile.mock.calls.map(call => [call[0] as string, call[1] as string]))
-    const product = JSON.parse(writes.get(`${session.workspacePath}/product.json`)!)
-    const runtime = JSON.parse(writes.get(`${session.workspacePath}/workflow.json`)!)
-    const setup = JSON.parse(writes.get(`${session.workspacePath}/templates/website-growth-starter/TEMPLATE_SETUP.json`)!)
-
-    expect(product.templates).toEqual([{ id: 'website-growth-starter', version: 1 }])
-    expect(product.identity.role).toBe('Website growth strategist for this business')
-    expect(runtime.capabilities.selected_skills).toEqual(['website-growth-starter'])
-    expect(runtime.capabilities.selected_servers).toEqual([])
-    expect(runtime.schedules).toEqual([])
-    expect(runtime.triggers).toEqual([])
-    expect(writes.get(`${session.workspacePath}/skills/website-growth-starter/SKILL.md`)).toContain('Website Growth Brief')
-    expect(setup).toMatchObject({ schema_version: 1, template_id: 'website-growth-starter', template_version: 1, completed_steps: [] })
-    expect(setup.checks).toHaveLength(10)
+    expect(session.mode).toBe('cowork')
+    expect(updatePlannerFile).not.toHaveBeenCalled()
+    expect(createPlannerFolder).not.toHaveBeenCalled()
   })
 
   it('adds Tax Export to Finance Analyst without changing identity, existing skill, or setup progress', async () => {
-    const files = new Map<string, string>()
+    const files = serverFiles
+    files.clear()
     updatePlannerFile.mockImplementation(async (path: string, content: string) => { files.set(path, content); return {} })
     getPlannerFileContent.mockImplementation(async (path: string) => {
       const content = files.get(path)
@@ -431,7 +155,8 @@ describe('createWorkSession', () => {
   })
 
   it('adds multiple Billing packs to one Crew without replacing identity or completed setup', async () => {
-    const files = new Map<string, string>()
+    const files = serverFiles
+    files.clear()
     updatePlannerFile.mockImplementation(async (path: string, content: string) => { files.set(path, content); return {} })
     getPlannerFileContent.mockImplementation(async (path: string) => {
       const content = files.get(path)

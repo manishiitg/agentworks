@@ -88,6 +88,14 @@ func SessionUserIDFromContext(ctx context.Context) string {
 // inside a Code. Only the physical form names an owner, so a logical
 // Chats/Code/... path resolves under userID.
 func CodeProjectRoot(userID, path string) string {
+	codeRootResolverMu.RLock()
+	resolve := codeRootResolver
+	codeRootResolverMu.RUnlock()
+	if resolve != nil {
+		if root := resolve(userID, path); root != "" {
+			return root
+		}
+	}
 	ref, ok := workspaceref.Parse(path)
 	if !ok {
 		return ""
@@ -101,6 +109,17 @@ func CodeProjectRoot(userID, path string) string {
 		return ""
 	}
 	return projectRef.PhysicalKeepOwner(userID)
+}
+
+var codeRootResolverMu sync.RWMutex
+var codeRootResolver func(userID, path string) string
+
+// SetCodeProjectRootResolver installs the server's trusted origin/location
+// resolver. Packages below the server retain the legacy path parser otherwise.
+func SetCodeProjectRootResolver(resolve func(userID, path string) string) {
+	codeRootResolverMu.Lock()
+	defer codeRootResolverMu.Unlock()
+	codeRootResolver = resolve
 }
 
 // codeSessionRoots marks the sessions that run in a Code workspace (session

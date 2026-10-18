@@ -780,8 +780,6 @@ func TestCreateCrewProjectValidatesInput(t *testing.T) {
 		"long title":               func(r *CreateCrewRequest) { r.Title = strings.Repeat("a", 61) },
 		"long role":                func(r *CreateCrewRequest) { r.Role = strings.Repeat("a", 121) },
 		"long purpose":             func(r *CreateCrewRequest) { r.Purpose = strings.Repeat("a", 2001) },
-		"missing role":             func(r *CreateCrewRequest) { r.Role = " " },
-		"missing purpose":          func(r *CreateCrewRequest) { r.Purpose = " " },
 		"long icon":                func(r *CreateCrewRequest) { r.Icon = strings.Repeat("a", 9) },
 		"empty key":                func(r *CreateCrewRequest) { r.IdempotencyKey = "" },
 		"bad workflow":             func(r *CreateCrewRequest) { r.WorkflowPath = "Chats/other" },
@@ -803,6 +801,13 @@ func TestCreateCrewProjectValidatesInput(t *testing.T) {
 		IdempotencyKey: "proposal-1",
 	}); err == nil {
 		t.Fatal("missing workflow: expected rejection")
+	}
+	// Role and purpose are optional. Instructions provide the existing trigger
+	// fallback; the required workflow step instruction remains present.
+	optional := valid
+	optional.Role, optional.Purpose, optional.Instructions = "", "", "Review the release."
+	if _, err := svc.CreateCrewProject(ctx, optional); err != nil {
+		t.Fatalf("optional role/purpose with trigger instructions: %v", err)
 	}
 }
 

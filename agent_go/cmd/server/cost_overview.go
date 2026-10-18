@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
@@ -101,6 +100,7 @@ type costOverviewResponse struct {
 // costOverviewRoot folds a ledger workflow_id into the row it belongs to.
 func costOverviewRoot(workflowID string) (id, kind, name, ownerID string) {
 	path := strings.Trim(strings.ReplaceAll(strings.TrimSpace(workflowID), "\\", "/"), "/")
+	path = foldCrewRootForStoredReference(path)
 	if rest, ok := strings.CutPrefix(path, "Workflow/"); ok {
 		folder, _, _ := strings.Cut(rest, "/")
 		if folder != "" {
@@ -111,6 +111,9 @@ func costOverviewRoot(workflowID string) (id, kind, name, ownerID string) {
 	if folder, shared := workspaceref.MustParse(path).SharedProject(); shared {
 		root := workspaceref.SharedProjectPath(folder)
 		owner, _ := crewProjectOwnerID(root)
+		if product, _, ok := projectProductForPath(root); ok && product.ProfileID == "code" {
+			return root, costOverviewKindProduct, "Code · " + folder, owner
+		}
 		return root, costOverviewKindCrew, folder, owner
 	}
 	if i := strings.Index(path, crewProjectsSegment); i >= 0 && (i == 0 || path[i-1] == '/') {
@@ -158,9 +161,7 @@ func costOverviewProductVisibleTo(id, userID string, admin, codeReviewer bool) b
 
 // costOverviewIsCode reports whether a product row is a Code workspace.
 func costOverviewIsCode(root string) bool {
-	ref := workspaceref.MustParse(root)
-	projectsRoot, _, ok := ref.Project()
-	return ok && ref.HasOwner() && projectsRoot == codeproduct.ProjectsRoot
+	return isCodeProjectPath(root)
 }
 
 func mergeWorkflowAggregate(target *costledger.WorkflowAggregate, source *costledger.WorkflowAggregate) {

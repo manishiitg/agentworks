@@ -47,6 +47,12 @@ func workspaceGitLock(dir string) func() {
 // workspaceGitWriteAllowed reports whether the caller may change the repo
 // tree at canonical ("_users/<owner>/...").
 var workspaceGitWriteAllowed = func(ctx context.Context, r *http.Request, claims *UserClaims, canonical string) bool {
+	if claims == nil && !IsMultiUserMode() {
+		claims = currentProjectCallerClaims(ctx, publicWorkspaceUserID(r))
+	}
+	if crew, ok := resolveCrewPath(ctx, publicWorkspaceUserID(r), canonical); ok {
+		return crewAccessFor(claims, crew) == crewAccessOwner && projectStorageOwner(crew.Root) != ""
+	}
 	ref := workspaceref.MustParse(canonical)
 	if !ref.HasOwner() {
 		return false

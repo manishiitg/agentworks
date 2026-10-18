@@ -63,7 +63,11 @@ func costProductForWorkspace(ctx context.Context, workspace string) costProductB
 		case "caplayer", "mcp-gateway", "vault":
 			kind = "vault"
 		}
-		return costProductBinding{kind, manifest.ID, firstNonEmptyTrimmed(manifest.Title, manifest.Label, manifest.ID), root, firstNonEmptyTrimmed(manifest.OwnerID, workspaceref.MustParse(root).Owner())}
+		owner := firstNonEmptyTrimmed(manifest.OwnerID, workspaceref.MustParse(root).Owner())
+		if isProjectWorkspacePath(root) {
+			owner = projectStorageOwner(root)
+		}
+		return costProductBinding{kind, manifest.ID, firstNonEmptyTrimmed(manifest.Title, manifest.Label, manifest.ID), root, owner}
 	}
 	if clean == brainFolderName || strings.HasPrefix(clean, brainFolderName+"/") {
 		return costProductBinding{"brain", "installation", "Brain", brainFolderName, ""}

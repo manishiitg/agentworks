@@ -317,7 +317,7 @@ func TestProviderAccountsSharedWithPersonAndCrew(t *testing.T) {
 	if err != nil || keys.CodexCLI == nil || *keys.CodexCLI != "alice-codex-key" {
 		t.Fatalf("bob in his Code: %v", err)
 	}
-	if _, err := env.resolveForRun("carol", "_users/carol/Chats/Code/projects/p2", "codex-cli", account.ID); err == nil || !strings.Contains(strings.ToLower(err.Error()), strings.ToLower("this Code runs on ")) || !strings.Contains(err.Error(), "personal ") {
+	if _, err := env.resolveForRun("carol", "_users/carol/Chats/Code/projects/p2", "codex-cli", account.ID); err == nil || !strings.Contains(err.Error(), "runs on ") || !strings.Contains(err.Error(), "personal ") || !strings.Contains(err.Error(), "Models") {
 		t.Fatalf("carol used an account not shared with her: %v", err)
 	}
 	view, ok := findAccountView(env.list(t, "bob", ""), account.ID)

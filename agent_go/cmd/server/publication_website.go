@@ -483,50 +483,66 @@ func (api *StreamingAPI) registerLocalPublicationTool(registrar definitionToolRe
 // The raw archive never becomes a shared project file. Every download uses the
 // current Builder role and connection scope, including after Share changes.
 func (api *StreamingAPI) handlePublicationHistory(w http.ResponseWriter, r *http.Request) {
-	claims := GetUserFromContext(r.Context())
-	if err := publicationGate(claims); err != nil {
-		externalError(w, 403, "forbidden", err.Error())
-		return
-	}
-	binding, manifest, ok := api.resolveExternalWorkspace(r.Context(), claims, r.URL.Query().Get("workspace_id"))
-	if !ok || !binding.OwnedByCaller || !publicationOriginTokenAllowed(claims, manifest.Product, manifest.ID) {
-		externalError(w, 404, "not_found", "Open the Crew as a Builder to download its imported chat. Shared use is through its dashboard and Ask.")
-		return
-	}
-	id := r.URL.Query().Get("agent_id")
-	if id == "main" {
-		id = ""
-	}
-	p, err := readPublishedAgent(contextWithoutPublication(r.Context()), agentProfileRuntimeWorkspace(binding.OwnerID, binding.Binding.WorkspacePath), id)
-	if err != nil || p == nil {
-		externalError(w, 404, "not_found", "This agent has no imported chat. Choose one from the Crew's Agents list.")
-		return
-	}
-	name := "raw.jsonl"
-	if r.URL.Query().Get("kind") == "summary" {
-		name = "summary.md"
-	} else if r.URL.Query().Get("kind") != "" && r.URL.Query().Get("kind") != "raw" {
-		externalError(w, 400, "invalid_arguments", "Choose raw or summary history.")
-		return
-	}
-	dir, err := p.historyDir()
-	if err != nil {
-		externalFailure(w, err)
-		return
-	}
-	file, err := os.Open(filepath.Join(dir, name))
-	if err != nil {
-		externalError(w, 404, "not_found", "The imported chat is unavailable. Check this Crew's publication receipt.")
+	file, name, ok := api.openPublicationHistory(w, r, r.URL.Query().Get("workspace_id"), r.URL.Query().Get("agent_id"), r.URL.Query().Get("kind"))
+	if !ok {
 		return
 	}
 	defer file.Close()
 	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		externalError(w, 404, "not_found", "Imported chat unavailable.")
+	if err != nil {
+		externalFailure(w, err)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", `attachment; filename="imported-`+name+`"`)
 	http.ServeContent(w, r, "imported-"+name, info.ModTime(), file)
+}
+
+// Website downloads and MCP reads share the same current Builder admission.
+// The selected archive stays in private state and never becomes a shared file.
+func (api *StreamingAPI) openPublicationHistory(w http.ResponseWriter, r *http.Request, workspaceID, agentID, kind string) (*os.File, string, bool) {
+	claims := GetUserFromContext(r.Context())
+	if err := publicationGate(claims); err != nil {
+		externalError(w, 403, "forbidden", err.Error())
+		return nil, "", false
+	}
+	binding, manifest, ok := api.resolveExternalWorkspace(r.Context(), claims, workspaceID)
+	if !ok || !binding.OwnedByCaller || !publicationOriginTokenAllowed(claims, manifest.Product, manifest.ID) {
+		externalError(w, 404, "not_found", "Open the Crew as a Builder to download its imported chat. Shared use is through its dashboard and Ask.")
+		return nil, "", false
+	}
+	id := agentID
+	if id == "main" {
+		id = ""
+	}
+	p, err := readPublishedAgent(contextWithoutPublication(r.Context()), agentProfileRuntimeWorkspace(binding.OwnerID, binding.Binding.WorkspacePath), id)
+	if err != nil || p == nil {
+		externalError(w, 404, "not_found", "This agent has no imported chat. Choose one from the Crew's Agents list.")
+		return nil, "", false
+	}
+	name := "raw.jsonl"
+	if kind == "summary" {
+		name = "summary.md"
+	} else if kind != "" && kind != "raw" {
+		externalError(w, 400, "invalid_arguments", "Choose raw or summary history.")
+		return nil, "", false
+	}
+	dir, err := p.historyDir()
+	if err != nil {
+		externalFailure(w, err)
+		return nil, "", false
+	}
+	file, err := os.Open(filepath.Join(dir, name))
+	if err != nil {
+		externalError(w, 404, "not_found", "The imported chat is unavailable. Check this Crew's publication receipt.")
+		return nil, "", false
+	}
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		_ = file.Close()
+		externalError(w, 404, "not_found", "Imported chat unavailable.")
+		return nil, "", false
+	}
+	return file, name, true
 }

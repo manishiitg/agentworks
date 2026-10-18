@@ -290,16 +290,20 @@ func workspaceProxyPathIsOtherUser(raw, own string) bool {
 	if ref.IsUsersRoot() {
 		return true
 	}
-	if ref.IsShared() {
-		project, ok := ref.SharedProject()
-		if !ok {
-			return true
-		}
+	if ref.IsShared() || ref.HasOwner() && ref.IsProject() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		crew, ok := resolveCrewPath(ctx, own, workspaceref.SharedProjectPath(project))
+		crew, ok := resolveCrewPath(ctx, own, clean)
+		if !ok || crew.OwnerID == "" {
+			return true
+		}
+		// A rollback alias is judged at its current physical root. A copied
+		// folder in a different owner's tree never borrows the registry entry.
+		if id, known := projectIdentityOf(crew.Root); !known || id.PathOwner != "" && id.PathOwner != crew.OwnerID {
+			return true
+		}
 		// The main owner and the Crew's co-owners reach its files; everyone else goes through the Crew's own APIs.
-		return !ok || crew.OwnerID == "" || (crew.OwnerID != own && !crewIsCoOwner(crew.Root, own))
+		return crewAccessFor(currentProjectCallerClaims(ctx, own), crew) != crewAccessOwner
 	}
 	return ref.HasOwner() && ref.Owner() != own
 }

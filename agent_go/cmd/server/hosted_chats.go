@@ -119,18 +119,16 @@ func (api *StreamingAPI) hostedChatsFor(ctx context.Context, claims *UserClaims)
 
 // ownCodeChats lists the main chat and side chats of the person's own Code projects.
 func ownCodeChats(ctx context.Context, userID string) []hostedChat {
-	root := agentProfileRuntimeWorkspace(userID, "Chats/Code/projects")
 	store := defaultProductProjectStore()
-	paths, exists, err := store.listPaths(ctx, root)
+	paths, exists, err := listProjectManifestPaths(ctx, store, userID, codeproduct.BuiltinAgentProfile())
 	if err != nil || !exists {
 		return nil
 	}
-	prefix := strings.TrimSuffix(filepath.ToSlash(root), "/") + "/"
 	var out []hostedChat
 	seen := map[string]bool{}
 	for _, candidate := range paths {
 		candidate = filepath.ToSlash(strings.TrimSpace(candidate))
-		if !strings.HasPrefix(candidate, prefix) || !strings.HasSuffix(candidate, "/product.json") || seen[candidate] {
+		if !strings.HasSuffix(candidate, "/product.json") || seen[candidate] {
 			continue
 		}
 		seen[candidate] = true

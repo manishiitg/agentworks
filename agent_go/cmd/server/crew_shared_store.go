@@ -18,18 +18,22 @@ import (
 type sharedCrewEntry struct {
 	ManifestPath string
 	OwnerID      string
+	ProfileID    string
 }
 
 // listSharedCrewManifestPaths lists the <root>/<folder>/product.json paths at the shared Crew root whose Crew
 // is registered to ownerID (every owner's when ownerID is empty). A Crew with no registry entry belongs to nobody and
 // is skipped; hidden folders (bookkeeping such as Crew/.migrating) are skipped.
-func listSharedCrewManifestPaths(ctx context.Context, store productProjectStore, ownerID string) ([]string, error) {
+func listSharedCrewManifestPaths(ctx context.Context, store productProjectStore, ownerID string, profileID ...string) ([]string, error) {
 	entries, err := listSharedCrewEntries(ctx, store)
 	if err != nil {
 		return nil, err
 	}
 	var out []string
 	for _, entry := range entries {
+		if len(profileID) > 0 && profileID[0] != entry.ProfileID {
+			continue
+		}
 		if ownerID != "" && entry.OwnerID != sanitizeUserIDForPath(ownerID) {
 			continue
 		}
@@ -66,11 +70,11 @@ func listSharedCrewEntries(ctx context.Context, store productProjectStore) ([]sh
 		seen[candidate] = struct{}{}
 		// The owner is the server's registry entry for the folder (PLAT-449), not what the manifest says; a Crew
 		// without one belongs to nobody and is not listed.
-		owner := sharedCrewOwner(folder)
-		if owner == "" {
+		rec, found := defaultProjectOwners().sharedRootRecord(folder)
+		if !found || projectStorageRoot(rec) != prefix+folder {
 			continue
 		}
-		out = append(out, sharedCrewEntry{ManifestPath: candidate, OwnerID: owner})
+		out = append(out, sharedCrewEntry{ManifestPath: candidate, OwnerID: rec.OwnerID, ProfileID: rec.Product})
 	}
 	return out, nil
 }
@@ -103,8 +107,8 @@ func listProjectManifestPaths(ctx context.Context, store productProjectStore, us
 			paths = append(paths, candidate)
 		}
 	}
-	if strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
-		shared, sharedErr := listSharedCrewManifestPaths(ctx, store, userID)
+	if isProjectProfileID(profile.ID) {
+		shared, sharedErr := listSharedCrewManifestPaths(ctx, store, userID, profile.ID)
 		if sharedErr != nil {
 			return nil, false, sharedErr
 		}
@@ -118,5 +122,5 @@ func listProjectManifestPaths(ctx context.Context, store productProjectStore, us
 
 // sharedCrewOwner is the registered owner of the Crew at Crew/<folder> ("" for a Crew nobody registered).
 func sharedCrewOwner(folder string) string {
-	return resolveProjectOwnerOf(projectIdentity{Product: "work", Folder: folder, Shared: true})
+	return resolveProjectOwner(context.Background(), workspaceref.SharedProjectPath(folder))
 }

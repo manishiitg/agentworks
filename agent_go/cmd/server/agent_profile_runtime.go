@@ -31,7 +31,10 @@ import (
 )
 
 type resolvedAgentProfile struct {
-	IsolateCodeCLI bool
+	// ToolCallerClaims is captured from this turn's authenticated request.
+	// It never comes from the profile or model input.
+	ToolCallerClaims *UserClaims
+	IsolateCodeCLI   bool
 
 	// Publication is loaded from the server-owned record after project admission.
 	// Its immutable revision pins this execution; it is never client supplied.
@@ -230,6 +233,7 @@ func agentProfileRuntimeWorkspace(userID, workspacePath string) string {
 // logical form alone resolves outside any user tree and finds nothing — which
 // made restored Crews start a fresh native session (server A 2026-09-24).
 func productConversationRuntimeWorkspace(userID, selectedFolder string) string {
+	selectedFolder = followCrewAlias(userID, selectedFolder)
 	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(selectedFolder)))
 	if ref.IsEmpty() && !ref.IsUsersRoot() {
 		return ""
@@ -946,7 +950,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		// (custom commands) but lose crew mutations (identity,
 		// project creation). The tool gate denies the same names
 		// as a backstop.
-		if readOnly && (binding.ID == "work.set-identity" || binding.ID == "work.create-project") {
+		if readOnly && (binding.ID == "work.set-identity" || binding.ID == "work.create-project" || binding.ID == "code.create-project") {
 			continue
 		}
 		tool, err := api.agentProfiles.BuildTool(binding, agentprofiles.ToolRuntimeContext{
@@ -958,6 +962,9 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		})
 		if err != nil {
 			return err
+		}
+		if binding.ID == "work.create-project" || binding.ID == "code.create-project" {
+			tool.Execute = api.projectCreationTool(strings.SplitN(binding.ID, ".", 2)[0], userID, sessionID, binding, resolved.ToolCallerClaims)
 		}
 		category := strings.TrimSpace(tool.Category)
 		if category == "" {

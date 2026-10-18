@@ -15,6 +15,7 @@ type SharedCrewListing struct {
 	ID            string
 	Title         string
 	WorkspacePath string // Crew/<folder>
+	ProfileID     string // stable work/code origin; empty legacy hooks mean work
 }
 
 var (

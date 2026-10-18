@@ -15,6 +15,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -48,17 +50,19 @@ const (
 // selected_skills, files) are the Crew Agent Playbook catalog entry fields
 // (crewAgentTemplate), so a catalog agent entry imports as-is.
 type crewSpec struct {
-	SchemaVersion  int                `json:"schema_version,omitempty"`
-	Kind           string             `json:"kind,omitempty"`
-	Name           string             `json:"name"`
-	Icon           string             `json:"icon,omitempty"`
-	Role           string             `json:"role"`
-	Purpose        string             `json:"purpose"`
-	SelectedSkills []string           `json:"selected_skills,omitempty"`
-	Files          map[string]string  `json:"files,omitempty"`
-	Functions      []crewFunctionSpec `json:"functions,omitempty"`
-	Schedules      []crewScheduleSpec `json:"schedules,omitempty"`
-	Templates      []crewTemplateRef  `json:"templates,omitempty"`
+	SchemaVersion  int                            `json:"schema_version,omitempty"`
+	Kind           string                         `json:"kind,omitempty"`
+	Name           string                         `json:"name"`
+	Icon           string                         `json:"icon,omitempty"`
+	Role           string                         `json:"role"`
+	Purpose        string                         `json:"purpose"`
+	SelectedSkills []string                       `json:"selected_skills,omitempty"`
+	Files          map[string]string              `json:"files,omitempty"`
+	Functions      []crewFunctionSpec             `json:"functions,omitempty"`
+	Schedules      []crewScheduleSpec             `json:"schedules,omitempty"`
+	Templates      []crewTemplateRef              `json:"templates,omitempty"`
+	Mode           string                         `json:"mode,omitempty"`
+	LLMConfig      *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
 }
 
 // crewTemplateRef names an installed first-party Crew Agent Playbook.
@@ -266,6 +270,20 @@ func checkCrewSkillsAvailable(ctx context.Context, root string, names []string, 
 func normalizeCrewSpec(spec crewSpec) (crewSpec, []*crewAgentTemplate, error) {
 	spec.Name, spec.Icon = strings.TrimSpace(spec.Name), strings.TrimSpace(spec.Icon)
 	spec.Role, spec.Purpose = strings.TrimSpace(spec.Role), strings.TrimSpace(spec.Purpose)
+	spec.Mode = strings.TrimSpace(spec.Mode)
+	switch spec.Mode {
+	case "", "dev", "cowork", "local":
+	default:
+		return spec, nil, fmt.Errorf("choose Dev, Cowork or Local for this Crew")
+	}
+	if config := spec.LLMConfig; config != nil {
+		if config.SchemaVersion != 2 || config.Mode != workflowtypes.LLMConfigModeExplicit && config.Mode != workflowtypes.LLMConfigModeProviderProfile {
+			return spec, nil, fmt.Errorf("choose an existing model configuration")
+		}
+		if config.Mode == workflowtypes.LLMConfigModeExplicit && (config.BuilderLLM == nil || strings.TrimSpace(config.BuilderLLM.Provider) == "" || strings.TrimSpace(config.BuilderLLM.ModelID) == "") || config.Mode == workflowtypes.LLMConfigModeProviderProfile && strings.TrimSpace(config.Provider) == "" {
+			return spec, nil, fmt.Errorf("choose a provider and model for this Crew")
+		}
+	}
 	if spec.Kind != "" && spec.Kind != crewSpecKind {
 		return spec, nil, fmt.Errorf("spec kind must be %q", crewSpecKind)
 	}
@@ -387,22 +405,25 @@ func (api *StreamingAPI) externalCrewAuthoringCall(w http.ResponseWriter, r *htt
 		if name == "import_crew" {
 			enableSchedules, _ = args["enable_schedules"].(bool)
 		}
-		crewID, err := api.createCrewFromSpec(ctx, claims, spec, enableSchedules)
-		if err != nil {
-			status := http.StatusBadRequest
-			if crewID != "" {
-				status = http.StatusBadGateway
-			}
-			externalError(w, status, "crew_not_created", externalCrewCreateError(crewID, err))
+		crewID, setupErr := api.createCrewFromSpec(ctx, claims, spec, enableSchedules)
+		if setupErr != nil && crewID == "" {
+			externalError(w, http.StatusBadRequest, "crew_not_created", externalCrewCreateError(crewID, setupErr))
 			return
 		}
 		crew, manifest, summary, ok := api.externalCrewResolve(ctx, claims, crewID)
 		if !ok {
-			externalJSON(w, map[string]any{"crew_id": crewID, "created": true})
+			out := map[string]any{"crew_id": crewID, "created": true}
+			if setupErr != nil {
+				out["warnings"] = []string{projectCreationWarning(setupErr)}
+			}
+			externalJSON(w, out)
 			return
 		}
 		out := externalCrewDescription(ctx, crew, manifest, summary)
 		out["created"] = true
+		if setupErr != nil {
+			out["warnings"] = []string{projectCreationWarning(setupErr)}
+		}
 		externalJSON(w, out)
 	case "update_crew", "export_crew":
 		crew, manifest, summary, ok := api.externalCrewResolve(ctx, claims, externalArg(args, "crew_id"))
@@ -477,9 +498,15 @@ func (api *StreamingAPI) createCrewFromSpec(ctx context.Context, claims *UserCla
 }
 
 func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *UserClaims, profileID string, spec crewSpec, enableSchedules bool, reservedID ...string) (string, error) {
+	if status, message := projectCreationGate(claims, profileID); status != 0 {
+		return "", fmt.Errorf("%s", message)
+	}
 	spec, templates, err := normalizeCrewSpec(spec)
 	if err != nil {
 		return "", err
+	}
+	if profileID != "code" && spec.Mode != "" && spec.Mode != "dev" {
+		return "", fmt.Errorf("Cowork and Local need the existing personal workspace option")
 	}
 	incoming := map[string]string{}
 	for _, template := range templates {
@@ -520,8 +547,11 @@ func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *Us
 	if projectExistsAtPath(ctx, workspacePath) {
 		return "", fmt.Errorf("crew folder collision; retry")
 	}
-	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, spec.Role, spec.Icon, crewID, workspacePath, nil); err != nil {
+	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, spec.Role, spec.Icon, crewID, workspacePath, nil, crewCreationOptions{Mode: spec.Mode, LLMConfig: spec.LLMConfig}); err != nil {
 		return "", err
+	}
+	if folder, shared := workspaceref.MustParse(workspacePath).SharedProject(); shared {
+		defer ensureSharedCrewFolderAccess(folder, userID)
 	}
 	for _, template := range templates {
 		if err := applyCrewAgentTemplate(ctx, workspacePath, template); err != nil {

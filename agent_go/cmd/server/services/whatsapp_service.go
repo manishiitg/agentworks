@@ -1706,6 +1706,10 @@ func (w *WhatsAppService) discoverDestinationCandidates(ctx context.Context, own
 			continue
 		}
 		seenCrewIDs[strings.ToLower(id)] = true
+		profileID := strings.TrimSpace(crew.ProfileID)
+		if profileID == "" {
+			profileID = "work"
+		}
 		candidates = append(candidates, whatsappDestinationCandidate{
 			Kind:            "crew",
 			ID:              id,
@@ -1713,7 +1717,7 @@ func (w *WhatsAppService) discoverDestinationCandidates(ctx context.Context, own
 			WorkspacePath:   strings.TrimSpace(crew.WorkspacePath),
 			Slug:            slugifyWhatsAppWorkflow(title),
 			WorkshopMode:    "run",
-			ProfileID:       "work",
+			ProfileID:       profileID,
 			ConversationKey: id,
 			ProfileLabel:    title,
 		})

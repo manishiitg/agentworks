@@ -3,6 +3,10 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 )
 
@@ -111,7 +116,8 @@ func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 	if err := os.MkdirAll(latestHistory, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(latestHistory, "raw.jsonl"), []byte("PRIVATE_RAW_HISTORY"), 0600); err != nil {
+	rawArchive := []byte("PRIVATE_RAW_HISTORY🙂")
+	if err := os.WriteFile(filepath.Join(latestHistory, "raw.jsonl"), rawArchive, 0600); err != nil {
 		t.Fatal(err)
 	}
 	request := httptest.NewRequest(http.MethodGet, "/api/external/v1/publication-history?workspace_id=code:c0de0001-0000&agent_id=main", nil).WithContext(ctx)
@@ -119,6 +125,42 @@ func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 	api.handlePublicationHistory(ownerDownload, request)
 	if ownerDownload.Code != 200 || !strings.Contains(ownerDownload.Body.String(), "PRIVATE_RAW_HISTORY") {
 		t.Fatalf("Builder history download=%d %s", ownerDownload.Code, ownerDownload.Body.String())
+	}
+	readSaved := func(c context.Context, offset, limit int) *httptest.ResponseRecorder {
+		t.Helper()
+		response := httptest.NewRecorder()
+		api.externalWorkspaceCall(response, httptest.NewRequest(http.MethodPost, "/mcp", nil).WithContext(c), map[string]any{"action": "read_saved_chat", "workspace_id": "code:c0de0001-0000", "agent_id": "main", "offset": offset, "limit": limit})
+		return response
+	}
+	expectedHash := sha256.Sum256(rawArchive)
+	var rebuilt []byte
+	for offset := 0; offset < len(rawArchive); {
+		response := readSaved(ctx, offset, 7)
+		var page struct {
+			Content  string `json:"content"`
+			Encoding string `json:"encoding"`
+			Next     int    `json:"next_offset"`
+			SHA      string `json:"sha256"`
+		}
+		if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &page) != nil || page.Next <= offset || page.SHA != hex.EncodeToString(expectedHash[:]) {
+			t.Fatalf("private history page=%d %s", response.Code, response.Body.String())
+		}
+		chunk := []byte(page.Content)
+		if page.Encoding == "base64" {
+			chunk, err = base64.StdEncoding.DecodeString(page.Content)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		rebuilt = append(rebuilt, chunk...)
+		offset = page.Next
+	}
+	if !bytes.Equal(rebuilt, rawArchive) {
+		t.Fatal("MCP changed archived bytes across page boundaries")
+	}
+	narrow := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}}})
+	if response := readSaved(narrow, 0, 7); response.Code < 400 {
+		t.Fatal("saved history ignored connection scope")
 	}
 	if err := registry.SetRunPeople("code", "app-c0de0001", []string{"other"}); err != nil {
 		t.Fatal(err)
@@ -132,6 +174,9 @@ func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 	if denied.Code < 400 || strings.Contains(denied.Body.String(), "PRIVATE_RAW_HISTORY") {
 		t.Fatal("private imported history reached another caller")
 	}
+	if response := readSaved(other, 0, 7); response.Code < 400 {
+		t.Fatal("Run caller read saved chat over MCP")
+	}
 	if _, err := registry.AddCoOwner("code", "app-c0de0001", "other"); err != nil {
 		t.Fatal(err)
 	}
@@ -139,6 +184,18 @@ func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 	api.handlePublicationHistory(builderDownload, request.WithContext(other))
 	if builderDownload.Code != 200 || !strings.Contains(builderDownload.Body.String(), "PRIVATE_RAW_HISTORY") {
 		t.Fatalf("co-owner lost Builder history: %d %s", builderDownload.Code, builderDownload.Body.String())
+	}
+	if response := readSaved(other, 0, 65536); response.Code != 200 || !strings.Contains(response.Body.String(), "PRIVATE_RAW_HISTORY") {
+		t.Fatalf("co-owner MCP archive=%d %s", response.Code, response.Body.String())
+	}
+	if _, err := registry.RemoveCoOwner("code", "app-c0de0001", "other"); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.SetRunPeople("code", "app-c0de0001", nil); err != nil {
+		t.Fatal(err)
+	}
+	if response := readSaved(other, 7, 7); response.Code < 400 {
+		t.Fatal("revoked Builder continued reading saved chat")
 	}
 	if !publishedBuilderHandoff(&QueryRequest{}, false) || publishedBuilderHandoff(&QueryRequest{}, true) || publishedBuilderHandoff(&QueryRequest{TriggeredBy: "function"}, false) {
 		t.Fatal("private handoff crossed interactive Builder boundary")

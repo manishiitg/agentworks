@@ -53,9 +53,8 @@ func resolveOwnedCodePeer(ctx context.Context, claims *UserClaims, caller trigge
 	if strings.TrimSpace(query) == "" || authorizeOwnedCodeCaller(ctx, claims.UserID, ownerID, caller) != nil {
 		return denied()
 	}
-	root := agentProfileRuntimeWorkspace(ownerID, codeproduct.ProjectsRoot)
 	store := defaultProductProjectStore()
-	paths, exists, err := store.listPaths(ctx, root)
+	paths, exists, err := listProjectManifestPaths(ctx, store, ownerID, codeproduct.BuiltinAgentProfile())
 	if err != nil || !exists {
 		return denied()
 	}
@@ -63,7 +62,7 @@ func resolveOwnedCodePeer(ctx context.Context, claims *UserClaims, caller trigge
 	var found *triggerTarget
 	for _, candidate := range paths {
 		candidate = strings.Trim(strings.TrimSpace(candidate), "/")
-		if !strings.HasPrefix(candidate, strings.Trim(root, "/")+"/") || !strings.HasSuffix(candidate, "/product.json") {
+		if !strings.HasSuffix(candidate, "/product.json") {
 			continue
 		}
 		workspacePath := path.Dir(candidate)
@@ -119,7 +118,7 @@ func authorizeOwnedCodeCaller(ctx context.Context, actorID, ownerID string, call
 	}
 	root := canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(actorID, caller.Path))
 	rootRef := workspaceref.MustParse(root)
-	if projectsRoot, _, ok := rootRef.ProjectRoot(); !ok || projectsRoot != workspaceref.CodeProjectsRoot || !rootRef.OwnedBy(ownerID) || rootRef.String() != root {
+	if !isCodeProjectPath(root) || projectStorageOwner(root) != sanitizeUserIDForPath(ownerID) || rootRef.String() != root {
 		return denied
 	}
 	raw, present, err := defaultProductProjectStore().read(ctx, root+"/product.json")

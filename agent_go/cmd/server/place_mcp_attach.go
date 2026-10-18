@@ -118,8 +118,8 @@ func cleanAttachRoot(raw string) string {
 
 // isCodePlaceRoot reports whether a cleaned place root is a Code.
 func isCodePlaceRoot(root string) bool {
-	projectRoot, _, ok := workspaceref.MustParse(root).Project()
-	return ok && projectRoot == workspaceref.CodeProjectsRoot && workspaceref.MustParse(root).HasOwner()
+	ref := workspaceref.MustParse(root)
+	return isCodeProjectPath(root) && (ref.HasOwner() || ref.IsShared())
 }
 
 // placeRootOf returns the workflow, Crew or Code root a path lies in (a run
@@ -213,7 +213,7 @@ func placeMCPCanAttach(ctx context.Context, userID, root string) bool {
 	}
 	if isCodePlaceRoot(root) {
 		// A Code lives in its owner's tree; only the owner connects there.
-		return workspaceref.MustParse(root).OwnedBy(userID)
+		return projectStorageOwner(root) == sanitizeUserIDForPath(userID)
 	}
 	ref, ok := resolveCrewPath(ctx, userID, root)
 	return ok && crewAccessFor(claims, ref) == crewAccessOwner
@@ -241,7 +241,7 @@ func placeMCPUsableBy(ctx context.Context, person, root string) bool {
 		return level != WorkflowAccessNone
 	}
 	if isCodePlaceRoot(root) {
-		return workspaceref.MustParse(root).OwnedBy(person)
+		return projectStorageOwner(root) == sanitizeUserIDForPath(person)
 	}
 	ref, ok := resolveCrewPath(ctx, person, root)
 	return ok && crewAccessFor(claims, ref) != crewAccessNone

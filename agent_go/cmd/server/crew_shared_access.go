@@ -14,11 +14,11 @@ import (
 )
 
 // crewCreationRoot is the folder new projects of a profile are created in: every new Crew goes to the shared root,
-// Crew/<slug>-<id8> (owner decision 2026-10-10: it is the only place; there is no switch any more). Other products keep
+// Crew/<slug>-<id8>, including the Code origin. Other products keep
 // the owner's projects root (runtimeRoot). A Crew that still sits in an owner's tree keeps resolving there (the
 // one-shot move command was removed once no Crew remained at the old location).
 func crewCreationRoot(profileID, runtimeRoot string) string {
-	if strings.EqualFold(strings.TrimSpace(profileID), crewProfileID) {
+	if isProjectProfileID(strings.ToLower(strings.TrimSpace(profileID))) {
 		return workspaceref.SharedCrewRoot
 	}
 	return runtimeRoot

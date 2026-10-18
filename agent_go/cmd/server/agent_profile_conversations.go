@@ -68,20 +68,7 @@ func conversationTitleFrom(session *ChatHistorySession, fallback string) string 
 // document root). It answers "which product/project is this", never "may this
 // caller touch it"; access identity is workspacepathsMatchForUser.
 func normalizeConversationWorkspace(workspacePath string) string {
-	logical := workspaceref.MustParse(workspacePath).Logical()
-	// A migrated crew (PLAT-442 step 4) is one workspace under every spelling: its old per-user path, the
-	// "Chats/Work/projects/<f>" a chat history file recorded, and Crew/<f>. Folded to Crew/<f>; a crew that has
-	// not moved keeps its logical spelling.
-	if rest, ok := strings.CutPrefix(logical, workspaceref.CrewProjectsRoot+"/"); ok && rest != "" {
-		folder, below, _ := strings.Cut(rest, "/")
-		if moved := crewPathAliases.lookupFolder(context.Background(), folder); moved != "" {
-			if below != "" {
-				return moved + "/" + below
-			}
-			return moved
-		}
-	}
-	return logical
+	return workspaceref.MustParse(foldCrewRootForStoredReference(workspacePath)).Logical()
 }
 
 func chatHistorySessionWorkspace(session ChatHistorySession) string {

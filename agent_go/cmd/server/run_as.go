@@ -34,7 +34,8 @@ import (
 
 // turnRunAsInput describes the turn whose CLI is about to start.
 type turnRunAsInput struct {
-	ProfileID string
+	ProfileID       string
+	ConversationKey string
 	// WorkflowPhase is a Goal (workflow) builder or run chat.
 	WorkflowPhase bool
 	// WorkingFolder is the workspace-relative folder the turn works in (the Code or Crew project, the Goal, or the
@@ -110,6 +111,9 @@ func decideTurnRunAs(ctx context.Context, in turnRunAsInput, deps runAsDeps) llm
 		return appAccount
 	}
 	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(in.WorkingFolder)))
+	if folder, shared := ref.SharedProject(); shared && isProjectProfileID(in.ProfileID) {
+		return owned(deps.projectOwner(ctx, workspaceref.SharedProjectPath(folder)))
+	}
 	if _, _, isProject := ref.Project(); isProject {
 		// A Crew or Code: the owner comes from the server's registry (path fallback), never from who is asking and
 		// never from the manifest.
@@ -145,6 +149,31 @@ func checkProjectLaunchOwner(ctx context.Context, in turnRunAsInput, deps runAsD
 		return nil
 	}
 	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(in.WorkingFolder)))
+	if folder, shared := ref.SharedProject(); shared {
+		root := workspaceref.SharedProjectPath(folder)
+		rec, registered := defaultProjectOwners().sharedRootRecord(folder)
+		owner := deps.projectOwner(ctx, root)
+		if !registered || rec.Product != in.ProfileID || owner == "" || owner != rec.OwnerID {
+			return errProjectOwnerMismatch
+		}
+		if claims := GetUserFromContext(ctx); claims != nil && claims.UserID == in.CallerID && claims.Provider == "bot_route" {
+			// Channels retain their existing exact route grant. A bot principal
+			// is not a directory person and must never be reloaded as one.
+			if codeProjectMode(ctx, root) == "local" {
+				return errProjectOwnerMismatch
+			}
+			level, scoped := botRouteProfileAccessForRequest(claims, QueryRequest{AgentProfileID: in.ProfileID, AgentProfileConversationKey: in.ConversationKey, SelectedFolder: root})
+			if scoped && level != WorkflowAccessNone {
+				return nil
+			}
+			return errProjectOwnerMismatch
+		}
+		verified, ok := resolveCrewPath(ctx, in.CallerID, root)
+		if !ok || verified.OwnerID != owner || crewAccessFor(currentProjectCallerClaims(ctx, in.CallerID), verified) == crewAccessNone {
+			return errProjectOwnerMismatch
+		}
+		return nil
+	}
 	projectRoot, project, isProject := ref.Project()
 	if !isProject {
 		return nil

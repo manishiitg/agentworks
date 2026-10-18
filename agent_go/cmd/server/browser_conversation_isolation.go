@@ -53,11 +53,19 @@ func browserProjectKey(userID, workspace string) string {
 // crewLegacyKey is the first old physical root a moved Crew had ("" when it never lived in an owner's tree or has not
 // moved).
 func crewLegacyKey(folder string) string {
-	rec, ok := defaultProjectOwners().Lookup("work", folder)
-	if !ok || !rec.Shared || len(rec.Aliases) == 0 {
+	rec, ok := defaultProjectOwners().sharedRootRecord(folder)
+	if !ok {
 		return ""
 	}
-	return rec.Aliases[0]
+	product, _ := projectProductForProfile(rec.Product)
+	for _, alias := range rec.Aliases {
+		ref := workspaceref.MustParse(alias)
+		root, project, valid := ref.Project()
+		if valid && ref.HasOwner() && ref.Owner() == rec.OwnerID && root == product.ProjectsRoot && project == folder {
+			return alias
+		}
+	}
+	return ""
 }
 
 // browserSessionForWorkspace returns the managed browser session name a

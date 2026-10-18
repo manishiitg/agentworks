@@ -7,13 +7,13 @@ import (
 	"testing"
 )
 
-// Every new Crew goes to the shared root; other products keep the owner's projects root.
+// Both Crew origins use the shared root; other products keep their layout.
 func TestCrewCreationRootIsTheSharedRoot(t *testing.T) {
 	if got := crewCreationRoot("work", "_users/a/Chats/Work/projects"); got != "Crew" {
 		t.Fatalf("Crew creation root = %q", got)
 	}
-	if got := crewCreationRoot("code", "_users/a/Chats/Code/projects"); got != "_users/a/Chats/Code/projects" {
-		t.Fatalf("Code creation root moved: %q", got)
+	if got := crewCreationRoot("code", "_users/a/Chats/Code/projects"); got != "Crew" {
+		t.Fatalf("Code creation root = %q", got)
 	}
 }
 

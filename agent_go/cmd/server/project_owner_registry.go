@@ -44,6 +44,9 @@ type projectOwnerRecord struct {
 	Product string `json:"product"` // "work" or "code"
 	Folder  string `json:"folder"`  // <slug>-<id8>, the project's folder name (kept when a Crew moves)
 	OwnerID string `json:"owner_id"`
+	// CanonicalRoot is server-owned routing metadata. Empty keeps the legacy
+	// Shared/path interpretation; product.json never decides origin or location.
+	CanonicalRoot string `json:"canonical_root,omitempty"`
 	// ProjectID is the manifest's id when the entry was written: informational (the manifest is user-writable).
 	ProjectID string `json:"project_id,omitempty"`
 	CreatedAt string `json:"created_at,omitempty"`
@@ -199,8 +202,14 @@ func (r *projectOwnerRegistry) Register(rec projectOwnerRecord) error {
 	if rec.Product == "" || rec.Folder == "" || rec.OwnerID == "" || strings.ContainsAny(rec.Folder, "/\\") || strings.HasPrefix(rec.Folder, ".") {
 		return fmt.Errorf("invalid project registration %+v", rec)
 	}
+	if err := validateProjectStorageRecord(rec); err != nil {
+		return err
+	}
 	return r.modify(func(projects map[string]projectOwnerRecord) (bool, error) {
 		key := projectOwnerKey(rec.Product, rec.Folder)
+		if err := checkProjectStorageClaim(projects, key, rec); err != nil {
+			return false, err
+		}
 		current, exists := projects[key]
 		if !exists {
 			if rec.Product == "code" && !rec.AudienceConfigured {
@@ -216,6 +225,12 @@ func (r *projectOwnerRegistry) Register(rec projectOwnerRecord) error {
 			return false, fmt.Errorf("%w: %s is registered to %q, not %q", errProjectOwnerConflict, key, current.OwnerID, rec.OwnerID)
 		}
 		changed := false
+		if rec.CanonicalRoot != "" && current.CanonicalRoot != rec.CanonicalRoot {
+			if projectStorageRoot(current) != rec.CanonicalRoot {
+				return false, fmt.Errorf("project location changed; use the storage migration")
+			}
+			current.CanonicalRoot, changed = rec.CanonicalRoot, true
+		}
 		if current.Product == "code" && !current.AudienceConfigured {
 			current.Private, current.AudienceConfigured, changed = true, true, true
 		}

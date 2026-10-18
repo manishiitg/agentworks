@@ -117,10 +117,6 @@ export async function createWorkSession(title: string, description: string, icon
     runtimeManifestName: 'workflow.json',
     ...(mode ? { mode } : {}),
   })
-  await agentApi.createPlannerFolder(
-    `${project.workspacePath}/code`,
-    `Initialize ${product.noun} project code folder ${project.title}`,
-  )
   return project
 }
 

@@ -248,4 +248,10 @@ Sharing includes published agents' source files under existing file permissions.
 `workspace get` includes their stable IDs. Use `files action=list|search|read`
 with the Crew selector and `agent_id` to inspect that source and permitted
 results. This does not select a Builder chat; imported raw history remains
-Builder-only, downloaded from **Agents → Saved chat** on the website.
+Builder-only. Download it from **Agents → Saved chat** on the website, or use
+`workspace action=read_saved_chat` with `workspace_id` and `agent_id` over MCP.
+Choose `kind=raw` or `summary`. Replies contain the actual whole-file SHA-256,
+total bytes and a bounded content page. `limit=0` returns details only; otherwise
+use up to 65536 bytes and follow `next_offset`. Honor the returned `encoding`
+(`utf-8` or `base64`) when reconstructing bytes. Every page checks current
+Builder access and connection scope; Run people cannot read this history.

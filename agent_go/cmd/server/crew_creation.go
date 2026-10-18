@@ -421,7 +421,16 @@ func ensureCrewCreationTrigger(ctx context.Context, svc *ProductScheduleService,
 
 // writeCrewCreationManifests writes a fresh crew's runtime manifest, identity
 // manifest, and code folder, mirroring the UI creation layout.
-func writeCrewCreationManifests(ctx context.Context, userID string, profile agentprofiles.Profile, profileID, workflowPath, title, purpose, role, icon, crewID, workspacePath string, inheritedLLM *workflowtypes.AgentLLMConfig) (CreatedCrew, error) {
+type crewCreationOptions struct {
+	Mode      string
+	LLMConfig *workflowtypes.PresetLLMConfig
+}
+
+func writeCrewCreationManifests(ctx context.Context, userID string, profile agentprofiles.Profile, profileID, workflowPath, title, purpose, role, icon, crewID, workspacePath string, inheritedLLM *workflowtypes.AgentLLMConfig, options ...crewCreationOptions) (created CreatedCrew, createErr error) {
+	var settings crewCreationOptions
+	if len(options) > 0 {
+		settings = options[0]
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	sessionID := profileID + ":project:" + crewID
 	purpose = strings.TrimSpace(purpose)
@@ -442,11 +451,14 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 		"browser_mode":                 "auto",
 		"use_code_execution_mode":      false,
 	}
-	for key, value := range newProjectRuntimeDefaults(profileID, "") {
+	for key, value := range newProjectRuntimeDefaults(profileID, settings.Mode) {
 		capabilities[key] = value
 	}
 	if llmConfig := resolveCrewCreationLLMConfig(profile, inheritedLLM); llmConfig != nil {
 		capabilities["llm_config"] = llmConfig
+	}
+	if settings.LLMConfig != nil {
+		capabilities["llm_config"] = settings.LLMConfig
 	}
 	// A Crew created outside a workflow (external authoring) references none.
 	contextPaths := []string{}
@@ -476,11 +488,32 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 		"updated_at":     now,
 		"identity":       map[string]interface{}{"name": title, "icon": icon, "role": role},
 	}
+	if settings.Mode != "" {
+		manifest["mode"] = settings.Mode
+	}
 	// The server records who owns the project before anything about it exists (PLAT-449): the registry is the
 	// authority, the owner_id above is information for whoever reads the folder.
+	registry := defaultProjectOwners()
+	folder := filepath.Base(filepath.ToSlash(workspacePath))
+	_, registeredBefore := registry.Lookup(profileID, folder)
+	registeredHere := false
+	defer func() {
+		if createErr == nil || !registeredHere {
+			return
+		}
+		cleanupCtx := context.WithoutCancel(ctx)
+		if err := deleteWorkspaceFolder(cleanupCtx, workspacePath); err != nil {
+			log.Printf("[PROJECT_CREATE] incomplete manifest cleanup failed for %s: %v", crewID, err)
+			return
+		}
+		if err := registry.Remove(profileID, folder); err != nil {
+			log.Printf("[PROJECT_CREATE] incomplete owner cleanup failed for %s: %v", crewID, err)
+		}
+	}()
 	if err := defaultProjectOwners().Register(projectOwnerRecord{
 		Product: profileID, Folder: filepath.Base(filepath.ToSlash(workspacePath)), OwnerID: userID, ProjectID: crewID,
-		Shared: workspaceref.MustParse(filepath.ToSlash(workspacePath)).IsShared(), Private: true, AudienceConfigured: true,
+		CanonicalRoot: workspacePath,
+		Shared:        workspaceref.MustParse(filepath.ToSlash(workspacePath)).IsShared(), Private: true, AudienceConfigured: true,
 	}); err != nil {
 		// A project in its owner's tree still resolves by its path; one at the shared root would belong to
 		// nobody, so only that creation fails.
@@ -488,6 +521,8 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 			return CreatedCrew{}, fmt.Errorf("register crew owner: %w", err)
 		}
 		log.Printf("[OWNER_REGISTRY] %s: %v", workspacePath, err)
+	} else {
+		registeredHere = !registeredBefore
 	}
 	if err := writeCrewCreationManifest(ctx, filepath.ToSlash(filepath.Join(workspacePath, "workflow.json")), runtimeManifest); err != nil {
 		return CreatedCrew{}, err

@@ -34,7 +34,7 @@ var errCodeSessionPinnedToAnother = errors.New("this Code chat belongs to anothe
 // normalizeConversationWorkspace it never drops the owner, so two people's
 // Codes can never share a pin or a switch.
 func cleanCodeRoot(root string) string {
-	return strings.Trim(path.Clean("/"+filepath.ToSlash(strings.TrimSpace(root))), "/")
+	return canonicalCrewWorkspaceRoot(strings.Trim(path.Clean("/"+filepath.ToSlash(strings.TrimSpace(root))), "/"))
 }
 
 func codeSessionPinPath(sessionID string) (string, error) {
@@ -104,7 +104,7 @@ func pinCodeSession(sessionID, person, codeRoot string) error {
 	if err != nil || !ok {
 		return fmt.Errorf("read Code session record: %w", errors.Join(err, errors.New("no record")))
 	}
-	if existing.Person != person || existing.CodeRoot != codeRoot {
+	if existing.Person != person || cleanCodeRoot(existing.CodeRoot) != codeRoot {
 		return errCodeSessionPinnedToAnother
 	}
 	return nil

@@ -61,6 +61,9 @@ func projectIdentityOf(root string) (projectIdentity, bool) {
 		return projectIdentity{}, false
 	}
 	if folder, shared := ref.SharedProject(); shared {
+		if rec, found := defaultProjectOwners().sharedRootRecord(folder); found {
+			return projectIdentity{Product: rec.Product, Folder: folder, Shared: true}, true
+		}
 		return projectIdentity{Product: "work", Folder: folder, Shared: true}, true
 	}
 	projectRoot, folder, isProject := ref.Project()
@@ -90,6 +93,13 @@ func resolveProjectOwner(_ context.Context, root string) string {
 }
 
 func resolveProjectOwnerOf(id projectIdentity) string {
+	if id.Shared {
+		rec, found := defaultProjectOwners().sharedRootRecord(id.Folder)
+		if !found || rec.Product != id.Product {
+			return ""
+		}
+		return rec.OwnerID
+	}
 	rec, found := defaultProjectOwners().Lookup(id.Product, id.Folder)
 	if !found {
 		return id.PathOwner
@@ -357,7 +367,7 @@ func migrateProductOwners(docsDir string) productOwnerMigrationReport {
 		defer docs.Close()
 		registry := defaultProjectOwners()
 		for _, folder := range dirNames(docs, workspaceref.SharedCrewRoot) {
-			if _, ok := registry.Lookup("work", folder); !ok {
+			if _, ok := registry.sharedRootRecord(folder); !ok {
 				report.SharedOrphans++
 				log.Printf("[CREW_ORPHAN] %s/%s has no owner in the registry: nobody can open it until the registry is restored or the owner is registered", workspaceref.SharedCrewRoot, folder)
 			}

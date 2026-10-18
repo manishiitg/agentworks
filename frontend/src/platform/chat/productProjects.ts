@@ -33,6 +33,7 @@ export type ProductProject<P extends string = string> = {
   localFiles?: ProductLocalFiles
   /** Absent on projects made before modes: they are dev, or local when a folder is saved (productMode). */
   mode?: ProductMode
+  creationWarnings?: string[]
   selectionConfigInitialized: boolean
   secretSelectionInitialized: boolean
   runtimeConfigInitialized: boolean
@@ -308,8 +309,18 @@ export async function createProductProject<P extends string>(options: {
 }): Promise<ProductProject<P>> {
   const title = options.title.trim()
   const description = options.description.trim()
-  // The server decides where a new Crew lives (the shared Crew/ root once that is on); a failure or another product
-  // falls back to the user's own tree, except a refusal: an account without the create permission makes no Crew.
+  if (options.product === 'work' || options.product === 'code') {
+    const created = await agentApi.createProductProject(options.product, {
+      name: title, purpose: description, icon: options.identity?.icon, role: options.identity?.role,
+      mode: options.mode, llm_config: options.llmConfig, templates: options.templates,
+      selected_skills: options.selectedSkills, files: options.initialFiles,
+    })
+    const project = parseProductProjectManifest(JSON.stringify(created.product_manifest), created.workspace_path, options.product)
+    if (!project || project.id !== created.id) throw new Error('The new Crew could not be opened. Reload your projects to find it.')
+    return { ...applyRuntimeManifest(project, JSON.stringify(created.runtime_manifest)), creationWarnings: created.warnings }
+  }
+  // Personal products retain their existing creation path. Crew and Code
+  // have already returned through server-owned creation above.
   const reserved = await (async () => agentApi.reserveProject(options.product, title, options.mode))().catch((error: unknown) => {
     const response = (error as { response?: { status?: number; data?: { error?: string } } })?.response
     if (response?.status === 403) throw new Error(response.data?.error || 'This account cannot create Crews.')
@@ -328,8 +339,6 @@ export async function createProductProject<P extends string>(options: {
     selected_global_secret_names: [],
     browser_mode: 'auto',
     use_code_execution_mode: false,
-    // Creation policy comes from the server; existing manifests are untouched.
-    ...reserved.runtime_defaults,
     ...(options.llmConfig ? { llm_config: options.llmConfig } : {}),
   }
   if (!options.runtimeManifestName) capabilities.workflow_context_paths = []

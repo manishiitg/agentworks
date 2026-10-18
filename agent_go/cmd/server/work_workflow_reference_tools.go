@@ -248,10 +248,10 @@ func crewPathOwnerMatches(a, b string) bool {
 
 // splitCrewReferenceFolders separates Crew project roots (any owner) from
 // other reference folders. Crews are shared read-write between Crews, so
-// their roots join the write set; workflow roots stay read-only.
+// their roots join the write set; Code and workflow roots stay read-only.
 func splitCrewReferenceFolders(folders []string) (crewWrite, readOnly []string) {
 	for _, folder := range folders {
-		if isCrewProjectPath(folder) {
+		if isCrewProjectPath(folder) && !isCodeProjectPath(folder) {
 			crewWrite = append(crewWrite, strings.TrimSuffix(strings.TrimSpace(folder), "/")+"/")
 			continue
 		}

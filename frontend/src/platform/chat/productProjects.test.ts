@@ -4,9 +4,10 @@ const getPlannerFileContent = vi.hoisted(() => vi.fn())
 const updatePlannerFile = vi.hoisted(() => vi.fn().mockResolvedValue({}))
 const getPlannerFiles = vi.hoisted(() => vi.fn())
 const listOwnSharedProjects = vi.hoisted(() => vi.fn())
+const createServerProject = vi.hoisted(() => vi.fn())
 const reserveProject = vi.hoisted(() => vi.fn().mockResolvedValue({ shared: false }))
 
-vi.mock('../../services/api', () => ({ agentApi: { getPlannerFileContent, updatePlannerFile, getPlannerFiles, listOwnSharedProjects, reserveProject } }))
+vi.mock('../../services/api', () => ({ agentApi: { getPlannerFileContent, updatePlannerFile, getPlannerFiles, listOwnSharedProjects, reserveProject, createProductProject: createServerProject } }))
 
 import { agentApi } from '../../services/api'
 import { createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, productMode, updateProductProjectLocalFiles, type ProductProject } from './productProjects'
@@ -49,25 +50,20 @@ describe('Code project mode in product.json', () => {
   })
 })
 
-describe('a new Code project', () => {
-  it('comes back with the mode it was created in, so Cowork shows at once and not only after a refresh', async () => {
-    const created = await createProductProject({ product: 'code', root: 'Chats/Code/projects', sessionPrefix: 'code:project', slugFallback: 'code', commitLabel: 'Create code project', title: 'Assistant', description: '', mode: 'cowork' })
-    expect(created.mode).toBe('cowork')
-    expect(JSON.parse(updatePlannerFile.mock.calls.find(call => String(call[0]).endsWith('/product.json'))![1]).mode).toBe('cowork')
-    updatePlannerFile.mockClear() // later tests read the first call
-  })
-})
-
-it('saves the server memory default when creating and forwards the selected mode', async () => {
-  for (const [mode, memory] of [['dev', true], ['local', false]] as const) {
-    updatePlannerFile.mockClear()
-    reserveProject.mockResolvedValueOnce({ shared: false, runtime_defaults: { memory_enabled: memory } })
-    await createProductProject({ product: 'code', root: 'Chats/Code/projects', sessionPrefix: 'code:project', slugFallback: 'code', commitLabel: 'Create Crew', title: 'Memory default', description: '', runtimeManifestName: 'workflow.json', mode })
-    expect(reserveProject).toHaveBeenLastCalledWith('code', 'Memory default', mode)
-    const runtime = JSON.parse(updatePlannerFile.mock.calls.find(call => String(call[0]).endsWith('/workflow.json'))![1])
-    expect(runtime.capabilities.memory_enabled).toBe(memory)
-  }
+it('uses the server creation response and never writes project manifests or falls back after refusal', async () => {
   updatePlannerFile.mockClear()
+  reserveProject.mockClear()
+  for (const mode of ['cowork', 'local'] as const) {
+    createServerProject.mockResolvedValueOnce({ id: 'new-project', workspace_path: 'Crew/assistant-new', product_manifest: { schema_version: 1, product: 'code', id: 'new-project', title: 'Assistant', session_id: 'code:project:new-project', mode }, runtime_manifest: { capabilities: { selected_servers: [], selected_skills: [], memory_enabled: mode !== 'local' } } })
+    const created = await createProductProject({ product: 'code', root: 'Chats/Code/projects', sessionPrefix: 'code:project', slugFallback: 'code', commitLabel: 'Create Crew', title: 'Assistant', description: '', mode })
+    expect(createServerProject).toHaveBeenLastCalledWith('code', expect.objectContaining({ name: 'Assistant', mode }))
+    expect(created.workspacePath).toBe('Crew/assistant-new')
+    expect(created.mode).toBe(mode)
+  }
+  createServerProject.mockRejectedValueOnce(new Error('Creation refused'))
+  await expect(createProductProject({ product: 'code', root: 'Chats/Code/projects', sessionPrefix: 'code:project', slugFallback: 'code', commitLabel: 'Create Crew', title: 'Assistant', description: '' })).rejects.toThrow('Creation refused')
+  expect(updatePlannerFile).not.toHaveBeenCalled()
+  expect(reserveProject).not.toHaveBeenCalled()
 })
 
 describe('Code local files in product.json', () => {

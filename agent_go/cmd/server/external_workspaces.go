@@ -12,19 +12,21 @@ import (
 // storage/routing identities, never a second set of workspace permissions.
 func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add("workspace", "Your private and shared Code/Crew projects. list/get inspect current access; create starts Only me. ask and chat actions use your own conversations; update/export/import use existing Builder authority. Old tools remain supported. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
-		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "create", "update", "export", "import", "ask", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "agents", "open_agent", "publish", "publish_preview", "publish_status"}},
+		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "create", "update", "export", "import", "ask", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "agents", "open_agent", "read_saved_chat", "publish", "publish_preview", "publish_status"}},
 		"workspace_id": externalString("Stable work:<id> or code:<id> from workspace action=list; an unambiguous old ID also works."),
 		"profile_id":   externalString("Creation origin: work or code. Omit to use a product you can create in."),
 		"name":         externalString("Project or new chat name."), "message": externalString("Message for ask."),
-		"session_id":          externalString("An earlier chat session from action=chats, for read/delete."),
-		"agent_id":            externalString("Stable published agent ID from agents or a publish receipt, for open_agent or republish."),
-		"operation_id":        externalString("Saved publication receipt for publish_status."),
+		"session_id":   externalString("An earlier chat session from action=chats, for read/delete."),
+		"agent_id":     externalString("Stable published agent ID from agents or a publish receipt, for open_agent or republish."),
+		"operation_id": externalString("Saved publication receipt for publish_status."),
+		"kind":         externalString("read_saved_chat: raw (default) or summary. Builders can read an agent's private imported chat with its current website access."),
+		"offset":       externalInteger(0, 1<<30), "limit": externalInteger(0, 65536),
 		"source_workspace_id": externalString("Your Local project to publish; its own website chat supplies private history."),
 		"conversation_key":    externalString("Your exact Local conversation key. Publishing never guesses another chat."),
 		"chat_id":             externalString("A chat name/id you can access; omit to use your caller conversation."),
 		"query":               externalString("Optional list filter."), "submission_id": externalString("Stable submission ID for a retry of the same ask."),
 		"wait_seconds": externalInteger(0, 25), "after": externalInteger(0, 1<<30),
-		"changes": map[string]any{"type": "object"}, "spec": map[string]any{"type": "object"},
+		"changes": map[string]any{"type": "object"}, "spec": map[string]any{"type": "object", "description": "Creation/import settings: name, icon, role, purpose, mode (dev/cowork/local on code origin), llm_config, selected_skills, templates, files, functions and schedules."},
 	}, "action")
 }
 
@@ -86,6 +88,10 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		return
 	}
 	action := externalArg(args, "action")
+	if action == "read_saved_chat" {
+		api.externalPublicationHistory(w, r, args)
+		return
+	}
 	if action == "publish" || action == "publish_preview" || action == "publish_status" {
 		api.externalWorkspacePublish(w, r, args)
 		return
@@ -121,7 +127,20 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if action == "create" || action == "import" {
+		spec := crewSpec{Name: strings.TrimSpace(externalArg(args, "name"))}
+		if action == "import" || args["spec"] != nil {
+			if err := remarshalExternalArgs(args["spec"], &spec); err != nil {
+				externalError(w, 400, "invalid_arguments", "Send the Crew's creation settings or exported spec.")
+				return
+			}
+		}
+		if name := strings.TrimSpace(externalArg(args, "name")); name != "" {
+			spec.Name = name
+		}
 		origin := externalArg(args, "profile_id")
+		if origin == "" && (spec.Mode == "cowork" || spec.Mode == "local") {
+			origin = "code"
+		}
 		if origin == "" {
 			for _, product := range projectProducts {
 				if workspaceOriginAllowed(claims, product.ProfileID) && userAccessForClaims(claims).CanCreateIn(product.ProfileID) {
@@ -138,16 +157,9 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 			externalError(w, 403, "insufficient_scope", "Creating a project needs your existing Builder access.")
 			return
 		}
-		spec := crewSpec{Name: strings.TrimSpace(externalArg(args, "name"))}
-		if action == "import" {
-			if err := remarshalExternalArgs(args["spec"], &spec); err != nil {
-				externalError(w, 400, "invalid_arguments", "Send the exported spec.")
-				return
-			}
-		}
-		id, err := api.createWorkspaceFromSpec(r.Context(), claims, origin, spec, false)
-		if err != nil {
-			externalError(w, 400, "creation_failed", externalCrewCreateError(id, err))
+		id, setupErr := api.createWorkspaceFromSpec(r.Context(), claims, origin, spec, false)
+		if setupErr != nil && id == "" {
+			externalError(w, 400, "creation_failed", externalCrewCreateError(id, setupErr))
 			return
 		}
 		_, _, ok := api.resolveExternalWorkspace(r.Context(), claims, origin+":"+id)
@@ -156,7 +168,11 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 			return
 		}
 
-		externalJSON(w, map[string]any{"workspace_id": origin + ":" + id, "id": id, "profile_id": origin, "name": spec.Name, "share": map[string]any{"mode": "private"}})
+		out := map[string]any{"workspace_id": origin + ":" + id, "id": id, "profile_id": origin, "name": spec.Name, "share": map[string]any{"mode": "private"}}
+		if setupErr != nil {
+			out["warnings"] = []string{projectCreationWarning(setupErr)}
+		}
+		externalJSON(w, out)
 		return
 	}
 	binding, manifest, ok := api.resolveExternalWorkspace(r.Context(), claims, externalArg(args, "workspace_id"))

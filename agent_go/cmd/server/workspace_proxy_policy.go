@@ -198,6 +198,11 @@ func (p workspaceProxyPolicy) denies(key, raw string) string {
 // running-session and credential cleanup. This also covers deleting a parent
 // folder or clearing its contents through /folders/<path>/files.
 func codeFilesDeletionProtected(clean string) bool {
+	if product, _, known := projectProductForPath(clean); known && product.ProfileID == "code" {
+		if ref, ok := parseCrewPath(GetDefaultUserID(), clean); ok {
+			return ref.Rest == "" || ref.Rest == "product.json" || ref.Rest == "workflow.json"
+		}
+	}
 	if ref := workspaceref.MustParse(clean); ref.HasOwner() && ref.Logical() != "" {
 		clean = ref.Logical()
 	}
