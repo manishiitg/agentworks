@@ -37,7 +37,7 @@ describe('Schedules page', () => {
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 
-  it.each([['agentworks', 'Goals'], ['work', 'Crew'], ['code', 'Code'], ['mcp-gateway', 'Vault']])('returns from Schedules to %s with a labeled page action', async (surface, label) => {
+  it.each([['agentworks', 'Goals'], ['work', 'Crew'], ['code', 'Crew'], ['mcp-gateway', 'Vault']])('returns from Schedules to %s with a labeled page action', async (surface, label) => {
     surfaceState.productSurface = surface
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {

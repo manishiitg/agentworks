@@ -31,6 +31,7 @@ vi.mock('../../services/api', () => ({
 vi.mock('../../hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark' }) }))
 
 import { CodeShellPanel } from './CodeShellPanel'
+import { ProjectProductProvider, projectProductConfig } from './projectProduct'
 
 class FakeSocket {
   static OPEN = 1
@@ -65,10 +66,11 @@ afterEach(async () => {
 
 const click = async (el: Element | null) => { await act(async () => { (el as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true })) }) }
 
-describe('Code terminal tabs', { timeout: 20000 }, () => {
-  it('opens up to three terminals, each its own shell, and closing one stops it', async () => {
-    await act(async () => { root.render(<CodeShellPanel projectId="p1" />) })
+describe('Crew terminal tabs', { timeout: 20000 }, () => {
+  it.each(['work', 'code'] as const)('opens three independent terminals in %s origin and stops the one closed', async profileId => {
+    await act(async () => { root.render(<ProjectProductProvider value={projectProductConfig(profileId)}><CodeShellPanel projectId="p1" /></ProjectProductProvider>) })
     expect(opened.length).toBe(1)
+    expect(opened[0]).toContain(`/api/agent-profiles/${profileId}/projects/p1/shell/stream`)
     expect(opened[0]).not.toContain('tab=')
 
     const add = () => container.querySelector('[data-testid="code-shell-new-tab"]')
@@ -81,7 +83,7 @@ describe('Code terminal tabs', { timeout: 20000 }, () => {
     expect(container.querySelectorAll('[data-testid="code-shell-panel"].flex').length).toBe(1)
 
     await click(container.querySelector('[aria-label="Close Terminal 2"]'))
-    expect(posted).toContain('/api/agent-profiles/code/projects/p1/shell/stop?tab=2')
+    expect(posted).toContain(`/api/agent-profiles/${profileId}/projects/p1/shell/stop?tab=2`)
     expect(JSON.parse(localStorage.getItem('code_terminal_tabs:p1') || '{}').tabs).toEqual([1, 3])
   })
 

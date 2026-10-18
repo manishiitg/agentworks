@@ -97,7 +97,7 @@ describe('Crew shared AgentWorks platform contract', () => {
     expect(surface).toContain('title={`Delete ${product.noun}`}')
     expect(surface).toContain('confirmText={`Delete ${product.noun}`}')
     expect(surface).toContain('onDelete={setDeleteCandidate}')
-    expect(surface).toContain('await remove(deleteCandidate.id)')
+    expect(surface).toContain('await remove(deleteCandidate.id, deleteCandidate.product)')
   })
 
   it('does not add product-local replacements for shared platform surfaces', () => {
