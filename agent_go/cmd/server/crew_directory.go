@@ -253,15 +253,27 @@ func (api *StreamingAPI) handleReserveAgentProfileProject(w http.ResponseWriter,
 		writeAgentProfileError(w, http.StatusForbidden, "This account cannot create new projects in this product. An administrator can allow it under the account's create permissions.")
 		return
 	}
-	if !isCrew {
+	if !isProjectProfileID(profile.ID) {
 		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"shared": false})
 		return
 	}
 	var body struct {
 		Title string `json:"title"`
+		Mode  string `json:"mode"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil || strings.TrimSpace(body.Title) == "" {
 		writeAgentProfileError(w, http.StatusBadRequest, "title is required")
+		return
+	}
+	switch body.Mode {
+	case "", "dev", "cowork", "local":
+	default:
+		writeAgentProfileError(w, http.StatusBadRequest, "Choose Dev, Cowork or Local for this Crew.")
+		return
+	}
+	defaults := newProjectRuntimeDefaults(profile.ID, body.Mode)
+	if !isCrew {
+		writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"shared": false, "runtime_defaults": defaults})
 		return
 	}
 	id := uuid.NewString()
@@ -278,7 +290,7 @@ func (api *StreamingAPI) handleReserveAgentProfileProject(w http.ResponseWriter,
 		return
 	}
 	ensureSharedCrewFolderAccess(folder, claims.UserID)
-	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"shared": true, "id": id, "workspace_path": workspacePath})
+	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"shared": true, "id": id, "workspace_path": workspacePath, "runtime_defaults": defaults})
 }
 
 func listSharedProjectsForOwner(ctx context.Context, claims *UserClaims, profile agentprofiles.Profile, ownerID string) []sharedProjectSummary {

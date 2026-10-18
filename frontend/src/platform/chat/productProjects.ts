@@ -310,10 +310,10 @@ export async function createProductProject<P extends string>(options: {
   const description = options.description.trim()
   // The server decides where a new Crew lives (the shared Crew/ root once that is on); a failure or another product
   // falls back to the user's own tree, except a refusal: an account without the create permission makes no Crew.
-  const reserved = await (async () => agentApi.reserveProject(options.product, title))().catch((error: unknown) => {
+  const reserved = await (async () => agentApi.reserveProject(options.product, title, options.mode))().catch((error: unknown) => {
     const response = (error as { response?: { status?: number; data?: { error?: string } } })?.response
     if (response?.status === 403) throw new Error(response.data?.error || 'This account cannot create Crews.')
-    return { shared: false } as { shared: boolean; id?: string; workspace_path?: string }
+    return { shared: false } as { shared: boolean; id?: string; workspace_path?: string; runtime_defaults?: { memory_enabled?: boolean } }
   })
   const shared = reserved.shared && !!reserved.id && !!reserved.workspace_path
   const id = shared ? reserved.id! : globalThis.crypto.randomUUID()
@@ -328,6 +328,8 @@ export async function createProductProject<P extends string>(options: {
     selected_global_secret_names: [],
     browser_mode: 'auto',
     use_code_execution_mode: false,
+    // Creation policy comes from the server; existing manifests are untouched.
+    ...reserved.runtime_defaults,
     ...(options.llmConfig ? { llm_config: options.llmConfig } : {}),
   }
   if (!options.runtimeManifestName) capabilities.workflow_context_paths = []

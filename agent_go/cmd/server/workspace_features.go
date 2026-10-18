@@ -7,6 +7,15 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
+// newProjectRuntimeDefaults is used only at creation. Existing projects keep
+// their saved setting and the legacy fallback in workspaceMemoryEnabled.
+func newProjectRuntimeDefaults(profileID, mode string) map[string]any {
+	if !isProjectProfileID(profileID) {
+		return nil
+	}
+	return map[string]any{"memory_enabled": mode != "local"}
+}
+
 func workspaceMemoryEnabled(ctx context.Context, profileID, root string) bool {
 	if profileID == "code" && codeProjectMode(ctx, root) == "local" {
 		return false

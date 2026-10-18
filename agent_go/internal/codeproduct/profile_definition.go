@@ -78,6 +78,7 @@ func NewProjectFiles(id, name string, now time.Time) (workspacePath string, work
 			"selected_global_secret_names": []string{},
 			"browser_mode":                 "auto",
 			"use_code_execution_mode":      false,
+			"memory_enabled":               true,
 		},
 		"workflow_context_paths": []string{},
 		"created_at":             stamp,

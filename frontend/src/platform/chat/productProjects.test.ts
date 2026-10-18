@@ -4,8 +4,9 @@ const getPlannerFileContent = vi.hoisted(() => vi.fn())
 const updatePlannerFile = vi.hoisted(() => vi.fn().mockResolvedValue({}))
 const getPlannerFiles = vi.hoisted(() => vi.fn())
 const listOwnSharedProjects = vi.hoisted(() => vi.fn())
+const reserveProject = vi.hoisted(() => vi.fn().mockResolvedValue({ shared: false }))
 
-vi.mock('../../services/api', () => ({ agentApi: { getPlannerFileContent, updatePlannerFile, getPlannerFiles, listOwnSharedProjects } }))
+vi.mock('../../services/api', () => ({ agentApi: { getPlannerFileContent, updatePlannerFile, getPlannerFiles, listOwnSharedProjects, reserveProject } }))
 
 import { agentApi } from '../../services/api'
 import { createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, productMode, updateProductProjectLocalFiles, type ProductProject } from './productProjects'
@@ -55,6 +56,18 @@ describe('a new Code project', () => {
     expect(JSON.parse(updatePlannerFile.mock.calls.find(call => String(call[0]).endsWith('/product.json'))![1]).mode).toBe('cowork')
     updatePlannerFile.mockClear() // later tests read the first call
   })
+})
+
+it('saves the server memory default when creating and forwards the selected mode', async () => {
+  for (const [mode, memory] of [['dev', true], ['local', false]] as const) {
+    updatePlannerFile.mockClear()
+    reserveProject.mockResolvedValueOnce({ shared: false, runtime_defaults: { memory_enabled: memory } })
+    await createProductProject({ product: 'code', root: 'Chats/Code/projects', sessionPrefix: 'code:project', slugFallback: 'code', commitLabel: 'Create Crew', title: 'Memory default', description: '', runtimeManifestName: 'workflow.json', mode })
+    expect(reserveProject).toHaveBeenLastCalledWith('code', 'Memory default', mode)
+    const runtime = JSON.parse(updatePlannerFile.mock.calls.find(call => String(call[0]).endsWith('/workflow.json'))![1])
+    expect(runtime.capabilities.memory_enabled).toBe(memory)
+  }
+  updatePlannerFile.mockClear()
 })
 
 describe('Code local files in product.json', () => {

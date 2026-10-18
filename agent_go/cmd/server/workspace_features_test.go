@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
@@ -38,6 +39,49 @@ func TestWorkspaceMemoryDefaultsAndSwitch(t *testing.T) {
 		if err != nil || json.Unmarshal([]byte(raw), &manifest) != nil || manifest.Capabilities.MemoryEnabled == nil || *manifest.Capabilities.MemoryEnabled != enabled {
 			t.Fatal("typed manifest lost memory setting")
 		}
+	}
+}
+
+// Creation changes only the new project's explicit value; paths with absent
+// legacy settings retain their old behavior.
+func TestNewCrewMemoryDefaultsPreserveExistingProjects(t *testing.T) {
+	f := newMultiUserFixture(t, legacyIdentityLayout())
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: fixtureUserA})
+	for _, tc := range []struct {
+		origin, mode string
+		enabled      bool
+	}{
+		{"work", "dev", true}, {"code", "dev", true}, {"code", "cowork", true}, {"code", "local", false},
+	} {
+		t.Run(tc.origin+"/"+tc.mode, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/agent-profiles/"+tc.origin+"/projects/reserve", strings.NewReader(`{"title":"Memory default","mode":"`+tc.mode+`"}`)).WithContext(ctx)
+			req = mux.SetURLVars(req, map[string]string{"id": tc.origin})
+			rec := httptest.NewRecorder()
+			f.API.handleReserveAgentProfileProject(rec, req)
+			var result struct {
+				Defaults struct {
+					Memory *bool `json:"memory_enabled"`
+				} `json:"runtime_defaults"`
+			}
+			if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &result) != nil || result.Defaults.Memory == nil || *result.Defaults.Memory != tc.enabled {
+				t.Fatalf("creation policy: %d %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+	for _, profile := range []agentprofiles.Profile{f.Crew, f.Code} {
+		root := "Crew/new-" + profile.ID + "-default"
+		if profile.ID == "code" {
+			root = "_users/" + fixtureUserA + "/Chats/Code/projects/new-code-default"
+		}
+		if _, err := writeCrewCreationManifests(ctx, fixtureUserA, profile, profile.ID, "", "Memory default", "", "", "", "new-"+profile.ID, root, nil); err != nil {
+			t.Fatal(err)
+		}
+		if !workspaceMemoryEnabled(ctx, profile.ID, root) {
+			t.Fatalf("native %s creation ignored its explicit default", profile.ID)
+		}
+	}
+	if workspaceMemoryEnabled(ctx, "code", f.Layout.CodePhysical(fixtureUserA, fixtureCodeFolder)) || !workspaceMemoryEnabled(ctx, "work", f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)) {
+		t.Fatal("new-project default changed existing projects")
 	}
 }
 

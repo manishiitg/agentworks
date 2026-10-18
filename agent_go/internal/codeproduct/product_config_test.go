@@ -67,9 +67,12 @@ func TestCodeProfileIsAPrivateSubsetOfCrewFeatures(t *testing.T) {
 }
 
 func TestNewProjectFilesHaveANameOnly(t *testing.T) {
-	path, _, product := NewProjectFiles("0123456789abcdef", "My App!", timeZero)
+	path, runtime, product := NewProjectFiles("0123456789abcdef", "My App!", timeZero)
 	if path != "Chats/Code/projects/my-app-01234567" {
 		t.Fatalf("path = %q", path)
+	}
+	if runtime["capabilities"].(map[string]interface{})["memory_enabled"] != true {
+		t.Fatal("new server Crew must explicitly enable memory")
 	}
 	if product["product"] != "code" || product["session_id"] != "code:project:0123456789abcdef" {
 		t.Fatalf("product manifest = %v", product)
