@@ -41,11 +41,12 @@ type WorkflowSkillsMigrationFile struct {
 }
 
 type WorkflowSkillsMigration struct {
-	Version     string                        `json:"version"`
-	Folder      string                        `json:"folder,omitempty"`
-	Files       []WorkflowSkillsMigrationFile `json:"files"`
-	IndexSHA256 string                        `json:"index_sha256,omitempty"`
-	StepAccess  map[string]string             `json:"retired_step_access"`
+	Version             string                            `json:"version"`
+	Folder              string                            `json:"folder,omitempty"`
+	Files               []WorkflowSkillsMigrationFile     `json:"files"`
+	IndexSHA256         string                            `json:"index_sha256,omitempty"`
+	StepAccess          map[string]string                 `json:"retired_step_access"`
+	RetiredStepSettings map[string]map[string]interface{} `json:"retired_step_settings,omitempty"`
 }
 
 func UsesWorkflowSkills(version string) bool {
@@ -289,6 +290,18 @@ func migrateWorkflowSkillSelections(plan, config map[string]interface{}, migrati
 					migrationAppendSkill(ac, "enabled_skills", migration.Folder)
 				}
 				delete(ac, "learnings_access")
+				for _, key := range []string{"lock_learnings", "lock_learnings_reason", "disable_learning", "learning_detail_level", "learning_after_loop_iteration", "keep_learning_full"} {
+					if value, present := ac[key]; present {
+						if migration.RetiredStepSettings == nil {
+							migration.RetiredStepSettings = map[string]map[string]interface{}{}
+						}
+						if migration.RetiredStepSettings[id] == nil {
+							migration.RetiredStepSettings[id] = map[string]interface{}{}
+						}
+						migration.RetiredStepSettings[id][key] = value
+						delete(ac, key)
+					}
+				}
 				if sc != nil {
 					sc["agent_configs"] = ac
 				}
@@ -389,6 +402,7 @@ func createMigrateWorkflowSkillsExecutor(workspacePath string, logger loggerv2.L
 				return "", err
 			}
 			migration.Folder = previous.Folder
+			migration.RetiredStepSettings = previous.RetiredStepSettings
 			if previous.StepAccess != nil {
 				migration.StepAccess = previous.StepAccess
 			}

@@ -102,6 +102,9 @@ func executeWorkflowSkillsBuilderTool(ctx context.Context, rootPath, user string
 	ctx = teamUserContext(ctx, user)
 	manifest, found, err := ReadWorkflowManifest(ctx, rootPath)
 	claims := GetUserFromContext(ctx)
+	if claims == nil || claims.UserID != user {
+		return "", fmt.Errorf("workflow Builder identity changed; reopen this workflow chat")
+	}
 	if err != nil {
 		return "", err
 	}

@@ -191,7 +191,7 @@ func TestWorkflowSkillsContractRetiresLearningGrantsOnly(t *testing.T) {
 			if err := c.loadCodeLayout(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			cfg := &AgentConfigs{LearningsAccess: LearningsAccessReadWrite, KnowledgebaseAccess: KBAccessReadWrite, EnabledSkills: []string{"workflow-how-to"}}
+			cfg := &AgentConfigs{LearningsAccess: LearningsAccessReadWrite, LearningObjective: "Historical how-to objective", KnowledgebaseAccess: KBAccessReadWrite, EnabledSkills: []string{"workflow-how-to"}}
 			legacy := version == "1.0.50"
 			if c.canReadLearnings(cfg, nil) != legacy || c.canWriteLearnings(cfg, nil) != legacy {
 				t.Fatal("wrong learning policy", version)

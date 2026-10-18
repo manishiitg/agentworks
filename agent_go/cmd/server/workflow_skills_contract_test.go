@@ -31,7 +31,7 @@ func TestWorkflowSkillsMigrationOverMCPAndBuilder(t *testing.T) {
 	t.Setenv("WORKSPACE_API_URL", workspace.URL)
 	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoices","created_by":"owner","version":"1.0.50","code_layout_version":1,"access":{"owners":["owner"],"editors":["outsider"],"readers":["reader"]},"capabilities":{"selected_skills":["existing"]}}`)
 	f.write(t, "Workflow/invoices/planning/plan.json", `{"steps":[{"id":"chat","type":"agent","title":"Review invoices","prompt_contract":"description-first-v1","description":"## Goal\nReview invoices.\n## Resources\n- Knowledge base: none\n- Database: none\n- Brain: none\n- Learnings: reads the invoice guide\n## Guides\nlearnings/chat/guide.md","items":[]},{"id":"excluded","type":"scripted","title":"No guides","description":"Return existing records"}]}`)
-	f.write(t, "Workflow/invoices/planning/step_config.json", `{"steps":[{"id":"chat","agent_configs":{"learnings_access":"read-write","knowledgebase_access":"none","enabled_skills":["existing"]}},{"id":"excluded","agent_configs":{"learnings_access":"none","knowledgebase_access":"read-write"}}]}`)
+	f.write(t, "Workflow/invoices/planning/step_config.json", `{"steps":[{"id":"chat","agent_configs":{"learnings_access":"read-write","lock_learnings":true,"lock_learnings_reason":"Keep this historical grant explanation","knowledgebase_access":"none","enabled_skills":["existing"]}},{"id":"excluded","agent_configs":{"learnings_access":"none","knowledgebase_access":"read-write"}}]}`)
 	prose := "# Existing how-to\n" + strings.Repeat("Preserve this reusable technique verbatim.\n", 18000)
 	asset := string([]byte{0, 255, 128, 42, 10})
 	sources := map[string]string{"learnings/chat/guide.md": prose, "learnings/_global/references/auth.md": "Read the verified authentication receipt.\n", "learnings/chat/assets/example.bin": asset}
@@ -74,6 +74,9 @@ func TestWorkflowSkillsMigrationOverMCPAndBuilder(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(f.read(t, "Workflow/invoices/workflow.json")), &manifest); err != nil {
 		t.Fatal(err)
+	}
+	if manifest.Migration.RetiredStepSettings["chat"]["lock_learnings_reason"] != "Keep this historical grant explanation" {
+		t.Fatal("retired lock audit lost")
 	}
 	if manifest.Version != "1.0.50" || manifest.Migration.Folder != "workflow-how-to-2" || len(manifest.Migration.Files) != len(sources) {
 		t.Fatalf("wrong migration ledger: %+v", manifest)

@@ -127,7 +127,11 @@ func commitTeamEditWithFiles(ctx context.Context, result string,
 			return fmt.Errorf("workflow settings changed; reread before migrating guides")
 		}
 		actor := teamActor(ctx)
-		if actor == "" || !workflowSkillsAuthoringAllowed(GetUserFromContext(ctx), &current) || current.Team != nil && current.Team.LeaderID != actor {
+		claims := GetUserFromContext(ctx)
+		if claims == nil || claims.UserID != actor {
+			return fmt.Errorf("workflow Builder identity changed; reopen this workflow chat")
+		}
+		if actor == "" || !workflowSkillsAuthoringAllowed(claims, &current) || current.Team != nil && current.Team.LeaderID != actor {
 			return fmt.Errorf("ask the current workflow Builder to migrate its guides")
 		}
 		access := userAccessForClaims(&UserClaims{UserID: actor})
