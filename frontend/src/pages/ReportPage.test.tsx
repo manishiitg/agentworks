@@ -47,11 +47,14 @@ describe("standalone report page", () => {
     }
   });
 
-  it("refuses a Code dashboard for another person, including a former share recipient", async () => {
-    const view = await renderReport("Chats/Code/projects/hrms-1", "owner-1", "member-2");
+  it.each([
+    ["Chats/Code/projects/sample-1", "owner-1"],
+    ["_users/owner-1/Chats/Code/projects/sample-1", undefined],
+  ] as const)("sends shared Code link %s to its owner's root for server authorization", async (path, ownerUid) => {
+    const view = await renderReport(path, ownerUid, "member-2");
     try {
-      expect(view.host.textContent).toContain("Only the workspace owner");
-      expect(view.host.textContent).not.toContain("Dashboard runtime");
+      expect(view.host.textContent).toContain("Dashboard runtime _users/owner-1/Chats/Code/projects/sample-1");
+      expect(view.host.querySelector('[data-project-conversation]')?.getAttribute('data-project-conversation')).toBe('true');
     } finally {
       await act(async () => view.root.unmount());
     }
@@ -60,21 +63,13 @@ describe("standalone report page", () => {
   it("opens a Code dashboard for its owner at the logical path", async () => {
     const view = await renderReport("Chats/Code/projects/hrms-1", "owner-1", "owner-1");
     try {
-      expect(view.host.textContent).toContain("Dashboard runtime Chats/Code/projects/hrms-1");
+      expect(view.host.textContent).toContain("Dashboard runtime _users/owner-1/Chats/Code/projects/hrms-1");
     } finally {
       await act(async () => view.root.unmount());
     }
   });
 
-  it("refuses an absolute Code path for another person", async () => {
-    const view = await renderReport("_users/owner-1/Chats/Code/projects/hrms-1", undefined, "member-2");
-    try {
-      expect(view.host.textContent).toContain("Only the workspace owner");
-      expect(view.host.textContent).not.toContain("Dashboard runtime");
-    } finally { await act(async () => view.root.unmount()); }
-  });
-
-  it("accepts only the owner's absolute Code path and rejects anything deeper", async () => {
+  it("accepts a physical Code project root and rejects anything deeper", async () => {
     const ok = await renderReport("_users/owner-1/Chats/Code/projects/hrms-1", undefined, "owner-1");
     const bad = await renderReport("_users/owner-1/Chats/Code/projects/hrms-1/db", undefined, "owner-1");
     try {

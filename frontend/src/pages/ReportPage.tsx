@@ -21,29 +21,24 @@ function decodeBase64Utf8(value: string): string | null {
   }
 }
 
-export function ReportPage({ encodedPath, ownerUid, currentUserId, onBack }: ReportPageProps) {
+export function ReportPage({ encodedPath, ownerUid, onBack }: ReportPageProps) {
   const decodedPath = decodeBase64Utf8(encodedPath);
   const isValidPath = decodedPath !== null && isSafeReportWorkspacePath(decodedPath);
-  const workspacePath = decodedPath?.startsWith("Chats/Work/projects/") && ownerUid && /^[a-zA-Z0-9_-]{1,128}$/.test(ownerUid)
+  const workspacePath = /^Chats\/(?:Work|Code)\/projects\//.test(decodedPath ?? "") && ownerUid && /^[a-zA-Z0-9_-]{1,128}$/.test(ownerUid)
     ? `_users/${ownerUid}/${decodedPath}` : decodedPath;
-  // Crew dashboard reads are authorized by the server; Code stays owner-only.
-  const physicalCodeOwner = decodedPath?.match(/^_users\/([^/]+)\/Chats\/Code\/projects\//)?.[1];
-  const isWrongPersonalAccount = Boolean(
-    (decodedPath?.startsWith("Chats/Code/") && ownerUid && ownerUid !== currentUserId) ||
-    (physicalCodeOwner && physicalCodeOwner !== currentUserId),
-  );
+  // The server checks current Share access for both project origins.
   const requestedDocument = new URLSearchParams(window.location.search).get("document") || "db/reports/index.html";
   const documentPath = /^db\/reports\/(?!.*(?:^|\/)\.\.(?:\/|$))[^\\]+\.html$/i.test(requestedDocument)
     ? requestedDocument
     : "db/reports/index.html";
 
-  if (!isValidPath || isWrongPersonalAccount) {
+  if (!isValidPath) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4 text-foreground">
         <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 text-center shadow-sm">
           <BarChart3 className="mx-auto mb-4 h-10 w-10 text-muted-foreground" />
-          <h1 className="mb-2 text-lg font-semibold">{isWrongPersonalAccount ? "Dashboard unavailable" : "Invalid dashboard URL"}</h1>
-          <p className="mb-4 text-sm text-muted-foreground">{isWrongPersonalAccount ? "Only the workspace owner can open this dashboard." : "The dashboard URL must include a valid encoded workflow, Crew or Code path."}</p>
+          <h1 className="mb-2 text-lg font-semibold">Invalid dashboard URL</h1>
+          <p className="mb-4 text-sm text-muted-foreground">The dashboard URL must include a valid encoded workflow, Crew or Code path.</p>
           {onBack && (
             <button type="button" onClick={onBack} className="rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted">
               Go back

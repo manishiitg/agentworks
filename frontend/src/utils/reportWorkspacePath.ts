@@ -10,7 +10,7 @@ export function isSafeReportWorkspacePath(path: string): boolean {
   // A Crew at the shared root: the server decides who may open it (current Crew access).
   if (normalized.startsWith("Crew/")) return parts.length === 2 && parts[1] !== "" && !parts[1].startsWith(".");
   if (normalized.startsWith("Chats/Code/projects/")) return parts.length === 4 && parts[3] !== "";
-  // Physical Code paths are accepted only for their owner below.
+  // Physical project roots retain their owner identity; the server checks access.
   return parts.length === 6 && parts[0] === "_users" && /^[a-zA-Z0-9_-]{1,128}$/.test(parts[1]) &&
     parts[2] === "Chats" && (parts[3] === "Code" || parts[3] === "Work") && parts[4] === "projects" && parts[5] !== "";
 }
