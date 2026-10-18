@@ -232,56 +232,10 @@ func effectiveRuntimeStepType(step PlanStepInterface) string {
 	return string(step.StepType())
 }
 
-// agentSequenceClosingItems builds synthetic trailing items so a standalone
-// agent honors its step-level learning_objective and
-// knowledgebase_contribution — the same post-step learnings/KB a scripted step
-// runs (a agent otherwise skips the learning/KB phase entirely). Each
-// is a user_message turn carrying the matching write access; the item machinery
-// already grants learnings/_global or notes/ from kind + write_access.
-func (hcpo *StepBasedWorkflowOrchestrator) agentSequenceClosingItems(ctx context.Context, seq *AgentPlanStep, stepIndex int) []AgentItem {
-	cfg := seq.AgentConfigs
-	if cfg == nil || !hcpo.platformStoresEnabled() {
-		return nil
-	}
-	var items []AgentItem
-	stepID := seq.GetID()
-
-	// PLAT-055. One reflection item, not a learnings item followed by a
-	// knowledgebase item. Appending them separately reproduced the same defect
-	// the scripted-step path had: the agent chose a destination based on which
-	// turn it happened to be in rather than on which store owns the content.
-	learningsDue := hcpo.shouldDirectWriteLearnings(cfg, seq)
-	kbAccess := resolveKnowledgebaseAccess(cfg, hcpo.UseKnowledgebase())
-	kbContribution := strings.TrimSpace(kbContributionForPrompt(cfg))
-	// Under write_method=agent the constraint layer strips KB from every item's
-	// guard, so a KB item here would be a guaranteed-denied write; agent-mode
-	// contributions are handled by maybeEnqueueKBUpdate after the sequence.
-	kbDue := kbContribution != "" && kbAccessAllowsWrite(kbAccess)
-
-	input := StepReflectionTurnInput{
-		StepID:              stepID,
-		LearningsTargetPath: hcpo.directLearningsPromptTargetPath(),
-		KBNotesTargetPath:   filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), KnowledgebaseFolderName, KBNotesFolderName),
-	}
-	if learningsDue {
-		input.LearningObjective = strings.TrimSpace(cfg.LearningObjective)
-	}
-	if kbDue {
-		input.KBAccess = kbAccess
-		input.KBContribution = kbContribution
-	}
-
-	if msg := BuildStepReflectionTurn(input); msg != "" {
-		items = append(items, AgentItem{
-			ID:          fmt.Sprintf("%s-reflection", stepID),
-			Type:        "user_message",
-			Kind:        "learning",
-			Title:       "Reflection",
-			Message:     msg,
-			WriteAccess: AgentWriteAccess{Learnings: learningsDue, Knowledgebase: kbDue},
-		})
-	}
-	return items
+// Goal steps end after the authored task and backend validation. Learning is
+// explicit task work (or belongs to Builder, Pulse or Crew), never a hidden turn.
+func (hcpo *StepBasedWorkflowOrchestrator) agentSequenceClosingItems(context.Context, *AgentPlanStep, int) []AgentItem {
+	return nil
 }
 
 // Jump-repeat limits for next_step_id navigation, per step kind. LLM-driven
@@ -397,6 +351,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentStep(
 	// starts the workflow from the beginning with a new execution ID. Mid-sequence recovery
 	// is deliberately unsupported; steps that produce external side effects must follow the
 	// same idempotency/deduplication contract as every other rerunnable workflow step.
+	hcpo.GetLogger().Info(fmt.Sprintf("[GOAL_AGENT_CONTRACT] workflow=%s step=%s reflection=off llm_specialists=off validation=%t", hcpo.GetWorkspacePath(), step.GetID(), sequenceStep.ValidationSchema != nil))
 	isRoute := opts.Source == "orchestrator_reentry"
 	if opts.Delegation != nil {
 		if isRoute {

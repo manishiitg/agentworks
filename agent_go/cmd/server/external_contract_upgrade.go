@@ -16,7 +16,7 @@ import (
 var contractVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
 func externalContractUpgradeDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("workflow_upgrade", "Workflow contract upgrades without a model turn, with the same checks as the Builder. action=status lists the migrations this workflow still owes, in order. action=stamp records one completed migration: pass version (the next one owed) and confirm (repeat the workflow_id). The stamp runs the Builder's prerequisite checks and refuses out-of-order versions. A migration's work is done first: for the agent-step migration (1.0.47) call plan action=migrate_agent_steps with empty arguments, then stamp; other migrations need builder_chat. Goals workflows only. Requires Builder consent and a current owner or editor role; changes are not applied while the workflow is running.", true, true, map[string]any{
+	add("workflow_upgrade", "Workflow contract upgrades without a model turn, with the same checks as the Builder. action=status lists the migrations this workflow still owes, in order. action=stamp records one completed migration: pass version (the next one owed) and confirm (repeat the workflow_id). The stamp runs the Builder's prerequisite checks and refuses out-of-order versions. A migration's work is done first: for the agent-step migration (1.0.47) call plan action=migrate_agent_steps with empty arguments, then stamp; the Goal-agent migration (1.0.50) is plan action=migrate_goal_agents; other migrations need builder_chat. Goals workflows only. Requires Builder consent and a current owner or editor role; changes are not applied while the workflow is running.", true, true, map[string]any{
 		"action":  map[string]any{"type": "string", "enum": []any{"status", "stamp"}},
 		"version": externalString("stamp: the contract version to record, such as 1.0.47; must be the next one status lists."),
 		"confirm": externalString("stamp: repeat the workflow_id to confirm."),
@@ -60,7 +60,7 @@ func (api *StreamingAPI) externalContractUpgradeCall(w http.ResponseWriter, r *h
 		for _, step := range workflowVersionUpgradePlan(current) {
 			pending = append(pending, map[string]string{"version": step.to, "migration": step.label})
 		}
-		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "version": workflowContractVersionForUpgrade(current), "platform_version": WorkflowContractCurrentVersion, "code_layout_version": current.CodeLayoutVersion, "pending": pending, "next": "Do the next migration's work, then workflow_upgrade action=stamp. The agent-step migration (1.0.47) is plan action=migrate_agent_steps with empty arguments; other migrations use builder_chat."})
+		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "version": workflowContractVersionForUpgrade(current), "platform_version": WorkflowContractCurrentVersion, "code_layout_version": current.CodeLayoutVersion, "pending": pending, "next": "Do the next migration's work, then workflow_upgrade action=stamp. The agent-step migration (1.0.47) is plan action=migrate_agent_steps with empty arguments; the Goal-agent migration (1.0.50) is plan action=migrate_goal_agents; other migrations use builder_chat."})
 		return
 	}
 	if action != "stamp" {

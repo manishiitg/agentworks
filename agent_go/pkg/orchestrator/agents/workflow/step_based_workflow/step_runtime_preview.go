@@ -157,6 +157,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 		vars["IsScriptedLocked"] = fmt.Sprint(*stepConfig.LockCode)
 	}
 	if agent, ok := step.(*AgentPlanStep); ok {
+		hadHelpers := len(agent.PredefinedRoutes) > 0
+		runtimeAgent := *agent
+		runtimeAgent.PredefinedRoutes = goalScriptedRoutes(agent.PredefinedRoutes)
+		agent = &runtimeAgent
+		step = agent
 		if agent.AuthoredPrompt {
 			return nil, fmt.Errorf("authored-prompt steps use their own renderer; inspect their authored contract and get_step_prompts for a saved run")
 		}
@@ -188,7 +193,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 		if !agentDescriptionFirst(agent) && (itemID == "" || (len(agent.Items) > 0 && item.ID == agent.Items[0].ID)) {
 			vars["InitialTaskDescription"] = ResolveVariables(agentTaskDescription(agent), values)
 		}
-		if len(agent.PredefinedRoutes) > 0 {
+		if hadHelpers {
 			readPaths, writePaths = hcpo.setupOrchestratorFolderGuard(step, step.GetID())
 			vars = hcpo.buildOrchestratorTemplateVars(ctx, agent, max(info.TopIndex-1, 0), step.GetID(), nil, nil, plan.Steps, "", nil, values)
 			vars["StepContextDependencies"] = strings.Join(step.GetContextDependencies(), "\n")
@@ -197,8 +202,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 			if !agentDescriptionFirst(agent) && (itemID == "" || (len(agent.Items) > 0 && item.ID == agent.Items[0].ID)) {
 				vars["InitialTaskDescription"] = ResolveVariables(agentTaskDescription(agent), values)
 			}
-			result.InvocationTools = registeredToolNames(virtualtools.CreateSubAgentTools())
-			result.Unresolved = append(result.Unresolved, "Conditional specialist call tools require an admitted owning invocation; child call paths and inputs resolve at runtime.")
+			for _, tool := range virtualtools.CreateSubAgentTools() {
+				if !agent.AuthoredPrompt && goalScriptHelperTool(tool.Function.Name) {
+					result.InvocationTools = append(result.InvocationTools, tool.Function.Name)
+				}
+			}
+			result.Unresolved = append(result.Unresolved, "Scripted helper calls require an owning invocation; typed parameters and output paths resolve at runtime. LLM child agents are retired.")
 		}
 	} else if _, ok := step.(*ScriptedPlanStep); !ok {
 		return nil, fmt.Errorf("step type %q does not create an execution agent", step.StepType())

@@ -15,8 +15,7 @@ Do not create an agentic scripted step: every new conversational or judgment-hea
 steps are normalized to a one-turn agent at runtime; they never use the removed
 direct scripted-agent path. See `read_skill(skills=[{"name":"builder-reference","path":"references/agent.md"}])`.
 Use the others for branching (`branch` for a small in-flow decision, `routing` for a major
-sub-workflow fork), adaptive specialist coordination (`agent` with
-`predefined_routes`). Supply known operator values as required launch variables;
+sub-workflow fork), persistent specialist coordination (an explicit Crew step). Supply known operator values as required launch variables;
 use an agent's `human_feedback` for live interaction or a durable human request
 when the answer can wait. Read `references/human-in-the-loop.md`.
 
@@ -132,7 +131,7 @@ steps and rejects invalid values before registering background execution.
 
 - Branching on a decision or run flag → **`branch`** (small in-flow decision) or **`routing`**
   (major, self-contained sub-workflow fork).
-- Owning an adaptive strategy that interprets evidence and chooses subsequent specialist work → **`agent` with `predefined_routes`**. A known script batch belongs in a `scripted` item; worker count alone does not justify routes.
+- Owning an adaptive strategy that interprets evidence and chooses subsequent specialist work → **an explicit Crew step**. A known script batch belongs in a `scripted` item; worker count alone does not justify routes.
 - Same-context ordered turns, a stateful conversation, self-validation/grounding
   gate, or stepping through a db array row-by-row → **`agent`**
   (incl. its `foreach` item).
@@ -157,8 +156,8 @@ Each saved-script attempt is retained in the execution log directory as `scripte
 - Narrative branching in the description ("if X do A else B") — use a `branch` or `routing` step.
 - Choosing an agent merely because there are many records. Deterministic row processing
   can stay in a saved script. Use SQL `foreach` in `references/agent.md`
-  when every selected row needs a conversational turn; add `predefined_routes`
-  when the parent must adaptively choose bounded specialists for the investigation.
+  when every selected row needs a conversational turn; use an explicit Crew step
+  when the task needs LLM specialists; keep predefined_routes for typed scripts.
 - Missing or weak `validation_schema` — every step needs one strong enough that a
   bad/absent output fails it.
 

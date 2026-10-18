@@ -31,7 +31,7 @@ func workflowContractVersionForUpgrade(manifest *WorkflowManifest) string {
 // layout migration.
 func workflowContractVersionIsExecutionCompatible(version string) bool {
 	switch strings.TrimSpace(version) {
-	case workflowContractUnifiedAgentVersion, workflowContractDescriptionFirstVersion, workflowContractResourceIntentVersion:
+	case workflowContractUnifiedAgentVersion, workflowContractDescriptionFirstVersion, workflowContractResourceIntentVersion, workflowContractGoalAgentVersion:
 		return true
 	}
 	return false
@@ -43,6 +43,7 @@ func workflowContractVersionIsExecutionCompatible(version string) bool {
 // migration, except its absent stores below (PLAT-431, PLAT-441). New ladder
 // entries apply to both products by default; these are explicit exceptions.
 var goalsOnlyWorkflowUpgrades = map[string]bool{
+	"upgrade-goal-agent":                     true,
 	"upgrade-notification-config":            true,
 	"upgrade-current-artifact-contract":      true,
 	"upgrade-direct-html-reports":            true,
@@ -139,6 +140,7 @@ func workflowContractVersionRank(version string) (int, bool) {
 		workflowContractUnifiedAgentVersion,
 		workflowContractDescriptionFirstVersion,
 		workflowContractResourceIntentVersion,
+		workflowContractGoalAgentVersion,
 	}
 	for rank, candidate := range known {
 		if version == candidate {
@@ -609,6 +611,9 @@ func fullWorkflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersio
 	if rank < 48 {
 		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractResourceIntentVersion, label: "upgrade-resource-intent", query: upgradeResourceIntent})
 	}
+	if rank < 49 {
+		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractGoalAgentVersion, label: "upgrade-goal-agent", query: upgradeGoalAgent})
+	}
 	// Attached here rather than at the call site so the turn text is identical
 	// wherever it is built. The version pair used to be added only on the Pulse
 	// delivery path, which meant the blocking preflight — the one that actually
@@ -661,3 +666,13 @@ Say read or write exactly as the step's actual grants allow; never claim a write
 LIMITS. (1) No new access. Describe only resources the step already has. Naming a workflow path (learnings/, knowledgebase/, code/shared/, soul/, db/README.md) or a brain: note in Inputs, Resources or Guides grants read access, so do not write such a reference in a step that does not already name it; describe the resource by purpose instead. Never edit access, grants, store modes or secret selections. If a description needs a resource the step cannot reach, do not fix it: report it to the operator. (2) Definitions only: no data moves between stores, no database schema change, no learnings rewrite. (3) Do not change scripts, validation, wiring, routes, items, ordering or optional sequence semantics. (4) Existing wording and policies in each description stay unless they contradict a grant.
 
 Read back the plan and show the operator the full description diff before stamping, and name any step whose description_reviewed mark was cleared because its description changed (the plan tools do that on purpose). Once every ordinary agent is reviewed, call set_workflow_contract_version(version="1.0.49"). The stamp refuses an agent whose ## Resources does not state all four resources, or says none for a resource its Inputs, Resources or Guides name; it does not judge your wording. Workflows on 1.0.48 keep running until migrated. Stop after stamping.`
+
+const upgradeGoalAgent = `WORKFLOW CONTRACT UPGRADE: EXPLICIT GOAL AGENT TASKS (1.0.50).
+
+Read planning/plan.json and planning/step_config.json first. Call migrate_goal_agents. It retires only LLM specialist routes and automatic reflection objectives, preserving their original names, instructions and destinations verbatim in each step's goal_agent_migration audit note and the plan changelog. Scripted routes with typed I/O remain callable helpers. IDs, explicit access settings, authored message phases, outputs, data and run history stay. Configured access modes are unchanged. Former objective-inferred write access is recorded in the audit note, never converted into a standing grant; let the owner decide if an explicit task needs a new write grant.
+
+Read the resulting notes. For every former learning_objective or knowledgebase_contribution, tell the owner what it used to contribute and its destination. If that contribution is required by the goal, move it into the relevant task description (respect the existing store grants); otherwise explain that Builder, Pulse or Crew can do it explicitly. No automatic post-validation reflection turn remains, including scripted post-processing and restart recovery.
+
+Keep explicitly authored follow-up phases. Do not collapse an authored sequence by guessing; remove only reviewed redundant platform scaffolding, preserving any unique requirement in the task and describing each edit in the changelog. Do not convert to a new agent type or rewrite the Goal runner. For retired LLM specialist routes, record a Pulse issue suggesting an explicit Crew step; do not create a Crew automatically. Keep the retired route instructions in the audit note, outside executable descriptions.
+
+Read back the full plan/config diff. Preserve validation with bounded repair in the same conversation, resource grants, tools/secrets, real outputs, logs, costs and metric history. Do not run a business workflow as part of migration. When review is complete call set_workflow_contract_version(version="1.0.50") and stop. Older compatible workflows may still run, but LLM specialist spawning and automatic reflection are retired at runtime even before this explicit migration.`

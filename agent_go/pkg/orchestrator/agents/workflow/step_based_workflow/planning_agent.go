@@ -246,8 +246,8 @@ type AgentConfigs struct {
 	ExecutionLLMReason           string          `json:"execution_llm_reason,omitempty"`            // PLAT-060. Why this step is pinned to a specific model. Required whenever execution_llm is set — update_step_config rejects the pin without it. A pin outranks execution_tier entirely, so it silently overrides every tier decision above it. Cite the owning architecture_review finding id, and the human_input_id when the pin was user-approved.
 	ExecutionTier                string          `json:"execution_tier,omitempty"`                  // Persistent execution tier override in tiered mode: "high" | "medium" | "low"
 	ExecutionTierReason          string          `json:"execution_tier_reason,omitempty"`           // PLAT-060. Why this step's tier is pinned. Required whenever execution_tier is set — update_step_config rejects the override without it. The tier stays configured until explicitly changed; run counters do not select tiers. Cite the owning architecture_review finding id, and the human_input_id when approved.
-	LearningObjective            string          `json:"learning_objective,omitempty"`              // What SKILL.md should capture from successful runs of this step — selectors, timings, auth flows, tool-call patterns, API quirks. This is the instruction the step agent uses during its post-completion turn to know what HOW-to-run knowledge to extract. Required when learnings_access includes write; must be specific (not "learn from this run").
-	LearningsAccess              string          `json:"learnings_access,omitempty"`                // "read" | "read-write" | "none". Mirrors knowledgebase_access. "read" (default): step sees global SKILL.md in its prompt but doesn't write. "read-write": reads and writes — requires learning_objective to be non-empty. "none": no read, no write. Empty = legacy auto-migration (see resolveLearningsAccess). Writes happen via the step agent's own post-completion turn (shell + diff_patch_workspace_file); no separate analyzer runs.
+	LearningObjective            string          `json:"learning_objective,omitempty"`              // Legacy automatic contribution instruction; archived by contract 1.0.50. New contributions belong in the task.
+	LearningsAccess              string          `json:"learnings_access,omitempty"`                // read (default), read-write for explicit task contributions, or none. Legacy objective inference ends at migration.
 	LegacyLockLearnings          *bool           `json:"lock_learnings,omitempty"`                  // PLAT-263 migration-only. true is normalized to learnings_access="read"; false is removed. Never consumed by runtime.
 	LegacyLockLearningsReason    string          `json:"lock_learnings_reason,omitempty"`           // PLAT-263 migration-only audit residue; removed with LegacyLockLearnings.
 	LockCode                     *bool           `json:"lock_code,omitempty"`                       // lock code (main.py) - prevents LLM-rewritten main.py from being saved back to learnings, skips fix loop (nil = not set/unlocked, true = locked, false = explicitly unlocked)
@@ -258,7 +258,7 @@ type AgentConfigs struct {
 	EnabledSkills                []string        `json:"enabled_skills,omitempty"`                  // Step-level skill selection (skill folder names, overrides preset if specified)
 	AdditionalReadPaths          []string        `json:"additional_read_paths,omitempty"`           // Extra workflow-relative folders/files this step may read (for example "variables" or "reports/reference.json"). Paths are read-only, must stay inside this workflow, and never widen write access.
 	KnowledgebaseAccess          string          `json:"knowledgebase_access,omitempty"`            // "read" | "write" | "read-write" | "none". Empty defaults to "read" so every step can consume shared context; "none" explicitly opts out. A non-empty knowledgebase_contribution promotes an unset mode to "read-write", but writes still require that contribution contract. Read access includes knowledgebase/context/context.md. knowledgebase/context/ is excluded from KB health/fixer passes — user-supplied content is never silently rewritten.
-	KnowledgebaseContribution    string          `json:"knowledgebase_contribution,omitempty"`      // User-authored instruction for KB writes — what this step should contribute to notes/. In "agent" write-method, it's the extraction instruction handed to the post-step KB update agent. In "direct" write-method, it's injected into the step agent's prompt as its contribution contract. Required to trigger KB writes; if empty, no KB write happens regardless of access.
+	KnowledgebaseContribution    string          `json:"knowledgebase_contribution,omitempty"`      // Legacy automatic KB contribution instruction, archived with its destination by contract 1.0.50.
 	DisableParallelToolExecution *bool           `json:"disable_parallel_tool_execution,omitempty"` // Disable parallel tool execution for this step (nil = enabled by default, true = disabled, false = explicitly enabled)
 	CodingAgentTmuxLifecycle     string          `json:"coding_agent_tmux_lifecycle,omitempty"`     // Tmux lifecycle for CLI coding providers: "close_on_completion" (default for steps) or "keep_alive" (only when a step intentionally needs the native coding session after completion).
 	SuccessfulRuns               *int            `json:"successful_runs,omitempty"`                 // System-managed counter. Written by syncSuccessfulRunsToStepConfig after each successful validation; mirrors the authoritative count in learning metadata. Read by the readiness checklist to gauge optimization progress (3+ = ready). Agents must NOT set this directly.
@@ -449,6 +449,8 @@ const (
 
 // CommonStepFields contains fields shared by all step types
 type CommonStepFields struct {
+	GoalAgentMigration json.RawMessage `json:"goal_agent_migration,omitempty"` // Historical instructions, never executed or injected.
+
 	RequiredVariables   []string              `json:"required_variables,omitempty"` // Launch values required before this step can run.
 	ID                  string                `json:"id"`                           // Stable step ID (generated from title) - required
 	Title               string                `json:"title"`
@@ -1548,7 +1550,7 @@ func getAddAgentStepSchema() string {
 			},
 			"predefined_routes": {
 				"type": "array",
-				"description": "OPTIONAL: Bounded specialist agents available to this agent agent. The agent decides at runtime whether, when, and how often to call them. This does not prescribe execution order. Each route must provide route_id, route_name, condition, and either sub_agent_step or orphan_step_ref.",
+				"description": "OPTIONAL: Declared scripted Python helpers with typed inputs and outputs. The Agent chooses when to call them. Each route needs route_id, route_name, condition and a scripted sub_agent_step or scripted orphan_step_ref. Use an explicit Crew step for LLM specialists.",
 				"items": {"type": "object"}
 			},
 			"next_step_id": {"type": "string", "description": "Optional next step ID or end."},
@@ -1582,7 +1584,7 @@ func getUpdateAgentStepSchema() string {
 			},
 			"predefined_routes": {
 				"type": "array",
-				"description": "OPTIONAL: Replaces the bounded specialist routes available to this agent. The agent—not the plan queue—decides which routes to call. Include every route to keep; [] removes delegation.",
+				"description": "OPTIONAL: Replaces this Agent's typed scripted helper routes. Include every helper to keep; [] removes helpers. LLM specialist routes are retired; preserve old instructions through workflow_upgrade.",
 				"items": {"type": "object"}
 			},
 			"next_step_id": {"type": "string", "description": "OPTIONAL: Replaces the explicit next step ID, or 'end'. Omit to preserve sequential execution."},
@@ -1905,123 +1907,264 @@ func getUpdateBranchStepSchema() string {
 // getAddAgentRouteSchema returns the JSON schema for add_agent_route tool
 func getAddAgentRouteSchema() string {
 	return `{
-		"type": "object",
-		"properties": {
-			"parent_step_id": {
-				"type": "string",
-				"description": "REQUIRED: The ID of the agent step (parent step). Use the step's id field from the plan."
-			},
-			"new_route": {
-				"type": "object",
-				"description": "REQUIRED: The new predefined route to add. Must include all required fields.",
-				"properties": {
-					"route_id": {
-						"type": "string",
-						"description": "REQUIRED: Unique ID for this route (e.g., 'api-fetcher', 'data-transformer')"
-					},
-					"route_name": {
-						"type": "string",
-						"description": "REQUIRED: Human-readable name for this route (e.g., 'API Data Fetcher', 'Data Transformer')"
-					},
-					"condition": {
-						"type": "string",
-						"description": "REQUIRED: Description of when to use this predefined agent (e.g., 'For tasks requiring API calls')"
-					},
-					"orphan_step_ref": {
-						"type": "string",
-						"description": "OPTIONAL: ID of a reusable orphan step from orphan_steps in this same plan. Use this instead of sub_agent_step when you want the route to reuse a shared orphan step definition that is shared_with this parent orchestrator."
-					},
-					"sub_agent_step": {
-						"type": "object",
-						"description": "OPTIONAL: The inline sub-agent step definition. Use type='agent' for every new conversational or judgment-heavy specialist, even one turn. Use type='scripted' only for a deterministic scripted boundary. Agent specialists may declare routes for one nested delegation layer. Omit this when using orphan_step_ref.",
-						"properties": {
-							"type": {"type": "string", "enum": ["agent", "scripted"], "description": "REQUIRED: agent for conversational work; scripted only for deterministic scripted work; agent specialists may own one nested delegation layer."},
-							"id": {"type": "string", "description": "REQUIRED: Stable step ID for the sub-agent step"},
-							"title": {"type": "string", "description": "REQUIRED: Title of the sub-agent step"},
-							"description": {"type": "string", "description": "REQUIRED: What this specialized agent does AND its standing brief. For scripted routes this is the stable code contract; runtime variation belongs in script_parameters. For agent routes, per-call instructions are added on top."},
-							"script_parameters": {"type": "object", "description": "For scripted routes: named values main.py accepts through STEP_PARAMS_JSON. Each value is {type, description, required?, default?, enum?}.", "additionalProperties": {"type": "object", "properties": {"type": {"type": "string", "enum": ["string", "number", "integer", "boolean", "array", "object"]}, "description": {"type": "string"}, "required": {"type": "boolean"}, "default": {}, "enum": {"type": "array"}}, "required": ["type", "description"]}},
-							"script_parameters_schema": {"type": "object", "description": "For scripted routes, instead of script_parameters: one full JSON Schema (type object) for the whole parameters object, for nested or constrained inputs (nested objects, patterns, min/max, additionalProperties false). Declare one or the other, never both. The route's named tool uses it as its input schema."},
-							"prompt_contract": {"type":"string", "enum":["description-first-v1"], "description":"Use description-first-v1 after reviewing the description and optional follow-ups. New agents use it automatically; omit on updates to retain an unmigrated agent's semantics."},
-            "system_rules": {"type":"string", "description":"Compatibility input only: merged into the description Rules section. New authoring puts all task rules in description, once. Preserve approval, spend, scope and evidence rules."},
-            "initial_write_access": {"type":"object", "additionalProperties":false, "properties":{"knowledgebase":{"type":"boolean"},"db":{"type":"boolean"},"learnings":{"type":"boolean"}}, "description":"Optional store narrowing for the description turn, preserving the old first work turn's access during migration. Booleans knowledgebase/db/learnings; never grants beyond step configuration. {} explicitly narrows Brain/learnings writes off."},
-            "items": {"type": "array", "description": "Optional when type='agent': follow-ups after the description turn; [] is valid.", "items": {"type": "object"}},
-							"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
-			"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "Exact durable file outputs this child consumes. The runtime resolves and injects these files. Use [] when the child reads durable state from managed DB/KB tools instead."},
-							"context_output": {"type": "string", "description": "OPTIONAL: Context file this step creates. Omit when the step writes to the db (validate via validation_schema.db)."},
-							"predefined_routes": {"type": "array", "description": "For an agent specialist: optional predefined routes. Conversational children use agent; deterministic scripted children may use scripted. A second nested delegation layer is not allowed."},
-							"validation_schema": {
-								"type": "object",
-								"description": "OPTIONAL: Validation schema for the sub-agent output"
-							}
-						},
-						"required": ["type", "id", "title"]
-					}
-				},
-				"required": ["route_id", "route_name", "condition"]
-			},
-			"reason": {
-				"type": "string",
-				"description": "REQUIRED: One-sentence rationale for why this todo-task route is being added. Captured into the plan changelog."
-			}
-		},
-		"required": ["parent_step_id", "new_route", "reason"]
-	}`
+  "type": "object",
+  "properties": {
+    "parent_step_id": {
+      "type": "string",
+      "description": "REQUIRED: The ID of the agent step (parent step). Use the step's id field from the plan."
+    },
+    "new_route": {
+      "type": "object",
+      "description": "REQUIRED: The new predefined route to add. Must include all required fields.",
+      "properties": {
+        "route_id": {
+          "type": "string",
+          "description": "REQUIRED: Unique ID for this route (e.g., 'api-fetcher', 'data-transformer')"
+        },
+        "route_name": {
+          "type": "string",
+          "description": "REQUIRED: Human-readable name for this route (e.g., 'API Data Fetcher', 'Data Transformer')"
+        },
+        "condition": {
+          "type": "string",
+          "description": "When this scripted helper is useful to the parent task."
+        },
+        "orphan_step_ref": {
+          "type": "string",
+          "description": "Reusable scripted orphan step shared with this parent Agent, instead of an inline sub_agent_step."
+        },
+        "sub_agent_step": {
+          "type": "object",
+          "description": "Saved scripted Python helper definition, with typed inputs and outputs. LLM specialists belong to an explicit Crew step. Omit when using orphan_step_ref.",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "scripted"
+              ],
+              "description": "A deterministic saved Python helper."
+            },
+            "id": {
+              "type": "string",
+              "description": "REQUIRED: Stable step ID for the sub-agent step"
+            },
+            "title": {
+              "type": "string",
+              "description": "REQUIRED: Title of the sub-agent step"
+            },
+            "description": {
+              "type": "string",
+              "description": "Stable script contract: inputs, output, side effects and failure behavior. Runtime values belong in script_parameters."
+            },
+            "script_parameters": {
+              "type": "object",
+              "description": "For scripted routes: named values main.py accepts through STEP_PARAMS_JSON. Each value is {type, description, required?, default?, enum?}.",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "string",
+                      "number",
+                      "integer",
+                      "boolean",
+                      "array",
+                      "object"
+                    ]
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "default": {},
+                  "enum": {
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "type",
+                  "description"
+                ]
+              }
+            },
+            "script_parameters_schema": {
+              "type": "object",
+              "description": "For scripted routes, instead of script_parameters: one full JSON Schema (type object) for the whole parameters object, for nested or constrained inputs (nested objects, patterns, min/max, additionalProperties false). Declare one or the other, never both. The route's named tool uses it as its input schema."
+            },
+            "required_variables": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."
+            },
+            "context_dependencies": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Exact durable file outputs this child consumes. The runtime resolves and injects these files. Use [] when the child reads durable state from managed DB/KB tools instead."
+            },
+            "context_output": {
+              "type": "string",
+              "description": "OPTIONAL: Context file this step creates. Omit when the step writes to the db (validate via validation_schema.db)."
+            },
+            "validation_schema": {
+              "type": "object",
+              "description": "OPTIONAL: Validation schema for the sub-agent output"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "title"
+          ]
+        }
+      },
+      "required": [
+        "route_id",
+        "route_name",
+        "condition"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "description": "REQUIRED: One-sentence rationale for why this todo-task route is being added. Captured into the plan changelog."
+    }
+  },
+  "required": [
+    "parent_step_id",
+    "new_route",
+    "reason"
+  ]
+}`
 }
 
 // getUpdateAgentRouteSchema returns the JSON schema for update_agent_route tool
 func getUpdateAgentRouteSchema() string {
 	return `{
-		"type": "object",
-		"properties": {
-			"parent_step_id": {
-				"type": "string",
-				"description": "REQUIRED: The ID of the agent step (parent step). Use the step's id field from the plan."
-			},
-			"existing_route_id": {
-				"type": "string",
-				"description": "REQUIRED: The route_id of the route to update. Use the route's route_id field from the plan."
-			},
-			"route_name": {
-				"type": "string",
-				"description": "OPTIONAL: Updated route name. Only include if you want to change it."
-			},
-			"condition": {
-				"type": "string",
-				"description": "OPTIONAL: Updated condition description. Only include if you want to change it."
-			},
-			"orphan_step_ref": {
-				"type": "string",
-				"description": "OPTIONAL: Reference a reusable orphan step from orphan_steps in this same plan. When set, the route will resolve that orphan step for this orchestrator instead of using an inline sub_agent_step."
-			},
-			"sub_agent_step": {
-				"type": "object",
-				"description": "OPTIONAL: Updated inline sub-agent step. Use agent for conversational or judgment-heavy work, scripted only for deterministic scripted work, optional predefined_routes for one nested delegation layer. Omit this when using orphan_step_ref.",
-				"properties": {
-					"type": {"type": "string", "enum": ["agent", "scripted"]},
-					"id": {"type": "string"},
-					"title": {"type": "string"},
-					"description": {"type": "string", "description": "OPTIONAL: Replaces the stable route contract. For scripted routes, runtime variation belongs in script_parameters. Omit to preserve the existing description."},
-					"script_parameters": {"type": "object", "description": "For scripted routes: replace the named STEP_PARAMS_JSON contract. Each value is {type, description, required?, default?, enum?}.", "additionalProperties": {"type": "object", "properties": {"type": {"type": "string", "enum": ["string", "number", "integer", "boolean", "array", "object"]}, "description": {"type": "string"}, "required": {"type": "boolean"}, "default": {}, "enum": {"type": "array"}}, "required": ["type", "description"]}},
-					"script_parameters_schema": {"type": "object", "description": "For scripted routes, instead of script_parameters: one full JSON Schema (type object) for the whole parameters object, for nested or constrained inputs (nested objects, patterns, min/max, additionalProperties false). Declare one or the other, never both. The route's named tool uses it as its input schema."},
-					"prompt_contract": {"type":"string", "enum":["description-first-v1"], "description":"Use description-first-v1 after reviewing the description and optional follow-ups. New agents use it automatically; omit on updates to retain an unmigrated agent's semantics."},
-            "system_rules": {"type":"string", "description":"Compatibility input only: merged into the description Rules section. New authoring puts all task rules in description, once. Preserve approval, spend, scope and evidence rules."},
-            "initial_write_access": {"type":"object", "additionalProperties":false, "properties":{"knowledgebase":{"type":"boolean"},"db":{"type":"boolean"},"learnings":{"type":"boolean"}}, "description":"Optional store narrowing for the description turn, preserving the old first work turn's access during migration. Booleans knowledgebase/db/learnings; never grants beyond step configuration. {} explicitly narrows Brain/learnings writes off."},
-            "items": {"type": "array", "description": "Optional when type='agent'. Replaces all subsequent turns; [] clears them. The description executes alone first under description-first-v1. Add a user_message for a coherent phase, evidence-based verification, critique, repair, new input, or a real phase change. Before restructuring this into anything beyond a single verify/repair turn, load references/agent.md: read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/agent.md\"}]).", "items": {"type": "object"}},
-					"required_variables": {"type": "array", "items": {"type": "string"}, "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."},
-			"context_dependencies": {"type": "array", "items": {"type": "string"}, "description": "Exact durable file outputs this child consumes. The runtime resolves and injects these files. Use [] when the child reads durable state from managed DB/KB tools instead."},
-					"context_output": {"type": "string"},
-					"predefined_routes": {"type": "array", "description": "Optional routes for an agent specialist. Children may use agent or scripted; a second nested delegation layer is not allowed."},
-						"validation_schema": {"type": "object"}
-				},
-				"required": ["type", "id", "title"]
-			},
-			"reason": {
-				"type": "string",
-				"description": "REQUIRED: One-sentence rationale for why this todo-task route is being updated. Captured into the plan changelog."
-			}
-		},
-		"required": ["parent_step_id", "existing_route_id", "reason"]
-	}`
+  "type": "object",
+  "properties": {
+    "parent_step_id": {
+      "type": "string",
+      "description": "REQUIRED: The ID of the agent step (parent step). Use the step's id field from the plan."
+    },
+    "existing_route_id": {
+      "type": "string",
+      "description": "REQUIRED: The route_id of the route to update. Use the route's route_id field from the plan."
+    },
+    "route_name": {
+      "type": "string",
+      "description": "OPTIONAL: Updated route name. Only include if you want to change it."
+    },
+    "condition": {
+      "type": "string",
+      "description": "When this scripted helper is useful to the parent task."
+    },
+    "orphan_step_ref": {
+      "type": "string",
+      "description": "Reusable scripted orphan step shared with this parent Agent, instead of an inline sub_agent_step."
+    },
+    "sub_agent_step": {
+      "type": "object",
+      "description": "Saved scripted Python helper definition, with typed inputs and outputs. LLM specialists belong to an explicit Crew step. Omit when using orphan_step_ref.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "scripted"
+          ],
+          "description": "A deterministic saved Python helper."
+        },
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string",
+          "description": "Stable script contract: inputs, output, side effects and failure behavior. Runtime values belong in script_parameters."
+        },
+        "script_parameters": {
+          "type": "object",
+          "description": "For scripted routes: replace the named STEP_PARAMS_JSON contract. Each value is {type, description, required?, default?, enum?}.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "string",
+                  "number",
+                  "integer",
+                  "boolean",
+                  "array",
+                  "object"
+                ]
+              },
+              "description": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "default": {},
+              "enum": {
+                "type": "array"
+              }
+            },
+            "required": [
+              "type",
+              "description"
+            ]
+          }
+        },
+        "script_parameters_schema": {
+          "type": "object",
+          "description": "For scripted routes, instead of script_parameters: one full JSON Schema (type object) for the whole parameters object, for nested or constrained inputs (nested objects, patterns, min/max, additionalProperties false). Declare one or the other, never both. The route's named tool uses it as its input schema."
+        },
+        "required_variables": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Declared launch variables that must have nonblank values before this step runs. Use variable names exactly; [] clears the requirement."
+        },
+        "context_dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Exact durable file outputs this child consumes. The runtime resolves and injects these files. Use [] when the child reads durable state from managed DB/KB tools instead."
+        },
+        "context_output": {
+          "type": "string"
+        },
+        "validation_schema": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "type",
+        "id",
+        "title"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "description": "REQUIRED: One-sentence rationale for why this todo-task route is being updated. Captured into the plan changelog."
+    }
+  },
+  "required": [
+    "parent_step_id",
+    "existing_route_id",
+    "reason"
+  ]
+}`
 }
 
 // getDeleteAgentRouteSchema returns the JSON schema for delete_agent_route tool
@@ -4251,6 +4394,11 @@ func createUpdateAgentStepExecutor(workspacePath string, logger loggerv2.Logger,
 					}
 				}
 			}
+			if partialUpdate.PredefinedRoutes != nil {
+				if err := validateGoalScriptedRouteAuthoring(sequenceStep.PredefinedRoutes, plan); err != nil {
+					return "", err
+				}
+			}
 			if err := validateAgentStepFieldsTyped(sequenceStep); err != nil {
 				return "", fmt.Errorf("validation failed: %w", err)
 			}
@@ -5313,6 +5461,9 @@ func createSingleStepAdder(workspacePath string, logger loggerv2.Logger, readFil
 			}
 		case "agent":
 			if sequenceStep, ok := typedStep.(*AgentPlanStep); ok {
+				if err := validateGoalScriptedRouteAuthoring(sequenceStep.PredefinedRoutes); err != nil {
+					return "", err
+				}
 				if err := validateAgentStepFieldsTyped(sequenceStep); err != nil {
 					return "", fmt.Errorf("validation failed: %w", err)
 				}
@@ -5323,6 +5474,12 @@ func createSingleStepAdder(workspacePath string, logger loggerv2.Logger, readFil
 		oldPlan, err := readPlanFromFile(ctx, workspacePath, readFile)
 		if err != nil {
 			return "", fmt.Errorf("failed to read plan: %w", err)
+		}
+
+		if agent, ok := typedStep.(*AgentPlanStep); ok {
+			if err := validateGoalScriptedRouteAuthoring(agent.PredefinedRoutes, oldPlan); err != nil {
+				return "", err
+			}
 		}
 
 		// PLAT-294: at most one routing step per plan. Checked only here, on
@@ -5485,7 +5642,7 @@ func createCreatePlanExecutor(workspacePath string, logger loggerv2.Logger, read
 Before adding it, decide the step type by who decides the work, not by habit:
 - add_agent_step is the DEFAULT for conversational/judgment work, including one-turn work. Default to one large agent per shared-context span; split only for a concrete boundary (distinct durable output, independent retry/failure domain, different credentials/tools, a downstream consumer needing the intermediate artifact, or a human checkpoint) — not because there are several known sub-tasks or many tool calls.
 - add_scripted_step only for deterministic, no-judgment work (fixed API/CLI/data fetch, parsing, mechanical writes). A known list of actions sharing one context is still ONE agent, not one scripted/agentic step per action.
-- add optional predefined_routes to the agent only when the agent must interpret runtime evidence and adaptively choose specialist work — a fixed child set/order does not qualify. Use the same agent type for plain conversations and specialist delegation.
+- predefined_routes are typed scripted helpers only. Put LLM specialist teams in an explicit Crew step. The Agent owns its task, optional authored follow-ups and validation; it has no automatic reflection phase.
 - add_routing_step / add_branch_step only for a real fixed branch choice (routing: one major sub-workflow fork per plan; branch: a small in-flow decision).
 - Supply known values through run variables/function arguments or per-step human_inputs. Agents use human_feedback for urgent missing values and create_human_input_request for durable decisions.
 
@@ -5513,6 +5670,10 @@ func registerNativePlanModificationTools(
 	// No need to register it again here to avoid duplicate registration errors
 
 	if err := mcpAgent.RegisterCustomTool("migrate_agent_steps", "Migrate saved agent step types to agent/items without changing routes, contracts, or user text. Call during workflow contract v1.0.47 preflight.", objectToolSchema(map[string]interface{}{}), createMigrateAgentStepsExecutor(workspacePath, logger, readFile, writeFile), "workflow"); err != nil {
+		return err
+	}
+
+	if err := mcpAgent.RegisterCustomTool("migrate_goal_agents", "Review-preserving Goal contract migration: retire automatic contribution objectives and LLM routes; retain scripted helpers, authored phases, configured access and original instructions in audit notes. Call only during workflow_upgrade to 1.0.50.", objectToolSchema(map[string]interface{}{}), createMigrateGoalAgentsExecutor(workspacePath, logger, readFile, writeFile), "workflow"); err != nil {
 		return err
 	}
 
@@ -5719,7 +5880,7 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"add_agent_step",
-		"Add an agent step (plan type agent): one persistent agent conversation with ordered user turns, optional deterministic scripted batches, and optional predefined_routes for bounded specialist delegation. When routes are present, this agent decides at runtime whether, when, and how often to call them; the routes are capabilities, not a prescribed checklist. Put the complete executable task in description, sent alone as the first user turn; put task-specific policies in its Rules section. Items are optional subsequent phases, with retained_reason on the first explaining why it adds value without repeating work. Fixed API/SDK/CLI work belongs in scripted steps or scripted items. The top-level validation_schema is enforced with same-conversation repair retries. Plain turns inherit step-level DB/KB/learnings permissions; kind or non-empty write_access can narrow one turn.",
+		"Add an agent step (plan type agent): one persistent agent conversation with ordered user turns, optional deterministic scripted batches, and optional predefined_routes for declared typed scripted helpers. LLM specialists belong to an explicit Crew step. No automatic reflection turn is added. Put the complete executable task in description, sent alone as the first user turn; put task-specific policies in its Rules section. Items are optional subsequent phases, with retained_reason on the first explaining why it adds value without repeating work. Fixed API/SDK/CLI work belongs in scripted steps or scripted items. The top-level validation_schema is enforced with same-conversation repair retries. Plain turns inherit step-level DB/KB/learnings permissions; kind or non-empty write_access can narrow one turn.",
 		agentSequenceParams,
 		createAddAgentStepExecutor(workspacePath, logger, readFile, writeFile, moveFile),
 		"workflow",
@@ -6255,6 +6416,9 @@ func createAddAgentRouteExecutor(workspacePath string, logger loggerv2.Logger, r
 		if err := resolvePlanOrphanStepRefs(plan); err != nil {
 			return "", fmt.Errorf("failed to resolve orphan step references after adding route: %w", err)
 		}
+		if err := validateGoalScriptedRouteAuthoring([]PlanOrchestrationRoute{(*routes)[len(*routes)-1]}); err != nil {
+			return "", err
+		}
 		if err := validateParent(); err != nil {
 			return "", fmt.Errorf("validation failed after adding route: %w", err)
 		}
@@ -6432,6 +6596,9 @@ func createUpdateAgentRouteExecutor(workspacePath string, logger loggerv2.Logger
 
 		if err := resolvePlanOrphanStepRefs(plan); err != nil {
 			return "", fmt.Errorf("failed to resolve orphan step references after route update: %w", err)
+		}
+		if err := validateGoalScriptedRouteAuthoring([]PlanOrchestrationRoute{*routeToUpdate}); err != nil {
+			return "", err
 		}
 		if err := validateParent(); err != nil {
 			return "", fmt.Errorf("validation failed after route update: %w", err)

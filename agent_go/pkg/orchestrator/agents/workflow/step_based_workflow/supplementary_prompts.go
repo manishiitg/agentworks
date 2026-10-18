@@ -58,9 +58,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) assembleStepRuntimeIdentity(config *a
 	if slices.Contains(registeredTools, "query_workflow_db") {
 		effectiveSkills = appendUniqueSkill(effectiveSkills, "workflow-database")
 	}
-	if hcpo.platformStoresEnabled() {
-		effectiveSkills = appendUniqueSkill(effectiveSkills, "workflow-reflection")
-	}
 	if sharedKBRead {
 		effectiveSkills = appendUniqueSkill(effectiveSkills, "workflow-knowledgebase")
 	}

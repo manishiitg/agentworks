@@ -26,7 +26,7 @@ func ScheduleGuardedTool(name string) bool {
 		"update_crew_step",
 		"delete_agent_route", "update_step_config", "update_validation_schema",
 		"migrate_agent_code_items",
-		"migrate_agent_steps", "migrate_declared_execution_mode", "strip_declared_execution_mode",
+		"migrate_agent_steps", "migrate_goal_agents", "migrate_declared_execution_mode", "strip_declared_execution_mode",
 		"update_workflow_config", "set_workflow_llm_config", "update_variable", "add_group", "update_group", "delete_group":
 		return true
 	}

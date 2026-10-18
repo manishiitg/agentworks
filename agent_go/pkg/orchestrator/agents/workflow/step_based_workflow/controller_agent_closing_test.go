@@ -54,104 +54,15 @@ func TestOrchestratorMessagesDeserializeToUnifiedItem(t *testing.T) {
 	}
 }
 
-// Verifies a standalone agent gets synthetic learnings/KB contribution
-// turns appended when (and only when) the step is configured for those writes —
-// so it honors step-level learning_objective / knowledgebase_contribution like a
-// scripted step instead of silently skipping the post-step learnings/KB phase.
+// A legacy objective must not reintroduce the removed hidden reflection turn.
 func TestAgentClosingItems(t *testing.T) {
-	hcpo := newAgentClosingTestOrchestrator(t)
-
-	// Configured for BOTH learnings and KB writes (direct method) -> both items
-	// appended, in order. The KB closing turn exists ONLY for write_method=direct:
-	// under the default agent method the constraint layer strips KB from every
-	// item's guard, so the turn would be a guaranteed-denied write.
-	both := &AgentPlanStep{
-		Type:             StepTypeAgent,
-		CommonStepFields: CommonStepFields{ID: "extract-all", Description: "extract portfolio data"},
-		AgentConfigs: &AgentConfigs{
-			LearningsAccess:           LearningsAccessReadWrite,
-			LearningObjective:         "Capture how to extract MyCAMS portfolio data reliably",
-			KnowledgebaseAccess:       KBAccessReadWrite,
-			KnowledgebaseContribution: "Record portal-specific selectors and quirks",
-		},
+	c := newAgentClosingTestOrchestrator(t)
+	step := &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "research"}, AgentConfigs: &AgentConfigs{LearningsAccess: LearningsAccessReadWrite, LearningObjective: "Capture methods", KnowledgebaseAccess: KBAccessReadWrite, KnowledgebaseContribution: "Capture context"}}
+	if items := c.agentSequenceClosingItems(context.Background(), step, 0); len(items) != 0 {
+		t.Fatalf("automatic closing turns: %+v", items)
 	}
-	// PLAT-055: one reflection item, not a learnings item followed by a KB item.
-	// Appending them separately meant the agent chose a destination based on
-	// which turn it was in rather than on which store owns the content, so both
-	// write grants now belong to a single turn.
-	items := hcpo.agentSequenceClosingItems(context.Background(), both, 0)
-	if len(items) != 1 {
-		t.Fatalf("expected 1 merged reflection item, got %d", len(items))
-	}
-	if items[0].Type != "user_message" || items[0].Kind != "learning" {
-		t.Errorf("reflection item should be a learning-kind user_message: %+v", items[0])
-	}
-	if !items[0].WriteAccess.Learnings || !items[0].WriteAccess.Knowledgebase {
-		t.Errorf("reflection item must carry BOTH write grants so routing is a real choice: %+v", items[0].WriteAccess)
-	}
-	if items[0].Message == "" {
-		t.Errorf("reflection item should carry a message")
-	}
-	// The request identifies both destinations and points to on-demand routing procedures.
-	for _, want := range []string{"workflow-reflection", "reusable execution technique", "verified business/domain context", "workflow-knowledgebase", "_index.json"} {
-		if !strings.Contains(items[0].Message, want) {
-			t.Errorf("reflection message missing %q", want)
-		}
-	}
-
-	// No agent configs -> no synthetic items.
-	if got := hcpo.agentSequenceClosingItems(context.Background(), &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "x"}}, 0); len(got) != 0 {
-		t.Errorf("expected no closing items without agent configs, got %d", len(got))
-	}
-
-	// learnings_access=read-write but empty objective -> no learning item (double-gated).
-	noObj := &AgentPlanStep{
-		CommonStepFields: CommonStepFields{ID: "y", Description: "d"},
-		AgentConfigs:     &AgentConfigs{LearningsAccess: LearningsAccessReadWrite},
-	}
-	if got := hcpo.agentSequenceClosingItems(context.Background(), noObj, 0); len(got) != 0 {
-		t.Errorf("expected no items when learning objective empty, got %d", len(got))
-	}
-
-	// KB contribution set but access not write-capable -> no KB item.
-	kbReadOnly := &AgentPlanStep{
-		CommonStepFields: CommonStepFields{ID: "z", Description: "d"},
-		AgentConfigs:     &AgentConfigs{KnowledgebaseAccess: "read", KnowledgebaseContribution: "note something"},
-	}
-	if got := hcpo.agentSequenceClosingItems(context.Background(), kbReadOnly, 0); len(got) != 0 {
-		t.Errorf("expected no KB item when access is read-only, got %d", len(got))
-	}
-
-	// KB write-capable with knowledgebase_write_method UNSET -> a KB closing item.
-	// This used to be the opposite: unset defaulted to "agent" mode, notes/ was not
-	// writable by the step agent, and the separate post-step KB update agent owned
-	// the contribution. That agent is retired,
-	// so an unset field now resolves to direct and the step agent writes notes/
-	// itself in this closing turn. A step carrying a contribution must never end up
-	// with no writer at all, which is what a stale "expect zero items" assertion
-	// here would silently allow.
-	kbUnsetMethod := &AgentPlanStep{
-		CommonStepFields: CommonStepFields{ID: "w", Description: "d"},
-		AgentConfigs: &AgentConfigs{
-			KnowledgebaseAccess:       KBAccessReadWrite,
-			KnowledgebaseContribution: "note something",
-		},
-	}
-	if got := hcpo.agentSequenceClosingItems(context.Background(), kbUnsetMethod, 0); len(got) != 1 {
-		t.Errorf("expected 1 KB closing item when write method is unset (now resolves to direct), got %d", len(got))
-	}
-
-	// An explicit legacy "agent" value must behave identically — old plans are
-	// coerced to direct rather than silently losing their KB contribution.
-	kbLegacyAgent := &AgentPlanStep{
-		CommonStepFields: CommonStepFields{ID: "w2", Description: "d"},
-		AgentConfigs: &AgentConfigs{
-			KnowledgebaseAccess:       KBAccessReadWrite,
-			KnowledgebaseContribution: "note something",
-		},
-	}
-	if got := hcpo.agentSequenceClosingItems(context.Background(), kbLegacyAgent, 0); len(got) != 1 {
-		t.Errorf("expected legacy write_method=agent to be coerced to direct and yield 1 KB closing item, got %d", len(got))
+	if access := c.agentSequenceStepFullWriteAccess(step); !access.Learnings || !access.Knowledgebase {
+		t.Fatalf("explicit task grants lost: %+v", access)
 	}
 }
 
@@ -267,11 +178,11 @@ func TestAgentFinalValidationPrecedesClosingItems(t *testing.T) {
 
 	planned := appendAgentFinalValidation(step.Items, step.ValidationSchema)
 	planned = append(planned, hcpo.agentSequenceClosingItems(context.Background(), step, 0)...)
-	if len(planned) != 3 {
-		t.Fatalf("planned len = %d, want 3: %+v", len(planned), planned)
+	if len(planned) != 2 {
+		t.Fatalf("planned len = %d, want 2: %+v", len(planned), planned)
 	}
-	if planned[1].Type != "prevalidation" || planned[2].Kind != "learning" {
-		t.Fatalf("expected work -> final validation -> learning, got %+v", planned)
+	if planned[1].Type != "prevalidation" {
+		t.Fatalf("expected work -> final validation, without automatic learning, got %+v", planned)
 	}
 }
 

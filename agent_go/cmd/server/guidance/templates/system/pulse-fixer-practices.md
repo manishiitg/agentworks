@@ -259,31 +259,13 @@ Apply this playbook whenever a finding concerns `learnings/_global/`, a
    safe, apply it through the canonical tool. Never invent a fact, rewrite
    user-owned context, mutate run data speculatively, or discard the only copy
    of an unresolved user decision.
-5. **Repair contribution configuration.** For every effective
-   `learnings_access="read-write"` step, require a concrete objective that asks
-   only for reusable HOW. Clear a misplaced/legacy objective and set access to
-   `read` when the step should consume but not contribute. Preserve
-   `read-write` only when the objective and actual skill coverage agree.
-5b. **Judge whether each objective is still yielding, and refine it.** An
-   objective is an instruction, and instructions are expected to improve as
-   evidence accumulates — treat them as tunable, not as set-once configuration.
-   The evidence is already recorded per step in
-   `learnings/<step-id>/.learning_metadata.json`: each reflection turn appends a
-   `detection_history` entry with `has_new_learning`, plus
-   `last_detection_reasoning` and `last_detection_confidence`. Read it and act:
-   - **Repeated `has_new_learning: false`** — the objective is not yielding.
-     Either sharpen it to name what this step uniquely observes, or drop the
-     step to `learnings_access="read"`. A reflection turn that never produces
-     anything is pure cost.
-   - **Yields, but the content is misrouted** (facts, run results, or incident
-     narrative reaching the skill) — the objective is asking for the wrong
-     thing. Rewrite it to ask only for reusable HOW.
-   - **Yields good technique** — leave it alone.
+5. **Review explicit contributions.** Goal agents no longer reflect automatically.
+   Preserve legacy contribution instructions through workflow_upgrade 1.0.50;
+   keep required contributions in explicit tasks with the existing store grants.
+   Read old learning metadata as historical evidence, not as a promise of another
+   automatic turn. Maintain shared knowledge here when useful; persistent
+   specialist learning belongs to Crew.
 
-   Refining an objective needs **no** paired reason field and is not gated:
-   these are meant to be iterated. Record the why in `review_notes`. Apply the
-   same judgment to `knowledgebase_contribution`, whose yield signal is the KB
-   self-review outcome rather than `detection_history`.
 6. **Keep the root as an index.** `SKILL.md` contains valid frontmatter, a short
    scope, core cross-cutting instructions, and links to focused references.
    Detailed HOW belongs in references without duplication.

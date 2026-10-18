@@ -91,42 +91,9 @@ func TestInteractiveWorkshopPromptDocumentsAgentRouteReuse(t *testing.T) {
 	// Detailed pattern content lives in the .md doc.
 	doc := guidance.RenderSystemDoc("agent")
 	docMustContain := []string{
-		"Conversational route sub-agents use `agent`, including stateless one-turn work",
-		"Normal repeated calls reuse the route conversation",
-		"re-entry user message",
-		"The sequence's own conversation remains responsible for reasoning, verification",
-		"restart only when the prior conversation is stale, wrong, or contaminated",
-		"## AGENT ROUTE PATTERNS",
-	}
-	for _, snippet := range docMustContain {
-		if !strings.Contains(doc, snippet) {
-			t.Errorf("expected agent.md to contain snippet %q", snippet)
-		}
-	}
-}
-
-func TestOptimizerPromptDocumentsAgentRoutePatterns(t *testing.T) {
-	prompt := executeInteractiveWorkshopPromptForMode(t, "workshop")
-
-	// The pattern catalog now lives entirely in agent.md.
-	// The inline workshop prompt only carries the consolidated
-	// "Planning steps" section that names agent (and the
-	// other per-step-type skills) as deep-dive entry points.
-	inlineMustContain := []string{
-		"references/workflow-chat.md",
-	}
-	for _, snippet := range inlineMustContain {
-		if !strings.Contains(prompt, snippet) {
-			t.Errorf("expected workshop prompt (optimizer) to contain inline snippet %q", snippet)
-		}
-	}
-
-	doc := guidance.RenderSystemDoc("agent")
-	docMustContain := []string{
-		"## AGENT ROUTE PATTERNS",
-		"Use these patterns when designing or repairing an agent's `predefined_routes`",
-		"Use an `agent` route when the parent agent should preserve specialist memory",
-		"restart only when the prior conversation is stale, wrong, or contaminated",
+		"## SCRIPTED HELPERS",
+		"typed inputs and outputs",
+		"explicit Crew step",
 	}
 	for _, snippet := range docMustContain {
 		if !strings.Contains(doc, snippet) {

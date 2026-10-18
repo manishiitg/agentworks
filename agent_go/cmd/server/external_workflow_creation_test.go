@@ -105,6 +105,9 @@ func TestExternalWorkflowCreationAuthorityAndValidation(t *testing.T) {
 	badGraph := workflowCreationArgs("invalid")
 	badGraph["plan_json"].(map[string]any)["steps"].([]any)[0].(map[string]any)["next_step_id"] = "missing-step"
 	f.relayCall(t, raw, "create_workflow", badGraph, 400)
+	retiredRoute := workflowCreationArgs("invalid")
+	retiredRoute["plan_json"].(map[string]any)["steps"].([]any)[0].(map[string]any)["predefined_routes"] = []any{map[string]any{"route_id": "legacy-worker", "route_name": "Legacy worker", "condition": "When needed", "sub_agent_step": map[string]any{"type": "agent", "id": "legacy-worker", "title": "Legacy worker", "description": "LLM specialist", "prompt_contract": "description-first-v1"}}}
+	f.relayCall(t, raw, "create_workflow", retiredRoute, 400)
 	badPath := workflowCreationArgs("../outside")
 	f.relayCall(t, raw, "create_workflow", badPath, 400)
 	if _, found, _ := ReadWorkflowManifest(t.Context(), "Workflow/invalid"); found {

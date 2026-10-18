@@ -94,7 +94,7 @@ facts to the knowledge layer, remove non-skill content) and read
 trigger is 5+ successful runs on one description hash with no new learning in the
 latest detections), you may set `learnings_access="read"` yourself with
 `update_step_config` and a reason citing those counters: it is reversible.
-Read to read-write still needs a concrete `learning_objective` and a decision.
+Read to read-write needs an explicit task contribution and a decision; no automatic reflection is scheduled.
 
 ### Crew versus agent
 

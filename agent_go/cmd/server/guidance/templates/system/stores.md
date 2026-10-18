@@ -6,27 +6,27 @@ Every workflow has three separate stores that survive across runs. They are NOT 
 
 **learnings/_global/SKILL.md — HOW to run the task**
 - Execution know-how: selectors, API quirks, CLI flags, SDK/tool call patterns, timing, auth flows, output parsing rules, retry/recovery rules, and pitfalls the agent hit before.
-- Written by: the step agent, in one merged post-completion reflection turn shared with KB (see below) — or by you via diff_patch_workspace_file for manual fixes.
+- Written by: an explicit task contribution under its write grant, Builder or Pulse; ongoing learning belongs to Crew.
 - **It is ONE skill for the whole workflow, organised by topic and improved by every step** — not a per-step file set. A step writes into the `references/<topic>.md` that owns the subject (`browser-session.md`, `rate-limits.md`), however many other steps also write there; it creates a new topic file only when no existing topic fits, named for the **subject** and never for a step, step id, or run. `SKILL.md` is an **index only**: one line per topic, a link plus a short description. Real detail sitting in the index instead of behind a link is a defect regardless of the index's size. Reads are unrestricted and encouraged — what another step recorded about the same surface is what prevents a duplicate entry.
   - PLAT-055/D originally scoped writes to `references/<step-id>.md`. That fragmented the skill by execution structure instead of subject, orphaned the topic files `SKILL.md` links to, and re-forked on every step rename; it was replaced in PLAT-058. A step-named file found under `references/` is a leftover — fold it into the owning topic file and delete it.
-- The reflection turn also routes: facts/results → the named `db/db.sqlite` table (never paste DB values into learnings), domain narrative → KB, incidents/harness bugs → one `CONCERNS:` line in the turn's summary (see below). Learnings is not a fallback for content that has a real home elsewhere — staleness test: "if this will be wrong in a month, it is not a learning."
+- Route facts/results to managed DB tables, durable narrative to KB and reusable HOW to learnings. Keep incidents as evidence and CONCERNS, never as fabricated learning.
 - **Compaction is the writing step's own duty here too — nothing does it automatically.** The same discipline stated below for KB notes applies: when a topic file already covers the surface you're adding to, correct it in place and fold near-duplicate sections together rather than appending a new dated block on top of the old one. Read the existing topic first specifically to check whether what you're about to add contradicts what's already there — an unresolved contradiction left standing (an old rule beside a newer one that supersedes it) is worse than either version alone, since a future reader can't tell which one a step should follow. Demote a superseded point-in-time rule under a `## Historical context`-style block instead of deleting the record, matching the KB pattern below.
-- Read as: text injected into every step's system prompt under '## Skill'.
+- Read as: relevant skills opened on demand, under the step access setting.
 - Shape: SKILL.md (index) + `references/<topic>.md` (per-subject content, named for the subject per PLAT-058 -- never `references/<step-id>.md`; see the PLAT-055/D correction above) + scripts/ (Anthropic skill-creator format).
 - Examples: "OTP field appears ~3s after PAN submit — poll, don't sleep", "HDFC balance is inside .account-summary", "gmail.search_messages returns max 50 — paginate".
 
 **knowledgebase/ — business context and durable narrative observations**
 - `context/context.md`: user-supplied runtime business context. Use for rules, preferences, constraints, assumptions, examples, and other context the user explicitly gives that future steps must respect. It is user-owned content maintained by the user; automated KB review must not rewrite it.
 - `notes/`: per-topic narrative markdown built up by workflow runs, one file per topic (entity-scoped like `company-acme.md` or cross-cutting like `pattern-<slug>.md`), plus `notes/_index.json` as the registry. Use for prose analysis, hypotheses, evolution-over-time observations, cross-cutting patterns, and durable subject-matter knowledge discovered by the workflow. No structured graph — entity references inside notes are just markdown (`company-acme`) that consolidation tools can resolve by slug.
-- The step agent writes notes itself, inline, using `diff_patch_workspace_file` for every KB content change, including new topic files and `notes/_index.json` updates. Since PLAT-055 this happens in the **same merged reflection turn** as learnings (one sequence message covering learnings + KB + concern routing), not a separate KB-only turn. There is no separate post-step KB update agent.
+- Explicit task contributions may update topic notes and notes/_index.json within the KB write grant. No post-completion KB or reflection agent runs.
   - There is no `knowledgebase_write_method` setting. It was removed with the other dead `AgentConfigs` fields in PLAT-061 and is not on the struct, so a step that tries to declare it is rejected. Earlier revisions of this file required setting it explicitly, which sent steps after a field that no longer exists — upwork reported exactly that on 2026-08-10.
-- **Written by (design time — you):** YOU (the builder) MAY shell-write notes files directly for bootstrap/repair work — seeding an initial topic file, fixing a malformed `_index.json`, hand-curating a note. Your FolderGuard allows it. Prefer `knowledgebase_contribution` instructions on steps when the content comes from step output — that's what keeps growth automatic and consistent.
+- **Written by (design time — you):** YOU (the builder) MAY shell-write notes files directly for bootstrap/repair work — seeding an initial topic file, fixing a malformed `_index.json`, hand-curating a note. Your FolderGuard allows it. Put required step contributions in their task descriptions and grant the required write access.
 - Read as: step agents shell-read on demand if knowledgebase_access grants read. If `context/context.md` exists, read it once at step start when the step needs business context. For discovered notes, ALWAYS read `notes/_index.json` first to find which topics exist and what they cover, then `cat` only the relevant topic files. NEVER glob `notes/*.md`.
 - Shape:
   - `notes/<topic-id>.md`: H1 = topic-id; sections = `## YYYY-MM-DD` or topical subhead; cross-reference entities by slug inline.
   - `notes/_index.json`: `{topics: [{id, file, covers, last_updated, last_updated_by, size_bytes, section_count}]}`.
-- Opt-in per step: set `knowledgebase_contribution` (a natural-language instruction). In direct method, the same string becomes the step agent's contribution contract, injected into the automatic self-review turn. In agent method, it tells the post-step agent what to extract and which topic(s) to update; choose this only when the user explicitly asks for a separate post-step KB writer/reviewer.
-- **Compaction is the writing step's own duty — nothing does it automatically.** An earlier version of this line claimed notes "compact themselves when they exceed 20KB or 30 sections"; no such mechanism has ever existed (PLAT-173), and a step told compaction is automatic has a positive reason to keep appending — which is exactly what happened to customer-login's `app-structure.md`. The step's reflection turn is where a note gets corrected in place and near-duplicate sections get folded together; read-only KB health review and `mutate_knowledgebase` are manual passes for repair work, not a per-run safety net. Use a `## Historical context` block to demote superseded point-in-time observations without losing the long-range narrative.
+- Put a required KB contribution in the task description and grant write access; legacy knowledgebase_contribution is migration input only.
+- **Compaction is the writing step's own duty — nothing does it automatically.** An earlier version of this line claimed notes "compact themselves when they exceed 20KB or 30 sections"; no such mechanism has ever existed (PLAT-173), and a step told compaction is automatic has a positive reason to keep appending — which is exactly what happened to customer-login's `app-structure.md`. An explicit contribution or maintenance task corrects notes in place and folds near-duplicate sections together; read-only KB health review and `mutate_knowledgebase` are manual passes for repair work, not a per-run safety net. Use a `## Historical context` block to demote superseded point-in-time observations without losing the long-range narrative.
 - Examples:
   - `notes/company-acme.md`: "## 2026-04 quarter — ACME's hiring slowed by 40% relative to peers; pattern matches pattern-saas-belt-tightening narrative."
   - `notes/pattern-tax-cycle.md`: "Three accounts (acme, beta, gamma) all show dip-then-recover during quarter-end weeks. Confidence: high. Covers: company-acme, company-beta, company-gamma."
@@ -87,7 +87,7 @@ If a step needs business context while running, explicitly wire it in BOTH place
 
 **Step config knobs for KB (use update_step_config):**
 - knowledgebase_access — one of read / write / read-write / none. **Defaults to 'read'.** An unset access value with a staged `knowledgebase_contribution` promotes to `read-write`; explicit `none` always wins. Set write/read-write plus a concrete contribution for producers. Set `none` explicitly when KB context would mislead the step; do not treat an omitted field as opting out.
-- knowledgebase_contribution — natural-language instruction: what to contribute to notes/ from this step (which topic file(s), what observations). In direct-write-method it's the contract for the step agent's self-review turn; in agent-write-method it's the instruction handed to a separate post-step KB update agent. If empty, NO KB writes happen regardless of access.
+- Legacy knowledgebase_contribution — preserved in migration notes, replaced by an explicit task contribution.
 
 ### Forward-pipe vs persistent state — context_output vs db/
 
@@ -141,60 +141,14 @@ Every non-trivial step has a `context_output` file (e.g. `extracted_data.json`).
 
 **Upsert mechanics the step agent must follow:** use a single `INSERT ... ON CONFLICT(<pk>) DO UPDATE SET ...` statement. Do NOT `DROP`/`CREATE` a table to "refresh" it, and do not delete-then-insert the whole table — that destroys rows written by other groups / prior runs. This is the single most common db bug and it shows up as "the report was fine yesterday, now it's only showing this group's rows."
 
-### Deciding which steps opt in to learning and KB — your call, per step
+### Explicit contributions
 
-**Reading is on by default for both stores** (`learnings_access` and `knowledgebase_access` both default to `"read"` when unset — since PLAT-055/K, unset no longer means no KB access). **Writing stays your deliberate decision**: SKILL.md writes require `learnings_access="read-write"` + a concrete `learning_objective`; KB writes require `knowledgebase_access` write/read-write + a non-empty `knowledgebase_contribution`. The runtime will flatly refuse writes when those opt-in fields are empty, so they aren't advisory flags; they're the on/off switch. Setting `"none"` explicitly still opts a step fully out of a store (e.g. routing steps, or a step that must not see target-system guidance) and always wins over the default.
-
-**For each step, ask yourself three questions:**
-
-1. **Should this step build up SKILL.md?** — Every step by default READS `learnings/_global/SKILL.md` into its prompt (learnings_access defaults to `"read"`). The question is whether it should also WRITE. Only if the step has HOW-to-run knowledge worth capturing across runs. If yes, set `learnings_access: "read-write"` AND `learning_objective` to a concrete instruction naming exactly what SKILL.md should capture. The step agent then writes SKILL.md itself during a dedicated post-completion turn using shell + `diff_patch_workspace_file`; no separate learning agent runs. (`learnings_write_method` is no longer needed — omit it from new plans.) For steps that do not discover reusable HOW, leave access at `"read"` so they can still consume shared guidance. Use `"none"` only when `_global/SKILL.md` would actively mislead the step or token isolation is important.
-
-### Learning write decision matrix
-
-Use `learnings_access="read-write"` only when the step is expected to discover reusable execution technique:
-- **Browser/UI automation**: stable selectors, tab/session rules, login/auth indicators, upload/download quirks, wait/re-snapshot timing, safe CDP vs headless behavior.
-- **APIs/MCP tools**: exact request shape, pagination cursors, response fields that prove success, retry/rate-limit behavior, idempotency keys, error envelopes, required call order.
-- **CLIs/SDKs**: command flags, working directory, required env vars, exit-code meanings, output parsing rules, generated file locations, commands to avoid.
-- **Unstable external systems**: recovery steps for known failures, temporary-state handling, deterministic checks that separate "loaded" from "actually usable".
-- **Unknown formats/parsing**: PDF/table/CSV/HTML quirks, schema variations, safe merge/read patterns discovered from real runs.
-
-Keep the step **read-only** (`learnings_access` unset or `"read"`) when it is mainly executing an already-known contract:
-- routing/condition steps,
-- validation/preflight checks that only inspect known fields,
-- mechanical transforms, aggregation, dedupe, formatting, and report data shaping,
-- human input/approval/message-only steps,
-- pure db/KB consumers that do not interact with an external system,
-- mature scripted steps where `<script-dir>/main.py` already encodes the HOW.
-
-Use `learnings_access="none"` rarely:
-- when shared HOW would confuse an isolated deterministic step,
-- when the step intentionally must not see target-system operating guidance,
-- or when token budget is critical and the step is completely divorced from the workflow's external systems.
-
-A good `learning_objective` is concrete: "Capture the Buffer API create-update request shape, success fields, 401/429 handling, and output id parsing." Bad: "learn from this step."
-
-Learning content should answer **"how should this step operate next time?"** It should not record facts/results such as leads found, current prices, user preferences, status history, or credentials. Put facts/results in `db/` or KB as appropriate; never put secret values in learnings.
-2. **Should this step read user-provided business context?** — If the step must respect durable user-supplied context from `knowledgebase/context/context.md`, set `knowledgebase_access` to `read` or `read-write` AND update the step description to name the relevant context section/path, e.g. *"Before deciding, read and apply `knowledgebase/context/context.md` section `ICP Filters`."* Do not copy the whole context file into the description; describe the dependency and wire read access instead. A step with KB read access but no description-level context mention is under-specified.
-3. **Should this step contribute to knowledgebase/notes/?** — Only if the step produces durable narrative knowledge about the workflow's subject matter (observations, decisions, patterns, cross-run findings). If yes, set `knowledgebase_access` to `write` or `read-write` AND set `knowledgebase_contribution` to a concrete instruction naming the topic(s) and what to record. Then set `knowledgebase_write_method: "direct"` so the step agent writes notes/ inline and self-reviews once after completion. Choose `"agent"` only when the user explicitly asks for a separate post-step KB writer/reviewer. Do not choose agent merely because the output is long, messy, or analytical. Access without a contribution is a validation error.
-4. **Should this step write to `db/db.sqlite` or `db/assets/`?** — Only if the step produces rows or durable assets the workflow will persist across runs/groups or bind to the Report UI. If yes, **before you set the step's description or code**, ensure `db/README.md` has an entry for the target table declaring its DDL, primary_key, upsert rule, indexes, and writers. For assets, store files under `db/assets/` and write metadata/reference rows in a `db/db.sqlite` table. Reference that schema in the step description so the step agent reads the same contract you wrote. Skip db/ for pure forward-pipe data — use `context_output` instead. KB ≠ db: facts about the subject go through `knowledgebase_contribution`, not `db/`.
-
-**Record your reasoning.** When you set `learning_objective` or `knowledgebase_contribution`, or designate the step as a `db/` writer, also update `review_notes` with one sentence explaining WHY — future Pulse and Workshop reviews will read it. Example: *"Opted into learning: ICICI login selectors change quarterly so auth-flow drift must be captured. Opted into KB: account nicknames surface here and nowhere else. Writes table `accounts` in db/db.sqlite (PK=account_id, upsert latest-wins) per schema in db/README.md — consumed by the balances widget."*
-
-**Symmetric rules for opt-OUT:** if most steps in a workflow shouldn't learn or contribute, that's fine — just leave the fields empty. Don't set either field "because the others have it" — that accumulates noise. If you unset a step (via `clear_fields`), explain in `review_notes` why the step no longer deserves the overhead.
-
-**Cheap heuristics to use while deciding:**
-- **Step writes a brand-new `db/db.sqlite` table, `db/assets/` asset, or consumes a db table**: likely worth KB too if there are narrative domain facts alongside the persistent rows/assets. Likely NOT worth learning (db schema is stable; selectors aren't).
-- **Step drives a UI/browser or performs adaptive third-party discovery with fussy state/timing**: worth learning and generally agentic. A fixed third-party API/SDK request, CLI command, deterministic fetch/pagination rule, or stable parser is different: make it scripted from initial design, batch related calls under one source/auth/retry/output contract, and keep `lock_code=false` until representative evidence justifies freezing it.
-- **Step is pure data transformation, math, or file IO**: neither. Leave both empty.
-- **Step calls an LLM for analysis/classification**: worth KB (facts discovered) if outputs are domain facts; not worth learning (the LLM prompt is stable and doesn't need SKILL.md tips).
-- **Step is scripted (a `scripted` step whose work is `<script-dir>/main.py`)**: generally leave `learning_objective` empty. The saved `<script-dir>/main.py` script IS the captured HOW — running a separate learning pass on top of it just duplicates work and risks drift between the script and SKILL.md. Only opt in if there's HOW-knowledge the script itself can't encode (e.g. out-of-band operator notes, cross-step patterns that belong in the shared `_global/` skill).
-
-Goal measurements are also platform-owned: `workflow_goal_metrics` holds managed
-metric definitions and `pulse_goal_observations` holds append-only measured history.
-Use `configure_goal_metrics` and `record_goal_observations` to write them. Reports
-may query them or use `window.report.getGoalMetrics()` / `renderGoalProgress()`;
-report field updates must not edit them.
-
+Reading existing knowledge remains on by default under each store's access
+setting. Writing requires the corresponding access and an explicit task
+instruction identifying what to contribute and where. Goals do not run an
+automatic reflection turn. Builder and Pulse can maintain shared knowledge;
+Crew can own ongoing learning. Contract 1.0.50 archives legacy objectives and
+their destinations; it preserves effective access and history.
 
 ### Completing a run's durable output
 

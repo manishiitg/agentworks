@@ -12,7 +12,7 @@ import (
 // Preserve the stable detached API aliases while adding the current website
 // operations. Only explicitly named plan mutations cross this transport;
 // account, execution and arbitrary workspace tools are never captured.
-var externalBuilderPlanNames = []string{"create_plan", "add_step", "update_step", "manage_step_route", "change_step_type", "maintain_plan", "restore_step_from_changelog", "migrate_agent_steps"}
+var externalBuilderPlanNames = []string{"create_plan", "add_step", "update_step", "manage_step_route", "change_step_type", "maintain_plan", "restore_step_from_changelog", "migrate_agent_steps", "migrate_goal_agents"}
 
 type externalBuilderPlanCollector struct{ tools map[string]capturedPlanTool }
 

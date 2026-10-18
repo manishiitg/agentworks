@@ -133,7 +133,7 @@ const (
 	KBAccessWrite     = "write"
 	KBAccessNone      = "none"
 
-	knowledgebaseAccessDescription = "Access mode for this step against knowledgebase/ (per-topic notes/ + notes/_index.json registry). Defaults to 'read' so steps can consume shared context; use 'none' to opt out. 'write' / 'read-write' may contribute: the step agent writes notes/ inline with diff_patch_workspace_file and closes with a self-review turn against its knowledgebase_contribution. Granting write without a knowledgebase_contribution results in no KB writes at all."
+	knowledgebaseAccessDescription = "Access to workflow knowledgebase/. Defaults to 'read'; use write, read-write or none as required. A write grant permits explicit task contributions to notes/; it adds no automatic reflection turn. context/ remains user owned."
 )
 
 // resolveKnowledgebaseAccess resolves the effective KB access mode for a step.
@@ -190,14 +190,9 @@ func kbAccessAllowsRead(mode string) bool {
 	return mode == KBAccessRead || mode == KBAccessReadWrite
 }
 
-// kbContributionForPrompt returns the step's knowledgebase_contribution string
-// safely — nil step config and unset field both map to the empty string.
-func kbContributionForPrompt(stepConfig *AgentConfigs) string {
-	if stepConfig == nil {
-		return ""
-	}
-	return stepConfig.KnowledgebaseContribution
-}
+// Legacy objectives are archived by workflow_upgrade. Explicit contribution
+// instructions now live in the authored task, never in hidden runtime guidance.
+func kbContributionForPrompt(*AgentConfigs) string { return "" }
 
 // kbAccessAllowsWrite reports whether the mode is eligible for KB contribution.
 // This gates whether KB writes happen at all for the step; the mechanism
@@ -1318,7 +1313,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 	if hcpo.runSingleStepOnly {
 		maxRetryAttempts = 3
 	}
-	var executionConversationHistory []llmtypes.MessageContent // Only used for learning agents after execution
+	var executionConversationHistory []llmtypes.MessageContent // Saved execution evidence and same-conversation repair context
 	var learnCodePreValidationResultsOverride *WorkspaceVerificationResult
 	stepCompleted := false
 
@@ -1590,15 +1585,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 
 		// Inner loop: Automatic retry logic
 		var validationResponse *ValidationResponse
-		// PLAT-055. The merged reflection turn is one-shot per step execution.
-		// Declared outside the retry loop so validation retries don't re-fire it,
-		// and so the post-step learning-agent trigger further down can see that
-		// direct reflection already handled this step.
-		var reflectionPerformed bool
-		// Direct-mode UI should still emit one final step notification, but its
-		// summary must include the main execution plus the reflection turn.
-		var mainExecutionSummary string
-		var directLearningsSummary string
 
 		// Learn code mode: attempt fast path execution with saved script (before any LLM work).
 		if isScriptedMode && !learnCodeFastPathDone {
@@ -1962,7 +1948,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 
 				// CAPTURE TURN COUNT: Calculate total LLM turns from conversation history
 				// Each turn consists of a user message and an assistant response (including tool calls)
-				turnCount := len(executionConversationHistory)
 
 				if err != nil {
 					// Execution errors
@@ -1993,7 +1978,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 				// attempt, so keeping the concern only on the failed attempt would
 				// hide a recovered validation failure.
 				executionResult = withValidationFailureConcern(executionResult, validationFailures, 0, false)
-				mainExecutionSummary = summarizeExecutionResultForNotification(executionResult)
 				hcpo.recordWorkflowContinuationPhase(context.Background(), artifactStepID, artifactStepPath, workflowContinuationOwnerStepExecution, workflowContinuationPhaseMainExecution, workflowContinuationStatusCompleted, "", executionAgent)
 
 				// Save execution logs (result, conversation history, system prompt)
@@ -2338,7 +2322,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 						validationFailures = append(validationFailures, newValidationFailureConcern(retryAttempt, validationResponse))
 						exhausted := retryAttempt >= maxRetryAttempts
 						executionResult = withValidationFailureConcern(executionResult, validationFailures, 0, exhausted)
-						mainExecutionSummary = summarizeExecutionResultForNotification(executionResult)
 						if logErr := hcpo.saveExecutionConversationLogs(stepIndex, artifactStepID, artifactStepPath, retryAttempt, 0,
 							executionResult, executionLLM, executionConversationHistory, executionAgent, capturedToolCalls, capturedLLMCalls, attemptStartedAt, attemptCompletedAt, attemptDuration); logErr != nil {
 							hcpo.recordRunPersistenceError(context.Background(), artifactStepID, logErr)
@@ -2348,7 +2331,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 						}
 						continue
 					}
-					turnCount = len(executionConversationHistory)
 					hcpo.GetLogger().Info(fmt.Sprintf("✅ [scripted] main.py executed successfully for step %d — proceeding to validation", stepIndex+1))
 				}
 
@@ -2449,34 +2431,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 				} else {
 					hcpo.GetLogger().Info(fmt.Sprintf("Pre-validation passed for step %d - auto-approving", stepIndex+1))
 
-					// PLAT-055. One reflection turn replaces the KB self-review turn
-					// followed by the direct-learnings turn. The split was the defect:
-					// during the KB turn the agent has not yet worked out what it
-					// learned, and by the learnings turn the KB door has closed and the
-					// database was never reachable at all — so "which store owns this?"
-					// was decided by whichever door happened to be open rather than by
-					// the agent. See runStepReflectionTurn.
-					if !reflectionPerformed && executionAgent != nil {
-						reflectionPerformed = true
-						reflection := hcpo.runStepReflectionTurn(
-							ctx, step, stepIndex, stepPath, artifactStepID, artifactStepPath,
-							getAgentConfigs(step), executionAgent, executionConversationHistory,
-							isScriptedMode, turnCount, executionLLM,
-						)
-						directLearningsSummary = reflection.Summary
-						if reflection.Executed {
-							executionConversationHistory = reflection.History
-							hcpo.GetLogger().Info(fmt.Sprintf("🧠 Reflection completed for step %d (history=%d turns)", stepIndex+1, len(executionConversationHistory)))
-						}
-					}
-					// Step summaries are retained run evidence. Pulse reviews that
-					// evidence directly; the runtime must not scrape prose into the
-					// Pulse observation store or attempt text-based deduplication.
-
-					if combinedSummary := buildDirectModeCompletionSummary(mainExecutionSummary, "", directLearningsSummary); combinedSummary != "" {
-						executionResult = combinedSummary
-					}
-
+					// Validation completes the task; no hidden learning turn follows.
 					validationResponse = &ValidationResponse{
 						IsSuccessCriteriaMet: true,
 						ExecutionStatus:      "COMPLETED",
@@ -2488,59 +2443,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 					}
 				}
 
-				// LEARNING PHASE: Runs for ALL agents regardless of validation status
-				// Validation being disabled does NOT prevent learning from running
-				// Learning runs only when learnings_access is read-write and an objective exists.
-				// LEARNING DISABLED: Skip learning agents entirely
-				// Learnings WRITE gate — controlled by learnings_access="read-write" AND
-				// non-empty learning_objective (the extraction target for the writer).
-				// No more code-exec force-enable — that was papering over the fact that
-				// "empty objective" used to also kill read access; with learnings_access
-				// split, write is honest opt-in and read is default-on.
-				agentConfigs = getAgentConfigs(step)
-				isLearningDisabled := !hcpo.canWriteLearnings(agentConfigs, step)
-				if isScriptedMode {
-					hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted_code] Step %d — main.py remains executable truth; SKILL.md writes gated by learnings_access=%s", stepIndex+1, hcpo.resolveLearningsAccess(agentConfigs)))
-				}
-				// Pre-validation result drives validationResponse (set above).
-				// Safety guard: if somehow nil, default to success so learning + KB can proceed.
-				if validationResponse == nil {
-					hcpo.GetLogger().Info(fmt.Sprintf("Pre-validation result missing for step %d - defaulting to success for post-step phases", stepIndex+1))
-					validationResponse = &ValidationResponse{
-						IsSuccessCriteriaMet: true,
-						ExecutionStatus:      "COMPLETED",
-						Reasoning:            "LLM validation disabled - step auto-approved for post-step phases",
-					}
-				}
-
-				// Runtime-field population for post-step phases used to happen here,
-				// feeding the learning agent and the KB update agent. Both are retired
-				// and the direct-mode turns run inline earlier in this method with the
-				// step's own live config, so nothing needs re-populating.
-
-				// Post-step learning AGENT (the separate analytical reviewer that
-				// reads the step trace and writes SKILL.md as its own LLM turn) is
-				// retired. All steps now use direct-mode learning: the step agent
-				// itself writes SKILL.md inline during its dedicated post-completion
-				// turn (gated earlier in this method by shouldDirectWriteLearnings
-				// and the learningsDirectPerformed flag). No background launch happens.
-				if isLearningDisabled {
-					hcpo.GetLogger().Info(fmt.Sprintf("⏭️ Learning disabled: Skipping learning for step %d", stepIndex+1))
-				}
-
-				// Post-step KB update AGENT (the separate reviewer that re-read the step
-				// trace from disk and wrote notes/ as its own LLM conversation) is
-				// retired, mirroring the learning agent above. All KB writes now go
-				// through direct mode: the step agent writes notes/ inline and closes
-				// with the contribution self-review turn (BuildKBContributionReviewMessage),
-				// gated earlier in this method. No background launch happens here.
-
 				// Check if success criteria was met
 				// Check IsSuccessCriteriaMet instead of just ExecutionStatus - PARTIAL/INCOMPLETE can also mean criteria not met
 				if validationResponse != nil && validationResponse.IsSuccessCriteriaMet {
 					if len(validationFailures) > 0 {
 						executionResult = withValidationFailureConcern(executionResult, validationFailures, retryAttempt, false)
-						mainExecutionSummary = summarizeExecutionResultForNotification(executionResult)
 						if logErr := hcpo.saveExecutionConversationLogs(stepIndex, artifactStepID, artifactStepPath, retryAttempt, 0,
 							executionResult, executionLLM, executionConversationHistory, executionAgent, capturedToolCalls, capturedLLMCalls, attemptStartedAt, attemptCompletedAt, attemptDuration); logErr != nil {
 							hcpo.recordRunPersistenceError(context.Background(), artifactStepID, logErr)
@@ -2559,7 +2466,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 					validationFailures = append(validationFailures, newValidationFailureConcern(retryAttempt, validationResponse))
 					exhausted := retryAttempt >= maxRetryAttempts
 					executionResult = withValidationFailureConcern(executionResult, validationFailures, 0, exhausted)
-					mainExecutionSummary = summarizeExecutionResultForNotification(executionResult)
 					if logErr := hcpo.saveExecutionConversationLogs(stepIndex, artifactStepID, artifactStepPath, retryAttempt, 0,
 						executionResult, executionLLM, executionConversationHistory, executionAgent, capturedToolCalls, capturedLLMCalls, attemptStartedAt, attemptCompletedAt, attemptDuration); logErr != nil {
 						hcpo.recordRunPersistenceError(context.Background(), artifactStepID, logErr)

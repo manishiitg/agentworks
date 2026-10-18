@@ -26,24 +26,14 @@ If a step needs **semantic/LLM-based validation** (e.g., "verify the summary is 
 
 When reviewing a successful step, check whether its evidence establishes freshness and authenticity. Add targeted provenance checks or semantic evidence verification where needed; do not treat an exhaustive schema as proof.
 
-### 2. Learning Configuration
+### 2. Learning and contributions
 
-The learning system has **one active permission control** per step: `learnings_access` controls read/write scope. New plans should omit the retired `learnings_write_method` compatibility field.
-
-- **Default access is `"read"`** (inferred when `learnings_access` is unset). Every step — including simple plumbing — sees `_global/SKILL.md` in its prompt for cross-step context. Do NOT set `learnings_access: "none"` on plumbing steps just because they don't contribute; they still benefit from reading.
-- **Opt into writing** by setting `learnings_access: "read-write"` AND a non-empty `learning_objective`. Required only for steps that produce durable HOW-knowledge: browser selectors/timing/auth flows, API/MCP request/response quirks, CLI/SDK command patterns, output parsing rules, retry/recovery behavior, and file-format pitfalls. The validator enforces the pairing.
-- **Writes are direct-only**: when `learnings_access="read-write"` and `learning_objective` are set, the step agent itself writes `_global/SKILL.md` in a dedicated post-completion user-message turn. Folder guard widens only for that turn; main execution cannot write learnings. This turn is part of step finalization, so it completes before the workflow advances to the next step. Direct-mode guidance is NOT in the step's main system prompt — the agent sees it only in the dedicated turn. Parallel direct-learning turns are serialized by an in-process mutex.
-- **Do not write learnings** for routing/condition steps, schema validation, mechanical transforms, aggregation/report data shaping, human approval/input, message-only steps, pure db/KB readers, or mature scripted steps whose `main.py` already captures the execution method. Leave these at `"read"` unless `_global/SKILL.md` would actively mislead them.
-- **Use `"none"` sparingly** — only when the global skill content would actively mislead the step (rare) or when the step is so divorced from the target system that reading the skill just burns tokens.
-- **scripted steps**: usually `learnings_access: "read"` (not `"read-write"`). The saved `<script-dir>/main.py` IS the learned artifact — the HOW is encoded as code. Opt into write only when there's cross-step HOW knowledge the script itself can't capture (e.g. operator notes, patterns spanning multiple steps).
-- **Clearing a bad setting**: if a step was miss-configured with `learnings_access: "read-write"` but shouldn't contribute, clear it via `update_step_config(step_id, clear_fields=["learnings_access", "learning_objective"])`.
-
-Good `learning_objective` examples:
-- "Capture the CDP tab-selection pattern, authenticated X home-feed indicators, sign-in-page failure indicators, and safe wait/snapshot retry rules."
-- "Capture the Buffer API create-update request shape, success fields, 401/429 handling, and output id parsing."
-- "Capture the CLI flags, working directory, env vars, exit-code meanings, and output file locations needed to run the export command reliably."
-
-Bad learning objectives: "learn from this run", "remember the result", "save useful info", or anything that asks for facts/results instead of reusable HOW.
+Goals read relevant existing skills/learnings on demand. Grant `learnings_access`
+or `knowledgebase_access` for explicit task contributions only; no automatic
+post-completion reflection runs. Put a required contribution and its destination
+in the task description. Builder and Pulse may maintain shared knowledge, and
+Crew owns ongoing agent learning. Legacy contribution objectives are archived
+by workflow_upgrade 1.0.50 without changing effective access or history.
 
 #### The Per-Step Code Lock — What It Freezes and When To Use
 
@@ -197,13 +187,8 @@ After running a step, review it for optimization — but follow this priority or
   - Do they **contradict the step description**? If so, either update the description or delete the misleading learning.
   - Do they **match the current step config**? Cross-check learnings against the step's configured servers, tools, and description. Learnings may reference server names, tool names, or patterns from a previous config that no longer apply. Stale references cause the execution agent to search for non-existent servers/tools, wasting turns and causing failures. Fix by updating the learning file with the correct names.
   - Are they **repetitive**? If the same verified method appears across multiple learning files, consolidate it into the canonical shared skill/learnings and update references before removing redundant copies. Do not move procedures into the step description.
-- **Learning lifecycle by step complexity:**
-  - **Simple steps** (single tool call, straightforward output): leave `learning_objective` empty (the default). Learning is opt-in; simple steps don't earn their keep with the learning-agent overhead.
-  - **Medium steps** (2-5 tool calls, clear pattern): Run with write access for **2-3 successful runs**, review learnings, then change to `learnings_access="read"` when new contributions become redundant.
-  - **Complex steps** (many tool calls, branching logic, API interactions, error handling): Run with write access for **3-5 successful runs**. Review and curate learnings after each run — edit out noise and keep actionable patterns. Retain write access only while the step is still producing useful reusable HOW.
-  - **Sub-agent steps** (agent specialist routes, including legacy agent records): Each sub-agent has its own learning access and objective; review them independently.
-- **When to stop writes**: Change to `learnings_access="read"` when the same patterns repeat across successful runs. The execution agent still consumes the curated shared learnings without paying for a contribution turn.
-- **When to resume writes**: Restore `read-write` with a concrete objective if the description/tools change materially or failures reveal new reusable HOW.
+- Review existing skills against actual results and remove stale advice. Task
+  contributions need the relevant write grant; they add no hidden closing turn.
 
 **Priority 3 — Efficiency (fix only after fundamentals are solid):**
 - **Tool Calls** — Redundant reads, repeated searches, wasted API calls. Usually a symptom of a vague description — fix the description first, then check if tool waste drops.
@@ -271,37 +256,11 @@ A step's execution mode is its plan type — `scripted` is scripted, `agent` is 
 - `mode="cross_step"`: use this after several contributing steps have run and the work needs a holistic view. The agent receives every step's `knowledgebase_contribution` plus step output folders from the selected run. Examples: *"reconcile company/organization naming drift across step contributions"*, *"write pattern notes for repeated shapes across per-account steps"*, *"surface contested employee-count values where two steps disagree"*.
 - Boundary: if you can describe the instruction as one concrete file/topic transformation, use `targeted`. If the justification depends on comparing multiple steps, runs, or topic files, use `cross_step`.
 
-### 9. Agent with Specialists — For Dynamic Delegation
-The `plan-design` reference owns step-type eligibility. Add `predefined_routes`
-to an `agent` only when the parent makes a real runtime orchestration
-decision the static plan cannot directly express. Several routine actions do not
+### 9. Script helpers and Crew
 
-**When to add specialist routes:**
-- Runtime evidence determines which or how many specialist tasks are needed
-- The parent interprets evidence to decide which workers or investigations are needed
-- The parent reasons about evidence or failures and changes its strategy
-- An approval boundary or interim synthesis changes subsequent delegation
-
-Different tools/skills/servers, separate learnings, progress visibility, and
-granular debugging can help choose boundaries **after** eligibility is proven;
-none is sufficient by itself. **A fixed child set and order does not justify adaptive routes.**
-
-**When NOT to add routes:**
-- Fixed API/SDK/CLI/data acquisition and stable transforms — use coherent scripted fetchers
-- One substantial reasoning outcome with same-context verification and repair — use one large agent
-- A known linear checklist whose items share one output/retry boundary — keep it inside the owning step rather than delegating micro-tasks
-- Known independent fixed work that can be expressed as explicit plan steps and dependencies
-- The task is **trivial** — a one-line action that doesn't benefit from learning
-
-**Sub-agent design:**
-- Define reusable, bounded specialists as **predefined routes** rather than copying their contracts into the parent description
-- Each sub-agent has its own **learning files**, **server/tool scoping**, **skills (via enabled_skills in step_config)**, and **validation schemas**
-- Sub-agents can be **individually debugged, re-run, and hardened** via the workshop tools
-- The parent sequence agent owns substantive strategy and synthesis; bounded workers handle specialist tasks. The parent may analyze and write the final report directly.
-- If one route still needs adaptive specialist delegation, its `agent` worker may declare routes — but stop at one nested layer. A known checklist or several same-context actions stay inside one large route conversation.
-
-
-**Rule of thumb:** For data workflows start with scripted fetcher(s) → durable DB/file evidence → one large agentic agent. Add routing, human gates, or specialist routes only for real control boundaries.
+Use typed scripted helpers when a Goal agent chooses deterministic Python work.
+Use an explicit Crew step for LLM specialists, persistent skills/memory or
+multi-agent coordination. Goal agents have no LLM sub-agent routes.
 
 ### 9a. Deterministic batches do not need specialist routes
 

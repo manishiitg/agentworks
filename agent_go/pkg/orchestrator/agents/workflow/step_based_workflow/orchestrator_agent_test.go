@@ -35,43 +35,11 @@ func TestOrchestratorPromptIncludesSharedCodeExecutionSection(t *testing.T) {
 
 	requiredSnippets := []string{
 		"# QA Scenario: No Redlines",
-		"## Specialist Delegation",
-		"call_sub_agent",
-		"Prefer direct sub-agent tools whenever the provider exposes them.",
-		"in a bridge-only CLI session",
+		"## Scripted helpers",
+		"call_scripted_sub_agent",
 		"## Code execution",
 		"workflow-execution",
 		"STEP_OUTPUT_DIR",
-	}
-	for _, snippet := range requiredSnippets {
-		if !strings.Contains(prompt, snippet) {
-			t.Fatalf("expected prompt to contain %q\n\nPrompt:\n%s", snippet, prompt)
-		}
-	}
-}
-
-func TestOrchestratorPromptDocumentsAgentRoutes(t *testing.T) {
-	agent := &WorkflowExecutionOnlyAgent{}
-
-	prompt := agent.executionOnlySystemPromptProcessor(map[string]string{
-		"ShowToolsSection":    "true",
-		"IsCodeExecutionMode": "false",
-		"PredefinedRoutes":    "- route-sequence",
-	})
-
-	requiredSnippets := []string{
-		"[AUTO-NOTIFICATION] SUB-AGENT COMPLETION BATCH",
-		"### Agent routes",
-		"Step type: agent",
-		"first call starts its configured queue",
-		"instructions as initial",
-		"Later calls to that route resume",
-		"instructions become the re-entry user message",
-		"agent_restart=true",
-		"replay the configured queue from the beginning",
-		"query_sub_agent(execution_id)",
-		"stop_sub_agent(execution_id)",
-		"never to poll",
 	}
 	for _, snippet := range requiredSnippets {
 		if !strings.Contains(prompt, snippet) {
@@ -99,7 +67,7 @@ func TestOrchestratorPromptAsksForConcernLines(t *testing.T) {
 func TestDelegatingAndPlainAgentsShareSystemPromptBase(t *testing.T) {
 	plain := (&WorkflowExecutionOnlyAgent{}).executionOnlySystemPromptProcessor(map[string]string{"StepTitle": "Assemble evidence"})
 	delegating := (&WorkflowExecutionOnlyAgent{}).executionOnlySystemPromptProcessor(map[string]string{
-		"PredefinedRoutes": "- specialist (`specialist`) — type: `agent`",
+		"PredefinedRoutes": "- specialist (`specialist`) — type: `scripted`",
 		"StepTitle":        "Assemble evidence",
 	})
 
@@ -108,10 +76,10 @@ func TestDelegatingAndPlainAgentsShareSystemPromptBase(t *testing.T) {
 			t.Fatalf("%s sequence does not use the common agent prompt:\n%s", name, prompt)
 		}
 	}
-	if strings.Contains(plain, "## Specialist Delegation") {
+	if strings.Contains(plain, "## Scripted helpers") {
 		t.Fatalf("plain sequence unexpectedly received delegation guidance:\n%s", plain)
 	}
-	if !strings.Contains(delegating, "## Specialist Delegation") {
+	if !strings.Contains(delegating, "## Scripted helpers") {
 		t.Fatalf("delegating sequence did not receive the conditional delegation overlay:\n%s", delegating)
 	}
 }

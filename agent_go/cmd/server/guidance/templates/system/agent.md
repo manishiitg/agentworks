@@ -1,6 +1,6 @@
 ---
 name: "agent"
-description: "Agent steps: the description-only first user turn, optional subsequent items in one shared conversation, optional predefined_routes the agent chooses, validation and repair turns, saved-script batches. Load before authoring an agent step."
+description: "Agent steps: the description-only first user turn, optional subsequent items in one shared conversation, optional typed scripted helpers the agent chooses, validation and repair turns, saved-script batches. Load before authoring an agent step."
 external: true
 external_note: "External mapping: use plan action=list for the current native plan and step schemas. Read get_plan for expected_revision, then pass a stable request_id and the listed native arguments. Internal plan operation names are plan action values, not standalone external tools. Fetch referenced guidance with help action=topic and its listed topic name. Builder action=chat is an optional delegation path when listed; it is not required for native plan edits."
 ---
@@ -12,13 +12,12 @@ external_note: "External mapping: use plan action=list for the current native pl
 
 Use `agent` as the canonical agent step: one persistent conversation where later turns need the earlier turns' reasoning, tool output, critique, or context. Design one large sequence per coherent shared-context span. For `prompt_contract="description-first-v1"`, the description executes ALONE as the first user turn; each optional `items[]` entry is a subsequent turn after it finishes. Task-specific policies live in the description's Rules section only. Empty items is valid. Saved agents without this contract keep their legacy charter semantics until reviewed migration; authored_prompt retains explicit prompts.
 
-An agent step may declare `predefined_routes`. When routes exist, the agent gets
-bounded sub-agent tools and decides at runtime whether, when, and how often to
-call those specialists. Routes define available capabilities; they do not
-prescribe execution order. Without routes, the step is a single-agent sequence.
-Both forms use the same system prompt and default tool policy; routes add only
-the specialist catalog, delegation guidance, and sub-agent lifecycle tools.
-The plan type is `agent` for both plain conversations and conversations with specialists. Saved legacy shapes are converted by the v1.0.47 migration. Unmarked legacy agents still require an execution item; description-first-v1 agents allow zero. Restarting a route deliberately replays its description opener, so the task must remain rerunnable under its idempotency rules.
+An Agent can declare `predefined_routes` only for saved scripted Python helpers
+with typed inputs and outputs. The agent chooses when to call them. LLM
+specialists and persistent multi-agent work belong to an explicit Crew step.
+The existing `agent` type stays; there is no new simple-agent type. Automatic
+reflection is retired. Knowledge and learning writes happen only when the task
+explicitly asks and the step has the corresponding access.
 
 Before stamping v1.0.48, the first retained item needs `retained_reason`: a review
 note explaining the distinct later phase, the evidence the automatic gate cannot
@@ -59,7 +58,7 @@ Use it when:
 - Turns read the same upstream context.
 - Critique and correction should happen in the same specialist conversation.
 - The unit has one tightly coupled outcome and should fail/retry together.
-- A routed agent needs a specialist that can be re-entered during the same workflow run.
+- The task benefits from choosing declared scripted helpers during execution.
 
 Do not use it when:
 
@@ -68,34 +67,15 @@ Do not use it when:
 - Work is a fixed API/SDK call, CLI command, data fetch, stable parse/normalize operation, or mechanical write; use a scripted step and consume its durable result here.
 - The workflow needs deterministic branching; use `branch` (small in-flow
   decision) or `routing` (major sub-workflow fork).
-- The agent must choose or revise strategy from evidence; add bounded specialist
-  routes when delegation helps. Independent delegation alone does not require a
-  separate step type.
+- Persistent specialist coordination belongs to an explicit Crew step.
 
-## DELEGATION AND CONTROL
+## SCRIPTED HELPERS
 
-Add routes only when the parent makes a real runtime orchestration decision.
-A fixed child set and order does not justify adaptive routes. Routes are bounded
-capabilities; predetermined isolated agentic tasks can remain explicit plan steps.
-The specialist catalog may be known upfront or already supplied by the user:
-unknown work breakdown is one use case, not a prerequisite.
-
-
-The authored `items[]` define durable conversational phases. Optional
-`predefined_routes` expose bounded specialist agents, and the agent decides which routes to call from evidence it sees during any turn. It may
-skip a route, call several routes, or re-enter a conversational route with new
-instructions. A fixed list of workers still belongs in explicit plan steps or a
-scripted batch; adding routes does not turn a checklist into adaptive strategy.
-
-The sequence's own conversation remains responsible for reasoning, verification,
-repair, and the final result. Scripted items are different: they are predetermined
-runtime calls with no child LLM. Running ten known scripts, accounting for every
-result, and reporting is sequence work even if those scripts run in parallel.
-
-Read `references/plan-design.md`, Step 2, for the decision rule. Ordered turns,
-script batches, delegation lifecycles, and completion gates are enforced by the
-runtime, not merely a system-prompt preference. There is no separate mode field:
-`predefined_routes` are the capability declaration.
+`predefined_routes` expose saved scripted helpers as named tools. Each helper
+owns its typed parameter/result contract, code and validation. Use its named
+tool to obtain the result, or the scripted-call lifecycle tools for an async
+script. No conversational or ad hoc LLM child agent is available inside a step.
+Use an explicit Crew step for that work.
 
 ## SCRIPTED BATCHES
 
@@ -159,13 +139,11 @@ a subsequent conversational item. Under description-first-v1 the description has
   script batches, dynamic child selection, agentic children, or cross-run resume.
   SQL `foreach` still sends sequential conversational turns, not script calls.
 
-## MEMORY
+## CONVERSATION HISTORY
 
-- A top-level agent runs its fixed item queue once.
-- An agent specialist route can be re-entered during the same workflow run.
-- Route memory is in-memory only. It does not survive process restart or a later workflow run.
-- `agent_restart=true` starts a clean route conversation when prior context is stale or contaminated.
-- `session.json` is an observability record, not resume state.
+The Agent runs the task and any explicitly authored follow-up phases in one
+conversation. Its saved session is an observability record, not durable resume
+state. Run and metric history remain available through the backend.
 
 ## WRITE ACCESS
 
@@ -177,7 +155,7 @@ Use a non-empty `write_access` object, or `kind`, only when one turn should be n
 - knowledgebase writes: `"write_access": {"knowledgebase": true}` or `"kind": "knowledgebase"`
 - learning writes: `"write_access": {"learnings": true}` or `"kind": "learning"`
 
-An item override can narrow but never exceed the step-level permissions. Write access is folder-level and per-file path lists are rejected. Use direct learning writes sparingly; normal step-level learning runs after the complete step.
+An item override can narrow but never exceed the step-level permissions. Write access is folder-level and per-file path lists are rejected. Put required contributions in the task. There is no automatic learning turn after the step.
 
 **Persistent stores and scratch space (the hard allow-list).** Access still depends on the current step/item grants. DB rows use managed tools; file grants do not authorize opening the live database:
 
@@ -190,7 +168,7 @@ An item override can narrow but never exceed the step-level permissions. Write a
 
 ## PREVALIDATION
 
-The step-level `validation_schema` is the final gate when the step declares one. The runtime runs it automatically after the configured work turns and before synthetic learning/knowledge closing turns. On a normal validation failure, it sends concrete failures back to the same conversation for correction and retries the gate. Infrastructure failures stop the step.
+The step-level `validation_schema` is the final gate when the step declares one. The runtime runs it automatically after the configured work turns with no automatic learning/knowledge closing turn. On a normal validation failure, it sends concrete failures back to the same conversation for correction and retries the gate. Infrastructure failures stop the step.
 
 **Validate on what the step actually produces — prefer the db.** Choose the schema by the step's real output, not by habit:
 
@@ -272,22 +250,10 @@ a cap, a failed row, or an accidental filter must not look like full completion.
 
 ## ROUTE PATTERNS
 
-Conversational route sub-agents use `agent`, including stateless one-turn work. Use `scripted` only for an explicitly scripted deterministic route.
-
 A saved scripted route is also offered to its Agent step as a named tool (route id `lookup-customer` → tool `lookup_customer(...)`), with its parameters as the tool's input schema; this is how an agent calls a script of the workflow, e.g. a customer lookup. Declare inputs with `script_parameters` (flat typed list) or `script_parameters_schema` (one full JSON Schema for nested or constrained inputs), never both. The script reads them from `STEP_PARAMS_JSON` and returns a value by writing `route_result.json` in `$STEP_OUTPUT_DIR`; the agent receives exactly that JSON. Use these patterns when designing or repairing an agent's `predefined_routes`.
 
-Use an `agent` route when the parent agent should preserve specialist memory. Normal repeated calls reuse the route conversation and each call is delivered as a re-entry user message. Set `agent_restart=true` to restart only when the prior conversation is stale, wrong, or contaminated.
-
-## AGENT ROUTE PATTERNS
-
-Use an `agent` route when the parent agent should preserve specialist memory across calls; restart only when the prior conversation is stale, wrong, or contaminated.
-
-- Stateful specialist: re-enter one route for follow-up work.
-- Test/fix loop: validate externally, then re-enter the specialist with concrete failures.
-- Maker/reviewer: keep creation and independent review in separate routes.
-- Panel: separate domain specialists coordinated by the parent sequence agent.
-- Clean-room retry: restart a contaminated specialist route.
-- Human feedback: send approved operator feedback into the same route conversation.
+LLM specialist routes and their re-entry conversations are retired. Use an
+explicit Crew step when persistent specialist memory or coordination is needed.
 
 ## AUTHORING RULES
 

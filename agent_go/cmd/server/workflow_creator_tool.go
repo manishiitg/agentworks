@@ -318,6 +318,9 @@ func validatePlanJSONStructure(m map[string]interface{}) error {
 	if err := todo_creation_human.ValidatePlanStructure(&plan); err != nil {
 		return fmt.Errorf("plan_json is invalid: %w", err)
 	}
+	if err := todo_creation_human.ValidateGoalAgentAuthoring(&plan); err != nil {
+		return fmt.Errorf("plan_json is invalid: %w", err)
+	}
 	return nil
 }
 

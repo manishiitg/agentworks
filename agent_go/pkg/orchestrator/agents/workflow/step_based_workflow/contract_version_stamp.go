@@ -3,6 +3,7 @@ package step_based_workflow
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -174,6 +175,20 @@ func CheckContractStamp(version, workflowDir string, manifestJSON []byte, readPl
 			return err
 		}
 		if err := ValidateAgentDescriptionFirstContractStamp(content); err != nil {
+			return err
+		}
+	}
+	if version == GoalAgentContractVersion {
+		content, err := readPlan()
+		if err != nil {
+			return err
+		}
+		rawConfig, readErr := os.ReadFile(filepath.Join(workflowDir, "planning", "step_config.json"))
+		cfg, err := goalAgentConfigForMigration(string(rawConfig), readErr)
+		if err != nil {
+			return err
+		}
+		if err := validateGoalAgentContractStamp(content, cfg); err != nil {
 			return err
 		}
 	}

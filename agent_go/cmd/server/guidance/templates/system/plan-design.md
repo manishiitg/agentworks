@@ -37,75 +37,19 @@ Combine actions into one step when they share one objective and output contract,
 
 ### Step 2: Choose the Right Step Type
 
-**`agent` is the agent step.** Its description is the first user turn alone;
-optional authored items define later conversation phases. Optional `predefined_routes` expose bounded specialists;
-the same agent interprets evidence, decides what to delegate next, changes direction, and judges whether the goal has been met.
+| Work | Step |
+|---|---|
+| A coherent task requiring judgment and tools | `agent`: complete task in the description, optional explicitly authored later phases, backend validation and repair in the same conversation |
+| Deterministic Python work | `scripted`: saved code, typed inputs, real outputs and validation |
+| Persistent specialist context or multi-agent coordination | `crew`: explicit call to a Crew trigger |
+| A major fixed fork | `routing` |
+| A small fixed fork | `branch` |
 
-The sequence's own LLM conversation performs reasoning, verification, repair,
-and reporting. Scripted children perform deterministic work under declared
-input/output contracts. Agentic routes are optional capabilities selected by
-the sequence agent at runtime. Do not add routes merely to run a fixed agent
-checklist; use explicit agent plan steps when isolated agentic work
-is predetermined.
-Parallel scripts or waiting for every result do not by themselves require an agent with predefined routes.
-
-**Supported scripted execution:** an authored `scripted` item references saved
-scripted scripts in `orphan_steps`, validates typed parameters, runs the finite
-batch with `max_parallel` (default sequential, maximum 8), and waits for every
-result before advancing. Scripts retain their own permissions and validation;
-there is no child LLM, automatic script repair, or automatic retry in this path.
-A failed batch stops the sequence with per-call outcomes. See
-`references/agent.md` for authoring and remaining limits.
-
-Add `predefined_routes` only for bounded agentic or scripted specialists the
-sequence agent may choose adaptively. The runtime supplies the sub-agent tools
-and asynchronous completion lifecycle when routes exist. SQL `foreach` remains
-sequential conversational iteration; known deterministic batches use a
-`scripted` item rather than agentic delegation.
-
-Examples:
-- **Agent:** run ten specified scripts, account for all ten results,
-  then use the parent conversation to analyze and report.
-- **Agent with routes:** investigate falling performance, choose analyses from the
-  evidence, resolve contradictions, and revise the investigation until the
-  explanation is supported. The parent owns that reasoning and may write the report.
-
-For any batch, define the expected task IDs, require a terminal result for every
-task, and distinguish success, failure, cancellation, and missing work. A report
-is not proof that all tasks ran. Completion tracking and waiting should be
-enforced by the runtime; validation must check coverage against the expected set.
-
-| Scenario | Step Type | Why |
-|----------|-----------|-----|
-| Agent does work, then verifies/fixes it against the success criteria (the common case) | **Agent** (default) | Description executes the complete task; automatic validation/repair keeps the same conversation. Authored follow-ups are optional. |
-| Fixed API/CLI/data work with deterministic inputs, outputs, and validation | **Scripted** (`scripted`) | Runs checked-in code without spending an LLM turn; new scripted steps are reserved for this boundary |
-| Parent must interpret evidence and decide or revise the work needed to reach the goal | **Agent with predefined routes** | The sequence agent owns strategy and substantive reasoning; isolation, parallelism, and worker type alone do not qualify |
-| Incident debugging / root-cause investigation: which source to query next (error tracker, logs, commits, code) and with what window depends on what the evidence so far shows | **Agent with predefined routes** to small scripted fetchers | Each fetch stays a deterministic script taking `script_parameters` (issue ID, log group + time window, repo + since), so the agent can re-query narrower or elsewhere as the hypothesis shifts without inventing data. Supply declared issue IDs as launch `variables`, mark required values in the consuming step's `required_variables`, and pass extra instructions through scoped `human_inputs` so Slack and scheduled runs can start it |
-| Need to branch based on prior step output or context | **Routing** | Supported branch primitive — reads `route_selection.json` and picks a route |
-| A person must decide between a few fixed options mid-run (approve/hold, yes/no, pick one) | **Branch** with `route_source: "human"` | Routes are the options; schedules answer up front via `route_selections`, unattended runs use `default_route_id`, interactive runs ask. Successor to `yesno`/`multiple_choice` human input. |
-| A known value is required before work starts (an ID or a month) | **Launch input** consumed by an Agent or Scripted step | Declare the variable and the first consumer's `required_variables`; supply it through launch `variables` or the selected variable group. Missing values stop the selected run before work starts. |
-| Extra user instructions for a particular step | **Scoped run instructions** | Pass `human_inputs` keyed by the consuming step ID, or `execute_step(human_input=...)`; these instructions stay scoped to that step. |
-| A live interaction becomes possible during execution (CAPTCHA or OTP) | **Agent** calling `human_feedback` | Request the value when the live page or action is ready and resume the same conversation. A timeout or cancellation must stop the affected action. |
-| A human decision can wait beyond the current turn or run | **Durable request** via `create_human_input_request` | Save the question, park the affected work, and have a later consumer check and apply the explicit answer. |
-| Work belongs to a persistent specialist with its own memory, skills, and files (reviewer, researcher, operator) | **Crew** (`crew`) | Invokes one Crew trigger and waits for its final text response. The Crew keeps its context across runs; the step only carries the instruction and runtime input. Top-level steps only. |
-| User already told the builder which fixed branch to run | **Routing** / **Branch** | The builder/caller passes `route_selections` to `run_workflow` / `run_full_workflow`; do not add a step just to ask the same choice again. |
-| Utility/debug tool available but not auto-run | **Orphan** (is_orphan: true) | Not in main flow; manual execution from workshop only |
-
-**Default to one large Agent per shared context.** Give each sequence one coherent agentic outcome. Modern agents do a lot in a single long-running turn: the description should complete the task, re-open its evidence and prove every success criterion. Improve its description, proof/evidence contract and top-level `validation_schema` before considering more steps. Automatic validation repairs failures in the same conversation; authored follow-ups are optional and must add a specific check or phase. Multiple large sequences are correct when their contexts should not be shared—for example because they have different credentials/security exposure, independent outputs/retries, clean-room independence, human or routing boundaries, or unrelated context that would distract or contaminate the next agent. The builder must decide this from the workflow semantics and state the boundary. Use **Agent even for one-turn conversational work**. Add **predefined routes** only when the sequence agent owns substantive runtime strategy and must choose specialists dynamically. Use **Scripted** only when deterministic work is implemented as a checked-in script, and **Branch**/**Routing** only for real fixed branch choices — **Branch** for a small in-flow decision, **Routing** when the choice forks into a major, self-contained sub-workflow.
-
-**Deterministic fetcher → agentic processor is the default data architecture.** Put fixed API/SDK requests, CLI commands, pagination with known rules, parsing, normalization, and mechanical database/file writes in one or a few `scripted` steps declared `scripted`. Batch related calls when they share credentials, retry policy, source, and output contract; do not create one step per endpoint or command. Where an agent may need to decide what to fetch (a lookup, an investigation, a narrower re-query), parameterize the fetcher (typed `script_parameters` for the ID, time window, filter or scope, with defaults for the main flow) so the same script can serve that agent. When nothing about the call is ever decided by an agent, keep it a pure script in the fixed flow with no invented parameters. Give each fetcher an explicit authoritative output (prefer canonical rows in `db/db.sqlite`, otherwise a compact JSON artifact), provenance/freshness fields, fail-closed error handling, idempotency where relevant, and deterministic validation. Then let one large `agent` read those persisted results and perform the judgment-heavy analysis, synthesis, critique, and repair. Do not spend an LLM turn reissuing a known request or parsing a stable response shape.
-
-**When the fixed pipeline is the wrong shape:** it fetches the same bundle every run. If which sources to query, and with what parameters, depends on evidence found along the way (incident debugging, root-cause analysis, open-ended investigation), do not pre-fetch a fixed bundle. Give the agent `predefined_routes` to small scripted fetchers that take `script_parameters` (Step 4), so fetching stays deterministic while the agent decides what to look at next.
-
-If selecting the next call genuinely requires live judgment, keep the decision agentic but isolate deterministic execution: the agent produces an explicit request/specification, a scripted step executes it, and a later agent interprets the result. Browser/UI navigation remains agentic unless it is genuinely stable and the user explicitly wants a scripted browser path. Human approval still precedes consequential side effects even when the approved API/CLI action itself is deterministic.
-
-**Composition examples** (adapt these to the task; they are not additional step-type rules):
-
-- **Multiple workflow modes:** one `routing` selector chooses a major mode. Keep shared setup outside its alternatives where practical, and explicitly connect each alternative's terminal step to the shared continuation or `end`. Use `references/routing.md` for the contract.
-- **Readiness before expensive work:** use a small scripted API/auth/connectivity check, or a conversational check when judgment is needed. If its result must choose retry/reauthenticate/continue, follow it with a `branch` consuming its validated status or route-selection file. If failure should simply stop the owning step, keep the check there instead of adding a separate probe and switch. Small checks are branches, not additional major routing selectors.
-- **Draft → review → action:** prepare the actual draft and supporting evidence before the human decision. A known API/CLI action after approval belongs in a saved script; use another agentic span only when the approved work needs further judgment. For existing authorization, unattended schedules, and durable per-item decisions, use `references/human-in-the-loop.md`.
-
-**Whenever you change an existing plan** — add / remove / reorder a step, or change a step's output contract, db writes, or behavior — run `read_skill(skills=[{"name":"builder-reference","path":"references/plan-change-impact.md"}])` before treating it as done and reconcile the blast radius (downstream steps, evals, report dashboard, db, learnings, KB). A step change ripples into everything that reads it; don't leave silent breakage behind.
+Default to one Agent per shared-context span. Split for independent outputs,
+retries, credentials, tools or human boundaries. Keep its task and policies in
+the description. Scripted items and scripted predefined_routes are supported
+helpers; LLM child agents are retired. Put required contributions in the task,
+under existing store grants. No automatic reflection phase runs.
 
 ### Step 3: Design context flow
 
@@ -116,54 +60,13 @@ Every step reads from prior steps and writes for downstream steps:
 - **The flow must be forward-only** — no circular dependencies
 - Use JSON for structured data consumed by downstream steps. Keep output files < 100KB. For a final human-readable report or analysis, **prefer `.md`** — markdown renders richly in the file viewer (headings, tables, lists), and unlike HTML gets clickable workspace file links; it is also simpler and more robust to author. Reach for HTML only when you genuinely need a rich/branded layout markdown cannot express — and for a real dashboard, author one or more `db/reports/*.html` documents that read live data through `window.report`. For prose appended into learnings/KB, use Markdown.
 
-### Step 4: When an Agent Needs Specialist Routes
+### Step 4: Scripted helpers or Crew
 
-The plan shape is `agent` with optional `predefined_routes`. Routes add specialist capabilities to the same agent conversation.
-
-**Eligibility gate:** add `predefined_routes` to an `agent` only when the agent makes a real runtime
-orchestration decision the static plan cannot directly express. Examples are:
-- The parent interprets runtime evidence to decide which investigations are needed
-- Incident debugging: an error, log excerpt or commit points to the next source to query and its time window
-- The parent weighs competing hypotheses and changes subsequent delegation
-- The parent reasons about failures and chooses a different recovery strategy
-- Interim synthesis exposes missing evidence and changes the plan
-
-The parent may self-execute analysis, decisions, synthesis, and report writing.
-Delegate bounded specialist work when isolation or parallel progress helps.
-Do not reduce the parent to a dispatcher that only starts, waits, and reports.
-Known task lists, SQL-selected rows, parallel fan-out, and fixed retry rules
-alone are not substantive strategy decisions.
-
-**A fixed child set and order does not justify adaptive routes.** Different tools,
-separate learnings, progress visibility, and easier debugging are supporting
-properties after the eligibility gate, not reasons to add routes by
-themselves. Use explicit plan steps/dependencies for known independent fixed
-work; use one `agent` for known same-context work; use scripted
-steps for known deterministic work; use `branch` or `routing` for a fixed
-exclusive branch (`branch` for a small in-flow decision, `routing` for a
-major sub-workflow fork).
-
-**Create predefined sub-agents (routes)** for tasks that are:
-- **Predictable** — same pattern every run, even if inputs change
-- **Self-contained** — clear inputs/outputs, can be validated independently
-- **Worth optimizing** — complex enough that accumulated learnings improve reliability
-
-Route sub-agents use `agent` for conversational work, including
-stateless one-turn work; `scripted` is reserved for explicitly scripted
-deterministic routes. A routed agent specialist may itself own routes
-for one nested delegation layer.
-
-Use an `agent` route when the parent agent should be able to call the
-same specialist repeatedly with memory. Normal repeated calls reuse the route
-session and send the new instructions as the re-entry user message. Use
-`agent_restart=true` only when the parent intentionally needs a clean
-rerun that archives the existing route session and replays the configured queue.
-
-**Use the generic agent** (no predefined route) for tasks that are:
-- **Dynamic** — unpredictable at design time
-- **Trivial** — too simple for a dedicated sub-agent
-
-**Non-example**: A known list such as "process the income, deductions, and credits pages" is not enough to justify three sub-agents. Keep it in one large agent unless those pages require independent tools, retry domains, outputs, or runtime delegation.
+A Goal Agent can invoke declared Python helpers with typed inputs and outputs.
+Keep these as scripted `predefined_routes` or authored scripted batches. LLM
+specialists, ongoing memory and multi-agent coordination belong to an explicit
+Crew step. Do not put conversational child agents or ad hoc LLM spawning inside
+a Goal step. Preserve existing authored phases unless reviewed as redundant.
 
 ### Step 5: When to Use Agent
 
@@ -180,12 +83,11 @@ rerun that archives the existing route session and replays the configured queue.
 - Add explicit reference-check, hallucination-check, critique, or self-validation items when reliability needs it.
 - Plain items inherit the step-level KB, DB, and learnings permissions, just like scripted steps. Use a non-empty `write_access` object or `kind` only to narrow a particular turn; an item can never escalate beyond the step configuration. See `read_skill(skills=[{"name":"builder-reference","path":"references/agent.md"}])`.
 - Deterministic code lives in saved scripted script definitions with explicit inputs, outputs, and validation. Run them as standalone plan steps or reference orphan scripts in a `scripted` batch item; never embed code in a message item.
-- As a predefined route, an agent behaves like a reusable specialist sub-agent: reuse the same route for critique, test feedback, validation feedback, or follow-up work that should keep prior context; restart only when the prior conversation is stale, wrong, or contaminated.
 - For row/item iteration, use a `foreach` item inside agent when one shared conversation should process every row. A SQL-selected worklist does not by itself require delegation. For known script batches, use a `scripted` item; add routes only when the parent owns substantive adaptive strategy.
 
 ### Step 6: When to Use Routing or Branch (brief)
 
-Use `routing` or `branch` when the next step must be **exactly one of N mutually exclusive paths** (e.g., "did login succeed, hit MFA, or fail?"). Both are deterministic: a caller or prior step must provide `route_selection.json` (or `route_selections`) with the selected route. For running every known sub-task, use an agent or explicit plan steps. Give an agent `predefined_routes` when it must reason about what specialist work is needed.
+Use `routing` or `branch` when the next step must be **exactly one of N mutually exclusive paths** (e.g., "did login succeed, hit MFA, or fail?"). Both are deterministic: a caller or prior step must provide `route_selection.json` (or `route_selections`) with the selected route. For running every known sub-task, use an agent or explicit plan steps. Use Crew when ongoing specialist work is needed.
 
 **Routing is now the "route" concept: a major, self-contained sub-workflow fork** — use it when the alternatives lead to substantially different continuations of the plan. **Branch is the small in-flow decision** — use it for a lightweight fork that converges back quickly. File-based selection mechanics are shared; branch additionally supports `route_source="human"` for fixed-choice decisions. **A plan has at most one routing step** — the mode selector whose route schedules pick via `route_selections`, each route a sub-workflow of many steps. Every further fixed choice — any simple if-condition, anything with an option that goes straight to `end` — is a branch; `add_step` rejects a second routing step and any route to `end`.
 
@@ -218,11 +120,11 @@ Step-level `success_criteria` is deprecated. Rely on a strong `description` plus
 - **Missing validation**: No validation_schema means no automated quality gate
 - **Vague or bloated descriptions**: "Process the data appropriately" is too vague — state WHAT the step must achieve, its scope and success criteria, and WHERE its result belongs. Put reusable HOW-to-execute guidance in accessible skills/learnings and output structure in `validation_schema`. The opposite failure is just as real: restating the same instruction from several angles, copy-pasting shared policy into every step that needs it, or spelling out a rigid procedure a judgment call didn't need. See `references/step-description.md`.
 - **Over-sequencing**: Steps that don't depend on each other can potentially run in parallel via independent step groups
-- **Inline specialist contracts in the parent charter**: If the description contains detailed instructions for one bounded specialist task, move that contract into a route and keep only the parent agent's objective and decision boundaries in the description
+- **Hidden specialist agents**: use an explicit Crew step for LLM specialists; predefined_routes are typed scripted helpers only.
 
 ### Step Types Reference
 
-- **Agent** (type: "agent") — **the canonical agent step**: one description-only first user turn plus optional subsequent `items` in a persistent conversation. Complete the coherent job in the description turn; Builder chooses any necessary semantic verification or later phases. Task-specific rules belong only in the description. It supports foreach turns, intermediate prevalidation gates, scripted batches, and optional `predefined_routes` for adaptive specialist delegation. Its top-level validation_schema is automatically enforced as the final gate with same-conversation repair retries. As a top-level step the queue runs once; as a route it can be re-entered during the same workflow run and receive new instructions without replaying the queue.
+- **Agent** (type: "agent") — **the canonical agent step**: one description-only first user turn plus optional subsequent `items` in a persistent conversation. Complete the coherent job in the description turn; Builder chooses any necessary semantic verification or later phases. Task-specific rules belong only in the description. It supports foreach turns, intermediate prevalidation gates, scripted batches, and optional scripted `predefined_routes` for typed Python helpers. Its top-level validation_schema is automatically enforced as the final gate with same-conversation repair retries. The task and its authored phases run once per step execution.
 - **Scripted** (type: "scripted"): an explicitly scripted deterministic boundary for fixed API/CLI/data work. New scripted steps are automatically declared `scripted`; use `agent` for every conversational or judgment-heavy step, including one-turn work.
 - A reusable scripted route may declare `script_parameters`: a small named, typed contract (`type`, `description`, optional `required`, `default`, `enum`) for controlled per-call variation. Keep credentials in Secrets and file dependencies in `context_dependencies`; do not encode dynamic route behavior as rewritten code or narrative instructions.
 - **Routing** (type: "routing"): N-way deterministic branching for a major sub-workflow fork. Reads `route_selection.json` (or caller `route_selections`) and picks exactly one **routes[]** entry. Each route has **route_id**, **condition**, and **next_step_id** (pointer to an existing step). Optional **default_route_id** is a missing-file fallback. Optional **route_source_file** points at a prior step's route file.

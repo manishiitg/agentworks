@@ -79,10 +79,16 @@ func TestWorkflowRunAskPublishedFunctionBoundary(t *testing.T) {
 		t.Fatalf("another person's input: %v", err)
 	}
 
+	// Shared people may run published functions regardless of person entries
+	// in AllowedCallers (the decisions log); non-person callers stay restricted.
+	call.mu.Lock()
+	call.UserID = "owner"
+	call.mu.Unlock()
+	args["PR_NUMBER"] = float64(42)
 	manifest.Schedules[0].Function.AllowedCallers = []triggerCaller{{Type: triggerCallerUser, ID: "other"}}
 	save()
-	if _, err := reg.tools["call_workflow_function"].exec(ctx, input); err == nil || !strings.Contains(err.Error(), "does not allow") {
-		t.Fatalf("caller policy: %v", err)
+	if got, err := reg.tools["call_workflow_function"].exec(ctx, input); err != nil || !strings.Contains(got, call.ID) || !strings.Contains(got, "completed") {
+		t.Fatalf("shared person retry: %s %v", got, err)
 	}
 	manifest.Schedules[0].Enabled = false
 	save()

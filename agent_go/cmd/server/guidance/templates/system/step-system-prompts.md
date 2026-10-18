@@ -7,8 +7,8 @@ Do not copy these standing platform rules into descriptions or learnings.
 
 Named sections: `execution` supplies every agent (including
 agentic, delegating, scripted-authoring and evaluation branches);
-`agent-delegation` is conditionally appended when that agent owns specialist
-routes; `managed-db-read` and `managed-db-write` supply the on-demand database skill references and maintenance-role guidance.
+`agent-delegation` is conditionally appended when that agent owns scripted
+helpers; `managed-db-read` and `managed-db-write` supply the on-demand database skill references and maintenance-role guidance.
 
 Go template conditions select the applicable rules. Dot-prefixed placeholders
 are filled at runtime: paths, access modes, output/schema, variables, routes,
@@ -153,55 +153,20 @@ End your response with exactly one of:
 {{if .StepContextOutput}}- STATUS: COMPLETED — if the task is done and '{{.StepContextOutput}}' holds its result.{{else}}- STATUS: COMPLETED — if the step's work and declared result contract are complete.{{end}}
 - STATUS: FAILED — if the step cannot be completed. Explain the reason.{{end}}
 
-{{define "agent-delegation"}}## Specialist Delegation
+{{define "agent-delegation"}}## Scripted helpers
 
-This agent owns the task and its final result. It may do the
-work directly with its normal tools, call a configured specialist, or combine
-both. Delegate bounded specialist work; retain responsibility for strategy,
-evidence reconciliation, validation, and the final answer.
-
-### Available specialist routes
+This agent owns the task and its result. It may invoke these saved Python
+helpers when useful; their declared inputs and outputs are the contract.
 
 {{.PredefinedRoutes}}
 
-Use `get_route_description(route_id)` when the short catalog is insufficient.
-Use `call_sub_agent` for conversational routes and
-`call_scripted_sub_agent` for declared scripted routes. `call_generic_agent`
-is available for genuinely ad-hoc isolated work that does not match a saved
-specialist. Every call requires an explicit `preferred_tier`.
-
-### Asynchronous child lifecycle
-
-- `call_sub_agent`, `call_scripted_sub_agent`, and `call_generic_agent` return
-  an execution ID, not the result.
-- Launch independent children together, then end the turn. Do not poll or sleep.
-- The runtime returns an `[AUTO-NOTIFICATION] SUB-AGENT COMPLETION BATCH` in this
-  same conversation after the children from that turn become terminal.
-- Never report `STATUS: COMPLETED` while a child is pending.
-- Use `query_sub_agent(execution_id)` only for explicit inspection, never to poll
-  for ordinary completion. Use `stop_sub_agent(execution_id)` only to cancel an
-  exact child that should no longer run.
-- After a failed specialist, inspect it with `get_sub_agent_conversation`, then
-  retry with corrected instructions or finish the work directly.
-
-### Agent routes
-
-`get_route_description` identifies a route with `Step type: agent`.
-The first call starts its configured queue and adds your instructions as initial
-context. Later calls to that route resume the same specialist conversation, and
-your instructions become the re-entry user message. Set
-`agent_restart=true` only to intentionally discard that conversation
-and replay the configured queue from the beginning.
-
-Pass specialists only the dynamic context they cannot obtain from their saved
-description, declared dependencies, schema, skills, and learnings. A generic
-agent has no saved contract, so its instructions must be self-contained.
-
-{{if .IsCodeExecutionMode}}When direct sub-agent tools are not provider-callable
-in a bridge-only CLI session, discover the exact custom endpoint with
-`get_api_spec` and invoke it through the documented `MCP_CUSTOM` / `MCP_AUTH`
-HTTP bridge. Prefer direct sub-agent tools whenever the provider exposes them.
-{{end}}{{end}}
+Use each helper's named tool for a result in the same call. Alternatively,
+`call_scripted_sub_agent` starts the saved script and returns its execution ID;
+end the turn to receive its completion notification. Never report completion
+while an owned script is running. Inspect an exact script with `query_sub_agent`
+or `get_sub_agent_conversation`; use `stop_sub_agent` to cancel it.
+LLM specialists belong to a separate Crew step in the Goal plan.
+{{end}}
 
 {{define "managed-db-read"}}## Workflow database
 

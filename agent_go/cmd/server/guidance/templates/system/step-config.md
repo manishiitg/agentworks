@@ -19,13 +19,14 @@ A step's access to each store is independent and defaults differently. Grant the
 
 | Field | Values | Default | Grant when… |
 |---|---|---|---|
-| `learnings_access` | `read` · `read-write` · `none` | `read` | `read-write` only for reusable execution HOW (browser selectors/timing/auth, API/MCP quirks, CLI/SDK patterns, parsing/retry/recovery) — also requires a concrete `learning_objective`. `none` only when shared SKILL.md would mislead the step. |
-| `knowledgebase_access` | `read` · `write` · `read-write` · `none` | `read` | Since PLAT-055/K, unset now defaults to `read` (mirrors `learnings_access` — every step sees KB context/notes unless told otherwise) and auto-promotes to `read-write` if a `knowledgebase_contribution` is already staged. WRITE stays a deliberate opt-in: set `write`/`read-write` plus a non-empty `knowledgebase_contribution`. Set `none` explicitly only when KB would mislead the step or a routing step needs a lean prompt — an explicit `none` always wins over the default. |
 | ~~`db_access`~~ | **retired** | `read-write` | Had no runtime effect — `resolveDBAccess` ignored it and always granted read-write, while the enum invited agents to "restrict" a step that never was restricted. Removed in PLAT-061; existing values still parse and are ignored. Every workflow step gets managed read-write DB access. |
 
 - **DB contract:** every agentic workflow step receives `query_workflow_db` and `mutate_workflow_db`; it does not receive raw SQLite access. Scripted code reaches the database through the built-in `agentworks_db` helper (the same managed tools); `$DB_PATH` remains only for scripts written before contract 1.0.45 and is not to be used in new or repaired scripts.
 - **Rule of thumb:** routing, validation, mechanical transforms, aggregation/report-shaping, human approval, pure db/KB readers, and mature scripted steps should usually stay read-only on learnings. DB access is intentionally uniform and is not a per-step tuning decision right now.
 - Deep dive on what belongs in each store and the write contracts: `read_skill(skills=[{"name":"builder-reference","path":"references/stores.md"}])`.
+
+| `learnings_access` | `read` · `read-write` · `none` | `read` | Read existing know-how; write only for explicit task contributions. No automatic reflection. |
+| `knowledgebase_access` | `read` · `write` · `read-write` · `none` | `read` | Permits task-directed notes contributions. Preserve the mode when migrating legacy objectives. |
 
 ### The per-step code lock
 
@@ -71,10 +72,9 @@ Uncertainty is a legitimate terminal state; an invented reason is worse than no
 change, because a fabricated justification is harder to challenge later than a
 missing one.
 
-By contrast `learning_objective` and `knowledgebase_contribution` are **not**
-gated — they are expected to be refined continuously as evidence accumulates,
-and a write-time gate would suppress exactly that iteration. Record the why in
-`review_notes`.
+Legacy `learning_objective` and `knowledgebase_contribution` are migration
+inputs, not new authoring settings. Contract 1.0.50 archives their original text
+and destinations; put required contributions in the task description instead.
 
 ### Other common fields
 
@@ -87,7 +87,7 @@ and a write-time gate would suppress exactly that iteration. Record the why in
 ### Workflow
 
 1. `update_step_config(step_id, <field>=<value>, ...)` to set; `update_step_config(step_id, clear=["<field>", ...])` to revert to default.
-2. Pair access grants with their prerequisite (`learnings_access: read-write` ⇒ `learning_objective`; KB write ⇒ `knowledgebase_contribution`).
+2. Match access grants to explicit task contributions; no separate objective or hidden turn is required.
 3. For the reliability/strategy decision-making that drives most config changes: `read_skill(skills=[{"name":"builder-reference","path":"references/optimize-playbook.md"}])`.
 
 ## Runtime procedures and tools

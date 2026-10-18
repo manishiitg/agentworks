@@ -125,6 +125,14 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 		return false, "", fmt.Errorf("step is not a AgentPlanStep")
 	}
 
+	// Filter only the runtime copy: the saved plan remains available for explicit migration.
+	runtimeStep := *orchestratorStep
+	runtimeStep.PredefinedRoutes = goalScriptedRoutes(orchestratorStep.PredefinedRoutes)
+	if len(runtimeStep.PredefinedRoutes) != len(orchestratorStep.PredefinedRoutes) {
+		hcpo.GetLogger().Info(fmt.Sprintf("[STEP_ROUTES_RETIRED] workflow=%s step=%s: LLM specialist routes are retired; use a Crew step; saved instructions await workflow_upgrade", hcpo.GetWorkspacePath(), step.GetID()))
+	}
+	orchestratorStep = &runtimeStep
+	step = orchestratorStep
 	hcpo.GetLogger().Info(fmt.Sprintf("🎯 Executing todo task step %d: %s", stepIndex+1, step.GetTitle()))
 
 	// Use provided stepPath or generate from stepIndex

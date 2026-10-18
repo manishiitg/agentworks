@@ -358,8 +358,7 @@ Read-only reviews (and any read-only subagents you use) never edit, publish, not
 The **Stores Health** turn reviews learnings, knowledgebase, and database health
 from their evidence packs when selected by Gate evidence. It is an Engineering Review
 turn, not a separate module. Its learning review covers the complete skill package, not
-only the root index or a sample of references, and audits every effective
-read-write `learning_objective`. References are part of the skill: only
+only the root index or a sample of references, and audits explicit task contributions and legacy migration notes. References are part of the skill: only
 reusable target-system execution HOW may remain anywhere under `learnings/_global/`.
 Relocating business facts, run state, owner values, strategy, incidents,
 decisions, provenance, or architecture history from `SKILL.md` into a reference

@@ -55,7 +55,7 @@ func getUpdateStepConfigParameters() map[string]interface{} {
 			},
 			"learning_objective": map[string]interface{}{
 				"type":        "string",
-				"description": "Extraction instruction for the step agent's direct post-completion learning turn. Use only for reusable execution HOW: browser selectors/timing/auth flows, API/MCP request and response quirks, CLI/SDK command patterns, parsing rules, retries, recovery, or file-format pitfalls. Do not use for facts/results, report data, routing decisions, validation-only steps, mechanical transforms, human approvals, pure db/KB readers, or mature scripted steps whose main.py already captures the method. Example: 'Capture the Buffer API create-update request shape, success fields, 401/429 handling, and output id parsing.' Required when learnings_access=\"read-write\" (the validator rejects write access with an empty objective).",
+				"description": "Legacy automatic-learning objective, retained only for workflow_upgrade 1.0.50. Put required contributions in the task description and grant learnings_access instead.",
 			},
 			"lock_code": map[string]interface{}{
 				"type":        "boolean",
@@ -84,11 +84,11 @@ func getUpdateStepConfigParameters() map[string]interface{} {
 			"learnings_access": map[string]interface{}{
 				"type":        "string",
 				"enum":        []string{"read", "read-write", "none"},
-				"description": "Access mode for this step against learnings/_global/ (SKILL.md + references/). Defaults to 'read' — every step sees the workflow's accumulated how-to knowledge in its prompt. 'read-write' — step contributes reusable execution HOW and requires a concrete learning_objective; use for browser/API/CLI/SDK/MCP/parsing/retry discoveries. Keep routing, validation, mechanical transform, aggregation/report-shaping, human approval, pure db/KB reader, and mature scripted steps read-only. 'none' — step neither reads global skill nor contributes; use rarely, only when shared HOW would mislead the step or token isolation is important. Omit to keep the default.",
+				"description": "Access to shared workflow know-how: read (default), read-write for explicit task contributions, or none. This does not add an automatic reflection turn.",
 			},
 			"knowledgebase_contribution": map[string]interface{}{
 				"type":        "string",
-				"description": "Natural-language contribution instruction. It becomes the step agent's contribution contract, injected into its post-completion self-review turn. KB writes only happen when this is non-empty AND knowledgebase_access grants write — an empty contribution means the step performs no KB writes regardless of access. Leave empty to skip KB updates for this step.",
+				"description": "Legacy automatic KB contribution objective, retained only for workflow_upgrade 1.0.50. Put required contributions in the task description and grant knowledgebase_access instead.",
 			},
 			"disable_parallel_tool_execution": map[string]interface{}{
 				"type":        "boolean",
@@ -529,11 +529,6 @@ func createUpdateStepConfigExecutor(runtime stepConfigToolRuntime, logger logger
 				errors = append(errors, fmt.Sprintf("learnings_access %q is not recognized. Valid values: \"read\", \"read-write\", \"none\".", learningsAccessRaw))
 			}
 		}
-		hasObjective := strings.TrimSpace(targetConfig.AgentConfigs.LearningObjective) != ""
-		effectiveAccess := resolveLearningsAccess(targetConfig.AgentConfigs)
-		if effectiveAccess == LearningsAccessReadWrite && !hasObjective {
-			errors = append(errors, "learnings_access=\"read-write\" requires a non-empty learning_objective. The direct learnings turn needs an extraction instruction; set learning_objective or drop access to \"read\"/\"none\".")
-		}
 		// 6b. Validate execution_tier.
 		if rawExecutionTier := strings.TrimSpace(targetConfig.AgentConfigs.ExecutionTier); rawExecutionTier != "" {
 			if NormalizeTierOverride(rawExecutionTier) == "" {
@@ -568,40 +563,8 @@ func createUpdateStepConfigExecutor(runtime stepConfigToolRuntime, logger logger
 		} else {
 			targetConfig.AgentConfigs.AdditionalReadPaths = normalizedPaths
 		}
-		// 7. Validate KB access ↔ contribution consistency.
-		// When knowledgebase_access grants write, knowledgebase_contribution MUST be
-		// non-empty — otherwise the post-step KB update agent is silently skipped
-		// (controller_kb_update.go:33 gates on a non-empty contribution). Mirror of
-		// the learning rule: opting in to the write-capable access is meaningless
-		// without an extraction instruction for the KB agent to act on.
-		if kbAccessAllowsWrite(targetConfig.AgentConfigs.KnowledgebaseAccess) &&
-			strings.TrimSpace(targetConfig.AgentConfigs.KnowledgebaseContribution) == "" {
-			errors = append(errors, fmt.Sprintf("knowledgebase_access=%q requires a non-empty knowledgebase_contribution. Write access without an extraction instruction means the post-step KB update agent never runs; set knowledgebase_contribution or drop access to \"read\"/\"none\".", targetConfig.AgentConfigs.KnowledgebaseAccess))
-		}
-
-		// 8. Validate KB write-method enum + direct-mode pairing: direct write
-		// needs access permitting writes AND a non-empty contribution string
-		// (which becomes the self-review turn's contract).
-		// KB writes always run as the step agent's own closing turn now, so the
-		// access + contribution requirements apply whenever write access is granted
-		// — not only when "direct" was set explicitly.
-		if kbAccessAllowsWrite(targetConfig.AgentConfigs.KnowledgebaseAccess) &&
-			strings.TrimSpace(targetConfig.AgentConfigs.KnowledgebaseContribution) == "" {
-			warnings = append(warnings, "knowledgebase_access grants writes but knowledgebase_contribution is empty, so this step performs no KB writes. Set a contribution or drop the write access.")
-		}
-		if strings.TrimSpace(targetConfig.AgentConfigs.KnowledgebaseContribution) != "" &&
-			!kbAccessAllowsWrite(targetConfig.AgentConfigs.KnowledgebaseAccess) {
-			errors = append(errors, fmt.Sprintf("knowledgebase_contribution is set but knowledgebase_access %q does not permit writes. Use \"write\" or \"read-write\", or clear the contribution.", targetConfig.AgentConfigs.KnowledgebaseAccess))
-		}
-
-		// 9. Learnings write contract: access + objective. SKILL.md writes always
-		// happen through the step agent's own post-completion turn; there is no
-		// write-method choice to validate.
-		if effectiveAccess == LearningsAccessReadWrite {
-			if !hasObjective {
-				errors = append(errors, "learnings_access=\"read-write\" requires a non-empty learning_objective. The objective is injected into the step's dedicated learnings turn as the SKILL.md contribution contract; without it the turn has nothing to instruct.")
-			}
-		}
+		// Access is a capability for explicit task contributions. Legacy objectives
+		// no longer trigger a hidden turn and are not prerequisites for a write grant.
 
 		// If there are errors, reject the update and return feedback
 		if len(errors) > 0 {

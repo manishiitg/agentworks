@@ -1911,8 +1911,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 		// tools (PLAT-441).
 		authoredAgent := subAgentExecCtx.OrchestratorStep != nil && subAgentExecCtx.OrchestratorStep.AuthoredPrompt
 		for _, tool := range subAgentTools {
-			if authoredAgent {
-				break
+			if authoredAgent || !goalScriptHelperTool(tool.Function.Name) {
+				continue
 			}
 			toolsToRegister = append(toolsToRegister, tool)
 			hcpo.GetLogger().Info(fmt.Sprintf("🔧 Added sub-agent tool '%s' to todo task orchestrator (category: %s)", tool.Function.Name, subAgentCategory))
@@ -1920,8 +1920,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 
 		// Wrap sub-agent executors with context injection
 		for toolName, executor := range subAgentExecutors {
-			if authoredAgent {
-				break
+			if authoredAgent || !goalScriptHelperTool(toolName) {
+				continue
 			}
 			wrappedExecutor := hcpo.wrapSubAgentToolExecutor(executor, subAgentExecCtx)
 			executorsToUse[toolName] = wrappedExecutor
@@ -2020,6 +2020,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) restoreSubAgentToolExecutors(execCtx 
 	subAgentExecutors := virtualtools.CreateSubAgentToolExecutors()
 	wrappedExecutors := make(map[string]func(ctx context.Context, args map[string]interface{}) (string, error), len(subAgentExecutors))
 	for toolName, executor := range subAgentExecutors {
+		if !goalScriptHelperTool(toolName) {
+			continue
+		}
 		wrappedExecutors[toolName] = hcpo.wrapSubAgentToolExecutor(executor, execCtx)
 	}
 	codeexec.InitRegistryForSession(sessionID, wrappedExecutors, hcpo.GetLogger())

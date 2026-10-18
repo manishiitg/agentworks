@@ -100,14 +100,13 @@ A routing step jumps execution **into** the selected branch, but it does not sto
   branches are skipped.
 - A branch whose terminal step has **no** `next_step_id` falls through to the next step in the list — the classic "the non-selected branch also ran" bug. Always wire the convergence.
 
-If an agent must decide whether or which specialists to call from live evidence,
-use an `agent` with `predefined_routes`. Use routing when an already
+If a task needs persistent LLM specialists,
+use an explicit Crew step. Use routing when an already
 made decision selects exactly one genuinely different downstream path.
 
 ### Routing vs. other primitives
 
-- **Routing vs. agent with specialists**: a routed agent may call
-  zero, one, or several specialists adaptively. Routing runs exactly one fixed
+- **Routing vs. Crew**: Crew may coordinate specialists adaptively. Routing runs exactly one fixed
   downstream alternative.
 - **Routing vs. plain agent**: a plain sequence is one ordered conversation; add `predefined_routes` only for adaptive delegation.
 - **Known route choices**: use `route_selections`; supply known values through variables or per-step `human_inputs`. Agents use `human_feedback` for urgent missing values.

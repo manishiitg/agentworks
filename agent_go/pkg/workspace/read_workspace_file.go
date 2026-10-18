@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -38,7 +39,7 @@ func (c *Client) ReadWorkspaceFile(ctx context.Context, params ReadWorkspaceFile
 	if FileReadOverlay != nil {
 		if raw, exists, handled := FileReadOverlay(ctx, params.Filepath); handled {
 			if !exists {
-				return ReadFileResult{}, fmt.Errorf("file not found")
+				return ReadFileResult{}, fmt.Errorf("file not found: %w", os.ErrNotExist)
 			}
 			return ReadFileResult{Filepath: params.Filepath, Content: raw}, nil
 		}
@@ -68,7 +69,7 @@ func (c *Client) ReadWorkspaceFile(ctx context.Context, params ReadWorkspaceFile
 		if FileReadReceipt != nil {
 			FileReadReceipt(ctx, params.Filepath, "")
 		}
-		return ReadFileResult{}, fmt.Errorf("file not found: %s", params.Filepath)
+		return ReadFileResult{}, fmt.Errorf("file not found: %s: %w", params.Filepath, os.ErrNotExist)
 	}
 
 	// Check if there's actual content
@@ -76,7 +77,7 @@ func (c *Client) ReadWorkspaceFile(ctx context.Context, params ReadWorkspaceFile
 		if FileReadReceipt != nil {
 			FileReadReceipt(ctx, params.Filepath, "")
 		}
-		return ReadFileResult{}, fmt.Errorf("file not found: %s", params.Filepath)
+		return ReadFileResult{}, fmt.Errorf("file not found: %s: %w", params.Filepath, os.ErrNotExist)
 	}
 	if apiResp.Data.IsBinary {
 		return ReadFileResult{}, fmt.Errorf("cannot read binary file as text: %s", params.Filepath)
@@ -98,6 +99,9 @@ func (c *Client) ReadWorkspaceFile(ctx context.Context, params ReadWorkspaceFile
 
 // IsFileNotFound distinguishes an absent file from a refused or failed read.
 func IsFileNotFound(err error) bool {
+	if errors.Is(err, os.ErrNotExist) {
+		return true
+	}
 	var status *httpStatusError
 	if errors.As(err, &status) {
 		return status.statusCode == 404

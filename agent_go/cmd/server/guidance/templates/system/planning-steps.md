@@ -48,14 +48,13 @@ For a fixed choice the user already gave the builder, prefer a deterministic
 switch instead of asking again — `branch` for a small in-flow decision,
 `routing` when the choice forks into a major, self-contained sub-workflow —
 and pass `route_selections` when running either.
-Add `predefined_routes` to an `agent` only when the agent must choose
-specialist work adaptively from runtime evidence. Several known actions in one shared context belong in the complete description task; use ordered items only for distinct subsequent phases. Do not add a
+Declare scripted `predefined_routes` when the agent needs typed Python helpers. Use an explicit Crew step for LLM specialists. Several known actions in one shared context belong in the complete description task; use ordered items only for distinct subsequent phases. Do not add a
 checkpoint just to ask the same branch choice again.
 
 ## Step types
 
 - **`agent`** (canonical agent step) — a description-first turn plus optional subsequent items in one conversation; optional
-  `predefined_routes` expose bounded specialists the agent chooses adaptively
+  `predefined_routes` expose typed scripted helpers; automatic reflection and LLM children are retired
 - **`scripted`** — a scripted deterministic boundary for API/SDK/CLI fetching,
   parsing, normalization, and mechanical persistence; batch related calls
   rather than making micro-steps. Conversational work uses `agent`,
@@ -76,5 +75,5 @@ step-types reference, inner steps, reusable orphan-route pattern),
 call **`read_skill(skills=[{"name":"builder-reference","path":"references/plan-design.md"}])`** — this is the entry
 point for any plan-composition decision. From there:
 
-- **Per-step-type deep dives**: `agent` (conversation, specialist routes, verification, SQL iteration and script batches), `routing` (major deterministic mode selection), and `branch` (small in-flow decisions).
+- **Per-step-type deep dives**: `agent` (conversation, scripted helpers, verification, SQL iteration and script batches), `routing` (major deterministic mode selection), and `branch` (small in-flow decisions).
 - **Combining steps**: examples live with their owning contracts in `plan-design`, `agent`, `human-in-the-loop` (review/approval), and `stores` (durable persistence).
