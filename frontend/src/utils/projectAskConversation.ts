@@ -8,7 +8,7 @@ import { resolveWorkspacePaneChatTab } from './workspacePaneChat'
 
 /** Open the ordinary project conversation, including its existing history.
  * A dashboard is another view of this chat, never a new session or tool mode. */
-export async function openProjectAskConversation(project: { product: string; projectId: string; workspacePath: string }): Promise<string> {
+export async function openProjectAskConversation(project: { product: string; projectId: string; workspacePath: string }, options?: { activate?: boolean }): Promise<string> {
   const identity = captureChatIdentity()
   await waitForChatStoreHydration()
   assertChatIdentityCurrent(identity)
@@ -25,10 +25,12 @@ export async function openProjectAskConversation(project: { product: string; pro
       agentProfileConversationKey: conversation.conversation_key,
       agentProfileConversationId: conversation.conversation_id, agentProfileChatContract: 'profile-v1',
       agentProfileChatProvider: conversation.provider, agentProfileChatConnectionID: conversation.connection_id,
-    }, conversation.session_id)
+    }, conversation.session_id, { activate: options?.activate !== false })
     assertChatIdentityCurrent(identity)
-    useModeStore.getState().setModeCategory('multi-agent')
-    useAppStore.getState().setAgentMode('multi-agent')
+    if (options?.activate !== false) {
+      useModeStore.getState().setModeCategory('multi-agent')
+      useAppStore.getState().setAgentMode('multi-agent')
+    }
     if ((useChatStore.getState().tabEvents[conversation.session_id]?.length ?? 0) === 0) {
       await hydrateTabEvents(conversation.session_id, { workspacePath: project.workspacePath, fallbackToChatHistory: true, preferChatHistory: true })
       assertChatIdentityCurrent(identity)
@@ -36,7 +38,7 @@ export async function openProjectAskConversation(project: { product: string; pro
     return tabId
   }
   if (project.product !== 'workflow' && project.product !== 'relay') throw new Error('Ask is unavailable for this project.')
-  const target = await resolveWorkspacePaneChatTab({ workspacePath: project.workspacePath, message: '' })
+  const target = await resolveWorkspacePaneChatTab({ workspacePath: project.workspacePath, message: '' }, options)
   assertChatIdentityCurrent(identity)
   if (target.targetTab.metadata?.presetQueryId !== project.projectId) throw new Error('The project conversation changed. Reopen the dashboard.')
   return target.tabId

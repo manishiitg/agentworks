@@ -265,6 +265,9 @@ func TestInspectSessionExecutionDurableIdentityAndAccess(t *testing.T) {
 		api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: id, Name: "Research", Kind: "workflow_step", Status: BGAgentRunning, CreatedAt: time.Now(), Metadata: map[string]string{"step_id": "research", "run_folder": "iteration-1/default"}})
 		api.emitBackgroundAgentStarted("chat", id, "Research", "", "", orchEvents.ExecutionKindWorkflowStep)
 	}
+	// A nested agent may inherit a step ID, but is not another top-level step.
+	api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: "nested-agent", Kind: "agent", ParentExecutionID: "dispatch-1", Status: BGAgentRunning, Metadata: map[string]string{"step_id": "research"}})
+	api.emitBackgroundAgentStarted("chat", "nested-agent", "Nested agent", "", "dispatch-1", orchEvents.ExecutionKindAgent)
 	file := orchEvents.BackgroundAgentTranscriptPath("Workflow/example", "chat", "dispatch-1")
 	content, _, _ := readFileFromWorkspace(context.Background(), file)
 	transcript, err := orchEvents.ParseBackgroundAgentTranscript(content)
@@ -355,6 +358,21 @@ func TestInspectSessionExecutionDurableIdentityAndAccess(t *testing.T) {
 	api.eventStore = nil
 	treeRequest := httptest.NewRequest(http.MethodGet, "/sessions/chat/execution-tree?workspace_path=Workflow/example", nil)
 	treeRequest = mux.SetURLVars(treeRequest, map[string]string{"session_id": "chat"})
+	previousClient := workspaceHTTPClient
+	transport := previousClient.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	transcriptReads := 0
+	countingClient := *previousClient
+	countingClient.Transport = inspectionRoundTripper(func(request *http.Request) (*http.Response, error) {
+		if strings.Contains(request.URL.Path, "/builder/conversation/background/") && strings.HasSuffix(request.URL.Path, ".json") {
+			transcriptReads++
+		}
+		return transport.RoundTrip(request)
+	})
+	workspaceHTTPClient = &countingClient
+	defer func() { workspaceHTTPClient = previousClient }()
 	treeResponse := httptest.NewRecorder()
 	api.handleGetSessionExecutionTree(treeResponse, treeRequest)
 	var tree SessionExecutionTreeResponse
@@ -367,13 +385,22 @@ func TestInspectSessionExecutionDurableIdentityAndAccess(t *testing.T) {
 			receipts[node.Inspection.ExecutionID] = true
 		}
 	}
-	if !receipts["dispatch-1"] || !receipts["dispatch-2"] {
+	if !receipts["dispatch-1"] || !receipts["dispatch-2"] || receipts["nested-agent"] {
 		t.Fatalf("completed step receipts disappeared after restart: %s", treeResponse.Body)
+	}
+	readsAfterFirst := transcriptReads
+	if readsAfterFirst != 2 {
+		t.Fatalf("read %d transcripts; want only two top-level step receipts", readsAfterFirst)
+	}
+	repeatedTree := httptest.NewRecorder()
+	api.handleGetSessionExecutionTree(repeatedTree, treeRequest)
+	if repeatedTree.Code != http.StatusOK || transcriptReads != readsAfterFirst {
+		t.Fatalf("repeated discovery reread transcripts: status=%d reads=%d", repeatedTree.Code, transcriptReads)
 	}
 	foreignTree := httptest.NewRecorder()
 	foreignRequest := treeRequest.WithContext(context.WithValue(treeRequest.Context(), UserContextKey, &UserClaims{UserID: "other-account"}))
 	api.handleGetSessionExecutionTree(foreignTree, foreignRequest)
-	if foreignTree.Code != http.StatusNotFound {
+	if foreignTree.Code != http.StatusNotFound || transcriptReads != readsAfterFirst {
 		t.Fatalf("foreign sidebar discovery: %d", foreignTree.Code)
 	}
 

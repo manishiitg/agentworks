@@ -166,6 +166,18 @@ describe('useChatStore hydration bootstrap', () => {
     expect(Object.keys(chatStore.useChatStore.getState().chatTabs)).toHaveLength(2)
   })
 
+  it('prepares and reuses an embedded project chat without replacing a selected side chat', async () => {
+    const { useChatStore, waitForChatStoreHydration } = await import('./useChatStore')
+    await waitForChatStoreHydration()
+    const side = await useChatStore.getState().createChatTab('Chat 2', { mode: 'multi-agent', agentProfileId: 'code', agentProfileProjectId: 'project', agentProfileConversationKey: 'project:chat:side' }, 'side-session')
+    const metadata = { mode: 'multi-agent' as const, agentProfileId: 'code', agentProfileProjectId: 'project', agentProfileConversationKey: 'project' }
+    const primary = await useChatStore.getState().createChatTab('Chat', metadata, 'primary-session', { activate: false })
+    expect(useChatStore.getState().activeTabId).toBe(side)
+    expect(await useChatStore.getState().createChatTab('Chat', metadata, 'primary-session', { activate: false })).toBe(primary)
+    expect(useChatStore.getState().activeTabId).toBe(side)
+    expect(useChatStore.getState().chatTabs[primary].sessionId).toBe('primary-session')
+  })
+
   it('never reuses a product Builder as the project conversation tab', async () => {
     const chatStore = await import('./useChatStore')
     await chatStore.waitForChatStoreHydration()

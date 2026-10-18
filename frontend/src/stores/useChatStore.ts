@@ -738,7 +738,7 @@ export interface ChatState extends StoreActions {
   clearToasts: () => void
   
   // Tab management actions
-  createChatTab: (name: string, metadata?: ChatTab['metadata'], existingObserverId?: string) => Promise<string>  // Returns tabId
+  createChatTab: (name: string, metadata?: ChatTab['metadata'], existingObserverId?: string, options?: { activate?: boolean }) => Promise<string>  // Returns tabId
   switchTab: (tabId: string) => void
   closeTab: (tabId: string, stopSession?: boolean, keepEvents?: boolean) => Promise<void>
   getTab: (tabId: string) => ChatTab | undefined
@@ -2348,7 +2348,7 @@ export const useChatStore = create<ChatState>()(
       },
       
       // Tab management actions
-      createChatTab: async (name: string, metadata?: ChatTab['metadata'], existingObserverId?: string) => {
+      createChatTab: async (name: string, metadata?: ChatTab['metadata'], existingObserverId?: string, options?: { activate?: boolean }) => {
         const identity = captureChatIdentity()
         // Generate unique tab ID
         const timestamp = Date.now()
@@ -2410,7 +2410,7 @@ export const useChatStore = create<ChatState>()(
             if (existingObserverId && existingObserverId !== existing.sessionId) {
               get().updateTabSessionId(existing.tabId, existingObserverId)
             }
-            set({ activeTabId: existing.tabId })
+            if (options?.activate !== false) set({ activeTabId: existing.tabId })
             logger.debug('TabStore', `Reusing single multi-agent tab ${existing.tabId} (single-tab invariant)`)
             return existing.tabId
           }
@@ -2489,7 +2489,7 @@ export const useChatStore = create<ChatState>()(
             ...state.chatTabs,
             [tabId]: tab
           },
-          activeTabId: tabId
+          ...(options?.activate !== false ? { activeTabId: tabId } : {})
         }))
         
         // Verify the tab was stored correctly

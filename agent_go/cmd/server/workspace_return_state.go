@@ -158,7 +158,7 @@ func (api *StreamingAPI) validateWorkspaceReturn(r *http.Request, d *workspaceDe
 		}
 		if !active && workspace != "" {
 			data, err := ReadChatHistoryConversation(claims.UserID, copy.SessionID, workspace)
-			historyMissing = err != nil && strings.Contains(err.Error(), "conversation not found")
+			historyMissing = errors.Is(err, errChatHistoryConversationNotFound)
 			if err == nil {
 				owner, _ := chatHistoryConversationIdentity(data)
 				_ = json.Unmarshal(data, &history)
