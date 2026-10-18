@@ -45,4 +45,17 @@ func TestScheduleIssuesExcludeDisabledHistory(t *testing.T) {
 	if !jobs[1].HasRunIssue || jobs[1].StatusWord != "Partly completed" || !jobs[2].HasRunIssue || jobs[3].HasRunIssue {
 		t.Fatalf("issue projection = %+v", jobs)
 	}
+	// A later successful run clears an interrupted issue on projection;
+	// the flag is recomputed, never persisted as a separate sticky status.
+	jobs[3].Enabled = true
+	applyScheduleStatusText(jobs, &SchedulerConfig{})
+	if !jobs[3].HasRunIssue {
+		t.Fatal("active interrupted run should need attention")
+	}
+	jobs[3].LastStatus = "success"
+	applyScheduleStatusText(jobs, &SchedulerConfig{})
+	if jobs[3].HasRunIssue || jobs[3].RunOutcome != "Succeeded" {
+		t.Fatalf("recovered result still looks interrupted: %+v", jobs[3])
+	}
+
 }

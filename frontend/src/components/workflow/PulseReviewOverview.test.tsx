@@ -36,7 +36,7 @@ it('makes Strategy primary and groups Architecture with platform stability', asy
     expect(navigation.textContent).toContain('Architecture')
     expect(navigation.textContent).toContain('Workflow Review')
     expect(navigation.textContent!.indexOf('Strategy')).toBeLessThan(navigation.textContent!.indexOf('Architecture'))
-    expect(container.querySelector('[aria-label="Architecture content"]')?.textContent).toContain('Learning quality')
+    expect(container.querySelector('[aria-label="Architecture content"]')?.textContent).toContain('Skill quality')
     expect(container.querySelector('[aria-label="Technical content"]')).toBeNull()
   } finally { await act(async () => root.unmount()) }
 })
