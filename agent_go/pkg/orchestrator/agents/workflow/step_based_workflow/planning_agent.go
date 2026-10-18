@@ -1071,6 +1071,7 @@ type PartialPlanStep struct {
 	CrewProjectID      string `json:"crew_project_id,omitempty"` // Optional: Updated crew project ID
 	CrewTriggerID      string `json:"trigger_id,omitempty"`      // Optional: Updated crew trigger ID
 	CrewInstruction    string `json:"instruction,omitempty"`     // Optional: Updated crew instruction
+	CrewAgent          string `json:"agent,omitempty"`           // Optional: Crew agent (named chat) this step talks to
 	CrewTimeoutSeconds int    `json:"timeout_seconds,omitempty"` // Optional: Updated crew timeout; 0 leaves the existing value
 }
 
@@ -3096,6 +3097,9 @@ func mergePartialStepUpdate(existingStep PlanStepInterface, partialUpdate Partia
 		if partialUpdate.CrewInstruction != "" {
 			updated.Instruction = partialUpdate.CrewInstruction
 		}
+		if partialUpdate.CrewAgent != "" {
+			updated.Agent = partialUpdate.CrewAgent
+		}
 		if partialUpdate.CrewTimeoutSeconds != 0 {
 			updated.TimeoutSeconds = partialUpdate.CrewTimeoutSeconds
 		}
@@ -3462,6 +3466,9 @@ func updateSingleStep(plan *PlanningResponse, partialUpdate PartialPlanStep, fie
 			OldValue: oldValue,
 			NewValue: partialUpdate.CrewTriggerID,
 		})
+	}
+	if partialUpdate.CrewAgent != "" {
+		changedFields = append(changedFields, "agent")
 	}
 	if partialUpdate.CrewInstruction != "" {
 		changedFields = append(changedFields, "instruction")

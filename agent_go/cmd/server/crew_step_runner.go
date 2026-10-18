@@ -104,6 +104,9 @@ func (r *crewStepRunner) RunCrewStep(ctx context.Context, req stepworkflow.CrewS
 			destination = runDestination(!projectsShareOwner(owners, []string{owner}))
 		}
 	}
+	if chatID := crewAgentChatID(req.Agent); chatID != "" {
+		destination += "-" + chatID
+	}
 	base := crewStepDeliveryBase(req.WorkflowID, runScope, req.Group, req.StepID, req.TriggerID, destination)
 	runID := ""
 	for attempt := 0; ; attempt++ {
@@ -116,7 +119,7 @@ func (r *crewStepRunner) RunCrewStep(ctx context.Context, req stepworkflow.CrewS
 		}
 		result, err := r.crews.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
 			UserID: r.userID, ProfileID: req.ProfileID, ProjectID: req.ProjectID, TriggerID: req.TriggerID,
-			Caller: caller, WorkflowRunID: runScope, WorkflowStepID: req.StepID,
+			Caller: caller, WorkflowRunID: runScope, WorkflowStepID: req.StepID, AgentName: req.Agent,
 			DeliveryID: deliveryID, Payload: payload,
 		})
 		if err != nil {
@@ -327,4 +330,25 @@ func crewProjectAttached(manifest *WorkflowManifest, profileID, projectID string
 		}
 	}
 	return false
+}
+
+// crewAgentChatID turns a Crew agent's name into its stable chat id: the same
+// name always reaches the same chat ("Weekly Report" -> "weekly-report").
+func crewAgentChatID(name string) string {
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(strings.TrimSpace(name)) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			dash = false
+		case !dash && b.Len() > 0:
+			b.WriteByte('-')
+			dash = true
+		}
+		if b.Len() >= 48 {
+			break
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }

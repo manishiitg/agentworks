@@ -520,10 +520,12 @@ type productWebhookMatch struct {
 	// SharedProjectOwner comes from the source and target ownership records.
 	SharedProjectOwner bool
 	ProjectCallerPath  string
-	Profile            agentprofiles.Profile
-	Binding            productConversationBinding
-	Manifest           productProjectManifest
-	Trigger            productWebhookTrigger
+	// AgentName routes a same-owner call to that named Crew agent (side chat), created on first use.
+	AgentName string
+	Profile   agentprofiles.Profile
+	Binding   productConversationBinding
+	Manifest  productProjectManifest
+	Trigger   productWebhookTrigger
 }
 
 func (s *ProductScheduleService) findProductWebhook(ctx context.Context, id string) (*productWebhookMatch, error) {
@@ -724,6 +726,11 @@ func (s *ProductScheduleService) deliverProductTrigger(ctx context.Context, matc
 		job.ConversationKey = match.GuestCallerID
 		job.ProjectCaller = match.Trigger.Caller
 		job.ProjectCallerPath = match.ProjectCallerPath
+		// A named agent of the same owner's Crew is one of its chats, made on first use (PLAT-861-261).
+		if chatID := crewAgentChatID(match.AgentName); chatID != "" && match.SharedProjectOwner {
+			job.Schedule.ChatKey = match.Manifest.ID + codeChatSideMarker + chatID
+			job.AgentName = match.AgentName
+		}
 	}
 	if match.FunctionCallID != "" {
 		job.Schedule.Isolated = true
@@ -819,6 +826,7 @@ func (s *ProductScheduleService) dispatchInternalProductTrigger(ctx context.Cont
 		}
 	}
 	match.PinRunMode = call.PinRunMode
+	match.AgentName = strings.TrimSpace(call.AgentName)
 	match.RunAsOwner = call.RunAsOwner && !call.PinRunMode
 	if projectCallConversation(match) {
 		match.ProjectCallerPath = call.CallerPath

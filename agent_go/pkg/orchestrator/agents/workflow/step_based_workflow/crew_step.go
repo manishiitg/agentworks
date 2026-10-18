@@ -21,9 +21,12 @@ const DefaultCrewStepTimeoutSeconds = 1800
 type CrewPlanStep struct {
 	Type StepType `json:"type"` // Always "crew" - required for JSON marshaling/unmarshaling
 	CommonStepFields
-	CrewProfileID  string `json:"crew_profile_id"`           // Product profile of the target Crew; initially "work"
-	CrewProjectID  string `json:"crew_project_id"`           // Stable target Crew project ID
-	TriggerID      string `json:"trigger_id"`                // Crew trigger to invoke
+	CrewProfileID string `json:"crew_profile_id"` // Product profile of the target Crew; initially "work"
+	CrewProjectID string `json:"crew_project_id"` // Stable target Crew project ID
+	TriggerID     string `json:"trigger_id"`      // Crew trigger to invoke
+	// Agent names the Crew agent (one of its chats) this step talks to, e.g. "weekly report".
+	// It is created on first use and keeps its own conversation; empty uses the Crew's main chat (PLAT-861-261).
+	Agent          string `json:"agent,omitempty"`
 	Instruction    string `json:"instruction"`               // Workflow-specific instruction, rendered with variables at run time
 	TimeoutSeconds int    `json:"timeout_seconds,omitempty"` // Maximum wait for the Crew run; defaults to DefaultCrewStepTimeoutSeconds
 	NextStepID     string `json:"next_step_id,omitempty"`    // Optional explicit successor; empty preserves sequential execution
@@ -100,6 +103,7 @@ type CrewStepRequest struct {
 	ProfileID      string
 	ProjectID      string
 	TriggerID      string
+	Agent          string
 	Instruction    string
 	Inputs         map[string]interface{}
 	TimeoutSeconds int

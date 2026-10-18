@@ -255,3 +255,40 @@ func TestProjectCallerOwnersRejectMismatchedPath(t *testing.T) {
 		}
 	}
 }
+
+// A workflow Crew step that names an agent talks to that agent's own chat in
+// the same owner's Crew; the same name always reaches the same chat (PLAT-861-261).
+func TestCrewStepNamedAgentRoutesToItsOwnChat(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	t.Setenv("MULTI_USER_MODE", "false")
+	t.Setenv("DEFAULT_USER_ID", "owner")
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
+	manifest, _, _ := ReadWorkflowManifest(ctx, "Workflow/reports")
+	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerWorkflow, ID: manifest.ID}}
+	target, err := resolveTriggerTarget(ctx, &UserClaims{UserID: "owner"}, "Beta")
+	if err != nil {
+		t.Fatal(err)
+	}
+	triggerID, _, err := env.api.connectTriggerTarget(ctx, "owner", caller, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delivery, err := env.svc.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{UserID: "owner", ProfileID: "work", ProjectID: "beta", TriggerID: triggerID, Caller: caller.Stamp, DeliveryID: "named-agent", Payload: []byte(`{"instruction":"audit"}`), AgentName: "Weekly Report"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.svc.mu.Lock()
+	defer env.svc.mu.Unlock()
+	for _, queue := range env.svc.queued {
+		for _, item := range queue {
+			if item.options.RunID != delivery.RunID {
+				continue
+			}
+			if item.job.Schedule.Isolated || item.job.Schedule.ChatKey != "beta"+codeChatSideMarker+"weekly-report" || item.job.AgentName != "Weekly Report" {
+				t.Fatalf("named agent job: isolated=%v chat=%q agent=%q", item.job.Schedule.Isolated, item.job.Schedule.ChatKey, item.job.AgentName)
+			}
+			return
+		}
+	}
+	t.Fatal("delivery did not queue")
+}

@@ -106,9 +106,11 @@ type productScheduleJob struct {
 	// ConversationKey narrows an isolated run's conversation to one calling
 	// person (a cross-owner Crew call); empty keeps one per schedule/trigger.
 	ConversationKey string
-	WorkspacePath   string
-	ManifestPath    string
-	AutomationKind  string
+	// AgentName: Schedule.ChatKey is a named Crew agent that is created when missing.
+	AgentName      string
+	WorkspacePath  string
+	ManifestPath   string
+	AutomationKind string
 	// ManifestActivatedAt migrates legacy project schedules that have no
 	// per-schedule CreatedAt without moving their first occurrence to each
 	// scheduler tick.
@@ -1247,10 +1249,22 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 		// A schedule set from a side chat (tab) runs there while that chat
 		// exists; otherwise, and for every other schedule, in the main chat.
 		key := job.ProjectID
+		created := false
 		if chatKey := scheduleChatKey(job); chatKey != "" && projectChatExists(runCtx, job.UserID, job.Profile.ID, job.ProjectID, chatKey) {
-			key = chatKey
+			key = chatKey // an existing chat keeps its own title
+		} else if chatKey != "" && job.AgentName != "" {
+			// A named Crew agent is created on first use, within the Crew's chat limit.
+			if capErr := checkSideChatCapacity(runCtx, defaultProductConversationRegistryStore(), job.UserID, job.Profile.ID, chatKey); capErr != nil {
+				bindErr = fmt.Errorf("This Crew already has %d chats, so agent %q cannot be added. Close a chat in the Crew or reuse an existing agent name.", externalCrewMaxSideChats, job.AgentName)
+			}
+			key, created = chatKey, true
 		}
-		binding, bindErr = resolveProductConversationBinding(runCtx, job.UserID, job.Profile, key)
+		if bindErr == nil {
+			binding, bindErr = resolveProductConversationBinding(runCtx, job.UserID, job.Profile, key)
+			if bindErr == nil && created {
+				binding.Title = job.AgentName
+			}
+		}
 	} else if job.Schedule.Isolated {
 		binding, bindErr = resolveIsolatedScheduleBinding(runCtx, job.UserID, job.Profile)
 	} else {

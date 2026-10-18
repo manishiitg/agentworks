@@ -99,6 +99,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeCrewStep(
 		ProfileID:         crewStep.CrewProfileID,
 		ProjectID:         crewStep.CrewProjectID,
 		TriggerID:         crewStep.TriggerID,
+		Agent:             crewStep.Agent,
 		Instruction:       instruction,
 		Inputs:            inputs,
 		TimeoutSeconds:    timeoutSeconds,

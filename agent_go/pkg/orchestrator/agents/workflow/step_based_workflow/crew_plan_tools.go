@@ -37,6 +37,10 @@ func getAddCrewStepSchema() string {
 				"type": "string",
 				"description": "REQUIRED: ID of the Crew trigger to invoke. The trigger owns its saved base instruction and conversation destination."
 			},
+			"agent": {
+				"type": "string",
+				"description": "OPTIONAL: Name of the Crew agent this step talks to, for example \"weekly report\". Each agent is one of the Crew's chats with the same skills, memory and tools; it is created on first use and keeps its own conversation between runs. Names match regardless of case and punctuation (\"Weekly Report\" and \"weekly-report\" are the same agent). Omit to use the Crew's main chat."
+			},
 			"instruction": {
 				"type": "string",
 				"description": "REQUIRED: Workflow-specific instruction for this invocation. Variables in {{name}} form are rendered at run time."
@@ -100,6 +104,10 @@ func getUpdateCrewStepSchema() string {
 			"trigger_id": {
 				"type": "string",
 				"description": "OPTIONAL: Updated Crew trigger ID."
+			},
+			"agent": {
+				"type": "string",
+				"description": "OPTIONAL: Name of the Crew agent this step talks to, for example \"weekly report\". Each agent is one of the Crew's chats with the same skills, memory and tools; it is created on first use and keeps its own conversation between runs. Names match regardless of case and punctuation (\"Weekly Report\" and \"weekly-report\" are the same agent). Omit to use the Crew's main chat."
 			},
 			"instruction": {
 				"type": "string",

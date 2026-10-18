@@ -193,7 +193,9 @@ type internalCrewTriggerCall struct {
 	WorkflowStepID string
 	DeliveryID     string
 	Event          string
-	Payload        []byte
+	// AgentName is the Crew agent (named chat) a workflow step talks to; created on first use (PLAT-861-261).
+	AgentName string
+	Payload   []byte
 	// CallerLabel is the caller's display name for the turn's source note.
 	CallerLabel string
 	// PinRunMode runs the turn in Run mode even for the Crew's owner (a downgrade only; PLAT-756).
