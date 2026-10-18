@@ -228,7 +228,7 @@ export function KnowledgebaseSources({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <BookOpen aria-hidden="true" className="h-4 w-4 text-primary" />
-              <h3 className="text-sm font-semibold">Legacy knowledge sources</h3>
+              <h3 className="text-sm font-semibold">Workflow references</h3>
               {!loading && sourcesLoaded && (
                 <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
                   {sources.length} attached
@@ -237,7 +237,7 @@ export function KnowledgebaseSources({
             </div>
           </div>
           <p className="text-muted-foreground">
-            Read context and notes from other workflows. Read-write
+            Read context and notes from other workflows. Can open and save
             attachments also need a grant below.
           </p>
           {loading && (
@@ -253,7 +253,7 @@ export function KnowledgebaseSources({
           {sources.length > 0 && (
             <ul
               className="grid gap-2 lg:grid-cols-2"
-              aria-label="Legacy knowledge sources"
+              aria-label="Workflow references"
             >
               {sources.map((source) => (
                 <li
@@ -266,7 +266,7 @@ export function KnowledgebaseSources({
                     </span>
                     <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground">
                       <LockKeyhole aria-hidden="true" className="h-3 w-3" />
-                      {source.access === "write" ? "Read-write (notes/)" : "Read only"}
+                      {source.access === "write" ? "Can open and save (notes/)" : "Can open"}
                     </span>
                   </div>
                   <div className="text-muted-foreground">
@@ -330,7 +330,7 @@ export function KnowledgebaseSources({
           {sources.length > 0 && (
             <p className="text-[11px] text-muted-foreground">
               Available sources are readable by the builder, reviewers, and
-              steps with read access.
+              steps that can open them.
             </p>
           )}
         </>
@@ -344,7 +344,7 @@ export function KnowledgebaseSources({
             {[{ alias: "", label: "Local knowledge", detail: "This workflow" }, ...sources.map((source) => ({
               alias: source.alias,
               label: source.label || source.alias,
-              detail: `(${source.alias}) · ${source.available ? (source.access === "write" ? "Read-write" : "Read only") : "Unavailable"}`,
+              detail: `(${source.alias}) · ${source.available ? (source.access === "write" ? "Can open and save" : "Can open") : "Unavailable"}`,
             }))].map((option) => {
               const pressed = selected === option.alias;
               return (
@@ -369,11 +369,11 @@ export function KnowledgebaseSources({
             {selected
               ? sources.find((s) => s.alias === selected)?.access === "write"
                 ? `Viewing shared knowledge from ${sources.find((s) => s.alias === selected)?.label || selected}. This workflow may also contribute to its notes/.`
-                : `Viewing shared knowledge from ${sources.find((s) => s.alias === selected)?.label || selected}. Read only; maintained in the source workflow.`
+                : `Viewing shared knowledge from ${sources.find((s) => s.alias === selected)?.label || selected}. Can open; maintained in the source workflow.`
               : "Viewing this workflow’s local knowledge."}
           </p>
           <p className="text-[11px] text-muted-foreground">
-            Shared knowledge is set up in Connections → Add connection → Brain; legacy sources stay in Connections → Add connection → Folders &amp; workflows.
+            Shared knowledge is set up in Connections → Add connection → Brain; earlier sources stay in Connections → Add connection → Folders &amp; workflows.
           </p>
           {sources.find((s) => s.alias === selected)?.available === false && (
             <p role="status" className="text-amber-700 dark:text-amber-300">

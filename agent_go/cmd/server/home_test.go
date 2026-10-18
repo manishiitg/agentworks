@@ -66,7 +66,7 @@ func TestWorkspaceStateUserIsolationRevisionAndRevokedAccess(t *testing.T) {
 		t.Fatalf("restored: %d %s (%v)", w.Code, w.Body, err)
 	}
 	w = request("reader", http.MethodGet, "")
-	if w.Code != 200 || strings.Contains(w.Body.String(), `"id":"invoices"`) {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"last":null`) || !strings.Contains(w.Body.String(), `"revision":0`) {
 		t.Fatalf("another account inherited state: %d %s", w.Code, w.Body)
 	}
 	if w = request("owner", http.MethodPut, body); w.Code != 409 {
@@ -106,12 +106,10 @@ func TestWorkspaceStateRejectsForgedTargetAndForeignSession(t *testing.T) {
 	}
 }
 
-func TestHomeMCPUsesSameVisibility(t *testing.T) {
-	f := newExternalToolsFixture(t)
-	t.Setenv("AGENT_PRODUCTS", "agentworks")
-	w := f.call(t, "owner", "home", map[string]any{"action": "recent"})
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "Invoice processing") || strings.Contains(w.Body.String(), "Private research") {
-		t.Fatalf("MCP home: %d %s", w.Code, w.Body)
+func TestRemovedHomeMCPIsNotDiscoverable(t *testing.T) {
+	tokenTestSetup(t)
+	if _, exists := externalCatalogTool("home"); exists {
+		t.Fatal("duplicate attention tool exposed")
 	}
 }
 
@@ -193,5 +191,78 @@ func TestHomeAndNeedsYouShareAnsweredDecisionProjection(t *testing.T) {
 	w := f.call(t, "owner", "list_needs_you", map[string]any{})
 	if w.Code != 200 || !strings.Contains(w.Body.String(), input.ID) || !strings.Contains(w.Body.String(), `"type":"apply_decision"`) || !strings.Contains(w.Body.String(), `"apply_message"`) {
 		t.Fatalf("MCP disagrees with Home: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestWorkspaceStateDerivesAuthorityAndEntryOnGet(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	t.Setenv("AGENT_PRODUCTS", "agentworks")
+	f.api.activeSessions = map[string]*ActiveSessionInfo{"schedule-cron--owned": {SessionID: "schedule-cron--owned", UserID: "owner", WorkspacePath: "Workflow/invoices", Title: "Server schedule", WorkshopMode: "run", TriggeredBy: "cron"}}
+	put := httptest.NewRecorder()
+	f.api.handleWorkspaceReturnState(put, adminRequest("PUT", "/api/workspace-state", `{"version":1,"revision":0,"last":{"surface":"agentworks","id":"invoices","session_id":"schedule-cron--owned","chat":{"name":"My saved label","read_only":false,"execution_run":false,"scheduled_run":false,"workshop_mode":"workshop","bot_platform":"slack","view_mode":"tree"}}}`, &UserClaims{UserID: "owner"}, nil))
+	if put.Code != 200 {
+		t.Fatal(put.Code, put.Body)
+	}
+	var saved workspaceReturnState
+	if json.Unmarshal(put.Body.Bytes(), &saved) != nil || saved.Last == nil || saved.Last.SessionID != "" || saved.Last.Chat != nil {
+		t.Fatal("save acknowledgement exposed unverified restore data", put.Body)
+	}
+	raw, _, err := readFileFromWorkspace(t.Context(), workspaceReturnPath("owner"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forged := range []string{"workshop_mode", "bot_platform", "execution_run", "scheduled_run"} {
+		if strings.Contains(raw, forged) {
+			t.Fatal("persisted authority", raw)
+		}
+	}
+	get := httptest.NewRecorder()
+	f.api.handleWorkspaceReturnState(get, adminRequest("GET", "/api/workspace-state", "", &UserClaims{UserID: "owner"}, nil))
+	var state workspaceReturnState
+	if json.Unmarshal(get.Body.Bytes(), &state) != nil || state.Last == nil || state.Last.Chat == nil {
+		t.Fatal(get.Code, get.Body)
+	}
+	chat := state.Last.Chat
+	if !chat.ReadOnly || !chat.ExecutionRun || !chat.ScheduledRun || chat.WorkshopMode != "run" || chat.BotPlatform != "" || chat.Name != "My saved label" || chat.ViewMode != "tree" {
+		t.Fatalf("browser mode trusted: %+v", chat)
+	}
+	if state.Destination == nil || state.Destination.ID != "invoices" || state.FirstVisit {
+		t.Fatal("entry not server resolved", get.Body)
+	}
+	if f.questionRegistryReads.Load() != 0 {
+		t.Fatal("restore loaded attention inventory")
+	}
+}
+
+func TestWorkspaceAccessUsesCurrentProjectRole(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	for _, item := range []struct {
+		user     string
+		canBuild bool
+	}{{"owner", true}, {"reader", false}} {
+		rec := httptest.NewRecorder()
+		f.api.handleWorkspaceAccess(rec, adminRequest("GET", "/api/workspace-access?workspace=Workflow%2Finvoices", "", &UserClaims{UserID: item.user}, nil))
+		var got struct {
+			CanBuild bool `json:"can_build"`
+		}
+		if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &got) != nil || got.CanBuild != item.canBuild {
+			t.Fatal("account role replaced project authority", item.user, rec.Code, rec.Body)
+		}
+	}
+}
+
+func TestWorkspaceStateResolvesConversationKeyFromRegistry(t *testing.T) {
+	env, _, root := conditionCodeFixture(t)
+	t.Setenv("AGENT_PRODUCTS", "agentworks,work,code")
+	env.api.activeSessions = map[string]*ActiveSessionInfo{"own-code": {SessionID: "own-code", UserID: "owner", WorkspacePath: root}}
+	document := productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{"code/checks:chat:side": {ProfileID: "code", ConversationKey: "checks:chat:side", SessionID: "own-code", WorkspacePath: root}}}
+	raw, _ := json.Marshal(document)
+	env.mock.mu.Lock()
+	env.mock.files[productConversationRegistryPath("owner")] = string(raw)
+	env.mock.mu.Unlock()
+	request := adminRequest("GET", "/api/workspace-state", "", &UserClaims{UserID: "owner"}, nil)
+	got, ok := env.api.validateWorkspaceReturn(request, &workspaceDestination{Surface: "code", ID: "checks", SessionID: "own-code", Chat: &workspaceChat{ConversationKey: "checks:chat:forged", WorkshopMode: "run"}}, []homeWork{{Surface: "code", ID: "checks", WorkspacePath: root}})
+	if !ok || got.Chat == nil || got.Chat.ConversationKey != "checks:chat:side" || got.Chat.WorkshopMode == "run" {
+		t.Fatalf("browser slot or mode used: %+v", got)
 	}
 }

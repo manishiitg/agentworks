@@ -57,8 +57,8 @@ export function sidebarChatDisplayTitle(row: SidebarChat, workspaceTitle?: strin
   if (row.scheduled && /^schedule-manual--manual-p_/i.test(row.id) && /^Pulse\b/i.test(title)) return 'Manual review'
   if (row.scheduled && /^Pulse(?:\s*[·:].*)?$/i.test(title)) return title.replace(/^Pulse/i, 'Automatic review')
   const raw = title.replace(/ · Scheduled run$/i, '').replace(row.scheduled ? /\s*\((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|Daily|Weekdays|Weekends|Every)\b[^)]*\)$/i : /$^/, '')
-  if (row.builder && (title === workspaceTitle || /^(?:Automation Builder|Builder(?: \d+)?|Chat)$/i.test(title)))
-    return number ? `Chat ${number}` : 'Main chat'
+  if (row.builder && (title === workspaceTitle || /^(?:Automation Builder|Builder(?: \d+)?|Main chat|Chat)$/i.test(title)))
+    return number ? `Chat ${number}` : 'Chat'
   if (workspaceTitle && raw === workspaceTitle)
     return row.scheduled ? 'Scheduled run' : number ? `Chat ${number}` : row.originLabel ? `${row.originLabel} chat` : 'Chat'
   return raw

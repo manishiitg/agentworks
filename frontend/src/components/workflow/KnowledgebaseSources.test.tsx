@@ -79,7 +79,7 @@ it("shows several sources and detaches only the selected attachment", async () =
     />,
   );
   expect(
-    host.querySelectorAll('ul[aria-label="Legacy knowledge sources"] > li'),
+    host.querySelectorAll('ul[aria-label="Workflow references"] > li'),
   ).toHaveLength(2);
   expect(host.textContent).toContain("Source unavailable");
   await act(async () => {
@@ -223,7 +223,7 @@ it("shows shared KB access in Attached folders and refreshes the KB view after d
   expect(panels[0].textContent).toContain("1 attached");
   expect(panels[0].textContent).toContain("Workflow/project-a/knowledgebase/");
   expect(panels[0].textContent).toContain("$WORKFLOW_KB_PROJECT-A");
-  expect(panels[0].textContent).toContain("Read only");
+  expect(panels[0].textContent).toContain("Can open");
   expect(panels[1].querySelector("ul")).toBeNull();
   expect(panels[1].textContent).not.toContain("Attach knowledge");
   expect(panels[1].textContent).not.toContain("Detach");
@@ -263,7 +263,7 @@ it("shows unavailable sources to readers without offering write or detach contro
     />,
   );
   expect(host.textContent).toContain("Unavailable · Source permission revoked");
-  expect(host.textContent).toContain("Read only");
+  expect(host.textContent).toContain("Can open");
   expect(host.textContent).toContain("Shell when available:");
   expect(host.querySelectorAll("button, select")).toHaveLength(0);
 });

@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 )
 
@@ -173,29 +172,16 @@ func (api *StreamingAPI) collectHome(r *http.Request) (homeResponse, error) {
 			kind = "apply_decision"
 		}
 		view := "human-actions"
-		if place.Surface == "work" || place.Surface == "code" {
+		if place != nil && (place.Surface == "work" || place.Surface == "code") {
 			view = "suggestions"
 		}
 		result.Attention = append(result.Attention, homeAttention{ID: decision.input.ID, Kind: kind, Title: decision.input.Question, Work: place, View: view, UpdatedAt: decision.input.UpdatedAt})
 	}
-	for i := range work {
-		place := &work[i]
-		if read, _ := reportHumanInputAccess(r.Context(), place.WorkspacePath); !read {
-			continue
-		}
-		if place.Surface != "agentworks" && place.Surface != "relays" {
-			continue
-		}
-		updates, err := services.ListOrgDashboardNotifications(r.Context(), place.WorkspacePath, 1)
-		if err != nil {
-			result.Warnings = append(result.Warnings, "Some run summaries could not be loaded.")
-			continue
-		}
-		// Only the latest run summary: a later success clears an old failure.
-		if latest := updates.RunSummary; latest != nil && (latest.Status == "failed" || latest.Status == "blocked" || latest.Status == "waiting_for_platform" || latest.Status == "no_run") {
-			result.Attention = append(result.Attention, homeAttention{ID: latest.ID, Kind: latest.Status, Title: firstNonEmptyTrimmed(latest.Title, latest.Message), Work: place, View: "execution-logs", UpdatedAt: latest.CreatedAt})
-		}
+	for _, failure := range collected.failures {
+		place := byPath[canonicalChatHistoryWorkspacePath(GetUserIDFromContext(r.Context()), failure.Place.path)]
+		result.Attention = append(result.Attention, homeAttention{ID: failure.ID, Kind: failure.Status, Title: failure.Title, Work: place, View: "execution-logs", UpdatedAt: failure.UpdatedAt})
 	}
+
 	sort.SliceStable(result.Attention, func(i, j int) bool {
 		if (result.Attention[i].Kind == "question") != (result.Attention[j].Kind == "question") {
 			return result.Attention[i].Kind == "question"

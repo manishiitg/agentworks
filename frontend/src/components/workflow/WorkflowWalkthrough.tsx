@@ -42,13 +42,13 @@ const OVERVIEW_STEPS: WalkthroughStep[] = [
     body: 'Choose an automation from the name menu, or use the plus button to create one. Its workspace walkthrough will start when you open it.',
   },
   {
-    selector: '[data-tour="global-activity"]',
+    selector: '[aria-label="Switch workspace"]',
     title: 'Activity',
-    body: 'Use this button to get back to updates and pending decisions from anywhere in Goals.',
+    body: 'Open this menu and choose Goal activity for updates and pending decisions.',
   },
   {
     selector: '[data-tour="activity-feed"]',
-    title: 'Your Activity home',
+    title: 'Goal activity',
     body: 'Find updates and decisions from all your automations here.',
   },
   {
@@ -144,9 +144,9 @@ const EMPTY_AUTOMATION_STEPS: WalkthroughStep[] = [
     body: 'Open the name menu to choose an automation. Use the plus button beside it to create one. Its own workspace guide will start when you open it.',
   },
   {
-    selector: '[data-tour="global-activity"]',
+    selector: '[aria-label="Switch workspace"]',
     title: 'Activity',
-    body: 'Check updates and pending decisions from all your automations here.',
+    body: 'Choose Goal activity from this menu for updates and pending decisions.',
   },
   {
     selector: '[data-tour="global-providers"]',

@@ -11,6 +11,7 @@ const targets: HTMLElement[] = []
 const addTarget = (name: string, width = 200) => {
   const element = document.createElement('button')
   element.dataset.tour = name
+  if (name === 'workspace-picker') element.setAttribute('aria-label','Switch workspace')
   element.getBoundingClientRect = () => ({
     x: 20, y: 20, left: 20, top: 20, right: 20 + width, bottom: 50,
     width, height: 30, toJSON: () => ({}),
@@ -55,7 +56,7 @@ describe('Context walkthroughs', () => {
   it('guides first-run users through the controls visible on Activity', async () => {
     addTarget('activity-feed')
     addTarget('workflow-add-edit')
-    addTarget('global-activity')
+    addTarget('workspace-picker')
     addTarget('global-schedules')
     addTarget('global-providers')
     const host = document.createElement('div')
@@ -70,7 +71,7 @@ describe('Context walkthroughs', () => {
       expect(dialog.textContent).toContain('Example:')
       await act(async () => (dialog.querySelector('[data-testid="workflow-walkthrough-next"]') as HTMLButtonElement).click())
       expect(dialog.textContent).toContain('Open or create an automation')
-      for (const title of ['Activity', 'Your Activity home', 'Schedules', 'Providers']) {
+      for (const title of ['Activity', 'Goal activity', 'Schedules', 'Providers']) {
         await act(async () => (dialog.querySelector('[data-testid="workflow-walkthrough-next"]') as HTMLButtonElement).click())
         expect(dialog.textContent).toContain(title)
       }
@@ -285,7 +286,7 @@ describe('Context walkthroughs', () => {
       await act(async () => (dialog.querySelector('[data-testid="workflow-walkthrough-next"]') as HTMLButtonElement).click())
       expect(dialog.textContent).toContain('Open or create an automation')
       selector.remove()
-      addTarget('global-activity')
+      addTarget('workspace-picker')
       await act(async () => vi.advanceTimersByTime(300))
       expect(dialog.textContent).toContain('Activity')
       expect(dialog.textContent).toContain('2 of 2')
@@ -398,7 +399,7 @@ describe('Context walkthroughs', () => {
 
   it('resets progress when moving from Activity into an automation', async () => {
     addTarget('workflow-add-edit')
-    addTarget('global-activity')
+    addTarget('workspace-picker')
     const host = document.createElement('div')
     document.body.append(host)
     const root = createRoot(host)

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { deploymentDefaultProductSurface, enabledProductSurfaces, intersectAllowedProductSurfaces } from '../products/productSurfaceConfig'
+import { enabledProductSurfaces, intersectAllowedProductSurfaces } from '../products/productSurfaceConfig'
 import { waitForChatStoreHydration } from '../stores/useChatStore'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -40,21 +40,21 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
     activeResolution.current = controller
     const finish = (status: Status) => { if (!controller.signal.aborted) setResolution({ location, account, workspace, status, attempt, permissionKey }) }
     // Old Home bookmarks now return to the person's workspace as well.
-    const requested = window.location.pathname === '/home' ? '/' : window.location.pathname + window.location.search
+    let requested = window.location.pathname === '/home' ? '/' : window.location.pathname + window.location.search
     let route = parseProductRoute(requested)
     const enabled = enabledProductSurfaces()
     const allowed = intersectAllowedProductSurfaces(enabled, allowedProducts)
     if (route === undefined && isLegacyAppPath(requested) && LEGACY_APP_ROOTS.has(legacyAppRoot(requested)) && allowed.length) {
       window.history.replaceState({}, '', '/')
-      const preferred = deploymentDefaultProductSurface()
-      route = { surface: allowed.includes(preferred) ? preferred : allowed[0] }
+      requested = '/'
+      route = null
     }
     if (route === undefined) { finish('unavailable'); return () => controller.abort() }
     if (route && !enabled.includes(route.surface)) { finish('disabled'); return () => controller.abort() }
     if (!allowed.length || (route && !allowed.includes(route.surface))) { finish('unavailable'); return () => controller.abort() }
     const initialize = async () => {
       let state = useWorkspaceReturnStore.getState()
-      if (state.account !== account || state.workspace !== workspace || !state.ready) {
+      if (state.account !== account || state.workspace !== workspace || !state.ready || requested === '/') {
         useWorkspaceReturnStore.setState({ account, workspace, ready: false, record: null, restore: null, firstVisit: false, note: '', saveError: '' })
         const record = await workspaceStateApi.get(controller.signal)
         if (controller.signal.aborted) return
@@ -65,23 +65,19 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
       const last = state.record?.last
       const saved = ((!destination && requested === '/') || (destination && last?.surface === destination.surface && last.id === destination.id)) ? last : null
       if (saved && !destination) destination = saved
-      const defaultDestination = { surface: allowed.includes(deploymentDefaultProductSurface()) ? deploymentDefaultProductSurface() : allowed[0] }
+      const defaultDestination = state.record?.destination
       if (!destination && requested === '/') {
-        // Existing users without a saved return record still enter their work.
-        // Only an empty account gets the first-use welcome.
-        const inventory = await workspaceStateApi.home(controller.signal)
-        if (controller.signal.aborted) return
-        const existing = [...inventory.work].filter(item => allowed.includes(item.surface))
-          .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))[0]
-        destination = existing ? { surface: existing.surface, id: existing.id } : defaultDestination
-        useWorkspaceReturnStore.setState({ firstVisit: !existing && !state.note, restore: null })
+        // Entry is resolved server-side using only the permitted inventory.
+        // No attention feed or client-selected fallback decides where to land.
+        destination = defaultDestination ?? null
+        useWorkspaceReturnStore.setState({ firstVisit: state.record?.first_visit === true, restore: null })
       } else {
         useWorkspaceReturnStore.setState({ firstVisit: false, restore: null })
       }
       // Root connection parameters belong to App, not workspace restoration.
-      if (!destination) { finish('ready'); return }
+      if (!destination) { finish('unavailable'); return }
       if (!allowed.includes(destination.surface)) {
-        if (!saved) { finish('unavailable'); return }
+        if (!saved || !defaultDestination) { finish('unavailable'); return }
         const activate = await resolveProductRoute(defaultDestination, controller.signal)
         if (controller.signal.aborted) return
         activate()
@@ -107,7 +103,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
         finish('ready')
       } catch (error) {
         const code = (error as { response?: { status?: number } })?.response?.status
-        if (saved && (error instanceof ProductUnavailable || code === 403 || code === 404)) {
+        if (saved && defaultDestination && (error instanceof ProductUnavailable || code === 403 || code === 404)) {
           const activate = await resolveProductRoute(defaultDestination, controller.signal)
           if (controller.signal.aborted) return
           activate()

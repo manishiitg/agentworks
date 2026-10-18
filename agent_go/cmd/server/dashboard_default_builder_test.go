@@ -38,10 +38,8 @@ func TestCrewBuilderCatalogCreatesDefaultDashboard(t *testing.T) {
 				return externalTestBody(t, w, http.StatusOK)
 			}
 			if origin == "work" {
-				// A Run person and an owner's read connection can discover the
-				// empty catalog without creating files in somebody's project.
+				// External connections cannot create defaults through discovery.
 				for _, claims := range []*UserClaims{
-					{UserID: "other", Username: "other"},
 					{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"dashboards:read"}, AllCrews: true}},
 					{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"dashboards:read", "crews:write"}, AllCrews: true, FileGuard: &wf.FolderGuard{ReadPaths: []string{"db/reports"}}}},
 				} {
@@ -50,6 +48,13 @@ func TestCrewBuilderCatalogCreatesDefaultDashboard(t *testing.T) {
 					if err != nil || len(stored.Dashboards) != 0 {
 						t.Fatalf("read request wrote a default: %+v %v", stored, err)
 					}
+				}
+				// The app provisions its default on the server for a shared Run
+				// person, without giving that person dashboard authoring access.
+				got := list(&UserClaims{UserID: "other", Username: "other"})
+				raw, _ := json.Marshal(got)
+				if !strings.Contains(string(raw), "db/reports/managed/overview/index.html") {
+					t.Fatalf("shared app has no server-provided default: %v", got)
 				}
 			}
 			owner := &UserClaims{UserID: "owner", Username: "owner"}

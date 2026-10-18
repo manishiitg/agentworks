@@ -10,13 +10,14 @@ export async function restoreWorkspaceChat(destination: WorkspaceDestination, si
   if (!destination.session_id || !destination.id || !destination.workspace_path || signal.aborted) return
   const chat = useChatStore.getState()
   const workflow = destination.surface === 'agentworks' || destination.surface === 'relays'
+  const builder = destination.chat?.workshop_mode === 'workshop' && !destination.chat.execution_run
   const common = { isViewOnly: destination.chat?.read_only, isExecutionRun: destination.chat?.execution_run,
     isScheduledRun: destination.chat?.scheduled_run, scheduledJobName: destination.chat?.scheduled_job_name,
     isBotRun: Boolean(destination.chat?.bot_platform), botPlatform: destination.chat?.bot_platform,
     workshopMode: destination.chat?.workshop_mode, readOnlyRestoredAt: Date.now(), workspaceReturnAt: Date.now(),
   }
   const metadata = workflow ? {
-    ...common, mode: 'workflow' as const, phaseId: destination.chat?.execution_run ? undefined : 'workflow-builder', phaseName: destination.chat?.execution_run ? undefined : 'Automation Builder', presetQueryId: destination.id,
+    ...common, mode: 'workflow' as const, phaseId: builder ? 'workflow-builder' : undefined, phaseName: builder ? 'Automation Builder' : undefined, presetQueryId: destination.id,
 
   } : {
     ...common, mode: 'multi-agent' as const, agentProfileId: destination.surface, agentProfileVersion: destination.surface === 'work' ? 3 : 1, agentProfileChatContract: 'profile-v1' as const, agentProfileProjectId: destination.id,

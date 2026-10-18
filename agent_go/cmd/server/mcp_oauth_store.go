@@ -246,7 +246,7 @@ func (s *mcpOAuthStore) decide(ctx context.Context, raw string, user *UserClaims
 	if audience, bound := projectMCPAudienceForResource(req.Resource); bound {
 		granted = audience.scopes()
 		if approve && projectIdentity == "" {
-			return req, "", &mcpOAuthRefusal{errors.New("Project creation identity is unavailable; reconnect after it is restored.")}
+			return req, "", &mcpOAuthRefusal{errors.New("This project cannot connect yet. Ask its administrator to repair the project, then try connecting again.")}
 		}
 	}
 	if approve {

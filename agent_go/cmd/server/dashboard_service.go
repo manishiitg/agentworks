@@ -308,6 +308,12 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		dashboardError(w, err)
 		return
 	}
+	if args.Action == "list" && !target.Edit && (target.Kind == "crew" || target.Kind == "code") && claims.AccessToken == nil && claims.Scope == "" && claims.Provider != "bot_route" {
+		if _, _, err := api.ensureDefaultDashboard(r.Context(), claims, target); err != nil {
+			dashboardError(w, err)
+			return
+		}
+	}
 	if dashboardOwnersAction(args.Action) {
 		api.handleDashboardOwners(w, r, claims, target, args.Action, args.Emails)
 		return

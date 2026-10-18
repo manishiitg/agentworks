@@ -52,7 +52,7 @@ describe('workspace landing view', () => {
   it('asks the server for the default dashboard and survives a failed request', async () => {
     post.mockResolvedValueOnce({ data: { dashboard_id: 'overview', generated: true } })
     await ensureDefaultDashboard('Workflow/demo')
-    expect(post).toHaveBeenCalledWith('/api/dashboards/default', { workspace: 'Workflow/demo' })
+    expect(post).toHaveBeenCalledWith('/api/dashboards', { workspace: 'Workflow/demo', action: 'list', limit: 1 })
     post.mockRejectedValueOnce(new Error('offline'))
     await expect(ensureDefaultDashboard('Workflow/demo')).resolves.toBeUndefined()
   })

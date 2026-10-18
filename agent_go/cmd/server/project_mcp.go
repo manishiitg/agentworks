@@ -233,10 +233,7 @@ func projectMCPCreationIdentity(ctx context.Context, a projectMCPAudience, targe
 		if err != nil || manifest.ID != a.ID {
 			return "", dashboardFailure(403, "Project identity is unavailable.")
 		}
-		owner, created = manifest.OwnerID, manifest.CreatedAt
-		if owner == "" {
-			owner = resolveProjectOwner(ctx, target.Root)
-		}
+		created = manifest.CreatedAt
 	} else {
 		manifest, exists, err := readWorkflowManifest(ctx, target.Root, false)
 		if err != nil || !exists || manifest == nil || manifest.ID != a.ID {
@@ -244,8 +241,8 @@ func projectMCPCreationIdentity(ctx context.Context, a projectMCPAudience, targe
 		}
 		owner, created = manifest.CreatedBy, manifest.CreatedAt
 	}
-	if strings.TrimSpace(created) == "" || strings.TrimSpace(owner) == "" {
-		return "", dashboardFailure(403, "Project creation identity is unavailable. Restore its owner and creation date before connecting.")
+	if strings.TrimSpace(created) == "" {
+		return "", dashboardFailure(403, "This project cannot connect yet. Ask its administrator to repair the project, then try connecting again.")
 	}
 	data, _ := json.Marshal([]string{a.Kind, a.ID, owner, created})
 	hash := sha256.Sum256(data)
@@ -254,7 +251,7 @@ func projectMCPCreationIdentity(ctx context.Context, a projectMCPAudience, targe
 
 func projectMCPAudit(grant mcpOAuthGrant, event, reason string) {
 	if a, ok := projectMCPAudienceForResource(grant.Resource); ok {
-		log.Printf("project_mcp event=%q family=%q kind=%q project_id=%q access=%q reason=%q", event, grant.FamilyID, a.Kind, a.ID, a.Access, reason)
+		log.Printf("project_mcp event=%q family=%q user_id=%q kind=%q project_id=%q access=%q reason=%q", event, grant.FamilyID, grant.UserID, a.Kind, a.ID, a.Access, reason)
 	}
 }
 
@@ -290,7 +287,7 @@ func (api *StreamingAPI) handleProjectMCP(w http.ResponseWriter, r *http.Request
 		return
 	}
 	token := claims.AccessToken
-	grant := mcpOAuthGrant{FamilyID: strings.TrimPrefix(token.ID, "oauth-"), Resource: "https://audit.invalid" + r.URL.Path}
+	grant := mcpOAuthGrant{FamilyID: strings.TrimPrefix(token.ID, "oauth-"), UserID: claims.UserID, Resource: "https://audit.invalid" + r.URL.Path}
 	if token.ProjectKind != a.Kind || token.ProjectID != a.ID || token.ProjectAccess != a.Access || token.AllCrews || token.AllWorkflows ||
 		((a.Kind == "work" || a.Kind == "code") && (!slices.Equal(token.CrewIDs, []string{a.ID}) || len(token.WorkflowIDs) != 0)) ||
 		((a.Kind == "workflow" || a.Kind == "relay") && (!slices.Equal(token.WorkflowIDs, []string{a.ID}) || len(token.CrewIDs) != 0)) {

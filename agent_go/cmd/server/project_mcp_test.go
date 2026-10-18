@@ -517,8 +517,8 @@ func TestProjectMCPCreationIdentityRequiredAndStable(t *testing.T) {
 		}
 		write("other-owner", "2026-10-01T00:00:00Z")
 		other, err := projectMCPCreationIdentity(t.Context(), a, target)
-		if err != nil || other == original {
-			t.Fatal("owner replacement kept identity")
+		if err != nil || other != original {
+			t.Fatal("current owner changed creation identity")
 		}
 	}
 }

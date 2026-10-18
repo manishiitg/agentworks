@@ -79,7 +79,7 @@ export function useWorkspaceReturn(
       ? tab?.metadata?.presetQueryId === id
       : tab?.metadata?.agentProfileId === surface && tab?.metadata?.agentProfileProjectId === id
     queueWorkspaceState({ surface, id, view, layout: { ...layout, navigation_mode: navigationMode },
-      ...(belongs && tab?.sessionId ? { session_id: tab.sessionId, chat: { name: tab.name, read_only: tab.metadata?.isViewOnly === true, conversation_key: tab.metadata?.agentProfileConversationKey, execution_run: tab.metadata?.isExecutionRun, scheduled_run: tab.metadata?.isScheduledRun, scheduled_job_name: tab.metadata?.scheduledJobName, bot_platform: tab.metadata?.botPlatform, view_mode: tab.viewMode, workshop_mode: tab.metadata?.workshopMode } } : {}),
+      ...(belongs && tab?.sessionId ? { session_id: tab.sessionId, chat: { name: tab.name, view_mode: tab.viewMode } } : {}),
     })
   }, [surface, id, view, layout.chat_open, layout.panel_open, layout.split_ratio, layout.navigation_mode, layout.preview_device, layout.focused_pane, layout.mobile_pane_width, navigationMode, session, name, viewMode, ready, restore, account])
 }

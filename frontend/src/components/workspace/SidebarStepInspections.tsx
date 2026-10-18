@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Check, CircleAlert, ExternalLink, Loader2 } from 'lucide-react'
+import { Check, CircleAlert, GitBranch, Loader2 } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import type { ExecutionInspectionTarget, PollingEvent } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
@@ -66,8 +66,9 @@ export default function SidebarStepInspections({ row, workspace, scope, visible,
         aria-label={`Inspect ${label}`} aria-current={active ? 'page' : undefined}
         onClick={() => void open(target)}
         className={`group mb-0.5 flex min-h-8 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? 'bg-foreground/[0.08] text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
-        {working || opening === key ? <Loader2 aria-label={working ? 'Step running' : 'Opening step'} className="h-3 w-3 shrink-0 animate-spin text-primary" /> : status === 'completed' ? <Check aria-label="Step completed" className="h-3 w-3 shrink-0" /> : status === 'failed' ? <CircleAlert aria-label="Step failed" className="h-3 w-3 shrink-0 text-amber-500" /> : <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />}
+        <GitBranch className="h-3 w-3 shrink-0 opacity-60" aria-hidden="true" />
         <span className="min-w-0 flex-1 truncate">{label}</span>
+        {working || opening === key ? <Loader2 aria-label={working ? 'Step running' : 'Opening step'} className="h-3 w-3 shrink-0 animate-spin text-primary" /> : status === 'completed' ? <Check aria-label="Step completed" className="h-3 w-3 shrink-0" /> : status === 'failed' ? <CircleAlert aria-label="Step failed" className="h-3 w-3 shrink-0 text-amber-500" /> : null}
         <span className="text-[10px] opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100">Inspect</span>
       </button>
     })}

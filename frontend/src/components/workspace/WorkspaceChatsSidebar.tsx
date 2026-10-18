@@ -1,7 +1,7 @@
 import ConnectedAgentsSidebar from './ConnectedAgentsSidebar'
 import { useResumePreviousChat } from '../../hooks/useResumePreviousChat'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { ChevronDown, Loader2, MessageSquare, Search, X } from 'lucide-react'
+import { CalendarClock, ChevronDown, Loader2, MessageCircle, MessageSquare, Search, Slack, Webhook, X } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useChatStore } from '../../stores/useChatStore'
@@ -349,7 +349,9 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
           })
         : ''
     const trigger = workflowTriggerLabel({ sessionId: row.id, triggeredBy: row.activity?.triggered_by })
-    const origin = row.originLabel || (trigger === 'Scheduled' ? 'Schedule' : trigger) || (row.builder ? 'Main chat' : '')
+    const origin = row.originLabel || (trigger === 'Scheduled' ? 'Schedule' : trigger) || ''
+    const SourceIcon = origin === 'Slack' ? Slack : origin === 'WhatsApp' ? MessageCircle : trigger === 'Webhook' ? Webhook : scheduled ? CalendarClock : MessageSquare
+    const sourceLabel = origin || (scheduled ? 'Schedule' : 'Chat')
     const details = [
       duplicateWorkspaceName ? PRODUCT_SURFACE_LABELS[row.surface] : '',
       origin && !title.startsWith(origin) ? origin : '',
@@ -373,11 +375,11 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
           }}
           className={`mb-0.5 flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${canClose ? 'pr-8' : ''} ${selected ? 'bg-foreground/[0.08] text-foreground' : 'text-foreground/75 hover:bg-muted hover:text-foreground'}`}
         >
-          <span className="shrink-0 opacity-60" aria-hidden="true">
-            {workspaceEntry || !workspaceTitle ? (
+          <span className="shrink-0 opacity-60" title={sourceLabel} aria-hidden="true">
+            {workspaceEntry ? (
               <ProductSurfaceIcon surface={row.surface} className="h-4 w-4" />
             ) : (
-              <MessageSquare className="h-3.5 w-3.5" />
+              <SourceIcon className="h-3.5 w-3.5" />
             )}
           </span>
           <span className="min-w-0 flex-1">

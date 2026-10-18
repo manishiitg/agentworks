@@ -6,10 +6,11 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
@@ -25,8 +26,8 @@ type workspaceLayout struct {
 	MobilePaneWidth float64 `json:"mobile_pane_width,omitempty"`
 }
 type workspaceChat struct {
-	Name             string `json:"name"`
-	ReadOnly         bool   `json:"read_only"`
+	Name             string `json:"name,omitempty"`
+	ReadOnly         bool   `json:"read_only,omitempty"`
 	ExecutionRun     bool   `json:"execution_run,omitempty"`
 	ScheduledRun     bool   `json:"scheduled_run,omitempty"`
 	ScheduledJobName string `json:"scheduled_job_name,omitempty"`
@@ -46,15 +47,17 @@ type workspaceDestination struct {
 	Layout        *workspaceLayout `json:"layout,omitempty"`
 }
 type workspaceReturnState struct {
-	Version   int                    `json:"version"`
-	Revision  uint64                 `json:"revision"`
-	Last      *workspaceDestination  `json:"last"`
-	Recent    []workspaceDestination `json:"recent"`
-	UpdatedAt string                 `json:"updated_at,omitempty"`
-	Note      string                 `json:"note,omitempty"` // response only
+	Version     int                    `json:"version"`
+	Revision    uint64                 `json:"revision"`
+	Last        *workspaceDestination  `json:"last"`
+	Recent      []workspaceDestination `json:"recent"`
+	UpdatedAt   string                 `json:"updated_at,omitempty"`
+	Note        string                 `json:"note,omitempty"`        // response only
+	Destination *workspaceDestination  `json:"destination,omitempty"` // response only
+	FirstVisit  bool                   `json:"first_visit,omitempty"` // response only
 }
 
-var workspaceReturnMu sync.Mutex
+var workspaceReturnLocks dashboardQuestionLockSet
 var workspaceReturnID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,255}$`)
 var workspaceReturnView = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
 
@@ -107,6 +110,8 @@ func readWorkspaceReturnState(r *http.Request) (workspaceReturnState, error) {
 		return corrupt()
 	}
 	result.Note = ""
+	result.Destination = nil
+	result.FirstVisit = false
 	return result, nil
 }
 
@@ -134,26 +139,73 @@ func (api *StreamingAPI) validateWorkspaceReturn(r *http.Request, d *workspaceDe
 		}
 	}
 	copy.WorkspacePath = workspace
+	// Browser preferences cannot assert a conversation's authority or mode.
+	personalView, personalName := "", ""
+	if copy.Chat != nil {
+		personalView, personalName = copy.Chat.ViewMode, copy.Chat.Name
+	}
+	copy.Chat = nil
 	if copy.SessionID != "" {
 		allowed := false
+		var history ChatHistorySession
+		var trigger, title, mode, platform string
 		session, active := api.getActiveSession(copy.SessionID)
-		if active && session.UserID == claims.UserID && workspace != "" {
+		if active && session.UserID == claims.UserID && workspace != "" && session.ParentSessionID == "" {
 			allowed = canonicalChatHistoryWorkspacePath(claims.UserID, session.WorkspacePath) == canonicalChatHistoryWorkspacePath(claims.UserID, workspace)
+			title, mode, platform, trigger = session.Title, session.WorkshopMode, session.BotPlatform, session.TriggeredBy
 		}
 		if !active && workspace != "" {
 			data, err := ReadChatHistoryConversation(claims.UserID, copy.SessionID, workspace)
 			if err == nil {
 				owner, _ := chatHistoryConversationIdentity(data)
-				var history ChatHistorySession
 				_ = json.Unmarshal(data, &history)
 				runtime, runtimeErr := chatHistoryRuntimeFromJSON(data)
 				visible := chatHistoryVisibleTo(owner, claims.UserID, false) || ((copy.Surface == "agentworks" || copy.Surface == "relays") && isWorkflowBotHistory(history))
 				allowed = visible && runtimeErr == nil && runtime != nil && canonicalChatHistoryWorkspacePath(claims.UserID, runtime.WorkspacePath) == canonicalChatHistoryWorkspacePath(claims.UserID, workspace)
+				history.CanResume = chatHistoryCanResume(owner, claims.UserID, false)
+				title, mode, platform = history.Title, firstNonEmptyTrimmed(history.WorkshopMode, runtime.WorkshopMode), history.BotPlatform
 			}
 		}
 		if !allowed {
 			copy.SessionID = ""
-			copy.Chat = nil
+		} else {
+			id := strings.ToLower(copy.SessionID)
+			scheduled := strings.HasPrefix(id, "schedule-") || strings.HasPrefix(id, "sched_") || strings.Contains(id, "-schedule-") || strings.Contains(trigger, "schedule") || trigger == "cron" || trigger == "webhook"
+			bot := platform != "" || strings.HasPrefix(id, "bot-")
+			execution := (copy.Surface == "agentworks" || copy.Surface == "relays") && (scheduled || bot)
+			normalized := normalizeChatHistoryWorkshopMode(mode)
+			if normalized == "" && (copy.Surface == "agentworks" || copy.Surface == "relays") {
+				normalized = "workshop"
+			}
+			copy.Chat = &workspaceChat{Name: firstNonEmptyTrimmed(personalName, title, "Chat"), ReadOnly: scheduled || bot || execution || !active && !history.CanResume && history.SessionID != "", ExecutionRun: execution, ScheduledRun: scheduled, BotPlatform: platform, WorkshopMode: normalized, ViewMode: personalView}
+			if scheduled {
+				copy.Chat.ScheduledJobName = firstNonEmptyTrimmed(title, "Scheduled run")
+			}
+			if copy.Surface == "work" || copy.Surface == "code" {
+				registryPath := productConversationRegistryPath(claims.UserID)
+				mutex := productConversationRegistryMutex(registryPath)
+				mutex.Lock()
+				document, err := defaultProductConversationRegistryStore().loadDocument(r.Context(), registryPath)
+				mutex.Unlock()
+				if err == nil {
+					match := func(record ProductConversationRecord) {
+						key := record.ConversationKey
+						if record.ProfileID == copy.Surface && record.SessionID == copy.SessionID && (key == copy.ID || strings.HasPrefix(key, copy.ID+":")) && canonicalChatHistoryWorkspacePath(claims.UserID, record.WorkspacePath) == canonicalChatHistoryWorkspacePath(claims.UserID, workspace) {
+							copy.Chat.ConversationKey = key
+						}
+					}
+					for _, record := range document.Entries {
+						match(record)
+					}
+					if copy.Chat.ConversationKey == "" {
+						for _, records := range document.Previous {
+							for _, record := range records {
+								match(record)
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 	return &copy, true
@@ -165,13 +217,8 @@ func (api *StreamingAPI) handleWorkspaceReturnState(w http.ResponseWriter, r *ht
 		http.Error(w, "unauthenticated", 401)
 		return
 	}
-	work, err := api.homeInventory(r.Context())
-	if err != nil {
-		http.Error(w, "Could not validate your saved workspace.", 503)
-		return
-	}
-	workspaceReturnMu.Lock()
-	defer workspaceReturnMu.Unlock()
+	unlock := workspaceReturnLocks.Lock(claims.UserID)
+	defer unlock()
 	state, err := readWorkspaceReturnState(r)
 	if err != nil {
 		http.Error(w, "Could not load your saved workspace.", 503)
@@ -197,7 +244,27 @@ func (api *StreamingAPI) handleWorkspaceReturnState(w http.ResponseWriter, r *ht
 			http.Error(w, "Workspace changed in another tab. Reload its state before saving.", 409)
 			return
 		}
-		destination, available := api.validateWorkspaceReturn(r, incoming.Last, work)
+		// Saves are preferences, not authorization. Validate the single project
+		// with its live resolver; never scan inventory or reopen transcripts.
+		var work []homeWork
+		if incoming.Last.ID != "" {
+			kind := map[string]string{"work": "work", "code": "code", "agentworks": "workflow", "relays": "relay"}[incoming.Last.Surface]
+			target, err := api.projectMCPTarget(r.Context(), claims, projectMCPAudience{Kind: kind, ID: incoming.Last.ID, Access: "view"})
+			if err != nil || kind == "" {
+				http.Error(w, "This workspace is no longer available.", 403)
+				return
+			}
+			work = []homeWork{{Surface: incoming.Last.Surface, ID: incoming.Last.ID, WorkspacePath: target.Root}}
+		}
+		saved := *incoming.Last
+		saved.SessionID = "" // session identity is checked on restore, below; no history reads on PUT
+		destination, available := api.validateWorkspaceReturn(r, &saved, work)
+		if available {
+			destination.SessionID = incoming.Last.SessionID
+			if incoming.Last.Chat != nil {
+				destination.Chat = &workspaceChat{Name: incoming.Last.Chat.Name, ViewMode: incoming.Last.Chat.ViewMode}
+			}
+		}
 		if !available {
 			http.Error(w, "This workspace is no longer available.", 403)
 			return
@@ -216,6 +283,8 @@ func (api *StreamingAPI) handleWorkspaceReturnState(w http.ResponseWriter, r *ht
 		}
 		state.Recent = recent
 		state.Note = ""
+		state.Destination = nil
+		state.FirstVisit = false
 		raw, err := json.Marshal(state)
 		if err != nil {
 			http.Error(w, "Could not encode workspace state.", 500)
@@ -225,20 +294,74 @@ func (api *StreamingAPI) handleWorkspaceReturnState(w http.ResponseWriter, r *ht
 			http.Error(w, "Could not save your workspace.", 503)
 			return
 		}
-	}
-	var available bool
-	state.Last, available = api.validateWorkspaceReturn(r, state.Last, work)
-	if !available {
-		state.Note = "Your last workspace is no longer available. Choose another workspace."
-	}
-	recent := []workspaceDestination{}
-	for i := range state.Recent {
-		if d, ok := api.validateWorkspaceReturn(r, &state.Recent[i], work); ok && d != nil {
-			recent = append(recent, *d)
+		// A save acknowledgement contains layout only. Session identity and
+		// modes are restore data only after GET has checked the live session.
+		state.Last.SessionID = ""
+		state.Last.Chat = nil
+		for i := range state.Recent {
+			state.Recent[i].SessionID = ""
+			state.Recent[i].Chat = nil
 		}
 	}
-	state.Recent = recent
+	if r.Method == http.MethodGet {
+		// Only restore performs inventory/history authorization. Recent entries
+		// are project-checked without loading up to twenty old transcripts.
+		work, err := api.homeInventory(r.Context())
+		if err != nil {
+			http.Error(w, "Could not validate your saved workspace.", 503)
+			return
+		}
+		var available bool
+		state.Last, available = api.validateWorkspaceReturn(r, state.Last, work)
+		if !available {
+			state.Note = "Your last workspace is no longer available. Choose another workspace."
+		}
+		recent := []workspaceDestination{}
+		for _, old := range state.Recent {
+			old.SessionID = ""
+			old.Chat = nil
+			if d, ok := api.validateWorkspaceReturn(r, &old, work); ok && d != nil {
+				recent = append(recent, *d)
+			}
+		}
+		state.Recent = recent
+		state.Destination = state.Last
+		if state.Destination == nil {
+			sort.SliceStable(work, func(i, j int) bool { return work[i].UpdatedAt > work[j].UpdatedAt })
+			if len(recent) > 0 {
+				state.Destination = &recent[0]
+			} else if len(work) > 0 {
+				state.Destination = &workspaceDestination{Surface: work[0].Surface, ID: work[0].ID, WorkspacePath: work[0].WorkspacePath}
+			} else {
+				preferred := strings.TrimSpace(os.Getenv("AGENTWORKS_DEFAULT_PRODUCT_SURFACE"))
+				for _, surface := range append([]string{preferred}, "agentworks", "work", "code", "relays", "knowledgebase", "mcp-gateway", "llm-gateway", "bullpen", "video-studio", "sparkquill") {
+					if surface != "" && homeProductAllowed(claims, surface) {
+						state.Destination = &workspaceDestination{Surface: surface}
+						break
+					}
+				}
+				state.FirstVisit = state.Note == ""
+			}
+		}
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(state)
+}
+
+// App-only capability projection. The project resolver owns both account and
+// project authority; a browser storage path is never an editing grant.
+func (api *StreamingAPI) handleWorkspaceAccess(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserFromContext(r.Context())
+	if claims == nil || claims.AccessToken != nil || claims.Scope != "" {
+		externalError(w, 403, "forbidden", "Sign in to open this project.")
+		return
+	}
+	target, err := api.dashboardTarget(r.Context(), claims, r.URL.Query().Get("workspace"))
+	if err != nil {
+		dashboardError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	externalJSON(w, map[string]any{"id": target.ID, "kind": target.Kind, "can_build": target.Edit})
 }

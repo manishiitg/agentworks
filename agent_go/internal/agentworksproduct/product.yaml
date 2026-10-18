@@ -552,7 +552,6 @@ chat:
       - manage_schedules
       - workflow_team
       - manage_triggers
-      - home
       - list_needs_you
       - answer_needs_you
       - dismiss_needs_you

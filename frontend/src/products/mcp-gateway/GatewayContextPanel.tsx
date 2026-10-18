@@ -27,6 +27,6 @@ export function GatewayContextPanel({ panel, page, onOpen, onPage, onChat, readO
       {gatewayPanels.filter(item => item.id === 'models').map(item => <Row key={item.id} icon={item.icon}
         active={!page && panel === item.id} onClick={() => onOpen(item.id)}>{item.label}</Row>)}
     </Section>
-    {readOnly && <p className="border-t border-border pt-3 text-[11px] leading-4 text-muted-foreground">Read-only access. Changes are managed by Vault administrators.</p>}
+    {readOnly && <p className="border-t border-border pt-3 text-[11px] leading-4 text-muted-foreground">You can view this setup. A Vault administrator manages changes.</p>}
   </WorkspaceContextCard>
 }

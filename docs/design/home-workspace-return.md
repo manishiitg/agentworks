@@ -1,303 +1,75 @@
-# First-use welcome and workspace return
+# Workspace navigation and return
 
-Returning users open their last accessible workspace, chat and panel layout directly. There is no Home dashboard or Home navigation item. `/home` is a compatibility alias for `/`, which restores the saved destination. Product URLs, Back/Forward and explicit panel links take precedence over the saved destination.
+Returning people open their last accessible project, chat and panel layout. There is no Home dashboard or Home navigation item. `/home` remains an alias for `/`. Explicit project links, panel links and browser Back/Forward take precedence over saved preferences.
 
-When no saved state exists, the server inventory selects an existing workspace. Only an account with no existing work gets the first-use welcome, with enabled product choices, AI account setup and the expanded MCP/CLI connection section. Removed access falls back to an allowed product overview with a plain note.
+The first-use welcome appears only when the account has no existing work. The server chooses an available project or product destination; the browser does not fetch the attention feed to make that choice.
 
-## API and data
+## Shared navigation
 
-- `GET /api/home`: authenticated caller's current product inventories, live human-feedback questions, pending decisions, answered decisions that still require applying, latest failed/blocked/missed workflow summaries, and authoritative live sessions. Access follows existing product, workflow, Crew and chat checks. A later successful summary clears a previous failed-run item.
-- `GET /api/workspace-state`: caller's server-saved state, revalidated against current inventory. Removed access returns `last: null` with a plain note and removes unavailable recent entries from the response.
-- `PUT /api/workspace-state`: `{version: 1, revision, last}`. The authenticated context selects the user; the body cannot select another account. Current product/project access and chat identity are checked. A revision conflict returns 409; browser writes are serialized and reload the revision before a later save.
-- MCP `home(action="attention" | "recent")` uses the same question/decision collector as `list_needs_you` and existing token scope/project bounds, including per-Crew token restrictions. Home adds failed-run review items; `list_needs_you` supplies answer options and apply messages for questions/decisions. It does not answer questions, run agents or modify work.
+Goals, Crew (including the former Code storage origin) and Flows use the same existing header and product switcher. Branding, project name, search and account controls keep one navigation owner. Setup stays at the bottom of the chat sidebar. Product visibility follows installation capabilities and the person's current access.
 
-State is in the user's `preferences/workspace-state.json` through the existing workspace storage API. It contains the last product/resource/view, chat session identity and display name, chat/panel visibility, split ratio, preview device, focused pane, mobile preview width and navigation mode, twenty recent destinations, revision and server update time. Writes inherit the workspace API's atomic temporary-file replacement. Missing state resolves existing work or first-use welcome; corrupt, oversized or unsupported-version content opens an available workspace with a plain note and a log line, and a later valid save replaces it. Storage transport failures remain visible errors. It stores no transcript, prompt or credential. The workspace volume must persist across server restarts and be included in normal backups.
+The left sidebar groups open, running and recent chats beneath their projects. Product icons identify project groups; chat, clock and branch icons distinguish conversations, scheduled runs and steps. Clicking does not reorder work. Running chats have a spinner; questions waiting for a person have an indicator. Useful source labels such as Schedule, Slack and WhatsApp distinguish external conversations; the default conversation has no repeated Main chat subtitle. Unnamed conversations use Chat or Chat N. Custom titles remain intact.
 
-The frontend return record is memory-only and keyed by account and connected server. Legacy product layout caches remain fast local UI preferences; they cannot authorize or select a saved server destination. No server state uses the caller's current inventory, without inheriting another browser user's last workspace. Chat hydration reuses the existing durable transcript reader (execution history for saved runs), and an explicit server return supersedes the workflow's automatic newest-chat selection on startup. Goals/Flows and Crew/Code supply layout snapshots through one adapter; other product pages save their existing URL selection.
+Closing an execution tab closes its display without stopping the run. Permanent project chats remain protected, and active side chats must finish or stop before closing. Account, server and session identity are rechecked after asynchronous navigation or cleanup.
 
-## Bounds and freshness
+Goal step inspections appear beneath their exact owning chat or run. Server receipts require current project access and exact parent-session ownership; child-session receipts are excluded. Opening the inspector independently checks authorization again. Internal agents do not become unrelated top-level chats.
 
-Home reads at most 200 workspaces per request, returns at most 100 attention rows and 100 active sessions, and bounds decision reads per workspace. Partial sources are explicitly reported; an unavailable inventory is an error, never an empty success. The attention/recent API remains available to MCP; no dashboard polls it. The frontend reads the inventory only to resolve first entry when no saved destination exists. The server logs one `[HOME] user=... attention=... work=... running=... ms=...` timing line.
+Goal activity is available through the Goals workspace menu and search. A compact Needs you signal in the existing Goals header opens pending/unapplied decisions. It is not an Activity entry in the global chat sidebar.
 
-Workspace writes debounce settled UI changes by 700ms, flush on hiding the document, and use a keepalive request for a pending snapshot on page exit. Abrupt process/device failure before an acknowledged save can still lose the latest UI movement. Stored preferences never grant access: revalidation happens on read/save and normal resource/history endpoints continue to enforce authorization.
+## Right context card
+
+The card stays available for everyday work and shortcuts. Expanded panels use the existing header's back icon to return to it. Product settings stay in the three-dot menu.
+
+| Area | Goals | Crew | Flows |
+| --- | --- | --- | --- |
+| Results | Dashboard and report documents | Dashboard | Dashboard and recorded runs |
+| Work | Plan, schedules and triggers | Existing schedules, triggers and functions | Flow, API triggers and condition triggers |
+| Review | Pulse, decisions and activity | Existing suggestions and history | Run logs and costs |
+| Tools | Existing knowledge, browser and files | Existing memory, browser, files and admitted development tools | Existing files and history |
+
+The table describes navigation, not new permissions. Product-specific features and current resource roles determine which entries appear. Crew does not gain development tools merely because the shared component supports them; former Code projects retain their existing features. More tools and search keep admitted destinations discoverable.
+
+## Connections and Use & share
+
+**Connections** contains resources an agent consumes: MCPs, Secrets, Skills, admitted Vault/Brain references, folders/workflow references, Google accounts and the personal Slack sending account. Its landing view shows connected resources. Add connection exposes the admitted choices, with Brain and Vault first when available. Selecting a resource opens its original management panel.
+
+**Use & share** contains the existing Share control, dashboard access and supported incoming channels. Share uses **Only me / Chosen people / Everyone**, with server authorization. People who can use a shared project can see the files/results that its existing rules permit; secret values and private owner conversations stay protected.
+
+Goals and Crew retain supported Slack app and WhatsApp routes. Former Code projects retain their own-bot, one-to-one Slack restriction. Flows expose API/MCP access without gaining unsupported incoming bot controls. Project-only MCP setup requires the recipient's own sign-in and existing project access; see [project MCP connections](project-mcp-connections.md).
+
+Existing section IDs and search/deep links remain valid. Grouping a destination does not widen its permission or replace its native implementation.
+
+## Personal shortcuts
+
+`GET/PUT /api/workspace-shortcuts/{product}` stores ordered preferences per signed-in person and product. Valid product keys are `agentworks`, `relays`, `work` and `code`. The request cannot select another account. Preferences are presentation only; product, feature and resource checks still decide whether a panel may open.
+
+A revision conflict returns 409. Unknown/unavailable entries and an intentionally empty layout are retained. Explicit inheritance supports the Crew/Code consolidation without inferring a merge from a disabled product or rewriting preferences on page load. Older MCP shortcut aliases continue to resolve through Connections.
+
+Corrupt, oversized or unsupported shortcut records return defaults instead of permanently blocking the editor. A subsequent valid save replaces the damaged preference. Storage transport errors remain errors. Writes serialize per person/product rather than blocking unrelated accounts.
+
+## Server-owned workspace restore
+
+- `GET /api/workspace-state` returns validated last/recent preferences, a server-resolved `destination`, and `first_visit`. Removed access clears the saved destination and supplies a plain explanation.
+- `PUT /api/workspace-state` accepts a version, revision and last selection. It validates the selected project without scanning attention or old transcripts. Stored chat preferences contain only session selection, display name and transcript display mode.
+- On GET, current project access, exact chat ownership and workspace binding are checked. Conversation mode, schedule/bot origin and execution flags come from the active server session or saved history. Crew conversation keys come from the server registry. Browser-supplied authority flags are ignored.
+- `GET /api/workspace-access` provides the current project capability used for connection editing controls. Storage path prefixes and the account role alone cannot decide project editing access.
+
+The state file contains no transcript, prompt or credential. It stores project/view selection, session identity, personal display preferences, pane visibility, split ratio, preview device, focus and navigation mode, plus bounded recent selections and a revision. The workspace storage API provides atomic replacement. Corrupt state recovers to an available destination; unavailable storage does not masquerade as an empty account.
+
+Writes debounce settled layout changes, flush when the document is hidden, and use keepalive on page exit. Abrupt failure before an acknowledged save can lose the latest movement. Revisions reject stale writes. Locks are per person; only restore loads the selected transcript, and recent entries are project-checked without reopening every old chat. The frontend cache is scoped to account and connected server and cannot authorize a destination.
+
+## One attention projection
+
+MCP `needs_you action=list` combines live questions, pending/unapplied decisions and the latest failed/blocked run to review. A later successful run summary clears an earlier failure. Questions and decisions retain their existing answer/apply permissions. Run-review entries point to execution logs and cannot be answered as decisions. The duplicate Home MCP tool is removed.
+
+## Dashboards and service products
+
+Empty dashboards offer a labelled local sample of live charts, forms/actions and stories/media. Samples do not query business data, call models or execute functions. Creation actions prepare an unsent draft and preserve existing draft text. Check again remains available, and Share remains subject to its existing server gate even before an authored dashboard exists.
+
+When a shared Crew dashboard is read, the server can provide the existing platform default from the project's declared purpose and published functions. The browser does not issue a separate create-default command. Current role checks still determine authoring and sharing.
+
+Brain opens its Library and Vault opens connected MCP management. Their existing controls stay in the main panel; the right card holds shortcuts. Assistant chat opens only when requested, preserving history and drafts when closed. Failed setup offers retry; account or permission changes discard late responses. Viewing access never exposes mutation controls or secret values.
 
 ## Verification
 
-Remote verification covers authoritative attention visibility/resolution, cross-user preference isolation, stale revision rejection, removed project access, foreign session rejection, unsafe IDs, idle-session exclusion, MCP visibility, saved-root restoration and explicit-link precedence, and serialized/cancelled account writes. No model calls are required.
-
-
-## Compact workspace context
-
-The redesign changes presentation of existing product views. It does not add execution capabilities or alter permissions. Goals, owned Flows, owned Crews and owned server Code workspaces have a compact Context card; Context/Back to context and More are together in the top toolbar. There is no vertical tool rail or additional Back row. Goals and Crew do not gain a workspace Terminal. Their existing chat live views remain unchanged; Code keeps its original owner-only shell.
-
-| Card section | Goals | Crew |
-| --- | --- | --- |
-| Scheduled work | Existing schedules, webhooks and watchers | Existing schedules, webhooks and watchers, using existing feature gates |
-| Functions | Existing callable functions, when configured | Existing callable functions, when configured |
-| Project tools | Browser and Chat history | Browser and Chats; Code also includes Files |
-| Results | Dashboard and report catalog documents | Dashboard and report catalog documents |
-| Knowledge | Workflow knowledge and learnings | Crew memory |
-| Reviews & decisions | Existing Decisions and Pulse reviews | Existing Suggestions |
-| Browser | Saved workflow browser choice; selected extension name and connection status when applicable | Saved Crew browser choice; selected extension name and connection status when applicable |
-| Project setup (bottom) | Details & instructions and Apps & tools | Details & instructions and Apps & tools, using existing feature gates |
-| Connections | MCPs, Secrets, Google apps and Slack | The same direct links, narrowed by the existing MCP/secrets/bot feature gates and admitted workspace panels |
-
-Identity and Integrations are simple links at the bottom of the card, separated by a divider. They open the original panels and keep the panels' existing editing permissions and tab gates. Shared Crew users still cannot open owner-only setup. Each entry opens its original full workspace view. Dashboard and Browser have no separate top shortcut. Dashboard stays in Results; Browser appears in the card with its saved selection. Both remain in the complete More menu. More lists all existing product views, including Automation and the views linked in the card; their feature gates and permission checks still apply. The card uses authenticated server data, shows loading/errors instead of false empty states, and excludes other projects' schedules and suggestions. Sources links to the existing knowledge/memory view; it does not introduce another source store. Pulse is not added to Crew.
-
-Context uses the semantic `context` workspace view and a responsive `clamp(240px, 26vw, 316px)` column rather than the saved full-view split ratio. The existing workspace-return record restores Context or expanded views per user without another layout store. A legacy hidden-pane preference resolves to Context so the overview remains available. Context is registered in the shared UI control contract. Flows use the same card and top controls: Graph/runs/code open their existing Flow view; Webhooks and Watchers open their existing trigger tabs; Dashboard and report documents, Costs, Execution logs, Files, Chats, Identity and Integrations retain their destinations. The complete More menu preserves Flow's panel inventory, including Access in multi-user mode. It does not introduce Goals' Pulse, decisions, schedules, browser, backup or notification panels. Flow's default graph selection and explicit/saved views remain authoritative; Run-only users keep the existing dashboard-only boundary. Code uses the same card, with Files in the bubble and complete More menu, and its existing owner-only Terminal (Dev mode) kept in the top toolbar. Cowork retains its original no-Terminal inventory. Local CLI Code keeps its connection/Costs/Models controls and does not gain server views. Existing Code defaults, explicit links and workspace restore remain authoritative. Shared Crew users retain their existing dashboard-only access.
-
-
-### Local full-product preview
-
-The source launcher accepts `--with-server-products`. An explicit product surface list may be CSV or JSON; it is normalized to JSON for frontend runtime configuration and CSV for backend product policy. Keep these lists aligned so builders and UI receive the same enabled products.
-
-This local review stack uses the existing canonical workspace documents, with a separate consistent SQLite snapshot of Vault configuration because another local Vault process owns the original database lock. Changes to that snapshot do not synchronize back to the original Vault. The private LLM Gateway composition currently uses SQLite audit logging; the older ClickHouse setting is not supported by that build. Its protected runtime environment and credential files live outside Git. No model request is required to preview the UI.
-
-
-### Code and navigation parity
-
-Crew and Code toolbar, card and complete More menu derive their inventory from `workWorkspacePanels`, preserving the original product, feature, ownership and Dev/Cowork/local-mode filters. Code catalog reads use profile `code` and its project ID. Code does not fetch or display Crew Suggestions and does not gain Pulse or Database through this layout. Code setup retains Settings and Integrations, opening the existing panels.
-
-Every context card has a Find a panel footer with the platform's Cmd+K/Ctrl+K hint. It opens the existing QuickSwitcher through its established `open-quick-switcher` event with `@panels`, so the results come from the current product's registered panels and tabs. It does not create a second command menu.
-
-
-The compact card uses Schedules & triggers for timed and event-driven work. It hides zero-count trigger rows and shows one combined empty message once the relevant catalogs have loaded successfully. Unavailable sources remain explicit; an error is never shown as an empty success. Configured callable functions have their own heading. Chats belongs to Workspace, alongside Browser and (Code only) Files. All configuration and full catalogs remain accessible through the existing Automation panel and complete More menu; no capabilities are removed.
-
-
-## Cross-product chat sidebar
-
-The shared left navigation contains only chats, grouping open/running chats under their owning workspace with a separate Recent section. The existing primary chat title is also the workspace picker: its disclosure opens the original project/workflow inventory and the permission-filtered product list. Selecting an inactive chat still selects that chat. The context bubble is always visible, More retains the existing workspace panels, Setup is fixed at the bottom of the open chat sidebar; when the sidebar is closed, the workspace picker keeps the same actions below Switch product, and Account remains on the right. There is no separate icon rail or second header. A mounted toolbar registers a non-persisted DOM slot, and the shared controls render there through a React portal. When a page has no visible workspace toolbar, the same controls remain available in a compact top-right dock without adding a header row. Dropdowns open downward, and workspace lists align to the right edge to stay on screen. Each workspace can collapse, shows its running and needs-input counts, and retains every distinct chat underneath with its own status. Workspace keys include the product and project/workflow identity, so equally named workspaces across products never merge. Recent chats initially show eight entries and expand on demand. Open workspace groups sort by name and chats retain creation order, so clicking does not reorder navigation. Setup chat is used only for an explicitly marked builder with a generic title; normal primary conversations show Chat. Meaningful custom titles remain unchanged. Entries are deduplicated by session ID, selected chats are highlighted, and current server runtime state overrides stale local streaming flags. Internal child sessions are excluded. Existing schedule names remain intact; synthetic continuity/review prompts are not shown as chat names. Scheduled timestamps use saved run creation metadata rather than the time a restored tab was opened. Generic duplicate chat labels receive stable display numbers without renaming stored chats. Generic legacy scheduled-run titles are recovered from the authenticated scheduler catalog using exact session ownership or unique workspace-scoped job prefixes. Ambiguous prefixes retain their fallback label. Pulse conversations are labeled separately. Recovered job identities repair the shared tab name and scheduled-job metadata so top tabs and Ctrl+K remain aligned; meaningful saved/custom titles are preserved. Cadence suffixes are shortened only in sidebar display, with the full identity on hover.
-
-Open tabs use the same global tab navigator as Ctrl+K. Running sessions use the existing canonical activity opener. Recent product chats are handed to the existing product history resume handler only after that product's own chat has mounted; the original Crew saved history and Code resume semantics remain in force. The ephemeral handoff is invalidated on newer sidebar/project/product navigation and checks account identity before restoring. It is not persisted.
-
-Recent metadata comes from authenticated history endpoints: a bounded personal page plus the five latest entries from at most six recently used workflow workspaces. Product directories resolve legacy folder slugs to authoritative project IDs. All results are scoped to the current account/server and filtered by enabled products, account product permissions and workflow allowlists. Late responses from another scope are discarded; unavailable history is shown as an error, not as an empty success. Ctrl+K is the single search entry point; the sidebar has no filter field. No transcript parsing or model call is needed for sidebar display.
-
-The sidebar stays open until the person explicitly hides it. No inactivity timer or focus/visibility event hides it; the existing saved navigation preference and manual hide/reopen controls remain. Your work defaults to a 260px desktop chat list, resizable from 220px to 360px by dragging or keyboard. Width is a browser preference keyed by connected server and user, with a double-click reset to 260px. The toggle beside Your work closes only the chat list; a labeled Your work control in the same toolbar reopens it. Product and account controls stay available. The legacy saved `auto-hide` value means explicitly closed, with no pointer-triggered reveal or expiring hint. Hidden chat navigation keeps its subscriptions mounted.
-
-
-The chat navigation scope is Goals/Flows, Crew, Code, Brain, Vault and open Video Studio project chats. Products without a compatible chat workspace (such as the LLM Gateway viewer and Bullpen directory) remain product navigation destinations, rather than synthetic chat entries. SparkQuill's separate family/child navigation is not inferred from legacy generic product-session IDs.
-
-Slack and WhatsApp runtime/history entries share the same authorized workspace scope and show their origin on the row. Busy chats show individual spinners and waiting chats show an input indicator; group counts remain visible when collapsed. The sidebar and existing project/workflow tab strips share `closeWorkspaceChatTab`: permanent chats remain protected, closing a read-only schedule/bot tab does not stop its execution, and active side chats must finish or stop before they can close. Closing an idle side chat stops its retained runtime and removes its server-owned conversation key before removing the local tab. Identity and session binding are rechecked after asynchronous cleanup.
-
-## Business-facing header and work list
-
-The workspace title and its disclosure open the existing workspace selector, with the enabled and allowed products below it. Providers, AI-tool connection setup, My vaults, People & access, and the product's original activity/schedule/page actions live in the Setup section below Switch product. The existing components remain mounted and enforce their original account/product permissions; the menu does not add grants, change APIs, or create users. Hidden Setup targets stay reachable in the walkthrough through the workspace picker launcher. Pages without an active chat toolbar retain the existing compact navigation dock, with labeled fallback product/workspace selectors.
-
-The work list uses Open and Recent, keeps stable workspace ordering and existing close rules, and displays Working or Needs you alongside the existing runtime indicators. Known machine-generated review prompts become Scheduled review or Run follow-up in display copy and tab tooltips; saved names, prompts, IDs and schedule identities remain unchanged. Pulse displays as Automatic review, with Manual review retained for the manually triggered review lane. Generic builder conversations display Setup chat; custom names and complete schedule names on hover are preserved.
-
-## Connected CLI agents and welcome preview
-
-The sidebar shows an AgentBridge connection section only when that product is enabled and permitted for the signed-in account and owned online connections exist. An empty or loading connection list has no section; failed reads retain the existing explicit error and retry. It reads the existing authenticated directory, includes online account-owned connections, and refreshes every 15 seconds while the page is visible. Offline and shared agents are omitted. A green dot means a delivery connection is online; it does not claim the CLI is working or physically on this machine. Agent names and providers are metadata only; the directory does not expose CLI transcripts. Open AgentBridge reaches the existing network UI. Legacy `bullpen` route/API identifiers stay compatible while visible product labels use AgentBridge.
-
-Account → Getting started reopens the existing first-visit Welcome screen without clearing workspace or chat return state. New empty accounts see this screen automatically when multiple products are available; a single-product account proceeds to its product. Existing users return to their saved workspace/chat. The product cards follow deployment configuration and user access.
-
-The welcome page keeps an expanded “Use AgentWorks from the AI you already use” section below the product cards. It distinguishes MCP product-tool access, CLI setup and supported AgentBridge chat attachment, and Providers that run agents inside the app. Setup buttons reuse the existing MCP setup and `/bullpen/connect` routes. Product descriptions were coordinated with the website agent and adjusted to current app capabilities. The owner confirmed the public spelling AgentBridge on 2026-10-16.
-
-### Compact workspace controls
-
-The context bubble stays visible and has no hide toggle, including when an older saved preference had the workspace closed. Expanded panels retain the Back to context icon. App-wide actions live in the bottom Setup menu while the chat sidebar is open; a closed sidebar keeps the workspace-picker Setup fallback. Both use the existing Providers, MCP, Vaults and Users controls and their original permission gates. The workspace overflow menu contains only workspace options. No Context toggle or separate Settings button appears in a workspace. Outside a workspace, Settings remains available as an icon. Picker Setup contents stay mounted while closed; tours can still reveal their targets.
-
-The closed Your work launcher occupies the leading slot in the same workspace toolbar, before the workspace name. The open sidebar retains its own close control. Primary workspace names use a subtle product label, a larger semibold title, and no idle status dot; child chat tabs and active status signals retain their behavior.
-
-Setup uses the same compact tile layout across Goals, Crew, Code and Flows. The AI entry is labeled AI models & accounts, with compact buttons and accessible labels; product activity/schedules remain a separate section above Setup. Shared context identities live outside component modules so live development edits cannot strand portaled controls on an older provider. Product allowlists, account roles, create permissions, run-only workspace boundaries and original Terminal availability are unchanged.
-
-The picker is 420px wide on desktop, with a three-column product list and compact Setup buttons. Only the workspace inventory scrolls when it grows; product switching and Setup remain visible. Global setup pages reuse their existing headers for the same leading sidebar slot and trailing navigation slot, preventing floating controls from overlapping the Back action. Page headers are explicitly distinguished from workspace headers, so hidden chat titles never capture their picker.
-
-
-## In-depth usability review — 2026-10-16
-
-Reviewed the shared shell, welcome, workspace picker, Setup, left chat list and right overview across Goals, Crew, Code and Flows using the local server's existing workspaces. The interface keeps the existing header and panel destinations.
-
-| Finding | Implemented fix |
-| --- | --- |
-| The right side mixed outputs, controls and configuration without a clear starting point. | Project overview starts with results, then scheduled work/reviews, project tools and setup. Flows retains its own Flow/runs and trigger inventory. |
-| Technical labels made the same destinations hard to recognize. | Details & instructions, Apps & tools, Memory & skills, Schedules & triggers, Pulse reviews and Run logs are consistent in registries, menus and expanded headings. Old terms remain Ctrl+K search aliases. |
-| More was a flat inventory with no location cue. | Existing admitted panels are grouped by purpose; the current panel is highlighted and marked with `aria-current`. Find a panel opens the existing scoped Ctrl+K search. |
-| Disabled Crew/Code panels still caused summary reads. | Schedule and suggestion reads follow the admitted inventory; Code never reads Crew suggestions. Disabled dashboards receive no report-catalog workspace. |
-| More than three reports had no obvious continuation, and reused HTML titles produced indistinguishable links. | View all results opens the existing dashboard catalog; duplicate titles use file/folder identity, with full paths on hover. Stored titles and paths remain unchanged. |
-| A fixed overview width squeezed the chat when the left list was open. | Responsive 240–316px overview; browser review at 822px confirmed a 322px chat beside the 240px overview and 260px sidebar. |
-| First-time work choices competed with shared infrastructure. | Goals, Crew, Code and Flows appear under Choose where to work. Enabled and permitted shared services remain in a secondary disclosure, initially open for services-only accounts. |
-| Empty chat guidance implied starting again and advertised tools shared Crew users cannot configure. | Guidance emphasizes ongoing project work and reuse. Shared Crew guidance stays within its dashboard/task scope; Crew does not advertise a workspace Terminal. |
-| Product navigation could leave a picker open or intercept its clicks. | Picker closes before a Setup action reparents the toolbar; the toolbar sits above the resize rail. Global pages reuse their own header slots, keeping Back separate from the sidebar control. |
-
-Verification: targeted tests cover product inventories, feature/owner/read-only gates, quick-search aliases, menu reparenting, sidebar behavior, report labels and responsive layout. Browser checks covered the four work products, expanded-panel/back navigation, Setup pages, scoped panel search, first-time welcome and return to the existing Crew chat. No paid model call or business workflow execution was needed. Captured console output contained restored-session SSE reconnect warnings while switching products; this review does not establish live agent delivery reliability.
-
-Local preview remains on the UI branch, with all source-development products explicitly enabled. The generated runtime configuration and protected runtime environment are local-only.
-
-
-### Familiar left navigation — 2026-10-17
-
-The sidebar header uses the deployment branding, a compact Search icon with Cmd+K/Ctrl+K, and the sidebar toggle. The list uses Workspaces and Recent chats. A workspace with one protected main chat opens directly through the existing chat navigator, without a duplicate generic Chat child row. Workspaces with multiple chats, named side chats or run views retain their expandable list and individual close/run/waiting behavior. Generic builder labels display Main chat (or Chat 1/2 where disambiguation is needed). Stored names and IDs are unchanged. Product icons remain beside workspace and recent entries; nested chats use chat icons. Product identity also remains in hover text and appears beside matching workspace names across products. Idle counts, selection dots and routine recent timestamps are quieter; scheduled run timestamps and meaningful runtime/origin details remain visible. Ordering stays stable when opening a chat.
-
-Setup is fixed below the scrolling list. Its upward menu contains the existing AI models/accounts, Connect AI tools, My vaults and People/access controls and product actions, each with the original permission gates. It is rendered once through a non-persisted DOM slot, across all products and global pages. Opening Setup closes the workspace picker. With the sidebar closed, Setup falls back to the workspace picker so hiding navigation does not remove access to it. Keyboard opening, arrow navigation, Escape and outside-click dismissal remain available. The slot is released on sidebar hide and unmount.
-
-Browser verification: direct Crew/Code/Flow/workflow navigation, the bottom menu opening above its launcher, Connect AI tools and return navigation, absence of duplicate Setup in the open-sidebar picker, and fallback/recovery when hiding and reopening the sidebar. Tests cover matching workspace names, one-click chat navigation, permission gates across Goals/Crew/Code/Flows, slot cleanup, and the existing multi-chat/close behavior.
-
-
-The sidebar brand reuses the existing runtime configuration. A configured wordmark uses its light/dark assets; a square mark appears beside the configured name. Without custom branding it uses the existing AgentWorks mark and name. A custom name without images stays text-only. Long branding is bounded within the header. The workspace title shows its product icon and project name, without repeating the product name or slash; hover and accessible labels retain the full product identity. The open sidebar owns the brand display so the main toolbar does not duplicate it.
-
-
-### Activity navigation and page header — 2026-10-17
-
-Activity has a direct entry below the sidebar branding when Goals is enabled and permitted, including while using another allowed product. It uses the existing quick-navigation action and rechecks access when activated. Opening the global page clears any earlier workflow-specific activity filter. A global page does not leave a chat row highlighted as the current destination. With the sidebar closed, the existing Setup Activity entry remains available. Activity's data sources and workflow permissions are unchanged.
-
-The existing Activity header contains an icon-only Back action, the Activity icon/title, one combined workspace/product picker and Account. Large product labels and the Select Automation placeholder no longer compete with the page title. The original switching menu retains its full labels and allowed inventory; hover and accessible names identify the compact controls. No extra header was added.
-
-### Header consistency audit — 2026-10-17
-
-Goals, Crew, Code and Flows use one combined workspace/product picker. The product mark and workspace title open that picker; the redundant standalone product switcher is omitted when the workspace picker is present. Products without a workspace picker retain their original product menu. Both inventories still follow enabled products and account access.
-
-The existing toolbar owns 12px horizontal edges, a 12px gap between header groups and 4px gaps within workspace tools. Main header rows occupy 45px including the divider. Crew/Code and Vault/Brain no longer add a second layer of horizontal padding. Vault/Brain retain their original section buttons, with the icon frame fitted to the shared row height. At narrower widths the existing wrapping behavior remains.
-
-Activity, Schedules and triggers, AI models & accounts, Connect AI tools, My vaults, People & access, Vault Audit/MCP endpoint and AgentBridge reuse `WorkspacePageHeader`. Titles and Back actions occupy the existing header; existing page tabs stay immediately below it. Shared page toolbar content is 44px plus its parent divider; tabs add their own row. Existing page badges, callbacks, panels and permission checks remain.
-
-Retained hidden pages and Vault's retained builder now release shared navigation slots to the visible page. This preserves provider login, drafts and chat state without letting hidden toolbars capture the active controls. The service product menu aligns inward from the right edge, so its options stay inside the viewport. Escape from the workspace arrow dismisses the picker; Enter/Space still avoid activating the enclosing chat tab twice.
-
-Browser audit covered overview and expanded/back navigation for the four work products, all six shared setup/activity pages, Vault workspace/Audit/MCP endpoint, Brain, AgentBridge, returning after retained pages, and sidebar open/closed Setup access. Each ready page had one visible navigation owner and one workspace or product switcher. The browser evidence is saved locally in `agentworks-header-spacing-audit.json` and `agentworks-consistent-headers-flows.png`. This is a navigation and presentation audit; it does not execute business workflows or change account grants.
-
-Final verification: 166 tests passed across 18 targeted navigation/header/product suites, TypeScript project checks passed, and `git diff --check` passed. The saved browser audit contains 23 measurements, all with one visible navigation owner, one switcher and matching 12px horizontal edges. Preview remains on `codex/owner-home-server-state`.
-
-### New project entry — 2026-10-17
-
-A compact New project action appears below the sidebar branding, above Activity. It opens a product chooser with the existing Goals, Flows, Crew and Code marks and one short description per choice. Selection opens that product's existing creation form through the same command used by Ctrl+K. Opening the chooser or choosing a product does not submit the form or create a blank workspace. Existing work stays in the list below.
-
-Choices come from the shared creation catalog, deployment configuration, account product access and per-product creation permissions. Access is checked again on selection; the entry is absent if no primary product can be created. The chooser closes on account/server changes and uses the existing dropdown library for keyboard navigation, Escape and viewport collision handling.
-
-Code and Crew remain separate while this branch has separate products. The planned consolidation should update the canonical product/creation catalog and form: the sidebar derives its choices from that inventory and has no parallel creation implementation or stored product IDs to migrate. A catalog without the legacy Crew entry shows a single Code choice; the regression check covers that configuration.
-
-Verification: 41 tests passed across the new chooser, sidebar and shared navigation suites, with TypeScript checks passing. Browser verification opened and cancelled the real Crew, Code, Goals and Flows forms without submitting or creating test projects. The New project chooser is available on the same local preview.
-
-### Personal context shortcuts — 2026-10-17
-
-Goals, Crew, Code and Flows have **Edit shortcuts** in the existing right-hand overview. Check or uncheck a destination, drag its handle to reorder it (or focus the handle and press the up/down arrow keys), then choose Done. The editor scrolls its choices while keeping Done and Reset to default visible. Cancel discards the draft; Reset to default takes effect on Done. Hiding a shortcut leaves the original panel available through More and Ctrl+K.
-
-The default Connections section makes **MCPs, Secrets, Google apps and Slack** directly visible. Each opens the original Apps & tools section: `connected`, `secrets`, `gmail` and `slack`, respectively. Edit shortcuts also offers the other existing connections, such as Available MCPs, Skills, WhatsApp, Brain and Vault, when that workspace supports them. Flows uses its own existing integration inventory. Crew and Code follow their original MCP/secrets/skills/bot gates, owner and mode panel inventory; shared/run-only and Local mode workspaces do not acquire owner setup shortcuts. Brain and Vault also follow installation and account product access. The shortcut links never fetch credential values or create connections; the original destinations enforce their existing read/write and connection permissions.
-
-`GET/PUT /api/workspace-shortcuts/{product}` stores `{version: 1, revision, shortcuts}` in the authenticated user's `preferences/context-shortcuts/<product>.json`, through the existing workspace storage API. Valid product keys are `agentworks`, `relays`, `work` and `code`. No request can select another user. Preferences are personal presentation settings, so an allowed read-only account can save its own layout without a project creation or editing grant. Enabled products and account product access are checked on every request.
-
-`shortcuts: null` uses product defaults; `[]` intentionally shows no shortcuts. Selected IDs and ordering are saved on the server. IDs are bounded and validated, unknown body fields and trailing JSON are rejected, and revision conflicts return 409 instead of overwriting another tab's changes. Load and save failures remain visible and cannot save guessed defaults over unavailable state. Browser state is memory-only, scoped to account, server and product, and ignores responses from a previous account/server. Existing live summaries and dashboard documents remain attached to their original shortcuts.
-
-Every rendered or editable choice comes from the current workspace's admitted inventory. A stored ID cannot grant access or introduce a new capability. Unavailable choices stay hidden and are retained when editing another workspace, so a restricted workspace does not erase this user's preferences for other workspaces in the same product.
-
-Crew and Code currently keep separate settings. The planned merge has explicit config fields on `ProjectProductConfig`: `shortcutPreferenceProduct` selects the canonical scope and `shortcutPreferenceLegacyProduct` supplies the legacy origin. For example, a canonical Code product can request `GET /api/workspace-shortcuts/code?legacy=work`. Only the Crew/Code pair supports inheritance, only when the canonical file is absent, and only from the same user's preferences. The first canonical save retains the old file; an existing canonical file always wins. Disabled products and renamed labels do not implicitly merge settings. Existing shared shortcut IDs such as `dashboard`, `memory`, `schedules` and `mcp:*` remain stable across the boundary.
-
-Verification: 68 frontend tests passed across 12 focused suites, TypeScript checks passed, and all three backend shortcut tests passed. Coverage includes user/product isolation, invalid and foreign writes, read-only personal saves, account/deployment gates, revision conflicts, load/save failures, late account/server responses, explicit merge inheritance, integration feature/product filtering, and vertical pointer drag cleanup. Real-browser checks saved and reloaded layouts in all four products, added a panel, hid panels, verified keyboard and pointer reordering, reset defaults, and opened the existing MCPs, Secrets, Google apps and Slack sections. No model call, business workflow execution, connection creation or permission change was needed. This remains a local implementation on `codex/owner-home-server-state`.
-
-### Brain library and secondary service chats — 2026-10-17
-
-Brain opens to its Library, with the shared workspace header and context card. The main area keeps the existing permission-checked file tree, open-file tabs, read-only text/binary viewer, metadata, folder navigation, refresh and file search. Its empty state explains how connected AI tools add and reuse knowledge through MCP; people without editing access see a sharing explanation instead of an authoring action. Load errors retain their retry view and never appear as an empty library.
-
-The right bubble contains Library, Folder access, Access chat, Connect AI tools, Schedules, Secrets, Models and backup status. It marks the current panel. Folder access opens the original grants panel; its existing Manage/Inspect access action opens the assistant. The complete More menu and Ctrl+K register the admitted Brain inventory. Connect AI tools opens the existing MCP/CLI setup page. The shared header has one product menu and no additional global row. On phones, Brain options switches between the primary content and the secondary pane.
-
-The library does not create or hydrate an assistant conversation. Access chat explicitly resolves Brain's existing durable conversation without submitting a message. Confirmed Ask AI requests wait until the lazy chat is ready, then use the same conversation. Closing the pane restores the bubble while keeping the transcript, stream and unsent composer mounted. Chat visibility starts closed on a new visit. Models may resolve the same durable configuration without opening the chat pane; model and reasoning controls remain the shared platform controls. Chat failures leave library browsing available and offer retry. Conversation rotation and Brain's existing commands remain available after opening the assistant.
-
-Viewers still receive only Brain's library, with no access chat, management panels, approval UI or privileged Ctrl+K destinations. Writers and owners retain their existing management entry points and backend permission checks. Backup configuration remains an administrator action through the same two-step Ask AI button and secure confirmation/PAT field. Pending access approvals stay available independently of whether chat is visible. Account/server switches and loss of write access invalidate delayed chat setup and queued delivery; original folder/content endpoints enforce access on every read and refresh.
-
-Vault also starts with its existing management screen at full width. The header's Assistant action opens the existing durable Vault chat on demand; closing it preserves the unsent draft. Vault models continue to use the same profile settings without forcing a visible chat. MCP connection actions, custom-server drafts, server/catalog navigation, group access, People, Secrets, Models, Audit, MCP endpoint, viewing permissions, mobile preview and split controls keep their existing implementations. This is a change to the entry layout and assistant lifecycle; Vault's management inventory is retained.
-
-Verification: focused tests cover lazy first entry, direct panel navigation, first-request delivery, conversation rotation, chat failure/retry, draft retention, revoked write access during delayed setup, panels for people without editing access, secure backup configuration, read-only content sanitization, content removal after revoked access, empty/error library states, Vault reader gates and existing header/global-page navigation. Browser checks opened Brain folder access and model settings, opened/closed both assistants without sending a message, and verified unsent drafts survive closing and reopening. Test drafts were cleared afterward. No model request, business workflow, connection, secret or permission was changed during browser verification.
-
-### Brain actions and shared product switching — 2026-10-17
-
-The unconfigured-backup notice now sits above Brain's main library/management content. Its Configure backup action retains the existing administrator gate, deliberate two-step Ask AI confirmation and secure credential flow. Starting the action does not create a chat until it is confirmed. The right bubble retains the Backup destination without repeating the unconfigured warning. Folder access and Refresh files share one aligned action group in the library header.
-
-The workspace picker, service headers and other page headers use one `ProductSwitchMenu` grid. Icons, labels, order, current-product highlighting, spacing and arrow/Home/End keyboard navigation come from the same component. The existing workspace inventory and Setup actions remain in the combined workspace picker. Product choices still follow deployment availability and the current account's allowed products; selection uses the existing workspace restore routing. Standalone product triggers use the same compact size as service triggers.
-
-Verification: 96 tests passed across 10 focused Brain, product-switching, workspace-picker, header and navigation suites; TypeScript project checks passed. Browser checks confirmed the matching menu inventory and product navigation between Brain, Vault and Crew. Brain's Folder access and Refresh files buttons have the same vertical center, and the backup notice is inside the main library landmark. Preview remains local on `codex/owner-home-server-state`.
-
-### Vault management and context shortcuts — 2026-10-17
-
-Vault now follows Brain's management-first arrangement. Connected MCPs is the default entry screen. Access, Connected MCPs, Available MCPs, Secrets, People and Models occupy the main panel when selected. Access and People remain in the right bubble alongside the other existing screens, Audit logs, the Vault MCP endpoint and the optional Vault assistant. The selected destination is highlighted. Audit keeps its Logs/Analysis tabs, filters and existing actions in the main panel; the endpoint keeps its local/hosted client setup. Back returns to the selected management screen. These destinations retain their existing URL, Setup-menu and Ctrl+K navigation paths; explicit views still take precedence over the default.
-
-The shared header contains the current management title, More and the common product/account controls. More preserves the complete Vault inventory and the Mobile/Tablet/Laptop preview choices. Preview applies to management content; the resize divider is available while the assistant is open. The right bubble stays available on desktop. On phones, Vault options switches between management and the shortcuts/assistant without reserving an empty content row.
-
-The assistant starts closed and reuses the existing `caplayer` durable conversation when explicitly opened. Closing it restores the bubble while retaining chat history, streaming state and unsent drafts. Models prepares the existing model configuration on demand without opening chat; read-only users keep their explanatory model screen without initializing model settings. A first-use custom-server action waits for chat readiness and places the existing request in the composer without submitting it. Concurrent preparation shares one request. Failed preparation or conversation rotation offers retry and does not prevent management browsing. Account, role and server changes invalidate pending assistant setup.
-
-The same Vault role gate, read-only context, group/access panels, Users/Groups tabs, MCP catalog/connections, secrets, model controls, audit APIs and endpoint setup remain in use. The new shortcuts grant no additional access. Views without editing access still omit mutation controls and secret values; accounts without Vault access cannot mount management or assistant content.
-
-Verification: 104 tests passed across 11 Vault, Brain, shared shell/context, product menu and navigation suites. Coverage includes cold-start custom-server drafts, lazy model settings, retained drafts, conversation rotation/retry, delayed responses after access revocation, viewing restrictions, credential reuse, gateway failures and requested page navigation. Browser checks covered existing MCP inventory, Audit/Analysis, endpoint setup, assistant history and unsent-draft retention, a clean reload, and phone navigation. The temporary draft was cleared; no model request, connection, secret or permission was changed. The local preview is saved in `agentworks-vault-management-first.png`.
-
-### Main integration: merged Crew product — 2026-10-17
-
-The UI branch is rebased onto main `fc92a4ec1`, including PLAT-856's Crew/Code consolidation and the follow-up sharing fixes. The clean local main checkout is fast-forwarded to the same revision. Main's display catalog now supplies one Crew entry and one creation choice when both legacy origins are available. Accounts with only one origin retain that origin's existing access. Product marks, the shared header, welcome and New project chooser use the merged Crew presentation.
-
-The combined project list retains main's origin-bound loading and mutations, legacy project URLs and file roots. Run grants remain restricted to their existing inspection surface; shared Builder/co-owner projects receive the editable context layout under main's verified role checks. The context/menu inventory retains main's newly unified Suggestions and Database capabilities where admitted. Local mode and Cowork keep their existing restrictions. Shortcut preferences retain their stable origin scopes and explicit optional inheritance configuration; display deduplication does not rewrite stored IDs or grant cross-origin access.
-
-The Brain library, secondary Brain/Vault assistants, Connected MCPs default, shared product menu and existing local UI work remain on `codex/owner-home-server-state`. Generated runtime configuration stays outside source commits. A recovery copy of the pre-rebase work is stored in `/private/tmp/agentworks-ui-before-main-20261017-173649`.
-
-Verification: 233 frontend tests passed across 20 focused navigation, product, role, workspace, shortcut-context and service suites. The backend workspace/audience, shortcut isolation/inheritance, Home/return-state and external tool-contract tests passed after rebasing.
-
-### Direct MCPs and Secrets navigation — 2026-10-18
-
-The former Apps & tools panel is now **MCPs & secrets** in Crew, Goals and Flows. It opens the selected resource immediately, without the intermediate Tools & secrets directory or breadcrumb. MCPs, Secrets and Skills are compact direct choices. MCPs retains its Connected and Available catalog tabs. More holds the other existing admitted destinations: Vault, Brain, Folders & workflows, Slack, WhatsApp, Google apps and Use in AI apps. The selected More destination displays its name and icon. Existing product differences remain; Flows does not gain Crew-only connections.
-
-The shared navigation derives its choices from the original product, account and feature-filtered inventories. The original resource panels, read/write guards, connection and secret selection handlers, save behavior and persisted plugin selection remain in use. Legacy section IDs, right-bubble shortcuts and Ctrl+K targets remain valid; old panel names remain searchable aliases. Crew uses the merged product name for both legacy origins. Navigating between resources does not submit a chat, invoke a model or change access.
-
-Verification: 116 tests passed across 18 focused navigation, connection, secret, product-availability, shortcut and context suites after updating one stale pre-merge Memory label assertion. TypeScript project checks passed. Real-browser checks covered direct MCP/Secrets navigation in Crew, Goals and Flows, the Connected/Available catalog and Google apps through More. No connection, secret, model request or permission was changed. This remains local on `codex/owner-home-server-state`.
-
-The three-dot workspace menu also exposes the admitted connections directly, replacing its combined MCPs & secrets entry. On desktop, a Connections column shows MCPs, Secrets, Skills and the other permitted destinations beside the existing workspace tools. Narrow screens stack the columns within the same scrollable menu. Available remains a tab inside MCPs. Selecting a connection uses its existing section target and closes the menu. Crew's legacy Code origin retains its hidden CLI-setup entry; restricted and Local-mode workspace inventories do not gain connection links. App-wide Setup remains in its existing location.
-
-Verification of the direct menu: 47 tests passed across six focused workspace, connection-inventory, header and Setup suites; TypeScript checks passed. The browser confirmed Company CA's Secrets entry opens the original Secrets panel directly. The menu is left open in the local preview. No secret value or permission was changed.
-
-### Everyday work, Connections and project settings — 2026-10-18
-
-This direction supersedes the expanded connection menu above. Crew (both legacy origins), Goals and Flows use the right bubble for their existing results, scheduled work, reviews and project tools. It has one Connections destination. More tools expands the complete admitted work inventory, keeping items such as Plan, Files, Terminal, Database, costs, logs and Activity reachable without putting them all in the default menu. The three-dot header menu contains project settings only: the original identity/model settings and, where already admitted, Access, Backup, Publish, Notify and playbooks. Global Setup remains unchanged.
-
-Connections opens on the existing project/Vault MCP list and a read-only summary of the project's Google and selected Slack accounts. Summary reads use the original scoped APIs, fetch only admitted channels, show actual connection state, distinguish failure from empty data and discard late responses after account/workspace or visibility changes. It never reads credential values. Add connection reveals the existing app and resource choices on demand. Selecting one opens its original panel; the Connections back action returns to the overview. MCP catalog/custom servers, Secrets, Skills, Vault, Brain, folders, messaging and CLI setup retain their existing inventory, role checks and mutation paths. Existing Ctrl+K/deep-link section IDs remain valid.
-
-Per-user shortcut loading, CAS saves, account/server scoping and Crew/Code origin scopes remain unchanged. Known old `mcp:*` shortcuts display as one Connections entry where that destination is admitted. Opening the bubble does not rewrite preferences. A deliberate shortcut save deduplicates those old entries; unknown and unavailable choices are retained. Project settings remain in the three-dot menu rather than the shortcut editor. An intentionally empty personal layout remains empty.
-
-Verification: 124 tests passed across 16 focused navigation, permission, connection, secret, shortcut and Setup suites, and TypeScript project checks passed. Browser checks confirmed the simplified Crew/Goals/Flows layout, settings-only menu, Connections overview and Secrets drill-in. No model request, business workflow, connection, secret value or permission was changed. The result remains local on `codex/owner-home-server-state`.
-
-### Cross-product browser audit — 2026-10-18
-
-The actual Crew, Goals and Relays pages were reviewed with their existing server data. Crew retains its admitted Files, Terminal, Database, Memory, suggestions and cost paths; Goals retains Plan, schedules, webhooks, reviews, decisions, knowledge, files, costs, logs and Activity; Relays retains its Flow, trigger/watcher/chat, file, cost and log paths. Settings and connection choices keep their original per-product inventories. Files, Plan, project settings, trigger management and direct connection/search destinations were opened without submitting changes or business runs.
-
-Two discoverability issues were fixed. More tools now opens upward in a bounded, keyboard-accessible menu rather than expanding below the visible bubble. Command-K uses Connection overview instead of the removed Tools & secrets directory, and includes the existing Relay Slack destination. Legacy section IDs and search keywords are preserved. Browser keyboard checks confirmed ArrowDown entry and Escape focus return.
-
-The targeted frontend suites cover 160 unique checks, including the final affected search-suite rerun, and TypeScript passed. Six isolated backend tests passed for read-tier permissions, admin-only products, explicit product restrictions, caller-scoped folder grants, Flow release viewing access and revoked-user denial. Backend authorization code was not modified. Browser verification used the current local account; restricted-role behavior was checked through policy/component/backend tests rather than another live login. Long existing Goals report filenames and tall Plan variable groups remain existing presentation considerations. This is not a full accessibility-compliance audit.
-
-Numbered screenshots and a local evidence report are saved outside the repository under `agentworks-navigation-audit-20261018/`. No model call, external message, sign-in, secret reveal, publish action, user grant or workflow execution was needed.
-
-### Empty conversations and dashboards — 2026-10-18
-
-Empty owner conversations now use short visual introductions. Crew explains an agent with memory, skills and functions that can be shared and scheduled. Goals illustrates a measurable target, repeated work/review and progress tracking. Flows illustrates an invoice becoming a spreadsheet row through reusable steps. These are explicitly illustrative examples, not configured work or live metrics. Existing shared-Crew guidance and permission checks remain in place. An empty local Goal named `Goal visual preview` was created to inspect the first-conversation view without sending a message.
-
-An empty dashboard introduces an interactive workspace through a clearly labelled, local sample preview. Its three choices demonstrate filtering chart data, filling a form and moving through a briefing. The examples do not query project data, run models/functions, save files or change permissions. Supporting copy explains live data, forms/actions, agent chat, visual stories, animation/video and team sharing: people can see project files and results; project editing follows existing permissions. One creation action for an editable Crew project opens an unsent draft in the correct project chat and preserves any existing draft through the shared draft helper. Shared read-only projects do not show that creation action. The duplicated project identity, long introduction and second refresh button were removed. Toolbar refresh remains; Share appears for a loaded dashboard or the existing default Flow dashboard and retains its server authorization. The large empty Crew chat introduction is hidden while Dashboard is open; existing conversations and the composer stay available.
-
-Verification: TypeScript passed and 31 checks across five existing report, project-view, permission and chat-dispatch suites passed. Browser verification confirmed the empty view, draft-only creation action, chart filtering, local sample form feedback, briefing navigation and an existing Crew dashboard with its report frame and Share control. The inserted preview draft was cleared after checking it; no dashboard creation request was sent.
-
-The introduction and draft-only creation button are shared components across Crew (both legacy origins), Goals and Flows. Goals admits creation only for explicit manifest `owner`/`write` access. Flows additionally requires the recorded-run endpoint's `can_draft` capability. A Flow with neither a custom dashboard nor recorded runs shows the common introduction above its original Runs/version selector and Ask sections; recorded runs remain primary when present. Failed or truncated run fetches are not treated as empty dashboards. Existing HTML dashboards retain their original renderer, actions, sharing and content-question paths. Empty conversation welcome illustrations are suppressed while Dashboard is visible in all three products.
-
-Cross-product verification: 41 checks across seven report, sharing, project-view, permission and chat-dispatch suites passed, including denial without editing access, preserved Flow controls, failed-fetch handling and draft preservation without sending. TypeScript passed. The current local account was used to open all three empty dashboards and verify their creation actions only inserted drafts; the test drafts were cleared. Restricted roles were verified through tests rather than live impersonation. Screenshots are saved outside the repository as `agentworks-shared-dashboard-crew.png`, `agentworks-shared-dashboard-goals.png` and `agentworks-shared-dashboard-relays.png` under ``.
-
-### Connections and Use & share — 2026-10-18
-
-Crew (both legacy origins), Goals and Flows now have two distinct destinations in the right bubble. Connections shows the tools and resources the agent consumes: MCP servers, secrets, skills, permitted Vault/Brain/folders, Google accounts and the personal Slack sending account. Use & share shows the existing project sharing controls, dashboard access and admitted incoming channels. Slack account selection remains in Connections; the original Slack app/bot setup and WhatsApp routes live in Use & share. Code-origin Crew retains its own-bot-only, one-to-one Slack restrictions. Other consumers of the combined bot panel retain its previous behavior.
-
-The sharing card reuses the existing server-gated Share control, including its chosen-person/everyone/private modes and authorized owner management. Workflow project roles remain accessible through the original Access view in multi-user installations. MCP access opens the existing installation-wide client setup; it does not mint credentials or grant project access on navigation. Flow adds a link to its existing API trigger view and does not acquire unsupported Slack/WhatsApp bot controls. Its Slack sending accounts remain available in Connections. Google setup, account permissions, secret selectors, skill installation and original mutation handlers remain unchanged.
-
-Existing route/view IDs and permission boundaries are retained. The two bubble links share the existing permission-gated `mcp` shortcut group, now labelled Connections & sharing in the editor, so saved order, intentionally hidden shortcuts, account/server scoping and Crew/Code preference migration are preserved without automatic writes. Legacy Slack-account, WhatsApp and MCP setup targets still resolve; search adds Use & share and Slack app targets and keeps Relay's reduced inventory. The three-dot menu remains project settings. Walkthrough and Ask AI copy distinguish sending accounts from incoming channels.
-
-Verification: 107 checks across 17 focused navigation, sharing, account, channel, permission and shortcut suites passed, and TypeScript passed. The browser was checked with the current local account across Crew, Goals and Flows: resource-only Add connection menus, personal Slack accounts, shared people/owner controls, incoming Crew Slack restrictions, MCP client setup, Flow API-trigger navigation and search routing. Viewer denial and disabled-channel targets were verified through tests rather than a second live login. No sharing grant, token, app connection, channel route, secret, model request or business run was created or changed during these checks.
-
-Screenshots are saved outside the repository under `` as `agentworks-connections-share-bubble.png`, `agentworks-connections-resources-menu.png` and `agentworks-use-share-{crew,goals,relays}.png`. The work remains local on the feature branch.
-
-
-### Project-only MCP connection follow-up
-
-MCP access now opens the project-specific browser approval flow described in [project-mcp-connections.md](project-mcp-connections.md). The earlier installation-wide setup remains in global Connect. The left chat sidebar no longer contains Goals-only Activity; Goal activity is in the Goals workspace picker and Ctrl+K, with the existing server data and access rules.
-
-### Goal step inspection in the sidebar
-
-Inspectable Goal executions appear beneath the chat or run that started them. The parent retains its Main chat, Schedule, WhatsApp, Slack or other recorded source; steps are not promoted to separate chats. Running steps show progress, completed/failed executions retain their recorded state, and selection opens the existing exact-execution inspector after activating its parent. Clicking the parent returns to chat without discarding its draft or saved inspection tabs. Internal tasks remain inside the step inspector.
-
-Discovery uses explicit server-issued inspection receipts from the authorized execution tree and recorded chat cards. It never guesses a latest run from a step name, folder or tool argument. The tree adds receipts only at its HTTP boundary after checking current workspace access and exact parent ownership; generic tree consumers get no receipts. The inspector independently rechecks authorization when opened, so a retained receipt cannot bypass revoked access. Queries are scoped to account/server and parent session, pause under collapsed navigation, and poll only running parents. Crew and Flows do not gain Goal inspection views.
-
-### Review reconciliation — 2026-10-18
-
-The branch was rebased onto main's unified Crew/history and Pulse permission changes. Pulse OFF follows its explicit enabled state, never the retired schedule flags. Connections keeps MCPs and Secrets, while Brain and Vault lead Add connection. The owner-approved Use & share destination contains the existing Share control; its Only me / Chosen people / Everyone settings retain server authorization. Copy describes what teammates can see without inventing product roles. MCP selection uses the server account editing flag and current project ownership rather than guessing from a storage path.
-
-A compact Needs you signal in the existing Goals header opens the existing Goal activity view for pending/unapplied decisions. It uses authorized workspace queries, clears on account/server changes and never restores Activity to the global left menu. Empty dashboards retain Check again and server-gated Share. When the existing shared Crew default dashboard becomes available, the catalog refreshes so it can open instead of waiting for a separately authored file. Existing shortcut IDs and unavailable/unknown preferences remain supported for migration; opening the page does not rewrite them.
-
-Local verification passed: 108 checks across 16 frontend suites, TypeScript, project OAuth/store migration and permission tests, sidebar inspection ACL regressions, and main's unified workspace/default dashboard sharing tests. Tests use temporary data and no model calls. Final remote verification and reviewer confirmation are recorded on draft PR #287; no merge is authorized.
+Regression checks cover user/server isolation, stale revisions, corrupt preference recovery, revoked project access, foreign sessions, forged restore flags, server registry bindings, product capabilities, scoped inspection receipts, attention visibility, channel restrictions, shortcut migration and draft retention. Browser checks exercise the real shared header, sidebar and context panels without requiring model calls or business workflow execution.

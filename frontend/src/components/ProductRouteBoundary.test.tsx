@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ resolve: vi.fn(), observe: vi.fn(() => vi.fn()), cancel: vi.fn(), authValid: false, checkAuth: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../stores/useAuthStore', () => ({ useAuthStore: { getState: () => ({ checkAuth: mocks.checkAuth, isAuthenticated: mocks.authValid }) } }))
-vi.mock('../services/workspaceState', () => ({ workspaceStateApi: { get: vi.fn().mockResolvedValue({ version: 1, revision: 0, last: null, recent: [] }), home: vi.fn().mockResolvedValue({ work: [], attention: [], running: [], running_work: {}, warnings: [], truncated: false }) } }))
+vi.mock('../services/workspaceState', () => ({ workspaceStateApi: { get: vi.fn().mockResolvedValue({ version: 1, revision: 0, last: null, recent: [], destination: { surface: 'bullpen' }, first_visit: true }) } }))
 vi.mock('../utils/restoreWorkspaceChat', () => ({ restoreWorkspaceChat: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../hooks/useWorkspaceReturn', () => ({ installWorkspaceStateFlush: () => () => {}, queueWorkspaceState: vi.fn() }))
 vi.mock('../utils/resolveProductRoute', () => ({ ProductUnavailable: class extends Error {}, resolveProductRoute: mocks.resolve }))
@@ -96,7 +96,7 @@ describe('server workspace return', () => {
       await act(async () => root.render(<ProductRouteBoundary account="alice">Workspace</ProductRouteBoundary>))
       expect(window.location.pathname).toBe('/code/projects/last')
       expect(useWorkspaceReturnStore.getState().firstVisit).toBe(false)
-      expect(workspaceStateApi.home).not.toHaveBeenCalled()
+      expect(workspaceStateApi.get).toHaveBeenCalled()
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 
@@ -104,7 +104,7 @@ describe('server workspace return', () => {
     const { workspaceStateApi } = await import('../services/workspaceState')
     const { useWorkspaceReturnStore } = await import('../stores/useWorkspaceReturnStore')
     useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null })
-    vi.mocked(workspaceStateApi.home).mockResolvedValueOnce({ work: existing ? [{ surface: 'code', id: 'existing', label: 'Existing', workspace_path: 'Code/existing' }] : [], attention: [], running: [], running_work: {}, warnings: [], truncated: false })
+    vi.mocked(workspaceStateApi.get).mockResolvedValueOnce({ version: 1, revision: 0, last: null, recent: [], destination: existing ? { surface: 'code', id: 'existing', workspace_path: 'Code/existing' } : { surface: 'code' }, first_visit: !existing })
     window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['code'] }
     mocks.resolve.mockResolvedValue(vi.fn())
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
@@ -141,14 +141,14 @@ describe('server workspace return', () => {
       expect(mocks.resolve).toHaveBeenLastCalledWith({ surface: 'bullpen', view: 'setup' }, expect.any(AbortSignal))
       expect(restoreWorkspaceChat).not.toHaveBeenCalled()
       expect(useWorkspaceReturnStore.getState().restore).toBeNull()
-      expect(window.location.pathname).toBe('/bullpen/connect')
+      expect(window.location.pathname).toBe('/agentbridge/connect')
     } finally { await act(async () => root.unmount()); host.remove() }
   })
   it('opens the allowed product with a plain note after saved access is removed', async () => {
     const { workspaceStateApi } = await import('../services/workspaceState')
     const { useWorkspaceReturnStore } = await import('../stores/useWorkspaceReturnStore')
     useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null })
-    vi.mocked(workspaceStateApi.get).mockResolvedValueOnce({ version: 1, revision: 3, last: null, recent: [], note: 'Your last workspace is no longer available.' })
+    vi.mocked(workspaceStateApi.get).mockResolvedValueOnce({ version: 1, revision: 3, last: null, recent: [], destination: {surface:'code'}, note: 'Your last workspace is no longer available.' })
     window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['code'] }
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {

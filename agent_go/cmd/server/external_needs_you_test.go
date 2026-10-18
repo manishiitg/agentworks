@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"strings"
 	"testing"
 	"time"
@@ -106,5 +107,30 @@ func TestExternalNeedsYouDecisionDismissalAndCustomAnswer(t *testing.T) {
 	var audit map[string]string
 	if err := json.Unmarshal([]byte(details), &audit); err != nil || actor != "owner" || kind != "human_via_chat" || channel != "mcp" || audit["reason"] != reason {
 		t.Fatalf("missing dismissal provenance: %s %s %s %s %v", actor, kind, channel, details, err)
+	}
+}
+
+func TestExternalNeedsYouIncludesLatestFailedRunWithoutHomeTool(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	t.Setenv("AGENT_PRODUCTS", "agentworks")
+	send := func(status string) {
+		_, err := services.NewOrgDashboardConnector().SendUserNotification(t.Context(), "Run result", "", &services.NotificationDestination{WorkspacePath: "Workflow/invoices", Content: &services.NotificationContent{Summary: &services.NotificationSummary{Kind: "run_summary", Title: "Invoice run", Status: status}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	send("failed")
+	w := f.call(t, "owner", "list_needs_you", map[string]any{})
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"type":"run_review"`) {
+		t.Fatal("missing run review", w.Code, w.Body)
+	}
+	w = f.call(t, "outsider", "list_needs_you", map[string]any{})
+	if strings.Contains(w.Body.String(), "Invoice run") {
+		t.Fatal("foreign failure leaked", w.Body)
+	}
+	send("completed")
+	w = f.call(t, "owner", "list_needs_you", map[string]any{})
+	if strings.Contains(w.Body.String(), `"type":"run_review"`) {
+		t.Fatal("old failure survived a later success", w.Body)
 	}
 }

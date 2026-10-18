@@ -17,15 +17,8 @@ export function useSharedCrewHasDashboard(workspacePath: string | undefined): bo
       let has = false
       try {
         const { default: api } = await import('../../services/api')
-        const catalog = async () => {
-          const { data } = await api.post<{ dashboards?: { managed?: boolean; published_revision?: string }[] }>('/api/dashboards', { workspace: workspacePath, action: 'list', limit: 20 })
-          return (data.dashboards || []).some(dashboard => !dashboard.managed || Boolean(dashboard.published_revision))
-        }
-        has = await catalog()
-        if (!has) {
-          await api.post('/api/dashboards/default', { workspace: workspacePath })
-          has = await catalog()
-        }
+        const { data } = await api.post<{ dashboards?: { managed?: boolean; published_revision?: string }[] }>('/api/dashboards', { workspace: workspacePath, action: 'list', limit: 20 })
+        has = (data.dashboards || []).some(dashboard => !dashboard.managed || Boolean(dashboard.published_revision))
       } catch {
         has = false
       }

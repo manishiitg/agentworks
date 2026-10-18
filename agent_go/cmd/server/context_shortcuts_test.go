@@ -119,3 +119,19 @@ func TestContextShortcutsExplicitProjectMergeInheritance(t *testing.T) {
 		t.Fatalf("unrelated migration: %d %s", w.Code, w.Body)
 	}
 }
+
+func TestContextShortcutsCorruptionRecoversAndCanBeReplaced(t *testing.T) {
+	f := shortcutFixture(t)
+	for _, raw := range []string{`{broken`, `{"version":99,"shortcuts":["files"]}`, strings.Repeat("x", 8193)} {
+		f.write(t, contextShortcutsPath("owner", "work"), raw)
+		w := shortcutRequest(f, "owner", "GET", "work", "", "")
+		var value contextShortcuts
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &value) != nil || value.Version != 1 || value.Revision != 0 || value.Shortcuts != nil {
+			t.Fatal("corrupt file blocked recovery", w.Code, w.Body)
+		}
+		w = shortcutRequest(f, "owner", "PUT", "work", "", `{"version":1,"revision":0,"shortcuts":["files"]}`)
+		if w.Code != 200 {
+			t.Fatal("reset could not be saved", w.Code, w.Body)
+		}
+	}
+}

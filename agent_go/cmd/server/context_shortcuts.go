@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"path/filepath"
 	"regexp"
-	"sync"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
@@ -20,7 +20,7 @@ type contextShortcuts struct {
 	InheritedFrom string   `json:"inherited_from,omitempty"`
 }
 
-var contextShortcutsMu sync.Mutex
+var contextShortcutsLocks dashboardQuestionLockSet
 var contextShortcutID = regexp.MustCompile(`^[a-z][a-z0-9:-]{0,79}$`)
 
 func contextShortcutProduct(product string) bool {
@@ -52,7 +52,8 @@ func readContextShortcuts(r *http.Request, product string) (contextShortcuts, bo
 		return value, exists, err
 	}
 	if len(raw) > 8192 || json.Unmarshal([]byte(raw), &value) != nil || !validContextShortcuts(value) {
-		return value, true, errors.New("invalid shortcut preferences")
+		log.Printf("[CONTEXT_SHORTCUTS] user=%q product=%q invalid saved preferences; using defaults", GetUserIDFromContext(r.Context()), product)
+		return contextShortcuts{Version: 1}, true, nil
 	}
 	value.InheritedFrom = ""
 	return value, true, nil
@@ -75,8 +76,8 @@ func (api *StreamingAPI) handleContextShortcuts(w http.ResponseWriter, r *http.R
 		http.Error(w, "This product is unavailable.", http.StatusForbidden)
 		return
 	}
-	contextShortcutsMu.Lock()
-	defer contextShortcutsMu.Unlock()
+	unlock := contextShortcutsLocks.Lock(claims.UserID + ":" + product)
+	defer unlock()
 	value, exists, err := readContextShortcuts(r, product)
 	if err != nil {
 		http.Error(w, "Could not load your shortcuts.", http.StatusServiceUnavailable)

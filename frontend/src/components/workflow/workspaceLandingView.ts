@@ -39,6 +39,6 @@ export async function loadWorkspaceLandingView(workspacePath: string, options: {
  */
 export async function ensureDefaultDashboard(workspacePath: string): Promise<void> {
   try {
-    await api.post('/api/dashboards/default', { workspace: workspacePath })
+    await api.post('/api/dashboards', { workspace: workspacePath, action: 'list', limit: 1 })
   } catch { /* the usual landing view still works */ }
 }

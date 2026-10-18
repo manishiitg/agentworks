@@ -183,13 +183,13 @@ it('removes the filter field and closes a run view without selecting it', async 
   mocks.history.mockResolvedValue({ sessions: [] })
   await render(async (host) => {
     expect(host.querySelector('input')).toBeNull()
-    expect(host.textContent).toContain('Main chat')
+    expect(host.textContent).not.toContain('Main chat')
     const close = host.querySelector<HTMLButtonElement>('[aria-label="Close News Briefing"]')!
     expect(close).not.toBeNull()
     await act(async () => close.click())
     expect(mocks.close).toHaveBeenCalledWith('run')
     expect(mocks.openTab).not.toHaveBeenCalled()
-    expect(host.querySelector('[aria-label="Close Main chat"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Close Chat"]')).toBeNull()
   })
 })
 
@@ -241,7 +241,7 @@ it('labels the parent source and returns from inspection to the parent chat', as
     expect(host.querySelector('[title="Daily briefing · Goals"]')?.textContent).toContain('Schedule')
     expect(host.querySelector('[title="Customer question · Goals"]')?.textContent).toContain('WhatsApp')
     const main=host.querySelector<HTMLButtonElement>('[title="Planning · Goals"]')!
-    expect(main.textContent).toContain('Main chat')
+    expect(main.textContent).toBe('Planning')
     await act(async()=>main.click())
     expect(mocks.setMetadata).toHaveBeenCalledWith('main',{stepInspections:{items:[target],activeId:null}})
     expect(mocks.openTab).toHaveBeenCalledWith('main')
