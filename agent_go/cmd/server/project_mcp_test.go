@@ -82,7 +82,7 @@ func TestProjectMCPCatalogExcludesGlobalAndBuilderTools(t *testing.T) {
 				}
 				listed[tool.Name] = tool
 			}
-			for _, name := range []string{"settings", "get_settings", "manage_project", "users", "account", "costs", "messages", "code", "code_review", "builder", "plan", "vault", "brain_admin", "bullpen_admin", "brain_read", "brain_update", "server_product", "write_file", "write_crew_file"} {
+			for _, name := range []string{"chat", "settings", "get_settings", "manage_project", "users", "account", "costs", "messages", "code", "code_review", "builder", "plan", "vault", "brain_admin", "bullpen_admin", "brain_read", "brain_update", "server_product", "write_file", "write_crew_file"} {
 				if _, exists := listed[name]; exists {
 					t.Fatalf("%s/%s exposes %s", kind, mode, name)
 				}
@@ -125,6 +125,15 @@ func TestProjectMCPOAuthDiscoveryPermissionsAndRevocation(t *testing.T) {
 	relay.Kind = "relay"
 	raw, _ := json.Marshal(relay)
 	env.mock.files[manifestPath("Workflow/project-flow")] = string(raw)
+	// Creation metadata is persisted on real project creation. Include it in
+	// these older minimal fixtures so consent can bind the original object.
+	for _, root := range []string{linkBetaPath, codeRoot} {
+		var doc map[string]any
+		_ = json.Unmarshal([]byte(env.mock.files[root+"/product.json"]), &doc)
+		doc["created_at"], doc["owner_id"] = "2026-10-01T00:00:00Z", "owner"
+		raw, _ := json.Marshal(doc)
+		env.mock.files[root+"/product.json"] = string(raw)
+	}
 	env.mock.mu.Unlock()
 
 	router := mux.NewRouter()
@@ -190,6 +199,12 @@ func TestProjectMCPOAuthDiscoveryPermissionsAndRevocation(t *testing.T) {
 				consent := request("GET", consentPath, "", jwt, "")
 				if consent.Code != 200 || !strings.Contains(consent.Body.String(), `"project":`) {
 					t.Fatal("consent", consent.Code, consent.Body)
+				}
+				var consentDTO struct {
+					Project map[string]any `json:"project"`
+				}
+				if json.Unmarshal(consent.Body.Bytes(), &consentDTO) != nil || len(consentDTO.Project) != 4 || consentDTO.Project["kind"] != fixture.kind || consentDTO.Project["access"] != mode || consentDTO.Project["id"] != fixture.id {
+					t.Fatal("project consent leaked or mislabelled metadata", consent.Body)
 				}
 				approved := request("POST", consentPath, `{"decision":"approve","workflow_ids":[]}`, jwt, "application/json")
 				var redirect struct {
@@ -296,12 +311,12 @@ func TestProjectMCPOAuthDiscoveryPermissionsAndRevocation(t *testing.T) {
 					}
 				}
 				// Refresh preserves the exact resource, scopes and project cap.
-				refreshed, _, _, err := store.Refresh(t.Context(), pair.Refresh, client.ID, resource)
+				refreshed, _, nextRefresh, err := store.Refresh(t.Context(), pair.Refresh, client.ID, resource)
 				if err != nil {
 					t.Fatal(err)
 				}
 				after := mcpOAuthTokenForGrant(refreshed)
-				if after.ProjectKind != fixture.kind || after.AllCrews || after.AllWorkflows || !slices.Equal(after.Scopes, token.Scopes) {
+				if after.ProjectIdentity == "" || after.ProjectIdentity != token.ProjectIdentity || after.ProjectKind != fixture.kind || after.AllCrews || after.AllWorkflows || !slices.Equal(after.Scopes, token.Scopes) {
 					t.Fatal("refresh widened")
 				}
 				connections, err := store.Connections(t.Context(), "owner")
@@ -320,9 +335,37 @@ func TestProjectMCPOAuthDiscoveryPermissionsAndRevocation(t *testing.T) {
 				if !found {
 					t.Fatal("connection not listed")
 				}
-				if err := store.RevokeFamily(t.Context(), grant.FamilyID, "owner"); err != nil {
-					t.Fatal(err)
+				// Bypass the auth middleware deliberately: the handler also refuses
+				// same-kind tokens on another ID or access mode.
+				for _, wrong := range []projectMCPAudience{{fixture.kind, "other", mode}, {fixture.kind, fixture.id, map[string]string{"view": "use", "use": "view"}[mode]}} {
+					rec := httptest.NewRecorder()
+					api.handleProjectMCP(rec, adminRequest("POST", projectMCPPrefix+wrong.Kind+"/"+wrong.ID+"/"+wrong.Access, "{}", claims, nil))
+					if rec.Code != 403 {
+						t.Fatal("handler audience bypass", rec.Code)
+					}
 				}
+				manifestFile := fixture.root + "/product.json"
+				if fixture.kind == "workflow" || fixture.kind == "relay" {
+					manifestFile = manifestPath(fixture.root)
+				}
+				env.mock.mu.Lock()
+				original := env.mock.files[manifestFile]
+				var replacement map[string]any
+				_ = json.Unmarshal([]byte(original), &replacement)
+				replacement["created_at"] = "2026-10-18T00:00:00Z"
+				changed, _ := json.Marshal(replacement)
+				env.mock.files[manifestFile] = string(changed)
+				env.mock.mu.Unlock()
+				if rec := request("POST", path, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`, pair.Access, "application/json"); rec.Code != 403 {
+					t.Fatal("ID reuse retargeted connection", rec.Code, rec.Body)
+				}
+				form = url.Values{"grant_type": {"refresh_token"}, "client_id": {client.ID}, "resource": {resource}, "refresh_token": {nextRefresh}}
+				if rec := request("POST", mcpOAuthTokenPath, form.Encode(), "", "application/x-www-form-urlencoded"); rec.Code != 400 {
+					t.Fatal("ID reuse refreshed connection", rec.Code)
+				}
+				env.mock.mu.Lock()
+				env.mock.files[manifestFile] = original
+				env.mock.mu.Unlock()
 				if _, err := store.ActiveFamily(t.Context(), grant.FamilyID); err == nil {
 					t.Fatal("revoked family active")
 				}
@@ -436,6 +479,46 @@ func TestProjectMCPCodeStableIDUsesExistingFunctionSurface(t *testing.T) {
 	for _, selector := range []string{"work:" + a.ID, "../" + a.ID, codePrivacyOwnerRoot} {
 		if _, _, ok := api.resolveExternalWorkspace(t.Context(), claims, selector); ok {
 			t.Fatal("wrong origin/path admitted", selector)
+		}
+	}
+}
+
+func TestProjectMCPCreationIdentityRequiredAndStable(t *testing.T) {
+	env, _, codeRoot := conditionCodeFixture(t)
+	for _, fixture := range []struct{ kind, id, root string }{{"work", "beta", linkBetaPath}, {"code", "checks", codeRoot}} {
+		a := projectMCPAudience{fixture.kind, fixture.id, "use"}
+		target := dashboardTarget{Root: fixture.root, ID: fixture.id}
+		env.mock.mu.Lock()
+		var doc map[string]any
+		_ = json.Unmarshal([]byte(env.mock.files[fixture.root+"/product.json"]), &doc)
+		delete(doc, "created_at")
+		raw, _ := json.Marshal(doc)
+		env.mock.files[fixture.root+"/product.json"] = string(raw)
+		env.mock.mu.Unlock()
+		if _, err := projectMCPCreationIdentity(t.Context(), a, target); err == nil {
+			t.Fatal("missing creation identity admitted")
+		}
+		write := func(owner, created string) {
+			env.mock.mu.Lock()
+			defer env.mock.mu.Unlock()
+			doc["owner_id"], doc["created_at"], doc["title"], doc["updated_at"] = owner, created, "Renamed", "2026-10-18"
+			raw, _ := json.Marshal(doc)
+			env.mock.files[fixture.root+"/product.json"] = string(raw)
+		}
+		write("owner", "2026-10-01T00:00:00Z")
+		original, err := projectMCPCreationIdentity(t.Context(), a, target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		write("owner", "2026-10-01T00:00:00Z")
+		same, err := projectMCPCreationIdentity(t.Context(), a, target)
+		if err != nil || same != original {
+			t.Fatal("mutable presentation changed identity")
+		}
+		write("other-owner", "2026-10-01T00:00:00Z")
+		other, err := projectMCPCreationIdentity(t.Context(), a, target)
+		if err != nil || other == original {
+			t.Fatal("owner replacement kept identity")
 		}
 	}
 }

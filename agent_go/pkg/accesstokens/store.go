@@ -38,7 +38,10 @@ var workflowScopes = []string{"workflows:read", "files:read", "runs:execute", "b
 
 type Token struct {
 	// ProjectKind is derived only from a verified project OAuth resource.
-	ProjectKind string `json:"-"`
+	ProjectKind     string `json:"-"`
+	ProjectID       string `json:"-"`
+	ProjectAccess   string `json:"-"`
+	ProjectIdentity string `json:"-"`
 	// OAuthClientID is derived only from the verified server-side OAuth grant.
 	OAuthClientID string `json:"-"`
 	// LocalPreset is set only by the authenticated single-user preset route.

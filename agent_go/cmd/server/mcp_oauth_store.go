@@ -48,18 +48,19 @@ type mcpOAuthRequest struct {
 }
 
 type mcpOAuthGrant struct {
-	BoundAgentName string
-	BoundAgentID   string
-	FamilyID       string
-	ClientID       string
-	Resource       string
-	Scopes         []string
-	WorkflowIDs    []string
-	UserID         string
-	Username       string
-	Email          string
-	Provider       string
-	Expires        time.Time
+	BoundAgentName  string
+	BoundAgentID    string
+	FamilyID        string
+	ClientID        string
+	Resource        string
+	ProjectIdentity string
+	Scopes          []string
+	WorkflowIDs     []string
+	UserID          string
+	Username        string
+	Email           string
+	Provider        string
+	Expires         time.Time
 }
 
 func mcpOAuthSecret() (string, error) {
@@ -153,6 +154,12 @@ func openMCPOAuthStore() (*mcpOAuthStore, error) {
 			return nil, err
 		}
 	}
+	for _, table := range []string{"codes", "tokens"} {
+		if _, err = db.Exec("ALTER TABLE " + table + " ADD COLUMN project_identity TEXT NOT NULL DEFAULT ''"); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			_ = db.Close()
+			return nil, err
+		}
+	}
 	return &mcpOAuthStore{db: db}, nil
 }
 
@@ -223,6 +230,10 @@ func (s *mcpOAuthStore) Request(ctx context.Context, raw string) (mcpOAuthReques
 }
 
 func (s *mcpOAuthStore) Decide(ctx context.Context, raw string, user *UserClaims, approve bool, selected ...[]string) (mcpOAuthRequest, string, error) {
+	return s.decide(ctx, raw, user, approve, "", selected...)
+}
+
+func (s *mcpOAuthStore) decide(ctx context.Context, raw string, user *UserClaims, approve bool, projectIdentity string, selected ...[]string) (mcpOAuthRequest, string, error) {
 	req, err := s.Request(ctx, raw)
 	if err != nil {
 		return req, "", err
@@ -234,6 +245,9 @@ func (s *mcpOAuthStore) Decide(ctx context.Context, raw string, user *UserClaims
 	granted := mcpOAuthPersonScopes(user)
 	if audience, bound := projectMCPAudienceForResource(req.Resource); bound {
 		granted = audience.scopes()
+		if approve && projectIdentity == "" {
+			return req, "", &mcpOAuthRefusal{errors.New("Project creation identity is unavailable; reconnect after it is restored.")}
+		}
 	}
 	if approve {
 		// Validate what will really be granted: the scopes this server and account allow, not everything requested.
@@ -265,7 +279,7 @@ func (s *mcpOAuthStore) Decide(ctx context.Context, raw string, user *UserClaims
 	if approve {
 		scopes, _ := json.Marshal(granted)
 		bounds, _ := json.Marshal(workflowIDs)
-		_, err = tx.ExecContext(ctx, `INSERT INTO codes (hash,client_id,redirect_uri,resource,scopes,challenge,user_id,username,email,provider,expires_at,workflow_ids) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, mcpOAuthHash(code), req.ClientID, req.RedirectURI, req.Resource, string(scopes), req.Challenge, user.UserID, user.Username, user.Email, user.Provider, time.Now().Add(5*time.Minute).Unix(), string(bounds))
+		_, err = tx.ExecContext(ctx, `INSERT INTO codes (hash,client_id,redirect_uri,resource,scopes,challenge,user_id,username,email,provider,expires_at,workflow_ids,project_identity) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, mcpOAuthHash(code), req.ClientID, req.RedirectURI, req.Resource, string(scopes), req.Challenge, user.UserID, user.Username, user.Email, user.Provider, time.Now().Add(5*time.Minute).Unix(), string(bounds), projectIdentity)
 		if err != nil {
 			return req, "", err
 		}
@@ -282,7 +296,7 @@ func (s *mcpOAuthStore) ExchangeCode(ctx context.Context, raw, clientID, redirec
 		return grant, "", "", err
 	}
 	defer tx.Rollback()
-	err = tx.QueryRowContext(ctx, `SELECT client_id,redirect_uri,resource,scopes,challenge,user_id,username,email,provider,expires_at,workflow_ids FROM codes WHERE hash=?`, mcpOAuthHash(raw)).Scan(&grant.ClientID, &savedRedirect, &grant.Resource, &scopes, &challenge, &grant.UserID, &grant.Username, &grant.Email, &grant.Provider, &expiry, &bounds)
+	err = tx.QueryRowContext(ctx, `SELECT client_id,redirect_uri,resource,scopes,challenge,user_id,username,email,provider,expires_at,workflow_ids,project_identity FROM codes WHERE hash=?`, mcpOAuthHash(raw)).Scan(&grant.ClientID, &savedRedirect, &grant.Resource, &scopes, &challenge, &grant.UserID, &grant.Username, &grant.Email, &grant.Provider, &expiry, &bounds, &grant.ProjectIdentity)
 	if err != nil {
 		return grant, "", "", err
 	}
@@ -347,7 +361,7 @@ func issueMCPOAuthPair(ctx context.Context, tx *sql.Tx, grant *mcpOAuthGrant) (s
 		raw, kind string
 		expiry    time.Time
 	}{{access, "access", grant.Expires}, {refresh, "refresh", now.Add(30 * 24 * time.Hour)}} {
-		_, err = tx.ExecContext(ctx, `INSERT INTO tokens (hash,kind,family_id,client_id,resource,scopes,user_id,username,email,provider,expires_at,workflow_ids) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, mcpOAuthHash(token.raw), token.kind, grant.FamilyID, grant.ClientID, grant.Resource, string(scopes), grant.UserID, grant.Username, grant.Email, grant.Provider, token.expiry.Unix(), string(bounds))
+		_, err = tx.ExecContext(ctx, `INSERT INTO tokens (hash,kind,family_id,client_id,resource,scopes,user_id,username,email,provider,expires_at,workflow_ids,project_identity) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, mcpOAuthHash(token.raw), token.kind, grant.FamilyID, grant.ClientID, grant.Resource, string(scopes), grant.UserID, grant.Username, grant.Email, grant.Provider, token.expiry.Unix(), string(bounds), grant.ProjectIdentity)
 		if err != nil {
 			return "", "", err
 		}
@@ -359,7 +373,7 @@ func scanMCPOAuthGrant(row interface{ Scan(...any) error }) (mcpOAuthGrant, erro
 	var grant mcpOAuthGrant
 	var scopes, bounds string
 	var expiry int64
-	err := row.Scan(&grant.FamilyID, &grant.ClientID, &grant.Resource, &scopes, &grant.UserID, &grant.Username, &grant.Email, &grant.Provider, &expiry, &bounds)
+	err := row.Scan(&grant.FamilyID, &grant.ClientID, &grant.Resource, &scopes, &grant.UserID, &grant.Username, &grant.Email, &grant.Provider, &expiry, &bounds, &grant.ProjectIdentity)
 	if err != nil {
 		return grant, err
 	}
@@ -371,7 +385,7 @@ func scanMCPOAuthGrant(row interface{ Scan(...any) error }) (mcpOAuthGrant, erro
 	return grant, err
 }
 
-const mcpOAuthGrantColumns = `family_id,client_id,resource,scopes,user_id,username,email,provider,expires_at,workflow_ids`
+const mcpOAuthGrantColumns = `family_id,client_id,resource,scopes,user_id,username,email,provider,expires_at,workflow_ids,project_identity`
 
 func (s *mcpOAuthStore) Authenticate(ctx context.Context, raw string) (mcpOAuthGrant, error) {
 	if !(strings.HasPrefix(raw, mcpOAuthAccessPrefix) || strings.HasPrefix(raw, cliOAuthAccessPrefix)) || strings.HasPrefix(raw, mcpOAuthRefreshPrefix) || strings.HasPrefix(raw, cliOAuthRefreshPrefix) {
@@ -416,7 +430,7 @@ func (s *mcpOAuthStore) Refresh(ctx context.Context, raw, clientID, resource str
 	var scopes, bounds string
 	var expiry int64
 	var used, revoked sql.NullInt64
-	err = tx.QueryRowContext(ctx, `SELECT family_id,client_id,resource,scopes,user_id,username,email,provider,expires_at,used_at,revoked_at,workflow_ids FROM tokens WHERE hash=? AND kind='refresh'`, mcpOAuthHash(raw)).Scan(&grant.FamilyID, &grant.ClientID, &grant.Resource, &scopes, &grant.UserID, &grant.Username, &grant.Email, &grant.Provider, &expiry, &used, &revoked, &bounds)
+	err = tx.QueryRowContext(ctx, `SELECT family_id,client_id,resource,scopes,user_id,username,email,provider,expires_at,used_at,revoked_at,workflow_ids,project_identity FROM tokens WHERE hash=? AND kind='refresh'`, mcpOAuthHash(raw)).Scan(&grant.FamilyID, &grant.ClientID, &grant.Resource, &scopes, &grant.UserID, &grant.Username, &grant.Email, &grant.Provider, &expiry, &used, &revoked, &bounds, &grant.ProjectIdentity)
 	if err != nil {
 		return grant, "", "", err
 	}

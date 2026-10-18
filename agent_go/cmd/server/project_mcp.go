@@ -2,6 +2,10 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -20,6 +24,14 @@ var projectMCPID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$`)
 // the existing grant store; neither a client selector nor a moved folder can
 // replace it. This URL is public configuration, never an access credential.
 type projectMCPAudience struct{ Kind, ID, Access string }
+
+// Consent intentionally excludes storage paths and editing authority.
+type projectMCPConsent struct {
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Kind   string `json:"kind"`
+	Access string `json:"access"`
+}
 
 func projectMCPAudienceForPath(path string) (projectMCPAudience, bool) {
 	var audience projectMCPAudience
@@ -89,7 +101,7 @@ func projectMCPToolAllowed(kind, name string) bool {
 	}
 	switch name {
 	case "list_workflows", "get_workflow", "get_plan", "list_files", "search_files", "read_file", "list_step_code",
-		"list_runs", "get_run", "get_logs", "run_status", "list_executions", "chat", "run_reply_input", "stop_step", "stop_all_executions",
+		"list_runs", "get_run", "get_logs", "run_status", "list_executions", "run_reply_input", "stop_step", "stop_all_executions",
 		"list_workflow_functions", "call_workflow_function", "get_workflow_function_call", "reply_workflow_function_call",
 		"list_workflow_knowledge", "read_workflow_knowledge":
 		return true
@@ -121,7 +133,7 @@ func (a projectMCPAudience) token(token accesstokens.Token) accesstokens.Token {
 	token.Scopes = slices.DeleteFunc(slices.Clone(token.Scopes), func(s string) bool { return !slices.Contains(a.scopes(), s) })
 	token.AllWorkflows, token.AllCrews = false, false
 	token.WorkflowIDs, token.CrewIDs = nil, nil
-	token.ProjectKind = a.Kind
+	token.ProjectKind, token.ProjectID, token.ProjectAccess = a.Kind, a.ID, a.Access
 	if a.Kind == "work" || a.Kind == "code" {
 		token.CrewIDs = []string{a.ID}
 	} else {
@@ -211,14 +223,91 @@ func projectMCPChallenge(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+origin+"/.well-known/oauth-protected-resource"+r.URL.Path+`", scope="`+strings.Join(a.scopes(), " ")+`"`)
 }
 
+// Bind consent to the project's creation identity, independent of title, folder
+// moves, updated timestamps and current ACL. Legacy records without creation
+// identity fail closed rather than silently retargeting a saved connection.
+func projectMCPCreationIdentity(ctx context.Context, a projectMCPAudience, target dashboardTarget) (string, error) {
+	var owner, created string
+	if a.Kind == "work" || a.Kind == "code" {
+		manifest, err := readCrewProjectManifests(ctx, a.Kind, target.Root)
+		if err != nil || manifest.ID != a.ID {
+			return "", dashboardFailure(403, "Project identity is unavailable.")
+		}
+		owner, created = manifest.OwnerID, manifest.CreatedAt
+		if owner == "" {
+			owner = resolveProjectOwner(ctx, target.Root)
+		}
+	} else {
+		manifest, exists, err := readWorkflowManifest(ctx, target.Root, false)
+		if err != nil || !exists || manifest == nil || manifest.ID != a.ID {
+			return "", dashboardFailure(403, "Project identity is unavailable.")
+		}
+		owner, created = manifest.CreatedBy, manifest.CreatedAt
+	}
+	if strings.TrimSpace(created) == "" || strings.TrimSpace(owner) == "" {
+		return "", dashboardFailure(403, "Project creation identity is unavailable. Restore its owner and creation date before connecting.")
+	}
+	data, _ := json.Marshal([]string{a.Kind, a.ID, owner, created})
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:]), nil
+}
+
+func projectMCPAudit(grant mcpOAuthGrant, event, reason string) {
+	if a, ok := projectMCPAudienceForResource(grant.Resource); ok {
+		log.Printf("project_mcp event=%q family=%q kind=%q project_id=%q access=%q reason=%q", event, grant.FamilyID, a.Kind, a.ID, a.Access, reason)
+	}
+}
+
+func (api *StreamingAPI) checkProjectMCPGrant(ctx context.Context, grant mcpOAuthGrant) error {
+	a, bound := projectMCPAudienceForResource(grant.Resource)
+	if !bound {
+		return nil
+	}
+	claims, err := accessTokenClaims(mcpOAuthTokenForGrant(grant))
+	if err != nil {
+		projectMCPAudit(grant, "project_check_failed", "account_access")
+		return dashboardFailure(403, "Project access is unavailable.")
+	}
+	target, err := api.projectMCPTarget(ctx, claims, a)
+	if err == nil {
+		identity, identityErr := projectMCPCreationIdentity(ctx, a, target)
+		err = identityErr
+		if err == nil && (grant.ProjectIdentity == "" || grant.ProjectIdentity != identity) {
+			err = dashboardFailure(403, "Project identity changed. Approve a new connection.")
+		}
+	}
+	if err != nil {
+		projectMCPAudit(grant, "project_check_failed", "access_or_creation_identity")
+	}
+	return err
+}
+
 func (api *StreamingAPI) handleProjectMCP(w http.ResponseWriter, r *http.Request) {
 	a, ok := projectMCPAudienceForPath(r.URL.Path)
 	claims := GetUserFromContext(r.Context())
-	if !ok || claims == nil || claims.AccessToken == nil || claims.AccessToken.ProjectKind != a.Kind {
+	if !ok || claims == nil || claims.AccessToken == nil {
 		externalError(w, 403, "forbidden", "Approve this project's MCP connection first.")
 		return
 	}
-	if _, err := api.projectMCPTarget(r.Context(), claims, a); err != nil {
+	token := claims.AccessToken
+	grant := mcpOAuthGrant{FamilyID: strings.TrimPrefix(token.ID, "oauth-"), Resource: "https://audit.invalid" + r.URL.Path}
+	if token.ProjectKind != a.Kind || token.ProjectID != a.ID || token.ProjectAccess != a.Access || token.AllCrews || token.AllWorkflows ||
+		((a.Kind == "work" || a.Kind == "code") && (!slices.Equal(token.CrewIDs, []string{a.ID}) || len(token.WorkflowIDs) != 0)) ||
+		((a.Kind == "workflow" || a.Kind == "relay") && (!slices.Equal(token.WorkflowIDs, []string{a.ID}) || len(token.CrewIDs) != 0)) {
+		projectMCPAudit(grant, "resource_mismatch", "handler_audience")
+		externalError(w, 403, "forbidden", "Approve this project's MCP connection first.")
+		return
+	}
+	target, err := api.projectMCPTarget(r.Context(), claims, a)
+	if err == nil {
+		identity, identityErr := projectMCPCreationIdentity(r.Context(), a, target)
+		err = identityErr
+		if err == nil && (token.ProjectIdentity == "" || token.ProjectIdentity != identity) {
+			err = dashboardFailure(403, "Project identity changed. Approve a new connection.")
+		}
+	}
+	if err != nil {
+		projectMCPAudit(grant, "project_check_failed", "access_or_creation_identity")
 		dashboardError(w, err)
 		return
 	}

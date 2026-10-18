@@ -335,7 +335,8 @@ func (api *StreamingAPI) handleMCPOAuthConsent(w http.ResponseWriter, r *http.Re
 		mcpOAuthError(w, http.StatusNotFound, "invalid_request")
 		return
 	}
-	var project *dashboardTarget
+	var project *projectMCPConsent
+	projectIdentity := ""
 	consentScopes := mcpOAuthPersonScopes(claims)
 	if audience, bound := projectMCPAudienceForResource(requestInfo.Resource); bound {
 		target, err := api.projectMCPTarget(r.Context(), claims, audience)
@@ -343,7 +344,16 @@ func (api *StreamingAPI) handleMCPOAuthConsent(w http.ResponseWriter, r *http.Re
 			dashboardError(w, err)
 			return
 		}
-		project = &target
+		kind := target.Kind
+		if kind == "crew" {
+			kind = "work"
+		}
+		project = &projectMCPConsent{ID: target.ID, Title: target.Title, Kind: kind, Access: audience.Access}
+		projectIdentity, err = projectMCPCreationIdentity(r.Context(), audience, target)
+		if err != nil {
+			dashboardError(w, err)
+			return
+		}
 		consentScopes = audience.scopes()
 	}
 	if r.Method == http.MethodGet {
@@ -374,7 +384,7 @@ func (api *StreamingAPI) handleMCPOAuthConsent(w http.ResponseWriter, r *http.Re
 		mcpOAuthError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
-	request, code, err := store.Decide(r.Context(), id, claims, input.Decision == "approve", input.WorkflowIDs)
+	request, code, err := store.decide(r.Context(), id, claims, input.Decision == "approve", projectIdentity, input.WorkflowIDs)
 	if err != nil {
 		var refused *mcpOAuthRefusal
 		if errors.As(err, &refused) {
@@ -443,9 +453,18 @@ func (api *StreamingAPI) handleMCPOAuthToken(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if err != nil {
+		if grant.Resource != "" && grant.Resource != resource {
+			projectMCPAudit(grant, "resource_mismatch", "token_exchange_audience")
+		}
 		mcpOAuthError(w, http.StatusBadRequest, "invalid_grant")
 		return
 	}
+	if err := api.checkProjectMCPGrant(r.Context(), grant); err != nil {
+		_ = store.RevokeFamily(r.Context(), grant.FamilyID, grant.UserID)
+		mcpOAuthError(w, http.StatusBadRequest, "invalid_grant")
+		return
+	}
+	projectMCPAudit(grant, "grant_issued", r.PostForm.Get("grant_type"))
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"access_token": access, "token_type": "Bearer", "expires_in": 3600, "refresh_token": refresh, "scope": strings.Join(grant.Scopes, " ")})
 }
@@ -469,6 +488,9 @@ func authenticateMCPOAuthToken(w http.ResponseWriter, r *http.Request, raw strin
 	defer store.Close()
 	grant, err := store.Authenticate(r.Context(), raw)
 	if err != nil || grant.Resource != resource || len(grant.Scopes) == 0 {
+		if err == nil && grant.Resource != resource {
+			projectMCPAudit(grant, "resource_mismatch", "request_audience")
+		}
 		projectMCPChallenge(w, r)
 		mcpOAuthError(w, http.StatusUnauthorized, "invalid_token")
 		return nil, false
@@ -537,7 +559,7 @@ func mcpOAuthTokenForGrant(grant mcpOAuthGrant) accesstokens.Token {
 		name = "AgentWorks CLI"
 	}
 	if audience, bound := projectMCPAudienceForResource(grant.Resource); bound {
-		return audience.token(accesstokens.Token{OAuthClientID: grant.ClientID, ID: "oauth-" + grant.FamilyID, Name: "Project MCP", UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider, Scopes: grant.Scopes, ExpiresAt: grant.Expires})
+		return audience.token(accesstokens.Token{ProjectIdentity: grant.ProjectIdentity, OAuthClientID: grant.ClientID, ID: "oauth-" + grant.FamilyID, Name: "Project MCP", UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider, Scopes: grant.Scopes, ExpiresAt: grant.Expires})
 	}
 	// A grant with no workflow IDs reaches every workflow the account may use (Builder included, bounded by the
 	// account's live role); an older Builder grant keeps the IDs it was given.
