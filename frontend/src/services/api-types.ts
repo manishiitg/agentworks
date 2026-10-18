@@ -4230,5 +4230,5 @@ export interface WorkspaceStepInspection {
 }
 export interface WorkspaceStepInspectionsResponse {
   items: WorkspaceStepInspection[]
-  next_offset: number | null
+  next_cursor: string | null
 }

@@ -29,10 +29,10 @@ export default function SidebarStepInspections({ row, workspace, scope, visible,
   const [opening, setOpening] = useState<string | null>(null)
   const enabled = visible && row.surface === 'agentworks' && workspace.startsWith('Workflow/')
   const query = useInfiniteQuery({
-    queryKey: ['sidebar-step-receipts', scope, row.id, workspace],
-    initialPageParam: 0,
-    queryFn: ({ pageParam }) => agentApi.getWorkspaceStepInspections(workspace, { sessionId: row.id, offset: pageParam }),
-    getNextPageParam: page => page.next_offset ?? undefined,
+    queryKey: ['sidebar-step-receipts-v1', scope, row.id, workspace],
+    initialPageParam: '',
+    queryFn: ({ pageParam }) => agentApi.getWorkspaceStepInspections(workspace, { sessionId: row.id, cursor: pageParam }),
+    getNextPageParam: page => page.next_cursor ?? undefined,
     enabled: enabled && !receipts,
     retry: false,
     staleTime: 10000,

@@ -14,7 +14,7 @@ const auth = vi.hoisted(() => ({user:{id:'alice',allowed_products:['agentworks']
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((select: (state: typeof auth) => unknown) => select(auth), {getState: () => auth}) }))
 const original = useChatStore.getState()
 const target: ExecutionInspectionTarget = {session_id:'parent', execution_id:'step', workspace_path:'Workflow/demo', name:'Research', step_id:'research', started_at:'2026-10-18T00:00:00Z'}
-const tree: WorkspaceStepInspectionsResponse = {items:[{inspection:target,status:'running',parent:{session_id:'parent',workspace_path:'Workflow/demo',status:'running'}}],next_offset:null}
+const tree: WorkspaceStepInspectionsResponse = {items:[{inspection:target,status:'running',parent:{session_id:'parent',workspace_path:'Workflow/demo',status:'running'}}],next_cursor:null}
 const row: SidebarChat = {id:'parent',tabId:'parent-tab',title:'Daily briefing',surface:'agentworks',workflowId:'goal',workspace:'Workflow/demo',group:'Open',time:1,waiting:false}
 Object.assign(globalThis, {IS_REACT_ACT_ENVIRONMENT:true})
 afterEach(() => {useChatStore.setState(original,true);auth.user={id:'alice',allowed_products:['agentworks'],allowed_workflow_ids:['goal']};vi.restoreAllMocks()})
@@ -30,7 +30,7 @@ it('opens the exact step after selecting its parent and highlights the inspector
   vi.spyOn(agentApi,'getWorkspaceStepInspections').mockResolvedValue(tree)
   await render(async host=>{
     await vi.waitFor(()=>expect(host.querySelector('[aria-label="Inspect Research"]')).not.toBeNull())
-    expect(agentApi.getWorkspaceStepInspections).toHaveBeenCalledWith('Workflow/demo',{sessionId:'parent',offset:0})
+    expect(agentApi.getWorkspaceStepInspections).toHaveBeenCalledWith('Workflow/demo',{sessionId:'parent',cursor:''})
     expect(host.querySelector('[aria-label="Step running"]')).not.toBeNull()
     await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Inspect Research"]')!.click())
     expect(useChatStore.getState().activeTabId).toBe('parent-tab')
@@ -44,7 +44,7 @@ it('does not load work in a collapsed parent',async()=>{
 })
 it('discards late data from the previous account even if session IDs coincide',async()=>{
   let finish!:(value:WorkspaceStepInspectionsResponse)=>void
-  vi.spyOn(agentApi,'getWorkspaceStepInspections').mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve})).mockResolvedValue({items:[],next_offset:null})
+  vi.spyOn(agentApi,'getWorkspaceStepInspections').mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve})).mockResolvedValue({items:[],next_cursor:null})
   await render(async(host,update)=>{
     await update('local:bob')
     await act(async()=>{finish(tree)})

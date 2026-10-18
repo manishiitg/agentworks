@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
@@ -41,7 +42,7 @@ func TestWorkspaceStepInspectionsDiscoveryAndAccess(t *testing.T) {
 	add := func(session, user, origin string) {
 		t.Helper()
 		api.activeSessions[session] = &ActiveSessionInfo{SessionID: session, WorkspacePath: "Workflow/example", UserID: user, TriggeredBy: origin}
-		step(session, "step-"+session, "", "workflow_step")
+		step(session, "step-"+session, "conversation-turn-root", "workflow_step")
 		api.emitBackgroundAgentCompleted(session, "step-"+session, "Research", "completed", "PRIVATE RESULT", "", "1s")
 		directory := filepath.Join(docs, "Workflow/example/builder/conversation/2026-10-18")
 		if err := os.MkdirAll(directory, 0755); err != nil {
@@ -56,6 +57,11 @@ func TestWorkspaceStepInspectionsDiscoveryAndAccess(t *testing.T) {
 	add("schedule-job--123_456", "alice", "schedule")
 	add("bob-parent", "bob", "schedule")
 	step("mcp-parent", "nested", "step-mcp-parent", "agent")
+	step("mcp-parent", "wrapper", "step-mcp-parent", "full_run")
+	step("mcp-parent", "nested-grandchild", "wrapper", "agent")
+	step("mcp-parent", "cycle-a", "cycle-b", "full_run")
+	step("mcp-parent", "cycle-b", "cycle-a", "full_run")
+	step("mcp-parent", "cycle-child", "cycle-a", "agent")
 	// No browser tabs, active sessions, registry, or event store survive restart.
 	api.activeSessions = map[string]*ActiveSessionInfo{}
 	api.bgAgentRegistry = NewBackgroundAgentRegistry()
@@ -68,6 +74,11 @@ func TestWorkspaceStepInspectionsDiscoveryAndAccess(t *testing.T) {
 		return recorder
 	}
 	query := url.Values{"workspace_path": {"Workflow/example"}}
+	anonymous := httptest.NewRecorder()
+	api.handleWorkspaceStepInspections(anonymous, httptest.NewRequest("GET", "/api/workflow/step-inspections?"+query.Encode(), nil))
+	if anonymous.Code != 401 {
+		t.Fatalf("multi-user route admitted an anonymous caller: %d", anonymous.Code)
+	}
 	owner := call("alice", query)
 	var response workspaceStepInspectionsResponse
 	if owner.Code != 200 || json.Unmarshal(owner.Body.Bytes(), &response) != nil || len(response.Items) != 2 {
@@ -116,25 +127,65 @@ func TestWorkspaceStepInspectionsDiscoveryAndAccess(t *testing.T) {
 	delete(api.activeSessions, "mcp-parent")
 	query.Set("session_id", "mcp-parent")
 	page := call("alice", query)
-	if page.Code != 200 || json.Unmarshal(page.Body.Bytes(), &response) != nil || len(response.Items) == 0 || len(response.Items) > 20 || response.NextOffset == nil {
+	if page.Code != 200 || json.Unmarshal(page.Body.Bytes(), &response) != nil || len(response.Items) == 0 || len(response.Items) > 20 || response.NextCursor == nil {
 		t.Fatalf("bounded page: %d %s", page.Code, page.Body)
 	}
 	seen := map[string]bool{}
 	for _, item := range response.Items {
 		seen[item.Inspection.ExecutionID] = true
 	}
-	query.Set("offset", fmt.Sprint(*response.NextOffset))
+	cursor := *response.NextCursor
+	api.activeSessions["mcp-parent"] = &ActiveSessionInfo{SessionID: "mcp-parent", UserID: "alice", WorkspacePath: "Workflow/example"}
+	step("mcp-parent", "newer-during-page", "conversation-turn-root", "workflow_step")
+	delete(api.activeSessions, "mcp-parent")
+	_, db, err := openPulseStoreDB(context.Background(), "Workflow/example", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`UPDATE background_agent_log SET updated_at='2099-01-01T00:00:00Z' WHERE agent_id='newer-during-page'`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	query.Set("cursor", cursor)
 	page = call("alice", query)
 	if page.Code != 200 || json.Unmarshal(page.Body.Bytes(), &response) != nil || len(response.Items) == 0 {
 		t.Fatalf("older page: %d %s", page.Code, page.Body)
 	}
 	for _, item := range response.Items {
-		if seen[item.Inspection.ExecutionID] {
-			t.Fatal("pagination repeated a receipt")
+		if seen[item.Inspection.ExecutionID] || item.Inspection.ExecutionID == "newer-during-page" {
+			t.Fatal("new arrivals shifted the older page")
 		}
 	}
-	query.Del("offset")
+	query.Set("cursor", cursor)
+	if denied := call("bob", query); denied.Code != 400 {
+		t.Fatalf("cursor reused across callers: %d", denied.Code)
+	}
+	query.Del("cursor")
 	query.Del("session_id")
+	_, db, err = openPulseStoreDB(context.Background(), "Workflow/example", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 200; i++ {
+		if _, err = db.Exec(`INSERT INTO background_agent_log(workspace_path,session_id,agent_id,name,kind,status,updated_at) VALUES('Workflow/example','bob-parent',?,'PRIVATE','workflow_step','completed','2100-01-01T00:00:00Z')`, fmt.Sprintf("foreign-%03d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	hiddenPage := call("alice", query)
+	if hiddenPage.Code != 200 || json.Unmarshal(hiddenPage.Body.Bytes(), &response) != nil || len(response.Items) != 0 || response.NextCursor == nil {
+		t.Fatalf("bounded foreign scan: %d %s", hiddenPage.Code, hiddenPage.Body)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(*response.NextCursor)
+	if err != nil || strings.Contains(string(raw), "bob-parent") {
+		t.Fatal("cursor exposed another caller's session identity")
+	}
+	query.Set("cursor", *response.NextCursor)
+	visiblePage := call("alice", query)
+	if visiblePage.Code != 200 || json.Unmarshal(visiblePage.Body.Bytes(), &response) != nil || len(response.Items) != 20 {
+		t.Fatalf("visible receipts not filled after foreign scan: %d %s", visiblePage.Code, visiblePage.Body)
+	}
+	query.Del("cursor")
 	if err := writeFileToWorkspace(context.Background(), userProductAccessFilePath(), `{"alice":{"products":["work"]}}`); err != nil {
 		t.Fatal(err)
 	}

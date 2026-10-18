@@ -2,15 +2,17 @@ package server
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"strings"
 
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 )
 
 const workspaceInspectionPageSize = 20
+const workspaceInspectionScanBudget = 200
+const workspaceInspectionReadBudget = 24
 
 type workspaceStepInspection struct {
 	Inspection *orchEvents.ExecutionInspectionTarget `json:"inspection"`
@@ -26,7 +28,20 @@ type workspaceInspectionParent struct {
 }
 type workspaceStepInspectionsResponse struct {
 	Items      []workspaceStepInspection `json:"items"`
-	NextOffset *int                      `json:"next_offset"`
+	NextCursor *string                   `json:"next_cursor"`
+}
+
+// A cursor contains no foreign parent/session ID. It is only a scoped read
+// position; every item is still authorized independently on the next page.
+type workspaceInspectionCursor struct {
+	Workspace string `json:"workspace"`
+	UserID    string `json:"user"`
+	UpdatedAt string `json:"updated"`
+	RowID     int64  `json:"row"`
+}
+type workspaceInspectionRecord struct {
+	BackgroundAgentLogEntry
+	RowID int64
 }
 
 // Product navigation returns only explicit step receipts, never the developer
@@ -34,25 +49,37 @@ type workspaceStepInspectionsResponse struct {
 func (api *StreamingAPI) handleWorkspaceStepInspections(w http.ResponseWriter, r *http.Request) {
 	workspace, valid := cleanWorkspaceReadPath(r.URL.Query().Get("workspace_path"), true)
 	claims := GetUserFromContext(r.Context())
+	if IsMultiUserMode() && (claims == nil || strings.TrimSpace(claims.UserID) == "") {
+		http.Error(w, "Authentication required", http.StatusUnauthorized)
+		return
+	}
+	userID := GetUserIDFromContext(r.Context())
+	if userID == "" {
+		userID = GetDefaultUserID()
+	}
 	if !valid || len(strings.Split(workspace, "/")) != 2 ||
 		(claims != nil && !userAllowedProduct(claims, "agentworks")) ||
 		!workspaceReadAllowed(r.Context(), claims, workspace, logicalPathIsDefaultUser, false) || !workflowStepInspectionWorkspace(r.Context(), workspace) {
 		http.Error(w, "Workspace not found", http.StatusNotFound)
 		return
 	}
-	offset := 0
-	if raw := r.URL.Query().Get("offset"); raw != "" {
-		var err error
-		offset, err = strconv.Atoi(raw)
-		if err != nil || offset < 0 || offset > 10000 {
-			http.Error(w, "Invalid offset", http.StatusBadRequest)
+	var cursor *workspaceInspectionCursor
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		if len(raw) > 4096 {
+			http.Error(w, "Invalid cursor", http.StatusBadRequest)
+			return
+		}
+		cursor = &workspaceInspectionCursor{}
+		data, err := base64.RawURLEncoding.DecodeString(raw)
+		if err != nil || json.Unmarshal(data, cursor) != nil || cursor.Workspace != workspace || cursor.UserID != userID || cursor.RowID <= 0 || cursor.UpdatedAt == "" || len(cursor.UpdatedAt) > 128 {
+			http.Error(w, "Invalid cursor", http.StatusBadRequest)
 			return
 		}
 	}
 	parents := map[string]*ActiveSessionInfo{}
 	sessionID := r.URL.Query().Get("session_id")
 	if sessionID != "" {
-		parent, allowed := api.inspectionParentSession(r, sessionID, workspace)
+		parent, allowed := api.inspectionParentSessionInAuthorizedWorkspace(r, sessionID, workspace)
 		if !allowed {
 			http.Error(w, "Session not found", http.StatusNotFound)
 			return
@@ -78,6 +105,10 @@ func (api *StreamingAPI) handleWorkspaceStepInspections(w http.ResponseWriter, r
 		where += " AND session_id <> ?"
 		args = append(args, id)
 	}
+	if cursor != nil {
+		where += " AND (updated_at < ? OR (updated_at = ? AND rowid < ?))"
+		args = append(args, cursor.UpdatedAt, cursor.UpdatedAt, cursor.RowID)
+	}
 	response := workspaceStepInspectionsResponse{Items: []workspaceStepInspection{}}
 	_, db, err := openPulseStoreDB(r.Context(), workspace, false)
 	if err != nil {
@@ -86,17 +117,17 @@ func (api *StreamingAPI) handleWorkspaceStepInspections(w http.ResponseWriter, r
 	}
 	if db != nil {
 		defer db.Close()
-		args = append(args, workspaceInspectionPageSize+1, offset)
-		rows, queryErr := db.QueryContext(r.Context(), `SELECT session_id, agent_id, kind, parent_execution_id, status, updated_at FROM background_agent_log WHERE `+where+` ORDER BY updated_at DESC, session_id, agent_id LIMIT ? OFFSET ?`, args...)
+		args = append(args, workspaceInspectionScanBudget+1)
+		rows, queryErr := db.QueryContext(r.Context(), `SELECT rowid, session_id, agent_id, kind, parent_execution_id, status, updated_at FROM background_agent_log WHERE `+where+` ORDER BY updated_at DESC, rowid DESC LIMIT ?`, args...)
 		if queryErr != nil && !isMissingTableError(queryErr) {
 			http.Error(w, "Step records unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		records := []BackgroundAgentLogEntry{}
+		records := []workspaceInspectionRecord{}
 		if queryErr == nil {
 			for rows.Next() {
-				var record BackgroundAgentLogEntry
-				if err = rows.Scan(&record.SessionID, &record.AgentID, &record.Kind, &record.ParentExecutionID, &record.Status, &record.UpdatedAt); err != nil {
+				var record workspaceInspectionRecord
+				if err = rows.Scan(&record.RowID, &record.SessionID, &record.AgentID, &record.Kind, &record.ParentExecutionID, &record.Status, &record.UpdatedAt); err != nil {
 					break
 				}
 				records = append(records, record)
@@ -110,33 +141,45 @@ func (api *StreamingAPI) handleWorkspaceStepInspections(w http.ResponseWriter, r
 				return
 			}
 		}
-		if len(records) > workspaceInspectionPageSize {
-			next := offset + workspaceInspectionPageSize
-			response.NextOffset = &next
-			records = records[:workspaceInspectionPageSize]
-		}
-		ancestry := map[string]map[string]BackgroundAgentLogEntry{}
-		for _, record := range records {
+		type ancestorKey struct{ session, parent string }
+		ancestry := map[ancestorKey]bool{}
+		consumed, reads, parentChecks := 0, 0, 0
+		for consumed < len(records) && consumed < workspaceInspectionScanBudget && len(response.Items) < workspaceInspectionPageSize {
+			record := records[consumed]
+			consumed++
 			if !inspectionIdentityPart(record.AgentID) {
 				continue
 			}
 			parent, checked := parents[record.SessionID]
 			if !checked {
-				parent, _ = api.inspectionParentSession(r, record.SessionID, workspace)
+				if parentChecks >= workspaceInspectionReadBudget {
+					consumed--
+					break
+				}
+				parentChecks++
+				parent, _ = api.inspectionParentSessionInAuthorizedWorkspace(r, record.SessionID, workspace)
 				parents[record.SessionID] = parent
 			}
 			if parent == nil {
 				continue
 			}
-			if _, loaded := ancestry[record.SessionID]; !loaded {
-				ancestry[record.SessionID] = workspaceInspectionAncestry(r, db, workspace, record.SessionID)
+			ancestor := ancestorKey{record.SessionID, record.ParentExecutionID}
+			topLevel, checked := ancestry[ancestor]
+			if !checked {
+				topLevel = workspaceInspectionTopLevel(r, db, workspace, record.BackgroundAgentLogEntry)
+				ancestry[ancestor] = topLevel
 			}
-			if !workspaceInspectionTopLevel(record, ancestry[record.SessionID]) {
+			if !topLevel {
 				continue
 			}
 			key := inspectionReceiptCacheKey{Store: getWorkspaceAPIURL(), Workspace: workspace, Session: record.SessionID, Execution: record.AgentID, UpdatedAt: record.UpdatedAt, Status: record.Status}
 			target, cached := cachedInspectionReceipt(key)
 			if !cached {
+				if reads >= workspaceInspectionReadBudget {
+					consumed--
+					break
+				}
+				reads++
 				target = readDurableInspectionReceipt(r.Context(), key)
 			}
 			if target == nil || target.ExecutionKind != record.Kind {
@@ -144,45 +187,34 @@ func (api *StreamingAPI) handleWorkspaceStepInspections(w http.ResponseWriter, r
 			}
 			response.Items = append(response.Items, workspaceStepInspection{Inspection: target, Status: record.Status, Parent: workspaceInspectionParent{SessionID: parent.SessionID, WorkspacePath: workspace, Status: parent.Status, TriggeredBy: workspaceInspectionTrigger(parent.TriggeredBy), BotPlatform: workspaceInspectionPlatform(parent.BotPlatform)}})
 		}
+		if consumed > 0 && consumed < len(records) {
+			last := records[consumed-1]
+			encoded, _ := json.Marshal(workspaceInspectionCursor{Workspace: workspace, UserID: userID, UpdatedAt: last.UpdatedAt, RowID: last.RowID})
+			next := base64.RawURLEncoding.EncodeToString(encoded)
+			response.NextCursor = &next
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(response)
 }
 
-func workspaceInspectionAncestry(r *http.Request, db *sql.DB, workspace, session string) map[string]BackgroundAgentLogEntry {
-	// A missing or truncated ancestry fails closed for nested candidates.
-	records := map[string]BackgroundAgentLogEntry{}
-	rows, err := db.QueryContext(r.Context(), `SELECT agent_id, kind, parent_execution_id FROM background_agent_log WHERE workspace_path=? AND session_id=? ORDER BY updated_at DESC LIMIT 1000`, workspace, session)
-	if err != nil {
-		return records
+// Conversation-turn roots are not background log entries. A missing root is
+// normal; an existing step ancestor or a cycle makes this a nested candidate.
+func workspaceInspectionTopLevel(r *http.Request, db *sql.DB, workspace string, record BackgroundAgentLogEntry) bool {
+	if record.ParentExecutionID == "" {
+		return true
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var item BackgroundAgentLogEntry
-		if rows.Scan(&item.AgentID, &item.Kind, &item.ParentExecutionID) != nil {
-			return nil
-		}
-		records[item.AgentID] = item
-	}
-	if rows.Err() != nil {
-		return nil
-	}
-	return records
-}
-func workspaceInspectionTopLevel(record BackgroundAgentLogEntry, records map[string]BackgroundAgentLogEntry) bool {
-	seen := map[string]bool{record.AgentID: true}
-	for parent := record.ParentExecutionID; parent != ""; {
-		if seen[parent] || len(seen) >= 1000 {
-			return false
-		}
-		seen[parent] = true
-		item, found := records[parent]
-		if !found || workflowStepInspectionKind(item.Kind) {
-			return false
-		}
-		parent = item.ParentExecutionID
-	}
-	return true
+	var stepAncestor, depth int
+	err := db.QueryRowContext(r.Context(), `WITH RECURSIVE ancestors(agent_id,kind,parent_execution_id,depth) AS (
+   SELECT agent_id,kind,parent_execution_id,1 FROM background_agent_log
+    WHERE workspace_path=? AND session_id=? AND agent_id=?
+   UNION ALL
+   SELECT entry.agent_id,entry.kind,entry.parent_execution_id,ancestors.depth+1
+    FROM background_agent_log entry JOIN ancestors ON entry.agent_id=ancestors.parent_execution_id
+    WHERE entry.workspace_path=? AND entry.session_id=? AND ancestors.depth<1000
+  ) SELECT COALESCE(MAX(kind IN ('workflow_step','agent','scripted_step','agent_item')),0),COALESCE(MAX(depth),0) FROM ancestors`,
+		workspace, record.SessionID, record.ParentExecutionID, workspace, record.SessionID).Scan(&stepAncestor, &depth)
+	return err == nil && stepAncestor == 0 && depth < 1000
 }
 
 func workspaceInspectionTrigger(value string) string {

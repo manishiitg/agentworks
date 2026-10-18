@@ -1192,10 +1192,10 @@ export const agentApi = {
     await api.post(`/api/sessions/${encodeURIComponent(sessionId)}/background-work/${encodeURIComponent(itemId)}/stop`)
   },
 
-  getWorkspaceStepInspections: async (workspace: string, options: { sessionId?: string; excludeSessionIds?: string[]; offset?: number } = {}): Promise<import('./api-types').WorkspaceStepInspectionsResponse> => {
+  getWorkspaceStepInspections: async (workspace: string, options: { sessionId?: string; excludeSessionIds?: string[]; cursor?: string } = {}): Promise<import('./api-types').WorkspaceStepInspectionsResponse> => {
     const params = new URLSearchParams({ workspace_path: workspace })
     if (options.sessionId) params.set('session_id', options.sessionId)
-    if (options.offset) params.set('offset', String(options.offset))
+    if (options.cursor) params.set('cursor', options.cursor)
     for (const id of options.excludeSessionIds || []) params.append('exclude_session_id', id)
     return (await api.get('/api/workflow/step-inspections', { params })).data
   },
