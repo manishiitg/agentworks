@@ -13,13 +13,13 @@ import (
 // the SDK. Fold only aliases of the already-admitted current project, on a
 // copy. Private linked runtimes retain their existing exact mode checks, and
 // native IDs, account identities and stored history bytes never change here.
-func projectStorageResumeRuntime(agent *mcpagent.Agent, runtime *ChatHistoryAgentRuntime) *ChatHistoryAgentRuntime {
-	if agent == nil || runtime == nil || runtime.AgentSessionHandle == nil {
-		return runtime
+func projectStorageResumeRuntime(agent *mcpagent.Agent, runtime *ChatHistoryAgentRuntime) (*ChatHistoryAgentRuntime, bool) {
+	if agent == nil || runtime == nil {
+		return runtime, true
 	}
 	current := mcpagent.SnapshotAgentSession(agent)
 	if current == nil {
-		return runtime
+		return runtime, true
 	}
 	docs := fsutil.WorkspaceDocsRoot()
 	relative := func(dir string) (string, bool) {
@@ -31,24 +31,34 @@ func projectStorageResumeRuntime(agent *mcpagent.Agent, runtime *ChatHistoryAgen
 	}
 	rel, ok := relative(current.Provider.WorkingDir)
 	if !ok {
-		return runtime
+		return runtime, true
 	}
 	active, ok := resolveCrewPath(context.Background(), "", rel)
 	if !ok {
-		return runtime
+		return runtime, true
 	}
 	product, _, known := projectProductForPath(active.Root)
 	if !known || product.ProfileID != "code" {
-		return runtime
+		return runtime, true
+	}
+	// Only relocated projects require this new routing check. Existing legacy
+	// and private-runtime restoration keep their own admission rules.
+	id, known := projectIdentityOf(active.Root)
+	record, registered := defaultProjectOwners().Lookup(id.Product, id.Folder)
+	if !known || !registered || record.BindingRoot == "" {
+		return runtime, true
 	}
 	// Do not partially adopt a handle whose primary cwd belongs elsewhere.
+	if runtime.AgentSessionHandle == nil {
+		return runtime, false
+	}
 	savedRel, savedOK := relative(runtime.AgentSessionHandle.Provider.WorkingDir)
 	if !savedOK {
-		return runtime
+		return runtime, false
 	}
 	savedRef, savedOK := resolveCrewPath(context.Background(), active.OwnerID, savedRel)
 	if !savedOK || savedRef.Root != active.Root || savedRef.OwnerID != active.OwnerID {
-		return runtime
+		return runtime, false
 	}
 	fold := func(dir string) string {
 		rel, ok := relative(dir)
@@ -68,8 +78,8 @@ func projectStorageResumeRuntime(agent *mcpagent.Agent, runtime *ChatHistoryAgen
 	if copyHandle.Provider.WorkingDir == runtime.AgentSessionHandle.Provider.WorkingDir &&
 		copyHandle.Provider.ProjectDirID == runtime.AgentSessionHandle.Provider.ProjectDirID &&
 		copyRuntime.ProjectDirID == runtime.ProjectDirID {
-		return runtime
+		return runtime, true
 	}
 	copyRuntime.AgentSessionHandle = &copyHandle
-	return &copyRuntime
+	return &copyRuntime, true
 }

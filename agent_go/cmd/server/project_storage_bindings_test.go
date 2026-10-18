@@ -72,7 +72,7 @@ func TestProjectStorageBindingsSurviveMoveAndRollback(t *testing.T) {
 	}
 	connection := services.GmailConnection{ID: "stable-account", OwnerID: "owner", Personal: true, Workspaces: []string{legacy}}
 	handle := requireAgentHandle(t, testAgentWithHandle("code:project:project-id", llmtypes.CodingProviderSessionHandle{Provider: "codex-cli", WorkingDir: filepath.Join(fsutil.WorkspaceDocsRoot(), legacy), ProjectDirID: filepath.Join(fsutil.WorkspaceDocsRoot(), legacy), NativeSessionID: "native-unchanged"}))
-	runtime := &ChatHistoryAgentRuntime{AgentSessionHandle: handle, ProjectDirID: handle.Provider.ProjectDirID}
+	runtime := &ChatHistoryAgentRuntime{Kind: "coding_agent", Provider: "codex-cli", ResumeSupported: true, AgentSessionHandle: handle, ProjectDirID: handle.Provider.ProjectDirID}
 	originalRuntime, _ := json.Marshal(runtime)
 	for _, destination := range []string{moved, legacy, moved} {
 		current, _ := registry.Lookup("code", rec.Folder)
@@ -130,16 +130,25 @@ func TestProjectStorageBindingsSurviveMoveAndRollback(t *testing.T) {
 			t.Fatal("connection selection lost its project boundary")
 		}
 		agent := testAgentWithHandle("code:project:project-id", llmtypes.CodingProviderSessionHandle{Provider: "codex-cli", WorkingDir: filepath.Join(fsutil.WorkspaceDocsRoot(), destination)})
-		folded := projectStorageResumeRuntime(agent, runtime)
-		if folded.AgentSessionHandle.Provider.WorkingDir != filepath.Join(fsutil.WorkspaceDocsRoot(), destination) || folded.AgentSessionHandle.Provider.NativeSessionID != "native-unchanged" {
+		folded, allowed := projectStorageResumeRuntime(agent, runtime)
+		if !allowed || folded.AgentSessionHandle.Provider.WorkingDir != filepath.Join(fsutil.WorkspaceDocsRoot(), destination) || folded.AgentSessionHandle.Provider.NativeSessionID != "native-unchanged" {
 			t.Fatal("native handle did not retain identity and follow routing")
 		}
+		if !api.seedCodingAgentRuntimeFromRestoredConversation("code:project:project-id", "codex-cli", "", runtime, agent) || requireAgentHandle(t, agent).Provider.NativeSessionID != "native-unchanged" {
+			t.Fatal("valid alias could not restore its native handle")
+		}
+		// Refusal must happen in the real seed path, before importing any state.
+		agent = testAgentWithHandle("code:project:project-id", llmtypes.CodingProviderSessionHandle{Provider: "codex-cli", WorkingDir: filepath.Join(fsutil.WorkspaceDocsRoot(), destination)})
 		foreign := *runtime
 		foreignHandle := *runtime.AgentSessionHandle
 		foreignHandle.Provider.WorkingDir = filepath.Join(fsutil.WorkspaceDocsRoot(), "Crew/unrelated")
 		foreign.AgentSessionHandle = &foreignHandle
-		if projectStorageResumeRuntime(agent, &foreign) != &foreign {
-			t.Fatal("foreign runtime was partially adopted")
+		foreign.Kind, foreign.Provider, foreign.ResumeSupported = "coding_agent", "codex-cli", true
+		if api.seedCodingAgentRuntimeFromRestoredConversation("code:project:project-id", "codex-cli", "", &foreign, agent) {
+			t.Fatal("foreign runtime reached native session restoration")
+		}
+		if got := requireAgentHandle(t, agent); got.Provider.NativeSessionID != "" {
+			t.Fatal("refusal imported a native session")
 		}
 		current, _ = registry.Lookup("code", rec.Folder)
 		if current.BindingRoot != legacy || current.OwnerID != rec.OwnerID || current.Product != rec.Product || !current.Private || len(current.RunPeople) != 1 || len(current.CoOwners) != 1 {
