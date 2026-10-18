@@ -165,10 +165,9 @@ func (c *Client) CreateAgentConnection(ctx context.Context, name string) (Config
 	return Config{Server: c.baseURL, Token: v.Access, RefreshToken: v.Refresh, ExpiresAt: time.Now().Add(time.Duration(v.Expires) * time.Second)}, nil
 }
 
-// ShareAgent runs a group action for one of the person's own agents with the
-// person's own CLI login: share (join a group, creating it when a purpose is
-// given), unshare (leave one group, or all), groups, group (members) or list.
+// ShareAgent publishes (share) or takes back (unshare) one of the person's own
+// agents on the network, with the person's own CLI login.
 // An agent connection is refused.
-func (c *Client) ShareAgent(ctx context.Context, action, agentName, group, purpose string) (json.RawMessage, error) {
-	return c.request(ctx, http.MethodPost, "/api/external/v1/agents/sharing", map[string]any{"action": action, "agent_name": agentName, "group": group, "purpose": purpose}, true)
+func (c *Client) ShareAgent(ctx context.Context, action, agentName string) (json.RawMessage, error) {
+	return c.request(ctx, http.MethodPost, "/api/external/v1/agents/sharing", map[string]any{"action": action, "agent_name": agentName}, true)
 }

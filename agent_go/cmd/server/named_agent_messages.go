@@ -21,10 +21,10 @@ import (
 func agentMailCall(args map[string]any) bool {
 	target := strings.ToLower(strings.TrimSpace(externalArg(args, "target")))
 	switch externalArg(args, "action") {
-	case "register", "unregister", "list_agents", "ack", "update_purpose", "join_group", "leave_group", "list_groups", "group_members", "ping_person", "get_file":
+	case "register", "unregister", "list_agents", "ack", "update_purpose", "ping_person", "get_file":
 		return true
 	}
-	return externalArg(args, "agent_name") != "" || strings.HasPrefix(target, "agent:") || strings.HasPrefix(target, "group:")
+	return externalArg(args, "agent_name") != "" || strings.HasPrefix(target, "agent:")
 }
 
 // Names are account-owned addresses, not device identities or access grants.
@@ -161,7 +161,7 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 	items := []map[string]interface{}{}
 	for _, a := range s.Agents {
 		if a.UserID == userID {
-			item := map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "delivery_mode": agentDeliveryMode(a), "groups": s.groupNamesOf(a.ID, a.UserID), "provider": func() string {
+			item := map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "delivery_mode": agentDeliveryMode(a), "published": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0, "provider": func() string {
 				if a.Attachment != nil {
 					return a.Attachment.Provider
 				}
@@ -178,9 +178,8 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 		hydrateOwnerUsage(ctx, userID, items, s.Agents)
 	}
 	items = append(items, s.sharedAgentItems(userID, time.Now().UTC())...)
-	items = append(items, s.groupAgentItems(userID)...)
 	sort.Slice(items, func(i, j int) bool { return items[i]["agent_name"].(string) < items[j]["agent_name"].(string) })
-	return map[string]interface{}{"agents": items, "groups": s.groupsView(userID, false)}
+	return map[string]interface{}{"agents": items}
 }
 
 func (api *StreamingAPI) externalMessageCaller(ctx context.Context, claims *UserClaims, args map[string]any) (triggerLinkCaller, error) {
@@ -260,7 +259,7 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 		}
 		if live && onlyMCP && s.Agents[index].Attachment == nil && claims.AccessToken != nil && claims.AccessToken.Name == "AgentWorks CLI" {
 			// The same person's MCP sign-in only holds a mailbox (never attached) and now the CLI attaches the name:
-			// the CLI sign-in joins it in one step and the name keeps its groups.
+			// the CLI sign-in joins it in one step and the name keeps its publication.
 			if !slices.Contains(s.Agents[index].Connections, claims.AccessToken.ID) {
 				s.Agents[index].Connections = append(slices.Clone(s.Agents[index].Connections), claims.AccessToken.ID)
 			}
@@ -284,7 +283,7 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 		}
 		gone := s.Agents[index]
 		s.Agents = append(s.Agents[:index], s.Agents[index+1:]...)
-		s.removeFromAllGroups(gone.ID, gone.UserID, claims.UserID)
+		s.revokeServerShares(gone.ID, claims.UserID, time.Now().UTC())
 	} else {
 		if index < 0 {
 			if own >= 100 || len(s.Agents) >= agentConversationKeep {
@@ -455,9 +454,6 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 					}
 					if person := crossPersonOwner(c.Endpoints[m.From], claims.UserID); person != "" {
 						item["from_person"], item["untrusted"] = person, true
-					}
-					if m.Group != "" {
-						item["group"] = m.Group
 					}
 					items = append(items, nil)
 					copy(items[position+1:], items[position:])

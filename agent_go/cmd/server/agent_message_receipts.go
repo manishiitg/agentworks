@@ -77,9 +77,6 @@ func (s agentMessageStore) sentReceipts(c agentConversation, side, limit int) []
 		}
 		row := s.receiptFields(m, c.Endpoints[1-side])
 		row["message_id"], row["inbox_id"], row["to"] = m.ID, c.ID, endpointDisplayLabel(c.Endpoints[1-side], c.Endpoints[side].UserID)
-		if m.Group != "" {
-			row["group"] = m.Group
-		}
 		rows = append(rows, row)
 	}
 	return rows

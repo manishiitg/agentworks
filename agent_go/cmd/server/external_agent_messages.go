@@ -206,7 +206,7 @@ func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, 
 		}
 	}
 	if len(targets) != 1 {
-		return triggerTarget{}, fmt.Errorf("no single accessible Crew, workflow or agent matches; use agent:NAME for an agent (or group:NAME for a group), or choose a Crew or workflow by ID")
+		return triggerTarget{}, fmt.Errorf("no single accessible Crew, workflow or agent matches; use agent:NAME for an agent, or choose a Crew or workflow by ID")
 	}
 	target := targets[0]
 	if err := api.externalAuthorizeMessagePeer(ctx, claims, targetMessageEndpoint(claims.UserID, target), send); err != nil {
@@ -302,15 +302,13 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 			out["chats_inside_agentworks"] = items
 		}
 		if list, _ := out["agents"].([]map[string]interface{}); !slices.ContainsFunc(list, func(a map[string]interface{}) bool { _, other := a["owner"]; return other }) {
-			out["hint"] = "Agents of other people appear here once you and they are in the same group. Ask your agent to share this chat to the group (agentworks share GROUP); the Groups list shows which groups exist."
+			out["hint"] = "Agents of other people appear here once they publish them to the network. Ask the other person to tell their agent to publish it (agentworks share)."
 		}
 		externalJSON(w, out)
 	case "state":
 		api.externalAgentMessageState(w, r, args)
 	case "ping_person":
 		api.externalAgentPing(w, r, args)
-	case "join_group", "leave_group", "list_groups", "group_members":
-		api.externalGroupAction(w, r, args)
 	case "get_file":
 		api.externalAgentMessageFile(w, r, args)
 	case "send":
@@ -327,10 +325,6 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 					dropFile()
 				}
 			}()
-		}
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(externalArg(args, "target"))), "group:") {
-			api.externalSendGroup(w, r, args)
-			return
 		}
 		var target triggerTarget
 		if inbox == "" || externalArg(args, "crew_id") != "" || externalArg(args, "workflow_id") != "" || externalArg(args, "target") != "" {
@@ -405,8 +399,7 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 func externalAgentMessageDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add("messages", "AgentBridge messages use an inbox for normal MCP sign-ins from apps without a terminal, or the live CLI bridge for attached coding chats. Register an agent_name, list_agents, send, read, reply with send in the same inbox_id, or ack your incoming messages. Inbox names receive nothing pushed into the app: check when the person asks or at the start of a conversation. The CLI gives live delivery if you can install it. The server shows the route and whether the recipient has acknowledged it. Existing account, connection, sharing, size and rate checks apply. Normal final chat replies are not forwarded. No attachment or selection of another chat is available here. Read/send product conversations through their existing access. Read results use non-destructive cursors; wait_seconds is at most 25. State inspects only owned product delivery metadata. CLI bridge receipt arguments remain compatible.", false, false, map[string]any{
 		"usage_timezone":         map[string]any{"type": "string", "description": "Optional IANA timezone for owner-only native hourly-reading daily totals (default UTC)."},
-		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "send", "read", "state", "ack", "update_purpose", "join_group", "leave_group", "list_groups", "group_members", "ping_person", "get_file"}},
-		"group":                  externalString("Group name for join_group, leave_group (omit to leave all) and group_members; a group is an open list of agents anyone on the server can see and join."),
+		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "send", "read", "state", "ack", "update_purpose", "ping_person", "get_file"}},
 		"purpose":                externalString("What this attached agent works on; 1 to 512 characters."),
 		"attachment_id":          externalString("Exact attachment generation in the channel event; required for receipt acknowledgements."),
 		"message_id":             externalString("Incoming message ID being explicitly acknowledged; for ping_person, a message this agent sent that is still waiting for a reply (one ping per message: the target's person gets a desktop notification)."),
@@ -416,7 +409,7 @@ func externalAgentMessageDefinition(add func(string, string, bool, bool, map[str
 		"allowed_connection_ids": map[string]any{"type": "array", "maxItems": 32, "uniqueItems": true, "items": externalString("Active connection ID belonging to this account; register only. Defaults to the registering connection. A reconnect with a new connection ID must be explicitly allowed.")},
 		"crew_id":                externalString("Crew ID for an initial send or owner-only state inspection."),
 		"workflow_id":            externalString("Workflow ID for an initial send or owner-only state inspection."),
-		"target":                 externalString("Accessible Crew or workflow name/ID, agent:<name> from this account's directory, agent:<owner>/<name> for an agent in a group you share, or group:<name> to send to every other agent in a group your agent belongs to, for an initial send."),
+		"target":                 externalString("Accessible Crew or workflow name/ID, agent:<name> from this account's directory, or agent:<owner>/<name> for an agent its owner published to the network, for an initial send."),
 		"message":                externalString("Message to send; required for action send."),
 		"file_name":              externalString("Send a file with the message (action send, also a reply): its name. Needs file_base64. Up to 5 MB; the receiver saves it with action=get_file."),
 		"file_base64":            externalString("The file's bytes, base64 encoded; send with file_name."),

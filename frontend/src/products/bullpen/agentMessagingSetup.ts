@@ -22,7 +22,7 @@ export const messagingGuides: MessagingGuide[] = [
     attach: '/agentworks attach codex-review', ownRequest: 'Attach this chat to AgentWorks as codex-review.',
     delivery: 'CLI hooks offer messages at turn boundaries. Native idle delivery requires a verified exact-session daemon queue route. A notification or a queue write alone is not a processed receipt.',
     menus: [
-      { entry: '/agentworks attach, detach, agents, share GROUP, unshare, groups, group NAME', who: 'You', description: 'Type the command in this chat; selecting a skill alone does not attach it.' },
+      { entry: '/agentworks attach, detach, agents, share, unshare', who: 'You', description: 'Type the command in this chat; selecting a skill alone does not attach it.' },
       { entry: '/ menu → Agentworks Codex: Agentworks', who: 'You', description: 'Person-command skill shown in the slash picker. Selecting it explains commands; type /agentworks attach to connect.' },
       { entry: '/ menu → Agentworks Codex: Agent Messages', who: 'The agent', description: 'Messaging skill shown in the slash picker; you do not run it to attach. The hooks accept /agentworks, not an invented namespaced attach spelling.' },
     ],
@@ -54,7 +54,7 @@ export const messagingGuides: MessagingGuide[] = [
       menus: [
         { entry: 'Settings → Plugins / Marketplace', who: 'You', description: 'Install, enable and update AgentWorks in the app; no standalone Codex terminal command is required.' },
         { entry: 'Settings → Hooks', who: 'You', description: 'Review AgentWorks definitions and their trust state. Reload hooks after a change if prompted.' },
-        { entry: '/agentworks attach, detach, agents, share GROUP, unshare, groups, group NAME', who: 'You', description: 'Type in the exact chat after installing and reviewing the integration.' },
+        { entry: '/agentworks attach, detach, agents, share, unshare', who: 'You', description: 'Type in the exact chat after installing and reviewing the integration.' },
         { entry: 'Agent Messages', who: 'The agent', description: 'Restricted messaging tools and guidance; selecting a skill alone does not attach this chat.' },
       ],
       troubleshooting: [
@@ -76,7 +76,7 @@ export const messagingGuides: MessagingGuide[] = [
     attach: '/agentworks attach claude-review', ownRequest: 'Attach this chat to AgentWorks as claude-review.',
     delivery: 'Native session messaging wakes an idle chat and offers messages to a running session. Hooks deliver at turn boundaries when that route is unavailable. Claude may add its own permission notice to each message.',
     menus: [
-      { entry: '/agentworks:agentworks attach, detach, agents, share GROUP, unshare, groups, group NAME', who: 'You', description: 'Namespaced person command. The short /agentworks spelling is also accepted by the hooks.' },
+      { entry: '/agentworks:agentworks attach, detach, agents, share, unshare', who: 'You', description: 'Namespaced person command. The short /agentworks spelling is also accepted by the hooks.' },
       { entry: 'Agent Messages', who: 'The agent', description: 'Messaging skill and restricted tools; you do not run it to attach.' },
     ],
     troubleshooting: [
@@ -103,7 +103,7 @@ export const messagingGuides: MessagingGuide[] = [
     attach: '/agentworks-muse:agentworks attach muse-review', ownRequest: 'Attach this chat to AgentWorks as muse-review.',
     delivery: 'The native Monitor wakes this attached chat without polling. Wait until Muse reports that its Monitor is listening, then leave the chat idle. Hooks deliver at turn boundaries if the Monitor is unavailable. A wake hint is not a receipt.',
     menus: [
-      { entry: '/agentworks-muse:agentworks', who: 'You', description: 'Person command: attach [NAME], detach, agents, share GROUP, unshare, groups, group NAME. This is the entry to use.' },
+      { entry: '/agentworks-muse:agentworks', who: 'You', description: 'Person command: attach [NAME], detach, agents, share, unshare. This is the entry to use.' },
       { entry: '/agentworks-muse:messaging', who: 'The agent', description: 'Skill for finding peers, reading, sending, replying and acknowledging messages.' },
       { entry: '/agentworks-muse:monitor', who: 'The agent', description: 'Skill for starting idle wake. You do not run it manually.' },
       { entry: '/agentworks (if a user skill is installed)', who: 'Other tools', description: 'The general AgentWorks tools guide can have this name. It is not the namespaced attach command.' },
@@ -124,7 +124,7 @@ export const messagingGuides: MessagingGuide[] = [
     attach: '/agentworks attach pi-review', ownRequest: 'Attach this chat to AgentWorks as pi-review.',
     delivery: 'The native extension offers messages to this session; busy tools finish before queued follow-ups. The agent explicitly acknowledges admitted and processed. Native display alone is not admission.',
     menus: [
-      { entry: '/agentworks attach, detach, agents, share GROUP, unshare, groups, group NAME, help', who: 'You', description: 'Literal interactive input handled by the extension. These deliberately have no registered autocomplete/slash-menu entry.' },
+      { entry: '/agentworks attach, detach, agents, share, unshare, help', who: 'You', description: 'Literal interactive input handled by the extension. These deliberately have no registered autocomplete/slash-menu entry.' },
       { entry: '/reload', who: 'You', description: 'Pi’s built-in command reloads extensions.' },
       { entry: 'Six agent_message_* tools', who: 'The agent', description: 'Peers, send, read, reply, ack and purpose. There is no attach/detach model tool.' },
     ],
@@ -149,7 +149,7 @@ export const messagingGuides: MessagingGuide[] = [
     attach: '/agentworks attach cursor-review', ownRequest: 'Attach this Cursor CLI chat to AgentWorks as cursor-review.',
     delivery: 'The chat gets its messages when it is used: at your next prompt or when its current turn ends. An idle chat is not woken; messages wait safely. A message that is only stored has not been seen by the chat yet.',
     menus: [
-      { entry: '/agentworks attach, detach, agents, share GROUP, unshare, groups, group NAME', who: 'You', description: 'Type in this Cursor CLI conversation after reviewing the project hooks.' },
+      { entry: '/agentworks attach, detach, agents, share, unshare', who: 'You', description: 'Type in this Cursor CLI conversation after reviewing the project hooks.' },
       { entry: 'AgentWorks messaging MCP tools', who: 'The agent', description: 'Restricted to this verified CLI session; a separate HTTP MCP connection supplies workflow and Crew tools.' },
     ],
     troubleshooting: [
@@ -168,7 +168,7 @@ export const messagingGuides: MessagingGuide[] = [
       attach: '/agentworks attach cursor-review', ownRequest: '',
       delivery: 'Messages from other agents arrive when the chat finishes a turn, and can start a turn you did not type. An idle chat gets them after its next turn. A message that is only stored has not been seen by the chat yet.',
       menus: [
-        { entry: '/agentworks attach, detach, agents, share GROUP, unshare, groups, group NAME', who: 'You', description: 'Type as its own message in the Cursor chat.' },
+        { entry: '/agentworks attach, detach, agents, share, unshare', who: 'You', description: 'Type as its own message in the Cursor chat.' },
         { entry: 'AgentWorks message tools', who: 'The agent', description: 'Each call is checked against the exact chat that made it, so chats in the same Cursor window cannot act for each other.' },
       ],
       troubleshooting: [

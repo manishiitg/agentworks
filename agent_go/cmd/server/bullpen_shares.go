@@ -159,9 +159,6 @@ func (s agentMessageStore) conversationShareErr(c agentConversation, now time.Ti
 	if a.ShareID == "" && b.ShareID == "" {
 		return nil
 	}
-	if isGroupShareID(a.ShareID) || isGroupShareID(b.ShareID) {
-		return s.groupConversationErr(c)
-	}
 	denied := fmt.Errorf("shared agent unavailable or access denied")
 	if a.ShareID != b.ShareID || a.ShareVersion != b.ShareVersion || !a.External || !b.External || a.NamedAgentID == "" || b.NamedAgentID == "" {
 		return denied
@@ -205,9 +202,6 @@ func (s agentMessageStore) shareQuotaErr(c agentConversation, side int, now time
 	src := c.Endpoints[side]
 	if src.ShareID == "" {
 		return nil
-	}
-	if isGroupShareID(src.ShareID) {
-		return s.groupQuotaErr(c, side, now)
 	}
 	sh, err := s.authorizeShare(src.ShareID, src.ShareVersion, now)
 	if err != nil || src.UserID == sh.OwnerUserID {
@@ -298,18 +292,6 @@ func (api *StreamingAPI) externalAuthorizeSharedPeer(ctx context.Context, claims
 	if err != nil {
 		return denied
 	}
-	if isGroupShareID(peer.ShareID) {
-		g := s.groupByID(groupIDFromShare(peer.ShareID))
-		if g == nil || peer.UserID == claims.UserID || !g.hasMember(peer.NamedAgentID, peer.UserID) || !s.registeredAgent(peer.NamedAgentID, peer.UserID) || !shareAccountActive(peer.UserID) || !shareAccountActive(claims.UserID) {
-			return denied
-		}
-		for _, m := range g.Members {
-			if m.UserID == claims.UserID && s.registeredAgent(m.AgentID, m.UserID) {
-				return nil // the exact pair is checked again wherever a conversation is used
-			}
-		}
-		return denied
-	}
 	sh, err := s.authorizeShare(peer.ShareID, peer.ShareVersion, time.Now().UTC())
 	if err != nil || peer.UserID == claims.UserID {
 		return denied
@@ -361,18 +343,6 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, re
 		}
 		if best != nil {
 			return triggerTarget{NamedAgentID: a.ID, Kind: triggerCallerUser, Label: a.Name, ShareOwnerUserID: owner.ID, ShareID: best.ID, ShareVersion: best.RevocationVersion}, nil
-		}
-		// Two agents in the same group may message each other directly.
-		if senderAgentID != "" {
-			if g := s.commonGroup(senderAgentID, subjectID, a.ID, owner.ID); g != nil && shareAccountActive(owner.ID) {
-				return triggerTarget{NamedAgentID: a.ID, Kind: triggerCallerUser, Label: a.Name, ShareOwnerUserID: owner.ID, ShareID: groupShareID(g.ID), ShareVersion: 1}, nil
-			}
-		}
-		// Groups are open and their members are listed to everyone, so naming the
-		// groups this agent is in reveals nothing new and tells the sender how to
-		// reach it. An agent in no group stays a neutral denial.
-		if groups := s.groupNamesOf(a.ID, owner.ID); len(groups) > 0 && shareAccountActive(owner.ID) {
-			return triggerTarget{}, fmt.Errorf("You can message agent:%s/%s after one of your agents joins a group it is in: %s. Type /agentworks share %s in your chat.", ownerName, a.Name, strings.Join(groups, ", "), groups[0])
 		}
 	}
 	return triggerTarget{}, denied

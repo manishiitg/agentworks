@@ -62,9 +62,9 @@ ordinary prompts pass through unchanged. After the verified session is observed,
 you may also ask the agent to attach its own detected CLI chat. Never substitute
 a UUID or process override when verification fails.
 
-`/agentworks detach`, `share GROUP`, `unshare`, `groups`, and `group NAME` use
-the same bridge controls and account/group rules as the other clients. A group
-share does not authorize another person's private inbox or usage data.
+`/agentworks detach`, `share` (publish to the network) and `unshare` use
+the same bridge controls and account rules as the other clients. Publishing
+does not authorize another person's private inbox or usage data.
 
 The `agentworks-messages` MCP exposes only session-bound messaging tools. It is
 not the full-account HTTP MCP connection for workflows or Crews. The agent
@@ -108,7 +108,7 @@ The adapter checks are `python3 plugins/cursor/scripts/check_adapter.py` and
 the shared native process/session/lease regressions. Go/frontend checks run on
 GitHub. These do not replace the owner's real native acceptance.
 See the [owner live test plan](../../docs/cursor-mac-live-test.md) in the main
-repository for two-chat identity, receipts, drafts, groups, reconnect and revoke.
+repository for two-chat identity, receipts, drafts, publishing, reconnect and revoke.
 In the small repository, use the canonical
 [live test plan](https://github.com/manishiitg/agentworks/blob/main/docs/cursor-mac-live-test.md).
 

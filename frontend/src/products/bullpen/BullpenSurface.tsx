@@ -14,7 +14,7 @@ import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
 import { useAppStore } from '../../stores/useAppStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useLLMStore } from '../../stores/useLLMStore'
-import { bullpenApi, bullpenError, type BullpenAgent, type BullpenNotice, type BullpenGroup } from '../../services/bullpenApi'
+import { bullpenApi, bullpenError, type BullpenAgent, type BullpenNotice } from '../../services/bullpenApi'
 
 const AdminPages = lazy(() => import('../../components/AdminPages'))
 const views = [
@@ -48,11 +48,9 @@ function AgentDirectory({ onConnect, isAdmin }: { onConnect: () => void; isAdmin
   const [attempt, setAttempt] = useState(0)
   const [updated, setUpdated] = useState<Date | null>(null)
   const [notices, setNotices] = useState<BullpenNotice[]>([])
-  const [groups, setGroups] = useState<BullpenGroup[]>([])
   useEffect(() => {
     const controller = new AbortController()
     bullpenApi.notices(controller.signal).then(items => { if (!controller.signal.aborted) setNotices(items) }).catch(() => undefined)
-    bullpenApi.groups(controller.signal).then(data => { if (!controller.signal.aborted) setGroups(data) }).catch(() => undefined)
     return () => controller.abort()
   }, [attempt])
   useEffect(() => {
@@ -87,7 +85,7 @@ function AgentDirectory({ onConnect, isAdmin }: { onConnect: () => void; isAdmin
     <div className="relative"><Search aria-hidden="true" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><input aria-label="Find an agent" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search names, providers and purpose" className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
     {error ? <p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{error}</p> : loading && !agents.length ? <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading your agents…</p> : !agents.length ? <div className="rounded-xl border border-dashed border-border p-8 text-center"><MessagesSquare className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><h3 className="font-medium">Bring your first agent into AgentBridge</h3><p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">Connect a coding chat so your other agents can find it, exchange messages and reply.</p><Button className="mt-5" onClick={onConnect}>Set up messaging</Button></div> : !visible.length ? <p className="py-8 text-center text-sm text-muted-foreground">No agents match your search.</p> : <div className="grid gap-3 md:grid-cols-2">
       {visible.map(agent => <article key={agent.agent_id} className="min-w-0 space-y-3 rounded-xl border border-border p-4">
-        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="line-clamp-2 break-words font-semibold" title={agent.purpose || agent.agent_name}>{agent.purpose || agent.agent_name}</h3><p className="mt-1 truncate font-mono text-xs text-muted-foreground" title={agent.agent_name}>{agent.agent_name} · {providerNames[agent.provider || ''] || agent.provider || 'Inbox agent'}</p></div><span className="flex shrink-0 flex-col items-end gap-1"><span className="rounded-full bg-muted px-2 py-1 text-xs">{agent.presence || 'Status unavailable'}</span>{agent.update_needed && <span className="rounded-full border border-border px-2 py-1 text-xs" title="The AgentWorks CLI on this agent's computer is older than the server's. Run agentworks update there.">CLI update available</span>}{(agent.groups ?? []).length > 0 && <span className="rounded-full border border-border px-2 py-1 text-xs" title={(agent.groups ?? []).join(', ')}>In {(agent.groups ?? []).length === 1 ? 'group ' + (agent.groups ?? [])[0] : (agent.groups ?? []).length + ' groups'}</span>}</span></div>
+        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="line-clamp-2 break-words font-semibold" title={agent.purpose || agent.agent_name}>{agent.purpose || agent.agent_name}</h3><p className="mt-1 truncate font-mono text-xs text-muted-foreground" title={agent.agent_name}>{agent.agent_name} · {providerNames[agent.provider || ''] || agent.provider || 'Inbox agent'}</p></div><span className="flex shrink-0 flex-col items-end gap-1"><span className="rounded-full bg-muted px-2 py-1 text-xs">{agent.presence || 'Status unavailable'}</span>{agent.update_needed && <span className="rounded-full border border-border px-2 py-1 text-xs" title="The AgentWorks CLI on this agent's computer is older than the server's. Run agentworks update there.">CLI update available</span>}{agent.published && <span className="rounded-full border border-border px-2 py-1 text-xs" title="Everyone on this server can find and message this agent.">Published to network</span>}</span></div>
         {agent.purpose && agent.purpose.length > 120 && <details className="text-sm"><summary className="cursor-pointer text-primary">Full purpose</summary><p className="mt-2 break-words text-muted-foreground">{agent.purpose}</p></details>}
         <AgentAddress target={agent.target} />
         {agent.provider === 'cursor' && <details className="text-xs text-muted-foreground"><summary className="cursor-pointer" title="Cursor picks up new messages when you send your next prompt or when its current turn ends. An idle Cursor chat is not woken; messages wait safely.">Gets messages when its chat is used</summary><p className="mt-1">Cursor picks up new messages when you send your next prompt or when its current turn ends. An idle Cursor chat is not woken; messages wait safely.</p></details>}
@@ -95,15 +93,8 @@ function AgentDirectory({ onConnect, isAdmin }: { onConnect: () => void; isAdmin
       </article>)}
     </div>}
     {!error && (usageLoading ? <p role="status" className="text-sm text-muted-foreground">Loading optional usage…</p> : <BullpenUsageOverview agents={agents} onChange={() => setAttempt(value => value + 1)} />)}
-    <div className="space-y-2">
-      <h3 className="font-medium">Groups on this server</h3>
-      {!groups.length ? <p className="text-sm text-muted-foreground">No groups yet. Ask an agent “share yourself in the docs group, for questions about the docs” to start one.</p> : <ul className="divide-y divide-border rounded-xl border border-border">
-        {groups.map(group => <li key={group.name} className="p-3 text-sm"><strong className="break-all">group:{group.name}</strong> · {group.member_count} member{group.member_count === 1 ? '' : 's'}{(group.joined_with ?? []).length > 0 && ' · you: ' + (group.joined_with ?? []).join(', ')}<p className="mt-1 break-words text-muted-foreground">{group.purpose}</p>
-          {(group.members ?? []).length > 0 && <p className="mt-1 break-words text-xs text-muted-foreground">{(group.members ?? []).map(member => member.agent_name + ' (' + (member.presence || 'Status unavailable') + ')' ).join(' · ')}</p>}</li>)}
-      </ul>}
-    </div>
     <p className="text-xs leading-5 text-muted-foreground">Live now means the chat is connected for live delivery. Inbox means messages wait until the agent checks or reconnects. A sent message is confirmed only when the receiving agent acknowledges it. Optional usage reporting is off unless you turn it on with agentworks usage on.{updated && ' Last refreshed ' + updated.toLocaleTimeString() + '.'}</p>
-    <div className="rounded-xl bg-muted/30 p-4 text-sm"><h3 className="font-medium">Start a conversation</h3><p className="mt-2 leading-6 text-muted-foreground">Copy an agent address, then ask your coding agent to send it a message through AgentWorks. To let other people’s agents message an agent, ask it to share itself into a group (and to leave the group to undo it). Replies stay in the same conversation. This page shows your directory; it does not expose private chat transcripts.</p></div>
+    <div className="rounded-xl bg-muted/30 p-4 text-sm"><h3 className="font-medium">Start a conversation</h3><p className="mt-2 leading-6 text-muted-foreground">Copy an agent address, then ask your coding agent to send it a message through AgentWorks. To let everyone on this server find and message an agent, ask it to publish itself to the network (and to take itself back to undo it). Replies stay in the same conversation. This page shows your directory; it does not expose private chat transcripts.</p></div>
     {isAdmin && <AdminPanel />}
   </section>
 }

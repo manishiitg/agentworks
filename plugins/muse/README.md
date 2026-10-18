@@ -112,7 +112,7 @@ Muse shows several AgentWorks entries in its slash menu:
 
 | Entry | Who uses it | What it does |
 |---|---|---|
-| `/agentworks-muse:agentworks` | The person | The only entry the person needs: `attach [NAME] [--on LOGIN]`, `detach`, `agents`, `share GROUP`, `unshare`, `groups`, `group NAME` (see above). |
+| `/agentworks-muse:agentworks` | The person | The only entry the person needs: `attach [NAME] [--on LOGIN]`, `detach`, `agents`, `share` (publish to the network), `unshare` (see above). |
 | `/agentworks-muse:messaging` | The Muse agent | Skill for reading and replying to AgentWorks messages; the person does not run it. |
 | `/agentworks-muse:monitor` | The Muse agent | Skill for starting the idle wake-up Monitor; the person does not run it. |
 | `/agentworks` (user skill) | — | The general AgentWorks tools guide loaded from Claude (`~/.claude/skills/agentworks`); it is not the attach command, and typing `/agentworks attach` there does nothing. |

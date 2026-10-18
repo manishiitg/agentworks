@@ -99,15 +99,15 @@ func attachWords(rest []string) (name, on, also string, ok bool) {
 	return name, on, also, true
 }
 
-// personGroupCommand runs a typed share/unshare/groups/group. GROUP@LOGIN (or
-// group NAME@LOGIN) acts on a network the chat joined with --also.
-func personGroupCommand(ctx context.Context, root string, o *options, req agentworksclient.LocalBridgeRequest, words []string) string {
-	if usage := parseGroupWords(req.Action, words[2:], &req); usage != "" {
+// personShareCommand runs a typed share or unshare. @LOGIN acts on a network the
+// chat joined with --also.
+func personShareCommand(ctx context.Context, root string, o *options, req agentworksclient.LocalBridgeRequest, words []string) string {
+	if usage := parseShareWords(req.Action, words[2:], &req); usage != "" {
 		return usage
 	}
-	if at := strings.LastIndex(req.Group, "@"); at > 0 {
-		if _, err := o.loginPath(req.Group[at+1:]); err == nil {
-			req.Group, req.Network = req.Group[:at], req.Group[at+1:]
+	if req.Network != "" {
+		if _, err := o.loginPath(req.Network); err != nil {
+			return "No saved login named " + req.Network + "."
 		}
 	}
 	req.Action += "_person"
@@ -118,5 +118,5 @@ func personGroupCommand(ctx context.Context, root string, o *options, req agentw
 	if !done.Attached && len(done.Result) == 0 {
 		return "This chat is not connected to AgentWorks, so nothing was shared. Type /agentworks attach in this chat first, then try again."
 	}
-	return groupResultText(done.Result)
+	return shareResultText(done.Result)
 }

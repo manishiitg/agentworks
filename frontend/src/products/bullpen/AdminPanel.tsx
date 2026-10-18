@@ -33,7 +33,7 @@ export function AdminPanel() {
 
   return <section aria-label="Everyone on this server" className="space-y-6 border-t border-border pt-8">
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><h2 className="text-lg font-semibold">Everyone on this server</h2><p className="mt-1 text-sm text-muted-foreground">For administrators: every person and their agents, never messages. To disconnect a chat, remove a stale name or take an agent out of its groups, use the bullpen_admin tool; each change needs a reason and is recorded.</p></div>
+      <div><h2 className="text-lg font-semibold">Everyone on this server</h2><p className="mt-1 text-sm text-muted-foreground">For administrators: every person and their agents, never messages. To disconnect a chat, remove a stale name or take an agent back from the network, use the bullpen_admin tool; each change needs a reason and is recorded.</p></div>
       <Button variant="outline" size="sm" onClick={() => setAttempt(value => value + 1)}><RefreshCw className="mr-2 h-3.5 w-3.5" />Refresh</Button>
     </div>
     {error && <p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{error}</p>}
@@ -44,7 +44,7 @@ export function AdminPanel() {
         <p className="font-semibold">{person.username} <span className="text-xs font-normal text-muted-foreground">{({ admin: 'Admin', creator: 'Creator', editor: 'Editor', viewer: 'Member' } as Record<string, string>)[person.role] || person.role}{person.disabled && ' · disabled'} · {(person.agents ?? []).length} agent{(person.agents ?? []).length === 1 ? '' : 's'}</span></p>
         {(person.agents ?? []).length > 0 && <ul className="mt-3 divide-y divide-border">
           {(person.agents ?? []).map(agent => <li key={agent.agent_id} className="py-2 text-sm">
-            <span className="break-all"><strong>{agent.agent_name}</strong>{(agent.groups ?? []).length > 0 && <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs">In {(agent.groups ?? []).join(', ')}</span>} · {agent.presence || 'Status unavailable'}{agent.provider && ' · ' + agent.provider}</span>
+            <span className="break-all"><strong>{agent.agent_name}</strong>{agent.published && <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs">Published to network</span>} · {agent.presence || 'Status unavailable'}{agent.provider && ' · ' + agent.provider}</span>
             <span className="block text-xs text-muted-foreground">{agent.purpose || 'No purpose set.'} Created {when(agent.created_at)}</span>
           </li>)}
         </ul>}
@@ -56,7 +56,7 @@ export function AdminPanel() {
     <div className="space-y-2">
       <h3 className="font-medium">Recent administrator changes</h3>
       {!audit.length ? <p className="text-sm text-muted-foreground">No changes recorded.</p> : <ul className="divide-y divide-border rounded-xl border border-border">
-        {audit.map((row, index) => <li key={row.at + index} className="p-3 text-sm"><strong>{row.admin}</strong> {row.event === 'agent_removed' ? 'removed a name of' : row.event === 'agent_unshared' ? 'took an agent out of its groups for' : 'disconnected an agent of'} <strong>{row.person}</strong> ({row.result}) · {when(row.at)}<span className="block break-words text-xs text-muted-foreground">Reason: {row.reason}</span></li>)}
+        {audit.map((row, index) => <li key={row.at + index} className="p-3 text-sm"><strong>{row.admin}</strong> {row.event === 'agent_removed' ? 'removed a name of' : row.event === 'agent_unshared' ? 'took an agent back from the network for' : 'disconnected an agent of'} <strong>{row.person}</strong> ({row.result}) · {when(row.at)}<span className="block break-words text-xs text-muted-foreground">Reason: {row.reason}</span></li>)}
       </ul>}
     </div>
   </section>

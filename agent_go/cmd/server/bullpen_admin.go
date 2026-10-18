@@ -201,7 +201,7 @@ func (api *StreamingAPI) bullpenAdminAct(ctx context.Context, adminID, action st
 			if a.ID != agentID {
 				continue
 			}
-			if s.revokeServerShares(a.ID, adminID, now)+s.removeFromAllGroups(a.ID, a.UserID, adminID) == 0 {
+			if s.revokeServerShares(a.ID, adminID, now) == 0 {
 				return save(map[string]interface{}{"state": "not_shared", "agent_name": a.Name, "owner": label(a.UserID)})
 			}
 			s.AdminAudit = append(s.AdminAudit, bullpenAdminAudit{At: now, Admin: adminID, Event: "agent_unshared", TargetUser: a.UserID, TargetAgent: a.ID, Reason: reason, Result: "done"})
@@ -223,7 +223,6 @@ func (api *StreamingAPI) bullpenAdminAct(ctx context.Context, adminID, action st
 			return bullpenAdminResult(http.StatusConflict, "agent_live", "That agent has a live listener. Close its attachment first; only a stale name can be removed.")
 		}
 		s.Agents = append(s.Agents[:i], s.Agents[i+1:]...)
-		s.removeFromAllGroups(a.ID, a.UserID, adminID)
 		for j := range s.Shares {
 			if sh := &s.Shares[j]; sh.AgentID == a.ID && sh.RevokedAt.IsZero() {
 				sh.RevokedAt = now
@@ -286,7 +285,7 @@ func (api *StreamingAPI) bullpenAdminRead(ctx context.Context, action string, ar
 			if query != "" && strings.Contains(strings.ToLower(a.Name), query) {
 				match = true
 			}
-			item := map[string]interface{}{"agent_id": a.ID, "agent_name": a.Name, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "created_at": a.CreatedAt, "attached": a.Attachment != nil, "groups": s.groupNamesOf(a.ID, a.UserID)}
+			item := map[string]interface{}{"agent_id": a.ID, "agent_name": a.Name, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "created_at": a.CreatedAt, "attached": a.Attachment != nil, "published": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0}
 			addAgentPresence(item, a)
 			if a.Attachment != nil {
 				item["provider"] = a.Attachment.Provider
@@ -304,7 +303,7 @@ func (api *StreamingAPI) bullpenAdminRead(ctx context.Context, action string, ar
 		people = append(people, map[string]interface{}{"username": u.Username, "role": roleForRecord(&u), "disabled": u.Disabled, "agents": agents})
 	}
 	sort.Slice(people, func(i, j int) bool { return people[i]["username"].(string) < people[j]["username"].(string) })
-	out := map[string]interface{}{"total": len(people), "groups": s.groupsView("", true)}
+	out := map[string]interface{}{"total": len(people)}
 	if offset > len(people) {
 		offset = len(people)
 	}
@@ -370,7 +369,7 @@ func (api *StreamingAPI) handleBullpenAdmin(w http.ResponseWriter, r *http.Reque
 }
 
 func externalBullpenAdminDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add(bullpenAdminTool, "AgentBridge administration: action=list pages through every person and their registered agents (name, purpose, provider, connected or not, created time, the groups it belongs to, an opaque attachment_handle; never messages, session ids, host keys or config; pass q to filter and cursor for the next page); action=audit shows recent administrator changes; action=close_attachment (handle, reason) disconnects one agent's attached chat and tells its owner, who alone may attach again; action=remove_agent (agent_id, reason) removes a stale agent name and is refused while it has a live listener; action=unshare_agent (agent_id, reason) takes an agent out of every group it joined, making it private again (list shows its groups). Changes need a reason of 3 to 200 characters, are recorded with your name, and are limited per administrator. Requires users:manage and an administrator account.", true, false, map[string]any{
+	add(bullpenAdminTool, "AgentBridge administration: action=list pages through every person and their registered agents (name, purpose, provider, connected or not, created time, whether it is published to the network, an opaque attachment_handle; never messages, session ids, host keys or config; pass q to filter and cursor for the next page); action=audit shows recent administrator changes; action=close_attachment (handle, reason) disconnects one agent's attached chat and tells its owner, who alone may attach again; action=remove_agent (agent_id, reason) removes a stale agent name and is refused while it has a live listener; action=unshare_agent (agent_id, reason) takes an agent out of every group it joined, making it private again (list shows its groups). Changes need a reason of 3 to 200 characters, are recorded with your name, and are limited per administrator. Requires users:manage and an administrator account.", true, false, map[string]any{
 		"action":   map[string]any{"type": "string", "enum": []any{"list", "audit", "close_attachment", "remove_agent", "unshare_agent"}},
 		"q":        map[string]any{"type": "string", "maxLength": 64},
 		"cursor":   map[string]any{"type": "string", "maxLength": 12},

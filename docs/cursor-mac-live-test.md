@@ -52,13 +52,12 @@ write alone is not a pass. Repeat in the other direction.
 - Repeat a submission ID once. The recipient must not handle the same message
   twice. After an uncertain write, use explicit recovery rather than replay.
 
-## Groups and reconnect
+## Publishing and reconnect
 
-Type `/agentworks share cursor-test-room` in the first chat. Use
-`/agentworks groups` and `/agentworks group cursor-test-room` to inspect the group.
-Send a unique group message, require receipts/reply, then unshare and confirm the
-removed recipient receives no further group body. Sharing does not grant access
-to another person's private inbox or usage.
+Type `/agentworks share` in the first chat to publish its agent to the network.
+Send a unique message to it from the second chat's agent, require receipts/reply,
+then `/agentworks unshare` and confirm the second agent can no longer message it.
+Publishing does not grant access to another person's private inbox or usage.
 
 Run the reviewed CLI stop/start/update path while the provider process remains
 live. Existing lease/name/account and pending-message history must survive; a
@@ -79,6 +78,6 @@ input route before repeating the tests above. A completed-turn hook or SDK-creat
 agent is not an idle message to an existing IDE chat.
 
 Report CLI/build/plugin versions, route, test markers, stored/admitted/processed
-results, draft outcome, group/reconnect/revoke results, and any plain error.
+results, draft outcome, publish/reconnect/revoke results, and any plain error.
 Exclude credentials, raw chat history and unrelated conversations. Native owner
 acceptance remains pending until these results exist.

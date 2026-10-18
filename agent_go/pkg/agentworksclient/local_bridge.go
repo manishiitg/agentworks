@@ -48,7 +48,6 @@ type LocalBridgeRequest struct {
 	ConfigPath       string `json:"config_path,omitempty"`
 	AgentName        string `json:"agent_name,omitempty"`
 	Purpose          string `json:"purpose,omitempty"`
-	Group            string `json:"group,omitempty"`
 	MessageID        string `json:"message_id,omitempty"`
 	Delivery         string `json:"delivery,omitempty"`
 	Transport        string `json:"transport,omitempty"`
@@ -1207,7 +1206,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		return LocalBridgeReply{}
 	}
 	switch in.Action {
-	case "share_person", "unshare_person", "share_own", "unshare_own", "groups_person", "group_person", "groups_own", "group_own":
+	case "share_person", "unshare_person", "share_own", "unshare_own":
 		// Sharing the chat's agent with everyone on its server. The person types it
 		// in the chat (_person), or the agent does it for its own exact session when
 		// the person asked in plain language (_own).
@@ -1218,7 +1217,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		on := s
 		if in.Network != "" && !s.Also {
-			// GROUP@LOGIN: the group lives on a network this chat joined with --also.
+			// @LOGIN: the network this chat joined with --also.
 			on = b.networkFor(key, s, in)
 			if on == nil || on.Offline {
 				return LocalBridgeReply{Error: "This chat is not connected to network " + in.Network + ". Type /agentworks attach --also " + in.Network + " first."}
@@ -1231,12 +1230,12 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
 		}
-		raw, err := parent.ShareAgent(callCtx, strings.SplitN(in.Action, "_", 2)[0], on.Attachment.AgentName, in.Group, in.Purpose)
+		raw, err := parent.ShareAgent(callCtx, strings.SplitN(in.Action, "_", 2)[0], on.Attachment.AgentName)
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
 		}
 		if on != s {
-			log.Printf("[BRIDGE] network=%s %s agent=%s group=%s", on.Network, in.Action, on.Attachment.AgentName, in.Group)
+			log.Printf("[BRIDGE] network=%s %s agent=%s", on.Network, in.Action, on.Attachment.AgentName)
 		}
 		return LocalBridgeReply{Attached: !s.Offline, Attachment: on.Attachment, Result: raw}
 	}

@@ -208,11 +208,11 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 				return cursorBlock(o, "Use /agentworks auto on or /agentworks auto off.")
 			}
 			return cursorBlock(o, setAutoAttach(root, "cursor", cursorFolder(input), on))
-		} else if req.Action == "share" || req.Action == "unshare" || req.Action == "groups" || req.Action == "group" {
+		} else if req.Action == "share" || req.Action == "unshare" {
 			if msg := reconnectOffline(ctx, root, req); msg != "" {
 				return cursorBlock(o, msg)
 			}
-			return cursorBlock(o, personGroupCommand(ctx, root, o, req, words))
+			return cursorBlock(o, personShareCommand(ctx, root, o, req, words))
 		} else {
 			if req.Action == "agents" {
 				if msg := reconnectOffline(ctx, root, req); msg != "" {

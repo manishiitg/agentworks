@@ -122,14 +122,14 @@ func pluginCommand(o *options) *cobra.Command {
 				return pluginBlock(o, personCommandHelp)
 			}
 			req.Action = words[1]
-			if req.Provider == "pi" && (req.Action == "detach" || req.Action == "agents" || req.Action == "share" || req.Action == "unshare" || req.Action == "groups" || req.Action == "group") {
+			if req.Provider == "pi" && (req.Action == "detach" || req.Action == "agents" || req.Action == "share" || req.Action == "unshare") {
 				status, e := bridgeCall(ctx, root, o, agentworksclient.LocalBridgeRequest{Action: "status", Provider: "pi", SessionID: req.SessionID, HostKey: req.HostKey})
 				if e != nil || !status.Attached {
 					return pluginBlock(o, "This Pi chat is not connected. Type /agentworks attach in it.")
 				}
 				req.AttachmentID = status.Attachment.ID
 			}
-			if req.Provider != "pi" && (req.Action == "share" || req.Action == "unshare" || req.Action == "agents" || req.Action == "groups" || req.Action == "group") {
+			if req.Provider != "pi" && (req.Action == "share" || req.Action == "unshare" || req.Action == "agents") {
 				// A chat that went offline (CLI update, bridge restart, closed and resumed)
 				// is reconnected as part of the command: same name, same login.
 				if msg := reconnectOffline(ctx, root, req); msg != "" {
@@ -166,8 +166,8 @@ func pluginCommand(o *options) *cobra.Command {
 				if err = prepareAttachment(ctx, root, o, &req, input.Cwd); err != nil {
 					return pluginBlock(o, err.Error())
 				}
-			case "share", "unshare", "groups", "group":
-				return pluginBlock(o, personGroupCommand(ctx, root, o, req, words))
+			case "share", "unshare":
+				return pluginBlock(o, personShareCommand(ctx, root, o, req, words))
 			case "detach", "agents":
 				if len(words) == 4 && words[1] == "detach" && words[2] == "--from" {
 					req.Network = words[3]

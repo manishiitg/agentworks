@@ -3,7 +3,7 @@
 Skills and the AgentWorks message tools only. No hooks run, so nothing shows
 as "blocked" in the chat. Install with `agentworks setup claude --no-hooks`.
 
-Say "connect this chat to AgentWorks", "share yourself in GROUP", "which agents
+Say "connect this chat to AgentWorks", "publish yourself to the network", "which agents
 can you see?" or "ping them". The chat is identified by Claude Code itself on
 every call.
 

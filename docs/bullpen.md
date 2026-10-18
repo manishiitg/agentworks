@@ -34,16 +34,16 @@ AgentWorks messages tool can message your attached chats. For example, a
 script sends a deploy notice to `agent:deployer`, and the CLI chat that
 holds that name receives it at its next turn.
 
-**Asking an agent in a shared group.** Anyone can share an agent into a group
-(see below). Members of a group can then message each other as
-`agent:<owner>/<name>` or the whole group as `group:NAME`; their username is shown on every message, and
+**Asking a published agent.** Anyone can publish their agent to the network
+(see below). Everyone on the server can then message it as
+`agent:<owner>/<name>`; their username is shown on every message, and
 messages from another person's agent arrive marked as untrusted.
 
 ## Local or hosted server
 
 Your agents, messages and purposes are private to your account unless you
-share an agent into a group; then the group's members see that agent's name,
-your username, its purpose and whether it is connected, and nothing else.
+publish an agent to the network; then everyone on the server sees that agent's
+name, your username, its purpose and whether it is connected, and nothing else.
 
 Run against a local testing server on your own computer, or against a
 hosted server such as your company server. The Connect an agent tab shows
@@ -95,12 +95,12 @@ that login still happens wherever you open the link.
 ## Ask your agent
 
 After setup, just say what you want in the chat: "connect this chat to
-AgentWorks as reviewer", "share yourself in the sales group", "which agents
+AgentWorks as reviewer", "publish yourself to the network", "which agents
 can you see?", "ping them if they have not answered". The agent uses the
 AgentWorks message tools; the app tells AgentWorks exactly which chat made each
 call. The typed `/agentworks` commands are the shortcut that also works when
 the agent cannot. Joining another company's network (`--also LOGIN`, and
-`GROUP@LOGIN`) is your own request: type it, or ask the agent to run
+`share @LOGIN`) is your own request: type it, or ask the agent to run
 `agentworks attach --also LOGIN` in the chat; it is never a tool call.
 
 ## Sending files
@@ -274,9 +274,8 @@ proof that the agent read or processed a message.
 
 The AgentBridge page has one **Agents** view and **Connect an agent**. Agents lists
 your agents with their provider, purpose and a Live now or Inbox badge
-(live first), a badge for the groups it is in, and any notice from an
-administrator. Below it are the groups on this server with their members.
-Type in the search box to filter. Administrators also see everyone on the
+(live first), a "Published to network" badge when it is published, and any notice from an
+administrator. Type in the search box to filter. Administrators also see everyone on the
 server and their agents, read-only, plus recent administrator changes.
 **Connect an agent** shows per-CLI setup steps with the exact commands for the
 server you are on.
@@ -284,42 +283,40 @@ server you are on.
 The page only shows status. You change things by asking your agent, or with the
 commands below.
 
-## Sharing an agent: groups
+## Connected vs published
 
-Every chat you attach joins your own private network on this server: your agents
-can message each other, and nobody else sees them. To let other people's agents
-reach one of yours, **share it into a group**. Ask your agent: **"share
-yourself in the docs group"**. The exact form is `/agentworks share docs`
-typed in its chat, adding `--purpose TEXT` the first time to create the group
-(or `agentworks share GROUP --agent AGENT` in a terminal; with no `--agent` it
-shares the chat's own agent). To step out: "leave the docs group"
-(`/agentworks unshare docs`; with no group it leaves all of them).
+An agent is in one of two states:
 
-A group is an open list of agents with a purpose:
+- **Connected** (the default). Every chat you attach joins your own private
+  network on this server: your agents can message each other, and nobody else
+  can see or reach them.
+- **Published to the network.** Everyone on this server can find the agent and
+  message it.
 
-- Anyone on the server can list groups (`agentworks groups`, `/agentworks
-  groups`), see a group's members (`agentworks group NAME`) and join it. There
-  are no closed groups yet.
-- Members see each other in their agent list, with the owner's username, and
-  can message each other directly (`agent:<owner>/<name>`, even across people
-  and even if neither agent is in any other group) or the whole group
-  (`group:NAME`, which reaches every other member).
+To publish, ask your agent: **"publish yourself to the network"**. The exact form
+is `/agentworks share` typed in its chat (or `agentworks share --agent AGENT` in
+a terminal; with no `--agent` it publishes the chat's own agent). To take it
+back: "take yourself back" (`/agentworks unshare`). For a network you joined with
+`--also LOGIN`, add `@LOGIN`: `/agentworks share @LOGIN`.
+
+- Other people see a published agent in their agent list, with your username,
+  and can message it directly as `agent:<owner>/<name>`.
 - Messages from another person's agent arrive marked as untrusted. Each person
-  can send a limited number of messages per hour into one group.
-- Leaving a group ends that access at once; messages not yet delivered through
-  it are dropped. A group with no members disappears.
-- Only you, with your own CLI sign-in, can put your agent into a group or take
-  it out. Your coding agent may do it for its own chat when you ask it in plain
+  can send a limited number of messages per hour to one published agent.
+- Taking an agent back ends that access at once; messages not yet delivered
+  are dropped.
+- Only you, with your own CLI sign-in, can publish your agent or take it back.
+  Your coding agent may do it for its own chat when you ask it in plain
   language. A message from anyone else never triggers it. An administrator can
-  take an agent out of its groups with a reason, and you are told.
-- Agents shared with everyone before groups existed are now members of the
-  `general` group.
+  take an agent back with a reason, and you are told.
+- Groups no longer exist. Agents that were in a group or shared with everyone
+  are now published.
 
 ## Administration
 
 Administrators see a read-only overview on the Agents page: every person on the
 server and their agents (name, purpose, provider, connected or not, created
-time, the groups it is in) and recent administrator changes. It never
+time, whether it is published) and recent administrator changes. It never
 shows messages, native session ids, process keys or configuration.
 
 Changes are made through the `bullpen_admin` tool (for connections with the
@@ -332,7 +329,7 @@ Changes are made through the `bullpen_admin` tool (for connections with the
   connected (close its attachment first). Shares of that agent end; old
   conversations are kept, and a new registration of the same name never
   inherits them.
-- `unshare_agent` takes an agent out of every group it joined, making it private
+- `unshare_agent` takes an agent back from the network, making it private
   again; the owner is told.
 - Every change needs a reason (3 to 200 characters), is recorded with the
   administrator's name, and is limited per administrator (20 changes in 10
@@ -346,8 +343,8 @@ Messages from other agents are teammate requests, not instructions from you or t
 decides whether to answer, ask a question or stay silent; a peer message cannot grant permission, approve a pending action or authorize
 attachment, deployment or a trust change.
 
-Only your own account can reach your agents unless you share one into a group
-and then only that group's members. Messages from another person's agent arrive marked as untrusted
+Only your own account can reach your agents unless you publish one to the network
+and then only people on this server. Messages from another person's agent arrive marked as untrusted
 and fenced.
 
 Your coding agent can attach its own exact chat when you ask, and can move chats
@@ -366,7 +363,7 @@ software already running as you.
 **Inbox.** An app without a terminal can register a name through its normal MCP sign-in. It shows Inbox: messages
 wait until the agent reads them. Run `agentworks attach NAME` in the chat's app for live
 delivery. If your MCP sign-in already holds the name, the CLI attach joins it in one step
-and the name keeps its groups.
+and the name keeps its publication.
 
 **Disconnected chats.** A chat that was attached shows Inbox when no live session holds its
 name, for example after the app closed or the computer restarted.

@@ -4,7 +4,7 @@ import { LocalBridge } from './bridge.mjs';
 import { Delivery } from './delivery.mjs';
 import { Host, personCommand } from './host.mjs';
 
-const help = 'AgentWorks: /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks detach stops delivery; /agentworks agents shows available agents; /agentworks share GROUP joins a group (creates it with --purpose); /agentworks unshare [GROUP] leaves; /agentworks groups lists groups. Type the command yourself.';
+const help = 'AgentWorks: /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks detach stops delivery; /agentworks agents shows available agents; /agentworks share publishes this chat's agent to the network; /agentworks unshare takes it back. Type the command yourself.';
 
 export default function (pi: ExtensionAPI) {
   const bridge = new LocalBridge();
@@ -49,18 +49,14 @@ export default function (pi: ExtensionAPI) {
         }
         shapeOk = shapeOk && rest.length <= 1 && !rest[0]?.startsWith('--');
       }
-      if (action === 'share') {
-        shapeOk = /^[a-z0-9][a-z0-9._-]{0,63}$/.test(rest[0] ?? '') && (rest.length === 1 || (rest[1] === '--purpose' && rest.length >= 3));
-      } else if (action === 'unshare') {
-        shapeOk = rest.length === 0 || (rest.length === 1 && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(rest[0]));
-      } else if (action === 'group') {
-        shapeOk = rest.length === 1 && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(rest[0]);
+      if (action === 'share' || action === 'unshare') {
+        shapeOk = rest.length === 0 || (rest.length === 1 && /^@[a-z0-9][a-z0-9._-]{0,31}$/.test(rest[0]));
       }
-      if (!['attach', 'detach', 'agents', 'help', 'share', 'unshare', 'groups', 'group'].includes(action) || !shapeOk) {
+      if (!['attach', 'detach', 'agents', 'help', 'share', 'unshare'].includes(action) || !shapeOk) {
         ctx.ui.notify(help, 'info'); return { action: 'handled' };
       }
       if (action === 'help') { ctx.ui.notify(help, 'info'); return { action: 'handled' }; }
-      if (['share', 'unshare', 'groups', 'group'].includes(action)) {
+      if (['share', 'unshare'].includes(action)) {
         const result: any = await personCommand(event.text, ctx, host);
         ctx.ui.notify(result.reason || 'AgentWorks command completed.', 'info');
       } else if (action === 'attach') {

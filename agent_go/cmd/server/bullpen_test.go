@@ -37,8 +37,6 @@ func TestBullpenAccountDirectoryOverAuthenticatedHTTP(t *testing.T) {
 	t.Cleanup(invalidateUserDirectoryCache)
 	srv := httptest.NewServer(AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/bullpen/groups":
-			env.api.handleBullpenGroups(w, r)
 		case "/api/bullpen/notices":
 			env.api.handleBullpenNotices(w, r)
 		default:
@@ -83,7 +81,7 @@ func TestBullpenAccountDirectoryOverAuthenticatedHTTP(t *testing.T) {
 		agentMessageMu.Lock()
 		defer agentMessageMu.Unlock()
 		body = get("owner", http.StatusOK)
-		for _, path := range []string{"/api/bullpen/groups", "/api/bullpen/notices"} {
+		for _, path := range []string{"/api/bullpen/notices"} {
 			getAt("owner", path, http.StatusOK)
 		}
 	}()

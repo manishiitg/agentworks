@@ -196,10 +196,6 @@ func TestHostedAgentInboxOverMCP(t *testing.T) {
 	call(hosted, map[string]any{"action": "ack", "agent_name": "browser-helper", "message_id": reply["message_id"], "delivery": "read"}, true)
 	call(hosted, map[string]any{"action": "ack", "agent_name": "browser-helper", "message_id": reply["message_id"], "delivery": "handled"}, true)
 	call(hosted, map[string]any{"action": "attach", "agent_name": "browser-helper", "native_session_id": "another-chat"}, false)
-	cliCall(map[string]any{"action": "join_group", "agent_name": "terminal-helper", "group": "test-inbox", "purpose": "Technical inbox check"})
-	call(hosted, map[string]any{"action": "send", "agent_name": "browser-helper", "target": "group:test-inbox", "message": "Not joined"}, false)
-	call(hosted, map[string]any{"action": "join_group", "agent_name": "browser-helper", "group": "test-inbox"}, true)
-	call(hosted, map[string]any{"action": "send", "agent_name": "browser-helper", "target": "group:test-inbox", "message": "Group inbox check", "submission_id": "group-check"}, true)
 	saved, err := readAgentMessageStore(ctx)
 	if err != nil {
 		t.Fatal(err)
