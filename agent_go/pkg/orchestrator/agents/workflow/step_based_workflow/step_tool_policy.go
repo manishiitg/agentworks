@@ -9,7 +9,7 @@ import (
 )
 
 // A goal comes from soul, not from DB availability. Pulse configuration uses
-// the same legacy schedule compatibility signals as WorkflowManifest.PulseEnabled.
+// the canonical workflow toggle, matching WorkflowManifest.PulseEnabled.
 func (hcpo *StepBasedWorkflowOrchestrator) refreshStepGoalPolicy(ctx context.Context, manifest string) {
 	objective, _ := hcpo.ResolveWorkflowObjective(ctx)
 	hasGoal := hcpo.platformStoresEnabled() && !hcpo.isRelayExecution() && strings.TrimSpace(objective) != ""
@@ -18,18 +18,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) refreshStepGoalPolicy(ctx context.Con
 		Pulse *struct {
 			Enabled bool `json:"enabled"`
 		} `json:"pulse"`
-		Schedules []struct {
-			Enabled    bool   `json:"enabled"`
-			ReviewOnly bool   `json:"pulse_review_only"`
-			Mode       string `json:"pulse_mode"`
-		} `json:"schedules"`
 	}
 	enabled := false
 	if json.Unmarshal([]byte(manifest), &m) == nil {
 		enabled = m.Pulse != nil && m.Pulse.Enabled
-		for _, schedule := range m.Schedules {
-			enabled = enabled || (schedule.Enabled && (schedule.ReviewOnly || strings.EqualFold(strings.TrimSpace(schedule.Mode), "full")))
-		}
+
 	}
 	hcpo.stepPulseEnabled.Store(hasGoal && enabled)
 }

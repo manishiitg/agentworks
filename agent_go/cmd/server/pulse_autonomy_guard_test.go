@@ -19,7 +19,7 @@ import (
 // PLAT-697 phase 2: Goal Work's pulse.autonomy levels are held by the tool
 // dispatch of its Pulse session (the same binding every direct tool call of
 // the session passes), not only by its prompt.
-func TestGoalWorkAutonomyIsEnforcedAtToolDispatch(t *testing.T) {
+func TestPulsePermissionsIsEnforcedAtToolDispatch(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "false")
 	const session = "schedule-cron--daily_goal"
 	api := &StreamingAPI{eventStore: events.NewEventStore(10)}
@@ -28,31 +28,31 @@ func TestGoalWorkAutonomyIsEnforcedAtToolDispatch(t *testing.T) {
 	resolve := api.bindToolExecutionContext(requestCtx, session, QueryRequest{}, false)
 
 	inTurn := func(manifest string, tool string) (context.Context, error) {
-		release := beginGoalWorkTurn(session, stepworkflow.PulseAutonomyPermissions(manifest))
+		release := beginGoalWorkTurn(session, stepworkflow.PulsePermissions(manifest))
 		defer release()
 		return resolve(context.Background(), tool)
 	}
 
 	// run=ask: execute_step is refused and points at a decision request.
-	_, err := inTurn(`{"pulse":{"autonomy":{"run":"ask"}}}`, "execute_step")
-	if err == nil || !strings.Contains(err.Error(), "Measure autonomy level") {
+	_, err := inTurn(`{"pulse":{"enabled":false}}`, "execute_step")
+	if err == nil || !strings.Contains(err.Error(), "Pulse is off") {
 		t.Fatalf("execute_step with run=ask must be refused with a decision-request hint, got %v", err)
 	}
 	// Delegating an execution is also a run, including a typed function.
 	for _, tool := range []string{"call_function", "run_project_workflow"} {
-		if _, err := inTurn(`{"pulse":{"autonomy":{"run":"ask"}}}`, tool); err == nil {
+		if _, err := inTurn(`{"pulse":{"enabled":false}}`, tool); err == nil {
 			t.Fatalf("%s bypassed Pulse run authority", tool)
 		}
 	}
 	// run=auto (also the default): allowed.
-	if _, err := inTurn(`{"pulse":{"autonomy":{"run":"auto"}}}`, "execute_step"); err != nil {
+	if _, err := inTurn(`{"pulse":{"enabled":true}}`, "execute_step"); err != nil {
 		t.Fatalf("execute_step with run=auto must run: %v", err)
 	}
 	// change=ask (the default): a typed plan edit is refused; change=auto allows it.
 	if _, err := inTurn(`{}`, "update_agent_step"); err == nil {
 		t.Fatal("a plan edit with change=ask must be refused")
 	}
-	if _, err := inTurn(`{"pulse":{"autonomy":{"change":"auto"}}}`, "update_agent_step"); err != nil {
+	if _, err := inTurn(`{"pulse":{"enabled":true}}`, "update_agent_step"); err != nil {
 		t.Fatalf("a plan edit with change=auto must run: %v", err)
 	}
 	// outward=ask marks the call so argument-dependent senders hold their writes.
@@ -73,7 +73,7 @@ func TestGoalWorkAutonomyIsEnforcedAtToolDispatch(t *testing.T) {
 // (agentwrapper.RegisterCustomToolWithTimeout wraps every direct tool with
 // ToolExecutionContext), so the levels hold there too: change=ask refuses
 // update_step directly and over HTTP; change=auto allows both.
-func TestGoalWorkAutonomyHoldsOnTheSessionHTTPToolRoute(t *testing.T) {
+func TestPulsePermissionsHoldsOnTheSessionHTTPToolRoute(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "false")
 	const session = "schedule-goallead--httproute-g1"
 	api := &StreamingAPI{eventStore: events.NewEventStore(10)}
@@ -108,11 +108,11 @@ func TestGoalWorkAutonomyHoldsOnTheSessionHTTPToolRoute(t *testing.T) {
 		return out
 	}
 
-	release := beginGoalWorkTurn(session, stepworkflow.PulseAutonomyPermissions(`{"pulse":{"autonomy":{"run":"auto","outward":"auto","change":"ask"}}}`))
+	release := beginGoalWorkTurn(session, stepworkflow.PulsePermissions(`{"pulse":{"enabled":false}}`))
 	if _, err := updateStep(context.Background(), map[string]interface{}{}); err == nil {
 		t.Fatal("change=ask: a direct update_step must be refused")
 	}
-	if out := viaHTTP(); out.Success || !strings.Contains(out.Error, "Fix autonomy level") {
+	if out := viaHTTP(); out.Success || !strings.Contains(out.Error, "Pulse is off") {
 		t.Fatalf("change=ask: update_step over the HTTP tool route must be refused, got %+v", out)
 	}
 	release()
@@ -120,7 +120,7 @@ func TestGoalWorkAutonomyHoldsOnTheSessionHTTPToolRoute(t *testing.T) {
 		t.Fatalf("no edit may land with change=ask, got %d", edits)
 	}
 
-	release = beginGoalWorkTurn(session, stepworkflow.PulseAutonomyPermissions(`{"pulse":{"autonomy":{"run":"auto","outward":"auto","change":"auto"}}}`))
+	release = beginGoalWorkTurn(session, stepworkflow.PulsePermissions(`{"pulse":{"enabled":true,"outward_actions":"allow"}}`))
 	defer release()
 	if _, err := updateStep(context.Background(), map[string]interface{}{}); err != nil {
 		t.Fatalf("change=auto: a direct update_step must run: %v", err)

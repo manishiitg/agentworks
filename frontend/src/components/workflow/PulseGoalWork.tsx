@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { CheckCircle2, FileText, Lightbulb, Loader2, Play, Plus, Scale } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
-import { PULSE_FOCUS_AREAS_CHANGED_EVENT } from './pulseAutonomy'
-import type { PulseAutonomy, PulseGoalWorkItem } from '../../services/api-types'
+import { PULSE_FOCUS_AREAS_CHANGED_EVENT } from './pulseFocusEvents'
+import type { PulseGoalWorkItem } from '../../services/api-types'
 import { openReportFileInViewer } from './reportWidgets/tableHelpers'
 
 // Goal Work is Pulse's main job (docs/design/pulse_goal_work.md): work Pulse
@@ -124,9 +124,6 @@ export function PulseGoalWork({ workspacePath, items, onRunGoalWork, running = f
   workspacePath: string
   items: PulseGoalWorkItem[]
   /** Shown at the top of the Pulse tab now (AutonomySlider); kept for callers. */
-  autonomy?: PulseAutonomy
-  autonomySaving?: boolean
-  onChangeAutonomy?: (next: PulseAutonomy) => void
   onRunGoalWork?: () => void
   running?: boolean
   runBlockedReason?: string

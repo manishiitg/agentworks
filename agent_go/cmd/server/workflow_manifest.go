@@ -19,7 +19,6 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	step_based_workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsemodules"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulepolicy"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
@@ -261,13 +260,9 @@ type InstalledPlaybook struct {
 }
 
 type WorkflowPulseConfig struct {
-	// Enabled turns on the workflow's own Pulse schedule (see Schedule). Normal
-	// schedules only run basic stewardship (backup, publish, notify) after a run;
-	// the full Pulse review never runs inline after a normal run.
-	Enabled bool `json:"enabled,omitempty"`
-	// Schedule controls when the full Pulse runs. Nil means the defaults of
-	// EffectivePulseSchedule: self-deciding, at most daily, at least weekly.
-	Schedule *WorkflowPulseSchedule `json:"schedule,omitempty"`
+	// Enabled lets Pulse pursue improvements. OFF retains a weekly suggestions
+	// report. Normal schedules own their separate after-run housekeeping.
+	Enabled bool `json:"enabled"`
 	// FocusAreas are the user's current priorities for Goal Work, e.g. "find
 	// more audience strategies like SaaS Builder". Goal Work starts there each
 	// pass; they direct attention, they do not limit what it may consider.
@@ -277,26 +272,12 @@ type WorkflowPulseConfig struct {
 	// dates, their own checks, daily tracking and closing lessons. FocusAreas
 	// stays the active list.
 	FocusAreaDetails []PulseFocusArea `json:"focus_area_details,omitempty"`
-	// Autonomy holds Goal Work's permission levels. Nil means the defaults:
-	// Run is auto (Goal Work may run existing steps itself); Outward and Change
-	// ask the user.
-	Autonomy *WorkflowPulseAutonomy `json:"autonomy,omitempty"`
-	// Pace is how hard Pulse pushes on the goal: calm, steady (default) or
-	// aggressive. It bounds when Pulse checks next, whether a failed run
-	// wakes it, and how much Goal Work it takes on per turn (owner,
-	// 2026-10-08; pulse_pace.go).
-	Pace                  string                         `json:"pace,omitempty"`
+	// OutwardActions is ask (default) or allow within existing limits.
+	OutwardActions        string                         `json:"outward_actions"`
 	AdvisorSpecialization *WorkflowAdvisorSpecialization `json:"advisor_specialization,omitempty"`
-	// DisabledReviewModules is the owner-controlled denylist for optional Pulse
-	// reviewers. Gate still records these modules in each worklist for an
-	// auditable skip, but the scheduler never launches their review agents.
-	DisabledReviewModules []string `json:"disabled_review_modules,omitempty"`
 }
 
 const (
-	pulseScheduleModeSelf  = "self"
-	pulseScheduleModeFixed = "fixed"
-
 	defaultPulseMinIntervalHours = 6
 	defaultPulseMaxIntervalHours = 168
 	// defaultPulseFirstRunHour is the local hour of a workflow's first
@@ -308,8 +289,6 @@ const (
 // each Pulse pass chooses its next run (record_pulse_next_run) and the platform
 // only enforces the min/max interval guards. "fixed" pins a cron instead.
 type WorkflowPulseSchedule struct {
-	Mode             string `json:"mode,omitempty"`
-	Cron             string `json:"cron,omitempty"`
 	Timezone         string `json:"timezone,omitempty"`
 	MinIntervalHours int    `json:"min_interval_hours,omitempty"`
 	MaxIntervalHours int    `json:"max_interval_hours,omitempty"`
@@ -319,13 +298,6 @@ type WorkflowPulseSchedule struct {
 // common timezone of the workflow's enabled schedules, then the server's.
 func (m *WorkflowManifest) EffectivePulseSchedule() WorkflowPulseSchedule {
 	schedule := WorkflowPulseSchedule{}
-	if m != nil && m.Pulse != nil && m.Pulse.Schedule != nil {
-		schedule = *m.Pulse.Schedule
-	}
-	schedule.Mode = strings.ToLower(strings.TrimSpace(schedule.Mode))
-	if schedule.Mode != pulseScheduleModeFixed {
-		schedule.Mode = pulseScheduleModeSelf
-	}
 	if schedule.MinIntervalHours <= 0 {
 		schedule.MinIntervalHours = defaultPulseMinIntervalHours
 	}
@@ -351,37 +323,6 @@ func (m *WorkflowManifest) EffectivePulseSchedule() WorkflowPulseSchedule {
 		schedule.Timezone = best
 	}
 	return schedule
-}
-
-// WorkflowPulseAutonomy is Goal Work's per-workflow permission setting.
-// Preparing work is always on. Each level is "auto" (Goal Work does it
-// itself) or "ask" (it prepares the work and creates a decision).
-type WorkflowPulseAutonomy struct {
-	// Level is the autonomy ladder step, 0-5 (stepworkflow.AutonomyLadder;
-	// owner, 2026-10-08). When set it decides; run/outward/change are written
-	// beside it for older readers. Without it they are read as before.
-	Level *int `json:"level,omitempty"`
-	// Run: run existing workflow steps and routes. Default auto.
-	Run string `json:"run,omitempty"`
-	// Outward: post, send or contact anyone beyond what existing steps
-	// normally do. Default ask.
-	Outward string `json:"outward,omitempty"`
-	// Change: edit the plan, step settings and schedules. soul.md goals and
-	// constraints always go to the user. Default ask.
-	Change string `json:"change,omitempty"`
-	// Answer: what the Pulse does with a decision request (PLAT-697
-	// phase 3). "recommend" (default): it attaches a recommendation and the
-	// owner confirms. "act" is reserved for a later phase and behaves as
-	// recommend.
-	Answer string `json:"answer,omitempty"`
-}
-
-// PulseAutonomyLevels is the resolved setting with defaults applied.
-type PulseAutonomyLevels struct {
-	Level   int    `json:"level"`
-	Run     string `json:"run"`
-	Outward string `json:"outward"`
-	Change  string `json:"change"`
 }
 
 const (
@@ -411,130 +352,6 @@ func normalizePulseFocusAreas(values []string) ([]string, error) {
 	return out, nil
 }
 
-func normalizePulseAutonomyRun(value string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", "auto":
-		return "auto", nil
-	case "ask":
-		return "ask", nil
-	}
-	return "", fmt.Errorf("pulse.autonomy.run must be auto or ask")
-}
-
-// normalizePulseAutonomyAskDefault normalizes a level whose default is ask.
-func normalizePulseAutonomyAskDefault(field, value string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", "ask":
-		return "ask", nil
-	case "auto":
-		return "auto", nil
-	}
-	return "", fmt.Errorf("pulse.autonomy.%s must be auto or ask", field)
-}
-
-// resolvePulseAutonomy applies the defaults and rejects unknown values.
-func resolvePulseAutonomy(a *WorkflowPulseAutonomy) (PulseAutonomyLevels, error) {
-	if a == nil {
-		return pulseAutonomyLevelsFor(1), nil
-	}
-	if _, err := normalizePulseAnswerMode(a.Answer); err != nil {
-		return PulseAutonomyLevels{}, err
-	}
-	if a.Level != nil {
-		if *a.Level < 0 || *a.Level > step_based_workflow.MaxAutonomyLevel {
-			return PulseAutonomyLevels{}, fmt.Errorf("pulse.autonomy.level must be 0 to %d", step_based_workflow.MaxAutonomyLevel)
-		}
-		return pulseAutonomyLevelsFor(*a.Level), nil
-	}
-	run, err := normalizePulseAutonomyRun(a.Run)
-	if err != nil {
-		return PulseAutonomyLevels{}, err
-	}
-	outward, err := normalizePulseAutonomyAskDefault("outward", a.Outward)
-	if err != nil {
-		return PulseAutonomyLevels{}, err
-	}
-	change, err := normalizePulseAutonomyAskDefault("change", a.Change)
-	if err != nil {
-		return PulseAutonomyLevels{}, err
-	}
-	return pulseAutonomyLevelsFor(step_based_workflow.LegacyAutonomyLevel(run == "auto", outward == "auto", change == "auto")), nil
-}
-
-// pulseAutonomyLevelsFor is a ladder level with the matching run/outward/change
-// switches, kept for older readers.
-func pulseAutonomyLevelsFor(level int) PulseAutonomyLevels {
-	perms := step_based_workflow.PermissionsForLevel(level)
-	sw := func(on bool) string {
-		if on {
-			return "auto"
-		}
-		return "ask"
-	}
-	return PulseAutonomyLevels{Level: perms.Level, Run: sw(perms.Run), Outward: sw(perms.Outward), Change: sw(perms.Change)}
-}
-
-func validateWorkflowPulseSchedule(schedule *WorkflowPulseSchedule) error {
-	if schedule == nil {
-		return nil
-	}
-	switch strings.ToLower(strings.TrimSpace(schedule.Mode)) {
-	case "", pulseScheduleModeSelf:
-	case pulseScheduleModeFixed:
-		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-		if _, err := parser.Parse(strings.TrimSpace(schedule.Cron)); err != nil {
-			return fmt.Errorf("pulse.schedule.cron is invalid for fixed mode: %w", err)
-		}
-	default:
-		return fmt.Errorf("pulse.schedule.mode must be self or fixed")
-	}
-	if tz := strings.TrimSpace(schedule.Timezone); tz != "" {
-		if _, err := time.LoadLocation(tz); err != nil {
-			return fmt.Errorf("pulse.schedule.timezone %q is invalid: %w", tz, err)
-		}
-	}
-	if schedule.MinIntervalHours < 0 || schedule.MaxIntervalHours < 0 {
-		return fmt.Errorf("pulse.schedule intervals must not be negative")
-	}
-	return nil
-}
-
-var configurablePulseReviewModules = map[string]bool{
-	pulsemodules.TechnicalReviewID:    true,
-	pulsemodules.ArchitectureReviewID: true,
-	pulsemodules.StrategicReviewID:    true,
-}
-
-func normalizeDisabledPulseReviewModules(modules []string) ([]string, error) {
-	seen := map[string]bool{}
-	result := make([]string, 0, len(modules))
-	for _, raw := range modules {
-		module := strings.ToLower(strings.TrimSpace(raw))
-		if !configurablePulseReviewModules[module] {
-			return nil, fmt.Errorf("pulse.disabled_review_modules contains unsupported reviewer %q", raw)
-		}
-		if seen[module] {
-			continue
-		}
-		seen[module] = true
-		result = append(result, module)
-	}
-	return result, nil
-}
-
-func (m *WorkflowManifest) PulseReviewModuleDisabled(module string) bool {
-	if m == nil || m.Pulse == nil {
-		return false
-	}
-	module = strings.ToLower(strings.TrimSpace(module))
-	for _, disabled := range m.Pulse.DisabledReviewModules {
-		if strings.ToLower(strings.TrimSpace(disabled)) == module {
-			return true
-		}
-	}
-	return false
-}
-
 type WorkflowAdvisorSpecialization struct {
 	Version         int    `json:"version"`
 	StrategyAuditor string `json:"strategy_auditor"`
@@ -557,9 +374,8 @@ func (m *WorkflowManifest) HasEnabledPulseReviewSchedule() bool {
 	return false
 }
 
-// PulseEnabled reports whether post-run Pulse is enabled. Older manifests used
-// an enabled pulse_review_only schedule as the toggle; retain that as a read
-// compatibility signal while the next UI save removes the obsolete schedule.
+// PulseEnabled uses only the canonical workflow toggle. Saved legacy signals
+// are converted once by normalizePulseSettingsJSON before manifest decoding.
 func (m *WorkflowManifest) PulseEnabled() bool {
 	if m == nil {
 		return false
@@ -569,22 +385,6 @@ func (m *WorkflowManifest) PulseEnabled() bool {
 	}
 	if m.Pulse != nil && m.Pulse.Enabled {
 		return true
-	}
-	return m.HasEnabledPulseReviewSchedule() || m.hasLegacyFullPulseSchedule()
-}
-
-// hasLegacyFullPulseSchedule keeps Pulse on for workflows that opted into
-// review only through a schedule's legacy pulse_mode=full. Normal schedules
-// now run basic stewardship; the review moved to the workflow's own Pulse
-// schedule, which must not silently turn off for them.
-func (m *WorkflowManifest) hasLegacyFullPulseSchedule() bool {
-	if m == nil {
-		return false
-	}
-	for _, schedule := range m.Schedules {
-		if schedule.Enabled && strings.EqualFold(strings.TrimSpace(schedule.PulseMode), schedulepolicy.LegacyFullPulseMode) {
-			return true
-		}
 	}
 	return false
 }
@@ -616,34 +416,6 @@ func (m *WorkflowManifest) EffectivePulseMode(schedule WorkflowSchedule) string 
 		return schedulePulseModeBasic
 	}
 	return schedulePulseModeOff
-}
-
-// MigrateLegacyPulseSchedule folds the retired dedicated Pulse schedule into
-// pulse.enabled and removes it from the normal schedule list.
-func (m *WorkflowManifest) MigrateLegacyPulseSchedule() bool {
-	if m == nil {
-		return false
-	}
-	found := false
-	enabled := false
-	schedules := make([]WorkflowSchedule, 0, len(m.Schedules))
-	for _, schedule := range m.Schedules {
-		if schedule.PulseReviewOnly {
-			found = true
-			enabled = enabled || schedule.Enabled
-			continue
-		}
-		schedules = append(schedules, schedule)
-	}
-	if !found {
-		return false
-	}
-	if m.Pulse == nil {
-		m.Pulse = &WorkflowPulseConfig{}
-	}
-	m.Pulse.Enabled = m.Pulse.Enabled || enabled
-	m.Schedules = schedules
-	return true
 }
 
 type WorkflowBackupConfig struct {
@@ -1239,21 +1011,11 @@ func ValidateManifest(m *WorkflowManifest) error {
 		}
 	}
 	if m.Pulse != nil {
-		if _, err := normalizeDisabledPulseReviewModules(m.Pulse.DisabledReviewModules); err != nil {
+
+		if _, err := normalizePulseOutwardActions(m.Pulse.OutwardActions); err != nil {
 			return err
 		}
-		if err := validateWorkflowPulseSchedule(m.Pulse.Schedule); err != nil {
-			return err
-		}
-		if _, err := resolvePulseAutonomy(m.Pulse.Autonomy); err != nil {
-			return err
-		}
-		if _, err := normalizePulsePace(m.Pulse.Pace); err != nil {
-			return err
-		}
-		if _, err := normalizePulseFocusAreas(m.Pulse.FocusAreas); err != nil {
-			return err
-		}
+
 	}
 
 	// Validate browser mode if set
@@ -1543,6 +1305,12 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 		return nil, false, nil
 	}
 
+	pulseSettingsMigrated := false
+	if !isProductRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/") {
+		if normalized, changed := normalizePulseSettingsJSON([]byte(content)); changed {
+			content, pulseSettingsMigrated = string(normalized), true
+		}
+	}
 	var m WorkflowManifest
 	if err := json.Unmarshal([]byte(content), &m); err != nil {
 		// Resilience: the backup/publish blocks are authored by the builder agent,
@@ -1631,7 +1399,7 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 	// every read, and had it passed it would have dropped the product fields.
 	heldRoot, _ := ctx.Value(teamLockHeldKey{}).(string)
 	mayPersistManifestMigrations := persistMigrations && heldRoot != workspacePath && !isProductRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/")
-	if mayPersistManifestMigrations && (hadMissingLabel || hadEmptyScheduleID || llmConfigMigrated || hasStaleFields) && len(m.MalformedConfig) == 0 {
+	if mayPersistManifestMigrations && (hadMissingLabel || hadEmptyScheduleID || llmConfigMigrated || hasStaleFields || pulseSettingsMigrated) && len(m.MalformedConfig) == 0 {
 		if hasStaleFields {
 			log.Printf("[MANIFEST] %s: pruning retired field(s) no longer in schema — top-level=%v execution_defaults=%v capabilities=%v",
 				workspacePath, staleTopLevel, staleExecutionDefaults, staleCapabilities)
@@ -1999,6 +1767,13 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 		m.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
 
+	if m.Pulse != nil {
+		outward, err := normalizePulseOutwardActions(m.Pulse.OutwardActions)
+		if err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidWorkflowManifest, err)
+		}
+		m.Pulse.OutwardActions = outward
+	}
 	if err := ValidateManifest(m); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidWorkflowManifest, err)
 	}
@@ -2133,6 +1908,10 @@ func workflowManifestChangelogReader(ctx context.Context, path string) (string, 
 
 // applyManifestDefaults fills in defaults for fields that may be missing from older schema versions.
 func applyManifestDefaults(m *WorkflowManifest) {
+	if m.Pulse != nil && m.Pulse.OutwardActions == "" {
+		m.Pulse.OutwardActions = "ask"
+	}
+
 	if m.SchemaVersion == 0 {
 		m.SchemaVersion = 1
 	}

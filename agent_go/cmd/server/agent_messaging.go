@@ -1077,7 +1077,7 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 			}
 			// The sending workflow owns this authority, including when it
 			// delegates to a Crew with a different workspace.
-			perms, _ := goalWorkAutonomy(ctx, source.Path)
+			perms, _ := pulsePermissionsForWorkflow(ctx, source.Path)
 			return beginGoalWorkTurn(receivingSession, perms), nil
 		})
 	}

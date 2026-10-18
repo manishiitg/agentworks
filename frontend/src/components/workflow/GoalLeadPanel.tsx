@@ -8,7 +8,7 @@ import { openReportHumanInputAnswerInChat } from '../../utils/reportHumanInputCh
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { openPulseChatTab } from '../../utils/pulseChatTab'
 import { FocusAreasCard } from './GoalLeadConversation'
-import { PULSE_FOCUS_AREAS_CHANGED_EVENT } from './pulseAutonomy'
+import { PULSE_FOCUS_AREAS_CHANGED_EVENT } from './pulseFocusEvents'
 
 // The Pulse's part of the Pulse tab (PLAT-697 phase 3), under the goal
 // status card: Needs you with the Pulse's recommendation (Accept / Change,

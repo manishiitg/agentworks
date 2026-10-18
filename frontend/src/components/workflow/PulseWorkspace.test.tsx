@@ -6,7 +6,6 @@ vi.mock('../../api/playbooks', () => ({ playbooksApi: { list: vi.fn(), listInsta
 import { manualPulseReviewMessage, PulseWorkspace, pulseTabReviewMessage } from './PulseWorkspace'
 import { setProductCommands } from '../../commands/registry'
 import { toAgentworksCommandDefinitions } from '../../commands/agentworksProductCommands'
-import { AUTONOMY_LEVELS, autonomyLevelIndex } from './pulseAutonomy'
 
 describe('PulseWorkspace information hierarchy', () => {
   it('leads with Goal Work for the user and keeps platform upkeep one tap away', () => {
@@ -56,17 +55,6 @@ describe('PulseWorkspace information hierarchy', () => {
     expect(manualPulseReviewMessage('strategic_review')).toContain('kind="strategy-auditor"')
     expect(manualPulseReviewMessage('plan_drift_review')).toContain('kind="review-artifact-drift"')
     expect(() => manualPulseReviewMessage('unknown')).toThrow('Unsupported Pulse review module')
-  })
-
-  // Owner 2026-10-08: a six-level ladder; an older run/outward/change setting
-  // maps to the highest level it fully allowed, never more.
-  it('reads the stored ladder level, and maps older switches without granting more', () => {
-    expect(autonomyLevelIndex({ level: 4, run: 'auto', outward: 'auto', change: 'auto' })).toBe(4)
-    expect(autonomyLevelIndex({ run: 'ask', outward: 'auto', change: 'auto' })).toBe(0)
-    expect(autonomyLevelIndex({ run: 'auto', outward: 'auto', change: 'ask' })).toBe(1)
-    expect(autonomyLevelIndex({ run: 'auto', outward: 'ask', change: 'auto' })).toBe(3)
-    expect(autonomyLevelIndex({ run: 'auto', outward: 'auto', change: 'auto' })).toBe(5)
-    expect(AUTONOMY_LEVELS.map(level => level.label)).toEqual(['Advise', 'Measure', 'Fix', 'Tune', 'Publish', 'Reshape'])
   })
 
   it('runs the same product command from a Pulse tab button, with review and fix together', () => {

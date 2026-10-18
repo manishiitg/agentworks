@@ -35,7 +35,7 @@ func TestExternalUpdateSettingsFollowsRoleAndNeverReturnsSecretValues(t *testing
 }
 
 // Pulse settings follow the Pulse tab: an owner turns Pulse on with an
-// autonomy level and pace, and a reader cannot run it.
+// outward action permission, and a reader cannot run it.
 func TestExternalPulseSettingsAndRunNeedEditAccess(t *testing.T) {
 	f := newExternalToolsFixture(t)
 	t.Setenv("AUTH_SECRET", "external-settings-test-auth-secret-0123456789")
@@ -50,12 +50,12 @@ func TestExternalPulseSettingsAndRunNeedEditAccess(t *testing.T) {
 	if w := f.call(t, "reader", "run_after_run", map[string]any{"workflow_id": "invoices", "option": "backup"}); w.Code != 403 {
 		t.Fatalf("reader started a backup: %d %s", w.Code, w.Body)
 	}
-	w := f.call(t, "owner", "update_settings", map[string]any{"workflow_id": "invoices", "pulse": map[string]any{"enabled": true, "autonomy_level": 2, "pace": "calm"}, "after_manual_run": map[string]any{"notify": true}})
+	w := f.call(t, "owner", "update_settings", map[string]any{"workflow_id": "invoices", "pulse": map[string]any{"enabled": true, "outward_actions": "allow"}, "after_manual_run": map[string]any{"notify": true}})
 	if w.Code != 200 {
 		t.Fatalf("owner pulse settings: %d %s", w.Code, w.Body)
 	}
 	body := f.call(t, "owner", "get_settings", map[string]any{"workflow_id": "invoices"}).Body.String()
-	if !strings.Contains(body, `"enabled":true`) || !strings.Contains(body, `"autonomy_level":2`) || !strings.Contains(body, `"pace":"calm"`) || !strings.Contains(body, `"after_manual_run":{"backup":false,"publish":false,"notify":true}`) {
+	if !strings.Contains(body, `"enabled":true`) || !strings.Contains(body, `"outward_actions":"allow"`) || !strings.Contains(body, `"after_manual_run":{"backup":false,"publish":false,"notify":true}`) {
 		t.Fatalf("pulse settings not saved: %s", body)
 	}
 }

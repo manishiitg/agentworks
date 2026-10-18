@@ -82,10 +82,6 @@ func applyPulseSchedulingRules(ctx context.Context, workspacePath string, decisi
 	}
 	reviewed := promptBudgetStateReviewed(ctx, workspacePath, budget.Fingerprint)
 	decisions = applyPromptBudgetArchitectureDue(decisions, budget, reviewed)
-	decisions, err = applyDisabledPulseReviewModules(ctx, workspacePath, decisions)
-	if err != nil {
-		return nil, err
-	}
 	return decisions, nil
 }
 

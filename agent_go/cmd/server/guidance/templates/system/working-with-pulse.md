@@ -20,8 +20,10 @@ Good messages say who is asking, the question, and the facts Pulse cannot see
 (what the owner said, what you just did).
 
 **When Pulse messages you**, it is the goal expert directing you. Act on it
-within the permission levels its message runs under (your system prompt lists
-them): at auto do it now; at ask prepare it and raise one decision. Reply
+within the server-held permissions in its message: when Pulse is on, improve
+the workflow within existing access. Ask first for outward actions unless the
+owner allowed them within limits. When Pulse is off, its weekly report only
+suggests improvements; it cannot send action requests. Reply
 with `send_message(inbox_id=<the supplied reply address>, message=...)` when a
 reply is useful. Final chat text is never forwarded. Read explicit replies
 with `read_agent_messages(inbox_id)`; either agent may send zero, one or many
@@ -44,12 +46,13 @@ owner's `#pulse`. Follow Pulse's intent, not just its words.
 **Always the owner's:** spending money, deleting steps or schedules, replacing
 the plan, editing `soul.md`, re-enabling schedules the owner paused.
 
-**Pace:** how hard Pulse pushes (`update_workflow_config(pulse_pace=calm|steady|aggressive)`
-when the owner asks): calm checks every 1-7 days and leaves failures to the next
-check; steady (default) every 6 hours to 3 days; aggressive every 1-24 hours and
-wakes on a failure at once. Autonomy is what Pulse may do; pace is how fast.
+**Outward actions:** `update_workflow_config(pulse_outward_actions="ask"|"allow")`
+when the owner asks. Allowed actions still use existing access, accounts and
+operational limits. There are no autonomy levels or pace settings. Pulse uses
+one self-timed check and pursues one improvement change set per cycle.
 
 **Turning Pulse on or off:** `update_workflow_config(pulse_enabled=true|false)`
 when the owner asks. Pulse needs the goal in `soul/soul.md` first: if it is
 missing, help the owner write it. With Pulse off, the owner manages the
-workflow and nothing reviews it on its own.
+workflow. The same Pulse produces a weekly report with suggestions and plan
+consistency findings, without edits or action requests.

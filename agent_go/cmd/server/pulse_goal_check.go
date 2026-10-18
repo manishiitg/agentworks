@@ -19,13 +19,13 @@ import (
 // check comes first. Code keeps scheduling and stored evidence available;
 // Pulse chooses what to read through tools or discuss with Builder. One short
 // agent turn judges the goal and its approach, follows due work, and acts
-// within pulse.autonomy. Its conclusion is shown in the existing Pulse summary;
+// within the saved Pulse permissions. Its conclusion is shown in the existing Pulse summary;
 // material owner advice goes through Builder, without another review lifecycle.
 
 const (
 	// goalCheckInterval: the next goal check when an older check recorded no
 	// time. Newer checks store the time the Pulse chose within its pace
-	// (pulse_pace.go).
+	// (pulse_check_timing.go).
 	goalCheckInterval = 24 * time.Hour
 	// goalCheckRetryGap stops a goal check that did not record a result from
 	// being started again every tick.
@@ -368,16 +368,15 @@ func recordPulseGoalCheckFromToolArgs(ctx context.Context, args map[string]inter
 	}
 	// The Pulse chooses its next check: hours from now, within 1 hour and 7
 	// days; none means a day.
-	pace := workflowPulsePace(ctx, workspacePath)
-	nextGap := pace.DefaultGap
+	nextGap := pulseCheckDefaultGap
 	nextReason := strings.TrimSpace(stringToolArg(args, "next_check_reason"))
 	if hours, ok := args["next_check_in_hours"].(float64); ok && hours > 0 {
 		nextGap = time.Duration(hours * float64(time.Hour))
-		if nextGap < pace.MinGap {
-			nextGap = pace.MinGap
+		if nextGap < pulseCheckMinGap {
+			nextGap = pulseCheckMinGap
 		}
-		if nextGap > pace.MaxGap {
-			nextGap = pace.MaxGap
+		if nextGap > pulseCheckMaxGap {
+			nextGap = pulseCheckMaxGap
 		}
 	} else {
 		nextReason = ""
@@ -387,7 +386,7 @@ func recordPulseGoalCheckFromToolArgs(ctx context.Context, args map[string]inter
 		scheduleLogf("[PULSE] dated Goal Work unavailable for %s; keeping chosen next check: %v", workspacePath, err)
 	} else if !due.IsZero() {
 		bounded := due
-		if floor := now.Add(pace.MinGap); bounded.Before(floor) {
+		if floor := now.Add(pulseCheckMinGap); bounded.Before(floor) {
 			bounded = floor
 		}
 		if bounded.Before(nextAt) {
@@ -454,7 +453,7 @@ func (s *SchedulerService) launchDueGoalChecks(ctx context.Context) {
 			if err != nil {
 				scheduleLogf("[PULSE] dated Goal Work unavailable for %s; keeping ordinary next check: %v", workspacePath, err)
 			} else if !questionDue.IsZero() {
-				if floor := checked.Add(workflowPulsePace(ctx, workspacePath).MinGap); questionDue.Before(floor) {
+				if floor := checked.Add(pulseCheckMinGap); questionDue.Before(floor) {
 					questionDue = floor
 				}
 				if nextDue.IsZero() || questionDue.Before(nextDue) {
@@ -493,7 +492,7 @@ func (s *SchedulerService) launchDueGoalChecks(ctx context.Context) {
 
 // pulseLifecycleGoalCheckStep is the one turn of a daily goal check.
 func pulseLifecycleGoalCheckStep(ctx context.Context, workspacePath, pulseRunID string, _ workflowNotificationContentInstructions) pulseLifecycleStep {
-	perms, autonomyText := goalWorkAutonomy(ctx, workspacePath)
+	perms, autonomyText := pulsePermissionsForWorkflow(ctx, workspacePath)
 	return pulseLifecycleStep{label: "goal-check", goalWork: &perms, query: fmt.Sprintf(`GOAL CHECK AND USEFUL WORK. pulse_run_id=%q. One continuing Pulse turn: no Gate, separate reviewers or finalizer.
 
 Choose evidence through your tools or Builder messages. Use tools when you need evidence; no operational packet is attached. Read soul/soul.md and relevant goal memory. get_goal_metrics reads source-backed DB history; get_pulse_state views goal_status, goal_work, step_outputs, step_concerns and backlog are optional. No metric-to-route declaration is required. Missing evidence stays unknown; delivery, completed runs and numerical differences do not establish goal improvement.
@@ -502,9 +501,9 @@ Load the goal-lead-check skill for this check. Follow dated Goal Work questions,
 
 Read list_schedules before current pause claims; global/product pause and disabled producing schedules differ. Past skipped_paused runs, old checks and memory never establish a current pause. Continue observing disabled producing schedules without resuming them or repeating a pause notification. Keep measurement repairs in ordinary recording steps, preserve DB history and old unknown periods, and never replay business actions just to migrate measurements.
 
-Record one plain conclusion with record_pulse_goal_check: goal progress, judgment and recommendation when assessed, actual action and the next useful check. Keep dated approach questions in existing Goal Work items (idea, check_at); reuse them. Choose the next check for the earliest useful question or outcome within your pace, not just a repair. Update other records only when they changed. On track with no due question or useful work is a valid quiet result, not an instruction to skip judgment.
+Record one plain conclusion with record_pulse_goal_check: goal progress, judgment and recommendation when assessed, actual action and the next useful check. Keep dated approach questions in existing Goal Work items (idea, check_at); reuse them. Choose the next check for the earliest useful question or outcome within the fixed check bounds, not just a repair. Update other records only when they changed. On track with no due question or useful work is a valid quiet result, not an instruction to skip judgment.
 
-You reason; Builder acts within the shared permission levels. Messages are explicit, replies optional: ask_builder delivers, read_agent_messages reads replies, send_message replies, and schedule_message_wakeup chooses a later conversation follow-up. Final text is never forwarded. Give material evidence and your recommendation to Builder for the owner summary or Needs you; reuse an existing decision if owner authority is needed. An authorized request needs no new confirmation. Finish with the actual outcome or named uncertainty, not merely the technical handoff.
+You reason; Builder acts within the shared permissions. Messages are explicit, replies optional: ask_builder delivers, read_agent_messages reads replies, send_message replies, and schedule_message_wakeup chooses a later conversation follow-up. Final text is never forwarded. Give material evidence and your recommendation to Builder for the owner summary or Needs you; reuse an existing decision if owner authority is needed. An authorized request needs no new confirmation. Finish with the actual outcome or named uncertainty, not merely the technical handoff.
 
-%s`, pulseRunID, autonomyText) + "\n\n" + pulsePaceText(workflowPulsePace(ctx, workspacePath))}
+%s`, pulseRunID, autonomyText) + "\n\n" + pulseTimingInstructions}
 }

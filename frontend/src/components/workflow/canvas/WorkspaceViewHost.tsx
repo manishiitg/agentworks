@@ -31,17 +31,14 @@ import type {
   PulseModuleState,
   PulsePlanDriftDueItem,
   PulseReviewFocus,
-  PulseReviewerModule,
   PulseShadowSignalObservation,
   PulseNextRun,
   PulseGoalWorkItem,
   PulseGoalStatus,
-  PulseAutonomy,
+  PulseOutwardActions,
   VariablesManifest,
   WorkflowRunSetup,
-  PulsePace,
 } from '../../../services/api-types'
-import { DEFAULT_PULSE_AUTONOMY } from '../../../services/api-types'
 import { PULSE_FIXED_COMMANDS, PULSE_MODULE_COMMANDS } from './pulseSections'
 import { assertNeverView, getWorkspaceView, isInspectorView, type InspectorViewId, type WorkspaceViewId, type WorkspaceViewKind } from '../workspaceViews'
 import {
@@ -60,7 +57,6 @@ import {
   type WorkflowCanvasRef,
 } from './WorkflowCanvas'
 
-const NO_DISABLED_PULSE_REVIEWERS: PulseReviewerModule[] = []
 
 // Every inspector view is lazy: only the one the user opens is fetched, so the
 // eager bundle carries the flow canvas and nothing else from this list. The
@@ -219,12 +215,6 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
             onToggleMonitor={pulse.toggleMonitor}
             hasSoul={pulse.hasSoul}
             runSetup={pulse.runSetup}
-            pace={pulse.pace}
-            paceSaving={pulse.paceSaving}
-            onChangePace={pulse.setPace}
-            disabledReviewModules={pulse.disabledReviewModules}
-            reviewModuleSaving={pulse.reviewModuleSaving}
-            onToggleReviewModule={pulse.toggleReviewModule}
             moduleStates={pulse.moduleStates}
             planDriftDue={pulse.planDriftDue}
             planDriftDueItems={pulse.planDriftDueItems}
@@ -233,9 +223,9 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
             nextRun={pulse.nextRun}
             goalWork={pulse.goalWork}
             goalStatus={pulse.goalStatus}
-            autonomy={pulse.autonomy}
-            autonomySaving={pulse.autonomySaving}
-            onChangeAutonomy={pulse.setAutonomy}
+            outwardActions={pulse.outwardActions}
+            outwardSaving={pulse.outwardSaving}
+            onChangeOutward={pulse.setOutward}
             focusAreas={pulse.focusAreas}
             focusSaving={pulse.focusSaving}
             onSaveFocusAreas={pulse.saveFocusAreas}
@@ -354,29 +344,13 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
     const wf = state.workflows.find(w => w.workspace_path === workspacePath)
     return {
       enabled: wf?.manifest.pulse?.enabled,
-      disabledReviewModules: wf?.manifest.pulse?.disabled_review_modules,
-      legacyEnabled: wf?.manifest.schedules?.some(schedule => schedule.pulse_review_only && schedule.enabled),
     }
   }))
-  const disabledReviewModules = pulseConfig.disabledReviewModules ?? NO_DISABLED_PULSE_REVIEWERS
-  const monitorOn = !!(pulseConfig.enabled || pulseConfig.legacyEnabled)
+  const monitorOn = !!pulseConfig.enabled
   const updateWorkflowManifest = useWorkflowManifestStore(state => state.updateWorkflow)
   const { monitorSaving, toggleMonitor } = usePulseToggle(
     workspacePath, monitorOn, updateWorkflowManifest, useChatStore.getState().addToast,
   )
-  const [reviewModuleSaving, setReviewModuleSaving] = useState<PulseReviewerModule | null>(null)
-  const toggleReviewModule = useCallback((module: PulseReviewerModule) => {
-    if (!workspacePath || reviewModuleSaving) return
-    const disabled = new Set(disabledReviewModules)
-    const enabling = disabled.delete(module)
-    if (!enabling) disabled.add(module)
-    setReviewModuleSaving(module)
-    void updateWorkflowManifest(workspacePath, { pulse_disabled_review_modules: [...disabled] })
-      .then(() => useChatStore.getState().addToast(`${module === 'technical_review' ? 'Health' : module === 'architecture_review' ? 'Architecture' : 'Strategy'} reviewer turned ${enabling ? 'on' : 'off'}`, 'success'))
-      .catch(error => useChatStore.getState().addToast(error instanceof Error ? error.message : 'Could not update Pulse reviewers', 'error'))
-      .finally(() => setReviewModuleSaving(null))
-  }, [workspacePath, reviewModuleSaving, disabledReviewModules, updateWorkflowManifest])
-
   const [pulseModuleStates, setPulseModuleStates] = useState<PulseModuleState[]>([])
   const [planDriftDue, setPlanDriftDue] = useState(false)
   const [planDriftDueItems, setPlanDriftDueItems] = useState<PulsePlanDriftDueItem[]>([])
@@ -388,47 +362,26 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
   const [pulseNextRun, setPulseNextRun] = useState<PulseNextRun | null>(null)
   const [pulseGoalWork, setPulseGoalWork] = useState<PulseGoalWorkItem[]>([])
   const [pulseGoalStatus, setPulseGoalStatus] = useState<PulseGoalStatus | null>(null)
-  const [pulseAutonomy, setPulseAutonomyState] = useState<PulseAutonomy>(DEFAULT_PULSE_AUTONOMY)
-  const [pulseAutonomySaving, setPulseAutonomySaving] = useState(false)
+  const [pulseOutward, setPulseOutwardState] = useState<PulseOutwardActions>('ask')
+  const [pulseOutwardSaving, setPulseOutwardSaving] = useState(false)
   const [pulseFocusAreas, setPulseFocusAreas] = useState<string[]>([])
   const [pulseHasSoul, setPulseHasSoul] = useState(false)
   const [pulseRunSetup, setPulseRunSetup] = useState<WorkflowRunSetup | null>(null)
-  const [pulsePace, setPulsePaceState] = useState<PulsePace>('steady')
-  const [pulsePaceSaving, setPulsePaceSaving] = useState(false)
   const [pulseFocusSaving, setPulseFocusSaving] = useState(false)
   const [pulseStatusLoading, setPulseStatusLoading] = useState(false)
   const [pulseStatusError, setPulseStatusError] = useState<string | null>(null)
 
-  const setPulseAutonomy = useCallback((next: PulseAutonomy) => {
-    if (!workspacePath || pulseAutonomySaving) return
-    if (next.level === pulseAutonomy.level && next.run === pulseAutonomy.run && next.outward === pulseAutonomy.outward && next.change === pulseAutonomy.change) return
-    const previous = pulseAutonomy
-    setPulseAutonomyState(next)
-    setPulseAutonomySaving(true)
-    void updateWorkflowManifest(workspacePath, typeof next.level === 'number'
-      ? { pulse_autonomy_level: next.level }
-      : { pulse_autonomy_run: next.run, pulse_autonomy_outward: next.outward, pulse_autonomy_change: next.change })
-      .then(() => useChatStore.getState().addToast('Pulse autonomy updated', 'success'))
-      .catch(error => {
-        setPulseAutonomyState(previous)
-        useChatStore.getState().addToast(error instanceof Error ? error.message : 'Could not update Pulse autonomy', 'error')
+  const setPulseOutward = useCallback((next: PulseOutwardActions) => {
+    if (!workspacePath || pulseOutwardSaving || next === pulseOutward) return
+    setPulseOutwardSaving(true)
+    void updateWorkflowManifest(workspacePath, { pulse_outward_actions: next })
+      .then(manifest => {
+        setPulseOutwardState(manifest.pulse?.outward_actions ?? 'ask')
+        useChatStore.getState().addToast('Pulse outward actions updated', 'success')
       })
-      .finally(() => setPulseAutonomySaving(false))
-  }, [workspacePath, pulseAutonomySaving, pulseAutonomy, updateWorkflowManifest])
-
-  const setPulsePace = useCallback((next: PulsePace) => {
-    if (!workspacePath || pulsePaceSaving || next === pulsePace) return
-    const previous = pulsePace
-    setPulsePaceState(next)
-    setPulsePaceSaving(true)
-    void updateWorkflowManifest(workspacePath, { pulse_pace: next })
-      .then(() => useChatStore.getState().addToast('Pulse pace updated', 'success'))
-      .catch(error => {
-        setPulsePaceState(previous)
-        useChatStore.getState().addToast(error instanceof Error ? error.message : 'Could not update Pulse pace', 'error')
-      })
-      .finally(() => setPulsePaceSaving(false))
-  }, [workspacePath, pulsePaceSaving, pulsePace, updateWorkflowManifest])
+      .catch(error => useChatStore.getState().addToast(error instanceof Error ? error.message : 'Could not update Pulse outward actions', 'error'))
+      .finally(() => setPulseOutwardSaving(false))
+  }, [workspacePath, pulseOutwardSaving, pulseOutward, updateWorkflowManifest])
 
   const savePulseFocusAreas = useCallback(async (areas: string[]) => {
     if (!workspacePath || pulseFocusSaving) return false
@@ -473,11 +426,10 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
       setPulseNextRun(resp.next_pulse || null)
       setPulseGoalWork(resp.goal_work || [])
       setPulseGoalStatus(resp.goal_status ?? null)
-      setPulseAutonomyState(resp.autonomy ?? { ...DEFAULT_PULSE_AUTONOMY, run: resp.autonomy_run === 'ask' ? 'ask' : 'auto' })
+      setPulseOutwardState(resp.outward_actions ?? 'ask')
       setPulseFocusAreas(resp.focus_areas || [])
       setPulseHasSoul(!!resp.has_soul)
       setPulseRunSetup(resp.run_setup ?? null)
-      setPulsePaceState(resp.pace || 'steady')
       setPulseFinalCommandStates(resp.commands || [])
       setPulseReviewFocuses(resp.review_focus_history || [])
       setPulseReviewFocusSelections(resp.review_focus_selections || [])
@@ -565,9 +517,6 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
     monitorOn,
     monitorSaving,
     toggleMonitor,
-    disabledReviewModules,
-    reviewModuleSaving,
-    toggleReviewModule,
     moduleStates: pulseModuleStates,
     planDriftDue,
     planDriftDueItems,
@@ -576,9 +525,9 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
     nextRun: pulseNextRun,
     goalWork: pulseGoalWork,
     goalStatus: pulseGoalStatus,
-    autonomy: pulseAutonomy,
-    autonomySaving: pulseAutonomySaving,
-    setAutonomy: setPulseAutonomy,
+    outwardActions: pulseOutward,
+    outwardSaving: pulseOutwardSaving,
+    setOutward: setPulseOutward,
     focusAreas: pulseFocusAreas,
     focusSaving: pulseFocusSaving,
     saveFocusAreas: savePulseFocusAreas,
@@ -590,13 +539,10 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
     refresh: refreshPulseModuleStates,
     hasSoul: pulseHasSoul,
     runSetup: pulseRunSetup,
-    pace: pulsePace,
-    paceSaving: pulsePaceSaving,
-    setPace: setPulsePace,
   }), [
-    monitorOn, monitorSaving, toggleMonitor, disabledReviewModules, reviewModuleSaving, toggleReviewModule, pulseModuleStates, planDriftDue, planDriftDueItems, planDriftDueError, pulseFinalCommandStates, pulseNextRun, pulseGoalWork, pulseGoalStatus, pulseAutonomy, pulseAutonomySaving, setPulseAutonomy, pulseFocusAreas, pulseFocusSaving, savePulseFocusAreas,
+    monitorOn, monitorSaving, toggleMonitor, pulseModuleStates, planDriftDue, planDriftDueItems, planDriftDueError, pulseFinalCommandStates, pulseNextRun, pulseGoalWork, pulseGoalStatus, pulseOutward, pulseOutwardSaving, setPulseOutward, pulseFocusAreas, pulseFocusSaving, savePulseFocusAreas,
     pulseReviewFocuses, pulseReviewFocusSelections, pulseStatusError, pulseStatusLoading,
-    pulseOverview, refreshPulseModuleStates, pulseHasSoul, pulseRunSetup, pulsePace, pulsePaceSaving, setPulsePace,
+    pulseOverview, refreshPulseModuleStates, pulseHasSoul, pulseRunSetup,
   ])
 
   // The flow canvas's VariablesSidebar edits the manifest in place; keep the

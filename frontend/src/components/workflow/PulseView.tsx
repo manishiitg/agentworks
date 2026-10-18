@@ -5,13 +5,10 @@ import { PulseWorkspace, type PulseWorkspaceTab } from './PulseWorkspace'
 import { GoalStatusCard } from './GoalStatusCard'
 import { GoalLeadPanel } from './GoalLeadPanel'
 import { PulseOffCard } from './PulseOffCard'
-import { AutonomySlider } from './AutonomySlider'
-import { PaceSelector } from './PaceSelector'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 import { WORKFLOW_SOUL_REFRESH_EVENT } from './SoulViewer'
-import { DEFAULT_PULSE_AUTONOMY } from '../../services/api-types'
-import type { WorkflowRunSetup, PulsePace, PulseAutonomy, PulseFinalCommandState, PulseGoalStatus, PulseGoalWorkItem, PulseModuleState, PulseNextRun, PulsePlanDriftDueItem, PulseReviewFocus, PulseReviewerModule } from '../../services/api-types'
+import type { WorkflowRunSetup, PulseOutwardActions, PulseFinalCommandState, PulseGoalStatus, PulseGoalWorkItem, PulseModuleState, PulseNextRun, PulsePlanDriftDueItem, PulseReviewFocus } from '../../services/api-types'
 
 export interface PulseOverview {
   recorded: number
@@ -26,12 +23,6 @@ interface PulseViewProps {
   onToggleMonitor: () => void
   hasSoul?: boolean
   runSetup?: WorkflowRunSetup | null
-  pace?: PulsePace
-  paceSaving?: boolean
-  onChangePace?: (next: PulsePace) => void
-  disabledReviewModules: PulseReviewerModule[]
-  reviewModuleSaving: PulseReviewerModule | null
-  onToggleReviewModule: (module: PulseReviewerModule) => void
   moduleStates: PulseModuleState[]
   planDriftDue: boolean
   planDriftDueItems: PulsePlanDriftDueItem[]
@@ -40,9 +31,9 @@ interface PulseViewProps {
   nextRun?: PulseNextRun | null
   goalWork?: PulseGoalWorkItem[]
   goalStatus?: PulseGoalStatus | null
-  autonomy?: PulseAutonomy
-  autonomySaving?: boolean
-  onChangeAutonomy?: (next: PulseAutonomy) => void
+  outwardActions?: PulseOutwardActions
+  outwardSaving?: boolean
+  onChangeOutward?: (next: PulseOutwardActions) => void
   focusAreas?: string[]
   focusSaving?: boolean
   onSaveFocusAreas?: (areas: string[]) => Promise<boolean>
@@ -62,12 +53,6 @@ export default function PulseView({
   onToggleMonitor,
   hasSoul = false,
   runSetup = null,
-  pace = 'steady',
-  paceSaving = false,
-  onChangePace,
-  disabledReviewModules,
-  reviewModuleSaving,
-  onToggleReviewModule,
   moduleStates,
   planDriftDue,
   planDriftDueItems,
@@ -75,9 +60,9 @@ export default function PulseView({
   finalCommandStates,
   goalWork = [],
   goalStatus = null,
-  autonomy = DEFAULT_PULSE_AUTONOMY,
-  autonomySaving = false,
-  onChangeAutonomy,
+  outwardActions = 'ask',
+  outwardSaving = false,
+  onChangeOutward,
   focusAreas = [],
   focusSaving = false,
   onSaveFocusAreas,
@@ -121,8 +106,12 @@ export default function PulseView({
         <div className="p-3 sm:p-4">
           {ownerManaged && <PulseOffCard pulseOn={monitorOn} hasSoul={hasSoul} runSetup={runSetup} saving={monitorSaving} onTurnOn={onToggleMonitor} />}
           {!ownerManaged && workspacePath && <GoalStatusCard goal={goalStatus} workspacePath={workspacePath} />}
-          {!ownerManaged && <AutonomySlider autonomy={autonomy} saving={autonomySaving} onChange={onChangeAutonomy} />}
-          {!ownerManaged && <PaceSelector pace={pace} saving={paceSaving} onChange={onChangePace} />}
+          {!ownerManaged && <label className="my-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2 text-sm">
+            <span>Outward actions<span className="block text-xs text-muted-foreground">Posts and messages within this workflow’s existing limits</span></span>
+            <select aria-label="Pulse outward actions" value={outwardActions} disabled={outwardSaving || !onChangeOutward} onChange={event => onChangeOutward?.(event.target.value as PulseOutwardActions)} className="rounded-md border bg-background px-2 py-1.5 text-sm">
+              <option value="ask">Ask first</option><option value="allow">Allowed within limits</option>
+            </select>
+          </label>}
           {!ownerManaged && workspacePath && <GoalLeadPanel workspacePath={workspacePath} />}
           {!ownerManaged && workspacePath && (
             <PulseWorkspace
@@ -136,14 +125,8 @@ export default function PulseView({
               finalCommandStates={finalCommandStates}
               reviewFocuses={reviewFocuses}
               reviewFocusSelections={reviewFocusSelections}
-              disabledReviewModules={disabledReviewModules}
-              reviewModuleSaving={reviewModuleSaving}
-              onToggleReviewModule={onToggleReviewModule}
               statusError={statusError}
               goalWork={goalWork}
-              autonomy={autonomy}
-              autonomySaving={autonomySaving}
-              onChangeAutonomy={onChangeAutonomy}
               focusAreas={focusAreas}
               focusSaving={focusSaving}
               onSaveFocusAreas={onSaveFocusAreas}

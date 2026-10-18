@@ -30,7 +30,7 @@ it('makes Strategy primary and groups Architecture with platform stability', asy
   try {
     await act(async () => root.render(<PulseReviewOverview moduleStates={[]} coverage={[]} findings={[]} audits={[]} moduleFilter="architecture_review" onSelectModule={() => {}} />))
     const navigation = container.querySelector('[aria-label="Pulse work areas"]')!
-    expect(navigation.querySelectorAll('[role="switch"]')).toHaveLength(3)
+    expect(navigation.querySelectorAll('[role="switch"]')).toHaveLength(0)
     expect(navigation.textContent).toContain('Goals, metrics & strategy')
     expect(navigation.textContent).toContain('Platform health & stability')
     expect(navigation.textContent).toContain('Architecture')
@@ -38,27 +38,6 @@ it('makes Strategy primary and groups Architecture with platform stability', asy
     expect(navigation.textContent!.indexOf('Strategy')).toBeLessThan(navigation.textContent!.indexOf('Architecture'))
     expect(container.querySelector('[aria-label="Architecture content"]')?.textContent).toContain('Skill quality')
     expect(container.querySelector('[aria-label="Technical content"]')).toBeNull()
-  } finally { await act(async () => root.unmount()) }
-})
-
-it('lets the user turn an individual reviewer back on while preserving its history', async () => {
-  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
-  const container = document.createElement('div'); const root = createRoot(container)
-  const onToggleReviewModule = vi.fn()
-  const onRunReviewModule = vi.fn()
-  try {
-    await act(async () => root.render(<PulseReviewOverview moduleStates={[]} coverage={[]} findings={[]} audits={[]}
-      moduleFilter="strategic_review" onSelectModule={() => {}} disabledReviewModules={['strategic_review']}
-      onToggleReviewModule={onToggleReviewModule} onRunReviewModule={onRunReviewModule} />))
-    const strategySwitch = container.querySelector<HTMLButtonElement>('[aria-label="Include Strategy reviewer in Pulse reviews"]')!
-    expect(strategySwitch.getAttribute('aria-checked')).toBe('false')
-    expect(container.textContent).toContain('Future Pulse runs will skip it; previous findings and coverage remain below.')
-    await act(async () => strategySwitch.click())
-    expect(onToggleReviewModule).toHaveBeenCalledWith('strategic_review')
-    const runButton = container.querySelector<HTMLButtonElement>('[aria-label="Run Strategy review now"]')!
-    expect(runButton.disabled).toBe(false)
-    await act(async () => runButton.click())
-    expect(onRunReviewModule).toHaveBeenCalledWith('strategic_review')
   } finally { await act(async () => root.unmount()) }
 })
 

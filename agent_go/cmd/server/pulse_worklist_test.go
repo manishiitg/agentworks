@@ -727,61 +727,6 @@ func TestPulseWorklistValidatesCadenceHints(t *testing.T) {
 	}
 }
 
-func TestPulseWorklistSkipsOwnerDisabledReviewer(t *testing.T) {
-	ctx := context.Background()
-	root := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", root)
-	workspacePath := "Workflow/selective-pulse"
-	workflowDir := filepath.Join(root, workspacePath)
-	if err := os.MkdirAll(workflowDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	manifest := NewWorkflowManifest("Selective Pulse")
-	manifest.Pulse = &WorkflowPulseConfig{Enabled: true, DisabledReviewModules: []string{pulseModuleStrategicReview}}
-	manifestBytes, err := json.Marshal(manifest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(workflowDir, "workflow.json"), manifestBytes, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	workspace := httptest.NewServer(&mockWorkspaceAPI{files: map[string]string{manifestPath(workspacePath): string(manifestBytes)}})
-	defer workspace.Close()
-	t.Setenv("WORKSPACE_API_URL", workspace.URL)
-
-	pulseRunID := "pulse-owner-disabled"
-	decisions := completePulseWorklistDecisions(map[string]PulseWorklistDecision{
-		pulseModuleStrategicReview: {
-			Module:   pulseModuleStrategicReview,
-			Due:      true,
-			Reason:   "Gate requested a strategy review.",
-			Evidence: []string{"run:changed"},
-		},
-	})
-	states, err := recordPulseWorklist(ctx, workspacePath, pulseRunID, decisions)
-	if err != nil {
-		t.Fatalf("record Pulse worklist: %v", err)
-	}
-	var strategic *PulseModuleState
-	for i := range states {
-		if states[i].Module == pulseModuleStrategicReview {
-			strategic = &states[i]
-			break
-		}
-	}
-	if strategic == nil {
-		t.Fatal("strategic reviewer state was not recorded")
-	}
-	if strategic.LastDecision != "skipped" || !strings.Contains(strategic.LastReason, "workflow owner") {
-		t.Fatalf("disabled strategy reviewer was not durably skipped: %+v", strategic)
-	}
-	if due, dueErr := pulseWorklistModulesDue(ctx, workspacePath, pulseRunID, pulseModuleStrategicReview); dueErr != nil {
-		t.Fatalf("inspect strategy due state: %v", dueErr)
-	} else if due {
-		t.Fatal("disabled strategy reviewer must not be dispatched")
-	}
-}
-
 func TestPulseWorklistToolArgumentsFailClosed(t *testing.T) {
 	tests := []struct {
 		name string

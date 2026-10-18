@@ -170,30 +170,6 @@ func afterOwnerAnswer(ctx context.Context, db *sql.DB, input *ReportHumanInput) 
 	}
 }
 
-func normalizePulseAnswerMode(value string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", "recommend":
-		return "recommend", nil
-	case "act":
-		return "act", nil
-	}
-	return "", fmt.Errorf("pulse.autonomy.answer must be recommend or act")
-}
-
-// pulseAnswerMode is pulse.autonomy.answer. Only "recommend" is implemented:
-// "act" is accepted in workflow.json for a later phase and behaves the same.
-func pulseAnswerMode(ctx context.Context, workspacePath string) string {
-	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
-	if err != nil || !found || manifest.Pulse == nil || manifest.Pulse.Autonomy == nil {
-		return "recommend"
-	}
-	mode, err := normalizePulseAnswerMode(manifest.Pulse.Autonomy.Answer)
-	if err != nil {
-		return "recommend"
-	}
-	return mode
-}
-
 // recordPulseRecommendationFromToolArgs backs record_pulse_recommendation.
 func recordPulseRecommendationFromToolArgs(ctx context.Context, args map[string]interface{}) (string, error) {
 	workspacePath := stringToolArg(args, "workspace_path")
@@ -282,8 +258,8 @@ func recordPulseRecommendationFromToolArgs(ctx context.Context, args map[string]
 		switch input.ApplyContract.Mode {
 		case "", "no_change", "external_wait":
 		default:
-			if pulseAutonomyForView(ctx, normalized).Change != "auto" {
-				return "", fmt.Errorf("this option changes the workflow and pulse.autonomy.change is ask: a safe default is not within the autonomy levels; leave safe_default_by empty")
+			if perms, _ := pulsePermissionsForWorkflow(ctx, normalized); !perms.Change {
+				return "", fmt.Errorf("this option changes the workflow while Pulse is off; leave safe_default_by empty and ask the owner")
 			}
 		}
 		safeDefaultBy = when.UTC().Format(time.RFC3339)
@@ -316,9 +292,7 @@ func recordPulseRecommendationFromToolArgs(ctx context.Context, args map[string]
 		return "", err
 	}
 	msg := "Recommendation recorded. The owner confirms it with Accept or changes it; it is not an answer and nothing is applied until the owner answers."
-	if pulseAnswerMode(ctx, normalized) == "act" {
-		msg += " (pulse.autonomy.answer=act is not available yet; the Pulse recommends.)"
-	}
+
 	return msg, nil
 }
 
@@ -437,7 +411,7 @@ func goalLeadAgentContext(ctx context.Context, workspacePath string) map[string]
 	out := map[string]interface{}{
 		"goal_memory":            memory,
 		"goal_memory_note":       note,
-		"answer_mode":            pulseAnswerMode(ctx, workspacePath),
+		"answer_mode":            "recommend",
 		"recent_owner_decisions": goalLeadRecentOwnerDecisions(ctx, workspacePath),
 		"decisions_to_recommend": toRecommend,
 		"decisions_note":         "Pending decision requests. For each, call record_pulse_recommendation once (refresh it only on new evidence): the option, why, evidence, confidence, what it blocks, and safe_default_by only when that default is safe and within the autonomy levels. You never answer a decision; the owner accepts or changes your recommendation. Say you do not know the owner's preference instead of guessing it.",
@@ -480,7 +454,7 @@ func (api *StreamingAPI) handleGetGoalLead(w http.ResponseWriter, r *http.Reques
 		"memory":       memory,
 		"memory_path":  workspacePath + "/" + goalMemoryRelPath,
 		"decision_log": entries,
-		"answer_mode":  pulseAnswerMode(r.Context(), workspacePath),
+		"answer_mode":  "recommend",
 		// Phase 4: the Pulse conversation (created here on first open when
 		// the workflow has a goal) and the focus areas.
 		"conversation": api.goalLeadConversationView(r.Context(), workspacePath),

@@ -66,10 +66,9 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 		"after_manual_run": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows only: what runs after a full run you start yourself (schedules have their own after_run in manage_schedules). Backup and publish need to be set up first (in the app's Builder: /backup, /publish).", "properties": map[string]any{
 			"backup": map[string]any{"type": "boolean"}, "publish": map[string]any{"type": "boolean"}, "notify": map[string]any{"type": "boolean"},
 		}},
-		"pulse": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows only. Pulse owns the goal when enabled (it needs soul/soul.md; until then it waits for a goal). autonomy_level 0-5 is the standing permission ladder; pace sets how often Pulse checks and fixes.", "properties": map[string]any{
-			"enabled":        map[string]any{"type": "boolean"},
-			"autonomy_level": map[string]any{"type": "integer", "minimum": 0, "maximum": 5},
-			"pace":           map[string]any{"type": "string", "enum": []any{"calm", "steady", "aggressive"}},
+		"pulse": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows only. Pulse owns the goal when enabled (it needs soul/soul.md; until then it waits for a goal). OFF produces weekly suggestions only. Outward actions are ask first or allowed within existing limits.", "properties": map[string]any{
+			"enabled":         map[string]any{"type": "boolean"},
+			"outward_actions": map[string]any{"type": "string", "enum": []any{"ask", "allow"}},
 		}},
 		"notifications": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows and Flows only.", "properties": map[string]any{
 			"run_instructions": map[string]any{"type": "string", "maxLength": 4000}, "pulse_instructions": map[string]any{"type": "string", "maxLength": 4000},
@@ -413,12 +412,11 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 	}
 	pulseView := func(m *WorkflowManifest) map[string]any {
 		view := map[string]any{"enabled": m.PulseEnabled(), "has_goal": workflowHasSoul(ctx, workflow.WorkspacePath)}
+		view["outward_actions"] = "ask"
 		if m.Pulse != nil {
-			view["pace"] = m.Pulse.Pace
-			if m.Pulse.Autonomy != nil && m.Pulse.Autonomy.Level != nil {
-				view["autonomy_level"] = *m.Pulse.Autonomy.Level
-			}
+			view["outward_actions"] = m.Pulse.OutwardActions
 		}
+
 		return view
 	}
 	if name == "get_settings" {
@@ -477,13 +475,10 @@ func (api *StreamingAPI) externalSettingsCall(w http.ResponseWriter, r *http.Req
 		if v, ok := p["enabled"].(bool); ok {
 			req.PulseEnabled = &v
 		}
-		if v, ok := p["autonomy_level"].(float64); ok {
-			level := int(v)
-			req.PulseAutonomyLevel = &level
+		if v, ok := p["outward_actions"].(string); ok {
+			req.PulseOutwardActions = &v
 		}
-		if v, ok := p["pace"].(string); ok {
-			req.PulsePace = &v
-		}
+
 		changed = append(changed, "pulse")
 	}
 	if len(changed) == 0 {

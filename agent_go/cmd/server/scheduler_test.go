@@ -2044,20 +2044,14 @@ func TestPostRunMonitorStepsUseOneTurnInactivityBoundary(t *testing.T) {
 	}
 }
 
-// Goal Work's permission levels reach its step as text and as the levels the
-// tools enforce (PLAT-697). Workflow Review no longer holds them.
-func TestGoalWorkAutonomyTextMatchesTheEnforcedLevels(t *testing.T) {
-	perms, text := goalWorkAutonomy(context.Background(), "Workflow/does-not-exist")
-	if !perms.Run || perms.Outward || perms.Change {
-		t.Fatalf("defaults are run auto, outward and change ask, got %+v", perms)
+// A missing manifest gives a report-only context, never implicit run authority.
+func TestPulseMissingManifestCannotAct(t *testing.T) {
+	perms, text := pulsePermissionsForWorkflow(context.Background(), "Workflow/does-not-exist")
+	if perms.Run || perms.Outward || perms.Change || perms.Reshape {
+		t.Fatalf("missing workflow granted authority: %+v", perms)
 	}
-	for _, want := range []string{"The tools hold them", "level 1 of 5, Measure", "✓ 1 Measure", "checked by the Workflow Review first"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("autonomy text missing %q:\n%s", want, text)
-		}
-	}
-	if strings.Contains(text, "Plan Drift is due") {
-		t.Errorf("Workflow Review must not hold Goal Work's levels:\n%s", text)
+	if !strings.Contains(text, "Pulse is off") || !strings.Contains(text, "weekly report") {
+		t.Fatalf("report-only instructions missing: %s", text)
 	}
 }
 

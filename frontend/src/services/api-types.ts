@@ -735,12 +735,10 @@ export interface PulseModuleStateResponse {
   goal_work?: PulseGoalWorkItem[]
   goal_work_error?: string
   goal_status?: PulseGoalStatus | null
-  autonomy_run?: PulseAutonomyRun
-  autonomy?: PulseAutonomy
+  outward_actions?: PulseOutwardActions
   focus_areas?: string[]
   /** The workflow has written its goal in soul.md; Pulse needs it to own the goal. */
   has_soul?: boolean
-  pace?: PulsePace
   run_setup?: WorkflowRunSetup | null
   error?: string
 }
@@ -752,22 +750,7 @@ export interface WorkflowRunSetup {
   workflow_review?: { finished_at?: string; started_at?: string; outcome?: string; reason?: string } | null
 }
 
-/** One Pulse permission: auto lets Goal Work do it itself; ask makes it prepare the work and create a decision. */
-export type PulseAutonomyLevel = 'auto' | 'ask'
-/** Goal Work's Run permission: auto lets it run existing workflow steps itself. */
-export type PulseAutonomyRun = PulseAutonomyLevel
-/** Goal Work's permissions. Run defaults to auto; outward and change to ask. */
-/** How hard Pulse pushes on the goal (pulse.pace). */
-export type PulsePace = 'calm' | 'steady' | 'aggressive'
-export interface PulseAutonomy {
-  /** The autonomy ladder level, 0-5 (pulseAutonomy.ts); absent on older settings. */
-  level?: number
-  run: PulseAutonomyLevel
-  outward: PulseAutonomyLevel
-  change: PulseAutonomyLevel
-}
-export type PulseAutonomyKey = keyof PulseAutonomy
-export const DEFAULT_PULSE_AUTONOMY: PulseAutonomy = { level: 1, run: 'auto', outward: 'ask', change: 'ask' }
+export type PulseOutwardActions = 'ask' | 'allow'
 
 /** One code-computed silence alarm (PLAT-697): no run or no goal reading for days. */
 export interface PulseGoalAlarm {
@@ -3911,9 +3894,9 @@ export interface WorkflowFolderAccessRequest {
 }
 
 export interface WorkflowPulseConfig {
+  outward_actions?: PulseOutwardActions
   enabled?: boolean
   advisor_specialization?: WorkflowAdvisorSpecialization
-  disabled_review_modules?: PulseReviewerModule[]
 }
 
 export type PulseReviewerModule = 'technical_review' | 'architecture_review' | 'strategic_review'
@@ -4054,12 +4037,7 @@ export interface UpdateWorkflowManifestRequest {
   workshop_mode?: string // Standalone patch — avoids zeroing out other execution_defaults fields
   run_retention_count?: number
   pulse_enabled?: boolean
-  pulse_disabled_review_modules?: PulseReviewerModule[]
-  pulse_autonomy_level?: number
-  pulse_pace?: PulsePace
-  pulse_autonomy_run?: PulseAutonomyRun
-  pulse_autonomy_outward?: PulseAutonomyLevel
-  pulse_autonomy_change?: PulseAutonomyLevel
+  pulse_outward_actions?: PulseOutwardActions
   pulse_focus_areas?: string[]
   /** After-run options for runs started from a chat (PLAT-697 phase 0). */
   after_manual_run?: ScheduleAfterRun

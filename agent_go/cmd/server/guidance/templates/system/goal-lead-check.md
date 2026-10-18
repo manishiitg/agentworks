@@ -25,7 +25,7 @@ same turn; there is no separate reviewer or pass to wait for.
    runs and time for outcomes, revisit whether the goal and approach still fit
    the owner's current intent. With too little evidence, say what would settle it.
 4. **Act as a colleague.** Ask Builder to do the work with the best expected
-   effect within existing permission levels; prefer removing unnecessary work
+   effect within existing permissions; prefer removing unnecessary work
    to adding another rule. Measurement repairs are useful work, not a reason
    to postpone every other judgment. Read explicit replies with
    `read_agent_messages`; use `send_message` to reply. Delivery and final chat

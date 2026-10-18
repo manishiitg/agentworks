@@ -1318,33 +1318,6 @@ func forcePendingPulseReviewRecoveries(ctx context.Context, workspacePath string
 	return forced, nil
 }
 
-// applyDisabledPulseReviewModules makes the owner's durable reviewer choice
-// authoritative over Gate cadence and recovery routing. Disabled reviewers
-// retain a skipped worklist row so the decision is visible and finalization
-// still sees a structurally complete worklist.
-func applyDisabledPulseReviewModules(ctx context.Context, workspacePath string, decisions []PulseWorklistDecision) ([]PulseWorklistDecision, error) {
-	manifest, exists, err := ReadWorkflowManifest(ctx, workspacePath)
-	if err != nil || !exists || manifest.Pulse == nil || len(manifest.Pulse.DisabledReviewModules) == 0 {
-		return decisions, nil
-	}
-	updated := append([]PulseWorklistDecision(nil), decisions...)
-	for index := range updated {
-		module := normalizePulseModule(updated[index].Module)
-		if !manifest.PulseReviewModuleDisabled(module) {
-			continue
-		}
-		updated[index].Due = false
-		updated[index].Reason = "Disabled by the workflow owner in Pulse review settings."
-		updated[index].Evidence = []string{"workflow.json:pulse.disabled_review_modules:" + module}
-		updated[index].NextCheckAt = ""
-		updated[index].NextCheckAfterRunID = ""
-		// A positive boundary satisfies the generic skipped-row contract; the
-		// owner setting is reapplied on every pass until explicitly enabled.
-		updated[index].CooldownRuns = 1
-	}
-	return updated, nil
-}
-
 func pulsePlanDriftDue(decisions []PulseWorklistDecision) bool {
 	for _, decision := range decisions {
 		if normalizePulseModule(decision.Module) == pulseModulePlanDriftReview && decision.Due {
@@ -1449,9 +1422,7 @@ func forcePulseModuleDueForLateRepairDebt(ctx context.Context, workspacePath, pu
 	if !validPulseModules[module] {
 		return fmt.Errorf("module %q is not a valid Pulse module", module)
 	}
-	if manifest, exists, readErr := ReadWorkflowManifest(ctx, workspacePath); readErr == nil && exists && manifest.PulseReviewModuleDisabled(module) {
-		return nil
-	}
+
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
 		return fmt.Errorf("reason is required")
@@ -2254,11 +2225,9 @@ func (api *StreamingAPI) handleGetPulseModuleState(w http.ResponseWriter, r *htt
 		"goal_work":                  goalWork,
 		"goal_work_error":            goalWorkError,
 		"goal_status":                goalStatus,
-		"autonomy_run":               pulseAutonomyRunForView(r.Context(), workspacePath),
-		"autonomy":                   pulseAutonomyForView(r.Context(), workspacePath),
+		"outward_actions":            pulseOutwardActionsForView(r.Context(), workspacePath),
 		"focus_areas":                pulseFocusAreasForView(r.Context(), workspacePath),
 		"has_soul":                   workflowHasSoul(r.Context(), workspacePath),
-		"pace":                       workflowPulsePace(r.Context(), workspacePath).Name,
 		"run_setup":                  workflowRunSetupView(r.Context(), workspacePath),
 	})
 }

@@ -240,29 +240,24 @@ type UpdateWorkflowManifestRequest struct {
 	// write into THIS workflow's knowledgebase/notes/ via their own "write"
 	// knowledgebase_source. The consent step a consumer's write source depends
 	// on; an empty (non-nil) slice revokes all external write access.
-	KBWriteGrants              *[]string                                    `json:"kb_write_grants,omitempty"`
-	WorkspacePath              string                                       `json:"workspace_path"`
-	Label                      *string                                      `json:"label,omitempty"`
-	Description                *string                                      `json:"description,omitempty"`
-	RelayOutputStepID          *string                                      `json:"relay_output_step_id,omitempty"`
-	RelayDurability            *string                                      `json:"relay_durability,omitempty"`
-	Icon                       *string                                      `json:"icon,omitempty"`
-	Capabilities               *WorkflowCapabilities                        `json:"capabilities,omitempty"`
-	ExecutionDefaults          *WorkflowExecutionDefaults                   `json:"execution_defaults,omitempty"`
-	Schedules                  *[]WorkflowSchedule                          `json:"schedules,omitempty"`
-	WorkshopMode               *string                                      `json:"workshop_mode,omitempty"` // Standalone patch — avoids zeroing out other ExecutionDefaults fields
-	RunRetentionCount          *int                                         `json:"run_retention_count,omitempty"`
-	FolderAccess               *[]workflowtypes.WorkflowFolderGrant         `json:"folder_access,omitempty"`
-	FolderAccessRequests       *[]workflowtypes.WorkflowFolderAccessRequest `json:"folder_access_requests,omitempty"`
-	WorkflowContextPaths       *[]string                                    `json:"workflow_context_paths,omitempty"`
-	PulseEnabled               *bool                                        `json:"pulse_enabled,omitempty"`
-	PulseDisabledReviewModules *[]string                                    `json:"pulse_disabled_review_modules,omitempty"`
-	PulseAutonomyLevel         *int                                         `json:"pulse_autonomy_level,omitempty"`
-	PulsePace                  *string                                      `json:"pulse_pace,omitempty"`
-	PulseAutonomyRun           *string                                      `json:"pulse_autonomy_run,omitempty"`
-	PulseAutonomyOutward       *string                                      `json:"pulse_autonomy_outward,omitempty"`
-	PulseAutonomyChange        *string                                      `json:"pulse_autonomy_change,omitempty"`
-	PulseFocusAreas            *[]string                                    `json:"pulse_focus_areas,omitempty"`
+	KBWriteGrants        *[]string                                    `json:"kb_write_grants,omitempty"`
+	WorkspacePath        string                                       `json:"workspace_path"`
+	Label                *string                                      `json:"label,omitempty"`
+	Description          *string                                      `json:"description,omitempty"`
+	RelayOutputStepID    *string                                      `json:"relay_output_step_id,omitempty"`
+	RelayDurability      *string                                      `json:"relay_durability,omitempty"`
+	Icon                 *string                                      `json:"icon,omitempty"`
+	Capabilities         *WorkflowCapabilities                        `json:"capabilities,omitempty"`
+	ExecutionDefaults    *WorkflowExecutionDefaults                   `json:"execution_defaults,omitempty"`
+	Schedules            *[]WorkflowSchedule                          `json:"schedules,omitempty"`
+	WorkshopMode         *string                                      `json:"workshop_mode,omitempty"` // Standalone patch — avoids zeroing out other ExecutionDefaults fields
+	RunRetentionCount    *int                                         `json:"run_retention_count,omitempty"`
+	FolderAccess         *[]workflowtypes.WorkflowFolderGrant         `json:"folder_access,omitempty"`
+	FolderAccessRequests *[]workflowtypes.WorkflowFolderAccessRequest `json:"folder_access_requests,omitempty"`
+	WorkflowContextPaths *[]string                                    `json:"workflow_context_paths,omitempty"`
+	PulseEnabled         *bool                                        `json:"pulse_enabled,omitempty"`
+	PulseOutwardActions  *string                                      `json:"pulse_outward_actions,omitempty"`
+	PulseFocusAreas      *[]string                                    `json:"pulse_focus_areas,omitempty"`
 	// AfterManualRun sets the after-run options for runs started from a chat
 	// (PLAT-697 phase 0). Schedules carry their own after_run.
 	AfterManualRun *ScheduleAfterRun `json:"after_manual_run,omitempty"`
@@ -510,23 +505,12 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 	if req.PulseEnabled != nil {
 		setWorkflowPulseEnabled(manifest, *req.PulseEnabled)
 	}
-	if req.PulseDisabledReviewModules != nil {
-		disabled, disabledErr := normalizeDisabledPulseReviewModules(*req.PulseDisabledReviewModules)
-		if disabledErr != nil {
-			http.Error(w, disabledErr.Error(), http.StatusBadRequest)
-			return
-		}
-		if manifest.Pulse == nil {
-			manifest.Pulse = &WorkflowPulseConfig{}
-		}
-		manifest.Pulse.DisabledReviewModules = disabled
-	}
 	if req.AfterManualRun != nil {
 		copied := *req.AfterManualRun
 		manifest.AfterManualRun = &copied
 	}
-	if req.PulsePace != nil {
-		pace, err := normalizePulsePace(*req.PulsePace)
+	if req.PulseOutwardActions != nil {
+		value, err := normalizePulseOutwardActions(*req.PulseOutwardActions)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -534,52 +518,7 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 		if manifest.Pulse == nil {
 			manifest.Pulse = &WorkflowPulseConfig{}
 		}
-		manifest.Pulse.Pace = pace
-	}
-	if req.PulseAutonomyLevel != nil {
-		if manifest.Pulse == nil {
-			manifest.Pulse = &WorkflowPulseConfig{}
-		}
-		level := *req.PulseAutonomyLevel
-		resolved, err := resolvePulseAutonomy(&WorkflowPulseAutonomy{Level: &level})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		answer := ""
-		if manifest.Pulse.Autonomy != nil && strings.TrimSpace(manifest.Pulse.Autonomy.Answer) != "" {
-			answer, _ = normalizePulseAnswerMode(manifest.Pulse.Autonomy.Answer)
-		}
-		manifest.Pulse.Autonomy = &WorkflowPulseAutonomy{Level: &level, Run: resolved.Run, Outward: resolved.Outward, Change: resolved.Change, Answer: answer}
-	} else if req.PulseAutonomyRun != nil || req.PulseAutonomyOutward != nil || req.PulseAutonomyChange != nil {
-		if manifest.Pulse == nil {
-			manifest.Pulse = &WorkflowPulseConfig{}
-		}
-		levels, levelsErr := resolvePulseAutonomy(manifest.Pulse.Autonomy)
-		if levelsErr != nil {
-			levels, _ = resolvePulseAutonomy(nil)
-		}
-		next := &WorkflowPulseAutonomy{Run: levels.Run, Outward: levels.Outward, Change: levels.Change}
-		if req.PulseAutonomyRun != nil {
-			next.Run = *req.PulseAutonomyRun
-		}
-		if req.PulseAutonomyOutward != nil {
-			next.Outward = *req.PulseAutonomyOutward
-		}
-		if req.PulseAutonomyChange != nil {
-			next.Change = *req.PulseAutonomyChange
-		}
-		resolved, err := resolvePulseAutonomy(next)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		answer := ""
-		if manifest.Pulse.Autonomy != nil && strings.TrimSpace(manifest.Pulse.Autonomy.Answer) != "" {
-			// Kept as set (pulse.autonomy.answer, PLAT-697); an invalid value is dropped.
-			answer, _ = normalizePulseAnswerMode(manifest.Pulse.Autonomy.Answer)
-		}
-		manifest.Pulse.Autonomy = &WorkflowPulseAutonomy{Run: resolved.Run, Outward: resolved.Outward, Change: resolved.Change, Answer: answer}
+		manifest.Pulse.OutwardActions = value
 	}
 	if req.PulseFocusAreas != nil {
 		areas, areasErr := normalizePulseFocusAreas(*req.PulseFocusAreas)

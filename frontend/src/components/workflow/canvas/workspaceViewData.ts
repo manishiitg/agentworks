@@ -7,8 +7,7 @@ import type {
   PulseModuleState,
   PulsePlanDriftDueItem,
   PulseReviewFocus,
-  PulseReviewerModule,
-  VariablesManifest, PulseNextRun, PulseGoalWorkItem, PulseGoalStatus, PulseAutonomy, PulsePace, WorkflowRunSetup } from '../../../services/api-types'
+  VariablesManifest, PulseNextRun, PulseGoalWorkItem, PulseGoalStatus, PulseOutwardActions, WorkflowRunSetup } from '../../../services/api-types'
 import type { PulseOverview } from '../PulseView'
 
 export type WorkflowImageExportFormat = 'svg' | 'png' | 'jpeg'
@@ -20,9 +19,6 @@ export interface PulseData {
   monitorOn: boolean
   monitorSaving: boolean
   toggleMonitor: () => void
-  disabledReviewModules: PulseReviewerModule[]
-  reviewModuleSaving: PulseReviewerModule | null
-  toggleReviewModule: (module: PulseReviewerModule) => void
   moduleStates: PulseModuleState[]
   planDriftDue: boolean
   planDriftDueItems: PulsePlanDriftDueItem[]
@@ -31,9 +27,9 @@ export interface PulseData {
   nextRun: PulseNextRun | null
   goalWork: PulseGoalWorkItem[]
   goalStatus: PulseGoalStatus | null
-  autonomy: PulseAutonomy
-  autonomySaving: boolean
-  setAutonomy: (next: PulseAutonomy) => void
+  outwardActions: PulseOutwardActions
+  outwardSaving: boolean
+  setOutward: (next: PulseOutwardActions) => void
   focusAreas: string[]
   focusSaving: boolean
   saveFocusAreas: (areas: string[]) => Promise<boolean>
@@ -45,9 +41,7 @@ export interface PulseData {
   refresh: (showLoading?: boolean) => Promise<void>
   hasSoul: boolean
   runSetup: WorkflowRunSetup | null
-  pace: PulsePace
-  paceSaving: boolean
-  setPace: (next: PulsePace) => void
+
 }
 
 /** The flow view's shell state. `loading` and `error` replace the whole pane

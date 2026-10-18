@@ -8,10 +8,8 @@ import (
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
-// Goal Work's autonomy levels (workflow.json pulse.autonomy: run, outward,
-// change) are enforced on the tools, not only stated in its prompt (PLAT-697
-// phase 2). Until then they were prose: PLAT-452 removed the background agent
-// whose filtered tool list held them.
+// Pulse on/off and outward permission are enforced at the existing tool
+// dispatch boundary, including delegated Builder work.
 //
 // How it holds them:
 //   - The scheduler marks the Pulse session as "in a Goal Work turn" with that
@@ -121,21 +119,13 @@ func goalWorkToolRefusal(tool string, perms stepworkflow.GoalWorkPermissions) er
 	switch {
 	case goalWorkNeverTools[tool]:
 		return fmt.Errorf("%s is not available to Goal Work: deleting steps or schedules, replacing the plan and migrations stay with the user. Create a decision request (create_human_input_request) with the exact change instead", tool)
-	case goalWorkRunTools[tool] || goalWorkMeasureTools[tool]:
+	case goalWorkRunTools[tool] || goalWorkMeasureTools[tool] || goalWorkReshapeTools[tool] || goalWorkChangeTools[tool] || stepworkflow.ScheduleGuardedTool(tool):
 		if !perms.Run {
-			return fmt.Errorf("%s refused: running steps needs the Measure autonomy level (now level %d, pulse.autonomy.level). Do not run it another way; prepare the work and have it put to the owner as one decision", tool, perms.Level)
-		}
-	case goalWorkReshapeTools[tool]:
-		if !perms.Reshape {
-			return fmt.Errorf("%s refused: schedules and the plan's structure need the Reshape autonomy level (now level %d, pulse.autonomy.level). Do not change it another way; have it put to the owner as one decision with the ready patch", tool, perms.Level)
-		}
-	case goalWorkChangeTools[tool] || stepworkflow.ScheduleGuardedTool(tool):
-		if !perms.Change {
-			return fmt.Errorf("%s refused: editing steps needs the Fix autonomy level (now level %d, pulse.autonomy.level). Do not edit the workflow another way; have it put to the owner as one decision with the ready patch", tool, perms.Level)
+			return fmt.Errorf("%s is unavailable while Pulse is off: this weekly report can suggest changes but cannot run or edit work. The owner can turn Pulse on to act on the suggestions", tool)
 		}
 	case goalWorkOutwardTools[tool]:
 		if !perms.Outward {
-			return fmt.Errorf("%s refused: posting needs the Publish autonomy level (now level %d, pulse.autonomy.level). Prepare the message and have it put to the owner as one decision", tool, perms.Level)
+			return fmt.Errorf("%s needs the owner's approval for an outward action. Prepare the action and ask through the existing decision flow", tool)
 		}
 	}
 	return nil

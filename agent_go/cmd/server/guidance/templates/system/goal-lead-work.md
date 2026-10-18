@@ -23,7 +23,7 @@ Builder; a technical handoff alone is not Goal Work's conclusion.
   windows and limits; do not dump other chats or assume correlation is causation.
 - Ask Builder for implementation with the evidence, intended result and what
   would prove it worked. You read and reason; Builder acts within your shared
-  permission levels. Owner-authorized work needs no extra confirmation.
+  permissions. Owner-authorized work needs no extra confirmation.
 - Record useful work with `record_pulse_goal_work`: expected goal effect,
   evidence versus hypothesis, actual action, and a meaningful `check_at`.
   An unresolved strategic question is an `idea` in the same list, not a new

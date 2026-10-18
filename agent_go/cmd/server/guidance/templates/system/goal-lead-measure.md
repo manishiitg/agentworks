@@ -46,4 +46,4 @@ manual reading instead of risking the account. When a baseline period ends,
 or a goal still has no target after two weeks, propose one useful target as
 an owner decision, reusing an existing pending question. Record the actual
 measurement limitation and what would settle it; independent goal work can
-continue within permission levels.
+continue within permissions.

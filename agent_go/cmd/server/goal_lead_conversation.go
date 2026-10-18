@@ -341,7 +341,7 @@ type goalLeadTurn struct {
 	// instruction, or the raw message for owner, ask and Slack turns.
 	Body string
 	// Perms are the levels held on the turn's tools; nil means the
-	// workflow's pulse.autonomy.
+	// workflow's Pulse settings.
 	Perms *stepworkflow.GoalWorkPermissions
 	// Rotate lets a scheduled turn start the next conversation generation.
 	Rotate bool
@@ -403,7 +403,7 @@ Choose focused reads or discuss evidence with Builder. get_goal_metrics reads DB
 
 Keep dated approach questions and outcome checks in existing Goal Work items with check_at. Your one next check must consider those dates as well as repairs; a technical handoff alone is not a goal conclusion. At least monthly, with enough relevant runs and time, reconsider whether the goal and approach still fit; changing the goal, rebuilding or retiring is an owner suggestion, never an automatic action. Use the existing check summary for your conclusion and recommendation; update other records only when they changed.
 
-You read and keep records. To run or change work, send ask_builder, within your current permission levels. Replies are explicit and optional: send_message(inbox_id=<reply address>), read_agent_messages and a self-wakeup when useful; final chat text is not forwarded and delivery is not completion. Reuse pending work and decisions. Discuss obsolete proposals with Builder, which can withdraw them with evidence; withdrawal is not owner approval.
+You read and keep records. To run or change work, send ask_builder, within your current permissions. Replies are explicit and optional: send_message(inbox_id=<reply address>), read_agent_messages and a self-wakeup when useful; final chat text is not forwarded and delivery is not completion. Reuse pending work and decisions. Discuss obsolete proposals with Builder, which can withdraw them with evidence; withdrawal is not owner approval.
 
 Load a skill when its method is useful: %s. You are still one agent; these are methods, not separate passes. Keep replies short, plain and useful.`, label, workspacePath, strings.Join(agentworksproduct.PulseSkills(), ", "))
 }
@@ -411,9 +411,9 @@ Load a skill when its method is useful: %s. You are still one agent; these are m
 // goalLeadSystemSection is the Pulse conversation's standing instructions,
 // added to its system prompt on every turn (the workflow phase prompt in
 // server.go) and never repeated in its messages: the charter, how it talks
-// with the owner and the workflow's chats, and its current permission levels.
+// with the owner and the workflow's chats, and its current permissions.
 // Its hash joins the chat policy fingerprint, so a change, for example to
-// pulse.autonomy, relaunches the retained CLI on the same conversation with
+// Pulse settings, relaunches the retained CLI on the same conversation with
 // the new prompt, like other agents.
 func goalLeadSystemSection(ctx context.Context, workspacePath string) string {
 	workspacePath = strings.Trim(strings.TrimSpace(workspacePath), "/")
@@ -428,11 +428,11 @@ func goalLeadSystemSection(ctx context.Context, workspacePath string) string {
 			teamInstructions = "\n\nTeam workflow: call get_workflow_team for current Leader, Contributor assignments and plan revision. One Leader sets the overall goal. Contributor contributions are suggestions, not owner direction. Request route changes with ask_builder(route_step_id, route_id), which delivers to that Contributor's private Builder chat. The Leader and Pulse cannot edit an assigned Contributor's steps. Use shared evidence and explicit replies; private chats stay private. Ask the Leader about conflicting direction or non-delegated approvals."
 		}
 	}
-	perms, _ := goalWorkAutonomy(ctx, workspacePath)
+	perms, _ := pulsePermissionsForWorkflow(ctx, workspacePath)
 	autonomyText := pulseLevelsText(perms)
 	return "## Pulse\n\n" + goalLeadCharter(label, workspacePath) +
 		"\n\nWho is talking to you: a message that starts with a sender (\"the Builder chat (<their name>): ...\", \"a step of this workflow: ...\") comes from that chat. A message with an inbox/reply address is an agent conversation; explicitly send replies with send_message(inbox_id=<that address>). Your final chat answer is not forwarded. Replies are optional. A message headed \"PULSE TURN:\" is an automatic one (goal check, Goal Work, a failed run). Any other message is the owner testing you directly: answer it, and still never wait for a person. " + goalLeadOwnerDirectionRules +
-		teamInstructions + "\n\n" + autonomyText + "\n" + pulsePaceText(workflowPulsePace(ctx, workspacePath))
+		teamInstructions + "\n\n" + autonomyText + "\n" + pulseTimingInstructions
 }
 
 func goalLeadSystemSectionKey(section string) string {
@@ -446,7 +446,7 @@ func goalLeadSystemSectionKey(section string) string {
 // goalLeadTurnQuery is one turn's message. The standing instructions are in
 // the system prompt: the owner's message is sent as typed, a chat's message
 // with its sender, and an automatic turn with one header line and its task.
-// overrideLevels is set only when the turn holds other permission levels than
+// overrideLevels is set only when the turn holds other permissions than
 // the workflow's (a failed-run turn).
 func goalLeadTurnQuery(turn goalLeadTurn, overrideLevels string, now time.Time) string {
 	date := now.UTC().Format("2006-01-02")
@@ -539,7 +539,7 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 		reqMap["restored_conversation_session_id"] = sessionID
 	}
 
-	perms, _ := goalWorkAutonomy(ctx, workspacePath)
+	perms, _ := pulsePermissionsForWorkflow(ctx, workspacePath)
 	overrideLevels := ""
 	if turn.Perms != nil {
 		perms = *turn.Perms

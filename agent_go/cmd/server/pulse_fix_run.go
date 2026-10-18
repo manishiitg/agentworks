@@ -103,7 +103,7 @@ func (s *SchedulerService) launchDueFixRuns(ctx context.Context) {
 		// Pulse conversation once and it asks the Builder chat to fix it; a
 		// workflow without a soul.md runs like Pulse off.
 		// A calm pace leaves failures to the next goal check.
-		if workflowHasGoal(ctx, item.WorkspacePath) && workflowPulsePace(ctx, item.WorkspacePath).WakeOnFailure {
+		if workflowHasGoal(ctx, item.WorkspacePath) {
 			s.wakeGoalLeadOnRunFailures(ctx, item.WorkspacePath, now)
 		}
 	}

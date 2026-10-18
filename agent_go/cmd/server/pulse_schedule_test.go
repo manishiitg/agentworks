@@ -66,17 +66,8 @@ func TestDecidePulseDueFastRequestPullsEarlierButKeepsTheFloor(t *testing.T) {
 	}
 }
 
-func TestDecidePulseDueFixedModeFollowsCron(t *testing.T) {
-	schedule := (&WorkflowManifest{Pulse: &WorkflowPulseConfig{Enabled: true, Schedule: &WorkflowPulseSchedule{Mode: "fixed", Cron: "0 7 * * 1", Timezone: "UTC"}}}).EffectivePulseSchedule()
-	last := time.Date(2026, 9, 21, 7, 0, 0, 0, time.UTC) // a Monday
-	got := decidePulseDue(schedule, pulseScheduleState{LastStartedAt: last}, false, last.Add(24*time.Hour))
-	if got.Due || !got.NextAt.Equal(last.Add(7*24*time.Hour)) {
-		t.Fatalf("fixed weekly cron: want next Monday 07:00, got %+v", got)
-	}
-}
-
 func TestFirstPulseTimeIsNextSixAMLocal(t *testing.T) {
-	schedule := WorkflowPulseSchedule{Mode: pulseScheduleModeSelf, Timezone: "Asia/Kolkata", MinIntervalHours: 24, MaxIntervalHours: 168}
+	schedule := WorkflowPulseSchedule{Timezone: "Asia/Kolkata", MinIntervalHours: 24, MaxIntervalHours: 168}
 	loc, _ := time.LoadLocation("Asia/Kolkata")
 	now := time.Date(2026, 9, 23, 13, 0, 0, 0, loc)
 	want := time.Date(2026, 9, 24, 6, 0, 0, 0, loc).UTC()
@@ -106,28 +97,7 @@ func TestEffectivePulseScheduleDefaultsAndTimezone(t *testing.T) {
 		{Enabled: true, Timezone: "Asia/Kolkata"}, {Enabled: true, Timezone: "Asia/Kolkata"}, {Enabled: true, Timezone: "UTC"}, {Enabled: false, Timezone: "America/New_York"},
 	}}
 	got := manifest.EffectivePulseSchedule()
-	if got.Mode != "self" || got.MinIntervalHours != 6 || got.MaxIntervalHours != 168 || got.Timezone != "Asia/Kolkata" {
+	if got.MinIntervalHours != 6 || got.MaxIntervalHours != 168 || got.Timezone != "Asia/Kolkata" {
 		t.Fatalf("defaults = %+v", got)
-	}
-	if err := validateWorkflowPulseSchedule(&WorkflowPulseSchedule{Mode: "fixed", Cron: "not a cron"}); err == nil {
-		t.Fatal("invalid fixed cron accepted")
-	}
-	if err := validateWorkflowPulseSchedule(&WorkflowPulseSchedule{Mode: "sometimes"}); err == nil {
-		t.Fatal("unknown mode accepted")
-	}
-}
-
-func TestLegacyFullScheduleKeepsPulseOn(t *testing.T) {
-	// jobsearch shape: no pulse.enabled, review only via a schedule's full mode.
-	manifest := &WorkflowManifest{Schedules: []WorkflowSchedule{{ID: "search", Enabled: true, PulseMode: "full"}}}
-	if !manifest.PulseEnabled() {
-		t.Fatal("a legacy full schedule must keep the workflow's Pulse on")
-	}
-	if got := manifest.EffectivePulseMode(manifest.Schedules[0]); got != "basic" {
-		t.Fatalf("the schedule itself now runs %q after a run, want basic", got)
-	}
-	disabled := &WorkflowManifest{Schedules: []WorkflowSchedule{{ID: "search", Enabled: false, PulseMode: "full"}}}
-	if disabled.PulseEnabled() {
-		t.Fatal("a disabled legacy full schedule must not turn Pulse on")
 	}
 }

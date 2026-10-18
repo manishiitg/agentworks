@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { AlertTriangle, GitCompare, Lightbulb, Loader2, Play, Wrench, Blocks } from 'lucide-react'
-import type { PulseFindingLifecycle, PulseModuleState, PulsePlanDriftDueItem, PulseReviewAudit, PulseReviewFocus, PulseReviewerModule } from '../../services/api-types'
+import type { PulseFindingLifecycle, PulseModuleState, PulsePlanDriftDueItem, PulseReviewAudit, PulseReviewFocus } from '../../services/api-types'
 import { normalizePulseWorkspaceModule, pulseFindingReviewAreas, pulseWorkspaceQueueCounts } from './pulseWorkspaceUtils'
 import { pulseReviewDate, reviewCoverageForArea, TECHNICAL_REVIEW_AREAS, ARCHITECTURE_REVIEW_AREAS } from './pulseReviewCoverage'
 
@@ -47,7 +47,7 @@ function FocusDetails({ items, findings }: { items: PulseReviewFocus[]; findings
   </div>
 }
 
-export function PulseReviewOverview({ platformOnly = false, goalLeadOwnsReviews = false, moduleStates, planDriftDue = false, planDriftDueItems = [], planDriftDueError = null, coverage, audits, findings, moduleFilter, onSelectModule, reviewFocusSelections = [], playbookFocuses = [], disabledReviewModules = [], reviewModuleSaving = null, onToggleReviewModule, runningReviewModule = null, onRunReviewModule, strategySupplement }: {
+export function PulseReviewOverview({ platformOnly = false, goalLeadOwnsReviews = false, moduleStates, planDriftDue = false, planDriftDueItems = [], planDriftDueError = null, coverage, audits, findings, moduleFilter, onSelectModule, reviewFocusSelections = [], playbookFocuses = [], runningReviewModule = null, onRunReviewModule, strategySupplement }: {
   /** Platform health tab: Drift, Technical and Architecture only. Goal Work
    * (strategic_review) has its own "For you" view. */
   platformOnly?: boolean;
@@ -59,8 +59,6 @@ export function PulseReviewOverview({ platformOnly = false, goalLeadOwnsReviews 
   findings: PulseFindingLifecycle[]; moduleFilter: string | null;
   onSelectModule: (module: string) => void; reviewFocusSelections?: PulseReviewFocus[];
   playbookFocuses?: InstalledPlaybookReviewFocus[];
-  disabledReviewModules?: PulseReviewerModule[]; reviewModuleSaving?: PulseReviewerModule | null;
-  onToggleReviewModule?: (module: PulseReviewerModule) => void;
   runningReviewModule?: string | null; onRunReviewModule?: (module: string) => void | Promise<void>;
   strategySupplement?: ReactNode;
 }) {
@@ -92,19 +90,17 @@ export function PulseReviewOverview({ platformOnly = false, goalLeadOwnsReviews 
   const selectedPlaybookFocuses = selected ? playbookFocusFor(selected.id) : []
   const driftCounts = pulseWorkspaceQueueCounts(findings.filter(item => pulseFindingReviewAreas(item, reviewFocusSelections).includes('plan_drift_review')))
   const reviewCard = (area: (typeof areas)[number], prominent = false) => {
-    const module = area.id as PulseReviewerModule
-    const disabled = disabledReviewModules.includes(module)
     const audit = latestAuditFor(area.id)
     const lastReviewed = audit?.recorded_at || latestCoverageFor(area.id)?.last_reviewed_at
     const recommendedFocus = area.id === 'strategic_review' ? playbookFocusFor(area.id) : []
     const active = moduleFilter === area.id
     const running = runningReviewModule === area.id
     const runBlocked = !!runningReviewModule && !running
-    return <div key={area.id} className={`overflow-hidden rounded-xl border transition-colors ${prominent ? 'shadow-sm' : ''} ${active ? 'border-primary/40 bg-primary/10' : disabled ? 'bg-muted/20' : 'bg-background'}`}>
+    return <div key={area.id} className={`overflow-hidden rounded-xl border transition-colors ${prominent ? 'shadow-sm' : ''} ${active ? 'border-primary/40 bg-primary/10' : 'bg-background'}`}>
       <button type="button" aria-pressed={active} onClick={() => onSelectModule(area.id)} className={`w-full text-left hover:bg-muted/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${prominent ? 'p-4' : 'p-3'}`}>
-        <span className={`flex items-center gap-2 font-semibold ${prominent ? 'text-sm' : 'text-xs'}`}><area.Icon className={prominent ? 'h-5 w-5 shrink-0 text-primary' : 'h-4 w-4 shrink-0'} />{area.label}{disabled && <span className="ml-auto rounded-full border border-border bg-muted px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">Automatic off</span>}</span>
+        <span className={`flex items-center gap-2 font-semibold ${prominent ? 'text-sm' : 'text-xs'}`}><area.Icon className={prominent ? 'h-5 w-5 shrink-0 text-primary' : 'h-4 w-4 shrink-0'} />{area.label}</span>
         {prominent && <span className="mt-2 block text-xs leading-5 text-muted-foreground">Connects workflow results to goals and metrics, then recommends what should change next.</span>}
-        <span className={`mt-2 block text-[11px] leading-5 ${liveDriftDue && !disabled ? 'font-medium text-amber-700 dark:text-amber-300' : 'text-muted-foreground'}`}>{disabled ? 'Disabled for automatic Pulse runs' : lastReviewed ? `Last reviewed ${pulseReviewDate(lastReviewed)}` : 'No review recorded'}</span>
+        <span className={`mt-2 block text-[11px] leading-5 ${liveDriftDue ? 'font-medium text-amber-700 dark:text-amber-300' : 'text-muted-foreground'}`}>{lastReviewed ? `Last reviewed ${pulseReviewDate(lastReviewed)}` : 'No review recorded'}</span>
         {area.id === 'strategic_review' && <span className="mt-1.5 block text-[11px] leading-4 text-foreground/80">
           <span className="font-medium">Strategic focus:</span> {recommendedFocus.length > 0
             ? recommendedFocus.flatMap(item => item.focusAreas).slice(0, 2).join(' · ')
@@ -112,13 +108,7 @@ export function PulseReviewOverview({ platformOnly = false, goalLeadOwnsReviews 
         </span>}
       </button>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 px-3 py-2">
-        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-          <span>Run automatically</span>
-          <button type="button" role="switch" aria-label={`Include ${area.label} reviewer in Pulse reviews`} aria-checked={!disabled} disabled={!!reviewModuleSaving || !onToggleReviewModule} onClick={() => onToggleReviewModule?.(module)} className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors disabled:opacity-50 ${disabled ? 'bg-muted-foreground/30' : 'bg-primary'}`}>
-            <span className={`h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${disabled ? 'translate-x-0.5' : 'translate-x-3.5'}`} />
-          </button>
-        </div>
-        <button type="button" aria-label={`Run ${area.label} review now`} disabled={!onRunReviewModule || runBlocked} title={disabled ? 'Run once without enabling automatic reviews' : 'Run this review now'} onClick={() => onRunReviewModule?.(area.id)} className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-[10px] font-semibold text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50">
+        <button type="button" aria-label={`Run ${area.label} review now`} disabled={!onRunReviewModule || runBlocked} title="Ask Pulse to check this area" onClick={() => onRunReviewModule?.(area.id)} className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-[10px] font-semibold text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50">
           {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}{running ? 'Starting…' : 'Run now'}
         </button>
       </div>
@@ -165,7 +155,6 @@ export function PulseReviewOverview({ platformOnly = false, goalLeadOwnsReviews 
     </div>
     {selected && <section key={selected.id} aria-label={`${selected.label} content`} className="space-y-4 rounded-xl border bg-background p-4">
       <div><h4 className="text-sm font-semibold">{selected.label}</h4><p className="mt-1 text-xs text-muted-foreground">{selected.description}</p></div>
-      {selected.id !== 'plan_drift_review' && disabledReviewModules.includes(selected.id as PulseReviewerModule) && <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">This reviewer is off. Future Pulse runs will skip it; previous findings and coverage remain below.</p>}
 
       {selected.id === 'plan_drift_review' ? <div className="space-y-2 text-xs leading-5 text-muted-foreground">
         <p className="font-medium text-foreground">{driftStatus}</p>

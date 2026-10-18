@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	step_based_workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsemodules"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
 
@@ -204,22 +203,6 @@ func TestValidateManifestAdvisorSpecialization(t *testing.T) {
 	manifest.Pulse.AdvisorSpecialization.GoalAdvisor = ""
 	if err := ValidateManifest(manifest); err == nil || !strings.Contains(err.Error(), "goal_advisor") {
 		t.Fatalf("missing Goal Advisor specialization should be rejected, got %v", err)
-	}
-}
-
-func TestValidateManifestPulseDisabledReviewModules(t *testing.T) {
-	manifest := NewWorkflowManifest("Selective Pulse reviews")
-	manifest.Pulse = &WorkflowPulseConfig{DisabledReviewModules: []string{
-		pulsemodules.StrategicReviewID,
-		pulsemodules.ArchitectureReviewID,
-	}}
-	if err := ValidateManifest(manifest); err != nil {
-		t.Fatalf("valid disabled Pulse reviewers rejected: %v", err)
-	}
-
-	manifest.Pulse.DisabledReviewModules = []string{pulsemodules.PlanDriftReviewID}
-	if err := ValidateManifest(manifest); err == nil || !strings.Contains(err.Error(), "unsupported reviewer") {
-		t.Fatalf("plan drift should not be accepted as a configurable reviewer, got %v", err)
 	}
 }
 
@@ -478,36 +461,6 @@ func TestReadWorkflowManifestDoesNotRewriteCrewRuntimeManifest(t *testing.T) {
 				t.Fatalf("Crew runtime manifest was rewritten:\n%s", persistedJSON)
 			}
 		})
-	}
-}
-
-func TestPulseEnabledAndLegacyScheduleMigration(t *testing.T) {
-	var nilManifest *WorkflowManifest
-	if nilManifest.PulseEnabled() {
-		t.Fatal("nil manifest must not have recurring Pulse")
-	}
-	manifest := &WorkflowManifest{Schedules: []WorkflowSchedule{
-		{Name: "ordinary", Enabled: true},
-		{Name: "disabled Pulse", Enabled: false, PulseReviewOnly: true},
-	}}
-	if manifest.PulseEnabled() {
-		t.Fatal("a disabled Pulse schedule must not enable recurring Pulse")
-	}
-	manifest.Schedules = append(manifest.Schedules, WorkflowSchedule{Name: "Pulse", Enabled: true, PulseReviewOnly: true})
-	if !manifest.PulseEnabled() {
-		t.Fatal("an enabled legacy Pulse schedule must preserve enablement before migration")
-	}
-	if !manifest.MigrateLegacyPulseSchedule() {
-		t.Fatal("legacy Pulse schedules must be migrated")
-	}
-	if manifest.Pulse == nil || !manifest.Pulse.Enabled {
-		t.Fatal("migration must store pulse.enabled=true")
-	}
-	if len(manifest.Schedules) != 1 || manifest.Schedules[0].Name != "ordinary" {
-		t.Fatalf("migration must retain only normal schedules: %+v", manifest.Schedules)
-	}
-	if manifest.MigrateLegacyPulseSchedule() {
-		t.Fatal("migration must be idempotent")
 	}
 }
 

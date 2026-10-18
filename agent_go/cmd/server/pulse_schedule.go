@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/robfig/cron/v3"
 )
 
 // The workflow's own Pulse schedule. Normal schedules only run basic
@@ -146,26 +144,12 @@ func pulseScheduleLocation(schedule WorkflowPulseSchedule) *time.Location {
 // local time, or the next fixed cron occurrence.
 func firstPulseTime(schedule WorkflowPulseSchedule, now time.Time) time.Time {
 	loc := pulseScheduleLocation(schedule)
-	if schedule.Mode == pulseScheduleModeFixed {
-		if next, ok := nextFixedPulse(schedule, now); ok {
-			return next
-		}
-	}
 	local := now.In(loc)
 	first := time.Date(local.Year(), local.Month(), local.Day(), defaultPulseFirstRunHour, 0, 0, 0, loc)
 	if !first.After(local) {
 		first = first.AddDate(0, 0, 1)
 	}
 	return first.UTC()
-}
-
-func nextFixedPulse(schedule WorkflowPulseSchedule, after time.Time) (time.Time, bool) {
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-	parsed, err := parser.Parse(strings.TrimSpace(schedule.Cron))
-	if err != nil {
-		return time.Time{}, false
-	}
-	return parsed.Next(after.In(pulseScheduleLocation(schedule))).UTC(), true
 }
 
 // pulseDueDecision is the launcher's view of one workflow at one instant.
@@ -185,11 +169,6 @@ func decidePulseDue(schedule WorkflowPulseSchedule, state pulseScheduleState, fa
 	last := state.LastStartedAt
 
 	candidate, reason := state.NextAt, state.NextReason
-	if schedule.Mode == pulseScheduleModeFixed && !last.IsZero() {
-		if next, ok := nextFixedPulse(schedule, last); ok {
-			candidate, reason = next, "fixed Pulse schedule"
-		}
-	}
 	if candidate.IsZero() {
 		if last.IsZero() {
 			// No run yet and no chosen time: the launcher persists a first time.
@@ -311,7 +290,7 @@ func pulseNextRunView(ctx context.Context, workspacePath string) *PulseNextRunVi
 		return nil
 	}
 	schedule := manifest.EffectivePulseSchedule()
-	view := &PulseNextRunView{Mode: schedule.Mode}
+	view := &PulseNextRunView{Mode: "self"}
 	state, err := readPulseScheduleState(ctx, workspacePath)
 	if err != nil || state == nil {
 		return view

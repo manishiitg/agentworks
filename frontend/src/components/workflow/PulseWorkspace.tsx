@@ -11,12 +11,10 @@ import { agentApi } from '../../services/api'
 import { schedulerApi } from '../../api/scheduler'
 import { findProductCommand } from '../../commands/registry'
 import type { CommandContext } from '../../commands/types'
-import { DEFAULT_PULSE_AUTONOMY } from '../../services/api-types'
 import { playbooksApi } from '../../api/playbooks'
 import { useChatStore } from '../../stores/useChatStore'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import type {
-  PulseAutonomy,
   PulseFinalCommandState,
   PulseGoalWorkItem,
   PulseFindingLifecycle,
@@ -26,7 +24,6 @@ import type {
   PulseReviewRecord,
   PulseReviewFocus,
   PulseReviewAudit,
-  PulseReviewerModule,
 } from '../../services/api-types'
 import { WORKFLOW_LOG_REFRESH_EVENT } from './workflowEvents'
 import { mergePulseReviewCoverage } from './pulseReviewCoverage'
@@ -143,14 +140,8 @@ export function PulseWorkspace({
   moduleStates,
   reviewFocuses,
   reviewFocusSelections,
-  disabledReviewModules = [],
-  reviewModuleSaving = null,
-  onToggleReviewModule,
   statusError,
   goalWork = [],
-  autonomy = DEFAULT_PULSE_AUTONOMY,
-  autonomySaving = false,
-  onChangeAutonomy,
   focusAreas = [],
   focusSaving = false,
   onSaveFocusAreas,
@@ -166,14 +157,8 @@ export function PulseWorkspace({
   finalCommandStates: PulseFinalCommandState[]
   reviewFocuses: PulseReviewFocus[]
   reviewFocusSelections: PulseReviewFocus[]
-  disabledReviewModules?: PulseReviewerModule[]
-  reviewModuleSaving?: PulseReviewerModule | null
-  onToggleReviewModule?: (module: PulseReviewerModule) => void
   statusError: string | null
   goalWork?: PulseGoalWorkItem[]
-  autonomy?: PulseAutonomy
-  autonomySaving?: boolean
-  onChangeAutonomy?: (next: PulseAutonomy) => void
   focusAreas?: string[]
   focusSaving?: boolean
   onSaveFocusAreas?: (areas: string[]) => Promise<boolean>
@@ -434,8 +419,8 @@ export function PulseWorkspace({
       {tab === 'for_you' ? <>
         <SoulViewer workspacePath={workspacePath} pulseSummary />
         <GoalProgress workspacePath={workspacePath} impact={impact} />
-        <PulseGoalWork workspacePath={workspacePath} items={goalWork} autonomy={autonomy} autonomySaving={autonomySaving}
-          onChangeAutonomy={onChangeAutonomy} onRunGoalWork={() => { void (goalLeadOwnsReviews ? runPulseGoalWorkNow() : runReviewNow('strategic_review')) }}
+        <PulseGoalWork workspacePath={workspacePath} items={goalWork}
+          onRunGoalWork={() => { void (goalLeadOwnsReviews ? runPulseGoalWorkNow() : runReviewNow('strategic_review')) }}
           focusAreas={focusAreas} focusSaving={focusSaving} onSaveFocusAreas={onSaveFocusAreas}
           playbookFocusAreas={playbookFocuses.flatMap(item => item.focusAreas.map(area => ({ area, source: item.playbookTitle })))}
           running={manualReviewStarting === 'strategic_review'} />
@@ -449,7 +434,6 @@ export function PulseWorkspace({
       <PulseReviewOverview platformOnly goalLeadOwnsReviews={goalLeadOwnsReviews} moduleStates={moduleStates} planDriftDue={false} planDriftDueItems={[]} planDriftDueError={null} coverage={mergePulseReviewCoverage(coverage, reviewFocuses, reviewFocusSelections)}
         audits={audits} findings={findings} moduleFilter={selectedReviewModule || null} reviewFocusSelections={reviewFocusSelections}
         playbookFocuses={playbookFocuses}
-        disabledReviewModules={disabledReviewModules} reviewModuleSaving={reviewModuleSaving} onToggleReviewModule={onToggleReviewModule}
         runningReviewModule={manualReviewStarting} onRunReviewModule={runReviewNow}
         onSelectModule={module => {
           const counts = pulseWorkspaceQueueCounts(findings.filter(item => pulseFindingReviewAreas(item, reviewFocusSelections).includes(module)))

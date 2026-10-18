@@ -3,125 +3,45 @@ package step_based_workflow
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 )
 
-// GoalWorkPermissions mirror workflow.json pulse.autonomy. Each is true for
-// "auto" (Goal Work does it itself) and false for "ask" (it prepares the work
-// and creates a decision). Run defaults to auto; Outward and Change to ask.
+// GoalWorkPermissions are the server-held action permissions for the current
+// Pulse turn. The workflow exposes only on/off and outward_actions; the tool
+// groups below are internal execution checks, not configurable levels.
 type GoalWorkPermissions struct {
-	// Level is the autonomy ladder step, 0-5 (AutonomyLadder); the booleans
-	// below are what the tools enforce for it.
-	Level int
-	// Run: run existing steps and routes, including what they normally do.
-	Run bool
-	// Outward: post, send or contact anyone beyond what existing steps do.
+	Run     bool
 	Outward bool
-	// Change: edit existing steps (prompts, items, settings). soul.md goals
-	// and constraints always go to the user.
-	Change bool
-	// Reshape: change schedules and the plan's structure (add steps, routes,
-	// groups, workflow settings). Never deletes.
+	Change  bool
 	Reshape bool
 }
 
-// AutonomyStep is one step of the autonomy ladder: each adds one kind of
-// action Pulse may get done without asking the owner (owner, 2026-10-08).
-type AutonomyStep struct {
-	Name string
-	Adds string
-}
-
-// AutonomyLadder is pulse.autonomy.level 0-5.
-var AutonomyLadder = []AutonomyStep{
-	{"Advise only", "Pulse recommends; nothing happens without the owner."},
-	{"Measure", "run steps to measure the goal and recover missed runs, and set up goal metrics."},
-	{"Fix", "fix broken steps (bugs, wrong inputs), reversible."},
-	{"Tune", "improve prompts and step settings."},
-	{"Publish", "publish and post through the workflow's own steps and accounts."},
-	{"Reshape", "change schedules and the plan's structure (never deletes)."},
-}
-
-// MaxAutonomyLevel is the top of the ladder.
-const MaxAutonomyLevel = 5
-
-// PermissionsForLevel is what the tools allow at a ladder step. Fix and Tune
-// use the same edit tools (the text separates them); Publish turns on the
-// outward tools; Reshape the schedule and structure tools.
-func PermissionsForLevel(level int) GoalWorkPermissions {
-	if level < 0 {
-		level = 0
-	}
-	if level > MaxAutonomyLevel {
-		level = MaxAutonomyLevel
-	}
-	return GoalWorkPermissions{Level: level, Run: level >= 1, Change: level >= 2, Outward: level >= 4, Reshape: level >= 5}
-}
-
-// LegacyAutonomyLevel maps the old run/outward/change switches to the ladder,
-// never granting more than they did: no run is Advise only; run alone is
-// Measure; run and change is Tune; all three is Reshape.
-func LegacyAutonomyLevel(run, outward, change bool) int {
-	switch {
-	case !run:
-		return 0
-	case !change:
-		return 1
-	case !outward:
-		return 3
-	}
-	return 5
-}
-
-// AutonomyLadderText lists the ladder with the current step marked, for the
-// Pulse and Builder prompts.
-func AutonomyLadderText(level int) string {
-	perms := PermissionsForLevel(level)
-	var b strings.Builder
-	fmt.Fprintf(&b, "Autonomy: level %d of %d, %s (workflow.json pulse.autonomy.level). Each level adds one kind of action done without asking the owner:\n", perms.Level, MaxAutonomyLevel, AutonomyLadder[perms.Level].Name)
-	for i, step := range AutonomyLadder {
-		mark := "  "
-		if i <= perms.Level {
-			mark = "✓ "
-		}
-		fmt.Fprintf(&b, "%s%d %s: %s\n", mark, i, step.Name, step.Adds)
-	}
-	b.WriteString("Above the current level, prepare the work and have it put to the owner as one decision. Always the owner's, at every level: spending money, deleting steps or schedules, replacing the plan, editing soul.md, new kinds of outreach, and schedules the owner paused.")
-	return b.String()
-}
-
-// PulseAutonomyPermissions reads workflow.json pulse.autonomy. Run is off only
-// for an explicit "ask"; Outward and Change are on only for an explicit
-// "auto". Missing or unreadable settings mean those defaults.
-func PulseAutonomyPermissions(manifestJSON string) GoalWorkPermissions {
-	perms := PermissionsForLevel(1)
+// PulsePermissions consumes the canonical manifest after saved-setting
+// normalization. OFF can report and suggest; ON can run and improve within
+// existing access rules. Outward actions remain a separate owner choice.
+func PulsePermissions(manifestJSON string) GoalWorkPermissions {
 	var manifest struct {
 		Pulse *struct {
-			Autonomy *struct {
-				Level   *int   `json:"level"`
-				Run     string `json:"run"`
-				Outward string `json:"outward"`
-				Change  string `json:"change"`
-			} `json:"autonomy"`
+			Enabled        bool   `json:"enabled"`
+			OutwardActions string `json:"outward_actions"`
 		} `json:"pulse"`
 	}
-	if err := json.Unmarshal([]byte(manifestJSON), &manifest); err != nil || manifest.Pulse == nil || manifest.Pulse.Autonomy == nil {
-		return perms
+	if json.Unmarshal([]byte(manifestJSON), &manifest) != nil || manifest.Pulse == nil || !manifest.Pulse.Enabled {
+		return GoalWorkPermissions{}
 	}
-	a := manifest.Pulse.Autonomy
-	if a.Level != nil {
-		return PermissionsForLevel(*a.Level)
-	}
-	level := func(v string) string { return strings.ToLower(strings.TrimSpace(v)) }
-	return PermissionsForLevel(LegacyAutonomyLevel(level(a.Run) != "ask", level(a.Outward) == "auto", level(a.Change) == "auto"))
+	return GoalWorkPermissions{Run: true, Change: true, Reshape: true, Outward: manifest.Pulse.OutwardActions == "allow"}
 }
 
-// goalWorkPermissionInstructions tells Goal Work what it may do itself and what
-// it must prepare for the user's approval, one sentence per permission. The
-// server refuses the matching tools for an "ask" level during the Goal Work
-// turn (cmd/server/pulse_autonomy_guard.go), so the text and the tools agree.
-func goalWorkPermissionInstructions(perms GoalWorkPermissions) string {
-	return AutonomyLadderText(perms.Level) + " The tools hold the level: running steps needs Measure, editing steps Fix, posting tools Publish, schedules and plan structure Reshape."
+// PulsePermissionInstructions is shared by Pulse and Builder. It replaces the
+// retired ladder instead of layering new permission advice over it.
+func PulsePermissionInstructions(perms GoalWorkPermissions) string {
+	if !perms.Run {
+		return "Pulse is off. Produce a weekly report with suggestions, including plan consistency findings. Do not edit, run work, send action requests or arrange a faster action check. Required inputs still must be readable. The owner can turn Pulse on to act on these suggestions."
+	}
+	outward := "Ask the owner before new outward actions; prepare the ready action for their decision."
+	if perms.Outward {
+		outward = "Outward actions are allowed within the workflow's existing access, selected accounts and operational limits."
+	}
+	return "Pulse is on. Pursue one bounded improvement change set in this cycle through Builder, including runs, step and schedule improvements within existing access. Check plan consistency in the same turn; never hold ordinary execution for an AI review. The unreadable-input guard still applies. " + outward + " Spending money, deleting steps or schedules, replacing the plan, editing soul.md, new kinds of outreach and re-enabling owner-paused schedules remain the owner's decisions."
 }
 
 func parseBackgroundReadOnlyAccess(args map[string]interface{}, agentType string) (bool, error) {
@@ -146,20 +66,4 @@ func readOnlyBackgroundToolAllowed(name string) bool {
 		return true
 	}
 	return false
-}
-
-// GoalWorkEffectivePermissions are the levels Goal Work holds in this turn:
-// the workflow's pulse.autonomy. Plan Drift is part of the same Pulse turn
-// and never withholds Run or Change.
-func GoalWorkEffectivePermissions(manifestJSON string) GoalWorkPermissions {
-	return PulseAutonomyPermissions(manifestJSON)
-}
-
-// GoalWorkAutonomyInstructions is the permission text for a Goal Work turn.
-// The server enforces the same levels on the tools for that turn (PLAT-697
-// phase 2), so a refused call is the level working, not an error to retry.
-func GoalWorkAutonomyInstructions(perms GoalWorkPermissions) string {
-	text := "Your permission levels for this turn (workflow.json pulse.autonomy). The tools hold them: a call refused for a level means prepare the work and create a decision request instead; do not retry it another way.\n"
-	text += "Check plan drift evidence yourself in this Pulse turn. Runs do not wait for an AI review. Basic validation and the unreadable-input guard still apply.\n"
-	return text + goalWorkPermissionInstructions(perms)
 }

@@ -4641,10 +4641,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"items":       map[string]interface{}{"type": "string"},
 					"description": "Email addresses the Pulse review summary is sent TO, stored in workflow.json capabilities.notifications.pulse_summary_recipients and applied automatically to every pulse_summary send. Use when Pulse findings should reach different people than the run outcome. Omit to leave unchanged; pass an empty array to clear it and fall back to the account default recipient. Denylists still apply on top.",
 				},
-				"pulse_pace": map[string]interface{}{
-					"type":        "string",
-					"enum":        []interface{}{"calm", "steady", "aggressive"},
-					"description": "How hard Pulse pushes on the goal, only when the owner asks: calm (checks every 1-7 days, failures wait), steady (default, 6h-3d), aggressive (1-24h, failures wake it at once).",
+				"pulse_outward_actions": map[string]interface{}{
+					"type": "string", "enum": []interface{}{"ask", "allow"},
+					"description": "Ask the owner before outward actions, or allow them within existing workflow limits. Change only when the owner asks.",
 				},
 				"pulse_enabled": map[string]interface{}{
 					"type":        "boolean",
@@ -5318,12 +5317,12 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				logger.Info(fmt.Sprintf("Updated workflow notification instructions: run_configured=%v pulse_configured=%v run_recipients=%d pulse_recipients=%d", strings.TrimSpace(runInstructions) != "", strings.TrimSpace(pulseInstructions) != "", len(runRecipients), len(pulseRecipients)))
 			}
 
-			// --- Pulse pace (owner, 2026-10-08) ---
-			if raw, provided := args["pulse_pace"]; provided && raw != nil {
-				pace, ok := raw.(string)
-				pace = strings.ToLower(strings.TrimSpace(pace))
-				if !ok || (pace != "calm" && pace != "steady" && pace != "aggressive") {
-					return "Error: pulse_pace must be calm, steady or aggressive.", nil
+			// --- Pulse outward actions ---
+			if raw, provided := args["pulse_outward_actions"]; provided && raw != nil {
+				outward, ok := raw.(string)
+				outward = strings.ToLower(strings.TrimSpace(outward))
+				if !ok || (outward != "ask" && outward != "allow") {
+					return "Error: pulse_outward_actions must be ask or allow.", nil
 				}
 				content, readErr := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
 				if readErr != nil {
@@ -5337,7 +5336,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				if pulse == nil {
 					pulse = map[string]interface{}{}
 				}
-				pulse["pace"] = pace
+				pulse["outward_actions"] = outward
 				manifest["pulse"] = pulse
 				manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
 				updated, marshalErr := json.MarshalIndent(manifest, "", "  ")
@@ -5348,7 +5347,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					return fmt.Sprintf("Failed to write workflow.json: %v", writeErr), nil
 				}
 				anyChanged = true
-				sb.WriteString(fmt.Sprintf("\n### Pulse pace (updated)\nPulse pace is %s.\n", pace))
+				sb.WriteString(fmt.Sprintf("\n### Pulse outward actions (updated)\nOutward actions: %s.\n", outward))
 			}
 
 			// --- Pulse on or off (owner, 2026-10-08) ---

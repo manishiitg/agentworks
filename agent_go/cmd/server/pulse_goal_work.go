@@ -303,8 +303,8 @@ func readPulseGoalWorkView(ctx context.Context, workspacePath string, limit int)
 	out, err := json.MarshalIndent(map[string]interface{}{
 		"goal_status":             goalStatus,
 		"goal_lead":               goalLeadAgentContext(ctx, workspacePath),
-		"autonomy":                pulseAutonomyForView(ctx, workspacePath),
-		"autonomy_note":           "The owner's Pulse permissions: Builder acts on your direction within these levels; above them it prepares one owner decision. You read, judge and keep records, even at full autonomy.",
+		"outward_actions":         pulseOutwardActionsForView(ctx, workspacePath),
+		"permission_note":         "When Pulse is on, Builder acts within the workflow access and outward-action setting. When off, weekly reports suggest improvements without action requests or edits.",
 		"focus_areas":             pulseFocusAreasForView(ctx, workspacePath),
 		"focus_areas_note":        "The user's current priorities for Goal Work. Start each pass here; they direct attention, they do not limit what you may consider or override soul.md goals and constraints.",
 		"focus_area_details":      focusAreasForView(ctx, workspacePath),
@@ -327,31 +327,12 @@ func pulseFocusAreasForView(ctx context.Context, workspacePath string) []string 
 	return areas
 }
 
-// pulseAutonomyForView is the workflow's Goal Work permissions with defaults
-// applied.
-func pulseAutonomyForView(ctx context.Context, workspacePath string) PulseAutonomyLevels {
-	defaults, _ := resolvePulseAutonomy(nil)
+// pulseOutwardActionsForView is the same saved setting used by tools and MCP.
+func pulseOutwardActionsForView(ctx context.Context, workspacePath string) string {
 	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
 	if err != nil || !found || manifest.Pulse == nil {
-		return defaults
+		return "ask"
 	}
-	levels, err := resolvePulseAutonomy(manifest.Pulse.Autonomy)
-	if err != nil {
-		return defaults
-	}
-	return levels
-}
-
-// pulseAutonomyRunForView is the workflow's Goal Work Run permission for the
-// Pulse view: "auto" (default) or "ask".
-func pulseAutonomyRunForView(ctx context.Context, workspacePath string) string {
-	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
-	if err != nil || !found || manifest.Pulse == nil || manifest.Pulse.Autonomy == nil {
-		return "auto"
-	}
-	run, err := normalizePulseAutonomyRun(manifest.Pulse.Autonomy.Run)
-	if err != nil {
-		return "auto"
-	}
-	return run
+	value, _ := normalizePulseOutwardActions(manifest.Pulse.OutwardActions)
+	return value
 }

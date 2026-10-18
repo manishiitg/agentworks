@@ -198,7 +198,7 @@ func createPulseBuilderAskTool() (llmtypes.Tool, func(context.Context, map[strin
 		}
 		perms, held := goalWorkTurnPermissions(sessionID)
 		if !held {
-			perms, _ = goalWorkAutonomy(ctx, workspacePath)
+			perms, _ = pulsePermissionsForWorkflow(ctx, workspacePath)
 		}
 		out, err := api.askBuilder(ctx, pulseBuilderAskRequest{
 			UserID: claims.UserID, WorkspacePath: workspacePath, PulseSession: sessionID,

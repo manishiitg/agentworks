@@ -317,15 +317,14 @@ func (s *SchedulerService) Start(ctx context.Context) error {
 	workflows := s.discoverWorkflows(ctx)
 	scheduleLogf("[SCHEDULER] Discovered %d workflows with manifests", len(workflows))
 	for i := range workflows {
-		legacyPulse := workflows[i].Manifest.MigrateLegacyPulseSchedule()
 		// pulse_mode -> after_run (PLAT-697 phase 0): each schedule keeps
 		// exactly the backup, publish and notify its mode did.
 		afterRun := workflows[i].Manifest.MigrateScheduleAfterRun()
-		if legacyPulse || afterRun {
+		if afterRun {
 			if err := WriteWorkflowManifest(ctx, workflows[i].WorkspacePath, workflows[i].Manifest); err != nil {
 				scheduleLogf("[PULSE] Failed to migrate schedules in %s: %v", workflows[i].WorkspacePath, err)
 			} else {
-				scheduleLogf("[PULSE] Migrated schedules in %s (legacy Pulse schedule=%v, after-run options=%v)", workflows[i].WorkspacePath, legacyPulse, afterRun)
+				scheduleLogf("[PULSE] Migrated after-run options in %s", workflows[i].WorkspacePath)
 			}
 		}
 	}
@@ -3399,7 +3398,7 @@ func pulseModuleReviewParts(module string) (label, reference, contract string) {
 	case pulseModuleArchitectureReview:
 		label, reference, contract = "architecture-review", "architecture-review", "Improve the construction of a working workflow, including evidence-based execution tier/model choices. Use actual quality, retries, cost and latency evidence; preserve explicit user pins and propose measured trials with a checkpoint and rollback through architecture decisions. Runtime does not change tiers from run counts. Research and propose bounded improvements. The one exception (PLAT-556, see architecture-review.md): with focus prompt_design, learning_quality or knowledgebase_design you may apply a pure text-moving consolidation yourself when check_plan_no_loss passes, then run the step once and keep it only if validation passes (else restore_step_from_changelog), and you may set a settled learnings_access=read-write step to read; record each with record_pulse_result consolidations. Behaviour, rule, output and topology changes stay owner proposals. If the worklist evidence carries architecture_scope_excludes, do not touch those steps: Plan Drift owns them this pass."
 	case pulseModuleStrategicReview:
-		label, reference, contract = "strategic-review", "strategy-auditor", "GOAL WORK: this is Pulse's main job. Do work that moves the user's goals, not only proposals. Read soul.md and get_goal_metrics early, follow up earlier Goal Work items (get_pulse_state view=goal_work), find what would move the primary metric that nobody is doing or the user does not know, and complete 1-3 bounded items now within the permission levels below, which the tools enforce for this turn (prepare under pulse/work/; run existing steps, act outward or change the workflow yourself only where that level is auto; where it is ask, put it to the user as a ready decision request). Record each with record_pulse_goal_work. Challenge soul.md constraints only with evidence through a keep/test/change decision; boundary constraints only get clarification; never break one meanwhile. Check due Plan Drift evidence yourself within this turn. Drift does not withhold Run or Change and never holds ordinary execution."
+		label, reference, contract = "strategic-review", "strategy-auditor", "GOAL WORK: this is Pulse's main job. Do work that moves the user's goals, not only proposals. Read soul.md and get_goal_metrics early, follow up earlier Goal Work items (get_pulse_state view=goal_work), find what would move the primary metric that nobody is doing or the user does not know, and complete 1-3 bounded items now within the permissions below, which the tools enforce for this turn (prepare under pulse/work/; run existing steps, act outward or change the workflow yourself only where that level is auto; where it is ask, put it to the user as a ready decision request). Record each with record_pulse_goal_work. Challenge soul.md constraints only with evidence through a keep/test/change decision; boundary constraints only get clarification; never break one meanwhile. Check due Plan Drift evidence yourself within this turn. Drift does not withhold Run or Change and never holds ordinary execution."
 	}
 	return label, reference, contract
 }
@@ -5270,16 +5269,16 @@ func lockedScheduleCapabilities(caps WorkflowCapabilities) WorkflowCapabilities 
 	return caps
 }
 
-// goalWorkAutonomy is the workflow's Goal Work permission levels for the
+// goalWorkAutonomy is the workflow's Goal Work permissions for the
 // strategic review turn, and the same levels as text. A manifest that cannot be
 // read gives the defaults (run auto, outward and change ask).
-func goalWorkAutonomy(ctx context.Context, workspacePath string) (stepworkflow.GoalWorkPermissions, string) {
+func pulsePermissionsForWorkflow(ctx context.Context, workspacePath string) (stepworkflow.GoalWorkPermissions, string) {
 	manifestJSON := ""
 	if manifest, found, err := ReadWorkflowManifest(ctx, workspacePath); err == nil && found {
 		if encoded, marshalErr := json.Marshal(manifest); marshalErr == nil {
 			manifestJSON = string(encoded)
 		}
 	}
-	perms := stepworkflow.GoalWorkEffectivePermissions(manifestJSON)
-	return perms, stepworkflow.GoalWorkAutonomyInstructions(perms)
+	perms := stepworkflow.PulsePermissions(manifestJSON)
+	return perms, stepworkflow.PulsePermissionInstructions(perms)
 }
