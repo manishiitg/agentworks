@@ -273,7 +273,7 @@ func (api *StreamingAPI) crewStorageBusy(rec projectOwnerRecord) bool {
 	}
 	api.sessionWorkspaceMu.RUnlock()
 	for _, id := range sessions {
-		if api.sessionStillWorkingAfterIdleRelease(id) {
+		if api.sessionHasActiveWork(id) {
 			return true
 		}
 	}

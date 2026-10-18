@@ -43,12 +43,12 @@ func TestProjectStorageBindingsSurviveMoveAndRollback(t *testing.T) {
 	if err := store.UpsertWorkflowProviderCredential(ctx, "owner", legacy, "provider", "opaque-test-record"); err != nil {
 		t.Fatal(err)
 	}
-	if err := recordPlaceMCP("owner", "example", legacy); err != nil {
-		t.Fatal(err)
-	}
 	originalStore := placeMCPStoreID("owner", legacy)
 	originalDir, err := placeMCPDir(originalStore)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := recordPlaceMCP("owner", "example", legacy); err != nil {
 		t.Fatal(err)
 	}
 	tokenFile := placeMCPTokenFile(originalDir, originalStore, "example")
