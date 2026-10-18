@@ -203,9 +203,9 @@ func claimGoalLeadRunFailures(ctx context.Context, workspacePath string, now tim
 // (tests run it inline).
 var startGoalLeadBackgroundTurn = func(run func()) { go run() }
 
-// wakeGoalLeadOnRunFailures gives newly failed runs one short turn in the
+// wakeGoalLeadOnRunFailures gives newly failed runs one turn in the
 // workflow's Pulse conversation. Code decides that a run failed; the turn
-// decides whether it threatens the goal and asks for QA. Each failed run wakes
+// decides whether it threatens the goal and asks Builder for repair. Each failed run wakes
 // it once. It reports whether a turn was started.
 func (s *SchedulerService) wakeGoalLeadOnRunFailures(ctx context.Context, workspacePath string, now time.Time) bool {
 	claimed, err := claimGoalLeadRunFailures(ctx, workspacePath, now)
@@ -217,7 +217,7 @@ func (s *SchedulerService) wakeGoalLeadOnRunFailures(ctx context.Context, worksp
 	}
 	_ = appendGoalLeadMessage(ctx, workspacePath, GoalLeadMessage{Role: "system", Source: goalLeadTurnRunFailed, Text: goalLeadRunFailureMessage(len(claimed))})
 	// The Builder chat it asks to fix the failure works within Pulse's own
-	// levels, as for any other turn.
+	// permissions, as for any other turn.
 	turn := goalLeadTurn{Kind: goalLeadTurnRunFailed, Body: goalLeadRunFailureBody(claimed)}
 	startGoalLeadBackgroundTurn(func() {
 		turnCtx, cancel := context.WithTimeout(context.Background(), goalLeadTurnHardCap)
@@ -241,7 +241,7 @@ func goalLeadRunFailureBody(runs []goalLeadFailedRun) string {
 		b.WriteString("\n")
 	}
 	b.WriteString(`
-One short turn. Read only as much as you need (the run folder, get_pulse_state(view="step_concerns")). For each failure decide: does it block or threaten the goal (the goal-driving step or route failed, the goal cannot be measured, the same failure repeats)? If so, diagnose it (the inspect skill) and ask the Builder chat with ask_builder to debug and fix it, with the run, step, symptom and your diagnosis. Otherwise say in one line why it can wait; your next goal check reports it. Do not rerun the workflow, edit it or notify anyone in this turn.`)
+Inspect relevant run evidence (the run folder and get_pulse_state(view="step_concerns")) and decide whether the failure threatens the goal. Use the standing Pulse improvement and evidence rules, with the same current permissions as other ON turns. If repair is justified, use ask_builder with the run, step, symptom and diagnosis to pursue one coherent repair and its verification now, reusing pending work. Builder may repair and verify within existing authorization; outward actions still follow the workflow's ask-or-allow setting and explicit owner constraints. Record actual progress, pending verification and blockers in the existing Goal Work, check and memory records. Otherwise explain why the failure can wait for the next goal check.`)
 	return b.String()
 }
 

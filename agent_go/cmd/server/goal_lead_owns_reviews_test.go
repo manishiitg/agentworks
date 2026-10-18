@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,6 +23,14 @@ func TestGoalWorkflowPassHasNoReviewTurnsAndAFailedRunWakesPulseOnce(t *testing.
 	if err := os.MkdirAll(filepath.Join(root, "Workflow", "reports"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	manifest := NewWorkflowManifest("Reports")
+	manifest.Access = &WorkflowAccess{Owners: []string{"owner"}}
+	manifest.CreatedBy = "owner"
+	manifest.Pulse = &WorkflowPulseConfig{Enabled: true, OutwardActions: "ask"}
+	raw, _ := json.Marshal(manifest)
+	env.mock.mu.Lock()
+	env.mock.files[manifestPath(ws)] = string(raw)
+	env.mock.mu.Unlock()
 	ctx := context.Background()
 	now := time.Now().UTC()
 	finished := now.Add(-30 * time.Minute)
@@ -41,7 +50,7 @@ func TestGoalWorkflowPassHasNoReviewTurnsAndAFailedRunWakesPulseOnce(t *testing.
 		mu.Lock()
 		defer mu.Unlock()
 		queries = append(queries, fmt.Sprint(reqMap["query"]))
-		return internalSessionTurnResult{FinalResponse: "The publish step failed on a 401; asked for a QA run."}, nil
+		return internalSessionTurnResult{FinalResponse: "The publish step failed on a 401; asked Builder to repair it."}, nil
 	}
 	startGoalLeadBackgroundTurn = func(run func()) { run() }
 	t.Cleanup(func() { goalLeadTurnRunner, startGoalLeadBackgroundTurn = previousRunner, previousStart })
@@ -54,12 +63,15 @@ func TestGoalWorkflowPassHasNoReviewTurnsAndAFailedRunWakesPulseOnce(t *testing.
 	if len(queries) != 1 {
 		t.Fatalf("Pulse turns = %d, want exactly one for the one failed run", len(queries))
 	}
-	for _, want := range []string{"a run of this workflow failed", "run run-failed", "step publish: API returned 401", "ask_builder"} {
+	for _, want := range []string{"a run of this workflow failed", "run run-failed", "step publish: API returned 401", "ask_builder", "same current permissions as other ON turns", "outward actions still follow the workflow's ask-or-allow setting"} {
 		if !strings.Contains(queries[0], want) {
 			t.Fatalf("run-failure turn is missing %q:\n%s", want, queries[0])
 		}
 	}
 	if strings.Contains(queries[0], "pulse-1") {
 		t.Fatalf("a Pulse pass's own failure is not a workflow run failure:\n%s", queries[0])
+	}
+	if strings.Contains(queries[0], "Do not rerun the workflow, edit it or notify anyone in this turn") {
+		t.Fatalf("a failed run must not impose a separate read-only repair phase:\n%s", queries[0])
 	}
 }
