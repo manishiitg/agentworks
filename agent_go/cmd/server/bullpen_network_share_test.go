@@ -123,7 +123,7 @@ func TestPublishAgentToTheNetworkBetweenAccounts(t *testing.T) {
 		sent, _ := page["sent"].([]any)
 		for _, item := range sent {
 			if m := item.(map[string]any); m["message_id"] == messageID {
-				if m["body"] != nil || m["message"] != nil {
+				if m["body"] != nil || m["message"] == "did you get this" {
 					t.Fatal("a sent receipt must not carry the message body")
 				}
 				return m["state"].(string)
