@@ -433,6 +433,63 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       </div>
     )
   }
+  const isResourceWorkspace = (surface: string) => surface === 'knowledgebase' || surface === 'mcp-gateway'
+  const renderWorkspace = (workspace: (typeof workspaces)[number], index: number) => {
+    const hidden = collapsed.includes(workspace.id)
+    const running = workspace.chats.filter(
+      (row) => row.group === 'Running' && !row.waiting
+    ).length
+    const waiting = workspace.chats.filter((row) => row.waiting).length
+    const unnamedChats = workspace.chats
+      .filter((row) => row.title === workspace.title && !row.scheduled)
+      .map((row) => row.id)
+      .sort()
+    const panelId = `sidebar-workspace-${index}`
+    const only = workspace.chats.length === 1 ? workspace.chats[0] : null
+    const onlyTab = only?.tabId ? tabs[only.tabId] : undefined
+    const primaryOnly = only && !only.scheduled && (!onlyTab || !canCloseWorkspaceChatTab(onlyTab, tabs)) && (only.builder || only.title === workspace.title)
+    if (primaryOnly) return renderChat(only, undefined, undefined, workspace.title)
+    return (
+      <section key={workspace.id} className="mb-2">
+        <button
+          type="button"
+          aria-expanded={!hidden}
+          aria-controls={panelId}
+          title={`${PRODUCT_SURFACE_LABELS[workspace.surface]} · ${workspace.title} · ${workspace.chats.length} ${workspace.chats.length === 1 ? 'chat' : 'chats'}${running ? ` · ${running} running` : ''}${waiting ? ` · ${waiting} need input` : ''}`}
+          onClick={() => toggleSection(workspace.id)}
+          className="group mb-0.5 flex min-h-9 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ProductSurfaceIcon surface={workspace.surface} className="h-4 w-4 shrink-0" />
+          <span className="min-w-0 flex-1 truncate font-medium">{workspace.title}</span>
+          {workspaces.filter(item => item.title === workspace.title).length > 1 && <span className="text-[10px] text-muted-foreground">{PRODUCT_SURFACE_LABELS[workspace.surface]}</span>}
+          {(running > 0 || waiting > 0) && <span
+            className={`shrink-0 text-[10px] tabular-nums ${waiting ? 'text-amber-500' : running ? 'text-primary' : 'text-muted-foreground/60'}`}
+          >
+            {[running ? `${running} working` : '', waiting ? `${waiting} needs you` : '']
+              .filter(Boolean)
+              .join(' · ')}
+          </span>}
+          <ChevronDown
+            className={`h-3 w-3 shrink-0 text-muted-foreground/60 transition-transform ${hidden ? '-rotate-90' : ''}`}
+            aria-hidden="true"
+          />
+        </button>
+        <div id={panelId} hidden={hidden} className="ml-4 pl-1">
+          {workspace.chats.map((row) =>
+            renderChat(
+              row,
+              workspace.title,
+              unnamedChats.length > 1 && unnamedChats.includes(row.id)
+                ? unnamedChats.indexOf(row.id) + 1
+                : undefined,
+              undefined,
+              !hidden
+            )
+          )}
+        </div>
+      </section>
+    )
+  }
   return (
     <aside
       aria-label="Chats across products"
@@ -456,63 +513,9 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       </div>
       <div className="shrink-0 px-2 pb-1"><NewProjectMenu /></div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-2">
-        {workspaces.map((workspace, index) => {
-          const hidden = collapsed.includes(workspace.id)
-          const running = workspace.chats.filter(
-            (row) => row.group === 'Running' && !row.waiting
-          ).length
-          const waiting = workspace.chats.filter((row) => row.waiting).length
-          const unnamedChats = workspace.chats
-            .filter((row) => row.title === workspace.title && !row.scheduled)
-            .map((row) => row.id)
-            .sort()
-          const panelId = `sidebar-workspace-${index}`
-          const only = workspace.chats.length === 1 ? workspace.chats[0] : null
-          const onlyTab = only?.tabId ? tabs[only.tabId] : undefined
-          const primaryOnly = only && !only.scheduled && (!onlyTab || !canCloseWorkspaceChatTab(onlyTab, tabs)) && (only.builder || only.title === workspace.title)
-          if (primaryOnly) return renderChat(only, undefined, undefined, workspace.title)
-          return (
-            <section key={workspace.id} className="mb-2">
-              <button
-                type="button"
-                aria-expanded={!hidden}
-                aria-controls={panelId}
-                title={`${PRODUCT_SURFACE_LABELS[workspace.surface]} · ${workspace.title} · ${workspace.chats.length} ${workspace.chats.length === 1 ? 'chat' : 'chats'}${running ? ` · ${running} running` : ''}${waiting ? ` · ${waiting} need input` : ''}`}
-                onClick={() => toggleSection(workspace.id)}
-                className="group mb-0.5 flex min-h-9 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <ProductSurfaceIcon surface={workspace.surface} className="h-4 w-4 shrink-0" />
-                <span className="min-w-0 flex-1 truncate font-medium">{workspace.title}</span>
-                {workspaces.filter(item => item.title === workspace.title).length > 1 && <span className="text-[10px] text-muted-foreground">{PRODUCT_SURFACE_LABELS[workspace.surface]}</span>}
-                {(running > 0 || waiting > 0) && <span
-                  className={`shrink-0 text-[10px] tabular-nums ${waiting ? 'text-amber-500' : running ? 'text-primary' : 'text-muted-foreground/60'}`}
-                >
-                  {[running ? `${running} working` : '', waiting ? `${waiting} needs you` : '']
-                    .filter(Boolean)
-                    .join(' · ')}
-                </span>}
-                <ChevronDown
-                  className={`h-3 w-3 shrink-0 text-muted-foreground/60 transition-transform ${hidden ? '-rotate-90' : ''}`}
-                  aria-hidden="true"
-                />
-              </button>
-              <div id={panelId} hidden={hidden} className="ml-4 pl-1">
-                {workspace.chats.map((row) =>
-                  renderChat(
-                    row,
-                    workspace.title,
-                    unnamedChats.length > 1 && unnamedChats.includes(row.id)
-                      ? unnamedChats.indexOf(row.id) + 1
-                      : undefined,
-                    undefined,
-                    !hidden
-                  )
-                )}
-              </div>
-            </section>
-          )
-        })}
+        {workspaces.map((workspace, index) => !isResourceWorkspace(workspace.surface) ? renderWorkspace(workspace, index) : null)}
         {allowed.includes('bullpen') && <ConnectedAgentsSidebar />}
+        {workspaces.map((workspace, index) => isResourceWorkspace(workspace.surface) ? renderWorkspace(workspace, index) : null)}
         {recent.length > 0 && (
           <section className="mt-5">
             <button
