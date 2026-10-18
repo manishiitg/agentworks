@@ -31,6 +31,8 @@ type placeMCPAttachment struct {
 	Scope      string `json:"scope,omitempty"`
 	Server     string `json:"server"`
 	AttachedAt string `json:"attached_at,omitempty"`
+	// StoreRoot preserves legacy encrypted-store identity before alias folding.
+	StoreRoot string `json:"store_root,omitempty"`
 }
 
 // New connections reuse the owner's private store across projects. Existing
@@ -39,7 +41,10 @@ func attachmentStore(a placeMCPAttachment, root string) string {
 	if a.Scope == "user" {
 		return a.Owner
 	}
-	return placeMCPStoreID(a.Owner, root)
+	if a.StoreRoot != "" {
+		return placeMCPStoreID(a.Owner, a.StoreRoot)
+	}
+	return placeMCPStoreID(a.Owner, projectBindingRoot(root))
 }
 func storeForAttachment(owner, server, root string) string {
 	items, _ := placeMCPAttachmentsFor(root)
@@ -98,7 +103,7 @@ func cleanAttachRoot(raw string) string {
 		if ok && ref.Logical() == projectRoot+"/"+project && ref.PhysicalKeepOwner("") == root {
 			// A Crew that has moved is its Crew/<folder> root (PLAT-442 step 4): connections attached under the old
 			// root are the same Crew's.
-			if projectRoot == workspaceref.CrewProjectsRoot {
+			if projectRoot == workspaceref.CrewProjectsRoot || projectRoot == workspaceref.CodeProjectsRoot {
 				if moved := crewPathAliases.lookup(context.Background(), root); moved != "" {
 					return moved
 				}
@@ -111,6 +116,9 @@ func cleanAttachRoot(raw string) string {
 	case len(segments) == 2 && segments[0] == "Workflow" && !strings.HasPrefix(segments[1], "."):
 		return root
 	case len(segments) == 2 && segments[0] == crewSharedRootName:
+		if moved := crewPathAliases.lookup(context.Background(), root); moved != "" {
+			return moved
+		}
 		return root
 	}
 	return ""
@@ -162,6 +170,18 @@ func readPlaceMCPAttachmentsLocked() (map[string][]placeMCPAttachment, error) {
 	// Entries recorded under a migrated Crew's old root belong to its Crew/<folder> root (merged in memory; the
 	// next write stores them under the new key).
 	for key, list := range all {
+		for i := range list {
+			if list[i].Scope == "user" {
+				continue
+			}
+			if list[i].StoreRoot == "" {
+				list[i].StoreRoot = key
+			}
+			if cleanAttachRoot(list[i].StoreRoot) == "" || cleanAttachRoot(list[i].StoreRoot) != cleanAttachRoot(key) {
+				return nil, fmt.Errorf("connection store does not match its project")
+			}
+		}
+		all[key] = list
 		if folded := cleanAttachRoot(key); folded != "" && folded != key {
 			all[folded] = append(all[folded], list...)
 			delete(all, key)

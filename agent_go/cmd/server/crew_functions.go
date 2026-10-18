@@ -138,7 +138,7 @@ func readCrewFunctions(ctx context.Context, target triggerTarget) ([]crewFunctio
 	if err != nil {
 		return nil, err
 	}
-	if pinned, _ := ctx.Value(publicationExecutionKey{}).(*publishedProject); pinned != nil && pinned.Root == root && pinned.AgentID != "" {
+	if pinned, _ := ctx.Value(publicationExecutionKey{}).(*publishedProject); pinned != nil && canonicalCrewWorkspaceRoot(pinned.Root) == canonicalCrewWorkspaceRoot(root) && pinned.AgentID != "" {
 		return own, nil
 	}
 	if target.Kind != triggerCallerCrew {

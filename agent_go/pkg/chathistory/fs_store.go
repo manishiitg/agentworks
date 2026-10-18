@@ -225,6 +225,17 @@ type workflowProviderCredentialsDocument struct {
 }
 
 func normalizeWorkflowSecretPath(workflowPath string) (string, error) {
+	cleaned, err := cleanWorkflowStatePath(workflowPath)
+	if err != nil {
+		return "", err
+	}
+	if resolve, ok := workflowStateRootResolver.Load().(func(string) string); ok {
+		return cleanWorkflowStatePath(resolve(cleaned))
+	}
+	return cleaned, nil
+}
+
+func cleanWorkflowStatePath(workflowPath string) (string, error) {
 	workflowPath = strings.TrimSpace(filepath.ToSlash(workflowPath))
 	workflowPath = strings.Trim(workflowPath, "/")
 	if workflowPath == "" {

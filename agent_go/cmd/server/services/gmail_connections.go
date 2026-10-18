@@ -151,24 +151,24 @@ type GmailUseScope struct {
 // private connection only in its own Code by its owner; a shared connection
 // only outside a Code (a Code uses its own accounts only).
 func (c GmailConnection) UsableFrom(scope GmailUseScope) bool {
-	workspace := strings.Trim(strings.TrimSpace(scope.CodeWorkspace), "/")
+	workspace := connectionWorkspaceRoot(scope.CodeWorkspace)
 	if c.Personal {
-		target := strings.Trim(strings.TrimSpace(scope.Workspace), "/")
+		target := connectionWorkspaceRoot(scope.Workspace)
 		if target == "" {
 			target = workspace
 		}
 		for _, selected := range c.Workspaces {
-			if target != "" && selected == target {
+			if target != "" && connectionWorkspaceRoot(selected) == target {
 				return true
 			}
 		}
 		return false
 	}
 	if c.IsPrivate() {
-		if scope.Workspace != "" && scope.Workspace == strings.Trim(c.ScopeWorkspace, "/") {
+		if scope.Workspace != "" && connectionWorkspaceRoot(scope.Workspace) == connectionWorkspaceRoot(c.ScopeWorkspace) {
 			return true
 		}
-		return workspace != "" && workspace == strings.Trim(c.ScopeWorkspace, "/") &&
+		return workspace != "" && workspace == connectionWorkspaceRoot(c.ScopeWorkspace) &&
 			strings.TrimSpace(scope.UserID) != "" && strings.TrimSpace(scope.UserID) == strings.TrimSpace(c.OwnerID)
 	}
 	return workspace == ""

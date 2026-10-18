@@ -60,7 +60,7 @@ func publicationRecordPath(root string, agentID ...string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	key := canonicalCrewWorkspaceRoot(root)
+	key := projectBindingRoot(root)
 	if len(agentID) > 0 && agentID[0] != "" {
 		key += "\x00" + agentID[0]
 	}
@@ -81,6 +81,7 @@ func readPublishedAgent(ctx context.Context, root, agentID string) (*publishedPr
 	// from a public request. It keeps both agent and source revision together.
 	if pinned, _ := ctx.Value(publicationExecutionKey{}).(*publishedProject); pinned != nil && canonicalCrewWorkspaceRoot(pinned.Root) == canonicalCrewWorkspaceRoot(ref.Root) && resolveProjectOwner(ctx, ref.Root) == pinned.OwnerID {
 		copy := *pinned
+		copy.Root = ref.Root
 		return &copy, nil
 	}
 	file, err := publicationRecordPath(ref.Root, agentID)
@@ -98,6 +99,7 @@ func readPublishedAgent(ctx context.Context, root, agentID string) (*publishedPr
 	if json.Unmarshal(raw, &record) != nil || record.AgentID != agentID || canonicalCrewWorkspaceRoot(record.Root) != canonicalCrewWorkspaceRoot(ref.Root) || record.OwnerID == "" || record.Revision == "" || strings.ContainsAny(record.Revision, "/\\.") || resolveProjectOwner(ctx, ref.Root) != record.OwnerID {
 		return nil, fmt.Errorf("cannot verify this Crew's publication record")
 	}
+	record.Root = ref.Root
 	return &record, nil
 }
 
@@ -111,9 +113,9 @@ func (p *publishedProject) sourceRoot() string {
 
 func (p *publishedProject) runtimeRoot() string {
 	if p.AgentID != "" {
-		return p.Root + "/outputs/agents/" + p.AgentID
+		return canonicalCrewWorkspaceRoot(p.Root) + "/outputs/agents/" + p.AgentID
 	}
-	return p.Root
+	return canonicalCrewWorkspaceRoot(p.Root)
 }
 
 // The native CLI and bridge shell receive the same published file locations.

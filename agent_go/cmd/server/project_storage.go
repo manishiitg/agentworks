@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 func init() {
+	services.SetConnectionWorkspaceResolver(foldCrewRootForStoredReference)
+	chathistory.SetWorkflowStateRootResolver(projectBindingRoot)
 	common.SetCodeProjectRootResolver(func(userID, path string) string {
 		ref, ok := resolveCrewPath(context.Background(), userID, path)
 		if !ok {
@@ -54,7 +58,69 @@ func validateProjectStorageRecord(rec projectOwnerRecord) error {
 			return fmt.Errorf("project alias does not match its registered identity")
 		}
 	}
+	if rec.BindingRoot != "" && rec.BindingRoot != legacy && rec.BindingRoot != shared {
+		return fmt.Errorf("private state location does not match its registered identity")
+	}
+	if rec.BindingRoot != "" && rec.BindingRoot != projectStorageRoot(rec) && !registryListHas(rec.Aliases, rec.BindingRoot) {
+		return fmt.Errorf("private state identity has no registered project alias")
+	}
 	return nil
+}
+
+// Path-keyed state keeps its original namespace, independently of file routing.
+// Only an exact trusted project root/alias may select that namespace.
+func projectBindingRoot(root string) string {
+	root = canonicalCrewWorkspaceRoot(root)
+	if id, ok := projectIdentityOf(root); ok {
+		if rec, exists := defaultProjectOwners().Lookup(id.Product, id.Folder); exists && rec.BindingRoot != "" && validateProjectStorageRecord(rec) == nil &&
+			(root == projectStorageRoot(rec) || registryListHas(rec.Aliases, root)) {
+			return rec.BindingRoot
+		}
+	}
+	return root
+}
+
+// compareAndSetStorageLocation is internal migration machinery, not a public
+// settings writer. It preserves audience and origin and pins private state keys
+// exactly once. The caller separately owns filesystem cutover and its journal.
+func (r *projectOwnerRegistry) compareAndSetStorageLocation(product, folder, expected, next string) error {
+	err := r.modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+		key := projectOwnerKey(product, folder)
+		rec, exists := projects[key]
+		if !exists || userAccessHash(rec) != expected {
+			return false, fmt.Errorf("project changed since the storage snapshot")
+		}
+		before := projectStorageRoot(rec)
+		if before == next {
+			return false, nil
+		}
+		if rec.BindingRoot == "" {
+			rec.BindingRoot = before
+		}
+		rec.CanonicalRoot, rec.Shared = next, projectRootIsShared(next)
+		for _, alias := range []string{before, next} {
+			if !registryListHas(rec.Aliases, alias) {
+				rec.Aliases = append(rec.Aliases, alias)
+			}
+		}
+		if err := validateProjectStorageRecord(rec); err != nil {
+			return false, err
+		}
+		if err := checkProjectStorageClaim(projects, key, rec); err != nil {
+			return false, err
+		}
+		projects[key] = rec
+		return true, nil
+	})
+	if err == nil {
+		crewPathAliases.mu.Lock()
+		crewPathAliases.aliases = nil
+		crewPathAliases.mu.Unlock()
+		crewOwners.mu.Lock()
+		crewOwners.entries = map[string]crewOwnerEntry{}
+		crewOwners.mu.Unlock()
+	}
+	return err
 }
 
 func checkProjectStorageClaim(records map[string]projectOwnerRecord, key string, rec projectOwnerRecord) error {

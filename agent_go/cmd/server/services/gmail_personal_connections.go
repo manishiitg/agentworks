@@ -30,15 +30,16 @@ func (g *GmailService) SelectPersonalConnection(ctx context.Context, id, workspa
 		if !c.Personal && c.ScopeWorkspace != "" && len(c.Workspaces) == 0 {
 			c.Workspaces = []string{strings.Trim(c.ScopeWorkspace, "/")}
 		}
-		if !selected && !slices.Contains(c.Workspaces, workspace) {
+		contains := slices.ContainsFunc(c.Workspaces, func(root string) bool { return connectionWorkspaceRoot(root) == connectionWorkspaceRoot(workspace) })
+		if !selected && !contains {
 			return fmt.Errorf("This account is not added to that item. Open its Google apps to see the selected accounts.")
 		}
 		c.Personal = true
-		if selected && !slices.Contains(c.Workspaces, workspace) {
+		if selected && !contains {
 			c.Workspaces = append(c.Workspaces, workspace)
 		}
 		if !selected {
-			c.Workspaces = slices.DeleteFunc(c.Workspaces, func(s string) bool { return s == workspace })
+			c.Workspaces = slices.DeleteFunc(c.Workspaces, func(s string) bool { return connectionWorkspaceRoot(s) == connectionWorkspaceRoot(workspace) })
 		}
 	}
 	if !found {

@@ -10340,6 +10340,7 @@ func (api *StreamingAPI) seedCodingAgentRuntimeFromRestoredConversation(sessionI
 	if api == nil || underlyingAgent == nil || runtime == nil {
 		return false
 	}
+	runtime = projectStorageResumeRuntime(underlyingAgent, runtime)
 	if !workflowCLIResumeAllowed(underlyingAgent, runtime) {
 		log.Printf("[CHAT_HISTORY] Native resume skipped for session %s: CLI runtime directory changed; using saved application history", sessionID)
 		return false

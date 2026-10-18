@@ -63,7 +63,7 @@ func (api *StreamingAPI) publicationTarget(ctx context.Context, claims *UserClai
 				return nil, err
 			}
 			choice.Root, choice.WorkspaceID, choice.OwnerID = root, manifest.ID, binding.OwnerID
-			choice.AgentID = uuid.NewSHA1(uuid.NameSpaceOID, []byte(root+"\x00"+projectID)).String()
+			choice.AgentID = uuid.NewSHA1(uuid.NameSpaceOID, []byte(projectBindingRoot(root)+"\x00"+projectID)).String()
 			// The project agent is new. Its private tab still counts against the ordinary cap.
 			chats, err := defaultProductConversationRegistryStore().projectChats(ctx, claims.UserID, manifest.Product, manifest.ID)
 			if err != nil {

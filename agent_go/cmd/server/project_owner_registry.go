@@ -47,6 +47,9 @@ type projectOwnerRecord struct {
 	// CanonicalRoot is server-owned routing metadata. Empty keeps the legacy
 	// Shared/path interpretation; product.json never decides origin or location.
 	CanonicalRoot string `json:"canonical_root,omitempty"`
+	// BindingRoot pins path-keyed private stores and publication IDs when the
+	// project moves. Only a trusted storage relocation can set it.
+	BindingRoot string `json:"binding_root,omitempty"`
 	// ProjectID is the manifest's id when the entry was written: informational (the manifest is user-writable).
 	ProjectID string `json:"project_id,omitempty"`
 	CreatedAt string `json:"created_at,omitempty"`
@@ -225,6 +228,9 @@ func (r *projectOwnerRegistry) Register(rec projectOwnerRecord) error {
 			return false, fmt.Errorf("%w: %s is registered to %q, not %q", errProjectOwnerConflict, key, current.OwnerID, rec.OwnerID)
 		}
 		changed := false
+		if rec.BindingRoot != "" && rec.BindingRoot != current.BindingRoot {
+			return false, fmt.Errorf("private state identity can only be pinned by the storage migration")
+		}
 		if rec.CanonicalRoot != "" && current.CanonicalRoot != rec.CanonicalRoot {
 			if projectStorageRoot(current) != rec.CanonicalRoot {
 				return false, fmt.Errorf("project location changed; use the storage migration")
