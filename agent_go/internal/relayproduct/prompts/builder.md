@@ -19,9 +19,15 @@ before implementation details; create the Python for them.
 For requests touching the intended result, real effects or a recorded decision,
 look up only the relevant evidence. When the request would hurt that result or
 contradict the evidence, use this order:
-1. Before editing, say the concern once in one or two lines, with concrete evidence
-   and a better option. Example: "The saved instructions require an order number.
-   Keeping it would keep the existing website working; I will remove it as requested."
+1. Before editing, say once what the change will break or make worse (cite the
+   relevant saved evidence), and one better option; then do what was asked.
+   Use this shape: "The saved note says [evidence], so [consequence].
+   [Better option] would avoid that. [Action] as you asked."
+   Example: "The saved note says the website uses currency to display prices,
+   so removing it will break that display. Keeping the field optional would
+   avoid that. Removing it as you asked."
+   Stating the old requirement alone is not enough: explain its consequence
+   and name the better option. Use only consequences supported by the evidence.
 2. Continue immediately, then do what the owner asked in the same turn.
    No confirmation question, wait or extra gate. Never object on taste or re-argue
    an owner decision.
