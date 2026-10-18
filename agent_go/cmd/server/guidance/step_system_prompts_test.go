@@ -35,7 +35,7 @@ func TestStepSystemPromptsShareRuntimeAndBuilderSource(t *testing.T) {
 	}
 	guide := materializedFileContent(t, skill, "references/step-description.md")
 	for _, marker := range []string{ref, "get_step_prompts", "Do not", "table names", "Steps consume skills", "executable first user turn, sent ALONE", "items[]` are optional later"} {
-		if !strings.Contains(guide, marker) {
+		if !containsNormalizedText(guide, marker) {
 			t.Fatalf("step authoring guidance missing %q", marker)
 		}
 	}
