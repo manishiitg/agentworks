@@ -306,7 +306,7 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	if refreshed, _, _, e := store.Refresh(context.Background(), refreshCfg.RefreshToken, cliOAuthClientID, srv.URL+"/api/external/v1"); e != nil || refreshed.BoundAgentName != "other-agent" {
 		t.Fatal("child refresh lost binding", e)
 	}
-	if out, e := peers.Handler(context.Background(), mcp.CallToolRequest{}); e != nil || out.IsError {
+	if out, e := peers.Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"action": "peers"}}}); e != nil || out.IsError {
 		t.Fatalf("attached directory failed: %+v %v", out, e)
 	}
 	// Purpose updates use only this exact child's existing identity, without attachment authority.
@@ -341,7 +341,7 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 		local(agentworksclient.LocalBridgeRequest{Action: "attach", Provider: "codex", SessionID: session, HostKey: "desktop-parent", ConfigPath: path, AgentName: names[i], Purpose: "Review"})
 	}
 	for i, session := range threads {
-		req := mcp.CallToolRequest{Params: mcp.CallToolParams{Meta: &mcp.Meta{AdditionalFields: map[string]any{"x-codex-turn-metadata": map[string]any{"thread_id": session}}}}}
+		req := mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{"action": "peers"}, Meta: &mcp.Meta{AdditionalFields: map[string]any{"x-codex-turn-metadata": map[string]any{"thread_id": session}}}}}
 		out, e := codexPeers.Handler(context.Background(), req)
 		if e != nil || out.IsError {
 			t.Fatal("host-bound peers failed", out, e)
