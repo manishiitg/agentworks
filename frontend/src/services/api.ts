@@ -790,7 +790,24 @@ const RUNNING_WORKFLOWS_CACHE_TTL_MS = 15_000
 // not keep polling a route that is unavailable by design.
 let runtimeTerminalDiagnosticsUnavailable = false
 
+export type CrewStorageStatus = {
+  operation_id: string; state: string; total: number; has_more: boolean; next_offset: number; error?: string
+  projects: { key: string; workspace_id?: string; name: string; owner_name: string; bytes: number; state: string; reasons?: string[]; backup_state?: string; restore_verified: boolean }[]
+}
+
 export const agentApi = {
+  startCrewStorageCheck: async (): Promise<{ operation_id: string }> => {
+    const response = await api.post('/api/admin/crew-storage', { action: 'storage_preview' })
+    return response.data
+  },
+  getCrewStorageCheck: async (operationId: string, offset = 0): Promise<CrewStorageStatus> => {
+    const response = await api.get('/api/admin/crew-storage', { params: { operation_id: operationId, offset, limit: 25 } })
+    return response.data
+  },
+  backupCrewStorageProject: async (operationId: string, workspaceId: string): Promise<{ operation_id: string }> => {
+    const response = await api.post('/api/admin/crew-storage', { action: 'storage_backup', operation_id: operationId, workspace_id: workspaceId })
+    return response.data
+  },
   // Observer APIs removed - no longer needed
 
   // Get events for a session

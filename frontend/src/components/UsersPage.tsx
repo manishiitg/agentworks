@@ -1,6 +1,7 @@
 import { WorkspaceBackButton } from './workspace/WorkspaceBackButton'
 import { Users } from 'lucide-react'
 import UsersAdminPanel from './admin/UsersAdminPanel'
+import CrewStoragePanel from './admin/CrewStoragePanel'
 import { useAuthStore } from '../stores/useAuthStore'
 
 /**
@@ -22,6 +23,7 @@ export default function UsersPage() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-5xl p-4 sm:p-6">
           <UsersAdminPanel vaultOnly={!isAdmin} />
+          {isAdmin ? <CrewStoragePanel /> : null}
         </div>
       </div>
     </section>
