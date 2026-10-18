@@ -229,6 +229,12 @@ func filterWorkflowManifestsForUser(claims *UserClaims, discovered []DiscoveredW
 		if workflow.Manifest == nil {
 			continue
 		}
+		if claims != nil && claims.AccessToken != nil && claims.AccessToken.ProjectKind != "" {
+			t := claims.AccessToken
+			if !t.AllowsWorkflow(workflow.Manifest.ID) || (workflow.Manifest.Kind == "relay") != (t.ProjectKind == "relay") {
+				continue
+			}
+		}
 		if !userAllowedWorkflowID(claims, workflow.Manifest.ID) {
 			continue
 		}

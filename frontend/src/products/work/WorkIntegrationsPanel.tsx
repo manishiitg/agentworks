@@ -6,7 +6,7 @@ import { UseSharePanel, UseShareBack, type UseShareChannel } from '../../compone
 import SkillsManagerPanel from '../../components/skills/SkillsManagerPanel'
 import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
 import WorkflowEmailPanel from '../../components/workflow/WorkflowEmailPanel'
-import { CliMcpSetupPanel } from '../../components/integrations/CliMcpSetupPanel'
+import { ProjectMcpSetupPanel } from '../../components/integrations/ProjectMcpSetupPanel'
 import { IntegrationNavigation, integrationNavigationOptions } from '../../components/integrations/IntegrationNavigation'
 import { projectIntegrationSections } from '../../components/integrations/integrationSections'
 import { ProjectPluginsPanel, projectPluginTabs, useProjectPluginTab } from '../../components/integrations/ProjectPluginsPanel'
@@ -185,7 +185,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
       />
       <div key={`${sharing ? shareChannel : activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
         {sharing ? <>
-          {shareChannel === 'overview' ? <UseSharePanel workspacePath={workspacePath} slack={visibleTabs.some(option => option.value === 'slack')} whatsapp={visibleTabs.some(option => option.value === 'whatsapp')} onChannel={selectConnection} onDashboard={onOpenDashboard} /> : shareChannel === 'cli' ? <CliMcpSetupPanel /> : <WorkflowBotsPanel channelOnly workspacePath={workspacePath} fixedChannel={shareChannel === 'slack-app' ? 'slack' : 'whatsapp'} scopeNoun="project" ownBotOnly={product.profileId === 'code'} onAsk={onAsk} target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }} />}
+          {shareChannel === 'overview' ? <UseSharePanel workspacePath={workspacePath} slack={visibleTabs.some(option => option.value === 'slack')} whatsapp={visibleTabs.some(option => option.value === 'whatsapp')} onChannel={selectConnection} onDashboard={onOpenDashboard} /> : shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <WorkflowBotsPanel channelOnly workspacePath={workspacePath} fixedChannel={shareChannel === 'slack-app' ? 'slack' : 'whatsapp'} scopeNoun="project" ownBotOnly={product.profileId === 'code'} onAsk={onAsk} target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }} />}
         </> : <>
         {overview && <ConnectedProjectAccounts workspacePath={workspacePath} options={navigationOptions} onOpen={selectConnection} />}
         {activeTab === 'apps' && <ProjectPluginsPanel tab={activePluginTab}

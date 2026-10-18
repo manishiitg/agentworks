@@ -381,6 +381,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if c == nil || !(productpolicy.Selection{}).AllowsTool(tool.Name) {
 		return false
 	}
+	if c.AccessToken != nil && c.AccessToken.ProjectKind != "" && tool.actions == nil && !projectMCPToolAllowed(c.AccessToken.ProjectKind, tool.Name) {
+		return false
+	}
 	if c.AccessToken != nil && c.AccessToken.BoundAgentID != "" {
 		return tool.Name == "messages" && namedAgentOperationAllowed(c, false)
 	}
@@ -403,6 +406,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return externalMergedAllows(c, tool)
 	}
 	if tool.Name == "messages" {
+		if c.AccessToken != nil && c.AccessToken.ProjectKind != "" {
+			return false
+		}
 		if c.AccessToken == nil {
 			return true
 		}

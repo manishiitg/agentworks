@@ -231,9 +231,12 @@ func (s *mcpOAuthStore) Decide(ctx context.Context, raw string, user *UserClaims
 	if len(selected) > 0 {
 		workflowIDs = slices.Clone(selected[0])
 	}
+	granted := mcpOAuthPersonScopes(user)
+	if audience, bound := projectMCPAudienceForResource(req.Resource); bound {
+		granted = audience.scopes()
+	}
 	if approve {
 		// Validate what will really be granted: the scopes this server and account allow, not everything requested.
-		granted := mcpOAuthPersonScopes(user)
 		workflowIDs = nil // no workflow selection: a connection follows the account's permissions
 		if err := validateMCPOAuthBuilderSelection(ctx, user, granted, workflowIDs); err != nil {
 			return req, "", &mcpOAuthRefusal{err}
@@ -260,7 +263,7 @@ func (s *mcpOAuthStore) Decide(ctx context.Context, raw string, user *UserClaims
 		return req, "", sql.ErrNoRows
 	}
 	if approve {
-		scopes, _ := json.Marshal(mcpOAuthPersonScopes(user))
+		scopes, _ := json.Marshal(granted)
 		bounds, _ := json.Marshal(workflowIDs)
 		_, err = tx.ExecContext(ctx, `INSERT INTO codes (hash,client_id,redirect_uri,resource,scopes,challenge,user_id,username,email,provider,expires_at,workflow_ids) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, mcpOAuthHash(code), req.ClientID, req.RedirectURI, req.Resource, string(scopes), req.Challenge, user.UserID, user.Username, user.Email, user.Provider, time.Now().Add(5*time.Minute).Unix(), string(bounds))
 		if err != nil {
@@ -456,6 +459,7 @@ func (s *mcpOAuthStore) Refresh(ctx context.Context, raw, clientID, resource str
 }
 
 type mcpOAuthConnection struct {
+	Resource     string    `json:"resource"`
 	ID           string    `json:"id"`
 	ClientName   string    `json:"client_name"`
 	Scopes       []string  `json:"scopes"`
@@ -465,7 +469,7 @@ type mcpOAuthConnection struct {
 }
 
 func (s *mcpOAuthStore) Connections(ctx context.Context, userID string) ([]mcpOAuthConnection, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT t.family_id,CASE WHEN a.agent_name IS NULL THEN c.name ELSE 'Agent: ' || a.agent_name END,t.scopes,MAX(t.expires_at),t.workflow_ids FROM tokens t JOIN clients c ON c.id=t.client_id LEFT JOIN agent_connections a ON a.family_id=t.family_id WHERE t.user_id=? AND t.kind='refresh' AND t.revoked_at IS NULL AND t.expires_at>? GROUP BY t.family_id,c.name,a.agent_name,t.scopes,t.workflow_ids ORDER BY MAX(t.expires_at) DESC`, userID, time.Now().Unix())
+	rows, err := s.db.QueryContext(ctx, `SELECT t.family_id,CASE WHEN a.agent_name IS NULL THEN c.name ELSE 'Agent: ' || a.agent_name END,t.scopes,MAX(t.expires_at),t.workflow_ids,t.resource FROM tokens t JOIN clients c ON c.id=t.client_id LEFT JOIN agent_connections a ON a.family_id=t.family_id WHERE t.user_id=? AND t.kind='refresh' AND t.revoked_at IS NULL AND t.expires_at>? GROUP BY t.family_id,c.name,a.agent_name,t.scopes,t.workflow_ids,t.resource ORDER BY MAX(t.expires_at) DESC`, userID, time.Now().Unix())
 	if err != nil {
 		return nil, err
 	}
@@ -475,7 +479,7 @@ func (s *mcpOAuthStore) Connections(ctx context.Context, userID string) ([]mcpOA
 		var c mcpOAuthConnection
 		var scopes, bounds string
 		var expiry int64
-		if err := rows.Scan(&c.ID, &c.ClientName, &scopes, &expiry, &bounds); err != nil {
+		if err := rows.Scan(&c.ID, &c.ClientName, &scopes, &expiry, &bounds, &c.Resource); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(scopes), &c.Scopes); err != nil {
@@ -485,7 +489,8 @@ func (s *mcpOAuthStore) Connections(ctx context.Context, userID string) ([]mcpOA
 		if err := json.Unmarshal([]byte(bounds), &c.WorkflowIDs); err != nil {
 			return nil, err
 		}
-		c.AllWorkflows = len(c.WorkflowIDs) == 0 && !strings.HasPrefix(c.ClientName, "Agent: ")
+		_, projectBound := projectMCPAudienceForResource(c.Resource)
+		c.AllWorkflows = !projectBound && len(c.WorkflowIDs) == 0 && !strings.HasPrefix(c.ClientName, "Agent: ")
 		c.ExpiresAt = time.Unix(expiry, 0)
 		connections = append(connections, c)
 	}

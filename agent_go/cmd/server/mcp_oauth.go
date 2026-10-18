@@ -52,6 +52,10 @@ func mcpOAuthChallenge(w http.ResponseWriter) {
 
 func (api *StreamingAPI) handleMCPOAuthProtectedResource(w http.ResponseWriter, r *http.Request) {
 	origin, resource, ok := mcpOAuthURLs()
+	metadataPath := strings.TrimPrefix(r.URL.Path, "/.well-known/oauth-protected-resource")
+	if _, bound := projectMCPAudienceForPath(metadataPath); bound {
+		resource = origin + metadataPath
+	}
 	if !ok {
 		http.Error(w, "MCP OAuth requires a public HTTPS URL or configured loopback URL", http.StatusServiceUnavailable)
 		return
@@ -60,7 +64,12 @@ func (api *StreamingAPI) handleMCPOAuthProtectedResource(w http.ResponseWriter, 
 	w.Header().Set("Cache-Control", "public, max-age=300")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"resource": resource, "authorization_servers": []string{origin},
-		"scopes_supported": mcpOAuthScopes,
+		"scopes_supported": func() []string {
+			if a, bound := projectMCPAudienceForResource(resource); bound {
+				return a.scopes()
+			}
+			return mcpOAuthScopes
+		}(),
 	})
 }
 
@@ -236,7 +245,8 @@ func validMCPOAuthScopes(raw string) ([]string, bool) {
 
 func (api *StreamingAPI) handleMCPOAuthAuthorize(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	_, resource, ok := mcpOAuthURLs()
+	_, _, ok := mcpOAuthURLs()
+	resource := r.URL.Query().Get("resource")
 	if !ok {
 		mcpOAuthError(w, http.StatusServiceUnavailable, "server_error")
 		return
@@ -244,7 +254,7 @@ func (api *StreamingAPI) handleMCPOAuthAuthorize(w http.ResponseWriter, r *http.
 	q := r.URL.Query()
 	clientID, redirect := q.Get("client_id"), q.Get("redirect_uri")
 	state, challenge := q.Get("state"), q.Get("code_challenge")
-	if len(state) == 0 || len(state) > 512 || len(challenge) != 43 || q.Get("code_challenge_method") != "S256" || q.Get("response_type") != "code" || q.Get("resource") != resource {
+	if len(state) == 0 || len(state) > 512 || len(challenge) != 43 || q.Get("code_challenge_method") != "S256" || q.Get("response_type") != "code" || !validMCPResource(resource) {
 		mcpOAuthError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
@@ -320,6 +330,22 @@ func (api *StreamingAPI) handleMCPOAuthConsent(w http.ResponseWriter, r *http.Re
 		mcpOAuthError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
+	requestInfo, err := store.Request(r.Context(), id)
+	if err != nil {
+		mcpOAuthError(w, http.StatusNotFound, "invalid_request")
+		return
+	}
+	var project *dashboardTarget
+	consentScopes := mcpOAuthPersonScopes(claims)
+	if audience, bound := projectMCPAudienceForResource(requestInfo.Resource); bound {
+		target, err := api.projectMCPTarget(r.Context(), claims, audience)
+		if err != nil {
+			dashboardError(w, err)
+			return
+		}
+		project = &target
+		consentScopes = audience.scopes()
+	}
 	if r.Method == http.MethodGet {
 		request, err := store.Request(r.Context(), id)
 		if err != nil {
@@ -332,7 +358,7 @@ func (api *StreamingAPI) handleMCPOAuthConsent(w http.ResponseWriter, r *http.Re
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": client.Name, "redirect_uri": request.RedirectURI, "scopes": mcpOAuthPersonScopes(claims), "editable_workflows": []map[string]string{}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": client.Name, "redirect_uri": request.RedirectURI, "scopes": consentScopes, "editable_workflows": []map[string]string{}, "project": project})
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -389,8 +415,8 @@ func (api *StreamingAPI) handleMCPOAuthToken(w http.ResponseWriter, r *http.Requ
 		mcpOAuthError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
-	_, resource, ok := mcpOAuthURLs()
-	if !ok || r.PostForm.Get("resource") != resource {
+	resource := r.PostForm.Get("resource")
+	if !validMCPResource(resource) {
 		mcpOAuthError(w, http.StatusBadRequest, "invalid_target")
 		return
 	}
@@ -425,11 +451,12 @@ func (api *StreamingAPI) handleMCPOAuthToken(w http.ResponseWriter, r *http.Requ
 }
 
 func authenticateMCPOAuthToken(w http.ResponseWriter, r *http.Request, raw string) (*UserClaims, bool) {
-	if r.URL.Path != externalMCPPath || r.Header.Get("Authorization") == "" {
+	if !isMCPRequestPath(r.URL.Path) || r.Header.Get("Authorization") == "" {
 		mcpOAuthError(w, http.StatusForbidden, "invalid_target")
 		return nil, false
 	}
-	_, resource, ok := mcpOAuthURLs()
+	origin, _, ok := mcpOAuthURLs()
+	resource := origin + r.URL.Path
 	if !ok {
 		mcpOAuthError(w, http.StatusServiceUnavailable, "server_error")
 		return nil, false
@@ -442,13 +469,13 @@ func authenticateMCPOAuthToken(w http.ResponseWriter, r *http.Request, raw strin
 	defer store.Close()
 	grant, err := store.Authenticate(r.Context(), raw)
 	if err != nil || grant.Resource != resource || len(grant.Scopes) == 0 {
-		mcpOAuthChallenge(w)
+		projectMCPChallenge(w, r)
 		mcpOAuthError(w, http.StatusUnauthorized, "invalid_token")
 		return nil, false
 	}
 	claims, err := accessTokenClaims(mcpOAuthTokenForGrant(grant))
 	if err != nil {
-		mcpOAuthChallenge(w)
+		projectMCPChallenge(w, r)
 		mcpOAuthError(w, http.StatusUnauthorized, "invalid_token")
 		return nil, false
 	}
@@ -508,6 +535,9 @@ func mcpOAuthTokenForGrant(grant mcpOAuthGrant) accesstokens.Token {
 	name := "MCP OAuth"
 	if grant.ClientID == cliOAuthClientID {
 		name = "AgentWorks CLI"
+	}
+	if audience, bound := projectMCPAudienceForResource(grant.Resource); bound {
+		return audience.token(accesstokens.Token{OAuthClientID: grant.ClientID, ID: "oauth-" + grant.FamilyID, Name: "Project MCP", UserID: grant.UserID, Username: grant.Username, Email: grant.Email, Provider: grant.Provider, Scopes: grant.Scopes, ExpiresAt: grant.Expires})
 	}
 	// A grant with no workflow IDs reaches every workflow the account may use (Builder included, bounded by the
 	// account's live role); an older Builder grant keeps the IDs it was given.

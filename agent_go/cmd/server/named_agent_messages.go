@@ -83,6 +83,9 @@ func namedAgentOperationAllowed(claims *UserClaims, send bool) bool {
 		return true
 	}
 	t := claims.AccessToken
+	if t.ProjectKind != "" {
+		return false
+	}
 	if t.BoundAgentID != "" {
 		return t.Allows("messages:send") || !send && t.Allows("messages:read")
 	}

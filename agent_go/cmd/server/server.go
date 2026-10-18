@@ -2517,6 +2517,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/oauth/mcp/authorize", api.handleMCPOAuthAuthorize).Methods("GET")
 	apiRouter.HandleFunc("/oauth/mcp/token", api.handleMCPOAuthToken).Methods("POST")
 	apiRouter.HandleFunc("/oauth/mcp/consent", api.handleMCPOAuthConsent).Methods("GET", "POST")
+	apiRouter.HandleFunc("/oauth/mcp/project", api.handleProjectMCPSetup).Methods("GET")
 	apiRouter.HandleFunc("/oauth/mcp/connections", api.handleMCPOAuthConnections).Methods("GET")
 	apiRouter.HandleFunc("/oauth/mcp/connections/{id}", api.handleMCPOAuthConnections).Methods("DELETE")
 	apiRouter.HandleFunc("/oauth/cli/device", api.handleCLIOAuthDevice).Methods("POST")
@@ -3196,6 +3197,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/relays/{id}/releases", api.handlePublishRelayRelease).Methods("POST")
 	apiRouter.HandleFunc("/relays/{id}/graph", api.handleInspectRelayGraph).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/files/content", api.handleExternalAssetContent).Methods("GET", "HEAD")
+	apiRouter.HandleFunc("/external/v1/mcp/project/{kind}/{project}/{access}", api.handleProjectMCP).Methods("POST", "GET", "DELETE")
 	apiRouter.HandleFunc("/external/v1/mcp", api.handleExternalMCP).Methods("POST", "GET", "DELETE")
 	apiRouter.HandleFunc("/external/v1/skill.md", api.handleExternalSkillMD).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/skill.zip", api.handleExternalSkillZIP).Methods("GET")
@@ -3268,6 +3270,7 @@ func runServer(cmd *cobra.Command, args []string) {
 
 	// OAuth discovery must resolve before the SPA fallback.
 	router.HandleFunc("/.well-known/oauth-protected-resource", api.handleMCPOAuthProtectedResource).Methods("GET")
+	router.HandleFunc(mcpOAuthProtectedResourcePath+"/project/{kind}/{project}/{access}", api.handleMCPOAuthProtectedResource).Methods("GET")
 	router.HandleFunc(mcpOAuthProtectedResourcePath, api.handleMCPOAuthProtectedResource).Methods("GET")
 	router.HandleFunc(mcpOAuthMetadataPath, api.handleMCPOAuthMetadata).Methods("GET")
 

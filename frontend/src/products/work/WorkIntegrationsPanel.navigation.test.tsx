@@ -19,7 +19,7 @@ vi.mock('../../components/workflow/ProjectKnowledgebasePanel', () => ({ ProjectK
 vi.mock('./WorkIdentityPanel', () => ({ WorkFoldersSection: () => <div data-content="folders">Existing folder access</div> }))
 vi.mock('../../components/workflow/WorkflowBotsPanel', () => ({ default: ({ fixedChannel, channelOnly, ownBotOnly }: any) => <div data-content={fixedChannel} data-channel-only={String(channelOnly)} data-own-bot-only={String(ownBotOnly)}>Existing {fixedChannel}</div> }))
 vi.mock('../../components/workflow/WorkflowEmailPanel', () => ({ default: () => <div data-content="gmail">Existing Google apps</div> }))
-vi.mock('../../components/integrations/CliMcpSetupPanel', () => ({ CliMcpSetupPanel: () => <div data-content="cli">Existing MCP setup</div> }))
+vi.mock('../../components/integrations/ProjectMcpSetupPanel', () => ({ ProjectMcpSetupPanel: () => <div data-content="cli">Existing MCP setup</div> }))
 vi.mock('./McpAppsSection', () => ({ McpAppsSection: () => null }))
 vi.mock('./codeLocalFiles', () => ({ useCodeFilesPreference: () => ({ location: 'server' }) }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (value: unknown) => unknown) => select({ chatTabs: {} }) }))

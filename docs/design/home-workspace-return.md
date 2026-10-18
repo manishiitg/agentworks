@@ -282,3 +282,8 @@ Existing route/view IDs and permission boundaries are retained. The two bubble l
 Verification: 107 checks across 17 focused navigation, sharing, account, channel, permission and shortcut suites passed, and TypeScript passed. The browser was checked with the current local account across Crew, Goals and Flows: resource-only Add connection menus, personal Slack accounts, shared people/owner controls, incoming Crew Slack restrictions, MCP client setup, Flow API-trigger navigation and search routing. Reader denial and disabled-channel targets were verified through tests rather than a second live login. No sharing grant, token, app connection, channel route, secret, model request or business run was created or changed during these checks.
 
 Screenshots are saved outside the repository under `/Users/mipl/ai-work/` as `agentworks-connections-share-bubble.png`, `agentworks-connections-resources-menu.png` and `agentworks-use-share-{crew,goals,relays}.png`. The work remains local on the feature branch.
+
+
+### Project-only MCP connection follow-up
+
+MCP access now opens the project-specific browser approval flow described in [project-mcp-connections.md](project-mcp-connections.md). The earlier installation-wide setup remains in global Connect. The left chat sidebar no longer contains Goals-only Activity; Goal activity is in the Goals workspace picker and Ctrl+K, with the existing server data and access rules.

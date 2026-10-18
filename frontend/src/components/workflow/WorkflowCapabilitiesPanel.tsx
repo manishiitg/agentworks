@@ -8,7 +8,7 @@ import { ProjectSecretsPanel } from '../integrations/ProjectSecretsPanel'
 import WorkflowLLMConfigurationPanel from './WorkflowLLMConfigurationPanel'
 import WorkflowBotsPanel from './WorkflowBotsPanel'
 import WorkflowEmailPanel from './WorkflowEmailPanel'
-import { CliMcpSetupPanel } from '../integrations/CliMcpSetupPanel'
+import { ProjectMcpSetupPanel } from '../integrations/ProjectMcpSetupPanel'
 import { IntegrationNavigation, integrationNavigationOptions } from '../integrations/IntegrationNavigation'
 import { UseSharePanel, UseShareBack, type UseShareChannel } from '../integrations/UseSharePanel'
 import { ConnectedProjectAccounts } from '../integrations/ConnectedProjectAccounts'
@@ -372,7 +372,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
               <div>
                 <div key={`${workspacePath}:${sharing ? shareChannel : activeMcpTab}:${tabNonce}`}>
                 {sharing ? <>
-                  {workspacePath && (shareChannel === 'overview' ? <UseSharePanel workspacePath={workspacePath} slack={!relayMode && mcpTabs.some(option => option.value === 'slack')} whatsapp={!relayMode && mcpTabs.some(option => option.value === 'whatsapp')} onChannel={selectConnection} onDashboard={() => useWorkflowStore.getState().openWorkspaceView('report')} onApi={relayMode ? () => useWorkflowStore.getState().openWorkspaceView('workshop', 'triggers') : undefined} onAccess={multiUser ? () => useWorkflowStore.getState().openWorkspaceView('access') : undefined} /> : shareChannel === 'cli' ? <CliMcpSetupPanel /> : <WorkflowBotsPanel channelOnly workspacePath={workspacePath} fixedChannel={shareChannel === 'slack-app' ? 'slack' : 'whatsapp'} />)}
+                  {workspacePath && (shareChannel === 'overview' ? <UseSharePanel workspacePath={workspacePath} slack={!relayMode && mcpTabs.some(option => option.value === 'slack')} whatsapp={!relayMode && mcpTabs.some(option => option.value === 'whatsapp')} onChannel={selectConnection} onDashboard={() => useWorkflowStore.getState().openWorkspaceView('report')} onApi={relayMode ? () => useWorkflowStore.getState().openWorkspaceView('workshop', 'triggers') : undefined} onAccess={multiUser ? () => useWorkflowStore.getState().openWorkspaceView('access') : undefined} /> : shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <WorkflowBotsPanel channelOnly workspacePath={workspacePath} fixedChannel={shareChannel === 'slack-app' ? 'slack' : 'whatsapp'} />)}
                 </> : <>
                 {overview && workspacePath && <ConnectedProjectAccounts workspacePath={workspacePath} options={navigationOptions} onOpen={selectConnection} />}
                 {activeMcpTab === 'apps' && workspacePath && <ProjectPluginsPanel tab={pluginTab}

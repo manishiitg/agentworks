@@ -224,8 +224,8 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			}
 		}
 		if authHeader == "" {
-			if r.URL.Path == externalMCPPath {
-				mcpOAuthChallenge(w)
+			if isMCPRequestPath(r.URL.Path) {
+				projectMCPChallenge(w, r)
 			}
 			http.Error(w, `{"error": "Authorization header required"}`, http.StatusUnauthorized)
 			return

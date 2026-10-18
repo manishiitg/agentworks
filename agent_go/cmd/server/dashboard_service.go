@@ -132,7 +132,7 @@ func (api *StreamingAPI) dashboardTarget(ctx context.Context, claims *UserClaims
 				owner = sanitizeUserIDForPath(claims.UserID)
 			}
 			physical := workspaceref.PhysicalPathOf(owner, ref.Logical())
-			if codeRoleFor(ctx, claims.UserID, owner, project) != codeRoleOwner || resolveProjectOwner(ctx, physical) != owner {
+			if claims.AccessToken != nil && claims.AccessToken.ProjectKind != "" && !workspaceDashboardTokenAllows(claims, "code", project) || codeRoleFor(ctx, claims.UserID, owner, project) != codeRoleOwner || resolveProjectOwner(ctx, physical) != owner {
 				return target, dashboardFailure(404, "project unavailable")
 			}
 			return dashboardTarget{Root: physical, Kind: "code", ID: project, Title: project, Edit: userAccessForClaims(claims).CanEdit}, nil
@@ -549,6 +549,9 @@ func workspaceDashboardTokenAllows(claims *UserClaims, profileID, id string) boo
 		return claims != nil
 	}
 	t := claims.AccessToken
+	if t.ProjectKind != "" {
+		return t.ProjectKind == profileID && t.AllowsCrew(id) && t.Allows("crews:read")
+	}
 	if profileID == "code" {
 		return externalCodeRunAllowed(claims) && (len(t.CrewIDs) == 0 || t.AllowsCrew(id))
 	}

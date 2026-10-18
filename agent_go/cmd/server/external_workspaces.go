@@ -91,6 +91,10 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		return
 	}
 	action := externalArg(args, "action")
+	if t := claims.AccessToken; t != nil && t.ProjectKind != "" && action != "list" && action != "get" && action != "chats" && action != "read_chat" {
+		externalError(w, 403, "insufficient_scope", "Project connections use published functions; Builder and project chat changes are excluded.")
+		return
+	}
 	if action == "storage_preview" || action == "storage_status" || action == "storage_backup" || action == "storage_move" {
 		api.externalCrewStorage(w, r, args)
 		return

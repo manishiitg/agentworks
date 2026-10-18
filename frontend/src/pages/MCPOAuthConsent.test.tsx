@@ -97,3 +97,17 @@ it('explains Vault management separately from runtime tool access', async () => 
     expect(view.host.textContent).not.toContain('Use Vault MCP tools you are allowed to use')
   } finally { await view.cleanup() }
 })
+
+
+it('shows a single project limit and its saved capabilities on consent', async () => {
+  window.history.replaceState({}, '', `/oauth/consent?request=mcp_req_${'a'.repeat(64)}`)
+  api.get.mockResolvedValue({ data: { client_name: 'Project app', redirect_uri: 'https://client.example/callback', scopes: ['dashboards:read', 'crews:read'], project: { ID: 'p1', Kind: 'crew', Title: 'Reporting' } } })
+  const host = document.createElement('div'); const root = createRoot(host)
+  try {
+    await act(async () => root.render(<MCPOAuthConsent />))
+    expect(host.textContent).toContain('Reporting only')
+    expect(host.textContent).toContain('Other projects and project settings are excluded')
+    expect(host.textContent).not.toContain('This app can do what you can do on the website')
+    expect(host.textContent).not.toContain('View and use this project')
+  } finally { await act(async () => root.unmount()) }
+})

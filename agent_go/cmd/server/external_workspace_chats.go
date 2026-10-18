@@ -16,7 +16,7 @@ import (
 // no messaging inbox or separate execution policy is created here.
 func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r *http.Request, action string, args map[string]any, project crewProjectBinding, manifest productProjectManifest) {
 	claims := GetUserFromContext(r.Context())
-	if token := claims.AccessToken; token != nil && manifest.Product != "code" {
+	if token := claims.AccessToken; token != nil && (manifest.Product != "code" || token.ProjectKind != "") {
 		scope := "crews:read"
 		if action == "ask" {
 			scope = "crews:run"

@@ -107,6 +107,9 @@ func (api *StreamingAPI) externalCrewsVisible(ctx context.Context, claims *UserC
 	if profile, err := api.agentProfiles.Resolve("work", 0, claims.UserID); err != nil || !userAllowedProduct(claims, profile.Product) {
 		return []map[string]interface{}{}, nil
 	}
+	if claims.AccessToken != nil && claims.AccessToken.ProjectKind != "" && claims.AccessToken.ProjectKind != "work" {
+		return nil, nil
+	}
 	crews, err := listAccessibleCrewProjects(ctx, claims.UserID, strings.ToLower(strings.TrimSpace(query)))
 	if err != nil {
 		return nil, err
