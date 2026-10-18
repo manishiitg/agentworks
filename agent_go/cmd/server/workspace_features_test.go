@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
@@ -143,6 +144,34 @@ func TestNewCrewMemoryDefaultsPreserveExistingProjects(t *testing.T) {
 		if !workspaceMemoryEnabled(ctx, profile.ID, root) {
 			t.Fatalf("native %s creation ignored its explicit default", profile.ID)
 		}
+	}
+	// Exercise the real Code factory registration, including saved native calls.
+	if err := codeproduct.RegisterAgentProfileRuntime(f.API.agentProfiles, "http://127.0.0.1:0"); err != nil {
+		t.Fatal(err)
+	}
+	profile := f.Code
+	profile.Tools = []agentprofiles.ToolBinding{{ID: "code.create-project"}}
+	resolved := &resolvedAgentProfile{Definition: profile, ToolCallerClaims: GetUserFromContext(ctx)}
+	registrar := &recordingRegistrar{}
+	if err := f.API.registerAgentProfileTools(registrar, newProductToolGate(resolved), resolved, fixtureUserA, "native-create", "", false); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"create_crew", "create_code_workspace"} {
+		tool, ok := registrar.tools[name]
+		if !ok || !strings.Contains(tool.desc, "${MCP_CUSTOM}/create_crew") {
+			t.Fatalf("missing native creation route %s", name)
+		}
+		result, err := tool.exec(context.Background(), map[string]interface{}{"name": "Native sibling"})
+		if err != nil || !strings.Contains(result, `"workspace_path":"Crew/`) {
+			t.Fatalf("%s: %s %v", name, result, err)
+		}
+	}
+	reader := &recordingRegistrar{}
+	if err := f.API.registerAgentProfileTools(reader, newProductToolGate(resolved), resolved, fixtureUserA, "native-run", "", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, found := reader.tools["create_crew"]; found {
+		t.Fatal("Run mode received Crew creation")
 	}
 	if workspaceMemoryEnabled(ctx, "code", f.Layout.CodePhysical(fixtureUserA, fixtureCodeFolder)) || !workspaceMemoryEnabled(ctx, "work", f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)) {
 		t.Fatal("new-project default changed existing projects")

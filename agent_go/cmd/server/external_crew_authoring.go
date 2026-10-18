@@ -863,13 +863,14 @@ func crewInstalledTemplates(ctx context.Context, root string) []crewTemplateRef 
 	if err != nil || !found {
 		return nil
 	}
-	var document struct {
-		Templates []crewTemplateRef `json:"templates"`
-	}
+	var document map[string]interface{}
 	if json.Unmarshal([]byte(raw), &document) != nil {
 		return nil
 	}
-	return document.Templates
+	rows, _ := json.Marshal(crewTemplateReceiptRows(document))
+	var templates []crewTemplateRef
+	_ = json.Unmarshal(rows, &templates)
+	return templates
 }
 
 // exportCrewSpec renders a Crew as a portable spec: identity, skills with

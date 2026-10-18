@@ -1,12 +1,13 @@
 package server
 
 import (
-	"encoding/json"
+	"log"
 	"net/http"
 	"net/url"
 	"path"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // Lifecycle and sharing of a workflow, Flow or Crew over MCP, through the
@@ -16,10 +17,10 @@ import (
 
 func externalProjectDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	names := map[string]any{"type": "array", "maxItems": 100, "items": map[string]any{"type": "string", "minLength": 1, "maxLength": 200}, "description": "User ids, usernames or emails."}
-	add("manage_project", "Rename, duplicate, delete or share a workflow, Flow or Crew, or install a Crew template after creation. Pass workflow_id or crew_id. rename (workflows and Flows; Crews use update_crew): label, description (one short line, shown in Slack and lists), icon. duplicate (workflows and Flows): a copy you own, new_label. delete is permanent with no undo: owner only, and confirm must repeat the workflow_id or crew_id. get_access / set_access: workflows list owners, editors and readers (set_access changes only the lists you send; owners only). A Flow or Crew is shared from its dashboard with share_dashboard instead; set_access on them is refused. install_template (Crews): template_id from the Crew Agent catalog; files you edited are kept.", true, false, map[string]any{
+	add("manage_project", "Rename, duplicate, delete or share a workflow, Flow or Crew, or install or remove a Crew template after creation. Pass workflow_id or crew_id. rename (workflows and Flows; Crews use update_crew): label, description (one short line, shown in Slack and lists), icon. duplicate (workflows and Flows): a copy you own, new_label. delete is permanent with no undo: owner only, and confirm must repeat the workflow_id or crew_id. get_access / set_access: workflows list owners, editors and readers (set_access changes only the lists you send; owners only). A Flow or Crew is shared from its dashboard with share_dashboard instead; set_access on them is refused. install_template / remove_template (Crews): template_id from the Crew Agent catalog; removal keeps files and setup progress.", true, false, map[string]any{
 		"workflow_id": externalString("Workflow or Flow ID from list_workflows. Pass this or crew_id."),
 		"crew_id":     externalString("Crew ID from list_crews. Pass this or workflow_id."),
-		"action":      map[string]any{"type": "string", "enum": []any{"rename", "duplicate", "delete", "get_access", "set_access", "install_template"}},
+		"action":      map[string]any{"type": "string", "enum": []any{"rename", "duplicate", "delete", "get_access", "set_access", "install_template", "remove_template"}},
 		"label":       map[string]any{"type": "string", "minLength": 1, "maxLength": 200},
 		"description": map[string]any{"type": "string", "maxLength": 300, "description": "For rename: one short line about what the workflow is for."},
 		"icon":        map[string]any{"type": "string", "maxLength": 16},
@@ -28,7 +29,7 @@ func externalProjectDefinitions(add func(string, string, bool, bool, map[string]
 		"owners":      names,
 		"editors":     names,
 		"readers":     names,
-		"template_id": externalString("For install_template."),
+		"template_id": externalString("For install_template or remove_template."),
 	}, "action")
 }
 
@@ -140,6 +141,26 @@ func (api *StreamingAPI) externalCrewProjectCall(w http.ResponseWriter, r *http.
 		externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
 		return
 	}
+	if action == "install_template" || action == "remove_template" {
+		lock, _ := crewTemplateLocks.LoadOrStore(crew.Binding.WorkspacePath, &sync.Mutex{})
+		lock.(*sync.Mutex).Lock()
+		defer lock.(*sync.Mutex).Unlock()
+		// A queued request does not keep resource access that was revoked
+		// while another template was being changed.
+		crew, manifest, summary, ok = api.externalCrewResolve(ctx, claims, crewID)
+		access := userAccessForClaims(claims)
+		if !ok || !crew.OwnedByCaller || access.Disabled || !access.CanEdit {
+			externalError(w, 403, "forbidden", "Open a Crew you can build to change its templates.")
+			return
+		}
+		if reason := publishedWriteRefusal(ctx, crew.Binding.WorkspacePath); reason != "" {
+			externalError(w, 409, "published_project", reason)
+			return
+		}
+		if crewEditLockRefuse(w, crew, claims, "") {
+			return
+		}
+	}
 	if action == "get_access" {
 		externalJSON(w, map[string]any{"crew_id": crewID, "owner": summary["owner"], "my_access": map[bool]string{true: "owner", false: "member"}[crew.OwnedByCaller]})
 		return
@@ -159,21 +180,40 @@ func (api *StreamingAPI) externalCrewProjectCall(w http.ResponseWriter, r *http.
 		respond(scheduleHandler(r, api.handleDeleteAgentProfileProject, http.MethodDelete, "/api/agent-profiles/"+manifest.Product+"/projects/"+url.PathEscape(manifest.ID), vars, nil, nil))
 	case "set_access":
 		externalError(w, 409, "use_share_dashboard", "Share this Crew from its dashboard: call share_dashboard, or open the dashboard and press Share.")
-	case "install_template":
+	case "install_template", "remove_template":
 		template, err := loadCrewAgentTemplate(externalArg(args, "template_id"))
 		if err != nil || template == nil {
 			externalError(w, 400, "invalid_arguments", "Unknown template_id; see the Crew Agent catalog.")
 			return
 		}
-		// The shared installer keeps the owner's edited files, writes the
-		// missing ones, selects the skills and records the template.
-		if err := applyCrewAgentTemplateFiles(ctx, crew.Binding.WorkspacePath, template, true); err != nil {
-			externalError(w, 409, "template_not_installed", err.Error())
+		if action == "remove_template" {
+			err = removeCrewAgentTemplate(ctx, crew.Binding.WorkspacePath, template)
+		} else {
+			err = applyCrewAgentTemplateFiles(ctx, crew.Binding.WorkspacePath, template, true)
+		}
+		if err != nil {
+			externalError(w, 409, "template_not_changed", err.Error())
 			return
 		}
-		out, _ := json.Marshal(map[string]any{"crew_id": crewID, "installed": template.ID, "skills": template.SelectedSkills})
-		respond(http.StatusOK, out)
+		skills, err := productSelectedSkills(ctx, manifest.Product, crew.Binding.WorkspacePath)
+		if err != nil {
+			externalError(w, 409, "template_state_unavailable", err.Error())
+			return
+		}
+		templates := crewInstalledTemplates(ctx, crew.Binding.WorkspacePath)
+		if templates == nil {
+			templates = []crewTemplateRef{}
+		}
+		out := map[string]any{"crew_id": crewID, "templates": templates, "selected_skills": skills}
+		if action == "install_template" {
+			out["installed"] = template.ID
+			out["skills"] = template.SelectedSkills
+		}
+		log.Printf("[CREW_TEMPLATE] action=%s project=%s template=%s user_id=%s outcome=ok", action, crewID, template.ID, claims.UserID)
+		externalJSON(w, out)
 	default:
 		externalError(w, 400, "invalid_arguments", action+" does not apply to a Crew; rename it with update_crew.")
 	}
 }
+
+var crewTemplateLocks sync.Map

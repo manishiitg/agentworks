@@ -1,13 +1,13 @@
-import { addProductProjectTemplate, removeProductProjectTemplate, createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, updateProductProjectLocalFiles, updateProductProjectSelections, type ProductIdentityPatch, type ProductMode, type ProductProject } from '../../platform/chat/productProjects'
+import { createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, updateProductProjectLocalFiles, updateProductProjectSelections, type ProductIdentityPatch, type ProductMode, type ProductProject } from '../../platform/chat/productProjects'
 import { agentApi } from '../../services/api'
 import { secretsApi } from '../../api/secrets'
 import type { LLMProvider, PresetLLMConfig, SharedProjectSummary } from '../../services/api-types'
-import { responseContent, slugifyTitle } from '../../utils/plannerFiles'
+import { slugifyTitle } from '../../utils/plannerFiles'
 import { loadAgentProfileProviderOptions } from '../../utils/agentProfileCapabilities'
 import { llmConfigService } from '../../services/llm-config-api'
 import { CREW_PRODUCT, CODE_PRODUCT, projectProductConfig, type ProjectProductConfig, type ProjectProductId } from './projectProduct'
 import { visibleProductSurfaceIDs } from '../productSurfaceConfig'
-import { crewTemplates, getCrewTemplate, type CrewTemplateId } from './crewTemplates'
+import { getCrewTemplate, type CrewTemplateId } from './crewTemplates'
 
 export type WorkSession = ProductProject<ProjectProductId>
 
@@ -122,32 +122,16 @@ export async function createWorkSession(title: string, description: string, icon
 
 export async function installWorkSessionTemplate(session: WorkSession, templateId: CrewTemplateId): Promise<WorkSession> {
   if (isWorkSessionRun(session)) throw new Error('Only the Crew owner can install templates.')
-  const template = getCrewTemplate(templateId)
-  if (session.templates.some(item => item.id === template.id)) throw new Error(`${template.name} is already installed in this Crew.`)
-  for (const [relativePath, content] of Object.entries(template.files)) {
-    const path = `${session.workspacePath}/${relativePath}`
-    try {
-      const existing = responseContent(await agentApi.getPlannerFileContent(path))
-      // Reattaching a removed template preserves edited skills and setup progress.
-      if (existing) continue
-    } catch (cause) {
-      const status = (cause as { response?: { status?: number } })?.response?.status
-      if (status !== 404) throw cause
-    }
-    await agentApi.updatePlannerFile(path, content, `Install ${template.name} file ${relativePath}`)
-  }
-  const selectedSkills = [...new Set([...session.selectedSkills, ...template.selectedSkills])]
-  const withSkill = await updateProductProjectSelections(session, { selectedSkills }, `Select ${template.name} skill`, 'workflow.json')
-  return addProductProjectTemplate(withSkill, { id: template.id, version: template.version }, `Install ${template.name} in Crew ${session.title}`)
+  getCrewTemplate(templateId)
+  const saved = await agentApi.changeProjectTemplate(session.product, session.id, 'install_template', templateId)
+  return { ...session, templates: saved.templates, selectedSkills: saved.selected_skills }
 }
 
 export async function removeWorkSessionTemplate(session: WorkSession, templateId: CrewTemplateId): Promise<WorkSession> {
   if (isWorkSessionRun(session)) throw new Error('Only the Crew owner can remove templates.')
-  if (session.product !== 'work') throw new Error('This project does not support Crew templates.')
-  const template = getCrewTemplate(templateId)
-  return removeProductProjectTemplate(session, templateId,
-    id => crewTemplates.find(item => item.id === id)?.selectedSkills ?? [],
-    `Remove ${template.name} from Crew ${session.title}`, 'workflow.json')
+  getCrewTemplate(templateId)
+  const saved = await agentApi.changeProjectTemplate(session.product, session.id, 'remove_template', templateId)
+  return { ...session, templates: saved.templates, selectedSkills: saved.selected_skills }
 }
 
 export async function deleteWorkSession(session: WorkSession): Promise<void> {

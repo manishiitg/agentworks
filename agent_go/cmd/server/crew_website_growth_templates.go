@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 )
 
 type crewAgentCatalog struct {
@@ -78,6 +79,10 @@ func applyCrewAgentTemplateFiles(ctx context.Context, workspacePath string, item
 	if item == nil {
 		return nil
 	}
+	product, _, ok := projectProductForPath(workspacePath)
+	if !ok {
+		return fmt.Errorf("Crew workspace was not found")
+	}
 	manifestPath := path.Join(workspacePath, "product.json")
 	raw, found, err := readFileFromWorkspace(ctx, manifestPath)
 	if err != nil {
@@ -90,7 +95,7 @@ func applyCrewAgentTemplateFiles(ctx context.Context, workspacePath string, item
 	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
 		return fmt.Errorf("decode Crew manifest for template: %w", err)
 	}
-	installed, _ := manifest["templates"].([]interface{})
+	installed := crewTemplateReceiptRows(manifest)
 	for _, entry := range installed {
 		row, _ := entry.(map[string]interface{})
 		if row["id"] == item.ID {
@@ -119,14 +124,107 @@ func applyCrewAgentTemplateFiles(ctx context.Context, workspacePath string, item
 			return fmt.Errorf("write Crew template file %s: %w", relative, err)
 		}
 	}
-	if err := applyCrewCreationSelections(ctx, "work", workspacePath, item.SelectedSkills, nil, nil, nil); err != nil {
+	if err := applyCrewCreationSelections(ctx, product.ProfileID, workspacePath, item.SelectedSkills, nil, nil, nil); err != nil {
 		return err
 	}
 	installed = append(installed, map[string]interface{}{"id": item.ID, "version": item.Version})
 	manifest["templates"] = installed
+	delete(manifest, "template")
+	manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
 	encoded, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return err
 	}
 	return writeRawFileToWorkspace(ctx, manifestPath, string(encoded)+"\n")
+}
+
+// Normalize the earlier single-template receipt without losing it on install.
+func crewTemplateReceiptRows(manifest map[string]interface{}) []interface{} {
+	rows, _ := manifest["templates"].([]interface{})
+	rows = append([]interface{}{}, rows...)
+	if legacy, ok := manifest["template"].(map[string]interface{}); ok {
+		for _, row := range rows {
+			if current, ok := row.(map[string]interface{}); ok && current["id"] == legacy["id"] {
+				return rows
+			}
+		}
+		rows = append(rows, legacy)
+	}
+	return rows
+}
+
+// Detaching keeps files and setup progress. Only skills no retained template
+// needs are deselected; the receipt is written last for an idempotent retry.
+func removeCrewAgentTemplate(ctx context.Context, root string, item *crewAgentTemplate) error {
+	product, _, ok := projectProductForPath(root)
+	if !ok {
+		return fmt.Errorf("Crew workspace was not found")
+	}
+	raw, found, err := readFileFromWorkspace(ctx, root+"/product.json")
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("Crew configuration was not found")
+	}
+	var manifest map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
+		return err
+	}
+	remaining := []interface{}{}
+	removed := false
+	retained := map[string]bool{}
+	for _, row := range crewTemplateReceiptRows(manifest) {
+		entry, _ := row.(map[string]interface{})
+		id, _ := entry["id"].(string)
+		if id == item.ID {
+			removed = true
+			continue
+		}
+		remaining = append(remaining, row)
+		other, err := loadCrewAgentTemplate(id)
+		if err != nil || other == nil {
+			// An older/custom receipt may no longer be in the catalog. Keep
+			// selected skills rather than guessing which it still needs.
+			current, readErr := productSelectedSkills(ctx, product.ProfileID, root)
+			if readErr != nil {
+				return readErr
+			}
+			for _, name := range current {
+				retained[name] = true
+			}
+			continue
+		}
+		for _, name := range other.SelectedSkills {
+			retained[name] = true
+		}
+	}
+	if !removed {
+		return nil
+	}
+	remove := map[string]bool{}
+	for _, name := range item.SelectedSkills {
+		if !retained[name] {
+			remove[name] = true
+		}
+	}
+	if err := updateProductSelectedSkills(ctx, product.ProfileID, root, func(current []string) []string {
+		next := []string{}
+		for _, name := range current {
+			if !remove[name] {
+				next = append(next, name)
+			}
+		}
+		return next
+	}); err != nil {
+		return err
+	}
+	manifest["templates"] = remaining
+	delete(manifest, "template")
+	manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
+	encoded, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeRawFileToWorkspace(ctx, root+"/product.json", string(encoded)+"\n")
 }
