@@ -11,10 +11,9 @@ import (
 // PHASE 5 HARD CUT: the previous fallback to orchestrator.GetSelectedSkills()
 // is gone. Step skills are step.EnabledSkills only. Workflow-level
 // SelectedSkills are for the workshop builder agent, not for step
-// execution. Workflows that relied on cascade need to either (a) set
-// EnabledSkills per step, or (b) put the shared know-how in
-// learnings/_global/SKILL.md, which is auto-attached at step launch
-// via appendSupplementaryPrompts.
+// execution. Workflows that relied on cascade need to set
+// EnabledSkills per step. Contract 1.0.51 selects workflow-local skills
+// explicitly; older workflows may retain their legacy guide context.
 func GetEffectiveSkills(stepConfig *AgentConfigs, _ *orchestrator.BaseOrchestrator) []string {
 	if stepConfig != nil && len(stepConfig.EnabledSkills) > 0 {
 		return stepConfig.EnabledSkills

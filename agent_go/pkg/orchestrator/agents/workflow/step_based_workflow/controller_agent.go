@@ -97,8 +97,8 @@ type agentSequenceCallOptions struct {
 
 // agentSequenceDelegation is the seam that lets a todo_task orchestrator run on
 // the agent executor instead of its own turn loop. The executor owns
-// the item queue, prevalidation repair loop, final validation gate, closing
-// reflection turn, session log, and stop/halt handling; the delegation hooks own
+// the item queue, prevalidation repair loop, final validation gate,
+// session log, and stop/halt handling; the delegation hooks own
 // what is orchestrator-specific: which agent runs (the orchestrator agent type
 // with sub-agent tools — PLAT-027's progress bridge keys on that type), the
 // narrower folder guard, the orchestrator's own prompt variables, and the
@@ -1066,16 +1066,15 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentUserMessage(ctx context.C
 		restoreDirectLearningTurn := hcpo.prepareDirectLearningTurn(runtime.Agent, []string{filepath.Join(hcpo.GetWorkspacePath(), LearningsFolderName, GlobalLearningID)})
 		defer restoreDirectLearningTurn()
 	}
-	// The dedicated learnings closing turn diff_patches the SHARED
+	// Historical authored learning items diff_patch the SHARED
 	// learnings/_global files. Serialize it against every other direct-learnings
-	// writer (scripted steps hold the same mutex across their learnings turn —
+	// writer (legacy scripted learning uses the same mutex —
 	// see controller_execution.go — and learnings_direct.go documents the
 	// contract). Without this, parallel agent steps race on SKILL.md.
 	// Scoped to Kind=="learning" only: locking every learnings-writable work
 	// turn would serialize whole parallel sequences.
-	// Not for a delegating orchestrator: its reflection turn may launch children
-	// whose own learnings turns take this same mutex, and the parent waits for
-	// them inside the turn (reconcile) — holding the lock here would deadlock.
+	// Not for a legacy delegating orchestrator: children may take this mutex,
+	// and the parent waits for them inside the turn (reconcile) — holding the lock here would deadlock.
 	// The orchestrator never held it before the executor merge either.
 	if strings.TrimSpace(item.Kind) == "learning" && writeAccess.Learnings && delegation == nil {
 		learningsGlobalFileMutex.Lock()
@@ -1151,9 +1150,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentUserMessage(ctx context.C
 	// generic phase mechanism verbatim (Entry.Phase / ExecutionAggregate.ByPhase
 	// already accept any string) — no new ledger plumbing. runtime.Agent is
 	// created once and reused for every item in this step
-	// (getAgentRuntime), so — exactly like the reflection turn —
-	// this must toggle the already-attached observer's phase rather than
-	// attaching a new one.
+	// (getAgentRuntime), so toggle the existing observer's phase rather than
+	// attaching a new observer.
 	if ba := runtime.Agent.GetBaseAgent(); ba != nil {
 		for _, observer := range ba.Observers() {
 			if costObserver, ok := observer.(*costobserver.Observer); ok {

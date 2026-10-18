@@ -6,7 +6,7 @@ Keep reusable instructions separate from business knowledge and recorded results
 
 **skills/<name>/ — reusable HOW to do the task**
 - Workflow-local skills hold task methods: selectors, API quirks, authentication sequences, parsing, recovery and verified techniques. Use the existing skill format: a short `SKILL.md` index, detail under `references/`, and supporting assets when needed. Open only the reference needed for the task.
-- Builder and Pulse maintain these instructions. Select a skill in workflow `selected_skills` for Builder/Pulse and per-step `enabled_skills` for execution. Steps consume skills; they do not update them or run a separate learning phase. Crew can own ongoing learning.
+- Builder edits these instructions when asked. Pulse may edit them as part of its own improvement pass when Pulse is on; Pulse off never edits them. Select a skill in workflow `selected_skills` for Builder/Pulse and per-step `enabled_skills` for execution. Steps consume skills; they do not update them or run a separate learning phase. Crew can own ongoing learning.
 - Contract 1.0.51 retires the separate learnings feature. Upgrade existing workflows explicitly with `migrate_workflow_skills`, review its copy hashes and index, then stamp. The existing code-layout upgrade must come first. It copies old guides and supporting files verbatim into a workflow-local skill, preserves originating steps in the index, keeps old files as history, and does not change knowledge-base grants. Never move private guides into the shared workspace skill catalog or turn legacy `main.py` backups into skill scripts.
 - Platform mechanics belong in platform guidance and tool schemas, rather than copied into task skills.
 

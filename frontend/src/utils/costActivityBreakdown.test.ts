@@ -238,7 +238,7 @@ describe('buildCostActivityBreakdown', () => {
 describe('phaseLabel', () => {
   it('labels the PLAT-166 execution/reflection phases', () => {
     expect(phaseLabel('execution_only')).toBe('Execution')
-    expect(phaseLabel('reflection')).toBe('Reflection')
+    expect(phaseLabel('reflection')).toBe('Historical reflection')
   })
 
   it('strips the item: prefix and cleans up separators for a agent item phase', () => {

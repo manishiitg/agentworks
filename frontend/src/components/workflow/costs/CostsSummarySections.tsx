@@ -213,8 +213,8 @@ const CostsSummarySections: React.FC<CostsSummarySectionsProps> = ({
                   {/* Stage Costs Summary */}
                   <div className="mt-4 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
                     <StageCostCard label="Execution" value={aggregateSummary.stageCosts.execution} />
-                    <StageCostCard label="Learning" value={aggregateSummary.stageCosts.learning} />
-                    <StageCostCard label="Reflection" value={aggregateSummary.stageCosts.reflection} />
+                    {aggregateSummary.stageCosts.learning > 0 && <StageCostCard label="Historical learning" value={aggregateSummary.stageCosts.learning} />}
+                    {aggregateSummary.stageCosts.reflection > 0 && <StageCostCard label="Historical reflection" value={aggregateSummary.stageCosts.reflection} />}
                     <StageCostCard label="Knowledgebase" value={aggregateSummary.stageCosts.knowledgebase} />
                     <StageCostCard label="Routing" value={aggregateSummary.stageCosts.routing} />
                     <StageCostCard label="Workshop" value={aggregateSummary.stageCosts.workshop} />

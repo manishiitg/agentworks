@@ -3,6 +3,7 @@ package step_based_workflow
 import (
 	"encoding/json"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,17 @@ import (
 )
 
 func TestGoalReflectionSkillIsNotAttached(t *testing.T) {
+	if skills.IsBuiltinSkill("workflow-reflection") {
+		t.Fatal("retired reflection procedure is still registered")
+	}
+	// A saved selection of the removed platform skill must not prevent the
+	// remaining skills from loading or resurrect a reflection procedure.
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+	loaded := skills.LoadAttachableIn(srv.URL, "Workflow/test", []string{"workflow-reflection", "workflow-database"})
+	if len(loaded) != 1 || loaded[0].Name != "workflow-database" {
+		t.Fatalf("stale skill selection prevented loading: %+v", loaded)
+	}
 	c := newAgentClosingTestOrchestrator(t)
 	identity, _ := c.assembleStepRuntimeIdentity(&agents.OrchestratorAgentConfig{}, nil, false, []string{"query_workflow_db"}, false, false)
 	for _, skill := range identity {

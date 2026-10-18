@@ -79,7 +79,7 @@ type ExecutionOrigin = {
 }
 
 // A agent execution can be a planned item, a repair injected by
-// automatic final validation, or a reflection. Make that lifecycle visible so
+// automatic final validation, or a historical reflection record. Make it visible so
 // "4 attempts" is not mistaken for four orchestrator dispatches.
 export const getExecutionOrigin = (execution: unknown, validations: unknown[], plannedMessages: unknown[] = []): ExecutionOrigin => {
   const exec = asRecord(execution)
@@ -124,10 +124,10 @@ export const getExecutionOrigin = (execution: unknown, validations: unknown[], p
 
   if (itemID.includes('reflection')) {
     return {
-      label: 'Message-sequence reflection',
+      label: 'Historical reflection',
       detail: plannedMessage
-        ? 'This is the sequence’s closing reflection turn. The planned instruction is shown below.'
-        : 'This is the sequence’s closing reflection turn, not a workflow retry or another orchestrator dispatch. Its exact sent prompt is available when you expand this entry.',
+        ? 'This is a reflection record from an older run. The planned instruction is shown below.'
+        : 'This is a reflection record from an older run. Its exact sent prompt is available when you expand this entry.',
       className: 'border-border bg-muted text-muted-foreground',
       plannedMessage,
     }

@@ -91,8 +91,8 @@ const formatStageLabel = (phase: string, scope?: string) => {
   if (scope === 'evaluation') return 'Evaluation'
   const labels: Record<StageBucket, string> = {
     execution: 'Execution',
-    learning: 'Learning',
-    reflection: 'Reflection',
+    learning: 'Historical learning',
+    reflection: 'Historical reflection',
     evaluation: 'Evaluation',
     knowledgebase: 'Knowledgebase',
     routing: 'Routing',

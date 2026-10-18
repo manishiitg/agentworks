@@ -310,7 +310,7 @@ Apply this playbook to every Stores Health finding, including KB and DB purity:
    prove provenance/keys and downstream consumers, then remove the old copy.
    Re-run all three manifests and confirm no contradictory owner remains. A
    patch success or smaller file is not verification.
-5. **Keep skill ownership explicit.** Steps read selected skills; Builder/Pulse maintain them. No learning-write setting or automatic learning phase remains after the skills upgrade. KB writes retain their own access and explicit task contribution.
+5. **Keep skill ownership explicit.** Steps read selected skills and never update them. Builder edits them when asked; Pulse may edit them during its improvement pass when Pulse is on. Pulse off never edits them. No learning-write setting or automatic learning phase remains after the skills upgrade. KB writes retain their own access and explicit task contribution.
 
 Immediate semantic moves may be `fixed_verified` only when source removal,
 destination exactness, references, and the current consumer are all re-checked.

@@ -390,10 +390,8 @@ export function StepContent(props: StepContentProps) {
             successCriteria={stepLogs.success_criteria}
           />
 
-          {/* A agent session is its own durable execution trace. Its
-              closing Reflection item is intentionally surfaced separately so
-              operators can tell whether the sequence actually reflected, not
-              merely whether the enclosing step completed. */}
+          {/* Retain old reflection records when present; current agents do not
+              have a closing reflection phase. */}
           {stepLogs.agent && (
             <div className="p-4 bg-muted/30 border-b border-border">
               {(() => {
@@ -413,16 +411,18 @@ export function StepContent(props: StepContentProps) {
                       <span className="rounded border border-border bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                         {stepLogs.agent.status || 'recorded'}
                       </span>
-                      <span className={`rounded border px-2 py-0.5 text-[10px] font-medium ${reflectionClass}`}>
-                        Reflection: {reflectionStatus}
-                      </span>
+                      {reflection && (
+                        <span className={`rounded border px-2 py-0.5 text-[10px] font-medium ${reflectionClass}`}>
+                          Historical reflection: {reflectionStatus}
+                        </span>
+                      )}
                     </div>
                     <p className="mt-2 text-xs text-muted-foreground">
                       {sessionEntries.length} recorded turn{sessionEntries.length === 1 ? '' : 's'} in this sequence.
                     </p>
                     {reflection?.summary && (
                       <details className="mt-3 rounded border border-border bg-background/70 p-2.5">
-                        <summary className="cursor-pointer text-xs font-medium text-foreground">View reflection result</summary>
+                        <summary className="cursor-pointer text-xs font-medium text-foreground">View historical reflection result</summary>
                         <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-foreground/85">{reflection.summary}</p>
                       </details>
                     )}

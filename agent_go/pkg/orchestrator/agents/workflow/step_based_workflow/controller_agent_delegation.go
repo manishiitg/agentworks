@@ -317,8 +317,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 
 	// Run the orchestrator on the agent executor: the step description is
 	// rendered as the system charter; authored messages are user turns, followed by
-	// the synthetic final validation gate and the
-	// closing reflection turn. Repairs happen in place with full memory (the
+	// the synthetic final validation gate. Repairs happen in place with full memory (the
 	// prevalidation repair loop) instead of restarting the whole step.
 	items := make([]AgentItem, 0, len(orchestratorStep.Items))
 	for _, m := range orchestratorStep.Items {

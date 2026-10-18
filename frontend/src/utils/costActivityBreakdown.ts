@@ -93,7 +93,7 @@ const executionLabel = (id: string) => {
 // under an execution row, so it stays a plain string→string function.
 export const phaseLabel = (phase: string) => {
   if (phase === 'execution_only') return 'Execution'
-  if (phase === 'reflection') return 'Reflection'
+  if (phase === 'reflection') return 'Historical reflection'
   if (phase.startsWith('item:')) return phase.slice('item:'.length).replace(/[-_]+/g, ' ').trim() || phase
   return phase.replace(/[-_]+/g, ' ').trim() || phase
 }
