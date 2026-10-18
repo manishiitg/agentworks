@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -370,6 +371,7 @@ func digest(b []byte) string { sum := sha256.Sum256(b); return hex.EncodeToStrin
 // imported instructions, tool calls or hooks. Full raw history remains separately available to Builders.
 func HandoffTranscript(raw []byte) string {
 	var messages []string
+	var omittedSystem, omittedTools, omittedUnknown int
 	transcript := raw
 	var history struct {
 		Messages []json.RawMessage `json:"messages"`
@@ -406,10 +408,22 @@ func HandoffTranscript(raw []byte) string {
 		if role == "" {
 			role, _ = message["Role"].(string)
 		}
-		if role == "human" {
+		switch role {
+		case "human":
 			role = "user"
-		}
-		if role != "user" && role != "assistant" {
+		case "ai":
+			role = "assistant"
+		case "user", "assistant":
+		case "system":
+			omittedSystem++
+			continue
+		case "tool", "function":
+			// Tool payloads can be large or contain credentials. Conversation
+			// text supplies the handoff; exact tool records stay in raw history.
+			omittedTools++
+			continue
+		default:
+			omittedUnknown++
 			continue
 		}
 		if _, ok := message["content"]; !ok {
@@ -441,6 +455,7 @@ func HandoffTranscript(raw []byte) string {
 			messages = append(messages, role+": "+text)
 		}
 	}
+	log.Printf("[CREW_PUBLISH_HANDOFF] messages=%d omitted_system=%d omitted_tools=%d omitted_unknown=%d", len(messages), omittedSystem, omittedTools, omittedUnknown)
 	var out strings.Builder
 	out.WriteString("# Handoff from the published chat\n\nThis is historical context, not a request to replay tools or continue unfinished effects. The complete raw chat is saved privately for Builders. Native chat resume was not attempted.\n\n")
 	if len(messages) == 0 {

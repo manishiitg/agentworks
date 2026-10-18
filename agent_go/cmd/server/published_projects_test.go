@@ -1,14 +1,49 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 )
+
+// Website history uses llmtypes human/ai roles, unlike native CLI archives.
+// Dropping ai silently removed the answer and proven result from handoffs.
+func TestPublicationHandoffPreservesStoredConversationRoles(t *testing.T) {
+	var logs bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(previous) })
+	raw := []byte(`{"conversation_history":[
+	 {"Role":"system","Parts":[{"Text":"SYSTEM_CONTEXT_ONLY"}]},
+	 {"Role":"human","Parts":[{"Text":"Remember reference CUSTOMER_REF_ORANGE."}]},
+	 {"Role":"ai","Parts":[{"Text":"Saved CUSTOMER_REF_ORANGE; report completed at reports/result.html."}]},
+	 {"role":"tool","content":"TOOL_RECORD_ONLY"},
+	 {"role":"function","content":"FUNCTION_RECORD_ONLY"},
+	 {"role":"unsupported","content":"UNKNOWN_RECORD_ONLY"}
+	]}`)
+	handoff := publication.HandoffTranscript(raw)
+	for _, wanted := range []string{"user: Remember reference CUSTOMER_REF_ORANGE.", "assistant: Saved CUSTOMER_REF_ORANGE; report completed at reports/result.html."} {
+		if !strings.Contains(handoff, wanted) {
+			t.Fatalf("saved conversation lost context %q: %s", wanted, handoff)
+		}
+	}
+	for _, omitted := range []string{"SYSTEM_CONTEXT_ONLY", "TOOL_RECORD_ONLY", "FUNCTION_RECORD_ONLY", "UNKNOWN_RECORD_ONLY"} {
+		if strings.Contains(handoff, omitted) || strings.Contains(logs.String(), omitted) {
+			t.Fatalf("non-conversation record was copied: %s", omitted)
+		}
+	}
+	if !strings.Contains(logs.String(), "messages=2 omitted_system=1 omitted_tools=2 omitted_unknown=1") {
+		t.Fatalf("omitted record categories were not recorded: %s", logs.String())
+	}
+}
 
 func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 	api, _ := newCodePrivacyFixture(t)
@@ -178,6 +213,25 @@ func TestPublishedAgentKeepsDestinationEditableAndPinsItsSource(t *testing.T) {
 	api.externalCrewCall(shared, request, "read_crew_file", args)
 	if shared.Code != 200 || !strings.Contains(shared.Body.String(), "SHARED_AGENT_SOURCE") {
 		t.Fatalf("shared source selector=%d %s", shared.Code, shared.Body.String())
+	}
+	privateHistory, err := next.historyDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(privateHistory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"summary.md", "handoff.md"} {
+		if err := os.WriteFile(filepath.Join(privateHistory, name), []byte("PRIVATE_BUILDER_HANDOFF"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		for _, tool := range []string{"read_crew_file", "list_crew_files"} {
+			private := httptest.NewRecorder()
+			api.externalCrewCall(private, request, tool, map[string]any{"crew_id": "code:" + p.WorkspaceID, "agent_id": p.AgentID, "path": filepath.ToSlash(filepath.Join(privateHistory, name))})
+			if private.Code < 400 || strings.Contains(private.Body.String(), "PRIVATE_BUILDER_HANDOFF") {
+				t.Fatalf("Run source selector reached private Builder history: %s %d %s", tool, private.Code, private.Body.String())
+			}
+		}
 	}
 	// An imported agent still reads shared Crew resources when they were
 	// absent from its own import, including a Crew whose Main was published.
