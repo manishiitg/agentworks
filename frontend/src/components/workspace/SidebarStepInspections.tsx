@@ -1,44 +1,50 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import { Check, CircleAlert, GitBranch, Loader2 } from 'lucide-react'
 import { agentApi } from '../../services/api'
-import type { ExecutionInspectionTarget, PollingEvent } from '../../services/api-types'
+import type { ExecutionInspectionTarget, PollingEvent, WorkspaceStepInspection } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useSidebarHistoryStore } from '../../stores/useSidebarHistoryStore'
 import { enabledProductSurfaces, intersectAllowedProductSurfaces } from '../../products/productSurfaceConfig'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { inspectionKey, isWorkflowInspectionTab, openStepInspection } from '../../utils/stepInspection'
-import { sidebarStepInspections } from '../../utils/sidebarStepInspections'
+import { sidebarStepInspections, sidebarInspectionReceipts } from '../../utils/sidebarStepInspections'
 import type { SidebarChat } from '../../utils/sidebarChats'
 const emptyEvents: PollingEvent[] = []
 
-export default function SidebarStepInspections({ row, workspace, scope, visible, selected, onOpen }: {
+export default function SidebarStepInspections({ row, workspace, scope, visible, selected, onOpen, receipts }: {
   row: SidebarChat
+  receipts?: WorkspaceStepInspection[]
   workspace: string
   scope: string
   visible: boolean
   selected: boolean
   onOpen: () => Promise<void>
 }) {
-  const tab = useChatStore(state => row.tabId ? state.chatTabs[row.tabId] : undefined)
+  const tab = useChatStore(state => row.tabId ? state.chatTabs[row.tabId] : Object.values(state.chatTabs).find(tab => tab.sessionId === row.id && isWorkflowInspectionTab(tab)))
   const selectedTab = useChatStore(state => state.activeTabId)
   const events = useChatStore(state => state.tabEvents[row.id] ?? emptyEvents)
   const [limit, setLimit] = useState(4)
   const [opening, setOpening] = useState<string | null>(null)
   const enabled = visible && row.surface === 'agentworks' && workspace.startsWith('Workflow/')
-  const query = useQuery({
-    queryKey: ['sidebar-step-inspections', scope, row.id, workspace],
-    queryFn: () => agentApi.getSessionExecutionTree(row.id, workspace),
-    enabled,
+  const query = useInfiniteQuery({
+    queryKey: ['sidebar-step-receipts', scope, row.id, workspace],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => agentApi.getWorkspaceStepInspections(workspace, { sessionId: row.id, offset: pageParam }),
+    getNextPageParam: page => page.next_offset ?? undefined,
+    enabled: enabled && !receipts,
     retry: false,
     staleTime: 10000,
     refetchInterval: enabled && row.group === 'Running' ? 5000 : false,
     refetchIntervalInBackground: false,
   })
   // An access/error response must not leave a stale cached execution visible.
-  const steps = query.isError ? [] : sidebarStepInspections(row.id, workspace, query.data,
+  const fallback = sidebarStepInspections(row.id, workspace, undefined,
     isWorkflowInspectionTab(tab) ? tab?.metadata?.stepInspections?.items : undefined, events)
+  const steps = query.isError && !receipts ? [] : [...new Map([
+    ...fallback, ...sidebarInspectionReceipts(row.id, workspace, receipts || query.data?.pages.flatMap(page => page.items)),
+  ].map(step => [inspectionKey(step.target), step])).values()]
   const open = async (target: ExecutionInspectionTarget) => {
     const identity = captureChatIdentity()
     setOpening(inspectionKey(target))
@@ -55,7 +61,7 @@ export default function SidebarStepInspections({ row, workspace, scope, visible,
       if (isChatIdentityCurrent(identity)) useChatStore.getState().addToast('Could not open this step. Open its chat and try Inspect.', 'error')
     } finally { setOpening(null) }
   }
-  if (!enabled || !steps.length) return null
+  if (!enabled || (query.isError && !receipts) || (!steps.length && (receipts || !query.hasNextPage))) return null
   return <div aria-label={`Steps in ${row.title}`} className="mb-1 ml-5 border-l border-border/60 pl-1">
     {steps.slice(0, limit).map(({target, status}) => {
       const key = inspectionKey(target)
@@ -72,6 +78,7 @@ export default function SidebarStepInspections({ row, workspace, scope, visible,
         <span className="text-[10px] opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100">Inspect</span>
       </button>
     })}
+    {!receipts && query.hasNextPage && steps.length <= limit && <button type="button" disabled={query.isFetchingNextPage} className="rounded px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground" onClick={() => void query.fetchNextPage()}>Earlier steps</button>}
     {steps.length > limit && <button type="button" className="rounded px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground" onClick={() => setLimit(value => value + 8)}>Show {steps.length - limit} more steps</button>}
   </div>
 }

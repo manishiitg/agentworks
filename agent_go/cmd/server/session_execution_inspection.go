@@ -317,7 +317,12 @@ func (api *StreamingAPI) inspectionParentSession(r *http.Request, sessionID, wor
 			return nil, false
 		}
 	}
-	return &ActiveSessionInfo{SessionID: sessionID, UserID: userID, WorkspacePath: workspace, Status: "completed"}, true
+	var source struct {
+		BotPlatform string `json:"bot_platform"`
+		TriggeredBy string `json:"triggered_by"`
+	}
+	_ = json.Unmarshal(content, &source)
+	return &ActiveSessionInfo{SessionID: sessionID, UserID: userID, WorkspacePath: workspace, Status: "completed", BotPlatform: source.BotPlatform, TriggeredBy: source.TriggeredBy}, true
 }
 
 // Reuse explicit saved receipts; never reconstruct a target from a step name

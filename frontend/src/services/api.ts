@@ -1192,6 +1192,14 @@ export const agentApi = {
     await api.post(`/api/sessions/${encodeURIComponent(sessionId)}/background-work/${encodeURIComponent(itemId)}/stop`)
   },
 
+  getWorkspaceStepInspections: async (workspace: string, options: { sessionId?: string; excludeSessionIds?: string[]; offset?: number } = {}): Promise<import('./api-types').WorkspaceStepInspectionsResponse> => {
+    const params = new URLSearchParams({ workspace_path: workspace })
+    if (options.sessionId) params.set('session_id', options.sessionId)
+    if (options.offset) params.set('offset', String(options.offset))
+    for (const id of options.excludeSessionIds || []) params.append('exclude_session_id', id)
+    return (await api.get('/api/workflow/step-inspections', { params })).data
+  },
+
   getSessionExecutionTree: async (sessionId: string, workspacePath?: string): Promise<SessionExecutionTreeResponse> => {
     const response = await api.get(`/api/sessions/${encodeURIComponent(sessionId)}/execution-tree`, { timeout: RUNTIME_READ_TIMEOUT_MS, params: workspacePath ? { workspace_path: workspacePath } : undefined })
     return response.data

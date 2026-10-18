@@ -1,4 +1,4 @@
-import type { ExecutionInspectionTarget, PollingEvent, SessionExecutionTreeResponse } from '../services/api-types'
+import type { ExecutionInspectionTarget, PollingEvent, SessionExecutionTreeResponse, WorkspaceStepInspection } from '../services/api-types'
 import { inspectionKey, readInspectionTarget } from './stepInspection'
 import { isInspectableBackgroundActivity } from './terminalEventTranscript'
 
@@ -49,4 +49,13 @@ export function sidebarStepInspections(
     Number(b.status === 'running') - Number(a.status === 'running') ||
     a.target.started_at.localeCompare(b.target.started_at) ||
     a.target.execution_id.localeCompare(b.target.execution_id))
+}
+
+export function sidebarInspectionReceipts(session: string, workspace: string, receipts: WorkspaceStepInspection[] = []): SidebarStepInspection[] {
+  return receipts.flatMap(receipt => {
+    const target = readInspectionTarget(receipt.inspection)
+    return target && target.execution_kind !== 'agent_item' && target.session_id === session && target.workspace_path === workspace &&
+      receipt.parent.session_id === session && receipt.parent.workspace_path === workspace
+      ? [{ target, status: receipt.status }] : []
+  })
 }

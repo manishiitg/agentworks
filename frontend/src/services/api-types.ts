@@ -4221,3 +4221,14 @@ export interface GmailInboundState {
   error?: string
   deliveries: { id: string; status: string; session_id: string; error?: string; rule_id?: string; rule_name?: string }[]
 }
+
+/** Compact product navigation receipts, without runtime diagnostic data. */
+export interface WorkspaceStepInspection {
+  inspection: ExecutionInspectionTarget
+  status: string
+  parent: Pick<ActiveSessionInfo, 'session_id' | 'workspace_path' | 'status' | 'triggered_by' | 'bot_platform'>
+}
+export interface WorkspaceStepInspectionsResponse {
+  items: WorkspaceStepInspection[]
+  next_offset: number | null
+}

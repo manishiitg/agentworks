@@ -6,7 +6,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import SidebarStepInspections from './SidebarStepInspections'
 import { agentApi } from '../../services/api'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
-import type { ExecutionInspectionTarget, SessionExecutionTreeResponse } from '../../services/api-types'
+import type { ExecutionInspectionTarget, WorkspaceStepInspectionsResponse } from '../../services/api-types'
 import type { SidebarChat } from '../../utils/sidebarChats'
 import { inspectionKey } from '../../utils/stepInspection'
 
@@ -14,7 +14,7 @@ const auth = vi.hoisted(() => ({user:{id:'alice',allowed_products:['agentworks']
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((select: (state: typeof auth) => unknown) => select(auth), {getState: () => auth}) }))
 const original = useChatStore.getState()
 const target: ExecutionInspectionTarget = {session_id:'parent', execution_id:'step', workspace_path:'Workflow/demo', name:'Research', step_id:'research', started_at:'2026-10-18T00:00:00Z'}
-const tree = {session_id:'parent', root:{session_id:'parent',execution_id:'root',children:[{session_id:'parent',execution_id:'step',status:'running',inspection:target}]}} as SessionExecutionTreeResponse
+const tree: WorkspaceStepInspectionsResponse = {items:[{inspection:target,status:'running',parent:{session_id:'parent',workspace_path:'Workflow/demo',status:'running'}}],next_offset:null}
 const row: SidebarChat = {id:'parent',tabId:'parent-tab',title:'Daily briefing',surface:'agentworks',workflowId:'goal',workspace:'Workflow/demo',group:'Open',time:1,waiting:false}
 Object.assign(globalThis, {IS_REACT_ACT_ENVIRONMENT:true})
 afterEach(() => {useChatStore.setState(original,true);auth.user={id:'alice',allowed_products:['agentworks'],allowed_workflow_ids:['goal']};vi.restoreAllMocks()})
@@ -27,10 +27,10 @@ async function render(check: (host: HTMLDivElement, update: (scope:string,visibl
   try {await update('local:alice',visible);await check(host,update)} finally {await act(async()=>root.unmount());client.clear();host.remove()}
 }
 it('opens the exact step after selecting its parent and highlights the inspector',async()=>{
-  vi.spyOn(agentApi,'getSessionExecutionTree').mockResolvedValue(tree)
+  vi.spyOn(agentApi,'getWorkspaceStepInspections').mockResolvedValue(tree)
   await render(async host=>{
     await vi.waitFor(()=>expect(host.querySelector('[aria-label="Inspect Research"]')).not.toBeNull())
-    expect(agentApi.getSessionExecutionTree).toHaveBeenCalledWith('parent','Workflow/demo')
+    expect(agentApi.getWorkspaceStepInspections).toHaveBeenCalledWith('Workflow/demo',{sessionId:'parent',offset:0})
     expect(host.querySelector('[aria-label="Step running"]')).not.toBeNull()
     await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Inspect Research"]')!.click())
     expect(useChatStore.getState().activeTabId).toBe('parent-tab')
@@ -39,12 +39,12 @@ it('opens the exact step after selecting its parent and highlights the inspector
   })
 })
 it('does not load work in a collapsed parent',async()=>{
-  const api=vi.spyOn(agentApi,'getSessionExecutionTree').mockResolvedValue(tree)
+  const api=vi.spyOn(agentApi,'getWorkspaceStepInspections').mockResolvedValue(tree)
   await render(async host=>{expect(api).not.toHaveBeenCalled();expect(host.textContent).toBe('')},false)
 })
 it('discards late data from the previous account even if session IDs coincide',async()=>{
-  let finish!:(value:SessionExecutionTreeResponse)=>void
-  vi.spyOn(agentApi,'getSessionExecutionTree').mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve})).mockResolvedValue({...tree,root:{...tree.root,children:[]}})
+  let finish!:(value:WorkspaceStepInspectionsResponse)=>void
+  vi.spyOn(agentApi,'getWorkspaceStepInspections').mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve})).mockResolvedValue({items:[],next_offset:null})
   await render(async(host,update)=>{
     await update('local:bob')
     await act(async()=>{finish(tree)})
@@ -52,7 +52,7 @@ it('discards late data from the previous account even if session IDs coincide',a
   })
 })
 it('rechecks current workflow permission before opening the inspector',async()=>{
-  vi.spyOn(agentApi,'getSessionExecutionTree').mockResolvedValue(tree)
+  vi.spyOn(agentApi,'getWorkspaceStepInspections').mockResolvedValue(tree)
   await render(async host=>{
     await vi.waitFor(()=>expect(host.querySelector('[aria-label="Inspect Research"]')).not.toBeNull())
     auth.user={id:'alice',allowed_products:['agentworks'],allowed_workflow_ids:[]}
@@ -61,6 +61,6 @@ it('rechecks current workflow permission before opening the inspector',async()=>
   })
 })
 it('does not display foreign executions or turn missing records into an inspector',async()=>{
-  vi.spyOn(agentApi,'getSessionExecutionTree').mockResolvedValue({...tree,root:{...tree.root,children:[{...tree.root.children![0],inspection:{...target,session_id:'other'}}]}})
+  vi.spyOn(agentApi,'getWorkspaceStepInspections').mockResolvedValue({...tree,items:[{...tree.items[0],inspection:{...target,session_id:'other'}}]})
   await render(async host=>{await act(async()=>{await Promise.resolve()});expect(host.textContent).toBe('')})
 })
