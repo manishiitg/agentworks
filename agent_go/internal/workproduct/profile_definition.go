@@ -566,7 +566,15 @@ func RegisterAgentProfileRuntime(registry *agentprofiles.Registry, workspaceAPIU
 	if err := registry.RegisterToolFactory("work.custom-commands", workCustomCommandsFactory(workspaceAPIURL)); err != nil {
 		return err
 	}
-	return registry.RegisterPromptVariables("work", func(ctx context.Context, runtime agentprofiles.RuntimeContext) (map[string]string, error) {
+	return registry.RegisterPromptVariables("work", ProjectPromptVariables(workspaceAPIURL, false))
+}
+
+// ProjectPromptVariables loads saved role and purpose for both project origins.
+// The caller must first resolve the project and its current access; request-supplied
+// prompt variables never replace this read of the admitted project. Code origins
+// may lack a legacy product.json; allowMissing keeps those chats usable.
+func ProjectPromptVariables(workspaceAPIURL string, allowMissing bool) agentprofiles.PromptVariablesProvider {
+	return func(ctx context.Context, runtime agentprofiles.RuntimeContext) (map[string]string, error) {
 		client := workspace.NewClient(
 			workspaceAPIURL,
 			workspace.WithUserID(runtime.UserID),
@@ -574,6 +582,9 @@ func RegisterAgentProfileRuntime(registry *agentprofiles.Registry, workspaceAPIU
 		)
 		result, err := client.ReadWorkspaceFile(ctx, workspace.ReadWorkspaceFileParams{Filepath: path.Join(runtime.WorkspacePath, "product.json")})
 		if err != nil {
+			if allowMissing && workspace.IsFileNotFound(err) {
+				return map[string]string{"WORK_IDENTITY": "", "WORK_IDENTITY_KEY": "\n"}, nil
+			}
 			return nil, fmt.Errorf("read Crew identity: %w", err)
 		}
 		var manifest workProjectManifest
@@ -599,5 +610,5 @@ func RegisterAgentProfileRuntime(registry *agentprofiles.Registry, workspaceAPIU
 		// session fingerprint relaunches retained sessions when the Crew's
 		// identity changes, without churning on cosmetic icon/name edits.
 		return map[string]string{"WORK_IDENTITY": identity, "WORK_IDENTITY_KEY": role + "\n" + purpose}, nil
-	})
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 type ReadWorkspaceFileParams struct {
@@ -93,4 +94,13 @@ func (c *Client) ReadWorkspaceFile(ctx context.Context, params ReadWorkspaceFile
 		Size:     apiResp.Data.Size,
 		MimeType: apiResp.Data.MimeType,
 	}, nil
+}
+
+// IsFileNotFound distinguishes an absent file from a refused or failed read.
+func IsFileNotFound(err error) bool {
+	var status *httpStatusError
+	if errors.As(err, &status) {
+		return status.statusCode == 404
+	}
+	return err != nil && (err.Error() == "file not found" || strings.HasPrefix(err.Error(), "file not found: "))
 }

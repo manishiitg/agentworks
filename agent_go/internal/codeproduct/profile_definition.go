@@ -173,11 +173,14 @@ func createProjectFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 	}
 }
 
-// RegisterAgentProfileRuntime connects Code's project tools. Code has no
-// identity, so it registers no prompt variables.
+// RegisterAgentProfileRuntime connects Code's project tools and saved project
+// context. Shared Code-origin projects use the same Run prompt as Crew.
 func RegisterAgentProfileRuntime(registry *agentprofiles.Registry, workspaceAPIURL string) error {
 	if err := registry.RegisterToolFactory("code.create-project", createProjectFactory(workspaceAPIURL)); err != nil {
 		return err
 	}
-	return registry.RegisterToolFactory("code.custom-commands", workproduct.CustomCommandsFactory(workspaceAPIURL, "Code workspace"))
+	if err := registry.RegisterToolFactory("code.custom-commands", workproduct.CustomCommandsFactory(workspaceAPIURL, "Code workspace")); err != nil {
+		return err
+	}
+	return registry.RegisterPromptVariables(ProfileID, workproduct.ProjectPromptVariables(workspaceAPIURL, true))
 }
