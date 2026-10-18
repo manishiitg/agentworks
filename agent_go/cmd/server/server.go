@@ -4073,6 +4073,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
+	if workflowPulseTagIsOff(r.Context(), req) {
+		logfWithContext(queryLogCtx, "[PULSE] Refused #pulse tag while off; nothing delivered to Builder")
+		externalError(w, http.StatusConflict, "pulse_unavailable", errPulseOff.Error())
+		return
+	}
 	currentUserIsReadOnly = readOnlyForRequest(access, req)
 	// One owner at a time edits a Crew (crew_edit_lock.go): an owner's Builder chat takes the lock, and another owner who
 	// tries while it is held is told who has it and when it frees.
