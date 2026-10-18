@@ -4207,6 +4207,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if workflowNativeAgentTools {
 		agentToolsMode = "full"
 	}
+	// Persist the same guarded mode that the Pulse launcher uses below. The
+	// saved mode decides native-session restoration and capability changes.
+	if isGoalLeadSessionID(sessionID) {
+		agentToolsMode = "mcp_only"
+	}
 	api.lastAgentToolsModeBySession[sessionID] = agentToolsMode
 	api.conversationMux.Unlock()
 	if api.internalAgentToolsModeDecided != nil && api.internalAgentToolsModeDecided(sessionID, agentToolsMode) {
