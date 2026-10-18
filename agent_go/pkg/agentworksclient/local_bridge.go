@@ -2259,6 +2259,24 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 		messages = messages[:limit]
 	}
 	if len(messages) == 0 {
+		// Messages the server held back are waiting out their retry delay. Nothing is asked about them yet, but the
+		// lease itself is still checked, so a revoked connection is noticed instead of looking like an empty inbox.
+		waiting := false
+		for _, m := range s.Offers {
+			if !m.Offered && !m.Suppressed && m.InFlight == "" {
+				waiting = true
+			}
+		}
+		if waiting {
+			var err error
+			known, att := s.client, s.Attachment
+			b.unlocked(func() {
+				_, err = known.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": att.AgentName, "attachment_id": att.ID, "message_ids": []string{}}, true)
+			})
+			if err != nil {
+				return nil, 0, nil, errors.New("attachment or messages no longer authorized")
+			}
+		}
 		return nil, 0, nil, nil
 	}
 	ids := []string{}
