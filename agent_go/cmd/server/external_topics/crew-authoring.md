@@ -2,14 +2,22 @@
 name: "crew-authoring"
 description: "Author a Crew over MCP: create and update, typed functions with input and result schemas, isolated calls and result files, messages and memory, files and shared folders, schedules and settings."
 external: true
-external_tools: ["*crew*"]
+external_tools: ["*crew*", "workspace"]
 external_scopes: ["crews:write"]
 ---
 # Authoring a Crew over MCP
 
-A Crew is a persistent, shareable agent: standing instructions (`purpose`), skills, typed
-**functions** other people and agents can call, schedules, and a project folder of files.
-A Crew has one main owner (its creator) and can have co-owners; owners build and edit it together, and everything runs as the main owner. Only the main owner adds or removes owners (`crew_owners`); `crew_owners action=lock_status` shows who is editing, because one owner edits at a time. Use Share to give others access to its dashboard, Ask and published functions. Shared people can also list, search and read its files over MCP, including skills, memory, knowledge, instructions, runs and logs. Secret values and private logs stay excluded.
+Crew combines private project and coding work with reusable agents. Start with
+`workspace action=list` and keep the returned `workspace_id`; `get`, `create`,
+`update`, `ask` and chat actions work across both former Code and Crew origins.
+New projects start **Only me**. Share changes the same hosted project's audience;
+it does not copy or convert it. Old Crew/Code tool names and IDs remain supported.
+A Crew can have standing instructions (`purpose`), skills, typed **functions**,
+schedules, a dashboard and project files. Memory is optional; existing projects
+keep their setting. A Local project still needs its connected computer for local
+work; Publish to Crew creates a separate hosted target or adds a named agent,
+with private summary-based continuity rather than native chat resume.
+A Crew has one main owner (its creator) and can have co-owners; owners build and edit it together, and everything runs as the main owner. All Builders can see every Builder chat in their project. People with Run access see their own chat and dashboard. Only the main owner adds or removes owners (`crew_owners`); `crew_owners action=lock_status` shows who is editing, because one owner edits at a time. Use Share to give others access to its dashboard, Ask and published functions. Shared people can also list, search and read its files over MCP, including skills, memory, knowledge, instructions, runs and logs. Secret values and private logs stay excluded.
 
 Over MCP, use `share action=get` to inspect the audience, then `share action=set` with `crew_id` and the owner's chosen mode: `private` (Only me), `people` (Chosen people, with `emails`) or `everyone`. Only the owner changes sharing, with existing authoring consent. The people list replaces the saved list: preserve people the owner did not ask to remove. A standard dashboard is created when needed. `get_dashboard_share` and `share_dashboard` remain callable aliases.
 
@@ -83,12 +91,9 @@ type, properties, required, items, enum).
 
 ## Messages and memory
 
-- Everyone except the Crew's owners uses it in Run mode: a chat or ask there understands the Crew (files, memory, skills, functions) and runs what its owner published; it changes nothing and uses no MCP tools. To make a Crew do something, call one of its functions. An owner's own chat is Builder mode, with full access. Only its owners change a Crew. Expose a function for everything others may make the Crew do.
-- Conversational contact is separate from functions: `messages`/`ask_crew` send a message to the Crew,
-  it may reply or not, and replies are read from the inbox. Ask is always open to everyone the Crew
-  is shared with; there is no switch to turn it off, so give people use through Share. Read replies with `messages` action=read, `inbox_id`, `after` (a
-  cursor) and `wait_seconds` (up to 25). Inside a Crew, an agent can also set one timed wakeup in its own
-  conversation with `schedule_message_wakeup`; it does not fire while the scheduler is paused.
+- Builders change the Crew; people with Run access use its shared chat, dashboard and published functions under the current server checks. Share never grants Builder tools or access to Builder conversations.
+- For a conversation, use `workspace action=ask` with the discovered workspace ID and optional `chat_id`. Keep the returned chat and submission receipt; read progress and replies with `workspace action=read_chat`, `chat_id`, `after` and `wait_seconds` (up to 25). Ask without a chat ID opens or uses the caller's own conversation. A started turn is not a finished answer; inspect its returned status.
+- Legacy `ask_crew`/message tools remain available through discovery; their returned inbox receipts belong to those operations, not to `workspace` chat replies. Ask is always open to people the Crew is shared with. Inside a Crew, `schedule_message_wakeup` can set one timed wakeup in its own conversation; it does not fire while the scheduler is paused.
 - Runs have no earlier conversation. Anything a later run must know belongs in `MEMORY.md` at the
   Crew's root or in the Crew's files; say so in `purpose` and in function `instructions`.
 

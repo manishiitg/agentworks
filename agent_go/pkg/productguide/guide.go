@@ -14,8 +14,8 @@ import (
 
 // Bump the corresponding semantic version when changing either source.
 // Fingerprints additionally identify the exact installation-specific content.
-const GuideVersion = "1.0.5"
-const SkillVersion = "1.0.9"
+const GuideVersion = "1.0.6"
+const SkillVersion = "1.0.10"
 const SkillName = "agentworks-mcp"
 const SkillDescription = "Choose AgentWorks products, use live MCP tools and guidance, or follow CLI installation and connection setup."
 const CLISetupVersion = "1.0.2"
@@ -33,26 +33,36 @@ func source(name string) string {
 	return string(b)
 }
 
+// Crew is one display product available through either legacy origin. This
+// projection only chooses guide text; origin entitlements stay with the server.
+func selectedText(selection productpolicy.Selection, content string) string {
+	origin := "work"
+	if !selection.Has(origin) && selection.Has("code") {
+		origin = "code"
+	}
+	return selection.Text(strings.ReplaceAll(content, "<!-- product:crew -->", "<!-- product:"+origin+" -->"))
+}
+
 func Fingerprint(content string) string {
 	sum := sha256.Sum256([]byte(content))
 	return hex.EncodeToString(sum[:])
 }
 
 func Guide(selection productpolicy.Selection) string {
-	body := selection.Text(source("products.md"))
+	body := selectedText(selection, source("products.md"))
 	return "# AgentWorks product guide\n\nGuide version: " + GuideVersion + "\n\n" + body
 }
 
 // Overview is the short routing table from the same source as the full guide.
 func Overview(selection productpolicy.Selection) string {
-	body := selection.Text(source("products.md"))
+	body := selectedText(selection, source("products.md"))
 	overview, _, _ := strings.Cut(body, "## Product details")
 	return strings.TrimSpace(overview)
 }
 
 func SkillBody(selection productpolicy.Selection) string {
 	return "Skill version: " + SkillVersion + "; product guide version: " + GuideVersion + ".\n\n" +
-		selection.Text(source("mcp-usage.md"))
+		selectedText(selection, source("mcp-usage.md"))
 }
 
 func CLISetup(selection productpolicy.Selection) string {

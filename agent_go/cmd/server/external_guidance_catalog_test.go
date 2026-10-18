@@ -93,8 +93,19 @@ func TestExternalGuidanceCatalogAndWorkflowSkills(t *testing.T) {
 	if first["guidance_requirements"] == nil || first["guidance_skills"] == nil {
 		t.Fatal("selected tools did not prepare canonical guidance")
 	}
+	// A cold preparation withholds the common fallback until the client returns
+	// its handle. That first reuse delivers it exactly once; later calls reuse it.
+	for _, raw := range first["guidance_skills"].([]any) {
+		if raw.(map[string]any)["name"] == "agentworks-mcp" {
+			t.Fatal("cold preparation did not withhold the common fallback")
+		}
+	}
+	skills, ok := prepare(handle)["guidance_skills"].([]any)
+	if !ok || len(skills) != 1 || skills[0].(map[string]any)["name"] != "agentworks-mcp" {
+		t.Fatal("first reuse must deliver only the common fallback exactly once")
+	}
 	if prepare(handle)["guidance_skills"] != nil || guidanceTestHandle(t, prepare("")) == handle {
-		t.Fatal("schema bodies repeated or independent conversations shared a handle")
+		t.Fatal("skill bodies repeated or independent conversations shared a handle")
 	}
 	write := guidanceTestCall(t, f.api, claims, "files", map[string]any{"action": "write", "workflow_id": "invoices", "path": "docs/guidance.txt", "content": "changed", "expected_revision": "missing", "request_id": "guided-file-write"}, handle, 200)
 	if !strings.HasSuffix(write["guidance"].(string), " current") || f.read(t, "Workflow/invoices/docs/guidance.txt") != "changed" {

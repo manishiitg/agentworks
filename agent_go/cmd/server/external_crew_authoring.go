@@ -40,7 +40,7 @@ const (
 	crewSpecMaxFunctions  = 50
 	crewSpecMaxSchedules  = 20
 	crewPurposeLimit      = 1000
-	crewSharingModel      = "A Crew has one main owner (its creator) and can have co-owners who build it together; everything runs as the main owner. Every user with the Crew product can open a Crew in Run mode and call its functions; only its owners edit it. Use Share to choose who else can use it."
+	crewSharingModel      = "A Crew has one main owner (its creator) and can have co-owners who build it together; everything runs as the main owner. New Crews start Only me. Use Share (Only me / Chosen people / Everyone) to let others open it, ask it and call its functions; only its owners edit it."
 )
 
 // crewSpec is the portable Crew definition: create_crew's input, export_crew's

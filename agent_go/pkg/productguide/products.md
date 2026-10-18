@@ -1,15 +1,14 @@
 Choose a product by the work you want to accomplish. Discover its current tools before acting: the products enabled on this server and your access decide what you can use.
 
-Agent conversations have two modes: **Builder** is the owner's workspace for building and changing the product; **Run** is how everyone else understands it and uses what the owner published. These mode names do not replace the current permission checks on individual operations. Shared dashboards let people in Run mode understand and use published work. Within a product shared with you, runs, results, execution and step logs, function calls and token usage are visible. Sharing also includes MCP reads of its files, skills, memory, knowledge and instructions; secret values and private logs stay excluded. Share offers Only me, Chosen people or Everyone and creates a standard dashboard when needed. Secret values and personal provider accounts and logins remain private. Personal chats stay private. Code, Crew and Flows have one owner; other people use published work through the product's shared dashboard. Workflows retain their current owners and editors.
+Agent conversations have two modes: **Builder** is the owner's workspace for building and changing the product; **Run** is how everyone else understands it and uses what the owner published. These mode names do not replace the current permission checks on individual operations. Shared dashboards let people in Run mode understand and use published work. Within a product shared with you, runs, results, execution and step logs, function calls and token usage are visible. Sharing also includes MCP reads of its files, skills, memory, knowledge and instructions; secret values and private logs stay excluded. Share offers Only me, Chosen people or Everyone and creates a standard dashboard when needed. Secret values and personal provider accounts and logins remain private. Personal chats stay private. Crew and Flows have a main owner and can have co-owners. Builders can see every Builder chat in their project. People with Run access use their own chat and the dashboard; Builder chats stay private to Builders. Workflows retain their current owners and editors.
 
 | Product | Choose it for |
 |---|---|
 <!-- product:agentworks -->| Goals | An ongoing objective with a plan, scheduled work, measurements and Pulse follow-through. |
-<!-- /product --><!-- product:work -->| Crew | A reusable agent with standing instructions, skills and exposed functions. |
+<!-- /product --><!-- product:crew -->| Crew | Private project work, coding and reusable agents, with files, skills, conversations and published functions. |
 <!-- /product --><!-- product:relays -->| Flows | A code-based workflow with a test, publish and production-run lifecycle. |
 <!-- /product --><!-- product:knowledgebase -->| Brain | Shared knowledge, files and reusable skill packages. |
 <!-- /product --><!-- product:mcp-gateway -->| Vault | Shared MCP integrations, secrets and centrally managed access. |
-<!-- /product --><!-- product:code -->| Code | Repository work and private coding-agent projects. |
 <!-- /product --><!-- product:bullpen -->| AgentBridge | Connecting, finding and coordinating your external coding agents. |
 <!-- /product -->
 Products can work together when this installation enables them and your current access allows it. Access to one product never grants access to another project's content or connected account.
@@ -25,14 +24,16 @@ Use Goals when the task is a continuing outcome, rather than a single question o
 - **Access:** edits require current project editing authority and existing authoring consent. Running, sharing and integration access have their own current checks.
 - **Example:** monitor incoming support requests, measure response time and follow up on unresolved cases.
 
-<!-- /product --><!-- product:work -->### Crew
+<!-- /product --><!-- product:crew -->### Crew
 
-Use a Crew for a specialist you want to call repeatedly from your agent, another project or an enabled messaging channel.
+Crew combines the former Code and Crew products. Use it to work privately with an agent, develop a repository or build a specialist that other people can use. New projects start **Only me**; Share changes access to the same project.
 
-- **Abilities:** persistent purpose and instructions, project files, memory, selected skills and integrations; admitted shell, browser and database tools; typed functions with input/result schemas; ask and message entry points; schedules and caller-specific conversations.
-- **MCP route:** discover with `crew action=list`, inspect the selected Crew, load `crew-authoring`, and discover exposed functions with `functions action=list`. Call functions or ask only through the entry points currently admitted for that Crew and caller.
-- **Access:** a Crew has one main owner (its creator) and can have co-owners; owners change its setup together and everything runs as the main owner. Share its dashboard to let others use it in Run mode through Ask and published functions. Functions run with the owner's authority and may change the Crew; callers do not gain setup access. Current account, connection and project checks still apply.
-- **Example:** a document specialist exposes a function that accepts a file and returns a structured summary.
+- **Abilities:** project files and instructions, coding and review, named chat tabs, selected skills and integrations, browser and database tools, dashboards, typed functions, schedules and costs. Memory is optional: existing former Code projects keep it off and former Crew projects keep it on until a Builder changes the setting. A Builder can switch Memory on or off in Settings.
+- **MCP route:** start with `workspace action=list`, then `get` using its returned `workspace_id`. Use `create`, `update`, `ask` and the chat actions from the live schema. Load `crew-authoring` for setup and discover published functions with `functions action=list`. Existing Crew/Code tool names and IDs remain supported; an internal `code:` or `work:` prefix is an origin, not another product or a new permission.
+- **Access:** the main owner and co-owners build together and can see all Builder chats. Share offers **Only me / Chosen people / Everyone**. People with Run access see their own chat and the dashboard, can use published functions and read permitted files, runs and results over MCP. Builder chats, secret values and private logs remain excluded. Current connection, account and project checks still apply; sharing does not grant Builder access.
+- **Accounts and costs:** work uses the project's selected model and connected accounts under their current grants. Sharing does not switch accounts automatically. Show whose account will be used and attribute activity to the caller.
+- **Local work:** a Local project runs on its connected computer. Use its chat on that computer; remote Ask is not available for Local projects. Use the available Publish to Crew tools to create a separate hosted Crew or add a named agent to an existing Crew; inspect the returned publication status. Hosted continuation starts from a handoff summary; saved raw Builder history stays private. Publishing is separate from sharing an existing hosted project.
+- **Example:** develop an invoice assistant privately, expose a reconciliation function, then share the same Crew with the finance team. A Goal can call its published function.
 
 <!-- /product --><!-- product:relays -->### Flows
 
@@ -61,15 +62,6 @@ Use Vault when integrations or secrets need shared, centrally controlled access 
 - **Access:** administrator/group/owner checks apply to setup; current grants and argument conditions apply on every upstream invocation. A person may give a secret value in chat; a Vault administrator stores it with the secret tool and then refers to it by name only.
 - **Example:** let a team query approved support-system resources through one managed integration.
 
-<!-- /product --><!-- product:code -->### Code
-
-Use Code for repository development: implementing changes, investigating failures and reviewing code in a coding-agent workspace.
-
-- **Abilities:** private code projects and chats, repository/file work, coding-agent execution, permitted integrations and review/audit views.
-- **MCP route:** use only the Code operations actually returned by this connection. A product's full app/CLI ability is not a promise that every action exists as a direct MCP tool.
-- **Access:** a Code project belongs to one person. Others use what it publishes through its shared dashboard and the entry points the current tools expose. Repository and chat work remain with the owner; current review/account checks still apply.
-- **Example:** implement a bounded bug fix and inspect its changes and verification results.
-
 <!-- /product --><!-- product:bullpen -->### AgentBridge
 
 Use AgentBridge to connect and coordinate external agents while they keep working in their own coding clients.
@@ -82,13 +74,13 @@ Use AgentBridge to connect and coordinate external agents while they keep workin
 <!-- /product -->
 ## Product choice FAQ
 
-<!-- product:agentworks --><!-- product:work -->### Should I use Goals or a Crew?
+<!-- product:agentworks --><!-- product:crew -->### Should I use Goals or a Crew?
 
 Use **Goals** for an ongoing outcome that needs a plan, measures, scheduled work and follow-up. Use a **Crew** for a reusable specialist that answers requests or exposes functions. A Goal can call a Crew when both are enabled and accessible.
 
-<!-- /product --><!-- /product --><!-- product:work --><!-- product:relays -->### Should I use a Crew or a Flow?
+<!-- /product --><!-- /product --><!-- product:crew --><!-- product:relays -->### Should I use a Crew or a Flow?
 
-Use a **Crew** when the work needs an agent's judgment, standing instructions, memory or conversation. Use a **Flow** when the work is a repeatable code pipeline that you want to test and publish as a version before production runs.
+Use a **Crew** when the work needs an agent's judgment, standing instructions, files or conversation. Use a **Flow** for a Python process with simple inline agents or classifiers and a test/publish/run lifecycle. Flows do not call Crew; use a Goal when the process needs both Crew and Flow functions.
 
 <!-- /product --><!-- /product --><!-- product:agentworks --><!-- product:relays -->### Should I use Goals or Flows?
 
@@ -98,13 +90,13 @@ Use **Goals** to pursue and reassess an outcome over time. Use **Flows** to exec
 
 Use **Brain** for reusable knowledge, documents, procedures and skills. Use **Vault** for shared access to integrations and secrets. A person may give a secret value in chat; store it with the secret tools and refer to it by name only. Keep values out of guides and shared notes.
 
-<!-- /product --><!-- /product --><!-- product:code --><!-- product:work -->### Should I use Code or a Crew?
+<!-- /product --><!-- /product --><!-- product:crew -->### Where did Code go?
 
-Use **Code** to develop a repository, investigate failures or review code changes. Use a **Crew** for a reusable specialist that serves requests across projects.
+**Crew** is the combined product for private coding/project work and reusable agents. Keep using the same project; its old links and IDs still work. Sharing a hosted project changes its audience, without copying it.
 
-<!-- /product --><!-- /product --><!-- product:code --><!-- product:bullpen -->### Should I use Code or AgentBridge?
+<!-- /product --><!-- product:bullpen --><!-- product:crew -->### Should I use Crew or AgentBridge?
 
-Use **Code** for repository work in a coding-agent workspace. Use **AgentBridge** to find and coordinate agents already working in their external coding clients.
+Use **Crew** to work inside an AgentWorks project. Use **AgentBridge** to find and coordinate agents working in their external coding clients.
 
 <!-- /product --><!-- /product --><!-- product:knowledgebase -->### Does Brain run the work described in a note or skill?
 
