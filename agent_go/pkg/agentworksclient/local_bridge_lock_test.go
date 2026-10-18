@@ -573,6 +573,7 @@ func TestConcurrentTakeOffersHandOverEachMessageOnce(t *testing.T) {
 	b.sessions[localBridgeKey("claude", "s1")] = s
 	var mu sync.Mutex
 	seen := map[string]int{}
+	var errs []string
 	var wg sync.WaitGroup
 	for range 2 {
 		wg.Add(1)
@@ -580,8 +581,11 @@ func TestConcurrentTakeOffersHandOverEachMessageOnce(t *testing.T) {
 			defer wg.Done()
 			b.mu.Lock()
 			defer b.mu.Unlock()
-			got, _, _, _ := b.takeOffers(context.Background(), s, "", 20)
+			got, _, _, err := b.takeOffers(context.Background(), s, "", 20)
 			mu.Lock()
+			if err != nil {
+				errs = append(errs, err.Error())
+			}
 			for _, m := range got {
 				seen[m.MessageID]++
 			}
@@ -591,7 +595,7 @@ func TestConcurrentTakeOffersHandOverEachMessageOnce(t *testing.T) {
 	wg.Wait()
 	for _, id := range []string{"m1", "m2", "m3"} {
 		if seen[id] != 1 {
-			t.Fatalf("message %s handed out %d times: %v", id, seen[id], seen)
+			t.Fatalf("message %s handed out %d times: %v (errors: %v)", id, seen[id], seen, errs)
 		}
 	}
 }
