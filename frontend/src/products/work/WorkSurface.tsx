@@ -651,8 +651,8 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
           if (existing) {
             if (chat.agent_id) {
               state.setTabMetadata(existing.tabId, { agentProfileEngine: chat.provider, agentProfileModelID: chat.model_id, agentProfileConnectionID: chat.connection_id, agentProfileChatProvider: chat.provider, agentProfileChatConnectionID: chat.connection_id })
-              if (existing.name !== chat.name) state.renameTab(existing.tabId, chat.name)
             }
+            if (existing.name !== chat.name) state.renameTab(existing.tabId, chat.name)
             continue
           }
           if (tabs.filter(tab => isWorkSideChatTab(tab, projectId)).length >= WORK_SIDE_CHAT_LIMIT) return

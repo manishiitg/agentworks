@@ -94,6 +94,7 @@ func (api *StreamingAPI) crewChats(r *http.Request, userID, crewID, workspace st
 			titles[session.SessionID] = strings.TrimSpace(session.Title)
 		}
 	}
+	identities, _ := defaultProductConversationRegistryStore().agentIdentities(r.Context(), userID, product.ProfileID, workspaceTokenProjectID(crewID))
 	chats := []externalCrewChat{}
 	for _, record := range records {
 		chat := externalCrewChat{SessionID: record.SessionID, UpdatedAt: record.UpdatedAt, key: record.ConversationKey}
@@ -102,7 +103,7 @@ func (api *StreamingAPI) crewChats(r *http.Request, userID, crewID, workspace st
 			chat.ChatID, chat.Name = "main", "Main chat"
 		case strings.HasPrefix(record.ConversationKey, crewID+codeChatSideMarker):
 			chat.ChatID = strings.TrimPrefix(record.ConversationKey, crewID+codeChatSideMarker)
-			chat.Name = firstNonEmptyTrimmed(titles[record.SessionID], "Chat "+chat.ChatID)
+			chat.Name = firstNonEmptyTrimmed(identities[record.ConversationKey].Name, titles[record.SessionID], "Chat "+chat.ChatID)
 		default:
 			continue
 		}
@@ -230,7 +231,10 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 		}
 		out := map[string]any{"crew_id": crewID, "chat_id": id, "next": "Talk in it with ask_crew chat_id=" + id + "."}
 		if name != "" {
-			if err := nameNewSideChat(claims.UserID, workspace, name, body); err != nil {
+			// An empty tab has no transcript for history listing yet. Use the
+			// same per-caller tab identity as the existing Code naming path.
+			_ = nameNewSideChat(claims.UserID, workspace, name, body)
+			if err := setCodeTabName(ctx, claims.UserID, crewID+codeChatSideMarker+id, name, manifest.Product); err != nil {
 				out["name_error"] = "The chat is open but could not be named: " + err.Error()
 			} else {
 				out["name"] = name
@@ -245,6 +249,10 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 			return
 		}
 		if err := RenameChatHistorySession(claims.UserID, chat.SessionID, workspace, name); err != nil {
+			externalError(w, 502, "rename_failed", "The chat could not be renamed.")
+			return
+		}
+		if err := setCodeTabName(ctx, claims.UserID, chat.key, name, manifest.Product); err != nil {
 			externalError(w, 502, "rename_failed", "The chat could not be renamed.")
 			return
 		}

@@ -177,6 +177,32 @@ func (store productConversationRegistryStore) agentIdentities(ctx context.Contex
 	return out, nil
 }
 
+// Website history renames also update the caller's current side-tab name.
+// Earlier sessions and another person's registry are never renamed here.
+func (store productConversationRegistryStore) renameCurrentSideChat(ctx context.Context, userID, sessionID, name string) error {
+	path := productConversationRegistryPath(userID)
+	mutex := productConversationRegistryMutex(path)
+	mutex.Lock()
+	defer mutex.Unlock()
+	document, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return err
+	}
+	for key, record := range document.Entries {
+		if record.SessionID != sessionID || !isProjectProfileID(record.ProfileID) || !isSideChatConversationKey(record.ConversationKey) {
+			continue
+		}
+		if document.Agents == nil {
+			document.Agents = map[string]ProductAgentIdentity{}
+		}
+		identity := document.Agents[key]
+		identity.Name, identity.UpdatedBy, identity.UpdatedAt = name, userID, time.Now().UTC().Format(time.RFC3339)
+		document.Agents[key] = identity
+		return store.writeDocument(ctx, path, document)
+	}
+	return nil
+}
+
 // productConversationPreviousLimit bounds how many earlier conversations one
 // slot remembers; the oldest fall off (their transcripts remain on disk).
 const productConversationPreviousLimit = 200

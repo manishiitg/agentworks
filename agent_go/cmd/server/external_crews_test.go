@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
+
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
@@ -232,6 +234,45 @@ func TestExternalCrewChatsAreYourOwn(t *testing.T) {
 	if code, _ := chats(bounded, map[string]any{"crew_id": "alpha", "action": "list"}); code != 403 {
 		t.Fatalf("Crew-bounded connection listed another Crew's chats: %d", code)
 	}
+	// A named empty tab must be discoverable before it has a transcript.
+	code, opened := chats(owner, map[string]any{"crew_id": "beta", "action": "side_open", "name": "Research"})
+	if code != 200 || opened["name_error"] != nil {
+		t.Fatalf("named empty tab: %d %v", code, opened)
+	}
+	id, _ := opened["chat_id"].(string)
+	if id == "" {
+		t.Fatal("new side tab has no identity")
+	}
+	checkName := func(want string) externalCrewChat {
+		t.Helper()
+		req := httptest.NewRequest("GET", "/", nil)
+		for _, row := range env.api.crewChats(req, owner.UserID, "beta", linkBetaPath) {
+			if row.ChatID == id {
+				if row.Name != want {
+					t.Fatalf("side tab name = %q, want %q", row.Name, want)
+				}
+				return row
+			}
+		}
+		t.Fatal("side tab missing from the server list")
+		return externalCrewChat{}
+	}
+	checkName("Research")
+	if code, out := chats(owner, map[string]any{"crew_id": "beta", "action": "side_rename", "chat_id": id, "name": "Analysis"}); code != 200 {
+		t.Fatalf("rename: %d %v", code, out)
+	}
+	row := checkName("Analysis")
+	// The website's ordinary rename uses the same current identity, while
+	// keeping any purpose and other people's names untouched.
+	req := httptest.NewRequest("PATCH", "/api/chat-history/sessions/"+row.SessionID, strings.NewReader(`{"title":"Review","workspace_path":"`+linkBetaPath+`"}`))
+	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, owner))
+	req = mux.SetURLVars(req, map[string]string{"session_id": row.SessionID})
+	recorder := httptest.NewRecorder()
+	renameChatHistorySessionHandler(env.api)(recorder, req)
+	if recorder.Code != 200 {
+		t.Fatalf("website rename: %d %s", recorder.Code, recorder.Body.String())
+	}
+	checkName("Review")
 }
 
 // A Crew's owner reads its costs from the ledger (the app's Costs tab data);

@@ -79,6 +79,10 @@ func renameChatHistorySessionHandler(api *StreamingAPI) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		if err := defaultProductConversationRegistryStore().renameCurrentSideChat(r.Context(), userID, mux.Vars(r)["session_id"], title); err != nil {
+			http.Error(w, "The chat title changed but its tab name could not be saved. Try renaming it again.", http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "title": title})
 	}
