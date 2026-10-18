@@ -36,7 +36,7 @@ func TestPulseResultDoesNotReviveDisabledOrRotatedConversation(t *testing.T) {
 	t.Cleanup(func() { goalLeadTurnRunner = previous })
 	for _, enabled := range []bool{false, true} {
 		env.mock.mu.Lock()
-		env.mock.files[manifestPath(ws)] = fmt.Sprintf(`{"id":%q,"access":{"owners":["owner"]},"pulse":{"enabled":%t}}`, manifest.ID, enabled)
+		env.mock.files[manifestPath(ws)] = fmt.Sprintf(`{"id":%q,"access":{"owners":["owner"]},"pulse":{"enabled":%t,"outward_actions":"ask"}}`, manifest.ID, enabled)
 		env.mock.mu.Unlock()
 		expected := conv.SessionID
 		if enabled {

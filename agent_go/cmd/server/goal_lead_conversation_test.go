@@ -119,4 +119,12 @@ func TestGoalLeadCheckContinuesItsConversation(t *testing.T) {
 	if run, err := env.api.scheduler.TriggerGoalCheck(ws); err == nil || run != "" {
 		t.Fatalf("OFF queued a schedule: %s %v", run, err)
 	}
+	// A saved inbox address cannot acknowledge messages to the disabled Pulse.
+	// Call the same send boundary used by explicit replies, not ask_pulse's gate.
+	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerUser, ID: "owner"}, Label: "External agent"}
+	target := triggerTarget{Kind: triggerCallerWorkflow, Path: ws, Manifest: manifest, Chat: &codeChat{Key: pulseBuilderChatKey, SessionID: sessions[0]}}
+	if receipt, err := env.api.sendAgentMessage(internalBotRequestContext(ctx, "owner"), "owner", caller, target, "Do not deliver", "", "pulse-off-send"); err == nil || receipt != nil || !strings.Contains(err.Error(), "Pulse is off") {
+		t.Fatalf("OFF accepted inbox mail: %v %v", receipt, err)
+	}
+
 }

@@ -287,6 +287,17 @@ func endpointTarget(e agentMessageEndpoint) triggerTarget {
 	return t
 }
 func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) error {
+	// Existing reply addresses must not acknowledge new mail to a disabled
+	// Pulse. This also rechecks pending deliveries after a setting change.
+	if e.Kind == triggerCallerWorkflow && e.ChatKey == pulseBuilderChatKey {
+		manifest, found, err := ReadWorkflowManifest(ctx, e.Path)
+		if err != nil {
+			return err
+		}
+		if !found || manifest == nil || manifest.ID != e.ID || !manifest.PulseEnabled() {
+			return fmt.Errorf("Pulse is off for this workflow. Turn it on in the workflow's Pulse settings to use it.")
+		}
+	}
 	if e.NamedAgentID != "" {
 		_, err := namedAgentByID(ctx, e.UserID, e.NamedAgentID)
 		return err
