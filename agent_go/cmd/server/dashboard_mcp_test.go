@@ -144,7 +144,7 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	}
 	// A migrated Crew shares this same authoring/read path. Legacy owner links
 	// resolve to its canonical root, while readers cannot publish.
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["agentworks","work"]},{"id":"reader","username":"reader","products":["agentworks","work"]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["agentworks","work","code"]},{"id":"reader","username":"reader","products":["agentworks","work","code"]}]}`)
 	// The changed product grants invalidate the owner's catalog; reconnect
 	// both clients before testing Crew operations under the new grants.
 	cli = reconnectAfterCatalogChange(t, ctx, cli, srv.URL+externalMCPPath)

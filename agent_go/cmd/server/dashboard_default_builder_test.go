@@ -27,7 +27,7 @@ func TestCrewBuilderCatalogCreatesDefaultDashboard(t *testing.T) {
 			root := externalCommandCrewRoot
 			if origin == "code" {
 				root = codePrivacyOwnerRoot
-				f.write(t, root+"/product.json", `{"product":"code","id":"c0de0001-0000","title":"Private Crew","mode":"dev"}`)
+				f.write(t, root+"/product.json", `{"product":"code","id":"c0de0001-0000","title":"Private Crew","session_id":"code:project:c0de0001-0000","mode":"dev"}`)
 				f.write(t, root+"/workflow.json", `{"id":"c0de0001-0000","label":"Private Crew","created_by":"owner"}`)
 			}
 			list := func(claims *UserClaims) map[string]any {
@@ -54,13 +54,13 @@ func TestCrewBuilderCatalogCreatesDefaultDashboard(t *testing.T) {
 			}
 			owner := &UserClaims{UserID: "owner", Username: "owner"}
 			if origin == "code" {
-				f.write(t, root+"/product.json", `{"product":"code","id":"c0de0001-0000","title":"Private Crew","mode":"local"}`)
+				f.write(t, root+"/product.json", `{"product":"code","id":"c0de0001-0000","title":"Private Crew","session_id":"code:project:c0de0001-0000","mode":"local"}`)
 				list(owner)
 				stored, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: root, Action: "list", IncludeDraft: true})
 				if err != nil || len(stored.Dashboards) != 0 {
 					t.Fatalf("Local discovery wrote a server dashboard: %+v %v", stored, err)
 				}
-				f.write(t, root+"/product.json", `{"product":"code","id":"c0de0001-0000","title":"Private Crew","mode":"dev"}`)
+				f.write(t, root+"/product.json", `{"product":"code","id":"c0de0001-0000","title":"Private Crew","session_id":"code:project:c0de0001-0000","mode":"dev"}`)
 				// A connection with existing Builder consent follows the same
 				// service as the website, rather than a browser-only default.
 				owner.AccessToken = &accesstokens.Token{Scopes: []string{"dashboards:read", "code:run"}}

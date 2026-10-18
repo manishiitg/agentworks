@@ -102,7 +102,7 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 			return
 		}
 
-		if rel != "Crew/dashboard-team/product.json" && rel != "Crew/dashboard-team/workflow.json" && rel != "Workflow/invoices/workflow.json" && rel != "Workflow/secret/workflow.json" && rel != "Workflow/invoices/schedule-runs.json" && rel != userProductAccessFilePath() {
+		if rel != "Crew/dashboard-team/product.json" && rel != "Crew/dashboard-team/workflow.json" && rel != "_users/owner/Chats/Code/projects/dashboard-code/product.json" && rel != "_users/owner/Chats/Code/projects/dashboard-code/workflow.json" && rel != "Workflow/invoices/workflow.json" && rel != "Workflow/secret/workflow.json" && rel != "Workflow/invoices/schedule-runs.json" && rel != userProductAccessFilePath() {
 			c.Status(404)
 			return
 		}
