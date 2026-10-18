@@ -29,3 +29,22 @@ it('opens native DBOS history from the active published version and preserves le
   expect(steps.disabled).toBe(true)
   expect(files.getAttribute('aria-pressed')).toBe('true')
 })
+
+it('refreshes the shared draft run list when opening logs after an external run', async () => {
+  const refreshed = vi.fn()
+  function LogsHost() {
+    const [folders, setFolders] = React.useState(['iteration-30-hook'])
+    const refresh = React.useCallback(async () => {
+      refreshed()
+      setFolders(['iteration-34-hook', 'iteration-30-hook'])
+    }, [])
+    return <RelayExecutionLogsView relayID="id" draftWorkspacePath="Workflow/draft"
+      draftRunFolders={folders} draftRunFolderInfos={[]} draftSelectedRunFolder={null}
+      onRefreshDraftRuns={refresh} />
+  }
+  await act(async () => root.render(<LogsHost />))
+  const version = host.querySelector('#relay-log-version') as HTMLSelectElement
+  await act(async () => { version.value = 'draft'; version.dispatchEvent(new Event('change', { bubbles: true })) })
+  expect((host.querySelector('#relay-log-run') as HTMLSelectElement).value).toBe('iteration-34-hook')
+  expect(refreshed).toHaveBeenCalledTimes(1)
+})

@@ -36,6 +36,8 @@ export default function RelayExecutionLogsView({ relayID, draftWorkspacePath, dr
     }
   }, [relayID])
   useEffect(() => { void refreshReleases() }, [refreshReleases])
+  // The shared workspace state can predate runs started outside this view.
+  useEffect(() => { void onRefreshDraftRuns() }, [onRefreshDraftRuns])
 
   const selectedRelease = useMemo(
     () => releases?.releases.find(release => release.version === selectedVersion),
