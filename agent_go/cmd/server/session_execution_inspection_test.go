@@ -350,6 +350,32 @@ func TestInspectSessionExecutionDurableIdentityAndAccess(t *testing.T) {
 	if afterRestart := call("dispatch-1", "Workflow/example", nil); afterRestart.Code != http.StatusOK {
 		t.Fatalf("restart inspection: %d %s", afterRestart.Code, afterRestart.Body.String())
 	}
+	// Sidebar discovery reads the same durable receipts without requiring a
+	// live session, event journal or background registry after a restart.
+	api.eventStore = nil
+	treeRequest := httptest.NewRequest(http.MethodGet, "/sessions/chat/execution-tree?workspace_path=Workflow/example", nil)
+	treeRequest = mux.SetURLVars(treeRequest, map[string]string{"session_id": "chat"})
+	treeResponse := httptest.NewRecorder()
+	api.handleGetSessionExecutionTree(treeResponse, treeRequest)
+	var tree SessionExecutionTreeResponse
+	if treeResponse.Code != http.StatusOK || json.Unmarshal(treeResponse.Body.Bytes(), &tree) != nil || tree.Root == nil {
+		t.Fatalf("durable sidebar discovery: %d %s", treeResponse.Code, treeResponse.Body)
+	}
+	receipts := map[string]bool{}
+	for _, node := range tree.Root.Children {
+		if node.Inspection != nil {
+			receipts[node.Inspection.ExecutionID] = true
+		}
+	}
+	if !receipts["dispatch-1"] || !receipts["dispatch-2"] {
+		t.Fatalf("completed step receipts disappeared after restart: %s", treeResponse.Body)
+	}
+	foreignTree := httptest.NewRecorder()
+	foreignRequest := treeRequest.WithContext(context.WithValue(treeRequest.Context(), UserContextKey, &UserClaims{UserID: "other-account"}))
+	api.handleGetSessionExecutionTree(foreignTree, foreignRequest)
+	if foreignTree.Code != http.StatusNotFound {
+		t.Fatalf("foreign sidebar discovery: %d", foreignTree.Code)
+	}
 
 	for _, result := range []*httptest.ResponseRecorder{
 		call("dispatch-1", "Workflow/other", nil),

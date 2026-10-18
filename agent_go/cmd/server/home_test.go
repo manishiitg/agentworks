@@ -69,8 +69,11 @@ func TestWorkspaceStateUserIsolationRevisionAndRevokedAccess(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"last":null`) || !strings.Contains(w.Body.String(), `"revision":0`) {
 		t.Fatalf("another account inherited state: %d %s", w.Code, w.Body)
 	}
-	if w = request("owner", http.MethodPut, body); w.Code != 409 {
-		t.Fatalf("stale browser overwrote newer save: %d %s", w.Code, w.Body)
+	if w = request("owner", http.MethodPut, body); w.Code != 200 {
+		t.Fatalf("another browser tab could not save its preference: %d %s", w.Code, w.Body)
+	}
+	if json.Unmarshal(w.Body.Bytes(), &saved) != nil || saved.Revision != 2 {
+		t.Fatalf("latest save did not advance the server revision: %s", w.Body)
 	}
 	if w = request("owner", http.MethodPut, strings.ReplaceAll(body, `"revision":0`, `"revision":1`)); w.Code != 200 {
 		t.Fatalf("next save: %d %s", w.Code, w.Body)
@@ -264,5 +267,27 @@ func TestWorkspaceStateResolvesConversationKeyFromRegistry(t *testing.T) {
 	got, ok := env.api.validateWorkspaceReturn(request, &workspaceDestination{Surface: "code", ID: "checks", SessionID: "own-code", Chat: &workspaceChat{ConversationKey: "checks:chat:forged", WorkshopMode: "run"}}, []homeWork{{Surface: "code", ID: "checks", WorkspacePath: root}})
 	if !ok || got.Chat == nil || got.Chat.ConversationKey != "checks:chat:side" || got.Chat.WorkshopMode == "run" {
 		t.Fatalf("browser slot or mode used: %+v", got)
+	}
+}
+
+func TestWorkspaceStateRestoresEmptyRegisteredSideChat(t *testing.T) {
+	env, _, root := conditionCodeFixture(t)
+	t.Setenv("AGENT_PRODUCTS", "agentworks,work,code")
+	document := productConversationRegistryDocument{Version: productConversationRegistryVersion, Entries: map[string]ProductConversationRecord{"code/checks:chat:side": {ProfileID: "code", ConversationKey: "checks:chat:side", SessionID: "empty-side", WorkspacePath: root}}}
+	raw, _ := json.Marshal(document)
+	env.mock.mu.Lock()
+	env.mock.files[productConversationRegistryPath("owner")] = string(raw)
+	env.mock.mu.Unlock()
+	request := adminRequest("GET", "/api/workspace-state", "", &UserClaims{UserID: "owner"}, nil)
+	destination := &workspaceDestination{Surface: "code", ID: "checks", SessionID: "empty-side", Chat: &workspaceChat{Name: "Chat 2", ConversationKey: "checks:chat:forged"}}
+	work := []homeWork{{Surface: "code", ID: "checks", WorkspacePath: root}}
+	got, ok := env.api.validateWorkspaceReturn(request, destination, work)
+	if !ok || got.SessionID != "empty-side" || got.Chat == nil || got.Chat.ConversationKey != "checks:chat:side" || got.Chat.ReadOnly || got.Chat.Name != "Chat 2" {
+		t.Fatalf("empty registered side chat lost: %+v", got)
+	}
+	destination.SessionID = "foreign"
+	got, ok = env.api.validateWorkspaceReturn(request, destination, work)
+	if !ok || got.SessionID != "" || got.Chat != nil {
+		t.Fatalf("unregistered session restored: %+v", got)
 	}
 }

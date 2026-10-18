@@ -56,7 +56,7 @@ Corrupt, oversized or unsupported shortcut records return defaults instead of pe
 
 The state file contains no transcript, prompt or credential. It stores project/view selection, session identity, personal display preferences, pane visibility, split ratio, preview device, focus and navigation mode, plus bounded recent selections and a revision. The workspace storage API provides atomic replacement. Corrupt state recovers to an available destination; unavailable storage does not masquerade as an empty account.
 
-Writes debounce settled layout changes, flush when the document is hidden, and use keepalive on page exit. Abrupt failure before an acknowledged save can lose the latest movement. Revisions reject stale writes. Locks are per person; only restore loads the selected transcript, and recent entries are project-checked without reopening every old chat. The frontend cache is scoped to account and connected server and cannot authorize a destination.
+Writes debounce settled layout changes, flush when the document is hidden, and use keepalive on page exit. Abrupt failure before an acknowledged save can lose the latest movement. The last completed workspace save wins across browser tabs; the server advances the revision and rechecks project access for every save. Locks are per person; only restore loads the selected transcript, and recent entries are project-checked without reopening every old chat. An empty Crew chat can restore from its current server-owned conversation slot before its first transcript exists. The frontend cache is scoped to account and connected server and cannot authorize a destination.
 
 ## One attention projection
 
