@@ -2,11 +2,16 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/gorilla/mux"
 )
 
 // Real directory moves pin typed history routing and one writer/index key.
@@ -91,6 +96,20 @@ func TestProjectHistoryAliasesPreserveReadsAndRestoreAuthority(t *testing.T) {
 		if _, err := ReadChatHistoryConversation("run", session, canonical); err == nil {
 			t.Fatal("Run gained Builder history")
 		}
+		// The request has no owner in its path. A same-folder alias must
+		// not turn the caller's own logical tree into the owner's history.
+		logical := "Chats/Code/projects/" + rec.Folder
+		if routed := chatHistoryStoragePath(logical); routed != logical {
+			t.Fatal("ownerless history path followed a folder-name alias")
+		}
+		request := httptest.NewRequest(http.MethodGet, "/api/chat-history/sessions/"+session+"?workspace_path="+url.QueryEscape(logical), nil)
+		request = mux.SetURLVars(request, map[string]string{"session_id": session})
+		request = request.WithContext(context.WithValue(request.Context(), UserContextKey, &UserClaims{UserID: "run"}))
+		response := httptest.NewRecorder()
+		getChatHistoryConversationHandler(nil)(response, request)
+		if response.Code != http.StatusNotFound && response.Code != http.StatusForbidden {
+			t.Fatalf("Run logical history request returned %d", response.Code)
+		}
 		if _, ok := normalizeRestoredChatHistoryConversationPath("run", newPath); ok {
 			t.Fatal("Run gained path-based restoration")
 		}
@@ -106,6 +125,19 @@ func TestProjectHistoryAliasesPreserveReadsAndRestoreAuthority(t *testing.T) {
 	duplicate.normalize()
 	if len(duplicate.Entries) != 1 || duplicate.Entries[newPath].Session.Title != "newer" {
 		t.Fatal("duplicate alias keys did not converge")
+	}
+	duplicate.Entries[oldPath] = chatHistoryIndexEntry{Session: ChatHistorySession{SessionID: session, Title: "Custom title", UpdatedAt: "2026-10-18T08:00:00Z"}, SourceModifiedAtUnixNano: 99}
+	duplicate.Entries[newPath] = chatHistoryIndexEntry{Session: ChatHistorySession{SessionID: session, Query: "newest", UpdatedAt: "2026-10-18T09:00:00Z"}}
+	duplicate.normalize()
+	if entry := duplicate.Entries[newPath]; entry.Session.Title != "Custom title" || entry.Session.Query != "newest" {
+		t.Fatal("newer writer entry or existing custom title was lost")
+	}
+	duplicate.Entries[oldPath] = chatHistoryIndexEntry{Session: ChatHistorySession{SessionID: session, Title: "older alias title", UpdatedAt: "2026-10-18T09:00:00Z"}}
+	for i := 0; i < 10; i++ {
+		duplicate.normalize()
+		if duplicate.Entries[newPath].Session.Query != "newest" {
+			t.Fatal("equal alias entries were not resolved deterministically")
+		}
 	}
 	encoded, err := json.Marshal(duplicate)
 	if err != nil || bytes.Contains(encoded, []byte(oldPath)) {

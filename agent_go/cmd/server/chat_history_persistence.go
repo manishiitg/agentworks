@@ -733,10 +733,11 @@ func preserveChatHistorySessionTitle(index *chatHistoryIndex, session *ChatHisto
 		return false
 	}
 	session.Title = title
-	entry, ok := index.Entries[session.ConversationPath]
+	conversationPath := chatHistoryStoragePath(session.ConversationPath)
+	entry, ok := index.Entries[conversationPath]
 	if ok {
 		entry.Session.Title = title
-		index.Entries[session.ConversationPath] = entry
+		index.Entries[conversationPath] = entry
 		index.UpdatedAt = time.Now().Format(time.RFC3339)
 	}
 	return true
@@ -757,12 +758,29 @@ func (index *chatHistoryIndex) normalize() {
 		index.Entries = make(map[string]chatHistoryIndexEntry)
 	}
 	current := make(map[string]chatHistoryIndexEntry, len(index.Entries))
-	for original, entry := range index.Entries {
+	keys := make([]string, 0, len(index.Entries))
+	for key := range index.Entries {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, original := range keys {
+		entry := index.Entries[original]
 		key := chatHistoryStoragePath(original)
 		entry.Session.ConversationPath = chatHistoryStoragePath(entry.Session.ConversationPath)
 		entry.Session.WorkspacePath = chatHistoryStoragePath(entry.Session.WorkspacePath)
-		if previous, exists := current[key]; exists && (previous.SourceModifiedAtUnixNano > entry.SourceModifiedAtUnixNano || previous.SourceModifiedAtUnixNano == entry.SourceModifiedAtUnixNano && original != key) {
-			continue
+		if previous, exists := current[key]; exists {
+			// Writer-built entries can have no source mtime. UpdatedAt is
+			// available in both index forms; retain a custom title whichever
+			// entry wins, with stable ordering for otherwise identical entries.
+			keepPrevious := previous.Session.UpdatedAt > entry.Session.UpdatedAt ||
+				(previous.Session.UpdatedAt == entry.Session.UpdatedAt && (previous.SourceModifiedAtUnixNano > entry.SourceModifiedAtUnixNano ||
+					(previous.SourceModifiedAtUnixNano == entry.SourceModifiedAtUnixNano && original != key)))
+			if keepPrevious {
+				previous, entry = entry, previous
+			}
+			if strings.TrimSpace(entry.Session.Title) == "" {
+				entry.Session.Title = previous.Session.Title
+			}
 		}
 		current[key] = entry
 	}
@@ -2114,6 +2132,7 @@ func chatHistorySessionsFromIndex(index chatHistoryIndex, userID, workflowPath s
 }
 
 func indexedLocalChatHistorySession(index chatHistoryIndex, file localChatHistoryFile) (ChatHistorySession, bool) {
+	file.workspacePath = chatHistoryStoragePath(file.workspacePath)
 	entry, ok := index.Entries[file.workspacePath]
 	if !ok || entry.SourceSize != file.size || entry.Session.SessionID != file.sessionID || chatHistoryHasLocalCommandPreview(entry.Session) {
 		return ChatHistorySession{}, false
@@ -2129,6 +2148,7 @@ func indexedLocalChatHistorySession(index chatHistoryIndex, file localChatHistor
 
 func putLocalChatHistoryIndexEntry(index *chatHistoryIndex, file localChatHistoryFile, session ChatHistorySession) {
 	index.normalize()
+	file.workspacePath = chatHistoryStoragePath(file.workspacePath)
 	session.ConversationPath = file.workspacePath
 	index.Entries[file.workspacePath] = chatHistoryIndexEntry{
 		Session:                  session,
@@ -2513,7 +2533,7 @@ func repairStaleChatHistoryAttribution(session *ChatHistorySession) {
 	if userID != "" && userID != "default" {
 		return
 	}
-	convPath := strings.TrimSpace(session.ConversationPath)
+	convPath := chatHistoryStoragePath(session.ConversationPath)
 	if convPath == "" {
 		return
 	}

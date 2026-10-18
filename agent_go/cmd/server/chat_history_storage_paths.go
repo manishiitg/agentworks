@@ -19,7 +19,12 @@ func chatHistoryStoragePath(input string) string {
 		}
 		input = filepath.ToSlash(rel)
 	}
-	return foldCrewRootForStoredReference(input)
+	// An ownerless logical project path belongs to the caller's own tree.
+	// It must never resolve by folder name to somebody else's Builder history.
+	if !strings.HasPrefix(input, "_users/") && !strings.HasPrefix(input, "Crew/") {
+		return input
+	}
+	return followCrewAlias("", input)
 }
 
 func chatHistoryLocalStoragePath(input string) string {
@@ -39,7 +44,7 @@ func ownCanonicalProjectRestorePath(user, cleaned string) (string, bool) {
 		return "", false
 	}
 	rec, found := defaultProjectOwners().Lookup(id.Product, id.Folder)
-	if !found || rec.OwnerID != user || validateProjectStorageRecord(rec) != nil {
+	if !found || sanitizeUserIDForPath(rec.OwnerID) != sanitizeUserIDForPath(user) || validateProjectStorageRecord(rec) != nil {
 		return "", false
 	}
 	root := workspaceref.SharedProjectPath(rec.Folder)

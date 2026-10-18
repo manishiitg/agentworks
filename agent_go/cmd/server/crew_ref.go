@@ -333,11 +333,13 @@ func followCrewAlias(callerID, raw string) string {
 	if !ok {
 		return raw
 	}
-	ref, ok := resolveCrewPath(context.Background(), callerID, raw)
-	if !ok || ref.Root == original.Root {
+	moved := crewPathAliases.lookup(context.Background(), original.Root)
+	if moved == "" || moved == original.Root {
 		return raw
 	}
-	return ref.Path()
+	warnCrewAliasUsed(original.Root, moved)
+	original.Root = moved
+	return original.Path()
 }
 
 // foldCrewRootForStoredReference maps a stored crew root (a workflow's attached Crew, a place connection's root) to
