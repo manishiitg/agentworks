@@ -18,6 +18,7 @@ import (
 
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
@@ -561,15 +562,14 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 		api.clearSessionStopped(sessionID)
 		mcpagent.ClearHTTPSessionStopped(sessionID)
 	}
-	release := beginGoalWorkTurn(sessionID, perms)
-	defer release()
-
-	previousCheckID := ""
+	checkRunID := ""
 	if turn.Kind == goalLeadTurnCheck {
-		if previous, _, _ := latestPulseGoalCheck(ctx, workspacePath); previous != nil {
-			previousCheckID = previous.CheckID
-		}
+		checkRunID = newGoalLeadID("PC-")
 	}
+	release := beginGoalWorkTurn(sessionID, perms, checkRunID)
+	defer release()
+	ctx = context.WithValue(ctx, common.WorkflowSessionIDKey, sessionID)
+
 	// As the scheduler's own Pulse turns: the principal is the userID, not
 	// claims carried on ctx.
 	var result internalSessionTurnResult
@@ -582,11 +582,14 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	// turn lock, so an old report cannot complete a new cycle and agents do not
 	// need to invent or repeat an internal cycle identifier.
 	if err == nil && turn.Kind == goalLeadTurnCheck {
-		saved, _, readErr := latestPulseGoalCheck(context.WithoutCancel(ctx), workspacePath)
+		saved, readErr := pulseGoalCheckSavedForRun(context.WithoutCancel(ctx), workspacePath, checkRunID)
 		if readErr != nil {
 			err = fmt.Errorf("read saved goal report: %w", readErr)
-		} else if saved == nil || saved.CheckID == previousCheckID {
+		} else if !saved {
 			err = fmt.Errorf("Pulse finished without saving this check's goal report")
+		}
+		if err == nil {
+			log.Printf("[PULSE] goal report saved cycle=%s session=%s report_only=%t", checkRunID, sessionID, !perms.Run)
 		}
 	}
 	bumpGoalLeadTurns(context.WithoutCancel(ctx), workspacePath, sessionID, time.Now().UTC())
@@ -735,15 +738,4 @@ func (api *StreamingAPI) sendGoalLeadOwnerMessage(ctx context.Context, workspace
 		}
 	}()
 	return nil
-}
-
-// goalLeadGoalWorkStep is the full Pulse's strategic_review turn as the Goal
-// Lead runs it: the same module contract and receipt, with the short Goal
-// Work skill instead of the reviewer contract (strategy-auditor.md, which the
-// /run-goal-work command and workflows without a goal keep using).
-func goalLeadGoalWorkStep(pulseRunID string) pulseLifecycleStep {
-	label, _, contract := pulseModuleReviewParts(pulseModuleStrategicReview)
-	return pulseLifecycleStep{label: label, query: fmt.Sprintf(`PULSE MODULE REVIEW. pulse_run_id=%q. This turn owns ONLY module=%q (Goal Work). Read the durable Gate worklist with get_pulse_state(view="module", pulse_run_id=<this id>). If this module is not due or already has a terminal result, say so and end this turn.
-Otherwise load read_skill(skills=[{"name":"pulse","path":"references/goal-lead-work.md"}]) and do it yourself in this turn. Read get_pulse_state(view="review_notes", module=%q) once for prior reasoning. %s
-%sDo not render a dashboard, back up, publish or notify.`, pulseRunID, pulseModuleStrategicReview, pulseModuleStrategicReview, contract, pulseReviewerRecordRules)}
 }

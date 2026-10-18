@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"strings"
 	"time"
 )
@@ -19,7 +20,8 @@ const pulseScheduleStateSchema = `CREATE TABLE IF NOT EXISTS pulse_schedule_stat
 	next_set_at TEXT NOT NULL DEFAULT '',
 	last_started_at TEXT NOT NULL DEFAULT '',
 	last_pulse_run_id TEXT NOT NULL DEFAULT '',
-	previous_started_at TEXT NOT NULL DEFAULT ''
+	previous_started_at TEXT NOT NULL DEFAULT '',
+ first_report_at TEXT NOT NULL DEFAULT ''
 )`
 
 type pulseScheduleState struct {
@@ -34,11 +36,13 @@ func ensurePulseScheduleStateSchema(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx, pulseScheduleStateSchema); err != nil {
 		return err
 	}
-	// Tables created before previous_started_at existed gain it in place.
-	if _, err := db.ExecContext(ctx, `ALTER TABLE pulse_schedule_state ADD COLUMN previous_started_at TEXT NOT NULL DEFAULT ''`); err != nil &&
-		!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
-		return err
+	// Add bootstrap/evidence timestamps to older state without resetting them.
+	for _, column := range []string{"previous_started_at", "first_report_at"} {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE pulse_schedule_state ADD COLUMN `+column+` TEXT NOT NULL DEFAULT ''`); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+			return err
+		}
 	}
+
 	return nil
 }
 
@@ -149,4 +153,27 @@ func pulseNextRunView(ctx context.Context, workspacePath string) *PulseNextRunVi
 	next, reason := nextPulseCheckAt(ctx, workspacePath, manifest, latest, lastStarted)
 	view.NextAt, view.Reason = formatStoredTime(next), reason
 	return view
+}
+
+// First OFF reports are spread across their first week once, in the existing
+// Pulse state. After the first saved report, only pulse_goal_checks sets time.
+func firstWeeklyReportDue(ctx context.Context, workspacePath, workflowID string, now time.Time) (time.Time, error) {
+	normalized, db, err := openPulseModuleStateDB(ctx, workspacePath, true)
+	if err != nil {
+		return time.Time{}, err
+	}
+	defer db.Close()
+	if err := ensurePulseScheduleStateSchema(ctx, db); err != nil {
+		return time.Time{}, err
+	}
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(firstNonEmptyTrimmed(workflowID, normalized)))
+	due := now.UTC().Add(time.Hour + time.Duration(h.Sum64()%uint64(7*24*time.Hour-time.Hour)))
+	_, err = db.ExecContext(ctx, `INSERT INTO pulse_schedule_state (workspace_path,first_report_at) VALUES (?,?) ON CONFLICT(workspace_path) DO UPDATE SET first_report_at=excluded.first_report_at WHERE first_report_at=''`, normalized, formatStoredTime(due))
+	if err != nil {
+		return time.Time{}, err
+	}
+	var saved string
+	err = db.QueryRowContext(ctx, `SELECT first_report_at FROM pulse_schedule_state WHERE workspace_path=?`, normalized).Scan(&saved)
+	return parseStoredTime(saved), err
 }

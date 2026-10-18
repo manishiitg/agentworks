@@ -23,11 +23,6 @@ func (s *SchedulerService) runSinglePulseCycle(ctx context.Context, sctx *Schedu
 	if result.outcome != pulseLifecycleStepCompleted {
 		return pulseLifecyclePartial
 	}
-	saved, _, err := latestPulseGoalCheck(context.WithoutCancel(ctx), sctx.WorkspacePath)
-	if err != nil || saved == nil {
-		s.sessionLogf(sctx, runSessionID, "[PULSE] turn finished without its saved goal report; cycle is partial (read error=%v)", err)
-		return pulseLifecyclePartial
-	}
-	s.sessionLogf(sctx, runSessionID, "[PULSE] saved goal report check=%s report_only=%t next=%s", saved.CheckID, saved.ReportOnly, saved.NextCheckAt)
+	s.sessionLogf(sctx, runSessionID, "[PULSE] goal check saved and turn completed")
 	return pulseLifecycleCompleted
 }

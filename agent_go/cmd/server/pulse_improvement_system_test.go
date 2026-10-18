@@ -48,10 +48,6 @@ func TestPulseFourModulesPersistAndCompleteIndependently(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, module := range []string{pulseModuleTechnicalReview, pulseModuleArchitectureReview, pulseModuleStrategicReview} {
-		stage := pulseLifecycleModuleReviewStep(run, module)
-		if !strings.Contains(stage.query, "module="+`"`+module+`"`) {
-			t.Fatalf("role missing: %s", stage.query)
-		}
 		if err := beginDuePulseReviewRecoveries(ctx, ws, run, module); err != nil {
 			t.Fatal(err)
 		}

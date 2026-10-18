@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/goalcheck"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
@@ -409,8 +410,13 @@ func recordPulseGoalCheckFromToolArgs(ctx context.Context, args map[string]inter
 	_, _ = rand.Read(buf)
 	checkID := "GC-" + strings.ToUpper(hex.EncodeToString(buf))
 	alarms, _ := json.Marshal(view.Facts.Alarms)
+	runID := stringToolArg(args, "pulse_run_id")
+	session, _ := ctx.Value(common.WorkflowSessionIDKey).(string)
+	if boundID := pulseCheckRunIDForSession(session); boundID != "" {
+		runID = boundID
+	}
 	_, err = db.ExecContext(ctx, `INSERT INTO pulse_goal_checks (check_id,checked_at,pulse_run_id,status,key_number,summary,action_taken,decision_id,alarms_json,pause_fingerprint,next_check_at,next_check_reason,report_only)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, checkID, formatStoredTime(now), stringToolArg(args, "pulse_run_id"), status,
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, checkID, formatStoredTime(now), runID, status,
 		strings.TrimSpace(stringToolArg(args, "key_number")), summary, strings.TrimSpace(stringToolArg(args, "action_taken")),
 		strings.TrimSpace(stringToolArg(args, "decision_id")), string(alarms), view.Facts.PauseFingerprint, formatStoredTime(nextAt), nextReason, reportOnly)
 	if err != nil {
@@ -539,6 +545,18 @@ func nextPulseCheckAt(ctx context.Context, workspacePath string, manifest *Workf
 		reason = check.NextCheckReason
 	}
 	if !enabled {
+		if check == nil {
+			key := workspacePath
+			if manifest != nil {
+				key = firstNonEmptyTrimmed(manifest.ID, key)
+			}
+			initial, err := firstWeeklyReportDue(ctx, workspacePath, key, time.Now().UTC())
+			if err != nil {
+				scheduleLogf("[PULSE] first weekly report time unavailable for %s: %v", workspacePath, err)
+				return time.Now().UTC().Add(goalCheckRetryGap), "First weekly report time could not be saved yet."
+			}
+			return initial, "First weekly suggestions report, spread across the week."
+		}
 		return next, "Pulse is off; weekly suggestions report."
 	}
 	if check == nil || check.ReportOnly {
@@ -563,4 +581,18 @@ func nextPulseCheckAt(ctx context.Context, workspacePath string, manifest *Workf
 		}
 	}
 	return next, reason
+}
+
+func pulseGoalCheckSavedForRun(ctx context.Context, workspacePath, runID string) (bool, error) {
+	_, db, err := openPulseModuleStateDB(ctx, workspacePath, true)
+	if err != nil {
+		return false, err
+	}
+	defer db.Close()
+	if err := ensurePulseGoalCheckSchema(ctx, db); err != nil {
+		return false, err
+	}
+	var saved bool
+	err = db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pulse_goal_checks WHERE pulse_run_id=?)`, runID).Scan(&saved)
+	return saved, err
 }

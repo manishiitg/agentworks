@@ -1,4 +1,4 @@
-Verification uses ordinary step execution with live data and real effects. Execute only within the current Pulse autonomy and existing owner authorization. If those do not permit the step's effects, record the fix and propose owner-run verification instead of executing it.
+Verification uses ordinary step execution with live data and real effects. Builder executes only when Pulse is ON and within its current permissions and existing owner authorization. With Pulse OFF, save suggestions only. If those do not permit the step's effects, record the fix and propose owner-run verification instead of executing it.
 
 # Pulse Fixer engineering practices
 

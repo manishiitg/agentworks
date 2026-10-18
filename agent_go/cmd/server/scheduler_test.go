@@ -1205,30 +1205,6 @@ func TestUpdateScheduleClearsMessagesOnlyWhenExplicitlySet(t *testing.T) {
 // validateScheduleGroupNamesForWorkspace revalidation (which runs
 // independent of whether this call touched group_names at all) both had to
 // be guarded, not just the one the caller happens to exercise first.
-func TestPostRunMonitorUsesDynamicModulesAndSingleFinalizer(t *testing.T) {
-	steps := pulseLifecycleSteps()
-	// Goal Work (strategic-review) runs first; platform upkeep follows. Workflow
-	// Review is not a Pulse stage: it runs before runs (PLAT-697 phase 0).
-	want := []string{"gate", "strategic-review", "architecture-review", "technical-review", "finalize"}
-	if len(steps) != len(want) {
-		t.Fatalf("stages=%d, want %d", len(steps), len(want))
-	}
-	for i, label := range want {
-		if steps[i].label != label {
-			t.Fatalf("stage %d=%q, want %q", i, steps[i].label, label)
-		}
-	}
-	for _, stage := range steps[1:4] {
-		for _, contract := range []string{"do the review yourself", "your own subagents", "Do not render a dashboard"} {
-			if !strings.Contains(stage.query, contract) {
-				t.Fatalf("%s missing %s", stage.label, contract)
-			}
-		}
-	}
-	if !strings.Contains(steps[4].query, "PULSE FINALIZER") {
-		t.Fatal("missing finalization")
-	}
-}
 
 func TestGoalAdvisorGuidanceBalancesExplorationEvidenceAndHumanDecisions(t *testing.T) {
 	repoRoot := findRepoRoot(t)
@@ -1646,30 +1622,6 @@ func TestValidatePulseDueModuleResultsIgnoresLegacyRunningReviewReceipt(t *testi
 	}
 }
 
-func TestPulseFinalBackupRunsOnlyInParentTurn(t *testing.T) {
-	finalizer := pulseStepQueryByLabel(t, pulseLifecycleFinalSteps("pulse-run-1"), "finalize")
-	if !strings.Contains(finalizer, `read_skill(skills=[{"name":"builder-reference","path":"references/pulse-finalizer.md"}])`) {
-		t.Fatalf("finalizer does not load its focused contract: %s", finalizer)
-	}
-	raw, err := os.ReadFile(filepath.Join(findRepoRoot(t), "agent_go/cmd/server/guidance/templates/system/pulse-finalizer.md"))
-	if err != nil {
-		t.Fatalf("read finalizer contract: %v", err)
-	}
-	for _, required := range []string{"directly in this parent", "never through a reviewer/sub-agent", "zero-config local-git default", "backup/database/db.sqlite", "Publish is independent of Backup"} {
-		if !strings.Contains(string(raw), required) {
-			t.Fatalf("finalizer contract missing parent-only backup guard %q", required)
-		}
-	}
-	if strings.Contains(string(raw), "publish unbacked changes after backup failure") {
-		t.Fatalf("finalizer still couples publish eligibility to backup success")
-	}
-	for _, forbidden := range []string{"REVIEWER/FIXER COST", "Reviewers + Fixer"} {
-		if strings.Contains(finalizer, forbidden) || strings.Contains(string(raw), forbidden) {
-			t.Fatalf("Pulse notification still requires reviewer/fixer cost field %q", forbidden)
-		}
-	}
-}
-
 func TestWorkflowBackupRequiresDatabaseSnapshotOnlyForDueTriggerAndCoverage(t *testing.T) {
 	config := &WorkflowBackupConfig{
 		Enabled:  true,
@@ -1696,51 +1648,6 @@ func TestWorkflowBackupRequiresDatabaseSnapshotOnlyForDueTriggerAndCoverage(t *t
 	config.Destinations[0].Covers = []string{"db-sqlite"}
 	if workflowBackupRequiresDatabaseSnapshot(config, "cron") {
 		t.Fatal("disabled backup requested a database snapshot")
-	}
-}
-
-func TestPostRunMonitorFinalStepsIncludesOwnerNotificationInstructions(t *testing.T) {
-	runInstructions := "Include delivered outputs and the primary metric."
-	pulseInstructions := "Put decisions and material fixes first."
-	finalizer := pulseStepQueryByLabel(t, pulseLifecycleFinalSteps("pulse-run-1", workflowNotificationContentInstructions{
-		runSummary: runInstructions, pulseSummary: pulseInstructions,
-	}), "finalize")
-	for _, required := range []string{"WORKFLOW RUN SUMMARY INSTRUCTIONS", runInstructions, "PULSE REVIEW SUMMARY INSTRUCTIONS", pulseInstructions, "recipients, channels, secrets, permissions"} {
-		if !strings.Contains(finalizer, required) {
-			t.Fatalf("finalizer missing notification instruction guard %q: %s", required, finalizer)
-		}
-	}
-	withoutInstructions := pulseStepQueryByLabel(t, pulseLifecycleFinalSteps("pulse-run-1"), "finalize")
-	if strings.Contains(withoutInstructions, "SUMMARY INSTRUCTIONS") {
-		t.Fatalf("finalizer included owner instructions when none were configured: %s", withoutInstructions)
-	}
-}
-
-func TestPostRunMonitorFinalStepsIncludesSplitNotificationRouting(t *testing.T) {
-	finalizer := pulseStepQueryByLabel(t, pulseLifecycleFinalSteps("pulse-run-1", workflowNotificationContentInstructions{
-		runSummaryChannels:   []string{"slack"},
-		pulseSummaryChannels: []string{"gmail"},
-	}), "finalize")
-	for _, required := range []string{"SPLIT NOTIFICATION ROUTING", `kind="run_summary"`, `notification_kind="pulse_summary"`, "configured channels: slack", "configured channels: gmail"} {
-		if !strings.Contains(finalizer, required) {
-			t.Fatalf("finalizer missing split-route instruction %q: %s", required, finalizer)
-		}
-	}
-}
-
-func TestEveryRunFinalizerRequiresRichGmailWhenConfigured(t *testing.T) {
-	finalizers := map[string]string{
-		"full Pulse": pulseStepQueryByLabel(t, pulseLifecycleFinalSteps("pulse-run-1"), "finalize"),
-		"no run":     pulseLifecycleNoRunSteps("pulse-run-1", "preflight failed")[0].query,
-	}
-	for name, prompt := range finalizers {
-		t.Run(name, func(t *testing.T) {
-			for _, required := range []string{"RICH GMAIL OUTPUT", "email_subject", "email_html", "record_summary", "inline-styled"} {
-				if !strings.Contains(prompt, required) {
-					t.Fatalf("finalizer prompt missing rich Gmail requirement %q:\n%s", required, prompt)
-				}
-			}
-		})
 	}
 }
 
@@ -1994,21 +1901,6 @@ func TestPulseMissingManifestCannotAct(t *testing.T) {
 	}
 }
 
-func TestReviewFixContinuationIsParentReceiptReconciliationOnly(t *testing.T) {
-	step := pulseLifecycleReviewFixContinuationStep("pulse-test", errors.New("workflow_review receipt missing"))
-	for _, want := range []string{
-		"PULSE REVIEW + FIX RECEIPT CHECK",
-		"Do not reconstruct findings or fixes",
-		"Validate the receipts already persisted by each sequence",
-		"Resolve only a genuine cross-module ownership conflict",
-		"do not infer or invent its findings, restart it automatically, or mutate workflow artifacts",
-	} {
-		if !strings.Contains(step.query, want) {
-			t.Fatalf("continuation prompt missing %q:\n%s", want, step.query)
-		}
-	}
-}
-
 // TestPulseReviewBacklogSummaryExcludesNonTerminalIterationZero pins PLAT-115:
 // iteration-0 is the live/reused slot, never a stable identity across time,
 // so Gate must never be handed it while it might still be mid-run. Rotated
@@ -2064,20 +1956,6 @@ func TestPulseReviewBacklogSummaryExcludesNonTerminalIterationZero(t *testing.T)
 // Go hands Gate the raw listing and explicitly tells it to compare against
 // get_pulse_state's last_checked_at itself — Go must never pre-filter "what's
 // new" or silently assume every listed folder is unreviewed.
-func TestBacklogGateStepDefersWhatsNewReasoningToGate(t *testing.T) {
-	step := pulseLifecycleBacklogGateStep("pulse-test", "- iteration-5 (status=completed, started_at=..., completed_at=...)")
-	for _, want := range []string{
-		"periodic Pulse review pass",
-		"last_checked_at",
-		"do not assume every listed folder is new",
-		"run_retention_count",
-		"iteration-5",
-	} {
-		if !strings.Contains(step.query, want) {
-			t.Fatalf("backlog Gate prompt missing %q:\n%s", want, step.query)
-		}
-	}
-}
 
 func TestPostRunMonitorFinalStepClassification(t *testing.T) {
 	tests := []struct {
@@ -2454,28 +2332,6 @@ func TestRunFolderNameSetSkipsEmptyNames(t *testing.T) {
 	}
 }
 
-func TestPostRunMonitorModuleStepsReserveHTMLForDashboard(t *testing.T) {
-	steps := pulseLifecycleSteps()
-	checked := 0
-	for _, step := range steps {
-		if step.label != "technical-review" && step.label != "architecture-review" && step.label != "strategic-review" {
-			continue
-		}
-		checked++
-		for _, want := range []string{"render a dashboard", "durable Gate worklist"} {
-			if !strings.Contains(step.query, want) {
-				t.Fatalf("module step %q missing single-renderer guard %q:\n%s", step.label, want, step.query)
-			}
-		}
-		if strings.Contains(step.query, `read_skill(skills=[{"name":"builder-reference","path":"references/review-improve-log.md"}])`) {
-			t.Fatalf("module step %q still loads the presentation contract:\n%s", step.label, step.query)
-		}
-	}
-	if checked != 3 {
-		t.Fatalf("checked %d independent review steps, want 3", checked)
-	}
-}
-
 // pulseStepQueryByLabel selects a stage by label so these assertions survive
 // new stages being added to the final sequence.
 func pulseStepQueryByLabel(t *testing.T, steps []pulseLifecycleStep, label string) string {
@@ -2505,13 +2361,6 @@ func pulseStepQueryByLabel(t *testing.T, steps []pulseLifecycleStep, label strin
 // per-stage assertions are currently unreachable dead code after a premature
 // return partway through that function (a concurrent, unrelated in-progress
 // edit — see the go vet "unreachable code" flag at this file's line 787).
-func TestPulseHasNoDashboardStage(t *testing.T) {
-	for _, step := range pulseLifecycleSteps() {
-		if step.label == "dashboard" || strings.Contains(step.query, "PULSE DASHBOARD") {
-			t.Fatalf("retired HTML dashboard leaked into Pulse stage: %+v", step)
-		}
-	}
-}
 
 func TestWorkshopRunProducedEvidence(t *testing.T) {
 	start := time.Date(2026, 8, 5, 10, 0, 0, 0, time.UTC)
@@ -2628,58 +2477,6 @@ func TestScheduledWorkflowExecutionProducedEvidenceUsesLinkedReceipts(t *testing
 	staleService := &SchedulerService{api: &StreamingAPI{bgAgentRegistry: staleRegistry}}
 	if staleService.scheduledWorkflowExecutionProducedEvidence("schedule-session", since) {
 		t.Fatal("a full-run receipt from before this invocation must not manufacture current evidence")
-	}
-}
-
-func TestNoRunFinalizerSkipsEvidenceStagesAndReportsReason(t *testing.T) {
-	reason := `workflow upgrade preflight upgrade-1.0.18 did not stamp required version "1.0.18"; normal schedule message was not started`
-	steps := pulseLifecycleNoRunSteps("pulse-run-1", reason, workflowNotificationContentInstructions{
-		runSummaryChannels:   []string{"electron", "slack"},
-		runSummaryRecipients: []string{"owner@example.com"},
-	})
-	if len(steps) != 1 || steps[0].label != "finalize" {
-		t.Fatalf("no-run finalizer = %#v, want one finalize step", steps)
-	}
-	for _, want := range []string{
-		"WORKFLOW DID NOT RUN",
-		"Gate, reviewers, Fixer, dashboard, and publish were intentionally skipped",
-		`kind="run_summary"`,
-		"dashboard has no record_pulse_result command and needs no receipt",
-		"mark publish skipped",
-		"source-hash-gated backup",
-		"electron, slack",
-		"owner@example.com",
-		// The label survives so the operator's run summary can name which
-		// migration stalled.
-		"workflow upgrade preflight upgrade-1.0.18 did not complete",
-	} {
-		if !strings.Contains(steps[0].query, want) {
-			t.Fatalf("no-run finalizer missing %q:\n%s", want, steps[0].query)
-		}
-	}
-	// The finalizer shares the scheduler's session. Restating the stamp
-	// instruction here is what invited the customer-login 2026-08-12 out-of-turn
-	// stamp, so the target version and the verb must not reach this turn.
-	for _, forbidden := range []string{"did not stamp", `"1.0.18"`} {
-		if strings.Contains(steps[0].query, forbidden) {
-			t.Fatalf("no-run finalizer restates the upgrade instruction (%q):\n%s", forbidden, steps[0].query)
-		}
-	}
-	if strings.Contains(steps[0].query, "write builder/improve.html once") {
-		t.Fatal("no-run finalizer must not contain the normal dashboard mutation contract")
-	}
-	// PLAT-083 regression: the numbered record_pulse_result instructions must
-	// never ask the agent to record "dashboard" — it was never a valid final
-	// command (only backup/publish/notify are), so the tool rejected every
-	// attempt and the agent had to recover from an error the prompt itself
-	// caused.
-	if strings.Contains(steps[0].query, "mark dashboard skipped") {
-		t.Fatal("no-run finalizer must not instruct the agent to record_pulse_result an invalid \"dashboard\" command")
-	}
-
-	fallback := pulseLifecycleNoRunSteps("pulse-run-2", "   ")[0].query
-	if !strings.Contains(fallback, "no workflow run was started or resumed") {
-		t.Fatal("empty scheduler error must still produce a truthful explanation")
 	}
 }
 

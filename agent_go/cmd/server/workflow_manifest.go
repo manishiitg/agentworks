@@ -948,7 +948,9 @@ func ValidateManifest(m *WorkflowManifest) error {
 		}
 	}
 	if m.Pulse != nil {
-
+		if _, err := normalizePulseFocusAreas(m.Pulse.FocusAreas); err != nil {
+			return err
+		}
 		if _, err := normalizePulseOutwardActions(m.Pulse.OutwardActions); err != nil {
 			return err
 		}

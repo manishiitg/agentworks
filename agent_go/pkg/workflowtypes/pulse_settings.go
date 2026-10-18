@@ -50,7 +50,11 @@ func NormalizePulseSettingsJSON(raw []byte) ([]byte, bool) {
 	_, explicitEnabled := pulse["enabled"]
 	changed := !canonical || !explicitEnabled
 	if !canonical || !explicitEnabled {
-		enabled = legacyEnabled
+		if !canonical {
+			enabled = legacyEnabled
+		} else {
+			enabled = false
+		}
 		pulse["enabled"], _ = json.Marshal(enabled)
 	}
 	if !canonical {

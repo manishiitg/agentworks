@@ -195,7 +195,7 @@ func conditionRouteSchedule(job productScheduleJob, cfg conditiontrigger.Config)
 	if job.WatcherSource != nil {
 		stamp = triggerCaller{Type: triggerCallerUser, ID: job.UserID}
 	}
-	return WorkflowSchedule{ID: "condition-" + conditiontrigger.Hash(conditionKey(job)), Name: job.Schedule.Name, Enabled: true, ScheduleType: "webhook", Kind: triggerKindInternal, Caller: &stamp, GroupNames: cfg.Target.Groups, RouteSelections: cfg.Target.Routes, Webhook: &WorkflowWebhookConfig{InputMode: "raw"}, PulseMode: "off"}
+	return WorkflowSchedule{ID: "condition-" + conditiontrigger.Hash(conditionKey(job)), Name: job.Schedule.Name, Enabled: true, ScheduleType: "webhook", Kind: triggerKindInternal, Caller: &stamp, GroupNames: cfg.Target.Groups, RouteSelections: cfg.Target.Routes, Webhook: &WorkflowWebhookConfig{InputMode: "raw"}}
 }
 
 func (s *SchedulerService) conditionRoute(ctx context.Context, workspacePath, id string, input *WorkflowWebhookDelivery) (*WorkflowSchedule, error) {

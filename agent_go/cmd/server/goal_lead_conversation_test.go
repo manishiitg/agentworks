@@ -26,6 +26,8 @@ func TestGoalLeadCheckContinuesItsConversation(t *testing.T) {
 	}
 
 	manifest := NewWorkflowManifest("Reports")
+	manifest.Access = &WorkflowAccess{Owners: []string{"owner"}}
+	manifest.CreatedBy = "owner"
 	manifest.Pulse = &WorkflowPulseConfig{Enabled: false, OutwardActions: "ask"}
 	raw, _ := json.Marshal(manifest)
 	env.mock.mu.Lock()
@@ -44,6 +46,10 @@ func TestGoalLeadCheckContinuesItsConversation(t *testing.T) {
 		requests = append(requests, reqMap)
 		if strings.HasPrefix(fmt.Sprint(reqMap["query"]), "the Builder chat (manish): ") {
 			return internalSessionTurnResult{FinalResponse: "I recommend running the growth route today: it has not run for 11 days. Posting more often is the owner's call."}, nil
+		}
+		if !saveReport {
+			// A concurrent Builder save has no bound Pulse cycle and must not count.
+			_, _ = recordPulseGoalCheckFromToolArgs(context.Background(), map[string]interface{}{"workspace_path": ws, "status": "not_measured", "summary": "Builder saved another observation."})
 		}
 		if saveReport {
 			if _, err := recordPulseGoalCheckFromToolArgs(ctx, map[string]interface{}{"workspace_path": ws, "status": "not_measured", "summary": "Outcome readings are missing. Measure replies before changing the approach.", "next_check_in_hours": float64(1), "next_check_reason": "An earlier question"}); err != nil {
@@ -93,6 +99,16 @@ func TestGoalLeadCheckContinuesItsConversation(t *testing.T) {
 	result := env.api.scheduler.runGoalLeadPassStep(ctx, sctx, pulseLifecycleStep{label: "goal-check", goalLead: true, query: "Save this week's report"})
 	if result.outcome == pulseLifecycleStepCompleted || result.err == nil || !strings.Contains(result.err.Error(), "without saving") {
 		t.Fatalf("old report completed a new cycle: %+v", result)
+	}
+
+	now := time.Now().UTC()
+	first, err := firstWeeklyReportDue(ctx, "Workflow/weekly", "weekly-workflow", now)
+	if err != nil || first.Before(now.Add(time.Hour)) || !first.Before(now.Add(7*24*time.Hour)) {
+		t.Fatalf("first report not spread: %s %v", first, err)
+	}
+	again, err := firstWeeklyReportDue(ctx, "Workflow/weekly", "weekly-workflow", now.Add(24*time.Hour))
+	if err != nil || !again.Equal(first) {
+		t.Fatalf("first report moved on restart/read: %s %s %v", first, again, err)
 	}
 
 }

@@ -34,18 +34,22 @@ var goalWorkTurns = struct {
 }{bySession: map[string]*goalWorkTurnHold{}}
 
 type goalWorkTurnHold struct {
-	perms stepworkflow.GoalWorkPermissions
+	perms      stepworkflow.GoalWorkPermissions
+	checkRunID string
 }
 
 // beginGoalWorkTurn holds sessionID's tools to perms until the returned
 // release runs. A later begin for the same session replaces the hold; an
 // earlier release then leaves the newer hold in place.
-func beginGoalWorkTurn(sessionID string, perms stepworkflow.GoalWorkPermissions) (release func()) {
+func beginGoalWorkTurn(sessionID string, perms stepworkflow.GoalWorkPermissions, checkRunIDs ...string) (release func()) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return func() {}
 	}
 	hold := &goalWorkTurnHold{perms: perms}
+	if len(checkRunIDs) > 0 {
+		hold.checkRunID = checkRunIDs[0]
+	}
 	goalWorkTurns.Lock()
 	goalWorkTurns.bySession[sessionID] = hold
 	goalWorkTurns.Unlock()
@@ -115,7 +119,7 @@ var goalWorkOutwardTools = map[string]bool{"send_slack_message": true, "send_ema
 // turn held to perms, or nil when the call may run.
 func goalWorkToolRefusal(tool string, perms stepworkflow.GoalWorkPermissions) error {
 	tool = strings.TrimSpace(tool)
-	if !perms.Run && ((strings.HasPrefix(tool, "record_pulse_") && tool != "record_pulse_goal_check") || pulseReportActionTools[tool] || goalWorkNeverTools[tool]) {
+	if !perms.Run && !pulseReportReadTools[tool] {
 		return fmt.Errorf("%s is unavailable while Pulse is off: save suggestions in the weekly report without edits or action requests. The owner can turn Pulse on to act", tool)
 	}
 	switch {
@@ -136,11 +140,26 @@ func goalWorkToolRefusal(tool string, perms stepworkflow.GoalWorkPermissions) er
 	return nil
 }
 
-// OFF may save its report, but cannot turn suggestions into actions, decisions,
-// workflow records or a faster follow-up through another agent.
-var pulseReportActionTools = map[string]bool{
-	"ask_builder": true, "send_message": true, "schedule_message_wakeup": true,
-	"create_human_input_request": true, "answer_human_input_request": true,
-	"record_goal_observations": true, "mutate_workflow_db": true,
-	"merge_pulse_issues": true, "resolve_run_concern": true,
+// OFF has only reads plus its one report write. New tools are never assumed
+// to be observations merely because their name is absent from a denylist.
+var pulseReportReadTools = map[string]bool{
+	"record_pulse_goal_check": true,
+	"get_pulse_state":         true, "get_goal_metrics": true, "query_workflow_db": true, "query_workflow_costs": true,
+	"get_cost_summary": true, "get_step_prompts": true, "get_plan_prompt_health": true, "get_workflow_config": true,
+	"get_llm_config": true, "list_executions": true, "get_schedule_runs": true, "list_schedules": true, "query_step": true,
+	"get_notification_history": true, "get_human_input_request": true, "list_skills": true, "search_skills": true,
+	"get_workflow_command_guidance": true, "get_file_link": true, "get_report_link": true, "read_image": true,
+	"read_crew_calls": true, "search_platform": true, "search_playbooks": true, "brain_browse": true, "brain_read": true,
+	"list_accessible_workflows": true, "get_contract_upgrades": true, "read_agent_messages": true, "list_message_agents": true,
+	"get_function_call": true, "read_skill": true, "read_workspace_file": true, "list_workspace_files": true, "search_workspace_files": true,
+	"get_api_spec": true, "get_prompt": true, "get_resource": true,
+}
+
+func pulseCheckRunIDForSession(sessionID string) string {
+	goalWorkTurns.Lock()
+	defer goalWorkTurns.Unlock()
+	if hold := goalWorkTurns.bySession[sessionID]; hold != nil {
+		return hold.checkRunID
+	}
+	return ""
 }

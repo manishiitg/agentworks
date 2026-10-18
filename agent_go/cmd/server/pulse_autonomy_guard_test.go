@@ -14,6 +14,7 @@ import (
 	"github.com/manishiitg/mcpagent/agent/codeexec"
 	"github.com/manishiitg/mcpagent/executor"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
+	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
 // PLAT-697 phase 2: Goal Work's pulse.autonomy levels are held by the tool
@@ -21,7 +22,10 @@ import (
 // the session passes), not only by its prompt.
 func TestPulsePermissionsIsEnforcedAtToolDispatch(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "false")
-	const session = "schedule-cron--daily_goal"
+	const session = "schedule-goallead--permissions-g1"
+	const bridge = "workflow-session-pulse-permissions"
+	mcpclient.GetSessionRegistry().RegisterHTTPSession(session, bridge)
+	t.Cleanup(func() { mcpclient.GetSessionRegistry().CloseHTTPSession(session) })
 	api := &StreamingAPI{eventStore: events.NewEventStore(10)}
 	api.eventStore.SetSessionOwner(session, "alice")
 	requestCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "alice", Provider: "local"})
@@ -30,7 +34,7 @@ func TestPulsePermissionsIsEnforcedAtToolDispatch(t *testing.T) {
 	inTurn := func(manifest string, tool string) (context.Context, error) {
 		release := beginGoalWorkTurn(session, stepworkflow.PulsePermissions(manifest))
 		defer release()
-		return resolve(context.Background(), tool)
+		return resolve(executor.WithSessionID(context.Background(), bridge), tool)
 	}
 
 	// run=ask: execute_step is refused and points at a decision request.
@@ -60,7 +64,7 @@ func TestPulsePermissionsIsEnforcedAtToolDispatch(t *testing.T) {
 	if err != nil || !common.OutwardHeld(ctx) {
 		t.Fatalf("outward=ask must reach the tool as held, err=%v", err)
 	}
-	for _, tool := range []string{"send_message", "ask_builder", "schedule_message_wakeup", "create_human_input_request", "record_pulse_goal_work", "record_goal_observations", "send_email", "delete_schedule"} {
+	for _, tool := range []string{"send_message", "ask_builder", "schedule_message_wakeup", "create_human_input_request", "record_pulse_goal_work", "record_goal_observations", "send_email", "delete_schedule", "execute_shell_command", "brain_access", "new_future_write_tool"} {
 		if _, err := inTurn(`{"pulse":{"enabled":false}}`, tool); err == nil || !strings.Contains(err.Error(), "Pulse is off") {
 			t.Fatalf("OFF report action %s escaped: %v", tool, err)
 		}

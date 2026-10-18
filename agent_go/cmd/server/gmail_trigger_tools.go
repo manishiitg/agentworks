@@ -105,7 +105,7 @@ func (api *StreamingAPI) saveGmailWorkflowTrigger(ctx context.Context, route gma
 	if name == "" {
 		name = "Incoming Gmail"
 	}
-	sched := WorkflowSchedule{ID: route.ID, Name: name, ScheduleType: "webhook", Kind: "gmail", Timezone: "UTC", Enabled: route.Enabled, GroupNames: groups, RouteSelections: route.RouteSelections, Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "skip", PulseMode: "off", PulseModeReason: "Gmail deliveries execute only the saved route.", Webhook: &WorkflowWebhookConfig{StepID: route.StepID, InputMode: "raw"}, Gmail: &WorkflowGmailTriggerConfig{ConnectionID: route.ConnectionID, Address: route.Address, Reply: route.Reply, Filters: route.Filters, Rules: route.Rules}}
+	sched := WorkflowSchedule{ID: route.ID, Name: name, ScheduleType: "webhook", Kind: "gmail", Timezone: "UTC", Enabled: route.Enabled, GroupNames: groups, RouteSelections: route.RouteSelections, Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "skip", PulseModeReason: "Gmail deliveries execute only the saved route.", Webhook: &WorkflowWebhookConfig{StepID: route.StepID, InputMode: "raw"}, Gmail: &WorkflowGmailTriggerConfig{ConnectionID: route.ConnectionID, Address: route.Address, Reply: route.Reply, Filters: route.Filters, Rules: route.Rules}}
 	index := -1
 	for i, existing := range manifest.Schedules {
 		if existing.ID == route.ID {

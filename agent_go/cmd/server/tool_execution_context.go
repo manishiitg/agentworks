@@ -62,14 +62,15 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 			log.Printf("[TOOL_OWNERSHIP] rejected %s: caller=%q tool_session=%q authority=%q caller_parent=%q", tool, callerSession, toolSession, authoritySession, mcpclient.GetSessionRegistry().HTTPSessionForMCPSession(callerSession))
 			return nil, fmt.Errorf("%s caller does not own this tool session", tool)
 		}
-		// Pulse Goal Work: the autonomy levels hold on the session's own agent and
+		// Pulse permissions hold on its own native bridge and
 		// its delegated helpers for the turn. Workflow steps the turn started
-		// (child MCP sessions registered to the run) keep their normal tools.
+		// (child MCP sessions registered to an active Builder run) keep their normal tools.
+		// OFF never bypasses its reading/report boundary through a child session.
 		goalWorkPerms, goalWorkHeld := goalWorkTurnPermissions(authoritySession)
-		goalWorkHeld = goalWorkHeld && !callerOwnedBySession
+		goalWorkHeld = goalWorkHeld && (!callerOwnedBySession || !goalWorkPerms.Run || isGoalLeadSessionID(authoritySession))
 		if goalWorkHeld {
 			if err := goalWorkToolRefusal(tool, goalWorkPerms); err != nil {
-				log.Printf("[PULSE_AUTONOMY] refused %s in session %s: run=%v outward=%v change=%v", tool, authoritySession, goalWorkPerms.Run, goalWorkPerms.Outward, goalWorkPerms.Change)
+				log.Printf("[PULSE_PERMISSIONS] refused %s in session %s: run=%v outward=%v change=%v", tool, authoritySession, goalWorkPerms.Run, goalWorkPerms.Outward, goalWorkPerms.Change)
 				return nil, err
 			}
 		}

@@ -700,7 +700,7 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 	} else {
 		caller = nil
 	}
-	sched := WorkflowSchedule{ID: id, Name: strings.TrimSpace(req.Name), ScheduleType: "webhook", Timezone: "UTC", Enabled: req.Enabled, RouteSelections: req.RouteSelections, GroupNames: groups, Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "skip", Webhook: cfg, Kind: normalizeTriggerKind(effectiveKind), Caller: caller, PulseMode: "off", PulseModeReason: "Webhook deliveries skip Pulse, backup and publish."}
+	sched := WorkflowSchedule{ID: id, Name: strings.TrimSpace(req.Name), ScheduleType: "webhook", Timezone: "UTC", Enabled: req.Enabled, RouteSelections: req.RouteSelections, GroupNames: groups, Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "skip", Webhook: cfg, Kind: normalizeTriggerKind(effectiveKind), Caller: caller, PulseModeReason: "Webhook deliveries skip Pulse, backup and publish."}
 	if function {
 		sched.Function = spec
 	}

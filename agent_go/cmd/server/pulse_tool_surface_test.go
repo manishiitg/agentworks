@@ -432,8 +432,8 @@ func TestRecordPulseResultRejectionsNameBothTargets(t *testing.T) {
 // the templates caught up. The template side is covered in the guidance package;
 // this covers the prompts the scheduler builds in Go.
 func TestSchedulerPulsePromptsNameNoRemovedTool(t *testing.T) {
-	prompts := map[string]string{}
-	for _, step := range pulseLifecycleSteps() {
+	prompts := map[string]string{"charter": goalLeadCharter("Example", "Workflow/example")}
+	for _, step := range afterRunHousekeepingSteps("example", true, true) {
 		prompts[step.label] = step.query
 	}
 	// Contract-upgrade turns are delivered by the pre-run preflight, not by

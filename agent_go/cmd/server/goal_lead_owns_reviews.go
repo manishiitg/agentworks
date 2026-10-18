@@ -8,7 +8,6 @@ import (
 	"time"
 
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsemodules"
 )
 
 // QA and Architecture owned by the workflow's Pulse conversation (PLAT-697,
@@ -75,25 +74,6 @@ func closeGoalLeadOwnedModules(ctx context.Context, workspacePath, pulseRunID st
 		}
 	}
 	return nil
-}
-
-// pulsePassModuleSteps are a full pass's module turns after Gate, in
-// pulsemodules.PassOrder: a goal workflow gets only Goal Work, run in its
-// Pulse conversation.
-func pulsePassModuleSteps(pulseRunID string, hasGoal bool, due func(module string) bool) []pulseLifecycleStep {
-	var steps []pulseLifecycleStep
-	for _, module := range pulsemodules.PassOrder(hasGoal) {
-		if !due(module) {
-			continue
-		}
-		step := pulseLifecycleModuleReviewStep(pulseRunID, module)
-		if module == pulseModuleStrategicReview && hasGoal {
-			step = goalLeadGoalWorkStep(pulseRunID)
-			step.goalLead = true
-		}
-		steps = append(steps, step)
-	}
-	return steps
 }
 
 // Failed runs: the facts the conversation reads and the wake-up.

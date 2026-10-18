@@ -123,7 +123,7 @@ function PlaybookFocusSuggestions({ workspacePath, areas }: { workspacePath: str
 export function PulseGoalWork({ workspacePath, items, onRunGoalWork, running = false, runBlockedReason, playbookFocusAreas = [] }: {
   workspacePath: string
   items: PulseGoalWorkItem[]
-  /** Shown at the top of the Pulse tab now (AutonomySlider); kept for callers. */
+  /** Runs one check in the continuing Pulse conversation. */
   onRunGoalWork?: () => void
   running?: boolean
   runBlockedReason?: string

@@ -4681,12 +4681,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"maximum":     maxRunRetentionCount,
 					"description": "Number of completed run/eval folders to keep independently for plain Builder archives, saved-schedule -sched runs, and webhook -hook runs, excluding active iteration-0. Defaults to 10 when omitted. Raise this for workflows whose Pulse or Goal Advisor reviews need a wider evidence window.",
 				},
-				"pulse_disabled_review_modules": map[string]interface{}{
-					"type":        "array",
-					"items":       map[string]interface{}{"type": "string", "enum": []string{"technical_review", "architecture_review", "strategic_review"}},
-					"uniqueItems": true,
-					"description": "Replace the complete list of Pulse reviewers disabled by the workflow owner. Disabled reviewers are skipped in future full Pulse runs while their history remains visible. Use technical_review for Health, architecture_review for Architecture, and strategic_review for Strategy. Pass [] to enable all three. This does not turn Pulse itself off or change per-schedule off/basic/full policy.",
-				},
 				"disable_parallel_tool_execution": map[string]interface{}{
 					"type":        "boolean",
 					"description": "Workflow-level default (stored in execution_defaults, applies to EVERY step unless a step overrides it) forcing one tool call per turn. Use only when most steps in this workflow need strictly sequential tool calls (e.g. a workflow that is browser-driven throughout); prefer per-step tuning via update_step_config when only some steps need it. Pass null to clear the workflow-level default.",
@@ -5923,44 +5917,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					sb.WriteString(fmt.Sprintf("- %s\n", line))
 				}
 				logger.Info(fmt.Sprintf("Updated workflow execution_defaults: %v", summary))
-			}
-
-			if _, provided := args["pulse_disabled_review_modules"]; provided {
-				disabled := extractStringArray("pulse_disabled_review_modules")
-				allowed := map[string]bool{"technical_review": true, "architecture_review": true, "strategic_review": true}
-				for _, module := range disabled {
-					if !allowed[module] {
-						return fmt.Sprintf("Error: unsupported Pulse reviewer %q; choose technical_review, architecture_review, or strategic_review.", module), nil
-					}
-				}
-				content, err := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
-				if err != nil {
-					return "", err
-				}
-				var manifest map[string]interface{}
-				if err := json.Unmarshal([]byte(content), &manifest); err != nil {
-					return fmt.Sprintf("Failed to parse workflow.json: %v", err), nil
-				}
-				pulse, _ := manifest["pulse"].(map[string]interface{})
-				if pulse == nil {
-					pulse = map[string]interface{}{}
-				}
-				if len(disabled) == 0 {
-					delete(pulse, "disabled_review_modules")
-				} else {
-					pulse["disabled_review_modules"] = disabled
-				}
-				manifest["pulse"] = pulse
-				manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-				updated, err := json.MarshalIndent(manifest, "", "  ")
-				if err != nil {
-					return "", err
-				}
-				if err := iwm.controller.writeManagedWorkflowManifest(ctx, string(updated)); err != nil {
-					return "", err
-				}
-				anyChanged = true
-				sb.WriteString(fmt.Sprintf("\n### Pulse reviewers (updated)\n- Disabled: %v\n- The change applies to future full Pulse runs; prior review history remains available.\n", disabled))
 			}
 
 			// --- Owner-approved advisor specialization ---

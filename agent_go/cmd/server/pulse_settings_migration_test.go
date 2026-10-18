@@ -80,4 +80,9 @@ func TestPulseSettingsMigrationKeepsOutwardAuthority(t *testing.T) {
 		}
 	}
 
+	missingEnabled, _ := workflowtypes.NormalizePulseSettingsJSON([]byte(`{"pulse":{"outward_actions":"ask"},"schedules":[{"enabled":true,"pulse_mode":"full"}]}`))
+	if !strings.Contains(string(missingEnabled), `"enabled":false`) {
+		t.Fatalf("missing canonical enabled revived old ON: %s", missingEnabled)
+	}
+
 }

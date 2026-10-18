@@ -2,7 +2,10 @@ package server
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -131,5 +134,22 @@ func TestLatestRetainedPulseEvidenceFallsBackBeforeFirstRun(t *testing.T) {
 	runFolder, status := latestRetainedPulseEvidence(context.Background(), t.TempDir())
 	if runFolder != "iteration-0" || status != "unknown" {
 		t.Fatalf("fallback evidence = (%q, %q), want (iteration-0, unknown)", runFolder, status)
+	}
+}
+
+// Pulse reads metrics/history through its own tools and executes no workflow.
+// A failed execution-folder service cannot fail a report before its turn starts.
+func TestPulseOnlyDoesNotReadExecutionFolders(t *testing.T) {
+	var requests atomic.Int32
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	defer remote.Close()
+	t.Setenv("WORKSPACE_API_URL", remote.URL)
+	s := &SchedulerService{}
+	session, folder, err := s.executeJob(context.Background(), &ScheduleContext{PulseOnly: true, WorkspacePath: "Workflow/example", Schedule: WorkflowSchedule{ID: manualWorkflowPulseScheduleID}}, "check-1")
+	if err != nil || session == "" || folder != "" || requests.Load() != 0 {
+		t.Fatalf("Pulse-only used execution preflight: session=%s folder=%s requests=%d err=%v", session, folder, requests.Load(), err)
 	}
 }
