@@ -127,7 +127,7 @@ func commitTeamEditWithFiles(ctx context.Context, result string,
 			return fmt.Errorf("workflow settings changed; reread before migrating guides")
 		}
 		actor := teamActor(ctx)
-		if actor == "" || !externalFileAuthoringAllowed(&UserClaims{UserID: actor}, &current) || current.Team != nil && current.Team.LeaderID != actor {
+		if actor == "" || !workflowSkillsAuthoringAllowed(GetUserFromContext(ctx), &current) || current.Team != nil && current.Team.LeaderID != actor {
 			return fmt.Errorf("ask the current workflow Builder to migrate its guides")
 		}
 		access := userAccessForClaims(&UserClaims{UserID: actor})

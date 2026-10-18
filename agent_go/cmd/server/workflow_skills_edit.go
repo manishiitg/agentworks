@@ -16,6 +16,23 @@ type workflowSkillsEditKey struct{}
 type teamCommitReadKey struct{}
 type workflowSkillsPolicyKey struct{}
 
+// Native Builder authority is the current account and workflow role. MCP adds
+// its existing connection authoring consent; a website chat has no API token.
+func workflowSkillsAuthoringAllowed(claims *UserClaims, manifest *WorkflowManifest) bool {
+	if claims == nil || manifest == nil || manifest.Kind == "relay" {
+		return false
+	}
+	account := userAccessForClaims(claims)
+	if account.Disabled || !account.CanEdit || IsMultiUserMode() && !account.Known {
+		return false
+	}
+	level := workflowAccessForManifest(claims, manifest)
+	if level != WorkflowAccessOwner && level != WorkflowAccessWrite {
+		return false
+	}
+	return claims.AccessToken == nil || externalFileAuthoringAllowed(claims, manifest)
+}
+
 // Migration receipts distinguish an absent target from a newly created empty
 // file, so a concurrent edit cannot be overwritten under the commit lock.
 func rememberWorkflowSkillsRead(ctx context.Context, p, raw string, exists bool) {
@@ -84,11 +101,11 @@ func workflowSkillsRelative(root, p string, write bool) (string, error) {
 func executeWorkflowSkillsBuilderTool(ctx context.Context, rootPath, user string, args map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error)) (string, error) {
 	ctx = teamUserContext(ctx, user)
 	manifest, found, err := ReadWorkflowManifest(ctx, rootPath)
-	claims := &UserClaims{UserID: user}
+	claims := GetUserFromContext(ctx)
 	if err != nil {
 		return "", err
 	}
-	if !found || !externalFileAuthoringAllowed(claims, manifest) {
+	if !found || !workflowSkillsAuthoringAllowed(claims, manifest) {
 		return "", fmt.Errorf("ask this workflow's Builder to migrate its guides")
 	}
 	if manifest.Team != nil && manifest.Team.LeaderID != user {
