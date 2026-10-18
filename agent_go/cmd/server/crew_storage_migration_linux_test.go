@@ -5,7 +5,6 @@ package server
 import (
 	"encoding/json"
 	"errors"
-	"github.com/google/uuid"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/sys/unix"
 )
 
@@ -72,7 +72,7 @@ func TestCrewStoragePreviewAndPrivateRestore(t *testing.T) {
 			original = row
 		}
 	}
-	if original.State != "ready" || original.Memory || original.Files == 0 {
+	if original.State != "ready" || original.Memory || original.Files == 0 || original.Name == fixtureCodeFolder {
 		t.Fatalf("preview changed effective Code behavior: %+v", original)
 	}
 	backup := call(fixtureUserA, `{"action":"storage_backup","operation_id":"`+receipt.ID+`","workspace_id":"code:`+fixtureCodeID+`"}`)
@@ -98,6 +98,50 @@ func TestCrewStoragePreviewAndPrivateRestore(t *testing.T) {
 	status := call(fixtureUserA, `{"action":"storage_status","operation_id":"`+receipt.ID+`"}`)
 	if status.Code != http.StatusOK || strings.Contains(status.Body.String(), "PRIVATE_STORAGE_MARKER") || strings.Contains(status.Body.String(), `"records"`) {
 		t.Fatalf("status exposed private backup contents: %d", status.Code)
+	}
+	// Move through the real administrator endpoint using the existing backup.
+	// Rename keeps the same inode, metadata and bytes; both paths reach it.
+	beforeRecord, _ := defaultProjectOwners().Lookup("code", fixtureCodeFolder)
+	beforeInfo, _ := os.Stat(root)
+	if denied := call(fixtureUserB, `{"action":"storage_move","operation_id":"`+receipt.ID+`"}`); denied.Code != http.StatusForbidden {
+		t.Fatalf("non-admin move: %d", denied.Code)
+	}
+	moved := call(fixtureUserA, `{"action":"storage_move","operation_id":"`+receipt.ID+`","workspace_id":"code:`+fixtureCodeID+`"}`)
+	if moved.Code != http.StatusOK {
+		t.Fatalf("move: %d %s", moved.Code, moved.Body.String())
+	}
+	s = wait()
+	for _, row := range s.Projects {
+		if row.WorkspaceID == original.WorkspaceID && (row.State != "moved" || !row.RestoreVerified) {
+			t.Fatalf("move receipt: %+v", row)
+		}
+	}
+	destination := filepath.Join(f.Docs, "Crew", fixtureCodeFolder)
+	destinationInfo, err := os.Stat(destination)
+	if err != nil || !os.SameFile(beforeInfo, destinationInfo) {
+		t.Fatal("move copied or lost the original tree", err)
+	}
+	after, _, _, err = crewStorageInventory(destination, io.Discard)
+	if err != nil || after != original.Fingerprint {
+		t.Fatal("move changed project contents or metadata", err)
+	}
+	link, err := filepath.EvalSymlinks(root)
+	if err != nil || link != destination {
+		t.Fatal("old path no longer reaches the project", err)
+	}
+	afterRecord, _ := defaultProjectOwners().Lookup("code", fixtureCodeFolder)
+	if projectStorageRoot(afterRecord) != original.Destination || afterRecord.BindingRoot != original.Source || !registryListHas(afterRecord.Aliases, original.Source) || !registryListHas(afterRecord.Aliases, original.Destination) {
+		t.Fatalf("storage bindings: %+v", afterRecord)
+	}
+	afterRecord.CanonicalRoot, afterRecord.BindingRoot, afterRecord.Aliases, afterRecord.Shared = beforeRecord.CanonicalRoot, beforeRecord.BindingRoot, beforeRecord.Aliases, beforeRecord.Shared
+	if crewStorageHash(afterRecord) != crewStorageHash(beforeRecord) {
+		t.Fatal("move changed identity, sharing or another project setting")
+	}
+	if err := os.WriteFile(filepath.Join(root, "after-move.txt"), []byte("through-old-link"), 0640); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(filepath.Join(destination, "after-move.txt")); err != nil || string(data) != "through-old-link" {
+		t.Fatal("old-path writes did not reach the current tree", err)
 	}
 	// Direct filesystem inventory retains the normal workspace boundary:
 	// a settings link outside the project is unresolved, not projected.

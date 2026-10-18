@@ -791,7 +791,7 @@ const RUNNING_WORKFLOWS_CACHE_TTL_MS = 15_000
 let runtimeTerminalDiagnosticsUnavailable = false
 
 export type CrewStorageStatus = {
-  operation_id: string; state: string; total: number; has_more: boolean; next_offset: number; error?: string
+  operation_id: string; state: string; total: number; has_more: boolean; next_offset: number; error?: string; move_available: boolean
   projects: { key: string; workspace_id?: string; name: string; owner_name: string; bytes: number; state: string; reasons?: string[]; backup_state?: string; restore_verified: boolean }[]
 }
 
@@ -806,6 +806,10 @@ export const agentApi = {
   },
   backupCrewStorageProject: async (operationId: string, workspaceId: string): Promise<{ operation_id: string }> => {
     const response = await api.post('/api/admin/crew-storage', { action: 'storage_backup', operation_id: operationId, workspace_id: workspaceId })
+    return response.data
+  },
+  moveCrewStorageProjects: async (operationId: string, workspaceId?: string): Promise<{ operation_id: string }> => {
+    const response = await api.post('/api/admin/crew-storage', { action: 'storage_move', operation_id: operationId, workspace_id: workspaceId })
     return response.data
   },
   // Observer APIs removed - no longer needed

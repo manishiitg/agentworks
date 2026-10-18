@@ -82,7 +82,7 @@ func projectBindingRoot(root string) string {
 
 // compareAndSetStorageLocation is internal migration machinery, not a public
 // settings writer. It preserves audience and origin and pins private state keys
-// exactly once. The caller separately owns filesystem cutover and its journal.
+// exactly once. The caller separately moves the folder and leaves old-path links.
 func (r *projectOwnerRegistry) compareAndSetStorageLocation(product, folder, expected, next string) error {
 	err := r.modify(func(projects map[string]projectOwnerRecord) (bool, error) {
 		key := projectOwnerKey(product, folder)

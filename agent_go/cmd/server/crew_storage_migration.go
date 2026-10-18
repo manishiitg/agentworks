@@ -23,8 +23,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 )
 
-// This first service inventories and verifies backups only. There is no
-// filesystem move or registry mutation action.
+// One administrator operation previews, backs up and moves existing projects.
 type crewStorageProject struct {
 	Key             string   `json:"key"`
 	WorkspaceID     string   `json:"workspace_id,omitempty"`
@@ -53,6 +52,7 @@ type crewStorageSnapshot struct {
 	ID          string                        `json:"operation_id"`
 	Actor       string                        `json:"actor_id"`
 	BackupActor string                        `json:"backup_actor_id,omitempty"`
+	MoveActor   string                        `json:"move_actor_id,omitempty"`
 	CreatedAt   string                        `json:"created_at"`
 	State       string                        `json:"state"`
 	RegistrySHA string                        `json:"registry_sha256"`
@@ -119,7 +119,7 @@ func crewStorageRead(id string) (*crewStorageSnapshot, error) {
 	if s.ID != id {
 		return nil, fmt.Errorf("storage preview identity does not match")
 	}
-	if _, active := crewStorageJobs.Load(id); !active && (s.State == "scanning" || s.State == "backing_up") {
+	if _, active := crewStorageJobs.Load(id); !active && (s.State == "scanning" || s.State == "backing_up" || s.State == "moving") {
 		s.State, s.Error = "interrupted", "This check stopped before completing. Start a fresh preview."
 	}
 	return &s, nil
@@ -262,45 +262,6 @@ func crewStorageReadSettings(root string, row *crewStorageProject) error {
 	return nil
 }
 
-func (api *StreamingAPI) crewStorageBusy(rec projectOwnerRecord) bool {
-	root := projectStorageRoot(rec)
-	api.sessionWorkspaceMu.RLock()
-	var sessions []string
-	for id, folder := range api.sessionWorkspaceFolders {
-		if canonicalCrewWorkspaceRoot(folder) == root {
-			sessions = append(sessions, id)
-		}
-	}
-	api.sessionWorkspaceMu.RUnlock()
-	for _, id := range sessions {
-		if api.sessionHasActiveWork(id) {
-			return true
-		}
-	}
-	crewFunctionCalls.Lock()
-	calls := make([]*crewFunctionCall, 0, len(crewFunctionCalls.m))
-	for _, call := range crewFunctionCalls.m {
-		calls = append(calls, call)
-	}
-	crewFunctionCalls.Unlock()
-	for _, call := range calls {
-		call.mu.Lock()
-		busy := canonicalCrewWorkspaceRoot(call.TargetPath) == root && (call.Status == "running" || call.Status == "queued")
-		call.mu.Unlock()
-		if busy {
-			return true
-		}
-	}
-	codeShells.Lock()
-	defer codeShells.Unlock()
-	for _, shell := range codeShells.byID {
-		if shell.ownerID == rec.OwnerID && shell.projectID == rec.ProjectID {
-			return true
-		}
-	}
-	return false
-}
-
 func (api *StreamingAPI) crewStoragePreview(s *crewStorageSnapshot) {
 	defer crewStorageJobs.Delete(s.ID)
 	defer crewStorageJobs.Delete("active")
@@ -338,8 +299,6 @@ func (api *StreamingAPI) crewStoragePreview(s *crewStorageSnapshot) {
 			if err := crewStorageReadSettings(filepath.Join(docs, filepath.FromSlash(source)), &row); err != nil {
 				row.State, row.Reasons = "needs_attention", []string{err.Error()}
 			}
-		} else if api.crewStorageBusy(rec) {
-			row.State, row.Reasons = "busy", []string{"This Crew is working or has an open terminal. Retry when it is idle."}
 		} else {
 			full := filepath.Join(docs, filepath.FromSlash(source))
 			real, err := filepath.EvalSymlinks(full)
@@ -466,13 +425,11 @@ func (api *StreamingAPI) crewStorageBackup(s *crewStorageSnapshot, selected stri
 			continue
 		}
 		current, exists := defaultProjectOwners().Lookup(row.Origin, s.Records[row.Key].Folder)
-		if !exists || crewStorageHash(current) != row.RecordHash || api.crewStorageBusy(current) {
-			row.BackupState, row.Reasons = "not_backed_up", []string{"The project changed or is busy. Start a fresh preview."}
+		if !exists || crewStorageHash(current) != row.RecordHash {
+			row.BackupState, row.Reasons = "not_backed_up", []string{"The project record changed. Start a fresh preview."}
 		} else if err := crewStorageArchive(ctx, s, row); err != nil {
 			row.BackupState, row.Reasons = "not_backed_up", []string{err.Error()}
 		} else {
-			// Reference/publication/native-runtime inventory is a separate
-			// required part of C; a project archive alone never admits a move.
 			row.BackupState = "project_archive_verified"
 		}
 		if err := crewStorageSave(s); err != nil {
@@ -482,6 +439,86 @@ func (api *StreamingAPI) crewStorageBackup(s *crewStorageSnapshot, selected stri
 	s.State = "complete"
 	_ = crewStorageSave(s)
 	log.Printf("[CREW_STORAGE] operation=%s action=backup actor=%s state=complete", s.ID, s.BackupActor)
+}
+
+// Keep the current tree and its metadata intact. Existing routing aliases and
+// a filesystem link preserve old references; private state keeps BindingRoot.
+// This deliberately has no project-busy check or undo/redo operation.
+func crewStorageMoveProject(s *crewStorageSnapshot, row *crewStorageProject) error {
+	registry := defaultProjectOwners()
+	rec, exists := registry.Lookup(row.Origin, s.Records[row.Key].Folder)
+	if !exists || validateProjectStorageRecord(rec) != nil || rec.OwnerID != row.Owner || rec.Product+":"+rec.ProjectID != row.WorkspaceID || projectStorageRoot(rec) != row.Source || row.Destination != "Crew/"+rec.Folder {
+		return fmt.Errorf("the project location changed; start a fresh preview")
+	}
+	docs := fsutil.WorkspaceDocsRoot()
+	source := filepath.Join(docs, filepath.FromSlash(row.Source))
+	destination := filepath.Join(docs, filepath.FromSlash(row.Destination))
+	info, err := os.Lstat(source)
+	if err != nil || !info.IsDir() {
+		return fmt.Errorf("the original project folder is unavailable")
+	}
+	if _, err := os.Lstat(destination); !os.IsNotExist(err) {
+		return fmt.Errorf("the destination already exists or cannot be checked")
+	}
+	if err := os.MkdirAll(filepath.Dir(destination), 0711); err != nil {
+		return err
+	}
+	link, err := filepath.Rel(filepath.Dir(source), destination)
+	if err != nil {
+		return err
+	}
+	if err := os.Rename(source, destination); err != nil {
+		return fmt.Errorf("the project folder could not be moved: %w", err)
+	}
+	// Create the compatibility link even if the registry write fails, so its
+	// previous path still reaches the moved files. Report failures as they are.
+	registryErr := registry.compareAndSetStorageLocation(rec.Product, rec.Folder, userAccessHash(rec), row.Destination)
+	linkErr := os.Symlink(link, source)
+	return errors.Join(registryErr, linkErr)
+}
+
+func (api *StreamingAPI) crewStorageMove(s *crewStorageSnapshot, selected string) {
+	defer crewStorageJobs.Delete(s.ID)
+	defer crewStorageJobs.Delete("active")
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)
+	defer cancel()
+	for i := range s.Projects {
+		row := &s.Projects[i]
+		if row.State != "ready" || selected != "" && row.WorkspaceID != selected {
+			continue
+		}
+		var err error
+		if !row.RestoreVerified {
+			err = crewStorageArchive(ctx, s, row)
+			if err == nil {
+				row.BackupState = "project_archive_verified"
+			} else {
+				row.BackupState = "not_backed_up"
+			}
+		}
+		if err == nil {
+			dir, _ := crewStorageDir(s.ID)
+			archive, statErr := os.Stat(filepath.Join(dir, crewStorageHash(row.Key)+".tar.gz"))
+			if statErr != nil || !archive.Mode().IsRegular() || archive.Size() != row.ArchiveBytes || row.ArchiveSHA == "" {
+				err = fmt.Errorf("the verified backup is unavailable; start a fresh preview")
+			}
+		}
+		if err == nil {
+			err = crewStorageMoveProject(s, row)
+		}
+		if err != nil {
+			row.State, row.Reasons = "move_failed", []string{err.Error()}
+		} else {
+			row.State, row.Reasons = "moved", nil
+		}
+		log.Printf("[CREW_STORAGE] operation=%s action=move actor=%s workspace=%s source=%s destination=%s state=%s reason=%v", s.ID, s.MoveActor, row.WorkspaceID, row.Source, row.Destination, row.State, err)
+		if err := crewStorageSave(s); err != nil {
+			return
+		}
+	}
+	s.State = "complete"
+	_ = crewStorageSave(s)
+	log.Printf("[CREW_STORAGE] operation=%s action=move actor=%s state=complete", s.ID, s.MoveActor)
 }
 
 type crewStorageArchiveWriter struct {
@@ -501,7 +538,7 @@ func (w *crewStorageArchiveWriter) Write(data []byte) (int, error) {
 func (api *StreamingAPI) externalCrewStorage(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
 	if !crewStorageAllowed(claims) || !currentUserIsAdmin(r) {
-		externalError(w, 403, "insufficient_scope", "An administrator can preview or back up project storage with users:manage access.")
+		externalError(w, 403, "insufficient_scope", "An administrator can check, back up or move project storage with users:manage access.")
 		return
 	}
 	action := externalArg(args, "action")
@@ -527,13 +564,13 @@ func (api *StreamingAPI) externalCrewStorage(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	id := externalArg(args, "operation_id")
-	if action == "storage_backup" {
+	if action == "storage_backup" || action == "storage_move" {
 		s, err := crewStorageAdmitBackup(id, crewStorageRead)
 		if err != nil {
 			if errors.Is(err, errCrewStorageBusy) {
 				externalError(w, 409, "storage_busy", "A storage check is already working. Check its status and retry when it finishes.")
 			} else {
-				externalError(w, 409, "storage_incomplete", "Start a fresh completed preview before backing up.")
+				externalError(w, 409, "storage_incomplete", "Start a fresh completed project check first.")
 			}
 			return
 		}
@@ -549,16 +586,24 @@ func (api *StreamingAPI) externalCrewStorage(w http.ResponseWriter, r *http.Requ
 			if !found {
 				crewStorageJobs.Delete(id)
 				crewStorageJobs.Delete("active")
-				externalError(w, 400, "invalid_arguments", "Choose a project marked ready for backup.")
+				externalError(w, 400, "invalid_arguments", "Choose a project marked ready.")
 				return
 			}
 		}
 		s.BackupActor = claims.UserID
 		s.State = "backing_up"
+		if action == "storage_move" {
+			s.MoveActor, s.State = claims.UserID, "moving"
+		}
 		if err := crewStorageSave(s); err != nil {
 			crewStorageJobs.Delete(id)
 			crewStorageJobs.Delete("active")
 			externalError(w, 500, "storage_unavailable", "The backup could not be started.")
+			return
+		}
+		if action == "storage_move" {
+			go api.crewStorageMove(s, selected)
+			externalJSON(w, map[string]any{"operation_id": id, "state": "moving", "message": "Moving ready projects to Crew, using verified backups and keeping old links working."})
 			return
 		}
 		go api.crewStorageBackup(s, selected)
@@ -566,7 +611,7 @@ func (api *StreamingAPI) externalCrewStorage(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if action != "storage_status" {
-		externalError(w, 400, "invalid_arguments", "Choose storage_preview, storage_status or storage_backup.")
+		externalError(w, 400, "invalid_arguments", "Choose storage_preview, storage_status, storage_backup or storage_move.")
 		return
 	}
 	s, err := crewStorageRead(id)
@@ -591,7 +636,7 @@ func (api *StreamingAPI) externalCrewStorage(w http.ResponseWriter, r *http.Requ
 	if end > len(s.Projects) {
 		end = len(s.Projects)
 	}
-	externalJSON(w, map[string]any{"operation_id": id, "state": s.State, "created_at": s.CreatedAt, "registry_sha256": s.RegistrySHA, "projects": s.Projects[offset:end], "total": len(s.Projects), "next_offset": end, "has_more": end < len(s.Projects), "error": s.Error, "move_available": false})
+	externalJSON(w, map[string]any{"operation_id": id, "state": s.State, "created_at": s.CreatedAt, "registry_sha256": s.RegistrySHA, "projects": s.Projects[offset:end], "total": len(s.Projects), "next_offset": end, "has_more": end < len(s.Projects), "error": s.Error, "move_available": true})
 }
 
 func crewStorageAllowed(claims *UserClaims) bool {
