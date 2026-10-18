@@ -149,6 +149,42 @@ func deleteCodeSessionPin(sessionID string) {
 	}
 }
 
+// A product's storage user can be a main owner or local default, independently
+// of the person authenticated on this request.
+func codeSessionPinCaller(ctx context.Context) string {
+	caller := strings.TrimSpace(GetUserIDFromContext(ctx))
+	if caller == "" && !IsMultiUserMode() {
+		return GetDefaultUserID()
+	}
+	return caller
+}
+
+// History deletion can run against a main owner's storage on behalf of a
+// co-owner. A private identity pin is cleared only for the actual caller,
+// after their transcript or durable history has successfully been deleted.
+func deleteOwnCodeSessionPin(callerID, sessionID string) {
+	callerID = sanitizeUserIDForPath(strings.TrimSpace(callerID))
+	pin, pinned, err := codeSessionPinFor(sessionID)
+	if err != nil {
+		log.Printf("[CODE_SESSION] pin_cleanup=skipped session=%s actor=%s reason=unreadable", sessionID, callerID)
+		return
+	}
+	if !pinned || callerID == "" || pin.Person != callerID {
+		return
+	}
+	file, err := codeSessionPinPath(sessionID)
+	if err != nil {
+		return
+	}
+	if err := os.Remove(file); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			log.Printf("[CODE_SESSION] pin_cleanup=failed session=%s actor=%s", sessionID, callerID)
+		}
+		return
+	}
+	log.Printf("[CODE_SESSION] pin_cleanup=removed session=%s actor=%s", sessionID, callerID)
+}
+
 // sweepOrphanCodeSessionPins removes pins whose Code no longer exists (a
 // session deleted outside the paths above, or a pin left by a crash). It runs
 // once, a few minutes after start, when the workspace service is up.

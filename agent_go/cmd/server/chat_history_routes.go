@@ -668,7 +668,7 @@ func cleanupChatHistoryHandler(api *StreamingAPI) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		api.deleteDurableChatSessionsAfterBulkDelete("chat history cleanup", durableSessionIDsFromConversationPaths(result.DeletedPaths))
+		api.deleteDurableChatSessionsAfterBulkDelete("chat history cleanup", codeSessionPinCaller(r.Context()), durableSessionIDsFromConversationPaths(result.DeletedPaths))
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -1237,6 +1237,7 @@ func deleteChatHistorySessionHandler(api *StreamingAPI) http.HandlerFunc {
 				return
 			}
 		}
+		deleteOwnCodeSessionPin(codeSessionPinCaller(r.Context()), sessionID)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{

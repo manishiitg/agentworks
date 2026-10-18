@@ -33,6 +33,14 @@ func TestProjectHistoryAliasesPreserveReadsAndRestoreAuthority(t *testing.T) {
 	if err := registry.Register(rec); err != nil {
 		t.Fatal(err)
 	}
+	if err := pinCodeSession(session, "owner", legacy); err != nil {
+		t.Fatal(err)
+	}
+	pinPath, _ := codeSessionPinPath(session)
+	pinBefore, err := os.ReadFile(pinPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 	settings := `{"id":"history-project","product":"code","mode":"dev","created_by":"owner"}`
 	ws := &mockWorkspaceAPI{files: map[string]string{legacy + "/product.json": settings, canonical + "/product.json": settings}}
 	server := httptest.NewServer(ws)
@@ -126,6 +134,9 @@ func TestProjectHistoryAliasesPreserveReadsAndRestoreAuthority(t *testing.T) {
 			}
 			if owner, _ := durable.DurableChatOwner(session); owner != "owner" {
 				t.Fatal("Run removed another person's durable Builder log")
+			}
+			if after, err := os.ReadFile(pinPath); err != nil || !bytes.Equal(after, pinBefore) {
+				t.Fatal("Run changed the private session pin", err)
 			}
 			if err := RenameChatHistorySession("run", session, scope, "Changed by Run"); err == nil {
 				t.Fatal("Run renamed another person's Builder chat")

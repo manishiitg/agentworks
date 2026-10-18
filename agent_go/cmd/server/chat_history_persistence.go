@@ -3908,7 +3908,8 @@ func deleteWorkspaceChatHistorySession(result ChatHistoryCleanupResult, userID, 
 }
 
 func deleteUserChatHistorySession(result ChatHistoryCleanupResult, userID, sessionID string) (ChatHistoryCleanupResult, error) {
-	deleteCodeSessionPin(sessionID)
+	// Identity cleanup belongs to the authenticated caller after deletion
+	// succeeds. userID here may be a project's main owner acting for a Builder.
 	root := chatHistoryRoot(userID)
 	baseDir, ok := resolveLocalChatHistoryDir(root)
 	if !ok {

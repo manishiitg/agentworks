@@ -311,6 +311,7 @@ func (api *StreamingAPI) handleDeleteAgentProfileConversation(w http.ResponseWri
 		writeAgentProfileError(w, http.StatusInternalServerError, "delete conversation event log: "+err.Error())
 		return
 	}
+	deleteOwnCodeSessionPin(codeSessionPinCaller(r.Context()), sessionID)
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "deleted_paths": result.DeletedPaths})
 }
 
@@ -406,7 +407,7 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		_, _ = DeleteChatHistorySession(actingFor, record.SessionID, "")
 		removedIDs = append(removedIDs, record.SessionID)
 	}
-	api.deleteDurableChatSessionsAfterBulkDelete("project delete", removedIDs)
+	api.deleteDurableChatSessionsAfterBulkDelete("project delete", codeSessionPinCaller(r.Context()), removedIDs)
 	if strings.EqualFold(profile.ID, crewProfileID) {
 		// Older context-path references do not prevent deletion.
 		go pruneDeletedCrewReferences(context.WithoutCancel(r.Context()), actingFor, binding.WorkspacePath)

@@ -783,7 +783,7 @@ func (api *StreamingAPI) handleDeleteWorkflowFolder(w http.ResponseWriter, r *ht
 		http.Error(w, fmt.Sprintf("Failed to delete workflow folder: %v", err), http.StatusInternalServerError)
 		return
 	}
-	api.deleteDurableChatSessionsAfterBulkDelete("workflow folder delete", builderSessionIDs)
+	api.deleteDurableChatSessionsAfterBulkDelete("workflow folder delete", codeSessionPinCaller(r.Context()), builderSessionIDs)
 
 	deleteWorkflowRuntime(manifest.ID)
 

@@ -51,11 +51,11 @@ func (api *StreamingAPI) deleteDurableChatSessions(sessionIDs []string) error {
 // deleteDurableChatSessionsAfterBulkDelete runs once the transcripts are
 // already gone, so a retry cannot rediscover these IDs: log instead of failing
 // the request, which has already done its user-visible work.
-func (api *StreamingAPI) deleteDurableChatSessionsAfterBulkDelete(scope string, sessionIDs []string) {
-	for _, sessionID := range sessionIDs {
-		deleteCodeSessionPin(sessionID)
-	}
+func (api *StreamingAPI) deleteDurableChatSessionsAfterBulkDelete(scope, callerID string, sessionIDs []string) {
 	if err := api.deleteDurableChatSessions(sessionIDs); err != nil {
 		log.Printf("[EVENT_JOURNAL] %s removed transcripts but left durable rows: %v", scope, err)
+	}
+	for _, sessionID := range sessionIDs {
+		deleteOwnCodeSessionPin(callerID, sessionID)
 	}
 }

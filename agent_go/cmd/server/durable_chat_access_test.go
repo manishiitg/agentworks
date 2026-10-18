@@ -1,8 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -80,9 +82,18 @@ func TestDurableChatReadUsesHistoryVisibilityRule(t *testing.T) {
 
 func TestDeleteChatHistorySessionRemovesDurableRowsWithoutTranscript(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("MULTI_USER_MODE", "true")
 	const sessionID = "chat-json-already-gone"
 	api, store := newDurableChatAPI(t, sessionID, "alice")
+	if err := pinCodeSession(sessionID, "alice", "_users/alice/Chats/Code/projects/example"); err != nil {
+		t.Fatal(err)
+	}
+	pinPath, _ := codeSessionPinPath(sessionID)
+	pinBefore, err := os.ReadFile(pinPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	del := func(userID string) int {
 		req := httptest.NewRequest("DELETE", "/api/chat-history/sessions/"+sessionID, nil)
@@ -98,15 +109,22 @@ func TestDeleteChatHistorySessionRemovesDurableRowsWithoutTranscript(t *testing.
 	if owner, _ := store.DurableChatOwner(sessionID); owner != "alice" {
 		t.Fatalf("non-owner delete removed rows (owner now %q)", owner)
 	}
+	if after, err := os.ReadFile(pinPath); err != nil || !bytes.Equal(after, pinBefore) {
+		t.Fatal("refused deletion changed another person's private identity pin", err)
+	}
 	if code := del("alice"); code != 200 {
 		t.Fatalf("owner delete with missing transcript status = %d, want 200", code)
 	}
 	if owner, _ := store.DurableChatOwner(sessionID); owner != "" {
 		t.Fatalf("durable rows survived delete (owner %q)", owner)
 	}
+	if _, pinned, err := codeSessionPinFor(sessionID); err != nil || pinned {
+		t.Fatal("successful own deletion retained the caller's pin", err)
+	}
 }
 
 func TestBulkDeleteRemovesDurableRowsForDeletedTranscripts(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	const keep, gone = "chat-kept", "chat-cleaned"
 	api, store := newDurableChatAPI(t, gone, "alice")
 	store.SetSessionOwner(keep, "alice")
@@ -123,7 +141,20 @@ func TestBulkDeleteRemovesDurableRowsForDeletedTranscripts(t *testing.T) {
 	if len(ids) != 1 || ids[0] != gone {
 		t.Fatalf("ids = %v, want [%s]", ids, gone)
 	}
-	api.deleteDurableChatSessionsAfterBulkDelete("test cleanup", ids)
+	if err := pinCodeSession(gone, "alice", "_users/alice/Chats/Code/projects/example"); err != nil {
+		t.Fatal(err)
+	}
+	const otherPin = "other-builder-pin"
+	if err := pinCodeSession(otherPin, "bob", "_users/bob/Chats/Code/projects/example"); err != nil {
+		t.Fatal(err)
+	}
+	api.deleteDurableChatSessionsAfterBulkDelete("test cleanup", "alice", append(ids, otherPin))
+	if _, pinned, err := codeSessionPinFor(gone); err != nil || pinned {
+		t.Fatal("bulk deletion retained the caller's pin", err)
+	}
+	if pin, pinned, err := codeSessionPinFor(otherPin); err != nil || !pinned || pin.Person != "bob" {
+		t.Fatal("bulk deletion cleared a different Builder's private pin", err)
+	}
 	if owner, _ := store.DurableChatOwner(gone); owner != "" {
 		t.Fatalf("cleaned session kept durable rows (owner %q)", owner)
 	}
