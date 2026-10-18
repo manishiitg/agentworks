@@ -346,7 +346,7 @@ func (api *StreamingAPI) crewStoragePreview(s *crewStorageSnapshot) {
 	log.Printf("[CREW_STORAGE] operation=%s action=preview actor=%s state=complete projects=%d", s.ID, s.Actor, len(s.Projects))
 }
 
-func crewStorageArchive(ctx context.Context, s *crewStorageSnapshot, row *crewStorageProject) error {
+func crewStorageArchive(ctx context.Context, s *crewStorageSnapshot, row *crewStorageProject, verifyRestore bool) error {
 	dir, err := crewStorageDir(s.ID)
 	if err != nil {
 		return err
@@ -354,26 +354,33 @@ func crewStorageArchive(ctx context.Context, s *crewStorageSnapshot, row *crewSt
 	root := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(row.Source))
 	unlock := lockPublication("target:" + row.Source)
 	defer unlock()
-	before, _, _, err := crewStorageInventory(root, io.Discard)
-	if err != nil || before != row.Fingerprint {
-		return fmt.Errorf("files changed since preview; start a fresh preview")
+	var before string
+	if verifyRestore {
+		before, _, _, err = crewStorageInventory(root, io.Discard)
+		if err != nil || before != row.Fingerprint {
+			return fmt.Errorf("files changed since preview; start a fresh preview")
+		}
 	}
 	name := filepath.Join(dir, crewStorageHash(row.Key)+".tar.gz")
 	free, err := crewStorageFreeBytes(dir)
 	if err != nil {
 		return fmt.Errorf("backup space could not be checked")
 	}
-	// Leave space for the uncompressed restore and normal server work.
-	reserve := uint64(row.Bytes) + (1 << 30)
+	// Leave space for normal work, plus a scratch copy only when requested.
+	reserve := uint64(1 << 30)
+	if verifyRestore {
+		reserve += uint64(row.Bytes)
+	}
 	if free <= reserve {
-		return fmt.Errorf("there is not enough free space to verify a restore")
+		return fmt.Errorf("there is not enough free space to verify this backup")
 	}
 	file, err := os.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
+	archiveVerified := false
 	defer func() {
-		if !row.RestoreVerified {
+		if !archiveVerified {
 			_ = os.Remove(name)
 		}
 	}()
@@ -381,12 +388,32 @@ func crewStorageArchive(ctx context.Context, s *crewStorageSnapshot, row *crewSt
 	cmd.Stdout = &crewStorageArchiveWriter{output: file, remaining: int64(free - reserve)}
 	runErr := cmd.Run()
 	syncErr, closeErr := file.Sync(), file.Close()
+	if !verifyRestore && runErr != nil {
+		var exitErr *exec.ExitError
+		// GNU tar reports files changing during creation with status 1. The
+		// archive is still checked below; rename keeps the current live tree.
+		if errors.As(runErr, &exitErr) && exitErr.ExitCode() == 1 {
+			log.Printf("[CREW_STORAGE] operation=%s action=archive workspace=%s state=files_changed_during_archive", s.ID, row.WorkspaceID)
+			runErr = nil
+		}
+	}
 	if runErr != nil || syncErr != nil || closeErr != nil {
 		return fmt.Errorf("the archive could not be completed within the available backup space")
 	}
 	row.ArchiveSHA, row.ArchiveBytes, err = crewStorageFileHash(name)
 	if err != nil {
 		return err
+	}
+	if !verifyRestore {
+		// A folder rename preserves its original ownership. Check the saved
+		// archive without requiring privilege to recreate another UID's files.
+		cmd = exec.CommandContext(ctx, "tar", "-tzf", name)
+		cmd.Stdout = io.Discard
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("the saved archive could not be read completely")
+		}
+		archiveVerified = true
+		return nil
 	}
 	// Restoring in private server state proves readable bytes and actual
 	// ownership/ACL restoration under the existing service privileges.
@@ -408,6 +435,7 @@ func crewStorageArchive(ctx context.Context, s *crewStorageSnapshot, row *crewSt
 		return fmt.Errorf("the source changed during backup; start a fresh preview")
 	}
 	row.RestoreVerified = true
+	archiveVerified = true
 	return nil
 }
 
@@ -427,7 +455,7 @@ func (api *StreamingAPI) crewStorageBackup(s *crewStorageSnapshot, selected stri
 		current, exists := defaultProjectOwners().Lookup(row.Origin, s.Records[row.Key].Folder)
 		if !exists || crewStorageHash(current) != row.RecordHash {
 			row.BackupState, row.Reasons = "not_backed_up", []string{"The project record changed. Start a fresh preview."}
-		} else if err := crewStorageArchive(ctx, s, row); err != nil {
+		} else if err := crewStorageArchive(ctx, s, row, true); err != nil {
 			row.BackupState, row.Reasons = "not_backed_up", []string{err.Error()}
 		} else {
 			row.BackupState = "project_archive_verified"
@@ -488,10 +516,10 @@ func (api *StreamingAPI) crewStorageMove(s *crewStorageSnapshot, selected string
 			continue
 		}
 		var err error
-		if !row.RestoreVerified {
-			err = crewStorageArchive(ctx, s, row)
+		if !row.RestoreVerified && row.BackupState != "archive_verified" {
+			err = crewStorageArchive(ctx, s, row, false)
 			if err == nil {
-				row.BackupState = "project_archive_verified"
+				row.BackupState = "archive_verified"
 			} else {
 				row.BackupState = "not_backed_up"
 			}

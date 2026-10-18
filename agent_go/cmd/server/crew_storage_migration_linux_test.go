@@ -209,3 +209,39 @@ func TestCrewStorageBackupRetryKeepsReceipt(t *testing.T) {
 		t.Fatalf("retry lost durable receipt: %v", err)
 	}
 }
+
+// Moving the existing inode tree does not require recreating its file owners.
+// Keep a readable, checksummed archive without claiming a scratch restore.
+func TestCrewStorageMoveWithArchiveOnly(t *testing.T) {
+	f := newMultiUserFixture(t, legacyIdentityLayout())
+	s := &crewStorageSnapshot{ID: uuid.NewString(), Actor: fixtureUserA, MoveActor: fixtureUserA, State: "scanning"}
+	if err := crewStorageSave(s); err != nil {
+		t.Fatal(err)
+	}
+	f.API.crewStoragePreview(s)
+	if s.State != "complete" {
+		t.Fatalf("preview: %s %s", s.State, s.Error)
+	}
+	// A current chat can keep writing between preview and the move. This is
+	// not project-busy admission: archive it now and preserve the live tree.
+	root := filepath.Join(f.Docs, filepath.FromSlash(f.Layout.CodePhysical(fixtureUserA, fixtureCodeFolder)))
+	if err := os.WriteFile(filepath.Join(root, "after-preview.txt"), []byte("CURRENT_WORK"), 0640); err != nil {
+		t.Fatal(err)
+	}
+	f.API.crewStorageMove(s, "code:"+fixtureCodeID)
+	for _, row := range s.Projects {
+		if row.WorkspaceID != "code:"+fixtureCodeID {
+			continue
+		}
+		if row.State != "moved" || row.BackupState != "archive_verified" || row.RestoreVerified || row.ArchiveSHA == "" {
+			t.Fatalf("archive-only move: %+v", row)
+		}
+		dir, _ := crewStorageDir(s.ID)
+		sum, size, err := crewStorageFileHash(filepath.Join(dir, crewStorageHash(row.Key)+".tar.gz"))
+		if err != nil || sum != row.ArchiveSHA || size != row.ArchiveBytes {
+			t.Fatal("verified archive was not retained", err)
+		}
+		return
+	}
+	t.Fatal("project missing from move result")
+}

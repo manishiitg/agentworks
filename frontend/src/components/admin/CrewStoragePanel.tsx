@@ -73,7 +73,7 @@ export default function CrewStoragePanel() {
         <td className="p-2">{project.name}</td><td className="p-2">{project.owner_name || 'Unknown'}</td>
         <td className="p-2">{project.bytes ? (project.bytes / 1048576).toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' MB' : '—'}</td>
         <td className="p-2">{stateLabel[project.state] || project.state}{project.reasons?.map(reason => <p key={reason} className="text-xs text-muted-foreground">{reason}</p>)}</td>
-        <td className="p-2">{project.restore_verified ? 'Project archive and restore verified' : project.state === 'ready' && project.workspace_id
+        <td className="p-2">{project.restore_verified ? 'Project archive and restore verified' : project.backup_state === 'archive_verified' ? 'Project archive verified' : project.state === 'ready' && project.workspace_id
           ? <Button disabled={working} onClick={() => { void backup(project.workspace_id!) }}>Back up and verify restore</Button>
           : project.backup_state === 'not_backed_up' ? 'Not backed up' : '—'}</td>
         <td className="p-2">{project.state === 'ready' && project.workspace_id && status.move_available ? <Button disabled={working} onClick={() => { void move(project.workspace_id!) }}>Move to Crew</Button> : '—'}</td>
