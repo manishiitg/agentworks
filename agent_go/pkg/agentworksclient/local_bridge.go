@@ -142,8 +142,10 @@ type localOffer struct {
 	// message can be explained afterwards.
 	FirstDeniedAt time.Time `json:"first_denied_at,omitempty"`
 	Denials       int       `json:"denials,omitempty"`
-	Transport     string    `json:"transport,omitempty"`
-	OfferedAt     time.Time `json:"offered_at,omitempty"`
+	// RetryAt keeps a message the server left out from being asked about again at once: each denial doubles the wait.
+	RetryAt   time.Time `json:"retry_at,omitempty"`
+	Transport string    `json:"transport,omitempty"`
+	OfferedAt time.Time `json:"offered_at,omitempty"`
 }
 
 type localSession struct {
@@ -1647,8 +1649,9 @@ func museRedelivery(s *localSession, m localOffer, transport string) bool {
 }
 
 func localPending(s *localSession) bool {
+	now := time.Now()
 	for _, m := range s.Offers {
-		if !m.Offered && !m.Suppressed {
+		if !m.Offered && !m.Suppressed && !now.Before(m.RetryAt) {
 			return true
 		}
 	}
@@ -2221,8 +2224,9 @@ func (b *localBridge) messageAuthorized(ctx context.Context, s *localSession, id
 
 func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, transport string, limit int) ([]AgentLiveMessage, int, map[string]int, error) {
 	var messages []AgentLiveMessage
+	now := time.Now()
 	for _, m := range s.Offers {
-		if !m.Offered && !m.Suppressed || museRedelivery(s, m, transport) {
+		if (!m.Offered && !m.Suppressed && !now.Before(m.RetryAt)) || museRedelivery(s, m, transport) {
 			messages = append(messages, m.AgentLiveMessage)
 		}
 	}
@@ -2249,7 +2253,13 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 	for _, m := range messages {
 		ids = append(ids, m.MessageID)
 	}
-	raw, err := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": ids}, true)
+	// The server calls run without the bridge lock so other chats' commands do not wait behind them.
+	snap := &localSession{Attachment: s.Attachment, client: s.client}
+	var raw json.RawMessage
+	var err error
+	b.unlocked(func() {
+		raw, err = snap.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": snap.Attachment.AgentName, "attachment_id": snap.Attachment.ID, "message_ids": ids}, true)
+	})
 	if err != nil {
 		return nil, 0, nil, errors.New("attachment or messages no longer authorized")
 	}
@@ -2272,7 +2282,12 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 				left = append(left, id)
 			}
 		}
-		if raw2, e := s.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": left}, true); e == nil {
+		var raw2 json.RawMessage
+		var e error
+		b.unlocked(func() {
+			raw2, e = snap.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": snap.Attachment.AgentName, "attachment_id": snap.Attachment.ID, "message_ids": left}, true)
+		})
+		if e == nil {
 			var again struct {
 				IDs         []string       `json:"message_ids"`
 				HeldReasons map[string]int `json:"held_reasons"`
@@ -2293,7 +2308,7 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 		if allowed[m.MessageID] {
 			filtered = append(filtered, m)
 			if v := s.Offers[m.MessageID]; !v.DeniedAt.IsZero() {
-				v.DeniedAt = time.Time{}
+				v.DeniedAt, v.RetryAt = time.Time{}, time.Time{}
 				s.Offers[m.MessageID] = v
 			}
 		} else {
@@ -2305,6 +2320,8 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 				v.FirstDeniedAt = v.DeniedAt
 			}
 			v.Denials++
+			wait := time.Second << min(v.Denials-1, 4) // 1s, 2s, 4s, 8s, then 16s
+			v.RetryAt = time.Now().Add(wait)
 			held++
 			if time.Since(v.DeniedAt) > time.Hour {
 				v.Suppressed = true
