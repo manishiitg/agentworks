@@ -50,6 +50,11 @@ func latestServedCLIBuild() string {
 	return servedCLIBuild.build
 }
 
+// cliUpdateNotice is what an agent is told, in its own message results, when the CLI it runs through is older than the
+// one this server offers. It reaches every app that reads messages (with or without hooks), including older CLIs, because
+// it rides in the server's reply. The agent passes it to its person.
+const cliUpdateNotice = "A newer AgentWorks CLI is available on this server. Tell the person to run `agentworks update` (then `agentworks setup <app>` for their coding app) and restart the app; until then some features may not work."
+
 func agentUpdateNeeded(a namedMessageAgent) bool {
 	if a.Attachment == nil || a.Attachment.ClientBuild == "" || a.Attachment.ClientBuild == "dev" {
 		return false

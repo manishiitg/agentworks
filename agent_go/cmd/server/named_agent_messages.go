@@ -510,6 +510,9 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 				next = items[len(items)-1]["sequence"].(int)
 			}
 			out := map[string]interface{}{"agent_name": a.Name, "messages": items, "next_cursor": next}
+			if agentUpdateNeeded(a) {
+				out["update_notice"] = cliUpdateNotice
+			}
 			// What this agent sent recently, and where each message stands.
 			fresh, readErr := readAgentMessageSnapshot(ctx)
 			if readErr == nil {

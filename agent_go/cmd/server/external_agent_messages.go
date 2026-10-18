@@ -304,6 +304,12 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 		if list, _ := out["agents"].([]map[string]interface{}); !slices.ContainsFunc(list, func(a map[string]interface{}) bool { _, other := a["owner"]; return other }) {
 			out["hint"] = "Agents of other people appear here once they publish them to the network. Ask the other person to tell their agent to publish it (agentworks share)."
 		}
+		if list, _ := out["agents"].([]map[string]interface{}); slices.ContainsFunc(list, func(a map[string]interface{}) bool {
+			_, other := a["owner"]
+			return a["update_needed"] == true && !other
+		}) {
+			out["update_notice"] = cliUpdateNotice
+		}
 		externalJSON(w, out)
 	case "state":
 		api.externalAgentMessageState(w, r, args)
