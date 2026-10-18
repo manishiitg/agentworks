@@ -50,6 +50,9 @@ func TestExternalPulseSettingsAndRunNeedEditAccess(t *testing.T) {
 	if w := f.call(t, "reader", "run_after_run", map[string]any{"workflow_id": "invoices", "option": "backup"}); w.Code != 403 {
 		t.Fatalf("reader started a backup: %d %s", w.Code, w.Body)
 	}
+	if w := f.call(t, "owner", "builder_pulse_chat", map[string]any{"workflow_id": "invoices", "message": "How is the goal doing?"}); w.Code != 409 || !strings.Contains(w.Body.String(), errPulseOff.Error()) {
+		t.Fatalf("OFF chat needs the plain next step: %d %s", w.Code, w.Body)
+	}
 	w := f.call(t, "owner", "update_settings", map[string]any{"workflow_id": "invoices", "pulse": map[string]any{"enabled": true, "outward_actions": "allow"}, "after_manual_run": map[string]any{"notify": true}})
 	if w.Code != 200 {
 		t.Fatalf("owner pulse settings: %d %s", w.Code, w.Body)

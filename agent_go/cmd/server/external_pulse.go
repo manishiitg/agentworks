@@ -11,7 +11,11 @@ import (
 func (api *StreamingAPI) externalPulseCall(w http.ResponseWriter, r *http.Request, name string, args map[string]interface{}, workflow DiscoveredWorkflow) {
 	ctx := r.Context()
 	if !workflowHasGoal(ctx, workflow.WorkspacePath) {
-		externalError(w, http.StatusConflict, "pulse_unavailable", "This workflow's Pulse is off or has no goal yet (Pulse on and soul/soul.md).")
+		reason := "Pulse needs a written goal. Add it in the Builder chat before using Pulse."
+		if !workflow.Manifest.PulseEnabled() {
+			reason = errPulseOff.Error()
+		}
+		externalError(w, http.StatusConflict, "pulse_unavailable", reason)
 		return
 	}
 	switch name {
