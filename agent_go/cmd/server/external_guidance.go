@@ -139,6 +139,16 @@ func externalNamedOperationsFor(claims *UserClaims, body string) []string {
 		for _, tool := range catalog {
 			if claims == nil || externalTokenAllows(claims, tool) {
 				exposed[tool.Name] = true
+				properties, _ := tool.InputSchema["properties"].(map[string]any)
+				action, _ := properties["action"].(map[string]any)
+				names, _ := strictStringSliceToolArg(action["enum"])
+				for _, name := range names {
+					// An explicitly qualified action is available through its
+					// admitted parent, even when it is not a standalone tool.
+					if externalTextMentions(body, tool.Name+" action="+name) {
+						exposed[name] = true
+					}
+				}
 			}
 		}
 	}

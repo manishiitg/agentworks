@@ -215,6 +215,16 @@ func TestExternalWorkflowKnowledgeListsAndReads(t *testing.T) {
 // trial. New builder/run tools are covered automatically; newly exposed
 // external tools stop requiring disclosure automatically.
 func TestExternalGuidanceTopicsDiscloseUnavailableTools(t *testing.T) {
+	qualified := "Use `workspace action=read_saved_chat` for the saved publication history."
+	for _, name := range externalNamedOperationsFor(nil, qualified) {
+		if name == "read_saved_chat" {
+			t.Fatal("an admitted workspace action was reported as an unavailable tool")
+		}
+	}
+	limited := externalNamedOperationsFor(patClaims("member", []string{"workflows:read"}), qualified)
+	if !externalTextMentions(strings.Join(limited, ", "), "read_saved_chat") {
+		t.Fatal("an action borrowed availability from a parent outside this token's catalog")
+	}
 	catalog, err := externalTools()
 	if err != nil {
 		t.Fatal(err)
