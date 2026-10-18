@@ -543,12 +543,6 @@ func (api *StreamingAPI) buildSessionExecutionTree(session *ActiveSessionInfo) *
 		if node == nil || nodeID == rootID {
 			continue
 		}
-		// Reuse the same server-issued receipt as the chat's Inspect action.
-		// Main turns, Crew/Flow work and unrecorded event-only nodes cannot
-		// become step inspectors just because their name resembles a step.
-		if node.Source == "background_agent_registry" && workflowStepInspectionKind(node.Kind) {
-			node.Inspection = api.executionInspectionTarget(session.SessionID, node.ExecutionID)
-		}
 		parent := nodes[node.ParentExecutionID]
 		if parent == nil {
 			parent = root
@@ -638,6 +632,24 @@ func (api *StreamingAPI) handleGetSessionExecutionTree(w http.ResponseWriter, r 
 	if tree == nil {
 		http.Error(w, "Execution tree not available", http.StatusNotFound)
 		return
+	}
+	// Navigation receipts are added only at this authenticated HTTP boundary,
+	// after the inspector's current workspace and parent ownership checks.
+	// Generic execution-tree consumers must not acquire inspection authority.
+	workspace, valid := cleanWorkspaceReadPath(sessionCopy.WorkspacePath, true)
+	if valid && api.ownsChatSession(r, sessionID) &&
+		workspaceReadAllowed(r.Context(), GetUserFromContext(r.Context()), workspace, logicalPathIsDefaultUser, false) &&
+		workflowStepInspectionWorkspace(r.Context(), workspace) {
+		var addInspections func(*SessionExecutionTreeNode)
+		addInspections = func(node *SessionExecutionTreeNode) {
+			if node.SessionID == sessionID && node.Source == "background_agent_registry" && workflowStepInspectionKind(node.Kind) {
+				node.Inspection = api.executionInspectionTarget(sessionID, node.ExecutionID)
+			}
+			for _, child := range node.Children {
+				addInspections(child)
+			}
+		}
+		addInspections(tree.Root)
 	}
 
 	if err := json.NewEncoder(w).Encode(tree); err != nil {

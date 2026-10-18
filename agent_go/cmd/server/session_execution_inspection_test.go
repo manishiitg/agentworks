@@ -154,7 +154,14 @@ func TestInspectionTargetsOnlyWorkflowSteps(t *testing.T) {
 	}
 	checkTreeTargets := func(want int) {
 		t.Helper()
-		tree := api.buildSessionExecutionTree(api.activeSessions["chat"])
+		req := httptest.NewRequest(http.MethodGet, "/sessions/chat/execution-tree", nil)
+		req = mux.SetURLVars(req, map[string]string{"session_id": "chat"})
+		response := httptest.NewRecorder()
+		api.handleGetSessionExecutionTree(response, req)
+		var tree SessionExecutionTreeResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &tree); err != nil || response.Code != http.StatusOK {
+			t.Fatalf("tree response: status=%d err=%v", response.Code, err)
+		}
 		count := 0
 		var walk func(*SessionExecutionTreeNode)
 		walk = func(node *SessionExecutionTreeNode) {
@@ -186,6 +193,60 @@ func TestInspectionTargetsOnlyWorkflowSteps(t *testing.T) {
 		t.Fatal("Crew advertised workflow step inspection")
 	}
 	checkTreeTargets(0)
+}
+
+func TestExecutionTreeInspectionReceiptsRequireCurrentAccess(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	t.Setenv("MULTI_USER_MODE", "true")
+	workspace := &mockWorkspaceAPI{files: map[string]string{}}
+	srv := httptest.NewServer(workspace)
+	defer srv.Close()
+	t.Setenv("WORKSPACE_API_URL", srv.URL)
+	api := lifecycleTestAPI()
+	api.activeSessions = map[string]*ActiveSessionInfo{"chat": {SessionID: "chat", WorkspacePath: "Workflow/example", UserID: "alice"}}
+	api.bgAgentRegistry.Register("chat", &BackgroundAgent{ID: "step", Kind: "workflow_step", Metadata: map[string]string{"step_id": "research"}})
+	setOwner := func(owner string) {
+		t.Helper()
+		if err := writeFileToWorkspace(context.Background(), "Workflow/example/workflow.json", `{"id":"goal","kind":"workflow","created_by":"`+owner+`"}`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	request := func(user string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/sessions/chat/execution-tree", nil)
+		req = mux.SetURLVars(req, map[string]string{"session_id": "chat"})
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: user}))
+		w := httptest.NewRecorder()
+		api.handleGetSessionExecutionTree(w, req)
+		return w
+	}
+	setOwner("alice")
+	if response := request("alice"); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"inspection"`) {
+		t.Fatalf("owner did not receive the receipt: %d %s", response.Code, response.Body.String())
+	}
+	if tree := api.buildSessionExecutionTree(api.activeSessions["chat"]); tree.Root.Children[0].Inspection != nil {
+		t.Fatal("generic tree builder bypassed request authorization")
+	}
+	setOwner("other") // The chat owner no longer has project access.
+	if response := request("alice"); response.Code != http.StatusOK || strings.Contains(response.Body.String(), `"inspection"`) {
+		t.Fatalf("revoked project access advertised inspection: %d %s", response.Code, response.Body.String())
+	}
+	inspect := httptest.NewRequest(http.MethodGet, "/sessions/chat/background-work/step/inspect?workspace_path=Workflow/example", nil)
+	inspect = mux.SetURLVars(inspect, map[string]string{"session_id": "chat", "execution_id": "step"})
+	inspect = inspect.WithContext(context.WithValue(inspect.Context(), UserContextKey, &UserClaims{UserID: "alice"}))
+	denied := httptest.NewRecorder()
+	api.handleInspectSessionExecution(denied, inspect)
+	if denied.Code != http.StatusNotFound || !strings.Contains(denied.Body.String(), "Execution not found") {
+		t.Fatalf("a retained receipt bypassed current inspector access: %d %s", denied.Code, denied.Body.String())
+	}
+	setOwner("alice")
+	api.activeSessions["chat"].UserID = ""
+	if response := request("alice"); response.Code != http.StatusOK || strings.Contains(response.Body.String(), `"inspection"`) {
+		t.Fatalf("non-default caller acquired an ownerless chat's receipt: %d %s", response.Code, response.Body.String())
+	}
+	api.activeSessions["chat"].UserID = "alice"
+	if response := request("bob"); response.Code != http.StatusNotFound {
+		t.Fatalf("another user read the execution tree: %d", response.Code)
+	}
 }
 
 // Uses the actual durable transcript writer and HTTP reader. Two dispatches of
