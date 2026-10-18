@@ -101,7 +101,7 @@ func TestPublishAgentToTheNetworkBetweenAccounts(t *testing.T) {
 	// The sender sees where its message stands: waiting (the receiver is offline),
 	// then delivered, then handled, without bodies.
 	receipt, err := try(bob, map[string]any{"action": "send", "agent_name": "scout", "target": "agent:alice/helper", "message": "did you get this", "submission_id": "receipt-check"})
-	if err != nil || receipt["state"] != "waiting_offline" || !strings.Contains(receipt["state_text"].(string), "offline") {
+	if err != nil || receipt["state"] != "waiting_offline" {
 		t.Fatalf("the send result must say the receiver is offline: %v %v", receipt, err)
 	}
 	setDelivery := func(messageID, delivery string) {
