@@ -87,7 +87,7 @@ export function DashboardQuestionConversation({ resourceId, revision, projectId,
       if (generation.current !== token) throw new Error('The dashboard account changed.')
       if (!data.capability.can_ask || data.project_id !== projectId || data.product !== product) throw new Error('Ask is no longer available for this dashboard.')
       const previous = boundRef.current
-      const id = previous && previous.viewer === viewer && previous.resourceId === resourceId ? previous.tabId : await openProjectAskConversation({ product, projectId, workspacePath })
+      const id = previous && previous.viewer === viewer && previous.resourceId === resourceId ? previous.tabId : await openProjectAskConversation({ product, projectId, workspacePath }, { activate: false })
       if (generation.current !== token) throw new Error('The dashboard account changed.')
       setBound({ tabId: id, viewer: viewer!, resourceId }); setError(null)
       return id

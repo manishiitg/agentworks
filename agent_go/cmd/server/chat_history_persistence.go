@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
 	"os"
@@ -3081,6 +3082,8 @@ func cleanChatHistoryForPersistence(history []llmtypes.MessageContent) []llmtype
 	return cleaned
 }
 
+var errChatHistoryConversationNotFound = errors.New("conversation not found")
+
 // ReadChatHistoryConversation reads the persisted conversation JSON for a session.
 func ReadChatHistoryConversation(userID, sessionID, workspacePath string) (json.RawMessage, error) {
 	if userID == "" {
@@ -3088,7 +3091,7 @@ func ReadChatHistoryConversation(userID, sessionID, workspacePath string) (json.
 	}
 	sessionID = sanitizeChatHistorySessionID(sessionID)
 	if sessionID == "" {
-		return nil, fmt.Errorf("conversation not found")
+		return nil, errChatHistoryConversationNotFound
 	}
 	workspacePath = normalizeChatHistoryWorkspacePath(workspacePath)
 	if crewBuilderDiskHiddenFromUser(userID, workspacePath) {
@@ -3107,7 +3110,7 @@ func ReadChatHistoryConversation(userID, sessionID, workspacePath string) (json.
 		if data, ok, err := readWorkflowScopedChatHistoryConversationFromWorkspace(sessionID, legacy); ok || err != nil {
 			return data, err
 		}
-		return nil, fmt.Errorf("conversation not found")
+		return nil, errChatHistoryConversationNotFound
 	}
 	if workspacePath != "" {
 		// A Crew or Code project's transcripts sit under the signed-in person's own
@@ -3156,7 +3159,7 @@ func ReadChatHistoryConversation(userID, sessionID, workspacePath string) (json.
 		return nil, err
 	}
 	if !exists {
-		return nil, fmt.Errorf("conversation not found")
+		return nil, errChatHistoryConversationNotFound
 	}
 	return json.RawMessage(data), nil
 }

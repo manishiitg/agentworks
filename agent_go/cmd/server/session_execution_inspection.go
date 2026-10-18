@@ -342,38 +342,57 @@ func appendDurableStepInspections(ctx context.Context, tree *SessionExecutionTre
 		}
 	}
 	visit(tree.Root)
+	byID := make(map[string]BackgroundAgentLogEntry, len(records))
+	for _, record := range records {
+		byID[record.AgentID] = record
+	}
 	inspected := 0
 	for _, record := range records {
 		if (record.Kind != "" && !workflowStepInspectionKind(record.Kind)) || record.Kind == "agent_item" || !inspectionIdentityPart(record.AgentID) {
 			continue
 		}
+		nested := false
+		parentID := record.ParentExecutionID
+		for visited := 0; parentID != "" && visited < 1000; visited++ {
+			if node := nodes[parentID]; node != nil && node.Inspection != nil {
+				nested = true
+				break
+			}
+			parent, found := byID[parentID]
+			if !found {
+				break
+			}
+			if parentID == record.AgentID || workflowStepInspectionKind(parent.Kind) {
+				nested = true
+				break
+			}
+			parentID = parent.ParentExecutionID
+		}
+		if nested {
+			continue
+		}
 		if node := nodes[record.AgentID]; node != nil && node.Inspection != nil {
 			continue
 		}
-		if inspected >= 100 {
-			break
+		key := inspectionReceiptCacheKey{Store: getWorkspaceAPIURL(), Workspace: workspace, Session: sessionID, Execution: record.AgentID, UpdatedAt: record.UpdatedAt, Status: record.Status}
+		target, cached := cachedInspectionReceipt(key)
+		if !cached {
+			if inspected >= 100 {
+				break
+			}
+			inspected++
+			target = readDurableInspectionReceipt(ctx, key)
 		}
-		inspected++
-		content, exists, err := readFileFromWorkspaceQueryWithLimit(ctx, orchEvents.BackgroundAgentTranscriptPath(workspace, sessionID, record.AgentID), "", 4<<20)
-		if err != nil || !exists {
+		if target == nil {
 			continue
 		}
-		transcript, err := orchEvents.ParseBackgroundAgentTranscript(content)
-		if err != nil || transcript == nil || transcript.SessionID != sessionID || transcript.AgentID != record.AgentID || transcript.Inspection == nil {
-			continue
-		}
-		target := *transcript.Inspection
-		if target.SessionID != sessionID || target.ExecutionID != record.AgentID || target.WorkspacePath != workspace || target.StepID == "" || (target.WorkflowKind != "" && target.WorkflowKind != "workflow") || !workflowStepInspectionKind(target.ExecutionKind) || target.ExecutionKind == "agent_item" {
-			continue
-		}
-		target.Name = redaction.Text(target.Name)
 		node := nodes[target.ExecutionID]
 		if node == nil {
 			node = &SessionExecutionTreeNode{SessionID: sessionID, ExecutionID: target.ExecutionID, ParentExecutionID: tree.Root.ExecutionID, Source: "background_agent_log", Kind: target.ExecutionKind, Name: target.Name, Status: record.Status, StartedAt: target.StartedAt}
 			tree.Root.Children = append(tree.Root.Children, node)
 			nodes[target.ExecutionID] = node
 		}
-		node.Inspection = &target
+		node.Inspection = target
 	}
 	sortSessionExecutionTree(tree.Root)
 }

@@ -109,7 +109,7 @@ type WorkspacePaneChatRequest = {
  * Dashboard HTML, human decisions, Ask AI, Pulse, and Work-project panes all
  * resolve their destination here and then use the same durable chat queue.
  */
-export async function resolveWorkspacePaneChatTab(request: WorkspacePaneChatRequest): Promise<{ tabId: string; targetTab: ChatTab; reused: boolean }> {
+export async function resolveWorkspacePaneChatTab(request: WorkspacePaneChatRequest, options?: { activate?: boolean }): Promise<{ tabId: string; targetTab: ChatTab; reused: boolean }> {
   const workspacePath = 'workspacePath' in request ? request.workspacePath : undefined
   const requestedTabId = 'tabId' in request ? request.tabId : undefined
   const profileId = 'profileId' in request ? request.profileId : undefined
@@ -133,7 +133,7 @@ export async function resolveWorkspacePaneChatTab(request: WorkspacePaneChatRequ
     if (!workspacePath) throw new Error('An automation path or project conversation is required.')
     const preset = await findWorkflowPreset(workspacePath)
     if (!preset) throw new Error(`Could not find the automation for ${workspacePath}.`)
-    if (!selectWorkflowPreset(preset)) throw new Error('Failed to open the automation.')
+    if (options?.activate !== false && !selectWorkflowPreset(preset)) throw new Error('Failed to open the automation.')
 
     const chatStore = useChatStore.getState()
     targetTab = selectWorkspacePaneWorkflowTab(chatStore.chatTabs, preset.id, chatStore.activeTabId)
@@ -146,7 +146,7 @@ export async function resolveWorkspacePaneChatTab(request: WorkspacePaneChatRequ
         phaseId: 'workflow-builder',
         phaseName: 'Automation Builder',
         presetQueryId: preset.id,
-      })
+      }, undefined, options)
       targetTab = useChatStore.getState().getTab(tabId)
     }
     if (!targetTab) throw new Error('Failed to open a chat for this message.')
