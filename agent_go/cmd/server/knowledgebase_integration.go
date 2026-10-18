@@ -15,6 +15,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
@@ -113,6 +114,11 @@ func knowledgeProjectLoad(ctx context.Context, userID, workspace string, require
 		}
 		p.Owners = append([]string{}, manifest.effectiveOwners()...)
 		p.Audience = append(append(append([]string{}, manifest.effectiveOwners()...), manifest.effectiveEditors()...), manifest.effectiveReaders()...)
+		// The single-user local app never stamps an owner on workflows; its one person owns them (owner, 2026-10-18).
+		if len(p.Owners) == 0 && productpolicy.Local() && !IsMultiUserMode() && strings.TrimSpace(userID) != "" {
+			p.Owners = []string{userID}
+			p.Audience = append(p.Audience, userID)
+		}
 		for _, source := range manifest.KnowledgebaseSources {
 			p.Reserved = append(p.Reserved, source.Alias)
 		}

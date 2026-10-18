@@ -6,9 +6,9 @@
 # Get script directory first (needed for both test and server modes)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Ordinary local launches offer Goals and Crew. The explicit development
-# opt-in below enables server products without changing local authentication.
-LOCAL_SERVER_PRODUCTS=false
+# Local launches offer every core product (owner, 2026-10-18); --without-server-products
+# keeps only Goals, Crew and AgentBridge. Local authentication is unchanged.
+LOCAL_SERVER_PRODUCTS=true
 
 # Keep the local app on the latest main (2026-09-30). The three checkouts next to each other
 # (this repo, ../mcpagent, ../multi-llm-provider-go) are the local app and must stay clean copies
@@ -84,7 +84,7 @@ BACKGROUND_MODE=false
 WITH_WORKSPACE=false
 WITH_FRONTEND=false
 ONLY_FRONTEND=false
-WITH_GATEWAY=false
+WITH_GATEWAY=true
 ONLY_GATEWAY=false
 GATEWAY_EXPLICIT=false
 UPDATE_MMX_CLI=false
@@ -106,8 +106,10 @@ print_usage() {
     printf '%s\n' '  --with-workspace              Start the local workspace service.'
     printf '%s\n' '  --with-frontend               Start the frontend and Electron app.'
     printf '%s\n' '  --only-frontend               Start only the frontend and Electron app.'
-    printf '%s\n' '  --with-server-products        Opt into Code, Vault, Brain, Relays locally.'
+    printf '%s\n' '  (default)                     All core products: Goals, Crew, Flows, Code, Brain, Vault, AgentBridge.'
+    printf '%s\n' '  --with-server-products        Require Vault to start (fail instead of continuing without it).'
     printf '%s\n' '  --with-gateway                Alias for --with-server-products.'
+    printf '%s\n' '  --without-server-products     Only Goals, Crew and AgentBridge.'
     printf '%s\n' '  --only-gateway                Start the standalone server gateway for development (no local app).'
     printf '%s\n' '  --build                       Build and serve the frontend (use with --only-frontend).'
     printf '%s\n' '  --without-electron            Do not launch Electron.'
@@ -142,6 +144,11 @@ for arg in "$@"; do
             ;;
         --only-frontend)
             ONLY_FRONTEND=true
+            ;;
+        --without-server-products)
+            LOCAL_SERVER_PRODUCTS=false
+            WITH_GATEWAY=false
+            GATEWAY_EXPLICIT=false
             ;;
         --with-server-products|--with-gateway)
             LOCAL_SERVER_PRODUCTS=true
@@ -2368,8 +2375,8 @@ fi
 if [ "$WITH_GATEWAY" = true ]; then
     # An explicit opt-in requires a healthy Vault; never leave a dangling URL.
     if ! start_mcp_gateway; then
-        if [ "${LOCAL_VAULT:-false}" = true ]; then
-            echo "❌ Vault failed to start; see ${GATEWAY_LOG_PATH}. Fix the error there, or omit --with-server-products to run the ordinary local app."
+        if [ "${LOCAL_VAULT:-false}" = true ] && [ "$GATEWAY_EXPLICIT" = true ]; then
+            echo "❌ Vault failed to start; see ${GATEWAY_LOG_PATH}. Fix the error there, or start with --without-server-products."
             exit 1
         fi
         if [ "$GATEWAY_EXPLICIT" = true ]; then

@@ -350,3 +350,34 @@ func TestBrainCodeProjectUsesBrainAsItsOwner(t *testing.T) {
 		t.Fatal("Code could not write to Brain:", err)
 	}
 }
+
+// The single-user local app never stamps an owner on workflows; Brain treats
+// its one person as the owner there, and nowhere else (owner, 2026-10-18).
+func TestBrainUnownedWorkflowBelongsToTheLocalPerson(t *testing.T) {
+	knowledgeIntegrationFixture(t)
+	root := os.Getenv("WORKSPACE_DOCS_PATH")
+	workspace := "Workflow/unowned"
+	if err := os.MkdirAll(filepath.Join(root, workspace), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, workspace, "workflow.json"), []byte(`{"id":"unowned-workflow"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MULTI_USER_MODE", "")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	if _, err := knowledgeProjectLoad(t.Context(), "admin", workspace, true); err == nil {
+		t.Fatal("a server must still refuse an unowned workflow")
+	}
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	project, err := knowledgeProjectLoad(t.Context(), "admin", workspace, true)
+	if err != nil {
+		t.Fatal("local app refused its own workflow:", err)
+	}
+	if len(project.Owners) != 1 || project.Owners[0] != "admin" {
+		t.Fatalf("local owners = %v", project.Owners)
+	}
+	t.Setenv("MULTI_USER_MODE", "true")
+	if _, err := knowledgeProjectLoad(t.Context(), "admin", workspace, true); err == nil {
+		t.Fatal("a multi-user local install must still refuse an unowned workflow")
+	}
+}
