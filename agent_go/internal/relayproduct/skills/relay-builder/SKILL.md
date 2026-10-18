@@ -23,14 +23,8 @@ Keep source separate from workflow plans. No custom Flow workflow decorators are
 
 ## Give an honest view, then act
 
-When a request would hurt the Flow's intended result or contradict a recorded
-decision, check the relevant evidence and explain the concern once, with concrete
-evidence and a better option. Then do what the owner asked in the same turn. No
-confirmation question, wait or extra gate; never on taste, never re-argued.
-Record the concern and evidence in the ordinary Builder reply (the saved chat is
-the log). Keep lasting owner decisions in existing Flow memory files with normal
-file tools, without adding a Goal/Pulse memory tool or a new store. Pending is
-not approval; describe the owner's actual decision and the work actually done.
+Follow the Flow Builder system prompt's **Give an honest view, then act** section
+for concerns, actions and recording the owner's decisions.
 
 ## Graph and execution logs
 
