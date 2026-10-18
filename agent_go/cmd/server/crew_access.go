@@ -156,6 +156,9 @@ func resolveConversationBindingForUser(ctx context.Context, userID string, profi
 // from the reader's own central store only, never from the owner's
 // builder/conversation transcripts on disk.
 func crewBuilderDiskHiddenFromUser(userID, workflowPath string) bool {
+	// History mutations use this check before local I/O. Any new project
+	// spelling accepted by resolveLocalWorkflowDir must also be recognized
+	// by isProjectWorkspacePath, or it could bypass this Builder boundary.
 	// Every owner reads every Builder conversation of the Crew, the main owner's included (owner, 2026-10-16: "all owners see
 	// all Builder chats"). Run people (readers) still see none.
 	return isProjectWorkspacePath(workflowPath) && !crewProjectOwnedByCaller(userID, workflowPath)

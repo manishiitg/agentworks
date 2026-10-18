@@ -772,8 +772,14 @@ func (index *chatHistoryIndex) normalize() {
 			// Writer-built entries can have no source mtime. UpdatedAt is
 			// available in both index forms; retain a custom title whichever
 			// entry wins, with stable ordering for otherwise identical entries.
-			keepPrevious := previous.Session.UpdatedAt > entry.Session.UpdatedAt ||
-				(previous.Session.UpdatedAt == entry.Session.UpdatedAt && (previous.SourceModifiedAtUnixNano > entry.SourceModifiedAtUnixNano ||
+			updatedOrder := strings.Compare(previous.Session.UpdatedAt, entry.Session.UpdatedAt)
+			if previousTime, previousOK := parseChatHistoryCleanupTime(previous.Session.UpdatedAt); previousOK {
+				if entryTime, entryOK := parseChatHistoryCleanupTime(entry.Session.UpdatedAt); entryOK {
+					updatedOrder = previousTime.Compare(entryTime)
+				}
+			}
+			keepPrevious := updatedOrder > 0 ||
+				(updatedOrder == 0 && (previous.SourceModifiedAtUnixNano > entry.SourceModifiedAtUnixNano ||
 					(previous.SourceModifiedAtUnixNano == entry.SourceModifiedAtUnixNano && original != key)))
 			if keepPrevious {
 				previous, entry = entry, previous
@@ -2922,6 +2928,11 @@ func RenameChatHistorySession(userID, sessionID, workspacePath, title string) er
 	if sessionID == "" {
 		return fmt.Errorf("conversation not found")
 	}
+	// Run history belongs to this caller's central store. Never let the
+	// project-scoped mutation fall back to somebody else's Builder folder.
+	if crewBuilderDiskHiddenFromUser(userID, workspacePath) {
+		workspacePath = ""
+	}
 	var err error
 	title, err = normalizeChatHistoryTitle(title)
 	if err != nil {
@@ -3838,6 +3849,9 @@ func ownedWorkProjectWorkspacePath(userID, workspacePath string) (string, bool) 
 }
 
 func deleteWorkspaceChatHistorySession(result ChatHistoryCleanupResult, userID, sessionID, workspacePath string) (ChatHistoryCleanupResult, error) {
+	if crewBuilderDiskHiddenFromUser(userID, workspacePath) {
+		return deleteUserChatHistorySession(result, userID, sessionID)
+	}
 	storageWorkspacePath, workProject := ownedWorkProjectWorkspacePath(userID, workspacePath)
 	workflowDir, ok := resolveLocalWorkflowDir(storageWorkspacePath)
 	if !ok {
@@ -3969,6 +3983,9 @@ func DeleteChatHistoryOlderThan(userID string, olderThanDays int, workspacePath 
 	}
 
 	if workspacePath != "" {
+		if crewBuilderDiskHiddenFromUser(userID, workspacePath) {
+			return deleteOldWorkProjectConversations(userID, workspacePath, cutoff, result)
+		}
 		if _, workProject := ownedWorkProjectWorkspacePath(userID, workspacePath); workProject {
 			return deleteOldWorkProjectConversations(userID, workspacePath, cutoff, result)
 		}

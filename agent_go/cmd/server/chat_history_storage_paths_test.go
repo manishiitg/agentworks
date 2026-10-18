@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gorilla/mux"
@@ -20,10 +21,11 @@ func TestProjectHistoryAliasesPreserveReadsAndRestoreAuthority(t *testing.T) {
 	ensureProjectStateRoot(t)
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","products":["work","code"]},{"id":"builder","username":"builder","products":["work","code"]},{"id":"run","username":"run","products":["work","code"]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","products":["work","code"]},{"id":"builder","username":"builder","products":["work","code"]},{"id":"run","username":"run","admin":true,"products":["work","code"]}]}`)
 	const legacy = "_users/owner/Chats/Code/projects/history-12345678"
 	const canonical = "Crew/history-12345678"
 	const session = "server-history"
+	api, durable := newDurableChatAPI(t, session, "owner")
 	rel := "builder/conversation/2026-10-18/" + chatHistoryConversationFileName(session)
 	oldPath, newPath := legacy+"/"+rel, canonical+"/"+rel
 	rec := projectOwnerRecord{Product: "code", Folder: "history-12345678", ProjectID: "history-project", OwnerID: "owner", Private: true, AudienceConfigured: true, RunPeople: []string{"run"}, CoOwners: []string{"builder"}}
@@ -36,7 +38,7 @@ func TestProjectHistoryAliasesPreserveReadsAndRestoreAuthority(t *testing.T) {
 	server := httptest.NewServer(ws)
 	t.Cleanup(server.Close)
 	t.Setenv("WORKSPACE_API_URL", server.URL)
-	body := []byte(`{"session_id":"server-history","user_id":"owner","agent_mode":"multi-agent","conversation_history":[{"Role":"human","Parts":[{"Text":"PRIVATE_HISTORY_MARKER"}]}],"runtime":{"kind":"coding_agent","provider":"codex-cli","resume_supported":true,"external_session_id":"native-unchanged"},"updated_at":"2026-10-18T09:00:00Z"}`)
+	body := []byte(`{"session_id":"server-history","user_id":"owner","agent_mode":"multi-agent","conversation_history":[{"Role":"human","Parts":[{"Text":"PRIVATE_HISTORY_MARKER"}]}],"runtime":{"kind":"coding_agent","provider":"codex-cli","resume_supported":true,"external_session_id":"native-unchanged"},"updated_at":"2000-01-01T00:00:00Z"}`)
 	if err := os.MkdirAll(filepath.Dir(filepath.Join(docs, oldPath)), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -113,6 +115,25 @@ func TestProjectHistoryAliasesPreserveReadsAndRestoreAuthority(t *testing.T) {
 		if _, ok := normalizeRestoredChatHistoryConversationPath("run", newPath); ok {
 			t.Fatal("Run gained path-based restoration")
 		}
+		for _, scope := range []string{legacy, canonical} {
+			deleteRequest := httptest.NewRequest(http.MethodDelete, "/api/chat-history/sessions/"+session+"?workspace_path="+url.QueryEscape(scope), nil)
+			deleteRequest = mux.SetURLVars(deleteRequest, map[string]string{"session_id": session})
+			deleteRequest = deleteRequest.WithContext(context.WithValue(deleteRequest.Context(), UserContextKey, &UserClaims{UserID: "run"}))
+			deleteResponse := httptest.NewRecorder()
+			deleteChatHistorySessionHandler(api)(deleteResponse, deleteRequest)
+			if deleteResponse.Code != http.StatusNotFound && deleteResponse.Code != http.StatusForbidden {
+				t.Fatalf("Run deleted another person's Builder chat: %d", deleteResponse.Code)
+			}
+			if owner, _ := durable.DurableChatOwner(session); owner != "owner" {
+				t.Fatal("Run removed another person's durable Builder log")
+			}
+			if err := RenameChatHistorySession("run", session, scope, "Changed by Run"); err == nil {
+				t.Fatal("Run renamed another person's Builder chat")
+			}
+			if result, err := DeleteChatHistoryOlderThan("run", 1, scope); err != nil || result.DeletedCount != 0 {
+				t.Fatal("Run cleanup reached Builder history", result, err)
+			}
+		}
 		actual, err := os.ReadFile(filepath.Join(docs, expected))
 		if err != nil || !bytes.Equal(actual, body) {
 			t.Fatal("routing rewrote transcript bytes", err)
@@ -139,11 +160,53 @@ func TestProjectHistoryAliasesPreserveReadsAndRestoreAuthority(t *testing.T) {
 			t.Fatal("equal alias entries were not resolved deterministically")
 		}
 	}
+	duplicate.Entries[oldPath] = chatHistoryIndexEntry{Session: ChatHistorySession{SessionID: session, Query: "earlier instant", UpdatedAt: "2026-10-18T10:30:00+02:00"}}
+	duplicate.normalize()
+	if duplicate.Entries[newPath].Session.Query != "newest" {
+		t.Fatal("index timestamps were compared by local clock instead of instant")
+	}
 	encoded, err := json.Marshal(duplicate)
 	if err != nil || bytes.Contains(encoded, []byte(oldPath)) {
 		t.Fatal("operational index retained retired path", err)
 	}
 	if _, ok := normalizeRestoredChatHistoryConversationPath("owner", "Crew/unknown/"+rel); ok {
 		t.Fatal("unregistered Crew admitted")
+	}
+	// The same project scope must still let Run people manage their own
+	// central replies. Neither single deletion nor cleanup visits Builder disk.
+	const ownSession = "run-own"
+	ownPath := "_users/run/chat_history/2000-01-01/" + chatHistoryConversationFileName(ownSession)
+	ownBody := `{"session_id":"run-own","user_id":"run","updated_at":"2000-01-01T00:00:00Z","runtime":{"kind":"coding_agent","workspace_path":"` + canonical + `"},"conversation_history":[{"Role":"human","Parts":[{"Text":"Own reply"}]}]}`
+	writeOwn := func() {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(docs, ownPath)), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(docs, ownPath), []byte(ownBody), 0600); err != nil {
+			t.Fatal(err)
+		}
+		ws.mu.Lock()
+		ws.files[ownPath] = ownBody
+		ws.mu.Unlock()
+	}
+	writeOwn()
+	if err := RenameChatHistorySession("run", ownSession, canonical, "My title"); err != nil {
+		t.Fatal("Run lost own rename", err)
+	}
+	ws.mu.Lock()
+	renamed := ws.files[ownPath]
+	ws.mu.Unlock()
+	if !strings.Contains(renamed, "My title") {
+		t.Fatal("own central title was not changed")
+	}
+	if result, err := DeleteChatHistorySession("run", ownSession, canonical); err != nil || result.DeletedCount != 1 {
+		t.Fatal("Run lost own single deletion", result, err)
+	}
+	writeOwn()
+	if result, err := DeleteChatHistoryOlderThan("run", 1, canonical); err != nil || result.DeletedCount != 1 {
+		t.Fatal("Run lost own cleanup", result, err)
+	}
+	if actual, err := os.ReadFile(filepath.Join(docs, newPath)); err != nil || !bytes.Equal(actual, body) {
+		t.Fatal("Run history mutations changed Builder transcript", err)
 	}
 }

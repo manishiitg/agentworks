@@ -1216,7 +1216,9 @@ func deleteChatHistorySessionHandler(api *StreamingAPI) http.HandlerFunc {
 			http.Error(w, "failed to authorize durable chat deletion", http.StatusInternalServerError)
 			return
 		}
-		durableOwnedByCaller := durableOwner != "" && (durableOwner == userID || platformAdmin)
+		// A platform administrator in Run mode still cannot remove a
+		// project's private Builder log. Own Run history remains deletable.
+		durableOwnedByCaller := durableOwner != "" && (durableOwner == userID || (platformAdmin && !crewBuilderDiskHiddenFromUser(userID, workspacePath)))
 
 		result, err := DeleteChatHistorySession(userID, sessionID, workspacePath)
 		if err != nil {
