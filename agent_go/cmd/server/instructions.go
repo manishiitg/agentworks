@@ -298,7 +298,7 @@ Returns the canonical guided-flow text for any workflow slash command. Always ca
 
   Reviews (recommend, don't apply; record typed Pulse findings):
     - review-artifact-drift  → Plan Drift: plan-changelog-to-artifact drift audit, submitted by /run-plan-drift (run-plan-drift is an alias kind)
-    - strategy-auditor       → Goal Work, submitted by /run-goal-work (run-goal-work is an alias kind): do goal-advancing work when Pulse is ON, through Builder within current permissions; OFF saves weekly suggestions only, challenge soul.md constraints with evidence
+    - strategy-auditor       → Goal Work, submitted by /run-goal-work (run-goal-work is an alias kind): do goal-advancing work when Pulse is ON, through Builder within current permissions; OFF starts no turns or reports, challenge soul.md constraints with evidence
     - goal-advisor           → compatibility alias for strategy-auditor; use the same Goal Work flow
 
   Improvements:

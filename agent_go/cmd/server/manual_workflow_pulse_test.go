@@ -15,7 +15,7 @@ func TestManualPulseScheduleContract(t *testing.T) {
 		t.Fatal("manual workflow Pulse schedule id must not be empty")
 	}
 
-	manifest := &WorkflowManifest{ID: "workflow-id", Label: "Workflow"}
+	manifest := &WorkflowManifest{ID: "workflow-id", Label: "Workflow", Pulse: &WorkflowPulseConfig{Enabled: true}}
 	sched := WorkflowSchedule{
 		ID:           manualWorkflowPulseScheduleID,
 		Name:         "Run Pulse",
@@ -63,6 +63,10 @@ func TestManualPulseScheduleContract(t *testing.T) {
 		t.Fatalf("ordinary empty schedule must retain the default workflow message: %v", normalMessages)
 	}
 
+	manifest.Pulse.Enabled = false
+	if shouldRunPulseLifecycle(sctx, manifest) {
+		t.Fatal("forced/manual Pulse bypassed OFF")
+	}
 	sctx.ForcePulseReview = false
 	if shouldRunPulseLifecycle(sctx, manifest) {
 		t.Fatal("ordinary run must not run Pulse when pulse.enabled is false")
@@ -76,7 +80,7 @@ func TestManualPulseScheduleContract(t *testing.T) {
 // TestPulseReviewOnlyScheduleContractMirrorsManualPulseTrigger retains the
 // legacy schedule parser until startup migration removes old entries.
 func TestPulseReviewOnlyScheduleContractMirrorsManualPulseTrigger(t *testing.T) {
-	manifest := &WorkflowManifest{ID: "workflow-id", Label: "Workflow"}
+	manifest := &WorkflowManifest{ID: "workflow-id", Label: "Workflow", Pulse: &WorkflowPulseConfig{Enabled: true}}
 	sched := WorkflowSchedule{
 		ID:              "periodic-pulse-review",
 		Name:            "Periodic Pulse Review",

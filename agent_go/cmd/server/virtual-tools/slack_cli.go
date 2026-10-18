@@ -35,7 +35,7 @@ func handleSlackCLI(ctx context.Context, args map[string]interface{}) (string, e
 		return "", fmt.Errorf("Slack CLI service unavailable")
 	}
 	if method, _ := args["method"].(string); common.OutwardHeld(ctx) && !slackCLIReadMethods[strings.TrimSpace(method)] {
-		return "", fmt.Errorf("slack %s refused: outward actions are unavailable in this turn. Reads still work. With Pulse off, save a suggestion in its weekly report; with Pulse on and outward_actions=ask, prepare the message for the existing owner decision", method)
+		return "", fmt.Errorf("slack %s refused: outward actions are unavailable in this turn. Reads still work. With Pulse on and outward_actions=ask, prepare the message for the existing owner decision", method)
 	}
 	return run(ctx, args)
 }

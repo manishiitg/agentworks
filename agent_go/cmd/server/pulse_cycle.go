@@ -7,8 +7,8 @@ import (
 )
 
 // Every active check, failed-run follow-up and manual cycle uses the same
-// continuing Pulse. OFF changes its task and held permissions to a weekly
-// report; housekeeping remains in the ordinary run's separate short turn.
+// continuing Pulse. OFF starts no turn; housekeeping remains independent
+// in the ordinary run's separate short turn.
 func (s *SchedulerService) runSinglePulseCycle(ctx context.Context, sctx *ScheduleContext, runSessionID string) pulseLifecycleResult {
 	pulseRunID := strings.TrimSpace(runSessionID)
 	if pulseRunID == "" {

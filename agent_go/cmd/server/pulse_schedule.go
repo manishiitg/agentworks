@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"strings"
 	"time"
 )
@@ -20,8 +19,7 @@ const pulseScheduleStateSchema = `CREATE TABLE IF NOT EXISTS pulse_schedule_stat
 	next_set_at TEXT NOT NULL DEFAULT '',
 	last_started_at TEXT NOT NULL DEFAULT '',
 	last_pulse_run_id TEXT NOT NULL DEFAULT '',
-	previous_started_at TEXT NOT NULL DEFAULT '',
- first_report_at TEXT NOT NULL DEFAULT ''
+	previous_started_at TEXT NOT NULL DEFAULT ''
 )`
 
 type pulseScheduleState struct {
@@ -36,9 +34,12 @@ func ensurePulseScheduleStateSchema(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx, pulseScheduleStateSchema); err != nil {
 		return err
 	}
-	// Add bootstrap/evidence timestamps to older state without resetting them.
-	for _, column := range []string{"previous_started_at", "first_report_at"} {
-		if _, err := db.ExecContext(ctx, `ALTER TABLE pulse_schedule_state ADD COLUMN `+column+` TEXT NOT NULL DEFAULT ''`); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+	columns, err := pulseStateColumns(ctx, db, "pulse_schedule_state")
+	if err != nil {
+		return err
+	}
+	if !columns["previous_started_at"] {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE pulse_schedule_state ADD COLUMN previous_started_at TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
 		}
 	}
@@ -71,12 +72,16 @@ func readPulseScheduleState(ctx context.Context, workspacePath string) (*pulseSc
 		return nil, err
 	}
 	defer db.Close()
-	if err := ensurePulseScheduleStateSchema(ctx, db); err != nil {
+	columns, err := pulseStateColumns(ctx, db, "pulse_schedule_state")
+	if err != nil || len(columns) == 0 {
 		return nil, err
 	}
+	previousColumn := "''"
+	if columns["previous_started_at"] {
+		previousColumn = "previous_started_at"
+	}
 	var lastStarted, lastRun, previousStarted string
-	err = db.QueryRowContext(ctx, `SELECT last_started_at,last_pulse_run_id,previous_started_at
-		FROM pulse_schedule_state WHERE workspace_path=?`, normalized).Scan(&lastStarted, &lastRun, &previousStarted)
+	err = db.QueryRowContext(ctx, `SELECT last_started_at,last_pulse_run_id,`+previousColumn+` FROM pulse_schedule_state WHERE workspace_path=?`, normalized).Scan(&lastStarted, &lastRun, &previousStarted)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -126,6 +131,13 @@ func recordPulseFastRequestFromToolArgs(ctx context.Context, args map[string]int
 	if workspacePath == "" {
 		return "", fmt.Errorf("record_pulse_fast_request requires workspace_path")
 	}
+	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
+	if err != nil {
+		return "", err
+	}
+	if !found || !manifest.PulseEnabled() {
+		return "", fmt.Errorf("Pulse is off for this workflow. Turn it on in the workflow's Pulse settings to use it.")
+	}
 	request, err := requestFastPulse(ctx, workspacePath, stringToolArg(args, "run_id"), stringToolArg(args, "reason"), stringSliceFromToolArg(args["evidence"]))
 	if err != nil {
 		return "", err
@@ -142,7 +154,7 @@ type PulseNextRunView struct {
 
 func pulseNextRunView(ctx context.Context, workspacePath string) *PulseNextRunView {
 	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
-	if err != nil || !found || manifest.Kind == "relay" || !workflowHasSoul(ctx, workspacePath) {
+	if err != nil || !found || manifest.Kind == "relay" || !manifest.PulseEnabled() || !workflowHasSoul(ctx, workspacePath) {
 		return nil
 	}
 	latest, lastStarted, err := latestPulseGoalCheck(ctx, workspacePath)
@@ -155,25 +167,28 @@ func pulseNextRunView(ctx context.Context, workspacePath string) *PulseNextRunVi
 	return view
 }
 
-// First OFF reports are spread across their first week once, in the existing
-// Pulse state. After the first saved report, only pulse_goal_checks sets time.
-func firstWeeklyReportDue(ctx context.Context, workspacePath, workflowID string, now time.Time) (time.Time, error) {
-	normalized, db, err := openPulseModuleStateDB(ctx, workspacePath, true)
+// Reads never install schema. The writer adds only missing columns, while older
+// stored history remains visible without GET requests changing its database.
+func pulseStateColumns(ctx context.Context, db *sql.DB, table string) (map[string]bool, error) {
+	switch table {
+	case "pulse_schedule_state", "pulse_goal_checks":
+	default:
+		return nil, fmt.Errorf("unsupported Pulse state table")
+	}
+	rows, err := db.QueryContext(ctx, `PRAGMA table_info(`+table+`)`)
 	if err != nil {
-		return time.Time{}, err
+		return nil, err
 	}
-	defer db.Close()
-	if err := ensurePulseScheduleStateSchema(ctx, db); err != nil {
-		return time.Time{}, err
+	defer rows.Close()
+	columns := map[string]bool{}
+	for rows.Next() {
+		var cid, notNull, primary int
+		var name, kind string
+		var defaultValue interface{}
+		if err := rows.Scan(&cid, &name, &kind, &notNull, &defaultValue, &primary); err != nil {
+			return nil, err
+		}
+		columns[name] = true
 	}
-	h := fnv.New64a()
-	_, _ = h.Write([]byte(firstNonEmptyTrimmed(workflowID, normalized)))
-	due := now.UTC().Add(time.Hour + time.Duration(h.Sum64()%uint64(7*24*time.Hour-time.Hour)))
-	_, err = db.ExecContext(ctx, `INSERT INTO pulse_schedule_state (workspace_path,first_report_at) VALUES (?,?) ON CONFLICT(workspace_path) DO UPDATE SET first_report_at=excluded.first_report_at WHERE first_report_at=''`, normalized, formatStoredTime(due))
-	if err != nil {
-		return time.Time{}, err
-	}
-	var saved string
-	err = db.QueryRowContext(ctx, `SELECT first_report_at FROM pulse_schedule_state WHERE workspace_path=?`, normalized).Scan(&saved)
-	return parseStoredTime(saved), err
+	return columns, rows.Err()
 }

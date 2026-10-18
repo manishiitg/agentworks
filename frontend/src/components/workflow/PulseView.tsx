@@ -105,13 +105,6 @@ export default function PulseView({
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="p-3 sm:p-4">
           {ownerManaged && <PulseOffCard pulseOn={monitorOn} hasSoul={hasSoul} runSetup={runSetup} saving={monitorSaving} onTurnOn={onToggleMonitor} />}
-          {!monitorOn && hasSoul && <section className="mt-4" aria-label="Weekly Pulse report">
-            <h3 className="mb-2 text-sm font-semibold">Weekly report</h3>
-            {goalStatus?.latest_check?.report_only ? <div className="rounded-lg border bg-background p-3">
-              <p className="whitespace-pre-line text-sm">{goalStatus.latest_check.summary}</p>
-              <p className="mt-2 text-xs text-muted-foreground">Reported {new Date(goalStatus.latest_check.checked_at).toLocaleDateString()}{goalStatus.latest_check.next_check_at && ` · Next report ${new Date(goalStatus.latest_check.next_check_at).toLocaleDateString()}`}</p>
-            </div> : <p className="text-xs text-muted-foreground">The report will appear here after its first check. Pulse suggests improvements and makes no changes while it is off.</p>}
-          </section>}
           {!ownerManaged && workspacePath && <GoalStatusCard goal={goalStatus} workspacePath={workspacePath} />}
           {!ownerManaged && <label className="my-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2 text-sm">
             <span>Outward actions<span className="block text-xs text-muted-foreground">Posts and messages within this workflow’s existing limits</span></span>

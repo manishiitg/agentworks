@@ -51,7 +51,7 @@ func NormalizePulseSettingsJSON(raw []byte) ([]byte, bool) {
 	changed := !canonical || !explicitEnabled
 	if !canonical || !explicitEnabled {
 		if !canonical {
-			enabled = legacyEnabled
+			enabled = legacyEnabled && legacyPulseCanImprove(pulse["autonomy"])
 		} else {
 			enabled = false
 		}
@@ -120,6 +120,23 @@ func NormalizePulseSettingsJSON(raw []byte) ([]byte, bool) {
 		return raw, false
 	}
 	return out, true
+}
+
+// Preserve ON only when the old setting already allowed workflow changes.
+// Advise/Measure (including the former default) migrate to OFF, per the owner.
+func legacyPulseCanImprove(raw json.RawMessage) bool {
+	var a struct {
+		Level  *int   `json:"level"`
+		Run    string `json:"run"`
+		Change string `json:"change"`
+	}
+	if json.Unmarshal(raw, &a) != nil {
+		return false
+	}
+	if a.Level != nil {
+		return *a.Level >= 2 && *a.Level <= 5
+	}
+	return !strings.EqualFold(strings.TrimSpace(a.Run), "ask") && strings.EqualFold(strings.TrimSpace(a.Change), "auto")
 }
 
 // This is a one-time data conversion, not an autonomy ladder at runtime.

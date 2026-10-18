@@ -477,6 +477,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       : undefined
     return manifestPath || workflowPhasePreset?.selectedFolder?.filepath
   })
+  const workflowPulseEnabled = useWorkflowManifestStore(state =>
+    workflowPhaseWorkspacePath ? state.getWorkflowByPath(workflowPhaseWorkspacePath)?.manifest.pulse?.enabled === true : false,
+  )
   const manifestLLMConfig = useWorkflowManifestStore(state => {
     if (!workflowPhaseWorkspacePath) return null
     const wf = state.getWorkflowByPath(workflowPhaseWorkspacePath)
@@ -2017,7 +2020,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     return cmd.validate(ctx)
   }, [buildCommandContext])
 
-  const canSelectPulseReview = !isRelaySurface && !isViewOnly && !!findCommand('run-technical-review', commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
+  const canSelectPulseReview = workflowPulseEnabled && !isRelaySurface && !isViewOnly && !!findCommand('run-technical-review', commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
   useEffect(() => {
     if (pulseReviewPicker && (!canSelectPulseReview || pulseReviewPicker.tabId !== activeTabId || pulseReviewPicker.workspacePath !== commandWorkflowPath)) {
       setPulseReviewPicker(null)
@@ -3712,7 +3715,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         onSelectWorkflow={handleWorkflowSelect}
         searchQuery={workflowSearchQuery}
         position={workflowDialogPosition}
-        includePulse={isWorkflowPhaseChat}
+        includePulse={isWorkflowPhaseChat && workflowPulseEnabled}
       />
 
       {/* Inline Skill Selection Popup */}

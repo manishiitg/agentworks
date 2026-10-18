@@ -304,7 +304,7 @@ func readPulseGoalWorkView(ctx context.Context, workspacePath string, limit int)
 		"goal_status":             goalStatus,
 		"goal_lead":               goalLeadAgentContext(ctx, workspacePath),
 		"outward_actions":         pulseOutwardActionsForView(ctx, workspacePath),
-		"permission_note":         "When Pulse is on, Builder acts within the workflow access and outward-action setting. When off, weekly reports suggest improvements without action requests or edits.",
+		"permission_note":         "When Pulse is on, Builder acts within the workflow access and outward-action setting. When off, Pulse is unavailable and starts no checks, reports or messages.",
 		"focus_areas":             pulseFocusAreasForView(ctx, workspacePath),
 		"focus_areas_note":        "The user's current priorities for Goal Work. Start each pass here; they direct attention, they do not limit what you may consider or override soul.md goals and constraints.",
 		"focus_area_details":      focusAreasForView(ctx, workspacePath),

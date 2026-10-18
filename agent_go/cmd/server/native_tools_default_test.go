@@ -68,7 +68,7 @@ func TestNativeToolsOnForEveryTurnTypeExceptSteps(t *testing.T) {
 		{"interactive Builder chat", "alice", "chat-1", workflowTurn(QueryRequest{}), "full"},
 		{"scheduled workflow turn", "alice", "schedule-w-1", workflowTurn(QueryRequest{TriggeredBy: "cron"}), "full"},
 		{"webhook turn", "alice", "hook-1", workflowTurn(QueryRequest{TriggeredBy: "webhook"}), "full"},
-		{"Pulse turn", "alice", "pulse-1", workflowTurn(QueryRequest{PulseLifecycleTurn: true}), "full"},
+		{"Pulse conversation", "alice", "schedule-goallead--native-tools-g1", workflowTurn(QueryRequest{PulseLifecycleTurn: true}), "mcp_only"},
 		{"Slack turn", "alice", "bot-slack--1", workflowTurn(QueryRequest{BotPlatform: "slack"}), "full"},
 		{"read-only viewer", "carol", "viewer-1", workflowTurn(QueryRequest{}), "mcp_only"},
 		{"workflow step (child session of a run)", "alice", "step-1", workflowTurn(QueryRequest{ParentSessionID: "run-1"}), "mcp_only"},

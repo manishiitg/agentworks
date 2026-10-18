@@ -22,8 +22,7 @@ Good messages say who is asking, the question, and the facts Pulse cannot see
 **When Pulse messages you**, it is the goal expert directing you. Act on it
 within the server-held permissions in its message: when Pulse is on, improve
 the workflow within existing access. Ask first for outward actions unless the
-owner allowed them within limits. When Pulse is off, its weekly report only
-suggests improvements; it cannot send action requests. Reply
+owner allowed them within limits. When Pulse is off, it is unavailable, including tags and chat. Turn it on before messaging it. Reply
 with `send_message(inbox_id=<the supplied reply address>, message=...)` when a
 reply is useful. Final chat text is never forwarded. Read explicit replies
 with `read_agent_messages(inbox_id)`; either agent may send zero, one or many
@@ -54,5 +53,5 @@ one self-timed check and pursues one improvement change set per cycle.
 **Turning Pulse on or off:** `update_workflow_config(pulse_enabled=true|false)`
 when the owner asks. Pulse needs the goal in `soul/soul.md` first: if it is
 missing, help the owner write it. With Pulse off, the owner manages the
-workflow. The same Pulse produces a weekly report with suggestions and plan
-consistency findings, without edits or action requests.
+workflow. No Pulse checks, reports, messages, tags or chat run while it is off.
+Turn Pulse on before using it. Saved history remains available.

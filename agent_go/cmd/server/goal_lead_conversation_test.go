@@ -28,7 +28,7 @@ func TestGoalLeadCheckContinuesItsConversation(t *testing.T) {
 	manifest := NewWorkflowManifest("Reports")
 	manifest.Access = &WorkflowAccess{Owners: []string{"owner"}}
 	manifest.CreatedBy = "owner"
-	manifest.Pulse = &WorkflowPulseConfig{Enabled: false, OutwardActions: "ask"}
+	manifest.Pulse = &WorkflowPulseConfig{Enabled: true, OutwardActions: "ask"}
 	raw, _ := json.Marshal(manifest)
 	env.mock.mu.Lock()
 	env.mock.files[manifestPath(ws)] = string(raw)
@@ -56,7 +56,7 @@ func TestGoalLeadCheckContinuesItsConversation(t *testing.T) {
 				return internalSessionTurnResult{}, err
 			}
 		}
-		return internalSessionTurnResult{FinalResponse: "Weekly suggestions saved."}, nil
+		return internalSessionTurnResult{FinalResponse: "Goal check saved."}, nil
 	}
 	day := time.Date(2026, 10, 7, 9, 0, 0, 0, time.UTC)
 	goalLeadNow = func() time.Time { return day }
@@ -84,14 +84,11 @@ func TestGoalLeadCheckContinuesItsConversation(t *testing.T) {
 	}
 	mu.Unlock()
 	stored, _, err := latestPulseGoalCheck(ctx, ws)
-	if err != nil || stored == nil || !stored.ReportOnly {
-		t.Fatalf("weekly report missing: %+v %v", stored, err)
+	if err != nil || stored == nil {
+		t.Fatalf("goal check missing: %+v %v", stored, err)
 	}
-	if gap := parseStoredTime(stored.NextCheckAt).Sub(parseStoredTime(stored.CheckedAt)); gap != 7*24*time.Hour {
-		t.Fatalf("OFF allowed an early reminder: %s", gap)
-	}
-	if due := nextPulseCheckForSetting(true, stored); !due.IsZero() {
-		t.Fatalf("enabling Pulse must allow work after a report: %s", due)
+	if gap := parseStoredTime(stored.NextCheckAt).Sub(parseStoredTime(stored.CheckedAt)); gap != pulseCheckMinGap {
+		t.Fatalf("check bounds lost: %s", gap)
 	}
 	// A successful provider exit without a newly saved check is incomplete;
 	// neither the previous report nor a final chat sentence can complete it.
@@ -101,14 +98,25 @@ func TestGoalLeadCheckContinuesItsConversation(t *testing.T) {
 		t.Fatalf("old report completed a new cycle: %+v", result)
 	}
 
-	now := time.Now().UTC()
-	first, err := firstWeeklyReportDue(ctx, "Workflow/weekly", "weekly-workflow", now)
-	if err != nil || first.Before(now.Add(time.Hour)) || !first.Before(now.Add(7*24*time.Hour)) {
-		t.Fatalf("first report not spread: %s %v", first, err)
+	// OFF rejects all entry kinds before the runner and preserves the conversation.
+	manifest.Pulse.Enabled = false
+	raw, _ = json.Marshal(manifest)
+	env.mock.mu.Lock()
+	env.mock.files[manifestPath(ws)] = string(raw)
+	env.mock.mu.Unlock()
+	before := len(sessions)
+	for _, kind := range []string{goalLeadTurnCheck, goalLeadTurnGoalWork, goalLeadTurnRunFailed, goalLeadTurnOwner, goalLeadTurnAsk, goalLeadTurnSlack, goalLeadTurnFunctionResult, goalLeadTurnAgentMessage} {
+		if _, _, err := env.api.runGoalLeadTurn(ctx, ws, goalLeadTurn{Kind: kind, Body: "Do not start"}); err == nil {
+			t.Fatalf("OFF admitted %s", kind)
+		}
 	}
-	again, err := firstWeeklyReportDue(ctx, "Workflow/weekly", "weekly-workflow", now.Add(24*time.Hour))
-	if err != nil || !again.Equal(first) {
-		t.Fatalf("first report moved on restart/read: %s %s %v", first, again, err)
+	if len(sessions) != before {
+		t.Fatal("OFF reached the provider")
 	}
-
+	if next, _ := nextPulseCheckAt(ctx, ws, manifest, stored, time.Time{}); !next.IsZero() {
+		t.Fatalf("OFF kept a check: %s", next)
+	}
+	if run, err := env.api.scheduler.TriggerGoalCheck(ws); err == nil || run != "" {
+		t.Fatalf("OFF queued a schedule: %s %v", run, err)
+	}
 }

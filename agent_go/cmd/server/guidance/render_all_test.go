@@ -210,7 +210,7 @@ func TestManualPulseCommandsKeepRunSetupReviewAndFixBoundariesSeparate(t *testin
 		},
 		"strategy-auditor": {
 			"continuing Pulse conversation", "at most one coherent change set",
-			"OFF saves weekly suggestions only", "record_pulse_goal_check",
+			"OFF starts no turns or reports", "record_pulse_goal_check",
 		},
 		"engineering-review": {
 			"TECHNICAL REVIEW PHASE",
@@ -699,7 +699,7 @@ func TestStrategyAdvisorGuidanceBalancesExplorationEvidenceAndHumanDecisions(t *
 		"comparable baseline", "outcome window", "rollback",
 		"record_pulse_goal_work", "record_pulse_goal_check",
 		"Missing readings stay unknown", "Activity (posting more) is not proof of growth",
-		"When OFF", "No edits, runs", "skills", "knowledge base",
+		"When OFF", "no Pulse turn starts", "skills", "knowledge base",
 	} {
 		if !containsNormalizedText(auditor, want) {
 			t.Fatalf("Goal Work guidance missing %q:\n%s", want, auditor)

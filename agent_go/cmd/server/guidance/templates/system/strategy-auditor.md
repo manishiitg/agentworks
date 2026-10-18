@@ -37,12 +37,10 @@ the change, verify restoration and record it in the effect note. Do not invent a
 new status. Inconclusive evidence needs a useful new check date, not a success
 claim. Check the overall approach even while an unrelated repair is pending.
 
-When OFF, inspect and save one weekly suggestions report only. No edits, runs,
-Builder action requests, decisions, memory changes or faster follow-up wakeups.
-The server applies the weekly next-check time.
+When OFF, no Pulse turn starts, automatically or manually. Turn Pulse on before using it.
 
 Constraints stay binding while challenged: give evidence and a recommendation
-through Builder when ON, or in the report when OFF. Owner decisions need no new
+through Builder while Pulse is ON. Owner decisions need no new
 confirmation and are never re-argued on taste. Record one plain conclusion and
 next useful check with record_pulse_goal_check. Keep existing history and reuse
 pending work. Nothing useful to change is a valid result.

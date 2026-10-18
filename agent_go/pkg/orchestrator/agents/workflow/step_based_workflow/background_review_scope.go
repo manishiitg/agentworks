@@ -16,7 +16,7 @@ type GoalWorkPermissions struct {
 }
 
 // PulsePermissions consumes the canonical manifest after saved-setting
-// normalization. OFF can report and suggest; ON can run and improve within
+// normalization. OFF starts no Pulse turn; ON can run and improve within
 // existing access rules. Outward actions remain a separate owner choice.
 func PulsePermissions(manifestJSON string) GoalWorkPermissions {
 	var manifest struct {
@@ -35,7 +35,7 @@ func PulsePermissions(manifestJSON string) GoalWorkPermissions {
 // retired ladder instead of layering new permission advice over it.
 func PulsePermissionInstructions(perms GoalWorkPermissions) string {
 	if !perms.Run {
-		return "Pulse is off. Produce a weekly report with suggestions, including plan consistency findings. Do not edit, run work, send action requests or arrange a faster action check. Required inputs still must be readable. The owner can turn Pulse on to act on these suggestions."
+		return "Pulse is off for this workflow. No checks, reports or messages run. Turn it on in the workflow's Pulse settings to use it."
 	}
 	outward := "Ask the owner before new outward actions; prepare the ready action for their decision."
 	if perms.Outward {

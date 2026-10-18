@@ -74,33 +74,6 @@ func goalWorkTurnPermissions(sessionID string) (stepworkflow.GoalWorkPermissions
 	return hold.perms, true
 }
 
-// goalWorkRunTools start or steer workflow work: steps, routes, schedules
-// fired now, Crews doing work.
-var goalWorkRunTools = map[string]bool{
-	"execute_step": true, "run_full_workflow": true, "debug_step": true, "send_step_message": true,
-	"trigger_schedule": true, "ask_platform_crew": true,
-	"call_function": true, "run_project_workflow": true,
-}
-
-// goalWorkMeasureTools set up measurement while Pulse is ON.
-var goalWorkMeasureTools = map[string]bool{"configure_goal_metrics": true}
-
-// goalWorkChangeTools edit existing steps, beyond the step
-// edit tools that stepworkflow.ScheduleGuardedTool already names.
-var goalWorkChangeTools = map[string]bool{
-	"update_step_config": true, "restore_step_from_changelog": true, "edit_team_source": true,
-}
-
-// goalWorkReshapeTools change schedules and the plan's structure while Pulse is ON.
-var goalWorkReshapeTools = map[string]bool{
-	"create_schedule": true, "create_calendar_schedule": true, "update_schedule": true, "manage_workflow_webhook": true,
-	"add_step": true, "add_scripted_step": true, "add_agent_step": true, "add_routing_step": true, "add_branch_step": true,
-	"add_agent_route": true, "add_crew_step": true, "manage_step_route": true, "manage_group": true, "maintain_plan": true,
-	"convert_routing_branch_step_type": true, "delete_agent_route": true,
-	"update_workflow_config": true, "set_workflow_llm_config": true, "update_variable": true, "add_group": true,
-	"update_group": true, "delete_group": true,
-}
-
 // goalWorkNeverTools stay with the user whatever the Pulse setting: deleting steps or
 // schedules, replacing the plan, migrations and the contract version.
 var goalWorkNeverTools = map[string]bool{
@@ -119,40 +92,19 @@ var goalWorkOutwardTools = map[string]bool{"send_slack_message": true, "send_ema
 // turn held to perms, or nil when the call may run.
 func goalWorkToolRefusal(tool string, perms stepworkflow.GoalWorkPermissions) error {
 	tool = strings.TrimSpace(tool)
-	if !perms.Run && !pulseReportReadTools[tool] {
-		return fmt.Errorf("%s is unavailable while Pulse is off: save suggestions in the weekly report without edits or action requests. The owner can turn Pulse on to act", tool)
+	if !perms.Run {
+		return fmt.Errorf("Pulse is off for this workflow. Turn it on in the workflow's Pulse settings to use it (%s)", tool)
 	}
+
 	switch {
 	case goalWorkNeverTools[tool]:
 		return fmt.Errorf("%s is not available to Goal Work: deleting steps or schedules, replacing the plan and migrations stay with the user. Create a decision request (create_human_input_request) with the exact change instead", tool)
-	case goalWorkRunTools[tool] || goalWorkMeasureTools[tool] || goalWorkReshapeTools[tool] || goalWorkChangeTools[tool] || stepworkflow.ScheduleGuardedTool(tool):
-		if !perms.Run {
-			return fmt.Errorf("%s is unavailable while Pulse is off: this weekly report can suggest changes but cannot run or edit work. The owner can turn Pulse on to act on the suggestions", tool)
-		}
 	case goalWorkOutwardTools[tool]:
-		if !perms.Run {
-			return fmt.Errorf("%s is unavailable while Pulse is off: this weekly report can suggest changes but cannot send action requests. The owner can turn Pulse on to act", tool)
-		}
 		if !perms.Outward {
 			return fmt.Errorf("%s needs the owner's approval for an outward action. Prepare the action and ask through the existing decision flow", tool)
 		}
 	}
 	return nil
-}
-
-// OFF has only reads plus its one report write. New tools are never assumed
-// to be observations merely because their name is absent from a denylist.
-var pulseReportReadTools = map[string]bool{
-	"record_pulse_goal_check": true,
-	"get_pulse_state":         true, "get_goal_metrics": true, "query_workflow_db": true, "query_workflow_costs": true,
-	"get_cost_summary": true, "get_step_prompts": true, "get_plan_prompt_health": true, "get_workflow_config": true,
-	"get_llm_config": true, "list_executions": true, "get_schedule_runs": true, "list_schedules": true, "query_step": true,
-	"get_notification_history": true, "get_human_input_request": true, "list_skills": true, "search_skills": true,
-	"get_workflow_command_guidance": true, "get_file_link": true, "get_report_link": true, "read_image": true,
-	"read_crew_calls": true, "search_platform": true, "search_playbooks": true, "brain_browse": true, "brain_read": true,
-	"list_accessible_workflows": true, "get_contract_upgrades": true, "read_agent_messages": true, "list_message_agents": true,
-	"get_function_call": true, "read_skill": true, "read_workspace_file": true, "list_workspace_files": true, "search_workspace_files": true,
-	"get_api_spec": true, "get_prompt": true, "get_resource": true,
 }
 
 func pulseCheckRunIDForSession(sessionID string) string {

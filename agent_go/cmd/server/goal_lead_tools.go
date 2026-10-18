@@ -38,7 +38,7 @@ func builderPulseLevelsSection(ctx context.Context, workspacePath string) string
 		return ""
 	}
 	if !manifest.PulseEnabled() {
-		return "## Pulse\n\nPulse is off: you and the owner manage this workflow. Its weekly report may suggest improvements but cannot edit, run work or send action requests. When the owner wants an agent to own the goal, turn Pulse on (update_workflow_config(pulse_enabled=true); the goal must be in soul/soul.md)."
+		return "## Pulse\n\nPulse is off: you and the owner manage this workflow. It does not run, report or receive messages, including #pulse tags. When the owner wants an agent to own the goal, turn Pulse on (update_workflow_config(pulse_enabled=true); the goal must be in soul/soul.md)."
 	}
 	if !workflowHasSoul(ctx, workspacePath) {
 		return "## Pulse\n\nPulse is on but waiting for the goal: soul/soul.md is missing. Help the owner write it (objective, the number that shows progress, a target and date); Pulse starts once it exists."

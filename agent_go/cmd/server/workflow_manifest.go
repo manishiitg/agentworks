@@ -259,8 +259,8 @@ type InstalledPlaybook struct {
 }
 
 type WorkflowPulseConfig struct {
-	// Enabled lets Pulse pursue improvements. OFF retains a weekly suggestions
-	// report. Normal schedules own their separate after-run housekeeping.
+	// Enabled lets Pulse pursue improvements. OFF starts no Pulse activity.
+	// Normal schedules own their separate after-run housekeeping.
 	Enabled bool `json:"enabled"`
 	// FocusAreas are the user's current priorities for Goal Work, e.g. "find
 	// more audience strategies like SaaS Builder". Goal Work starts there each

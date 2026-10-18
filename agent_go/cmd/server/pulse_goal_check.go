@@ -62,8 +62,7 @@ const pulseGoalChecksSchema = `CREATE TABLE IF NOT EXISTS pulse_goal_checks (
 	alarms_json TEXT NOT NULL DEFAULT '[]',
 	pause_fingerprint TEXT NOT NULL DEFAULT '',
 	next_check_at TEXT NOT NULL DEFAULT '',
-	next_check_reason TEXT NOT NULL DEFAULT '',
- report_only INTEGER NOT NULL DEFAULT 0
+	next_check_reason TEXT NOT NULL DEFAULT ''
 )`
 
 const pulseGoalCheckRunsSchema = `CREATE TABLE IF NOT EXISTS pulse_goal_check_runs (
@@ -73,7 +72,6 @@ const pulseGoalCheckRunsSchema = `CREATE TABLE IF NOT EXISTS pulse_goal_check_ru
 
 // PulseGoalCheck is one recorded goal check.
 type PulseGoalCheck struct {
-	ReportOnly       bool              `json:"report_only"`
 	CheckID          string            `json:"check_id"`
 	CheckedAt        string            `json:"checked_at"`
 	PulseRunID       string            `json:"pulse_run_id,omitempty"`
@@ -166,15 +164,16 @@ func ensurePulseGoalCheckSchema(ctx context.Context, db *sql.DB) error {
 			return err
 		}
 	}
-	// Tables created before the Pulse chose its next check gain the columns.
-	for _, column := range []string{"next_check_at", "next_check_reason"} {
-		if _, err := db.ExecContext(ctx, `ALTER TABLE pulse_goal_checks ADD COLUMN `+column+` TEXT NOT NULL DEFAULT ''`); err != nil &&
-			!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
-			return err
-		}
-	}
-	if _, err := db.ExecContext(ctx, `ALTER TABLE pulse_goal_checks ADD COLUMN report_only INTEGER NOT NULL DEFAULT 0`); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+	columns, err := pulseStateColumns(ctx, db, "pulse_goal_checks")
+	if err != nil {
 		return err
+	}
+	for _, column := range []string{"next_check_at", "next_check_reason"} {
+		if !columns[column] {
+			if _, err := db.ExecContext(ctx, `ALTER TABLE pulse_goal_checks ADD COLUMN `+column+` TEXT NOT NULL DEFAULT ''`); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
@@ -186,16 +185,24 @@ func latestPulseGoalCheck(ctx context.Context, workspacePath string) (*PulseGoal
 		return nil, time.Time{}, err
 	}
 	defer db.Close()
-	if err := ensurePulseGoalCheckSchema(ctx, db); err != nil {
+	columns, err := pulseStateColumns(ctx, db, "pulse_goal_checks")
+	if err != nil || len(columns) == 0 {
 		return nil, time.Time{}, err
+	}
+	nextAt, nextReason := "''", "''"
+	if columns["next_check_at"] {
+		nextAt = "next_check_at"
+	}
+	if columns["next_check_reason"] {
+		nextReason = "next_check_reason"
 	}
 	var lastStarted string
 	_ = db.QueryRowContext(ctx, `SELECT COALESCE(MAX(started_at),'') FROM pulse_goal_check_runs`).Scan(&lastStarted)
 	var check PulseGoalCheck
 	var alarms string
-	err = db.QueryRowContext(ctx, `SELECT check_id,checked_at,pulse_run_id,status,key_number,summary,action_taken,decision_id,alarms_json,pause_fingerprint,next_check_at,next_check_reason,report_only
+	err = db.QueryRowContext(ctx, `SELECT check_id,checked_at,pulse_run_id,status,key_number,summary,action_taken,decision_id,alarms_json,pause_fingerprint,`+nextAt+`,`+nextReason+`
 		FROM pulse_goal_checks ORDER BY checked_at DESC LIMIT 1`).Scan(&check.CheckID, &check.CheckedAt, &check.PulseRunID, &check.Status,
-		&check.KeyNumber, &check.Summary, &check.ActionTaken, &check.DecisionID, &alarms, &check.PauseFingerprint, &check.NextCheckAt, &check.NextCheckReason, &check.ReportOnly)
+		&check.KeyNumber, &check.Summary, &check.ActionTaken, &check.DecisionID, &alarms, &check.PauseFingerprint, &check.NextCheckAt, &check.NextCheckReason)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, parseStoredTime(lastStarted), nil
 	}
@@ -388,16 +395,10 @@ func recordPulseGoalCheckFromToolArgs(ctx context.Context, args map[string]inter
 	} else {
 		nextReason = ""
 	}
-	perms, _ := pulsePermissionsForWorkflow(ctx, workspacePath)
-	reportOnly := !perms.Run
-	if reportOnly {
-		nextGap = 7 * 24 * time.Hour
-		nextReason = "Pulse is off; weekly suggestions report."
-	}
 	nextAt := now.Add(nextGap)
 	if due, err := nextPulseGoalWorkQuestion(ctx, workspacePath, now); err != nil {
 		scheduleLogf("[PULSE] dated Goal Work unavailable for %s; keeping chosen next check: %v", workspacePath, err)
-	} else if !reportOnly && !due.IsZero() {
+	} else if !due.IsZero() {
 		bounded := due
 		if floor := now.Add(pulseCheckMinGap); bounded.Before(floor) {
 			bounded = floor
@@ -415,10 +416,10 @@ func recordPulseGoalCheckFromToolArgs(ctx context.Context, args map[string]inter
 	if boundID := pulseCheckRunIDForSession(session); boundID != "" {
 		runID = boundID
 	}
-	_, err = db.ExecContext(ctx, `INSERT INTO pulse_goal_checks (check_id,checked_at,pulse_run_id,status,key_number,summary,action_taken,decision_id,alarms_json,pause_fingerprint,next_check_at,next_check_reason,report_only)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, checkID, formatStoredTime(now), runID, status,
+	_, err = db.ExecContext(ctx, `INSERT INTO pulse_goal_checks (check_id,checked_at,pulse_run_id,status,key_number,summary,action_taken,decision_id,alarms_json,pause_fingerprint,next_check_at,next_check_reason)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, checkID, formatStoredTime(now), runID, status,
 		strings.TrimSpace(stringToolArg(args, "key_number")), summary, strings.TrimSpace(stringToolArg(args, "action_taken")),
-		strings.TrimSpace(stringToolArg(args, "decision_id")), string(alarms), view.Facts.PauseFingerprint, formatStoredTime(nextAt), nextReason, reportOnly)
+		strings.TrimSpace(stringToolArg(args, "decision_id")), string(alarms), view.Facts.PauseFingerprint, formatStoredTime(nextAt), nextReason)
 	if err != nil {
 		return "", err
 	}
@@ -452,7 +453,7 @@ func (s *SchedulerService) launchDueGoalChecks(ctx context.Context) {
 	}
 	now := time.Now().UTC()
 	for _, item := range discovered {
-		if item.Manifest == nil || item.Manifest.Kind == "relay" || !workflowHasSoul(ctx, item.WorkspacePath) {
+		if item.Manifest == nil || item.Manifest.Kind == "relay" || !item.Manifest.PulseEnabled() || !workflowHasSoul(ctx, item.WorkspacePath) {
 			continue
 		}
 		workspacePath := item.WorkspacePath
@@ -498,9 +499,6 @@ func (s *SchedulerService) launchDueGoalChecks(ctx context.Context) {
 // pulseLifecycleGoalCheckStep is the one turn of a daily goal check.
 func pulseLifecycleGoalCheckStep(ctx context.Context, workspacePath, pulseRunID string, _ workflowNotificationContentInstructions) pulseLifecycleStep {
 	perms, autonomyText := pulsePermissionsForWorkflow(ctx, workspacePath)
-	if !perms.Run {
-		return pulseLifecycleStep{label: "goal-check", goalWork: &perms, goalLead: true, query: fmt.Sprintf(`WEEKLY GOAL REPORT. pulse_run_id=%q. Pulse is off. Read the written goal, relevant DB measurements/history, outputs, prior Goal Work and current plan consistency evidence. Judge progress, uncertainty and useful improvements yourself. Do not edit the workflow or skills, run steps, send action requests, create decisions or arrange follow-up wakeups. Do not ask Builder to act. Save one record_pulse_goal_check with the evidence-based conclusion, suggestions and any measurement gaps; its next report is weekly. Include plan drift findings as suggestions only. The existing report and change history are visible to workflow users. No separate reviewer or report ledger.`, pulseRunID)}
-	}
 	return pulseLifecycleStep{label: "goal-check", goalWork: &perms, query: fmt.Sprintf(`GOAL CHECK AND USEFUL WORK. pulse_run_id=%q. One continuing Pulse turn: no Gate, separate reviewers or finalizer.
 
 Choose evidence through your tools or Builder messages. Use tools when you need evidence; no operational packet is attached. Read soul/soul.md and relevant goal memory. get_goal_metrics reads source-backed DB history; get_pulse_state views goal_status, goal_work, step_outputs, step_concerns and backlog are optional. No metric-to-route declaration is required. Missing evidence stays unknown; delivery, completed runs and numerical differences do not establish goal improvement.
@@ -516,50 +514,18 @@ You reason; Builder acts within the shared permissions. Messages are explicit, r
 %s`, pulseRunID, autonomyText) + "\n\n" + pulseTimingInstructions}
 }
 
-// One clock with two existing settings: active checks choose a useful time;
-// OFF reports weekly. Turning ON after a report makes active work eligible.
-func nextPulseCheckForSetting(enabled bool, check *PulseGoalCheck) time.Time {
-	if check == nil {
-		return time.Time{}
-	}
-	if enabled {
-		if check.ReportOnly {
-			return time.Time{}
-		}
-		return nextGoalCheckDue(check)
-	}
-	checked := parseStoredTime(check.CheckedAt)
-	if checked.IsZero() {
-		return time.Time{}
-	}
-	return checked.Add(7 * 24 * time.Hour)
-}
-
 // nextPulseCheckAt is the common timing projection for the launcher and screen.
 // It reads existing dates/wake intents; it never judges metric meaning.
 func nextPulseCheckAt(ctx context.Context, workspacePath string, manifest *WorkflowManifest, check *PulseGoalCheck, lastStarted time.Time) (time.Time, string) {
-	enabled := manifest != nil && manifest.PulseEnabled()
-	next := nextPulseCheckForSetting(enabled, check)
+	if manifest == nil || !manifest.PulseEnabled() {
+		return time.Time{}, "Pulse is off; no check is scheduled."
+	}
+	next := nextGoalCheckDue(check)
 	reason := ""
 	if check != nil {
 		reason = check.NextCheckReason
 	}
-	if !enabled {
-		if check == nil {
-			key := workspacePath
-			if manifest != nil {
-				key = firstNonEmptyTrimmed(manifest.ID, key)
-			}
-			initial, err := firstWeeklyReportDue(ctx, workspacePath, key, time.Now().UTC())
-			if err != nil {
-				scheduleLogf("[PULSE] first weekly report time unavailable for %s: %v", workspacePath, err)
-				return time.Now().UTC().Add(goalCheckRetryGap), "First weekly report time could not be saved yet."
-			}
-			return initial, "First weekly suggestions report, spread across the week."
-		}
-		return next, "Pulse is off; weekly suggestions report."
-	}
-	if check == nil || check.ReportOnly {
+	if check == nil {
 		return next, "Pulse is ready for its goal check."
 	}
 	checked := parseStoredTime(check.CheckedAt)

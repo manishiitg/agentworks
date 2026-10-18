@@ -5902,8 +5902,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		} else if workflowNativeAgentTools {
 			profileAgentToolsMode = "full"
 		}
-		if crewAskOnly {
-			// Run mode never gets a CLI's native tools, whatever the Crew's setting says.
+		if crewAskOnly || isGoalLeadSessionID(sessionID) {
+			// Pulse uses the server's guarded tools, including its native bridge.
+			// Native CLI shell/files would bypass its outward and folder rules.
 			profileAgentToolsMode = "mcp_only"
 		}
 		allowPersistentInteractive := codingAgentRequestAllowsPersistentInteractive(&req)

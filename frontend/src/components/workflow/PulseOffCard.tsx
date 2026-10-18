@@ -39,9 +39,9 @@ export function PulseOffCard({ pulseOn, hasSoul, runSetup, saving, onTurnOn }: {
         <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/15 ring-4 ring-primary/10">
           <PulseIcon className="h-6 w-6 text-primary" aria-hidden="true" />
         </div>
-        <h2 className="text-base font-semibold text-foreground">{pulseOn ? 'Pulse is waiting for a goal' : 'Let an agent own this workflow’s goal'}</h2>
+        <h2 className="text-base font-semibold text-foreground">{pulseOn ? 'Pulse is waiting for a goal' : 'Pulse is off'}</h2>
         <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-          Pulse watches the goal written in soul.md every day and gets the Builder to improve the workflow, like a teammate who looks after it.
+          When on, Pulse checks the goal and asks Builder to improve the workflow. When off, Pulse does not run, report or receive messages. Turn it on before tagging or chatting with it.
         </p>
         <div className="mt-4">
           {hasSoul ? (
@@ -77,7 +77,7 @@ export function PulseOffCard({ pulseOn, hasSoul, runSetup, saving, onTurnOn }: {
         </div>
         <div className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
           <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
-          <span>Pulse only reads. The Builder makes changes within its current permissions; anything big comes to you under Needs you. Talk to it any time with #pulse in the Builder chat, or turn it off.</span>
+          <span>Pulse only reads. The Builder makes changes within its current permissions; anything big comes to you under Needs you. When Pulse is on, talk to it with #pulse in the Builder chat.</span>
         </div>
       </section>
 

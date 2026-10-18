@@ -231,7 +231,7 @@ Otherwise call set_workflow_contract_version(version="1.0.23") and stop.`
 
 const upgradeDedicatedPulseSchedule = `WORKFLOW CONTRACT UPGRADE: WORKFLOW-WIDE PULSE.
 
-Recurring Pulse is represented by workflow.json pulse.enabled. It has no independent cron. The same continuing Pulse chooses its useful goal checks; normal scheduled runs do not start Gate, reviewers or a fixer. When OFF, Pulse only saves weekly suggestions and cannot act.
+Recurring Pulse is represented by workflow.json pulse.enabled. It has no independent cron. The same continuing Pulse chooses its useful goal checks; normal scheduled runs do not start Gate, reviewers or a fixer. When OFF, Pulse is completely unavailable: no checks, reports, tags or messages.
 
 Read workflow.json and list_schedules. The server's one-time conversion preserves prior effective enablement and housekeeping, and removes obsolete post_run_monitor, post_run_monitor_mode and pulse_review_only fields. Preserve the canonical pulse.enabled and outward_actions settings, including an explicit OFF. Never recreate retired schedule modes or reviewer schedules. Do not change ordinary schedules, their timing, routes or enabled state. Do not run the workflow or Pulse.
 

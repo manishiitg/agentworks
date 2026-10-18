@@ -101,5 +101,5 @@ and evidence last.
 
 4. **Save the conclusion and next check.** Use `record_pulse_goal_check` in the
    same Pulse conversation. ON chooses a useful time within the fixed bounds;
-   OFF saves a weekly suggestions report. There is no separate finalizer clock,
+   OFF starts no Pulse activity. There is no separate finalizer clock,
    repair pass or reviewer. Ordinary schedule housekeeping is separate.

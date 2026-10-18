@@ -2953,7 +2953,7 @@ func createPulseWorklistTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 					"summary":             map[string]interface{}{"type": "string", "minLength": 1, "description": "One or two plain sentences for the owner: progress, your approach judgment/recommendation when reviewed, and the main uncertainty."},
 					"action_taken":        map[string]interface{}{"type": "string", "description": "What you did about it, if anything."},
 					"decision_id":         map[string]interface{}{"type": "string", "description": "The create_human_input_request id when you asked the owner."},
-					"next_check_in_hours": map[string]interface{}{"type": "number", "minimum": 1, "maximum": 168, "description": "When to check the goal next, in hours from now; bounded to 6–168 hours (24 when omitted). Pick the earliest useful outcome or approach checkpoint as well as repairs. Earlier Goal Work check_at dates share these bounds. When Pulse is off, the next report is weekly."},
+					"next_check_in_hours": map[string]interface{}{"type": "number", "minimum": 1, "maximum": 168, "description": "When to check the goal next, in hours from now; bounded to 6–168 hours (24 when omitted). Pick the earliest useful outcome or approach checkpoint as well as repairs. Earlier Goal Work check_at dates share these bounds. When Pulse is off, no next check is scheduled."},
 					"next_check_reason":   map[string]interface{}{"type": "string", "description": "Why that time, in a few words, e.g. \"after tomorrow's 09:00 publish run\"."},
 				},
 				"required": []string{"workspace_path", "status", "summary"},

@@ -706,7 +706,10 @@ func effectiveSchedulePulseMode(sctx *ScheduleContext, manifest *WorkflowManifes
 		return schedulePulseModeOff
 	}
 	if sctx != nil && sctx.ForcePulseReview {
-		return schedulePulseModeFull
+		if manifest != nil && manifest.PulseEnabled() {
+			return schedulePulseModeFull
+		}
+		return schedulePulseModeOff
 	}
 	if sctx == nil || manifest == nil {
 		return schedulePulseModeOff
@@ -1589,6 +1592,9 @@ func (s *SchedulerService) triggerPulseRunKind(workspacePath, triggerSource, fix
 		return "", fmt.Errorf("workflow manifest not found at %s", workspacePath)
 	}
 
+	if !manifest.PulseEnabled() {
+		return "", fmt.Errorf("Pulse is off for this workflow. Turn it on in the workflow's Pulse settings to use it.")
+	}
 	sched := WorkflowSchedule{
 		ID:             manualWorkflowPulseScheduleID,
 		Name:           "Run Pulse",

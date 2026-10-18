@@ -1890,14 +1890,14 @@ func TestPostRunMonitorStepsUseOneTurnInactivityBoundary(t *testing.T) {
 	}
 }
 
-// A missing manifest gives a report-only context, never implicit run authority.
+// A missing manifest leaves Pulse fully off, never implicit run authority.
 func TestPulseMissingManifestCannotAct(t *testing.T) {
 	perms, text := pulsePermissionsForWorkflow(context.Background(), "Workflow/does-not-exist")
 	if perms.Run || perms.Outward || perms.Change || perms.Reshape {
 		t.Fatalf("missing workflow granted authority: %+v", perms)
 	}
-	if !strings.Contains(text, "Pulse is off") || !strings.Contains(text, "weekly report") {
-		t.Fatalf("report-only instructions missing: %s", text)
+	if !strings.Contains(text, "Pulse is off") || !strings.Contains(text, "No checks, reports or messages run") {
+		t.Fatalf("OFF instructions missing: %s", text)
 	}
 }
 

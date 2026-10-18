@@ -85,5 +85,5 @@ it.each([[false, true], [true, false]])('shows the owner-managed card when Pulse
   expect(card?.textContent).toContain('Today you manage this workflow');
   expect(card?.textContent).toContain('after: backup, notify');
   expect(host.querySelector('[data-testid="pulse-workspace"]')).toBeNull();
-  if (!monitorOn && hasSoul) expect(host.textContent).toContain('Weekly report');
+  if (!monitorOn && hasSoul) { expect(host.textContent).toContain('Pulse is off'); expect(host.textContent).not.toContain('Weekly report'); }
 });

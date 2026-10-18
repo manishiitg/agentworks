@@ -801,7 +801,6 @@ export interface PulseGoalStatus {
   /** Only enabled Pulse workflows receive this targeted migration check. */
   measurement_upgrade?: { required: boolean; reasons: string[] }
   latest_check?: {
-    report_only?: boolean
     checked_at: string
     status: 'on_track' | 'at_risk' | 'off_track' | 'not_measured'
     key_number?: string

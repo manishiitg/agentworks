@@ -12,6 +12,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
@@ -99,10 +100,21 @@ func TestToolExecutionContextAdmitsRegisteredWorkflowChildSession(t *testing.T) 
 	requestCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "alice", Provider: "local"})
 	resolve := api.bindToolExecutionContext(requestCtx, parentSession, QueryRequest{}, false)
 
+	// Pulse delegated work holds the Builder root, while the ordinary workflow
+	// step/group uses its own outward settings (not Pulse's new-action setting).
+	release := beginGoalWorkTurn(parentSession, stepworkflow.GoalWorkPermissions{Run: true, Change: true, Reshape: true})
+	defer release()
+	root, err := resolve(context.Background(), "slack")
+	if err != nil || !common.OutwardHeld(root) {
+		t.Fatalf("delegated Builder lost hold: %v", err)
+	}
 	incoming := context.WithValue(context.Background(), common.WorkflowSessionIDKey, "forged-controller")
 	ctx, err := resolve(executor.WithSessionID(incoming, childSession), "agent_browser")
 	if err != nil {
 		t.Fatalf("registered workflow child was rejected: %v", err)
+	}
+	if common.OutwardHeld(ctx) {
+		t.Fatal("ordinary workflow child inherited Pulse outward hold")
 	}
 	if got := executor.SessionIDFromContext(ctx); got != parentSession {
 		t.Fatalf("bound execution session = %q, want authenticated parent %q", got, parentSession)

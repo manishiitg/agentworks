@@ -11,7 +11,10 @@ import (
 // Pin the approved one-time mapping: no combination of legacy switches may
 // accidentally gain outward permission, and a new explicit OFF always wins.
 func TestPulseSettingsMigrationKeepsOutwardAuthority(t *testing.T) {
-	cases := []struct{ autonomy, want string }{{`{"level":0}`, "ask"}, {`{"level":1}`, "ask"}, {`{"level":2}`, "ask"}, {`{"level":3}`, "ask"}, {`{"level":4}`, "allow"}, {`{"level":5}`, "allow"}, {`{"level":6}`, "ask"}, {`{"level":"wrong"}`, "ask"}, {`{"run":"wrong","change":"auto","outward":"auto"}`, "ask"}}
+	cases := []struct {
+		autonomy, want string
+		on             bool
+	}{{`{"level":0}`, "ask", false}, {`{"level":1}`, "ask", false}, {`{"level":2}`, "ask", true}, {`{"level":3}`, "ask", true}, {`{"level":4}`, "allow", true}, {`{"level":5}`, "allow", true}, {`{"level":6}`, "ask", false}, {`{"level":"wrong"}`, "ask", false}, {`{"run":"wrong","change":"auto","outward":"auto"}`, "ask", true}, {`{}`, "ask", false}}
 	for _, run := range []string{"auto", "ask"} {
 		for _, change := range []string{"auto", "ask"} {
 			for _, outward := range []string{"auto", "ask"} {
@@ -19,7 +22,10 @@ func TestPulseSettingsMigrationKeepsOutwardAuthority(t *testing.T) {
 				if run == "auto" && change == "auto" && outward == "auto" {
 					want = "allow"
 				}
-				cases = append(cases, struct{ autonomy, want string }{fmt.Sprintf(`{"run":%q,"change":%q,"outward":%q}`, run, change, outward), want})
+				cases = append(cases, struct {
+					autonomy, want string
+					on             bool
+				}{fmt.Sprintf(`{"run":%q,"change":%q,"outward":%q}`, run, change, outward), want, run == "auto" && change == "auto"})
 			}
 		}
 	}
@@ -41,7 +47,7 @@ func TestPulseSettingsMigrationKeepsOutwardAuthority(t *testing.T) {
 		if err := json.Unmarshal(migrated, &decoded); err != nil {
 			t.Fatal(err)
 		}
-		if !decoded.Pulse.Enabled || decoded.Pulse.Outward != c.want || len(decoded.Schedules) != 1 || decoded.Schedules[0].AfterRun != (ScheduleAfterRun{}) {
+		if decoded.Pulse.Enabled != c.on || decoded.Pulse.Outward != c.want || len(decoded.Schedules) != 1 || decoded.Schedules[0].AfterRun != (ScheduleAfterRun{}) {
 			t.Fatalf("normalization changed authority/housekeeping: %s", migrated)
 		}
 		for _, retired := range []string{`"pace"`, `"autonomy"`, `"pulse_mode"`} {
@@ -71,7 +77,7 @@ func TestPulseSettingsMigrationKeepsOutwardAuthority(t *testing.T) {
 		pulse string
 		on    bool
 	}{
-		{`{}`, true}, {`{"enabled":false,"outward_actions":"ask"}`, false},
+		{`{}`, false}, {`{"enabled":true,"outward_actions":"ask"}`, true}, {`{"enabled":false,"outward_actions":"ask"}`, false},
 	} {
 		migrated, _ := workflowtypes.NormalizePulseSettingsJSON([]byte(`{"post_run_monitor":true,"post_run_monitor_mode":"per_run","pulse":` + prior.pulse + `}`))
 		var doc struct{ Pulse struct{ Enabled bool } }
