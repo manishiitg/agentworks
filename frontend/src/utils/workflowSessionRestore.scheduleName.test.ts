@@ -19,7 +19,7 @@ vi.mock('./workflowNavigation', () => ({
 import type { ActiveSessionInfo } from '../services/api-types'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
-import { openCanonicalActivitySession } from './workflowSessionRestore'
+import { openCanonicalActivitySession, openWorkflowInspectionParent } from './workflowSessionRestore'
 
 const scheduleName = 'Test and Promote (Mon-Fri 8:30 AM IST)'
 const run: ActiveSessionInfo = {
@@ -31,7 +31,7 @@ const run: ActiveSessionInfo = {
 
 beforeEach(() => {
   useGlobalPresetStore.setState(state => ({
-    workflowPresets: [{ id: 'trading', label: 'trading' }] as typeof state.workflowPresets,
+    workflowPresets: [{ id: 'trading', label: 'trading', selectedFolder: { filepath: 'Workflow/trading' } }] as typeof state.workflowPresets,
     activePresetIds: { ...state.activePresetIds, workflow: 'trading' },
   }))
   useChatStore.setState({
@@ -70,4 +70,15 @@ it('does not replace a recovered job name with a legacy generic scheduled-run ti
   await openCanonicalActivitySession({ ...run, title: 'trading · Scheduled run' }, { source: 'chat-sidebar' })
   expect(useChatStore.getState().chatTabs.run.name).toBe(scheduleName)
   expect(useChatStore.getState().chatTabs.run.metadata?.scheduledJobName).toBe(scheduleName)
+})
+
+it('opens an unlisted MCP parent as a distinct read-only run without rebinding the main chat', async () => {
+  const main = { tabId: 'main', name: 'Chat', sessionId: 'main-chat', metadata: { mode: 'workflow', phaseId: 'workflow-builder', presetQueryId: 'trading' } } as ChatTab
+  useChatStore.setState({ chatTabs: { main }, activeTabId: 'main' })
+  await openWorkflowInspectionParent({ ...run, session_id: 'mcp-parent', triggered_by: 'mcp', workspace_path: 'Workflow/trading' }, 'MCP run')
+  expect(useChatStore.getState().chatTabs.main).toEqual(main)
+  const opened = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === 'mcp-parent')!
+  expect(opened).toBeDefined()
+  expect(opened.metadata).toMatchObject({ isViewOnly: true, isExecutionRun: true, presetQueryId: 'trading' })
+  expect(opened.metadata?.isScheduledRun).not.toBe(true)
 })

@@ -36,6 +36,7 @@ import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { RuntimeBrandLogo } from '../branding/RuntimeBrandLogo'
 import { NewProjectMenu } from './NewProjectMenu'
 import SidebarStepInspections from './SidebarStepInspections'
+import SidebarWorkspaceInspections from './SidebarWorkspaceInspections'
 import { inspectionKey } from '../../utils/stepInspection'
 import { workflowTriggerLabel } from '../../utils/workflowSessionKinds'
 export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: ReactNode; footer?: ReactNode }) {
@@ -448,7 +449,14 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     const only = workspace.chats.length === 1 ? workspace.chats[0] : null
     const onlyTab = only?.tabId ? tabs[only.tabId] : undefined
     const primaryOnly = only && !only.scheduled && (!onlyTab || !canCloseWorkspaceChatTab(onlyTab, tabs)) && (only.builder || only.title === workspace.title)
-    if (primaryOnly) return renderChat(only, undefined, undefined, workspace.title)
+    const workflowId = workspace.chats[0]?.workflowId
+    const workflow = presets.find(preset => preset.id === workflowId)
+    const workspaceInspections = workspace.surface === 'agentworks' && workflowId && workflow?.selectedFolder?.filepath ? <SidebarWorkspaceInspections
+      workspace={workflow.selectedFolder.filepath} workflowId={workflowId} scope={scope} visible={!hidden}
+      selected={product === 'agentworks' && !!selectedTab && tabs[selectedTab]?.metadata?.presetQueryId === workflowId}
+      listedSessions={workspace.chats.map(row => row.id)}
+    /> : null
+    if (primaryOnly) return <div key={workspace.id}>{renderChat(only, undefined, undefined, workspace.title)}{workspaceInspections}</div>
     return (
       <section key={workspace.id} className="mb-2">
         <button
@@ -486,6 +494,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
               !hidden
             )
           )}
+          {workspaceInspections}
         </div>
       </section>
     )

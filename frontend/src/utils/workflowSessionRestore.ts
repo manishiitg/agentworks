@@ -617,3 +617,11 @@ export async function openCanonicalActivitySession(
   }
   await openActiveSession(session, options)
 }
+
+/** Inspect an explicitly chosen parent without rebinding the workflow's Builder. */
+export async function openWorkflowInspectionParent(session: ActiveSessionInfo, title: string): Promise<void> {
+  const preset = findWorkflowPresetForSession(session)
+  if (!preset || preset.workflowKind === 'relay' || normalizeWorkspacePath(preset.selectedFolder?.filepath) !== normalizeWorkspacePath(session.workspace_path)) throw new Error('Goal unavailable')
+  const navigationGeneration = beginWorkflowNavigation(preset.id)
+  await restoreReadOnlyWorkflowRunChat(session, { preset, navigationGeneration, tabName: title, metadata: {} })
+}

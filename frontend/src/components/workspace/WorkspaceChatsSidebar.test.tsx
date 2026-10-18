@@ -5,6 +5,8 @@ import { afterEach, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   user: { id: 'alice', allowed_products: null, allowed_workflow_ids: null } as any,
   tabs: {} as any,
+  presets: [] as any[],
+  product: 'code',
   active: [] as any[],
   selectedTab: null as string | null,
   history: vi.fn(),
@@ -39,15 +41,15 @@ vi.mock('../../stores/useChatStore', () => ({
   ),
 }))
 vi.mock('../../stores/useGlobalPresetStore', () => ({
-  useGlobalPresetStore: (select: any) => select({ workflowPresets: [], recentPresetOrder: [] }),
+  useGlobalPresetStore: (select: any) => select({ workflowPresets: mocks.presets, recentPresetOrder: [] }),
 }))
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({
   useWorkspaceConnectionStore: (select: any) => select({ activeWorkspaceId: 'local' }),
 }))
 vi.mock('../../stores/useProductSurfaceStore', () => ({
-  useProductSurfaceStore: Object.assign((select: any) => select({ productSurface: 'code' }), {
+  useProductSurfaceStore: Object.assign((select: any) => select({ productSurface: mocks.product }), {
     getState: () => ({
-      productSurface: 'code',
+      productSurface: mocks.product,
       setSelectedCodeProjectId: mocks.selectCode,
       setSelectedWorkProjectId: mocks.selectWork,
     }),
@@ -58,6 +60,7 @@ vi.mock('../../services/api', () => ({ agentApi: { listChatHistorySessions: mock
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: vi.fn() }))
 vi.mock('../../hooks/useResumePreviousChat', () => ({ useResumePreviousChat: () => mocks.resume }))
 vi.mock('./SidebarStepInspections', () => ({ default: () => null }))
+vi.mock('./SidebarWorkspaceInspections', () => ({ default: (props: any) => React.createElement('div', { 'data-workspace-discovery': props.workflowId, 'data-selected': String(props.selected), 'data-excluded': props.listedSessions.join(',') }) }))
 vi.mock('../../utils/chatIdentity', () => ({
   captureChatIdentity: () => 1,
   isChatIdentityCurrent: () => true,
@@ -83,6 +86,8 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterEach(() => {
   vi.clearAllMocks()
   mocks.tabs = {}
+  mocks.presets = []
+  mocks.product = 'code'
   mocks.active = []
   mocks.selectedTab = null
   mocks.user = { id: 'alice', allowed_products: null, allowed_workflow_ids: null }
@@ -245,5 +250,19 @@ it('labels the parent source and returns from inspection to the parent chat', as
     await act(async()=>main.click())
     expect(mocks.setMetadata).toHaveBeenCalledWith('main',{stepInspections:{items:[target],activeId:null}})
     expect(mocks.openTab).toHaveBeenCalledWith('main')
+  })
+})
+
+it('mounts workspace-level Inspect discovery for the selected Goal even when only its main chat is listed', async () => {
+  mocks.product = 'agentworks'
+  mocks.presets = [{ id: 'goal', label: 'Research', selectedFolder: { filepath: 'Workflow/demo' } }]
+  mocks.tabs = { main: { tabId: 'main', sessionId: 'main-chat', name: 'Research', createdAt: 1, metadata: { mode: 'workflow', phaseId: 'workflow-builder', presetQueryId: 'goal' } } }
+  mocks.selectedTab = 'main'
+  mocks.history.mockResolvedValue({ sessions: [] })
+  await render(async host => {
+    const discovery = host.querySelector('[data-workspace-discovery="goal"]')!
+    expect(discovery).not.toBeNull()
+    expect(discovery.getAttribute('data-selected')).toBe('true')
+    expect(discovery.getAttribute('data-excluded')).toBe('main-chat')
   })
 })
