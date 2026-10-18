@@ -905,7 +905,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		// A lease the server closed cannot be repaired in place: the chat's plain attach under its own name starts a fresh
 		// one through the normal path below (a name another live chat holds is still refused there and by the server).
 		closedSameName := s != nil && s.ServerClosed && (in.AgentName == "" || in.AgentName == s.Attachment.AgentName)
-		if in.OwnAttach && in.Provider == "codex" && s != nil && !in.SwitchConnection && !closedSameName {
+		if in.OwnAttach && in.Provider == "codex" && s != nil && s.client != nil && !in.SwitchConnection && !closedSameName { // no client: the chat's own connection file is gone, so it is rebuilt below from its saved login
 			if in.AgentName != "" && in.AgentName != s.Attachment.AgentName {
 				return LocalBridgeReply{Error: "This chat is attached as agent:" + s.Attachment.AgentName + ". Another name has to be chosen by the person in the app."}
 			}
@@ -1013,6 +1013,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			if candidate.Attachment.AgentName == in.AgentName && candidate.ParentConfigPath == in.ConfigPath {
 				previous, connectionPath = candidate, candidate.ConfigPath
 				break
+			}
+		}
+		if connectionPath != "" {
+			if _, e := localConfiguredClient(connectionPath); e != nil {
+				connectionPath = "" // the saved connection file is missing or unreadable: make a fresh one from the login
 			}
 		}
 		// The server calls below take seconds (register, create the child connection, attach).

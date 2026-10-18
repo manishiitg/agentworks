@@ -595,3 +595,54 @@ func TestConcurrentTakeOffersHandOverEachMessageOnce(t *testing.T) {
 		}
 	}
 }
+
+// A Codex chat whose own saved connection file was deleted could not attach again: the quick own-attach
+// path stopped at "saved connection is incomplete" and the normal path reused the missing file. It must
+// make a new connection from the saved login and keep the chat's name.
+func TestCodexOwnAttachRebuildsAMissingChatConnection(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Action string `json:"action"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/agents/events"):
+			w.WriteHeader(http.StatusOK)
+			w.(http.Flusher).Flush()
+			<-r.Context().Done()
+		case body.Action == "connection":
+			_, _ = w.Write([]byte(`{"access_token":"at","refresh_token":"rt","expires_in":3600}`))
+		case body.Action == "attach":
+			_, _ = w.Write([]byte(`{"attachment_id":"L2","agent_id":"ag","agent_name":"codex-chat","provider":"codex","native_session_id":"sess"}`))
+		default:
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+	root, err := os.MkdirTemp("", "awb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	parent := filepath.Join(root, "parent.json")
+	if err = SaveConfig(parent, Config{Server: srv.URL, Token: "t"}); err != nil {
+		t.Skip("loopback server not accepted:", err)
+	}
+	key := localBridgeKey("codex", "sess")
+	lost := filepath.Join(root, "connections", "gone.json")
+	b := &localBridge{root: root, changed: make(chan struct{}), sessions: map[string]*localSession{key: {
+		Attachment: AgentAttachment{ID: "L1", AgentName: "codex-chat", Provider: "codex", SessionID: "sess"},
+		HostKey:    "h", AccountSenders: true, OwnCLI: true, Offline: true, ParentConfigPath: parent, ConfigPath: lost, Offers: map[string]localOffer{},
+	}}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() { cancel(); b.workers.Wait() }()
+	reply := b.handle(ctx, ctx, LocalBridgeRequest{Action: "attach", Provider: "codex", SessionID: "sess", HostKey: "h", ConfigPath: parent, OwnAttach: true})
+	if !reply.Attached || reply.Error != "" || reply.Attachment.AgentName != "codex-chat" {
+		t.Fatalf("attach after the chat's connection file was lost = %+v", reply)
+	}
+	if got := b.sessions[key]; got == nil || got.ConfigPath == lost {
+		t.Fatal("the chat still points at the lost connection file")
+	} else if _, err = os.Stat(got.ConfigPath); err != nil {
+		t.Fatalf("the new connection file was not written: %v", err)
+	}
+}
