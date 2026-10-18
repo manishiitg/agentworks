@@ -78,7 +78,7 @@ This checklist's job is what Part 1 does not cover: schedule
 cron/timezone/queue drift, eval/success-criteria coverage, downstream-step
 field consumption, dead step/schedule references not already resolved by
 Part 1's deletion audit, and duplicate control stores. It checks whether step
-config, the schedules that drive the workflow, learnings, saved code,
+config, the schedules that drive the workflow, skills, saved code,
 knowledge-base notes, database contracts, reports, evaluation, and recent run
 evidence still match the current workflow, and flags missing or stale eval
 coverage with an `Eval fix` owner label. Read only matching typed state
@@ -139,7 +139,7 @@ Load `read_skill(skills=[{"name":"builder-reference","path":"references/assumpti
      actually sends, so it is a first-class contract with the plan, not
      configuration noise: read every message and resolve each to the plan step
      it drives.
-   - `<script-dir>/main.py`, script metadata, per-step learning metadata, and relevant `learnings/_global/` guidance — plan_drift_review's
+   - `<script-dir>/main.py`, script metadata and relevant workflow-local skills (old learning files remain history) — plan_drift_review's
      `scripted_code_db_queries` check only covers whether a scripted step's SQL
      still resolves against the live schema; content staleness, stale locks,
      and access-mode appropriateness stay this checklist's job (or the
@@ -166,8 +166,8 @@ Load `read_skill(skills=[{"name":"builder-reference","path":"references/assumpti
      when the runtime reads a different store.
 4. Record a finding only when evidence shows drift, including:
    - code, paths, fields, selectors, tool/API usage, or validation still implement an old contract
-   - stale code locks or stale learning access after a material change without review evidence
-   - learnings or KB preserve obsolete behavior or agent-inferred policy
+   - stale code locks or stale skill selections after a material change without review evidence
+   - skills or KB preserve obsolete behavior or agent-inferred policy
    - DB writers, report consumers, or eval consumers disagree on schema or semantics
    - a change updated a plausible but non-canonical store, or duplicate control
      stores disagree so the allocator/router/executor cannot observe the repair

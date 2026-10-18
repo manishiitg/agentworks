@@ -35,6 +35,9 @@ func (r workflowTeamRegistrar) RegisterCustomToolWithTimeout(n, d string, p map[
 		p = copy
 	}
 	return r.definitionRegistrar.RegisterCustomToolWithTimeout(n, d, p, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		if n == "migrate_workflow_skills" {
+			return executeWorkflowSkillsBuilderTool(ctx, r.root, r.user, args, e)
+		}
 		ctx = teamUserContext(ctx, r.user)
 		m, ok, err := ReadWorkflowManifest(ctx, r.root)
 		if err != nil {

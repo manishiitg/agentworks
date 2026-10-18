@@ -111,8 +111,8 @@ func TestExternalContractUpgradeOverMCP(t *testing.T) {
 	f.call(t, reader, "workflow_upgrade", goalStamp, 403)
 	f.call(t, owner, "workflow_upgrade", goalStamp, 200)
 	after = f.call(t, owner, "workflow_upgrade", map[string]any{"action": "status"}, 200).Body.String()
-	if !strings.Contains(after, `"pending":[]`) {
-		t.Fatalf("reviewed migration remains due: %s", after)
+	if !strings.Contains(after, "upgrade-workflow-skills") {
+		t.Fatalf("skills migration should follow Goal agent review: %s", after)
 	}
 
 	// A valid Goal need not have per-step overrides. Missing config stays absent,

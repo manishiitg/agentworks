@@ -50,7 +50,6 @@ export const UI_CONTROL_CONTRACT = {
         "refresh"
       ],
       "targets": [
-        "learnings",
         "knowledgebase",
         "database"
       ]

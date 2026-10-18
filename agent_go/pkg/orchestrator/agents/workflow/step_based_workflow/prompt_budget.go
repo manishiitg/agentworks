@@ -352,7 +352,12 @@ func CollectPromptBudgetDue(ctx context.Context, workspacePath string) (PromptBu
 	due := PromptBudgetDue{Health: BuildPromptHealthReport(plan.Steps)}
 	due.PromptDesign = append([]string(nil), due.Health.ConsolidationDueSteps...)
 
-	if configRaw, err := os.ReadFile(filepath.Join(root, PlanningFolderName, "step_config.json")); err == nil {
+	var manifest struct {
+		Version string `json:"version"`
+	}
+	manifestRaw, _ := os.ReadFile(filepath.Join(root, "workflow.json"))
+	_ = json.Unmarshal(manifestRaw, &manifest)
+	if configRaw, err := os.ReadFile(filepath.Join(root, PlanningFolderName, "step_config.json")); err == nil && !UsesWorkflowSkills(manifest.Version) {
 		if configs, parseErr := ParseStepConfigContent(string(configRaw)); parseErr == nil {
 			for _, cfg := range configs {
 				if cfg.AgentConfigs == nil || strings.TrimSpace(cfg.AgentConfigs.LearningsAccess) != "read-write" {

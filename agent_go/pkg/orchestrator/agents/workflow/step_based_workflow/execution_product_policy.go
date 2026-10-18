@@ -68,24 +68,28 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveDBAccess(cfg *AgentConfigs) st
 	}
 	return resolveDBAccess(cfg)
 }
+func (hcpo *StepBasedWorkflowOrchestrator) legacyLearningsEnabled() bool {
+	return hcpo.platformStoresEnabled() && !hcpo.workflowSkillsOnly.Load()
+}
+
 func (hcpo *StepBasedWorkflowOrchestrator) resolveLearningsAccess(cfg *AgentConfigs) string {
-	if !hcpo.platformStoresEnabled() {
+	if !hcpo.legacyLearningsEnabled() {
 		return LearningsAccessNone
 	}
 	return resolveLearningsAccess(cfg)
 }
 func (hcpo *StepBasedWorkflowOrchestrator) canReadLearnings(cfg *AgentConfigs, step PlanStepInterface) bool {
-	return hcpo.platformStoresEnabled() && canReadLearnings(cfg, step)
+	return hcpo.legacyLearningsEnabled() && canReadLearnings(cfg, step)
 }
 
 func (hcpo *StepBasedWorkflowOrchestrator) canWriteLearnings(cfg *AgentConfigs, step PlanStepInterface) bool {
-	return hcpo.platformStoresEnabled() && canWriteLearnings(cfg, step)
+	return hcpo.legacyLearningsEnabled() && canWriteLearnings(cfg, step)
 }
 func (hcpo *StepBasedWorkflowOrchestrator) shouldDirectWriteLearnings(cfg *AgentConfigs, step PlanStepInterface) bool {
-	return hcpo.platformStoresEnabled() && shouldDirectWriteLearnings(cfg, step)
+	return hcpo.legacyLearningsEnabled() && shouldDirectWriteLearnings(cfg, step)
 }
 func (hcpo *StepBasedWorkflowOrchestrator) resolveExecutionLearningsAccess(cfg *AgentConfigs, step PlanStepInterface) string {
-	if !hcpo.platformStoresEnabled() {
+	if !hcpo.legacyLearningsEnabled() {
 		return LearningsAccessNone
 	}
 	access := resolveExecutionLearningsAccess(cfg, step)

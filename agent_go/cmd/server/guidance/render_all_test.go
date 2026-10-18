@@ -153,7 +153,7 @@ func TestFocusedScheduledPulseReferencesStayComplete(t *testing.T) {
 			wants: []string{
 				"exactly once", "durable evidence", "from prose", `get_pulse_state(view="backlog", detail="compact")`,
 				"normal Workflow Builder tools", "terminal", "cannot erase or block other due work", "priority-ordered Fix queue",
-				"one reconciled `ownership_manifest`", "`kb_purity_manifest`", "`db_ownership_manifest`", "Learning-access changes\nbelong to Architecture",
+				"one reconciled `ownership_manifest`", "`kb_purity_manifest`", "`db_ownership_manifest`", "Steps consume selected skills",
 				"proposal_only", "there is no evidence-wait route", "strategic-proposal-", "No mandatory Markdown checkpoint",
 			},
 		},
@@ -626,15 +626,15 @@ func TestPulseGuidanceRequiresRuntimeAuthorityAndVisibleFreshness(t *testing.T) 
 		"Tool, path, and permission repair",
 		"Scheduler and lifecycle repair",
 		"Evaluation and report repair",
-		"Learning and skill purity repair",
+		"Workflow skill purity repair",
 		"Cross-store ownership repair",
 		"one authoritative owner",
 		"`kb_purity_manifest`",
 		"`db_ownership_manifest`",
-		"Reduce learning writes after cleanup",
+		"Keep skill ownership explicit",
 		"Do not launder content through references",
 		"re-read every content-bearing Markdown file",
-		"`learnings_access=\"read-write\"`",
+		"Steps read selected skills",
 	} {
 		if !strings.Contains(fixPractices, want) {
 			t.Fatalf("pulse-fixer-practices missing %q", want)
@@ -1357,7 +1357,7 @@ func TestWorkflowCompositionExamplesLiveInOwningReferences(t *testing.T) {
 	for kind, wants := range map[string][]string{
 		"plan-design":       {"Composition examples", "readiness", "draft"},
 		"agent":             {"re-read the system of record", "processed-versus-selected counts", "source_sql", "max_parallel", "saved scripted helpers", "No conversational or ad hoc LLM child agent", "already supplied by the user"},
-		"stores":            {"transaction or retry contract", "window.report.query", "knowledgebase/notes/", "learnings/_global/SKILL.md"},
+		"stores":            {"transaction or retry contract", "window.report.query", "knowledgebase/notes/", "workflow-local skill index"},
 		"human-in-the-loop": {"provide the actual draft/change/evidence", "Schedules must complete unattended"},
 	} {
 		doc := RenderSystemDoc(kind)

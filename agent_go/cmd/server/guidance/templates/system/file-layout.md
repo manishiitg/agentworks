@@ -79,11 +79,12 @@ Use this order when debugging latency:
 7. If `agent.duration_ms` is much larger than both `llm.total_duration_ms` and `tools.total_duration_ms`, infer the remaining gap is orchestration overhead, prompt construction, validation, file IO, or other non-LLM/non-tool work.
 8. Use the conversation log only after timing isolation, to explain *why* the slow LLM/tool call happened rather than to discover *which* one was slow.
 
-### Learnings (persistent across runs)
+### Saved code and workflow skills (persistent across runs)
 | Path | Contents |
 |------|----------|
 | <script-dir>/main.py | **scripted steps**: saved Python script — executed on each scripted run via fast path |
-| learnings/_global/SKILL.md | Global prose learnings shared across all steps |
+| skills/<name>/SKILL.md | Short skill index; detail in references/, selected per step |
+| learnings/ | Retained guide history after the explicit skills upgrade; legacy code until code-layout migration |
 | <script-dir>/script_metadata.json | Script version, run counts, per-group stats, duration stats, recent run history (last 10 with exit codes/errors/durations), last failure details, success/failure streak |
 
 ### Legacy evaluation (retired, retained on disk, no longer read)

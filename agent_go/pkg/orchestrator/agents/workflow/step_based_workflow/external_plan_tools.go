@@ -53,10 +53,6 @@ func getUpdateStepConfigParameters() map[string]interface{} {
 				"items":       map[string]interface{}{"type": "string"},
 				"description": "Tool names to enable for this step (format: 'server:tool' or 'server:*')",
 			},
-			"learning_objective": map[string]interface{}{
-				"type":        "string",
-				"description": "Legacy automatic-learning objective, retained only for workflow_upgrade 1.0.50. Put required contributions in the task description and grant learnings_access instead.",
-			},
 			"lock_code": map[string]interface{}{
 				"type":        "boolean",
 				"description": lockCodeDescription,
@@ -80,11 +76,6 @@ func getUpdateStepConfigParameters() map[string]interface{} {
 				"type":        "string",
 				"enum":        []string{"read", "write", "read-write", "none"},
 				"description": knowledgebaseAccessDescription,
-			},
-			"learnings_access": map[string]interface{}{
-				"type":        "string",
-				"enum":        []string{"read", "read-write", "none"},
-				"description": "Access to shared workflow know-how: read (default), read-write for explicit task contributions, or none. This does not add an automatic reflection turn.",
 			},
 			"knowledgebase_contribution": map[string]interface{}{
 				"type":        "string",
@@ -178,6 +169,11 @@ func createUpdateStepConfigExecutor(runtime stepConfigToolRuntime, logger logger
 		if !ok || stepID == "" {
 			return "step_id must be a non-empty string", nil
 		}
+		for _, retired := range []string{"learning_objective", "learnings_access"} {
+			if value, present := args[retired]; present && value != nil {
+				return "Separate workflow learning settings were retired. Select task guides with enabled_skills, or ask the Builder to migrate this workflow's old guides into skills.", nil
+			}
+		}
 		reasonRaw, _ := args["reason"].(string)
 		if strings.TrimSpace(reasonRaw) == "" {
 			return "reason is required (one-sentence rationale captured into the plan changelog)", nil
@@ -246,11 +242,6 @@ func createUpdateStepConfigExecutor(runtime stepConfigToolRuntime, logger logger
 				targetConfig.AgentConfigs.SelectedTools = tools
 			}
 		}
-		if val, ok := args["learning_objective"]; ok && val != nil {
-			if s, ok := val.(string); ok {
-				targetConfig.AgentConfigs.LearningObjective = strings.TrimSpace(s)
-			}
-		}
 		if val, ok := args["lock_code"]; ok && val != nil {
 			if b, ok := val.(bool); ok {
 				if b || targetConfig.AgentConfigs.LockCode == nil || !*targetConfig.AgentConfigs.LockCode {
@@ -299,11 +290,6 @@ func createUpdateStepConfigExecutor(runtime stepConfigToolRuntime, logger logger
 		if val, ok := args["knowledgebase_contribution"]; ok && val != nil {
 			if s, ok := val.(string); ok {
 				targetConfig.AgentConfigs.KnowledgebaseContribution = s
-			}
-		}
-		if val, ok := args["learnings_access"]; ok && val != nil {
-			if s, ok := val.(string); ok {
-				targetConfig.AgentConfigs.LearningsAccess = s
 			}
 		}
 		if val, ok := args["disable_parallel_tool_execution"]; ok && val != nil {

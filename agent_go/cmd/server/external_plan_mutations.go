@@ -182,6 +182,14 @@ func (api *StreamingAPI) externalPlanMutationCall(w http.ResponseWriter, r *http
 		return
 	}
 	ctx = prepareTeamEdit(teamUserContext(ctx, live.UserID), rootPath, teamRevision(plan.Content))
+	if action == "migrate_workflow_skills" {
+		if current.Team != nil && current.Team.LeaderID != live.UserID {
+			externalError(w, 403, "forbidden", "Shared workflow settings require the Leader.")
+			return
+		}
+		ctx = context.WithValue(ctx, workflowSkillsEditKey{}, true)
+		ctx = context.WithValue(ctx, teamManifestPermitKey{}, true)
+	}
 	operationID := uuid.NewString()
 	ctx = stepworkflow.WithExternalBuilderPlanOrigin(ctx, operationID, live.AccessToken.ID, live.UserID, live.Username, "")
 	ctx = stepworkflow.WithExternalPlanSelectedServers(ctx, current.Capabilities.SelectedServers)
@@ -196,7 +204,7 @@ func (api *StreamingAPI) externalPlanMutationCall(w http.ResponseWriter, r *http
 		if e != nil || clean != p || clean == "." || wf.Private(clean) || !externalFileGuard(ctx, false).Allows(clean, write) {
 			return "", fmt.Errorf("plan path is outside connection file consent")
 		}
-		if write && !strings.HasPrefix(clean, "planning/") {
+		if write && !strings.HasPrefix(clean, "planning/") && !(action == "migrate_workflow_skills" && (clean == "workflow.json" || strings.HasPrefix(clean, "skills/"))) {
 			return "", fmt.Errorf("plan tools only commit planning artifacts")
 		}
 		return clean, nil
@@ -208,6 +216,13 @@ func (api *StreamingAPI) externalPlanMutationCall(w http.ResponseWriter, r *http
 		rel, e := relative(p, false)
 		if e != nil {
 			return "", false, e
+		}
+		if action == "migrate_workflow_skills" {
+			raw, exists, e := readWorkflowSkillsFile(root, rel)
+			if e == nil {
+				rememberTeamPlanRead(callCtx, p, raw)
+			}
+			return raw, exists, e
 		}
 		file, e := externalScopedFile(root, rel)
 		if e == nil && file.Exists && file.Encoding != "utf-8" {
@@ -234,6 +249,9 @@ func (api *StreamingAPI) externalPlanMutationCall(w http.ResponseWriter, r *http
 			preparationError = e
 		}
 		return e
+	}
+	if action == "migrate_workflow_skills" {
+		ctx = stepworkflow.WithWorkflowSkillsFiles(ctx, nativeRead, stage)
 	}
 	result, err := stepworkflow.ExecuteExternalBuilderPlanTool(ctx, action, params, rootPath, api.logger, nativeRead, stage, nil)
 	if err == nil {

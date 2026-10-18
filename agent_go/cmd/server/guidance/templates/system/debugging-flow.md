@@ -19,7 +19,7 @@ model — use it to investigate.
 
 **When a step is stuck or repeatedly failing**, run the task yourself
 using the same tools the step agent would use, but first read
-`learnings/_global/SKILL.md` and any relevant KB/db/run artifacts so
+the selected workflow skill index and any relevant KB/db/run artifacts so
 you reuse the workflow's generated playbook. Figure out what works,
 then update the step's instructions, validation, config, or learnings
 with the correct approach.

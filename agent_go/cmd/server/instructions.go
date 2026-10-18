@@ -193,9 +193,8 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 **Variables:**
 - ` + "`variables/variables.json`" + ` — **the only** source of runtime variable values. Shape: ` + "`{variables:[{name,value,group}], groups:[{id,name,enabled}]}`" + `. Groups enable batch execution with different value sets. ` + "`workflow.json`" + ` does NOT carry variable definitions.
 
-**Learnings (reusable HOW-to-run knowledge):**
-- ` + "`learnings/_global/SKILL.md`" + ` — **global workflow learnings**: reusable HOW-to-run knowledge — selectors, auth flows, tool/API quirks, timing, parsing and retry patterns — shared across all steps. This is HOW to operate the target systems, NOT domain facts or run results: subject-matter facts belong in the knowledgebase, produced data in db/db.sqlite. (Per-step SKILL.md learnings have been removed.)
-- ` + "`learnings/_global/references/`" + ` and ` + "`learnings/_global/scripts/`" + ` — supporting files referenced by the global skill
+**Workflow skills and saved code:**
+- ` + "`skills/<name>/SKILL.md`" + ` — short index of reusable methods, with detail in references. Builder/Pulse maintain it; steps consume selected skills. Facts belong in the knowledge base and results in the database. Contract 1.0.51 moves existing guides into local skills explicitly; old learning files remain history.
 - ` + "`code/<step-id>/main.py (version 1; learnings/<step-id>/main.py for legacy)`" + ` — **persistent saved script** for ` + "`scripted`" + ` steps. Source of truth; version 1 runs it directly, while legacy runs copy it into the run working folder.
 - ` + "`code/<step-id>/script_metadata.json (legacy: learnings/<step-id>/script_metadata.json)`" + ` — version history + run stats for the saved script
 
@@ -235,7 +234,6 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 - **Step execution modes:** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/planning/step_config.json\")`" + ` — look at each step's ` + "`agent_configs.use_code_execution_mode`" + ` and the step's plan type (scripted = scripted main.py, agent = conversational)
 - **Schedules:** ` + "`execute_shell_command(command: \"python3 -c \\\"import json; scheds=json.load(open('" + absWorkflow + "/<name>/workflow.json')).get('schedules',[]); [print(f'{s[\\\\\\\"id\\\\\\\"]}: {s[\\\\\\\"cron_expression\\\\\\\"]} enabled={s.get(\\\\\\\"enabled\\\\\\\",True)}') for s in scheds]\\\"\")`" + `
 - **Variables + groups:** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/variables/variables.json\")`" + `
-- **Global workflow learnings:** ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/learnings/_global/SKILL.md\")`" + `
 - **Saved step code (scripted steps only):** Read workflow.json first. For code_layout_version=1: ` + "`execute_shell_command(command: \"cat " + absWorkflow + "/<name>/code/<step-id>/main.py\")`" + `. For absent/zero layout versions use learnings instead of code.
 - **Run logs:** start with ` + "`execute_shell_command(command: \"ls " + absWorkflow + "/<name>/runs/iteration-0/\")`" + ` for the latest active run, then inspect older retained ` + "`iteration-{N}`" + ` folders when Pulse decision timestamps indicate a relevant before-after window.
 - **Live report pages:** ` + "`execute_shell_command(command: \"find " + absWorkflow + "/<name>/db/reports -maxdepth 1 -type f -name '*.html' -print\")`" + `
@@ -251,7 +249,7 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 2. **Read workflow state to answer the question.** Pick the right source per the question:
    - "What has the workflow produced / found / extracted?" → ` + "`runs/iteration-0/`" + ` (latest run outputs) or ` + "`db/db.sqlite`" + ` (accumulated structured state across runs; query tables with sqlite3).
    - "What does the workflow know about X?" → ` + "`knowledgebase/context/context.md`" + ` for user-supplied runtime context, then ` + "`knowledgebase/notes/_index.json`" + ` plus selected ` + "`knowledgebase/notes/*.md`" + ` for narratives.
-   - "How does the workflow do X?" → ` + "`learnings/_global/SKILL.md`" + `.
+   - "How does the workflow do X?" → the selected workflow-local skill index and relevant references.
    - "Why does the workflow exist / what's its goal?" → ` + "`soul/soul.md`" + ` (objective, success criteria).
    - "Latest results / most recent report?" → ` + "`db/reports/index.html`" + ` for the live dashboard, and ` + "`db/db.sqlite`" + ` for the rows it shows.
 3. **Synthesize a direct answer** grounded in what you read. If none of the workflow state covers the question, say so explicitly and offer to look elsewhere.

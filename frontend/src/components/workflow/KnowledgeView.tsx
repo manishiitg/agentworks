@@ -5,18 +5,16 @@ import type { PlanningResponse } from '../../utils/stepConfigMatching'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewActions } from './WorkspaceViewActions'
 import { getKnowledgeTabAskAIMessage, type KnowledgeTabId } from './workspaceAskAI'
-import LearningsView from './LearningsView'
 import KnowledgebaseView from './KnowledgebaseView'
 import DatabaseView from './DatabaseView'
 
 const KNOWLEDGE_TABS: Array<{ value: KnowledgeTabId; label: string }> = [
-  { value: 'learnings', label: 'Learnings' },
   { value: 'knowledgebase', label: 'Knowledgebase' },
   { value: 'database', label: 'Database' },
 ]
 
 function isKnowledgeTab(value: unknown): value is KnowledgeTabId {
-  return value === 'learnings' || value === 'knowledgebase' || value === 'database'
+  return value === 'knowledgebase' || value === 'database'
 }
 
 interface KnowledgeViewProps {
@@ -25,15 +23,15 @@ interface KnowledgeViewProps {
 }
 
 /**
- * The Knowledge umbrella: learnings, notes, and stored records under one
+ * The Knowledge umbrella: background notes and stored records under one
  * header with tabs. Tab switches write back through openWorkspaceView (hub
  * pattern) so agent deep-links, refresh, and remounts land on the same tab.
  */
-export default function KnowledgeView({ workspacePath, plan }: KnowledgeViewProps) {
+export default function KnowledgeView({ workspacePath }: KnowledgeViewProps) {
   const workspaceViewTarget = useWorkflowStore(state => state.workspaceViewTarget)
   const initialTab = workspaceViewTarget?.view === 'knowledge' && isKnowledgeTab(workspaceViewTarget.target)
     ? workspaceViewTarget.target
-    : 'learnings'
+    : 'knowledgebase'
   const [tab, setTab] = useState<KnowledgeTabId>(initialTab)
 
   useEffect(() => {
@@ -54,7 +52,7 @@ export default function KnowledgeView({ workspacePath, plan }: KnowledgeViewProp
         icon={BookOpen}
         title="Knowledge"
         helpTopic={`Knowledge · ${tabLabel}`}
-        subtitle="What this workflow has learned, its notes, and its stored records."
+        subtitle="Background knowledge and stored records. Task guides are in Integrations → Skills."
         actions={(
           <WorkspaceViewActions
             workspacePath={workspacePath}
@@ -66,7 +64,6 @@ export default function KnowledgeView({ workspacePath, plan }: KnowledgeViewProp
         tabs={{ value: tab, onChange: (value: string) => selectTab(value as KnowledgeTabId), options: KNOWLEDGE_TABS, ariaLabel: 'Knowledge' }}
       />
       <div className="min-h-0 flex-1">
-        {tab === 'learnings' && <LearningsView workspacePath={workspacePath} plan={plan} hideHeader />}
         {tab === 'knowledgebase' && <KnowledgebaseView workspacePath={workspacePath} hideHeader />}
         {tab === 'database' && <DatabaseView workspacePath={workspacePath} hideHeader />}
       </div>

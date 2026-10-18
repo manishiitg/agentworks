@@ -37,7 +37,7 @@ When running a step or the full workflow:
      envelope uses `result` (and may also expose `data.execution_id`); a jq
      projection that keeps only unrelated fields can discard a valid
      execution ID after the step has already started.
-2. `execute_step` follows the step's persistent `learnings_access` config.
+2. `execute_step` uses the step's selected skills and existing knowledge-base access. It adds no learning phase.
 3. **Run instructions**: Pass `human_input` to add the user's instructions to this
    executable step. Use `human_inputs` keyed by step ID for a full workflow run.
 4. Tell the user the step is running. Move on to other work or wait

@@ -31,7 +31,7 @@ describe('closed semantic UI control contract', () => {
     expect(supportedAction({ ...base, view: 'workshop', action: 'open', target: 'guessed' })).toBe(false)
   })
   it('opens the bounded tabs of the Knowledge view', () => {
-    for (const target of ['learnings', 'knowledgebase', 'database']) {
+    for (const target of ['knowledgebase', 'database']) {
       expect(supportedAction({ ...base, view: 'knowledge', action: 'open', target })).toBe(true)
     }
     expect(supportedAction({ ...base, view: 'knowledge', action: 'open', target: 'guessed' })).toBe(false)

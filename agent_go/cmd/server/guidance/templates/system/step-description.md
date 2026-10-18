@@ -28,9 +28,9 @@ conditions and placeholders are resolved per run; they are not permission grants
 The runtime supplies platform path/output conventions, effective Folder Guard
 permissions, managed database access, store responsibilities, variable/secret
 handling, completion/blocker reporting, and role-specific execution rules.
-Skills, learnings, browser instructions and shared KB access depend on the
+Skills, browser instructions and shared KB access depend on the
 configured step and runtime. Keep those mechanics out of descriptions. Do not
-move copies of platform rules into global learnings or another skill either.
+move copies of platform rules into another skill either.
 
 Keep the task's data contract: table names, relevant filters, writer ownership,
 business keys and idempotency requirements, exact domain KB topics or files,
@@ -96,23 +96,22 @@ only when it has nothing to say; do not add other sections.
 ```
 ## Goal       — what the step achieves, in one to three sentences
 ## Inputs     — prior step outputs, caller input and evidence needed for the task
-## Resources  — which KB<!-- product:knowledgebase -->/Brain<!-- /product --> notes, DB tables and learnings to read or update; say none when unused
+## Resources  — which KB<!-- product:knowledgebase -->/Brain<!-- /product --> notes, DB tables and skills to read or update; say none when unused
 ## Output     — what it produces and where; the shape stays in validation_schema
 ## Rules      — binding business constraints, approval limits, actions outside its authority
 ## Done when  — the success boundary, including what counts as a valid no-op
-## Guides     — the skill/learning references to use, named only, never copied
+## Guides     — the skill references to use, named only, never copied
 ```
 
 Keep task rules only in ## Rules. Do not copy them into `system_rules`, skills or platform instructions.
 
 Resources specify intent, not access grants: state one line each for
-`Knowledge base:`, `Database:`, `Brain:` and `Learnings:`, saying what the task reads
-or updates and why, or `none`. Workflow contract 1.0.49 stamps only agents whose
-Resources do this. Separate using existing per-workflow learnings from contributing new
-guidance after validation; global learnings are deprecated. Say read or write exactly
-as the step's grants allow, and describe a resource by purpose when the step does not
-already name its path (naming a path grants read access, see below). Configure access
-consistently with these intentions; the runtime enforces it.
+`Knowledge base:`, `Database:`, `Brain:` and `Skills:`, saying what the task reads
+or records and why, or `none`. The resource-intent validator accepts the old
+`Learnings:` label while existing workflows upgrade. Contract 1.0.51 copies old
+guides into workflow-local skills and repoints live references. Steps consume
+skills; Builder/Pulse maintain them. Configure knowledge-base grants and
+`enabled_skills` consistently with the task.
 
 Write the Resources lines in plain words for the workflow's owner (AGENTS.md
 "Audience"): what the step looks at or records and why. The exact table and file
@@ -125,12 +124,12 @@ words.
 Do not list every available resource just because the step can access it.
 
 Everything else belongs somewhere else: optional later phases in `items[]`, reusable
-procedures in skills and learnings, domain facts and decisions in the
+procedures in skills, domain facts and decisions in the
 knowledgebase, platform mechanics nowhere (the runtime supplies them).
 
 Naming a path in Inputs, Resources or Guides makes it readable: a workflow path under
-`learnings/`, `knowledgebase/`, `code/shared/`, `soul/` or `db/README.md`
-becomes readable for that step (never writable) whatever its learnings and
+`skills/`, `knowledgebase/`, `code/shared/`, `soul/` or `db/README.md`
+becomes readable for that step (never writable) whatever its
 knowledgebase access, and the runtime lists where to read it. Its contents are not pasted into the
 system prompt.<!-- product:knowledgebase --> Name Brain notes as `brain:<folder>/<note>`.<!-- /product --> A named
 path that does not exist is reported to the step and in the plan edit response.
@@ -148,11 +147,11 @@ must not write gets `knowledgebase_access: read`; one with no Brain use,
 <!-- /product -->
 A description holds no history. Dated observations ("measured on 2026-08-10…"),
 incident narratives and "this exists because…" explanations go to the
-knowledgebase as a decision or to the learnings as a verified technique, or are
+knowledgebase as a decision or to a skill as a verified technique, or are
 deleted once the fix is in place. A repair after a failed run changes the rule,
 the item or the guide it concerns; it does not append a story to the charter.
 
-Put reusable execution methods in the step's skills and learnings: tool usage, selectors, API/authentication sequences, troubleshooting, and techniques verified in prior runs. Reference the relevant guidance and configure the step's skill/learning access so it can actually read it. Do not assume a skill exists or that a new step has already learned a procedure; provide needed guidance there, or let the execution agent choose a method within the task's constraints and retain verified reusable know-how through the configured learning flow.
+Put reusable methods in workflow-local skills: tool usage, selectors, API/authentication sequences, troubleshooting and verified techniques. Select the relevant skill through `enabled_skills` and name the needed reference. Do not assume a guide exists. Builder/Pulse maintain guides; no step learning phase runs.
 
 For browser-test steps, describe the test outcome and any required live visibility.
 Keep library imports, setup, and lifecycle in the accessible
@@ -160,13 +159,13 @@ Keep library imports, setup, and lifecycle in the accessible
 selected runtime can provide the requested visibility; do not promise it merely
 because a step says “Playwright.” Preserve the user's language and runner choices.
 
-Keep the output structure and automated checks in `validation_schema`. Descriptions, skills/learnings, and schemas should complement one another without repeating the same content.
+Keep the output structure and automated checks in `validation_schema`. Descriptions, skills, and schemas should complement one another without repeating the same content.
 
 ### Earn every word
 
 Before finalizing a description, cut anything that:
 - Restates what the model already knows from training, its system prompt, or an already-loaded skill — do not re-explain what JSON is, what "verify" means, or what a tool already documents about itself.
-- Restates content already reachable through `context_dependencies`, `learnings_access`, `knowledgebase_access`, or managed DB tools — reference the store ("read `learnings/_global/SKILL.md` for the login selectors") instead of copying its contents inline.
+- Restates content already reachable through `context_dependencies`, `enabled_skills`, `knowledgebase_access`, or managed DB tools — reference the store ("open the selected login skill’s reference for selectors") instead of copying its contents inline.
 - Repeats the same constraint from a different angle, hoping one phrasing lands — state it once, precisely.
 - Hedges with qualifiers that add no checkable meaning ("carefully," "thoroughly," "properly," "make sure to") — state the actual verifiable criterion instead.
 
@@ -194,7 +193,7 @@ Over: "First, open the API testing tool. Then, for each endpoint, carefully send
 The first names one precise, checkable outcome. The second spends four sentences restating the same instruction with decreasing specificity, and its vagueness ("looks wrong," "be thorough") gives the model nothing an evaluator could verify against.
 
 When a reusable fixed procedure is necessary (browser selectors, a multi-stage
-authentication flow, or an ordered API call chain), put it in a skill or learning
+authentication flow, or an ordered API call chain), put it in a skill
 and reference it. Put a task-specific execution sequence in `items[]`. Keep only
 an ordering constraint that defines correctness or authority in the description
 itself—for example, approval must precede publishing—without copying the
@@ -202,7 +201,7 @@ operational procedure.
 
 ### Do not duplicate across steps
 
-If two steps in the same plan describe the same task-specific policy, contract, or procedure, that is not two descriptions — it is one description and a reference. First remove anything already supplied by the runtime; do not relocate it. Move remaining shared task knowledge to `learnings/_global/SKILL.md` (durable HOW-to-operate knowledge), the knowledgebase (domain facts), or a validation schema (structural contract), and have each step reference it by name. A copy-pasted paragraph across steps is a maintenance liability — a fix to one copy silently leaves the others stale — as much as it is a length problem.
+If two steps in the same plan describe the same task-specific policy, contract, or procedure, that is not two descriptions — it is one description and a reference. First remove anything already supplied by the runtime; do not relocate it. Move remaining shared task knowledge to a workflow-local skill (durable HOW-to-operate knowledge), the knowledgebase (domain facts), or a validation schema (structural contract), and have each step reference it by name. A copy-pasted paragraph across steps is a maintenance liability — a fix to one copy silently leaves the others stale — as much as it is a length problem.
 
 ### A rough self-check before finalizing
 
@@ -210,7 +209,7 @@ Could someone who has never seen the workflow read the description and understan
 the intended result, evidence, constraints, and success criteria? Could they read
 the items and understand what the agent should do on each turn without finding a
 second, conflicting charter? Do the separately supplied schema and referenced
-skills/learnings provide the output contract and reusable execution guidance
+skills provide the output contract and reusable execution guidance
 without contradictions? The description should not reconstruct the schema or
 teach the procedure. Delete any sentence or validation check that carries no
 necessary contract information.

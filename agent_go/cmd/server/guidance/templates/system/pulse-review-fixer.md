@@ -355,16 +355,16 @@ strategic results that omit the goal-level assessment; an honest uncertain asses
 is valid and does not require inventing a proposal.
 Read-only reviews (and any read-only subagents you use) never edit, publish, notify, ask the user, write HTML, or mark state. The coordinating review turn retains only the typed persistence and repair authority explicitly assigned to its current phase above; a read-only checklist does not inherit that authority.
 
-The **Stores Health** turn reviews learnings, knowledgebase, and database health
+The **Stores Health** turn reviews skills, knowledgebase, and database health
 from their evidence packs when selected by Gate evidence. It is an Engineering Review
-turn, not a separate module. Its learning review covers the complete skill package, not
+turn, not a separate module. Its skill review covers the complete skill package, not
 only the root index or a sample of references, and audits explicit task contributions and legacy migration notes. References are part of the skill: only
-reusable target-system execution HOW may remain anywhere under `learnings/_global/`.
+reusable target-system execution HOW may remain anywhere in workflow-local skills.
 Relocating business facts, run state, owner values, strategy, incidents,
 decisions, provenance, or architecture history from `SKILL.md` into a reference
 does not fix the finding.
 
-The same evidence pack enforces shared-platform purity across Plan, Learnings,
+The same evidence pack enforces shared-platform purity across Plan, Skills,
 and KB. AgentWorks bridge/auth variables and envelopes, api-bridge routing,
 Folder Guard internals, managed workflow-DB tool syntax, `get_api_spec`
 workarounds, and coding-agent tmux/native-session plumbing are platform-owned,
@@ -376,14 +376,11 @@ The store-integrity pack returns one reconciled `ownership_manifest`, not three
 disconnected lists. Each misplaced or duplicated item names its current
 location, semantic type, authoritative owner, duplicate locations, bounded
 migration/removal action, and verification. Enforce one semantic item, one
-authoritative owner across Soul, Plan/step config, Validation, Learnings,
+authoritative owner across Soul, Plan/step config, Validation, Skills,
 Knowledgebase, DB, and Pulse. The KB lens inventories every content-bearing
 note in `kb_purity_manifest`; the DB lens maps every relevant table and
 content-bearing TEXT/JSON column in `db_ownership_manifest`. Stable references
-to canonical records are valid; copied content is not. Learning-access changes
-belong to Architecture (focus `learning_quality`, PLAT-556): the Fixer does not
-change `learnings_access`; when a read-write step looks settled, say so in the
-finding and leave the decision to Architecture.
+to canonical records are valid; copied content is not. Steps consume selected skills; Builder/Pulse maintain them. Legacy learning access and metadata are historical inputs to the explicit 1.0.51 upgrade, not active settings to tune.
 
 **Where a repair's text goes (PLAT-556).** Follow `pulse-fixer-practices.md`
 step 4: technique to a skill reference named under the step's `## Guides`, a

@@ -5677,6 +5677,10 @@ func registerNativePlanModificationTools(
 		return err
 	}
 
+	if err := mcpAgent.RegisterCustomTool("migrate_workflow_skills", "Preserve workflow how-to guides and assets in one private workflow-local skill, retain original files and copy hashes, retire learnings access without changing KB grants. Call during the explicit 1.0.51 workflow upgrade after the existing code-layout upgrade.", objectToolSchema(map[string]interface{}{}), createMigrateWorkflowSkillsExecutor(workspacePath, logger, readFile, writeFile), "workflow"); err != nil {
+		return err
+	}
+
 	// Register create_plan first — it's the only way to initialize planning/plan.json for a new
 	// workflow so that the add_* tools (which require an existing plan) can run.
 	createPlanSchema := getCreatePlanSchema()

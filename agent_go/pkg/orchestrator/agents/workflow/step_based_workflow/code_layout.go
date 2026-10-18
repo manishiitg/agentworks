@@ -23,6 +23,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) loadCodeLayout(ctx context.Context) e
 	content, err := hcpo.ReadWorkspaceFile(ctx, "workflow.json")
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "not found") || strings.Contains(err.Error(), "404") {
+			hcpo.workflowSkillsOnly.Store(false)
 			hcpo.codeLayoutVersion.Store(0)
 			hcpo.platformStoresDisabled.Store(false)
 			hcpo.relayExecution.Store(false)
@@ -32,8 +33,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) loadCodeLayout(ctx context.Context) e
 		return fmt.Errorf("read code layout: %w", err)
 	}
 	var m struct {
-		Version int    `json:"code_layout_version"`
-		Kind    string `json:"kind"`
+		Version         int    `json:"code_layout_version"`
+		ContractVersion string `json:"version"`
+		Kind            string `json:"kind"`
 	}
 	if err := json.Unmarshal([]byte(content), &m); err != nil {
 		return fmt.Errorf("parse code layout: %w", err)
@@ -43,6 +45,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) loadCodeLayout(ctx context.Context) e
 	}
 	if err := hcpo.configureExecutionProduct(m.Kind); err != nil {
 		return err
+	}
+	hcpo.workflowSkillsOnly.Store(m.Kind != "relay" && UsesWorkflowSkills(m.ContractVersion))
+	if hcpo.workflowSkillsOnly.Load() && hcpo.GetLogger() != nil {
+		hcpo.GetLogger().Info(fmt.Sprintf("[WORKFLOW_SKILLS_CONTRACT] workflow=%s version=%s learnings=retired guides=selected-skills", hcpo.GetWorkspacePath(), m.ContractVersion))
 	}
 	hcpo.refreshStepGoalPolicy(ctx, content)
 	hcpo.codeLayoutVersion.Store(int32(m.Version))

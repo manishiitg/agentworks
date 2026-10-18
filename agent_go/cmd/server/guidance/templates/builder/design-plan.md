@@ -19,7 +19,7 @@ When a parent Pulse prompt explicitly loads this guidance as a read-only checkli
 
 ## PHASE 1 — COMPREHENSIVE CRITICAL REVIEW
 
-Do this review yourself with this checklist and the user's focus. It is read-only: do not edit artifacts, invoke mutation tools, run workflow/evaluation steps, or persist findings. You own the findings and any later user-authorized edits. You may give parts of it to your own subagents with the same read-only restriction, then confirm nothing changed. This reviews for plan structure, step descriptions, context flow, validation, skills, learnings, saved scripts, knowledgebase notes, `db/db.sqlite` contracts, reports, variables, evaluation coverage, portability, and alignment with `soul/soul.md` objective and success criteria.
+Do this review yourself with this checklist and the user's focus. It is read-only: do not edit artifacts, invoke mutation tools, run workflow/evaluation steps, or persist findings. You own the findings and any later user-authorized edits. You may give parts of it to your own subagents with the same read-only restriction, then confirm nothing changed. This reviews for plan structure, step descriptions, context flow, validation, skills, saved scripts, knowledgebase notes, `db/db.sqlite` contracts, reports, variables, evaluation coverage, portability, and alignment with `soul/soul.md` objective and success criteria.
 
 The reviewer returns analysis, never HTML: `module` (see the attribution rule above — `technical_review`, `strategic_review`, or the manual `goal_advisor` alias), `verdict`,
 `next_check`, decisions that look sound, and ordered findings. Each finding needs
@@ -49,7 +49,7 @@ Load `read_skill(skills=[{"name":"builder-reference","path":"references/assumpti
 - **`context_dependencies`** is the *file* channel (forward-only, injected into the prompt). Use `[]` when the next step just reads the db. It is NOT required for data flow — the db always is.
 
 PART 1 — VISUAL MAP
-Draw the plan so the user sees it at a glance. Annotate each step with its **type**, what it **persists** (db tables and/or `context_output`), how it's **gated** (db check / file check / none), and its **stores access** (db / kb / learnings). Routing nodes show their branches and where they converge.
+Draw the plan so the user sees it at a glance. Annotate each step with its **type**, what it **persists** (db tables and/or `context_output`), how it's **gated** (db check / file check / none), and its **stores access** (db / kb / skills). Routing nodes show their branches and where they converge.
 
 ```
 step-1 fetch_normalize_emails [scripted, scripted] → db: emails        gate: provenance + freshness
@@ -86,15 +86,15 @@ For each step, confirm it's the right type, and flag mis-modeling:
 
 - **orphan** — a reusable plan-local definition or manual utility agent (data checks, env validation, one-off investigations, or a shared sub-agent several agents reuse). Reuse is explicit: `shared_with.agent_ids` + a route's `orphan_step_ref`.
 
-PART 4 — STORES FITNESS (when to use db vs kb vs learnings; cite the step)
+PART 4 — STORES FITNESS (when to use db vs kb vs skills; cite the step)
 Wrong-store usage is the most common silent design error. Check each step's access against what it actually needs:
 
 - **db/db.sqlite — WHAT this run produced.** State, results, rows, plus durable assets under `db/assets/` (with a metadata row). Every workflow step receives managed read-write access: agentic steps use `query_workflow_db` / `mutate_workflow_db`, while saved scripted code uses `$DB_PATH`. This is the source of truth — results go here, not into files.
-- **knowledgebase/ — reusable DOMAIN knowledge across runs.** Business facts, product/catalog info, portal quirks-as-notes, and user-supplied runtime context/preferences/rules (put those in `knowledgebase/context/context.md`). `knowledgebase_access` defaults to `read` (mirrors `learnings_access`); writing is the opt-in — set write access and put any required notes contribution in the task itself. No automatic closing turn runs. NOT for run results (db) and NOT for execution mechanics (learnings).
-- **learnings/ (SKILL.md) — target-specific HOW to run the task.** Reusable execution know-how for the system being operated: selectors/timing, target-service auth/login behavior, third-party API quirks, CLI/SDK patterns, parsing/retry/recovery rules. Shared AgentWorks mechanics (bridge env vars/envelopes, api-bridge routing, Folder Guard internals, managed workflow-DB tool syntax, tool-discovery workarounds, coding-agent tmux/session plumbing) belong only to platform prompts/tool schemas and must never be copied into Plan, Learnings, or KB. `learnings_access` defaults `read`; Write access permits an explicit task contribution; legacy learning objectives no longer trigger automatic work. Preserve existing guides during upgrade. Not for results (db) or domain facts (kb).
+- **knowledgebase/ — reusable DOMAIN knowledge across runs.** Business facts, product/catalog info, portal quirks-as-notes, and user-supplied runtime context/preferences/rules (put those in `knowledgebase/context/context.md`). `knowledgebase_access` defaults to `read`; writing is the opt-in — set write access and put any required notes contribution in the task itself. No automatic closing turn runs. NOT for run results (db) and NOT for execution mechanics (skills).
+- **skills/<name>/ — target-specific HOW to do the task.** Reusable methods live behind a short skill index and targeted references. Builder/Pulse maintain these files; steps consume selected `enabled_skills`. Shared AgentWorks mechanics belong only to platform guidance/tool schemas. Existing workflow guides migrate explicitly through contract 1.0.51, with preserved contents and history. No separate learning store or post-run learning turn remains.
 - **soul.md** — the workflow's long-term purpose/persona (Workshop-maintained). Reference it for "what is this workflow for."
 
-Decision rule to surface to the user: *results/state → db; cross-run business knowledge → kb; cross-run execution mechanics → learnings.* If a step writes results into kb/learnings, or tries to keep "how to log in" in the db, flag it.
+Decision rule to surface to the user: *results/state → db; cross-run business knowledge → kb; cross-run execution mechanics → skills.* If a step writes results into kb/skills, or tries to keep "how to log in" in the db, flag it.
 
 **Artifact ownership guard:** plan descriptions and agent messages are semantic workflow contracts, not copies of the harness manual. State the domain action, inputs, durable output, failure behavior, and verification outcome. Never embed AgentWorks bridge/auth URLs or environment variables, Folder Guard/CWD implementation details, managed-tool call syntax, `get_api_spec` recovery recipes, or coding-agent session/tmux mechanics. The plan mutation tools reject these unambiguous shared-platform signatures.
 

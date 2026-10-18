@@ -26,7 +26,7 @@ workflows, the user's message is the workflow input.
 
 - **Before running anything, read and apply the workflow's relevant
   runtime context** when useful: `soul/soul.md` for intent,
-  `learnings/_global/SKILL.md` for how this workflow usually operates,
+  the selected workflow skill index for how this workflow usually operates,
   step-specific saved scripts for learned deterministic behavior,
   `knowledgebase/context/` and `knowledgebase/notes/` for business
   facts/rules, attached shared knowledge bases (`$WORKFLOW_KB_<ALIAS>`),

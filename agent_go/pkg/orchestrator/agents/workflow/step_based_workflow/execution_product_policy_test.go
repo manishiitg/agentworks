@@ -181,3 +181,28 @@ func TestRelayPythonGuardBlocksAttachedKnowledgebase(t *testing.T) {
 		t.Fatalf("Python did not block attached KB: %+v", guard)
 	}
 }
+
+func TestWorkflowSkillsContractRetiresLearningGrantsOnly(t *testing.T) {
+	for _, version := range []string{"1.0.50", "1.0.51"} {
+		t.Run(version, func(t *testing.T) {
+			base := newFakeWorkspaceAPIWithContent(t, map[string]string{"Workflow/guides/workflow.json": `{"code_layout_version":1,"version":"` + version + `"}`})
+			base.SetWorkspacePath("Workflow/guides")
+			c := &StepBasedWorkflowOrchestrator{BaseOrchestrator: base}
+			if err := c.loadCodeLayout(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			cfg := &AgentConfigs{LearningsAccess: LearningsAccessReadWrite, KnowledgebaseAccess: KBAccessReadWrite, EnabledSkills: []string{"workflow-how-to"}}
+			legacy := version == "1.0.50"
+			if c.canReadLearnings(cfg, nil) != legacy || c.canWriteLearnings(cfg, nil) != legacy {
+				t.Fatal("wrong learning policy", version)
+			}
+			if c.resolveDBAccess(cfg) != DBAccessReadWrite || !c.UseKnowledgebase() || len(cfg.EnabledSkills) != 1 {
+				t.Fatal("skills migration removed other capabilities")
+			}
+			access := c.constrainAgentWriteAccess(cfg, AgentWriteAccess{DB: true, Knowledgebase: true, Learnings: true})
+			if !access.DB || !access.Knowledgebase || access.Learnings != legacy {
+				t.Fatalf("wrong access: %+v", access)
+			}
+		})
+	}
+}

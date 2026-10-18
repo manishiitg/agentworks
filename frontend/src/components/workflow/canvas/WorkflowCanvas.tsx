@@ -744,7 +744,7 @@ function DetailSection({
 }
 
 function WriteLimits({ access }: { access: AgentWriteAccess }) {
-  const stores = [['db', 'Database'], ['knowledgebase', 'Brain'], ['learnings', 'Learnings']] as const
+  const stores = [['db', 'Database'], ['knowledgebase', 'Brain']] as const
   return (
     <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
       {stores.map(([key, label]) => <React.Fragment key={key}>
@@ -893,7 +893,7 @@ export function ReadOnlyStepDetailPanel({
 
         {descriptionFirst && step.initial_write_access && (
           <DetailSection icon={Settings} title="First-message write limits">
-            <p className="mb-2 text-xs text-muted-foreground">Brain and learnings writes are narrowed for this turn. Database permissions are shared across turns. These flags cannot grant access.</p>
+            <p className="mb-2 text-xs text-muted-foreground">Knowledge-base writes are narrowed for this turn. Skills are task guides and cannot be edited by a step. Database permissions are shared across turns. These flags cannot grant access.</p>
             <WriteLimits access={step.initial_write_access} />
           </DetailSection>
         )}

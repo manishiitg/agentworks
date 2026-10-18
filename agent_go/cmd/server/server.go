@@ -7575,15 +7575,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						log.Printf("[WORKFLOW_PHASE] Added read-only access for #workflow references: %v", workflowReadOnlyFolders)
 					}
 
-					// Phase 4 carry-over to the workshop chat: auto-attach
-					// the workflow's accumulated learnings as a first-class
-					// skill so the builder agent sees what the workflow has
-					// learned across runs. Mirrors the step-time attach in
-					// step_based_workflow.appendSupplementaryPrompts.
+					// Older workflows keep their guide attachment until the explicit
+					// skills upgrade. Current workflows use selected local skills.
 					if !relayChat {
-						if globalSkill := skills.LoadGlobalSkill(getWorkspaceAPIURL(), phaseWorkspacePath); globalSkill != nil {
-							_ = llmAgent.AttachSkill(globalSkill)
-							log.Printf("[SKILLS] Auto-attached workflow global skill (_global) from learnings/_global/SKILL.md")
+						if manifest, found, readErr := ReadWorkflowManifest(r.Context(), phaseWorkspacePath); readErr == nil && found && !todo_creation_human.UsesWorkflowSkills(manifest.Version) {
+							if globalSkill := skills.LoadGlobalSkill(getWorkspaceAPIURL(), phaseWorkspacePath); globalSkill != nil {
+								_ = llmAgent.AttachSkill(globalSkill)
+							}
 						}
 					}
 					// Playbooks are workflow-local skills for Builder setup. They are

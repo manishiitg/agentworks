@@ -207,7 +207,7 @@ func TestUIControlOnlyAdvertisesActualActions(t *testing.T) {
 	if validateUIAction("workshop", "open", "guessed") == nil {
 		t.Fatal("unknown automation section accepted")
 	}
-	for _, tab := range []string{"learnings", "knowledgebase", "database"} {
+	for _, tab := range []string{"knowledgebase", "database"} {
 		if validateUIAction("knowledge", "open", tab) != nil {
 			t.Fatalf("knowledge tab missing: %q", tab)
 		}

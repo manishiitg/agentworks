@@ -1268,7 +1268,7 @@ func GetToolsForWorkshopMode(mode string) []string {
 	planMod := []string{
 		"create_plan",
 		"validate_plan_change",
-		"migrate_agent_code_items", "migrate_agent_steps", "migrate_goal_agents", "migrate_declared_execution_mode", "strip_declared_execution_mode",
+		"migrate_agent_code_items", "migrate_agent_steps", "migrate_goal_agents", "migrate_workflow_skills", "migrate_declared_execution_mode", "strip_declared_execution_mode",
 		"add_scripted_step", "add_agent_step", "add_routing_step", "add_branch_step",
 
 		"add_agent_route", "update_agent_route", "delete_agent_route",
@@ -2015,7 +2015,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 	// Tool 1: execute_step — start step in background
 	if err := mcpAgent.RegisterCustomTool(
 		"execute_step",
-		"Run a workflow step for real with its normal permissions, live database and actual tool actions. A user request to run or test a step authorizes that execution; do not ask again for the same request. Start it in the background, including a normal plan step, nested route step, or plan-local orphan utility step. Returns an execution_id immediately. You will be automatically notified when it completes. Idempotent while running: if the step already has a running execution, this returns that existing execution_id instead of starting a duplicate — use send_step_message with the returned execution_id to steer its currently active agent turn. For a scripted step that declares script_parameters, pass matching values in script_parameters; they are validated before main.py starts and exposed through STEP_PARAMS_JSON. Existing learnings remain readable under the step's access settings. Contributions are explicit task work; no automatic reflection turn runs after completion. Workshop mode only: set fast_path_only=true to run ONLY the saved main.py (code/{step-id}/main.py for code_layout_version=1, otherwise learnings/{step-id}/main.py) script with no LLM fallback when testing scripted patches.",
+		"Run a workflow step for real with its normal permissions, live database and actual tool actions. A user request to run or test a step authorizes that execution; do not ask again for the same request. Start it in the background, including a normal plan step, nested route step, or plan-local orphan utility step. Returns an execution_id immediately. You will be automatically notified when it completes. Idempotent while running: if the step already has a running execution, this returns that existing execution_id instead of starting a duplicate — use send_step_message with the returned execution_id to steer its currently active agent turn. For a scripted step that declares script_parameters, pass matching values in script_parameters; they are validated before main.py starts and exposed through STEP_PARAMS_JSON. Selected skills provide reusable instructions. Contributions are explicit task work; no automatic reflection turn runs after completion. Workshop mode only: set fast_path_only=true to run ONLY the saved main.py (code/{step-id}/main.py for code_layout_version=1, otherwise learnings/{step-id}/main.py) script with no LLM fallback when testing scripted patches.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -2732,7 +2732,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 		// PLAT-262: skip debug_step registration for read-only access
 	} else if err := mcpAgent.RegisterCustomTool(
 		"debug_step",
-		"Get detailed insights about a step's execution: learning status, validation result, iteration details for complex steps (todo_task/orchestration), and log paths. Use after a step completes or to inspect a running complex step's progress.",
+		"Get detailed insights about a step's execution: selected skills, validation result, iteration details for complex steps (todo_task/orchestration), and log paths. Use after a step completes or to inspect a running complex step's progress.",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -2826,34 +2826,15 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			var result strings.Builder
 			result.WriteString(fmt.Sprintf("## Debug: %s (%s)\n\n", stepInfo.Step.GetTitle(), resolvedID))
 
-			// Section 1: Learning status
-			learningsPath := getLearningFolderPathByStepID("", resolvedID, "")
-			learningFiles, _ := iwm.controller.readStepLearningFiles(ctx, learningsPath)
-
+			// Current guides use the same per-step skill selection as execution.
 			stepConfigs, _ := iwm.controller.ReadStepConfigs(ctx)
-			learningAccess := LearningsAccessRead
+			result.WriteString("### Skills\n")
 			for _, sc := range stepConfigs {
 				if sc.ID == resolvedID && sc.AgentConfigs != nil {
-					learningAccess = resolveLearningsAccess(sc.AgentConfigs)
-					break
+					result.WriteString(strings.Join(sc.AgentConfigs.EnabledSkills, ", "))
 				}
 			}
-
-			result.WriteString("### Learnings\n")
-			if len(learningFiles) > 0 {
-				fileNames := make([]string, 0, len(learningFiles))
-				for f := range learningFiles {
-					fileNames = append(fileNames, f)
-				}
-				sort.Strings(fileNames)
-				result.WriteString(fmt.Sprintf("Files: %d | Access: %s | Path: %s\n", len(learningFiles), learningAccess, learningsPath))
-				for _, f := range fileNames {
-					result.WriteString(fmt.Sprintf("  - %s\n", f))
-				}
-			} else {
-				result.WriteString(fmt.Sprintf("No learnings yet | Access: %s | Path: %s\n", learningAccess, learningsPath))
-			}
-			result.WriteString("\n")
+			result.WriteString("\n\n")
 
 			// Section 2: Validation result
 			logFolder := workshopStepLogFolder(resolvedID)
@@ -2901,7 +2882,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			result.WriteString("### Log Paths\n")
 			result.WriteString(fmt.Sprintf("Execution logs: runs/%s/logs/%s/execution/\n", runFolder, logFolder))
 			result.WriteString(fmt.Sprintf("Validation: %s/\n", validationLogDir))
-			result.WriteString(fmt.Sprintf("Learnings: %s/\n", learningsPath))
 			result.WriteString("Use execute_shell_command to read these files for details.\n")
 
 			return result.String(), nil
@@ -6165,6 +6145,11 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					return "", err
 				}
 			}
+			if version == WorkflowSkillsContractVersion {
+				if err := ValidateWorkflowSkillsStamp(filepath.Join(GetPromptDocsRoot(), iwm.controller.GetWorkspacePath())); err != nil {
+					return "", err
+				}
+			}
 			if version == GoalAgentContractVersion {
 				plan, err := iwm.controller.ReadWorkspaceFile(ctx, "planning/plan.json")
 				if err != nil {
@@ -7482,17 +7467,17 @@ This is a **read-only review**:
 1. **Read-Only**: Do NOT modify any files.
 2. **Findings first**: Lead with concrete problems, ordered by severity. Do not hide important issues under summaries.
 3. **Be specific**: Always reference exact step IDs, and nested IDs as `+"`parent-id > sub-id`"+`.
-4. **Review current decisions**: Critique the decisions that exist now: step boundaries, step types, mode declarations, context dependencies, context outputs, validation shape, portability, eval coverage, skill selection/scoping, learning configuration, KB configuration, db schema contracts, report wiring, and variables.
+4. **Review current decisions**: Critique the decisions that exist now: step boundaries, step types, mode declarations, context dependencies, context outputs, validation shape, portability, eval coverage, skill selection/scoping, KB configuration, db schema contracts, report wiring, and variables.
 5. **Challenge assumptions**: If a decision appears to depend on unstated assumptions, call that out explicitly.
 6. **Use evidence when available**: If a target run folder is provided, use run outputs/logs/eval reports to test whether the current workflow decisions were actually justified.
 7. **Do not drift into full redesign**: You may suggest a concrete correction, but the primary task is to review and explain what is wrong with the current decision.
 8. **Check portability and secrecy**: Flag plan-visible secrets, user-specific values, absolute paths, run-folder-specific values, and brittle environment assumptions.
-9. **Check persistent-store discipline**: Stores survive across runs — `+"`"+`learnings/`+"`"+` (HOW to run), `+"`knowledgebase/context/`"+` (user-supplied runtime business context), `+"`"+`knowledgebase/notes/`+"`"+` (workflow-discovered durable narrative observations), `+"`"+`db/db.sqlite`+"`"+` (structured durable SQLite tables for cross-run state, read live by HTML reports via `+"`window.report.query`"+`), and `+"`db/assets/`"+` (durable media/file assets referenced by db rows or reports). Flag steps that confuse these stores: stashing durable facts in learnings or plan.json, stashing user-owned context in notes, writing report data only to run folders, embedding assets as blobs, or failing to describe explicit task contributions or the `+"`"+`db/README.md`+"`"+` contract when steps produce persistent facts.
-10. **Check learning and mode discipline**: A step should write learnings only when it has reusable HOW-to-run knowledge worth capturing across runs, and the contribution must be explicit in its task description. No automatic reflection turn is added. Deterministic API/SDK calls, CLI commands, data fetching, known pagination, stable parsing/normalization/transforms, and mechanical persistence should be `+"`"+`scripted`+"`"+` from initial design with an authored/tested `+"`code/{step-id}/main.py` (code_layout_version=1; legacy: `learnings/{step-id}/main.py`)"+`; no run-history threshold is required to choose that mode. Browser/UI work, adaptive discovery, and judgment stay agentic. The 10+ representative-run bar applies to `+"`"+`lock_code`+"`"+`, not to declaring deterministic work scripted.
+9. **Check persistent-store discipline**: Stores survive across runs — workflow-local skills (HOW to run), `+"`knowledgebase/context/`"+` (user-supplied runtime business context), `+"`"+`knowledgebase/notes/`+"`"+` (workflow-discovered durable narrative observations), `+"`"+`db/db.sqlite`+"`"+` (structured durable SQLite tables for cross-run state, read live by HTML reports via `+"`window.report.query`"+`), and `+"`db/assets/`"+` (durable media/file assets referenced by db rows or reports). Flag steps that confuse these stores: stashing durable facts in learnings or plan.json, stashing user-owned context in notes, writing report data only to run folders, embedding assets as blobs, or failing to describe explicit task contributions or the `+"`"+`db/README.md`+"`"+` contract when steps produce persistent facts.
+10. **Check skill and mode discipline**: Steps consume selected workflow skills; Builder/Pulse maintain them. No separate learning store or automatic reflection turn is added. Deterministic API/SDK calls, CLI commands, data fetching, known pagination, stable parsing/normalization/transforms, and mechanical persistence should be `+"`"+`scripted`+"`"+` from initial design with an authored/tested `+"`code/{step-id}/main.py` (code_layout_version=1; legacy: `learnings/{step-id}/main.py`)"+`; no run-history threshold is required to choose that mode. Browser/UI work, adaptive discovery, and judgment stay agentic. The 10+ representative-run bar applies to `+"`"+`lock_code`+"`"+`, not to declaring deterministic work scripted.
 11. **Check KB discipline**: KB writes require explicit task instructions and correct read/write access. `+"`knowledgebase/context/`"+` should contain user-supplied runtime context; `+"`knowledgebase/notes/`"+` should contain workflow-discovered durable narrative observations, not execution recipes, raw rows, or volatile run state. If `+"`"+`knowledgebase/notes/_index.json`+"`"+` exists, it must point to coherent topic notes.
 12. **Check db discipline**: `+"`"+`db/db.sqlite`+"`"+` should be a clean relational surface: each table documented in `+"`"+`db/README.md`+"`"+` with DDL, PRIMARY KEY, upsert rule (`+"`INSERT ... ON CONFLICT`"+`), indexes, writer ownership, group separation, report consumers (the HTML report `+"`window.report.query`"+` SQL that reads it), and correct references to durable assets under `+"`db/assets/`"+`.
-13. **Check skill discipline**: Installed skills live under `+"`skills/{folder}/SKILL.md`"+` and are reusable capability instructions shared across workflows. Review workflow-selected skills and per-step `+"`enabled_skills`"+` against the actual plan. Flag missing needed skills, selected-but-unused skills, descriptions that reference skills not enabled for the execution agent, malformed skill folders, and skills that duplicate workflow-specific learnings or contain workflow-specific secrets/paths/run state. Do not assume workflow-level selected skills automatically reach step execution; verify step-level `+"`enabled_skills`"+` when runtime requires explicit scoping.
-14. **Check access and code-lock consistency**: `+"`"+`lock_code`+"`"+` freezes scripted `+"`"+`code/{step-id}/main.py (version 1), otherwise learnings/{step-id}/main.py`+"`"+` against fix-loop rewrites; flag it without the scripted evidence gate. Learning and KB write eligibility are access decisions, not locks: review configured `+"`"+`learnings_access`+"`"+` and `+"`"+`knowledgebase_access`+"`"+` against explicit task contributions. Legacy objectives belong in migration notes, never a hidden closing turn. If a step description has meaningfully changed since the last review, recommend clearing `+"`"+`description_reviewed`+"`"+` and re-reviewing before keeping a code lock or write grant.
+13. **Check skill discipline**: Installed skills live under `+"`skills/{folder}/SKILL.md`"+` and are reusable instructions local to the workflow. Review workflow-selected skills and per-step `+"`enabled_skills`"+` against the actual plan. Flag missing needed skills, selected-but-unused skills, descriptions that reference skills not enabled for the execution agent, malformed skill folders, and skills that duplicate other workflow skills or contain workflow-specific secrets/paths/run state. Do not assume workflow-level selected skills automatically reach step execution; verify step-level `+"`enabled_skills`"+` when runtime requires explicit scoping.
+14. **Check access and code-lock consistency**: `+"`"+`lock_code`+"`"+` freezes scripted `+"`"+`code/{step-id}/main.py (version 1), otherwise learnings/{step-id}/main.py`+"`"+` against fix-loop rewrites; flag it without the scripted evidence gate. KB write eligibility is an access decision, not a lock: review knowledgebase_access against explicit task contributions. Steps do not write skills. Legacy objectives belong in migration notes, never a hidden closing turn. If a step description has meaningfully changed since the last review, recommend clearing `+"`"+`description_reviewed`+"`"+` and re-reviewing before keeping a code lock or write grant.
 
 ## STEP BOUNDARY STANDARD
 
@@ -7540,7 +7525,7 @@ controller deliberately does not paste or summarize them into this prompt:
   exists. Prefer one workflow-level consolidation finding over one finding per
   oversized step, and never rewrite a broad workflow contract from review alone.
 - inspect `+"`planning/step_config.json`"+` directly for execution modes, tools,
-  skills, learning/KB access, locks, and review metadata
+  skills, skills/KB access, locks, and review metadata
 
 The files are the authority. Do not infer their content from controller prose,
 route labels, or prior review text.
@@ -7552,8 +7537,8 @@ Read run-scoped, evidence-backed measurements where the producing steps already 
 Review these files/directories when present. Stay read-only:
 - `+"`variables/variables.json`"+`: check whether plan-visible hardcoded values should be variables and whether required variables are declared.
 - `+"`skills/{folder}/SKILL.md`"+`: read every skill selected at workflow level or enabled per step. Check whether the skill is actually needed, scoped to the right step(s), and not duplicating workflow-specific learnings.
-- `+"`learnings/_global/SKILL.md`"+`: check whether HOW-to-run learnings match current step descriptions and do not duplicate task instructions.
-- `+"`learnings/{step-id}/.learning_metadata.json`"+`: inspect for every step with learning writes. Check `+"`successful_runs`"+`, `+"`description_hash_runs`"+`, and latest detection history. Flag stale or unnecessary `+"`learnings_access=\"read-write\"`"+` grants that contradict the current step description/config or repeatedly produce no reusable HOW.
+- Workflow-local skills: check reusable methods against current descriptions; the index stays short and references remain targeted.
+- Old learning metadata is historical evidence only. Current steps consume skills and have no learning-write setting to tune.
 - `+"`code/{step-id}/main.py` (code_layout_version=1; legacy: `learnings/{step-id}/main.py`)"+` and `+"`code/{step-id}/script_metadata.json` (legacy: `learnings/{step-id}/script_metadata.json`)"+`: inspect for scripted steps. For `+"`agentic`"+` steps, verify `+"`code/{step-id}/main.py` (code_layout_version=1; legacy: `learnings/{step-id}/main.py`)"+` does NOT exist; if it does, flag it as a stale artifact that should be deleted because agentic never runs or maintains persistent main.py.
 - `+"`knowledgebase/context/context.md`"+`: check whether user-supplied runtime context is present when steps appear to rely on chat memory, and verify maintenance-owned notes did not absorb user-owned rules/preferences that belong here.
 - `+"`knowledgebase/notes/_index.json`"+` and relevant `+"`knowledgebase/notes/*.md`"+`: check topic registry, stale/duplicated notes, and whether steps that produce domain facts have matching KB contribution contracts.
@@ -7583,7 +7568,7 @@ Review the plan through these lenses:
 5. **Context flow** — Are dependencies/output contracts minimal, correct, and sufficient? Are there artificial file handoffs or missing dependencies?
 6. **Validation & evaluation** — Is the workflow validating and evaluating the things that actually matter for success?
 7. **Portability & secrecy** — Does the current plan leak secrets or overfit to one user, machine, run, or folder structure?
-8. **Skill quality** — Are installed/selected skills the right reusable capabilities for the steps, scoped correctly via `+"`enabled_skills`"+` where needed, and free of workflow-specific learned state that belongs in `+"`learnings/_global/`"+`?
+8. **Skill quality** — Are installed/selected skills the right reusable capabilities for the steps, scoped correctly via `+"`enabled_skills`"+` where needed, and free of run state that belongs in DB or execution history?
 9. **Learning quality** — For every learning-enabled step, is there a good reason, a concrete objective, direct write method unless explicitly requested otherwise, and no stale/stretched learning scope?
 10. **KB quality** — Are KB producer/consumer steps correctly declared, and do notes/index files contain durable domain knowledge rather than run logs or execution recipes?
 11. **DB quality** — Are `+"`"+`db/db.sqlite`+"`"+` tables documented, keyed, upsert-safe, group-safe, connected to report consumers (the HTML report `+"`window.report.query`"+` SQL), and correctly referencing durable files under `+"`db/assets/`"+` when assets exist?
@@ -7673,7 +7658,7 @@ For shell commands, use absolute workspace paths: `+"`{{.AbsWorkspacePath}}/...`
    - `+"`tools.total_duration_ms`"+` as total tool time
    - `+"`tools.calls[]`"+` as per-tool breakdown
    - `+"`phase`"+` to tell the files apart: the `+"`execution-attempt-*`"+` files are the step's own work, while `+"`reflection-timing.json`"+` is its post-completion reflection turn. A step's true elapsed cost is execution PLUS reflection — reporting execution alone understates it, and reflection has measured around a fifth of total LLM time on a real workflow. Attribute them separately: a slow execution phase is a step-instruction problem, a slow reflection phase is a learning/KB objective problem, and the two have different fixes.
-   - `+"`wrote_learnings`"+` / `+"`wrote_kb`"+` on a reflection file as the yield question — a reflection turn that cost real time while writing to neither store is pure overhead, and the fix is to sharpen the objective or drop the step to `+"`learnings_access: \"read\"`"+`, not to speed the turn up.
+   - Historical reflection records can explain old overhead, but current Goal agents have no automatic reflection turn. Do not reintroduce one or tune learning access.
 4. Read conversation logs only after the timing files show where the time went.
 5. Read the producing steps' stored measurements (and goal observations via `+"`get_goal_metrics`"+`) if they help determine whether a proposed speedup would threaten success criteria.
 
@@ -7962,7 +7947,7 @@ For each step reviewed, output:
 - Drifted: N
 - No script: N
 - **Top priority fixes**: List the 3 most critical drifts that should be addressed first.
-- **Stale code-lock warning**: For every step marked `+"`"+`DRIFTED`+"`"+` whose `+"`"+`step_config`+"`"+` has `+"`"+`lock_code=true`+"`"+`, explicitly call out that the frozen main.py may no longer match the description, and the builder should `+"`"+`update_step_config(step_id, lock_code=false, description_reviewed=false)`+"`"+` before regenerating. Separately reassess whether `+"`"+`learnings_access`+"`"+` should remain `+"`"+`read-write`+"`"+`.
+- **Stale code-lock warning**: For every step marked `+"`"+`DRIFTED`+"`"+` whose `+"`"+`step_config`+"`"+` has `+"`"+`lock_code=true`+"`"+`, explicitly call out that the frozen main.py may no longer match the description, and the builder should `+"`"+`update_step_config(step_id, lock_code=false, description_reviewed=false)`+"`"+` before regenerating. Review the selected skills for stale instructions.
 `)
 
 var reviewStepCodeAgentUserTemplate = MustRegisterTemplate("reviewStepCodeAgentUser", `Review the saved main.py scripts against their step descriptions and report any drift.{{if .Focus}} Focus especially on: {{.Focus}}{{end}}
@@ -8159,18 +8144,16 @@ func (iwm *InteractiveWorkshopManager) runReviewWorkflowTimingAgent(ctx context.
 		for _, sc := range stepConfigs {
 			mode := executionModeLabel(isScriptedStep(planSteps[sc.ID], sc.AgentConfigs))
 			successfulRuns := 0
-			learningsAccess := LearningsAccessRead
 			lockCode := false
 			if sc.AgentConfigs != nil {
 				if sc.AgentConfigs.SuccessfulRuns != nil {
 					successfulRuns = *sc.AgentConfigs.SuccessfulRuns
 				}
-				learningsAccess = resolveLearningsAccess(sc.AgentConfigs)
 				if sc.AgentConfigs.LockCode != nil {
 					lockCode = *sc.AgentConfigs.LockCode
 				}
 			}
-			sb.WriteString(fmt.Sprintf("- %s: mode=%s, successful_runs=%d, learnings_access=%s, lock_code=%v\n", sc.ID, mode, successfulRuns, learningsAccess, lockCode))
+			sb.WriteString(fmt.Sprintf("- %s: mode=%s, successful_runs=%d, lock_code=%v\n", sc.ID, mode, successfulRuns, lockCode))
 		}
 		stepConfigSummary = sb.String()
 	}
@@ -8250,18 +8233,16 @@ func (iwm *InteractiveWorkshopManager) runReviewWorkflowCostsAgent(ctx context.C
 		for _, sc := range stepConfigs {
 			mode := executionModeLabel(isScriptedStep(planSteps[sc.ID], sc.AgentConfigs))
 			successfulRuns := 0
-			learningsAccess := LearningsAccessRead
 			lockCode := false
 			if sc.AgentConfigs != nil {
 				if sc.AgentConfigs.SuccessfulRuns != nil {
 					successfulRuns = *sc.AgentConfigs.SuccessfulRuns
 				}
-				learningsAccess = resolveLearningsAccess(sc.AgentConfigs)
 				if sc.AgentConfigs.LockCode != nil {
 					lockCode = *sc.AgentConfigs.LockCode
 				}
 			}
-			sb.WriteString(fmt.Sprintf("- %s: mode=%s, successful_runs=%d, learnings_access=%s, lock_code=%v\n", sc.ID, mode, successfulRuns, learningsAccess, lockCode))
+			sb.WriteString(fmt.Sprintf("- %s: mode=%s, successful_runs=%d, lock_code=%v\n", sc.ID, mode, successfulRuns, lockCode))
 		}
 		stepConfigSummary = sb.String()
 	}

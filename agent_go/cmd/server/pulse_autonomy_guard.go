@@ -105,7 +105,7 @@ var goalWorkReshapeTools = map[string]bool{
 var goalWorkNeverTools = map[string]bool{
 	"delete_plan_steps": true, "delete_schedule": true, "create_plan": true, "cleanup_orphan_step_configs": true,
 	"change_step_type": true, "set_workflow_contract_version": true, "migrate_agent_code_items": true,
-	"migrate_agent_steps": true, "migrate_goal_agents": true, "migrate_declared_execution_mode": true, "strip_declared_execution_mode": true,
+	"migrate_agent_steps": true, "migrate_goal_agents": true, "migrate_workflow_skills": true, "migrate_declared_execution_mode": true, "strip_declared_execution_mode": true,
 }
 
 // goalWorkOutwardTools post or send beyond the workflow by name alone. Tools

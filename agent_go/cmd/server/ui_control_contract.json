@@ -49,7 +49,6 @@
         "refresh"
       ],
       "targets": [
-        "learnings",
         "knowledgebase",
         "database"
       ]

@@ -13,7 +13,7 @@ external_note: "External mapping: discover current tool schemas before acting. U
 
 Every step has an optional config entry that overrides defaults for that step. All of it is set with **`update_step_config(step_id, ...)`** and removed with **`update_step_config(step_id, clear=[...])`** (clearing returns the field to its default). Never hand-edit `planning/step_config.json`. This doc is the one-stop map of the knobs; load the linked deep-dives when a knob needs more than the summary.
 
-### Store access — who can touch the three persistent stores
+### Knowledge-base access and skills
 
 A step's access to each store is independent and defaults differently. Grant the least access the step actually needs.
 
@@ -22,10 +22,8 @@ A step's access to each store is independent and defaults differently. Grant the
 | ~~`db_access`~~ | **retired** | `read-write` | Had no runtime effect — `resolveDBAccess` ignored it and always granted read-write, while the enum invited agents to "restrict" a step that never was restricted. Removed in PLAT-061; existing values still parse and are ignored. Every workflow step gets managed read-write DB access. |
 
 - **DB contract:** every agentic workflow step receives `query_workflow_db` and `mutate_workflow_db`; it does not receive raw SQLite access. Scripted code reaches the database through the built-in `agentworks_db` helper (the same managed tools); `$DB_PATH` remains only for scripts written before contract 1.0.45 and is not to be used in new or repaired scripts.
-- **Rule of thumb:** routing, validation, mechanical transforms, aggregation/report-shaping, human approval, pure db/KB readers, and mature scripted steps should usually stay read-only on learnings. DB access is intentionally uniform and is not a per-step tuning decision right now.
 - Deep dive on what belongs in each store and the write contracts: `read_skill(skills=[{"name":"builder-reference","path":"references/stores.md"}])`.
 
-| `learnings_access` | `read` · `read-write` · `none` | `read` | Read existing know-how; write only for explicit task contributions. No automatic reflection. |
 | `knowledgebase_access` | `read` · `write` · `read-write` · `none` | `read` | Permits task-directed notes contributions. Preserve the mode when migrating legacy objectives. |
 
 ### The per-step code lock
@@ -35,11 +33,10 @@ A step's access to each store is independent and defaults differently. Grant the
 | `lock_code` | per-step (scripted) | Freezes `<script-dir>/main.py` even for the Builder's own `execute_step`. Runs never repair a script regardless: a failing script fails the step and Pulse reports it | **user asks to lock** → allow it; **Workshop auto-locking on its own** → only after 10+ scenario-covering runs |
 
 Knowledge-base writes are controlled per step instead: `knowledgebase_access`
-must permit writes and `knowledgebase_contribution` must state what durable
-facts the step owns. Change a mature/no-op contributor to `read`; do not freeze
+must permit writes and the task must state what durable facts the step owns. Change a mature/no-op contributor to `read`; do not freeze
 unrelated KB writers workflow-wide.
 
-Only pass `lock_code` when explicitly changing it. Learning write eligibility is controlled only by `learnings_access`: use `read` to consume guidance without contributing.
+Only pass `lock_code` when explicitly changing it. Steps read selected skills; Builder/Pulse maintain skill files. Contract 1.0.51 removes `learnings_access` from new authoring and preserves old grants in migration audit notes without changing KB access.
 
 ### Execution mode + which model runs the step
 
@@ -80,8 +77,8 @@ and destinations; put required contributions in the task description instead.
 
 - **`validation_schema`** — the only automated gate (set via `update_validation_schema`); catches stale files, missing fields, constraint violations. Every step needs one.
 - **`enabled_skills`** — step-level skill selection (step execution does NOT inherit workflow-selected skills; set explicitly). `enabled_custom_tools`, `selected_servers`, `selected_tools` — narrow the step's tool surface. Human tools are not baseline: when a step sends email, posts to Slack or asks a person for a decision, name `human_tools:send_email`, `human_tools:send_slack_message` or `human_tools:create_human_input_request` in its `enabled_custom_tools` (keep the existing entries); never rely on the description's wording. `human_feedback` blocks a run, so unattended steps do not get it.
-- **`additional_read_paths`** — not needed for files inside the workflow: a step can already READ everything in its workflow folder (every run, code, knowledge base, learnings, db files, notes, reports). Do not add it for those reads. It remains for read-only grants outside the workflow folder's usual surfaces that a product defines. Absolute paths, `.` and `..` traversal are rejected, and the grant never expands writes. A step WRITES only its current run folder and the shared areas db/assets, reports and tool_output_folder (plus its own knowledge base, learnings and database access); never past runs, planning, settings or code, which belong to the Builder and Pulse.
-- **`review_notes`** — one-line WHY for non-obvious config (future Pulse and Workshop reviews read it). Record it whenever you set learning/KB access or designate a db writer.
+- **`additional_read_paths`** — not needed for files inside the workflow: a step can already READ everything in its workflow folder (every run, code, knowledge base, skills, db files, notes, reports). Do not add it for those reads. It remains for read-only grants outside the workflow folder's usual surfaces that a product defines. Absolute paths, `.` and `..` traversal are rejected, and the grant never expands writes. A step WRITES only its current run folder and the shared areas db/assets, reports and tool_output_folder (plus its own knowledge base and database access); never past runs, planning, settings, skills or code, which belong to the Builder and Pulse.
+- **`review_notes`** — one-line WHY for non-obvious config (future Pulse and Workshop reviews read it). Record it whenever you set KB access or skill selections or designate a db writer.
 - **`description_reviewed`**, `coding_agent_tmux_lifecycle`, `disable_parallel_tool_execution` — situational. (`transport` was never a step-config field; naming it in `clear_fields` is reported as a no-op.)
 
 ### Workflow

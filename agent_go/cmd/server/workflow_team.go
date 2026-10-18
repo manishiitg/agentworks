@@ -539,6 +539,10 @@ func workflowTeamAllowsConcurrent(root string) bool {
 	return e == nil && ok && (m.Team != nil || m.Kind == "relay")
 }
 func teamManagedWrite(ctx context.Context, path, content string) (func(), error) {
+	readCurrent := readFileFromWorkspace
+	if supplied, ok := ctx.Value(teamCommitReadKey{}).(func(context.Context, string) (string, bool, error)); ok {
+		readCurrent = supplied
+	}
 	root, rel := teamWorkspacePath(path)
 	if root == "" {
 		return func() {}, nil
@@ -592,7 +596,7 @@ func teamManagedWrite(ctx context.Context, path, content string) (func(), error)
 		return fail(fmt.Errorf("account is disabled"))
 	}
 	if strings.HasPrefix(rel, "planning/") && !strings.HasPrefix(rel, "planning/changelog/") && !strings.HasPrefix(rel, "planning/revisions/") {
-		planRaw, _, err := readFileFromWorkspace(context.WithValue(ctx, teamPlanReceiptKey{}, nil), root+"/planning/plan.json")
+		planRaw, _, err := readCurrent(context.WithValue(ctx, teamPlanReceiptKey{}, nil), root+"/planning/plan.json")
 		if err != nil {
 			return fail(err)
 		}
@@ -604,7 +608,7 @@ func teamManagedWrite(ctx context.Context, path, content string) (func(), error)
 		return release, nil
 	}
 	if rel != "planning/plan.json" && rel != "planning/step_config.json" {
-		raw, exists, err := readFileFromWorkspace(context.WithValue(ctx, teamPlanReceiptKey{}, nil), path)
+		raw, exists, err := readCurrent(context.WithValue(ctx, teamPlanReceiptKey{}, nil), path)
 		if err != nil {
 			return fail(err)
 		}
@@ -614,7 +618,7 @@ func teamManagedWrite(ctx context.Context, path, content string) (func(), error)
 		if !read || exists && teamRevision(baseline) != teamRevision(raw) {
 			return fail(fmt.Errorf("source conflict: reread and reconcile"))
 		}
-		planRaw, _, err := readFileFromWorkspace(ctx, root+"/planning/plan.json")
+		planRaw, _, err := readCurrent(ctx, root+"/planning/plan.json")
 		if err != nil {
 			return fail(err)
 		}
@@ -627,7 +631,7 @@ func teamManagedWrite(ctx context.Context, path, content string) (func(), error)
 		}
 		return release, nil
 	}
-	current, exists, e := readFileFromWorkspace(context.WithValue(ctx, teamPlanReceiptKey{}, nil), path)
+	current, exists, e := readCurrent(context.WithValue(ctx, teamPlanReceiptKey{}, nil), path)
 	if e != nil {
 		return fail(e)
 	}
@@ -642,7 +646,7 @@ func teamManagedWrite(ctx context.Context, path, content string) (func(), error)
 			return fail(e)
 		}
 	} else {
-		planRaw, _, e := readFileFromWorkspace(ctx, root+"/planning/plan.json")
+		planRaw, _, e := readCurrent(ctx, root+"/planning/plan.json")
 		if prepared, found := receipt.pending[root+"/planning/plan.json"]; found {
 			planRaw = prepared
 		}

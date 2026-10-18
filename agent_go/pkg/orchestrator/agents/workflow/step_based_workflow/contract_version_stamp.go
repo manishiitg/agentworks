@@ -178,6 +178,11 @@ func CheckContractStamp(version, workflowDir string, manifestJSON []byte, readPl
 			return err
 		}
 	}
+	if version == WorkflowSkillsContractVersion {
+		if err := ValidateWorkflowSkillsStamp(workflowDir); err != nil {
+			return err
+		}
+	}
 	if version == GoalAgentContractVersion {
 		content, err := readPlan()
 		if err != nil {

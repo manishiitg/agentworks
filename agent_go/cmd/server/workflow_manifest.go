@@ -37,7 +37,8 @@ var ErrInvalidWorkflowManifest = errors.New("manifest validation failed")
 // contract version. Unlike schema_version, this gates agent-run workflow
 // upgrades. An operator starts pending migrations from the workflow chat, and
 // the version is stamped only after the workflow has been checked or migrated.
-const WorkflowContractCurrentVersion = workflowContractGoalAgentVersion
+const WorkflowContractCurrentVersion = workflowContractSkillsVersion
+const workflowContractSkillsVersion = step_based_workflow.WorkflowSkillsContractVersion
 const workflowContractGoalAgentVersion = step_based_workflow.GoalAgentContractVersion
 
 const workflowContractExplicitSchedulePulseVersion = schedulepolicy.ExplicitPulseContractVersion
@@ -131,6 +132,7 @@ const (
 
 // WorkflowManifest is the top-level workflow.json structure that lives in each workspace.
 type WorkflowManifest struct {
+	WorkflowSkillsMigration      json.RawMessage                     `json:"workflow_skills_migration,omitempty"`
 	Team                         *WorkflowTeam                       `json:"team,omitempty"`
 	KnowledgebaseContractHistory json.RawMessage                     `json:"knowledgebase_contract_history,omitempty"`
 	SharedKnowledgebase          []knowledgebase.Binding             `json:"shared_knowledgebase,omitempty"`

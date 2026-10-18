@@ -174,7 +174,7 @@ Audit procedure:
    ID), producer measurements (a measurement reading the
    deleted step's outputs, left pointing at artifacts that no longer exist),
    `db/reports/index.html` and `db/README.md` (mentions of the deleted step
-   by name/id), and `learnings/_global/` notes referencing it. A route/chain
+   by name/id), and workflow skill references naming it. A route/chain
    left pointing at a deleted step is real drift — the workflow can no longer
    execute that path.
 4. Fix what is safe and workflow-owned directly: update a stale reference only
@@ -273,10 +273,9 @@ Then inspect only the dependencies the actual change could affect:
   General DB normalization and cleanup are outside this review.
 - **Descriptions, saved code, skills, and KB:** identify stale instructions or
   inaccessible required guidance caused by the changed contract. Do not redesign
-  learning ownership merely because another access mode seems preferable.
-  Architecture owns `learnings_access` decisions (PLAT-556): Plan Drift only
-  flags a read-write step whose learning looks settled or stale, in the drift
-  record's evidence; it does not change the access itself.
+  skill ownership merely because another arrangement seems preferable. Steps
+  consume selected skills and Builder/Pulse maintain them. Legacy learning
+  access is retired through the explicit skills upgrade, without changing KB grants.
   When an affected step uses browser tests or promises live visibility, read
   `references/playwright-scripted.md`. Check the step description, accessible skill
   bundle, actual test import/custom fixture, and installed runtime together. A plain

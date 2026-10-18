@@ -1,19 +1,14 @@
 **Saved-code paths:** Read `workflow.json.code_layout_version` first. In this reference, `<script-dir>` means `code/<step-id>` for version 1, or `learnings/<step-id>` for absent/zero (legacy). Resolve the placeholder before using a path; never infer the version from folders or migrate an existing workflow implicitly. Version 1 executes and repairs canonical source directly, with shared helpers under `WORKFLOW_CODE_ROOT`; only legacy workflows copy code into runs and save it back.
 
-## Three persistent stores — skill vs knowledgebase vs db
+## Knowledge base, skills and results
 
-Every workflow has three separate stores that survive across runs. They are NOT interchangeable. Mixing them up bloats prompts with irrelevant content and makes later runs harder to debug.
+Keep reusable instructions separate from business knowledge and recorded results.
 
-**learnings/_global/SKILL.md — HOW to run the task**
-- Execution know-how: selectors, API quirks, CLI flags, SDK/tool call patterns, timing, auth flows, output parsing rules, retry/recovery rules, and pitfalls the agent hit before.
-- Written by: an explicit task contribution under its write grant, Builder or Pulse; ongoing learning belongs to Crew.
-- **It is ONE skill for the whole workflow, organised by topic and improved by every step** — not a per-step file set. A step writes into the `references/<topic>.md` that owns the subject (`browser-session.md`, `rate-limits.md`), however many other steps also write there; it creates a new topic file only when no existing topic fits, named for the **subject** and never for a step, step id, or run. `SKILL.md` is an **index only**: one line per topic, a link plus a short description. Real detail sitting in the index instead of behind a link is a defect regardless of the index's size. Reads are unrestricted and encouraged — what another step recorded about the same surface is what prevents a duplicate entry.
-  - PLAT-055/D originally scoped writes to `references/<step-id>.md`. That fragmented the skill by execution structure instead of subject, orphaned the topic files `SKILL.md` links to, and re-forked on every step rename; it was replaced in PLAT-058. A step-named file found under `references/` is a leftover — fold it into the owning topic file and delete it.
-- Route facts/results to managed DB tables, durable narrative to KB and reusable HOW to learnings. Keep incidents as evidence and CONCERNS, never as fabricated learning.
-- **Compaction is the writing step's own duty here too — nothing does it automatically.** The same discipline stated below for KB notes applies: when a topic file already covers the surface you're adding to, correct it in place and fold near-duplicate sections together rather than appending a new dated block on top of the old one. Read the existing topic first specifically to check whether what you're about to add contradicts what's already there — an unresolved contradiction left standing (an old rule beside a newer one that supersedes it) is worse than either version alone, since a future reader can't tell which one a step should follow. Demote a superseded point-in-time rule under a `## Historical context`-style block instead of deleting the record, matching the KB pattern below.
-- Read as: relevant skills opened on demand, under the step access setting.
-- Shape: SKILL.md (index) + `references/<topic>.md` (per-subject content, named for the subject per PLAT-058 -- never `references/<step-id>.md`; see the PLAT-055/D correction above) + scripts/ (Anthropic skill-creator format).
-- Examples: "OTP field appears ~3s after PAN submit — poll, don't sleep", "HDFC balance is inside .account-summary", "gmail.search_messages returns max 50 — paginate".
+**skills/<name>/ — reusable HOW to do the task**
+- Workflow-local skills hold task methods: selectors, API quirks, authentication sequences, parsing, recovery and verified techniques. Use the existing skill format: a short `SKILL.md` index, detail under `references/`, and supporting assets when needed. Open only the reference needed for the task.
+- Builder and Pulse maintain these instructions. Select a skill in workflow `selected_skills` for Builder/Pulse and per-step `enabled_skills` for execution. Steps consume skills; they do not update them or run a separate learning phase. Crew can own ongoing learning.
+- Contract 1.0.51 retires the separate learnings feature. Upgrade existing workflows explicitly with `migrate_workflow_skills`, review its copy hashes and index, then stamp. The existing code-layout upgrade must come first. It copies old guides and supporting files verbatim into a workflow-local skill, preserves originating steps in the index, keeps old files as history, and does not change knowledge-base grants. Never move private guides into the shared workspace skill catalog or turn legacy `main.py` backups into skill scripts.
+- Platform mechanics belong in platform guidance and tool schemas, rather than copied into task skills.
 
 **knowledgebase/ — business context and durable narrative observations**
 - `context/context.md`: user-supplied runtime business context. Use for rules, preferences, constraints, assumptions, examples, and other context the user explicitly gives that future steps must respect. It is user-owned content maintained by the user; automated KB review must not rewrite it.
@@ -53,40 +48,40 @@ Every workflow has three separate stores that survive across runs. They are NOT 
 
 **KB shape:** context + notes. User-supplied runtime context lives under `knowledgebase/context/`; workflow-discovered narrative knowledge lives as per-topic markdown files under `knowledgebase/notes/` plus `notes/_index.json` as the registry. There is no graph/entity surface — cross-step reasoning happens through markdown consolidation, not typed-relationship traversal.
 
-<!-- product:knowledgebase -->**Shared Brain product:** the organization Brain is a separate store accessed through `brain_browse`, `brain_read`, `brain_update`, `brain_skills` and `brain_access`, using explicit actions. Existing workflow-local `knowledgebase/`, its `knowledgebase_sources` aliases, and Crew workspace attachments retain their current file paths and permissions. An attachment does not grant access to a shared Brain folder. Do not migrate, copy, or dual-write existing knowledge unless explicitly requested. Shared Brain content must be accessed through its MCP tools; never mount or shell-read its server data directory. `learnings/` remains workflow-local.
+<!-- product:knowledgebase -->**Shared Brain product:** the organization Brain is a separate store accessed through `brain_browse`, `brain_read`, `brain_update`, `brain_skills` and `brain_access`, using explicit actions. Existing workflow-local `knowledgebase/`, its `knowledgebase_sources` aliases, and Crew workspace attachments retain their current file paths and permissions. An attachment does not grant access to a shared Brain folder. Do not migrate, copy, or dual-write existing knowledge unless explicitly requested. Shared Brain content must be accessed through its MCP tools; never mount or shell-read its server data directory. Workflow skills remain local to their workflow.
 
 **When to use which — deciding questions:**
-- *Does it tell the agent HOW to do the task?* → learnings/ (the learning agent writes it; you rarely do)
+- *Does it tell the agent HOW to do the task?* → a workflow-local skill maintained by Builder or Pulse
 - *Did the user provide runtime business context, rules, examples, preferences, or constraints that steps must respect?* → knowledgebase/context/context.md (user-owned; steps read it with KB read access)
-- *Is it a durable observation, decision, or pattern about the workflow's subject matter discovered by the workflow?* → knowledgebase/notes/ (write a knowledgebase_contribution; the KB update agent appends to the right topic file, or the step writes directly in direct-mode)
+- *Is it a durable observation, decision, or pattern about the workflow's subject matter discovered by the workflow?* → knowledgebase/notes/ (put the contribution in the task and grant knowledge-base write access)
 - *Is it the workflow's actual output data — rows, records, results this run produced?* → db/db.sqlite (agentic steps use managed DB tools; upsert on the primary key, never recreate or wholesale-overwrite the table)
 - *Is it a durable image/PDF/audio/download/generated file?* → db/assets/ with a db/db.sqlite metadata row pointing to it
 
 **Rule of thumb on the split:**
-- learnings = HOW (methods, patterns, quirks of the target system)
+- skills = HOW (methods, patterns, quirks of the target system)
 - knowledgebase/context = WHAT the user told us to remember at runtime
 - knowledgebase/notes = WHAT the workflow learned about the domain (narrative observations, patterns)
 - db = WHAT the workflow produced (state, results, rows in db/db.sqlite tables, plus durable assets under db/assets/)
 
 **Business/runtime context placement:**
 When the user gives context that future step agents will need at run time, do not leave it only in chat. Put it in the narrowest durable surface:
-- **Workflow-wide objective, success criterion, or explicit user-approved durable constraint** -> `soul/soul.md`. Do not put architecture, implementation choices, agent-inferred assumptions, preferences/examples, or ordinary operating rules there; those belong in plan/config, KB context, learnings, or variables as appropriate.
+- **Workflow-wide objective, success criterion, or explicit user-approved durable constraint** -> `soul/soul.md`. Do not put architecture, implementation choices, agent-inferred assumptions, preferences/examples, or ordinary operating rules there; those belong in plan/config, KB context, skills, or variables as appropriate.
 - **Step-specific behavior rule** -> the relevant step description via plan modification tools. Example: "never send outreach before human approval" belongs in the send/approval step boundary, not KB.
 - **User-provided business/runtime context needed across runs** -> `knowledgebase/context/context.md` plus `knowledgebase_access="read"` on steps that must use it, and an explicit sentence in each affected step description naming the relevant context section/path. Example: customer preferences, market context, account history, domain heuristics, examples, style constraints, approval rules.
-- **Workflow-discovered business/domain facts** -> `knowledgebase/notes/` plus `knowledgebase_contribution` on producer steps. Example: patterns discovered from account history, cross-run observations, hypotheses.
+- **Workflow-discovered business/domain facts** -> `knowledgebase/notes/` plus an explicit notes contribution in producer tasks. Example: patterns discovered from account history, cross-run observations, hypotheses.
 - **Structured lookup/context needed by code or reports** -> a `db/db.sqlite` table with schema in `db/README.md`. Example: account rows, scored leads, product catalog, rolling metrics.
 - **Durable assets needed by reports or later steps** -> `db/assets/` with metadata/reference rows in a `db/db.sqlite` table. Example: generated images, screenshots, PDFs, downloaded source documents, chart PNGs.
 - **User/account-specific values** -> `variables/variables.json` or secrets. Example: account IDs, email addresses, phone numbers, sheet IDs, API endpoints.
-- **Execution technique** -> `learnings/_global/SKILL.md`, only when it is reusable HOW-to-run knowledge such as selectors, API quirks, timing, or auth-flow pitfalls.
+- **Execution technique** -> a workflow-local skill, only when it is reusable HOW-to-run knowledge such as selectors, API quirks, timing, or auth-flow pitfalls.
 
 ### Direct-Work Grounding Rule
 
-When you do workflow work yourself instead of delegating to a normal step, first ground yourself in the workflow's own operating memory. Read `learnings/_global/SKILL.md` when it exists; read relevant `knowledgebase/context/`, `knowledgebase/notes/_index.json` + targeted notes, `db/` contracts/data, and recent `runs/iteration-0/` artifacts as needed. For `scripted` steps, read the canonical `<script-dir>/main.py` when it is relevant to the task. Then use those patterns while acting directly. Do not improvise a fresh approach when the workflow has already generated a skill, script, KB context, or prior run evidence that explains how to do it.
+When you do workflow work yourself instead of delegating to a normal step, first ground yourself in the workflow's own operating memory. Read the selected workflow skills and relevant references; read relevant `knowledgebase/context/`, `knowledgebase/notes/_index.json` + targeted notes, `db/` contracts/data, and recent `runs/iteration-0/` artifacts as needed. For `scripted` steps, read the canonical `<script-dir>/main.py` when it is relevant to the task. Then use those patterns while acting directly. Do not improvise a fresh approach when the workflow has already generated a skill, script, KB context, or prior run evidence that explains how to do it.
 
 If a step needs business context while running, explicitly wire it in BOTH places: set `knowledgebase_access="read"` for KB context, and update the step description to say which `knowledgebase/context/context.md` section or rule family it must read and apply. Also add the right `context_dependencies` for prior run outputs, reference the `db/README.md` contract for db reads/writes, or use variables/placeholders for group-specific values. A step should not depend on untracked chat memory.
 
 **Step config knobs for KB (use update_step_config):**
-- knowledgebase_access — one of read / write / read-write / none. **Defaults to 'read'.** An unset access value with a staged `knowledgebase_contribution` promotes to `read-write`; explicit `none` always wins. Set write/read-write plus a concrete contribution for producers. Set `none` explicitly when KB context would mislead the step; do not treat an omitted field as opting out.
+- knowledgebase_access — one of read / write / read-write / none. **Defaults to 'read'.** Set write/read-write plus a concrete contribution in the task for producers; explicit `none` always wins. Set `none` explicitly when KB context would mislead the step; do not treat an omitted field as opting out.
 - Legacy knowledgebase_contribution — preserved in migration notes, replaced by an explicit task contribution.
 
 ### Forward-pipe vs persistent state — context_output vs db/
@@ -96,13 +91,13 @@ Every non-trivial step has a `context_output` file (e.g. `extracted_data.json`).
 `db/db.sqlite` is different: workspace-level, persistent across runs and groups, and the live data source for the report. The report is an **HTML document** that reads it on view via `window.report.query("SELECT ...")` and renders its own charts/tables; it can also pull durable files from `db/`, `knowledgebase/`, or `docs/` via `window.report.get`/`fileUrl`. Keep report-facing data in `db/db.sqlite` and durable files under those roots — never have a report read volatile `runs/...` paths. Only data that must be live from an outside system comes through a `code/reports/` script via `window.report.run` (see reporting-policy); do not use it to re-read what a run already stores in `db/`.
 
 **When to introduce a db/db.sqlite table:**
-- (a) You want (or might plausibly want) structured data to appear in the Report UI — a db.sqlite table is the default durable option (the HTML report queries it live); migrating later means rewriting step code + schema notes, so lean toward it up front. For a durable **file** a step downloads or generates (any format — PDF, image, CSV, JSON, txt, zip), the step-writable home is `db/assets/` with a reference row in `db.sqlite`. `db/assets/` is the ONLY durable location a step can write an arbitrary file to: the folder guard opens `db/`, `knowledgebase/notes/`, and `learnings/_global/` for step writes and nothing else — `docs/` and other `knowledgebase/` subfolders are builder-only, and a custom folder (e.g. `downloads/`, `business-context/`) is denied ("operation not permitted"). If it is structured data you will query, parse the content into `db.sqlite` tables and keep the raw file in `db/assets/` for provenance.
+- (a) You want (or might plausibly want) structured data to appear in the Report UI — a db.sqlite table is the default durable option (the HTML report queries it live); migrating later means rewriting step code + schema notes, so lean toward it up front. For a durable **file** a step downloads or generates (any format — PDF, image, CSV, JSON, txt, zip), the step-writable home is `db/assets/` with a reference row in `db.sqlite`. Other shared step-writable areas are `reports/` and `tool_output_folder/`; knowledge-base notes require the step’s write grant. Past runs, planning, settings, skills and code stay with Builder/Pulse. Prefer `db/assets/` for durable assets referenced by results. If it is structured data you will query, parse the content into `db.sqlite` tables and keep the raw file in `db/assets/` for provenance.
 - (b) Cross-run persistence matters — cursors ("last-processed date"), processed-ID sets for dedup, cumulative rows that grow across runs.
 - (c) Cross-group aggregation matters — combined tallies, per-group rows unified into one view.
 
 **When NOT to use db/:**
 - Data is pure forward-pipe between consecutive steps within one run → `context_output` alone is correct.
-- Data is durable **narrative knowledge about the subject matter** (observations, decisions, patterns) → that belongs in the knowledgebase via `knowledgebase_contribution`, not in `db/`.
+- Data is durable **narrative knowledge about the subject matter** (observations, decisions, patterns) → that belongs in knowledge-base notes through an explicit task contribution and its write grant.
 
 **A step often writes both:**
 - Full data → a `db/db.sqlite` table via `INSERT ... ON CONFLICT DO UPDATE` (preserves rows from other groups and prior runs).
@@ -143,12 +138,7 @@ Every non-trivial step has a `context_output` file (e.g. `extracted_data.json`).
 
 ### Explicit contributions
 
-Reading existing knowledge remains on by default under each store's access
-setting. Writing requires the corresponding access and an explicit task
-instruction identifying what to contribute and where. Goals do not run an
-automatic reflection turn. Builder and Pulse can maintain shared knowledge;
-Crew can own ongoing learning. Contract 1.0.50 archives legacy objectives and
-their destinations; it preserves effective access and history.
+Knowledge-base writes require the step's write access and a task instruction saying what to record and where. Goals do not run an automatic reflection or learning turn. Builder and Pulse maintain reusable workflow skills; Crew can own ongoing learning. Contract 1.0.50 archives old objectives; 1.0.51 moves existing guides into skills without changing KB grants or run history.
 
 ### Completing a run's durable output
 
@@ -161,6 +151,6 @@ idempotent, validate what actually persisted, and declare table contracts in
 HTML reports read report-facing rows live with `window.report.query`; do not create
 a second result store just for reporting. Domain observations belong in
 `knowledgebase/notes/`, while reusable task-specific HOW belongs behind the
-`learnings/_global/SKILL.md` index. Use the existing store rules above instead of
+workflow-local skill index. Use the existing store rules above instead of
 adding a separate step automatically for each store.
 <!-- /product -->

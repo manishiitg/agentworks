@@ -32,7 +32,7 @@ var (
 	brainReferencePattern     = regexp.MustCompile(`brain:([^\s` + "`" + `'"<>()\[\],;]+)`)
 	// A workflow path starts at a token boundary, optionally after
 	// Workflow/<name>/ (or an absolute docs-root prefix ending in it).
-	workflowReferencePattern = regexp.MustCompile(`(?:^|[\s` + "`" + `'"(\[<])(?:[^\s` + "`" + `'"()\[\]<>]*?Workflow/[^/\s` + "`" + `'"]+/)?((?:learnings|knowledgebase|code/shared|soul)/[^\s` + "`" + `'"<>()\[\],;]+|db/README\.md)`)
+	workflowReferencePattern = regexp.MustCompile(`(?:^|[\s` + "`" + `'"(\[<])(?:[^\s` + "`" + `'"()\[\]<>]*?Workflow/[^/\s` + "`" + `'"]+/)?((?:skills|learnings|knowledgebase|code/shared|soul)/[^\s` + "`" + `'"<>()\[\],;]+|db/README\.md)`)
 )
 
 // descriptionReferenceSections returns the bodies of the description's
@@ -129,7 +129,7 @@ func cleanWorkflowReference(raw string) string {
 	if clean == "db/README.md" {
 		return clean
 	}
-	for _, root := range []string{"learnings/", "knowledgebase/", "code/shared/", "soul/"} {
+	for _, root := range []string{"skills/", "learnings/", "knowledgebase/", "code/shared/", "soul/"} {
 		if strings.HasPrefix(clean, root) && len(clean) > len(root) {
 			return clean
 		}

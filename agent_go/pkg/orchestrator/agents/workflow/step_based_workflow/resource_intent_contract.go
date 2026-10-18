@@ -8,7 +8,7 @@ import (
 
 // ResourceIntentContractVersion is the contract where every step description
 // states, under "## Resources", how the step uses the workflow's knowledge
-// base, database, Brain and learnings (or that it does not). It is a
+// base, database, Brain and skills (or that it does not). It is a
 // definition-only review: no grant is added, widened or moved.
 const ResourceIntentContractVersion = "1.0.49"
 
@@ -22,7 +22,7 @@ var resourceKinds = []resourceKind{
 	{"kb", "Knowledge base", []string{"knowledge base", "knowledgebase", "kb"}},
 	{"database", "Database", []string{"database", "workflow database", "db"}},
 	{"brain", "Brain", []string{"brain", "shared brain"}},
-	{"learnings", "Learnings", []string{"learnings", "workflow learnings", "learning"}},
+	{"learnings", "Skills", []string{"skills", "workflow skills", "learnings", "workflow learnings", "learning"}},
 }
 
 // descriptionSectionBody returns the body of the first level-2 section with
@@ -93,7 +93,7 @@ func referenceKindsNamed(description string) map[string]bool {
 			named["brain"] = true
 		case strings.HasPrefix(ref.Path, KnowledgebaseFolderName+"/"):
 			named["kb"] = true
-		case strings.HasPrefix(ref.Path, "learnings/"):
+		case strings.HasPrefix(ref.Path, "learnings/") || strings.HasPrefix(ref.Path, "skills/"):
 			named["learnings"] = true
 		case ref.Path == "db/README.md":
 			named["database"] = true
@@ -106,7 +106,7 @@ func referenceKindsNamed(description string) map[string]bool {
 func checkResourceIntent(description string) string {
 	section, found := descriptionSectionBody(description, "Resources")
 	if !found {
-		return "has no ## Resources section stating its knowledge base, database, Brain and learnings use (write \"no use\" for a resource it does not use)"
+		return "has no ## Resources section stating its knowledge base, database, Brain and skills use (write \"no use\" for a resource it does not use)"
 	}
 	stated := map[string]string{}
 	for _, line := range strings.Split(section, "\n") {

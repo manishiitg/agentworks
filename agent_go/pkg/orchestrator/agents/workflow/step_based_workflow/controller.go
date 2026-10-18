@@ -58,11 +58,12 @@ func ChainSubAgentNotifiers(notifiers ...SubAgentNotifier) SubAgentNotifier {
 // - No cleanup phase
 // - Simple direct planning approach
 // - Always includes independent steps extraction for parallel execution
-// - NEW: Includes learning phase after each step execution and validation
+// - Explicit task phases, skills and backend validation without automatic learning
 type StepBasedWorkflowOrchestrator struct {
 	workshopSubAgentCleanup *workshopSubAgentCleanup
 	codeLayoutVersion       atomic.Int32
 	platformStoresDisabled  atomic.Bool
+	workflowSkillsOnly      atomic.Bool
 	// codeWritableByRun is true only for a run started by the Builder (execute_step with script repair allowed): code/
 	// stays with the Builder and Pulse, so every other run (schedules, webhooks, functions, Watchers, Run mode, MCP)
 	// reads it and never writes it. Unset means not the Builder.

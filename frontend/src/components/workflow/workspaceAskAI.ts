@@ -132,15 +132,11 @@ const IDENTITY_TAB_ASK_AI_MESSAGE: Record<IdentityTabId, { label: string; summar
   },
 }
 
-// The Knowledge view holds three tabs, so its header Ask AI follows the
+// The Knowledge view holds two tabs, so its header Ask AI follows the
 // active tab instead of the view.
-export type KnowledgeTabId = 'learnings' | 'knowledgebase' | 'database'
+export type KnowledgeTabId = 'knowledgebase' | 'database'
 
 const KNOWLEDGE_TAB_ASK_AI_MESSAGE: Record<KnowledgeTabId, { label: string; summary: string; instructions?: string }> = {
-  learnings: {
-    label: 'Knowledge · Learnings',
-    summary: "Help me understand or change what this workflow has learned. Explain the relevant learnings and ask which behavior or step I want to examine.",
-  },
   knowledgebase: {
     label: 'Knowledge · Knowledgebase',
     summary: "Help me use my helper's background info and notes. Explain in plain words what it knows, and ask what I want to find, add, or improve.",

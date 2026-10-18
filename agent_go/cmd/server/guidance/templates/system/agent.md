@@ -16,8 +16,7 @@ An Agent can declare `predefined_routes` only for saved scripted Python helpers
 with typed inputs and outputs. The agent chooses when to call them. LLM
 specialists and persistent multi-agent work belong to an explicit Crew step.
 The existing `agent` type stays; there is no new simple-agent type. Automatic
-reflection is retired. Knowledge and learning writes happen only when the task
-explicitly asks and the step has the corresponding access.
+reflection is retired. Knowledge-base writes happen only when the task explicitly asks and the step has write access. Steps read selected skills; Builder and Pulse maintain them.
 
 Before stamping v1.0.48, the first retained item needs `retained_reason`: a review
 note explaining the distinct later phase, the evidence the automatic gate cannot
@@ -147,21 +146,20 @@ state. Run and metric history remain available through the backend.
 
 ## WRITE ACCESS
 
-Items inherit the step-level DB, knowledgebase, and learnings permissions, matching a scripted execution step. Usually no item-level access declaration is needed.
+Items inherit the step-level DB and knowledgebase permissions, matching a scripted execution step. Usually no item-level access declaration is needed.
 
 Use a non-empty `write_access` object, or `kind`, only when one turn should be narrowed to selected stores:
 
 - database writes: `"write_access": {"db": true}` or `"kind": "db"`
 - knowledgebase writes: `"write_access": {"knowledgebase": true}` or `"kind": "knowledgebase"`
-- learning writes: `"write_access": {"learnings": true}` or `"kind": "learning"`
 
 An item override can narrow but never exceed the step-level permissions. Write access is folder-level and per-file path lists are rejected. Put required contributions in the task. There is no automatic learning turn after the step.
 
 **Persistent stores and scratch space (the hard allow-list).** Access still depends on the current step/item grants. DB rows use managed tools; file grants do not authorize opening the live database:
 
-- DB rows via `mutate_workflow_db` (never direct SQLite access from an agentic step); `db/assets/` for durable **files** of any format (PDF, image, CSV, JSON, txt, zip). A downloaded or generated file that later steps or the builder must reach goes in `db/assets/` with a reference row in `db.sqlite`. This is the ONLY step-writable home for an arbitrary file.
+- DB rows via `mutate_workflow_db` (never direct SQLite access from an agentic step); `db/assets/` for durable **files** of any format (PDF, image, CSV, JSON, txt, zip). A downloaded or generated file that later steps or the builder must reach goes in `db/assets/` with a reference row in `db.sqlite`. Shared `reports/` and `tool_output_folder/` are also writable; use `db/assets/` for durable result assets.
 - `knowledgebase/notes/` — workflow-discovered narrative facts (KB direct-write only). An item with `write_access.knowledgebase` and an attached `access: "write"` knowledgebase_source can also write that source's `notes/` — same notes/-only boundary, same item-level grant, just in a resolved external workflow's KB. Requires the source workflow to have separately granted this workflow write access via its own `kb_write_grants`; see `references/stores.md`'s "Attached knowledge bases" section for the two-sided consent model and its known concurrency limitation.
-- `learnings/_global/` — reusable HOW-to-run knowledge.
+- `skills/` — reusable HOW-to instructions, readable by steps and maintained by Builder/Pulse.
 - the step's own execution folder + `Downloads/` — volatile per-run scratch (wiped on re-run).
 
 `docs/`, `knowledgebase/context/`, other `knowledgebase/` subfolders, and any custom top-level folder are **builder-only or denied** — do not route a step's durable file there.

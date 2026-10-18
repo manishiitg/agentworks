@@ -233,10 +233,6 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
     purpose: `Let connected messaging bots reach this ${surface === 'crew' ? 'Crew member' : 'workflow'}.`,
     howTo: 'Review the bot connections and routing. Use Integrations to change which messaging services are connected.',
   }),
-  'Knowledge · Learnings': () => ({
-    purpose: 'Review observations this automation kept from earlier runs.',
-    howTo: 'Read what it learned, then ask AI to correct stale or missing information.',
-  }),
   'Knowledge · Knowledgebase': () => ({
     purpose: 'Browse background notes and topics saved for this automation.',
     howTo: 'Choose a source or topic to read its notes. Refresh after new knowledge is added.',

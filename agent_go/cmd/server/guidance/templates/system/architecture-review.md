@@ -30,10 +30,10 @@ cost, retries, handoff overhead, output-quality boundaries and existing Technica
 findings. Read detailed step logs only to answer a specific structural question,
 such as whether supposedly adaptive work repeats the same deterministic tool
 sequence. Do not debug an individual failed run; hand concrete correctness
-failures to Technical. Read relevant learnings, knowledge and Builder references
+failures to Technical. Read relevant skills, knowledge and Builder references
 selectively. Choose one concrete improvement question:
 prompt clarity and duplication; simpler orchestration and handoffs; repeatable
-work suited to scripts; Crew versus agent; learning applicability and
+work suited to scripts; Crew versus agent; skill applicability and
 contradictions; KB freshness and retrieval; DB structure and data lineage; useful
 reports; cost and latency.
 Historical technical reviews remain valid evidence; do not relabel or recreate them.
@@ -52,8 +52,7 @@ research instead of repeating it. External actions retain existing authorization
 `get_pulse_state(view="module")` lists `architecture_budget_candidates`: steps over
 the prompt budget (more than 3x the plan's median description, floor 12,000
 characters; dated or incident text; 300+ characters repeated verbatim across
-steps; no `## Goal` / `## Output` / `## Done when` layout) and read-write learning
-steps whose learning has settled. While that state has not been reviewed, the
+steps; no `## Goal` / `## Output` / `## Done when` layout) and legacy learning signals retained in older workflow evidence. While that state has not been reviewed, the
 worklist makes this review due with focus `prompt_design` or `learning_quality`
 (the reason and evidence name the steps). These are triggers, not gates: they
 never block a run or an edit, and you still decide how to restructure.
@@ -64,7 +63,7 @@ With focus `prompt_design`, `learning_quality` or `knowledgebase_design` you may
 apply a **pure text-moving consolidation** yourself, one step at a time:
 1. Load `references/step-description.md`. Rewrite the description into Goal,
    Inputs, Output, Rules, Done when, Guides. Move reusable HOW into a skill
-   reference under `learnings/_global/references/<topic>.md` (correct an existing
+   reference under `skills/<name>/references/<topic>.md` (correct an existing
    topic in place before adding one), rules and decisions into a knowledgebase
    note, and name each moved file under Guides or Inputs. Delete dated history and
    incident stories; their evidence belongs in the change `reason`.
@@ -85,16 +84,7 @@ sequence, step type, route or schedule — stays an owner proposal through the
 decision flow below. Do not consolidate a step whose old text you cannot fully
 account for; a proposal is the correct result then.
 
-**Learning access (owner of the decision).** Architecture alone decides whether a
-step keeps `learnings_access="read-write"`; Plan Drift only flags it. With focus
-`learning_quality`, review the step's learnings (merge duplicates, move business
-facts to the knowledge layer, remove non-skill content) and read
-`learnings/<step-id>/.learning_metadata.json` (`successful_runs`,
-`description_hash_runs`, `detection_history`). When the learning has settled (the
-trigger is 5+ successful runs on one description hash with no new learning in the
-latest detections), you may set `learnings_access="read"` yourself with
-`update_step_config` and a reason citing those counters: it is reversible.
-Read to read-write needs an explicit task contribution and a decision; no automatic reflection is scheduled.
+**Reusable guidance.** Review selected workflow skills for applicability and contradictions. Steps consume skills; Builder/Pulse maintain them. Existing learning metadata is historical evidence, not a reason to add learning access or a closing turn. For older workflows propose the explicit skills upgrade; it preserves old guides without changing KB grants.
 
 ### Crew versus agent
 

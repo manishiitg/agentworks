@@ -498,7 +498,8 @@ func (api *StreamingAPI) externalGuidanceTopicBody(w http.ResponseWriter, r *htt
 // tools. The workspace service enforces its own confinement on top.
 var externalKnowledgePrefixes = []string{"learnings/", "knowledgebase/"}
 
-// externalListKnowledge serves list_workflow_knowledge: learnings and KB
+// externalListKnowledge serves the workflow knowledge base and local skills.
+// Older contracts also expose their legacy guide archive in the inventory.
 // inventory, workspace skill folders, and the skill wiring (workflow-selected
 // skills plus per-step enabled_skills) for one workflow.
 func (api *StreamingAPI) externalListKnowledge(w http.ResponseWriter, r *http.Request, workflow DiscoveredWorkflow, args map[string]any) {
@@ -507,7 +508,11 @@ func (api *StreamingAPI) externalListKnowledge(w http.ResponseWriter, r *http.Re
 	offset := externalInt(args, "offset", 0)
 	hasMore := false
 	truncated := false
-	for _, dir := range []string{"learnings", "knowledgebase"} {
+	directories := []string{"knowledgebase", "skills"}
+	if !step_based_workflow.UsesWorkflowSkills(workflow.Manifest.Version) {
+		directories = append(directories, "learnings")
+	}
+	for _, dir := range directories {
 		result, err := externalFileRequest(r.Context(), wf.Request{Root: workflow.WorkspacePath, Operation: "list", Path: dir, Depth: 4, Limit: limit, Offset: offset})
 		if err != nil {
 			var upstream *externalUpstreamError
@@ -669,7 +674,7 @@ func (api *StreamingAPI) externalReadKnowledge(w http.ResponseWriter, r *http.Re
 		}
 	}
 	if !allowed {
-		externalError(w, 403, "protected_path", "Only learnings/, knowledgebase/, and skills/ paths are readable through this tool.")
+		externalError(w, 403, "protected_path", "Choose a knowledgebase/ or skills/ file from list_workflow_knowledge. Older guide files remain readable as workflow history.")
 		return
 	}
 	if strings.HasPrefix(clean, "knowledgebase/") && workflow.Manifest.KnowledgebaseMode == "shared" {
@@ -706,6 +711,20 @@ func (api *StreamingAPI) externalReadSkillFile(w http.ResponseWriter, r *http.Re
 	if !externalSkillFolderOK(folder) || file == "" || strings.HasSuffix(file, "/") {
 		externalError(w, 400, "invalid_arguments", "Skill path must be skills/<folder>/<file>.")
 		return
+	}
+	// A workflow's own files follow its Share, including local skills. The
+	// selection restriction below applies only to the shared workspace catalog.
+	local, localErr := externalFileRequest(r.Context(), wf.Request{Root: workflow.WorkspacePath, Operation: "read", Path: "skills/" + rest})
+	if localErr == nil && local.Exists {
+		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "path": "skills/" + rest, "content": local.Content, "exists": true})
+		return
+	}
+	if localErr != nil {
+		var upstream *externalUpstreamError
+		if !errors.As(localErr, &upstream) || upstream.status != 404 {
+			externalFailure(w, localErr)
+			return
+		}
 	}
 	if !allowed[folder] {
 		externalError(w, 403, "forbidden", "This workflow does not use that skill. Only its selected and step-enabled skills are readable.")

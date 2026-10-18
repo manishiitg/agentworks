@@ -31,7 +31,7 @@ func workflowContractVersionForUpgrade(manifest *WorkflowManifest) string {
 // layout migration.
 func workflowContractVersionIsExecutionCompatible(version string) bool {
 	switch strings.TrimSpace(version) {
-	case workflowContractUnifiedAgentVersion, workflowContractDescriptionFirstVersion, workflowContractResourceIntentVersion, workflowContractGoalAgentVersion:
+	case workflowContractUnifiedAgentVersion, workflowContractDescriptionFirstVersion, workflowContractResourceIntentVersion, workflowContractGoalAgentVersion, workflowContractSkillsVersion:
 		return true
 	}
 	return false
@@ -43,6 +43,7 @@ func workflowContractVersionIsExecutionCompatible(version string) bool {
 // migration, except its absent stores below (PLAT-431, PLAT-441). New ladder
 // entries apply to both products by default; these are explicit exceptions.
 var goalsOnlyWorkflowUpgrades = map[string]bool{
+	"upgrade-workflow-skills":                true,
 	"upgrade-goal-agent":                     true,
 	"upgrade-notification-config":            true,
 	"upgrade-current-artifact-contract":      true,
@@ -141,6 +142,7 @@ func workflowContractVersionRank(version string) (int, bool) {
 		workflowContractDescriptionFirstVersion,
 		workflowContractResourceIntentVersion,
 		workflowContractGoalAgentVersion,
+		workflowContractSkillsVersion,
 	}
 	for rank, candidate := range known {
 		if version == candidate {
@@ -614,6 +616,10 @@ func fullWorkflowVersionUpgradePlan(manifest *WorkflowManifest) []workflowVersio
 	if rank < 49 {
 		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractGoalAgentVersion, label: "upgrade-goal-agent", query: upgradeGoalAgent})
 	}
+	if rank < 50 {
+		steps = append(steps, workflowVersionUpgrade{from: version, to: workflowContractSkillsVersion, label: "upgrade-workflow-skills", query: upgradeWorkflowSkills})
+	}
+
 	// Attached here rather than at the call site so the turn text is identical
 	// wherever it is built. The version pair used to be added only on the Pulse
 	// delivery path, which meant the blocking preflight — the one that actually
@@ -676,3 +682,11 @@ Read the resulting notes. For every former learning_objective or knowledgebase_c
 Keep explicitly authored follow-up phases. Do not collapse an authored sequence by guessing; remove only reviewed redundant platform scaffolding, preserving any unique requirement in the task and describing each edit in the changelog. Do not convert to a new agent type or rewrite the Goal runner. For retired LLM specialist routes, record a Pulse issue suggesting an explicit Crew step; do not create a Crew automatically. Keep the retired route instructions in the audit note, outside executable descriptions.
 
 Read back the full plan/config diff. Preserve validation with bounded repair in the same conversation, resource grants, tools/secrets, real outputs, logs, costs and metric history. Do not run a business workflow as part of migration. When review is complete call set_workflow_contract_version(version="1.0.50") and stop. Older compatible workflows may still run, but LLM specialist spawning and automatic reflection are retired at runtime even before this explicit migration.`
+
+const upgradeWorkflowSkills = `WORKFLOW CONTRACT UPGRADE: KNOWLEDGE BASE AND SKILLS.
+
+Do only this explicit upgrade. Finish the existing code-layout migration first if code_layout_version is not 1; never move or delete a legacy script by treating all of learnings/ as prose. Call migrate_workflow_skills. It preserves task guides and supporting assets in this workflow's own skills/workflow-how-to/ bundle (a collision-safe suffix may be used), records copy hashes and a changelog, and keeps the old learning files intact. The short skill index identifies the originating step and opens only the reference needed; never inline the full prose bundle into instructions.
+
+Review the copied index and references, existing step descriptions, declared guides and scripts. Repoint live how-to references to the workflow-local skill while preserving the original prose copies and run history. Existing step learning access is audited and retired; knowledge-base grants do not change. Only prior guide-reading steps select the migrated skill; respect existing none selections. Reusable how-to belongs in skills, facts in the knowledge base and results in the database. Steps read skills; Builder, Pulse or Crew maintain them. Do not add reflection, another learning store, a Crew or new permissions automatically.
+
+Read back the migration and unchanged KB grants. Verify the private copied files and skill selection, then stamp 1.0.51. Older workflows continue reading their old guides until this explicit migration is completed. Do not execute business side effects or delete the old learning folder during this upgrade.`

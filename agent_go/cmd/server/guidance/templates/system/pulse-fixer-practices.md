@@ -45,7 +45,7 @@ For each actionable finding:
    The smallest complete repair includes moving the text it touches to its
    owner (PLAT-556), instead of appending a sentence to the step description:
    - a technique, procedure, selector or phrasing rule goes to a skill reference
-     (`learnings/_global/references/<topic>.md`, correcting an existing topic in
+     (`skills/<name>/references/<topic>.md`, correcting an existing topic in
      place) named in the step description's `## Guides`;
    - a step's own business rule stays once in the description's `## Rules`;
      only a fact or decision several steps share goes to the knowledge layer (a
@@ -230,10 +230,9 @@ the `reason` lands in the plan changelog.)
    a fabricated justification is harder to challenge later than a missing one,
    and uncertainty is a legitimate terminal state.
 
-## Learning and skill purity repair
+## Workflow skill purity repair
 
-Apply this playbook whenever a finding concerns `learnings/_global/`, a
-`learning_objective`, or `learnings_access`.
+Apply this playbook to workflow skills. Retained legacy learning files are migration evidence; move existing guides through the explicit 1.0.51 upgrade before editing their new skill home.
 
 1. **Inventory the complete skill package.** Read the root `SKILL.md` and every
    content-bearing Markdown file under `references/`. References are part of
@@ -279,8 +278,7 @@ Verification is an immediate semantic re-read, not merely a successful patch:
   retained or hidden in a reference;
 - validate all index links and confirm references are reachable without
   duplicate homes;
-- re-read every changed step config and confirm effective access/objective
-  pairing;
+- re-read every changed step config and confirm knowledge-base grants and skill selections;
 - name separately routed work that could not be safely applied. Content cleanup
   may be `fixed_verified` when this complete post-change re-read passes; routed
   KB/DB/plan changes still follow their own proof boundary.
@@ -295,7 +293,7 @@ Apply this playbook to every Stores Health finding, including KB and DB purity:
    authoritative owner, duplicate locations, action, and verification. One
    semantic item has one authoritative owner: Soul=why/goals/preferences/hard
    constraints; Plan/step config=current behavior; Validation=deterministic
-   proof; Learnings=reusable execution HOW; KB=durable domain facts with
+   proof; Skills=reusable execution HOW; KB=durable domain facts with
    provenance; DB=structured operational state; Pulse=findings, diagnosis,
    attempts, decisions, and fix verification.
 2. **Protect the only copy.** Preserve exact source evidence in Pulse before
@@ -312,12 +310,7 @@ Apply this playbook to every Stores Health finding, including KB and DB purity:
    prove provenance/keys and downstream consumers, then remove the old copy.
    Re-run all three manifests and confirm no contradictory owner remains. A
    patch success or smaller file is not verification.
-5. **Reduce learning writes after cleanup.** Keep `learnings_access="read-write"`
-   only when the step has a current reusable-HOW objective and run evidence shows
-   its contributions remain useful. Change mature, redundant, or no-op contributors
-   to `"read"`. Treat `lock_code` as the separate, stricter executable proof.
-   KB write ownership is not a lock: make a mature/no-op contributor read-only
-   by changing that step's `knowledgebase_access` and contribution contract.
+5. **Keep skill ownership explicit.** Steps read selected skills; Builder/Pulse maintain them. No learning-write setting or automatic learning phase remains after the skills upgrade. KB writes retain their own access and explicit task contribution.
 
 Immediate semantic moves may be `fixed_verified` only when source removal,
 destination exactness, references, and the current consumer are all re-checked.

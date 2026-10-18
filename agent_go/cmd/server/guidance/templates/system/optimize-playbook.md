@@ -26,18 +26,13 @@ If a step needs **semantic/LLM-based validation** (e.g., "verify the summary is 
 
 When reviewing a successful step, check whether its evidence establishes freshness and authenticity. Add targeted provenance checks or semantic evidence verification where needed; do not treat an exhaustive schema as proof.
 
-### 2. Learning and contributions
+### 2. Knowledge and skills
 
-Goals read relevant existing skills/learnings on demand. Grant `learnings_access`
-or `knowledgebase_access` for explicit task contributions only; no automatic
-post-completion reflection runs. Put a required contribution and its destination
-in the task description. Builder and Pulse may maintain shared knowledge, and
-Crew owns ongoing agent learning. Legacy contribution objectives are archived
-by workflow_upgrade 1.0.50 without changing effective access or history.
+Goal steps consume selected workflow skills and read knowledge under existing grants. A required KB contribution belongs in the task with KB write access. No automatic post-completion reflection or learning runs. Builder/Pulse maintain skills; Crew owns ongoing agent learning. Existing guides migrate explicitly through contract 1.0.51, preserving contents and history without changing KB grants.
 
 #### The Per-Step Code Lock — What It Freezes and When To Use
 
-Only saved scripted code has a lock. Learning writes are controlled directly by `learnings_access`.
+Only saved scripted code has a lock. Steps do not write skills.
 
 | Lock | Scope | Freezes | Prevents | Use when |
 | --- | --- | --- | --- | --- |
@@ -52,7 +47,7 @@ Only saved scripted code has a lock. Learning writes are controlled directly by 
 - When you meaningfully change a step's description, clear `description_reviewed` so future reviewers know the description needs a fresh eyeballing.
 - **Reconcile the blast radius.** When a bounded fix changes a step's output contract, db writes, or behavior, run `read_skill(skills=[{"name":"builder-reference","path":"references/plan-change-impact.md"}])` and reconcile the dependents (downstream steps, evals, report dashboard, db, learnings, KB) before treating the fix as done — do not repair one step and silently break what reads it.
 
-**Reviewing descriptions during repair**: Treat each touched step's `description` as a first-class review target, not just something to fix when it is obviously stale. Ask: does it still describe what the step actually does and should produce this run? A drifted or vague description silently corrupts the learnings and scripted code generated against it. Realign it when it no longer matches, reassess `learnings_access`, and clear `lock_code` plus `description_reviewed` when the saved script must regenerate.
+**Reviewing descriptions during repair**: Treat each touched step's `description` as a first-class review target, not just something to fix when it is obviously stale. Ask: does it still describe what the step actually does and should produce this run? A drifted or vague description silently corrupts the learnings and scripted code generated against it. Realign it when it no longer matches, review relevant skill selections, and clear `lock_code` plus `description_reviewed` when the saved script must regenerate.
 
 **Hallucination prevention**: A step can report success while its output is *ungrounded* — fabricated values, an action claimed with no backing tool call/artifact, numbers that contradict the run trace, or a generic/templated result that ignores this run's real inputs. That is a reliability bug even when the step “passed.” Repair a hallucination-prone step by making fabrication hard to pass:
 - **Demand evidence in `validation_schema`** — require real, run-specific fields (IDs, URLs, timestamps, counts that must trace to this run) and anti-staleness checks, not a bare `success: true`, so a made-up or leftover output can't validate.
@@ -62,23 +57,9 @@ Trust output you can trace back to real evidence, not a self-reported success.
 
 **KB writes are step-based**: A step writes KB notes only when `knowledgebase_access` is `write` or `read-write` and its task explicitly asks for notes. When a contributor no longer produces durable new facts, change that step to `knowledgebase_access="read"`. Do not freeze unrelated KB writers workflow-wide. Review KB health with a generic read-only reviewer over the knowledgebase evidence pack and let the parent fixer apply bounded intentional curation.
 
-### 3. Managing Learnings
-Learnings are stored as SKILL.md files in the workspace at 'learnings/_global/SKILL.md'. Each learning file MUST use YAML frontmatter format:
-```
----
-name: <step title>
-description: "<1-2 sentence summary of what this skill teaches — optimal approach and key pitfalls>"
-disable-model-invocation: true
-user-invocable: false
----
-(learning content here)
-```
-You can read, edit, and delete them with the shell and a file-edit tool (your own Edit tool when native tools are on, otherwise **diff_patch_workspace_file**):
-- **Read learnings**: 'cat learnings/_global/SKILL.md' to read the global learning file
-- **Read metadata**: 'cat learnings/{step-id}/.learning_metadata.json' for iteration counts and success history.
-- **Edit learnings**: Make a targeted edit to learnings/_global/SKILL.md. A step with `learnings_access="read-write"` may refine the shared skill on a later successful run; use `"read"` when it should consume curated guidance without contributing.
-- **Delete learnings**: 'rm learnings/_global/SKILL.md' to reset global learnings. Preserve useful guides unless their removal is requested. A write grant permits explicit task edits; it does not generate a closing turn.
-- **Legacy migration**: If you find '*_learning.md' files (old format) instead of SKILL.md, migrate their content into a new SKILL.md with proper frontmatter and delete the legacy files.
+### 3. Maintaining workflow skills
+
+Use the existing workflow-local skill format and selection tools. Read the short `skills/<name>/SKILL.md` index and targeted references before a repair. Builder/Pulse update reusable methods in place, preserving evidence and avoiding conflicting duplicate instructions. Do not create or tune a separate learning store. For existing guides use `migrate_workflow_skills`, inspect the preserved references and copy hashes, then stamp 1.0.51. Keep old files as history for the transition; legacy executable code uses the separate code-layout upgrade first.
 
 ### 3b. Debugging & Fixing Scripted Code Steps (scripted)
 
@@ -132,13 +113,13 @@ Each step should only have the MCP servers and tools it actually needs. After a 
 
 ### 4a. Skill Scoping
 
-Installed skills are reusable capability instructions under `<workspace-root>/skills/{folder}/SKILL.md`. They are separate from `learnings/_global/SKILL.md`, which is workflow-specific HOW learned from this workflow's runs.
+Installed skills are reusable capability instructions under `<workspace-root>/skills/{folder}/SKILL.md`. Both installed capabilities and workflow-specific methods use this same skill format.
 
 - Workflow-selected skills from `update_workflow_config(add_skills=[...])` are builder/workshop discovery context. They do not automatically reach runtime step agents.
 - Runtime step agents receive only skills listed in that step's `enabled_skills`. Use `update_step_config(step_id, enabled_skills=[...])` when a step actually needs an installed skill.
 - If a failing step is doing ad-hoc work covered by an installed skill, enable the skill on that step and keep the step description focused on task, inputs, intended outcome, and constraints; keep output structure in its schema or canonical contract.
 - If a skill is enabled but irrelevant to the step, remove it from that step to reduce prompt noise.
-- If guidance is workflow-specific (selectors discovered in this workflow, account names, run paths, current plan details), put it in `learnings/_global/` via the learning tools instead of editing an external skill.
+- If guidance is workflow-specific (selectors discovered in this workflow, account names, run paths, current plan details), put it in a workflow-local skill instead of editing an external skill.
 
 ### 4b. LLM Tier Selection
 Pulse Architecture owns these evidence-based recommendations and measured trials.
@@ -162,7 +143,7 @@ The step **description** in plan.json is the primary instruction the execution a
 - **Reference context_output files from prior steps**: E.g., "Using the data from step-extract-data's context_output, generate...". The execution agent receives prior step outputs as context.
 - **Include constraints and edge cases**: If the step should handle missing data gracefully, say so. If there's a size limit or format requirement, specify it.
 - **Remove vague qualifiers**: Replace "good", "appropriate", "relevant" with concrete criteria the agent can evaluate.
-- **Keep WHAT and HOW separate**: Keep objectives, task-specific business constraints, authorization boundaries, and success criteria in the description. Curate reusable methods and verified procedures in accessible skills/learnings; use `learnings_access="read"` when contributions stabilize. See `references/step-description.md`.
+- **Keep WHAT and HOW separate**: Keep objectives, task-specific business constraints, authorization boundaries, and success criteria in the description. Curate reusable methods and verified procedures in accessible skills maintained by Builder/Pulse. See `references/step-description.md`.
 - **Keep the boundary coherent**: The description may include many tool calls or sub-actions, but it should still serve one durable output contract. If it starts mixing unrelated outputs, validation gates, retry domains, stores, or approval/routing decisions, split at those boundaries.
 
 **How to update**: Use the plan modification tools (`update_step`, `update_step`, `update_step`, `manage_step_route`, `update_step`, `update_step`, or `update_validation_schema`) to update step descriptions and validation. Do not patch `planning/plan.json` directly; it is system-managed and guarded. The change takes effect on the next execution.
@@ -182,13 +163,12 @@ After running a step, review it for optimization — but follow this priority or
 - **Context I/O** — Are context_dependencies and context_output correct? Missing deps cause failures; incomplete outputs break downstream steps.
 
 **Priority 2 — Knowledge (fix after step works correctly):**
-- **Review learnings after every successful run** — call 'cat learnings/_global/SKILL.md' to read the global learning file. Check:
+- **When a result points to stale guidance, review the selected skill and relevant references.** Check:
   - Are they **specific and actionable**? Vague learnings like "be careful with the API" waste tokens. Good learnings describe exact patterns: "The /api/v2/data endpoint returns paginated results — always follow next_page_token until null."
   - Do they **contradict the step description**? If so, either update the description or delete the misleading learning.
   - Do they **match the current step config**? Cross-check learnings against the step's configured servers, tools, and description. Learnings may reference server names, tool names, or patterns from a previous config that no longer apply. Stale references cause the execution agent to search for non-existent servers/tools, wasting turns and causing failures. Fix by updating the learning file with the correct names.
-  - Are they **repetitive**? If the same verified method appears across multiple learning files, consolidate it into the canonical shared skill/learnings and update references before removing redundant copies. Do not move procedures into the step description.
-- Review existing skills against actual results and remove stale advice. Task
-  contributions need the relevant write grant; they add no hidden closing turn.
+  - Are they **repetitive**? If the same verified method appears across multiple learning files, consolidate it into the canonical workflow skill and update references before removing redundant copies. Do not move procedures into the step description.
+- Review existing skills against actual results and remove stale advice. KB contributions need the write grant and an explicit task; they add no hidden closing turn.
 
 **Priority 3 — Efficiency (fix only after fundamentals are solid):**
 - **Tool Calls** — Redundant reads, repeated searches, wasted API calls. Usually a symptom of a vague description — fix the description first, then check if tool waste drops.

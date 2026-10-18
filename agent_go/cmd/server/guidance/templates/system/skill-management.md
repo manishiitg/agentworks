@@ -1,6 +1,6 @@
 ---
 name: "skill-management"
-description: "Skill lifecycle and attachment model: workflow-selected skills are discovery context only, per-step enabled_skills is the runtime attachment, learnings/_global/SKILL.md is shared know-how. Load before reasoning about skills."
+description: "Skill lifecycle and attachment model: workflow-selected skills are discovery context only, per-step enabled_skills is the runtime attachment, workflow-local skills carry reusable how-to guides. Load before reasoning about skills."
 external: true
 external_tools: ["crew_skills", "list_skills", "search_skills", "list_workflow_knowledge", "read_workflow_knowledge"]
 external_note: "External mapping: discover current tool schemas before acting. Use plan action=list for native plan and step operations; read get_plan for expected_revision, then pass a stable request_id and listed native arguments. Internal operation names are plan action values, not standalone external tools. Settings uses settings get/update. For skill wiring, use list_workflow_knowledge and read_workflow_knowledge, Crew package actions and Brain skill packages under their existing roles and file/folder grants. Fetch referenced guidance by its listed topic name. Server-only scripts, bridge variables and internal URLs are not external client credentials."
@@ -43,7 +43,7 @@ There is **no cascade** from workflow-selected skills to runtime step execution.
 
 So workflow selection is discovery/context for workshop agents, not runtime inheritance. To remove runtime skills from a step, use `update_step_config(step_id, clear_fields=["enabled_skills"])` or set the desired replacement list explicitly.
 
-**Shared know-how that every step should see** does not belong in a skill attached to all steps — it belongs in `learnings/_global/SKILL.md`, which is auto-attached at every step launch. Use real installed skills for *reusable domain capabilities*; use `learnings/_global` for *this workflow's accumulated knowledge*.
+**Workflow-specific know-how** belongs in a workflow-local skill, selected only on the steps that need it. Keep the index short and detail in references. There is no automatic global learning attachment after contract 1.0.51. Use the explicit `migrate_workflow_skills` upgrade for existing guides; it uses the same loader and selection fields, preserves source contents and history, and does not populate a shared skills library.
 
 ### When to use workflow-level vs per-step
 

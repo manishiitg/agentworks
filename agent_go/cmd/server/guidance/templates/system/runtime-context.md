@@ -10,11 +10,7 @@ and Run. Reading a reference does not grant its tools or write permissions.
 
 - `soul/soul.md` defines the objective, success criteria, and explicit durable
   constraints. Keep it Markdown; implementation choices are revisable.
-- `learnings/_global/SKILL.md` describes HOW to operate the workflow's target
-  systems, and `learnings/<step-id>/` holds what each step learned. Read the
-  global file first, then the folders of the steps involved. For a known scripted step, inspect
-  `<script-dir>/main.py` for its proven behavior before inventing another
-  implementation. In Run, do not edit either artifact.
+- Workflow-local `skills/<name>/SKILL.md` indexes reusable methods. Read the selected skill and only relevant references. For a known scripted step inspect `<script-dir>/main.py` before inventing a new implementation. Old `learnings/` files are retained history after the explicit skills upgrade. In Run, do not edit skills or code.
 - `knowledgebase/context/context.md` contains user-owned business rules and
   examples. For discovered knowledge, read `knowledgebase/notes/_index.json`
   and only the relevant notes, not the whole knowledgebase. Attached shared

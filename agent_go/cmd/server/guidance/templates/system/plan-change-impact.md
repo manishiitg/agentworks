@@ -38,14 +38,14 @@ Start with the changed step and its declared consumers. Search the relevant arti
 - **Measurement** — search the producing steps' stored-measurement queries and goal observations for the step id / output path. A query reading the changed output must be updated so it still resolves and scores the right thing. (`read_skill(skills=[{"name":"builder-reference","path":"references/measurement-plan.md"}])`)
 - **Report dashboard** — search `db/reports/index.html` and its `window.report.query` SQL for the db tables/columns and output fields. A query that reads changed data must be fixed. (`read_skill(skills=[{"name":"builder-reference","path":"references/reporting-policy.md"}])`)
 - **db** — read `db/README.md` (it already lists each table's writers + shape). If this step writes db and the shape changed, update the schema, the README contract, and any readers. (`read_skill(skills=[{"name":"builder-reference","path":"references/stores.md"}])`)
-- **Learnings** — the step's `learnings/{step-id}/` and `learnings/_global/SKILL.md` were generated against the old behavior. If behavior changed, reassess `learnings_access`, clear `lock_code` when saved code must regenerate, and prune any now-wrong notes.
+- **Skills** — inspect the selected workflow skills and references touched by the changed behavior. Builder/Pulse correct stale methods; steps consume them. Keep legacy learning files as migration history. Clear `lock_code` only when saved code must change under the existing code-lock rule.
 - **KB** — search `knowledgebase/notes/` for the step's topic. Notes describing the old behavior must be updated or flagged.
 
 It is tractable **because the contracts already exist** — `db/README.md` lists writers and shape, report HTML declares its queries, `get_goal_metrics` returns configured metric scope and observation history, and the plan holds the step handoffs. You are cross-linking what is already written, not inventing a dependency graph.
 
 ## 3. Reconcile or flag
 For each affected dependent:
-- **Fix it now** if the fix is clear and contained — update the consumer's schema, fix the report query, repair the eval source, update the db contract, or change stale learning access. (Back up first, or rely on the surrounding pass's backup.)
+- **Fix it now** if the fix is clear and contained — update the consumer's schema, fix the report query, repair the eval source, update the db contract, or correct stale skill selections. (Back up first, or rely on the surrounding pass's backup.)
 - **Flag an open finding** if the reconciliation needs judgment — a downstream step needs real redesign, a metric definition is now ambiguous. Record it through typed Pulse tools so it isn't lost.
 
 **Never leave a plan change with a silently broken dependent.**

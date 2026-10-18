@@ -108,11 +108,39 @@ func commitTeamEditWithFiles(ctx context.Context, result string,
 	defer release()
 	ctx = context.WithValue(ctx, teamLockHeldKey{}, r.root)
 	baselineCtx := context.WithValue(ctx, teamPlanReceiptKey{}, nil)
+	if migrating, _ := ctx.Value(workflowSkillsEditKey{}).(bool); migrating {
+		// Recheck typed migration authority inside the commit lock, including
+		// migrations with no plan changes and only an audit manifest to save.
+		raw, found, err := read(baselineCtx, r.root+"/workflow.json")
+		var current WorkflowManifest
+		if err != nil || !found || json.Unmarshal([]byte(raw), &current) != nil {
+			return fmt.Errorf("workflow settings changed; reread before migrating guides")
+		}
+		actor := teamActor(ctx)
+		if actor == "" || !externalFileAuthoringAllowed(&UserClaims{UserID: actor}, &current) || current.Team != nil && current.Team.LeaderID != actor {
+			return fmt.Errorf("ask the current workflow Builder to migrate its guides")
+		}
+		access := userAccessForClaims(&UserClaims{UserID: actor})
+		if access.Disabled || !access.CanEdit || IsMultiUserMode() && !access.Known {
+			return fmt.Errorf("account cannot edit this workflow")
+		}
+	}
 	paths := make([]string, 0, len(pending))
 	for p := range pending {
 		paths = append(paths, p)
 	}
-	sort.Strings(paths)
+	sort.Slice(paths, func(i, j int) bool {
+		if migrating, _ := ctx.Value(workflowSkillsEditKey{}).(bool); migrating {
+			if paths[i] == r.root+"/workflow.json" && paths[j] != paths[i] {
+				return true
+			}
+			if paths[j] == r.root+"/workflow.json" {
+				return false
+			}
+		}
+		return paths[i] < paths[j]
+	})
+	ctx = context.WithValue(ctx, teamCommitReadKey{}, read)
 	previous := map[string]string{}
 	exists := map[string]bool{}
 	// Validate every file before the first write, against the latest policy.
