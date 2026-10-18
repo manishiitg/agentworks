@@ -272,3 +272,108 @@ func nativeInspectionTime(value time.Time) string {
 	}
 	return value.Format(time.RFC3339)
 }
+
+// inspectionParentSession uses the same current-project and exact-chat-owner
+// checks as Inspect. History remains authoritative after live sessions expire.
+func (api *StreamingAPI) inspectionParentSession(r *http.Request, sessionID, workspace string) (*ActiveSessionInfo, bool) {
+	if !inspectionIdentityPart(sessionID) || !workspaceReadAllowed(r.Context(), GetUserFromContext(r.Context()), workspace, logicalPathIsDefaultUser, false) || !workflowStepInspectionWorkspace(r.Context(), workspace) {
+		return nil, false
+	}
+	if session, exists := api.getActiveSession(sessionID); exists && session != nil {
+		if strings.Trim(session.WorkspacePath, "/") != workspace || !api.ownsChatSession(r, sessionID) {
+			return nil, false
+		}
+		copy := *session
+		return &copy, true
+	}
+	userID := GetUserIDFromContext(r.Context())
+	if userID == "" {
+		userID = GetDefaultUserID()
+	}
+	content, err := ReadChatHistoryConversation(userID, sessionID, workspace)
+	owner, _ := chatHistoryConversationIdentity(content)
+	if err != nil || !chatHistoryCanResume(owner, userID, false) {
+		return nil, false
+	}
+	runtime, runtimeErr := chatHistoryRuntimeFromJSON(content)
+	if runtimeErr != nil {
+		return nil, false
+	}
+	if runtime != nil && runtime.WorkspacePath != "" {
+		if canonicalChatHistoryWorkspacePath(userID, runtime.WorkspacePath) != canonicalChatHistoryWorkspacePath(userID, workspace) {
+			return nil, false
+		}
+	} else {
+		// Older conversations have no runtime binding. They must actually be
+		// stored under this workflow, not merely found in the account index.
+		_, found, readErr := readWorkflowScopedChatHistoryConversationDirect(sessionID, workspace)
+		if readErr != nil {
+			return nil, false
+		}
+		if !found {
+			_, found, readErr = readWorkflowScopedChatHistoryConversationFromWorkspace(sessionID, workspace)
+		}
+		if readErr != nil || !found {
+			return nil, false
+		}
+	}
+	return &ActiveSessionInfo{SessionID: sessionID, UserID: userID, WorkspacePath: workspace, Status: "completed"}, true
+}
+
+// Reuse explicit saved receipts; never reconstruct a target from a step name
+// or path. The enclosing HTTP handler has already authorized the exact parent.
+func appendDurableStepInspections(ctx context.Context, tree *SessionExecutionTreeResponse, workspace, sessionID string) {
+	records, err := backgroundAgentLogForSession(ctx, workspace, sessionID)
+	if err != nil || tree == nil || tree.Root == nil {
+		return
+	}
+	nodes := map[string]*SessionExecutionTreeNode{}
+	var visit func(*SessionExecutionTreeNode)
+	visit = func(node *SessionExecutionTreeNode) {
+		if node == nil || len(nodes) >= 1000 {
+			return
+		}
+		if _, seen := nodes[node.ExecutionID]; seen {
+			return
+		}
+		nodes[node.ExecutionID] = node
+		for _, child := range node.Children {
+			visit(child)
+		}
+	}
+	visit(tree.Root)
+	inspected := 0
+	for _, record := range records {
+		if (record.Kind != "" && !workflowStepInspectionKind(record.Kind)) || record.Kind == "agent_item" || !inspectionIdentityPart(record.AgentID) {
+			continue
+		}
+		if node := nodes[record.AgentID]; node != nil && node.Inspection != nil {
+			continue
+		}
+		if inspected >= 100 {
+			break
+		}
+		inspected++
+		content, exists, err := readFileFromWorkspaceQueryWithLimit(ctx, orchEvents.BackgroundAgentTranscriptPath(workspace, sessionID, record.AgentID), "", 4<<20)
+		if err != nil || !exists {
+			continue
+		}
+		transcript, err := orchEvents.ParseBackgroundAgentTranscript(content)
+		if err != nil || transcript == nil || transcript.SessionID != sessionID || transcript.AgentID != record.AgentID || transcript.Inspection == nil {
+			continue
+		}
+		target := *transcript.Inspection
+		if target.SessionID != sessionID || target.ExecutionID != record.AgentID || target.WorkspacePath != workspace || target.StepID == "" || (target.WorkflowKind != "" && target.WorkflowKind != "workflow") || !workflowStepInspectionKind(target.ExecutionKind) || target.ExecutionKind == "agent_item" {
+			continue
+		}
+		target.Name = redaction.Text(target.Name)
+		node := nodes[target.ExecutionID]
+		if node == nil {
+			node = &SessionExecutionTreeNode{SessionID: sessionID, ExecutionID: target.ExecutionID, ParentExecutionID: tree.Root.ExecutionID, Source: "background_agent_log", Kind: target.ExecutionKind, Name: target.Name, Status: record.Status, StartedAt: target.StartedAt}
+			tree.Root.Children = append(tree.Root.Children, node)
+			nodes[target.ExecutionID] = node
+		}
+		node.Inspection = &target
+	}
+	sortSessionExecutionTree(tree.Root)
+}

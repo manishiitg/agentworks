@@ -25,7 +25,7 @@ import { useReportChat } from './reportWidgets/useReportChat'
 
 import { WORKFLOW_REPORT_REFRESH_EVENT } from './reportRefreshEvent'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
-import { useSelectedReportDocument } from './reportDocuments'
+import { loadReportDocumentCatalog, useSelectedReportDocument } from './reportDocuments'
 import { WorkspacePanelGuideButton } from './WorkspacePanelGuideButton'
 import { ShareDashboardButton } from './ShareDashboardButton'
 import { panelGuideAskFromNode } from './workspacePanelGuideAsk'
@@ -261,14 +261,26 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
     let cancelled = false
     setLoading(true)
     setError(null)
-    void loadReportDocument(workspacePath, selectedDocumentPath, dashboardConversation).then(next => {
+    const load = async () => {
+      // Direct links and restored dashboards do not mount the context card or
+      // its document picker. Read the catalog here too so server-provided
+      // project defaults are ready before looking for a legacy index.html.
+      let path = selectedDocumentPath
+      if (!documentPath) {
+        const catalog = await loadReportDocumentCatalog(workspacePath)
+        if (cancelled) return null
+        if (catalog.documents.length && !catalog.documents.some(document => document.path === path)) path = catalog.defaultPath
+      }
+      return loadReportDocument(workspacePath, path, dashboardConversation)
+    }
+    void load().then(next => {
       if (cancelled) return
       setReport(next)
     }).catch(reason => {
       if (!cancelled) setError(reason instanceof Error ? reason.message : 'Failed to load report.')
     }).finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [refreshNonce, selectedDocumentPath, workspacePath, dashboardConversation])
+  }, [refreshNonce, selectedDocumentPath, workspacePath, dashboardConversation, documentPath])
 
   useEffect(() => {
     debugReportView('mounted', { workspacePath })
@@ -307,7 +319,7 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
             {!loading && report && !report.html && <div className="m-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">Could not read {report.label}.</div>}
             {report?.html && (report.questions
               ? <DashboardQuestionConversation key={report.questions.resourceId} {...report.questions} html={report.html} title={report.label} documentPath={report.path} autoHeight refreshToken={refreshNonce} focusTarget={reportFocus} className="block w-full border-0" />
-              : <ReportQuestionFrame key={report.path} html={report.html} title={report.label} documentPath={selectedDocumentPath} allowQuestions={allowContentQuestions} autoHeight refreshToken={refreshNonce} focusTarget={reportFocus} className="block w-full border-0" />)}
+              : <ReportQuestionFrame key={report.path} html={report.html} title={report.label} documentPath={report.path} allowQuestions={allowContentQuestions} autoHeight refreshToken={refreshNonce} focusTarget={reportFocus} className="block w-full border-0" />)}
           </div>
         </div>
         <FilePreviewModal />

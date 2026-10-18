@@ -29,7 +29,7 @@ export default function SidebarStepInspections({ row, workspace, scope, visible,
   const enabled = visible && row.surface === 'agentworks' && workspace.startsWith('Workflow/')
   const query = useQuery({
     queryKey: ['sidebar-step-inspections', scope, row.id, workspace],
-    queryFn: () => agentApi.getSessionExecutionTree(row.id),
+    queryFn: () => agentApi.getSessionExecutionTree(row.id, workspace),
     enabled,
     retry: false,
     staleTime: 10000,

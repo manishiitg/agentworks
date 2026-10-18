@@ -1192,8 +1192,8 @@ export const agentApi = {
     await api.post(`/api/sessions/${encodeURIComponent(sessionId)}/background-work/${encodeURIComponent(itemId)}/stop`)
   },
 
-  getSessionExecutionTree: async (sessionId: string): Promise<SessionExecutionTreeResponse> => {
-    const response = await api.get(`/api/sessions/${sessionId}/execution-tree`, { timeout: RUNTIME_READ_TIMEOUT_MS })
+  getSessionExecutionTree: async (sessionId: string, workspacePath?: string): Promise<SessionExecutionTreeResponse> => {
+    const response = await api.get(`/api/sessions/${encodeURIComponent(sessionId)}/execution-tree`, { timeout: RUNTIME_READ_TIMEOUT_MS, params: workspacePath ? { workspace_path: workspacePath } : undefined })
     return response.data
   },
 

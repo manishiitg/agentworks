@@ -30,6 +30,7 @@ it('opens the exact step after selecting its parent and highlights the inspector
   vi.spyOn(agentApi,'getSessionExecutionTree').mockResolvedValue(tree)
   await render(async host=>{
     await vi.waitFor(()=>expect(host.querySelector('[aria-label="Inspect Research"]')).not.toBeNull())
+    expect(agentApi.getSessionExecutionTree).toHaveBeenCalledWith('parent','Workflow/demo')
     expect(host.querySelector('[aria-label="Step running"]')).not.toBeNull()
     await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Inspect Research"]')!.click())
     expect(useChatStore.getState().activeTabId).toBe('parent-tab')

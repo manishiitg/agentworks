@@ -602,7 +602,20 @@ func (api *StreamingAPI) handleGetSessionExecutionTree(w http.ResponseWriter, r 
 	currentUserID := GetUserIDFromContext(r.Context())
 	activeSession, exists := api.getActiveSession(sessionID)
 	var sessionCopy ActiveSessionInfo
-	if exists {
+	scopedOwner := false
+	if requested := r.URL.Query().Get("workspace_path"); requested != "" {
+		workspace, valid := cleanWorkspaceReadPath(requested, true)
+		if !valid {
+			http.Error(w, "Session not found", http.StatusNotFound)
+			return
+		}
+		parent, allowed := api.inspectionParentSession(r, sessionID, workspace)
+		if !allowed {
+			http.Error(w, "Session not found", http.StatusNotFound)
+			return
+		}
+		sessionCopy, scopedOwner = *parent, true
+	} else if exists {
 		if activeSession.UserID != "" && activeSession.UserID != currentUserID {
 			http.Error(w, "Session not found", http.StatusNotFound)
 			return
@@ -637,7 +650,7 @@ func (api *StreamingAPI) handleGetSessionExecutionTree(w http.ResponseWriter, r 
 	// after the inspector's current workspace and parent ownership checks.
 	// Generic execution-tree consumers must not acquire inspection authority.
 	workspace, valid := cleanWorkspaceReadPath(sessionCopy.WorkspacePath, true)
-	if valid && api.ownsChatSession(r, sessionID) &&
+	if valid && (scopedOwner || api.ownsChatSession(r, sessionID)) &&
 		workspaceReadAllowed(r.Context(), GetUserFromContext(r.Context()), workspace, logicalPathIsDefaultUser, false) &&
 		workflowStepInspectionWorkspace(r.Context(), workspace) {
 		var addInspections func(*SessionExecutionTreeNode)
@@ -650,6 +663,7 @@ func (api *StreamingAPI) handleGetSessionExecutionTree(w http.ResponseWriter, r 
 			}
 		}
 		addInspections(tree.Root)
+		appendDurableStepInspections(r.Context(), tree, workspace, sessionID)
 	}
 
 	if err := json.NewEncoder(w).Encode(tree); err != nil {

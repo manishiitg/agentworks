@@ -1,0 +1,41 @@
+// @vitest-environment happy-dom
+import React, { act } from 'react'
+import { createRoot } from 'react-dom/client'
+import { afterEach, expect, it, vi } from 'vitest'
+const mocks = vi.hoisted(() => ({ catalog: vi.fn(), get: vi.fn(), post: vi.fn() }))
+vi.mock('../../services/api', () => ({ default: { get: mocks.get, post: mocks.post }, agentApi: {}, workspaceApi: {}, getApiBaseUrl: () => '' }))
+vi.mock('./reportDocuments', () => ({ loadReportDocumentCatalog: mocks.catalog, useSelectedReportDocument: (_workspace: string, path?: string) => path || 'db/reports/index.html' }))
+vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: vi.fn() }))
+vi.mock('../../stores/useWorkflowStore', () => ({ useWorkflowStore: (select: any) => select({}) }))
+vi.mock('./reportWidgets/useReportChat', () => ({ useReportChat: () => ({ request: vi.fn() }) }))
+vi.mock('./reportWidgets/FilePreviewModal', () => ({ FilePreviewModal: () => null }))
+vi.mock('./reportWidgets/DashboardQuestionConversation', () => ({ DashboardQuestionConversation: () => null }))
+vi.mock('./reportWidgets/ReportQuestionFrame', () => ({ ReportQuestionFrame: ({ title, documentPath }: any) => <div data-document={documentPath}>{title}</div> }))
+vi.mock('./ShareDashboardButton', () => ({ ShareDashboardButton: () => null }))
+vi.mock('./WorkspacePanelGuideButton', () => ({ WorkspacePanelGuideButton: () => null }))
+import { ReportView } from './ReportViewer'
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+afterEach(() => vi.resetAllMocks())
+async function mount(path?: string) {
+ const host = document.createElement('div'); document.body.append(host)
+ const root = createRoot(host)
+ try {
+  await act(async () => root.render(<ReportView workspacePath="Crew/project" documentPath={path} hideToolbar />))
+  await vi.waitFor(() => expect(host.textContent).toContain('Actual project dashboard'))
+  return host.querySelector('[data-document]')?.getAttribute('data-document')
+ } finally { await act(async () => root.unmount()); host.remove() }
+}
+it('opens the catalog default on a direct dashboard entry without mounting its picker first', async () => {
+ mocks.catalog.mockResolvedValue({ documents: [{ path: 'db/reports/managed/overview/index.html' }], defaultPath: 'db/reports/managed/overview/index.html' })
+ mocks.post.mockResolvedValue({ data: { resolved_path: 'db/reports/managed/overview/rev1/index.html' } })
+ mocks.get.mockResolvedValue({ data: '<html><title>Actual project dashboard</title></html>' })
+ expect(await mount()).toBe('Crew/project/db/reports/managed/overview/rev1/index.html')
+ expect(mocks.catalog).toHaveBeenCalledWith('Crew/project')
+ expect(mocks.get).toHaveBeenCalledWith('/api/workflow/report-preview/file', expect.objectContaining({ params: { workspace: 'Crew/project', path: 'db/reports/managed/overview/rev1/index.html' } }))
+ expect(mocks.get.mock.calls.some(([, options]) => options.params?.path === 'db/reports/index.html')).toBe(false)
+})
+it('keeps an explicit authored document instead of replacing it with a default', async () => {
+ mocks.get.mockResolvedValue({ data: '<html><title>Actual project dashboard</title></html>' })
+ expect(await mount('db/reports/team.html')).toBe('Crew/project/db/reports/team.html')
+ expect(mocks.catalog).not.toHaveBeenCalled()
+})

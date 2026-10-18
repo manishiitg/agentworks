@@ -147,6 +147,8 @@ func (api *StreamingAPI) validateWorkspaceReturn(r *http.Request, d *workspaceDe
 	copy.Chat = nil
 	if copy.SessionID != "" {
 		allowed := false
+		historyMissing := false
+		currentConversation := false
 		var history ChatHistorySession
 		var trigger, title, mode, platform string
 		session, active := api.getActiveSession(copy.SessionID)
@@ -156,6 +158,7 @@ func (api *StreamingAPI) validateWorkspaceReturn(r *http.Request, d *workspaceDe
 		}
 		if !active && workspace != "" {
 			data, err := ReadChatHistoryConversation(claims.UserID, copy.SessionID, workspace)
+			historyMissing = err != nil && strings.Contains(err.Error(), "conversation not found")
 			if err == nil {
 				owner, _ := chatHistoryConversationIdentity(data)
 				_ = json.Unmarshal(data, &history)
@@ -165,6 +168,39 @@ func (api *StreamingAPI) validateWorkspaceReturn(r *http.Request, d *workspaceDe
 				history.CanResume = chatHistoryCanResume(owner, claims.UserID, false)
 				title, mode, platform = history.Title, firstNonEmptyTrimmed(history.WorkshopMode, runtime.WorkshopMode), history.BotPlatform
 			}
+		}
+		conversationKey := ""
+		if copy.Surface == "work" || copy.Surface == "code" {
+			registryPath := productConversationRegistryPath(claims.UserID)
+			mutex := productConversationRegistryMutex(registryPath)
+			mutex.Lock()
+			document, err := defaultProductConversationRegistryStore().loadDocument(r.Context(), registryPath)
+			mutex.Unlock()
+			if err == nil {
+				match := func(record ProductConversationRecord, current bool) {
+					key := record.ConversationKey
+					if record.ProfileID == copy.Surface && record.SessionID == copy.SessionID && (key == copy.ID || strings.HasPrefix(key, copy.ID+":")) && canonicalChatHistoryWorkspacePath(claims.UserID, record.WorkspacePath) == canonicalChatHistoryWorkspacePath(claims.UserID, workspace) {
+						conversationKey = key
+						currentConversation = current
+					}
+				}
+				for _, record := range document.Entries {
+					match(record, true)
+				}
+				if conversationKey == "" {
+					for _, records := range document.Previous {
+						for _, record := range records {
+							match(record, false)
+						}
+					}
+				}
+			}
+		}
+		// An empty side chat has a server-owned registry slot before its first
+		// transcript exists. A foreign or mismatched transcript still fails closed.
+		if !active && historyMissing && currentConversation && conversationKey != "" {
+			allowed = true
+			history.CanResume = true
 		}
 		if !allowed {
 			copy.SessionID = ""
@@ -181,31 +217,7 @@ func (api *StreamingAPI) validateWorkspaceReturn(r *http.Request, d *workspaceDe
 			if scheduled {
 				copy.Chat.ScheduledJobName = firstNonEmptyTrimmed(title, "Scheduled run")
 			}
-			if copy.Surface == "work" || copy.Surface == "code" {
-				registryPath := productConversationRegistryPath(claims.UserID)
-				mutex := productConversationRegistryMutex(registryPath)
-				mutex.Lock()
-				document, err := defaultProductConversationRegistryStore().loadDocument(r.Context(), registryPath)
-				mutex.Unlock()
-				if err == nil {
-					match := func(record ProductConversationRecord) {
-						key := record.ConversationKey
-						if record.ProfileID == copy.Surface && record.SessionID == copy.SessionID && (key == copy.ID || strings.HasPrefix(key, copy.ID+":")) && canonicalChatHistoryWorkspacePath(claims.UserID, record.WorkspacePath) == canonicalChatHistoryWorkspacePath(claims.UserID, workspace) {
-							copy.Chat.ConversationKey = key
-						}
-					}
-					for _, record := range document.Entries {
-						match(record)
-					}
-					if copy.Chat.ConversationKey == "" {
-						for _, records := range document.Previous {
-							for _, record := range records {
-								match(record)
-							}
-						}
-					}
-				}
-			}
+			copy.Chat.ConversationKey = conversationKey
 		}
 	}
 	return &copy, true
@@ -240,10 +252,9 @@ func (api *StreamingAPI) handleWorkspaceReturnState(w http.ResponseWriter, r *ht
 			http.Error(w, "Invalid workspace state.", 400)
 			return
 		}
-		if incoming.Revision != state.Revision {
-			http.Error(w, "Workspace changed in another tab. Reload its state before saving.", 409)
-			return
-		}
+		// Returning to work is a per-user preference: the last completed save
+		// wins across browser tabs. A stale revision never changes authority;
+		// the selected project is still checked through the live resolver.
 		// Saves are preferences, not authorization. Validate the single project
 		// with its live resolver; never scan inventory or reopen transcripts.
 		var work []homeWork
