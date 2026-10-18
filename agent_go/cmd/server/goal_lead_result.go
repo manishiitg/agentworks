@@ -25,7 +25,7 @@ func (api *StreamingAPI) executePulseResultTurn(sessionID, message string, onCom
 		})
 		// Disabled, stopped or rotated conversations retain the saved result
 		// without reviving automatic work or retrying forever.
-		if errors.Is(err, errPulseResultIneligible) {
+		if errors.Is(err, errPulseResultIneligible) || errors.Is(err, errPulseOff) {
 			err = nil
 		}
 		if onComplete != nil {

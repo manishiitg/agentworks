@@ -134,7 +134,7 @@ func legacyPulseCanImprove(raw json.RawMessage) bool {
 		return false
 	}
 	if a.Level != nil {
-		return *a.Level >= 2 && *a.Level <= 5
+		return *a.Level >= 2
 	}
 	return !strings.EqualFold(strings.TrimSpace(a.Run), "ask") && strings.EqualFold(strings.TrimSpace(a.Change), "auto")
 }

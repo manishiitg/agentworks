@@ -94,6 +94,7 @@ const (
 )
 
 var errPulseResultIneligible = errors.New("Pulse result continuation is no longer eligible")
+var errPulseOff = errors.New("Pulse is off for this workflow. Turn it on in the workflow's Pulse settings to use it.")
 
 // Pulse permissions are a turn lease. Serialize its normal turns before
 // taking that lease, including completion turns queued behind owner input.
@@ -495,10 +496,7 @@ func (api *StreamingAPI) runGoalLeadTurn(ctx context.Context, workspacePath stri
 	// Recheck after taking the workflow turn lock: queued messages and wakeups
 	// cannot revive a Pulse that the owner has turned off.
 	if !manifest.PulseEnabled() {
-		if turn.Kind == goalLeadTurnFunctionResult || turn.Kind == goalLeadTurnAgentMessage {
-			return "", "", errPulseResultIneligible
-		}
-		return "", "", fmt.Errorf("Pulse is off for this workflow. Turn it on in the workflow's Pulse settings to use it.")
+		return "", "", errPulseOff
 	}
 	now := goalLeadNow().UTC()
 	conv, err := ensureGoalLeadConversation(ctx, workspacePath, firstNonEmptyTrimmed(manifest.ID, workspacePath), now, turn.Rotate, api.conversationTurnOccupied)
@@ -723,7 +721,7 @@ func (api *StreamingAPI) sendGoalLeadOwnerMessage(ctx context.Context, workspace
 	if m, found, e := ReadWorkflowManifest(ctx, workspacePath); e != nil {
 		return e
 	} else if !found || m == nil || !m.PulseEnabled() {
-		return fmt.Errorf("Pulse is off for this workflow. Turn it on in the workflow's Pulse settings to use it.")
+		return errPulseOff
 	} else if m.Team != nil && teamActor(ctx) != m.Team.LeaderID {
 		if m.Team.member(teamActor(ctx)) == nil {
 			return fmt.Errorf("only team members may contribute to Pulse")

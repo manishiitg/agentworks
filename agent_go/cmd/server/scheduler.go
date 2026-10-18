@@ -1593,7 +1593,7 @@ func (s *SchedulerService) triggerPulseRunKind(workspacePath, triggerSource, fix
 	}
 
 	if !manifest.PulseEnabled() {
-		return "", fmt.Errorf("Pulse is off for this workflow. Turn it on in the workflow's Pulse settings to use it.")
+		return "", errPulseOff
 	}
 	sched := WorkflowSchedule{
 		ID:             manualWorkflowPulseScheduleID,

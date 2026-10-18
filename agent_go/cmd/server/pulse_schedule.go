@@ -136,7 +136,7 @@ func recordPulseFastRequestFromToolArgs(ctx context.Context, args map[string]int
 		return "", err
 	}
 	if !found || !manifest.PulseEnabled() {
-		return "", fmt.Errorf("Pulse is off for this workflow. Turn it on in the workflow's Pulse settings to use it.")
+		return "", errPulseOff
 	}
 	request, err := requestFastPulse(ctx, workspacePath, stringToolArg(args, "run_id"), stringToolArg(args, "reason"), stringSliceFromToolArg(args["evidence"]))
 	if err != nil {

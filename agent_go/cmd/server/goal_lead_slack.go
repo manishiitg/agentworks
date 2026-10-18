@@ -31,7 +31,11 @@ func (api *StreamingAPI) handleGoalLeadSlack(ctx context.Context, msg services.B
 	}
 	workspacePath := strings.Trim(strings.TrimSpace(route.WorkspacePath), "/")
 	if !workflowHasGoal(ctx, workspacePath) {
-		reply("This workflow has no goal yet: it needs soul.md and a primary goal metric. Set one up in its Builder chat.")
+		if manifest, found, err := ReadWorkflowManifest(ctx, workspacePath); err == nil && found && !manifest.PulseEnabled() {
+			reply(errPulseOff.Error())
+		} else {
+			reply("This workflow needs a goal in soul.md. Set one up in its Builder chat.")
+		}
 		return
 	}
 	text := strings.TrimSpace(msg.Text)
@@ -44,7 +48,11 @@ func (api *StreamingAPI) handleGoalLeadSlack(ctx context.Context, msg services.B
 	answer, _, err := api.runGoalLeadTurn(turnCtx, workspacePath, goalLeadTurn{Kind: goalLeadTurnSlack, From: from, Body: text})
 	if err != nil {
 		log.Printf("[PULSE] Slack turn for %s failed: %v", workspacePath, err)
-		reply("The Pulse could not answer just now: " + err.Error())
+		if err == errPulseOff {
+			reply(err.Error())
+		} else {
+			reply("The Pulse could not answer just now: " + err.Error())
+		}
 		return
 	}
 	if strings.TrimSpace(answer) == "" {

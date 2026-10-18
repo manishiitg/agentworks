@@ -550,12 +550,13 @@ func nextPulseCheckAt(ctx context.Context, workspacePath string, manifest *Workf
 }
 
 func pulseGoalCheckSavedForRun(ctx context.Context, workspacePath, runID string) (bool, error) {
-	_, db, err := openPulseModuleStateDB(ctx, workspacePath, true)
-	if err != nil {
+	_, db, err := openPulseModuleStateDB(ctx, workspacePath, false)
+	if err != nil || db == nil {
 		return false, err
 	}
 	defer db.Close()
-	if err := ensurePulseGoalCheckSchema(ctx, db); err != nil {
+	columns, err := pulseStateColumns(ctx, db, "pulse_goal_checks")
+	if err != nil || len(columns) == 0 {
 		return false, err
 	}
 	var saved bool

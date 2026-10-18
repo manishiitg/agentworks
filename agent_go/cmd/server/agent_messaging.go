@@ -295,7 +295,7 @@ func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) err
 			return err
 		}
 		if !found || manifest == nil || manifest.ID != e.ID || !manifest.PulseEnabled() {
-			return fmt.Errorf("Pulse is off for this workflow. Turn it on in the workflow's Pulse settings to use it.")
+			return errPulseOff
 		}
 	}
 	if e.NamedAgentID != "" {

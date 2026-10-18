@@ -14,7 +14,7 @@ func TestPulseSettingsMigrationKeepsOutwardAuthority(t *testing.T) {
 	cases := []struct {
 		autonomy, want string
 		on             bool
-	}{{`{"level":0}`, "ask", false}, {`{"level":1}`, "ask", false}, {`{"level":2}`, "ask", true}, {`{"level":3}`, "ask", true}, {`{"level":4}`, "allow", true}, {`{"level":5}`, "allow", true}, {`{"level":6}`, "ask", false}, {`{"level":"wrong"}`, "ask", false}, {`{"run":"wrong","change":"auto","outward":"auto"}`, "ask", true}, {`{}`, "ask", false}}
+	}{{`{"level":0}`, "ask", false}, {`{"level":1}`, "ask", false}, {`{"level":2}`, "ask", true}, {`{"level":3}`, "ask", true}, {`{"level":4}`, "allow", true}, {`{"level":5}`, "allow", true}, {`{"level":6}`, "ask", true}, {`{"level":"wrong"}`, "ask", false}, {`{"run":"wrong","change":"auto","outward":"auto"}`, "ask", true}, {`{}`, "ask", false}}
 	for _, run := range []string{"auto", "ask"} {
 		for _, change := range []string{"auto", "ask"} {
 			for _, outward := range []string{"auto", "ask"} {

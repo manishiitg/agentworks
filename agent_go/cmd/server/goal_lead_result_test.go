@@ -43,7 +43,7 @@ func TestPulseResultDoesNotReviveDisabledOrRotatedConversation(t *testing.T) {
 			expected = goalLeadSessionID(manifest.ID, conv.Generation+1)
 		}
 		_, _, err := env.api.runGoalLeadTurn(context.Background(), ws, goalLeadTurn{Kind: goalLeadTurnFunctionResult, Body: "saved result", ExpectedSessionID: expected})
-		if err != errPulseResultIneligible {
+		if (enabled && err != errPulseResultIneligible) || (!enabled && err != errPulseOff) {
 			t.Fatalf("enabled=%v: got %v", enabled, err)
 		}
 	}
