@@ -66,8 +66,22 @@ func TestPulseOverviewKeepsSavedWorkWhenOffWithoutReviewTables(t *testing.T) {
 	if _, err := db.Exec(`CREATE TABLE pulse_decisions(id TEXT); INSERT INTO pulse_decisions VALUES('saved-history'); CREATE TRIGGER pulse_compact_decision_update AFTER UPDATE ON report_human_inputs BEGIN SELECT 1; END; CREATE TRIGGER business_rule AFTER UPDATE ON report_human_inputs BEGIN SELECT 1; END`); err != nil {
 		t.Fatal(err)
 	}
-	if retired, err := retirePulseProjectionTriggers(ctx, ws); err != nil || retired != 1 {
-		t.Fatalf("retired triggers=%d err=%v", retired, err)
+	// Startup must retire triggers before its schedule-only filter; this
+	// OFF workflow has no schedules and must not acquire schedule state.
+	if len(manifest.Schedules) != 0 {
+		t.Fatal("fixture must remain unscheduled")
+	}
+	for _, workflow := range (&SchedulerService{}).discoverWorkflows(ctx) {
+		if workflow.WorkspacePath == ws {
+			t.Fatal("trigger cleanup admitted an unscheduled workflow to the scheduler")
+		}
+	}
+	var remaining, scheduleState int
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name='pulse_compact_decision_update'`).Scan(&remaining); err != nil || remaining != 0 {
+		t.Fatalf("startup left %d retired triggers: %v", remaining, err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name LIKE 'schedule_%'`).Scan(&scheduleState); err != nil || scheduleState != 0 {
+		t.Fatalf("cleanup created schedule state: %d %v", scheduleState, err)
 	}
 	var saved, other int
 	if err := db.QueryRow(`SELECT count(*) FROM pulse_decisions WHERE id='saved-history'`).Scan(&saved); err != nil {

@@ -312,13 +312,6 @@ func (s *SchedulerService) Start(ctx context.Context) error {
 	// Discover all workflows by scanning workspace-docs/Workflow/*/workflow.json
 	workflows := s.discoverWorkflows(ctx)
 	scheduleLogf("[SCHEDULER] Discovered %d workflows with manifests", len(workflows))
-	for _, wf := range workflows {
-		if retired, err := retirePulseProjectionTriggers(ctx, wf.WorkspacePath); err != nil {
-			scheduleLogf("[PULSE] Could not retire old projection triggers in %s: %v", wf.WorkspacePath, err)
-		} else if retired > 0 {
-			scheduleLogf("[PULSE] Retired %d projection triggers in %s; saved history unchanged", retired, wf.WorkspacePath)
-		}
-	}
 
 	// After-run options for full runs started from a chat (after_run.go).
 	stepworkflow.AfterWorkflowRunHook = func(workspacePath, runFolder, status, sessionID string) {
@@ -576,6 +569,13 @@ func (s *SchedulerService) discoverWorkflows(ctx context.Context) []discoveredWo
 	}
 
 	for _, item := range discovered {
+		// Retire old programs for every manifest, including Pulse OFF and
+		// workflows without schedules. Keep scheduler admission unchanged below.
+		if retired, err := retirePulseProjectionTriggers(ctx, item.WorkspacePath); err != nil {
+			scheduleLogf("[PULSE] Could not retire old projection triggers in %s: %v", item.WorkspacePath, err)
+		} else if retired > 0 {
+			scheduleLogf("[PULSE] Retired %d projection triggers in %s; saved history unchanged", retired, item.WorkspacePath)
+		}
 		if len(item.Manifest.Schedules) > 0 {
 			results = append(results, discoveredWorkflow{
 				WorkspacePath: item.WorkspacePath,
