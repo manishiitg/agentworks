@@ -17,7 +17,7 @@ const receipt = {
  inspection:{session_id:'mcp-parent',execution_id:'prove',workspace_path:'Workflow/demo',step_id:'prove-contract',name:'Prove contract',started_at:'2026-10-18T00:00:00Z'},
  status:'completed',parent:{session_id:'mcp-parent',workspace_path:'Workflow/demo',status:'completed',triggered_by:'mcp'},
 }
-const data: WorkspaceStepInspectionsResponse={items:[receipt],next_offset:null}
+const data: WorkspaceStepInspectionsResponse={items:[receipt],next_cursor:null}
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 afterEach(()=>{useChatStore.setState(original,true);auth.user={id:'alice',allowed_products:['agentworks'],allowed_workflow_ids:['goal']};vi.restoreAllMocks()})
 async function render(check:(host:HTMLDivElement,update:(scope?:string,selected?:boolean)=>Promise<void>)=>Promise<void>,selected=true) {
@@ -31,7 +31,7 @@ it('discovers a step with no listed parent and opens its exact parent only on cl
  vi.mocked(openWorkflowInspectionParent).mockImplementation(async()=>{useChatStore.setState(state=>({activeTabId:'run',chatTabs:{...state.chatTabs,run:{tabId:'run',sessionId:'mcp-parent',name:'MCP run',metadata:{mode:'workflow',isViewOnly:true,presetQueryId:'goal'}} as ChatTab}}))})
  await render(async host=>{
   await vi.waitFor(()=>expect(host.querySelector('[aria-label="Inspect Prove contract"]')).not.toBeNull())
-  expect(get).toHaveBeenCalledWith('Workflow/demo',{excludeSessionIds:['main-chat'],offset:0})
+  expect(get).toHaveBeenCalledWith('Workflow/demo',{excludeSessionIds:['main-chat'],cursor:''})
   expect(host.textContent).toContain('MCP')
   expect(openWorkflowInspectionParent).not.toHaveBeenCalled()
   expect(Object.keys(useChatStore.getState().chatTabs)).toEqual(['main'])
@@ -52,7 +52,7 @@ it('does not prefetch history for unrelated workspaces or after revocation',asyn
 })
 it('discards old-account results and rejects mismatched workspace receipts',async()=>{
  let finish!:(value:WorkspaceStepInspectionsResponse)=>void
- vi.spyOn(agentApi,'getWorkspaceStepInspections').mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve})).mockResolvedValue({items:[{...receipt,inspection:{...receipt.inspection,workspace_path:'Workflow/other'}}],next_offset:null})
+ vi.spyOn(agentApi,'getWorkspaceStepInspections').mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve})).mockResolvedValue({items:[{...receipt,inspection:{...receipt.inspection,workspace_path:'Workflow/other'}}],next_cursor:null})
  await render(async(host,update)=>{
   auth.user.id='bob'
   await update('local:bob')
@@ -61,11 +61,11 @@ it('discards old-account results and rejects mismatched workspace receipts',asyn
  })
 })
 it('pages older receipts instead of silently dropping earlier runs',async()=>{
- const get=vi.spyOn(agentApi,'getWorkspaceStepInspections').mockResolvedValueOnce({items:[],next_offset:20}).mockResolvedValue(data)
+ const get=vi.spyOn(agentApi,'getWorkspaceStepInspections').mockResolvedValueOnce({items:[],next_cursor:'older'}).mockResolvedValue(data)
  await render(async host=>{
   await vi.waitFor(()=>expect(host.textContent).toContain('Earlier steps'))
   await act(async()=>host.querySelector<HTMLButtonElement>('button')!.click())
   await vi.waitFor(()=>expect(host.querySelector('[aria-label="Inspect Prove contract"]')).not.toBeNull())
-  expect(get).toHaveBeenLastCalledWith('Workflow/demo',{excludeSessionIds:['main-chat'],offset:20})
+  expect(get).toHaveBeenLastCalledWith('Workflow/demo',{excludeSessionIds:['main-chat'],cursor:'older'})
  })
 })

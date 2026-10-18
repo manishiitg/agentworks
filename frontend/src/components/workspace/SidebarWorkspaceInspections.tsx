@@ -30,10 +30,10 @@ export default function SidebarWorkspaceInspections({ workspace, workflowId, sco
     (!user?.allowed_workflow_ids || user.allowed_workflow_ids.includes(workflowId))
   const excluded = [...new Set(listedSessions)].sort().slice(0, 50)
   const query = useInfiniteQuery({
-    queryKey: ['workspace-step-inspections', scope, workspace, workflowId, excluded],
-    initialPageParam: 0,
-    queryFn: ({ pageParam }) => agentApi.getWorkspaceStepInspections(workspace, { excludeSessionIds: excluded, offset: pageParam }),
-    getNextPageParam: page => page.next_offset ?? undefined,
+    queryKey: ['workspace-step-receipts-v1', scope, workspace, workflowId, excluded],
+    initialPageParam: '',
+    queryFn: ({ pageParam }) => agentApi.getWorkspaceStepInspections(workspace, { excludeSessionIds: excluded, cursor: pageParam }),
+    getNextPageParam: page => page.next_cursor ?? undefined,
     enabled: allowed && visible && selected && workspace.startsWith('Workflow/'),
     retry: false,
     staleTime: 10000,

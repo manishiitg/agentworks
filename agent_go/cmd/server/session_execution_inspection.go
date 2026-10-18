@@ -279,6 +279,16 @@ func (api *StreamingAPI) inspectionParentSession(r *http.Request, sessionID, wor
 	if !inspectionIdentityPart(sessionID) || !workspaceReadAllowed(r.Context(), GetUserFromContext(r.Context()), workspace, logicalPathIsDefaultUser, false) || !workflowStepInspectionWorkspace(r.Context(), workspace) {
 		return nil, false
 	}
+	return api.inspectionParentSessionInAuthorizedWorkspace(r, sessionID, workspace)
+}
+
+// The caller must check the current product/Goal ACL before using this helper.
+// A workspace listing does that once per request; exact parent ownership is
+// still checked (and only memoized within that request) for every session.
+func (api *StreamingAPI) inspectionParentSessionInAuthorizedWorkspace(r *http.Request, sessionID, workspace string) (*ActiveSessionInfo, bool) {
+	if !inspectionIdentityPart(sessionID) {
+		return nil, false
+	}
 	if session, exists := api.getActiveSession(sessionID); exists && session != nil {
 		if strings.Trim(session.WorkspacePath, "/") != workspace || !api.ownsChatSession(r, sessionID) {
 			return nil, false

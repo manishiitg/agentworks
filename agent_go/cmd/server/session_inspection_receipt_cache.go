@@ -1,6 +1,7 @@
 package server
 
 import (
+	"container/list"
 	"context"
 	"sync"
 
@@ -12,35 +13,49 @@ type inspectionReceiptCacheKey struct {
 	Store, Workspace, Session, Execution, UpdatedAt, Status string
 }
 
-// This caches immutable receipt metadata, never access decisions or transcript
-// content. Every reader still authorizes the exact project and chat first.
+type inspectionReceiptCacheEntry struct {
+	key    inspectionReceiptCacheKey
+	target orchEvents.ExecutionInspectionTarget
+}
+
+// Cache receipt metadata only. Positive authorization is checked before every
+// use; defensive copies prevent a caller from changing cached targets.
 var inspectionReceiptCache = struct {
 	sync.Mutex
-	items map[inspectionReceiptCacheKey]*orchEvents.ExecutionInspectionTarget
-}{items: make(map[inspectionReceiptCacheKey]*orchEvents.ExecutionInspectionTarget)}
+	items map[inspectionReceiptCacheKey]*list.Element
+	order list.List
+}{items: make(map[inspectionReceiptCacheKey]*list.Element)}
 
 func cachedInspectionReceipt(key inspectionReceiptCacheKey) (*orchEvents.ExecutionInspectionTarget, bool) {
 	inspectionReceiptCache.Lock()
 	defer inspectionReceiptCache.Unlock()
-	target, found := inspectionReceiptCache.items[key]
-	if target == nil {
-		return nil, found
+	element, found := inspectionReceiptCache.items[key]
+	if !found {
+		return nil, false
 	}
-	copy := *target
-	return &copy, found
+	inspectionReceiptCache.order.MoveToFront(element)
+	copy := element.Value.(inspectionReceiptCacheEntry).target
+	return &copy, true
 }
 
 func cacheInspectionReceipt(key inspectionReceiptCacheKey, target *orchEvents.ExecutionInspectionTarget) {
+	if target == nil {
+		return
+	}
 	inspectionReceiptCache.Lock()
 	defer inspectionReceiptCache.Unlock()
-	if len(inspectionReceiptCache.items) >= 512 {
-		clear(inspectionReceiptCache.items)
+	entry := inspectionReceiptCacheEntry{key: key, target: *target}
+	if element, found := inspectionReceiptCache.items[key]; found {
+		element.Value = entry
+		inspectionReceiptCache.order.MoveToFront(element)
+		return
 	}
-	if target != nil {
-		copy := *target
-		target = &copy
+	inspectionReceiptCache.items[key] = inspectionReceiptCache.order.PushFront(entry)
+	if len(inspectionReceiptCache.items) > 512 {
+		oldest := inspectionReceiptCache.order.Back()
+		delete(inspectionReceiptCache.items, oldest.Value.(inspectionReceiptCacheEntry).key)
+		inspectionReceiptCache.order.Remove(oldest)
 	}
-	inspectionReceiptCache.items[key] = target
 }
 
 func readDurableInspectionReceipt(ctx context.Context, key inspectionReceiptCacheKey) *orchEvents.ExecutionInspectionTarget {
