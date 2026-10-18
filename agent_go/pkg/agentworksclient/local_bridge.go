@@ -1262,6 +1262,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		return LocalBridgeReply{}
 	}
 	if s.client == nil {
+		if in.Action == "status" {
+			// Status only reports local state, so it works without a usable connection: the explicit attach that follows
+			// it rebuilds the connection from the saved login. It grants nothing and revives nothing.
+			return LocalBridgeReply{Offline: true, Attachment: s.Attachment, LastError: "This chat's saved connection is missing. Type /agentworks attach in the chat to reconnect it."}
+		}
 		return LocalBridgeReply{Error: "This chat's connection is not available. Run agentworks login if needed, then type /agentworks attach in the chat."}
 	}
 	if in.RefreshRoute {

@@ -636,6 +636,13 @@ func TestCodexOwnAttachRebuildsAMissingChatConnection(t *testing.T) {
 	}}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer func() { cancel(); b.workers.Wait() }()
+	// The status the attach command asks first must answer from local state, and nothing else may revive the chat.
+	if st := b.handle(ctx, ctx, LocalBridgeRequest{Action: "status", Provider: "codex", SessionID: "sess", HostKey: "h"}); st.Error != "" || !st.Offline || st.Attachment.AgentName != "codex-chat" {
+		t.Fatalf("status of a chat with a missing connection file = %+v", st)
+	}
+	if peers := b.handle(ctx, ctx, LocalBridgeRequest{Action: "peers", Provider: "codex", SessionID: "sess", HostKey: "h"}); peers.Error == "" || b.sessions[key].client != nil {
+		t.Fatalf("a message call must not revive a chat without its connection: %+v", peers)
+	}
 	reply := b.handle(ctx, ctx, LocalBridgeRequest{Action: "attach", Provider: "codex", SessionID: "sess", HostKey: "h", ConfigPath: parent, OwnAttach: true})
 	if !reply.Attached || reply.Error != "" || reply.Attachment.AgentName != "codex-chat" {
 		t.Fatalf("attach after the chat's connection file was lost = %+v", reply)
