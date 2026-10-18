@@ -143,7 +143,10 @@ type localOffer struct {
 	FirstDeniedAt time.Time `json:"first_denied_at,omitempty"`
 	Denials       int       `json:"denials,omitempty"`
 	// RetryAt keeps a message the server left out from being asked about again at once: each denial doubles the wait.
-	RetryAt   time.Time `json:"retry_at,omitempty"`
+	RetryAt time.Time `json:"retry_at,omitempty"`
+	// InFlight is the token of the takeOffers call that is asking the server about this message with the bridge lock
+	// released; other calls skip it, so one message is never handed out twice. Never saved.
+	InFlight  string    `json:"-"`
 	Transport string    `json:"transport,omitempty"`
 	OfferedAt time.Time `json:"offered_at,omitempty"`
 }
@@ -1651,7 +1654,7 @@ func museRedelivery(s *localSession, m localOffer, transport string) bool {
 func localPending(s *localSession) bool {
 	now := time.Now()
 	for _, m := range s.Offers {
-		if !m.Offered && !m.Suppressed && !now.Before(m.RetryAt) {
+		if !m.Offered && !m.Suppressed && m.InFlight == "" && !now.Before(m.RetryAt) {
 			return true
 		}
 	}
@@ -2226,7 +2229,7 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 	var messages []AgentLiveMessage
 	now := time.Now()
 	for _, m := range s.Offers {
-		if (!m.Offered && !m.Suppressed && !now.Before(m.RetryAt)) || museRedelivery(s, m, transport) {
+		if m.InFlight == "" && ((!m.Offered && !m.Suppressed && !now.Before(m.RetryAt)) || museRedelivery(s, m, transport)) {
 			messages = append(messages, m.AgentLiveMessage)
 		}
 	}
@@ -2253,7 +2256,24 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 	for _, m := range messages {
 		ids = append(ids, m.MessageID)
 	}
-	// The server calls run without the bridge lock so other chats' commands do not wait behind them.
+	// The server calls run without the bridge lock so other chats' commands do not wait behind them. The picked
+	// messages are marked in flight first so a concurrent call skips them; the mark is cleared on every exit.
+	token := fmt.Sprintf("%p-%d", s, time.Now().UnixNano())
+	wasOffered := map[string]bool{}
+	for _, id := range ids {
+		v := s.Offers[id]
+		wasOffered[id] = v.Offered
+		v.InFlight = token
+		s.Offers[id] = v
+	}
+	defer func() {
+		for _, id := range ids {
+			if v, ok := s.Offers[id]; ok && v.InFlight == token {
+				v.InFlight = ""
+				s.Offers[id] = v
+			}
+		}
+	}()
 	snap := &localSession{Attachment: s.Attachment, client: s.client}
 	var raw json.RawMessage
 	var err error
@@ -2270,6 +2290,25 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 	if json.Unmarshal(raw, &checked) != nil {
 		return nil, 0, nil, errors.New("invalid pending validation")
 	}
+	// The lock was released: stop if this session is gone, and drop messages that were acknowledged, removed or
+	// replaced meanwhile.
+	live := false
+	for _, cur := range b.sessions {
+		if cur == s {
+			live = true
+			break
+		}
+	}
+	if !live {
+		return nil, 0, nil, nil
+	}
+	still := messages[:0:0]
+	for _, m := range messages {
+		if v, ok := s.Offers[m.MessageID]; ok && v.InFlight == token && v.Offered == wasOffered[m.MessageID] {
+			still = append(still, m)
+		}
+	}
+	messages = still
 	allowed := map[string]bool{}
 	for _, id := range checked.IDs {
 		allowed[id] = true

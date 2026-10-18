@@ -548,3 +548,50 @@ func TestAutoUpdateWaitsWhileAMessageIsBeingDelivered(t *testing.T) {
 		t.Fatalf("the update did not run once the delivery was processed (%d calls)", calls.Load())
 	}
 }
+
+// takeOffers asks the server with the bridge lock released. Two calls for one chat at the same time (the
+// adapter and a hook) must not both pick the same waiting message: each comes out exactly once.
+func TestConcurrentTakeOffersHandOverEachMessageOnce(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			IDs []string `json:"message_ids"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		time.Sleep(100 * time.Millisecond)
+		_ = json.NewEncoder(w).Encode(map[string]any{"message_ids": in.IDs})
+	}))
+	defer srv.Close()
+	client, err := New(srv.URL, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &localBridge{sessions: map[string]*localSession{}, changed: make(chan struct{})}
+	s := &localSession{Attachment: AgentAttachment{AgentName: "a", ID: "att", Provider: "claude", SessionID: "s1"}, client: client, Offers: map[string]localOffer{}}
+	for i, id := range []string{"m1", "m2", "m3"} {
+		s.Offers[id] = localOffer{AgentLiveMessage: AgentLiveMessage{MessageID: id, Sequence: i}}
+	}
+	b.sessions[localBridgeKey("claude", "s1")] = s
+	var mu sync.Mutex
+	seen := map[string]int{}
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			b.mu.Lock()
+			defer b.mu.Unlock()
+			got, _, _, _ := b.takeOffers(context.Background(), s, "", 20)
+			mu.Lock()
+			for _, m := range got {
+				seen[m.MessageID]++
+			}
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	for _, id := range []string{"m1", "m2", "m3"} {
+		if seen[id] != 1 {
+			t.Fatalf("message %s handed out %d times: %v", id, seen[id], seen)
+		}
+	}
+}
