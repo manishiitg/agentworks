@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"log"
 	"strings"
 
@@ -48,7 +49,7 @@ func (api *StreamingAPI) handleGoalLeadSlack(ctx context.Context, msg services.B
 	answer, _, err := api.runGoalLeadTurn(turnCtx, workspacePath, goalLeadTurn{Kind: goalLeadTurnSlack, From: from, Body: text})
 	if err != nil {
 		log.Printf("[PULSE] Slack turn for %s failed: %v", workspacePath, err)
-		if err == errPulseOff {
+		if errors.Is(err, errPulseOff) {
 			reply(err.Error())
 		} else {
 			reply("The Pulse could not answer just now: " + err.Error())
