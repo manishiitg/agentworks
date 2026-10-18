@@ -19,9 +19,10 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 	for _, name := range []string{"list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "publish_dashboard", "restore_dashboard", "get_dashboard_link"} {
 		action := dashboardActions[name]
 		props := map[string]any{
-			"workflow_id": externalString("Workflow or Flow ID from list_workflows or the dashboard list. Pass one of workflow_id, crew_id or workspace."),
-			"crew_id":     externalString("Crew ID from list_crews or the dashboard list."),
-			"workspace":   externalString("Project root from the dashboard list; needed only for an owned Code project."),
+			"workflow_id":  externalString("Workflow or Flow ID from list_workflows or the dashboard list. Pass one of workflow_id, crew_id or workspace."),
+			"crew_id":      externalString("Crew ID from list_crews or the dashboard list."),
+			"workspace":    externalString("Project root from the dashboard list; needed only for an owned Code project."),
+			"workspace_id": externalString("Stable work:<id> or code:<id> from workspace list/get. Pass exactly one project selector."),
 		}
 		required := []string{}
 		if action == "list" {
@@ -91,10 +92,11 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		"fps":              externalInteger(1, 60),
 	})
 	shareProps := map[string]any{
-		"workflow_id": externalString("Goal/workflow ID from workflow action=list. Also accepts an existing Flow ID for compatibility. Pass exactly one project selector."),
-		"flow_id":     externalString("Flow ID from workflow action=list or relay. Pass exactly one of workflow_id, flow_id, crew_id or workspace."),
-		"crew_id":     externalString("Crew ID from list_crews or the dashboard list."),
-		"workspace":   externalString("Existing project root from the dashboard list; use the product's ID when available."),
+		"workflow_id":  externalString("Goal/workflow ID from workflow action=list. Also accepts an existing Flow ID for compatibility. Pass exactly one project selector."),
+		"flow_id":      externalString("Flow ID from workflow action=list or relay. Pass exactly one of workflow_id, flow_id, crew_id or workspace."),
+		"crew_id":      externalString("Crew ID from list_crews or the dashboard list."),
+		"workspace":    externalString("Existing project root or stable work:<id>/code:<id> from workspace list/get."),
+		"workspace_id": externalString("Stable work:<id> or code:<id> from workspace list/get. Pass exactly one project selector."),
 	}
 	add("get_dashboard_share", "Read who a Crew, Goal or Flow is shared with: everyone, chosen people (emails) or private. Anyone with access to the product may inspect sharing. "+runShareAccessDescription, false, false, shareProps)
 	shareSet := map[string]any{}
@@ -116,8 +118,9 @@ func (api *StreamingAPI) externalDashboardCall(w http.ResponseWriter, r *http.Re
 	// re-checks access on the resolved root.
 	if name != "get_report_link" {
 		workflowID, flowID, crewID, workspace := externalArg(args, "workflow_id"), externalArg(args, "flow_id"), externalArg(args, "crew_id"), externalArg(args, "workspace")
+		workspaceID := externalArg(args, "workspace_id")
 		named := 0
-		for _, value := range []string{workflowID, flowID, crewID, workspace} {
+		for _, value := range []string{workflowID, flowID, crewID, workspace, workspaceID} {
 			if value != "" {
 				named++
 			}
@@ -135,6 +138,24 @@ func (api *StreamingAPI) externalDashboardCall(w http.ResponseWriter, r *http.Re
 		delete(payload, "workflow_id")
 		delete(payload, "flow_id")
 		delete(payload, "crew_id")
+		delete(payload, "workspace_id")
+		if workspace == "" {
+			workspace = workspaceID
+			if workspace != "" {
+				payload["workspace"] = workspace
+			}
+		}
+		if strings.HasPrefix(workspace, "work:") || strings.HasPrefix(workspace, "code:") {
+			binding, _, ok := api.resolveExternalWorkspace(r.Context(), GetUserFromContext(r.Context()), workspace)
+			if !ok {
+				if name == "share_dashboard" {
+					logDashboardShareRefusal(GetUserFromContext(r.Context()), dashboardTarget{Root: workspace}, externalArg(args, "mode"), "target", dashboardFailure(404, "project unavailable"), nil)
+				}
+				externalError(w, 404, "not_found", "project unavailable")
+				return
+			}
+			payload["workspace"] = binding.Binding.WorkspacePath
+		}
 		switch {
 		case workflowID != "":
 			root, ok := dashboardWorkflowRoot(r, workflowID)
