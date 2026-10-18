@@ -21,6 +21,7 @@ import (
 var cursorHookEvents = []string{"sessionStart", "beforeSubmitPrompt", "stop", "sessionEnd", "beforeMCPExecution"}
 
 func setupCommand(o *options) *cobra.Command {
+	say := newSetupStyle(o.stdout).Say
 	cmd := &cobra.Command{Use: "setup", Short: "Set up a coding app to work with AgentWorks: claude, codex, cursor, muse or pi"}
 	cmd.AddCommand(&cobra.Command{Use: "cursor", Args: cobra.NoArgs, Short: "Set up the Cursor app for AgentWorks (every project)", Long: "Adds the AgentWorks hooks and the AgentWorks message tools to your Cursor user settings (~/.cursor/hooks.json and ~/.cursor/mcp.json), so every Cursor chat in every project can be connected with /agentworks attach. Other entries in those files are kept. Run it again any time; it only changes what is missing or outdated.", RunE: func(cmd *cobra.Command, _ []string) error {
 		if runtime.GOOS == "windows" {
@@ -37,24 +38,24 @@ func setupCommand(o *options) *cobra.Command {
 		var backups []string
 		changed, err := setupCursor(filepath.Join(home, ".cursor"), exe, &backups)
 		for _, backup := range backups {
-			fmt.Fprintln(o.stdout, "Saved a copy of your previous settings: "+backup)
+			say("Saved a copy of your previous settings: " + backup)
 		}
 		if err != nil {
 			return fmt.Errorf("Cursor setup was not completed: %w", err)
 		}
 		if changed {
-			fmt.Fprintln(o.stdout, "Cursor is set up for AgentWorks: added the AgentWorks hooks to ~/.cursor/hooks.json and the AgentWorks message tools (agentworks-messages) to ~/.cursor/mcp.json. This applies to every project you open in Cursor.")
+			say("Cursor is set up for AgentWorks: added the AgentWorks hooks to ~/.cursor/hooks.json and the AgentWorks message tools (agentworks-messages) to ~/.cursor/mcp.json. This applies to every project you open in Cursor.")
 		} else {
-			fmt.Fprintln(o.stdout, "Cursor was already set up for AgentWorks (every project).")
+			say("Cursor was already set up for AgentWorks (every project).")
 		}
 		if line := addToolsServer(cmd.Context(), o, "cursor"); line != "" {
-			fmt.Fprintln(o.stdout, line)
+			say(line)
 		}
-		fmt.Fprintln(o.stdout, "Next: restart Cursor, open a chat and type /agentworks attach (or /agentworks attach NAME) as its own message.")
-		fmt.Fprintln(o.stdout, "To undo: remove the entries that run agentworks from those two files (or put back a saved copy listed above), then restart Cursor.")
-		fmt.Fprintln(o.stdout, "Messages from other agents reach a connected chat when it finishes a turn, and can start a turn you did not type. A chat that is idle gets them after its next turn.")
+		say("Next: restart Cursor, open a chat and type /agentworks attach (or /agentworks attach NAME) as its own message.")
+		say("To undo: remove the entries that run agentworks from those two files (or put back a saved copy listed above), then restart Cursor.")
+		say("Messages from other agents reach a connected chat when it finishes a turn, and can start a turn you did not type. A chat that is idle gets them after its next turn.")
 		if cwd, e := os.Getwd(); e == nil && cursorProjectHasAgentWorksHooks(filepath.Join(cwd, ".cursor", "hooks.json")) {
-			fmt.Fprintln(o.stdout, "This project also has its own AgentWorks hooks from the older command-line setup. Remove the AgentWorks entries from .cursor/hooks.json here so they do not run twice.")
+			say("This project also has its own AgentWorks hooks from the older command-line setup. Remove the AgentWorks entries from .cursor/hooks.json here so they do not run twice.")
 		}
 		return nil
 	}})
@@ -113,16 +114,16 @@ func setupCommand(o *options) *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("%s setup was not completed: %w", app.name, err)
 				}
-				fmt.Fprintln(o.stdout, app.name+" is set up for AgentWorks without hooks: installed "+installed+". This applies to every project.")
+				say(app.name + " is set up for AgentWorks without hooks: installed " + installed + ". This applies to every project.")
 				if line := addToolsServer(cmd.Context(), o, app.provider); line != "" {
-					fmt.Fprintln(o.stdout, line)
+					say(line)
 				}
-				fmt.Fprintln(o.stdout, "Next: restart "+app.name+", then say \"connect this chat to AgentWorks\" in a chat. Nothing is typed and nothing shows as blocked.")
-				fmt.Fprintln(o.stdout, noHooksGivesUp)
+				say("Next: restart " + app.name + ", then say \"connect this chat to AgentWorks\" in a chat. Nothing is typed and nothing shows as blocked.")
+				say(noHooksGivesUp)
 				if app.provider == "codex" {
-					fmt.Fprintln(o.stdout, "Using the Codex command line? Run agentworks setup codex --hooks.")
+					say("Using the Codex command line? Run agentworks setup codex --hooks.")
 				}
-				fmt.Fprintln(o.stdout, "To undo: "+undo)
+				say("To undo: " + undo)
 				return nil
 			}
 			if noHooks {
@@ -131,21 +132,21 @@ func setupCommand(o *options) *cobra.Command {
 			if err := installAgentPlugin(cmd.Context(), o, app.provider); err != nil {
 				return fmt.Errorf("%s setup was not completed: %w", app.name, err)
 			}
-			fmt.Fprintln(o.stdout, app.name+" is set up for AgentWorks: installed "+app.what+". This applies to every project.")
+			say(app.name + " is set up for AgentWorks: installed " + app.what + ". This applies to every project.")
 			if keptHooks {
-				fmt.Fprintln(o.stdout, "Kept your hooks: the full AgentWorks plugin was already installed here. To switch them off, run agentworks setup "+app.provider+" --no-hooks.")
+				say("Kept your hooks: the full AgentWorks plugin was already installed here. To switch them off, run agentworks setup " + app.provider + " --no-hooks.")
 			}
 			if line := addToolsServer(cmd.Context(), o, app.provider); line != "" {
-				fmt.Fprintln(o.stdout, line)
+				say(line)
 			}
 			if app.provider == "muse" {
 				offerMuseApproval(cmd.Context(), o)
 			}
-			fmt.Fprintln(o.stdout, "Next: "+app.next)
-			fmt.Fprintln(o.stdout, "To undo: "+app.undo)
+			say("Next: " + app.next)
+			say("To undo: " + app.undo)
 			if app.provider == "claude" {
 				for _, project := range claudeProjectInstalls() {
-					fmt.Fprintf(o.stdout, "AgentWorks is also installed just for the project %s, so in that project its hooks run twice. Remove that copy: cd %s && claude plugin uninstall agentworks@agentworks --scope project\n", project, shellWord(project))
+					say(fmt.Sprintf("Note: AgentWorks is also installed just for the project %s, so in that project its hooks run twice. Remove that copy: cd %s && claude plugin uninstall agentworks@agentworks --scope project", project, shellWord(project)))
 				}
 			}
 			return nil
