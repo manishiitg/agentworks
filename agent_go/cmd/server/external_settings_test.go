@@ -50,9 +50,6 @@ func TestExternalPulseSettingsAndRunNeedEditAccess(t *testing.T) {
 	if w := f.call(t, "reader", "run_after_run", map[string]any{"workflow_id": "invoices", "option": "backup"}); w.Code != 403 {
 		t.Fatalf("reader started a backup: %d %s", w.Code, w.Body)
 	}
-	if w := f.call(t, "owner", "builder_pulse_chat", map[string]any{"workflow_id": "invoices", "message": "How is the goal doing?"}); w.Code != 409 || !strings.Contains(w.Body.String(), errPulseOff.Error()) {
-		t.Fatalf("OFF chat needs the plain next step: %d %s", w.Code, w.Body)
-	}
 	w := f.call(t, "owner", "update_settings", map[string]any{"workflow_id": "invoices", "pulse": map[string]any{"enabled": true, "outward_actions": "allow"}, "after_manual_run": map[string]any{"notify": true}})
 	if w.Code != 200 {
 		t.Fatalf("owner pulse settings: %d %s", w.Code, w.Body)
@@ -60,5 +57,16 @@ func TestExternalPulseSettingsAndRunNeedEditAccess(t *testing.T) {
 	body := f.call(t, "owner", "get_settings", map[string]any{"workflow_id": "invoices"}).Body.String()
 	if !strings.Contains(body, `"enabled":true`) || !strings.Contains(body, `"outward_actions":"allow"`) || !strings.Contains(body, `"after_manual_run":{"backup":false,"publish":false,"notify":true}`) {
 		t.Fatalf("pulse settings not saved: %s", body)
+	}
+}
+
+// The live MCP refusal uses a connection with Builder consent; the general
+// settings fixture deliberately lacks that scope and stops before this path.
+func TestExternalPulseOffChatHasPlainNextStep(t *testing.T) {
+	f := newBuilderOperationFixture(t)
+	_, token := f.issue(t, "owner")
+	w := f.call(t, token, "builder_pulse_chat", map[string]any{"message": "How is the goal doing?"}, 409)
+	if !strings.Contains(w.Body.String(), errPulseOff.Error()) {
+		t.Fatalf("OFF chat needs the plain next step: %s", w.Body)
 	}
 }
