@@ -61,7 +61,8 @@ const pulseGoalChecksSchema = `CREATE TABLE IF NOT EXISTS pulse_goal_checks (
 	alarms_json TEXT NOT NULL DEFAULT '[]',
 	pause_fingerprint TEXT NOT NULL DEFAULT '',
 	next_check_at TEXT NOT NULL DEFAULT '',
-	next_check_reason TEXT NOT NULL DEFAULT ''
+	next_check_reason TEXT NOT NULL DEFAULT '',
+ report_only INTEGER NOT NULL DEFAULT 0
 )`
 
 const pulseGoalCheckRunsSchema = `CREATE TABLE IF NOT EXISTS pulse_goal_check_runs (
@@ -71,6 +72,7 @@ const pulseGoalCheckRunsSchema = `CREATE TABLE IF NOT EXISTS pulse_goal_check_ru
 
 // PulseGoalCheck is one recorded goal check.
 type PulseGoalCheck struct {
+	ReportOnly       bool              `json:"report_only"`
 	CheckID          string            `json:"check_id"`
 	CheckedAt        string            `json:"checked_at"`
 	PulseRunID       string            `json:"pulse_run_id,omitempty"`
@@ -170,6 +172,10 @@ func ensurePulseGoalCheckSchema(ctx context.Context, db *sql.DB) error {
 			return err
 		}
 	}
+	if _, err := db.ExecContext(ctx, `ALTER TABLE pulse_goal_checks ADD COLUMN report_only INTEGER NOT NULL DEFAULT 0`); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+		return err
+	}
+
 	return nil
 }
 
@@ -186,9 +192,9 @@ func latestPulseGoalCheck(ctx context.Context, workspacePath string) (*PulseGoal
 	_ = db.QueryRowContext(ctx, `SELECT COALESCE(MAX(started_at),'') FROM pulse_goal_check_runs`).Scan(&lastStarted)
 	var check PulseGoalCheck
 	var alarms string
-	err = db.QueryRowContext(ctx, `SELECT check_id,checked_at,pulse_run_id,status,key_number,summary,action_taken,decision_id,alarms_json,pause_fingerprint,next_check_at,next_check_reason
+	err = db.QueryRowContext(ctx, `SELECT check_id,checked_at,pulse_run_id,status,key_number,summary,action_taken,decision_id,alarms_json,pause_fingerprint,next_check_at,next_check_reason,report_only
 		FROM pulse_goal_checks ORDER BY checked_at DESC LIMIT 1`).Scan(&check.CheckID, &check.CheckedAt, &check.PulseRunID, &check.Status,
-		&check.KeyNumber, &check.Summary, &check.ActionTaken, &check.DecisionID, &alarms, &check.PauseFingerprint, &check.NextCheckAt, &check.NextCheckReason)
+		&check.KeyNumber, &check.Summary, &check.ActionTaken, &check.DecisionID, &alarms, &check.PauseFingerprint, &check.NextCheckAt, &check.NextCheckReason, &check.ReportOnly)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, parseStoredTime(lastStarted), nil
 	}
@@ -381,10 +387,16 @@ func recordPulseGoalCheckFromToolArgs(ctx context.Context, args map[string]inter
 	} else {
 		nextReason = ""
 	}
+	perms, _ := pulsePermissionsForWorkflow(ctx, workspacePath)
+	reportOnly := !perms.Run
+	if reportOnly {
+		nextGap = 7 * 24 * time.Hour
+		nextReason = "Pulse is off; weekly suggestions report."
+	}
 	nextAt := now.Add(nextGap)
 	if due, err := nextPulseGoalWorkQuestion(ctx, workspacePath, now); err != nil {
 		scheduleLogf("[PULSE] dated Goal Work unavailable for %s; keeping chosen next check: %v", workspacePath, err)
-	} else if !due.IsZero() {
+	} else if !reportOnly && !due.IsZero() {
 		bounded := due
 		if floor := now.Add(pulseCheckMinGap); bounded.Before(floor) {
 			bounded = floor
@@ -397,10 +409,10 @@ func recordPulseGoalCheckFromToolArgs(ctx context.Context, args map[string]inter
 	_, _ = rand.Read(buf)
 	checkID := "GC-" + strings.ToUpper(hex.EncodeToString(buf))
 	alarms, _ := json.Marshal(view.Facts.Alarms)
-	_, err = db.ExecContext(ctx, `INSERT INTO pulse_goal_checks (check_id,checked_at,pulse_run_id,status,key_number,summary,action_taken,decision_id,alarms_json,pause_fingerprint,next_check_at,next_check_reason)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, checkID, formatStoredTime(now), stringToolArg(args, "pulse_run_id"), status,
+	_, err = db.ExecContext(ctx, `INSERT INTO pulse_goal_checks (check_id,checked_at,pulse_run_id,status,key_number,summary,action_taken,decision_id,alarms_json,pause_fingerprint,next_check_at,next_check_reason,report_only)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, checkID, formatStoredTime(now), stringToolArg(args, "pulse_run_id"), status,
 		strings.TrimSpace(stringToolArg(args, "key_number")), summary, strings.TrimSpace(stringToolArg(args, "action_taken")),
-		strings.TrimSpace(stringToolArg(args, "decision_id")), string(alarms), view.Facts.PauseFingerprint, formatStoredTime(nextAt), nextReason)
+		strings.TrimSpace(stringToolArg(args, "decision_id")), string(alarms), view.Facts.PauseFingerprint, formatStoredTime(nextAt), nextReason, reportOnly)
 	if err != nil {
 		return "", err
 	}
@@ -434,7 +446,7 @@ func (s *SchedulerService) launchDueGoalChecks(ctx context.Context) {
 	}
 	now := time.Now().UTC()
 	for _, item := range discovered {
-		if item.Manifest == nil || !item.Manifest.PulseEnabled() {
+		if item.Manifest == nil || item.Manifest.Kind == "relay" || !workflowHasSoul(ctx, item.WorkspacePath) {
 			continue
 		}
 		workspacePath := item.WorkspacePath
@@ -446,21 +458,8 @@ func (s *SchedulerService) launchDueGoalChecks(ctx context.Context) {
 		if !lastStarted.IsZero() && now.Sub(lastStarted) < goalCheckRetryGap {
 			continue
 		}
-		nextDue := nextGoalCheckDue(latest)
-		if latest != nil {
-			checked := parseStoredTime(latest.CheckedAt)
-			questionDue, err := nextPulseGoalWorkQuestion(ctx, workspacePath, checked)
-			if err != nil {
-				scheduleLogf("[PULSE] dated Goal Work unavailable for %s; keeping ordinary next check: %v", workspacePath, err)
-			} else if !questionDue.IsZero() {
-				if floor := checked.Add(pulseCheckMinGap); questionDue.Before(floor) {
-					questionDue = floor
-				}
-				if nextDue.IsZero() || questionDue.Before(nextDue) {
-					nextDue = questionDue
-				}
-			}
-		}
+		nextDue, _ := nextPulseCheckAt(ctx, workspacePath, item.Manifest, latest, lastStarted)
+
 		if !nextDue.IsZero() && now.Before(nextDue) {
 			continue
 		}
@@ -493,6 +492,9 @@ func (s *SchedulerService) launchDueGoalChecks(ctx context.Context) {
 // pulseLifecycleGoalCheckStep is the one turn of a daily goal check.
 func pulseLifecycleGoalCheckStep(ctx context.Context, workspacePath, pulseRunID string, _ workflowNotificationContentInstructions) pulseLifecycleStep {
 	perms, autonomyText := pulsePermissionsForWorkflow(ctx, workspacePath)
+	if !perms.Run {
+		return pulseLifecycleStep{label: "goal-check", goalWork: &perms, goalLead: true, query: fmt.Sprintf(`WEEKLY GOAL REPORT. pulse_run_id=%q. Pulse is off. Read the written goal, relevant DB measurements/history, outputs, prior Goal Work and current plan consistency evidence. Judge progress, uncertainty and useful improvements yourself. Do not edit the workflow or skills, run steps, send action requests, create decisions or arrange follow-up wakeups. Do not ask Builder to act. Save one record_pulse_goal_check with the evidence-based conclusion, suggestions and any measurement gaps; its next report is weekly. Include plan drift findings as suggestions only. The existing report and change history are visible to workflow users. No separate reviewer or report ledger.`, pulseRunID)}
+	}
 	return pulseLifecycleStep{label: "goal-check", goalWork: &perms, query: fmt.Sprintf(`GOAL CHECK AND USEFUL WORK. pulse_run_id=%q. One continuing Pulse turn: no Gate, separate reviewers or finalizer.
 
 Choose evidence through your tools or Builder messages. Use tools when you need evidence; no operational packet is attached. Read soul/soul.md and relevant goal memory. get_goal_metrics reads source-backed DB history; get_pulse_state views goal_status, goal_work, step_outputs, step_concerns and backlog are optional. No metric-to-route declaration is required. Missing evidence stays unknown; delivery, completed runs and numerical differences do not establish goal improvement.
@@ -506,4 +508,59 @@ Record one plain conclusion with record_pulse_goal_check: goal progress, judgmen
 You reason; Builder acts within the shared permissions. Messages are explicit, replies optional: ask_builder delivers, read_agent_messages reads replies, send_message replies, and schedule_message_wakeup chooses a later conversation follow-up. Final text is never forwarded. Give material evidence and your recommendation to Builder for the owner summary or Needs you; reuse an existing decision if owner authority is needed. An authorized request needs no new confirmation. Finish with the actual outcome or named uncertainty, not merely the technical handoff.
 
 %s`, pulseRunID, autonomyText) + "\n\n" + pulseTimingInstructions}
+}
+
+// One clock with two existing settings: active checks choose a useful time;
+// OFF reports weekly. Turning ON after a report makes active work eligible.
+func nextPulseCheckForSetting(enabled bool, check *PulseGoalCheck) time.Time {
+	if check == nil {
+		return time.Time{}
+	}
+	if enabled {
+		if check.ReportOnly {
+			return time.Time{}
+		}
+		return nextGoalCheckDue(check)
+	}
+	checked := parseStoredTime(check.CheckedAt)
+	if checked.IsZero() {
+		return time.Time{}
+	}
+	return checked.Add(7 * 24 * time.Hour)
+}
+
+// nextPulseCheckAt is the common timing projection for the launcher and screen.
+// It reads existing dates/wake intents; it never judges metric meaning.
+func nextPulseCheckAt(ctx context.Context, workspacePath string, manifest *WorkflowManifest, check *PulseGoalCheck, lastStarted time.Time) (time.Time, string) {
+	enabled := manifest != nil && manifest.PulseEnabled()
+	next := nextPulseCheckForSetting(enabled, check)
+	reason := ""
+	if check != nil {
+		reason = check.NextCheckReason
+	}
+	if !enabled {
+		return next, "Pulse is off; weekly suggestions report."
+	}
+	if check == nil || check.ReportOnly {
+		return next, "Pulse is ready for its goal check."
+	}
+	checked := parseStoredTime(check.CheckedAt)
+	if question, err := nextPulseGoalWorkQuestion(ctx, workspacePath, checked); err == nil && !question.IsZero() {
+		if floor := checked.Add(pulseCheckMinGap); question.Before(floor) {
+			question = floor
+		}
+		if next.IsZero() || question.Before(next) {
+			next, reason = question, "A recorded Goal Work question or outcome is due."
+		}
+	}
+	if fast, err := pendingFastPulseRequest(ctx, workspacePath); err == nil && fast != nil {
+		earliest := lastStarted.Add(pulseCheckMinGap)
+		if lastStarted.IsZero() {
+			earliest = checked.Add(pulseCheckMinGap)
+		}
+		if next.IsZero() || earliest.Before(next) {
+			next, reason = earliest, fast.Reason
+		}
+	}
+	return next, reason
 }

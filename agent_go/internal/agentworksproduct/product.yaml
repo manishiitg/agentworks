@@ -400,7 +400,6 @@ chat:
       - record_pulse_goal_check
       - record_pulse_goal_memory
       - record_pulse_goal_work
-      - record_pulse_next_run
       - record_pulse_qa_request
       - record_pulse_recommendation
       - record_pulse_result

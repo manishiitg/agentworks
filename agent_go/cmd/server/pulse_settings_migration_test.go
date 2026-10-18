@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"strings"
 	"testing"
 )
@@ -24,7 +25,7 @@ func TestPulseSettingsMigrationKeepsOutwardAuthority(t *testing.T) {
 	}
 	for _, c := range cases {
 		raw := []byte(`{"pulse":{"enabled":true,"pace":"calm","autonomy":` + c.autonomy + `},"schedules":[{"id":"daily","enabled":true,"pulse_mode":"off"}]}`)
-		migrated, changed := normalizePulseSettingsJSON(raw)
+		migrated, changed := workflowtypes.NormalizePulseSettingsJSON(raw)
 		if !changed {
 			t.Fatalf("legacy data not normalized: %s", raw)
 		}
@@ -48,12 +49,12 @@ func TestPulseSettingsMigrationKeepsOutwardAuthority(t *testing.T) {
 				t.Fatalf("retired setting retained: %s", migrated)
 			}
 		}
-		if _, again := normalizePulseSettingsJSON(migrated); again {
+		if _, again := workflowtypes.NormalizePulseSettingsJSON(migrated); again {
 			t.Fatalf("not idempotent: %s", migrated)
 		}
 	}
 	raw := []byte(`{"pulse":{"enabled":false,"outward_actions":"ask"},"schedules":[{"id":"legacy","enabled":true,"pulse_mode":"full"},{"id":"review","enabled":true,"pulse_review_only":true}]}`)
-	migrated, _ := normalizePulseSettingsJSON(raw)
+	migrated, _ := workflowtypes.NormalizePulseSettingsJSON(raw)
 	var result struct {
 		Pulse     struct{ Enabled bool }
 		Schedules []struct {

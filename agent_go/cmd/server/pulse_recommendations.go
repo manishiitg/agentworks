@@ -19,7 +19,7 @@ import (
 // phase 3, owner 2026-10-07). On a workflow with a goal, the Pulse and daily
 // goal-check turns attach a structured recommendation to each pending
 // decision: the option, why, the evidence, a confidence, what it blocks and,
-// only when the default is safe and within the autonomy levels, a "safe
+// only when the default is safe and within Pulse permissions, a "safe
 // default by" time. The owner confirms it with one click (Accept) or changes
 // it. Pulse never answers: humanAnswerScope still refuses Pulse, scheduled and
 // background sessions, and the recommendation is stored apart from the
@@ -414,7 +414,7 @@ func goalLeadAgentContext(ctx context.Context, workspacePath string) map[string]
 		"answer_mode":            "recommend",
 		"recent_owner_decisions": goalLeadRecentOwnerDecisions(ctx, workspacePath),
 		"decisions_to_recommend": toRecommend,
-		"decisions_note":         "Pending decision requests. For each, call record_pulse_recommendation once (refresh it only on new evidence): the option, why, evidence, confidence, what it blocks, and safe_default_by only when that default is safe and within the autonomy levels. You never answer a decision; the owner accepts or changes your recommendation. Say you do not know the owner's preference instead of guessing it.",
+		"decisions_note":         "Pending decision requests. For each, call record_pulse_recommendation once (refresh it only on new evidence): the option, why, evidence, confidence, what it blocks, and safe_default_by only when that default is safe and within Pulse permissions. You never answer a decision; the owner accepts or changes your recommendation. Say you do not know the owner's preference instead of guessing it.",
 		"outcomes_due":           outcomesDue,
 		"outcomes_note":          "Decisions the owner answered over a day ago with no outcome yet: record what happened after with record_pulse_decision_outcome (from runs and goal readings), and a lesson in goal memory when there is one.",
 		// Current focus areas; retired separate QA requests remain historical.
@@ -510,7 +510,7 @@ func createGoalLeadTools() []llmtypes.Tool {
 	return []llmtypes.Tool{
 		{Type: "function", Function: &llmtypes.FunctionDefinition{
 			Name:        "record_pulse_recommendation",
-			Description: "The Pulse's recommended answer to one pending decision request on this workflow (PLAT-697): the option, why, the evidence, confidence, what it blocks, and safe_default_by only when that default is safe (high confidence) and within the autonomy levels. It is shown on the decision in Needs you; the owner accepts it with one click or changes it. It is never an answer: you cannot answer decisions, and nothing is applied until the owner answers. Re-recording replaces your earlier recommendation. Say you do not know the owner's preference instead of guessing it; goal memory holds what the owner already said.",
+			Description: "The Pulse's recommended answer to one pending decision request on this workflow (PLAT-697): the option, why, the evidence, confidence, what it blocks, and safe_default_by only when that default is safe (high confidence) and within Pulse permissions. It is shown on the decision in Needs you; the owner accepts it with one click or changes it. It is never an answer: you cannot answer decisions, and nothing is applied until the owner answers. Re-recording replaces your earlier recommendation. Say you do not know the owner's preference instead of guessing it; goal memory holds what the owner already said.",
 			Parameters: llmtypes.NewParameters(map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -522,7 +522,7 @@ func createGoalLeadTools() []llmtypes.Tool {
 					"evidence":        map[string]interface{}{"type": "string", "description": "Evidence: dated results, readings, run ids, files, goal memory lines."},
 					"confidence":      map[string]interface{}{"type": "string", "enum": []string{"low", "medium", "high"}},
 					"blocks":          map[string]interface{}{"type": "string", "description": "What waits on this decision, in plain words, e.g. \"Friday's growth run\"."},
-					"safe_default_by": map[string]interface{}{"type": "string", "description": "RFC3339 or YYYY-MM-DD. Only when the recommended option is safe to apply if the owner does not answer, with high confidence and within the autonomy levels. Shown to the owner; never applied automatically yet."},
+					"safe_default_by": map[string]interface{}{"type": "string", "description": "RFC3339 or YYYY-MM-DD. Only when the recommended option is safe to apply if the owner does not answer, with high confidence and within Pulse permissions. Shown to the owner; never applied automatically yet."},
 				},
 				"required": []string{"workspace_path", "input_id", "why", "confidence"},
 			}),

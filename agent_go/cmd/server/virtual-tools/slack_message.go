@@ -27,7 +27,7 @@ func handleSlackMessage(ctx context.Context, args map[string]interface{}) (strin
 		return "", fmt.Errorf("Slack messaging service unavailable")
 	}
 	if common.OutwardHeld(ctx) {
-		return "", fmt.Errorf("send_slack_message refused: the Outward permission is ask for this turn (pulse.autonomy.outward). Prepare the message and create a decision request (create_human_input_request) for the user to approve it")
+		return "", fmt.Errorf("send_slack_message refused: the Outward permission is ask for this turn (pulse.outward_actions). Prepare the message and create a decision request (create_human_input_request) for the user to approve it")
 	}
 	return send(ctx, args)
 }

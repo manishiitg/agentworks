@@ -801,6 +801,7 @@ export interface PulseGoalStatus {
   /** Only enabled Pulse workflows receive this targeted migration check. */
   measurement_upgrade?: { required: boolean; reasons: string[] }
   latest_check?: {
+    report_only?: boolean
     checked_at: string
     status: 'on_track' | 'at_risk' | 'off_track' | 'not_measured'
     key_number?: string
@@ -837,7 +838,6 @@ export interface PulseGoalWorkItem {
 /** The workflow's own Pulse schedule. Normal schedules only back up, publish
  * and notify; the full Pulse runs here and, in self mode, picks its own next time. */
 export interface PulseNextRun {
-  mode: 'self' | 'fixed'
   next_at?: string
   reason?: string
   last_started_at?: string
@@ -3610,8 +3610,8 @@ export interface ScheduledJob {
   gmail?: { connection_id: string; address: string; reply: boolean; filters?: GmailInboundFilters; rules?: GmailInboundRule[] }
   after_run?: ScheduleAfterRun
   /** Legacy, read for one release; kept in step with after_run. */
-  pulse_mode?: 'off' | 'basic' | 'full'
-  pulse_mode_reason?: string
+
+
   id: string
   name: string
   description: string
@@ -3675,7 +3675,7 @@ export interface ScheduledJob {
   last_result?: string
   // Pulse schedules synthesize their run-specific messages from current
   // evidence; they intentionally do not persist ordinary messages[].
-  pulse_review_only?: boolean
+
   created_at?: string
   updated_at?: string
   built_in?: boolean
@@ -3685,8 +3685,8 @@ export interface ScheduledJob {
 
 export interface CreateScheduledJobRequest {
   after_run?: ScheduleAfterRun
-  pulse_mode?: 'off' | 'basic' | 'full'
-  pulse_mode_reason?: string
+
+
   run_destination?: 'crew_chat' | 'isolated'
   name: string
   description?: string
@@ -3717,13 +3717,13 @@ export interface CreateScheduledJobRequest {
   cron_expression?: string
   timezone?: string
   enabled?: boolean
-  pulse_review_only?: boolean
+
 }
 
 export interface UpdateScheduledJobRequest {
   after_run?: ScheduleAfterRun
-  pulse_mode?: 'off' | 'basic' | 'full'
-  pulse_mode_reason?: string
+
+
   name?: string
   description?: string
   trigger_payload?: Record<string, unknown>
@@ -3967,7 +3967,7 @@ export interface WorkflowScheduleEntry {
   workshop_mode?: 'run' | 'optimizer' | string
   query?: string
   resume_previous?: boolean
-  pulse_review_only?: boolean
+
 }
 
 export interface DiscoveredWorkflow {

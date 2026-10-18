@@ -36,7 +36,6 @@ var pulseReviewerWriteToolNames = []string{
 // pulseScheduleToolNames drive the workflow's own Pulse schedule: a Pulse pass
 // chooses its next run, and a normal run's finalizer can ask for it earlier.
 var pulseScheduleToolNames = []string{
-	"record_pulse_next_run",
 	"record_pulse_fast_request",
 	// Goal Work items and constraint challenges (docs/design/pulse_goal_work.md).
 	"record_pulse_goal_work",

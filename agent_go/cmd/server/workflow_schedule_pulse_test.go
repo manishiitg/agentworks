@@ -16,7 +16,7 @@ func TestExplicitSchedulePulseMigration(t *testing.T) {
 	if len(plan) != 9 || plan[0].to != workflowContractExplicitSchedulePulseVersion || plan[0].label != "upgrade-explicit-schedule-pulse" || plan[1].to != workflowContractNestedAgentArtifactsVersion || plan[2].to != workflowContractManagedDBScriptsVersion || plan[3].to != workflowContractStepDescriptionLayoutVersion {
 		t.Fatalf("unexpected migration: %+v", plan)
 	}
-	for _, want := range []string{"pulse_mode_reason", "disabled schedules", "calendar schedules", "retained", "Do not change cron", "Do not execute the workflow", "do not stamp", "token cost", "multiple runs"} {
+	for _, want := range []string{"after_run", "disabled schedules", "calendar schedules", "retained", "Do not change cron", "Do not execute the workflow", "do not stamp", "token cost", "multiple runs"} {
 		if !strings.Contains(plan[0].query, want) {
 			t.Errorf("missing migration requirement %q", want)
 		}
@@ -46,41 +46,14 @@ func TestRetiredMarkersStillRequireCurrentNestedArtifactMigration(t *testing.T) 
 	}
 }
 
-func TestExplicitSchedulePulseManifestBoundary(t *testing.T) {
-	m := NewWorkflowManifest("Pulse policy")
-	m.Version = "1.0.40"
+// A workflow already stamped before retirement remains loadable; runtime
+// validation does not repeat the stamp prerequisites.
+func TestStampedScheduleWithoutRetiredPulseFieldsStillValidates(t *testing.T) {
+	m := NewWorkflowManifest("Example")
+	m.Version = WorkflowContractCurrentVersion
 	m.Schedules = []WorkflowSchedule{{ID: "daily", CronExpression: "0 9 * * *", GroupNames: []string{"prod"}}}
 	if err := ValidateManifest(m); err != nil {
-		t.Fatalf("legacy must remain migratable: %v", err)
-	}
-	m.Version = WorkflowContractCurrentVersion
-	if err := ValidateManifest(m); err == nil {
-		t.Fatal("current contract accepted inherited policy")
-	}
-	m.Schedules[0].PulseMode = "basic"
-	if err := ValidateManifest(m); err == nil {
-		t.Fatal("current contract accepted missing reason")
-	}
-	m.Schedules[0].PulseModeReason = "Frequent operations need backup and summary; reviews are unnecessary on every occurrence"
-	if err := ValidateManifest(m); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestPulsePolicyUsesMigratedScheduleForCurrentRun(t *testing.T) {
-	m := NewWorkflowManifest("Pulse policy")
-	m.Schedules = []WorkflowSchedule{{ID: "daily", PulseMode: "basic", PulseModeReason: "Routine"}}
-	ctx := &ScheduleContext{Schedule: WorkflowSchedule{ID: "daily", PulseMode: "full"}}
-	if got := effectiveSchedulePulseMode(ctx, m); got != "basic" {
-		t.Fatalf("stale preflight policy: %s", got)
-	}
-	m.Schedules[0].PulseMode = "off"
-	if shouldRunPulseLifecycle(ctx, m) {
-		t.Fatal("new off policy ignored")
-	}
-	ctx.ForcePulseReview = true
-	if got := effectiveSchedulePulseMode(ctx, m); got != "full" {
-		t.Fatal("manual review lost explicit override")
 	}
 }
 
@@ -102,7 +75,7 @@ func TestScheduleCallbacksRequireAndPersistPulsePolicy(t *testing.T) {
 	}
 	// PLAT-697 phase 0: a schedule names after_run; without it a new
 	// schedule gets backup, publish and notify, and pulse_mode follows.
-	policy := workflow.ScheduleRuntimePolicy{PulseMode: "basic", PulseModeReason: "Frequent routine processing; backup and summary only"}
+	policy := workflow.ScheduleRuntimePolicy{}
 	if _, err := create(policy); err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +87,7 @@ func TestScheduleCallbacksRequireAndPersistPulsePolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(saved.Schedules) != 3 || saved.Schedules[1].PulseModeReason != policy.PulseModeReason || saved.Schedules[2].PulseMode != "basic" {
+	if len(saved.Schedules) != 3 || saved.Schedules[1].PulseMode != "" || saved.Schedules[2].PulseMode != "" {
 		t.Fatalf("policy not persisted: %+v", saved.Schedules)
 	}
 	if a := saved.Schedules[1].AfterRun; a == nil || !a.Backup || !a.Publish || !a.Notify {
@@ -126,12 +99,7 @@ func TestScheduleCallbacksRequireAndPersistPulsePolicy(t *testing.T) {
 	update := func(id string, p *workflow.ScheduleRuntimePolicy) (string, error) {
 		return callbacks.UpdateSchedule(ctx, id, "", "", "", nil, false, nil, false, nil, "", nil, false, nil, "", nil, nil, p)
 	}
-	if _, err := update(saved.Schedules[1].ID, &workflow.ScheduleRuntimePolicy{SetPulseMode: true, PulseMode: "full"}); err == nil {
-		t.Fatal("mode changed without a new reason")
-	}
-	// Migrate the old disabled schedule while other schedules remain available.
-	policy.SetPulseMode = true
-	policy.SetPulseModeReason = true
+	policy = workflow.ScheduleRuntimePolicy{SetAfterRun: true, AfterRun: workflow.ScheduleAfterRunOptions{Notify: true}}
 	if _, err := update("old-disabled", &policy); err != nil {
 		t.Fatal(err)
 	}
@@ -146,24 +114,5 @@ func TestScheduleCallbacksRequireAndPersistPulsePolicy(t *testing.T) {
 	listing, err := callbacks.ListSchedules(ctx, path)
 	if err != nil || !strings.Contains(listing, "backup=false, publish=false, notify=true") {
 		t.Fatalf("list hides the after-run options: %v %s", err, listing)
-	}
-}
-
-// Found in the live check on 2026-09-23: after retiring pulse_mode=full, every
-// save of a workflow that still stored a legacy full schedule failed
-// validation (social-media, salesoutreach, substack, linkedin, ...). A stored
-// legacy value must keep validating; it runs as basic.
-func TestCurrentManifestWithStoredLegacyFullScheduleStillValidates(t *testing.T) {
-	m := NewWorkflowManifest("Legacy full")
-	m.Version = WorkflowContractCurrentVersion
-	m.Schedules = []WorkflowSchedule{{
-		ID: "weekly", CronExpression: "0 8 * * 1", GroupNames: []string{"prod"}, Enabled: true,
-		PulseMode: "full", PulseModeReason: "Weekly review of accumulated route evidence",
-	}}
-	if err := ValidateManifest(m); err != nil {
-		t.Fatalf("a stored legacy full schedule must not block saving the workflow: %v", err)
-	}
-	if got := m.EffectivePulseMode(m.Schedules[0]); got != schedulePulseModeBasic {
-		t.Fatalf("legacy full runs as %q, want basic", got)
 	}
 }

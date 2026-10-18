@@ -299,9 +299,7 @@ type ScheduleRuntimePolicy struct {
 	// PLAT-697 phase 0). SetAfterRun is true when the call supplied it.
 	AfterRun    ScheduleAfterRunOptions
 	SetAfterRun bool
-	// PulseMode and PulseModeReason are legacy, read for one release.
-	PulseModeReason          string
-	PulseMode                string
+
 	ExecutionMode            string
 	CollisionPolicy          string
 	ConcurrencyMode          string
@@ -315,9 +313,8 @@ type ScheduleRuntimePolicy struct {
 	// Set* is used only by update_schedule. It distinguishes an omitted field
 	// from an explicit empty/zero value, so changing one policy does not erase
 	// the other three.
-	SetExecutionMode            bool
-	SetPulseModeReason          bool
-	SetPulseMode                bool
+	SetExecutionMode bool
+
 	SetCollisionPolicy          bool
 	SetConcurrencyMode          bool
 	SetParallelRiskAcknowledged bool

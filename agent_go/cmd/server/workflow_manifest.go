@@ -277,54 +277,6 @@ type WorkflowPulseConfig struct {
 }
 
 const (
-	defaultPulseMinIntervalHours = 6
-	defaultPulseMaxIntervalHours = 168
-	// defaultPulseFirstRunHour is the local hour of a workflow's first
-	// self-scheduled Pulse when it has not yet chosen a time itself.
-	defaultPulseFirstRunHour = 6
-)
-
-// WorkflowPulseSchedule is the workflow's own Pulse schedule. In "self" mode
-// each Pulse pass chooses its next run (record_pulse_next_run) and the platform
-// only enforces the min/max interval guards. "fixed" pins a cron instead.
-type WorkflowPulseSchedule struct {
-	Timezone         string `json:"timezone,omitempty"`
-	MinIntervalHours int    `json:"min_interval_hours,omitempty"`
-	MaxIntervalHours int    `json:"max_interval_hours,omitempty"`
-}
-
-// EffectivePulseSchedule fills defaults. The timezone falls back to the most
-// common timezone of the workflow's enabled schedules, then the server's.
-func (m *WorkflowManifest) EffectivePulseSchedule() WorkflowPulseSchedule {
-	schedule := WorkflowPulseSchedule{}
-	if schedule.MinIntervalHours <= 0 {
-		schedule.MinIntervalHours = defaultPulseMinIntervalHours
-	}
-	if schedule.MaxIntervalHours <= 0 {
-		schedule.MaxIntervalHours = defaultPulseMaxIntervalHours
-	}
-	if schedule.MaxIntervalHours < schedule.MinIntervalHours {
-		schedule.MaxIntervalHours = schedule.MinIntervalHours
-	}
-	if strings.TrimSpace(schedule.Timezone) == "" && m != nil {
-		counts := map[string]int{}
-		best := ""
-		for _, s := range m.Schedules {
-			tz := strings.TrimSpace(s.Timezone)
-			if !s.Enabled || tz == "" {
-				continue
-			}
-			counts[tz]++
-			if best == "" || counts[tz] > counts[best] {
-				best = tz
-			}
-		}
-		schedule.Timezone = best
-	}
-	return schedule
-}
-
-const (
 	maxPulseFocusAreas      = 10
 	maxPulseFocusAreaLength = 300
 )
@@ -374,7 +326,7 @@ func (m *WorkflowManifest) HasEnabledPulseReviewSchedule() bool {
 }
 
 // PulseEnabled uses only the canonical workflow toggle. Saved legacy signals
-// are converted once by normalizePulseSettingsJSON before manifest decoding.
+// are converted once by workflowtypes.NormalizePulseSettingsJSON before manifest decoding.
 func (m *WorkflowManifest) PulseEnabled() bool {
 	if m == nil {
 		return false
@@ -394,24 +346,10 @@ const (
 	schedulePulseModeFull  = "full"
 )
 
-// EffectivePulseMode returns this schedule's post-run stewardship policy.
-// An omitted pulse_mode intentionally preserves the workflow-wide setting so
-// existing manifests retain their behavior: enabled means full Pulse, disabled
-// means no post-run Pulse work. Explicit schedule values override that default.
+// EffectivePulseMode selects only ordinary after-run housekeeping. Pulse itself
+// is workflow-wide and runs in its continuing conversation.
 func (m *WorkflowManifest) EffectivePulseMode(schedule WorkflowSchedule) string {
-	if m != nil && m.Kind == "relay" {
-		return schedulePulseModeOff
-	}
-	// A normal schedule never runs the full Pulse review; that runs on the
-	// workflow's own Pulse schedule (pulse_schedule.go). Legacy "full" and the
-	// legacy empty-with-Pulse-enabled default both mean basic stewardship.
-	switch schedulepolicy.NormalizePulse(schedule.PulseMode) {
-	case schedulePulseModeOff:
-		return schedulePulseModeOff
-	case schedulePulseModeBasic:
-		return schedulePulseModeBasic
-	}
-	if m.PulseEnabled() {
+	if m.EffectiveAfterRun(schedule).Any() {
 		return schedulePulseModeBasic
 	}
 	return schedulePulseModeOff
@@ -1101,22 +1039,6 @@ func ValidateManifest(m *WorkflowManifest) error {
 		if err := validateScheduleRuntimePolicy(sched); err != nil {
 			return fmt.Errorf("schedules[%d]: %w", i, err)
 		}
-		mode := strings.ToLower(strings.TrimSpace(sched.PulseMode))
-		if m.Kind == "relay" && mode != "" && mode != schedulePulseModeOff {
-			return fmt.Errorf("schedules[%d].pulse_mode must be off for a Flow", i)
-		}
-		if mode != "" && mode != schedulePulseModeOff && mode != schedulePulseModeBasic && mode != schedulePulseModeFull {
-			return fmt.Errorf("schedules[%d].pulse_mode must be off, basic, or full", i)
-		}
-		if m.Kind != "relay" && sched.AfterRun == nil && schedulepolicy.RequiresExplicitPulse(m.Version) {
-			// after_run is the explicit choice now (PLAT-697 phase 0); without
-			// it, a legacy pulse_mode is still required. A persisted legacy
-			// "full" is tolerated (it runs as basic); only authoring paths
-			// reject newly setting it.
-			if err := schedulepolicy.ValidatePulse(schedulepolicy.NormalizePulse(sched.PulseMode), sched.PulseModeReason); err != nil {
-				return fmt.Errorf("schedules[%d]: %w", i, err)
-			}
-		}
 		for _, dependencyID := range scheduleDependencyIDs(sched) {
 			if _, ok := scheduleIDs[dependencyID]; !ok {
 				return fmt.Errorf("schedules[%d] references unknown dependency schedule %q", i, dependencyID)
@@ -1306,7 +1228,7 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 
 	pulseSettingsMigrated := false
 	if !isProductRuntimeManifestWorkspace(workspacePath) && !strings.Contains(filepath.ToSlash(workspacePath), "/.relay_releases/") {
-		if normalized, changed := normalizePulseSettingsJSON([]byte(content)); changed {
+		if normalized, changed := workflowtypes.NormalizePulseSettingsJSON([]byte(content)); changed {
 			content, pulseSettingsMigrated = string(normalized), true
 		}
 	}

@@ -3,9 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('../../services/api', () => ({ agentApi: {}, getApiBaseUrl: () => 'http://127.0.0.1:99999' }))
 vi.mock('../../api/playbooks', () => ({ playbooksApi: { list: vi.fn(), listInstalled: vi.fn() } }))
-import { manualPulseReviewMessage, PulseWorkspace, pulseTabReviewMessage } from './PulseWorkspace'
-import { setProductCommands } from '../../commands/registry'
-import { toAgentworksCommandDefinitions } from '../../commands/agentworksProductCommands'
+import { PulseWorkspace, pulseReviewRequest } from './PulseWorkspace'
 
 describe('PulseWorkspace information hierarchy', () => {
   it('leads with Goal Work for the user and keeps platform upkeep one tap away', () => {
@@ -18,7 +16,7 @@ describe('PulseWorkspace information hierarchy', () => {
         { id: 'GW-2', kind: 'goal_work', title: 'Try a weekly carousel', status: 'idea', links: [], created_at: '2026-09-23', updated_at: '2026-09-23' },
         { id: 'GW-3', kind: 'constraint_challenge', title: 'Longer posts may grow followers', status: 'needs_user', decision_id: 'goal-work-length', constraint_text: 'Posts remain 150-350 words', constraint_class: 'choice', links: [], created_at: '2026-09-23', updated_at: '2026-09-23' },
       ]}
-      autonomy={{ run: 'auto', outward: 'ask', change: 'auto' }} focusAreas={['Find more audience strategies like SaaS Builder']} onSaveFocusAreas={async () => true} />)
+      focusAreas={['Find more audience strategies like SaaS Builder']} onSaveFocusAreas={async () => true} />)
     expect(html).toContain('For you')
     expect(html).toContain('Platform health')
     expect(html).not.toContain('Needs your decision')
@@ -48,28 +46,14 @@ describe('PulseWorkspace information hierarchy', () => {
     expect(html).not.toContain('Run automatically')
   })
 
-  it('routes every manual review through its intended guided command', () => {
-    expect(manualPulseReviewMessage('technical_review')).toContain('kind="engineering-review"')
-    expect(manualPulseReviewMessage('architecture_review', 'Workflow/example')).toContain('workspace_path="Workflow/example"')
-    expect(manualPulseReviewMessage('architecture_review', 'Workflow/example')).toContain('references/architecture-review.md')
-    expect(manualPulseReviewMessage('strategic_review')).toContain('kind="strategy-auditor"')
-    expect(manualPulseReviewMessage('plan_drift_review')).toContain('kind="review-artifact-drift"')
-    expect(() => manualPulseReviewMessage('unknown')).toThrow('Unsupported Pulse review module')
-  })
-
-  it('runs the same product command from a Pulse tab button, with review and fix together', () => {
-    // Before product commands load, the fallback still reviews and fixes.
-    expect(pulseTabReviewMessage('technical_review')).toContain('kind="pulse-fixer"')
-    setProductCommands(toAgentworksCommandDefinitions([{
-      name: 'run-technical-review', description: 'Technical', icon: 'check-circle', aliases: ['pulse-review'], menuHidden: true,
-      prompt: 'Run /run-technical-review as a BACKGROUND task. Review, then fix. Focus: {{context}}',
-    }]))
-    try {
-      const message = pulseTabReviewMessage('technical_review')
-      expect(message).toContain('Run /run-technical-review as a BACKGROUND task')
-      expect(message).toContain('Requested from the Pulse tab.')
-    } finally {
-      setProductCommands([])
+  it('sends every area to the same Pulse rather than a reviewer command', () => {
+    for (const area of ['technical_review', 'architecture_review', 'strategic_review', 'plan_drift_review']) {
+      const request = pulseReviewRequest(area)
+      expect(request).toContain('same Pulse turn')
+      expect(request).toContain('record_pulse_goal_check')
+      expect(request).not.toContain('get_workflow_command_guidance')
+      expect(request).not.toContain('BACKGROUND task')
     }
+    expect(() => pulseReviewRequest('unknown')).toThrow('Unsupported Pulse review area')
   })
 })

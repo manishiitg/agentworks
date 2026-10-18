@@ -209,16 +209,8 @@ func TestManualPulseCommandsKeepRunSetupReviewAndFixBoundariesSeparate(t *testin
 			"A no-issue conclusion is valid",
 		},
 		"strategy-auditor": {
-			// strategic_review is Goal Work (docs/design/pulse_goal_work.md);
-			// the manual command runs the same pass and holds its permission
-			// levels itself because the Builder chat is not runtime-restricted.
-			"STANDALONE GOAL WORK",
-			"without running Pulse Gate, Goal Advisor",
-			"hold the permission levels yourself",
-			"classify\n   individual findings",
-			// data-module="strategy_auditor" was builder/improve.html dashboard
-			// markup, retired along with the rest of that doc.
-			"Do not launch `/goal-advisor` automatically",
+			"continuing Pulse conversation", "at most one coherent change set",
+			"OFF saves weekly suggestions only", "record_pulse_goal_check",
 		},
 		"engineering-review": {
 			"TECHNICAL REVIEW PHASE",
@@ -702,31 +694,12 @@ func TestStrategyAdvisorGuidanceBalancesExplorationEvidenceAndHumanDecisions(t *
 		t.Fatalf("render strategy-auditor: %v", err)
 	}
 	for _, want := range []string{
-		"Goal Work",
-		"whether the workflow is achieving its goal",
-		"doing that work",
-		"get_goal_metrics(workspace_path=...)",
-		`get_pulse_state(view="goal_work")`,
-		"Undone work",
-		"Unknown to the user",
-		"Binding constraints",
-		"if every step ran perfectly",
-		"record_pulse_goal_work",
-		"pulse/work/",
-		"Permission levels",
-		"never delete steps or schedules",
-		"soul.md goals and constraints are never yours to edit",
-		"Never purchase or spend money yourself",
-		"create_human_input_request",
-		"Challenging constraints",
-		"never propose loosening",
-		"Never break a constraint while challenging it",
-		"materially new evidence",
-		"never zero",
-		"Activity (posting more) is not proof of growth",
-		"Never change metric definitions or targets yourself",
-		"record_pulse_finding",
-		"A technical handoff alone is not a Goal Work result",
+		"whether the workflow is achieving its goal", "get_goal_metrics",
+		"at most one coherent improvement change set", "hypothesis",
+		"comparable baseline", "outcome window", "rollback",
+		"record_pulse_goal_work", "record_pulse_goal_check",
+		"Missing readings stay unknown", "Activity (posting more) is not proof of growth",
+		"When OFF", "No edits, runs", "skills", "knowledge base",
 	} {
 		if !containsNormalizedText(auditor, want) {
 			t.Fatalf("Goal Work guidance missing %q:\n%s", want, auditor)

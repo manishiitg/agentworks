@@ -99,26 +99,7 @@ For Gmail, use compact inline-styled `email_html` with readable status chips and
 issue/fix cards for the sections above, not generic prose. Put takeaway first
 and evidence last.
 
-4. **Choose the next Pulse.** Normal workflow runs never run the full Pulse;
-   this workflow's own Pulse schedule does, and this pass chooses its next time.
-   Call `record_pulse_next_run` once with `pulse_run_id`, the time when useful new
-   evidence will exist (an outcome maturing, a pending user decision, an
-   experiment checkpoint, the next run whose results matter) and that reason in
-   one plain sentence for the user. Match the pace to the goal: when the primary
-   goal is far behind (its progress in `get_goal_metrics` is at or near zero,
-   or well short of its target date), come back at the six-hour floor on every
-   pass until it moves, unless nothing at all can change before then; when the
-   goal is behind and Goal Work has work ready or results maturing (its result
-   says when), come back within hours; come back the next
-   day while issues were found or a new test just started; stretch toward a
-   week as the workflow runs clean and the goal is on target. Fixing does not wait for this: fix runs start on their
-   own whenever there is something to fix. The platform keeps it between once
-   a day and once a week and tells you if it moved the time. Then stop.
-
-Use ordinary language. Do not expose manifests, finding IDs, hashes, packet
-names, paths, or state codes in notifications. Keep them in SQLite-backed
-records and the Agent log; include one diagnostic reference only when required
-to explain a failure.
-
-Strategic review, not the finalizer, owns goal interpretation and records it in
-its result. Do not recalculate metrics or invent a second strategy verdict here.
+4. **Save the conclusion and next check.** Use `record_pulse_goal_check` in the
+   same Pulse conversation. ON chooses a useful time within the fixed bounds;
+   OFF saves a weekly suggestions report. There is no separate finalizer clock,
+   repair pass or reviewer. Ordinary schedule housekeeping is separate.

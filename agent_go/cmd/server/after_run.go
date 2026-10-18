@@ -11,7 +11,6 @@ import (
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulepolicy"
 )
 
 // After-run options (PLAT-697 phase 0). Backup, Publish and Notify used to be
@@ -32,7 +31,7 @@ import (
 // pulse_mode is read for one release: a schedule without after_run gets the
 // options its pulse_mode stood for (basic, and the retired full, did all
 // three; off did none), and the migration writes after_run. pulse_mode is
-// kept in step with after_run so an older server reads the same choice.
+// removed by the one-time manifest conversion; saves never recreate it.
 
 // ScheduleAfterRun is a schedule's after-run options.
 type ScheduleAfterRun struct {
@@ -44,30 +43,14 @@ type ScheduleAfterRun struct {
 // Any reports whether any option is on.
 func (a ScheduleAfterRun) Any() bool { return a.Backup || a.Publish || a.Notify }
 
-// afterRunFromPulseMode is what a legacy pulse_mode did after a run. The basic
-// finalizer backed up, published the run's report targets and sent the run
-// summary; legacy full ran as basic after a normal run; off ran nothing.
-func afterRunFromPulseMode(mode string) ScheduleAfterRun {
-	switch schedulepolicy.NormalizePulse(mode) {
-	case schedulePulseModeBasic:
-		return ScheduleAfterRun{Backup: true, Publish: true, Notify: true}
-	}
-	return ScheduleAfterRun{}
-}
-
-// EffectiveAfterRun returns a schedule's after-run options: its after_run, or
-// for one release what its pulse_mode did.
+// EffectiveAfterRun reads the canonical housekeeping settings. The raw manifest
+// converter preserves legacy choices before decoding, once; runtime saves never
+// infer Pulse authority or recreate old per-schedule modes.
 func (m *WorkflowManifest) EffectiveAfterRun(schedule WorkflowSchedule) ScheduleAfterRun {
-	if m != nil && m.Kind == "relay" {
+	if m == nil || m.Kind == "relay" || strings.EqualFold(strings.TrimSpace(schedule.ScheduleType), "webhook") || schedule.AfterRun == nil {
 		return ScheduleAfterRun{}
 	}
-	if strings.EqualFold(strings.TrimSpace(schedule.ScheduleType), "webhook") {
-		return ScheduleAfterRun{}
-	}
-	if schedule.AfterRun != nil {
-		return *schedule.AfterRun
-	}
-	return afterRunFromPulseMode(m.EffectivePulseMode(schedule))
+	return *schedule.AfterRun
 }
 
 // EffectiveManualAfterRun returns the after-run options for manual full runs:
@@ -86,32 +69,9 @@ func (m *WorkflowManifest) EffectiveManualAfterRun() ScheduleAfterRun {
 	}
 }
 
-// syncLegacyPulseMode keeps pulse_mode matching after_run for one release, so
-// an older server (and the contract stamp check) read the same choice.
-func syncLegacyPulseMode(schedule *WorkflowSchedule) {
-	if schedule == nil || schedule.AfterRun == nil {
-		return
-	}
-	if strings.EqualFold(strings.TrimSpace(schedule.ScheduleType), "webhook") {
-		return
-	}
-	mode := schedulePulseModeOff
-	if schedule.AfterRun.Any() {
-		mode = schedulePulseModeBasic
-	}
-	if schedule.PulseMode != mode || strings.TrimSpace(schedule.PulseModeReason) == "" {
-		schedule.PulseMode = mode
-		if strings.TrimSpace(schedule.PulseModeReason) == "" {
-			schedule.PulseModeReason = "Set from the schedule's after-run options (backup, publish, notify)."
-		}
-	}
-}
-
-// setScheduleAfterRun sets a schedule's options and its legacy mirror.
 func setScheduleAfterRun(schedule *WorkflowSchedule, options ScheduleAfterRun) {
 	copied := options
 	schedule.AfterRun = &copied
-	syncLegacyPulseMode(schedule)
 }
 
 // applyScheduleAfterRunPolicy applies a create/update request's after_run.
@@ -125,37 +85,9 @@ func applyScheduleAfterRunPolicy(schedule *WorkflowSchedule, policy stepworkflow
 	switch {
 	case policy.SetAfterRun:
 		setScheduleAfterRun(schedule, ScheduleAfterRun{Backup: policy.AfterRun.Backup, Publish: policy.AfterRun.Publish, Notify: policy.AfterRun.Notify})
-	case creating && strings.TrimSpace(schedule.PulseMode) == "":
+	case creating:
 		setScheduleAfterRun(schedule, ScheduleAfterRun{Backup: true, Publish: true, Notify: true})
-	case creating || policy.SetPulseMode:
-		setScheduleAfterRun(schedule, afterRunFromPulseMode(schedule.PulseMode))
 	}
-}
-
-// MigrateScheduleAfterRun writes after_run on every schedule that has none,
-// from what its pulse_mode did, and keeps a legacy full schedule's workflow on
-// its own Pulse schedule (pulse.enabled). Returns whether anything changed.
-func (m *WorkflowManifest) MigrateScheduleAfterRun() bool {
-	if m == nil || m.Kind == "relay" {
-		return false
-	}
-	changed := false
-	for i := range m.Schedules {
-		schedule := &m.Schedules[i]
-		if schedule.AfterRun != nil || schedule.PulseReviewOnly || strings.EqualFold(strings.TrimSpace(schedule.ScheduleType), "webhook") {
-			continue
-		}
-		if schedule.Enabled && strings.EqualFold(strings.TrimSpace(schedule.PulseMode), schedulepolicy.LegacyFullPulseMode) {
-			if m.Pulse == nil {
-				m.Pulse = &WorkflowPulseConfig{}
-			}
-			m.Pulse.Enabled = true
-		}
-		options := afterRunFromPulseMode(m.EffectivePulseMode(*schedule))
-		setScheduleAfterRun(schedule, options)
-		changed = true
-	}
-	return changed
 }
 
 // effectiveScheduleAfterRun reads the schedule from the freshly read manifest,

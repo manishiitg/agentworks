@@ -13,7 +13,7 @@ cadence. No declaration of which execution drives the metric is required.
 Saved metric `route` metadata must match observations when present; it is not
 proof of executable work or goal contribution. Work with Builder to choose the
 best measurement for the goal and verify actual DB readings and
-history after implementation. Ask for a bounded repair within autonomy;
+history after implementation. Ask for a bounded repair within the current Pulse permissions;
 definitions alone do not establish that measurement works.
 
 1. **What is measured.** `get_goal_metrics`: the primary metric, its unit,

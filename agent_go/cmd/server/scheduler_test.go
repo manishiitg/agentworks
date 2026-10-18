@@ -1238,7 +1238,7 @@ func TestCreateAndUpdatePulseReviewOnlyScheduleSkipsGroupNamesRequirement(t *tes
 	}
 
 	if _, err := callbacks.CreateSchedule(context.Background(), workspacePath, "Periodic Pulse Review", "0 3 * * *", "Asia/Kolkata",
-		nil, nil, "workshop", nil, "", "run", nil, true, todo_creation_human.ScheduleRuntimePolicy{PulseMode: "basic", PulseModeReason: "Legacy compatibility review fixture"}); err != nil {
+		nil, nil, "workshop", nil, "", "run", nil, true, todo_creation_human.ScheduleRuntimePolicy{}); err != nil {
 		t.Fatalf("CreateSchedule(pulseReviewOnly=true) error = %v, want success without group_names", err)
 	}
 	current := readManifest()

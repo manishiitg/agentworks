@@ -443,18 +443,18 @@ func (api *StreamingAPI) externalRunReplyInput(w http.ResponseWriter, r *http.Re
 // needs to choose a trigger target. Payloads and webhook delivery config
 // stay server-side.
 type externalScheduleSummary struct {
-	ID              string   `json:"id"`
-	Name            string   `json:"name"`
-	ScheduleType    string   `json:"schedule_type"`
-	CronExpression  string   `json:"cron_expression,omitempty"`
-	Timezone        string   `json:"timezone,omitempty"`
-	Enabled         bool     `json:"enabled"`
-	GroupNames      []string `json:"group_names,omitempty"`
-	Mode            string   `json:"mode,omitempty"`
-	WorkshopMode    string   `json:"workshop_mode,omitempty"`
-	PulseMode       string   `json:"pulse_mode,omitempty"`
-	CalendarItems   int      `json:"calendar_items,omitempty"`
-	ConcurrencyMode string   `json:"concurrency_mode,omitempty"`
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	ScheduleType   string   `json:"schedule_type"`
+	CronExpression string   `json:"cron_expression,omitempty"`
+	Timezone       string   `json:"timezone,omitempty"`
+	Enabled        bool     `json:"enabled"`
+	GroupNames     []string `json:"group_names,omitempty"`
+	Mode           string   `json:"mode,omitempty"`
+	WorkshopMode   string   `json:"workshop_mode,omitempty"`
+
+	CalendarItems   int    `json:"calendar_items,omitempty"`
+	ConcurrencyMode string `json:"concurrency_mode,omitempty"`
 }
 
 func (api *StreamingAPI) externalListSchedules(w http.ResponseWriter, r *http.Request, workflow DiscoveredWorkflow) {
@@ -469,7 +469,7 @@ func (api *StreamingAPI) externalListSchedules(w http.ResponseWriter, r *http.Re
 			ID: sched.ID, Name: sched.Name, ScheduleType: scheduleTypeOrDefault(sched.ScheduleType),
 			CronExpression: sched.CronExpression, Timezone: sched.Timezone, Enabled: sched.Enabled,
 			GroupNames: sched.GroupNames, Mode: scheduleModeOrDefault(sched.Mode),
-			WorkshopMode: sched.WorkshopMode, PulseMode: manifest.EffectivePulseMode(sched),
+			WorkshopMode:  sched.WorkshopMode,
 			CalendarItems: len(sched.CalendarItems), ConcurrencyMode: sched.ConcurrencyMode,
 		})
 	}

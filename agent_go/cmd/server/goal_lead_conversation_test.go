@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,11 +25,19 @@ func TestGoalLeadCheckContinuesItsConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	manifest := NewWorkflowManifest("Reports")
+	manifest.Pulse = &WorkflowPulseConfig{Enabled: false, OutwardActions: "ask"}
+	raw, _ := json.Marshal(manifest)
+	env.mock.mu.Lock()
+	env.mock.files[manifestPath(ws)] = string(raw)
+	env.mock.mu.Unlock()
+
 	var mu sync.Mutex
 	var sessions []string
 	var requests []map[string]interface{}
 	previousRunner, previousNow := goalLeadTurnRunner, goalLeadNow
-	goalLeadTurnRunner = func(_ context.Context, reqMap map[string]interface{}, sessionID, _ string) (internalSessionTurnResult, error) {
+	saveReport := true
+	goalLeadTurnRunner = func(ctx context.Context, reqMap map[string]interface{}, sessionID, _ string) (internalSessionTurnResult, error) {
 		mu.Lock()
 		defer mu.Unlock()
 		sessions = append(sessions, sessionID)
@@ -36,7 +45,12 @@ func TestGoalLeadCheckContinuesItsConversation(t *testing.T) {
 		if strings.HasPrefix(fmt.Sprint(reqMap["query"]), "the Builder chat (manish): ") {
 			return internalSessionTurnResult{FinalResponse: "I recommend running the growth route today: it has not run for 11 days. Posting more often is the owner's call."}, nil
 		}
-		return internalSessionTurnResult{FinalResponse: "Not measured for 20 days; asked the owner to resume the growth runs."}, nil
+		if saveReport {
+			if _, err := recordPulseGoalCheckFromToolArgs(ctx, map[string]interface{}{"workspace_path": ws, "status": "not_measured", "summary": "Outcome readings are missing. Measure replies before changing the approach.", "next_check_in_hours": float64(1), "next_check_reason": "An earlier question"}); err != nil {
+				return internalSessionTurnResult{}, err
+			}
+		}
+		return internalSessionTurnResult{FinalResponse: "Weekly suggestions saved."}, nil
 	}
 	day := time.Date(2026, 10, 7, 9, 0, 0, 0, time.UTC)
 	goalLeadNow = func() time.Time { return day }
@@ -63,5 +77,22 @@ func TestGoalLeadCheckContinuesItsConversation(t *testing.T) {
 		t.Fatalf("day 2 must resume the conversation: %v", requests[1])
 	}
 	mu.Unlock()
+	stored, _, err := latestPulseGoalCheck(ctx, ws)
+	if err != nil || stored == nil || !stored.ReportOnly {
+		t.Fatalf("weekly report missing: %+v %v", stored, err)
+	}
+	if gap := parseStoredTime(stored.NextCheckAt).Sub(parseStoredTime(stored.CheckedAt)); gap != 7*24*time.Hour {
+		t.Fatalf("OFF allowed an early reminder: %s", gap)
+	}
+	if due := nextPulseCheckForSetting(true, stored); !due.IsZero() {
+		t.Fatalf("enabling Pulse must allow work after a report: %s", due)
+	}
+	// A successful provider exit without a newly saved check is incomplete;
+	// neither the previous report nor a final chat sentence can complete it.
+	saveReport = false
+	result := env.api.scheduler.runGoalLeadPassStep(ctx, sctx, pulseLifecycleStep{label: "goal-check", goalLead: true, query: "Save this week's report"})
+	if result.outcome == pulseLifecycleStepCompleted || result.err == nil || !strings.Contains(result.err.Error(), "without saving") {
+		t.Fatalf("old report completed a new cycle: %+v", result)
+	}
 
 }

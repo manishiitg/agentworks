@@ -54,7 +54,7 @@ func TestManualPulseScheduleContract(t *testing.T) {
 		t.Fatal("one-off Pulse must execute without a recurring Pulse schedule")
 	}
 
-	normalCtx := buildScheduleContext("/tmp/workflow", manifest, WorkflowSchedule{Mode: "workshop", WorkshopMode: "run"})
+	normalCtx := buildScheduleContext("/tmp/workflow", manifest, WorkflowSchedule{Mode: "workshop", WorkshopMode: "run", AfterRun: &ScheduleAfterRun{Backup: true}})
 	normalMessages := scheduledWorkshopMessages(normalCtx)
 	if len(normalMessages) != 1 || !strings.Contains(normalMessages[0], "run_full_workflow") {
 		t.Fatalf("ordinary empty schedule must retain the default workflow message: %v", normalMessages)
@@ -67,26 +67,6 @@ func TestManualPulseScheduleContract(t *testing.T) {
 	manifest.Pulse = &WorkflowPulseConfig{Enabled: true}
 	if !shouldRunPulseLifecycle(normalCtx, manifest) {
 		t.Fatal("ordinary scheduled run must run Pulse when pulse.enabled is true")
-	}
-}
-
-func TestSchedulePulseModeControlsWhetherLifecycleStarts(t *testing.T) {
-	manifest := &WorkflowManifest{Pulse: &WorkflowPulseConfig{Enabled: true}}
-	if shouldRunPulseLifecycle(&ScheduleContext{Schedule: WorkflowSchedule{PulseMode: schedulePulseModeOff}}, manifest) {
-		t.Fatal("pulse_mode=off must suppress every post-run Pulse action even when the workflow default is enabled")
-	}
-	if !shouldRunPulseLifecycle(&ScheduleContext{Schedule: WorkflowSchedule{PulseMode: schedulePulseModeBasic}}, manifest) {
-		t.Fatal("pulse_mode=basic must start the lightweight finalization lifecycle")
-	}
-	if !shouldRunPulseLifecycle(&ScheduleContext{Schedule: WorkflowSchedule{PulseMode: schedulePulseModeFull}}, manifest) {
-		t.Fatal("pulse_mode=full must start the full review lifecycle")
-	}
-	manifest.Pulse.Enabled = false
-	if shouldRunPulseLifecycle(&ScheduleContext{Schedule: WorkflowSchedule{}}, manifest) {
-		t.Fatal("an inherited schedule must suppress Pulse when the workflow default is disabled")
-	}
-	if !shouldRunPulseLifecycle(&ScheduleContext{Schedule: WorkflowSchedule{PulseMode: schedulePulseModeFull}}, manifest) {
-		t.Fatal("pulse_mode=full must override a disabled workflow default")
 	}
 }
 

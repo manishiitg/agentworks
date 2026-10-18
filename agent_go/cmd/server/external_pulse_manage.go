@@ -7,11 +7,11 @@ import (
 
 // Pulse controls over MCP, through the Pulse tab's own handlers and checks:
 // what the tab shows, run Pulse or the goal check now, focus areas and goal
-// memory. Turning Pulse on, its autonomy and pace are settings
+// memory. Turning Pulse on, its outward actions are settings
 // (update_settings pulse); talking to Pulse is builder_pulse_chat.
 
 func externalPulseManageDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_pulse", "Work with a workflow's Pulse (the agent that owns its goal) the way the Pulse tab does. status: goal, latest goal check, findings, focus areas and decisions. run_now: start a Pulse pass now. goal_check_now: run the daily goal check now. focus_area: confirm, reject, add, extend or close a focus area. goal_memory: replace the goal memory text. Turn Pulse on, set autonomy and pace with update_settings (pulse); talk to Pulse with builder_pulse_chat. Changes need owner or editor access; running needs run access.", true, true, map[string]any{
+	add("manage_pulse", "Work with a workflow's Pulse (the agent that owns its goal) the way the Pulse tab does. status: goal, latest goal check, findings, focus areas and decisions. run_now: start a Pulse pass now. goal_check_now: run the daily goal check now. focus_area: confirm, reject, add, extend or close a focus area. goal_memory: replace the goal memory text. Turn Pulse on, set outward actions with update_settings (pulse); talk to Pulse with builder_pulse_chat. Changes need owner or editor access; running needs run access.", true, true, map[string]any{
 		"action": map[string]any{"type": "string", "enum": []any{"status", "run_now", "goal_check_now", "focus_area", "goal_memory"}},
 		"focus": map[string]any{"type": "object", "additionalProperties": false, "description": "For focus_area.", "properties": map[string]any{
 			"action":   map[string]any{"type": "string", "enum": []any{"confirm", "reject", "add", "extend", "close"}},

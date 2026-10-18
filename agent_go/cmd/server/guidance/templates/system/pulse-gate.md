@@ -256,7 +256,7 @@ a separate module.
 ## Decide whether Goal Work (Strategic Review) is due
 
 Goal Work is due on **almost every Pulse pass**. Pulse now chooses its own run
-times (record_pulse_next_run), so a pass normally exists because goal evidence
+times (record_pulse_goal_check), so a pass normally exists because goal evidence
 matured, a decision was answered, or a Goal Work item reached its `check_at`.
 Mark it not due only when all of these hold, and say so in the reason: no new
 producing-run outcomes or metric observations since the last Goal Work, no

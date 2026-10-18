@@ -56,9 +56,17 @@ func TestPulsePermissionsIsEnforcedAtToolDispatch(t *testing.T) {
 		t.Fatalf("a plan edit with change=auto must run: %v", err)
 	}
 	// outward=ask marks the call so argument-dependent senders hold their writes.
-	ctx, err := inTurn(`{}`, "slack")
+	ctx, err := inTurn(`{"pulse":{"enabled":true,"outward_actions":"ask"}}`, "slack")
 	if err != nil || !common.OutwardHeld(ctx) {
 		t.Fatalf("outward=ask must reach the tool as held, err=%v", err)
+	}
+	for _, tool := range []string{"send_message", "ask_builder", "schedule_message_wakeup", "create_human_input_request", "record_pulse_goal_work", "record_goal_observations"} {
+		if _, err := inTurn(`{"pulse":{"enabled":false}}`, tool); err == nil || !strings.Contains(err.Error(), "Pulse is off") {
+			t.Fatalf("OFF report action %s escaped: %v", tool, err)
+		}
+	}
+	if _, err := inTurn(`{"pulse":{"enabled":false}}`, "record_pulse_goal_check"); err != nil {
+		t.Fatalf("OFF cannot save its report: %v", err)
 	}
 	// Outside a Goal Work turn the same session's tools are not held.
 	if _, err := resolve(context.Background(), "execute_step"); err != nil {

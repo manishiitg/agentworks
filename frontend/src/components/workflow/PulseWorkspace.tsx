@@ -9,11 +9,8 @@ import {
 } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import { schedulerApi } from '../../api/scheduler'
-import { findProductCommand } from '../../commands/registry'
-import type { CommandContext } from '../../commands/types'
 import { playbooksApi } from '../../api/playbooks'
 import { useChatStore } from '../../stores/useChatStore'
-import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import type {
   PulseFinalCommandState,
   PulseGoalWorkItem,
@@ -97,40 +94,17 @@ function reviewRunDate(value: string): string {
     : date.toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-// Pulse tab buttons run the same product command a chat user would, so each
-// action has one prompt. The hard-coded text below is only a fallback for when
-// product commands have not loaded yet.
-const PULSE_TAB_COMMANDS: Record<string, string> = {
-  strategic_review: 'run-goal-work',
-  technical_review: 'run-technical-review',
-  plan_drift_review: 'run-plan-drift',
-  architecture_review: 'run-architecture-review',
-}
-
-export function pulseTabReviewMessage(module: string, workspacePath = '<this workflow>'): string {
-  const command = findProductCommand(PULSE_TAB_COMMANDS[module] ?? '', 'workflow', 'workshop')
-  let message = ''
-  command?.execute({
-    beforeSlash: 'Requested from the Pulse tab.',
-    onSubmit: (submitted: string) => { message = submitted },
-    workshopMode: 'workshop',
-  } as unknown as CommandContext)
-  return message || manualPulseReviewMessage(module, workspacePath)
-}
-
-export function manualPulseReviewMessage(module: string, workspacePath = '<this workflow>'): string {
-  switch (module) {
-    case 'strategic_review':
-      return 'Run a Goal Work pass for this workflow now. Call get_workflow_command_guidance(kind="strategy-auditor", focus="Manual Goal Work requested from the Pulse UI") and follow the returned instructions exactly. Run it as a background task so this chat stays responsive.'
-    case 'architecture_review':
-      return `Run a manual Architecture Review for this workflow now. First call record_pulse_result(workspace_path=${JSON.stringify(workspacePath)}, module="architecture_review", pulse_run_id="current", result="running", note_only=true, manual=true, reason="Manual Architecture Review requested from the Pulse UI"). If another Pulse pass owns it, report that collision and stop. Otherwise load read_skill(skills=[{"name":"builder-reference","path":"references/architecture-review.md"}]) and follow it exactly as a read-only review. Persist findings, decisions, impact records, and one terminal architecture_review result with focuses included; do not edit the workflow.`
-    case 'technical_review':
-      return 'Run the Technical Review for this workflow now as a background task. Call get_workflow_command_guidance(kind="engineering-review", focus="Manual Technical Review requested from the Pulse UI") and follow the returned instructions; after the review receipt is saved, call get_workflow_command_guidance(kind="pulse-fixer") and fix every issue it found in the same task, so each ends fixed, not a problem, a decision for the user, or platform-owned.'
-    case 'plan_drift_review':
-      return 'Run the Workflow Review (plan_drift_review) for this workflow now. Call get_workflow_command_guidance(kind="review-artifact-drift", focus="Manual Plan Drift requested from the Pulse UI") and follow the returned instructions exactly. Apply only the bounded compatibility repairs that Plan Drift authorizes.'
-    default:
-      throw new Error(`Unsupported Pulse review module: ${module}`)
+// A focus request goes to the existing Pulse conversation, never to a new
+// reviewer or a Builder fallback command.
+export function pulseReviewRequest(module: string): string {
+  const focus: Record<string, string> = {
+    strategic_review: 'the goal and its approach',
+    technical_review: 'runtime correctness and concrete failures',
+    architecture_review: 'workflow structure and useful simplifications',
+    plan_drift_review: 'plan consistency after changes and dependent artifacts',
   }
+  if (!focus[module]) throw new Error(`Unsupported Pulse review area: ${module}`)
+  return `Check ${focus[module]} in this same Pulse turn. Use your existing skills and evidence; do not launch a separate reviewer. Follow up the current improvement change set before starting another, ask Builder for authorized implementation and receipts, and save the conclusion with record_pulse_goal_check.`
 }
 
 export function PulseWorkspace({
@@ -279,10 +253,11 @@ export function PulseWorkspace({
     if (manualReviewStarting) return
     setManualReviewStarting(module)
     try {
-      await sendWorkspacePaneMessageToChat({ workspacePath, message: pulseTabReviewMessage(module, workspacePath) })
-      useChatStore.getState().addToast(`${module === 'strategic_review' ? 'Goal Work' : module === 'architecture_review' ? 'Architecture Review' : module === 'technical_review' ? 'Technical Review' : 'Workflow Review'} opened in chat`, 'success')
+      await agentApi.sendGoalLeadMessage(workspacePath, pulseReviewRequest(module))
+      void openWorkflowPulseChatTab(workspacePath)
+      useChatStore.getState().addToast(`${module === 'strategic_review' ? 'Goal Work' : module === 'architecture_review' ? 'Architecture Review' : module === 'technical_review' ? 'Technical Review' : 'Plan consistency'} requested in Pulse`, 'success')
     } catch (err) {
-      useChatStore.getState().addToast(err instanceof Error ? err.message : 'Could not start the review', 'error')
+      useChatStore.getState().addToast(err instanceof Error ? err.message : 'Could not ask Pulse for this check', 'error')
     } finally {
       setManualReviewStarting(null)
     }
@@ -420,7 +395,7 @@ export function PulseWorkspace({
         <SoulViewer workspacePath={workspacePath} pulseSummary />
         <GoalProgress workspacePath={workspacePath} impact={impact} />
         <PulseGoalWork workspacePath={workspacePath} items={goalWork}
-          onRunGoalWork={() => { void (goalLeadOwnsReviews ? runPulseGoalWorkNow() : runReviewNow('strategic_review')) }}
+          onRunGoalWork={() => { void runPulseGoalWorkNow() }}
           focusAreas={focusAreas} focusSaving={focusSaving} onSaveFocusAreas={onSaveFocusAreas}
           playbookFocusAreas={playbookFocuses.flatMap(item => item.focusAreas.map(area => ({ area, source: item.playbookTitle })))}
           running={manualReviewStarting === 'strategic_review'} />

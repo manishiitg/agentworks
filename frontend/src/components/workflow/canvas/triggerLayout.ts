@@ -7,7 +7,6 @@ export const TRIGGER_CARD_HEIGHT = 236
 export const triggerNodeID = (id: string) => `workflow-trigger-${id}`
 
 export function triggerRouteSummary(job: ScheduledJob, nodes: WorkflowNode[]) {
-  if (job.pulse_review_only) return { label: 'Pulse review · does not run plan steps', canTrace: false }
   if (job.workshop_mode === 'optimizer') return { label: 'Optimizer · workflow maintenance', canTrace: false }
   if (job.step_id) {
     const node = nodes.find(node => (node.data.step as { id?: string } | undefined)?.id === job.step_id)

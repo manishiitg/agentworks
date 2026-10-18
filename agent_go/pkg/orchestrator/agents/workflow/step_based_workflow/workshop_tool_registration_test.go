@@ -461,3 +461,48 @@ func TestWorkshopRegistersKnowledgeProjectSetupOnlyOnRootBuilder(t *testing.T) {
 		})
 	}
 }
+
+// An old full-mode schedule used to turn an owner's OFF back on after the
+// Builder saved raw workflow.json. Drive the actual registered config tool.
+func TestBuilderPulseOffNormalizesLegacySettingsBeforeEditing(t *testing.T) {
+	agent := newWorkshopDefinitionDraft()
+	controller, root := newPreValidationConcernTestOrchestrator(t)
+	manifestPath := filepath.Join(root, "workflow.json")
+	raw := `{"id":"pulse-settings","pulse":{"enabled":false,"autonomy":{"level":4},"pace":"calm"},"schedules":[{"id":"daily","enabled":true,"pulse_mode":"full"}]}`
+	if err := os.WriteFile(manifestPath, []byte(raw), 0644); err != nil {
+		t.Fatal(err)
+	}
+	session := &WorkshopChatSession{controller: controller, StepRegistry: NewWorkshopStepRegistry(), config: &WorkshopConfig{WorkspacePath: controller.GetWorkspacePath()}}
+	RegisterWorkshopChatTools(agent, session, workshopToolTestLogger{})
+	tool := agent.tools["update_workflow_config"]
+	result, err := tool.Execute(context.Background(), map[string]interface{}{"pulse_enabled": false})
+	if err != nil || !strings.Contains(result, "Pulse is off") {
+		t.Fatalf("OFF update = %q, %v", result, err)
+	}
+	read := func() map[string]interface{} {
+		t.Helper()
+		data, err := os.ReadFile(manifestPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var manifest map[string]interface{}
+		if err := json.Unmarshal(data, &manifest); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), `"pulse_mode"`) || strings.Contains(string(data), `"autonomy"`) || strings.Contains(string(data), `"pace"`) {
+			t.Fatalf("retired settings retained: %s", data)
+		}
+		return manifest["pulse"].(map[string]interface{})
+	}
+	pulse := read()
+	if pulse["enabled"] != false || pulse["outward_actions"] != "allow" {
+		t.Fatalf("OFF or previous outward authority lost: %+v", pulse)
+	}
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{"pulse_outward_actions": "ask"}); err != nil {
+		t.Fatal(err)
+	}
+	pulse = read()
+	if pulse["enabled"] != false || pulse["outward_actions"] != "ask" {
+		t.Fatalf("second setting resurrected Pulse: %+v", pulse)
+	}
+}

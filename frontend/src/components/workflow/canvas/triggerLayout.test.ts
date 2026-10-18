@@ -59,11 +59,8 @@ describe('plan triggers', () => {
     expect(result.nodes.find(node => node.id === 'audit')?.style?.opacity).toBe(0.14)
     expect(result.edges.find(edge => edge.id === 'audit-edge')?.style?.opacity).toBe(0.08)
   })
-  it('does not pretend deleted routes or Pulse jobs execute the plan', () => {
+  it('does not pretend deleted routes execute the plan', () => {
     expect(triggerRouteSummary({ ...job, route_selections: { router: 'deleted' } }, nodes)).toEqual({ label: 'router: deleted (unavailable)', canTrace: false })
-    const pulse = { ...job, pulse_review_only: true }
-    expect(appendTriggerCards(nodes, edges, [pulse], options).edges).toEqual(edges)
-    expect(triggerRouteSummary(pulse, nodes).canTrace).toBe(false)
   })
   it('keeps runtime decisions as possible paths and terminates on loops', () => {
     const result = traceTriggerGraph(nodes, [...edges, { id: 'loop', source: 'review', target: 'router-node' }], { ...job, route_selections: {} })

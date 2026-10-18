@@ -485,27 +485,6 @@ func TestSetWorkflowPulseEnabledRemovesDedicatedSchedule(t *testing.T) {
 	}
 }
 
-func TestEffectivePulseModeHonorsScheduleOverride(t *testing.T) {
-	manifest := &WorkflowManifest{Pulse: &WorkflowPulseConfig{Enabled: true}}
-	// Normal schedules never run the full Pulse; it has its own schedule.
-	if got := manifest.EffectivePulseMode(WorkflowSchedule{}); got != schedulePulseModeBasic {
-		t.Fatalf("inherited enabled Pulse mode = %q, want basic", got)
-	}
-	if got := manifest.EffectivePulseMode(WorkflowSchedule{PulseMode: schedulePulseModeOff}); got != schedulePulseModeOff {
-		t.Fatalf("explicit off Pulse mode = %q, want off", got)
-	}
-	if got := manifest.EffectivePulseMode(WorkflowSchedule{PulseMode: schedulePulseModeBasic}); got != schedulePulseModeBasic {
-		t.Fatalf("explicit basic Pulse mode = %q, want basic", got)
-	}
-	manifest.Pulse.Enabled = false
-	if got := manifest.EffectivePulseMode(WorkflowSchedule{}); got != schedulePulseModeOff {
-		t.Fatalf("inherited disabled Pulse mode = %q, want off", got)
-	}
-	if got := manifest.EffectivePulseMode(WorkflowSchedule{PulseMode: schedulePulseModeFull}); got != schedulePulseModeBasic {
-		t.Fatalf("legacy full Pulse mode = %q, want basic", got)
-	}
-}
-
 // 2026-10-15: a workflow whose workflow.json still carried the retired top-level objective and success_criteria was rewritten on
 // EVERY read (about 270 times a minute): the writer kept every key the schema has no field for, so the prune never removed them.
 func TestReadWorkflowManifestPrunesRetiredTopLevelFieldsOnce(t *testing.T) {

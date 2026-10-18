@@ -2887,23 +2887,6 @@ func createPulseWorklistTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 		return fmt.Sprintf("Issue %s marked %s.", step_based_workflow.NewPulseIssue(finding).ID, status), nil
 	}
 
-	scheduleNextTool := llmtypes.Tool{
-		Type: "function",
-		Function: &llmtypes.FunctionDefinition{
-			Name:        "record_pulse_next_run",
-			Description: "Choose when this workflow's next full Pulse should run, at the end of a Pulse pass. Pick the time when useful new evidence will exist: an outcome maturing, a decision the user must answer, a run whose results matter, or an experiment checkpoint. Give the concrete reason; it is shown to the user. The platform enforces at most one Pulse per min interval (default 6 hours) and at least one per max interval (default weekly) and reports any adjustment. Normal workflow runs never run the full Pulse; this is the only way the next one is chosen.",
-			Parameters: llmtypes.NewParameters(map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"workspace_path": map[string]interface{}{"type": "string", "description": "Workflow-relative path, e.g. Workflow/linkedin."},
-					"next_at":        map[string]interface{}{"type": "string", "description": "RFC3339 time with offset, e.g. 2026-09-25T07:00:00+05:30."},
-					"reason":         map[string]interface{}{"type": "string", "minLength": 1, "description": "Why this time: the evidence that will exist then. One plain sentence for the user."},
-					"pulse_run_id":   map[string]interface{}{"type": "string", "description": "The current Pulse run id."},
-				},
-				"required": []string{"workspace_path", "next_at", "reason"},
-			}),
-		},
-	}
 	goalWorkTool := llmtypes.Tool{
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
@@ -2936,8 +2919,6 @@ func createPulseWorklistTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 	}
 	executors["record_pulse_goal_work"] = recordPulseGoalWorkFromToolArgs
 	categories["record_pulse_goal_work"] = "workflow"
-	executors["record_pulse_next_run"] = recordPulseNextRunFromToolArgs
-	categories["record_pulse_next_run"] = "workflow"
 	fastRequestTool := llmtypes.Tool{
 		Type: "function",
 		Function: &llmtypes.FunctionDefinition{
@@ -2972,7 +2953,7 @@ func createPulseWorklistTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 					"summary":             map[string]interface{}{"type": "string", "minLength": 1, "description": "One or two plain sentences for the owner: progress, your approach judgment/recommendation when reviewed, and the main uncertainty."},
 					"action_taken":        map[string]interface{}{"type": "string", "description": "What you did about it, if anything."},
 					"decision_id":         map[string]interface{}{"type": "string", "description": "The create_human_input_request id when you asked the owner."},
-					"next_check_in_hours": map[string]interface{}{"type": "number", "minimum": 1, "maximum": 168, "description": "When to check the goal next, in hours from now; held within the workflow's pace (calm 24-168, steady 6-72, aggressive 1-24). Pick the earliest useful outcome or approach checkpoint as well as repairs. Earlier future Goal Work check_at dates bound this time within the same pace. Omitted: the pace default (calm 72, steady 24, aggressive 6)."},
+					"next_check_in_hours": map[string]interface{}{"type": "number", "minimum": 1, "maximum": 168, "description": "When to check the goal next, in hours from now; bounded to 6–168 hours (24 when omitted). Pick the earliest useful outcome or approach checkpoint as well as repairs. Earlier Goal Work check_at dates share these bounds. When Pulse is off, the next report is weekly."},
 					"next_check_reason":   map[string]interface{}{"type": "string", "description": "Why that time, in a few words, e.g. \"after tomorrow's 09:00 publish run\"."},
 				},
 				"required": []string{"workspace_path", "status", "summary"},
@@ -2996,7 +2977,7 @@ func createPulseWorklistTools() ([]llmtypes.Tool, map[string]interface{}, map[st
 	executors["record_pulse_focus_area"] = recordPulseFocusAreaFromToolArgs
 	executors["record_pulse_qa_request"] = recordPulseQARequestFromToolArgs
 
-	return append([]llmtypes.Tool{recordFindingTool, mergeIssuesTool, recordTool, stateTool, resultTool, resolveConcernTool, scheduleNextTool, fastRequestTool, goalWorkTool, goalCheckTool}, goalLeadTools...), executors, categories
+	return append([]llmtypes.Tool{recordFindingTool, mergeIssuesTool, recordTool, stateTool, resultTool, resolveConcernTool, fastRequestTool, goalWorkTool, goalCheckTool}, goalLeadTools...), executors, categories
 }
 
 func stringToolArg(args map[string]interface{}, key string) string {

@@ -166,7 +166,7 @@ func recentPulseBuilderAsks(ctx context.Context, workspacePath string, since tim
 func createPulseBuilderAskTool() (llmtypes.Tool, func(context.Context, map[string]interface{}) (string, error)) {
 	tool := llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
 		Name:        pulseBuilderAskToolName,
-		Description: "Send an explicit message to this workflow's Builder chat (the Leader's most recent one, or the assigned Contributor's for route work). Ask what changed or request a change within your permission levels. Returns an inbox/reply address and an acknowledgement. The Builder chooses whether and when to send a reply; final chat text is not forwarded. Read explicit replies with read_agent_messages(inbox_id), assess their evidence and record goal work yourself. Busy Builder chats receive the message after their current turn.",
+		Description: "Send an explicit message to this workflow's Builder chat (the Leader's most recent one, or the assigned Contributor's for route work). Ask what changed or request a change within your current Pulse permissions. Returns an inbox/reply address and an acknowledgement. The Builder chooses whether and when to send a reply; final chat text is not forwarded. Read explicit replies with read_agent_messages(inbox_id), assess their evidence and record goal work yourself. Busy Builder chats receive the message after their current turn.",
 		Parameters: llmtypes.NewParameters(map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{

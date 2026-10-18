@@ -27,7 +27,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browserrelay"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulepolicy"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -12657,21 +12657,19 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				}
 			}
 			newSched := WorkflowSchedule{
-				ID:                       generateScheduleID(),
-				Name:                     name,
-				CronExpression:           cronExpr,
-				Timezone:                 timezone,
-				GroupNames:               groupNames,
-				RouteSelections:          routeSelections,
-				Enabled:                  true,
-				Mode:                     mode,
-				Messages:                 messages,
-				DirectMessagesReason:     directMessagesReason,
-				WorkshopMode:             workshopMode,
-				ResumePrevious:           resumePrevious,
-				PulseReviewOnly:          pulseReviewOnly,
-				PulseMode:                strings.ToLower(strings.TrimSpace(policy.PulseMode)),
-				PulseModeReason:          strings.TrimSpace(policy.PulseModeReason),
+				ID:                   generateScheduleID(),
+				Name:                 name,
+				CronExpression:       cronExpr,
+				Timezone:             timezone,
+				GroupNames:           groupNames,
+				RouteSelections:      routeSelections,
+				Enabled:              true,
+				Mode:                 mode,
+				Messages:             messages,
+				DirectMessagesReason: directMessagesReason,
+				WorkshopMode:         workshopMode,
+				ResumePrevious:       resumePrevious,
+
 				ExecutionMode:            strings.TrimSpace(policy.ExecutionMode),
 				CollisionPolicy:          strings.TrimSpace(policy.CollisionPolicy),
 				ConcurrencyMode:          strings.TrimSpace(policy.ConcurrencyMode),
@@ -12687,9 +12685,6 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				return "", err
 			}
 			applyScheduleAfterRunPolicy(&newSched, policy, true)
-			if err := schedulepolicy.ValidatePulse(newSched.PulseMode, newSched.PulseModeReason); err != nil {
-				return "", err
-			}
 			manifest.Schedules = append(manifest.Schedules, newSched)
 			if err := ValidateManifest(manifest); err != nil {
 				return "", err
@@ -12750,19 +12745,18 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				return "", err
 			}
 			newSched := WorkflowSchedule{
-				ID:                       generateScheduleID(),
-				Name:                     name,
-				ScheduleType:             "calendar",
-				Timezone:                 timezone,
-				CalendarItems:            calendarItems,
-				GroupNames:               groupNames,
-				Enabled:                  true,
-				Mode:                     mode,
-				Messages:                 messages,
-				DirectMessagesReason:     directMessagesReason,
-				WorkshopMode:             workshopMode,
-				PulseMode:                strings.ToLower(strings.TrimSpace(policy.PulseMode)),
-				PulseModeReason:          strings.TrimSpace(policy.PulseModeReason),
+				ID:                   generateScheduleID(),
+				Name:                 name,
+				ScheduleType:         "calendar",
+				Timezone:             timezone,
+				CalendarItems:        calendarItems,
+				GroupNames:           groupNames,
+				Enabled:              true,
+				Mode:                 mode,
+				Messages:             messages,
+				DirectMessagesReason: directMessagesReason,
+				WorkshopMode:         workshopMode,
+
 				CollisionPolicy:          strings.TrimSpace(policy.CollisionPolicy),
 				ConcurrencyMode:          strings.TrimSpace(policy.ConcurrencyMode),
 				ParallelRiskAcknowledged: policy.ParallelRiskAcknowledged,
@@ -12776,9 +12770,6 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				return "", err
 			}
 			applyScheduleAfterRunPolicy(&newSched, policy, true)
-			if err := schedulepolicy.ValidatePulse(newSched.PulseMode, newSched.PulseModeReason); err != nil {
-				return "", err
-			}
 			manifest.Schedules = append(manifest.Schedules, newSched)
 			if err := ValidateManifest(manifest); err != nil {
 				return "", err
@@ -12884,18 +12875,6 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				sched.PulseReviewOnly = *pulseReviewOnly
 			}
 			if policy != nil {
-				if policy.SetPulseMode && !policy.SetAfterRun && strings.ToLower(strings.TrimSpace(policy.PulseMode)) != sched.PulseMode && !policy.SetPulseModeReason && strings.TrimSpace(sched.PulseModeReason) == "" {
-					return "", fmt.Errorf("pulse_mode_reason is required when changing pulse_mode")
-				}
-				if policy.SetPulseModeReason {
-					sched.PulseModeReason = strings.TrimSpace(policy.PulseModeReason)
-				}
-				if policy.SetPulseMode {
-					if strings.EqualFold(strings.TrimSpace(policy.PulseMode), schedulepolicy.LegacyFullPulseMode) {
-						return "", schedulepolicy.ValidatePulse(policy.PulseMode, policy.PulseModeReason)
-					}
-					sched.PulseMode = strings.ToLower(strings.TrimSpace(policy.PulseMode))
-				}
 				if policy.SetExecutionMode {
 					sched.ExecutionMode = strings.TrimSpace(policy.ExecutionMode)
 				}
@@ -12933,20 +12912,6 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 					return "", err
 				}
 				applyScheduleAfterRunPolicy(sched, *policy, false)
-			}
-			// A stored legacy "full" was not chosen in this request: save it as
-			// basic and keep the workflow's review on its own Pulse schedule.
-			if strings.EqualFold(strings.TrimSpace(sched.PulseMode), schedulepolicy.LegacyFullPulseMode) {
-				sched.PulseMode = schedulepolicy.NormalizePulse(sched.PulseMode)
-				if sched.Enabled {
-					if manifest.Pulse == nil {
-						manifest.Pulse = &WorkflowPulseConfig{}
-					}
-					manifest.Pulse.Enabled = true
-				}
-			}
-			if err := schedulepolicy.ValidatePulse(sched.PulseMode, sched.PulseModeReason); err != nil {
-				return "", err
 			}
 			// PLAT-115: a PulseReviewOnly schedule carries no GroupNames — same
 			// reason CreateSchedule skips the group-name requirement for it.

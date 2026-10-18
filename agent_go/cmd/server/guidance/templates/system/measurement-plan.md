@@ -14,7 +14,7 @@ Use `get_goal_metrics` together. Agree the formula/definition, source method,
 unit, fixed dimension/environment scope, point-in-time or period window,
 collection cadence, freshness and evidence needed to verify the number.
 Builder asks Pulse for goal context when uncertain; Pulse uses `ask_builder`
-for implementation or repair within the existing autonomy level. Verify the
+for implementation or repair when Pulse is ON and within its outward-action setting. Verify the
 result through real source-backed DB readings and history, then record the
 agreed meaning, baseline and remaining gaps in goal memory. Setup alone is not
 verified measurement. Do not invent a target or silently change goal meaning.
@@ -82,7 +82,7 @@ a new measurement depend on them.
 Automatic measurement upgrades apply only when this workflow's Pulse is enabled.
 The backend exposes `measurement_upgrade` only for enabled workflows. On the next
 Pulse check, Builder and Pulse review the indicated gaps, migrate the necessary
-ordinary producing steps within existing autonomy, preserve history and verify
+ordinary producing steps within current Pulse permissions, preserve history and verify
 new DB readings. Reuse any pending migration conversation/work; do not start
 duplicate repair runs. Disabled workflows keep their steps and metric definitions
 untouched. Enabling Pulse later makes this check eligible then; a prior disabled

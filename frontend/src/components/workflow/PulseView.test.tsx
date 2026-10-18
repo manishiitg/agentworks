@@ -37,9 +37,6 @@ async function renderView(monitorOn: boolean, hasSoul = true) {
         runSetup={{ schedules: [{ name: 'Daily', type: 'cron', enabled: true, cron_expression: '0 9 * * *', after_run: { backup: true, publish: false, notify: true } }], manual_after_run: { backup: false, publish: false, notify: false } }}
         monitorSaving={false}
         onToggleMonitor={() => {}}
-        disabledReviewModules={[]}
-        reviewModuleSaving={null}
-        onToggleReviewModule={() => {}}
         moduleStates={[]}
         planDriftDue={false}
         planDriftDueItems={[]}
@@ -88,4 +85,5 @@ it.each([[false, true], [true, false]])('shows the owner-managed card when Pulse
   expect(card?.textContent).toContain('Today you manage this workflow');
   expect(card?.textContent).toContain('after: backup, notify');
   expect(host.querySelector('[data-testid="pulse-workspace"]')).toBeNull();
+  if (!monitorOn && hasSoul) expect(host.textContent).toContain('Weekly report');
 });

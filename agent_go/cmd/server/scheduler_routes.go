@@ -14,7 +14,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulepolicy"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 )
@@ -87,10 +86,8 @@ type ScheduledJobResponse struct {
 	HasRunIssue bool   `json:"has_run_issue"`
 	LastResult  string `json:"last_result,omitempty"`
 	// pauseProduct is the pause group of a workflow schedule ("relays" or "agentworks").
-	pauseProduct    string
-	PulseReviewOnly bool   `json:"pulse_review_only,omitempty"`
-	PulseMode       string `json:"pulse_mode,omitempty"`
-	PulseModeReason string `json:"pulse_mode_reason,omitempty"`
+	pauseProduct string
+
 	// AfterRun is the schedule's effective after-run options (PLAT-697 phase 0).
 	AfterRun       *ScheduleAfterRun `json:"after_run,omitempty"`
 	CreatedAt      string            `json:"created_at,omitempty"`
@@ -129,11 +126,9 @@ type CreateScheduleRequest struct {
 	AfterTerminalStatus      string                 `json:"after_terminal_status,omitempty"`
 	AfterDelayMinutes        int                    `json:"after_delay_minutes,omitempty"`
 	DependencyDeadline       string                 `json:"dependency_deadline,omitempty"`
-	PulseReviewOnly          bool                   `json:"pulse_review_only,omitempty"`
-	PulseMode                string                 `json:"pulse_mode,omitempty"`
-	PulseModeReason          string                 `json:"pulse_mode_reason,omitempty"`
-	AfterRun                 *ScheduleAfterRun      `json:"after_run,omitempty"`
-	RunDestination           string                 `json:"run_destination,omitempty"`
+
+	AfterRun       *ScheduleAfterRun `json:"after_run,omitempty"`
+	RunDestination string            `json:"run_destination,omitempty"`
 }
 
 // UpdateScheduleRequest is the request body for updating a schedule.
@@ -164,9 +159,8 @@ type UpdateScheduleRequest struct {
 	AfterTerminalStatus      *string                `json:"after_terminal_status,omitempty"`
 	AfterDelayMinutes        *int                   `json:"after_delay_minutes,omitempty"`
 	DependencyDeadline       *string                `json:"dependency_deadline,omitempty"`
-	PulseMode                *string                `json:"pulse_mode,omitempty"`
-	PulseModeReason          *string                `json:"pulse_mode_reason,omitempty"`
-	AfterRun                 *ScheduleAfterRun      `json:"after_run,omitempty"`
+
+	AfterRun *ScheduleAfterRun `json:"after_run,omitempty"`
 }
 
 type TriggerPulseRequest struct {
@@ -238,19 +232,17 @@ func buildJobResponse(workspacePath string, manifest *WorkflowManifest, sched Wo
 		MissedRunCount:           missed.MissedRunCount,
 		LatestMissedRunAt:        missed.LatestMissedRunAt,
 		MissedRunReason:          missed.MissedRunReason,
-		PulseReviewOnly:          sched.PulseReviewOnly,
-		PulseMode:                sched.PulseMode,
-		PulseModeReason:          sched.PulseModeReason,
-		AfterRun:                 scheduleAfterRunForResponse(manifest, sched),
-		CreatedAt:                manifest.CreatedAt,
-		UpdatedAt:                manifest.UpdatedAt,
+
+		AfterRun:  scheduleAfterRunForResponse(manifest, sched),
+		CreatedAt: manifest.CreatedAt,
+		UpdatedAt: manifest.UpdatedAt,
 	}
 }
 
 // scheduleAfterRunForResponse is the schedule's effective after-run options,
 // or nil for a schedule that has none (webhooks, Flows).
 func scheduleAfterRunForResponse(manifest *WorkflowManifest, sched WorkflowSchedule) *ScheduleAfterRun {
-	if manifest == nil || manifest.Kind == "relay" || strings.EqualFold(strings.TrimSpace(sched.ScheduleType), "webhook") || sched.PulseReviewOnly {
+	if manifest == nil || manifest.Kind == "relay" || strings.EqualFold(strings.TrimSpace(sched.ScheduleType), "webhook") {
 		return nil
 	}
 	options := manifest.EffectiveAfterRun(sched)
@@ -773,10 +765,7 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			http.Error(w, "Flows do not accept group_names; configure variables directly", http.StatusBadRequest)
 			return
 		}
-		// PLAT-115: a PulseReviewOnly schedule never runs the workflow, so it has
-		// no group to validate against — the same reason the chat-facing
-		// create_workflow_schedule tool path skips this validation too.
-		if manifest.Kind != "relay" && !req.PulseReviewOnly {
+		if manifest.Kind != "relay" {
 			req.GroupNames, err = validateScheduleGroupNamesForWorkspace(r.Context(), req.WorkspacePath, req.GroupNames)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -812,9 +801,6 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			AfterTerminalStatus:      strings.TrimSpace(req.AfterTerminalStatus),
 			AfterDelayMinutes:        req.AfterDelayMinutes,
 			DependencyDeadline:       strings.TrimSpace(req.DependencyDeadline),
-			PulseReviewOnly:          req.PulseReviewOnly,
-			PulseMode:                strings.ToLower(strings.TrimSpace(req.PulseMode)),
-			PulseModeReason:          strings.TrimSpace(req.PulseModeReason),
 		}
 		if !strings.EqualFold(strings.TrimSpace(newSched.ScheduleType), "webhook") {
 			policy := stepworkflow.ScheduleRuntimePolicy{}
@@ -825,10 +811,6 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			applyScheduleAfterRunPolicy(&newSched, policy, true)
 		}
 
-		if err := schedulepolicy.ValidatePulse(newSched.PulseMode, newSched.PulseModeReason); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
 		manifest.Schedules = append(manifest.Schedules, newSched)
 		if err := ValidateManifest(manifest); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -935,7 +917,7 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		idx := result.Index
 
 		sched := &manifest.Schedules[idx]
-		legacyFull := strings.EqualFold(strings.TrimSpace(sched.PulseMode), schedulepolicy.LegacyFullPulseMode)
+
 		if req.Name != "" {
 			sched.Name = req.Name
 		}
@@ -1009,22 +991,9 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		if req.ResumePrevious != nil {
 			sched.ResumePrevious = req.ResumePrevious
 		}
-		if req.PulseMode != nil && req.AfterRun == nil && strings.ToLower(strings.TrimSpace(*req.PulseMode)) != sched.PulseMode && req.PulseModeReason == nil && strings.TrimSpace(sched.PulseModeReason) == "" {
-			http.Error(w, "pulse_mode_reason is required when changing pulse_mode", http.StatusBadRequest)
-			return
-		}
-		if req.PulseModeReason != nil {
-			sched.PulseModeReason = strings.TrimSpace(*req.PulseModeReason)
-		}
-		if req.PulseMode != nil {
-			sched.PulseMode = strings.ToLower(strings.TrimSpace(*req.PulseMode))
-		}
-		if req.AfterRun != nil || req.PulseMode != nil {
-			policy := stepworkflow.ScheduleRuntimePolicy{SetPulseMode: req.PulseMode != nil}
-			if req.AfterRun != nil {
-				policy.SetAfterRun = true
-				policy.AfterRun = stepworkflow.ScheduleAfterRunOptions{Backup: req.AfterRun.Backup, Publish: req.AfterRun.Publish, Notify: req.AfterRun.Notify}
-			}
+		if req.AfterRun != nil {
+			policy := stepworkflow.ScheduleRuntimePolicy{SetAfterRun: true,
+				AfterRun: stepworkflow.ScheduleAfterRunOptions{Backup: req.AfterRun.Backup, Publish: req.AfterRun.Publish, Notify: req.AfterRun.Notify}}
 			applyScheduleAfterRunPolicy(sched, policy, false)
 		}
 		if req.ExecutionMode != nil {
@@ -1059,23 +1028,6 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		}
 		if req.DependencyDeadline != nil {
 			sched.DependencyDeadline = strings.TrimSpace(*req.DependencyDeadline)
-		}
-		// A persisted legacy "full" was not chosen in this request; save it as
-		// its effective value. Explicitly requesting full is still rejected.
-		if req.PulseMode == nil {
-			sched.PulseMode = schedulepolicy.NormalizePulse(sched.PulseMode)
-		}
-		// Leaving legacy full keeps the workflow's review: it now runs on the
-		// workflow's own Pulse schedule, so record that intent explicitly.
-		if legacyFull && sched.Enabled && sched.PulseMode != schedulepolicy.LegacyFullPulseMode {
-			if manifest.Pulse == nil {
-				manifest.Pulse = &WorkflowPulseConfig{}
-			}
-			manifest.Pulse.Enabled = true
-		}
-		if err := schedulepolicy.ValidatePulse(sched.PulseMode, sched.PulseModeReason); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
 		}
 		if manifest.Kind != "relay" {
 			validGroupNames, err := validateScheduleGroupNamesForWorkspace(r.Context(), workspacePath, sched.GroupNames)

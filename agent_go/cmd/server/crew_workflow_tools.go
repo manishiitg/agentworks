@@ -355,7 +355,6 @@ func workflowTriggerBinding(ctx context.Context, api *StreamingAPI, workspacePat
 		ID: id, Name: firstNonEmptyTrimmed(name, "Internal invocation"), ScheduleType: "webhook", Timezone: "UTC", Enabled: true,
 		RouteSelections: map[string]string{}, GroupNames: groups, Mode: "workshop", WorkshopMode: "run",
 		CollisionPolicy: "skip", Webhook: &WorkflowWebhookConfig{}, Kind: triggerKindInternal, Caller: &bound,
-		PulseMode: "off", PulseModeReason: "Webhook deliveries skip Pulse, backup and publish.",
 	}
 	latest.Schedules = append(latest.Schedules, sched)
 	if err := ValidateManifest(latest); err != nil {

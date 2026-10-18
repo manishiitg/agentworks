@@ -74,7 +74,7 @@ func handleSendEmail(ctx context.Context, args map[string]interface{}) (string, 
 	// Emailing people the agent chose is an Outward action: with the permission at ask (Pulse Goal Work) the owner
 	// decides first. The tool is held whole, not argument by argument.
 	if common.OutwardHeld(ctx) {
-		return "", fmt.Errorf("send_email refused: the Outward permission is ask for this turn (pulse.autonomy). Create a decision request (create_human_input_request) for sending to anyone else")
+		return "", fmt.Errorf("send_email refused: the Outward permission is ask for this turn (pulse.outward_actions). Create a decision request (create_human_input_request) for sending to anyone else")
 	}
 	nm := services.GetNotificationManager()
 	if nm == nil {

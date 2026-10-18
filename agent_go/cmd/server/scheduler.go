@@ -316,18 +316,6 @@ func (s *SchedulerService) Start(ctx context.Context) error {
 	// Discover all workflows by scanning workspace-docs/Workflow/*/workflow.json
 	workflows := s.discoverWorkflows(ctx)
 	scheduleLogf("[SCHEDULER] Discovered %d workflows with manifests", len(workflows))
-	for i := range workflows {
-		// pulse_mode -> after_run (PLAT-697 phase 0): each schedule keeps
-		// exactly the backup, publish and notify its mode did.
-		afterRun := workflows[i].Manifest.MigrateScheduleAfterRun()
-		if afterRun {
-			if err := WriteWorkflowManifest(ctx, workflows[i].WorkspacePath, workflows[i].Manifest); err != nil {
-				scheduleLogf("[PULSE] Failed to migrate schedules in %s: %v", workflows[i].WorkspacePath, err)
-			} else {
-				scheduleLogf("[PULSE] Migrated after-run options in %s", workflows[i].WorkspacePath)
-			}
-		}
-	}
 	// After-run options for full runs started from a chat (after_run.go).
 	stepworkflow.AfterWorkflowRunHook = func(workspacePath, runFolder, status, sessionID string) {
 		s.runManualAfterRunOptions(workspacePath, runFolder, status, sessionID)
@@ -1672,19 +1660,13 @@ func (s *SchedulerService) triggerPulseRunKind(workspacePath, triggerSource, fix
 	if s.abortCanceledScheduleRunBeforeStart(runCtx, sctx, runtimeKey, runID) {
 		return "", context.Canceled
 	}
-	// Scheduled and manual full Pulses both reset the Pulse schedule's guards;
-	// the new pass chooses the next time with record_pulse_next_run. A fix run
-	// is counted separately and leaves the full Pulse schedule alone.
-	if fixRun {
-		if err := recordPulseFixRunStarted(ctx, workspacePath, runID, fixReason, startTime); err != nil {
-			scheduleLogf("[PULSE] could not record fix run start for %s: %v", workspacePath, err)
-		}
-	} else if sctx.PulseGoalCheck {
-		if err := recordGoalCheckRunStarted(ctx, workspacePath, runID, startTime); err != nil {
-			scheduleLogf("[PULSE] could not record goal check start for %s: %v", workspacePath, err)
-		}
-	} else if err := markPulseStarted(ctx, workspacePath, runID, startTime); err != nil {
-		scheduleLogf("[PULSE] could not record Pulse start for %s: %v", workspacePath, err)
+	// One Pulse clock: every manual or scheduled cycle records its start.
+	// The existing Pulse timestamp also bounds its evidence window.
+	if err := recordGoalCheckRunStarted(ctx, workspacePath, runID, startTime); err != nil {
+		s.logf(sctx, "[PULSE] could not record cycle start: %v", err)
+	}
+	if err := markPulseStarted(ctx, workspacePath, runID, startTime); err != nil {
+		s.logf(sctx, "[PULSE] could not record evidence window: %v", err)
 	}
 
 	go func() {
@@ -2627,7 +2609,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		Reason: startReason,
 		At:     time.Now().UTC(),
 	})
-	if sctx.PulseOnly && !sctx.PulseGoalCheck {
+	if sctx.PulseOnly {
 		// A cron/manual Pulse that starts before the tick loop dispatches a
 		// pending fast request already satisfies the request. Coalescing here
 		// prevents a second review of the same evidence one minute later.
@@ -2839,298 +2821,57 @@ const (
 	pulseLifecycleStopped   pulseLifecycleResult = "stopped"
 )
 
-func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *ScheduleContext, pulseMode, runStatus, runFolder, runSessionID, scheduleRunID, runFailureReason string) (pulseResult pulseLifecycleResult) {
+// runPulseLifecycle separates ordinary after-run housekeeping from Pulse's one
+// continuing conversation. Backup/Publish are the only agent work after a run;
+// notification remains the existing deterministic after-run path.
+func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *ScheduleContext, pulseMode, runStatus, runFolder, runSessionID, scheduleRunID, _ string) (result pulseLifecycleResult) {
 	ctx = costActivityContext(ctx, sctx.OwnerUserID, "pulse", "")
 	if sctx.WebhookInput != nil || strings.EqualFold(sctx.Schedule.ScheduleType, "webhook") {
 		return pulseLifecycleNotRun
 	}
-	pulseResult = pulseLifecyclePartial
-	// Resume the SAME session the workflow run just used, so Pulse continues in the
-	// run's chat thread — the user sees the run and its post-run steward as one
-	// conversation, not a fresh session spun up out of nowhere. Fall back to a new id
-	// only if the run somehow didn't record one.
+	if sctx.PulseOnly || pulseMode != schedulePulseModeBasic {
+		return s.runSinglePulseCycle(ctx, sctx, runSessionID)
+	}
+	result = pulseLifecyclePartial
 	sessionID := strings.TrimSpace(runSessionID)
 	if sessionID == "" {
 		sessionID = s.newScheduleSessionID(sctx)
 	}
-	pulseRunID := sessionID
 	defer func() {
-		if r := recover(); r != nil {
-			s.logf(sctx, "[PULSE] post-run pulse panic (recovered): %v", r)
+		if recovered := recover(); recovered != nil {
+			s.sessionLogf(sctx, sessionID, "[AFTER RUN] housekeeping panic: %v", recovered)
 		}
 	}()
-	baseReqMap := s.buildWorkshopRequest(ctx, sctx, scheduleRunID)
-	if err := initializePulseFinalCommandStates(ctx, sctx.WorkspacePath, pulseRunID); err != nil {
-		s.sessionLogf(sctx, sessionID, "[PULSE] failed to initialize final command state: %v", err)
-		return
-	}
-
-	// Pulse is one continuing agent conversation. Go sends three ordered turns:
-	// Gate, Review+Fix, and Finalize. The selected module's terminal result is
-	// the single durable completion boundary; Go preserves ordering while agents
-	// own the semantic choices and per-finding lifecycle.
-	pulseContext := "A scheduled run of this workflow just finished"
-	if pulseMode == schedulePulseModeBasic {
-		pulseContext = "A run of this workflow just finished; its after-run options need backup or publish, which this one short turn does. This is not a Pulse pass"
-	}
-	if sctx.PulseOnly {
-		pulseContext = "This is a manual Pulse-only review of the latest retained workflow evidence. The workflow was not executed by this action"
-	}
-	if sctx.PulseGoalCheck {
-		pulseContext = "This is the workflow's daily goal check, one short turn. The workflow was not executed by this action"
-	}
-	intro := pulseLifecycleIntro(pulseContext, sctx.WorkspacePath, pulseRunID, runStatus, runFolder)
-
-	// Pulse does not carry contract upgrades. It used to: b4e4fc14 (2026-07-08)
-	// delivered them through this Review+Fix turn, and f58ac5b5 (2026-07-16)
-	// replaced that with the blocking pre-run preflight — "contract upgrades are
-	// a blocking preflight, not post-run cleanup" — without removing the older
-	// path. Both stayed live, and the difference matters: the preflight runs one
-	// rung per turn and re-reads the manifest to verify that exact target before
-	// advancing, while this path concatenated every outstanding rung into a
-	// single review turn with no verification or ordering between them. Observed
-	// on customer-login 2026-08-12, where a failed-open preflight left four
-	// migrations (1.0.21/22/23/25) bundled into one dispatch. The preflight owns
-	// migrations; it retries on the next trigger.
-	//
-	// Pulse shares the scheduler's session, so withdraw any stamp authorization
-	// the preflight left behind rather than letting it outlive its turn.
 	contractupgrade.Revoke(sessionID)
 	defer contractupgrade.Revoke(sessionID)
-	s.sessionLogf(sctx, sessionID, "[PULSE] starting pulse for %s (run_folder=%s status=%s)", sctx.Schedule.ID, runFolder, runStatus)
-	if pulseMode == schedulePulseModeFull && !sctx.PulseGoalCheck {
-		// Retire unowned legacy step observations and hand platform-owned
-		// findings off before Gate reads the backlog. Idempotent.
-		if reconciled, err := stepworkflow.ReconcilePulseActionableBacklog(ctx, sctx.WorkspacePath); err != nil {
-			s.sessionLogf(sctx, sessionID, "[PULSE] backlog reconciliation failed (continuing): %v", err)
-		} else if reconciled.RetiredLegacyObservations > 0 || reconciled.PlatformHandoffs > 0 {
-			s.sessionLogf(sctx, sessionID, "[PULSE] backlog reconciliation retired %d legacy step observation(s) and handed off %d platform finding(s)", reconciled.RetiredLegacyObservations, reconciled.PlatformHandoffs)
-		}
+	if err := initializePulseFinalCommandStates(ctx, sctx.WorkspacePath, sessionID); err != nil {
+		return
 	}
-	introSent := false
-	recoveryNotes := []string{}
-	runStep := func(st pulseLifecycleStep) pulseLifecycleStepRunResult {
-		reqMap := cloneStringInterfaceMap(baseReqMap)
-		markPulseLifecycleTurn(reqMap)
-		query := st.query
-		includesIntro := false
-		if !introSent {
-			priorFailureContext := ""
-			if len(recoveryNotes) > 0 {
-				priorFailureContext = "\n\nPRIOR PULSE FAILURE CONTEXT. Earlier work in this same conversation did not finish cleanly. Preserve partial/failed status honestly and do not claim skipped work succeeded:\n- " + strings.Join(recoveryNotes, "\n- ")
-			}
-			query = intro + priorFailureContext + "\n\n" + query
-			includesIntro = true
-		}
-		reqMap["query"] = query
-		if err := s.api.startSessionInternal(ctx, reqMap, sessionID, sctx.OwnerUserID, nil); err != nil {
-			s.sessionLogf(sctx, sessionID, "[PULSE] step %q did not finish: %v", st.label, err)
-			outcome := pulseLifecycleStepWaitFailed
-			if errors.Is(err, errWorkshopSequenceInterrupted) || errors.Is(err, context.Canceled) {
-				outcome = pulseLifecycleStepInterrupted
-			} else if errors.Is(err, errWorkshopIdleWaitTimeout) {
-				outcome = pulseLifecycleStepTimedOut
-			}
-			return pulseLifecycleStepRunResult{outcome: outcome, err: err}
-		}
-		if includesIntro {
-			introSent = true
-		}
-		s.sessionLogf(sctx, sessionID, "[PULSE] step %q done for %s", st.label, sctx.Schedule.ID)
-		return pulseLifecycleStepRunResult{outcome: pulseLifecycleStepCompleted}
-	}
-	handleStepFailure := func(st pulseLifecycleStep, result pulseLifecycleStepRunResult, needsFollowup bool) string {
-		failureLabel := "failed"
-		if result.outcome == pulseLifecycleStepTimedOut {
-			failureLabel = fmt.Sprintf("made no observable progress for %s", st.idleMaxInactivity())
-		}
-		reason := fmt.Sprintf("Pulse step %s %s", st.label, failureLabel)
-		if result.err != nil && result.outcome != pulseLifecycleStepTimedOut {
-			reason += ": " + result.err.Error()
-		}
-		recoveryNotes = append(recoveryNotes, reason)
-		if needsFollowup {
-			s.sessionLogf(sctx, sessionID, "[PULSE] continuing in the same Pulse conversation after %s", reason)
-		}
-		return reason
-	}
-	abortIfInterrupted := func(st pulseLifecycleStep, result pulseLifecycleStepRunResult) bool {
-		if result.outcome != pulseLifecycleStepInterrupted {
-			return false
-		}
-		reason := fmt.Sprintf("Pulse stopped by user during %s", st.label)
-		pulseResult = pulseLifecycleStopped
-		s.sessionLogf(sctx, sessionID, "[PULSE] %s; no later Review, Fix, Finalize, publish, or notification turn will run", reason)
-		return true
-	}
-
-	// A scheduled Pulse reviews evidence produced by this invocation. A run that
-	// failed still counts; a preflight abort against a pre-existing, untouched
-	// run folder does not. Manual PulseOnly is the intentional exception because
-	// it explicitly reviews retained evidence without executing the workflow.
-	reviewEvidenceAvailable := sctx.ProducedRunEvidence || sctx.PulseOnly
-	if pulseMode == schedulePulseModeFull && !reviewEvidenceAvailable {
-		s.sessionLogf(sctx, sessionID, "[PULSE] workflow did not start in this invocation; skipping Gate, reviewers, Fixer, dashboard and publish")
-	}
-
-	var steps []pulseLifecycleStep
-	if pulseMode == schedulePulseModeBasic {
-		// After-run housekeeping (after_run.go): only the backup and publish
-		// the code check found work for. Notify is sent by code after this
-		// turn; its command is closed after the turn.
-		skip := func(command, reason string) {
-			if _, err := markPulseFinalCommandState(ctx, sctx.WorkspacePath, command, pulseRunID, "skipped", reason); err != nil {
-				s.sessionLogf(sctx, sessionID, "[AFTER RUN] could not mark %s skipped: %v", command, err)
+	for command, selected := range map[string]bool{pulseFinalCommandBackup: sctx.AfterRunBackup, pulseFinalCommandPublish: sctx.AfterRunPublish} {
+		if !selected {
+			if _, err := markPulseFinalCommandState(ctx, sctx.WorkspacePath, command, sessionID, "skipped", "Not selected for this run, or already current."); err != nil {
+				return
 			}
 		}
-		if !sctx.AfterRunBackup {
-			skip(pulseFinalCommandBackup, "Not selected for this run, or nothing changed since the last backup.")
-		}
-		if !sctx.AfterRunPublish {
-			skip(pulseFinalCommandPublish, "Not selected for this run, or the published report is current.")
-		}
-		steps = afterRunHousekeepingSteps(scheduleRunID, sctx.AfterRunBackup, sctx.AfterRunPublish)
-		s.sessionLogf(sctx, sessionID, "[AFTER RUN] housekeeping turn for %s: backup=%v publish=%v", sctx.Schedule.ID, sctx.AfterRunBackup, sctx.AfterRunPublish)
-	} else if !reviewEvidenceAvailable {
-		steps = pulseLifecycleNoRunSteps(pulseRunID, runFailureReason, notificationInstructionsFromCapabilities(sctx.Capabilities))
-	} else if sctx.PulseGoalCheck {
-		// The goal check runs in the workflow's persistent Pulse
-		// conversation (PLAT-697 phase 4), not in this pass's own session.
-		check := pulseLifecycleGoalCheckStep(ctx, sctx.WorkspacePath, pulseRunID, notificationInstructionsFromCapabilities(sctx.Capabilities))
-		check.goalLead = true
-		steps = []pulseLifecycleStep{check}
-		s.sessionLogf(sctx, sessionID, "[PULSE] daily goal check for %s, in the Pulse conversation", sctx.WorkspacePath)
-	} else if sctx.PulseFixRun {
-		// A fix run records its own worklist instead of running the Gate agent
-		// and runs Technical Review+Fix only. Plan Drift belongs in Pulse
-		// and backup/publish/notify are per-schedule after-run options
-		// (PLAT-697 phase 0), so neither is part of a fix run.
-		if err := recordPulseFixRunWorklist(ctx, sctx.WorkspacePath, pulseRunID, sctx.PulseFixReason); err != nil {
-			s.sessionLogf(sctx, sessionID, "[PULSE] fix run could not record its worklist: %v", err)
-		} else {
-			steps = append(steps, pulseLifecycleModuleReviewStep(pulseRunID, pulseModuleTechnicalReview))
-		}
-		s.sessionLogf(sctx, sessionID, "[PULSE] fix run selected %d steps for %s: %s", len(steps), sctx.WorkspacePath, sctx.PulseFixReason)
-	} else {
-		// One Pulse for every Pulse workflow (owner, 2026-10-08): the pass is a
-		// Goal Work turn in the workflow's Pulse conversation. No Gate, no
-		// separate Architecture or Technical reviews or finalizer. Plan Drift
-		// belongs in this same turn; housekeeping is per-schedule.
-		steps = []pulseLifecycleStep{{label: "goal-work", goalLead: true, query: fmt.Sprintf("PULSE GOAL WORK. pulse_run_id=%q. Do a Goal Work pass now with the goal-lead-work skill: check plan drift evidence yourself, follow up earlier items, find what would move the goal, and get one bounded improvement change set done through the Builder chat (ask_builder). Record each item with record_pulse_goal_work. Nothing worth doing is a valid answer.", pulseRunID)}}
-		s.sessionLogf(sctx, sessionID, "[PULSE] Goal Work turn for %s, in the Pulse conversation", sctx.WorkspacePath)
 	}
-
-	// runHeldStep runs a turn; a Goal Work turn holds the session's tools to its
-	// autonomy levels only while it runs (pulse_autonomy_guard.go).
-	runHeldStep := func(st pulseLifecycleStep) pulseLifecycleStepRunResult {
-		if st.goalLead {
-			// The Pulse conversation holds its own tools for the turn.
-			return s.runGoalLeadPassStep(ctx, sctx, st)
-		}
-		if st.goalWork != nil {
-			defer beginGoalWorkTurn(sessionID, *st.goalWork)()
-			s.sessionLogf(sctx, sessionID, "[PULSE] Goal Work tools held to run=%v outward=%v change=%v for %s", st.goalWork.Run, st.goalWork.Outward, st.goalWork.Change, st.label)
-		}
-		return runStep(st)
-	}
-
-	// Index-based (not range) so a late review-fix insertion below is picked
-	// up by the loop that is already in progress — range would have captured
-	// the pre-insertion length and never see it.
-	for i := 0; i < len(steps); i++ {
-		st := steps[i]
-		reviewModule := pulsemodules.ForStepLabel(st.label)
-		isImprovementReview := reviewModule != "" && reviewModule != pulseModulePlanDriftReview
-		if st.label == "finalize" {
-			st.query += s.prepareWorkflowDatabaseBackupSnapshot(ctx, sctx)
-		}
-		// No Pulse turn stamps a contract version, so none of them is granted
-		// one. Revoking after each turn keeps that true even if a future step
-		// starts minting.
-		if isImprovementReview {
-			if err := beginDuePulseReviewRecoveries(ctx, sctx.WorkspacePath, pulseRunID, reviewModule); err != nil {
-				result := pulseLifecycleStepRunResult{outcome: pulseLifecycleStepWaitFailed, err: fmt.Errorf("create Pulse review recovery attempts: %w", err)}
-				handleStepFailure(st, result, i < len(steps)-1)
-				continue
+	s.sessionLogf(sctx, sessionID, "[AFTER RUN] housekeeping for %s backup=%t publish=%t", sctx.Schedule.ID, sctx.AfterRunBackup, sctx.AfterRunPublish)
+	for _, step := range afterRunHousekeepingSteps(scheduleRunID, sctx.AfterRunBackup, sctx.AfterRunPublish) {
+		req := cloneStringInterfaceMap(s.buildWorkshopRequest(ctx, sctx, scheduleRunID))
+		markPulseLifecycleTurn(req)
+		req["query"] = pulseLifecycleIntro("A run finished; do only its selected backup and publish. This is not a Pulse pass", sctx.WorkspacePath, sessionID, runStatus, runFolder) + "\n\n" + step.query + s.prepareWorkflowDatabaseBackupSnapshot(ctx, sctx)
+		if err := s.api.startSessionInternal(ctx, req, sessionID, sctx.OwnerUserID, nil); err != nil {
+			s.sessionLogf(sctx, sessionID, "[AFTER RUN] housekeeping unfinished: %v", err)
+			if errors.Is(err, context.Canceled) || errors.Is(err, errWorkshopSequenceInterrupted) {
+				return pulseLifecycleStopped
 			}
-		}
-		// The Pulse conversation's own agent does each module review in its own
-		// turn, using its own subagents if it wants; there is no separately
-		// launched background reviewer.
-		result := runHeldStep(st)
-		contractupgrade.Revoke(sessionID)
-		if abortIfInterrupted(st, result) {
-			return
-		}
-		if result.outcome == pulseLifecycleStepCompleted && (isImprovementReview || st.label == "plan-drift-review") {
-			var receiptErr error
-			if st.label == "plan-drift-review" {
-				receiptErr = validatePulseDueModuleResultsFor(ctx, sctx.WorkspacePath, pulseRunID, pulseModulePlanDriftReview)
-			} else {
-				receiptErr = validatePulseDueModuleResultsFor(ctx, sctx.WorkspacePath, pulseRunID, reviewModule)
-			}
-			if receiptErr != nil {
-				s.sessionLogf(sctx, sessionID, "[PULSE] %s receipt incomplete; asking the same conversation to reconcile it: %v", st.label, receiptErr)
-				continuation := pulseLifecycleReviewFixContinuationStep(pulseRunID, receiptErr)
-				continuation.goalWork = st.goalWork
-				continuation.goalLead = st.goalLead
-				result = runHeldStep(continuation)
-				if abortIfInterrupted(continuation, result) {
-					return
-				}
-				if result.outcome == pulseLifecycleStepCompleted {
-					var retryErr error
-					if st.label == "plan-drift-review" {
-						retryErr = validatePulseDueModuleResultsFor(ctx, sctx.WorkspacePath, pulseRunID, pulseModulePlanDriftReview)
-					} else {
-						retryErr = validatePulseDueModuleResultsFor(ctx, sctx.WorkspacePath, pulseRunID, reviewModule)
-					}
-					if retryErr != nil {
-						result = pulseLifecycleStepRunResult{outcome: pulseLifecycleStepWaitFailed, err: retryErr}
-					}
-				}
-			}
-			// Only technical_review promises to drain workflow-owned repairs.
-			// A strategic-only review must not fail on unrelated repair debt.
-			if reviewModule == pulseModuleTechnicalReview && result.outcome == pulseLifecycleStepCompleted {
-				if err := validatePulseTechnicalRepairDrain(ctx, sctx.WorkspacePath, pulseRunID); err != nil {
-					result = pulseLifecycleStepRunResult{outcome: pulseLifecycleStepWaitFailed, err: err}
-				}
-			}
-		}
-		if isImprovementReview {
-			// This is intentionally scheduler-owned. A child can write a useful
-			// checkpoint and then time out or exit before its final tool call; an
-			// instruction telling the parent agent to remember that fact is not a
-			// durable recovery mechanism.
-			if recovered, recoveryErr := recordIncompletePulseReviewRecoveries(ctx, sctx.WorkspacePath, pulseRunID, result, reviewModule); recoveryErr != nil {
-				s.sessionLogf(sctx, sessionID, "[PULSE] could not persist incomplete review recovery: %v", recoveryErr)
-				if result.outcome == pulseLifecycleStepCompleted {
-					result = pulseLifecycleStepRunResult{outcome: pulseLifecycleStepWaitFailed, err: fmt.Errorf("persist incomplete Pulse review recovery: %w", recoveryErr)}
-				}
-			} else if len(recovered) > 0 {
-				s.sessionLogf(sctx, sessionID, "[PULSE] persisted recovery for incomplete review module(s): %s", strings.Join(recovered, ", "))
-			}
-		}
-		if result.outcome != pulseLifecycleStepCompleted {
-			handleStepFailure(st, result, i < len(steps)-1)
+			return pulseLifecyclePartial
 		}
 	}
-	if pulseMode == schedulePulseModeBasic {
-		if _, err := markPulseFinalCommandState(ctx, sctx.WorkspacePath, pulseFinalCommandNotify, pulseRunID, "skipped", "The run notification is sent by the platform after the run, not by this turn."); err != nil {
-			s.sessionLogf(sctx, sessionID, "[AFTER RUN] could not close the notify command: %v", err)
-		}
+	if _, err := markPulseFinalCommandState(ctx, sctx.WorkspacePath, pulseFinalCommandNotify, sessionID, "skipped", "The platform sends the run notification separately."); err != nil {
+		return
 	}
-	if len(recoveryNotes) > 0 {
-		pulseResult = pulseLifecyclePartial
-		s.sessionLogf(sctx, sessionID, "[PULSE] pulse finalized partially for %s after %d failed/timed-out step(s)", sctx.Schedule.ID, len(recoveryNotes))
-	} else {
-		pulseResult = pulseLifecycleCompleted
-		s.sessionLogf(sctx, sessionID, "[PULSE] pulse completed for %s", sctx.Schedule.ID)
-	}
-	// Pulse owns its own notification from the durable SQLite state. The popup is
-	// the only Pulse presentation; there is no parallel HTML journal to update.
-	return pulseResult
+	s.sessionLogf(sctx, sessionID, "[AFTER RUN] housekeeping completed for %s", sctx.Schedule.ID)
+	return pulseLifecycleCompleted
 }
 
 // prepareWorkflowDatabaseBackupSnapshot makes the protected live SQLite DB
@@ -3185,7 +2926,7 @@ func workflowBackupRequiresDatabaseSnapshot(config *WorkflowBackupConfig, trigge
 
 type pulseLifecycleStep struct {
 	label, query string
-	// goalWork, when set, are the autonomy levels the server enforces on the
+	// goalWork, when set, are the Pulse permissions the server enforces on the
 	// Pulse session's tools for the length of this turn (Goal Work only).
 	goalWork *stepworkflow.GoalWorkPermissions
 	// goalLead runs the turn in the workflow's Pulse conversation
@@ -3398,7 +3139,7 @@ func pulseModuleReviewParts(module string) (label, reference, contract string) {
 	case pulseModuleArchitectureReview:
 		label, reference, contract = "architecture-review", "architecture-review", "Improve the construction of a working workflow, including evidence-based execution tier/model choices. Use actual quality, retries, cost and latency evidence; preserve explicit user pins and propose measured trials with a checkpoint and rollback through architecture decisions. Runtime does not change tiers from run counts. Research and propose bounded improvements. The one exception (PLAT-556, see architecture-review.md): with focus prompt_design, learning_quality or knowledgebase_design you may apply a pure text-moving consolidation yourself when check_plan_no_loss passes, then run the step once and keep it only if validation passes (else restore_step_from_changelog), and you may set a settled learnings_access=read-write step to read; record each with record_pulse_result consolidations. Behaviour, rule, output and topology changes stay owner proposals. If the worklist evidence carries architecture_scope_excludes, do not touch those steps: Plan Drift owns them this pass."
 	case pulseModuleStrategicReview:
-		label, reference, contract = "strategic-review", "strategy-auditor", "GOAL WORK: this is Pulse's main job. Do work that moves the user's goals, not only proposals. Read soul.md and get_goal_metrics early, follow up earlier Goal Work items (get_pulse_state view=goal_work), find what would move the primary metric that nobody is doing or the user does not know, and complete 1-3 bounded items now within the permissions below, which the tools enforce for this turn (prepare under pulse/work/; run existing steps, act outward or change the workflow yourself only where that level is auto; where it is ask, put it to the user as a ready decision request). Record each with record_pulse_goal_work. Challenge soul.md constraints only with evidence through a keep/test/change decision; boundary constraints only get clarification; never break one meanwhile. Check due Plan Drift evidence yourself within this turn. Drift does not withhold Run or Change and never holds ordinary execution."
+		label, reference, contract = "strategic-review", "strategy-auditor", "GOAL WORK: this is Pulse's main job. Do work that moves the user's goals, not only proposals. Read soul.md and get_goal_metrics early, follow up earlier Goal Work items (get_pulse_state view=goal_work), find what would move the primary metric that nobody is doing or the user does not know, and complete 1-3 bounded items now within the permissions below, which the tools enforce for this turn (prepare under pulse/work/; run existing steps, act outward or change the workflow yourself only where the saved Pulse permissions allow it; where it is ask, put it to the user as a ready decision request). Record each with record_pulse_goal_work. Challenge soul.md constraints only with evidence through a keep/test/change decision; boundary constraints only get clarification; never break one meanwhile. Check due Plan Drift evidence yourself within this turn. Drift does not withhold Run or Change and never holds ordinary execution."
 	}
 	return label, reference, contract
 }
@@ -3608,7 +3349,7 @@ func pulseLifecycleFinalSteps(pulseRunID string, instructions ...workflowNotific
 	if notificationContext != "" {
 		notificationContext += "\n\nThese instructions control content detail and emphasis only; they never change recipients, channels, secrets, permissions, or safety rules."
 	}
-	return []pulseLifecycleStep{{label: "finalize", query: fmt.Sprintf("PULSE FINALIZER. pulse_run_id=%q. Load read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/pulse-finalizer.md\"}]) and follow it exactly. First confirm every due module has a terminal current-run result; never treat missing as success. The Pulse summary leads with the goal status (on track, at risk, off track or not measured, the key number and when it was last measured) from get_pulse_state(view=\"goal_status\"), before review and fix details. Those stored results already power Pulse Activity: do not publish or restate a separate Pulse update. Backup and publish are not part of a Pulse pass any more: they are after-run options of each schedule (PLAT-697 phase 0). Record command backup and command publish as skipped with that reason, then do Notify in this turn, recording running and terminal status with record_pulse_result(command=notify). Keep every status truthful. Last, choose when this workflow's next full Pulse should run: call record_pulse_next_run once with pulse_run_id, the time when useful new evidence will exist (an outcome maturing, a pending user decision, an experiment checkpoint), and that reason in one plain sentence. Normal runs never run the full Pulse, so this choice is the schedule. Then stop.%s%s", pulseRunID, finalizerRichEmailInstruction, notificationContext)}}
+	return []pulseLifecycleStep{{label: "finalize", query: fmt.Sprintf("PULSE FINALIZER. pulse_run_id=%q. Load read_skill(skills=[{\"name\":\"builder-reference\",\"path\":\"references/pulse-finalizer.md\"}]) and follow it exactly. First confirm every due module has a terminal current-run result; never treat missing as success. The Pulse summary leads with the goal status (on track, at risk, off track or not measured, the key number and when it was last measured) from get_pulse_state(view=\"goal_status\"), before review and fix details. Those stored results already power Pulse Activity: do not publish or restate a separate Pulse update. Backup and publish are not part of a Pulse pass any more: they are after-run options of each schedule (PLAT-697 phase 0). Record command backup and command publish as skipped with that reason, then do Notify in this turn, recording running and terminal status with record_pulse_result(command=notify). Keep every status truthful. Record the goal conclusion and next useful check with record_pulse_goal_check, then stop.%s%s", pulseRunID, finalizerRichEmailInstruction, notificationContext)}}
 }
 
 // afterRunHousekeepingSteps is the one short turn a run's after-run options
