@@ -44,7 +44,7 @@ func TestWorkflowSkillsMigrationOverMCPAndBuilder(t *testing.T) {
 	f.write(t, "Workflow/invoices/learnings/chat/main.py", "print('legacy backup')")
 	f.write(t, "Workflow/invoices/learnings/chat/script_metadata.json", `{"history":true}`)
 	f.write(t, "Workflow/invoices/skills/workflow-how-to/SKILL.md", "Existing skill must stay unchanged")
-	_, owner := f.issue(t, "owner")
+	token, owner := f.issue(t, "owner")
 	_, reader := f.issue(t, "reader")
 	revision := func() string {
 		return externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
@@ -56,7 +56,6 @@ func TestWorkflowSkillsMigrationOverMCPAndBuilder(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(f.docs, "Workflow/invoices/skills/workflow-how-to-2")); !os.IsNotExist(err) {
 		t.Fatal("refused migration copied files", err)
 	}
-	token, _ := f.issue(t, "owner")
 	claims, err := accessTokenClaims(token)
 	if err != nil {
 		t.Fatal(err)
