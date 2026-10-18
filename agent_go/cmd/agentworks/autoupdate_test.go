@@ -41,6 +41,19 @@ func newAutoUpdateFixture(t *testing.T) *autoUpdateFixture {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
 	t.Setenv("AGENTWORKS_AUTO_UPDATE", "")
+	enableAutoUpdate := func() { // updates are off by default: the install tests turn them on like a person would
+		path, err := autoUpdateConfigPath()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(path, []byte(`{"enabled":true}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	enableAutoUpdate()
 	const newSHA = "0123456789abcdef0123456789abcdef01234567"
 	fakeBinary := "#!/bin/sh\necho '{\"version\": \"" + newSHA + "\"}'\n"
 	sum := sha256.Sum256([]byte(fakeBinary))
@@ -155,6 +168,9 @@ func TestAutoUpdateOffInstallsNothingAndOnlyTells(t *testing.T) {
 	if err := autoUpdateSetting(f.o, "off"); err != nil {
 		t.Fatal(err)
 	}
+	if path, _ := autoUpdateConfigPath(); os.Remove(path) != nil || autoUpdateOn() {
+		t.Fatal("with no setting saved, automatic updates must be off (owner 2026-10-18)")
+	}
 	if err := runAutoUpdate(f.o); err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +184,7 @@ func TestAutoUpdateOffInstallsNothingAndOnlyTells(t *testing.T) {
 	if line := autoUpdateHookLine(stateRoot(t), time.Now()); !strings.Contains(line, "automatic updates are off") {
 		t.Fatalf("no notice while off: %q", line)
 	}
-	if raw, _ := os.ReadFile(filepath.Join(stateRoot(t), "bridge.log")); !strings.Contains(string(raw), "[UPDATE] told the chat: AgentWorks update available (automatic updates are off)") {
+	if raw, _ := os.ReadFile(filepath.Join(stateRoot(t), "bridge.log")); !strings.Contains(string(raw), "[UPDATE] told the chat: A newer AgentWorks CLI is available (automatic updates are off)") {
 		t.Fatalf("telling the chat was not logged: %s", raw)
 	}
 	if err := autoUpdateSetting(f.o, "on"); err != nil || !autoUpdateOn() {

@@ -99,7 +99,7 @@ func updateCommand(o *options) *cobra.Command {
 			return runUpdate(o, check, force, switchSource || !keepSource)
 		},
 	}
-	cmd.Flags().StringVar(&auto, "auto", "", "Turn automatic updates on or off, or show their state: on, off or status")
+	cmd.Flags().StringVar(&auto, "auto", "", "Turn automatic updates on or off, or show their state: on, off or status (off by default)")
 	cmd.Flags().BoolVar(&autoRun, "auto-run", false, "Run one automatic update check now (what the background helper does)")
 	_ = cmd.Flags().MarkHidden("auto-run")
 	cmd.Flags().BoolVar(&check, "check", false, "Only report whether an update is available")

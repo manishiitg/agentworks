@@ -18,7 +18,8 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 )
 
-// Automatic updates (PLAT-861). The local helper asks `agentworks update --auto-run` for a check every few hours; it
+// Automatic updates (PLAT-861), OFF by default since 2026-10-18: the helper still checks every few hours and announces a newer
+// build, but installs only when the person ran `agentworks update --auto on`. When on it
 // installs the build the person's default login server offers, unless the release is of another compatibility epoch (marked breaking), the person turned
 // this off, or a chat is being delivered to. Anything that needs the person is said once a day on a prompt.
 
@@ -65,22 +66,23 @@ func autoUpdateConfigPath() (string, error) {
 	return filepath.Join(dir, "agentworks", "auto-update.json"), nil
 }
 
-// autoUpdateOn is the person's setting: on unless turned off here or by AGENTWORKS_AUTO_UPDATE=0.
+// autoUpdateOn is the person's setting: off unless turned on here (agentworks update --auto on). AGENTWORKS_AUTO_UPDATE=0 forces
+// it off. Nothing installs itself by default (owner, 2026-10-18); a newer build is only announced.
 func autoUpdateOn() bool {
 	if os.Getenv("AGENTWORKS_AUTO_UPDATE") == "0" {
 		return false
 	}
 	path, err := autoUpdateConfigPath()
 	if err != nil {
-		return true
+		return false
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return true
+		return false
 	}
 	var cfg autoUpdateConfig
 	if json.Unmarshal(raw, &cfg) != nil || cfg.Enabled == nil {
-		return true
+		return false
 	}
 	return *cfg.Enabled
 }
@@ -275,7 +277,7 @@ func runAutoUpdate(o *options) error {
 			st.setNeed(server, "AgentWorks update needs you: "+reason+". Run agentworks update when ready.")
 		case !on:
 			updateLog(root, "skip: automatic updates are off")
-			st.setNeed(server, "AgentWorks update available (automatic updates are off): ask the person to run agentworks update.")
+			st.setNeed(server, "A newer AgentWorks CLI is available (automatic updates are off): run agentworks update, or ask the person to.")
 		case runtime.GOOS == "windows" && !autoUpdateInstallsOnWindows:
 			updateLog(root, "skip: Windows only notifies")
 			st.setNeed(server, "AgentWorks update available: ask the person to run agentworks update.")
