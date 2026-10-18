@@ -15,7 +15,6 @@ For a slash command or matching review/improvement request, call
 conversation context. Follow the returned permitted flow; do not expand user
 authorization. Missing modes or tools require the appropriate Workshop handoff.
 Use `runtime-context` for grounding and durable rule capture. Use
-`pulse-review-fixer` for review/fix lifecycle and real verification; maintain
 existing findings through typed Pulse tools rather than a parallel review log.
 
 
@@ -79,7 +78,7 @@ Run mode consumes existing attachments; configuration changes require Workshop.
 ## Step Config & Analysis (Workshop mode)
 
 - **`update_step_config(step_id, ...)`** — Update servers, tools, skills, learning settings, execution mode, LLMs, locks, review notes, description review state, and read-only `additional_read_paths` grants for declared workflow-relative inputs outside the standard run/db/KB/learnings surfaces.
-- **Pulse Review → Fix** — Scheduled Pulse stays in one main-agent conversation: Gate → Review+Fix → Finalize. Technical maintenance uses one retained executor that reviews, applies only a bounded safe repair when warranted, proportionally verifies it, then persists typed findings, repair outcomes, terminal result, and its `technical_review` receipt before ending. The receipt is durable evidence, not a permission switch or a separate turn. Strategic Review remains a separate read-only task and persists its own result. The parent validates typed state instead of recreating findings from notification prose. Manual `/pulse-review` and every focused `/pulse-review-*` alias use the same retained Review+Fix task; `/pulse-fixer` remains an explicit repair-only recovery command for already reviewed issues.
+- **Pulse** — One continuing conversation checks the goal and evidence, then works with Builder on useful improvements. Use the current goal tools and existing permissions. There are no separate Gate, reviewer or fixer agents. OFF starts no Pulse work.
 - **Objective + success criteria** — Edit `soul/soul.md` directly via shell (fill in the `## Objective` and `## Success Criteria` sections). `soul.md` is stable intent, not architecture: never add step design, provider/tool choices, implementation decisions, inferred assumptions, or a decision log. Optional constraints belong there only when the user explicitly approved them as durable boundaries. `plan.json` owns the current implementation attempt. No dedicated tool — use `diff_patch_workspace_file` or a shell heredoc.
 - **Notification preferences** — Keep execution reporting separate from Pulse reporting. `update_workflow_config(run_notification_instructions="...")` controls the **Run outcome** section: outputs, failures, goal movement, and metrics from the workflow execution. `update_workflow_config(pulse_notification_instructions="...")` controls the **What Pulse did** section: reviews, fixes, recommendations, decisions, backup/publish state, and next actions. If the user explicitly says a preference applies to every notification, save it in both fields. `workflow.json` `capabilities.notifications.run_summary_instructions` and `pulse_summary_instructions` are authoritative and supplied to Workflow Builder and Pulse finalization. Never put notification preferences in `soul/soul.md`; that file owns goal and user-approved outcome constraints, not presentation or delivery behavior. Missing preferences use Pulse defaults.
 - **Notification Gmail sender** — `get_workflow_config` shows the selected sender and available enabled Gmail connection IDs. Set the one workflow Notify sender with `update_workflow_config(notification_gmail_connection_id="<id>")`, or pass `""` to inherit the account default. This controls the FROM account for `record_summary` and `send_email`; run and Pulse recipient lists remain separate, and ordinary workflow Gmail actions can choose their own sender.
@@ -212,9 +211,9 @@ Confirm with the user before skipping backup on a recurring schedule.
 - Tell the agent to skip or use defaults for anything unclear rather than pausing to ask.
 - Never include open-ended questions or `"let me know"` style instructions.
 - **Bad**: `"Run the workflow and ask me which steps to optimize"`.
-- **Good**: `"Review runs/iteration-0 for group-1, collect read-only reliability evidence, then let the parent fixer choose a bounded repair, an approved plan change, a Goal Advisor proposal, or no action."`
+- **Good**: `"Review the current run and database measurements for this group, identify the failing contract, and ask Builder for a bounded evidence-backed repair. Verify the actual result."`
 
-Pulse module cadence is not encoded in schedule JSON. Pulse Gate stores module state in `db/db.sqlite` and decides which modules are due after each normal run.
+Pulse uses its saved next-check time independently of normal schedules. Failed runs can wake the same continuing Pulse conversation when Pulse is ON; there is no module cadence or post-run Gate.
 
 {{end}}
 

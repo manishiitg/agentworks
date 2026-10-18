@@ -105,10 +105,6 @@ export const ACCESS_SECTIONS: PanelSection[] = [
   { id: 'users', label: 'Users', keywords: 'accounts people roles' },
   { id: 'slack', label: 'Slack', keywords: 'slack admin' },
 ]
-export const PULSE_SECTIONS: PanelSection[] = [
-  { id: 'for_you', label: 'For you', keywords: 'pulse findings' },
-  { id: 'platform', label: 'Platform health', keywords: 'issues workflow review drift' },
-]
 export const VAULT_PEOPLE_SECTIONS: PanelSection[] = [
   { id: 'users', label: 'Users', keywords: 'people accounts' },
   { id: 'groups', label: 'Groups', keywords: 'teams' },
@@ -117,7 +113,7 @@ export const VAULT_PEOPLE_SECTIONS: PanelSection[] = [
 /** Sections by panel id, per product. */
 export const WORKFLOW_PANEL_SECTIONS: Partial<Record<string, PanelSection[]>> = {
   mcp: INTEGRATION_SECTIONS, identity: WORKFLOW_IDENTITY_SECTIONS, workshop: AUTOMATION_SECTIONS,
-  knowledge: KNOWLEDGE_SECTIONS, access: ACCESS_SECTIONS, pulse: PULSE_SECTIONS,
+  knowledge: KNOWLEDGE_SECTIONS, access: ACCESS_SECTIONS,
 }
 export const WORK_PANEL_SECTIONS: Partial<Record<string, PanelSection[]>> = {
   mcp: INTEGRATION_SECTIONS, identity: WORK_IDENTITY_SECTIONS, schedules: AUTOMATION_SECTIONS,

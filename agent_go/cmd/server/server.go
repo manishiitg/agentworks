@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/guidancesessions"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"log"
 	"maps"
 	"net"
@@ -19,6 +17,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,11 +25,11 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browserrelay"
-
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-
+	"github.com/joho/godotenv"
+	eventbridge "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/event_bridge"
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/cliupdate"
@@ -42,26 +41,37 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/platformtools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/sparkquillproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminalleases"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/videoproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browserrelay"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/clisecurity"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/gmailinbound"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/guidancesessions"
+	browserinstructions "github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/logger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	orchEvents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	orchtypes "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/types"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsestore"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/voicestt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/workspace/slots"
-
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/agent/codeexec"
+	"github.com/manishiitg/mcpagent/agent/retainedturn"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/mcpagent/llm"
@@ -70,32 +80,12 @@ import (
 	"github.com/manishiitg/mcpagent/oauth"
 	"github.com/manishiitg/mcpagent/observability"
 	"github.com/manishiitg/mcpagent/toolcalllog"
-
+	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/tmuxcapture"
-
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/logger"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
-
-	"github.com/joho/godotenv"
-
-	"strconv"
-
-	eventbridge "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/event_bridge"
-	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
-	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
-	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminalleases"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
-	browserinstructions "github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
-
-	mcpagent "github.com/manishiitg/mcpagent/agent"
-	"github.com/manishiitg/mcpagent/agent/retainedturn"
-	llmproviders "github.com/manishiitg/multi-llm-provider-go"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var (
@@ -1850,19 +1840,6 @@ func runServer(cmd *cobra.Command, args []string) {
 			ownerReport.Scanned, ownerReport.Registered, ownerReport.Registry, ownerReport.Conflicts, ownerReport.Stamped, ownerReport.Current, ownerReport.Skipped, ownerReport.Mismatched, ownerReport.Unsafe, ownerReport.SharedOrphans, len(ownerReport.Failures))
 		for _, failure := range ownerReport.Failures {
 			log.Printf("[OWNER_BACKFILL] failure: %s", failure)
-		}
-	}
-	pulseMigrationCtx, cancelPulseMigration := context.WithTimeout(context.Background(), 10*time.Minute)
-	pulseMigrationReport, pulseMigrationErr := pulsestore.MigrateWorkspaceDatabases(pulseMigrationCtx, fsutil.WorkspaceDocsRoot())
-	cancelPulseMigration()
-	if pulseMigrationErr != nil {
-		log.Printf("[PULSE MIGRATION] deployment scan failed: %v", pulseMigrationErr)
-	} else {
-		log.Printf("[PULSE MIGRATION] scanned=%d migrated=%d current=%d skipped=%d failures=%d",
-			pulseMigrationReport.Scanned, pulseMigrationReport.Migrated, pulseMigrationReport.Current,
-			pulseMigrationReport.Skipped, len(pulseMigrationReport.Failures))
-		for _, failure := range pulseMigrationReport.Failures {
-			log.Printf("[PULSE MIGRATION] blocked database=%s error=%s", failure.Path, failure.Error)
 		}
 	}
 
@@ -4870,7 +4847,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Create custom tools for workflow agents (workspace tools + human tools).
 		// Workflow agents can be Simple or ReAct agents, tools are registered based on mode.
 		allTools, allExecutors, toolCategories := createCustomTools(true, currentUserID, sessionID, req.SelectedFolder) // Workflow mode: session-aware
-		api.guardPulseResultExecutor(allExecutors, sessionID)
+
 		bindKnowledgebaseStepIdentity(r.Context(), sessionID, allExecutors, toolCategories)
 
 		// NOTE: Workspace executor replacement with session + secrets happens after secrets are merged (see below).
@@ -7023,7 +7000,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					toolCategories[name] = projectCategories[name]
 				}
 			}
-			api.guardPulseResultExecutor(allExecutors, sessionID)
 
 			// Register each custom tool with the agent
 			// This updates the custom-tool registry and invalidates affected API specifications.
@@ -12281,7 +12257,7 @@ func (api *StreamingAPI) buildWorkshopConfig(
 	// (/s/{session_id}/...) so per-tool HTTP calls from inside Docker hit the
 	// session-scoped route and get the correct executor.
 	allTools, allExecutors, toolCategories := createCustomTools(true, currentUserID, sessionID, workspacePath)
-	api.guardPulseResultExecutor(allExecutors, sessionID)
+
 	bindKnowledgebaseStepIdentity(ctx, sessionID, allExecutors, toolCategories)
 	allTools = restrictWorkflowNotificationTools(allTools, allExecutors, toolCategories, workflowNotificationsForPath(workspacePath))
 

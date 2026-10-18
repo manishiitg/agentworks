@@ -294,8 +294,8 @@ retained schedule message. For a route-backed schedule, route_selections own
 what workflow work runs; messages are optional follow-ups only.
 
 The platform owns normal run finalization: backup, execution-report publish,
-run notification, and—when pulse.enabled is true—the post-run Pulse Gate,
-Review, and Fixer. Remove a normal schedule message when it merely tells the
+and run notification. Pulse, when enabled, separately owns goal checks and useful
+work through its continuing conversation. Remove a normal schedule message when it merely tells the
 agent to do any of the following after selected work completes: routine
 measurement, generic completion reporting, backup/status.json updates, Git
 commit/push, report publishing, notification, or Pulse review/fixing. These

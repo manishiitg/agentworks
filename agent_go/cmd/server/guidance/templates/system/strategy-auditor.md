@@ -13,7 +13,7 @@ numerical difference alone does not establish causality. Compare actual windows,
 samples and alternative explanations before claiming an effect.
 
 Find undone work, facts unknown to the user, weak assumptions and binding
-constraints. Research relevant sources, keeping dates and evidence strength.
+constraints. Load `read_skill(skills=[{"name":"builder-reference","path":"references/assumption-audit.md"}])` when a consequential assumption needs checking. Research relevant sources, keeping dates and evidence strength.
 Use search_platform for shared outcomes before rebuilding work already done.
 For plan drift, inspect changed steps and dependents in this same turn; Builder
 performs repairs and saves the existing drift/dependency receipts. There is no

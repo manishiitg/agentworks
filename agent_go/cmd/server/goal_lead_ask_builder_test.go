@@ -29,7 +29,7 @@ func TestPulseMessagesBuilderUnderCurrentAuthorityWithoutCapturedReply(t *testin
 		t.Fatal(err)
 	}
 	env.mock.mu.Lock()
-	env.mock.files[manifestPath(ws)] = fmt.Sprintf(`{"id":%q,"label":"Reports","access":{"owners":["owner"]},"pulse":{"enabled":true,"autonomy":{"level":0}}}`, manifest.ID)
+	env.mock.files[manifestPath(ws)] = fmt.Sprintf(`{"id":%q,"label":"Reports","access":{"owners":["owner"]},"pulse":{"enabled":true,"outward_actions":"ask"}}`, manifest.ID)
 	env.mock.files[ws+"/soul/soul.md"] = "Goal: improve measured outcomes"
 	env.mock.mu.Unlock()
 	conv, err := ensureGoalLeadConversation(ctx, ws, manifest.ID, time.Now().UTC(), false, nil)
@@ -53,7 +53,7 @@ func TestPulseMessagesBuilderUnderCurrentAuthorityWithoutCapturedReply(t *testin
 		}
 		defer releaseAuthority()
 		perms, held := goalWorkTurnPermissions(session)
-		if session != "builder-message-test" || user != "owner" || !held || perms.Run || perms.Change || !strings.Contains(fmt.Sprint(request["query"]), "Explicit reply requested") {
+		if session != "builder-message-test" || user != "owner" || !held || !perms.Run || !perms.Change || perms.Outward || !strings.Contains(fmt.Sprint(request["query"]), "Explicit reply requested") {
 			finished <- fmt.Errorf("wrong receiving identity/authority/message: %s %s %+v held=%v request=%v", session, user, perms, held, request)
 		} else {
 			finished <- nil

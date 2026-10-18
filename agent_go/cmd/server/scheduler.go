@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	"os"
 	"path/filepath"
 	"slices"
@@ -18,10 +17,10 @@ import (
 	"github.com/google/uuid"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/contractupgrade"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	orchestratorevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsemodules"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
@@ -60,10 +59,7 @@ type ScheduleContext struct {
 	// Pulse action. Version preflight still runs before Pulse, which reviews the
 	// latest retained workflow evidence and then executes the normal finalizer.
 	PulseOnly bool
-	// PulseFixRun marks a Pulse fix run (pulse_fix_run.go): no Gate agent,
-	// Technical Review+Fix only, and a light finish. PulseFixReason is why.
-	PulseFixRun    bool
-	PulseFixReason string
+
 	// AfterRunBackup and AfterRunPublish select the after-run housekeeping
 	// turn's actions (after_run.go): only those with something to do.
 	AfterRunBackup  bool
@@ -155,7 +151,7 @@ func scheduleStateLockKeyFromRuntimeKey(runtimeKey string) string {
 	if len(parts) < 3 || parts[0] != "workflow" {
 		return runtimeKey
 	}
-	if parts[2] == manualWorkflowPulseScheduleID || parts[2] == pulseFixRunScheduleID {
+	if parts[2] == manualWorkflowPulseScheduleID {
 		return strings.Join([]string{"workflow-pulse", parts[1]}, scheduleScopeSeparator)
 	}
 	return strings.Join(parts[:2], scheduleScopeSeparator)
@@ -174,7 +170,7 @@ func scheduleStateScope(sctx *ScheduleContext) (scopeType, scopeID, lockKey stri
 		// Pulse at a time per workflow, in parallel with the workflow's own
 		// schedules, never blocking them. Fix runs used to take the workflow
 		// lock and refuse real schedules that came due while they ran.
-		if sctx.Schedule.ID == manualWorkflowPulseScheduleID || sctx.Schedule.ID == pulseFixRunScheduleID {
+		if sctx.Schedule.ID == manualWorkflowPulseScheduleID {
 			return "workflow", scopeID, strings.Join([]string{"workflow-pulse", scopeID}, scheduleScopeSeparator)
 		}
 		if scheduleAllowsParallel(sctx.Schedule) {
@@ -316,26 +312,17 @@ func (s *SchedulerService) Start(ctx context.Context) error {
 	// Discover all workflows by scanning workspace-docs/Workflow/*/workflow.json
 	workflows := s.discoverWorkflows(ctx)
 	scheduleLogf("[SCHEDULER] Discovered %d workflows with manifests", len(workflows))
+	for _, wf := range workflows {
+		if retired, err := retirePulseProjectionTriggers(ctx, wf.WorkspacePath); err != nil {
+			scheduleLogf("[PULSE] Could not retire old projection triggers in %s: %v", wf.WorkspacePath, err)
+		} else if retired > 0 {
+			scheduleLogf("[PULSE] Retired %d projection triggers in %s; saved history unchanged", retired, wf.WorkspacePath)
+		}
+	}
+
 	// After-run options for full runs started from a chat (after_run.go).
 	stepworkflow.AfterWorkflowRunHook = func(workspacePath, runFolder, status, sessionID string) {
 		s.runManualAfterRunOptions(workspacePath, runFolder, status, sessionID)
-	}
-	for _, wf := range workflows {
-		// Reviewer rows are stranded by an interrupted agent process and no
-		// longer represent live work after restart. This cleanup does not infer
-		// backup/publish/notify outcomes; those remain exactly as the agent wrote.
-		reviews, err := finalizeAllRunningPulseReviewLogs(ctx, wf.WorkspacePath, "Pulse interrupted because the server restarted")
-		if err != nil {
-			scheduleLogf("[SCHEDULER] Failed to reconcile stale Pulse review rows in %s: %v", wf.WorkspacePath, err)
-		} else if reviews > 0 {
-			scheduleLogf("[SCHEDULER] Marked %d stale Pulse review row(s) failed in %s", reviews, wf.WorkspacePath)
-		}
-		recoveries, err := finalizeRunningPulseReviewRecoveries(ctx, wf.WorkspacePath, "Pulse interrupted because the server restarted before a terminal module result was recorded")
-		if err != nil {
-			scheduleLogf("[SCHEDULER] Failed to reconcile stale Pulse review recovery attempts in %s: %v", wf.WorkspacePath, err)
-		} else if recoveries > 0 {
-			scheduleLogf("[SCHEDULER] Marked %d interrupted Pulse review attempt(s) recoverable in %s", recoveries, wf.WorkspacePath)
-		}
 	}
 
 	// Reconcile the legacy/UI schedule-runs.json projection from the durable
@@ -536,11 +523,8 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 				// No separate Goal Work clock (owner, 2026-10-08): the goal
 				// check is Pulse's one self-timed turn and does Goal Work when
 				// useful. A failed run still wakes it.
-				s.launchDueFixRuns(context.Background())
 				// Then the daily goal check (PLAT-697).
 				s.launchDueGoalChecks(context.Background())
-				// QA runs the Pulse asked for (PLAT-697 phase 4).
-				s.launchGoalLeadQARequests(context.Background())
 				// Plan Drift is checked inside the same Pulse goal-work turn;
 				// ordinary workflow runs never dispatch an AI reviewer.
 			}()
@@ -632,14 +616,7 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 		sctx.Capabilities.Notifications = &notifications
 	}
 	if sched.PulseReviewOnly {
-		// PLAT-115: a workflow's own periodic Pulse-review schedule reuses the
-		// exact plumbing the manual "Run Pulse now" trigger already exercises
-		// (TriggerPulseNow) — skip workflow execution, run the full Gate/
-		// Review+Fix/Finalize chain regardless of ordinary run finalization. Unlike
-		// TriggerPulseNow this never sets PulseEvidenceRunFolder: that field
-		// means "review exactly this one folder," but a periodic pass reviews
-		// whatever runs/iteration-N/ backlog exists, decided by Gate's own
-		// reasoning (see the dedicated-review Gate branch).
+		// Retained settings conversion maps legacy Pulse-only schedules to this same goal check.
 		sctx.PulseOnly = true
 		sctx.ForcePulseReview = true
 	}
@@ -1549,36 +1526,23 @@ func (s *SchedulerService) TriggerPulseNow(workspacePath string) (string, error)
 	return s.triggerPulseOnly(workspacePath, "manual")
 }
 
-// TriggerScheduledPulse is the workflow's own Pulse schedule firing
-// (pulse_schedule.go). It uses exactly the manual Pulse path.
-func (s *SchedulerService) TriggerScheduledPulse(workspacePath string) (string, error) {
-	return s.triggerPulseOnly(workspacePath, "cron")
-}
-
-// TriggerPulseFixRun starts a Pulse fix run for a workflow with something to
-// fix. It does not move the full Pulse schedule.
-func (s *SchedulerService) TriggerPulseFixRun(workspacePath, reason string) (string, error) {
-	return s.triggerPulseRun(workspacePath, "cron", strings.TrimSpace(reason))
-}
-
 func (s *SchedulerService) triggerPulseOnly(workspacePath, triggerSource string) (string, error) {
-	return s.triggerPulseRun(workspacePath, triggerSource, "")
+	return s.triggerPulseRun(workspacePath, triggerSource)
 }
 
 // TriggerGoalCheck starts the daily goal check (PLAT-697). It does not move
 // the full Pulse schedule.
 func (s *SchedulerService) TriggerGoalCheck(workspacePath string) (string, error) {
-	return s.triggerPulseRunKind(workspacePath, "cron", "", true)
+	return s.triggerPulseRunKind(workspacePath, "cron", true)
 }
 
 // triggerPulseRun starts a full Pulse, or a fix run when fixReason is set.
-func (s *SchedulerService) triggerPulseRun(workspacePath, triggerSource, fixReason string) (string, error) {
-	return s.triggerPulseRunKind(workspacePath, triggerSource, fixReason, false)
+func (s *SchedulerService) triggerPulseRun(workspacePath, triggerSource string) (string, error) {
+	return s.triggerPulseRunKind(workspacePath, triggerSource, false)
 }
 
-func (s *SchedulerService) triggerPulseRunKind(workspacePath, triggerSource, fixReason string, goalCheck bool) (string, error) {
+func (s *SchedulerService) triggerPulseRunKind(workspacePath, triggerSource string, goalCheck bool) (string, error) {
 	ctx := context.Background()
-	fixRun := fixReason != ""
 	workspacePath = filepath.Clean(strings.TrimSpace(workspacePath))
 	if workspacePath == "." || workspacePath == "" {
 		return "", errors.New("workspace_path is required")
@@ -1605,11 +1569,6 @@ func (s *SchedulerService) triggerPulseRunKind(workspacePath, triggerSource, fix
 		Mode:           "workshop",
 		WorkshopMode:   "workshop",
 	}
-	if fixRun {
-		sched.ID = pulseFixRunScheduleID
-		sched.Name = "Pulse fix run"
-		sched.Description = "Technical Review+Fix on current issues; started because " + fixReason
-	}
 	if goalCheck {
 		sched.Name = "Daily goal check"
 		sched.Description = "Pulse's daily goal check: is the goal measured, moving, and its work running"
@@ -1618,9 +1577,7 @@ func (s *SchedulerService) triggerPulseRunKind(workspacePath, triggerSource, fix
 	sctx.TriggerSource = triggerSource
 	sctx.ForcePulseReview = true
 	sctx.PulseOnly = true
-	sctx.PulseFixRun = fixRun
-	sctx.PulseFixReason = fixReason
-	sctx.PulseGoalCheck = goalCheck && !fixRun
+	sctx.PulseGoalCheck = goalCheck
 	sctx.PulseEvidenceRunFolder, sctx.PulseEvidenceRunStatus = latestRetainedPulseEvidence(ctx, workspacePath)
 	startTime := time.Now().UTC()
 
@@ -1642,8 +1599,7 @@ func (s *SchedulerService) triggerPulseRunKind(workspacePath, triggerSource, fix
 	// A full Pulse and a fix run have different keys; each must see the other,
 	// or both start on the same workflow and work the same issues at once.
 	workflowRuntimeKeys = append(workflowRuntimeKeys,
-		workflowScheduleRuntimeKey(workspacePath, manualWorkflowPulseScheduleID),
-		workflowScheduleRuntimeKey(workspacePath, pulseFixRunScheduleID))
+		workflowScheduleRuntimeKey(workspacePath, manualWorkflowPulseScheduleID))
 	runID := uuid.NewString()
 	s.runtimeStatesMu.Lock()
 	state := s.getRuntimeStateLocked(runtimeKey)
@@ -1703,7 +1659,7 @@ func latestRetainedPulseEvidenceFromRuns(runs []ScheduleRunEntry) (string, strin
 	fallbackFolder := ""
 	fallbackStatus := ""
 	for _, run := range runs {
-		if run.ScheduleID == manualWorkflowPulseScheduleID || run.ScheduleID == pulseFixRunScheduleID || strings.TrimSpace(run.RunFolder) == "" {
+		if run.ScheduleID == manualWorkflowPulseScheduleID || strings.TrimSpace(run.RunFolder) == "" {
 			continue
 		}
 		status := strings.TrimSpace(run.Status)
@@ -2735,7 +2691,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 						pulseEvidenceStatus = sctx.PulseEvidenceRunStatus
 					}
 					s.transitionScheduleRun(ctx, sctx, schedulerstate.Transition{
-						RunID: runID, To: schedulerstate.StatePulseGate, Reason: "continuing Pulse goal check started", SessionID: sessionID, SessionKind: "pulse", At: time.Now().UTC(),
+						RunID: runID, To: schedulerstate.StatePulseRunning, Reason: "continuing Pulse goal check started", SessionID: sessionID, SessionKind: "pulse", At: time.Now().UTC(),
 					})
 					pulseResult = s.runPulseLifecycle(ctx, sctx, effectiveSchedulePulseMode(sctx, manifest), pulseEvidenceStatus, runFolder, sessionID, runID, errMsg)
 				}
@@ -2846,16 +2802,7 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 	}()
 	contractupgrade.Revoke(sessionID)
 	defer contractupgrade.Revoke(sessionID)
-	if err := initializePulseFinalCommandStates(ctx, sctx.WorkspacePath, sessionID); err != nil {
-		return
-	}
-	for command, selected := range map[string]bool{pulseFinalCommandBackup: sctx.AfterRunBackup, pulseFinalCommandPublish: sctx.AfterRunPublish} {
-		if !selected {
-			if _, err := markPulseFinalCommandState(ctx, sctx.WorkspacePath, command, sessionID, "skipped", "Not selected for this run, or already current."); err != nil {
-				return
-			}
-		}
-	}
+
 	s.sessionLogf(sctx, sessionID, "[AFTER RUN] housekeeping for %s backup=%t publish=%t", sctx.Schedule.ID, sctx.AfterRunBackup, sctx.AfterRunPublish)
 	for _, step := range afterRunHousekeepingSteps(scheduleRunID, sctx.AfterRunBackup, sctx.AfterRunPublish) {
 		req := cloneStringInterfaceMap(s.buildWorkshopRequest(ctx, sctx, scheduleRunID))
@@ -2869,9 +2816,7 @@ func (s *SchedulerService) runPulseLifecycle(ctx context.Context, sctx *Schedule
 			return pulseLifecyclePartial
 		}
 	}
-	if _, err := markPulseFinalCommandState(ctx, sctx.WorkspacePath, pulseFinalCommandNotify, sessionID, "skipped", "The platform sends the run notification separately."); err != nil {
-		return
-	}
+
 	s.sessionLogf(sctx, sessionID, "[AFTER RUN] housekeeping completed for %s", sctx.Schedule.ID)
 	return pulseLifecycleCompleted
 }
@@ -2955,97 +2900,6 @@ func pulseLifecycleIntro(contextSummary, workspacePath, pulseRunID, runStatus, r
 		contextSummary, workspacePath, pulseRunID, runStatus, runFolder)
 }
 
-// isPulseLifecycleFinalStep marks the finalizer, which must still run when
-// earlier maintenance failed so notification/final command state stay truthful.
-func isPulseLifecycleFinalStep(label string) bool {
-	return label == "finalize"
-}
-
-// A module review runs inside this step's own turn (there is no separately
-// launched reviewer whose child work extended the wait), so it gets a longer
-// quiet period than the Gate or the finalizer (PLAT-452).
-var schedulerPulseReviewMaxInactivity = 30 * time.Minute
-
-func (st pulseLifecycleStep) idleMaxInactivity() time.Duration {
-	if st.label == "plan-drift-review" || pulsemodules.ForStepLabel(st.label) != "" {
-		return schedulerPulseReviewMaxInactivity
-	}
-	return schedulerWorkshopMaxInactivity
-}
-
-func workflowHasPendingPlanChangelogArtifactReview(ctx context.Context, workspacePath string) (bool, error) {
-	workspacePath = strings.Trim(strings.TrimSpace(workspacePath), "/")
-	if workspacePath == "" {
-		return false, nil
-	}
-
-	folder := workspacePath + "/planning/changelog"
-	listing, exists, err := listWorkspaceFolder(ctx, folder, 1)
-	if err != nil {
-		return true, err
-	}
-	if !exists {
-		return false, nil
-	}
-
-	var filePaths []string
-	collectWorkspaceFilePaths(listing, &filePaths)
-	for _, filePath := range filePaths {
-		base := filepath.Base(filePath)
-		if !strings.HasPrefix(base, "changelog-") || !strings.HasSuffix(strings.ToLower(base), ".json") {
-			continue
-		}
-
-		content, exists, err := readFileFromWorkspace(ctx, filePath)
-		if err != nil {
-			return true, err
-		}
-		if !exists || strings.TrimSpace(content) == "" {
-			continue
-		}
-
-		var changelog planChangelogFile
-		if err := json.Unmarshal([]byte(content), &changelog); err != nil {
-			// A malformed changelog still needs human/agent attention; keep the
-			// Pulse Artifact Review turn rather than treating it as clean.
-			return true, nil
-		}
-		for _, entry := range changelog.Entries {
-			if entry.ArtifactReview == nil || !entry.ArtifactReview.Done {
-				return true, nil
-			}
-		}
-	}
-
-	return false, nil
-}
-
-// pulseReviewBacklogSummary renders currently-existing run folders as a
-// compact, newest-first text listing for pulseLifecycleBacklogGateStep.
-// iteration-0 (the live/reused slot, never a stable identity across time —
-// see PLAT-115) is included only when its own metadata reports a terminal
-// status, so Gate is never handed a run that may still be in flight.
-func pulseReviewBacklogSummary(folders []RunFolderInfo) string {
-	if len(folders) == 0 {
-		return "(no run folders exist yet)"
-	}
-	var lines []string
-	for _, folder := range folders {
-		name := strings.TrimSpace(folder.Name)
-		if name == "" {
-			continue
-		}
-		if strings.HasPrefix(name, "iteration-0") && !runFolderMetadataIsTerminal(folder.Metadata) {
-			continue
-		}
-		lines = append(lines, "- "+pulseReviewBacklogFolderLine(folder))
-	}
-	if len(lines) == 0 {
-		return "(no reviewable run folders — the only existing folder is still in progress)"
-	}
-	return strings.Join(lines, "\n")
-}
-
 func runFolderMetadataIsTerminal(metadata *RunMetadata) bool {
 	if metadata == nil {
 		return false
@@ -3056,77 +2910,6 @@ func runFolderMetadataIsTerminal(metadata *RunMetadata) bool {
 	default:
 		return false
 	}
-}
-
-func pulseReviewBacklogFolderLine(folder RunFolderInfo) string {
-	if folder.Metadata == nil {
-		return fmt.Sprintf("%s (status=unknown, no run_metadata.json)", folder.Name)
-	}
-	completedAt := "not completed"
-	if folder.Metadata.CompletedAt != nil {
-		completedAt = folder.Metadata.CompletedAt.Format(time.RFC3339)
-	}
-	return fmt.Sprintf("%s (status=%s, started_at=%s, completed_at=%s)",
-		folder.Name, folder.Metadata.Status, folder.Metadata.StartedAt.Format(time.RFC3339), completedAt)
-}
-
-// recordIncompletePulseReviewRecoveries turns a missing current-run receipt
-// into a durable next-Gate obligation. It is safe to call after every
-// review-fix outcome: modules with a terminal receipt are ignored.
-func recordIncompletePulseReviewRecoveries(ctx context.Context, workspacePath, pulseRunID string, stepResult pulseLifecycleStepRunResult, modules ...string) ([]string, error) {
-	worklist, ok, err := getPulseWorklistForRun(ctx, workspacePath, pulseRunID)
-	if err != nil || !ok {
-		if err != nil {
-			return nil, fmt.Errorf("read Pulse worklist: %w", err)
-		}
-		return nil, fmt.Errorf("Pulse worklist %q is missing", pulseRunID)
-	}
-	reason := "review-fix ended before the module persisted a terminal result"
-	if stepResult.err != nil {
-		reason += ": " + stepResult.err.Error()
-	} else if stepResult.outcome != pulseLifecycleStepCompleted {
-		reason += fmt.Sprintf(" (outcome=%s)", stepResult.outcome)
-	}
-	reviewModules := []string{pulseModuleTechnicalReview, pulseModuleArchitectureReview, pulseModuleStrategicReview}
-	var recovered []string
-	for _, module := range reviewModules {
-		if len(modules) > 0 && !slices.Contains(modules, module) {
-			continue
-		}
-		state, exists := worklist[module]
-		if !exists || !strings.EqualFold(strings.TrimSpace(state.LastDecision), "due") || strings.TrimSpace(state.LastResult) != "" {
-			continue
-		}
-		if err := markPulseReviewRecovery(ctx, workspacePath, module, pulseRunID, "", reason); err != nil {
-			return recovered, err
-		}
-		recovered = append(recovered, module)
-	}
-	return recovered, nil
-}
-
-func beginDuePulseReviewRecoveries(ctx context.Context, workspacePath, pulseRunID string, modules ...string) error {
-	worklist, ok, err := getPulseWorklistForRun(ctx, workspacePath, pulseRunID)
-	if err != nil || !ok {
-		if err != nil {
-			return err
-		}
-		return fmt.Errorf("Pulse worklist %q is missing", pulseRunID)
-	}
-	reviewModules := []string{pulseModuleTechnicalReview, pulseModuleArchitectureReview, pulseModuleStrategicReview}
-	for _, module := range reviewModules {
-		if len(modules) > 0 && !slices.Contains(modules, module) {
-			continue
-		}
-		state, exists := worklist[module]
-		if !exists || !strings.EqualFold(strings.TrimSpace(state.LastDecision), "due") || strings.TrimSpace(state.LastResult) != "" {
-			continue
-		}
-		if err := beginPulseReviewRecovery(ctx, workspacePath, module, pulseRunID, ""); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 type workflowNotificationContentInstructions struct {
@@ -3170,36 +2953,6 @@ func notificationRecipients(config *WorkflowNotificationConfig, run bool) []stri
 	return append([]string(nil), config.PulseSummaryRecipients...)
 }
 
-// pulseSafeRunFailureReason tells the finalizer why the workflow did not run
-// without handing it the upgrade instruction a second time.
-//
-// The finalizer shares the scheduler's session. On customer-login 2026-08-12 it
-// was told `did not stamp required version "1.0.21"` three seconds after the
-// turn that owed that stamp had been adjudicated and closed — and ten minutes
-// later something in that session stamped 1.0.21, which the next preflight
-// trusted and skipped the migration for. The grant in pkg/contractupgrade is
-// what makes the write impossible; keeping the instruction out of unrelated
-// turns is what stops the attempt from being made and reported as a confusing
-// refusal in the operator's run-summary email.
-//
-// The preflight label survives, because naming which migration stalled is real
-// diagnostic value. The target version and the stamp verb do not.
-//
-// Scheduled migrations are now retired. This sanitizer remains only for old
-// persisted run failures that can still be rendered by the no-run finalizer.
-func pulseSafeRunFailureReason(reason string) string {
-	reason = strings.TrimSpace(reason)
-	if !strings.HasPrefix(reason, "workflow upgrade preflight") {
-		return reason
-	}
-	idx := strings.Index(reason, " did not stamp")
-	if idx <= 0 {
-		return reason
-	}
-	return reason[:idx] + " did not complete, so the scheduled workflow was not started." +
-		" That migration belongs to its own upgrade turn: do not attempt it here and do not stamp a contract version from this turn."
-}
-
 // afterRunHousekeepingSteps is the one short turn a run's after-run options
 // need when the code check found something to back up or publish
 // (after_run.go). It is not a Pulse pass: no Gate, reviews or fixes, and no
@@ -3207,162 +2960,16 @@ func pulseSafeRunFailureReason(reason string) string {
 func afterRunHousekeepingSteps(runID string, backup, publish bool) []pulseLifecycleStep {
 	var actions []string
 	if backup {
-		actions = append(actions, "(backup) run the configured source-hash-gated backup following backup-strategy.md (read_skill builder-reference references/backup-strategy.md), directly in this turn, and record its truthful terminal result")
+		actions = append(actions, "(backup) run the configured source-hash-gated backup following backup-strategy.md (read_skill builder-reference references/backup-strategy.md), directly in this turn, and report its actual result in the run chat")
 	}
 	if publish {
-		actions = append(actions, "(publish) independently of whether backup succeeded, publish workflow.json's publish.targets other than \"pulse\" (the run's own report) following publish-strategy.md, exactly as an ordinary run would, and record one truthful terminal result. Never suppress a valid report publish merely because backup was partial or failed")
+		actions = append(actions, "(publish) independently of whether backup succeeded, publish workflow.json's publish.targets other than \"pulse\" (the run's own report) following publish-strategy.md, exactly as an ordinary run would, and report its actual result in the run chat. Never suppress a valid report publish merely because backup was partial or failed")
 	}
 	return []pulseLifecycleStep{{label: "finalize", query: fmt.Sprintf(
 		"AFTER-RUN HOUSEKEEPING. run_id=%q. This run's after-run options asked for this, and the platform found something to do. This is not a Pulse pass: do not run Gate, reviewers or Fixer, do not present old Pulse findings, do not notify (the platform sends the run summary itself), and do not write builder/improve.html.\n\n"+
-			"Do only these, in order, recording each with record_pulse_result(command=..., result=..., reason=...) as running and then terminal: %s. The other final commands are already closed. Then stop.",
+			"Do only these, in order: %s. Report what actually happened, including any failure and what could not be verified, in the run chat. Then stop.",
 		runID, strings.Join(actions, "; "),
 	)}}
-}
-
-func notificationChannelSummary(channels []string) string {
-	if len(channels) == 0 {
-		return "all enabled channels (legacy default)"
-	}
-	return strings.Join(channels, ", ")
-}
-
-// notificationRecipientSummary describes a saved recipient list for the Pulse
-// finalizer prompt. An unset list is spelled out as the account default rather
-// than left blank, so the finalizer does not read it as "nobody".
-func notificationRecipientSummary(recipients []string) string {
-	if len(recipients) == 0 {
-		return "the account default recipient"
-	}
-	return strings.Join(recipients, ", ")
-}
-
-func validatePulseDueModuleResults(ctx context.Context, workspacePath, pulseRunID string) error {
-	worklist, ok, err := getPulseWorklistForRun(ctx, workspacePath, pulseRunID)
-	if err != nil {
-		return fmt.Errorf("read Pulse worklist: %w", err)
-	}
-	if !ok {
-		return fmt.Errorf("Pulse worklist %q is missing", pulseRunID)
-	}
-	var unresolved []string
-	for _, module := range pulseModuleOrder {
-		state, exists := worklist[module]
-		if !exists || strings.TrimSpace(strings.ToLower(state.LastDecision)) != "due" {
-			continue
-		}
-		if strings.TrimSpace(state.LastResult) == "" {
-			unresolved = append(unresolved, module)
-		}
-	}
-	if len(unresolved) > 0 {
-		return fmt.Errorf("due Pulse modules lack terminal current-run results: %s", strings.Join(unresolved, ", "))
-	}
-	return nil
-}
-
-// validatePulseDueModuleResultsFor is validatePulseDueModuleResults scoped to
-// specific modules, needed once plan_drift_review became its own preceding
-// lifecycle step: checking the full pulseModuleOrder right after that step
-// would wrongly flag technical_review/strategic_review as missing a receipt
-// when they simply have not had their turn yet (it runs next, not before).
-func validatePulseDueModuleResultsFor(ctx context.Context, workspacePath, pulseRunID string, modules ...string) error {
-	worklist, ok, err := getPulseWorklistForRun(ctx, workspacePath, pulseRunID)
-	if err != nil {
-		return fmt.Errorf("read Pulse worklist: %w", err)
-	}
-	if !ok {
-		return fmt.Errorf("Pulse worklist %q is missing", pulseRunID)
-	}
-	var unresolved []string
-	for _, module := range modules {
-		state, exists := worklist[module]
-		if !exists || strings.TrimSpace(strings.ToLower(state.LastDecision)) != "due" {
-			continue
-		}
-		if strings.TrimSpace(state.LastResult) == "" {
-			unresolved = append(unresolved, module)
-		}
-	}
-	if len(unresolved) > 0 {
-		return fmt.Errorf("due Pulse modules lack terminal current-run results: %s", strings.Join(unresolved, ", "))
-	}
-	return nil
-}
-
-func pulseWorklistHasDueModule(ctx context.Context, workspacePath, pulseRunID string) (bool, error) {
-	worklist, ok, err := getPulseWorklistForRun(ctx, workspacePath, pulseRunID)
-	if err != nil {
-		return false, err
-	}
-	if !ok {
-		return false, fmt.Errorf("Pulse worklist %q is missing", pulseRunID)
-	}
-	for _, module := range pulseModuleOrder {
-		state, exists := worklist[module]
-		if exists && strings.TrimSpace(strings.ToLower(state.LastDecision)) == "due" {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-// pulseWorklistModulesDue reports whether ANY of the given specific modules
-// is marked due in the durable worklist — unlike pulseWorklistHasDueModule
-// (any module at all), this lets the caller ask a narrower question, needed
-// once plan_drift_review and technical_review/strategic_review became
-// separately-sequenced lifecycle steps (each only needs to know about its
-// own module set, not "is anything due at all").
-func pulseWorklistModulesDue(ctx context.Context, workspacePath, pulseRunID string, modules ...string) (bool, error) {
-	worklist, ok, err := getPulseWorklistForRun(ctx, workspacePath, pulseRunID)
-	if err != nil {
-		return false, err
-	}
-	if !ok {
-		return false, fmt.Errorf("Pulse worklist %q is missing", pulseRunID)
-	}
-	for _, module := range modules {
-		state, exists := worklist[module]
-		if exists && strings.TrimSpace(strings.ToLower(state.LastDecision)) == "due" {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func validatePulseTechnicalRepairDrain(ctx context.Context, workspacePath, pulseRunID string) error {
-	due, err := pulseWorklistModulesDue(ctx, workspacePath, pulseRunID, pulseModuleTechnicalReview)
-	if err != nil {
-		return fmt.Errorf("read technical review completion contract: %w", err)
-	}
-	if !due {
-		return nil
-	}
-	// Only the work this pass owns: issues routed to the fixer and issues seen
-	// since the previous Pulse. A large historical backlog no longer fails
-	// every Technical pass (social-media: 87 stale rows).
-	remaining, err := stepworkflow.CountPulseActionableWorkflowIssuesForPass(ctx, workspacePath, stepConcernWindowStart(ctx, workspacePath))
-	if err != nil {
-		return fmt.Errorf("read actionable Pulse repair backlog: %w", err)
-	}
-	if remaining > 0 {
-		// Name them: an unnamed count let a pass leave the same issue
-		// untouched run after run (upwork PUL-2B0668E4, filed by Goal Work,
-		// skipped as "strategy-owned" by 4 fix runs in one night).
-		left := ""
-		if issues, listErr := stepworkflow.ListPulseActionableWorkflowIssues(ctx, workspacePath); listErr == nil && len(issues) > 0 {
-			ids := make([]string, 0, len(issues))
-			for i, issue := range issues {
-				if i == 10 {
-					ids = append(ids, fmt.Sprintf("and %d more", len(issues)-10))
-					break
-				}
-				ids = append(ids, issue.ID)
-			}
-			left = " (" + strings.Join(ids, ", ") + ")"
-		}
-		return fmt.Errorf("Review+Fix left %d actionable workflow-owned Pulse issue(s)%s without a recorded outcome; the repair drain is incomplete. Every one is this pass's, whichever review filed it: fix and verify it, reject it with the reason, or turn it into a decision for the user, and record that with record_pulse_result", remaining, left)
-	}
-	return nil
 }
 
 func compactScheduleMessages(messages []string) []string {

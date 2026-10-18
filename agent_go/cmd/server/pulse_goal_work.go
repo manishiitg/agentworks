@@ -83,7 +83,7 @@ var pulseGoalWorkStatuses = map[string]bool{"idea": true, "in_progress": true, "
 // recordPulseGoalWork creates or updates one item. Fields left empty on an
 // update keep their stored value, so a later pass can add only the effect.
 func recordPulseGoalWork(ctx context.Context, workspacePath string, in PulseGoalWorkItem, pulseRunID string) (*PulseGoalWorkItem, error) {
-	_, db, err := openPulseModuleStateDB(ctx, workspacePath, true)
+	_, db, err := openPulseStoreDB(ctx, workspacePath, true)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +204,7 @@ func readPulseGoalWorkItem(ctx context.Context, db *sql.DB, id string) (*PulseGo
 // clock. A question already reached by a recorded check is left to Pulse to
 // assess/reschedule; an old item cannot cause a tight wake loop. No new ledger.
 func nextPulseGoalWorkQuestion(ctx context.Context, workspacePath string, after time.Time) (time.Time, error) {
-	_, db, err := openPulseModuleStateDB(ctx, workspacePath, false)
+	_, db, err := openPulseStoreDB(ctx, workspacePath, false)
 	if err != nil || db == nil {
 		return time.Time{}, err
 	}
@@ -237,7 +237,7 @@ func nextPulseGoalWorkQuestion(ctx context.Context, workspacePath string, after 
 
 // listPulseGoalWork returns items newest first. limit <= 0 means 200.
 func listPulseGoalWork(ctx context.Context, workspacePath string, limit int) ([]PulseGoalWorkItem, error) {
-	_, db, err := openPulseModuleStateDB(ctx, workspacePath, false)
+	_, db, err := openPulseStoreDB(ctx, workspacePath, false)
 	if err != nil || db == nil {
 		return []PulseGoalWorkItem{}, err
 	}

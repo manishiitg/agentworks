@@ -2,7 +2,7 @@
 
 Use the goal-lead-work and goal-lead-experiment methods in this same Pulse turn.
 Read the goal, relevant owner decisions, comparable DB history and due earlier
-items. Judge what would improve the goal even if every step already ran correctly.
+items. Load `read_skill(skills=[{"name":"builder-reference","path":"references/assumption-audit.md"}])` when a consequential assumption needs checking. Judge what would improve the goal even if every step already ran correctly.
 Choose at most one coherent change set when Pulse is ON: agree a hypothesis,
 baseline, outcome window and rollback condition, ask Builder to implement within
 current permissions, and record the actual work and a useful check_at on the

@@ -55,7 +55,7 @@ Only saved scripted code has a lock. Steps do not write skills.
 - **Require grounding in the description** — instruct the step to derive values only from real tool output / fetched data and to cite where each value came from, never to infer or fill them in.
 Trust output you can trace back to real evidence, not a self-reported success.
 
-**KB writes are step-based**: A step writes KB notes only when `knowledgebase_access` is `write` or `read-write` and its task explicitly asks for notes. When a contributor no longer produces durable new facts, change that step to `knowledgebase_access="read"`. Do not freeze unrelated KB writers workflow-wide. Review KB health with a generic read-only reviewer over the knowledgebase evidence pack and let the parent fixer apply bounded intentional curation.
+**KB writes are step-based**: A step writes KB notes only when `knowledgebase_access` is `write` or `read-write` and its task explicitly asks for notes. When a contributor no longer produces durable new facts, change that step to `knowledgebase_access="read"`. Do not freeze unrelated KB writers workflow-wide. Inspect relevant KB evidence directly; Builder applies bounded intentional curation within current grants.
 
 ### 3. Maintaining workflow skills
 
@@ -122,7 +122,7 @@ Installed skills are reusable capability instructions under `<workspace-root>/sk
 - If guidance is workflow-specific (selectors discovered in this workflow, account names, run paths, current plan details), put it in a workflow-local skill instead of editing an external skill.
 
 ### 4b. LLM Tier Selection
-Pulse Architecture owns these evidence-based recommendations and measured trials.
+Pulse and Builder agree these evidence-based recommendations and measured trials.
 Runtime never changes tiers based on run counts; preserve explicit user settings.
 In tiered mode, prefer a persistent `execution_tier` when a step should usually run on a cheaper or faster tier, instead of pinning an exact model.
 

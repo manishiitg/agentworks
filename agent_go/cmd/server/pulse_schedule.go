@@ -67,7 +67,7 @@ func formatStoredTime(value time.Time) string {
 
 // readPulseScheduleState returns nil when the workflow has no state yet.
 func readPulseScheduleState(ctx context.Context, workspacePath string) (*pulseScheduleState, error) {
-	normalized, db, err := openPulseModuleStateDB(ctx, workspacePath, false)
+	normalized, db, err := openPulseStoreDB(ctx, workspacePath, false)
 	if err != nil || db == nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func readPulseScheduleState(ctx context.Context, workspacePath string) (*pulseSc
 
 // markPulseStarted records the evidence window for this cycle.
 func markPulseStarted(ctx context.Context, workspacePath, pulseRunID string, startedAt time.Time) error {
-	normalized, db, err := openPulseModuleStateDB(ctx, workspacePath, true)
+	normalized, db, err := openPulseStoreDB(ctx, workspacePath, true)
 	if err != nil {
 		return err
 	}
@@ -111,18 +111,6 @@ func markPulseStarted(ctx context.Context, workspacePath, pulseRunID string, sta
 		last_pulse_run_id=excluded.last_pulse_run_id, next_at='', next_reason='', next_set_by_pulse_run_id='', next_set_at=''`,
 		normalized, formatStoredTime(startedAt), strings.TrimSpace(pulseRunID))
 	return err
-}
-
-// pulseScheduleTimingSummary reads the same clock as the launcher.
-func pulseScheduleTimingSummary(ctx context.Context, workspacePath string, manifest *WorkflowManifest) string {
-	if manifest == nil || !manifest.PulseEnabled() {
-		return ""
-	}
-	view := pulseNextRunView(ctx, workspacePath)
-	if view == nil || view.NextAt == "" {
-		return "Pulse has not chosen its next check yet. Request an earlier check only for material new evidence."
-	}
-	return "The next Pulse check is " + view.NextAt + ": " + view.Reason + "."
 }
 
 // recordPulseFastRequestFromToolArgs backs the record_pulse_fast_request tool.
@@ -152,26 +140,11 @@ type PulseNextRunView struct {
 	LastStartedAt string `json:"last_started_at,omitempty"`
 }
 
-func pulseNextRunView(ctx context.Context, workspacePath string) *PulseNextRunView {
-	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
-	if err != nil || !found || manifest.Kind == "relay" || !manifest.PulseEnabled() || !workflowHasSoul(ctx, workspacePath) {
-		return nil
-	}
-	latest, lastStarted, err := latestPulseGoalCheck(ctx, workspacePath)
-	if err != nil {
-		return nil
-	}
-	view := &PulseNextRunView{LastStartedAt: formatStoredTime(lastStarted)}
-	next, reason := nextPulseCheckAt(ctx, workspacePath, manifest, latest, lastStarted)
-	view.NextAt, view.Reason = formatStoredTime(next), reason
-	return view
-}
-
 // Reads never install schema. The writer adds only missing columns, while older
 // stored history remains visible without GET requests changing its database.
 func pulseStateColumns(ctx context.Context, db *sql.DB, table string) (map[string]bool, error) {
 	switch table {
-	case "pulse_schedule_state", "pulse_goal_checks":
+	case "pulse_schedule_state", "pulse_goal_checks", "pulse_module_audit", "pulse_review_notes":
 	default:
 		return nil, fmt.Errorf("unsupported Pulse state table")
 	}
@@ -191,4 +164,19 @@ func pulseStateColumns(ctx context.Context, db *sql.DB, table string) (map[strin
 		columns[name] = true
 	}
 	return columns, rows.Err()
+}
+
+func pulseNextRunView(ctx context.Context, workspacePath string) *PulseNextRunView {
+	manifest, found, err := ReadWorkflowManifest(ctx, workspacePath)
+	if err != nil || !found || manifest.Kind == "relay" || !manifest.PulseEnabled() || !workflowHasSoul(ctx, workspacePath) {
+		return nil
+	}
+	latest, lastStarted, err := latestPulseGoalCheck(ctx, workspacePath)
+	if err != nil {
+		return nil
+	}
+	view := &PulseNextRunView{LastStartedAt: formatStoredTime(lastStarted)}
+	next, reason := nextPulseCheckAt(ctx, workspacePath, manifest, latest, lastStarted)
+	view.NextAt, view.Reason = formatStoredTime(next), reason
+	return view
 }

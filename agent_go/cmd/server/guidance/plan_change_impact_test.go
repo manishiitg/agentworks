@@ -43,13 +43,13 @@ func TestInteractivePlanEditsDoNotRequireFullDriftAudit(t *testing.T) {
 	for _, want := range []string{
 		"A stale `drift_review.needs_review` flag alone does not require this audit before testing",
 		"Merely reading this guide during an edit does not authorize launching a background audit",
-		// Explicit audits must retain the real scheduled procedure and receipts.
-		"manual=true",
-		"note_only=true",
 		"record_plan_drift_review",
 	} {
 		if !strings.Contains(audit, want) {
 			t.Errorf("audit guide missing %q", want)
 		}
+	}
+	if strings.Contains(audit, "record_pulse_result") || strings.Contains(audit, "manual=true") {
+		t.Fatal("audit still requires the retired reviewer handshake")
 	}
 }

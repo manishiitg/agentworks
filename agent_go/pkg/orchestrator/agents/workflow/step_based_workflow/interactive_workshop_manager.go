@@ -38,7 +38,6 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/mcpagent/observability"
-
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	_ "modernc.org/sqlite"
 )
@@ -1319,8 +1318,6 @@ func GetToolsForWorkshopMode(mode string) []string {
 		"get_pulse_state",
 		"record_pulse_finding",
 		"merge_pulse_issues",
-		"record_pulse_worklist",
-		"record_pulse_result",
 		"resolve_run_concern",
 		"mark_changelog_artifact_reviewed",
 		"record_pulse_fast_request",
@@ -1329,9 +1326,8 @@ func GetToolsForWorkshopMode(mode string) []string {
 		"record_pulse_recommendation",
 		"record_pulse_decision_outcome",
 		"record_pulse_goal_memory",
-		// Phase 4: the Pulse's focus areas and its QA sub-agent requests.
+		// Pulse goal focus tools.
 		"record_pulse_focus_area",
-		"record_pulse_qa_request",
 		"search_platform",
 		"ask_platform_crew",
 		"read_crew_calls",
@@ -2598,12 +2594,9 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			execErr := exec.Err
 			agentSessID := exec.AgentSessionID
 			isGenericAgent := strings.HasPrefix(execID, "generic-agent-")
-			isPulseReviewer := strings.HasPrefix(execID, "pulse-review-")
 			executionLabel := fmt.Sprintf("Step %q", stepID)
 			if isGenericAgent {
 				executionLabel = fmt.Sprintf("Generic agent %q", strings.TrimPrefix(stepID, "generic-agent:"))
-			} else if isPulseReviewer {
-				executionLabel = fmt.Sprintf("Pulse reviewer %q", strings.TrimPrefix(stepID, "pulse-review:"))
 			}
 
 			switch status {
@@ -2665,7 +2658,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				return fmt.Sprintf("%s is still running.\nexecution_id: %s%s%s%s%s\n\n%s", executionLabel, execID, messageHint, toolCallInfo, tmuxInfo, hint, pollGuidance), nil
 
 			case WorkshopStepDone:
-				if isGenericAgent || isPulseReviewer {
+				if isGenericAgent {
 					return fmt.Sprintf("%s completed.\nexecution_id: %s\n\n%s", executionLabel, execID, result), nil
 				}
 				// Background tasks get a generic completion response (no step-specific hints)
@@ -2674,7 +2667,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 				return fmt.Sprintf("Step %q completed.\nexecution_id: %s\n\n%s", stepID, execID, result), nil
 			case WorkshopStepFailed:
-				if isGenericAgent || isPulseReviewer {
+				if isGenericAgent {
 					return fmt.Sprintf("%s failed.\nexecution_id: %s\nerror: %v", executionLabel, execID, execErr), nil
 				}
 				if strings.HasPrefix(execID, "bg-") {
@@ -8481,26 +8474,6 @@ func applyAdvisorSpecializationToManifest(content, inputID, strategy, goal, upda
 		return "", nil, false, err
 	}
 	return string(out), activated, false, nil
-}
-
-func advisorSpecializationPrompt(specialization *workflowAdvisorSpecialization, module string) string {
-	if specialization == nil || pulsemodules.Normalize(module) != pulsemodules.StrategicReviewID {
-		return ""
-	}
-	// The manifest retains both approved texts so existing workflows do not
-	// lose owner decisions during migration. They are phase-specific lenses in
-	// one Strategic Review sequence now, not separate module identities.
-	parts := make([]string, 0, 2)
-	if lens := strings.TrimSpace(specialization.StrategyAuditor); lens != "" {
-		parts = append(parts, "Current-strategy audit lens:\n"+lens)
-	}
-	if lens := strings.TrimSpace(specialization.GoalAdvisor); lens != "" {
-		parts = append(parts, "Independent-opportunity lens:\n"+lens)
-	}
-	if len(parts) == 0 {
-		return ""
-	}
-	return fmt.Sprintf("OWNER-APPROVED WORKFLOW-SPECIFIC STRATEGIC REVIEW LENSES (version %d). Apply each only in its named sequence phase. The canonical contract and current soul/plan win on conflict:\n%s", specialization.Version, strings.Join(parts, "\n\n"))
 }
 
 func (iwm *InteractiveWorkshopManager) activateApprovedAdvisorSpecialization(ctx context.Context, inputID string) (*workflowAdvisorSpecialization, bool, error) {

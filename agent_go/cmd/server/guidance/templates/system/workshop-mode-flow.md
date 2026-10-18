@@ -33,100 +33,19 @@ all groups and runs; build new steps when the plan needs extending.
 (`builder/conversation/users/{user-id}/YYYY-MM-DD/session-{id}-conversation.json` holds the latest messages; the full history is the matching `.history.jsonl`, one message per line) to avoid repeating failed approaches
 and build on previous progress.
 
-Also read typed Pulse state and saved review history before improvement decisions.
-External recommendations are open findings: verify their evidence
-against current runs/eval/soul.md, then choose the normal builder
-path (Pulse Bug Review/Fixer, Goal Advisor proposal/approved plan change, targeted config/plan
-tool, or no action with rationale).
+Read existing goal work, pending owner decisions and relevant saved history before improvement decisions. Verify recommendations against current runs, database measurements and the goal, then choose a bounded repair, an authorized plan change, a measurement fix or no action with evidence.
 
-## The core optimization loop: run → eval → classify → act → verify
+## The core loop: run → measure → act → verify
 
-Treat **reliability repair, plan-change proposal/application, eval improvement, and
-no-action/blocker** as peer outcomes. Classify the evidence first, then
-choose the action whose scope matches the failure.
+1. Run the requested workflow, step or group through its normal execution tool. Runs do real work under existing permissions.
+2. Read the producer's measurement rows and history from the database. Use the actual run identity when tracing outputs; measurement is not tied to a fixed iteration folder.
+3. Distinguish a local reliability/contract failure from a strategy gap or missing measurement. Builder investigates and applies an authorized correction in this conversation. Pulse may request it with evidence; no separate reviewer/fixer is involved.
+4. Reconcile changed dependencies using `references/plan-change-impact.md`. Test only the affected scope when useful, then verify the real result. A passing local check alone does not prove goal improvement.
+5. For a goal improvement, agree a hypothesis, comparable baseline, outcome window and rollback condition with Pulse. Keep work and future outcome evidence in the existing goal records.
 
-- Choose Pulse Bug Review/Fixer when the workflow path is basically right
-  but reliability, validation, artifact shape, eval wiring,
-  KB/db/report contracts, or local step behavior is broken.
-- Choose a Goal Advisor plan-change proposal/application when run/eval evidence or
-  success criteria show a strategy/path gap that local repair is unlikely to close.
+When the user asks to repair all groups, inspect enabled groups in `variables/variables.json` and work through them one at a time so each verified fix helps the next run. Reuse evidence, stop when the requested scope is complete, and report unresolved blockers without an endless retry loop.
 
-### Pulse Bug Review/Fixer
-
-The reliability repair protocol. The reviewer reads evaluation reports and execution
-outputs from real runs, fixes failing steps when the path is otherwise
-sound, and runs a best-practice sweep across
-plan/config/learnings/KB/db/report/eval/variables artifacts. Use it for
-objective invariant violations rooted in local contracts or
-reliability. Use Goal Advisor for strategy or path redesign.
-
-- Adds pre-validation rules that would have caught the failure.
-- Tightens step descriptions to be more specific, routing the text by type:
-  technique to a skill reference named under Guides, rule or decision to the
-  knowledge layer or Rules, evidence to the change reason (PLAT-556).
-- Applies small evidence-backed structural fixes when the failure is
-  caused by missing/split/obsolete steps or bad step boundaries.
-- Patches `main.py` only for `scripted` steps; deletes stale
-  `<script-dir>/main.py` for `agentic` steps.
-- Updates step config (execution mode, servers, learnings,
-  KB/db/report/eval wiring).
-- Flags learnings that look settled; Architecture (`learning_quality`)
-  decides whether a read-write step becomes read (PLAT-556).
-- Cleans deterministic best-practice violations such as invalid locks,
-  missing learning objectives, KB/db contract mismatches, stale report
-  wiring after field changes, and hardcoded user-specific values.
-
-### Optimization workflow
-
-1. **Run the workflow** — execute the full workflow or individual steps
-   against `iteration-0`.
-2. **Check measurement** — read the producing steps' stored outputs and
-   goal observations for each group run you need to score. Measurement
-   always targets `iteration-0`.
-3. **Classify** — decide whether the evidence calls for a reliability fix, Goal Advisor plan change,
-   measurement improvement, or no action/blocker.
-4. **Act** — call the matching tool or apply the matching bounded edit.
-5. **Re-run and verify** — execute again only when one targeted
-   verification would materially reduce uncertainty.
-6. **Repeat** until measurement evidence and success criteria are healthy,
-   not merely until local step checks pass.
-
-### Progressive reliability loop
-
-When the user asks to repair all groups, run
-one group at a time so each group's failures improve the workflow before
-the next group runs:
-
-1. Read `variables/variables.json` to get all enabled group names.
-2. For each group (one by one):
-   a. Execute the workflow for this group only (`execute_step` with
-      `group_name`, or `run_full_workflow` with a single group).
-   b. Read the measurement rows the producing steps stored for this
-      group's `iteration-0` results.
-  c. Classify the failure. For local reliability/contract failures,
-      collect a read-only Bug Review and let the parent fixer apply bounded repairs. For strategy/path,
-      create/apply a Goal Advisor plan-change proposal as appropriate; for
-      measurement failures, fix the measurement at its producer.
-3. After all groups have run: summarize overall scores and remaining
-   issues.
-4. If any groups still failing: repeat the loop (max 2 full iterations
-   to prevent infinite loops).
-
-### Small structural fixes
-
-For **small evidence-backed structural fixes** (add a missing
-validation/extraction step, remove an obsolete step, split/merge a
-clearly broken boundary), the parent fixer may use the plan
-modification tools directly.
-
-Use a Goal Advisor plan-change proposal/application when run/measurement
-evidence shows the workflow path itself is misaligned with the objective
-or success criteria — for example, it is doing the wrong business work,
-collecting the wrong evidence, optimizing the wrong artifact, or
-producing outputs that local reliability fixes have not made capable of satisfying
-a success criterion. Scheduled Pulse/Goal Advisor must create an approval
-card first; active manual workshop chat may apply a bounded plan change
-when the user is asking for improvement and the evidence is strong.
+Small structural repairs use the normal plan tools and current route ownership. Material goal or outward-action decisions follow the existing owner authorization. Pulse ON can ask Builder for internal improvements; do not add an approval card merely because Pulse requested the work.
 
 ## When to redirect to another mode
 

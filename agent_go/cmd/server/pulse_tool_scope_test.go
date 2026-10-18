@@ -80,6 +80,7 @@ func TestPulsePlatformToolsRefuseASpoofedWorkflow(t *testing.T) {
 	t.Cleanup(func() { pulsePlatformAPI = old })
 
 	_, executors, _ := createPulsePlatformTools()
+
 	for name, args := range map[string]map[string]interface{}{
 		"search_platform":   {"operation": "list_workflows", "workspace_path": "Workflow/b"},
 		"ask_platform_crew": {"operation": "ask_crew", "workspace_path": "Workflow/b", "arguments": map[string]interface{}{"crew_id": "c", "message": "hi"}},

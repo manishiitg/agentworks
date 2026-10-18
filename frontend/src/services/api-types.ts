@@ -656,17 +656,6 @@ export interface PulsePlanDriftDueItem {
   reason: string
 }
 
-export interface PulseFinalCommandState {
-  workspace_path: string
-  command: string
-  pulse_run_id?: string
-  status?: string
-  reason?: string
-  started_at?: string
-  finished_at?: string
-  updated_at?: string
-}
-
 export interface PulseRunMode {
   workspace_path: string
   pulse_run_id: string
@@ -716,28 +705,13 @@ export interface PulseShadowSignalObservation {
   recorded_at: string
 }
 
-export interface PulseModuleStateResponse {
+export interface PulseOverviewResponse {
   success: boolean
-  modules: PulseModuleState[]
-  commands: PulseFinalCommandState[]
-  gate_mode?: PulseRunMode | null
-  review_focus_history?: PulseReviewFocus[]
-  review_focus_selections?: PulseReviewFocus[]
-  shadow_signal_observations?: PulseShadowSignalObservation[]
-  shadow_signal_coverage?: {
-    status: string
-    reason?: string
-  }
-  plan_drift_due?: boolean
-  plan_drift_due_items?: PulsePlanDriftDueItem[]
-  plan_drift_due_error?: string
+  impact?: PulseImpactLedger | null
   next_pulse?: PulseNextRun | null
-  goal_work?: PulseGoalWorkItem[]
-  goal_work_error?: string
   goal_status?: PulseGoalStatus | null
+  last_change?: PulseGoalWorkItem | null
   outward_actions?: PulseOutwardActions
-  focus_areas?: string[]
-  /** The workflow has written its goal in soul.md; Pulse needs it to own the goal. */
   has_soul?: boolean
   run_setup?: WorkflowRunSetup | null
   error?: string
@@ -3899,7 +3873,6 @@ export interface WorkflowPulseConfig {
   advisor_specialization?: WorkflowAdvisorSpecialization
 }
 
-export type PulseReviewerModule = 'technical_review' | 'architecture_review' | 'strategic_review'
 
 export interface WorkflowAdvisorSpecialization {
   version: number

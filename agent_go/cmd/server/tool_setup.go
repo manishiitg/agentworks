@@ -9,13 +9,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
-
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // extractWorkspacePathFromObjective extracts the workspace path from the objective string
@@ -352,12 +351,12 @@ func createCustomTools(workflowMode bool, sessionInfo ...string) ([]llmtypes.Too
 		allExecutors[builderAskTool.Function.Name] = builderAskExecute
 		toolCategories[builderAskTool.Function.Name] = "workflow"
 
-		pulseWorklistTools, pulseWorklistExecutors, pulseWorklistCategories := createPulseWorklistTools()
-		allTools = append(allTools, pulseWorklistTools...)
-		for name, executor := range pulseWorklistExecutors {
+		pulseTools, pulseExecutors, pulseCategories := createPulseTools()
+		allTools = append(allTools, pulseTools...)
+		for name, executor := range pulseExecutors {
 			allExecutors[name] = executor
 		}
-		for name, category := range pulseWorklistCategories {
+		for name, category := range pulseCategories {
 			toolCategories[name] = category
 		}
 

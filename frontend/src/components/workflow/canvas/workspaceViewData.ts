@@ -2,13 +2,7 @@ import { createContext, useContext } from 'react'
 import type { UsePlanDataReturn } from '../hooks/usePlanData'
 import type { UseWorkspaceStateReturn } from '../hooks/useWorkspaceState'
 import type { WorkflowExecutionStatus } from '../hooks/useWorkflowExecution'
-import type {
-  PulseFinalCommandState,
-  PulseModuleState,
-  PulsePlanDriftDueItem,
-  PulseReviewFocus,
-  VariablesManifest, PulseNextRun, PulseGoalWorkItem, PulseGoalStatus, PulseOutwardActions, WorkflowRunSetup } from '../../../services/api-types'
-import type { PulseOverview } from '../PulseView'
+import type { VariablesManifest, PulseNextRun, PulseGoalWorkItem, PulseGoalStatus, PulseOutwardActions, PulseImpactLedger, WorkflowRunSetup } from '../../../services/api-types'
 
 export type WorkflowImageExportFormat = 'svg' | 'png' | 'jpeg'
 
@@ -19,25 +13,15 @@ export interface PulseData {
   monitorOn: boolean
   monitorSaving: boolean
   toggleMonitor: () => void
-  moduleStates: PulseModuleState[]
-  planDriftDue: boolean
-  planDriftDueItems: PulsePlanDriftDueItem[]
-  planDriftDueError: string | null
-  finalCommandStates: PulseFinalCommandState[]
   nextRun: PulseNextRun | null
-  goalWork: PulseGoalWorkItem[]
+  impact: PulseImpactLedger | null
+  lastChange: PulseGoalWorkItem | null
   goalStatus: PulseGoalStatus | null
   outwardActions: PulseOutwardActions
   outwardSaving: boolean
   setOutward: (next: PulseOutwardActions) => void
-  focusAreas: string[]
-  focusSaving: boolean
-  saveFocusAreas: (areas: string[]) => Promise<boolean>
-  reviewFocuses: PulseReviewFocus[]
-  reviewFocusSelections: PulseReviewFocus[]
   statusError: string | null
   statusLoading: boolean
-  overview: PulseOverview
   refresh: (showLoading?: boolean) => Promise<void>
   hasSoul: boolean
   runSetup: WorkflowRunSetup | null

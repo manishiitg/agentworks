@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +12,7 @@ import (
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
 	orchestrator_events "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
@@ -24,7 +24,6 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/mcpagent/observability"
-
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -1131,24 +1130,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) selectPulseUpkeepLLM(agentPurpose str
 		}
 	}
 	return hcpo.selectPulseLLM(agentPurpose)
-}
-
-// selectBackgroundTaskLLM picks the model for a run_in_background child. A
-// child launched by a scheduler Pulse turn is a Pulse agent: Goal Work
-// (review module strategic_review) gets the Pulse model, and every other Pulse
-// child (Plan Drift, Technical, Architecture) gets the cheaper upkeep model.
-// Any other background task follows the Builder (phase) model like the chat
-// that spawned it. The parent conversation keeps its retained coding CLI and
-// cannot change model mid-turn, but a background child always starts its own
-// process, so this is where the choice takes effect.
-func (hcpo *StepBasedWorkflowOrchestrator) selectBackgroundTaskLLM(pulseLifecycleTurn bool, reviewModule, agentPurpose string) *orchestrator.LLMConfig {
-	if !pulseLifecycleTurn {
-		return hcpo.selectPhaseLLM(agentPurpose)
-	}
-	if reviewModule == "strategic_review" {
-		return hcpo.selectPulseLLM(agentPurpose)
-	}
-	return hcpo.selectPulseUpkeepLLM(agentPurpose)
 }
 
 // createKBConsolidateAgent builds the one-shot KB consolidate agent. Same folder-guard

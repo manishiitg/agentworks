@@ -4,7 +4,7 @@
 
 ## FIRST — would you build this from scratch?
 
-(Skip this section when a parent Pulse prompt loads this guidance as a checklist.)
+For a targeted Pulse check, use only the relevant parts; do not repeat a full design review.
 
 Before the detailed review, read soul/soul.md, the plan and what the workflow has produced, and answer in plain words, knowing what the owner wants today: *would you build this workflow this way from scratch?* Give the person:
 1. What the workflow is for, in one line.
@@ -15,31 +15,17 @@ Prefer removing over adding. A step or rule that has not earned its place should
 
 Run one combined critical plan review and senior workflow-design review. Read `planning/plan.json` (+ `planning/step_config.json`, `variables/variables.json`) and review the plan WITH the user. Find what is broken, weak, risky, stale, or unjustified across the plan and its dependent artifacts, then explain the better design shape and teach the user how to use each building block well.
 
-When a parent Pulse prompt explicitly loads this guidance as a read-only checklist, that parent contract overrides persistence: return findings to the parent only and do not edit any workspace file. The parent Pulse Fixer remains the only writer; the final message of that parent's retained review sequence owns typed persistence. `technical_review` is this checklist's automated owner (engineering correctness — step-type/prevalidation/schema fitness, not tactic quality). `strategic_review` owns tactic quality and conditional outside-the-plan opportunity discovery, but loads this structural checklist only when its own work needs the plan map. Attribute the module id to whichever parent actually loaded this checklist — `technical_review` for the automated structural-hygiene pass, `strategic_review` for Strategic Review, including manual `/strategy-auditor` and its compatibility alias `/goal-advisor`.
-
 ## PHASE 1 — COMPREHENSIVE CRITICAL REVIEW
 
-Do this review yourself with this checklist and the user's focus. It is read-only: do not edit artifacts, invoke mutation tools, run workflow/evaluation steps, or persist findings. You own the findings and any later user-authorized edits. You may give parts of it to your own subagents with the same read-only restriction, then confirm nothing changed. This reviews for plan structure, step descriptions, context flow, validation, skills, saved scripts, knowledgebase notes, `db/db.sqlite` contracts, reports, variables, evaluation coverage, portability, and alignment with `soul/soul.md` objective and success criteria.
+Do the review in this conversation with the user's focus. It is read-only: do not edit artifacts, run workflow/evaluation steps or apply recommendations while reviewing. Inspect plan structure, step descriptions, context flow, validation, skills, saved scripts, knowledge base, database contracts, reports, variables, evaluation and the goal.
 
-The reviewer returns analysis, never HTML: `module` (see the attribution rule above — `technical_review`, `strategic_review`, or the manual `goal_advisor` alias), `verdict`,
-`next_check`, decisions that look sound, and ordered findings. Each finding needs
-a stable `finding_id`, `target_key`, severity, plain-language summary, exact
-evidence, bounded `recommended_fix`, verification, and
-`user_judgment_required` with reason.
-
-Do not load presentation guidance for the reviewer or ask it to format cards.
-
-Do not continue to Phase 2 or write the review log until the review is complete and you have its findings.
-
-Treat the completed review as evidence, not as the final answer. Group its real findings by severity, preserve decisions it found sound, and use those findings in the design analysis below. Do not repeat the same artifact scan unless you need a specific fact to draw the map or explain a recommendation.
-
-The read-only reviewer never writes persistent state; that is deliberate. When the read-only review is complete, the command is not finished: Phase 2 and your typed Pulse finding write below still remain. Do not report the command complete merely because the read-only review is done.
+List evidence-backed findings by severity, with the affected step or artifact, exact evidence, a bounded recommended fix and any decision the person must make. Preserve decisions that already work. Use those findings in the design synthesis; do not scan the same artifacts twice.
 
 ## PHASE 2 — DESIGN SYNTHESIS
 
-Load `read_skill(skills=[{"name":"builder-reference","path":"references/assumption-audit.md"}])` and apply its plan/design lens. Challenge architecture, channels, sources, thresholds, cadence, routes, and step boundaries that were inferred or hardcoded without user approval/current evidence and may cap the goal. Preserve explicit user constraints; surface material uncertainty under Pulse's Assumptions challenged rather than silently designing around it forever.
+Load `read_skill(skills=[{"name":"builder-reference","path":"references/assumption-audit.md"}])` and apply its plan/design lens. Challenge inferred architecture, channels, thresholds, cadence, routes and step boundaries that cap the goal; preserve explicit user constraints. Use the existing owner-decision tools only when a real decision is required.
 
-{{if eq .WorkshopMode "run"}}Run mode is read-only: return the combined findings and design recommendations to the owning review sequence and do not mutate workflow state.{{else}}After the review result is complete, the coordinating Workshop turn records every recommendation through typed Pulse finding tools, with `module` set per the attribution rule above (`technical_review`, `strategic_review`, or the retained manual `goal_advisor` alias). Read matching existing findings first and preserve unresolved recommendations instead of duplicating them.{{end}} Never pass presentation work to the read-only reviewer. Canonical detail lives in the step-types / plan-design reference and `read_skill(skills=[{"name":"builder-reference","path":"references/stores.md"}])` — cite them; don't restate them in full.{{if .Focus}} Focus especially on: {{.Focus}}.{{end}}
+{{if eq .WorkshopMode "run"}}Run mode returns the review in chat; workflow design changes belong with Builder.{{else}}Record useful unresolved recommendations through existing typed Pulse finding tools, reusing matching findings. Propose changes without applying them during this review.{{end}} Canonical detail lives in the step-types / plan-design reference and `read_skill(skills=[{"name":"builder-reference","path":"references/stores.md"}])`; cite them instead of repeating them.{{if .Focus}} Focus especially on: {{.Focus}}.{{end}}
 
 ## The mental model to design against (current)
 
@@ -119,11 +105,11 @@ PART 6 — DESIGN LENSES (recommend the better shape, even when nothing is broke
 - **Prevalidation is the exception, not the default** — this cuts the other way from "gate everything": the step-level `validation_schema` is already the automatic final gate with same-conversation repair, so an intermediate `prevalidation` item inside an agent needs to earn its place. It belongs only when a later item in the same sequence must not run without it, protecting something costly or hard to undo (a paid tool call, a fan-out, an external side effect). Recommend removing one that just restates the eventual final schema — it burns a repair turn on every single run and catches nothing a later item wouldn't have caught by failing the final gate anyway.
 - **Human gates** — consequential actions need explicit authorization at their action boundary. Reuse existing valid authorization; for a new fixed-choice checkpoint use a human-decided branch, or a durable approval/consumer flow. Consult `references/human-in-the-loop.md`; do not add a checkpoint just to repeat approval already given.
 - **Naming** — "process_data"/"do_step" are generic; "classify_emails_by_buyer_intent" makes the plan self-documenting.
-- **Mode** — deterministic API/CLI/SDK/data-fetch/parse/transform steps start **scripted** and should have `main.py` authored and tested in Workshop. Judgment, synthesis, adaptive discovery, and browser/UI work stay **agentic**. The 10+-run evidence bar is only for *freezing* a proven script with `lock_code`, not for declaring an obviously deterministic step scripted. When `technical_review` has recorded tool-call trace evidence that a step's actual behavior is deterministic and identical in shape across runs, ground the scripted-candidate finding in that real evidence rather than the description alone — a description that reads as agentic can still be masking a step whose real tool-call sequence never varies.
+- **Mode** — deterministic API/CLI/SDK/data-fetch/parse/transform steps start **scripted** and should have `main.py` authored and tested in Workshop. Judgment, synthesis, adaptive discovery, and browser/UI work stay **agentic**. The 10+-run evidence bar is only for *freezing* a proven script with `lock_code`, not for declaring an obviously deterministic step scripted. When actual tool-call traces show that a step's actual behavior is deterministic and identical in shape across runs, ground the scripted-candidate finding in that real evidence rather than the description alone — a description that reads as agentic can still be masking a step whose real tool-call sequence never varies.
 
 For each recommendation give: **what's there now** (one quoted sentence), **what to consider** (better shape + concrete example), **why** (which practice it serves).
 
 PART 7 — PRIORITIES
 Close with a severity-ordered priority list across both the critical review and design synthesis. Include every evidence-backed finding; distinguish `now`, `next`, and `watch` so the user can act without losing lower-priority evidence. Also include a short "decisions that look sound" list so the user knows what not to churn.
 
-{{if eq .WorkshopMode "run"}}RUN MODE OUTPUT: return the combined review in chat. If the user wants it persisted, tell them to switch to Workshop and rerun `/design-plan`.{{else}}PARENT PERSISTENCE: after the reviewer completes, record every recommendation through typed Pulse finding tools (read matching existing findings first). Include what was reviewed, all read-only review findings by severity, decisions that look sound, recommendations grouped by part, explicit priority, and follow-ups. Preserve every evidence-backed finding; do not drop it because it falls outside a display cap. Mark recommendations as proposed; do not apply them.{{end}}
+{{if eq .WorkshopMode "run"}}Return the combined review in chat. Ask Builder for any workflow design changes.{{else}}Record unresolved recommendations through existing typed Pulse finding tools, reusing matching findings. Include the evidence, priority and proposed fix; do not apply recommendations during the review.{{end}}

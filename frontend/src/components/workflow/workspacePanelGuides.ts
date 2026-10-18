@@ -102,8 +102,8 @@ const AGENTWORKS_GUIDES: Record<string, GuideCopy> = {
     howTo: 'Check the publishing destination and status. Ask AI to help set up a host or update what gets published.',
   },
   Pulse: {
-    purpose: 'See the automation’s current health, progress, and items that need attention.',
-    howTo: 'Review recorded statuses and open an issue when something needs a decision. Refresh to check the latest state.',
+    purpose: 'See your goal, what Pulse changed, and what needs your answer.',
+    howTo: 'Choose Pulse on or off and whether outward actions need approval. Review the latest change, answer pending decisions, or open Pulse chat.',
   },
   Schedules: {
     purpose: 'Run work automatically at chosen times.',
@@ -192,26 +192,6 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
   'Use & share': () => ({ purpose: 'Choose who can use this project and where they can reach it.', howTo: 'Manage people and dashboard access with the existing sharing controls. Open an available channel to set up incoming conversations or MCP/API access. Connections is where you choose the accounts, tools and resources the agent itself uses.' }),
   'Connections · Slack': () => ({ purpose: 'Choose the Slack account this agent uses to read or send messages.', howTo: 'Review the available account and its server-provided send/read permissions. Connect or select only the account you intend this project to use. To let people talk to the agent through a Slack app, open Use & share instead.' }),
   Connections: () => ({ purpose: 'Review the accounts, apps and resources available to this project.', howTo: 'Existing accounts and MCPs are shown first. Use Add connection to set up an app or manage secrets, skills and other resources. Nothing is connected until you complete its existing setup flow.' }),
-  'Pulse · For you': () => ({
-    purpose: 'Track progress toward this automation’s goal and see work that needs your decision.',
-    howTo: 'Review Goal Work, its focus areas, and open items. Run a Goal Work pass when you want Pulse to assess progress now.',
-  }),
-  'Pulse · Platform health': () => ({
-    purpose: 'Inspect the checks that keep this automation and its runtime healthy.',
-    howTo: 'Pulse checks plan consistency and workflow problems in its continuing conversation. Open a saved issue to see its fix, verification, and activity. Earlier review results remain as history.',
-  }),
-  'Pulse · Issue Fix': () => ({
-    purpose: 'See what Pulse tried to change for this issue.',
-    howTo: 'Review each repair attempt, its outcome, and any changed files. An empty tab means no repair attempt has been recorded.',
-  }),
-  'Pulse · Issue Verification': () => ({
-    purpose: 'See whether checks confirmed that this issue was resolved.',
-    howTo: 'Compare expected and observed results. Open evidence on a check to inspect what supports its verdict.',
-  }),
-  'Pulse · Issue Activity': () => ({
-    purpose: 'Follow the recorded history of this issue.',
-    howTo: 'Read events in time order to see when the issue was reported, investigated, repaired, or closed.',
-  }),
   'Automation · Chats': surface => ({
     purpose: `Review earlier conversations with this ${surface === 'crew' ? 'Crew member' : 'automation'}.`,
     howTo: 'Open a conversation to see what was asked and what happened. Refresh after new chats finish.',

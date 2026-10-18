@@ -5,14 +5,9 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"sync"
 
 	mcpexecutor "github.com/manishiitg/mcpagent/executor"
 )
-
-// pulseWorklistRecordMu serializes the short read-then-write window used to
-// make one conversation's Gate decision immutable once fully recorded.
-var pulseWorklistRecordMu sync.Mutex
 
 // pulseRunIDForSession resolves the only convenience value exposed to agents.
 // A Pulse run is the active conversation, so its durable correlation id is the

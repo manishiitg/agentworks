@@ -14,7 +14,7 @@ import (
 // isPulseScheduleSessionID reports a scheduled Pulse or Pulse fix-run session,
 // from the schedule ID prefix newScheduleSessionID encodes.
 func isPulseScheduleSessionID(sessionID string) bool {
-	for _, id := range []string{manualWorkflowPulseScheduleID, pulseFixRunScheduleID} {
+	for _, id := range []string{manualWorkflowPulseScheduleID} {
 		prefix := id
 		if len(prefix) > 8 {
 			prefix = prefix[:8]

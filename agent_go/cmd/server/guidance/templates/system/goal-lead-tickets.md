@@ -1,7 +1,6 @@
 ## Pulse skill: manage Pulse tickets
 
-Pulse issues are your to-do list for the goal (`get_pulse_state` worklist and
-issues, `record_pulse_finding`, `merge_pulse_issues`, `resolve_run_concern`).
+Pulse issues are your to-do list for the goal (`get_pulse_state` backlog, `record_pulse_finding`, `merge_pulse_issues`, `resolve_run_concern`).
 
 1. **Open one only for the goal:** a failing step, a measurement gap, a
    bottleneck, a cost spike, with evidence (run, step, numbers). Not for style.

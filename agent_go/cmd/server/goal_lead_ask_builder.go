@@ -8,12 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/manishiitg/mcpagent/executor"
-	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
-
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/mcpagent/executor"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // ask_builder sends a conversational message to the owner's Builder chat.
@@ -129,7 +128,7 @@ const goalLeadBuilderAsksSchema = `CREATE TABLE IF NOT EXISTS goal_lead_builder_
 )`
 
 func withGoalLeadBuilderAsks(ctx context.Context, workspacePath string, create bool, fn func(*sql.DB) error) error {
-	_, db, err := openPulseModuleStateDB(ctx, workspacePath, create)
+	_, db, err := openPulseStoreDB(ctx, workspacePath, create)
 	if err != nil || db == nil {
 		return err
 	}

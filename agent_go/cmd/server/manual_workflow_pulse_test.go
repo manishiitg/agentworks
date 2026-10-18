@@ -77,51 +77,6 @@ func TestManualPulseScheduleContract(t *testing.T) {
 	}
 }
 
-// TestPulseReviewOnlyScheduleContractMirrorsManualPulseTrigger retains the
-// legacy schedule parser until startup migration removes old entries.
-func TestPulseReviewOnlyScheduleContractMirrorsManualPulseTrigger(t *testing.T) {
-	manifest := &WorkflowManifest{ID: "workflow-id", Label: "Workflow", Pulse: &WorkflowPulseConfig{Enabled: true}}
-	sched := WorkflowSchedule{
-		ID:              "periodic-pulse-review",
-		Name:            "Periodic Pulse Review",
-		Mode:            "workshop",
-		WorkshopMode:    "run",
-		CronExpression:  "0 3 * * *",
-		PulseReviewOnly: true,
-	}
-	sctx := buildScheduleContext("/tmp/workflow", manifest, sched)
-
-	if !sctx.PulseOnly {
-		t.Fatal("a PulseReviewOnly schedule must set sctx.PulseOnly")
-	}
-	if !sctx.ForcePulseReview {
-		t.Fatal("a PulseReviewOnly schedule must force Pulse to run")
-	}
-	if sctx.PulseEvidenceRunFolder != "" {
-		t.Fatalf("PulseEvidenceRunFolder = %q, want empty — a periodic pass must not be pinned to a single folder", sctx.PulseEvidenceRunFolder)
-	}
-	if !shouldRunPulseLifecycle(sctx, manifest) {
-		t.Fatal("a PulseReviewOnly schedule must execute Pulse")
-	}
-	if messages := scheduledWorkshopMessages(sctx); len(messages) != 0 {
-		t.Fatalf("PulseReviewOnly must not enqueue a workflow message: %v", messages)
-	}
-
-	// A schedule with the flag unset (the overwhelming majority of schedules,
-	// including every existing one before this field existed) must be
-	// completely unaffected.
-	ordinary := buildScheduleContext("/tmp/workflow", manifest, WorkflowSchedule{Mode: "workshop", WorkshopMode: "run"})
-	if ordinary.PulseOnly || ordinary.ForcePulseReview {
-		t.Fatalf("an ordinary schedule must not be marked Pulse-only: %+v", ordinary)
-	}
-	manifest.Schedules = []WorkflowSchedule{{
-		ID: "periodic-pulse-review", Enabled: true, PulseReviewOnly: true,
-	}}
-	if !shouldRunPulseLifecycle(ordinary, manifest) {
-		t.Fatal("a legacy Pulse schedule must keep post-run Pulse enabled during migration")
-	}
-}
-
 func TestLatestRetainedPulseEvidenceSkipsPriorManualPulseRuns(t *testing.T) {
 	now := time.Now().UTC()
 	runs := []ScheduleRunEntry{

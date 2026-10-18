@@ -15,9 +15,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsemodules"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsestore"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
-
 	_ "modernc.org/sqlite"
 )
 
@@ -184,10 +182,7 @@ func openRunConcernsDB(ctx context.Context, workspacePath string, create bool) (
 	if err != nil {
 		return nil, err
 	}
-	if _, err := pulsestore.Ensure(ctx, db, dbPath); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("migrate compact Pulse store: %w", err)
-	}
+
 	return db, nil
 }
 

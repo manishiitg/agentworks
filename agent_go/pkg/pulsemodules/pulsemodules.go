@@ -1,80 +1,31 @@
-// Package pulsemodules is the single canonical registry of Pulse review
-// module identity.
-//
-// Why this package exists, and why it is a dependency-free leaf:
-//
-// Module identity was previously restated in nine independently maintained
-// places — scheduler constants, an order slice, a validity map, an alias
-// normalizer, a scheduler step-label switch, a tool enum, that tool's prose
-// description, a reviewer artifact-path whitelist, and two frontend files.
-// Nothing asserted they agreed.
-//
-// A 2026-07-29 refactor merged several maintenance lenses without updating all
-// consumers. Two production failures followed: a missing ToolCategories entry
-// blocked every todo_task orchestrator, and a missing reviewer-whitelist entry
-// silently discarded a whole review result. Both built cleanly and passed the
-// full test suite.
-//
-// The registry is a leaf package with no imports because both cmd/server and
-// pkg/orchestrator/.../step_based_workflow must consume it, and server already
-// imports step_based_workflow — so the shared truth cannot live in either.
+// Package pulsemodules labels saved review evidence; it does not schedule reviewers.
 package pulsemodules
 
 import "strings"
 
-// Module is one scheduled Pulse review module.
 type Module struct {
-	// ID is the canonical identifier used in db state, tool payloads,
-	// reviewer artifact paths, and HTML data-module attributes.
-	ID string
-	// Label is the plain-language name shown to operators.
-	Label string
-	// StepLabel is the scheduler's per-stage label for this module.
+	ID        string
+	Label     string
 	StepLabel string
-	// Aliases are shorthand or superseded spellings that normalize to ID.
-	// These are accepted as input; they are never emitted.
-	Aliases []string
-	// Question is the single boundary question this reviewer answers. Keep this
-	// short enough to reuse in dispatch and UI copy.
-	Question string
-	// Trigger states what evidence makes the module useful. It is descriptive;
-	// Gate still records the durable due decision.
-	Trigger string
-	// Authority is either repair (may apply bounded workflow-owned fixes) or
-	// propose (research-only; changes require the normal Builder/decision path).
-	Authority string
+	Aliases   []string
 }
 
-// Canonical module IDs. Consumers that need compile-time constants must alias
-// these values rather than restating their string literals.
 const (
-	TechnicalReviewID    = "technical_review"
-	ArchitectureReviewID = "architecture_review"
-	StrategicReviewID    = "strategic_review"
-	PlanDriftReviewID    = "plan_drift_review"
-
-	// Legacy review IDs are accepted only at persistence/read boundaries so
-	// existing workflow databases can be migrated into the canonical review
-	// identities. New worklists, receipts, findings, and UI projections must
-	// never emit them.
+	TechnicalReviewID       = "technical_review"
+	ArchitectureReviewID    = "architecture_review"
+	StrategicReviewID       = "strategic_review"
+	PlanDriftReviewID       = "plan_drift_review"
 	LegacyWorkflowReviewID  = "workflow_review"
 	LegacyLLMOpsReviewID    = "llm_ops_review"
 	LegacyStrategyAuditorID = "strategy_auditor"
 	LegacyGoalAdvisorID     = "goal_advisor"
 )
-
-// HTML-only classifications. They are not scheduled review modules.
 const (
 	PseudoRunSummaryID = "run_summary"
 )
 
-// All is the stable identity/catalog order used by persisted worklists and UI
-// projections. ExecutionOrder below is the runtime dependency order.
 var All = []Module{
 	{
-		// Technical Review is one retained reviewer sequence with an agent-chosen
-		// correctness lens. Structural optimization, model/tier fitness and
-		// orchestration redesign belong to Architecture instead.
 		ID:        TechnicalReviewID,
 		Label:     "Technical review",
 		StepLabel: "technical-review",
@@ -83,28 +34,14 @@ var All = []Module{
 			"correctness_review", "ops", "operations",
 			LegacyWorkflowReviewID, LegacyLLMOpsReviewID,
 		},
-		Question:  "Does the current approved design execute correctly?",
-		Trigger:   "Concrete runtime, output, validation, scheduler, or safety failure evidence.",
-		Authority: "repair",
 	},
 	{
 		ID:        ArchitectureReviewID,
 		Label:     "Architecture review",
 		StepLabel: "architecture-review",
 		Aliases:   []string{"architecture", "workflow_improvement"},
-		Question:  "Could the approved approach be implemented with a materially better technical structure?",
-		Trigger:   "Evidence of structural complexity, duplication, handoff friction, topology limits, or persistent cost/latency inefficiency.",
-		// propose, with one bounded exception (PLAT-556): a pure text-moving
-		// consolidation that passes check_plan_no_loss and a validated
-		// comparison run, and settling read-write learning access to read.
-		Authority: "propose",
 	},
 	{
-		// Strategic Review owns both causal criticism of the current strategy
-		// and, when Gate evidence warrants it, independent discovery of a
-		// materially different approach. Keeping those as turns in one sequence
-		// lets the critic compare alternatives against the same evidence without
-		// creating two competing durable module identities.
 		ID:        StrategicReviewID,
 		Label:     "Strategic review",
 		StepLabel: "strategic-review",
@@ -112,59 +49,15 @@ var All = []Module{
 			"strategy", "strategy_review", "plan_effectiveness", "advisor",
 			LegacyStrategyAuditorID, LegacyGoalAdvisorID,
 		},
-		Question:  "Is the workflow achieving its goal, and what should improve next?",
-		Trigger:   "Outcome movement, feedback, measurement gaps, experiment checkpoints, or grounded strategic opportunity.",
-		Authority: "propose",
 	},
 	{
-		// Plan Drift is evidence for the same Pulse goal-work turn. Its
-		// durable identity is kept for receipts/history, never a pre-run gate.
 		ID:        PlanDriftReviewID,
 		Label:     "Plan drift review",
 		StepLabel: "plan-drift-review",
 		Aliases:   []string{"drift_review", "plan_drift"},
-		Question:  "Did a specific approved plan change leave dependent artifacts inconsistent?",
-		Trigger:   "A new or stale per-step drift receipt or an unreviewed plan-change dependency receipt.",
-		Authority: "repair",
 	},
 }
 
-// ExecutionOrder is the canonical reviewer sequence of a Pulse pass.
-// Strategic Review is Goal Work, Pulse's main job
-// (docs/design/pulse_goal_work.md), so it runs first; platform upkeep follows.
-// Plan Drift is checked inside the same Pulse turn, not dispatched as
-// a separate reviewer. It keeps its identity for evidence and history.
-var ExecutionOrder = []string{
-	StrategicReviewID,
-	ArchitectureReviewID,
-	TechnicalReviewID,
-}
-
-// GoalLeadExecutionOrder is the full pass of a workflow with a goal (PLAT-697,
-// "QA and Architecture owned by the Pulse"): only Goal Work, in the
-// workflow's Pulse conversation. Architecture is that conversation's skill and
-// QA (Technical Review+Fix) runs only when it asks for it, so neither runs as
-// its own turn in the pass.
-var GoalLeadExecutionOrder = []string{
-	StrategicReviewID,
-}
-
-// PassOrder is the module order of a full Pulse pass: ExecutionOrder for a
-// workflow without a goal, GoalLeadExecutionOrder for one with a goal.
-func PassOrder(hasGoal bool) []string {
-	if hasGoal {
-		return GoalLeadExecutionOrder
-	}
-	return ExecutionOrder
-}
-
-// PseudoIDs are data-module values that appear in builder/improve.html but are
-// not scheduled review modules. run_summary covers Gate and run rows; fixes
-// and decisions belong to their actual Technical or Strategic
-// Review source rather than a synthetic "Pulse fixer" lane.
-var PseudoIDs = []string{PseudoRunSummaryID}
-
-// IDs returns the canonical module IDs in worklist order.
 func IDs() []string {
 	out := make([]string, 0, len(All))
 	for _, m := range All {
@@ -172,8 +65,6 @@ func IDs() []string {
 	}
 	return out
 }
-
-// IsValid reports whether id is a currently scheduled canonical module.
 func IsValid(id string) bool {
 	for _, m := range All {
 		if m.ID == id {
@@ -182,10 +73,6 @@ func IsValid(id string) bool {
 	}
 	return false
 }
-
-// Normalize maps current shorthand, loosely-cased spellings, and retired
-// review identities onto a canonical ID. Callers accept the old
-// values for migration only; all output uses the canonical ID.
 func Normalize(module string) string {
 	module = strings.ToLower(strings.TrimSpace(module))
 	module = strings.ReplaceAll(module, "-", "_")
@@ -201,20 +88,6 @@ func Normalize(module string) string {
 	}
 	return module
 }
-
-// ForStepLabel maps a scheduler stage label to its canonical module ID, or ""
-// when the label is not a module stage (for example "gate" or "finalize").
-func ForStepLabel(label string) string {
-	for _, m := range All {
-		if m.StepLabel == label {
-			return m.ID
-		}
-	}
-	return ""
-}
-
-// AcceptedForReviewReceipts is the current module set accepted for durable
-// reviewer receipts.
 func AcceptedForReviewReceipts() []string {
 	return IDs()
 }

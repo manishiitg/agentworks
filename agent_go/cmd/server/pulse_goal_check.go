@@ -45,7 +45,7 @@ var goalCheckEvaluatedAt = map[string]time.Time{}
 // isPulseScheduleID reports the synthetic schedules of Pulse passes (full,
 // goal check, fix run): they are not workflow runs.
 func isPulseScheduleID(id string) bool {
-	return id == manualWorkflowPulseScheduleID || id == pulseFixRunScheduleID
+	return id == manualWorkflowPulseScheduleID || id == "pulse-fix-run"
 }
 
 var goalCheckStatuses = map[string]bool{"on_track": true, "at_risk": true, "off_track": true, "not_measured": true}
@@ -180,7 +180,7 @@ func ensurePulseGoalCheckSchema(ctx context.Context, db *sql.DB) error {
 }
 
 func latestPulseGoalCheck(ctx context.Context, workspacePath string) (*PulseGoalCheck, time.Time, error) {
-	_, db, err := openPulseModuleStateDB(ctx, workspacePath, false)
+	_, db, err := openPulseStoreDB(ctx, workspacePath, false)
 	if err != nil || db == nil {
 		return nil, time.Time{}, err
 	}
@@ -215,7 +215,7 @@ func latestPulseGoalCheck(ctx context.Context, workspacePath string) (*PulseGoal
 }
 
 func recordGoalCheckRunStarted(ctx context.Context, workspacePath, runID string, startedAt time.Time) error {
-	_, db, err := openPulseModuleStateDB(ctx, workspacePath, true)
+	_, db, err := openPulseStoreDB(ctx, workspacePath, true)
 	if err != nil {
 		return err
 	}
@@ -372,7 +372,7 @@ func recordPulseGoalCheckFromToolArgs(ctx context.Context, args map[string]inter
 	if err != nil {
 		return "", err
 	}
-	_, db, err := openPulseModuleStateDB(ctx, workspacePath, true)
+	_, db, err := openPulseStoreDB(ctx, workspacePath, true)
 	if err != nil {
 		return "", err
 	}
@@ -550,7 +550,7 @@ func nextPulseCheckAt(ctx context.Context, workspacePath string, manifest *Workf
 }
 
 func pulseGoalCheckSavedForRun(ctx context.Context, workspacePath, runID string) (bool, error) {
-	_, db, err := openPulseModuleStateDB(ctx, workspacePath, false)
+	_, db, err := openPulseStoreDB(ctx, workspacePath, false)
 	if err != nil || db == nil {
 		return false, err
 	}

@@ -56,7 +56,7 @@ describe('Panel walkthroughs', () => {
     let root = createRoot(host)
     try {
       for (const surface of ['agentworks', 'crew', 'code'] as const) {
-        for (const topic of ['Pulse · Platform health', 'Identity · General']) {
+        for (const topic of ['Pulse', 'Identity · General']) {
           await act(async () => root.render(<WorkspacePanelGuideContext.Provider value={surface}>
             <WorkspaceViewHeader title="Manual panel help" helpTopic={topic} />
           </WorkspacePanelGuideContext.Provider>))
@@ -146,10 +146,7 @@ describe('Panel walkthroughs', () => {
       expect(host.querySelector('[role="dialog"]')?.textContent).toContain('Crew · Main toolbar')
       expect(getWorkspacePanelGuide('Knowledge · Database').group).toBe('Ops')
       expect(getWorkspacePanelGuide('Identity · Secrets', 'crew').group).toBe('Setup')
-      expect(getWorkspacePanelGuide('Pulse · Platform health').group).toBe('Main toolbar')
-      expect(getWorkspacePanelGuide('Pulse · Issue Fix').purpose).toContain('tried to change')
-      expect(getWorkspacePanelGuide('Pulse · Issue Verification').purpose).toContain('checks')
-      expect(getWorkspacePanelGuide('Pulse · Issue Activity').purpose).toContain('history')
+      expect(getWorkspacePanelGuide('Pulse').group).toBe('Main toolbar')
     } finally {
       await act(async () => root.unmount())
       host.remove()

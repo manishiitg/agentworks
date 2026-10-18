@@ -203,11 +203,11 @@ func TestToolSetInvariants(t *testing.T) {
 			t.Fatalf("missing goal tool %s", name)
 		}
 	}
-	// 4. Pulse worklist tools are registered in the workflow tool pool and must
+	// 4. Pulse and after-run tools are registered in the workflow tool pool and must
 	//    be visible in workshop mode, otherwise scheduled Pulse turns can ask
-	//    for record_pulse_result/get_pulse_state and then fail at
+	//    for get_pulse_state and then fail at
 	//    runtime with "not callable in this chat session".
-	for _, n := range []string{"get_pulse_state", "record_pulse_worklist", "record_pulse_result", "resolve_run_concern"} {
+	for _, n := range []string{"get_pulse_state", "resolve_run_concern"} {
 		if !pool[n] || cats[n] != "workflow" {
 			t.Fatalf("workflow pool missing Pulse state tool %q (in_pool=%v cat=%q)", n, pool[n], cats[n])
 		}
@@ -226,7 +226,7 @@ func TestToolSetInvariants(t *testing.T) {
 		"update_workflow_config", "update_step_config", "validate_report_html",
 		"list_schedules", "update_schedule", "get_schedule_runs",
 		"execute_shell_command", "diff_patch_workspace_file",
-		"get_pulse_state", "record_pulse_worklist", "record_pulse_result", "resolve_run_concern",
+		"get_pulse_state", "resolve_run_concern",
 		"mark_changelog_artifact_reviewed",
 	} {
 		if !workshop[todo_creation_human.ConsolidatedPlanToolName(n)] {
@@ -248,7 +248,7 @@ func TestToolSetInvariants(t *testing.T) {
 	for _, n := range todo_creation_human.GetToolsForWorkshopMode("run") {
 		run[n] = true
 	}
-	for _, n := range []string{"get_pulse_state", "record_pulse_worklist", "record_pulse_result", "resolve_run_concern", "mark_changelog_artifact_reviewed", "preview_step_runtime"} {
+	for _, n := range []string{"get_pulse_state", "resolve_run_concern", "mark_changelog_artifact_reviewed", "preview_step_runtime"} {
 		if run[n] {
 			t.Fatalf("run allow-list must not expose Builder/Pulse-only tool %q", n)
 		}

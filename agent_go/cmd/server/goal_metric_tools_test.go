@@ -122,7 +122,7 @@ func TestGoalRunEvidenceDoesNotRequireMetricRouteMappings(t *testing.T) {
 		}
 	}
 	// The real read tool still exposes stored evidence if Pulse chooses it.
-	_, pulseExecutors, _ := createPulseWorklistTools()
+	_, pulseExecutors, _ := createPulseTools()
 	out, err := pulseExecutors["get_pulse_state"].(func(context.Context, map[string]interface{}) (string, error))(ctx, map[string]interface{}{"workspace_path": ws, "view": "goal_status"})
 	if err != nil || !strings.Contains(out, `"recent_runs"`) || !strings.Contains(out, "iteration-2-sched") || !strings.Contains(out, `"goal_lead"`) {
 		t.Fatalf("optional state tool lost execution/goal evidence: %s %v", out, err)
@@ -208,7 +208,7 @@ func TestGoalMeasurementDBHistoryAndPulseFacts(t *testing.T) {
 		return v
 	}
 	setPulse := func(enabled bool) {
-		raw, err := json.Marshal(map[string]interface{}{"id": "measurement", "label": "Measurement", "pulse": map[string]interface{}{"enabled": enabled}})
+		raw, err := json.Marshal(map[string]interface{}{"id": "measurement", "label": "Measurement", "pulse": map[string]interface{}{"enabled": enabled, "outward_actions": "ask"}})
 		if err != nil {
 			t.Fatal(err)
 		}

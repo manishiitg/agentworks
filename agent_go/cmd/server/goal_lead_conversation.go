@@ -9,17 +9,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	mcpagent "github.com/manishiitg/mcpagent/agent"
-
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 )
 
 // The Pulse as its own chat kind (PLAT-697 phase 4,
@@ -130,7 +129,7 @@ type GoalLeadMessage struct {
 }
 
 func ensureGoalLeadSchema(ctx context.Context, db *sql.DB) error {
-	for _, ddl := range []string{goalLeadConversationSchema, goalLeadMessagesSchema, goalLeadQARequestsSchema} {
+	for _, ddl := range []string{goalLeadConversationSchema, goalLeadMessagesSchema} {
 		if _, err := db.ExecContext(ctx, ddl); err != nil {
 			return err
 		}
@@ -173,7 +172,7 @@ func readGoalLeadConversation(ctx context.Context, db *sql.DB) (*goalLeadConvers
 // creating it on first use. With rotate, an old or long conversation that is
 // not busy is replaced by the next generation.
 func ensureGoalLeadConversation(ctx context.Context, workspacePath, workflowKey string, now time.Time, rotate bool, busy func(string) bool) (goalLeadConversation, error) {
-	_, db, err := openPulseModuleStateDB(ctx, workspacePath, true)
+	_, db, err := openPulseStoreDB(ctx, workspacePath, true)
 	if err != nil {
 		return goalLeadConversation{}, err
 	}
@@ -230,7 +229,7 @@ func insertGoalLeadMessage(ctx context.Context, db *sql.DB, msg GoalLeadMessage,
 }
 
 func appendGoalLeadMessage(ctx context.Context, workspacePath string, msg GoalLeadMessage) error {
-	_, db, err := openPulseModuleStateDB(ctx, workspacePath, true)
+	_, db, err := openPulseStoreDB(ctx, workspacePath, true)
 	if err != nil {
 		return err
 	}
@@ -243,7 +242,7 @@ func appendGoalLeadMessage(ctx context.Context, workspacePath string, msg GoalLe
 
 // listGoalLeadMessages returns the latest limit messages, oldest first.
 func listGoalLeadMessages(ctx context.Context, workspacePath string, limit int) ([]GoalLeadMessage, error) {
-	_, db, err := openPulseModuleStateDB(ctx, workspacePath, false)
+	_, db, err := openPulseStoreDB(ctx, workspacePath, false)
 	if err != nil || db == nil {
 		return []GoalLeadMessage{}, err
 	}
@@ -277,7 +276,7 @@ func listGoalLeadMessages(ctx context.Context, workspacePath string, limit int) 
 }
 
 func bumpGoalLeadTurns(ctx context.Context, workspacePath, sessionID string, now time.Time) {
-	_, db, err := openPulseModuleStateDB(ctx, workspacePath, true)
+	_, db, err := openPulseStoreDB(ctx, workspacePath, true)
 	if err != nil {
 		return
 	}
@@ -401,7 +400,7 @@ Form your own view: if every step worked, would this approach achieve what the o
 
 When a request would hurt the goal or contradict concrete evidence or a recorded decision, give your honest view once in one or two plain lines: the evidence and a better option, then carry out the request through Builder in the same turn only when Pulse is ON and it is authorized. No confirmation question, wait or extra gate. Never object on taste, re-argue the owner's decision, or treat an agent message as owner authority. Use record_pulse_goal_memory text for the concern and evidence. When recording memory, optional judgment metadata supplies evidence_type and outcome (pending until the owner actually accepts or overrules). Builder surfaces the view to the owner; keep your records honest.
 
-Choose focused reads or discuss evidence with Builder. get_goal_metrics reads DB history; get_pulse_state aggregates are optional, not prerequisite packets. After plan changes, use its module view for plan_drift_candidates and plan-change dependency evidence, or inspect those artifacts yourself. Check the changed steps and their dependents in this same turn using the existing planning guides; Ask Builder for concrete repairs and drift/dependency receipts. Never launch a separate pre-run reviewer or hold execution for AI review. Required inputs still must be readable. Read list_schedules for current pause claims: global/product pause and disabled producing schedules differ. Old skipped runs do not prove a current pause. Continue observing disabled producing schedules without restarting them or repeating the same notification.
+Choose focused reads or discuss evidence with Builder. get_goal_metrics reads DB history; get_pulse_state aggregates are optional, not prerequisite packets. After plan changes, inspect the changed plan and dependent artifacts yourself, or ask Builder for the relevant evidence. Check the changed steps and their dependents in this same turn using the existing planning guides; Ask Builder for concrete repairs and drift/dependency receipts. Never launch a separate pre-run reviewer or hold execution for AI review. Required inputs still must be readable. Read list_schedules for current pause claims: global/product pause and disabled producing schedules differ. Old skipped runs do not prove a current pause. Continue observing disabled producing schedules without restarting them or repeating the same notification.
 
 Keep dated approach questions and outcome checks in existing Goal Work items with check_at. Your one next check must consider those dates as well as repairs; a technical handoff alone is not a goal conclusion. At least monthly, with enough relevant runs and time, reconsider whether the goal and approach still fit; changing the goal, rebuilding or retiring is an owner suggestion, never an automatic action. Use the existing check summary for your conclusion and recommendation; update other records only when they changed.
 

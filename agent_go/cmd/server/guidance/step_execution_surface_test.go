@@ -35,36 +35,6 @@ func TestStepExecutionSurfaceNeverAdvertisesUnheldProviderTools(t *testing.T) {
 	}
 }
 
-// TestStepExecutionSurfaceOmitsDesignAndPulseDocs pins the scope decision: the
-// step-type docs are design-time material for the builder, and the Pulse and
-// Finalizer docs belong to surfaces that reach guidance through
-// workflow_phase_tools.go instead.
-func TestStepExecutionSurfaceOmitsDesignAndPulseDocs(t *testing.T) {
-	skill := MaterializeStepExecutionReferenceSkill(StepExecutionSignals{
-		ToolNames:         socialMediaSubAgentTools,
-		CodeExecutionMode: true,
-		ScriptedStep:      true,
-	})
-	if skill == nil {
-		t.Fatal("expected a reference skill")
-	}
-
-	// Deliberately checked with every signal enabled: if even the most capable
-	// step does not get these, no step does.
-	for _, banned := range []string{
-		"routing", "scripted", "agent", "orchestrator", "step-config",
-		"running-steps", "execution-policy", "planning-steps", "plan-design",
-		"pulse-gate", "pulse-review-fixer", "pulse-finalizer", "pulse-bug-review",
-		"backup-strategy", "publish-strategy", "reporting-policy", "html-output",
-		"file-layout", "secret-management", "skill-management", "workflow-tools",
-	} {
-		path := "references/" + banned + ".md"
-		if strings.Contains(skill.Content, path) {
-			t.Errorf("step reference bundle includes %q, which no step agent can act on", banned)
-		}
-	}
-}
-
 // TestStepExecutionSurfaceFollowsTheToolsHeld is the positive half: each doc
 // appears exactly when the signal that justifies it is present, and disappears
 // when it is not. Written as add/remove pairs so the assertion is the

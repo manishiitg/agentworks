@@ -6,22 +6,15 @@ model — use it to investigate.
 
 ## Workshop investigation workflow
 
-1. Pick the action that matches the failure: if the workflow path is
-   sound but reliability is broken, collect a read-only Bug Review and
-   let the parent Pulse Fixer apply bounded verified repairs.
-   If eval verdicts or Goal progress show a success-criteria strategy
-   gap, create/apply a Goal Advisor plan-change proposal as appropriate.
-   For local fixes (description, `validation_schema`, context wiring,
-   step config), apply them directly with the matching update tool.
-2. For background actions, continue other work while they run — you'll
-   be auto-notified.
-3. Review the summary of changes; re-run the affected scope to verify.
+1. Read real outputs, logs and validation evidence to identify the failing contract. Investigate and repair it in the current Builder conversation. Pulse sends evidence and the expected result to Builder; there is no Bug Review/Fixer handoff.
+2. Use the matching step/plan/configuration tool for a justified repair within current permissions. For a strategy gap, agree the intended goal outcome before changing the approach.
+3. Verify the affected scope with a targeted run when it would resolve uncertainty. Continue useful independent work while an admitted background run finishes.
 
 **When a step is stuck or repeatedly failing**, run the task yourself
 using the same tools the step agent would use, but first read
 the selected workflow skill index and any relevant KB/db/run artifacts so
 you reuse the workflow's generated playbook. Figure out what works,
-then update the step's instructions, validation, config, or learnings
+then update the step's instructions, validation, config, or skills
 with the correct approach.
 
 ## Run investigation workflow
@@ -46,21 +39,21 @@ with the correct approach.
    `execute_step`; if the request needs the whole workflow, call
    `run_full_workflow`.
 6. If fixing requires changing step descriptions, validation, config,
-   learnings, KB, db shape, report wiring, or evaluation, tell the
+   skills, KB, db shape, report wiring, or evaluation, tell the
    user to switch to Workshop. Do not mutate
    workflow design artifacts from Run mode.
 
 **When a step is stuck or repeatedly failing in Run mode**, inspect
 what happened with the available run/review tools and explain the
 likely fix. Do not update step instructions, validation, config, or
-learnings in this mode.
+skills in this mode.
 
 ## Root cause → fix mapping
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Agent didn't attempt the task | Step description is unclear | Rewrite it |
-| Agent used wrong approach | Missing or stale execution guidance | Fix and wire the relevant skill/learnings; add only task-specific constraints to the description |
+| Agent used wrong approach | Missing or stale execution guidance | Fix and wire the relevant skill; add only task-specific constraints to the description |
 | Agent missed fields/data | Output contract or evidence gap | Correct `validation_schema` or the canonical output contract; clarify intended outcome/source evidence in the description |
 | Agent couldn't find data from previous steps | Wiring gap | Fix `context_dependencies` chain |
 | Validation rejected correct output | Schema too strict | Update it |
@@ -73,14 +66,11 @@ The fix should be one of:
 - Update step description (most common).
 - Update `validation_schema`.
 - Fix context dependencies.
-- Edit/delete learnings.
-- Run the Pulse Bug Review/Fixer flow.
-- Create/apply a Goal Advisor plan-change proposal.
+- Correct workflow skills.
+- Ask Builder to apply a Pulse repair with its evidence.
+- Make an authorized goal-aligned plan change.
 
-**Critical: act, don't just analyze.** In Pulse, reviewers remain read-only
-and the parent Pulse Fixer applies the verified changes. For manual fixes, update step
-descriptions, update `validation_schema`, edit learnings. After
-fixing, re-run to verify.
+**Act on the evidence.** Builder applies authorized changes with its normal tools and verifies them. Pulse records the actual result and follows through on goal effects; sending the request alone is not completion.
 
 ## Run mode fix options
 

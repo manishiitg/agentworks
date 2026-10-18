@@ -8,7 +8,7 @@ external_note: "External mapping: use help action=topic for listed reference top
 
 A workflow is a web of **implicit dependencies**: a step's output feeds downstream steps, evals score it, the report dashboard queries its data, db stores it, and learnings/KB describe its behavior. Change a step and those silently rot — a downstream step reads a field you renamed, a report query returns nothing, an eval scores the wrong thing, a learning teaches the old behavior.
 
-**Whenever you change a plan** — add / remove / reorder a step, or change a step's output contract, behavior, or description — you are not done until you have checked and reconciled the blast radius. This applies whether the change came from an active Workshop edit, an approved Goal Advisor proposal, or a bounded Pulse Fixer repair.
+**Whenever you change a plan** — add / remove / reorder a step, or change a step's output contract, behavior, or description — you are not done until you have checked and reconciled the blast radius. This applies whether the change came from an active Workshop edit, an approved Goal Advisor proposal, or a repair requested by Pulse.
 
 ## Interactive edits and test runs
 
@@ -57,14 +57,14 @@ When the change is intended to affect a goal or metric, state that expectation a
 the future comparison boundary in the canonical issue or concise review result.
 Workflow steps, evaluation steps and collectors own the actual measurements. Do not
 create a parallel Pulse impact record, and do not claim the change worked until a
-later Strategic Review has comparable outcome evidence.
+later Pulse check has comparable outcome evidence.
 
 ## The changelog is your work-list — keep it lean
 Every plan-mod tool call is auto-written to `planning/changelog/changelog-*.json` (tool, `reason`, affected step ids, old/new values). Treat entries without `artifact_review.done=true` as the **ledger of changes whose blast radius may not be reconciled yet** — your work-list. When you reconcile a change (steps 1–3), record its concrete compatibility result.
 
-Do **not** edit or delete changelog files directly. The read-only Artifact Review agent returns exact inspected entries plus all six surface dispositions and evidence; the parent writer records typed findings/dispositions and then marks those entries through the dedicated `mark_changelog_artifact_reviewed` tool. Pulse uses that metadata to skip future no-op review turns.
+Do **not** edit or delete changelog files directly. The current agent records evidence-backed findings/dispositions and marks only inspected entries through `mark_changelog_artifact_reviewed`. Pulse uses those saved records to avoid repeating unchanged checks.
 
-The full **`review-artifact-drift` audit** is a backstop for scheduled Pulse or an explicit user request. Its first part runs the scheduled `plan_drift_review` procedure; its second part audits the remaining dependent artifacts read-only. Its parent writer marks only exact inspected changelog entries. This broader audit is separate from the current agent's targeted compatibility check and is not a prerequisite for an interactive test run.
+The full `review-artifact-drift` audit is a backstop inside the same Pulse or Builder conversation when due or explicitly requested. Inspect changed steps and affected dependent artifacts directly, asking Builder for repairs as needed. It is not a prerequisite for a normal test run.
 
 ## Scope note
 The discipline **scales to the change**. A change that is purely internal to a step (same output contract, same db writes, same described behavior) has no blast radius — confirm that quickly and move on. A renamed output field touches downstream + report + eval + db; a reworded description that keeps the same contract may only touch learnings. Trace what the surface actually reaches, not a fixed checklist for its own sake.

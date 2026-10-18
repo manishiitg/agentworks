@@ -109,7 +109,7 @@ Honor an existing user-approved disabled/off backup policy without asking again.
 - **Bad**: `"Run the workflow and ask me which steps to optimize"`.
 - **Good**: `"Run the planned daily-processing route for group-1. Process only explicitly approved items; leave pending items untouched and report missing inputs."`
 
-Pulse module cadence is not encoded in schedule JSON. Pulse Gate stores module state in `db/db.sqlite` and decides which modules are due after each normal run.
+Pulse uses its saved next-check time independently of normal schedules. Failed runs can wake the same continuing Pulse conversation when Pulse is ON; there is no module cadence or post-run Gate.
 
 Do not create new `workshop_mode="optimizer"` schedules. Existing saved legacy
 values are handled by migration/backend compatibility; new continuous

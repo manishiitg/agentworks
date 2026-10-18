@@ -21,9 +21,7 @@ const (
 	StateWaitingForCapacity State = "waiting_for_capacity"
 	StateWorkflowRunning    State = "workflow_running"
 	StateWorkflowFinished   State = "workflow_finished"
-	StatePulseGate          State = "pulse_gate"
-	StatePulseModules       State = "pulse_modules"
-	StatePulseFinalizing    State = "pulse_finalizing"
+	StatePulseRunning       State = "pulse_running"
 	StateCompleted          State = "completed"
 	StatePartial            State = "partial"
 	StateFailed             State = "failed"
@@ -47,15 +45,9 @@ var allowedTransitions = map[State]map[State]bool{
 		StateWorkflowFinished: true, StateFailed: true, StateStopped: true, StateInterrupted: true,
 	},
 	StateWorkflowFinished: {
-		StatePulseGate: true, StateWaitingForCapacity: true, StateCompleted: true, StatePartial: true, StateFailed: true, StateStopped: true, StateInterrupted: true,
+		StatePulseRunning: true, StateWaitingForCapacity: true, StateCompleted: true, StatePartial: true, StateFailed: true, StateStopped: true, StateInterrupted: true,
 	},
-	StatePulseGate: {
-		StatePulseModules: true, StatePulseFinalizing: true, StateCompleted: true, StatePartial: true, StateFailed: true, StateStopped: true, StateInterrupted: true,
-	},
-	StatePulseModules: {
-		StatePulseFinalizing: true, StateCompleted: true, StatePartial: true, StateFailed: true, StateStopped: true, StateInterrupted: true,
-	},
-	StatePulseFinalizing: {
+	StatePulseRunning: {
 		StateCompleted: true, StatePartial: true, StateFailed: true, StateStopped: true, StateInterrupted: true,
 	},
 }
@@ -201,9 +193,13 @@ func (s *Store) init(ctx context.Context) error {
 			run_folder TEXT NOT NULL DEFAULT '',
 			error_message TEXT NOT NULL DEFAULT ''
 		)`,
+		// Retired stages cannot resume. Keep their history, release their locks,
+		// and replace the old partial index so current Pulse rows are covered.
+		`UPDATE schedule_runs SET state='interrupted',completed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),error_message='Retired Pulse stage interrupted during upgrade' WHERE state IN ('pulse_gate','pulse_modules','pulse_finalizing')`,
+		`DROP INDEX IF EXISTS idx_schedule_runs_active_lock`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_runs_active_lock
 			ON schedule_runs(lock_key)
-			WHERE state IN ('starting','workflow_running','workflow_finished','pulse_gate','pulse_modules','pulse_finalizing')`,
+			WHERE state IN ('starting','workflow_running','workflow_finished','pulse_running')`,
 		`CREATE INDEX IF NOT EXISTS idx_schedule_runs_scope_started
 			ON schedule_runs(scope_type, scope_id, schedule_id, started_at DESC)`,
 		`CREATE TABLE IF NOT EXISTS schedule_run_events (
@@ -982,7 +978,7 @@ func (s *Store) ActiveRunByLockKey(ctx context.Context, lockKey string) (Run, er
 	var runID string
 	err := s.db.QueryRowContext(ctx, `SELECT run_id FROM schedule_runs
 		WHERE lock_key = ?
-		  AND state IN ('starting','workflow_running','workflow_finished','pulse_gate','pulse_modules','pulse_finalizing')
+		  AND state IN ('starting','workflow_running','workflow_finished','pulse_running')
 		LIMIT 1`, lockKey).Scan(&runID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Run{}, ErrRunNotFound
@@ -1035,7 +1031,7 @@ func (s *Store) ListEvents(ctx context.Context, runID string) ([]Event, error) {
 
 func (s *Store) InterruptActiveRuns(ctx context.Context, reason string, at time.Time) (int, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT run_id FROM schedule_runs
-		WHERE state IN ('starting','workflow_running','workflow_finished','pulse_gate','pulse_modules','pulse_finalizing')`)
+		WHERE state IN ('starting','workflow_running','workflow_finished','pulse_running')`)
 	if err != nil {
 		return 0, err
 	}

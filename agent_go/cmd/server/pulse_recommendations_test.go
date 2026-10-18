@@ -38,7 +38,7 @@ func TestGoalLeadRecommendsAndOnlyTheOwnerAnswers(t *testing.T) {
 		t.Fatal("a Pulse turn answered a decision; only the owner may")
 	}
 
-	_, pulseExecutors, _ := createPulseWorklistTools()
+	_, pulseExecutors, _ := createPulseTools()
 	recommend := pulseExecutors["record_pulse_recommendation"].(func(context.Context, map[string]interface{}) (string, error))
 	if _, err := recommend(pulseTurn, map[string]interface{}{
 		"workspace_path": ws, "input_id": id, "option_id": "resume", "confidence": "high",

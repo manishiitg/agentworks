@@ -29,11 +29,7 @@ import { useWorkspaceStore } from '../../../stores/useWorkspaceStore'
 import { agentApi, workspaceApi } from '../../../services/api'
 import type {
   ExecutionOptions,
-  PulseFinalCommandState,
-  PulseModuleState,
-  PulsePlanDriftDueItem,
-  PulseReviewFocus,
-  PulseShadowSignalObservation,
+  PulseImpactLedger,
   PulseNextRun,
   PulseGoalWorkItem,
   PulseGoalStatus,
@@ -41,7 +37,6 @@ import type {
   VariablesManifest,
   WorkflowRunSetup,
 } from '../../../services/api-types'
-import { PULSE_FIXED_COMMANDS, PULSE_MODULE_COMMANDS } from './pulseSections'
 import { assertNeverView, getWorkspaceView, isInspectorView, type InspectorViewId, type WorkspaceViewId, type WorkspaceViewKind } from '../workspaceViews'
 import {
   WorkspaceViewDataContext,
@@ -81,25 +76,9 @@ const WorkflowNotificationView = lazy(() => import('../WorkflowNotificationView'
 const WorkflowAccessView = lazy(() => import('../WorkflowAccessView'))
 const FileWorkspacePane = lazy(() => import('../../FileWorkspacePane').then(module => ({ default: module.FileWorkspacePane })))
 
-function formatPulseTimestamp(value?: string): string {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
 
 const noop = () => {}
 const dispatchReportExport = () => window.dispatchEvent(new CustomEvent(WORKFLOW_REPORT_EXPORT_EVENT))
-
-// ---------------------------------------------------------------------------
-// View bodies: what goes under the toolbar for each kind. Each renders only
-// the pane content; the host owns the root, the toolbar, and the pane wrapper.
-// ---------------------------------------------------------------------------
 
 function ReportBody({ workspacePath, relayMode }: { workspacePath: string | null; relayMode: boolean }) {
   const access = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.my_access)
@@ -222,26 +201,28 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
             monitorSaving={pulse.monitorSaving}
             onToggleMonitor={pulse.toggleMonitor}
             hasSoul={pulse.hasSoul}
-            runSetup={pulse.runSetup}
-            moduleStates={pulse.moduleStates}
-            planDriftDue={pulse.planDriftDue}
-            planDriftDueItems={pulse.planDriftDueItems}
-            planDriftDueError={pulse.planDriftDueError}
-            finalCommandStates={pulse.finalCommandStates}
+
+
+
+
+
+
             nextRun={pulse.nextRun}
-            goalWork={pulse.goalWork}
+            lastChange={pulse.lastChange}
+            impact={pulse.impact}
+
             goalStatus={pulse.goalStatus}
             outwardActions={pulse.outwardActions}
             outwardSaving={pulse.outwardSaving}
             onChangeOutward={pulse.setOutward}
-            focusAreas={pulse.focusAreas}
-            focusSaving={pulse.focusSaving}
-            onSaveFocusAreas={pulse.saveFocusAreas}
-            reviewFocuses={pulse.reviewFocuses}
-            reviewFocusSelections={pulse.reviewFocusSelections}
+
+
+
+
+
             statusError={pulse.statusError}
             statusLoading={pulse.statusLoading}
-            overview={pulse.overview}
+
             onRefresh={() => { void pulse.refresh() }}
             headerAction={askAI('pulse')}
           />
@@ -359,23 +340,14 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
   const { monitorSaving, toggleMonitor } = usePulseToggle(
     workspacePath, monitorOn, updateWorkflowManifest, useChatStore.getState().addToast,
   )
-  const [pulseModuleStates, setPulseModuleStates] = useState<PulseModuleState[]>([])
-  const [planDriftDue, setPlanDriftDue] = useState(false)
-  const [planDriftDueItems, setPlanDriftDueItems] = useState<PulsePlanDriftDueItem[]>([])
-  const [planDriftDueError, setPlanDriftDueError] = useState<string | null>(null)
-  const [pulseFinalCommandStates, setPulseFinalCommandStates] = useState<PulseFinalCommandState[]>([])
-  const [pulseReviewFocuses, setPulseReviewFocuses] = useState<PulseReviewFocus[]>([])
-  const [pulseReviewFocusSelections, setPulseReviewFocusSelections] = useState<PulseReviewFocus[]>([])
-  const [pulseLoopClosureObservation, setPulseLoopClosureObservation] = useState<PulseShadowSignalObservation | null>(null)
   const [pulseNextRun, setPulseNextRun] = useState<PulseNextRun | null>(null)
-  const [pulseGoalWork, setPulseGoalWork] = useState<PulseGoalWorkItem[]>([])
+  const [pulseImpact, setPulseImpact] = useState<PulseImpactLedger | null>(null)
+  const [lastChange, setLastChange] = useState<PulseGoalWorkItem | null>(null)
   const [pulseGoalStatus, setPulseGoalStatus] = useState<PulseGoalStatus | null>(null)
   const [pulseOutward, setPulseOutwardState] = useState<PulseOutwardActions>('ask')
   const [pulseOutwardSaving, setPulseOutwardSaving] = useState(false)
-  const [pulseFocusAreas, setPulseFocusAreas] = useState<string[]>([])
   const [pulseHasSoul, setPulseHasSoul] = useState(false)
   const [pulseRunSetup, setPulseRunSetup] = useState<WorkflowRunSetup | null>(null)
-  const [pulseFocusSaving, setPulseFocusSaving] = useState(false)
   const [pulseStatusLoading, setPulseStatusLoading] = useState(false)
   const [pulseStatusError, setPulseStatusError] = useState<string | null>(null)
 
@@ -391,59 +363,28 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
       .finally(() => setPulseOutwardSaving(false))
   }, [workspacePath, pulseOutwardSaving, pulseOutward, updateWorkflowManifest])
 
-  const savePulseFocusAreas = useCallback(async (areas: string[]) => {
-    if (!workspacePath || pulseFocusSaving) return false
-    setPulseFocusSaving(true)
-    try {
-      await updateWorkflowManifest(workspacePath, { pulse_focus_areas: areas })
-      setPulseFocusAreas(areas)
-      useChatStore.getState().addToast('Goal Work focus areas saved', 'success')
-      return true
-    } catch (error) {
-      useChatStore.getState().addToast(error instanceof Error ? error.message : 'Could not save focus areas', 'error')
-      return false
-    } finally {
-      setPulseFocusSaving(false)
-    }
-  }, [workspacePath, pulseFocusSaving, updateWorkflowManifest])
-
-  const refreshPulseModuleStates = useCallback(async (showLoading = true) => {
+  const refreshPulseOverview = useCallback(async (showLoading = true) => {
     if (!workspacePath) {
-      setPulseModuleStates([])
-      setPlanDriftDue(false)
-      setPlanDriftDueItems([])
-      setPlanDriftDueError(null)
-      setPulseFinalCommandStates([])
-      setPulseReviewFocuses([])
-      setPulseReviewFocusSelections([])
-      setPulseLoopClosureObservation(null)
+      setPulseImpact(null)
+      setLastChange(null)
       setPulseStatusError(null)
       return
     }
     if (showLoading) setPulseStatusLoading(true)
     setPulseStatusError(null)
     try {
-      const resp = await agentApi.getPulseModuleState(workspacePath)
+      const resp = await agentApi.getPulseOverview(workspacePath)
       if (!resp.success) {
         throw new Error(resp.error || 'Failed to load Pulse status')
       }
-      setPulseModuleStates(resp.modules || [])
-      setPlanDriftDue(!!resp.plan_drift_due)
-      setPlanDriftDueItems(resp.plan_drift_due_items || [])
-      setPlanDriftDueError(resp.plan_drift_due_error || null)
       setPulseNextRun(resp.next_pulse || null)
-      setPulseGoalWork(resp.goal_work || [])
+      setPulseImpact(resp.impact ?? null)
+      setLastChange(resp.last_change ?? null)
       setPulseGoalStatus(resp.goal_status ?? null)
       setPulseOutwardState(resp.outward_actions ?? 'ask')
-      setPulseFocusAreas(resp.focus_areas || [])
       setPulseHasSoul(!!resp.has_soul)
       setPulseRunSetup(resp.run_setup ?? null)
-      setPulseFinalCommandStates(resp.commands || [])
-      setPulseReviewFocuses(resp.review_focus_history || [])
-      setPulseReviewFocusSelections(resp.review_focus_selections || [])
-      setPulseLoopClosureObservation(
-        (resp.shadow_signal_observations || []).find(observation => observation.detector === 'loop_closure') || null
-      )
+
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load Pulse status'
       setPulseStatusError(message)
@@ -475,7 +416,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
       if (!showLoading && document.hidden) return
       pulsePollInFlightRef.current = true
       try {
-        await refreshPulseModuleStates(showLoading)
+        await refreshPulseOverview(showLoading)
       } finally {
         pulsePollInFlightRef.current = false
       }
@@ -488,70 +429,16 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
       window.clearInterval(timer)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [workflowWorkspaceView, refreshPulseModuleStates])
+  }, [workflowWorkspaceView, refreshPulseOverview])
 
-  const pulseModuleStateByModule = useMemo(
-    () => new Map(pulseModuleStates.map(state => [state.module, state])),
-    [pulseModuleStates],
-  )
-  const pulseFinalCommandStateByCommand = useMemo(
-    () => new Map(pulseFinalCommandStates.map(state => [state.command, state])),
-    [pulseFinalCommandStates],
-  )
-  const pulseOverview = useMemo(() => {
-    const timestamps = [
-      ...pulseModuleStates.map(state => state.updated_at || state.last_ran_at || state.last_checked_at),
-      ...pulseFinalCommandStates.map(state => state.updated_at || state.finished_at || state.started_at),
-      pulseLoopClosureObservation?.observed_at,
-    ].filter((value): value is string => !!value)
-    const latestTimestamp = timestamps.reduce((latest, value) => {
-      const time = new Date(value).getTime()
-      return Number.isNaN(time) || time <= latest ? latest : time
-    }, 0)
-    const recordedModuleStates = PULSE_MODULE_COMMANDS
-      .map(command => pulseModuleStateByModule.get(command.id))
-      .filter((state): state is PulseModuleState => !!state)
-    const recordedFinalStates = PULSE_FIXED_COMMANDS
-      .map(command => pulseFinalCommandStateByCommand.get(command.id))
-      .filter((state): state is PulseFinalCommandState => !!state)
-    return {
-      recorded: recordedModuleStates.length + recordedFinalStates.length,
-      total: PULSE_MODULE_COMMANDS.length + PULSE_FIXED_COMMANDS.length,
-      latest: latestTimestamp > 0 ? formatPulseTimestamp(new Date(latestTimestamp).toISOString()) : '',
-    }
-  }, [pulseFinalCommandStateByCommand, pulseFinalCommandStates, pulseLoopClosureObservation, pulseModuleStateByModule, pulseModuleStates])
-
-  const pulse = useMemo<PulseData>(() => ({
-    monitorOn,
-    monitorSaving,
-    toggleMonitor,
-    moduleStates: pulseModuleStates,
-    planDriftDue,
-    planDriftDueItems,
-    planDriftDueError,
-    finalCommandStates: pulseFinalCommandStates,
-    nextRun: pulseNextRun,
-    goalWork: pulseGoalWork,
-    goalStatus: pulseGoalStatus,
-    outwardActions: pulseOutward,
-    outwardSaving: pulseOutwardSaving,
-    setOutward: setPulseOutward,
-    focusAreas: pulseFocusAreas,
-    focusSaving: pulseFocusSaving,
-    saveFocusAreas: savePulseFocusAreas,
-    reviewFocuses: pulseReviewFocuses,
-    reviewFocusSelections: pulseReviewFocusSelections,
-    statusError: pulseStatusError,
-    statusLoading: pulseStatusLoading,
-    overview: pulseOverview,
-    refresh: refreshPulseModuleStates,
-    hasSoul: pulseHasSoul,
-    runSetup: pulseRunSetup,
-  }), [
-    monitorOn, monitorSaving, toggleMonitor, pulseModuleStates, planDriftDue, planDriftDueItems, planDriftDueError, pulseFinalCommandStates, pulseNextRun, pulseGoalWork, pulseGoalStatus, pulseOutward, pulseOutwardSaving, setPulseOutward, pulseFocusAreas, pulseFocusSaving, savePulseFocusAreas,
-    pulseReviewFocuses, pulseReviewFocusSelections, pulseStatusError, pulseStatusLoading,
-    pulseOverview, refreshPulseModuleStates, pulseHasSoul, pulseRunSetup,
-  ])
+  const pulse = useMemo<PulseData>(() => ({ monitorOn, monitorSaving, toggleMonitor,
+    nextRun: pulseNextRun, impact: pulseImpact, lastChange, goalStatus: pulseGoalStatus,
+    outwardActions: pulseOutward, outwardSaving: pulseOutwardSaving, setOutward: setPulseOutward,
+    statusError: pulseStatusError, statusLoading: pulseStatusLoading, refresh: refreshPulseOverview,
+    hasSoul: pulseHasSoul, runSetup: pulseRunSetup,
+  }), [monitorOn, monitorSaving, toggleMonitor, pulseNextRun, pulseImpact, lastChange, pulseGoalStatus,
+    pulseOutward, pulseOutwardSaving, setPulseOutward, pulseStatusError, pulseStatusLoading,
+    refreshPulseOverview, pulseHasSoul, pulseRunSetup])
 
   // The flow canvas's VariablesSidebar edits the manifest in place; keep the
   // toolbar showing that edit until the next workspace refresh replaces it.

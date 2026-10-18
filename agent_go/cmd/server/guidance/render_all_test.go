@@ -104,15 +104,6 @@ func TestAllGuidanceTemplatesRender(t *testing.T) {
 	}
 }
 
-func TestEngineeringReviewAndPulseFixerAreSeparateCommands(t *testing.T) {
-	if _, ok := allKinds["engineering-review"]; !ok {
-		t.Fatal("engineering-review guidance is not registered")
-	}
-	if _, ok := allKinds["pulse-fixer"]; !ok {
-		t.Fatal("pulse-fixer guidance is not registered")
-	}
-}
-
 // get_reference_doc was removed when reference bundles became attached skills.
 // A stale call in any rendered flow is dead on arrival for Pulse and workshop
 // agents, so guard the complete registered guidance surface against regression.
@@ -139,45 +130,6 @@ func TestAllGuidanceUsesAttachedSkillReader(t *testing.T) {
 	}
 }
 
-func TestFocusedScheduledPulseReferencesStayComplete(t *testing.T) {
-	tests := map[string]struct {
-		wants []string
-	}{
-		"pulse-gate": {
-			wants: []string{
-				"progressive evidence scan", "CONCERNS:", "record_pulse_worklist", "one decision for every",
-				"cannot suppress a new materially harmful miss", "Gate must not launch reviewers",
-			},
-		},
-		"pulse-review-fixer": {
-			wants: []string{
-				"exactly once", "durable evidence", "from prose", `get_pulse_state(view="backlog", detail="compact")`,
-				"normal Workflow Builder tools", "terminal", "cannot erase or block other due work", "priority-ordered Fix queue",
-				"one reconciled `ownership_manifest`", "`kb_purity_manifest`", "`db_ownership_manifest`", "Steps consume selected skills",
-				"proposal_only", "there is no evidence-wait route", "strategic-proposal-", "No mandatory Markdown checkpoint",
-			},
-		},
-		"pulse-finalizer": {
-			wants: []string{
-				"Never treat missing as skipped/successful", "shown in the Pulse popup", "Do not write a separate presentation artifact",
-				"directly in this parent", "Publish", "Notify", "record_pulse_result",
-			},
-		},
-	}
-
-	for kind, tc := range tests {
-		rendered, err := renderFromRegistry(kind, tmplData{}, referenceKinds)
-		if err != nil {
-			t.Fatalf("render %s: %v", kind, err)
-		}
-		for _, want := range tc.wants {
-			if !containsNormalizedText(rendered, want) {
-				t.Fatalf("%s reference missing %q", kind, want)
-			}
-		}
-	}
-}
-
 func TestGoalAdvisorAliasUsesCanonicalStrategyReview(t *testing.T) {
 	data := tmplData{Focus: "explore better reporting options", RunFolder: "iteration-7/group-a", WorkshopMode: "workshop"}
 	canonical, err := renderFromRegistry("strategy-auditor", data, allKinds)
@@ -198,98 +150,6 @@ func TestGoalAdvisorAliasUsesCanonicalStrategyReview(t *testing.T) {
 	}
 }
 
-func TestManualPulseCommandsKeepRunSetupReviewAndFixBoundariesSeparate(t *testing.T) {
-	tests := map[string][]string{
-		"ops-review": {
-			"STANDALONE TECHNICAL REVIEW — CORRECTNESS FOCUS",
-			"does the current approved design",
-			"Do not launch another reviewer",
-			"edit files or configuration",
-			"structural improvements to Architecture",
-			"A no-issue conclusion is valid",
-		},
-		"strategy-auditor": {
-			"continuing Pulse conversation", "at most one coherent change set",
-			"OFF starts no turns or reports", "record_pulse_goal_check",
-		},
-		"engineering-review": {
-			"TECHNICAL REVIEW PHASE",
-			"continuing Workflow Builder conversation",
-			`"name":"builder-reference","path":"references/ops-review.md"`,
-			"Standalone Operations Review",
-			"manual=true",
-			"note_only=true",
-			"Do not call\n   `record_pulse_worklist`",
-			"Own the review yourself",
-			"link it to an existing issue, promote it with evidence, or reject it",
-			"Do not apply repairs",
-			"same retained Review+Fix task may later",
-		},
-		"pulse-fixer": {
-			"PULSE FIX PHASE",
-			"caller-supplied Fix message",
-			"Do not rerun Technical Review",
-			"Workflow observations are evidence",
-			"Close every active issue in this pass",
-			"Review completion and repair",
-		},
-	}
-
-	for kind, wants := range tests {
-		registry := allKinds
-		if kind == "ops-review" {
-			registry = referenceKinds
-		}
-		rendered, err := renderFromRegistry(kind, tmplData{}, registry)
-		if err != nil {
-			t.Fatalf("render %s: %v", kind, err)
-		}
-		for _, want := range wants {
-			if !strings.Contains(rendered, want) {
-				t.Fatalf("%s guidance missing %q", kind, want)
-			}
-		}
-	}
-
-	advisor, err := renderFromRegistry("goal-advisor", tmplData{}, allKinds)
-	if err != nil {
-		t.Fatalf("render goal-advisor: %v", err)
-	}
-	// The positive "describes its one-off manual path" assertion that used to
-	// sit here was removed by 0174b6aff "simplify Pulse workflow reviews"
-	// (2026-08-08); goal-advisor no longer mentions manual invocation at all.
-	// The negative invariant below still holds and is still worth keeping.
-	if strings.Contains(advisor, "pulse_review_only=true") {
-		t.Fatal("goal-advisor must not configure recurring Pulse")
-	}
-}
-
-func TestStandaloneOpsReviewRunsDirectlyAndRequiresTerminalModuleResult(t *testing.T) {
-	raw, err := os.ReadFile("templates/system/ops-review.md")
-	if err != nil {
-		t.Fatalf("read ops-review template: %v", err)
-	}
-	prompt := string(raw)
-	for _, want := range []string{
-		"Perform the review yourself in this turn",
-		"record_pulse_finding",
-		`source="technical_review"`,
-		`human_input_id`,
-		"Never emit `decision_required` without this question",
-		"record_pulse_result",
-		`module="technical_review"`,
-		"required-output impact",
-		"normal execution noise",
-	} {
-		if !containsNormalizedText(prompt, want) {
-			t.Errorf("standalone ops-review missing direct typed-completion contract %q", want)
-		}
-	}
-	if strings.Contains(prompt, "run_in_background(") || strings.Contains(prompt, "Read the child completion") {
-		t.Fatal("standalone ops-review still delegates to a redundant nested reviewer")
-	}
-}
-
 func TestDeployedChannelSessionEndWordsHaveNoControlMeaning(t *testing.T) {
 	raw, err := os.ReadFile("templates/system/deployed-channel.md")
 	if err != nil {
@@ -304,27 +164,6 @@ func TestDeployedChannelSessionEndWordsHaveNoControlMeaning(t *testing.T) {
 		if !containsNormalizedText(prompt, want) {
 			t.Errorf("deployed-channel template missing session-end-words rule %q", want)
 		}
-	}
-}
-
-func TestStandaloneStrategyAuditRunsDirectlyAndRequiresTerminalModuleResult(t *testing.T) {
-	raw, err := os.ReadFile("templates/review/strategy-auditor.md")
-	if err != nil {
-		t.Fatalf("read strategy-auditor template: %v", err)
-	}
-	prompt := string(raw)
-	for _, want := range []string{
-		"Perform the review yourself in this turn",
-		"record_pulse_finding",
-		"record_pulse_result",
-		"module=strategic_review",
-	} {
-		if !strings.Contains(prompt, want) {
-			t.Errorf("standalone strategy audit missing direct typed-completion contract %q", want)
-		}
-	}
-	if strings.Contains(prompt, "run_in_background(") || strings.Contains(prompt, "Read the child completion") {
-		t.Fatal("standalone strategy audit still delegates to a redundant nested reviewer")
 	}
 }
 
@@ -405,53 +244,6 @@ func TestPulseCostGuidanceReconcilesRawLedgersWithoutDoubleCounting(t *testing.T
 	}
 }
 
-func TestPulseGuidanceTracesStateChangesToRuntimeConsumers(t *testing.T) {
-	postRun := readPulseDesignSpec(t)
-	// Gate keeps the failure-mode flags visible (via the bug_review pointer) so
-	// it can classify a suspect signal; the full reachability method lives in
-	// pulse-bug-review, loaded only when bug_review is due.
-	for _, want := range []string{
-		"wrong_store_write",
-		"shadow_store_drift",
-		"successful write to a plausible table is",
-	} {
-		if !strings.Contains(postRun, want) {
-			t.Fatalf("post-run monitor missing control-path contract %q", want)
-		}
-	}
-	bugReview, err := renderFromRegistry("pulse-bug-review", tmplData{}, referenceKinds)
-	if err != nil {
-		t.Fatalf("render pulse-bug-review: %v", err)
-	}
-	for _, want := range []string{
-		"control-path reachability check",
-		"wrong_store_write",
-		"shadow_store_drift",
-		"affected decision and which persisted value it consumed",
-	} {
-		if !strings.Contains(bugReview, want) {
-			t.Fatalf("pulse-bug-review missing control-path contract %q", want)
-		}
-	}
-
-	// The improve-database control-path block that used to sit here was
-	// removed with the improve-* checklists: Stores Health now reviews store
-	// health from evidence packs instead of loading per-store checklists.
-	artifactReview, err := renderFromRegistry("review-artifact-drift", tmplData{}, allKinds)
-	if err != nil {
-		t.Fatalf("render review-artifact-drift: %v", err)
-	}
-	for _, want := range []string{
-		"trace the exact changed record to the current runtime",
-		"clean changelog/file diff is not enough",
-		"plausible but non-canonical store",
-	} {
-		if !strings.Contains(artifactReview, want) {
-			t.Fatalf("artifact review missing control-path contract %q", want)
-		}
-	}
-}
-
 func TestPulseGuidanceRequiresReviewedBaselineBeforeCadenceSkip(t *testing.T) {
 	postRun := readPulseDesignSpec(t)
 	for _, want := range []string{
@@ -468,200 +260,6 @@ func TestPulseGuidanceRequiresReviewedBaselineBeforeCadenceSkip(t *testing.T) {
 	} {
 		if !strings.Contains(postRun, want) {
 			t.Fatalf("post-run monitor missing reviewed-baseline contract %q", want)
-		}
-	}
-}
-
-func TestPulseGuidanceRequiresRuntimeAuthorityAndVisibleFreshness(t *testing.T) {
-	postRun := readPulseDesignSpec(t)
-	for _, want := range []string{
-		"SQLite/runtime state is authoritative",
-		"`builder/improve.html` is the durable explanatory",
-		"HTML never overrides contradictory runtime state",
-		"not measured this run · last measured",
-		"Every skipped module must set at least one concrete next-check condition",
-		"what new evidence caused the override",
-		"progressive evidence scan",
-		"one ordered finalizer turn",
-		"record_pulse_result(command=...)",
-		"not automatically due every Pulse",
-		"One Agent-Owned Review+Fix Turn",
-		"existing unchanged, existing with new evidence, reopened, or genuinely",
-		"every evidence-backed severity-ordered finding row",
-		"structured Fix queue",
-		"Never trust HTML as recovery truth",
-		"blindly reapply",
-		"fixed_verified",
-		"must not update `builder/improve.html`",
-		"dedicated Dashboard prevents competing",
-		"Build a conflict map",
-		"explicit user-approved decisions and constraints",
-		"mark only the affected",
-		"finding-id manifest",
-		"give every finding exactly one evidence-backed",
-		"module's finding IDs",
-		"Do not claim",
-		"approval revalidation",
-		"Unrelated drift",
-		"stale_not_applied",
-		"Never silently rebase or broaden",
-		"only passed post-change proof",
-		"changed_unverified",
-		"owns review selection",
-		"READ-ONLY REVIEW",
-		"main Pulse agent owns the Review+Fix turn",
-		"Go never launches a residual Fixer or recovery agent",
-		"backend independently enforces",
-		"confirm every module marked",
-		"Never silently treat a",
-		"missing result as skipped or successful",
-		"Step concerns are first-class run evidence",
-		"`CONCERNS: <brief evidence-backed concern>`",
-		"runs/<run_folder>/logs/<step>/execution/execution-final-summary.json",
-		"runs/<run_folder>/logs/<step>/execution/execution-attempt-*.json",
-		"runs/<run_folder>/execution/<step>/session.json",
-		"Never silently drop a concern",
-		"Off-track goals tighten Workflow Review cadence",
-		"below target",
-		"declining, or stalled",
-		"no exploratory QA checkpoint was completed after the latest observed goal",
-		"does not justify a long calendar cooldown",
-		"finding-free reviews over unchanged runtime paths may widen",
-		"`correctness_bug`",
-		"`efficiency_or_coaching`",
-		"`insufficient_evidence`",
-		"successful step may have chosen the wrong",
-		"prior Workflow Review recorded `efficiency_or_coaching` trace evidence",
-		"Backup risk: local only",
-		"no verified destination is off-device",
-		"Never describe this state as healthy",
-		"warning in every Pulse",
-		"notification until off-device protection is verified",
-		"material issues newly found or reopened",
-		"verified fixes and verified no-change closures",
-		"exact active pending count",
-		"Fixed by Pulse",
-		"Still pending",
-		"Needs your decision",
-	} {
-		if !strings.Contains(postRun, want) {
-			t.Fatalf("post-run-monitor missing %q", want)
-		}
-	}
-
-	// The deep Bug Review mechanics were extracted out of the Gate-loaded
-	// post-run-monitor doc into pulse-bug-review, loaded only when bug_review
-	// is due. Guard against re-inlining them into the frequent Gate turn.
-	for _, moved := range []string{
-		"Observable execution-trace review",
-		"semantic execution defects",
-		"execution/execution-attempt-*-iteration-*-conversation.json",
-		"Judge observable decisions and evidence, not hidden chain-of-thought",
-		"Route `efficiency_or_coaching` findings",
-		"Exploratory QA contract",
-	} {
-		if strings.Contains(postRun, moved) {
-			t.Fatalf("post-run-monitor should not re-inline extracted Bug Review contract %q", moved)
-		}
-	}
-	if !strings.Contains(postRun, `read_skill(skills=[{"name":"builder-reference","path":"references/pulse-bug-review.md"}])`) {
-		t.Fatal("post-run-monitor missing pointer to pulse-bug-review")
-	}
-
-	// The fix-verification contract is single-sourced: post-run-monitor and
-	// pulse-fixer reference it instead of restating the detail. Guard against
-	// the detail drifting back into the Gate-loaded post-run-monitor doc.
-	if !strings.Contains(postRun, `read_skill(skills=[{"name":"builder-reference","path":"references/fix-verification.md"}])`) {
-		t.Fatal("post-run-monitor missing pointer to fix-verification")
-	}
-	for _, moved := range []string{"baseline only, never proof", "mtime alone"} {
-		if strings.Contains(postRun, moved) {
-			t.Fatalf("post-run-monitor should reference fix-verification, not restate %q", moved)
-		}
-	}
-	fixVerify, err := renderFromRegistry("fix-verification", tmplData{}, referenceKinds)
-	if err != nil {
-		t.Fatalf("render fix-verification: %v", err)
-	}
-	for _, want := range []string{
-		"post-change evidence boundary",
-		"baseline only, never proof",
-		"real runtime consumer",
-		"a successful write alone is not proof",
-		"mtime alone",
-		"changed_unverified",
-		"later normal run",
-	} {
-		if !strings.Contains(fixVerify, want) {
-			t.Fatalf("fix-verification missing %q", want)
-		}
-	}
-
-	fixPractices, err := renderFromRegistry("pulse-fixer-practices", tmplData{}, referenceKinds)
-	if err != nil {
-		t.Fatalf("render pulse-fixer-practices: %v", err)
-	}
-	for _, want := range []string{
-		"targeted evidence",
-		"`query_step`/`get_step_prompts`",
-		"Never recursively print an entire",
-		"Separate symptom from root cause",
-		"Map the contract boundary",
-		"Schema and artifact contract repair",
-		"producer stale",
-		"validator stale",
-		"contract split",
-		"missing semantics",
-		"negative fixture",
-		"Prevalidation is a guard, not the durable repair",
-		"Database repair",
-		"Tool, path, and permission repair",
-		"Scheduler and lifecycle repair",
-		"Evaluation and report repair",
-		"Workflow skill purity repair",
-		"Cross-store ownership repair",
-		"one authoritative owner",
-		"`kb_purity_manifest`",
-		"`db_ownership_manifest`",
-		"Keep skill ownership explicit",
-		"Do not launder content through references",
-		"re-read every content-bearing Markdown file",
-		"Steps read selected skills",
-	} {
-		if !strings.Contains(fixPractices, want) {
-			t.Fatalf("pulse-fixer-practices missing %q", want)
-		}
-	}
-
-	bugReview, err := renderFromRegistry("pulse-bug-review", tmplData{}, referenceKinds)
-	if err != nil {
-		t.Fatalf("render pulse-bug-review: %v", err)
-	}
-	for _, want := range []string{
-		"Exploratory QA contract",
-		"control-path reachability",
-		"wrong_store_write",
-		"Observable execution-trace review",
-		"semantic execution defects",
-		"execution/execution-attempt-*-iteration-*-conversation.json",
-		"Judge observable decisions and evidence, not hidden chain-of-thought",
-		"`correctness_bug`",
-		"`efficiency_or_coaching`",
-		"`insufficient_evidence`",
-		"Route `efficiency_or_coaching` findings",
-		// Weak-validation-gate check: flag a gate that passes on a self-asserted
-		// marker without proving the real effect; not every step has a db.
-		"self-asserted marker",
-		"not every step has a db",
-		// Repeated final-gate repairs deserve a bounded contract-health review,
-		// not a blanket schema expansion or deletion pass.
-		"Validation-contract health",
-		"what meaningful bad outcome could pass if this check did not exist?",
-		"boolean and a string pattern",
-		"negative fixture",
-	} {
-		if !strings.Contains(bugReview, want) {
-			t.Fatalf("pulse-bug-review missing %q", want)
 		}
 	}
 }
@@ -684,63 +282,6 @@ func TestPulseGuidanceRejudgesActiveExperimentCadenceFromCurrentEvidence(t *test
 	// The goal-advisor-specific active-experiment lifecycle assertions that
 	// used to follow here were removed by 0174b6aff "simplify Pulse workflow
 	// reviews" (2026-08-08); goal-advisor no longer carries this content.
-}
-
-func TestStrategyAdvisorGuidanceBalancesExplorationEvidenceAndHumanDecisions(t *testing.T) {
-	// strategic_review is Goal Work (docs/design/pulse_goal_work.md): it does
-	// goal-advancing work within permission levels instead of only proposing.
-	auditor, err := renderFromRegistry("strategy-auditor", tmplData{}, referenceKinds)
-	if err != nil {
-		t.Fatalf("render strategy-auditor: %v", err)
-	}
-	for _, want := range []string{
-		"whether the workflow is achieving its goal", "get_goal_metrics",
-		"at most one coherent improvement change set", "hypothesis",
-		"comparable baseline", "outcome window", "rollback",
-		"record_pulse_goal_work", "record_pulse_goal_check",
-		"Missing readings stay unknown", "Activity (posting more) is not proof of growth",
-		"When OFF", "no Pulse turn starts", "skills", "knowledge base",
-	} {
-		if !containsNormalizedText(auditor, want) {
-			t.Fatalf("Goal Work guidance missing %q:\n%s", want, auditor)
-		}
-	}
-
-	gate, err := renderFromRegistry("pulse-gate", tmplData{}, referenceKinds)
-	if err != nil {
-		t.Fatalf("render pulse-gate: %v", err)
-	}
-	for _, want := range []string{
-		"`strategic_review`",
-		"activity and outcomes diverge",
-		"Missing telemetry is",
-		"Never make one reviewer due merely because another reviewer",
-		"Select each module independently",
-		"Strategic Review combines the former Strategy Auditor and Goal Advisor",
-		"Strategic Review for business usefulness or strategic headroom",
-		"alternatives immediately",
-		"materially different approaches",
-	} {
-		if !strings.Contains(gate, want) {
-			t.Fatalf("pulse-gate missing Strategy Auditor routing %q:\n%s", want, gate)
-		}
-	}
-
-	reviewer, err := renderFromRegistry("pulse-review-fixer", tmplData{}, referenceKinds)
-	if err != nil {
-		t.Fatalf("render pulse-review-fixer: %v", err)
-	}
-	for _, want := range []string{
-		"Strategic Review is one product/business sequence",
-		"reasoning phases need separate messages only when useful",
-		"Strategic Review owns its typed writes and terminal result in the same task",
-		"It does not inherit technical repair authority",
-		"materially different",
-	} {
-		if !strings.Contains(reviewer, want) {
-			t.Fatalf("pulse-review-fixer missing Strategy Auditor boundary %q:\n%s", want, reviewer)
-		}
-	}
 }
 
 func TestTierGuidanceProtectsQualityWhileGoalsAreBelowTarget(t *testing.T) {
@@ -783,52 +324,6 @@ func TestTierGuidanceProtectsQualityWhileGoalsAreBelowTarget(t *testing.T) {
 
 }
 
-func TestLLMOpsGuidanceReviewsExactPinsWithoutSilentUpgrade(t *testing.T) {
-	cases := map[string][]string{
-		"pulse-gate": {
-			"Compare exact pins",
-			"list_provider_models",
-			"default_tier_models",
-			"Provider-profile defaults auto-update",
-			"infer freshness by name",
-		},
-		"llm-selection": {
-			"Exact pins do not move automatically",
-			"list_provider_models",
-			"default_tier_models",
-			"Never silently replace an exact pin",
-			"Upgrade, Keep current, or Decide later",
-		},
-	}
-
-	for kind, wants := range cases {
-		rendered, err := renderFromRegistry(kind, tmplData{}, referenceKinds)
-		if err != nil {
-			t.Fatalf("render %s: %v", kind, err)
-		}
-		for _, want := range wants {
-			if !strings.Contains(rendered, want) {
-				t.Fatalf("%s missing exact-pin freshness contract %q:\n%s", kind, want, rendered)
-			}
-		}
-	}
-	// post-run-monitor is the design spec, not a rendered reference doc.
-	// Same contract, read from its documented location.
-	spec := readPulseDesignSpec(t)
-	for _, want := range []string{
-		"Inventory every exact model pin",
-		"list_provider_models",
-		"Provider-profile workflows inherit current defaults",
-		"Upgrade, Keep current, or Decide later",
-		"newer catalog model is a review candidate",
-	} {
-		if !strings.Contains(spec, want) {
-			t.Fatalf("pulse design spec missing %q", want)
-		}
-	}
-
-}
-
 // TestGoalAdvisorPrioritizesStrategyOverHTMLFormatting asserted an
 // analysis-first-over-HTML-formatting contract goal-advisor.md no longer
 // carries -- removed by 0174b6aff "simplify Pulse workflow reviews"
@@ -852,45 +347,6 @@ func TestPulseCardsKeepTechnicalEvidenceOutOfUserTimeline(t *testing.T) {
 	}
 }
 
-func TestPulseRunsEveryDueReviewerAndWritesAttributedResults(t *testing.T) {
-	monitor := readPulseDesignSpec(t)
-	for _, want := range []string{
-		`same main-agent conversation`,
-		`cheapest sufficient approach`,
-		`handles due modules in canonical order`,
-		`owns review selection`,
-		`terminal module receipts`,
-		`later Dashboard stage`,
-		`must not update ` + "`builder/improve.html`",
-	} {
-		if !strings.Contains(monitor, want) {
-			t.Fatalf("post-run-monitor missing complete reviewer contract %q", want)
-		}
-	}
-
-	// The pulse-setup module/source-of-truth contract that used to be checked
-	// here was builder/improve.html guidance; improve.html is fully retired
-	// and pulse-setup no longer mentions any of these phrases, confirmed by
-	// rendering it. Removed 2026-08-17.
-
-	// "data-pulse-section"/"data-module" were builder/improve.html dashboard
-	// markup, dropped along with the rest of the retired doc; confirmed absent
-	// from every template on disk, not specific to these two kinds.
-	for _, kind := range []string{"ops-review", "strategy-auditor"} {
-		registry := allKinds
-		if kind == "ops-review" {
-			registry = referenceKinds
-		}
-		review, renderErr := renderFromRegistry(kind, tmplData{}, registry)
-		if renderErr != nil {
-			t.Fatalf("render %s: %v", kind, renderErr)
-		}
-		if !strings.Contains(review, "Do not truncate") {
-			t.Fatalf("%s missing standalone report contract %q", kind, "Do not truncate")
-		}
-	}
-}
-
 // TestPulseRelatedGuidanceUsesFourPartSectionOwnership asserted a
 // `data-pulse-section="..."` / `data-module="..."` HTML-attribute scheme —
 // builder/improve.html dashboard markup. improve.html is fully retired; the
@@ -904,144 +360,6 @@ func TestPulseRunsEveryDueReviewerAndWritesAttributedResults(t *testing.T) {
 // Those checklists were deleted: they had no slash command and their only
 // loader pointed at the wrong bundle. Stores Health now reviews store health
 // from evidence packs. Removed with the templates.
-
-// TestReviewArtifactDriftSharesPlanDriftReviewMechanismAndStaysReadOnlyElsewhere
-// covers PLAT-258's slash/scheduled parity gap: /review-artifact-drift used to
-// be a fully separate, fully read-only checklist that only READ
-// plan_drift_review's precomputed evidence and deferred to it, never actually
-// running its collector/repair contract/completion writer itself. It is now a
-// two-part contract: Part 1 dispatches the real plan_drift_review procedure
-// (shared candidate collector, repair authority, completion writer), Part 2
-// remains the original read-only checklist for everything plan_drift_review
-// does not cover.
-func TestReviewArtifactDriftSharesPlanDriftReviewMechanismAndStaysReadOnlyElsewhere(t *testing.T) {
-	rendered, err := renderFromRegistry("review-artifact-drift", tmplData{}, allKinds)
-	if err != nil {
-		t.Fatalf("render review-artifact-drift: %v", err)
-	}
-	for _, want := range []string{
-		// Part 1: genuinely dispatches the shared mechanism, not just a read.
-		`get_pulse_state(view="module")`,
-		"plan_drift_candidates",
-		"__workflow_drift_review__",
-		`read_skill(skills=[{"name":"builder-reference","path":"references/plan-drift-review.md"}])`,
-		"real repair authority, identical to `plan_drift_review`'s",
-		"record_plan_drift_review",
-		`record_pulse_result`,
-		`module="plan_drift_review"`,
-		// Part 2: unchanged read-only checklist, own completion writer.
-		"stays strictly read-only",
-		"Part 2 — the read-only checklist",
-		"Never launch another reviewer",
-		"mark_changelog_artifact_reviewed",
-	} {
-		if !strings.Contains(rendered, want) {
-			t.Fatalf("review-artifact-drift missing %q:\n%s", want, rendered)
-		}
-	}
-}
-
-func TestPlanDriftReviewClosesDependencyReceiptsInSamePass(t *testing.T) {
-	rendered, err := renderFromRegistry("plan-drift-review", tmplData{}, referenceKinds)
-	if err != nil {
-		t.Fatalf("render plan-drift-review: %v", err)
-	}
-	for _, want := range []string{
-		"Close the exact plan-change dependency receipts",
-		"mark_changelog_artifact_reviewed",
-		"all six",
-		"receipt-only Technical pass",
-		"Do not mark a newer",
-	} {
-		if !strings.Contains(rendered, want) {
-			t.Fatalf("plan-drift-review missing %q:\n%s", want, rendered)
-		}
-	}
-}
-
-// review-code is gone (see the removal note above TestReviewImproveLogMigrationIsExtracted's
-// former location); "builder/improve.html" is gone from every remaining
-// specialist's own handoff text too, confirmed by rendering each one, since
-// improve.html itself no longer exists for any of them to hand findings off
-// to. What each specialist still owns — a structured finding packet it
-// returns rather than writing HTML directly — is unchanged.
-//
-// goal-advisor no longer fits this pattern at all (0174b6aff "simplify Pulse
-// workflow reviews" moved it to a different content model entirely — none of
-// finding_id/target_key/recommended_fix/verification/user_judgment_required
-// survive in it) and was removed from kinds. ops-review, strategy-auditor,
-// and review-artifact-drift deliberately dropped finding_id/target_key in
-// favor of "no invented identifier" — a real design decision, not drift —
-// while keeping the rest of the packet contract; they get their own want-list.
-func TestPulseSpecialistsReturnStructuredPacketsAndParentOwnsHTML(t *testing.T) {
-	commonWants := []string{"recommended_fix", "verification", "user_judgment_required"}
-	// The four improve-* entries that used to sit here were removed with
-	// those checklists (no slash command; only loader pointed nowhere).
-	kinds := map[string][]string{
-		"design-plan":           append([]string{"finding_id", "target_key"}, commonWants...),
-		"ops-review":            {"no invented identifier", "canonical issue roots", "Do not create a separate recommendation"},
-		"strategy-auditor":      {"no invented identifier", "canonical issues", "Do not create separate focus"},
-		"review-artifact-drift": {"no invented identifier", "Do not create separate recommendation"},
-	}
-	for kind, wants := range kinds {
-		registry := allKinds
-		if kind == "ops-review" {
-			registry = referenceKinds
-		}
-		rendered, err := renderFromRegistry(kind, tmplData{}, registry)
-		if err != nil {
-			t.Fatalf("render %s: %v", kind, err)
-		}
-		for _, want := range wants {
-			if !strings.Contains(rendered, want) {
-				t.Fatalf("%s missing structured specialist handoff %q", kind, want)
-			}
-		}
-	}
-}
-
-func TestStandalonePulseReviewCommandsUsePersistedReviewerPipeline(t *testing.T) {
-	for kind, module := range map[string]string{
-		"ops-review":            "technical_review",
-		"strategy-auditor":      "strategic_review",
-		"review-artifact-drift": "technical_review",
-	} {
-		registry := allKinds
-		if kind == "ops-review" {
-			registry = referenceKinds
-		}
-		rendered, err := renderFromRegistry(kind, tmplData{}, registry)
-		if err != nil {
-			t.Fatalf("render %s: %v", kind, err)
-		}
-		wants := []string{
-			`module=` + module,
-			"SQLite",
-			"structured finding lifecycle",
-			`get_pulse_state(view="review")`,
-		}
-		if kind == "ops-review" {
-			wants = []string{
-				"Do the review directly in this agent",
-				"only canonical issues and one terminal review result",
-				`module="technical_review"`,
-				"record_pulse_result",
-			}
-		} else if kind == "strategy-auditor" {
-			wants = []string{
-				"perform the review directly",
-				"canonical issues",
-				`module=strategic_review`,
-				"record_pulse_result",
-			}
-		}
-		for _, want := range wants {
-			if !containsNormalizedText(rendered, want) {
-				t.Fatalf("%s missing persisted standalone-review contract %q", kind, want)
-			}
-		}
-	}
-}
 
 // goal-advisor no longer links assumption-audit at all (0174b6aff "simplify
 // Pulse workflow reviews" moved it to a different content model); every
@@ -1377,13 +695,15 @@ func TestPulseStoreFreshnessTriggerAndReviewerPass(t *testing.T) {
 // templates still emitted the old form, so every call was schema-rejected until
 // the templates caught up.
 //
-// The reviewer-facing Pulse surface is compact: state, one Gate receipt, one
-// result, and canonical issue writes. A template naming a removed tool instructs an agent to
+// Pulse uses current goal records and canonical issue writes. A template naming a removed tool instructs an agent to
 // call something that no longer exists, and the failure surfaces as a broken
 // tool rather than a stale prompt. This walks every embedded template, not only
 // the registered kinds, so a template added outside a registry is covered too.
 func TestNoTemplateNamesARemovedPulseTool(t *testing.T) {
 	removed := []string{
+		"record_pulse_worklist",
+		"record_pulse_result",
+		"record_pulse_qa_request",
 		"record_pulse_impact",
 		"get_pulse_module_state",
 		"get_pulse_finding_backlog",
@@ -1408,7 +728,7 @@ func TestNoTemplateNamesARemovedPulseTool(t *testing.T) {
 		for _, name := range removed {
 			if strings.Contains(string(body), name) {
 				t.Errorf("%s still instructs agents to call removed Pulse tool %q; "+
-					"the surface is get_pulse_state(view=...), record_pulse_worklist, record_pulse_result, and canonical issue writes",
+					"use get_pulse_state(view=...), current goal records and canonical issue writes",
 					path, name)
 			}
 		}
@@ -1503,85 +823,5 @@ func TestNoTemplateBatchesReadSkillFiles(t *testing.T) {
 	}
 	if visited == 0 {
 		t.Fatal("no templates were walked; the embed pattern or path changed")
-	}
-}
-
-// review-improve-log, its migration doc, and its skeleton were all
-// builder/improve.html guidance. improve.html itself was fully retired
-// (Pulse's own DB-backed findings and the SQLite Pulse popup replaced it);
-// there is no HTML journal left for any of this to describe. Removed
-// 2026-08-17 rather than kept green against a doc that no longer exists.
-
-func TestPulseReviewsUseOneOptionalSQLiteNoteWithoutReportingTurns(t *testing.T) {
-	for _, kind := range []string{"technical-review", "architecture-review", "strategy-auditor", "plan-drift-review"} {
-		rendered, err := renderFromRegistry(kind, tmplData{}, referenceKinds)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, want := range []string{`view="review_notes"`, "optional review_note", "No prescribed sections", "note_only=true", "A no-change conclusion is valid"} {
-			if !containsNormalizedText(rendered, want) {
-				t.Fatalf("%s missing minimal recording contract %q", kind, want)
-			}
-		}
-		for _, forbidden := range []string{"Update the run-scoped checkpoint", "Preserve checkpoint", "final persistence phase owns", "Keep a compact checkpoint:"} {
-			if containsNormalizedText(rendered, forbidden) {
-				t.Fatalf("%s retains mandatory bookkeeping %q", kind, forbidden)
-			}
-		}
-	}
-}
-
-func TestArchitectureOwnsMeasuredTierChanges(t *testing.T) {
-	rendered, err := renderFromRegistry("architecture-review", tmplData{}, referenceKinds)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"execution_tier", "query_workflow_costs", "output quality, retries, duration", "not proof a cheaper tier preserves quality", "rollback", "human_input_id", "No per-run tier switching", "Never silently replace a user pin"} {
-		if !containsNormalizedText(rendered, want) {
-			t.Fatalf("architecture tier contract missing %q", want)
-		}
-	}
-	for _, kind := range []string{"step-config", "pulse-fixer-practices", "llm-selection", "pulse-gate"} {
-		text, err := renderFromRegistry(kind, tmplData{}, referenceKinds)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, retired := range []string{"disables adaptive tiering", "3 stable runs", "letting adaptive tiering do the work"} {
-			if strings.Contains(strings.ToLower(text), retired) {
-				t.Fatalf("%s still instructs automatic tier promotion: %s", kind, retired)
-			}
-		}
-	}
-}
-
-func TestPulseResearchReviewsUseDifferentHorizonsAndStrategyDoesNotLoopOnSymptoms(t *testing.T) {
-	gate, err := renderFromRegistry("pulse-gate", tmplData{}, referenceKinds)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{
-		"Architecture normally uses the longest review horizon",
-		"Strategic Review uses the shorter research horizon",
-		"place Architecture later than Strategy",
-		`"booking-heavy"`,
-		"perfect-execution counterfactual",
-	} {
-		if !containsNormalizedText(gate, want) {
-			t.Fatalf("pulse gate missing review-horizon contract %q", want)
-		}
-	}
-
-	strategy, err := renderFromRegistry("strategy-auditor", tmplData{}, referenceKinds)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{
-		"assume it is fixed, and continue with the goal",
-		"A technical handoff alone is not a Goal Work result",
-		"Do not let a recurring operational symptom consume repeated passes",
-	} {
-		if !containsNormalizedText(strategy, want) {
-			t.Fatalf("strategy reviewer missing symptom-loop guard %q", want)
-		}
 	}
 }

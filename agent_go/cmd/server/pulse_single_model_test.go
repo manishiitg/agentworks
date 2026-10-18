@@ -30,7 +30,7 @@ func TestSinglePulsePreservesDatedQuestionsWhileProductionPaused(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 	due := now.Add(12 * time.Hour)
-	_, executors, _ := createPulseWorklistTools()
+	_, executors, _ := createPulseTools()
 	call := func(name string, args map[string]interface{}) string {
 		t.Helper()
 		args["workspace_path"] = ws

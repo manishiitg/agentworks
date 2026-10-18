@@ -168,8 +168,8 @@ func TestScheduleStopInvalidatesLateCompletion(t *testing.T) {
 		t.Fatal("StopRunningJob did not cancel the run context")
 	}
 	sctx := &ScheduleContext{WorkspacePath: "/tmp/workflow", Schedule: WorkflowSchedule{ID: "schedule-1"}}
-	if _, err := svc.runJob(context.Background(), sctx, "run-1"); !errors.Is(err, errWorkshopSequenceInterrupted) {
-		t.Fatalf("late run error = %v, want errWorkshopSequenceInterrupted", err)
+	if _, err := svc.runJob(context.Background(), sctx, "run-1"); !errors.Is(err, errWorkshopSequenceInterrupted) && (err == nil || !strings.Contains(err.Error(), "no longer owns")) {
+		t.Fatalf("late run error = %v, want interrupted or rejected ownership", err)
 	}
 	state = svc.getRuntimeStateByKey(runtimeKey)
 	if state.LastStatus != "stopped" {

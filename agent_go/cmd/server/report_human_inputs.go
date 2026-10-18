@@ -20,7 +20,6 @@ import (
 
 	"github.com/gorilla/mux"
 	step_based_workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsestore"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
 	mcpexecutor "github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -176,9 +175,8 @@ func openReportHumanInputDB(ctx context.Context, workspacePath string, create bo
 	// A Crew is addressed several ways ("Chats/Work/projects/<id>" for its
 	// owner, "_users/<owner>/...", "Crew/<id>"); its decisions live once, at
 	// its physical root, so the owner and its other users meet the same store.
-	crew := false
 	if ref, ok := resolveCrewPath(ctx, GetUserIDFromContext(ctx), workspacePath); ok {
-		workspacePath, crew = ref.Root, true
+		workspacePath = ref.Root
 	}
 	normalized, dbPath, err := reportHumanInputDBPath(workspacePath)
 	if err != nil {
@@ -215,21 +213,6 @@ func openReportHumanInputDB(ctx context.Context, workspacePath string, create bo
 	if err := ensureReportHumanInputSchema(ctx, db); err != nil {
 		_ = db.Close()
 		return "", nil, err
-	}
-	// Pulse reviews Goals only. A Crew or Code project keeps its decisions here but gets no Pulse tables
-	// (they showed up as unexplained tables in the project's own database).
-	if crew || isProjectWorkspacePath(normalized) || strings.Contains("/"+strings.Trim(normalized, "/")+"/", "/Chats/Code/projects/") {
-		return normalized, db, nil
-	}
-	if _, err := pulsestore.Ensure(ctx, db, dbPath); err != nil {
-		_ = db.Close()
-		return "", nil, fmt.Errorf("migrate compact Pulse store: %w", err)
-	}
-	if create {
-		if err := pulsestore.RefreshCompatibility(ctx, db); err != nil {
-			_ = db.Close()
-			return "", nil, fmt.Errorf("install compact Pulse compatibility: %w", err)
-		}
 	}
 	return normalized, db, nil
 }

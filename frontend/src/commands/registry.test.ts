@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { findCommand, findCommandAnyMode, getCommands, setProductCommands, setUserCommands } from './registry'
 import { toAgentworksCommandDefinitions, type AgentworksProductCommand } from './agentworksProductCommands'
 import type { CommandContext, CommandDefinition } from './types'
-import { pulseReviewFocuses } from './pulse-review-focus'
 
 const { runPulseMock } = vi.hoisted(() => ({ runPulseMock: vi.fn() }))
 vi.mock('../api/scheduler', () => ({ schedulerApi: { runPulse: runPulseMock } }))
@@ -10,10 +9,6 @@ vi.mock('../api/scheduler', () => ({ schedulerApi: { runPulse: runPulseMock } })
 // Structural fixtures mirroring agentworksproduct/product.yaml: the adapter
 // mechanics (gates, aliases, focus resolution, substitution) are what's under
 // test here. The real prompt content is locked by the backend manifest test.
-const PULSE_REVIEW_PROMPT = 'Run /run-technical-review. You do it yourself in this turn, and may use your own subagents for parallel reading or analysis. '
-  + 'Call get_workflow_command_guidance(kind="engineering-review", focus="{{context}}") and follow the returned instructions verbatim. '
-  + 'This is one bounded Review+Fix task: persist the completed technical_review receipt before moving to the fix part. '
-  + 'When you are done, present the selected repair objective, changes made, and remaining actionable issues.'
 
 function productCommand(name: string, prompt: string, extra?: Partial<AgentworksProductCommand>): AgentworksProductCommand {
   return { name, description: `${name} description`, icon: 'terminal', aliases: [], menuHidden: false, prompt, ...extra }
@@ -26,12 +21,10 @@ function agentworksFixture(): AgentworksProductCommand[] {
     productCommand('design-dashboard', 'Call get_workflow_command_guidance(kind="design-reporting-ui", focus="{{context}}") and follow the returned instructions verbatim.', { aliases: ['design-reporting-ui'] }),
     productCommand('setup-goals', 'Call get_workflow_command_guidance(kind="setup-goals", focus="{{context}}") and follow the returned instructions verbatim.', { aliases: ['define-success'] }),
     productCommand('run-goal-work', 'Run the /run-goal-work pass in this turn. Call get_workflow_command_guidance(kind="strategy-auditor", focus="{{context}}"). Then present Needs your decision proposals.', { aliases: ['strategy-auditor', 'goal-advisor'] }),
-    productCommand('run-technical-review', PULSE_REVIEW_PROMPT, { aliases: ['pulse-review'], menuHidden: true }),
     productCommand('review-code', 'Call get_workflow_command_guidance(kind="design-plan", focus="Architecture focus: inspect saved scripts. Load references/code-authoring.md then references/scripted.md one at a time. Resolve canonical code paths from workflow.json.code_layout_version. do not apply changes in this review. {{context}}").'),
     productCommand('backup', '{{context}} Help me set up or run backup for this workflow.'),
     productCommand('publish', '{{context}} Help me set up or run publish for this workflow.'),
     productCommand('notify', '{{context}} Help me set up or review notifications for this workflow.'),
-    ...pulseReviewFocuses.map(focus => productCommand(focus.legacyCommand, PULSE_REVIEW_PROMPT, { menuHidden: true })),
   ]
 }
 
@@ -102,73 +95,16 @@ describe('Pulse slash commands', () => {
     expect(orgCommand).toBeUndefined()
   })
 
-  it('exposes manual Pulse modules in workflow workshop mode', () => {
-    const workflowCommands = getCommands('workflow', 'workshop').map(command => command.command)
-    const orgCommands = getCommands('multi-agent').map(command => command.command)
 
-    // Pulse keeps two chat commands; the Pulse tab starts the upkeep reviews.
-    for (const command of ['pulse', 'run-goal-work']) {
-      expect(workflowCommands).toContain(command)
-      expect(orgCommands).not.toContain(command)
-    }
-    for (const tabOnly of ['run-technical-review', 'run-plan-drift']) {
-      expect(workflowCommands).not.toContain(tabOnly)
-      expect(findCommand(tabOnly, 'workflow', 'workshop')).toBeDefined()
-    }
-    for (const retired of ['pulse-fixer', 'merge-pulse-issues', 'pulse-merge']) {
-      expect(findCommand(retired, 'workflow', 'workshop')).toBeUndefined()
-    }
-    // Old names still run as aliases but have no menu rows.
-    for (const renamed of ['pulse-review', 'strategy-auditor', 'review-artifact-drift']) {
-      expect(workflowCommands).not.toContain(renamed)
-      expect(findCommand(renamed, 'workflow', 'workshop')).toBeDefined()
-    }
-    for (const retiredCommand of ['bug-review', 'review-speed', 'review-cost', 'llm-ops-review', 'ops-review', 'engineering-review', 'specialize-advisors', 'pulse-setup', 'improve-knowledge', 'improve-learnings', 'improve-database', 'improve-report', 'improve-evaluation', 'pulse-review-stores', 'pulse-review-report', 'pulse-review-evaluation', 'pulse-backlog']) {
-      expect(workflowCommands).not.toContain(retiredCommand)
-    }
-  })
 
-  it('consolidates focused menu entries while preserving every shortcut and its access restrictions', () => {
-    const menu = getCommands('workflow', 'workshop').map(command => command.command)
-    expect(menu).not.toContain('run-technical-review')
-    expect(findCommand('run-technical-review', 'workflow', 'workshop')).toBeDefined()
-    for (const focus of pulseReviewFocuses) {
-      expect(menu).not.toContain(focus.legacyCommand)
-      expect(findCommand(focus.legacyCommand, 'workflow', 'workshop')).toBeDefined()
-      expect(findCommandAnyMode(focus.legacyCommand)).toBeDefined()
-      expect(findCommand(focus.legacyCommand, 'workflow', 'run')).toBeUndefined()
-      expect(findCommand(focus.legacyCommand, 'workflow', 'workshop', false)).toBeUndefined()
-      expect(findCommand(focus.legacyCommand, 'multi-agent')).toBeUndefined()
-    }
-  })
 
-  it('uses identical specialist instructions for picker selections, typed focuses, and retained shortcuts', () => {
-    const submit = (command: string, context: string, selectedFocus?: string) => {
-      let result = ''
-      findCommand(command, 'workflow', 'workshop')!.execute({
-        beforeSlash: context,
-        pulseReviewFocus: selectedFocus,
-        onSubmit: (message: string) => { result = message },
-        workshopMode: 'workshop',
-      } as unknown as CommandContext)
-      return result
-    }
-    for (const focus of pulseReviewFocuses) {
-      const context = `${focus.id} investigate the newest regression`
-      const picked = submit('pulse-review', context, focus.id)
-      expect(picked).toBe(submit('pulse-review', context))
-      expect(picked).toBe(submit(focus.legacyCommand, context))
-      expect(picked).toContain(focus.instructions)
-      expect(picked).toContain(context)
-    }
-    expect(submit('pulse-review', 'database concerns, but investigate freely', 'auto')).not.toContain('improve-database')
-    expect(submit('pulse-review', 'investigate a custom concern')).toContain('investigate a custom concern')
-  })
+
+
 
   it('hides Builder reviews from Run and rejects direct command lookup there', () => {
     const runCommands = getCommands('workflow', 'run').map(command => command.command)
 
-    for (const command of ['pulse', 'pulse-review', 'strategy-auditor', 'goal-advisor', 'design-plan', 'review-code', 'review-artifact-drift', 'pulse-review-execution-health', 'pulse-review-validation-contract', 'backup', 'publish', 'notify']) {
+    for (const command of ['pulse', 'strategy-auditor', 'goal-advisor', 'design-plan', 'review-code', 'review-artifact-drift', 'backup', 'publish', 'notify']) {
       expect(runCommands).not.toContain(command)
       expect(findCommand(command, 'workflow', 'run', true)).toBeUndefined()
       expect(findCommand(command, 'workflow', 'workshop', true)).toBeDefined()
@@ -216,55 +152,11 @@ describe('Pulse slash commands', () => {
     expect(submitted).not.toContain('},{')
   })
 
-  it('routes Pulse Review through one retained review and fix task', () => {
-    const command = findCommand('pulse-review', 'workflow')
-    let submitted = ''
 
-    command?.execute({
-      beforeSlash: 'prioritize failed evaluation writes',
-      onSubmit: (message: string) => { submitted = message },
-      workshopMode: 'workshop',
-    } as unknown as CommandContext)
 
-    expect(submitted).toContain('kind="engineering-review"')
-    expect(submitted).toContain('Run /run-technical-review. You do it yourself in this turn')
-    expect(submitted).not.toContain('BACKGROUND task')
-    expect(submitted).not.toContain('run_in_background')
-    expect(submitted).not.toContain('required_pulse_review_modules')
-    expect(submitted).toContain('present the selected repair objective')
-    expect(submitted).toContain('prioritize failed evaluation writes')
-  })
 
-  it('routes a manual technical focus through retained Technical Review and Fix', () => {
-    const technical = findCommand('pulse-review-execution-health', 'workflow')
-    let submitted = ''
 
-    technical?.execute({
-      beforeSlash: 'check the newest retry spike',
-      onSubmit: (message: string) => { submitted = message },
-      workshopMode: 'workshop',
-    } as unknown as CommandContext)
-    expect(submitted).toContain('kind="engineering-review"')
-    expect(submitted).toContain('Manual Pulse review focus: execution_health')
-    expect(submitted).not.toContain('required_pulse_review_modules')
-    expect(submitted).toContain('bounded Review+Fix')
-  })
 
-  it('routes store review aliases through store_integrity review and bounded repair', () => {
-    for (const commandName of ['pulse-review-knowledge', 'pulse-review-learnings', 'pulse-review-database']) {
-      const command = findCommand(commandName, 'workflow')
-      let submitted = ''
-      command?.execute({
-        beforeSlash: 'repair confirmed ownership drift',
-        onSubmit: (message: string) => { submitted = message },
-        workshopMode: 'workshop',
-      } as unknown as CommandContext)
-
-      expect(submitted).toContain('kind="engineering-review"')
-      expect(submitted).toContain('Manual Pulse review focus: store_integrity')
-      expect(submitted).toContain('bounded Review+Fix')
-    }
-  })
 
   it('runs Strategy Auditor as a background guided review', () => {
     const command = findCommand('strategy-auditor', 'workflow')

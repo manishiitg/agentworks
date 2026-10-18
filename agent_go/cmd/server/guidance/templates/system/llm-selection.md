@@ -6,19 +6,11 @@ This doc is about choosing which LLM executes workflow work. There are **two lev
 
 A workflow always resolves these roles:
 
-- **Builder**: planning, eval design, debugging, normal workflow-builder chat,
-  scheduled runs, and every turn of the post-run Pulse conversation (Gate,
-  review dispatch, Finalize). One scheduled run is one conversation on one
-  retained coding CLI, so it runs on one model throughout.
-- **High execution**: first-time, ambiguous, or difficult step work.
-- **Medium execution**: established work with useful context and learnings.
-  Also Pulse upkeep: the Plan Drift, Technical and Architecture review agents
-  and knowledgebase maintenance run on the Medium tier.
+- **Builder**: planning, debugging, normal Builder chat and scheduled workflow conversations. A retained coding CLI uses one model throughout its conversation.
+- **High execution**: first-time, ambiguous or difficult step work.
+- **Medium execution**: established work with useful context and skills.
 - **Low execution**: deterministic validation and mature routine work.
-- **Pulse** (`pulse_llm`): the Pulse review turns, including Goal Work, run
-  in the Pulse conversation itself on the retained coding CLI, so they use that
-  conversation's model; a retained CLI cannot switch model mid-conversation.
-  Not the Gate, worklist, report or notification turns: those are Builder.
+- **Pulse** (`pulse_llm`): the single continuing goal-owning Pulse conversation, including checks and Goal Work. It asks Builder to implement changes; there are no separate review agents or model roles for Gate/fixer/finalizer stages.
 
 The config has two modes:
 
@@ -42,19 +34,18 @@ Saved configurations are reusable shortcuts for exact provider/model/options com
 
 ### Per-step overrides (use sparingly)
 
-Pulse Architect owns persistent tier/model improvement proposals. Runtime does
+Pulse and Builder agree evidence-based persistent tier/model improvements. Runtime does
 not switch tiers from successful-run counts, learning changes, or failures.
 Unconfigured execution steps default to High; evaluation steps default to Medium.
 Existing explicit settings and one-run caller overrides keep their precedence.
 Use measured, approved trials with quality guardrails and a rollback checkpoint;
-load `architecture-review` for the evidence and decision contract.
 
 
 Set via `update_step_config(step_id, ...)`:
 
 - **`execution_tier`** (`"high"` | `"medium"` | `"low"`) — a *persistent* tier override for one step in tiered mode. Use **high** for subjective/ambiguous judgment, **medium** for normal checks, **low** for deterministic/file-shape checks. Prefer this over pinning an exact model when the intent is just "this step can usually run cheaper/faster".
 - **`execution_llm`** (`{provider, model_id}`) — pins an *exact* model for one step. Use only when a specific model is genuinely required (a capability only that model has).
-- **`validation_llm`** — same shape, overrides the model used for that step's validation. Learning model selection is handled by tiered allocation; there is no separate `learning_llm` setting.
+- **`validation_llm`** — same shape, overrides the model used for that step's validation. There is no separate learning turn or `learning_llm` setting.
 
 **Precedence (highest wins):**
 1. `execute_step(step_id, group_name, tier="...")` — a one-off tier for a single trial run; changes nothing persistent.

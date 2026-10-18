@@ -10,72 +10,6 @@ import (
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
-// QA and Architecture owned by the workflow's Pulse conversation (PLAT-697,
-// design "QA and Architecture owned by Pulse"; the code keeps the goal_lead
-// names, users see "Pulse").
-//
-// For a workflow with a goal (workflowHasGoal), the full Pulse pass runs Gate,
-// Goal Work in the persistent Pulse conversation, and Finalize. It runs no
-// Architecture or Technical turn of its own:
-//   - Architecture is the conversation's skill (goal-lead-architecture.md);
-//   - QA (Technical Review+Fix) runs only when the conversation asks for it
-//     (record_pulse_qa_request -> a fix run, result back into it);
-//   - the safety net Technical gave after runs is kept by code: a failed run
-//     wakes the conversation for one short turn (at most once per failed run),
-//     and its goal check reads failed runs, CONCERNS: lines and open issues.
-// Workflows without a goal keep the full pass and the automatic fix runs.
-
-// goalLeadOwnedModules are the reviewers a goal workflow's pass does not run.
-var goalLeadOwnedModules = []string{pulseModuleArchitectureReview, pulseModuleTechnicalReview}
-
-const goalLeadOwnsReviewsReason = "This workflow has a goal: its Pulse conversation owns QA (it asks for a QA run) and architecture (its skill); the full pass runs no separate turn."
-
-const goalLeadOwnsReviewsEvidence = "pulse:goal_lead_owns_reviews"
-
-// goalLeadGateNote tells a goal workflow's Gate what not to select.
-const goalLeadGateNote = "\n\nTHIS WORKFLOW HAS A GOAL. Its Pulse conversation owns QA and architecture: record architecture_review and technical_review as not due (reason: owned by the Pulse conversation, cooldown_runs 1). Decide only whether Goal Work (strategic_review) is due."
-
-// keepGoalLeadReviewsOutOfPulse records Architecture and Technical not due in
-// a goal workflow's Gate worklist, whatever Gate decided.
-func keepGoalLeadReviewsOutOfPulse(decisions []PulseWorklistDecision) []PulseWorklistDecision {
-	out := append([]PulseWorklistDecision(nil), decisions...)
-	for index := range out {
-		module := normalizePulseModule(out[index].Module)
-		if module != pulseModuleArchitectureReview && module != pulseModuleTechnicalReview {
-			continue
-		}
-		out[index].Due = false
-		out[index].Reason = goalLeadOwnsReviewsReason
-		out[index].Evidence = []string{goalLeadOwnsReviewsEvidence}
-		out[index].NextCheckAt = ""
-		out[index].NextCheckAfterRunID = ""
-		out[index].DeferReason = ""
-		out[index].CooldownRuns = 1
-	}
-	return out
-}
-
-// closeGoalLeadOwnedModules gives a terminal "skipped" result to an
-// Architecture or Technical row that a backend rule (a pending recovery, the
-// prompt budget, a protected boundary) made due in a goal workflow's pass, so
-// it is not left pending and its recovery is cleared.
-func closeGoalLeadOwnedModules(ctx context.Context, workspacePath, pulseRunID string) error {
-	worklist, ok, err := getPulseWorklistForRun(ctx, workspacePath, pulseRunID)
-	if err != nil || !ok {
-		return err
-	}
-	for _, module := range goalLeadOwnedModules {
-		state, exists := worklist[module]
-		if !exists || !strings.EqualFold(strings.TrimSpace(state.LastDecision), "due") || strings.TrimSpace(state.LastResult) != "" {
-			continue
-		}
-		if _, err := markPulseModuleResult(ctx, workspacePath, module, pulseRunID, "skipped", goalLeadOwnsReviewsReason, []string{goalLeadOwnsReviewsEvidence}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // Failed runs: the facts the conversation reads and the wake-up.
 
 const (
@@ -104,7 +38,7 @@ type goalLeadFailedRun struct {
 func goalLeadFailedRuns(entries []ScheduleRunEntry, since time.Time) []goalLeadFailedRun {
 	out := []goalLeadFailedRun{}
 	for _, entry := range entries {
-		if isPulseScheduleID(entry.ScheduleID) || !isPulseFixFailedRunStatus(entry.Status) {
+		if isPulseScheduleID(entry.ScheduleID) || !isFailedWorkflowRunStatus(entry.Status) {
 			continue
 		}
 		finished := entry.StartedAt
@@ -165,7 +99,7 @@ func goalLeadRunHealthSince(ctx context.Context, workspacePath string, now time.
 	return since
 }
 
-const goalLeadRunHealthNote = "Run health since your last goal check (code-collected, what Technical Review read after runs): failed runs with their error, steps' CONCERNS: lines, open workflow issues, and whether each schedule's runs ran the workflow. For a failure that blocks or threatens the goal (the goal-driving step or route failed, the goal cannot be measured, the same failure repeats), call record_pulse_qa_request once with the run, step and symptom. Note the others in one line in your check; do not repair steps yourself."
+const goalLeadRunHealthNote = "Read failed runs, step concerns and relevant goal evidence. For a failure that threatens the goal, ask Builder for one coherent repair and verified results under the current permissions. Reuse existing Goal Work and pending decisions; a failure does not create a separate reviewer or repair session."
 
 // claimGoalLeadRunFailures returns the failed runs of the last day that the
 // conversation has not been woken for, and marks them noticed.
@@ -178,7 +112,7 @@ func claimGoalLeadRunFailures(ctx context.Context, workspacePath string, now tim
 	if len(failed) == 0 {
 		return nil, nil
 	}
-	_, db, err := openPulseModuleStateDB(ctx, workspacePath, true)
+	_, db, err := openPulseStoreDB(ctx, workspacePath, true)
 	if err != nil {
 		return nil, err
 	}
@@ -251,4 +185,12 @@ func goalLeadRunFailureMessage(runs int) string {
 		return "A run failed; Pulse is looking at it."
 	}
 	return fmt.Sprintf("%d runs failed; Pulse is looking at them.", runs)
+}
+
+func isFailedWorkflowRunStatus(status string) bool {
+	switch status {
+	case "error", "failed", "interrupted":
+		return true
+	}
+	return false
 }

@@ -130,7 +130,7 @@ func (api *StreamingAPI) recordBackgroundAgentLogStarted(sessionID, agentID, nam
 		return
 	}
 	ctx := context.Background()
-	_, db, err := openPulseModuleStateDB(ctx, workspacePath, true)
+	_, db, err := openPulseStoreDB(ctx, workspacePath, true)
 	if err != nil || db == nil {
 		if err != nil {
 			log.Printf("[BG_AGENT_LOG] failed to open db for %s: %v", workspacePath, err)
@@ -161,7 +161,7 @@ func (api *StreamingAPI) recordBackgroundAgentLogCompleted(sessionID, agentID, n
 		return
 	}
 	ctx := context.Background()
-	_, db, err := openPulseModuleStateDB(ctx, workspacePath, true)
+	_, db, err := openPulseStoreDB(ctx, workspacePath, true)
 	if err != nil || db == nil {
 		if err != nil {
 			log.Printf("[BG_AGENT_LOG] failed to open db for %s: %v", workspacePath, err)
@@ -195,7 +195,7 @@ func (api *StreamingAPI) recordBackgroundAgentTranscriptPath(sessionID, agentID,
 		return
 	}
 	ctx := context.Background()
-	_, db, err := openPulseModuleStateDB(ctx, workspacePath, true)
+	_, db, err := openPulseStoreDB(ctx, workspacePath, true)
 	if err != nil || db == nil {
 		if err != nil {
 			log.Printf("[BG_AGENT_LOG] failed to open db for %s: %v", workspacePath, err)
@@ -221,7 +221,7 @@ func (api *StreamingAPI) recordBackgroundAgentTranscriptPath(sessionID, agentID,
 // pulse_review_log (which a module's Fixer turn may never write) or
 // ui_events (capped at 200, overwritten on session reuse).
 func backgroundAgentLogForSession(ctx context.Context, workspacePath, sessionID string) ([]BackgroundAgentLogEntry, error) {
-	_, db, err := openPulseModuleStateDB(ctx, workspacePath, false)
+	_, db, err := openPulseStoreDB(ctx, workspacePath, false)
 	if err != nil {
 		return nil, err
 	}

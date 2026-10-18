@@ -7,11 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/manishiitg/mcpagent/executor"
-	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
-
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/mcpagent/executor"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // ask_pulse sends a conversational message to the workflow's Pulse. Replies
@@ -157,7 +156,7 @@ func (api *StreamingAPI) goalLeadAskCaller(ctx context.Context, workspacePath, s
 }
 
 // createGoalLeadChatKindTools are the phase 4 Pulse writes: focus areas and
-// QA requests (executors in createPulseWorklistTools).
+// QA requests (executors in createPulseTools).
 func createGoalLeadChatKindTools() []llmtypes.Tool {
 	return []llmtypes.Tool{
 		{Type: "function", Function: &llmtypes.FunctionDefinition{
@@ -179,18 +178,6 @@ func createGoalLeadChatKindTools() []llmtypes.Tool {
 					"lesson":         map[string]interface{}{"type": "string", "description": "close: one line on what it taught."},
 				},
 				"required": []string{"workspace_path", "action"},
-			}),
-		}},
-		{Type: "function", Function: &llmtypes.FunctionDefinition{
-			Name:        "record_pulse_qa_request",
-			Description: "Ask for QA / technical review as a separate run (the Pulse's sub-agent): a Pulse fix run (Technical Review+Fix in its own session) starts when the workflow is free and its short result comes back to the Pulse conversation (goal_lead.qa_results). Use it for a step that fails, outputs that look wrong, or a fix to verify; do not do long repair work in the Pulse conversation. One open request at a time, three a day.",
-			Parameters: llmtypes.NewParameters(map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"workspace_path": map[string]interface{}{"type": "string"},
-					"what":           map[string]interface{}{"type": "string", "minLength": 1, "description": "What to check or fix, with the evidence (run, step, symptom), at most 600 characters."},
-				},
-				"required": []string{"workspace_path", "what"},
 			}),
 		}},
 	}

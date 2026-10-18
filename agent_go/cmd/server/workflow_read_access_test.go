@@ -69,7 +69,7 @@ func readAs(t *testing.T, h http.Handler, user, target string) *httptest.Respons
 }
 
 var workflowReadRoutes = []string{
-	"/api/workflow/pulse-module-state",
+	"/api/workflow/pulse-overview",
 	"/api/workflow/pulse-findings",
 	"/api/workflow/pulse-reviews",
 	"/api/workflow/pulse-agent-metrics",

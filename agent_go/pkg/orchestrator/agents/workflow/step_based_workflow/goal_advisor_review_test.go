@@ -69,26 +69,6 @@ func TestApplyAdvisorSpecializationToManifestIsVersionedAndIdempotent(t *testing
 	}
 }
 
-func TestAdvisorSpecializationPromptJoinsBothStrategicPhases(t *testing.T) {
-	specialization := &workflowAdvisorSpecialization{
-		Version:         2,
-		StrategyAuditor: "STRATEGY-LENS-UNIQUE",
-		GoalAdvisor:     "GOAL-LENS-UNIQUE",
-	}
-	for _, module := range []string{"strategic_review", "strategy_auditor", "goal_advisor"} {
-		prompt := advisorSpecializationPrompt(specialization, module)
-		if !strings.Contains(prompt, "STRATEGY-LENS-UNIQUE") || !strings.Contains(prompt, "GOAL-LENS-UNIQUE") {
-			t.Fatalf("%s did not receive both ordered phase lenses: %s", module, prompt)
-		}
-		if !strings.Contains(prompt, "Current-strategy audit lens") || !strings.Contains(prompt, "Independent-opportunity lens") {
-			t.Fatalf("%s prompt does not preserve phase ownership: %s", module, prompt)
-		}
-	}
-	if got := advisorSpecializationPrompt(specialization, "workflow_review"); got != "" {
-		t.Fatalf("engineering review received advisor specialization: %q", got)
-	}
-}
-
 func TestWorkshopStageAgentIdentityIsDistinctAndSafe(t *testing.T) {
 	first := newWorkshopStageAgentIdentity("Pulse reviewer - artifact review")
 	second := newWorkshopStageAgentIdentity("Pulse reviewer - artifact review")

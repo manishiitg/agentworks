@@ -7,8 +7,8 @@ Builder; a technical handoff alone is not Goal Work's conclusion.
 - Read relevant earlier items, real outputs and comparable DB history. Reuse an
   existing item, finding or pending decision. Check matured `check_at` dates
   before opening more work. Keep what worked; stop or change what did not.
-- Check plan consistency in this same turn: use `get_pulse_state(view="module")`
-  for `plan_drift_candidates` and plan-change dependency evidence. Read only the
+- Check plan consistency in this same turn by reading the changed plan and its
+  dependent artifacts, or asking Builder for the relevant evidence. Read only
   changed steps and their dependents, ask Builder to repair concrete breaks,
   and ask Builder to save the result with its existing drift/dependency receipt
   tools. Do not launch a separate reviewer or hold a run for AI review. Required inputs

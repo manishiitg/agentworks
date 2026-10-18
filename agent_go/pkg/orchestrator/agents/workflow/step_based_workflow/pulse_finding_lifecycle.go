@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsemodules"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsestore"
 )
 
 const pulseFixAttemptsSchema = `CREATE TABLE IF NOT EXISTS pulse_fix_attempts (
@@ -671,11 +670,7 @@ func ensurePulseFindingLifecycleSchema(ctx context.Context, db pulseFindingLifec
 			return err
 		}
 	}
-	if concrete, ok := db.(*sql.DB); ok {
-		if err := pulsestore.RefreshCompatibility(ctx, concrete); err != nil {
-			return fmt.Errorf("install compact Pulse compatibility: %w", err)
-		}
-	}
+
 	return nil
 }
 

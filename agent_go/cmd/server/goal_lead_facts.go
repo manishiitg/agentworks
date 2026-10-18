@@ -230,7 +230,7 @@ func goalLeadErrorRateSpike(entries []ScheduleRunEntry, since, now time.Time) ma
 		case "queued", "running":
 			continue
 		}
-		failed := isPulseFixFailedRunStatus(entry.Status)
+		failed := isFailedWorkflowRunStatus(entry.Status)
 		key := entry.StartedAt.UTC().Format("2006-01-02")
 		if days[key] == nil {
 			days[key] = &day{}

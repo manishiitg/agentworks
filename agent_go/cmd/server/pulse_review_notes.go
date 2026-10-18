@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
-	"time"
 )
 
 // Notes are optional reasoning, not a second finding ledger or completion signal.
@@ -25,40 +23,6 @@ type PulseReviewNote struct {
 	UpdatedAt  string   `json:"updated_at"`
 }
 
-func savePulseReviewNoteTx(ctx context.Context, tx pulseModuleAuditExecer, workspace, module, run, content, at string) error {
-	if strings.TrimSpace(content) == "" {
-		return nil
-	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO pulse_review_notes (workspace_path,module,pulse_run_id,content,updated_at)
-		VALUES (?,?,?,?,?) ON CONFLICT(workspace_path,module,pulse_run_id) DO UPDATE SET content=excluded.content,updated_at=excluded.updated_at`, workspace, module, run, strings.TrimSpace(content), at)
-	return err
-}
-
-func savePulseWorkingNote(ctx context.Context, workspace, module, run, content string) error {
-	module = normalizePulseModule(module)
-	if !validPulseModules[module] || strings.TrimSpace(content) == "" {
-		return fmt.Errorf("working note requires a valid module and nonempty review_note or reason")
-	}
-	normalized, db, err := openPulseModuleStateDB(ctx, workspace, true)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	state, err := getPulseModuleStateByModule(ctx, tx, normalized, module)
-	if err != nil || state.LastPulseRunID != run || state.LastDecision != "due" || state.LastResult != "" {
-		return fmt.Errorf("working note requires an unresolved due module for this exact Pulse run")
-	}
-	if err := savePulseReviewNoteTx(ctx, tx, normalized, module, run, content, time.Now().UTC().Format(time.RFC3339)); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
 // Bounded, module-filtered continuity read. An unfinished note never means done.
 func loadPulseReviewNotes(ctx context.Context, workspace, module, run string, limit int) ([]PulseReviewNote, error) {
 	out := []PulseReviewNote{}
@@ -72,14 +36,37 @@ func loadPulseReviewNotes(ctx context.Context, workspace, module, run string, li
 	if limit > 50 {
 		limit = 50
 	}
-	normalized, db, err := openPulseModuleStateDB(ctx, workspace, false)
+	normalized, db, err := openPulseStoreDB(ctx, workspace, false)
 	if err != nil || db == nil {
 		return out, err
 	}
 	defer db.Close()
-	if err := ensurePulseModuleStateSchema(ctx, db); err != nil {
+	columns, err := pulseStateColumns(ctx, db, "pulse_module_audit")
+	if err != nil || len(columns) == 0 {
+		return out, err
+	}
+	notes, err := pulseStateColumns(ctx, db, "pulse_review_notes")
+	if err != nil {
 		return nil, err
 	}
+	if len(notes) == 0 {
+		rows, err := db.QueryContext(ctx, `SELECT module,pulse_run_id,reason,evidence_json,result,recorded_at FROM pulse_module_audit WHERE workspace_path=? AND (?='' OR module=?) AND (?='' OR pulse_run_id=?) AND result<>'skipped' ORDER BY recorded_at DESC LIMIT ?`, normalized, module, module, run, run, limit)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var note PulseReviewNote
+			var evidence string
+			if err := rows.Scan(&note.Module, &note.PulseRunID, &note.Conclusion, &evidence, &note.Result, &note.UpdatedAt); err != nil {
+				return nil, err
+			}
+			_ = json.Unmarshal([]byte(evidence), &note.Evidence)
+			out = append(out, note)
+		}
+		return out, rows.Err()
+	}
+
 	rows, err := db.QueryContext(ctx, `WITH identities AS (
         SELECT workspace_path,module,pulse_run_id FROM pulse_review_notes
         UNION SELECT workspace_path,module,pulse_run_id FROM pulse_module_audit WHERE result<>'skipped'

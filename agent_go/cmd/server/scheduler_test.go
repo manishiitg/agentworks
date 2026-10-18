@@ -197,27 +197,6 @@ func TestScheduleStateLockKeyFromRuntimeKey(t *testing.T) {
 	}
 }
 
-// A Pulse fix run holds the Pulse lock, not the workflow's schedule lock: a
-// real schedule that comes due while Pulse repairs the workflow still starts
-// (salesoutreach/upwork/social-media lost runs to fix runs, 2026-09-26/28).
-func TestPulseFixRunDoesNotHoldTheWorkflowScheduleLock(t *testing.T) {
-	workflow := &ScheduleContext{WorkspacePath: "Workflow/demo", Schedule: WorkflowSchedule{ID: "daily-send"}}
-	fix := &ScheduleContext{WorkspacePath: "Workflow/demo", Schedule: WorkflowSchedule{ID: pulseFixRunScheduleID}}
-	pulse := &ScheduleContext{WorkspacePath: "Workflow/demo", Schedule: WorkflowSchedule{ID: manualWorkflowPulseScheduleID}}
-	_, _, workflowKey := scheduleStateScope(workflow)
-	_, _, fixKey := scheduleStateScope(fix)
-	_, _, pulseKey := scheduleStateScope(pulse)
-	if fixKey == workflowKey {
-		t.Fatalf("a Pulse fix run took the workflow schedule lock %q", workflowKey)
-	}
-	if fixKey != pulseKey {
-		t.Fatalf("fix runs and scheduled Pulse must share the one-Pulse-per-workflow lock: %q vs %q", fixKey, pulseKey)
-	}
-	if got := scheduleStateLockKeyFromRuntimeKey(workflowScheduleRuntimeKey("Workflow/demo", pulseFixRunScheduleID)); got != pulseKey {
-		t.Fatalf("runtime-key mapping for a fix run = %q, want %q", got, pulseKey)
-	}
-}
-
 func TestScheduleStateScopeUsesIndependentParallelLane(t *testing.T) {
 	sequential := &ScheduleContext{WorkspacePath: "Workflow/demo", Schedule: WorkflowSchedule{ID: "growth"}}
 	parallel := &ScheduleContext{WorkspacePath: "Workflow/demo", Schedule: WorkflowSchedule{
@@ -463,25 +442,6 @@ func TestListFireDecisionsSurfacesSkippedOccurrences(t *testing.T) {
 	}
 	if !got.ScheduledFor.Equal(scheduledFor) {
 		t.Errorf("scheduled_for = %v, want %v", got.ScheduledFor, scheduledFor)
-	}
-}
-
-func TestPulseScheduleTimingSummaryOmitsSectionWhenPulseIsDisabled(t *testing.T) {
-	ctx := context.Background()
-	if got := pulseScheduleTimingSummary(ctx, "Workflow/demo", nil); got != "" {
-		t.Fatalf("nil manifest: want empty summary (section omitted), got %q", got)
-	}
-	disabled := &WorkflowManifest{ID: "demo", Schedules: []WorkflowSchedule{
-		{ID: "daily", Enabled: true, CronExpression: "0 9 * * *", Timezone: "UTC"},
-	}}
-	if got := pulseScheduleTimingSummary(ctx, "Workflow/demo", disabled); got != "" {
-		t.Fatalf("Pulse off: want empty summary (section omitted), got %q", got)
-	}
-	// A retired pulse_review_only entry alone no longer describes a schedule;
-	// it only migrates into pulse.enabled.
-	enabled := &WorkflowManifest{ID: "demo", Pulse: &WorkflowPulseConfig{Enabled: true}}
-	if got := pulseScheduleTimingSummary(ctx, "Workflow/pulse-timing-no-state", enabled); got == "" {
-		t.Fatal("Pulse on: want a non-empty timing summary even before a next time is chosen")
 	}
 }
 
@@ -1196,37 +1156,6 @@ func TestUpdateScheduleClearsMessagesOnlyWhenExplicitlySet(t *testing.T) {
 	})
 }
 
-// TestCreateAndUpdatePulseReviewOnlyScheduleSkipsGroupNamesRequirement pins
-// PLAT-115 at the real CreateSchedule/UpdateSchedule implementations (not
-// just the tool-layer guard): a pulse_review_only schedule must not be
-// rejected for missing group_names at create time, and a later update that
-// only changes its cron must not be rejected either — CreateSchedule's own
-// explicit skip and UpdateSchedule's final unconditional
-// validateScheduleGroupNamesForWorkspace revalidation (which runs
-// independent of whether this call touched group_names at all) both had to
-// be guarded, not just the one the caller happens to exercise first.
-
-func TestGoalAdvisorGuidanceBalancesExplorationEvidenceAndHumanDecisions(t *testing.T) {
-	repoRoot := findRepoRoot(t)
-	read := func(rel string) string {
-		t.Helper()
-		raw, err := os.ReadFile(filepath.Join(repoRoot, rel))
-		if err != nil {
-			t.Fatalf("read %s: %v", rel, err)
-		}
-		return string(raw)
-	}
-
-	advisorGuidance := read("agent_go/cmd/server/guidance/templates/system/strategy-auditor.md")
-	for _, want := range []string{
-		"expected value", "hypotheses", "guardrails", "human_input_id",
-	} {
-		if !strings.Contains(advisorGuidance, want) {
-			t.Fatalf("goal-advisor guidance missing %q", want)
-		}
-	}
-}
-
 func TestDesignPlanGuidanceSupportsReadOnlyPulseChecklist(t *testing.T) {
 	repoRoot := findRepoRoot(t)
 	raw, err := os.ReadFile(filepath.Join(repoRoot, "agent_go/cmd/server/guidance/templates/builder/design-plan.md"))
@@ -1246,43 +1175,6 @@ func TestDesignPlanGuidanceSupportsReadOnlyPulseChecklist(t *testing.T) {
 		if !strings.Contains(guidance, want) {
 			t.Fatalf("design-plan guidance missing Pulse read-only contract %q:\n%s", want, guidance)
 		}
-	}
-}
-
-func TestGateCanRunOpsWithoutEngineering(t *testing.T) {
-	ctx := context.Background()
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	workspacePath := "Workflow/ops-only"
-	pulseRunID := "pulse-ops-only"
-	if _, err := recordPulseWorklist(ctx, workspacePath, pulseRunID, completePulseWorklistDecisions(map[string]PulseWorklistDecision{
-		pulseModuleTechnicalReview: {Module: pulseModuleTechnicalReview, Due: true, Reason: "Runtime cost regressed."},
-	})); err != nil {
-		t.Fatalf("record ops-only worklist: %v", err)
-	}
-	due, err := pulseWorklistHasDueModule(ctx, workspacePath, pulseRunID)
-	if err != nil {
-		t.Fatalf("inspect ops-only worklist: %v", err)
-	}
-	if !due {
-		t.Fatal("ops-only worklist should schedule the agent-owned Review+Fix turn")
-	}
-}
-
-func TestGateCanSkipEveryReviewAndFixer(t *testing.T) {
-	ctx := context.Background()
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	workspacePath := "Workflow/all-reviews-skipped"
-	pulseRunID := "pulse-all-reviews-skipped"
-	if _, err := recordPulseWorklist(ctx, workspacePath, pulseRunID, completePulseWorklistDecisions(nil)); err != nil {
-		t.Fatalf("record all-skipped worklist: %v", err)
-	}
-
-	due, err := pulseWorklistHasDueModule(ctx, workspacePath, pulseRunID)
-	if err != nil {
-		t.Fatalf("inspect all-skipped worklist: %v", err)
-	}
-	if due {
-		t.Fatal("all-skipped worklist must omit the Review+Fix turn")
 	}
 }
 
@@ -1407,219 +1299,6 @@ func TestPostRunMonitorPrependsExecutivePulseJournalUpgradeForVersion119Manifest
 
 func TestPostRunMonitorPrependsArtifactPurityUpgradeForVersion120Manifest(t *testing.T) {
 	assertDirectContractUpgrade(t, &WorkflowManifest{Version: "1.0.20"}, "1.0.20")
-}
-
-func TestWorkflowHasPendingPlanChangelogArtifactReview(t *testing.T) {
-	tests := []struct {
-		name      string
-		files     map[string]string
-		want      bool
-		wantError bool
-	}{
-		{
-			name:  "missing changelog folder",
-			files: map[string]string{},
-			want:  false,
-		},
-		{
-			name: "unreviewed changelog entry",
-			files: map[string]string{
-				"Workflow/demo/planning/changelog/changelog-2026-07-02-06-12-46.json": `{"entries":[{"timestamp":"2026-07-02T06:12:46Z","tool":"update_regular_step","reason":"test","step_ids":["step-a"]}]}`,
-			},
-			want: true,
-		},
-		{
-			name: "reviewed changelog entries",
-			files: map[string]string{
-				"Workflow/demo/planning/changelog/changelog-2026-07-02-06-12-46.json": `{"entries":[{"timestamp":"2026-07-02T06:12:46Z","tool":"update_regular_step","reason":"test","step_ids":["step-a"],"artifact_review":{"done":true,"reviewed_at":"2026-07-02T06:20:00Z","reviewed_by":"pulse_fixer","result":"clean"}}]}`,
-			},
-			want: false,
-		},
-		{
-			name: "one unreviewed entry keeps review pending",
-			files: map[string]string{
-				"Workflow/demo/planning/changelog/changelog-2026-07-02-06-12-46.json": `{"entries":[{"timestamp":"2026-07-02T06:12:46Z","tool":"update_regular_step","reason":"old","artifact_review":{"done":true}},{"timestamp":"2026-07-02T06:13:46Z","tool":"update_step_config","reason":"new"}]}`,
-			},
-			want: true,
-		},
-		{
-			name: "malformed changelog is pending",
-			files: map[string]string{
-				"Workflow/demo/planning/changelog/changelog-2026-07-02-06-12-46.json": `{`,
-			},
-			want: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			workspace := httptest.NewServer(&mockWorkspaceAPI{files: tt.files})
-			defer workspace.Close()
-			t.Setenv("WORKSPACE_API_URL", workspace.URL)
-
-			got, err := workflowHasPendingPlanChangelogArtifactReview(context.Background(), "Workflow/demo")
-			if tt.wantError && err == nil {
-				t.Fatal("expected error, got nil")
-			}
-			if !tt.wantError && err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != tt.want {
-				t.Fatalf("workflowHasPendingPlanChangelogArtifactReview() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-// pulseWorklistModulesDue lets a caller ask about a specific module subset —
-// needed once plan_drift_review became its own preceding lifecycle step, so
-// each step only checks the modules it is actually responsible for.
-// forcePulseModuleDueForLateRepairDebt is the strategic-only edge-case fix:
-// Gate's own due decision for technical_review is a static per-pass row with
-// no live recomputation, so a plan_drift_review finding filed after Gate
-// runs must amend that row directly, not merely check it, or the
-// already-scheduled (strategic_review-only) review-fix turn would read
-// technical_review.due=false forever and never pick up the new repair work.
-func TestForcePulseModuleDueForLateRepairDebtFlipsDueAndClearsResult(t *testing.T) {
-	ctx := context.Background()
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	workspacePath := "Workflow/force-module-due"
-	pulseRunID := "pulse-force-module-due"
-
-	// Gate's original decision: only strategic_review is due.
-	if _, err := recordPulseWorklist(ctx, workspacePath, pulseRunID, completePulseWorklistDecisions(map[string]PulseWorklistDecision{
-		pulseModuleStrategicReview: {Module: pulseModuleStrategicReview, Due: true, Reason: "Strategic evidence matured."},
-	})); err != nil {
-		t.Fatalf("record worklist: %v", err)
-	}
-	if due, err := pulseWorklistModulesDue(ctx, workspacePath, pulseRunID, pulseModuleTechnicalReview); err != nil {
-		t.Fatalf("inspect technical_review due-ness: %v", err)
-	} else if due {
-		t.Fatal("technical_review should start not due")
-	}
-
-	if err := forcePulseModuleDueForLateRepairDebt(ctx, workspacePath, pulseRunID, pulseModuleTechnicalReview, "plan_drift_review left 2 actionable issue(s) Gate did not anticipate"); err != nil {
-		t.Fatalf("forcePulseModuleDueForLateRepairDebt: %v", err)
-	}
-
-	if due, err := pulseWorklistModulesDue(ctx, workspacePath, pulseRunID, pulseModuleTechnicalReview); err != nil {
-		t.Fatalf("inspect technical_review due-ness after force: %v", err)
-	} else if !due {
-		t.Fatal("technical_review should be due after forcePulseModuleDueForLateRepairDebt")
-	}
-	// strategic_review's own due decision must be untouched by forcing a
-	// different module due — this is a narrow single-row amendment, not a
-	// second full worklist write.
-	if due, err := pulseWorklistModulesDue(ctx, workspacePath, pulseRunID, pulseModuleStrategicReview); err != nil {
-		t.Fatalf("inspect strategic_review due-ness: %v", err)
-	} else if !due {
-		t.Fatal("strategic_review's original due decision must survive forcing technical_review due")
-	}
-	if err := validatePulseDueModuleResultsFor(ctx, workspacePath, pulseRunID, pulseModuleTechnicalReview); err == nil {
-		t.Fatal("technical_review is due with no terminal result recorded for this run yet; validatePulseDueModuleResultsFor should require one")
-	}
-}
-
-func TestPulseWorklistModulesDueChecksOnlyGivenModules(t *testing.T) {
-	ctx := context.Background()
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	workspacePath := "Workflow/modules-due-scope"
-	pulseRunID := "pulse-modules-due-scope"
-	if _, err := recordPulseWorklist(ctx, workspacePath, pulseRunID, completePulseWorklistDecisions(map[string]PulseWorklistDecision{
-		pulseModuleTechnicalReview: {Module: pulseModuleTechnicalReview, Due: true, Reason: "Operational evidence."},
-	})); err != nil {
-		t.Fatalf("record worklist: %v", err)
-	}
-
-	if due, err := pulseWorklistModulesDue(ctx, workspacePath, pulseRunID, pulseModulePlanDriftReview); err != nil {
-		t.Fatalf("inspect plan_drift_review due-ness: %v", err)
-	} else if due {
-		t.Fatal("plan_drift_review was not marked due, but pulseWorklistModulesDue reported it due")
-	}
-	if due, err := pulseWorklistModulesDue(ctx, workspacePath, pulseRunID, pulseModuleTechnicalReview, pulseModuleStrategicReview); err != nil {
-		t.Fatalf("inspect technical/strategic due-ness: %v", err)
-	} else if !due {
-		t.Fatal("technical_review was marked due, but pulseWorklistModulesDue(technical, strategic) reported neither due")
-	}
-}
-
-// validatePulseDueModuleResultsFor must only flag the modules it was asked
-// about — checking the full module set right after plan_drift_review's own
-// step (which runs before technical_review/strategic_review even get their
-// turn) would wrongly treat "hasn't run yet" as "receipt missing."
-func TestValidatePulseDueModuleResultsForScopesToGivenModules(t *testing.T) {
-	ctx := context.Background()
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	workspacePath := "Workflow/scoped-results"
-	pulseRunID := "pulse-scoped-results"
-	if _, err := recordPulseWorklist(ctx, workspacePath, pulseRunID, completePulseWorklistDecisions(map[string]PulseWorklistDecision{
-		pulseModulePlanDriftReview: {Module: pulseModulePlanDriftReview, Due: true, Reason: "A step's drift_review is null."},
-	})); err != nil {
-		t.Fatalf("record worklist: %v", err)
-	}
-
-	// The selected plan-drift module has no terminal result yet, so scoped
-	// validation must name it.
-	err := validatePulseDueModuleResultsFor(ctx, workspacePath, pulseRunID, pulseModulePlanDriftReview)
-	if err == nil || !strings.Contains(err.Error(), pulseModulePlanDriftReview) {
-		t.Fatalf("expected an error naming plan_drift_review, got: %v", err)
-	}
-
-	if _, err := markPulseModuleResultFromAgent(ctx, workspacePath, pulseModulePlanDriftReview, pulseRunID, "done", "Ground truth established for all pending steps.", nil); err != nil {
-		t.Fatalf("mark plan_drift_review: %v", err)
-	}
-	if err := validatePulseDueModuleResultsFor(ctx, workspacePath, pulseRunID, pulseModulePlanDriftReview); err != nil {
-		t.Fatalf("plan_drift_review has a terminal result, scoped validation should pass: %v", err)
-	}
-}
-
-func TestValidatePulseDueModuleResultsRequiresTerminalModuleResults(t *testing.T) {
-	ctx := context.Background()
-	root := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", root)
-	workspacePath := "Workflow/demo"
-	pulseRunID := "pulse-run-results"
-	if _, err := recordPulseWorklist(ctx, workspacePath, pulseRunID, completePulseWorklistDecisions(map[string]PulseWorklistDecision{
-		pulseModuleTechnicalReview: {Module: pulseModuleTechnicalReview, Due: true, Reason: "Operational evidence."},
-	})); err != nil {
-		t.Fatalf("record worklist: %v", err)
-	}
-	if err := validatePulseDueModuleResults(ctx, workspacePath, pulseRunID); err == nil || !strings.Contains(err.Error(), "technical_review") {
-		t.Fatalf("missing-result validation error = %v", err)
-	}
-	if _, err := markPulseModuleResultFromAgent(ctx, workspacePath, pulseModuleTechnicalReview, pulseRunID, "done", "Clean review.", []string{"pulse_review_log:run:technical_review"}); err != nil {
-		t.Fatalf("mark bug review: %v", err)
-	}
-	if err := validatePulseDueModuleResults(ctx, workspacePath, pulseRunID); err != nil {
-		t.Fatalf("terminal validation: %v", err)
-	}
-	worklist, _, err := getPulseWorklistForRun(ctx, workspacePath, pulseRunID)
-	if err != nil {
-		t.Fatalf("read worklist: %v", err)
-	}
-	if got := worklist[pulseModuleTechnicalReview].LastResult; got != "done" {
-		t.Fatalf("existing completed module was overwritten: %q", got)
-	}
-}
-
-func TestValidatePulseDueModuleResultsIgnoresLegacyRunningReviewReceipt(t *testing.T) {
-	ctx := context.Background()
-	root := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", root)
-	workspacePath := "Workflow/demo"
-	pulseRunID := "pulse-running-review"
-	if _, err := recordPulseWorklist(ctx, workspacePath, pulseRunID, completePulseWorklistDecisions(map[string]PulseWorklistDecision{
-		pulseModuleTechnicalReview: {Module: pulseModuleTechnicalReview, Due: true, Reason: "Operational evidence."},
-	})); err != nil {
-		t.Fatalf("record worklist: %v", err)
-	}
-	if _, err := markPulseModuleResultFromAgent(ctx, workspacePath, pulseModuleTechnicalReview, pulseRunID, "done", "Review turn ended.", []string{"pulse_review_log:run:technical_review"}); err != nil {
-		t.Fatalf("mark review: %v", err)
-	}
-	seedPulseReviewLogRow(ctx, t, workspacePath, pulseModuleTechnicalReview, pulseRunID, "running", "")
-	if err := validatePulseDueModuleResults(ctx, workspacePath, pulseRunID); err != nil {
-		t.Fatalf("terminal module result should not depend on legacy review receipt: %v", err)
-	}
 }
 
 func TestWorkflowBackupRequiresDatabaseSnapshotOnlyForDueTriggerAndCoverage(t *testing.T) {
@@ -1870,26 +1549,6 @@ func TestRunJobDoesNotJoinAnotherActiveRun(t *testing.T) {
 	}
 }
 
-func TestPostRunMonitorStepsUseOneTurnInactivityBoundary(t *testing.T) {
-	oldNormal := schedulerWorkshopMaxInactivity
-	schedulerWorkshopMaxInactivity = 10 * time.Minute
-	defer func() {
-		schedulerWorkshopMaxInactivity = oldNormal
-	}()
-
-	for _, label := range []string{"gate", "review", "fix", "review-fix-continuation", "dashboard", "finalize"} {
-		if got := (pulseLifecycleStep{label: label}).idleMaxInactivity(); got != 10*time.Minute {
-			t.Fatalf("%s max inactivity = %s, want 10m", label, got)
-		}
-	}
-	// A module review runs inside its own turn, so it may stay quiet longer.
-	for _, label := range []string{"plan-drift-review", "technical-review", "architecture-review", "strategic-review"} {
-		if got := (pulseLifecycleStep{label: label}).idleMaxInactivity(); got != schedulerPulseReviewMaxInactivity {
-			t.Fatalf("%s max inactivity = %s, want %s", label, got, schedulerPulseReviewMaxInactivity)
-		}
-	}
-}
-
 // A missing manifest leaves Pulse fully off, never implicit run authority.
 func TestPulseMissingManifestCannotAct(t *testing.T) {
 	perms, text := pulsePermissionsForWorkflow(context.Background(), "Workflow/does-not-exist")
@@ -1898,79 +1557,6 @@ func TestPulseMissingManifestCannotAct(t *testing.T) {
 	}
 	if !strings.Contains(text, "Pulse is off") || !strings.Contains(text, "No checks, reports or messages run") {
 		t.Fatalf("OFF instructions missing: %s", text)
-	}
-}
-
-// TestPulseReviewBacklogSummaryExcludesNonTerminalIterationZero pins PLAT-115:
-// iteration-0 is the live/reused slot, never a stable identity across time,
-// so Gate must never be handed it while it might still be mid-run. Rotated
-// folders (iteration-1, iteration-2, ...) are always included regardless of
-// status — a failed run is real evidence too, the same principle
-// ProducedRunEvidence already applies elsewhere in this file.
-func TestPulseReviewBacklogSummaryExcludesNonTerminalIterationZero(t *testing.T) {
-	completedAt := time.Date(2026, 8, 16, 9, 0, 0, 0, time.UTC)
-	startedAt := completedAt.Add(-10 * time.Minute)
-
-	t.Run("iteration-0 still running is excluded", func(t *testing.T) {
-		folders := []RunFolderInfo{
-			{Name: "iteration-0", Metadata: &RunMetadata{Status: "running", StartedAt: startedAt}},
-			{Name: "iteration-5", Metadata: &RunMetadata{Status: "completed", StartedAt: startedAt, CompletedAt: &completedAt}},
-		}
-		summary := pulseReviewBacklogSummary(folders)
-		if strings.Contains(summary, "iteration-0") {
-			t.Fatalf("summary must exclude a still-running iteration-0:\n%s", summary)
-		}
-		if !strings.Contains(summary, "iteration-5") {
-			t.Fatalf("summary must include the terminal rotated folder:\n%s", summary)
-		}
-	})
-
-	t.Run("iteration-0 terminal is included", func(t *testing.T) {
-		folders := []RunFolderInfo{
-			{Name: "iteration-0", Metadata: &RunMetadata{Status: "completed", StartedAt: startedAt, CompletedAt: &completedAt}},
-		}
-		summary := pulseReviewBacklogSummary(folders)
-		if !strings.Contains(summary, "iteration-0") {
-			t.Fatalf("summary must include a terminal iteration-0:\n%s", summary)
-		}
-	})
-
-	t.Run("a failed rotated run is still real evidence", func(t *testing.T) {
-		folders := []RunFolderInfo{
-			{Name: "iteration-3", Metadata: &RunMetadata{Status: "failed", StartedAt: startedAt, CompletedAt: &completedAt}},
-		}
-		summary := pulseReviewBacklogSummary(folders)
-		if !strings.Contains(summary, "iteration-3") || !strings.Contains(summary, "status=failed") {
-			t.Fatalf("a failed rotated folder must still be listed:\n%s", summary)
-		}
-	})
-
-	t.Run("no folders at all", func(t *testing.T) {
-		if summary := pulseReviewBacklogSummary(nil); !strings.Contains(summary, "no run folders") {
-			t.Fatalf("empty backlog summary = %q, want an explicit \"no run folders\" statement", summary)
-		}
-	})
-}
-
-// TestBacklogGateStepDefersWhatsNewReasoningToGate pins the design decision:
-// Go hands Gate the raw listing and explicitly tells it to compare against
-// get_pulse_state's last_checked_at itself — Go must never pre-filter "what's
-// new" or silently assume every listed folder is unreviewed.
-
-func TestPostRunMonitorFinalStepClassification(t *testing.T) {
-	tests := []struct {
-		label     string
-		finalStep bool
-	}{
-		{label: "gate"},
-		{label: "review-fix"},
-		{label: "dashboard", finalStep: false},
-		{label: "finalize", finalStep: true},
-	}
-	for _, test := range tests {
-		if got := isPulseLifecycleFinalStep(test.label); got != test.finalStep {
-			t.Fatalf("final-step classification for %q = %v, want %v", test.label, got, test.finalStep)
-		}
 	}
 }
 
@@ -2632,52 +2218,6 @@ func TestApplyLLMAndSecretsToReqMapUsesTheWorkflowModelForEverySchedule(t *testi
 				t.Fatalf("llm_config_source was set: %#v — no schedule overrides the model any more", reqMap["llm_config_source"])
 			}
 		})
-	}
-}
-
-func TestPulseRepairDrainOnlyAppliesToDueTechnicalReview(t *testing.T) {
-	for _, module := range []string{pulseModuleStrategicReview, pulseModuleTechnicalReview} {
-		t.Run(module, func(t *testing.T) {
-			ctx := context.Background()
-			t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-			workspacePath, runID := "Workflow/completion-contract", "pulse-contract"
-			if _, err := recordPulseWorklist(ctx, workspacePath, runID, completePulseWorklistDecisions(map[string]PulseWorklistDecision{
-				module: {Due: true, Reason: "Review has new evidence."},
-			})); err != nil {
-				t.Fatal(err)
-			}
-			if err := validatePulseTechnicalRepairDrain(ctx, workspacePath, runID); err != nil {
-				t.Fatalf("empty backlog should pass: %v", err)
-			}
-			if _, err := todo_creation_human.RecordPulseReviewFinding(ctx, workspacePath, runID, "review-1", todo_creation_human.PulseReviewFindingInput{
-				Concern: "Workflow validation rejects valid data", Module: pulseModuleTechnicalReview,
-				PulseFindingDetails: todo_creation_human.PulseFindingDetails{
-					IssueKind: todo_creation_human.IssueKindWorkflow, Classification: "correctness_bug", Severity: "high",
-					Summary: "Validation rejects valid data.", Impact: "Valid runs cannot complete.",
-					Evidence: []string{"runs/iteration-1/result.json"},
-				},
-			}); err != nil {
-				t.Fatal(err)
-			}
-			if count, err := todo_creation_human.CountPulseActionableWorkflowIssues(ctx, workspacePath); err != nil || count != 1 {
-				t.Fatalf("expected one actionable issue, count=%d err=%v", count, err)
-			}
-			err := validatePulseTechnicalRepairDrain(ctx, workspacePath, runID)
-			if module == pulseModuleTechnicalReview {
-				if err == nil || !strings.Contains(err.Error(), "1 actionable") {
-					t.Fatalf("technical repair debt must fail completion: %v", err)
-				}
-			} else if err != nil {
-				t.Fatalf("strategic completion must not depend on technical debt: %v", err)
-			}
-		})
-	}
-}
-
-func TestPulseRepairDrainRequiresDurableWorklist(t *testing.T) {
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	if err := validatePulseTechnicalRepairDrain(context.Background(), "Workflow/missing", "missing"); err == nil {
-		t.Fatal("missing worklist must not silently bypass the completion contract")
 	}
 }
 

@@ -1368,41 +1368,6 @@ func TestExecutionFolderGuardGrantsToolOutputFolderRead(t *testing.T) {
 	}
 }
 
-// A scheduler Pulse turn's Goal Work child gets the Pulse model; its other
-// children (Plan Drift, Technical, Architecture) get the Medium tier; any
-// other background task follows the Builder (phase) model. Missing models fall
-// back rather than failing.
-func TestSelectBackgroundTaskLLMRoutesGoalWorkToPulseModelAndUpkeepToMediumTier(t *testing.T) {
-	hcpo := newAgentFactoryTestOrchestrator(t)
-	hcpo.presetPhaseLLM = &AgentLLMConfig{Provider: "claude-code", ModelID: "claude-opus-5-5"}
-	hcpo.presetPulseLLM = &AgentLLMConfig{Provider: "codex-cli", ModelID: "gpt-5.5"}
-	hcpo.tierResolver = NewTierResolver(&TieredLLMConfig{
-		Tier1: &AgentLLMConfig{Provider: "claude-code", ModelID: "claude-sonnet-5-5"},
-		Tier2: &AgentLLMConfig{Provider: "claude-code", ModelID: "claude-haiku-4-5-20251001"},
-	}, nil)
-
-	if got := hcpo.selectBackgroundTaskLLM(false, "strategic_review", "background task agent"); got == nil || got.Primary.ModelID != "claude-opus-5-5" {
-		t.Fatalf("ordinary background task = %+v, want the Builder/phase model", got)
-	}
-	if got := hcpo.selectBackgroundTaskLLM(true, "strategic_review", "Goal Work"); got == nil || got.Primary.Provider != "codex-cli" || got.Primary.ModelID != "gpt-5.5" {
-		t.Fatalf("Goal Work = %+v, want pulse_llm", got)
-	}
-	for _, module := range []string{"technical_review", "architecture_review", ""} {
-		if got := hcpo.selectBackgroundTaskLLM(true, module, "upkeep"); got == nil || got.Primary.ModelID != "claude-haiku-4-5-20251001" {
-			t.Fatalf("Pulse upkeep child %q = %+v, want the Medium tier", module, got)
-		}
-	}
-
-	hcpo.tierResolver = nil
-	if got := hcpo.selectBackgroundTaskLLM(true, "technical_review", "upkeep"); got == nil || got.Primary.ModelID != "gpt-5.5" {
-		t.Fatalf("upkeep without a Medium tier = %+v, want the Pulse model fallback", got)
-	}
-	hcpo.presetPulseLLM = nil
-	if got := hcpo.selectBackgroundTaskLLM(true, "strategic_review", "Goal Work"); got == nil || got.Primary.ModelID != "claude-opus-5-5" {
-		t.Fatalf("Goal Work without pulse_llm = %+v, want the phase model fallback", got)
-	}
-}
-
 // Historical counters may still be present on disk, but the execution path
 // must not turn them into a model override before consulting explicit config.
 func TestExecutionDoesNotInjectHistoryBasedTierOverrides(t *testing.T) {

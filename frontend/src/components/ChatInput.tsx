@@ -27,7 +27,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/t
 import FileSelectionDialog from './FileSelectionDialog'
 import CommandSelectionDialog from './CommandSelectionDialog'
 import { CommandEditorDialog } from './commands/CommandEditorDialog'
-import { PulseReviewFocusDialog } from './commands/PulseReviewFocusDialog'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { findCommand, findProductOrUserCommand, findCommandAnyMode, loadAndRegisterUserCommands, type CommandContext, type CommandDefinition } from '../commands'
 import { getCommandRevision, subscribeCommands } from '../commands/registry'
@@ -1485,12 +1484,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const commandListId = `commands-${activeTabId}`
   const fileListId = `files-${activeTabId}`
 
-  const [pulseReviewPicker, setPulseReviewPicker] = useState<{ tabId: string; workspacePath: string | null | undefined; initialContext: string; fromTerminal?: boolean } | null>(null)
-  const closePulseReviewPicker = useCallback(() => {
-    setPulseReviewPicker(null)
-    if (pulseReviewPicker?.fromTerminal) requestMainTerminalFocus(tabSessionId)
-  }, [pulseReviewPicker, tabSessionId])
-
   // Command editor dialog state
   const [showCommandEditor, setShowCommandEditor] = useState(false)
   const [editingUserCommand, setEditingUserCommand] = useState<{ folder_name: string; frontmatter: { name: string; description: string; icon?: string; modes?: string[] }; content: string } | null>(null)
@@ -2020,31 +2013,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     return cmd.validate(ctx)
   }, [buildCommandContext])
 
-  const canSelectPulseReview = workflowPulseEnabled && !isRelaySurface && !isViewOnly && !!findCommand('run-technical-review', commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
-  useEffect(() => {
-    if (pulseReviewPicker && (!canSelectPulseReview || pulseReviewPicker.tabId !== activeTabId || pulseReviewPicker.workspacePath !== commandWorkflowPath)) {
-      setPulseReviewPicker(null)
-    }
-  }, [activeTabId, canSelectPulseReview, commandWorkflowPath, pulseReviewPicker])
-
-  const startPulseReviewFromPicker = useCallback((focusId: string, context: string) => {
-    // Recheck the target and access at submission; a picker must never carry
-    // write authority or a draft into another tab/workflow.
-    const cmd = findCommand('run-technical-review', commandModeCategory, getEffectiveWorkflowModes().workshopMode, canWriteCommandWorkflow)
-    if (!cmd || isViewOnly || !pulseReviewPicker || pulseReviewPicker.tabId !== activeTabId || pulseReviewPicker.workspacePath !== commandWorkflowPath) {
-      setPulseReviewPicker(null)
-      addToast('This review is unavailable for the current chat or workflow access.', 'info')
-      return
-    }
-    const ctx = buildCommandContext(context)
-    if (!ctx) return
-    applyWorkflowCommandRequirements(cmd)
-    setPulseReviewPicker(null)
-    if (!pulseReviewPicker.fromTerminal) clearInputState()
-    cmd.execute({ ...ctx, pulseReviewFocus: focusId })
-    if (pulseReviewPicker.fromTerminal) requestMainTerminalFocus(tabSessionId)
-  }, [activeTabId, addToast, applyWorkflowCommandRequirements, buildCommandContext, canWriteCommandWorkflow, clearInputState, commandModeCategory, commandWorkflowPath, getEffectiveWorkflowModes, isViewOnly, pulseReviewPicker, tabSessionId])
-
   const executeSlashCommandFromQuery = useCallback((trimmedQuery: string) => {
     if (localCodeMode) return false
     if (!trimmedQuery.startsWith('/')) return false
@@ -2086,11 +2054,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       return true
     }
 
-    if ((cmd.source === 'builtin' || cmd.source === 'product') && cmd.command === 'run-technical-review' && !commandArgs && activeTabId) {
-      setShowCommandDialog(false)
-      setPulseReviewPicker({ tabId: activeTabId, workspacePath: commandWorkflowPath, initialContext: '' })
-      return true
-    }
 
     applyWorkflowCommandRequirements(cmd)
 
@@ -2373,10 +2336,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (!cmd && !slashCommands && findCommandAnyMode(command)) {
       addToast('This command is unavailable for your current mode or workflow access.', 'info')
       if (terminalCommandPalette) requestMainTerminalFocus(tabSessionId)
-      return
-    }
-    if ((cmd?.source === 'builtin' || cmd?.source === 'product') && cmd.command === 'run-technical-review') {
-      setPulseReviewPicker({ tabId: activeTabId, workspacePath: commandWorkflowPath, initialContext: beforeSlash, fromTerminal: terminalCommandPalette })
       return
     }
     const validationError = cmd ? getCommandValidationError(cmd, beforeSlash) : null
@@ -3680,10 +3639,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         })}
       />
 
-      {pulseReviewPicker && canSelectPulseReview && pulseReviewPicker.tabId === activeTabId && pulseReviewPicker.workspacePath === commandWorkflowPath && (
-        <PulseReviewFocusDialog initialContext={pulseReviewPicker.initialContext}
-          onClose={closePulseReviewPicker} onStart={startPulseReviewFromPicker} />
-      )}
 
       {/* Command Editor Dialog */}
       <CommandEditorDialog

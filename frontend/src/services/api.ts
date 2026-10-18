@@ -135,7 +135,7 @@ import type {
   GoalLeadResponse,
   PulseFocusArea,
   ReportHumanInputsResponse,
-  PulseModuleStateResponse,
+  PulseOverviewResponse,
   PulseFindingsResponse,
   PulseReviewsResponse,
   PulseAgentMetricsResponse,
@@ -2129,11 +2129,11 @@ export const agentApi = {
 		return response.data as ReportHumanInputsResponse
 	},
 
-  getPulseModuleState: async (workspacePath: string) => {
-    const response = await api.get('/api/workflow/pulse-module-state', {
+  getPulseOverview: async (workspacePath: string) => {
+    const response = await api.get('/api/workflow/pulse-overview', {
       params: { workspace_path: workspacePath },
     })
-    return response.data as PulseModuleStateResponse
+    return response.data as PulseOverviewResponse
   },
 
   getPulseFindings: async (workspacePath: string, module?: string) => {
@@ -2502,22 +2502,7 @@ export const agentApi = {
     })
   },
 
-  getWorkflowReviewData: async (workspacePath: string, runFolder?: string): Promise<WorkflowReviewDataResponse> => {
-    return dedupedGet(`workflow-review-data:${workspacePath}:${runFolder || ''}`, async () => {
-      const response = await api.get('/api/workflow/review-data', {
-        params: { workspace_path: workspacePath, run_folder: runFolder || '' }
-      })
-      return {
-        ...response.data,
-        costs: {
-          ...response.data?.costs,
-          runs: Array.isArray(response.data?.costs?.runs) ? response.data.costs.runs : [],
-          phase_daily_costs: Array.isArray(response.data?.costs?.phase_daily_costs) ? response.data.costs.phase_daily_costs : [],
-          run_daily_costs: Array.isArray(response.data?.costs?.run_daily_costs) ? response.data.costs.run_daily_costs : [],
-        },
-      }
-    })
-  },
+
 
   // Get content of a specific log file
   // Returns string content (may be JSON that needs parsing)

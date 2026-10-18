@@ -54,7 +54,7 @@ func (api *StreamingAPI) scheduleCollisionCheck(workspacePath, sessionID, trigge
 		// must not be refused because of it (owner, 2026-10-08: Pulse blocked
 		// its own measurement re-runs on linkedin and social-media).
 		run, err := s.stateStore.ActiveRunForScope(ctx, "workflow", filepath.Clean(strings.TrimSpace(workspacePath)),
-			manualWorkflowPulseScheduleID, pulseFixRunScheduleID)
+			manualWorkflowPulseScheduleID)
 		if err != nil {
 			return fmt.Errorf("schedule_state_unavailable: %w", err)
 		}

@@ -48,7 +48,7 @@ func requestFastPulse(ctx context.Context, workspacePath, runID, reason string, 
 	if runID == "" || reason == "" {
 		return nil, fmt.Errorf("record_pulse_fast_request requires run_id and a concrete reason")
 	}
-	normalized, db, err := openPulseModuleStateDB(ctx, workspacePath, true)
+	normalized, db, err := openPulseStoreDB(ctx, workspacePath, true)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func requestFastPulse(ctx context.Context, workspacePath, runID, reason string, 
 }
 
 func pendingFastPulseRequest(ctx context.Context, workspacePath string) (*PulseFastRequest, error) {
-	normalized, db, err := openPulseModuleStateDB(ctx, workspacePath, false)
+	normalized, db, err := openPulseStoreDB(ctx, workspacePath, false)
 	if err != nil || db == nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func pendingFastPulseRequest(ctx context.Context, workspacePath string) (*PulseF
 }
 
 func markFastPulseRequestDelivered(ctx context.Context, workspacePath, pulseRunID string) error {
-	normalized, db, err := openPulseModuleStateDB(ctx, workspacePath, false)
+	normalized, db, err := openPulseStoreDB(ctx, workspacePath, false)
 	if err != nil || db == nil {
 		return err
 	}

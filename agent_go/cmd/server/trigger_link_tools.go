@@ -354,7 +354,7 @@ func triggerTargetRunIsRunning(kind, status string) bool {
 	}
 	switch status {
 	case string(schedulerstate.StateWorkflowRunning), string(schedulerstate.StateWorkflowFinished),
-		string(schedulerstate.StatePulseGate), string(schedulerstate.StatePulseModules), string(schedulerstate.StatePulseFinalizing):
+		string(schedulerstate.StatePulseRunning):
 		return true
 	}
 	return false

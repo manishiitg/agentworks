@@ -3,13 +3,13 @@ package server
 import (
 	"context"
 	"fmt"
-	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"log"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -17,7 +17,6 @@ import (
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
-
 	"github.com/manishiitg/mcpagent/llm"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -309,10 +308,6 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 				log.Printf("[WORKFLOW_PHASE] Error: Failed to build workshop config for %s: %v — workshop execution tools unavailable", workflowPhaseID, cfgErr)
 			} else {
 				workshopCfg.PulseLifecycleTurn = syntheticReq.PulseLifecycleTurn
-				resultCheckWorkspace := phaseWorkspacePath
-				workshopCfg.PulseReviewResultCheck = func(ctx context.Context, module, pulseRunID string) error {
-					return validatePulseDueModuleResultsFor(ctx, resultCheckWorkspace, pulseRunID, module)
-				}
 				if isPulseScheduleSessionID(sessionID) {
 					workshopCfg.StepBusyForPulse = api.pulseStepBusyCheck(sessionID)
 				}

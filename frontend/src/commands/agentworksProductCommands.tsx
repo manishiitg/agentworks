@@ -1,7 +1,6 @@
 import { Activity, BellRing, Calendar, CheckCircle, Cloud, FileText, GitBranch, Globe, Layers, Play, Plug, RefreshCw, Share2, Target, Terminal, Wrench } from 'lucide-react'
 import type { CommandDefinition } from './types'
 import type { CommandContext } from './types'
-import { pulseReviewFocuses, resolvePulseReviewFocus } from './pulse-review-focus'
 import { renderCommandPrompt } from './commandPrompt'
 export type AgentworksProductCommand = {
   name: string
@@ -70,44 +69,22 @@ const icons: Record<string, typeof Terminal> = {
 export function toAgentworksCommandDefinitions(commands: AgentworksProductCommand[]): CommandDefinition[] {
   return commands.map((command) => {
     const Icon = icons[command.icon] ?? Terminal
-    const focus = command.name === 'run-technical-review'
-      ? undefined
-      : pulseReviewFocuses.find(candidate => candidate.legacyCommand === command.name)
     return {
       command: command.name,
       description: command.description,
       ...(command.aliases.length > 0 ? { aliases: command.aliases } : {}),
-      ...(command.name === 'run-technical-review'
-        ? { searchTerms: pulseReviewFocuses.flatMap(entry => [entry.id, entry.label, entry.legacyCommand]) }
-        : {}),
       icon: <Icon className="w-4 h-4" />,
       modes: ['workflow'],
       requiredWorkflowMode: 'plan',
       requiredWorkshopMode: 'workshop',
       ...(command.menuHidden ? { menuHidden: true } : {}),
       source: 'product',
-      execute: (ctx) => { executeAgentworksProductCommand(command, focus?.instructions, ctx) },
+      execute: (ctx) => { executeAgentworksProductCommand(command, ctx) },
     }
   })
 }
 
-// pulse-review resolves its focus (picker selection, first-word argument, or
-// the fixed focus of a retained legacy shortcut) exactly like the builtin it
-// replaces: the focus text joins whatever was typed before the slash, and the
-// combination is what `{{context}}` becomes.
-export function executeAgentworksProductCommand(
-  command: AgentworksProductCommand,
-  fixedFocus: string | undefined,
-  ctx: CommandContext,
-): void {
-  let context = ctx.beforeSlash ?? ''
-  if (command.name === 'run-technical-review' || fixedFocus !== undefined) {
-    const resolved = command.name === 'run-technical-review'
-      ? resolvePulseReviewFocus(ctx.pulseReviewFocus, ctx.beforeSlash)
-      : undefined
-    const focusText = fixedFocus ?? resolved?.instructions
-    context = [focusText?.trim(), ctx.beforeSlash.trim()].filter(Boolean).join('\n\n')
-  }
-  const prompt = renderCommandPrompt(command.prompt, context)
+export function executeAgentworksProductCommand(command: AgentworksProductCommand, ctx: CommandContext): void {
+  const prompt = renderCommandPrompt(command.prompt, ctx.beforeSlash ?? '')
   if (prompt) ctx.onSubmit(prompt)
 }

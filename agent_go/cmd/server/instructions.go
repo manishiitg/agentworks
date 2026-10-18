@@ -2,13 +2,13 @@ package server
 
 import (
 	"fmt"
-	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"path"
 	"strings"
 
 	browserinstructions "github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/utils"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 )
 
 // AgentInstructions contains custom instructions for both React and Simple agents
@@ -261,20 +261,11 @@ Each workflow lives in ` + "`" + absWorkflow + `/<name>/` + "`" + ` with:
 - **Reuse saved step scripts**: For ` + "`scripted`" + ` steps, the canonical working script lives at ` + "`code/<step-id>/main.py (version 1; learnings/<step-id>/main.py for legacy)`" + `. Read it to understand what a step does, or borrow patterns into your own scripts.
 - **Inspect recent runs**: ` + "`runs/iteration-0/`" + ` always holds the most recent execution. Older ` + "`runs/iteration-{N}/`" + ` folders are retained history; use them for trends, regressions, and before/after comparisons against typed Pulse timestamps.
 
-## Pulse and Goal Advisor — When to Use the Tools
+## Pulse — Goal Checks and Useful Work
 
-Scheduled Goal Advisor, selected by Pulse Gate as a maintenance module, reads goal observations via ` + "`get_goal_metrics`" + `, producer steps' stored outputs, run outputs, ` + "`soul.md`" + `, and the Pulse log to decide whether the current workflow strategy is capped and whether an evidence-backed plan-change proposal is warranted. Pulse handles per-run QA through a read-only Bug Review and the parent Pulse Fixer.
+When Pulse is ON, one continuing Pulse conversation reads the goal, database measurement history, saved outputs and decisions. It judges progress, identifies useful work and collaborates with Builder to improve the workflow. There are no separate Gate, reviewer or fixer agents. Internal changes use existing Builder permissions; outward actions follow the saved Ask first or Allowed within limits setting. When OFF, Pulse does no work and receives no messages or tags. Existing decisions and history remain available.
 
-**Two-layer mental model — internalize this before reasoning about any /improve-* flow:**
-
-1. **Plan — what the workflow does.** Lives in ` + "`planning/plan.json`" + ` plus ` + "`soul/soul.md`" + ` (the durable definition of *what "done" means*: objective + success_criteria). The plan is the blueprint; ` + "`soul.md`" + ` is the goal it serves.
-2. **Measurement — how we know it worked.** Run-scoped outcomes stored by producing steps; tracks BOTH operational quality and goal achievement.
-
-Said simply: **plan defines the work and goal; measurement plus run evidence shows where harden or replan is needed.**
-
-**Decision model:**
-- Pulse selects ` + "`bug_review`" + ` when the workflow path is basically right but prompts/config/validation/learnings/KB/db/report/measurement wiring may need repair. The reviewer only returns evidence and recommendations; the parent Pulse Fixer applies bounded safe fixes.
-- Goal Advisor applies material plan changes only from approved ` + "`create_human_input_request`" + ` proposal cards, or during an explicit manual workshop improvement request. If the evidence is useful but not approved or not strong enough, it records a proposal or asks the user through ` + "`create_human_input_request`" + `.
+The plan and goal define the intended work; database measurements and actual execution evidence show whether it worked. Never infer goal progress from a successful run alone.
 
 ### Goal readiness: ` + "`/define-success`" + `
 
@@ -304,8 +295,6 @@ Returns the canonical guided-flow text for any workflow slash command. Always ca
   Improvements:
     - setup-goals              → goal and metric setup, submitted by /setup-goals
     - define-success           → compatibility alias for setup-goals; use the same setup flow
-    - engineering-review       → read-only Technical Review phase (run-technical-review is an alias kind); /run-technical-review supplies an ordered Fix message after the completed review receipt
-    - pulse-fixer              → the Fix phase of a Technical Review+Fix sequence: apply safe fixes to the findings that review filed
 
 **Optional parameters:**
   - ` + "`focus`" + `       : strongly recommended; the conversation-derived instruction/context for this command. Include the user's recent request, constraints, examples, and "based on what we just discussed" details so the slash command does not lose the surrounding conversation.
@@ -316,15 +305,11 @@ Returns the canonical guided-flow text for any workflow slash command. Always ca
 
 The returned text is your instructions for this turn — do not paraphrase or skip steps.
 
-### How improvement is split
+### Goal improvement and follow-through
 
-Pulse is the single broad maintenance path. Its main job is Goal Work: doing work that moves the user's goals. Plan Drift, Technical and Architecture reviews keep the workflow healthy, and every issue they find ends the same pass fixed, closed as not a problem, sent to the user as a decision, or handed to the platform. The full Pulse runs on the workflow's own self-paced schedule; fix runs (Technical Review+Fix) start automatically when a workflow has open issues, new step concerns or a failed run. In chat, ` + "`/pulse`" + ` runs the full Pulse once and ` + "`/run-goal-work`" + ` runs a Goal Work pass with an optional focus (` + "`/strategy-auditor`" + ` and ` + "`/goal-advisor`" + ` are aliases). Plan Drift, Technical and Architecture are started from the Pulse tab, not from chat commands.
+Pulse uses one continuing conversation to understand the goal, inspect real evidence and work with Builder on useful changes. It chooses its next goal check through the current goal tools. A normal workflow run does not launch separate reviewers or repair queues. In chat, ` + "`/pulse`" + ` requests one Pulse cycle and ` + "`/run-goal-work`" + ` requests focused useful work, when Pulse is ON.
 
-### Resolution discipline
-
-SQLite is the finding and fix lifecycle source of truth; the Pulse popup is the complete operational tracker. Do not create a separate review document.
-
-**Close-out.** When a fix addresses an existing finding, update its SQLite lifecycle through the provided Pulse tools with the disposition and verification evidence. The Pulse popup renders the result directly from those records.
+Record actual work, decisions and verification evidence in the existing goal records. The Pulse page shows the last change, pending owner decisions and next check; the conversation contains the discussion. Keep measurement history in the database. Do not create a parallel review tracker or claim delivered work from a message being sent. An owner decision still needs the owner's answer; an ordinary authorized improvement needs no new approval.
 
 ### Honesty rules
 
