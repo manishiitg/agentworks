@@ -394,7 +394,7 @@ func (s *SchedulerService) runManualAfterRunOptions(workspacePath, runFolder, st
 	if s == nil || s.api == nil || strings.TrimSpace(workspacePath) == "" {
 		return
 	}
-	if isScheduledSessionIdentity(sessionID, "") || isWorkflowReviewSession(sessionID) {
+	if isScheduledSessionIdentity(sessionID, "") {
 		return
 	}
 	ctx := context.Background()

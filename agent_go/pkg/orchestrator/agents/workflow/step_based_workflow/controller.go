@@ -657,6 +657,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, o
 	// The workspace API will handle internal resolution to ../workspace-docs/ when needed
 	hcpo.SetObjective(objective)
 	hcpo.SetWorkspacePath(workspacePath)
+	hcpo.observeRunReferences("")
 	// Direct execution does not pass through Builder's ReadCurrentPlan.
 	// Resolve the persisted layout before selecting any saved scripts or deps.
 	if err := hcpo.loadCodeLayout(ctx); err != nil {

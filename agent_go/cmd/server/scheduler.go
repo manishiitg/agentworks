@@ -2637,28 +2637,11 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		}
 	}
 
-	// Workflow Review before the run (PLAT-697 phase 0): a code check, and the
-	// review only when the plan changed or has new breaks since the last one.
-	// A break it could not fix stops the run with the reason.
-	var sessionID, runFolder string
-	var execErr error
-	if !sctx.PulseOnly && sctx.WebhookInput == nil && sctx.WorkflowKind != "relay" {
-		gate := s.ensureWorkflowReviewedBeforeRun(ctx, sctx.WorkspacePath, nil, triggerSource)
-		if gate.Notice != "" {
-			s.logf(sctx, "[WORKFLOW REVIEW] %s", gate.Notice)
-		}
-		if !gate.Proceed {
-			execErr = errors.New(gate.BlockReason)
-			if ctx.Err() != nil {
-				execErr = errors.Join(errWorkshopSequenceInterrupted, ctx.Err())
-			}
-		}
-	}
+	// AI Plan Drift review belongs to Pulse. Execution performs its quick
+	// reference observation in the shared workflow entry point and starts
+	// independently of saved review outcomes.
+	sessionID, runFolder, execErr := s.executeJob(ctx, sctx, runID)
 
-	// Execute
-	if execErr == nil {
-		sessionID, runFolder, execErr = s.executeJob(ctx, sctx, runID)
-	}
 	// Execution cancellation must stop work, not the durable record explaining
 	// why it stopped. Preserve scheduler-scoped values while removing cancellation
 	// from all post-execution history and state writes.

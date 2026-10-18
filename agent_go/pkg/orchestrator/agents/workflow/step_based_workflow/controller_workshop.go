@@ -60,6 +60,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 ) (string, error) {
 	hcpo.GetLogger().Info(fmt.Sprintf("[WORKSHOP] ExecuteStepForWorkshop: stepID=%s, runFolder=%s, codeExec=%v",
 		stepID, hcpo.selectedRunFolder, hcpo.GetUseCodeExecutionMode()))
+	hcpo.observeRunReferences(stepID)
 	releaseGroupSession := func() {}
 	defer func() { releaseGroupSession() }()
 
