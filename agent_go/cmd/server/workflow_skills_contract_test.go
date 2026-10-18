@@ -164,6 +164,23 @@ func TestWorkflowSkillsMigrationOverMCPAndBuilder(t *testing.T) {
 	}
 	teamManifest = strings.Replace(teamManifest, `"routes":[{"step_id":"parent","route_id":"first","contributor_id":"outsider"}]`, `"routes":[]`, 1)
 	f.write(t, "Workflow/invoices/workflow.json", teamManifest)
+	concurrentManifest := strings.Replace(teamManifest, `"label":"Invoices"`, `"label":"Concurrent edit"`, 1)
+	concurrent := func(ctx context.Context, args map[string]interface{}) (string, error) {
+		result, err := execute(ctx, args)
+		if err == nil {
+			f.write(t, "Workflow/invoices/workflow.json", concurrentManifest)
+		}
+		return result, err
+	}
+	if _, err := executeWorkflowSkillsBuilderTool(t.Context(), "Workflow/invoices", "owner", builderArgs, concurrent); err == nil {
+		t.Fatal("migration overwrote concurrent settings edit")
+	}
+	if f.read(t, "Workflow/invoices/workflow.json") != concurrentManifest {
+		t.Fatal("concurrent settings lost")
+	}
+	if _, err := os.Stat(filepath.Join(f.docs, "Workflow/invoices/skills/workflow-how-to-3")); !os.IsNotExist(err) {
+		t.Fatal("conflicted migration copied files", err)
+	}
 	if _, err := executeWorkflowSkillsBuilderTool(t.Context(), "Workflow/invoices", "owner", builderArgs, execute); err != nil {
 		t.Fatal("Builder migration after reassignment", err)
 	}

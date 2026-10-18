@@ -149,6 +149,14 @@ func commitTeamEditWithFiles(ctx context.Context, result string,
 		if e != nil {
 			return e
 		}
+		if migrating, _ := ctx.Value(workflowSkillsEditKey{}).(bool); migrating && !strings.HasPrefix(p, r.root+"/planning/changelog/") && !strings.HasPrefix(p, r.root+"/planning/revisions/") {
+			r.mu.Lock()
+			baseline, readBefore := r.reads[p]
+			r.mu.Unlock()
+			if !readBefore || raw != baseline {
+				return fmt.Errorf("guide migration source or settings changed; reread and reconcile before retrying")
+			}
+		}
 		previous[p] = raw
 		exists[p] = found
 		unlock, e := teamManagedWrite(ctx, p, pending[p])
