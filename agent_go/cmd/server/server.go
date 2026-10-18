@@ -6033,6 +6033,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				codingAgentSecretEnvironment[name] = value
 			}
 		}
+		if resolvedProfile != nil {
+			for name, value := range publicationShellEnvironment(resolvedProfile.Publication) {
+				codingAgentSecretEnvironment[name] = value
+			}
+		}
 		for _, secret := range api.mergeGlobalSecretsFor(context.Background(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets) {
 			codingAgentSecretEnvironment["SECRET_"+secret.Name] = secret.Value
 		}
@@ -6658,7 +6663,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						workspace.SetSessionWorkingDir(sessionID, source)
 					}
 					if p := resolvedProfile.Publication; p != nil {
-						common.ReplaceSessionShellEnvPrefix(sessionID, "AGENTWORKS_PUBLICATION_", map[string]string{"AGENTWORKS_PUBLICATION_SOURCE": codingAgentWorkspaceWorkingDir(p.sourceRoot()), "AGENTWORKS_PUBLICATION_RUNTIME": codingAgentWorkspaceWorkingDir(p.runtimeRoot())})
+						common.ReplaceSessionShellEnvPrefix(sessionID, "AGENTWORKS_PUBLICATION_", publicationShellEnvironment(p))
 					}
 					if brainGrant != "" {
 						syncBrainAfterFileTools(workspaceExecutors, currentUserID)

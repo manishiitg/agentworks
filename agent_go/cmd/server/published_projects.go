@@ -116,6 +116,18 @@ func (p *publishedProject) runtimeRoot() string {
 	return p.Root
 }
 
+// The native CLI and bridge shell receive the same published file locations.
+// These are runtime metadata, not additional filesystem grants.
+func publicationShellEnvironment(p *publishedProject) map[string]string {
+	if p == nil {
+		return nil
+	}
+	return map[string]string{
+		"AGENTWORKS_PUBLICATION_SOURCE":  codingAgentWorkspaceWorkingDir(p.sourceRoot()),
+		"AGENTWORKS_PUBLICATION_RUNTIME": codingAgentWorkspaceWorkingDir(p.runtimeRoot()),
+	}
+}
+
 func (p *publishedProject) conversationKey() string {
 	if p.AgentID != "" {
 		return p.WorkspaceID + codeChatSideMarker + "agent-" + p.AgentID

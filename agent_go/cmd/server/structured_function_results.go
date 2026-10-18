@@ -117,7 +117,7 @@ func (c *crewFunctionCall) resultRelativePath() string {
 
 func structuredFunctionOutputInstructions(call *crewFunctionCall) string {
 	if len(call.ResultSchema) == 0 {
-		return "No structured result is required. Your final message is the answer. Put any requested file outputs in the call's output folder."
+		return fmt.Sprintf("No structured result is required. Your final message is the answer. Put requested file outputs in $FUNCTION_OUTPUT_DIR, whose absolute path is `%s` (workspace-relative `%s`). The CLI current directory and its project/ link are not the output folder.", structuredFunctionShellEnvironment(call)["FUNCTION_OUTPUT_DIR"], call.outputRelativeFolder())
 	}
 	schema, _ := json.MarshalIndent(call.ResultSchema, "", "  ")
 	return fmt.Sprintf("Required output: write JSON matching this schema to $FUNCTION_RESULT_FILE. Its absolute file path is `%s`. With workspace file tools, use the Crew-relative path `%s`. The CLI current directory and its project/ link are not the output folder; do not write a relative .calls/ file there. Write the complete file before finishing; the platform validates it after your turn ends. Your final message explains the outcome, separately from the JSON file.\n%s", structuredFunctionShellEnvironment(call)["FUNCTION_RESULT_FILE"], call.resultRelativePath(), schema)
