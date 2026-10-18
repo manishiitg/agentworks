@@ -213,6 +213,52 @@ func TestFixedLayoutPassesEveryCheck(t *testing.T) {
 	}
 }
 
+func TestCanonicalCrewRootsSelectOnlyTheSlotOwner(t *testing.T) {
+	l := newLayout(t)
+	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(l.app, "state"))
+	projects := map[string]map[string]any{}
+	for _, p := range []struct{ folder, product, owner string }{
+		{"a-other", "code", "u2"}, {"crew1", "work", "u1"}, {"code1", "code", "u1"},
+	} {
+		root := filepath.Join(l.docs, "Crew", p.folder)
+		mustMkdir(t, root)
+		projects[p.product+"/"+p.folder] = map[string]any{"owner_id": p.owner, "product": p.product, "canonical_root": "Crew/" + p.folder}
+	}
+	// Neither an editable manifest nor a registry path outside Crew can become
+	// this person's probe. The old per-user directories are now only links.
+	projects["code/escape"] = map[string]any{"owner_id": "u1", "product": "code", "canonical_root": "Crew/../_users/u2"}
+	for _, pair := range []struct{ kind, folder string }{{"Work", "crew1"}, {"Code", "code1"}} {
+		old := filepath.Join(l.docs, "_users", "u1", "Chats", pair.kind, "projects", pair.folder)
+		if err := os.Remove(old); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(l.docs, "Crew", pair.folder), old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustMkdir(t, filepath.Join(l.app, "state", "ownership"))
+	raw, _ := json.Marshal(map[string]any{"projects": projects})
+	if err := os.WriteFile(filepath.Join(l.app, "state", "ownership", "projects.json"), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	rows := Check(context.Background(), l.opts)
+	if Failed(rows) {
+		t.Fatal(Format(rows))
+	}
+	seen := map[string]bool{}
+	for _, probe := range l.runs {
+		if probe.Slot == "slot01" && (probe.Kind == KindCrew || probe.Kind == KindCode) {
+			if !strings.HasPrefix(probe.Dir, filepath.Join(l.docs, "Crew")+string(filepath.Separator)) || strings.Contains(probe.Dir, "a-other") {
+				t.Fatalf("wrong owner/root: %+v", probe)
+			}
+			seen[probe.Kind] = true
+		}
+	}
+	if !seen[KindCrew] || !seen[KindCode] {
+		t.Fatal("canonical project probes were skipped", Format(rows))
+	}
+}
+
 // Every failure seen on server A 2026-10-04 (PLAT-476, PLAT-478 layers 2 and 3, the root:root table) must be reported.
 func TestEachKnownFailureIsDetected(t *testing.T) {
 	cases := []struct {

@@ -792,7 +792,7 @@ let runtimeTerminalDiagnosticsUnavailable = false
 
 export type CrewStorageStatus = {
   operation_id: string; state: string; total: number; has_more: boolean; next_offset: number; error?: string; move_available: boolean
-  projects: { key: string; workspace_id?: string; name: string; owner_name: string; bytes: number; state: string; reasons?: string[]; backup_state?: string; restore_verified: boolean }[]
+  projects: { key: string; workspace_id?: string; name: string; owner_name: string; bytes: number; state: string; reasons?: string[]; backup_state?: string; backup_skipped?: number; inventory_incomplete?: boolean; move_available?: boolean; restore_verified: boolean }[]
 }
 
 export const agentApi = {

@@ -18,7 +18,7 @@ func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[strin
 		"name":         externalString("Project or new chat name."), "message": externalString("Message for ask."),
 		"session_id":   externalString("An earlier chat session from action=chats, for read/delete."),
 		"agent_id":     externalString("Stable published agent ID from agents or a publish receipt, for open_agent or republish."),
-		"operation_id": externalString("Saved publication receipt for publish_status, or storage operation for storage_status/storage_backup/storage_move. Storage operations need administrator/users:manage access. storage_move moves ready projects to Crew with verified backups and old-path links; omit workspace_id for all ready projects."),
+		"operation_id": externalString("Saved publication receipt for publish_status, or storage operation for storage_status/storage_backup/storage_move. Storage operations need administrator/users:manage access. storage_move moves ready projects to Crew with verified backups and old-path links; omit workspace_id for all ready projects. Explicitly select a registered project with unreadable files to move it with a partial backup; skipped entries are reported."),
 		"kind":         externalString("read_saved_chat: raw (default) or summary. Builders can read an agent's private imported chat with its current website access."),
 		"offset":       externalInteger(0, 1<<30), "limit": externalInteger(0, 65536),
 		"source_workspace_id": externalString("Your Local project to publish; its own website chat supplies private history."),

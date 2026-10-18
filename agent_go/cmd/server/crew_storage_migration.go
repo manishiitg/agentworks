@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -25,27 +26,30 @@ import (
 
 // One administrator operation previews, backs up and moves existing projects.
 type crewStorageProject struct {
-	Key             string   `json:"key"`
-	WorkspaceID     string   `json:"workspace_id,omitempty"`
-	Name            string   `json:"name"`
-	Owner           string   `json:"owner"`
-	OwnerName       string   `json:"owner_name"`
-	Origin          string   `json:"origin"`
-	Source          string   `json:"source_root"`
-	Destination     string   `json:"destination_root"`
-	Mode            string   `json:"mode,omitempty"`
-	Memory          bool     `json:"memory_enabled"`
-	LocalMetadata   bool     `json:"local_metadata_only,omitempty"`
-	State           string   `json:"state"`
-	Files           int64    `json:"files"`
-	Bytes           int64    `json:"bytes"`
-	Fingerprint     string   `json:"fingerprint,omitempty"`
-	RecordHash      string   `json:"record_hash,omitempty"`
-	Reasons         []string `json:"reasons,omitempty"`
-	BackupState     string   `json:"backup_state,omitempty"`
-	ArchiveSHA      string   `json:"archive_sha256,omitempty"`
-	ArchiveBytes    int64    `json:"archive_bytes,omitempty"`
-	RestoreVerified bool     `json:"restore_verified"`
+	Key                 string   `json:"key"`
+	WorkspaceID         string   `json:"workspace_id,omitempty"`
+	Name                string   `json:"name"`
+	Owner               string   `json:"owner"`
+	OwnerName           string   `json:"owner_name"`
+	Origin              string   `json:"origin"`
+	Source              string   `json:"source_root"`
+	Destination         string   `json:"destination_root"`
+	Mode                string   `json:"mode,omitempty"`
+	Memory              bool     `json:"memory_enabled"`
+	LocalMetadata       bool     `json:"local_metadata_only,omitempty"`
+	State               string   `json:"state"`
+	Files               int64    `json:"files"`
+	Bytes               int64    `json:"bytes"`
+	Fingerprint         string   `json:"fingerprint,omitempty"`
+	RecordHash          string   `json:"record_hash,omitempty"`
+	Reasons             []string `json:"reasons,omitempty"`
+	BackupState         string   `json:"backup_state,omitempty"`
+	ArchiveSHA          string   `json:"archive_sha256,omitempty"`
+	ArchiveBytes        int64    `json:"archive_bytes,omitempty"`
+	RestoreVerified     bool     `json:"restore_verified"`
+	InventoryIncomplete bool     `json:"inventory_incomplete,omitempty"`
+	BackupSkipped       int      `json:"backup_skipped,omitempty"`
+	MoveAvailable       bool     `json:"move_available,omitempty"`
 }
 
 type crewStorageSnapshot struct {
@@ -320,6 +324,7 @@ func (api *StreamingAPI) crewStoragePreview(s *crewStorageSnapshot) {
 				}
 				if err != nil {
 					row.State, row.Reasons = "needs_attention", []string{"Some files or metadata could not be inventoried; this project is not backed up."}
+					row.InventoryIncomplete = true
 				}
 			}
 		}
@@ -384,7 +389,16 @@ func crewStorageArchive(ctx context.Context, s *crewStorageSnapshot, row *crewSt
 			_ = os.Remove(name)
 		}
 	}()
-	cmd := exec.CommandContext(ctx, "tar", "--sort=name", "--format=pax", "--numeric-owner", "--acls", "--xattrs", "--xattrs-include=*", "--sparse", "-czf", "-", "-C", filepath.Dir(root), filepath.Base(root))
+	args := []string{"--sort=name", "--format=pax", "--numeric-owner", "--acls", "--xattrs", "--xattrs-include=*", "--sparse"}
+	partial := !verifyRestore && row.InventoryIncomplete
+	if partial {
+		args = append(args, "--ignore-failed-read")
+	}
+	args = append(args, "-czf", "-", "-C", filepath.Dir(root), filepath.Base(root))
+	cmd := exec.CommandContext(ctx, "tar", args...)
+	var diagnostics bytes.Buffer
+	cmd.Stderr = &diagnostics
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
 	cmd.Stdout = &crewStorageArchiveWriter{output: file, remaining: int64(free - reserve)}
 	runErr := cmd.Run()
 	syncErr, closeErr := file.Sync(), file.Close()
@@ -400,6 +414,14 @@ func crewStorageArchive(ctx context.Context, s *crewStorageSnapshot, row *crewSt
 	if runErr != nil || syncErr != nil || closeErr != nil {
 		return fmt.Errorf("the archive could not be completed within the available backup space")
 	}
+	row.BackupSkipped = 0
+	if partial {
+		for _, line := range strings.Split(diagnostics.String(), "\n") {
+			if strings.TrimSpace(line) != "" && !strings.Contains(line, "file changed as we read it") {
+				row.BackupSkipped++
+			}
+		}
+	}
 	row.ArchiveSHA, row.ArchiveBytes, err = crewStorageFileHash(name)
 	if err != nil {
 		return err
@@ -413,6 +435,7 @@ func crewStorageArchive(ctx context.Context, s *crewStorageSnapshot, row *crewSt
 			return fmt.Errorf("the saved archive could not be read completely")
 		}
 		archiveVerified = true
+		log.Printf("[CREW_STORAGE] operation=%s action=archive workspace=%s source=%s bytes=%d sha256=%s skipped=%d restore_verified=false", s.ID, row.WorkspaceID, row.Source, row.ArchiveBytes, row.ArchiveSHA, row.BackupSkipped)
 		return nil
 	}
 	// Restoring in private server state proves readable bytes and actual
@@ -512,14 +535,17 @@ func (api *StreamingAPI) crewStorageMove(s *crewStorageSnapshot, selected string
 	defer cancel()
 	for i := range s.Projects {
 		row := &s.Projects[i]
-		if row.State != "ready" || selected != "" && row.WorkspaceID != selected {
+		if !crewStorageCanMove(*row, selected) {
 			continue
 		}
 		var err error
-		if !row.RestoreVerified && row.BackupState != "archive_verified" {
+		if !row.RestoreVerified && row.BackupState != "archive_verified" && row.BackupState != "archive_partial" {
 			err = crewStorageArchive(ctx, s, row, false)
 			if err == nil {
 				row.BackupState = "archive_verified"
+				if row.BackupSkipped > 0 {
+					row.BackupState = "archive_partial"
+				}
 			} else {
 				row.BackupState = "not_backed_up"
 			}
@@ -538,8 +564,11 @@ func (api *StreamingAPI) crewStorageMove(s *crewStorageSnapshot, selected string
 			row.State, row.Reasons = "move_failed", []string{err.Error()}
 		} else {
 			row.State, row.Reasons = "moved", nil
+			if row.BackupSkipped > 0 {
+				row.Reasons = []string{fmt.Sprintf("Moved; backup is partial (%d entries skipped).", row.BackupSkipped)}
+			}
 		}
-		log.Printf("[CREW_STORAGE] operation=%s action=move actor=%s workspace=%s source=%s destination=%s state=%s reason=%v", s.ID, s.MoveActor, row.WorkspaceID, row.Source, row.Destination, row.State, err)
+		log.Printf("[CREW_STORAGE] operation=%s action=move actor=%s workspace=%s source=%s destination=%s state=%s backup=%s skipped=%d reason=%v", s.ID, s.MoveActor, row.WorkspaceID, row.Source, row.Destination, row.State, row.BackupState, row.BackupSkipped, err)
 		if err := crewStorageSave(s); err != nil {
 			return
 		}
@@ -547,6 +576,15 @@ func (api *StreamingAPI) crewStorageMove(s *crewStorageSnapshot, selected string
 	s.State = "complete"
 	_ = crewStorageSave(s)
 	log.Printf("[CREW_STORAGE] operation=%s action=move actor=%s state=complete", s.ID, s.MoveActor)
+}
+
+// Bulk moves still select only ready rows. An incomplete inventory can move
+// only when an administrator selects that registered project explicitly.
+func crewStorageCanMove(row crewStorageProject, selected string) bool {
+	if selected != "" && row.WorkspaceID != selected {
+		return false
+	}
+	return row.State == "ready" || selected != "" && row.InventoryIncomplete && row.State == "needs_attention"
 }
 
 type crewStorageArchiveWriter struct {
@@ -606,7 +644,7 @@ func (api *StreamingAPI) externalCrewStorage(w http.ResponseWriter, r *http.Requ
 		if selected != "" {
 			found := false
 			for _, row := range s.Projects {
-				if row.WorkspaceID == selected && row.State == "ready" {
+				if row.WorkspaceID == selected && (row.State == "ready" || action == "storage_move" && crewStorageCanMove(row, selected)) {
 					found = true
 					break
 				}
@@ -614,7 +652,7 @@ func (api *StreamingAPI) externalCrewStorage(w http.ResponseWriter, r *http.Requ
 			if !found {
 				crewStorageJobs.Delete(id)
 				crewStorageJobs.Delete("active")
-				externalError(w, 400, "invalid_arguments", "Choose a project marked ready.")
+				externalError(w, 400, "invalid_arguments", "Choose a ready project, or select a registered project with unreadable files for a move with a partial backup.")
 				return
 			}
 		}
@@ -663,6 +701,9 @@ func (api *StreamingAPI) externalCrewStorage(w http.ResponseWriter, r *http.Requ
 	end := offset + limit
 	if end > len(s.Projects) {
 		end = len(s.Projects)
+	}
+	for i := offset; i < end; i++ {
+		s.Projects[i].MoveAvailable = crewStorageCanMove(s.Projects[i], s.Projects[i].WorkspaceID)
 	}
 	externalJSON(w, map[string]any{"operation_id": id, "state": s.State, "created_at": s.CreatedAt, "registry_sha256": s.RegistrySHA, "projects": s.Projects[offset:end], "total": len(s.Projects), "next_offset": end, "has_more": end < len(s.Projects), "error": s.Error, "move_available": true})
 }

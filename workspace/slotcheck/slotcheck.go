@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -161,6 +162,7 @@ func Check(ctx context.Context, opts Options) []Row {
 	}
 
 	workflow := firstChildDir(filepath.Join(docs, "Workflow"))
+	projectRoots := canonicalProjectRoots(docs, opts.AppDir)
 	for _, slot := range probeSlots {
 		account, ok := opts.Lookup(slot)
 		if !ok {
@@ -184,7 +186,7 @@ func Check(ctx context.Context, opts Options) []Row {
 			add(Row{Pass, "runner-reachable", slot, "every folder down to the launcher is traversable", ""})
 		}
 		user := table.Slots[slot]
-		probes := probesFor(cfg, docs, workflow, slot, user, account)
+		probes := probesFor(cfg, docs, workflow, slot, user, account, projectRoots)
 		for _, probe := range probes {
 			rows = append(rows, runProbe(ctx, opts, cfg, probe))
 		}
@@ -251,7 +253,7 @@ func slotBelongsToApp(account Account, name, app string) bool {
 	return app != "" && account.Home != "" && canonical(account.Home) == canonical(filepath.Join(app, "slots", "home", name))
 }
 
-func probesFor(cfg slots.ExecConfig, docs, workflow, slot, user string, account Account) []Probe {
+func probesFor(cfg slots.ExecConfig, docs, workflow, slot, user string, account Account, projectRoots map[string]string) []Probe {
 	probes := []Probe{{Slot: slot, Kind: KindDocs, Dir: docs, DocsRoot: docs}}
 	// Probes grant their folder READ-only: a write grant on the working folder makes the shell tool set up its tool
 	// caches and home there (<folder>/.sandbox-cache), which would change the user's folder. Everything that decides
@@ -265,8 +267,13 @@ func probesFor(cfg slots.ExecConfig, docs, workflow, slot, user string, account 
 	probes = append(probes, wf)
 	crewDir, codeDir := "", ""
 	if user != "" {
-		crewDir = firstChildDir(filepath.Join(docs, workspaceref.PhysicalPath(user, workspaceref.CrewProjectsRoot)))
-		codeDir = firstChildDir(filepath.Join(docs, workspaceref.PhysicalPath(user, workspaceref.CodeProjectsRoot)))
+		crewDir, codeDir = projectRoots[user+"/work"], projectRoots[user+"/code"]
+		if crewDir == "" {
+			crewDir = firstChildDir(filepath.Join(docs, workspaceref.PhysicalPath(user, workspaceref.CrewProjectsRoot)))
+		}
+		if codeDir == "" {
+			codeDir = firstChildDir(filepath.Join(docs, workspaceref.PhysicalPath(user, workspaceref.CodeProjectsRoot)))
+		}
 	} else if cfg.SlotStateRoot != "" {
 		// The test slot owns no project: prove the Crew and Code grant shapes in its own state folder.
 		crewDir = cfg.SlotStateDir(slot)
@@ -281,6 +288,54 @@ func probesFor(cfg slots.ExecConfig, docs, workflow, slot, user string, account 
 		}
 	}
 	return append(probes, crew, code)
+}
+
+// The trusted registry supplies each slot owner's canonical projects. A Crew/
+// folder name or an editable manifest must not select another person's project.
+func canonicalProjectRoots(docs, app string) map[string]string {
+	state := os.Getenv("AGENTWORKS_STATE_ROOT")
+	if state == "" {
+		state = filepath.Join(app, "state")
+	}
+	var registry struct {
+		Projects map[string]struct {
+			Owner   string `json:"owner_id"`
+			Product string `json:"product"`
+			Folder  string `json:"folder"`
+			Root    string `json:"canonical_root"`
+			Shared  bool   `json:"shared"`
+		} `json:"projects"`
+	}
+	roots := map[string]string{}
+	raw, err := os.ReadFile(filepath.Join(state, "ownership", "projects.json"))
+	if err != nil || json.Unmarshal(raw, &registry) != nil {
+		return roots
+	}
+	keys := make([]string, 0, len(registry.Projects))
+	for key := range registry.Projects {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		rec := registry.Projects[key]
+		if rec.Owner == "" || (rec.Product != "work" && rec.Product != "code") {
+			continue
+		}
+		root := rec.Root
+		if root == "" && rec.Shared {
+			root = "Crew/" + rec.Folder
+		}
+		if filepath.ToSlash(filepath.Clean(root)) != root || filepath.Dir(root) != "Crew" || strings.HasPrefix(filepath.Base(root), ".") {
+			continue
+		}
+		dir := filepath.Join(docs, filepath.FromSlash(root))
+		info, err := os.Lstat(dir)
+		ownerKey := rec.Owner + "/" + rec.Product
+		if err == nil && info.IsDir() && roots[ownerKey] == "" {
+			roots[ownerKey] = dir
+		}
+	}
+	return roots
 }
 
 // browserSession names a managed browser of this kind the way agent_go does (common.SandboxBrowserSession), so the

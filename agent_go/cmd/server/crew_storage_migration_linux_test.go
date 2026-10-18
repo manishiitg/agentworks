@@ -245,3 +245,73 @@ func TestCrewStorageMoveWithArchiveOnly(t *testing.T) {
 	}
 	t.Fatal("project missing from move result")
 }
+
+// The administrator's explicit selection permits a partial backup. Bulk moves
+// keep leaving incomplete inventories alone, and the rename keeps unreadable
+// files and their permissions intact instead of deleting or chmodding them.
+func TestCrewStorageExplicitPartialMove(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("requires the normal non-root service permissions")
+	}
+	f := newMultiUserFixture(t, legacyIdentityLayout())
+	withMemoryUserDirectory(t, `{"users":[{"id":"user-a","username":"Owner","admin":true,"products":["agentworks","work","code"]}]}`)
+	root := filepath.Join(f.Docs, filepath.FromSlash(f.Layout.CodePhysical(fixtureUserA, fixtureCodeFolder)))
+	blocked := filepath.Join(root, "unreadable.txt")
+	if err := os.WriteFile(blocked, []byte("KEEP_UNREADABLE"), 0000); err != nil {
+		t.Fatal(err)
+	}
+	s := &crewStorageSnapshot{ID: uuid.NewString(), Actor: fixtureUserA, State: "scanning"}
+	if err := crewStorageSave(s); err != nil {
+		t.Fatal(err)
+	}
+	f.API.crewStoragePreview(s)
+	var original crewStorageProject
+	for _, row := range s.Projects {
+		if row.WorkspaceID == "code:"+fixtureCodeID {
+			original = row
+		}
+	}
+	if original.State != "needs_attention" || !original.InventoryIncomplete {
+		t.Fatalf("unreadable inventory: %+v", original)
+	}
+	f.API.crewStorageMove(s, "")
+	if _, err := os.Lstat(root); err != nil {
+		t.Fatal("bulk move touched the incomplete project", err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/crew-storage", strings.NewReader(`{"action":"storage_move","operation_id":"`+s.ID+`","workspace_id":"code:`+fixtureCodeID+`"}`)).WithContext(f.Ctx(fixtureUserA))
+	f.API.handleCrewStorage(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("explicit partial move: %d %s", rec.Code, rec.Body.String())
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		current, err := crewStorageRead(s.ID)
+		_, active := crewStorageJobs.Load(s.ID)
+		if err == nil && current.State == "complete" && !active {
+			for _, row := range current.Projects {
+				if row.WorkspaceID != original.WorkspaceID {
+					continue
+				}
+				if row.State != "moved" || row.BackupState != "archive_partial" || row.BackupSkipped != 1 || row.RestoreVerified || row.ArchiveSHA == "" {
+					t.Fatalf("partial move receipt: %+v", row)
+				}
+				moved := filepath.Join(f.Docs, filepath.FromSlash(row.Destination), "unreadable.txt")
+				info, err := os.Stat(moved)
+				if err != nil || info.Mode().Perm() != 0 {
+					t.Fatal("rename changed unreadable file permissions", err)
+				}
+				if err := os.Chmod(moved, 0600); err != nil {
+					t.Fatal(err)
+				}
+				data, err := os.ReadFile(moved)
+				if err != nil || string(data) != "KEEP_UNREADABLE" {
+					t.Fatal("rename lost unreadable bytes", err)
+				}
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("partial move did not complete")
+}
