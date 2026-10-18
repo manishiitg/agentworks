@@ -2676,6 +2676,10 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		status = scheduleRunStatusWaitingForCapacity
 		errMsg = wait.Describe()
 		s.sessionLogf(sctx, sessionID, "[SCHEDULER] ⏸️ %s suspended after %dms: %s", schedID, durationMs, errMsg)
+	} else if partialWorkshopRun(execErr) {
+		status = "partial"
+		errMsg = execErr.Error()
+		s.sessionLogf(sctx, sessionID, "[SCHEDULER] %s partly completed in %dms: %v", schedID, durationMs, execErr)
 	} else if execErr != nil {
 		status = "error"
 		errMsg = execErr.Error()
@@ -2763,10 +2767,10 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		terminalState = schedulerstate.StateStopped
 	} else if status == "error" {
 		terminalState = schedulerstate.StateFailed
-	} else if pulseResult == pulseLifecyclePartial {
-		terminalState = schedulerstate.StatePartial
 	} else if pulseResult == pulseLifecycleStopped {
 		terminalState = schedulerstate.StateStopped
+	} else if status == "partial" || pulseResult == pulseLifecyclePartial {
+		terminalState = schedulerstate.StatePartial
 	}
 	overallStatus := status
 	overallError := errMsg
@@ -2813,6 +2817,11 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 	})
 	s.cleanupRemovedScheduleRuntimeState(runtimeKey)
 
+	if overallStatus == "partial" {
+		// The terminal result is recorded above; a mixed outcome must not
+		// make the caller log a blanket execution failure.
+		return sessionID, nil
+	}
 	return sessionID, execErr
 }
 
@@ -4099,13 +4108,13 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 	// record the execution machinery writes independently of the scheduler
 	// (BUG-20260729-10, social-media 2026-07-29: the scheduler recorded
 	// "success" for a run that fully failed at its first posting step).
-	postRunFolders, postRunFoldersErr := s.api.loadRunFoldersInternal(ctx, sctx.WorkspacePath)
+	postRunFolders, postRunFoldersErr := s.api.loadRunFoldersInternal(ctx, sctx.WorkspacePath, runFolder)
 	// The listing fails when the workspace service is briefly down (restarts,
 	// shutdown). Retry before judging, so a transient outage neither passes a
 	// run unchecked nor fails a healthy one.
 	for attempt := 1; postRunFoldersErr != nil && attempt <= 3 && ctx.Err() == nil; attempt++ {
 		time.Sleep(time.Duration(attempt*2) * time.Second)
-		postRunFolders, postRunFoldersErr = s.api.loadRunFoldersInternal(ctx, sctx.WorkspacePath)
+		postRunFolders, postRunFoldersErr = s.api.loadRunFoldersInternal(ctx, sctx.WorkspacePath, runFolder)
 	}
 	postRunFolders = webhookInvocationFolders(postRunFolders, runFolder, sctx.WebhookInput != nil)
 	postRunFolders = scheduleInvocationFolders(postRunFolders, runFolder, sctx.ScheduledRunFolder != "")
@@ -4145,6 +4154,10 @@ func (s *SchedulerService) executeWorkshopJob(ctx context.Context, sctx *Schedul
 			if folder.Name == failedFolder && folder.Metadata != nil && folder.Metadata.Recovery["status"] == "step_recovered_run_unverified" {
 				return sessionID, runFolder, fmt.Errorf("workflow run %s remains failed: a step retry succeeded, but whole-run recovery is unverified (%v)", failedFolder, folder.Metadata.Recovery["reason"])
 			}
+		}
+		if partial := reconcileWorkshopPartialOutcome(preRunFolderNames, postRunFolders, invocationStartedAt, len(sctx.Schedule.GroupNames)); partial != nil {
+			s.sessionLogf(sctx, sessionID, "[SCHEDULER] mixed group result for %s: %s", sctx.Schedule.ID, partial.Error())
+			return sessionID, runFolder, partial
 		}
 		s.sessionLogf(sctx, sessionID, "[SCHEDULER] ⚠️ Workshop session for %s completed normally, but run %s recorded status \"failed\" in its own run_metadata.json", sctx.Schedule.ID, failedFolder)
 		return sessionID, runFolder, fmt.Errorf("workflow run %s failed (its run_metadata.json records status \"failed\"), even though the orchestrating workshop session completed its turns without an infrastructure error", failedFolder)

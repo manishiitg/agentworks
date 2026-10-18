@@ -3684,6 +3684,10 @@ export interface ScheduledJob {
   missed_run_reason?: string
   /** Plain status word from the server: Scheduled, Running, Queued, Waiting for capacity, Missed, Needs attention or Paused. */
   status_word?: string
+  /** Server decides whether this enabled schedule has a last-run issue. */
+  has_run_issue?: boolean
+  /** Server label for the last run, independently of the schedule's current pause. */
+  run_outcome?: string
   /** One plain sentence about the last run; the raw error stays in last_error as detail. */
   last_result?: string
   // Pulse schedules synthesize their run-specific messages from current

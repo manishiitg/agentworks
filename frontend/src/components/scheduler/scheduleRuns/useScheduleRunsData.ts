@@ -20,7 +20,7 @@ import {
   getWorkflowFilterMeta,
   getWorkflowScopeLabel,
   isMissedSchedule,
-  isScheduleIssueStatus,
+  hasScheduleRunIssue,
   isScheduleWaitingStatus,
   jobMatchesWorkflowScope,
   sortJobs,
@@ -209,7 +209,7 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
       if (job.enabled) current.enabled += 1
       else current.paused += 1
       if (job.last_status === 'running') current.running += 1
-      if (isMissedSchedule(job) || isScheduleIssueStatus(job.last_status)) current.attention = true
+      if (isMissedSchedule(job) || hasScheduleRunIssue(job)) current.attention = true
       workflows.set(key, current)
     })
 
@@ -227,7 +227,7 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
   const summary = useMemo(() => {
     const running = panelJobs.filter(j => j.last_status === 'running').length
     const missed = panelJobs.filter(isMissedSchedule).length
-    const issues = panelJobs.filter(j => isScheduleIssueStatus(j.last_status)).length
+    const issues = panelJobs.filter(j => hasScheduleRunIssue(j)).length
     const waiting = panelJobs.filter(j => isScheduleWaitingStatus(j.last_status)).length
     const paused = panelJobs.filter(j => !j.enabled).length
     const lastRunAt = panelJobs.reduce<string | undefined>((latest, job) => {
@@ -308,13 +308,13 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
             break
           case 'issues':
             // The Issues badge counts error, partial AND interrupted
-            // (isScheduleIssueStatus), so filtering to 'error' alone made a
+            // (hasScheduleRunIssue), so filtering to 'error' alone made a
             // schedule that ended partial contribute to the count and then
             // vanish when the count was clicked — the badge said 1, the list
             // said nothing. hetzner-ssh hit exactly this: its workflow
             // succeeded, Pulse finalized partial, and the schedule became
             // unfindable.
-            if (!isScheduleIssueStatus(job.last_status)) return false
+            if (!hasScheduleRunIssue(job)) return false
             break
           case 'overlap':
             if (!potentialOverlaps.has(job.id)) return false
@@ -383,7 +383,7 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
       group.runCount += job.run_count || 0
       if (job.last_status === 'running') group.running += 1
       if (isMissedSchedule(job)) group.missed += 1
-      if (isScheduleIssueStatus(job.last_status)) group.issues += 1
+      if (hasScheduleRunIssue(job)) group.issues += 1
       if (potentialOverlaps.has(job.id)) group.overlap += 1
       if (job.enabled) group.enabled += 1
       else group.paused += 1

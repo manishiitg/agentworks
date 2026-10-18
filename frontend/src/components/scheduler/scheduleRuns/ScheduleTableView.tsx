@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight, Play, Square } from 'lucide-react'
 import { WebhookEndpoint } from './WebhookEndpoint'
 import { describeCron } from './cron'
-import { formatDuration, formatExactDateTime, formatLastRunLabel, getLocalizedJobName, getScheduleDependencyIds, getScheduleExecutionScope, isMissedSchedule, isScheduleIssueStatus, isScheduleWaitingStatus } from './helpers'
+import { formatDuration, formatExactDateTime, formatLastRunLabel, getLocalizedJobName, getScheduleDependencyIds, getScheduleExecutionScope, isMissedSchedule, hasScheduleRunIssue, isScheduleWaitingStatus } from './helpers'
 import { ScheduleRowActions } from './ScheduleRowActions'
 import { ScheduleExecutionHistoryList } from '../../ScheduleExecutionHistoryList'
 import { ScheduleAfterRunControls } from './ScheduleAfterRunControls'
@@ -53,9 +53,9 @@ export function ScheduleTableView({ panel, entityType = 'workflow' }: ScheduleTa
             const isMissed = isMissedSchedule(job)
             const isWaiting = isScheduleWaitingStatus(job.last_status)
             const canRunMissed = isMissed && job.enabled && !isRunning && !isWaiting && !isWebhook && !panel.isReadOnlyUser
-            const isIssue = isScheduleIssueStatus(job.last_status)
+            const isIssue = hasScheduleRunIssue(job)
             const overlapWith = panel.potentialOverlaps.get(job.id)
-            const outcome = isRunning ? 'Running now' : isWaiting ? job.last_status === 'waiting_for_capacity' ? 'Waiting for capacity' : 'Queued' : job.last_status === 'success' ? 'Succeeded' : job.last_status === 'error' ? 'Failed' : job.last_status === 'partial' ? 'Partial' : job.last_status === 'interrupted' ? 'Interrupted' : job.last_status === 'stopped' ? 'Stopped' : 'Not run yet'
+            const outcome = job.run_outcome || 'Not run yet'
             const state = isRunning ? 'Running' : isScheduleWaitingStatus(job.last_status) ? 'Queued' : job.enabled ? 'Enabled' : 'Paused'
             const open = expanded.has(job.id)
             const detailsId = `schedule-details-${job.id}`

@@ -29,3 +29,20 @@ func TestScheduleStatusTextIsPlainAndPauseWins(t *testing.T) {
 		t.Fatalf("a Crew pause must not pause a workflow: %+v", jobs)
 	}
 }
+
+// A disabled schedule retains its history but cannot inflate active issues.
+func TestScheduleIssuesExcludeDisabledHistory(t *testing.T) {
+	jobs := []ScheduledJobResponse{
+		{Enabled: false, LastStatus: "error", LastError: "old failure"},
+		{Enabled: true, LastStatus: "partial", LastError: "7 groups completed; 1 failed"},
+		{Enabled: true, LastStatus: "error"},
+		{Enabled: false, LastStatus: "interrupted"},
+	}
+	applyScheduleStatusText(jobs, &SchedulerConfig{})
+	if jobs[0].HasRunIssue || jobs[0].LastError != "old failure" || jobs[0].StatusWord != "Paused" {
+		t.Fatalf("disabled history lost or counted: %+v", jobs[0])
+	}
+	if !jobs[1].HasRunIssue || jobs[1].StatusWord != "Partly completed" || !jobs[2].HasRunIssue || jobs[3].HasRunIssue {
+		t.Fatalf("issue projection = %+v", jobs)
+	}
+}

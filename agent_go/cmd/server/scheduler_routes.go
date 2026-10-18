@@ -82,8 +82,10 @@ type ScheduledJobResponse struct {
 	MissedRunReason          string     `json:"missed_run_reason,omitempty"`
 	// StatusWord and LastResult are plain text for the Schedules list (see
 	// scheduler_status_text.go); last_error stays as the raw detail.
-	StatusWord string `json:"status_word,omitempty"`
-	LastResult string `json:"last_result,omitempty"`
+	StatusWord  string `json:"status_word,omitempty"`
+	RunOutcome  string `json:"run_outcome"`
+	HasRunIssue bool   `json:"has_run_issue"`
+	LastResult  string `json:"last_result,omitempty"`
 	// pauseProduct is the pause group of a workflow schedule ("relays" or "agentworks").
 	pauseProduct    string
 	PulseReviewOnly bool   `json:"pulse_review_only,omitempty"`

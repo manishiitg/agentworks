@@ -21,8 +21,7 @@ export type WorkflowScope = {
 
 export type PresetMap = Map<string, { label: string; workspacePath: string | null }>
 
-export const isScheduleIssueStatus = (status?: ScheduledJob['last_status']) =>
-  status === 'error' || status === 'partial' || status === 'interrupted'
+export const hasScheduleRunIssue = (job: ScheduledJob) => job.has_run_issue === true
 
 export const isSchedulePartialStatus = (status?: ScheduledJob['last_status']) =>
   status === 'partial' || status === 'interrupted'
@@ -350,7 +349,7 @@ export function sortJobs(a: ScheduledJob, b: ScheduledJob): number {
     if (isMissedSchedule(job)) return 1
     if (job.enabled && job.next_run_at) return 2
     if (job.enabled) return 3
-    if (isScheduleIssueStatus(job.last_status)) return 4
+    if (hasScheduleRunIssue(job)) return 4
     return 5
   }
 

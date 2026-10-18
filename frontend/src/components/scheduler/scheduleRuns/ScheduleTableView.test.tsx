@@ -12,7 +12,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 describe('global schedule table', () => {
   it.each([{ isReadOnlyUser: false, isWebhook: false }, { isReadOnlyUser: true, isWebhook: false }, { isReadOnlyUser: false, isWebhook: true }, { isReadOnlyUser: true, isWebhook: true }])('keeps details on demand and respects access for %o', async ({ isReadOnlyUser, isWebhook }) => {
     const job = { schedule_type: isWebhook ? 'webhook' : 'cron', id: 'daily', name: 'Daily report', workflow_label: 'Research', enabled: true,
-      cron_expression: '0 8 * * *', run_count: 3, last_status: 'error', last_error: 'Previous run failed',
+      cron_expression: '0 8 * * *', run_count: 3, last_status: 'error', last_error: 'Previous run failed', has_run_issue: true, run_outcome: 'Failed',
       messages: ['Collect evidence and prepare the daily report.'], missed_run_count: 2,
       next_run_at: '2026-09-13T08:00:00Z', last_run_at: '2026-09-12T08:00:00Z',
       collision_policy: 'queue_latest', max_start_delay_minutes: 120,

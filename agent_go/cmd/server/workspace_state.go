@@ -137,10 +137,10 @@ func (api *StreamingAPI) handleLoadWorkspaceState(w http.ResponseWriter, r *http
 }
 
 // loadRunFoldersInternal loads run folders (extracted from handleGetRunFolders)
-func (api *StreamingAPI) loadRunFoldersInternal(ctx context.Context, workspacePath string) ([]RunFolderInfo, error) {
+func (api *StreamingAPI) loadRunFoldersInternal(ctx context.Context, workspacePath string, invocationFolder ...string) ([]RunFolderInfo, error) {
 	// This is the core logic from handleGetRunFolders
 	// Returns just the folders array without HTTP handling
-	folders, err := api.getRunFoldersFromWorkspace(ctx, workspacePath)
+	folders, err := api.getRunFoldersFromWorkspace(ctx, workspacePath, invocationFolder...)
 	if err != nil {
 		// Propagate. This used to return an empty slice with a nil error, which
 		// made "the workspace listing failed" indistinguishable from "this
@@ -179,7 +179,7 @@ func (api *StreamingAPI) loadVariablesManifestInternal(ctx context.Context, work
 
 // getRunFoldersFromWorkspace gets run folders by calling workspace API
 // Extracted from handleGetRunFolders for reuse
-func (api *StreamingAPI) getRunFoldersFromWorkspace(ctx context.Context, workspacePath string) ([]RunFolderInfo, error) {
+func (api *StreamingAPI) getRunFoldersFromWorkspace(ctx context.Context, workspacePath string, invocationFolder ...string) ([]RunFolderInfo, error) {
 	runsPath := workspacePath + "/runs"
 
 	// List folders from workspace API
@@ -258,6 +258,19 @@ func (api *StreamingAPI) getRunFoldersFromWorkspace(ctx context.Context, workspa
 		}
 	}
 
+	bound := ""
+	if len(invocationFolder) > 0 {
+		bound = strings.Trim(strings.TrimSpace(invocationFolder[0]), "/")
+	}
+	if bound != "" {
+		filtered := existingFolders[:0]
+		for _, folder := range existingFolders {
+			if folder == bound || strings.HasPrefix(folder, bound+"/") {
+				filtered = append(filtered, folder)
+			}
+		}
+		existingFolders = filtered
+	}
 	logRunFoldersWhenChanged(workspacePath, flatRuns, existingFolders)
 	// Build folder info list
 	folderInfos := make([]RunFolderInfo, 0, len(existingFolders))
@@ -289,7 +302,7 @@ func (api *StreamingAPI) getRunFoldersFromWorkspace(ctx context.Context, workspa
 	// Read clocks before limiting: a reused iteration-zero slot can be newest.
 	sortRunFoldersByTime(folderInfos)
 	const maxFolders = 10
-	if len(folderInfos) > maxFolders {
+	if bound == "" && len(folderInfos) > maxFolders {
 		folderInfos = folderInfos[:maxFolders]
 	}
 
