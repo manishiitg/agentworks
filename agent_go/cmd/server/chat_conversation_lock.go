@@ -10,6 +10,7 @@ import (
 var chatConversationLocks [256]sync.Mutex
 
 func chatConversationMutex(path string) *sync.Mutex {
+	path = chatHistoryStoragePath(path)
 	var hash uint64 = 1469598103934665603
 	for _, b := range []byte(filepath.ToSlash(filepath.Clean(path))) {
 		hash ^= uint64(b)

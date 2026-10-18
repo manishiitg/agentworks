@@ -602,6 +602,7 @@ func updatePersistedChatHistoryIndex(userID, sessionID, agentMode string, histor
 // updatePersistedChatHistoryIndexWithCount indexes a conversation from a
 // (possibly recent-only) slice of its history and its true message count.
 func updatePersistedChatHistoryIndexWithCount(userID, sessionID, agentMode string, history []llmtypes.MessageContent, messageCount int, runtime *ChatHistoryAgentRuntime, conversationPath string, sourceSize int64, now time.Time, botMeta *ChatHistoryBotMetadata) error {
+	conversationPath = chatHistoryStoragePath(conversationPath)
 	indexPath := chatHistoryIndexWorkspacePath(userID, conversationPath)
 	if indexPath == "" {
 		return fmt.Errorf("cannot derive chat index path from %q", conversationPath)
@@ -755,9 +756,21 @@ func (index *chatHistoryIndex) normalize() {
 	if index.Entries == nil {
 		index.Entries = make(map[string]chatHistoryIndexEntry)
 	}
+	current := make(map[string]chatHistoryIndexEntry, len(index.Entries))
+	for original, entry := range index.Entries {
+		key := chatHistoryStoragePath(original)
+		entry.Session.ConversationPath = chatHistoryStoragePath(entry.Session.ConversationPath)
+		entry.Session.WorkspacePath = chatHistoryStoragePath(entry.Session.WorkspacePath)
+		if previous, exists := current[key]; exists && (previous.SourceModifiedAtUnixNano > entry.SourceModifiedAtUnixNano || previous.SourceModifiedAtUnixNano == entry.SourceModifiedAtUnixNano && original != key) {
+			continue
+		}
+		current[key] = entry
+	}
+	index.Entries = current
 }
 
 func chatHistoryIndexMutex(indexPath string) *sync.Mutex {
+	indexPath = chatHistoryStoragePath(indexPath)
 	var hash uint64 = 1469598103934665603
 	for i := 0; i < len(indexPath); i++ {
 		hash ^= uint64(indexPath[i])
@@ -767,6 +780,7 @@ func chatHistoryIndexMutex(indexPath string) *sync.Mutex {
 }
 
 func chatHistoryIndexWorkspacePath(userID, conversationPath string) string {
+	conversationPath = chatHistoryStoragePath(conversationPath)
 	conversationPath = strings.Trim(pathpkg.Clean(filepath.ToSlash(conversationPath)), "/")
 	if marker := strings.Index(conversationPath, "/builder/"); marker > 0 {
 		return pathpkg.Join(conversationPath[:marker], "builder", "conversation", chatHistoryIndexFileName)
@@ -779,6 +793,7 @@ func chatHistoryIndexWorkspacePath(userID, conversationPath string) string {
 }
 
 func chatHistoryWorkspacePathFromConversation(conversationPath string) string {
+	conversationPath = chatHistoryStoragePath(conversationPath)
 	conversationPath = strings.Trim(pathpkg.Clean(filepath.ToSlash(conversationPath)), "/")
 	if marker := strings.Index(conversationPath, "/builder/"); marker > 0 {
 		return conversationPath[:marker]
@@ -2046,6 +2061,7 @@ func chatHistorySessionMatchesKind(sessionID, kind string) bool {
 }
 
 func readLocalChatHistoryIndex(indexPath string) (chatHistoryIndex, bool) {
+	indexPath = chatHistoryLocalStoragePath(indexPath)
 	index := newChatHistoryIndex()
 	data, err := os.ReadFile(indexPath)
 	if err != nil {
@@ -2125,6 +2141,7 @@ func putLocalChatHistoryIndexEntry(index *chatHistoryIndex, file localChatHistor
 }
 
 func writeLocalChatHistoryIndex(indexPath string, index *chatHistoryIndex) error {
+	indexPath = chatHistoryLocalStoragePath(indexPath)
 	if index == nil {
 		return nil
 	}
@@ -2169,6 +2186,7 @@ func removeLocalChatHistoryIndexEntries(indexWorkspacePath, indexLocalPath, sess
 		matches := sessionID != "" && entry.Session.SessionID == sessionID
 		if !matches {
 			for _, deletedPath := range deletedPaths {
+				deletedPath = chatHistoryStoragePath(deletedPath)
 				deletedPath = strings.Trim(pathpkg.Clean(filepath.ToSlash(deletedPath)), "/")
 				if conversationPath == deletedPath || strings.HasPrefix(conversationPath, deletedPath+"/") {
 					matches = true
@@ -2299,6 +2317,7 @@ func workflowBuilderConversationFiles(workflowDir string) ([]string, error) {
 }
 
 func workflowRelativeConversationPath(workflowPath, workflowDir, convPath string) string {
+	workflowPath = chatHistoryStoragePath(workflowPath)
 	rel, err := filepath.Rel(workflowDir, convPath)
 	if err != nil {
 		return pathpkg.Join(workflowPath, "builder", filepath.Base(convPath))
@@ -2307,6 +2326,7 @@ func workflowRelativeConversationPath(workflowPath, workflowDir, convPath string
 }
 
 func resolveLocalChatHistoryDir(workspaceRoot string) (string, bool) {
+	workspaceRoot = chatHistoryStoragePath(workspaceRoot)
 	candidates := []string{
 		filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspaceRoot)),
 		filepath.Join("workspace-docs", filepath.FromSlash(workspaceRoot)),
@@ -2323,6 +2343,7 @@ func resolveLocalChatHistoryDir(workspaceRoot string) (string, bool) {
 }
 
 func resolveLocalWorkflowDir(workflowPath string) (string, bool) {
+	workflowPath = chatHistoryStoragePath(workflowPath)
 	workflowPath = normalizeChatHistoryWorkspacePath(workflowPath)
 	if workflowPath == "" {
 		return "", false
@@ -2930,6 +2951,7 @@ func RenameChatHistorySession(userID, sessionID, workspacePath, title string) er
 }
 
 func persistChatHistoryTitleInIndex(userID, sessionID, conversationPath, title string, sourceSize int64, create bool) error {
+	conversationPath = chatHistoryStoragePath(conversationPath)
 	indexPath := chatHistoryIndexWorkspacePath(userID, conversationPath)
 	if indexPath == "" {
 		return nil
@@ -3175,6 +3197,7 @@ func ReadChatHistoryTerminalSnapshotsForSession(userID, sessionID, workspacePath
 }
 
 func readChatHistoryConversationDataFromPath(normalizedPath string) ([]byte, bool, error) {
+	normalizedPath = chatHistoryStoragePath(normalizedPath)
 	normalizedPath = strings.TrimSpace(filepath.ToSlash(normalizedPath))
 	if normalizedPath == "" {
 		return nil, false, nil
@@ -3473,6 +3496,12 @@ func normalizeRestoredChatHistoryConversationPath(userID, conversationPath strin
 	if conversationPath == "" {
 		return "", false
 	}
+	if filepath.IsAbs(conversationPath) {
+		rel, err := filepath.Rel(fsutil.WorkspaceDocsRoot(), conversationPath)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			conversationPath = filepath.ToSlash(rel)
+		}
+	}
 	if idx := strings.LastIndex(conversationPath, "/workspace-docs/"); idx >= 0 {
 		conversationPath = conversationPath[idx+len("/workspace-docs/"):]
 	}
@@ -3486,7 +3515,10 @@ func normalizeRestoredChatHistoryConversationPath(userID, conversationPath strin
 		return cleaned, true
 	}
 	if ownedRef := workspaceref.MustParse(cleaned); ownedRef.OwnedBy(userID) && ownedRef.IsProject() && strings.Contains(cleaned, "/builder/conversation/") && strings.HasSuffix(cleaned, ".json") {
-		return cleaned, true
+		return chatHistoryStoragePath(cleaned), true
+	}
+	if current, ok := ownCanonicalProjectRestorePath(userID, cleaned); ok {
+		return current, true
 	}
 	if strings.HasPrefix(cleaned, "Workflow/") && strings.Contains(cleaned, "/builder/") && strings.HasSuffix(cleaned, ".json") {
 		return cleaned, true
@@ -4302,6 +4334,7 @@ func runtimeFromRecord(record map[string]interface{}) *ChatHistoryAgentRuntime {
 // its legacy single-record form (assembled from header + history log when it
 // is stored in that format); any other file is read as-is.
 func readConversationFileDirect(path string) ([]byte, error) {
+	path = chatHistoryLocalStoragePath(path)
 	if chatlog.IsConversationPath(path) {
 		return chatlog.Load(path)
 	}
