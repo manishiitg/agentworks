@@ -51,6 +51,17 @@ the description. Scripted items and scripted predefined_routes are supported
 helpers; LLM child agents are retired. Put required contributions in the task,
 under existing store grants. No automatic reflection phase runs.
 
+**Default to one large Agent per shared context.** Give each sequence one coherent agentic outcome: the description should complete the task, re-open its evidence and prove every success criterion. Improve its proof/evidence contract and top-level `validation_schema` before splitting. Automatic validation repairs failures in the same conversation; authored follow-ups are optional. Multiple large sequences are correct when their contexts should not be shared because of credentials, independent outputs/retries, clean-room independence, human/routing boundaries or context contamination. The builder must decide this from the workflow semantics and state the boundary.
+
+**Deterministic fetcher → agentic processor is the default data architecture.** Batch fixed API/SDK/CLI acquisition, pagination, stable parsing and persistence behind one source/auth/retry/output contract; do not create one step per endpoint or command. Persist authoritative results and provenance, then let the Agent interpret them. When selecting the request itself needs judgment, the Agent writes a request specification, a scripted step executes it, and an Agent interprets the result. Do not spend an LLM turn reissuing a known request or parsing a stable response shape. A declared typed scripted helper can support evidence-driven lookups during the task.
+
+**Composition examples** (adapt to the actual task):
+- **Multiple modes:** one routing selector chooses the major mode; connect its alternatives to the shared continuation or end.
+- **Readiness:** a small scripted connectivity/auth check can feed a branch when the result must choose a different continuation. Keep it inside the owning step when failure should simply stop that work.
+- **Draft → review → action:** supply the actual draft and evidence at the human boundary, then perform the authorized action. Follow `references/human-in-the-loop.md` for existing authorization and unattended schedules.
+
+Before changing a step's behavior, output or database contract, read `references/plan-change-impact.md` and reconcile downstream steps, validation, dashboards and shared knowledge.
+
 ### Step 3: Design context flow
 
 Every step reads from prior steps and writes for downstream steps:

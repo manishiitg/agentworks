@@ -336,33 +336,25 @@ func TestStandaloneStrategyAuditRunsDirectlyAndRequiresTerminalModuleResult(t *t
 	}
 }
 
-func TestAgentDelegationEligibilityStaysConsistentAcrossGuidance(t *testing.T) {
+func TestGoalAgentHelpersStayScriptedAcrossGuidance(t *testing.T) {
 	canonical, err := renderFromRegistry("design-plan", tmplData{}, allKinds)
 	if err != nil {
-		t.Fatalf("render design-plan: %v", err)
+		t.Fatal(err)
 	}
-	for _, want := range []string{
-		"real runtime orchestration decision",
-		"A fixed child set and order does not justify adaptive delegation",
-		"Routes are bounded capabilities",
-		"predetermined isolated agentic tasks can remain explicit plan steps",
-	} {
-		if !containsNormalizedText(canonical, want) {
-			t.Fatalf("canonical design-plan guidance missing %q", want)
-		}
-	}
-
+	docs := map[string]string{"design-plan": canonical}
 	for _, kind := range []string{"plan-design", "agent", "optimize-playbook"} {
-		doc := RenderSystemDoc(kind)
-		if !containsNormalizedText(doc, "fixed child set and order does not justify adaptive routes") {
-			t.Fatalf("%s guidance weakened the canonical fixed-child invariant", kind)
-		}
+		docs[kind] = RenderSystemDoc(kind)
 	}
-
-	for _, kind := range []string{"agent", "optimize-playbook"} {
-		doc := RenderSystemDoc(kind)
-		if strings.Contains(doc, "Scripted-mode todo_task") || strings.Contains(doc, "Orchestrator scripted mode (deterministic delegation") {
-			t.Fatalf("%s still documents the removed orchestrator scripted fast path", kind)
+	for kind, doc := range docs {
+		for _, want := range []string{"scripted helpers", "Crew step"} {
+			if !containsNormalizedText(strings.ToLower(doc), strings.ToLower(want)) {
+				t.Fatalf("%s missing Goal helper boundary %q", kind, want)
+			}
+		}
+		for _, stale := range []string{"Conversational specialists use", "Only one nested delegation layer", "Scripted-mode todo_task", "Orchestrator scripted mode (deterministic delegation"} {
+			if strings.Contains(doc, stale) {
+				t.Fatalf("%s retains retired child-agent guidance %q", kind, stale)
+			}
 		}
 	}
 }
@@ -1364,7 +1356,7 @@ func TestWorkflowCompositionExamplesLiveInOwningReferences(t *testing.T) {
 	}
 	for kind, wants := range map[string][]string{
 		"plan-design":       {"Composition examples", "readiness", "draft"},
-		"agent":             {"re-read the system of record", "processed-versus-selected counts", "source_sql", "max_parallel", "known upfront", "unknown work breakdown is one use case, not a prerequisite", "already supplied by the user"},
+		"agent":             {"re-read the system of record", "processed-versus-selected counts", "source_sql", "max_parallel", "saved scripted helpers", "No conversational or ad hoc LLM child agent", "already supplied by the user"},
 		"stores":            {"transaction or retry contract", "window.report.query", "knowledgebase/notes/", "learnings/_global/SKILL.md"},
 		"human-in-the-loop": {"provide the actual draft/change/evidence", "Schedules must complete unattended"},
 	} {

@@ -255,6 +255,8 @@ A saved scripted route is also offered to its Agent step as a named tool (route 
 LLM specialist routes and their re-entry conversations are retired. Use an
 explicit Crew step when persistent specialist memory or coordination is needed.
 
+Use launch values already supplied by the user; do not ask for the same value again.
+
 ## AUTHORING RULES
 
 - Write the stable objective, boundaries, and definition of done in `description`.

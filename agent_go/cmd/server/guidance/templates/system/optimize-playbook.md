@@ -60,7 +60,7 @@ Only saved scripted code has a lock. Learning writes are controlled directly by 
 - **Require grounding in the description** — instruct the step to derive values only from real tool output / fetched data and to cite where each value came from, never to infer or fill them in.
 Trust output you can trace back to real evidence, not a self-reported success.
 
-**KB writes are step-based**: A step writes KB notes only when `knowledgebase_access` is `write` or `read-write` and it has a non-empty `knowledgebase_contribution`. When a contributor no longer produces durable new facts, change that step to `knowledgebase_access="read"`. Do not freeze unrelated KB writers workflow-wide. Review KB health with a generic read-only reviewer over the knowledgebase evidence pack and let the parent fixer apply bounded intentional curation.
+**KB writes are step-based**: A step writes KB notes only when `knowledgebase_access` is `write` or `read-write` and its task explicitly asks for notes. When a contributor no longer produces durable new facts, change that step to `knowledgebase_access="read"`. Do not freeze unrelated KB writers workflow-wide. Review KB health with a generic read-only reviewer over the knowledgebase evidence pack and let the parent fixer apply bounded intentional curation.
 
 ### 3. Managing Learnings
 Learnings are stored as SKILL.md files in the workspace at 'learnings/_global/SKILL.md'. Each learning file MUST use YAML frontmatter format:
@@ -77,7 +77,7 @@ You can read, edit, and delete them with the shell and a file-edit tool (your ow
 - **Read learnings**: 'cat learnings/_global/SKILL.md' to read the global learning file
 - **Read metadata**: 'cat learnings/{step-id}/.learning_metadata.json' for iteration counts and success history.
 - **Edit learnings**: Make a targeted edit to learnings/_global/SKILL.md. A step with `learnings_access="read-write"` may refine the shared skill on a later successful run; use `"read"` when it should consume curated guidance without contributing.
-- **Delete learnings**: 'rm learnings/_global/SKILL.md' to reset global learnings. Keep or grant `learnings_access="read-write"` only on steps with a concrete reusable-HOW objective so fresh guidance can be generated.
+- **Delete learnings**: 'rm learnings/_global/SKILL.md' to reset global learnings. Preserve useful guides unless their removal is requested. A write grant permits explicit task edits; it does not generate a closing turn.
 - **Legacy migration**: If you find '*_learning.md' files (old format) instead of SKILL.md, migrate their content into a new SKILL.md with proper frontmatter and delete the legacy files.
 
 ### 3b. Debugging & Fixing Scripted Code Steps (scripted)
@@ -224,37 +224,15 @@ A step's execution mode is its plan type — `scripted` is scripted, `agent` is 
 
 **Code-exec efficiency goal**: The goal of code execution mode is to minimize tool calls. Ideally, the agent should run the entire step in a **single execute_shell_command call** — one Python script that handles everything (API calls, data processing, output writing). After a code-exec step runs, review the learnings and check: did the agent use multiple tool calls where a single script would suffice? If so, update the learnings to consolidate into fewer calls. Good code-exec learnings produce steps that complete in 1-2 tool calls instead of 10+.
 
-**Variable handling in code-exec learnings**: When writing or reviewing learnings for code execution steps, **never hardcode variable values** (account IDs, URLs, credentials, etc.) in the code. Variables are available in the step description as resolved values — the generated code should use sys.argv or argparse to accept them as CLI arguments. The learning agent automatically replaces hardcoded values with `{{"{{"}}VARIABLE_NAME{{"}}"}}` placeholders, which the system resolves at runtime and passes to the script. If you notice hardcoded values in code learnings, fix them immediately.
+**Variable handling in code-exec learnings**: When writing or reviewing learnings for code execution steps, **never hardcode variable values** (account IDs, URLs, credentials, etc.) in the code. Variables are available in the step description as resolved values — the generated code should use sys.argv or argparse to accept them as CLI arguments. There is no automatic learning agent to rewrite these values; author runtime inputs explicitly. If you notice hardcoded values in code learnings, fix them immediately.
 
 ### 8. Evidence-Based Locking And Review
 
-**Checklist before locking learnings/code or setting description_reviewed=true:**
-1. **Learnings exist** — the step has been executed normally (`execute_step(step_id)`) and produced learning files with correct tool names and sequences. Without learnings, future runs start from scratch.
-2. **Pre-validation schema** — A validation_schema is defined with file checks and/or JSON path rules. This catches structural errors without an LLM validation pass.
-3. **Successful execution** — The step has passed at least once with the current config, learnings, and validation.
-4. **No wasted tool calls** — Review the execution: the agent should not have wasted turns on failed tool searches, wrong server names, retried API calls, or unnecessary exploration. If the agent spent turns searching for tools that don't exist, reading files that aren't there, or trying approaches that the learnings should have prevented, fix the learnings or description first and re-run to confirm clean execution.
+Review actual outputs, validation and execution logs before setting description_reviewed or locking saved code. Existing guides may inform the task, but a successful run does not automatically produce learning files. Fix observed tool-use errors in the task or its relevant guide, then rerun only as needed to confirm the change.
 
-**After the Pulse Fixer applies reviewed changes:**
-- If all failing steps were fixed and no significant structural changes were needed, update review_notes and lock stable learnings only when their evidence threshold is met.
-- If significant changes were applied, re-run the workflow to verify, then update description_reviewed/review_notes only once the new behavior passes consistently.
-- If you make major changes to the step description, tools, or validation schema, reassess `learnings_access` and clear stale code review state in the same call: `update_step_config(step_id, lock_code=false, description_reviewed=false)`.
+`lock_code` freezes only the Builder's own repairs to a scripted step. Lock when requested or when representative evidence proves the script stable; runs already execute saved code without rewriting it. Clear stale code locks and description review state after a meaningful change.
 
-**When you lock a scripted step, lock its code only after strong evidence**:
-- `update_step_config(step_id, lock_code=true)` — only after the user explicitly wanted `scripted`, the step is highly deterministic, and `script_metadata.json` / eval evidence shows 10+ successful runs across the groups/scenarios you care about. Runs never rewrite a script, so a transient failure no longer changes it; locking only stops your own `execute_step` from repairing it, so lock late.
-- Only lock code when the script has been stable across multiple runs AND multiple groups (if the workflow is multi-group). Flaky scripts should be fixed first, not frozen.
-
-**Learning access is independent of `scripted`**: agentic and scripted steps may read the shared skill; grant write access only for a concrete reusable-HOW contribution.
-- A step does not need to migrate to `scripted` before its shared SKILL.md guidance is mature enough to freeze.
-- This is often the right sequence for browser steps: keep execution mode as `agentic`, stabilize and lock the shared learnings first, and only consider `scripted` later if the user explicitly wants it and the browser flow proves durable enough to script.
-
-**When one step's KB contribution stops changing, make that step read-only**:
-- After several successful runs where a step produces only trivial/no-op KB edits, set that step's `knowledgebase_access="read"` and clear its `knowledgebase_contribution`. Other legitimate KB writers keep working.
-- If that step later needs to capture new domain facts, restore `read-write` together with a specific contribution contract, or run a read-only KB health review and let the parent fixer apply bounded curation.
-
-**Review intentional KB cleanup/curation with a read-only pass; the parent fixer writes**:
-- `mode="targeted"`: use this when you already know the cleanup operation. Examples: *"merge notes/architecture.md and notes/topology.md"*, *"drop sections in notes/recommendation-history.md that mention iteration-0/abandoned"*, *"rename topic company-acme to company-acme-corp and rewrite cross-references"*, *"compact notes/architecture.md to under 10KB"*, *"fix notes/_index.json"*.
-- `mode="cross_step"`: use this after several contributing steps have run and the work needs a holistic view. The agent receives every step's `knowledgebase_contribution` plus step output folders from the selected run. Examples: *"reconcile company/organization naming drift across step contributions"*, *"write pattern notes for repeated shapes across per-account steps"*, *"surface contested employee-count values where two steps disagree"*.
-- Boundary: if you can describe the instruction as one concrete file/topic transformation, use `targeted`. If the justification depends on comparing multiple steps, runs, or topic files, use `cross_step`.
+Knowledge-base writes are explicit task work under that step's access. Builder or Pulse can curate existing notes using their file tools and evidence. Do not require retired contribution objectives, a learning-file generation pass, or a separate KB writer mode.
 
 ### 9. Script helpers and Crew
 

@@ -336,8 +336,8 @@ function KnowledgebaseContent({ workspacePath, headerAction, hideHeader = false,
             <div className="text-center py-12 text-muted-foreground">
               <Database className="w-10 h-10 mx-auto opacity-30 mb-3" />
               <div className="text-sm">
-                Knowledgebase is empty. Narrative topics appear here after steps run with a
-                non-empty <code className="px-1 rounded bg-muted">knowledgebase_contribution</code>.
+                Notes appear here when a step is asked to write them. Ask the Builder to add
+                a notes task to a step.
               </div>
             </div>
           )}
