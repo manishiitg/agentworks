@@ -1,77 +1,38 @@
-import { useProductSettingsMenu } from '../workspace/ProductSettingsMenu'
-import { ProductNavigationLabel, useProductNavigationSidebar } from '../workspace/ProductTopBar'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Inbox } from 'lucide-react'
 import { agentApi } from '../../services/api'
-import { workflowHasRecentActivity } from '../../utils/workflowActivity'
+import { useAuthStore } from '../../stores/useAuthStore'
+import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 
-const ACTIVITY_REFRESH_MS = 30_000
-
-interface GlobalActivityButtonProps {
-  workspacePaths: string[]
-  active: boolean
-  onOpen: () => void
-}
-
-export function GlobalActivityButton({ workspacePaths, active, onOpen }: GlobalActivityButtonProps) {
-  const sidebar = useProductNavigationSidebar()
-  const inSettings = useProductSettingsMenu()
-  const [hasRecentActivity, setHasRecentActivity] = useState(false)
-  const refreshSequence = useRef(0)
-  const pathKey = workspacePaths.join('\u0000')
-
+/** A decision signal in the existing Goals header, never a global sidebar item. */
+export function GlobalActivityButton({ workspacePaths, active, onOpen }: { workspacePaths: string[]; active: boolean; onOpen: () => void }) {
+  const user = useAuthStore(state => state.user?.id ?? '')
+  const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId ?? '')
+  const key = JSON.stringify([user, server, [...new Set(workspacePaths)].sort()])
+  const [result, setResult] = useState<{ key: string; count: number } | null>(null)
+  const generation = useRef(0)
   const refresh = useCallback(async () => {
-    const request = ++refreshSequence.current
-    if (workspacePaths.length === 0) {
-      setHasRecentActivity(false)
-      return
-    }
+    const current = ++generation.current
+    const [, , paths] = JSON.parse(key) as [string, string, string[]]
+    if (!paths.length) { setResult({ key, count: 0 }); return }
     try {
-      const [notifications, humanInputs] = await Promise.all([
-        agentApi.getOrgDashboardNotifications(workspacePaths, 1),
-        agentApi.listNeedsYouDecisionsAggregate(workspacePaths).catch(() => ({ success: false, inputs: [] })),
-      ])
-      if (request !== refreshSequence.current) return
-      const inputs = humanInputs.inputs || []
-      setHasRecentActivity(workspacePaths.some(path => workflowHasRecentActivity(path, notifications, inputs)))
-    } catch {
-      if (request === refreshSequence.current) setHasRecentActivity(false)
-    }
-  // `pathKey` provides stable value-based identity when callers rebuild the array.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathKey])
-
+      const response = await agentApi.listNeedsYouDecisionsAggregate(paths)
+      if (current === generation.current) setResult({ key, count: response.success ? response.inputs.filter(input => paths.includes(input.workspace_path)).length : 0 })
+    } catch { if (current === generation.current) setResult({ key, count: 0 }) }
+  }, [key])
   useEffect(() => {
     if (!document.hidden) void refresh()
-    return () => { refreshSequence.current += 1 }
+    return () => { generation.current++ }
   }, [refresh])
-  // Refetch on live notices; ACTIVITY_REFRESH_MS polling only if the feed is down.
-  useLiveRefetch(() => { void refresh() }, { kinds: ['notifications', 'human_inputs'], fallbackMs: ACTIVITY_REFRESH_MS })
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          role={inSettings ? 'menuitem' : undefined}
-          data-product-navigation-action
-          onClick={onOpen}
-          data-tour="global-activity"
-          aria-label="Activity"
-          aria-pressed={active}
-          className={`rounded-md p-1.5 transition-colors ${active
-            ? 'bg-primary/10 text-primary'
-            : hasRecentActivity
-              ? 'text-sky-500/70 hover:bg-sky-500/5 dark:text-sky-400/70'
-              : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-        >
-          <Inbox className="h-4 w-4 shrink-0" />
-          <ProductNavigationLabel>Activity</ProductNavigationLabel>
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side={sidebar ? 'right' : 'bottom'}>{hasRecentActivity ? 'Activity · Updates in the last 24 hours' : 'Activity · Updates'}</TooltipContent>
-    </Tooltip>
-  )
+  useLiveRefetch(() => { void refresh() }, { kinds: ['human_inputs'], fallbackMs: 30_000 })
+  const count = result?.key === key ? result.count : 0
+  if (!count) return null
+  return <Tooltip><TooltipTrigger asChild>
+    <button type="button" onClick={onOpen} aria-label={`Needs you: ${count} ${count === 1 ? 'decision' : 'decisions'}`} aria-pressed={active}
+      className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-amber-600 hover:bg-amber-500/10 dark:text-amber-400">
+      <Inbox aria-hidden="true" className="h-4 w-4" /><span className="text-[11px] font-medium">{count}</span>
+    </button>
+  </TooltipTrigger><TooltipContent>Needs you · Review Goal decisions</TooltipContent></Tooltip>
 }

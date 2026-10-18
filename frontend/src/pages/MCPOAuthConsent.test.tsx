@@ -101,7 +101,7 @@ it('explains Vault management separately from runtime tool access', async () => 
 
 it('shows a single project limit and its saved capabilities on consent', async () => {
   window.history.replaceState({}, '', `/oauth/consent?request=mcp_req_${'a'.repeat(64)}`)
-  api.get.mockResolvedValue({ data: { client_name: 'Project app', redirect_uri: 'https://client.example/callback', scopes: ['dashboards:read', 'crews:read'], project: { ID: 'p1', Kind: 'crew', Title: 'Reporting' } } })
+  api.get.mockResolvedValue({ data: { client_name: 'Project app', redirect_uri: 'https://client.example/callback', scopes: ['dashboards:read', 'crews:read', 'crews:run'], project: { id: 'p1', kind: 'work', title: 'Reporting', access: 'view' } } })
   const host = document.createElement('div'); const root = createRoot(host)
   try {
     await act(async () => root.render(<MCPOAuthConsent />))

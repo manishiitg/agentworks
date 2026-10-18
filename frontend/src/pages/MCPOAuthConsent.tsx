@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import api from '../services/api'
 import { Button } from '../components/ui/Button'
 
-type Consent = { client_name: string; redirect_uri: string; scopes: string[]; project?: { ID: string; Title: string; Kind: string } | null }
+type Consent = { client_name: string; redirect_uri: string; scopes: string[]; project?: { id: string; title: string; kind: string; access: 'view' | 'use' } | null }
 
 const scopeDescriptions: Record<string, string> = {
   'vault:manage': 'Manage Vault MCP connections, groups, tool and regex permissions, and secret access as an administrator. Secret values are not returned',
@@ -77,12 +77,12 @@ export function MCPOAuthConsent() {
     <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-sm space-y-5">
       <div>
         <h1 className="text-xl font-semibold text-foreground">Connect to {vault ? 'Vault' : 'AgentWorks'}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{consent ? (consent.project ? `${consent.client_name} wants access to ${consent.project.Title} only.` : vault ? `${consent.client_name} wants access to your permitted MCP tools.` : consent.scopes.includes('vault:manage') ? `${consent.client_name} wants platform access, including Vault administration.` : consent.scopes.some(scope => scope.startsWith('crews:')) ? `${consent.client_name} wants access to your workflows and Crews.` : `${consent.client_name} wants access to your workflows.`) : 'Loading connection request…'}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{consent ? (consent.project ? `${consent.client_name} wants access to ${consent.project.title} only.` : vault ? `${consent.client_name} wants access to your permitted MCP tools.` : consent.scopes.includes('vault:manage') ? `${consent.client_name} wants platform access, including Vault administration.` : consent.scopes.some(scope => scope.startsWith('crews:')) ? `${consent.client_name} wants access to your workflows and Crews.` : `${consent.client_name} wants access to your workflows.`) : 'Loading connection request…'}</p>
       </div>
       {consent && <>
         {vault
           ? <ul className="space-y-2 text-sm text-foreground">{scopeGroups.filter(group => group.scopes.some(scope => consent.scopes.includes(scope))).map(group => <li key={group.summary} className="rounded-md bg-muted p-3">{group.summary}</li>)}</ul>
-          : consent.project ? <div className="rounded-md bg-muted p-3 text-sm text-foreground"><p className="font-medium">{consent.project.Title} only</p><p className="mt-1">{consent.scopes.includes('crews:run') || consent.scopes.includes('runs:execute') ? 'View and use this project within your current permissions.' : 'View this project within your current permissions.'} Other projects and project settings are excluded. Removing your project access ends this connection’s access.</p></div>
+          : consent.project ? <div className="rounded-md bg-muted p-3 text-sm text-foreground"><p className="font-medium">{consent.project.title} only</p><p className="mt-1">{consent.project.access === 'use' ? 'View and use this project within your current permissions.' : 'View this project within your current permissions.'} Other projects and project settings are excluded. Removing your project access ends this connection’s access.</p></div>
           : <p className="rounded-md bg-muted p-3 text-sm text-foreground">This app can do what you can do on the website, and nothing more. Your role on each Crew, workflow or project still decides what it may change.</p>}
         <details className="text-xs text-muted-foreground">
           <summary className="cursor-pointer">Show details</summary>

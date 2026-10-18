@@ -22,6 +22,7 @@ import { useCommandDialogStore } from '../stores/useCommandDialogStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { useWorkflowManifestStore } from '../stores/useWorkflowManifestStore'
 import { dedupeServerNames } from '../utils/mcpServerAlias'
+import { GlobalActivityButton } from './topbar/GlobalActivityButton'
 import { GlobalActivityMonitor } from './GlobalActivityMonitor'
 import { useGlobalSchedulerPaused } from '../hooks/useGlobalSchedulerPaused'
 import WorkflowWalkthrough from './workflow/WorkflowWalkthrough'
@@ -795,6 +796,10 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
           {/* Shared actions stay at the top right in every product. */}
           <TooltipProvider delayDuration={400}>
             <ProductTopBarActions>
+              {hasProductActivity && <GlobalActivityButton workspacePaths={presetsForMode.flatMap(preset => preset.selectedFolder?.filepath ? [preset.selectedFolder.filepath.replace(/\/+$/, '')] : [])} active={showWorkflowsOverview} onOpen={() => {
+                useLLMStore.getState().setShowLLMModal(false)
+                setAdminPage(null); setShowSchedulesOverview(false); setActivityWorkflowPath(null); setShowWorkflowsOverview(true)
+              }} />}
               <ProductSettingsMenu activity={<>
                 {(hasProductActivity || hasProductSchedules) && <TooltipProvider delayDuration={400}>
               <div data-product-navigation-section="product-actions" aria-label="Product actions" className="flex flex-col items-stretch gap-1">

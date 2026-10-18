@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { WORKFLOW_REPORT_REFRESH_EVENT } from '../../components/workflow/reportRefreshEvent'
 
 /**
  * Whether someone else's product has a dashboard this person can open (null
@@ -28,7 +29,10 @@ export function useSharedCrewHasDashboard(workspacePath: string | undefined): bo
       } catch {
         has = false
       }
-      if (!cancelled) setResult({ path: workspacePath, has })
+      if (!cancelled) {
+        setResult({ path: workspacePath, has })
+        if (has) window.dispatchEvent(new CustomEvent(WORKFLOW_REPORT_REFRESH_EVENT, { detail: { workspacePath } }))
+      }
     })()
     return () => { cancelled = true }
   }, [workspacePath])

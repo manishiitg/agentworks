@@ -50,7 +50,7 @@ const INTEGRATION_TAB_ASK_AI_MESSAGE: Record<IntegrationTabId, { label: string; 
   },
   folders: {
     label: 'Integrations · Folders & workflows',
-    summary: "Help me attach things to this workflow: folders on this server or other workflows as read-only context. For shared knowledge, use Connections → Add connection → Brain instead. Ask what it needs and why, then set it up; folder access should be read-only unless writing is truly needed.",
+    summary: "Help me attach things to this workflow: folders on this server or other workflows as reference material. For shared knowledge, use Connections → Add connection → Brain instead. Ask what it needs and why, then set it up; folders should allow viewing only unless saving changes is needed.",
   },
   secrets: { label: 'Integrations · Secrets', summary: 'Help me select project secrets or permitted Vault secrets. Never ask me to paste secret values in chat.' },
   apps: {

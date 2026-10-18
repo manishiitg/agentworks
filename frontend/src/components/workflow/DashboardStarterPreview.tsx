@@ -82,8 +82,8 @@ export function DashboardStarterPreview() {
         <Users aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
         <div>
           <p className="text-[11px] font-medium text-foreground">Share with your team</p>
-          <p className="mt-1 text-[10px] leading-4 text-muted-foreground"><Eye aria-hidden="true" className="mr-1 inline h-3 w-3" />Dashboard + read access to project files and results.</p>
-          <p className="mt-0.5 text-[10px] leading-4 text-muted-foreground">Project editing stays with its owners and editors.</p>
+          <p className="mt-1 text-[10px] leading-4 text-muted-foreground"><Eye aria-hidden="true" className="mr-1 inline h-3 w-3" />They can see its files and results.</p>
+          <p className="mt-0.5 text-[10px] leading-4 text-muted-foreground">Sharing follows your project’s existing permissions.</p>
         </div>
       </div>
     </div>

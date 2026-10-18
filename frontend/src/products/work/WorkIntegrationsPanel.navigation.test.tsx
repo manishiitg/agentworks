@@ -38,7 +38,7 @@ afterEach(() => { cleanup.splice(0).forEach(fn => fn()); delete window.__APP_RUN
 async function mount(product = CREW_PRODUCT, enabledPanels?: Set<string>) {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host); cleanup.push(() => { act(() => root.unmount()); host.remove() })
-  await act(async () => root.render(<ProjectProductProvider value={product}><WorkIntegrationsPanel workspacePath="Crew/example" projectId="example" projectTitle="Example" projectTemplates={[]} tabId="tab" onAsk={state.ask} onSelectedServersChange={state.save} onSelectedSkillsChange={state.save} workflowContextPaths={[]} onWorkflowContextPathsChange={state.save} enabledPanels={enabledPanels} /></ProjectProductProvider>))
+  await act(async () => root.render(<ProjectProductProvider value={product}><WorkIntegrationsPanel canEdit workspacePath="Crew/example" projectId="example" projectTitle="Example" projectTemplates={[]} tabId="tab" onAsk={state.ask} onSelectedServersChange={state.save} onSelectedSkillsChange={state.save} workflowContextPaths={[]} onWorkflowContextPathsChange={state.save} enabledPanels={enabledPanels} /></ProjectProductProvider>))
   return host
 }
 

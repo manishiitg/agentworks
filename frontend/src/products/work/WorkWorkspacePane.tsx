@@ -36,6 +36,7 @@ import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { useCodeFilesPreference, useProjectMode } from './codeLocalFiles'
 import { WorkMemoryPanel } from './WorkMemoryPanel'
 import { WorkPlanPanel } from './WorkPlanPanel'
+import { useAuthStore } from '../../stores/useAuthStore'
 import { SharedCrewFilesPanel } from './SharedCrewFilesPanel'
 import { sharedCrewFileClient } from './sharedCrewFiles'
 import { useProjectProduct } from './projectProduct'
@@ -259,6 +260,7 @@ function WorkBrowserPanel({ tabId, projectId, workspacePath }: { tabId: string; 
 
 export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath, projectId, projectTitle, projectDescription, projectIdentity, projectTemplates, onInstallTemplate, tabId, view, enabledPanels, projectLLMConfig, selectedSecrets, selectedGlobalSecrets, workflowContextPaths, onViewChange, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedServersChange, onSelectedSkillsChange, onSelectedSecretsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest, shared, showShell = false }: { showShell?: boolean; workspacePath: string; projectId: string; projectTitle: string; projectDescription: string; projectIdentity?: ProductIdentity; projectTemplates: Array<{ id: string; version: number }>; onInstallTemplate: (id: CrewTemplateId) => Promise<void>; tabId: string; view: WorkWorkspaceView; enabledPanels?: Set<string>; projectLLMConfig?: PresetLLMConfig; selectedSecrets: string[]; selectedGlobalSecrets: string[]; workflowContextPaths: string[]; onViewChange: (view: WorkWorkspaceView) => void; onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>; nativeAgentTools?: boolean; onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>; onSelectedServersChange: (servers: string[]) => Promise<unknown>; onSelectedSkillsChange: (skills: string[]) => Promise<unknown>; onSelectedSecretsChange: (secrets: string[]) => Promise<unknown>; onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>; onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>; onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>; onDeleteRequest: () => void; shared?: { ownerId: string; ownerUsername?: string } }) {
   const readOnly = Boolean(shared)
+  const canEditConnections = useAuthStore(state => !shared && (state.user?.can_edit ?? !state.isMultiUserMode))
   const product = useProjectProduct()
   const noun = product.noun
   const ask = useCallback((message: string) => product.profileId === 'code'
@@ -399,6 +401,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           }) }}
         />}
         {view === 'mcp' && <WorkIntegrationsPanel
+          canEdit={canEditConnections}
           key={workspacePath}
           selectedSecrets={selectedSecrets}
           selectedGlobalSecrets={selectedGlobalSecrets}
@@ -428,7 +431,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           {view === 'dashboard' && <ReportView
             workspacePath={workspacePath}
             dashboardConversation
-            emptyDescription={readOnly ? 'A dashboard will appear here when the owner shares one.' : 'Live data, forms, agent actions and visual stories. Describe what your team needs in chat.'}
+            emptyDescription={readOnly ? "Use this project’s dashboard to explore its purpose, published functions and results." : 'Live data, forms, agent actions and visual stories. Describe what your team needs in chat.'}
             emptyAction={!readOnly && <DashboardCreateDraftButton target={product.profileId === 'code' ? { tabId } : { profileId: product.profileId, conversationKey: projectId }} />}
             sendChatMessage={sendDashboardMessage}
             headerAction={<AskAIButton

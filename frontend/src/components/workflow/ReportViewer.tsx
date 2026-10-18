@@ -285,7 +285,7 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
       <div className="relative flex h-full w-full flex-col overflow-hidden bg-background text-foreground">
         {!hideToolbar && <div className="absolute right-3 top-3 z-20 flex gap-1">
           {guideAsk ? null : headerAction}
-          {!loading && !error && (report?.html || defaultRelayDashboard) && <ShareDashboardButton workspacePath={workspacePath} />}
+          {!loading && !error && <ShareDashboardButton workspacePath={workspacePath} />}
           <WorkspacePanelGuideButton topic="Dashboard" ask={guideAsk} />
           <button type="button" onClick={refresh} aria-label="Refresh dashboard" title="Refresh dashboard" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background/95 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground">
             <RefreshCw className="h-3.5 w-3.5" />
@@ -300,9 +300,9 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
           <div className={`${shellClass} ${!loading && !error && !report && !defaultRelayDashboard ? 'flex flex-1 items-center justify-center' : ''}`}>
             {loading && !report && <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading dashboard…</div>}
             {error && <div className="m-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">Failed to load report: {error}</div>}
-            {!loading && !error && !report && defaultRelayDashboard && <Suspense fallback={<p className="p-6 text-sm text-muted-foreground">Opening Flow dashboard…</p>}><DefaultRelayDashboard workspacePath={workspacePath} refreshToken={refreshNonce} renderEmptyState={canCreate => <DashboardEmptyState description={emptyDescription} action={canCreate ? emptyAction : undefined} />} /></Suspense>}
+            {!loading && !error && !report && defaultRelayDashboard && <Suspense fallback={<p className="p-6 text-sm text-muted-foreground">Opening Flow dashboard…</p>}><DefaultRelayDashboard workspacePath={workspacePath} refreshToken={refreshNonce} renderEmptyState={canCreate => <DashboardEmptyState description={emptyDescription} action={canCreate ? emptyAction : undefined} onRefresh={refresh} />} /></Suspense>}
             {!loading && !error && !report && !defaultRelayDashboard && (
-              <DashboardEmptyState description={emptyDescription} action={emptyAction} />
+              <DashboardEmptyState description={emptyDescription} action={emptyAction} onRefresh={refresh} />
             )}
             {!loading && report && !report.html && <div className="m-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">Could not read {report.label}.</div>}
             {report?.html && (report.questions

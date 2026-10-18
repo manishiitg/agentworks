@@ -21,9 +21,9 @@ export function UseSharePanel({ workspacePath, slack, whatsapp, onChannel, onDas
   return <div className="space-y-5" aria-label="Use and share this project">
     <section className="rounded-xl border border-border p-4">
       <div className="flex items-center gap-2"><Users aria-hidden="true" className="h-4 w-4 text-muted-foreground" /><h3 className="text-sm font-semibold">People &amp; access</h3></div>
-      <p className="mt-2 text-xs leading-5 text-muted-foreground">Share the dashboard, let teammates use the agent and its published functions, and give them read access to project files and results.</p>
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">Share the dashboard and let teammates use the agent and its published functions. They can see its files and results.</p>
       <p className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground"><Eye aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />Sharing keeps the existing project permissions. Secret values stay private.</p>
-      <div className="mt-3"><ShareDashboardButton key={workspacePath} workspacePath={workspacePath} inline label="Manage people & access" /></div>
+      <div className="mt-3"><ShareDashboardButton key={workspacePath} workspacePath={workspacePath} inline label="Share" /></div>
       {onAccess && <button type="button" onClick={onAccess} className="mt-3 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">Project roles &amp; permissions</button>}
     </section>
     <section aria-label="Where people can use this project" className="space-y-1">

@@ -4,12 +4,13 @@ import { DashboardStarterPreview } from './DashboardStarterPreview'
 import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 import { useChatStore } from '../../stores/useChatStore'
 
-export function DashboardEmptyState({ description = 'Live data, forms, agent actions and visual stories. Describe what your team needs in chat.', action }: { description?: string; action?: ReactNode }) {
+export function DashboardEmptyState({ description = 'Live data, forms, agent actions and visual stories. Describe what your team needs in chat.', action, onRefresh }: { description?: string; action?: ReactNode; onRefresh?: () => void }) {
   return <div className="mx-auto w-full max-w-lg px-6 py-12 text-center">
     <DashboardStarterPreview />
     <h2 className="text-xl font-semibold tracking-tight">Build your own interactive workspace</h2>
     <p className="mt-3 text-sm leading-6 text-muted-foreground">{description}</p>
     {action && <div className="mt-6 flex justify-center">{action}</div>}
+    {onRefresh && <button type="button" onClick={onRefresh} className="mt-4 rounded px-2 py-1 text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground">Check again</button>}
   </div>
 }
 

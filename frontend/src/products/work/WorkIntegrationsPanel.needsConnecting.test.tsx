@@ -13,7 +13,7 @@ import { useChatStore } from '../../stores/useChatStore'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanups: Array<() => void> = []
 afterEach(() => { cleanups.splice(0).forEach(fn => fn()); vi.clearAllMocks() })
-async function mount(path: string, save = vi.fn(async () => undefined)) {
+async function mount(path: string, save = vi.fn(async () => undefined), canEdit = true) {
   const host = document.createElement('div'); document.body.appendChild(host); const root = createRoot(host)
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
   useChatStore.setState({ chatTabs: {
@@ -21,7 +21,7 @@ async function mount(path: string, save = vi.fn(async () => undefined)) {
     t2: { tabId: 't2', config: { selectedServers: ['private_linear'] }, metadata: { agentProfileId: 'work', agentProfileProjectId: 'p1' } },
     other: { tabId: 'other', config: { selectedServers: [] }, metadata: { agentProfileId: 'work', agentProfileProjectId: 'p2' } },
   } } as never)
-  await act(async () => root.render(<WorkMCPTabBody tabId="t1" projectId="p1" workspacePath={path} onAsk={vi.fn()} onSelectedServersChange={save} />))
+  await act(async () => root.render(<WorkMCPTabBody canEdit={canEdit} tabId="t1" projectId="p1" workspacePath={path} onAsk={vi.fn()} onSelectedServersChange={save} />))
   return { host, save, store: useChatStore.getState() }
 }
 it('persists Vault selection and refreshes only chats for the same project', async () => {
@@ -42,7 +42,14 @@ it('does not change chat scope when saving project selection fails', async () =>
   expect(store.addToast).toHaveBeenCalledWith('permission denied', 'error')
 })
 it('shows both sections read-only when viewing another owner\'s Crew', async () => {
-  const { host } = await mount('_users/owner/Chats/Work/projects/p1')
+  const { host } = await mount('_users/owner/Chats/Work/projects/p1', undefined, false)
   expect(host.querySelector('[aria-label="MCP browser"]')?.getAttribute('data-editable')).toBe('false')
   expect(host.querySelector('button')!.disabled).toBe(true)
+})
+
+it('uses explicit server permission, not an owned physical path prefix', async () => {
+  const { host, save } = await mount('_users/owner/Chats/Code/projects/p1', undefined, true)
+  expect(host.querySelector('[aria-label="MCP browser"]')?.getAttribute('data-editable')).toBe('true')
+  await act(async () => host.querySelector('button')!.click())
+  expect(save).toHaveBeenCalledOnce()
 })

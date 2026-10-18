@@ -210,7 +210,7 @@ export default function WorkflowFolderAccessView({ workspacePath, headerAction, 
               <div className="min-w-0 flex-1 basis-48">
                 <p className="text-sm font-semibold text-foreground">Need to attach something?</p>
                 <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-                  Ask the builder to attach folders or other workflows — no manual setup needed. Choose Brain from More in MCPs &amp; secrets for shared knowledge.
+                  Ask the builder to attach folders or other workflows — no manual setup needed. For shared knowledge, open Connections → Add connection → Brain.
                 </p>
               </div>
               <AskAIButton

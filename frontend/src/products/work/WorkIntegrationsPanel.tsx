@@ -32,7 +32,7 @@ function integrationTabAskAIMessage(noun: string, incomingGmail: boolean): Recor
   return {
     apps: `Help me with this ${noun} project's connected apps. Explain what's connected and ask what I want to add or change.`,
     brain: `Explain how Brain stores shared knowledge for this ${noun} project and how its agents can use notes, reference files and reusable skills. Check the current project access: can open and edit (the default, within existing folder permissions), can open only, or off. Explain team sharing through Brain folder roles. Ask what I want before changing settings or permissions.`,
-    folders: `Help me attach things to this ${noun} project: folders or workflows and Crews as read-only context. Ask what is needed and why, then set it up; folder access should be read-only unless writing is truly needed. For shared knowledge, open Connections, then choose Brain from Add connection.`,
+    folders: `Help me attach things to this ${noun} project: folders or workflows and Crews as reference material. Ask what is needed and why, then set it up; folders should allow viewing only unless saving changes is needed. For shared knowledge, open Connections, then choose Brain from Add connection.`,
     secrets: `Help me select project or permitted Vault secrets for this ${noun} project. Never ask for secret values in chat.`,
     skills: `Help me with this ${noun} project's skills. Explain what's available and ask what I want to add or change.`,
     slack: `Help me choose the Slack account this ${noun} uses to read or send messages. Explain current account permissions before changing the selection. Incoming Slack app conversations are configured in Use & share. Never request tokens in chat.`,
@@ -45,8 +45,9 @@ function integrationTabAskAIMessage(noun: string, incomingGmail: boolean): Recor
 // Both Crew origins retain their own account, bot and feature restrictions.
 // MCP client setup is an existing installation-wide path in Use & share.
 
-export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange, vault = false, selectedSecrets = [], onSelectedSecretsChange = () => {}, view }: {
+export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelectedServersChange, canEdit = false, vault = false, selectedSecrets = [], onSelectedSecretsChange = () => {}, view }: {
   view?: 'connected' | 'available'
+  canEdit?: boolean
   vault?: boolean
   selectedSecrets?: string[]
   onSelectedSecretsChange?: (names: string[]) => Promise<unknown> | void
@@ -76,13 +77,14 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
 
   return (
     <div className="flex flex-col gap-3">
-      {vault ? <ProjectVaultPanel selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} disabled={workspacePath.startsWith('_users/')} /> : <ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun="Crew" canEdit={!workspacePath.startsWith('_users/')} onAsk={onAsk}
+      {vault ? <ProjectVaultPanel selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} disabled={!canEdit} /> : <ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun="Crew" canEdit={canEdit} onAsk={onAsk}
         selectedServers={selectedServers} onSelectedServersChange={setSelected} />}
     </div>
   )
 }
 
-export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, onSelectedServersChange, onSelectedSkillsChange, workflowContextPaths, onWorkflowContextPathsChange, selectedSecrets = [], selectedGlobalSecrets = [], onSelectedSecretsChange, onSelectedGlobalSecretsChange, onOpenDashboard }: {
+export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, onSelectedServersChange, onSelectedSkillsChange, workflowContextPaths, onWorkflowContextPathsChange, selectedSecrets = [], selectedGlobalSecrets = [], onSelectedSecretsChange, onSelectedGlobalSecretsChange, onOpenDashboard }: {
+  canEdit?: boolean
   workspacePath: string
   projectId: string
   projectTitle: string
@@ -180,7 +182,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
             refreshLabel={sharing ? 'Refresh sharing and channels' : overview ? 'Refresh connections' : `Refresh ${connectionLabel}`}
           />
         )}
-        below={sharing ? shareChannel !== 'overview' && <UseShareBack label={shareChannel === 'cli' ? 'MCP access' : shareChannel === 'slack-app' ? 'Slack app' : 'WhatsApp'} onBack={() => selectConnection('use-share')} /> : <IntegrationNavigation options={navigationOptions} value={activeConnection} onChange={selectConnection} overview={overview} onOverview={() => selectConnection('overview')} canEdit={!workspacePath.startsWith('_users/')} />}
+        below={sharing ? shareChannel !== 'overview' && <UseShareBack label={shareChannel === 'cli' ? 'MCP access' : shareChannel === 'slack-app' ? 'Slack app' : 'WhatsApp'} onBack={() => selectConnection('use-share')} /> : <IntegrationNavigation options={navigationOptions} value={activeConnection} onChange={selectConnection} overview={overview} onOverview={() => selectConnection('overview')} canEdit={canEdit} />}
         tabs={!sharing && !overview && activeTab === 'apps' && (activePluginTab === 'connected' || activePluginTab === 'available') ? { value: activePluginTab, onChange: selectConnection, options: mcpTabs, ariaLabel: 'MCP servers' } : undefined}
       />
       <div key={`${sharing ? shareChannel : activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -189,7 +191,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
         </> : <>
         {overview && <ConnectedProjectAccounts workspacePath={workspacePath} options={navigationOptions} onOpen={selectConnection} />}
         {activeTab === 'apps' && <ProjectPluginsPanel tab={activePluginTab}
-          connections={(!enabledPanels || enabledPanels.has('mcp')) ? (view => product.profileId === 'code' ? (<ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun={product.noun} canEdit={!workspacePath.startsWith('_users/')} onAsk={onAsk} selectedServers={selectedServers} onSelectedServersChange={async servers => {
+          connections={(!enabledPanels || enabledPanels.has('mcp')) ? (view => product.profileId === 'code' ? (<ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun={product.noun} canEdit={canEdit} onAsk={onAsk} selectedServers={selectedServers} onSelectedServersChange={async servers => {
               await onSelectedServersChange(servers)
               const store = useChatStore.getState()
               for (const chat of Object.values(store.chatTabs)) {
@@ -198,7 +200,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
                   store.setTabMetadata(chat.tabId, { agentProfileRuntimeDirty: true, agentProfileMCPSelectionInitialized: true })
                 }
               }
-            }} />) : (<WorkMCPTabBody view={view}
+            }} />) : (<WorkMCPTabBody canEdit={canEdit} view={view}
           tabId={tabId}
           projectId={projectId}
           workspacePath={workspacePath}
@@ -228,7 +230,7 @@ export function WorkIntegrationsPanel({ workspacePath, projectId, projectTitle, 
           selectionScopeLabel="main chat"
           emptySelectionText={`No skills are installed in this ${product.noun} yet. Ask the agent to add or create one.`}
         />) : undefined}
-          vault={<WorkMCPTabBody vault tabId={tabId} projectId={projectId} workspacePath={workspacePath} onAsk={onAsk} onSelectedServersChange={onSelectedServersChange} selectedSecrets={selectedGlobalSecrets} onSelectedSecretsChange={names => onSelectedGlobalSecretsChange?.(names)} />}
+          vault={<WorkMCPTabBody canEdit={canEdit} vault tabId={tabId} projectId={projectId} workspacePath={workspacePath} onAsk={onAsk} onSelectedServersChange={onSelectedServersChange} selectedSecrets={selectedGlobalSecrets} onSelectedSecretsChange={names => onSelectedGlobalSecretsChange?.(names)} />}
         />}
         {activeTab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} onAsk={onAsk} />}
         {activeTab === 'folders' && <WorkFoldersSection
