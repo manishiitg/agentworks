@@ -1,0 +1,29 @@
+name: Local preview gateway artifact
+on:
+  push:
+    branches: ['preview/navigation-gateway-20261018']
+permissions:
+  contents: read
+jobs:
+  gateway:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOWORK: 'off'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        with:
+          go-version-file: mcp-gateway/go.mod
+          cache-dependency-path: mcp-gateway/go.sum
+      - name: Build macOS gateway
+        working-directory: mcp-gateway
+        run: |
+          mkdir -p ../preview-gateway
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o ../preview-gateway/mcp-gateway ./cmd/server
+          printf '%s\n' "$GITHUB_SHA" > ../preview-gateway/revision.txt
+      - uses: actions/upload-artifact@v6
+        with:
+          name: preview-gateway-darwin
+          path: preview-gateway
+          retention-days: 3
