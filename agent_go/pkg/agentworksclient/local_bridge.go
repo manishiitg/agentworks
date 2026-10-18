@@ -2271,7 +2271,13 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 			var err error
 			known, att := s.client, s.Attachment
 			b.unlocked(func() {
-				_, err = known.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": att.AgentName, "attachment_id": att.ID, "message_ids": []string{}}, true)
+				// One retry, so a network blip is not mistaken for a revoked connection.
+				for try := 0; try < 2; try++ {
+					_, err = known.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": att.AgentName, "attachment_id": att.ID, "message_ids": []string{}}, true)
+					if err == nil {
+						break
+					}
+				}
 			})
 			if err != nil {
 				return nil, 0, nil, errors.New("attachment or messages no longer authorized")

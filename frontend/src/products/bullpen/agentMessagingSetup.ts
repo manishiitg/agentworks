@@ -126,7 +126,7 @@ export const messagingGuides: MessagingGuide[] = [
     menus: [
       { entry: '/agentworks attach, detach, agents, share, unshare, help', who: 'You', description: 'Literal interactive input handled by the extension. These deliberately have no registered autocomplete/slash-menu entry.' },
       { entry: '/reload', who: 'You', description: 'Pi’s built-in command reloads extensions.' },
-      { entry: 'Six agent_message_* tools', who: 'The agent', description: 'Peers, send, read, reply, ack and purpose. There is no attach/detach model tool.' },
+      { entry: 'One agentworks tool', who: 'The agent', description: 'Pick an action: peers, send, read, reply, ack, purpose, attach, detach, share or unshare. The agent attaches, detaches or shares only when you ask in plain words.' },
     ],
     troubleshooting: [
       { title: 'No AgentWorks slash-menu item', text: 'This is expected: type the literal /agentworks attach NAME in the interactive TUI. Do not use RPC, print or extension-generated input as person approval.' },

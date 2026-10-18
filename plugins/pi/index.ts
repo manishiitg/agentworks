@@ -104,7 +104,7 @@ export default function (pi: ExtensionAPI) {
       after: Type.Optional(Type.Integer({ minimum: 0 })),
     }),
     async args => {
-      const entry = actions[args?.action];
+      const entry = Object.hasOwn(actions, args?.action) ? actions[args.action] : undefined;
       if (!entry) throw new Error(`action must be one of: ${Object.keys(actions).join(', ')}`);
       const missing = entry.needs.filter(name => args[name] === undefined || args[name] === '');
       if (missing.length) throw new Error(`action=${args.action} needs: ${missing.join(', ')}`);

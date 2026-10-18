@@ -11,7 +11,7 @@ shared CLI verifies kernel process identity, native UUID and hook observation
 for macOS/Linux CLI. Desktop messaging remains a separate unsupported stage;
 a shared app process or supplied UUID is not a per-call identity proof.
 
-Use the registered agent_message_* tools when available. CLI script helpers
+Use the registered agentworks tool (pick an action) when available. CLI script helpers
 still require the original attachment ID. A --session argument only pins the
 native session; it cannot select another conversation. Report identity or lease
 refusal, and never substitute a new lease for an old offer.
