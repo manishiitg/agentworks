@@ -185,6 +185,16 @@ func TestMCPOAuthAuthorizationRefreshAndRevocation(t *testing.T) {
 	if pair2.Access == pair.Access || pair2.Access == "" || pair2.Scope != "workflows:read files:read dashboards:read" {
 		t.Fatal("refresh did not rotate")
 	}
+	// A replay sent for the wrong client or resource must not revoke the
+	// connection that actually owns the token. A matching replay still does.
+	for _, mismatch := range [][2]string{{"other-client", resource}, {client.ID, "https://other.example.com/mcp"}} {
+		if _, _, _, err := store.Refresh(t.Context(), pair.Refresh, mismatch[0], mismatch[1]); err == nil {
+			t.Fatal("mismatched refresh accepted")
+		}
+		if _, err := store.Authenticate(t.Context(), pair2.Access); err != nil {
+			t.Fatal("mismatched replay revoked the real connection", err)
+		}
+	}
 	if w := request("POST", mcpOAuthTokenPath, refreshForm.Encode(), "", "application/x-www-form-urlencoded"); w.Code != 400 {
 		t.Fatal("refresh replay accepted", w.Code)
 	}

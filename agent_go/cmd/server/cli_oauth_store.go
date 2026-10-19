@@ -141,6 +141,10 @@ func (s *mcpOAuthStore) RevokeByRefresh(ctx context.Context, raw string) error {
 	if !strings.HasPrefix(raw, cliOAuthRefreshPrefix) {
 		return sql.ErrNoRows
 	}
+	grant := mcpOAuthGrant{ClientID: cliOAuthClientID}
+	if err := s.db.QueryRowContext(ctx, `SELECT family_id FROM tokens WHERE hash=? AND kind='refresh' AND client_id=?`, mcpOAuthHash(raw), cliOAuthClientID).Scan(&grant.FamilyID); err != nil {
+		return err
+	}
 	result, err := s.db.ExecContext(ctx, `UPDATE tokens SET revoked_at=COALESCE(revoked_at,?) WHERE family_id=(SELECT family_id FROM tokens WHERE hash=? AND kind='refresh' AND client_id=?) AND revoked_at IS NULL`, time.Now().Unix(), mcpOAuthHash(raw), cliOAuthClientID)
 	if err != nil {
 		return err
@@ -152,5 +156,6 @@ func (s *mcpOAuthStore) RevokeByRefresh(ctx context.Context, raw string) error {
 	if n == 0 {
 		return sql.ErrNoRows
 	}
+	mcpOAuthAudit(grant, "family_revoked", "cli_sign_out")
 	return nil
 }

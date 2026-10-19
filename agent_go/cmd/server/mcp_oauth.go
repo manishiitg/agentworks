@@ -460,7 +460,7 @@ func (api *StreamingAPI) handleMCPOAuthToken(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if err := api.checkProjectMCPGrant(r.Context(), grant); err != nil {
-		_ = store.RevokeFamily(r.Context(), grant.FamilyID, grant.UserID)
+		_ = store.revokeFamily(r.Context(), grant.FamilyID, grant.UserID, "project_access_changed")
 		mcpOAuthError(w, http.StatusBadRequest, "invalid_grant")
 		return
 	}

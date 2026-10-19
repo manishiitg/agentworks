@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"slices"
@@ -434,16 +435,32 @@ func (s *mcpOAuthStore) Refresh(ctx context.Context, raw, clientID, resource str
 	if err != nil {
 		return grant, "", "", err
 	}
+	// Check the token's audience before allowing a replay to revoke its family.
+	// A different registered client or resource has no authority over this grant.
+	if grant.ClientID != clientID || grant.Resource != resource || (grant.ClientID == cliOAuthClientID) != strings.HasPrefix(raw, cliOAuthRefreshPrefix) {
+		mcpOAuthAudit(grant, "refresh_refused", "client_or_resource_mismatch")
+		return grant, "", "", errors.New("invalid refresh token")
+	}
 	if used.Valid {
-		if _, err := tx.ExecContext(ctx, `UPDATE tokens SET revoked_at=COALESCE(revoked_at,?) WHERE family_id=?`, time.Now().Unix(), grant.FamilyID); err != nil {
+		now := time.Now().Unix()
+		result, err := tx.ExecContext(ctx, `UPDATE tokens SET revoked_at=? WHERE family_id=? AND revoked_at IS NULL`, now, grant.FamilyID)
+		if err != nil {
+			return grant, "", "", err
+		}
+		n, err := result.RowsAffected()
+		if err != nil {
 			return grant, "", "", err
 		}
 		if err := tx.Commit(); err != nil {
 			return grant, "", "", err
 		}
+		if n > 0 {
+			log.Printf("mcp_oauth event=%q family=%q client=%q reason=%q refresh_used_at=%d reuse_after_seconds=%d", "family_revoked", grant.FamilyID, grant.ClientID, "refresh_reuse", used.Int64, now-used.Int64)
+		}
 		return grant, "", "", errors.New("refresh token reuse detected")
 	}
-	if revoked.Valid || expiry <= time.Now().Unix() || grant.ClientID != clientID || grant.Resource != resource || (grant.ClientID == cliOAuthClientID) != strings.HasPrefix(raw, cliOAuthRefreshPrefix) {
+	if revoked.Valid || expiry <= time.Now().Unix() {
+		mcpOAuthAudit(grant, "refresh_refused", "revoked_or_expired")
 		return grant, "", "", errors.New("invalid refresh token")
 	}
 	if err = json.Unmarshal([]byte(scopes), &grant.Scopes); err != nil {
@@ -469,7 +486,17 @@ func (s *mcpOAuthStore) Refresh(ctx context.Context, raw, clientID, resource str
 	if err != nil {
 		return grant, "", "", err
 	}
-	return grant, access, refresh, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return grant, "", "", err
+	}
+	mcpOAuthAudit(grant, "refresh_rotated", "refresh_token")
+	return grant, access, refresh, nil
+}
+
+// Only server-owned connection identifiers and fixed reasons belong here.
+// Never log token values, token hashes, form bodies, or response payloads.
+func mcpOAuthAudit(grant mcpOAuthGrant, event, reason string) {
+	log.Printf("mcp_oauth event=%q family=%q client=%q reason=%q", event, grant.FamilyID, grant.ClientID, reason)
 }
 
 type mcpOAuthConnection struct {
@@ -512,6 +539,14 @@ func (s *mcpOAuthStore) Connections(ctx context.Context, userID string) ([]mcpOA
 }
 
 func (s *mcpOAuthStore) RevokeFamily(ctx context.Context, family, userID string) error {
+	return s.revokeFamily(ctx, family, userID, "explicit_disconnect")
+}
+
+func (s *mcpOAuthStore) revokeFamily(ctx context.Context, family, userID, reason string) error {
+	grant := mcpOAuthGrant{FamilyID: family}
+	if err := s.db.QueryRowContext(ctx, `SELECT client_id FROM tokens WHERE family_id=? AND user_id=? LIMIT 1`, family, userID).Scan(&grant.ClientID); err != nil {
+		return err
+	}
 	result, err := s.db.ExecContext(ctx, `UPDATE tokens SET revoked_at=COALESCE(revoked_at,?) WHERE family_id=? AND user_id=? AND revoked_at IS NULL`, time.Now().Unix(), family, userID)
 	if err != nil {
 		return err
@@ -523,6 +558,7 @@ func (s *mcpOAuthStore) RevokeFamily(ctx context.Context, family, userID string)
 	if n == 0 {
 		return sql.ErrNoRows
 	}
+	mcpOAuthAudit(grant, "family_revoked", reason)
 	return nil
 }
 
