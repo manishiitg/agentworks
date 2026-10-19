@@ -72,8 +72,9 @@ func TestRetainedCanonicalRunFourLaterSteersPersistOwnReplies(t *testing.T) {
 	t.Cleanup(func() { api.releaseStoppedSessionTurnMarkers(sessionID) })
 	api.activeSessions[sessionID].UserID = "alice"
 	api.sessionWorkspaceFolders = map[string]string{sessionID: workspacePath}
-	// RTS: the normal Run already ended, but later delivery acknowledgments
-	// still identify it. Every later input must ignore previous follow-up replies.
+	// Defensive replay case derived from RTS's stale expected Run ID. Its logs
+	// do not include SDK delivery.TurnIDs, so stale acknowledgments are synthetic.
+	// Every later input must ignore previous follow-up replies.
 	api.eventStore.AddEvent(sessionID, canonicalRunHandoff(sessionID, "finished-run"))
 	for i := 1; i <= 4; i++ {
 		input, nativeID := fmt.Sprintf("input-%d", i), fmt.Sprintf("reply-%d", i)
@@ -107,7 +108,7 @@ func TestRetainedCanonicalRunFourLaterSteersPersistOwnReplies(t *testing.T) {
 	}
 }
 
-func TestRetainedCanonicalRunHandoffCannotClaimKnownPendingTurn(t *testing.T) {
+func TestRetainedCanonicalRunFollowupCompletionCoversLaterAcceptedInput(t *testing.T) {
 	const sessionID = "run-handoff-known-pending"
 	api, _, _ := newPlat178API(t, sessionID, "mlp-muse-known-pending")
 	t.Cleanup(func() { api.releaseStoppedSessionTurnMarkers(sessionID) })
@@ -115,14 +116,15 @@ func TestRetainedCanonicalRunHandoffCannotClaimKnownPendingTurn(t *testing.T) {
 	api.eventStore.AddEvent(sessionID, canonicalRunHandoff(sessionID, "run-one"))
 	acceptNativeTurn(api, sessionID, "newer", "known-two")
 	api.eventStore.AddEvent(sessionID, nativeCompletion(sessionID, "newer-reply", "known-two"))
-	if trackedStatus(api, "steer") != trackedExecutionStatusRunning || trackedStatus(api, "newer") != trackedExecutionStatusRunning {
-		t.Fatal("unresolved handoff stole a pending input's known completion")
-	}
-	api.eventStore.AddEvent(sessionID, nativeCompletion(sessionID, "steer-reply", "followup-one"))
+	// The later Send adopts the active follow-up lifecycle. There is no second
+	// followup-one completion: this single reply must settle both inputs.
 	for _, id := range []string{"steer", "newer"} {
 		if trackedStatus(api, id) != trackedExecutionStatusCompleted {
 			t.Fatalf("lost %s completion during promotion", id)
 		}
+	}
+	if api.isSessionBusy(sessionID) || api.retainedMainTurnTracked(sessionID) {
+		t.Fatal("coalesced SDK follow-up left the chat Working")
 	}
 }
 
@@ -142,5 +144,30 @@ func TestRetainedCanonicalRunRequiresExactAcceptedHandoff(t *testing.T) {
 	api.observeRetainedMainTurnEvent(sessionID, nativeCompletion(sessionID, "unknown", "unrelated"))
 	if !api.isSessionBusy(sessionID) || trackedStatus(api, "input") != trackedExecutionStatusRunning {
 		t.Fatal("unknown completion settled an exact accepted ID")
+	}
+}
+
+func TestRetainedNativeCompletionWithoutTimestampStillMatchesExactOwner(t *testing.T) {
+	const sessionID = "native-unknown-timestamp"
+	api, _, _ := newPlat178API(t, sessionID, "mlp-muse-unknown-timestamp")
+	t.Cleanup(func() { api.releaseStoppedSessionTurnMarkers(sessionID) })
+	acceptNativeTurn(api, sessionID, "input", "native-one")
+	event := nativeCompletion(sessionID, "reply", "native-one")
+	event.Timestamp = time.Time{}
+	api.observeRetainedMainTurnEvent(sessionID, event)
+	if api.isSessionBusy(sessionID) || trackedStatus(api, "input") != trackedExecutionStatusCompleted {
+		t.Fatal("unknown event timestamp was treated as evidence the completion is stale")
+	}
+}
+
+func TestRetainedNativeOldExactCompletionCannotAnswerFreshInput(t *testing.T) {
+	const sessionID = "native-old-exact-replay"
+	api, _, _ := newPlat178API(t, sessionID, "mlp-muse-old-exact-replay")
+	t.Cleanup(func() { api.releaseStoppedSessionTurnMarkers(sessionID) })
+	old := nativeCompletion(sessionID, "old-reply", "native-one")
+	api.eventStore.AddEvent(sessionID, old)
+	acceptNativeTurn(api, sessionID, "fresh", "native-one")
+	if !api.isSessionBusy(sessionID) || trackedStatus(api, "fresh") != trackedExecutionStatusRunning {
+		t.Fatal("old exact-ID replay consumed a fresh accepted input")
 	}
 }

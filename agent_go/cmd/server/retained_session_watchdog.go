@@ -23,7 +23,7 @@ type retainedTurnIdentity struct {
 
 func (identity retainedTurnIdentity) matchesCompletion(event events.Event) bool {
 	return identity.matches(retainedCompletionTurnID(event)) &&
-		(identity.AcceptedAt.IsZero() || (!event.Timestamp.IsZero() && !event.Timestamp.Before(identity.AcceptedAt)))
+		(identity.AcceptedAt.IsZero() || event.Timestamp.IsZero() || !event.Timestamp.Before(identity.AcceptedAt))
 }
 
 // A normal Session.Run completion has the canonical lifecycle marker but no

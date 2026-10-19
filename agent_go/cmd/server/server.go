@@ -10192,16 +10192,8 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 					api.retainedMainTurnsMu.Unlock()
 					return
 				}
-				// An unresolved Run follow-up cannot steal a completion explicitly
-				// owned by a newer accepted input. Reconcile it on promotion instead.
-				if expected := api.retainedMainTurnCanonicalIDs[executionID]; expected.ID == "" && expected.FollowupFrom != "" {
-					for _, id := range pending {
-						if api.retainedMainTurnCanonicalIDs[id].ID == nativeID {
-							api.retainedMainTurnsMu.Unlock()
-							return
-						}
-					}
-				}
+				// Send during the SDK's follow-up adopts that lifecycle. Its one
+				// completion covers the waiting Run input and these exact-ID inputs.
 				remaining := make([]string, 0, len(pending))
 				for _, id := range pending {
 					if expected, known := api.retainedMainTurnCanonicalIDs[id]; known && expected.matchesCompletion(event) {
