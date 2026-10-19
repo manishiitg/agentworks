@@ -1345,8 +1345,8 @@ func TestHandleLiveInputMessageDeliversDirectlyToLiveMainTmuxWithoutAgent(t *tes
 		t.Fatal("child completion incorrectly settled the retained main-agent turn")
 	}
 
-	// The main terminal's structured end event is the same boundary consumed by
-	// the Formatted view. It settles the logical turn but retains the live tmux.
+	// A main transport boundary also leaves the logical turn open. Only the
+	// canonical final reply can settle it (PR293); the live tmux stays available.
 	store.AddEvent(sessionID, internalevents.Event{
 		Type:          "streaming_end",
 		Timestamp:     time.Now(),
@@ -1360,6 +1360,16 @@ func TestHandleLiveInputMessageDeliversDirectlyToLiveMainTmuxWithoutAgent(t *tes
 				"execution_kind": "main_agent", "scope": "main_agent",
 			}}},
 		},
+	})
+	if !api.isSessionBusy(sessionID) {
+		t.Fatal("main transport end incorrectly settled the retained turn")
+	}
+	completion := pkgevents.NewUnifiedCompletionEvent("coding_agent", "retained", "", "done", "completed", time.Second, 1)
+	completion.Metadata["source"] = "retained_main_turn_stream"
+	store.AddEvent(sessionID, internalevents.Event{
+		Type: "unified_completion", Timestamp: time.Now(), SessionID: sessionID,
+		ExecutionID: "main:" + sessionID, ExecutionKind: "main_agent", TerminalID: terminalID,
+		Data: &pkgevents.AgentEvent{Type: pkgevents.EventTypeUnifiedCompletion, Data: completion},
 	})
 	if api.isSessionBusy(sessionID) {
 		t.Fatal("structured main-agent completion did not clear retained-turn busy state")
