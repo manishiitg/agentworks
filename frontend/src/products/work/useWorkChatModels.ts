@@ -11,17 +11,17 @@ export const CHAT_MODELS_CHANGED = 'agentworks:chat-models-changed'
 export const CHAT_MODELS_REFRESH = 'agentworks:chat-models-refresh'
 
 // Server registry, not local storage, owns each person's per-chat choice.
-export function applyWorkChatModels(profileId: string, projectId: string, models: AgentProfileChatModel[], fallback?: WorkLLMSelection) {
+export function applyWorkChatModels(profileId: string, projectId: string, models: AgentProfileChatModel[], fallback?: WorkLLMSelection & { engine?: string }) {
   const store = useChatStore.getState()
   for (const tab of Object.values(store.chatTabs)) {
     const key = tab.metadata?.agentProfileConversationKey
     if (!belongsToWorkProject(tab, projectId) || tab.metadata?.agentProfileId !== profileId || !key || key.startsWith(`${projectId}:chat:agent-`) || tab.metadata?.isViewOnly) continue
     const own = models.find(model => model.conversation_key === key)
     if (!own && !fallback) continue
-    const engine = own?.engine || fallback!.provider
+    const engine = own?.engine || fallback!.engine || fallback!.provider
     const modelId = own?.model_id || (own ? '' : fallback!.modelId)
     const effort = own?.reasoning_effort || (own ? undefined : fallback?.reasoningEffort)
-    const connection = !own || own.engine === fallback?.provider ? fallback?.connectionId : undefined
+    const connection = !own || own.engine === (fallback?.engine || fallback?.provider) ? fallback?.connectionId : undefined
     const changed = tab.metadata?.agentProfileEngine !== engine || tab.metadata?.agentProfileModelID !== modelId || tab.metadata?.agentProfileReasoningEffort !== effort || tab.metadata?.agentProfileConnectionID !== connection
     if (!changed && tab.metadata?.agentProfileChatModelOverride === Boolean(own)) continue
     store.setTabMetadata(tab.tabId, {
@@ -39,7 +39,7 @@ export function useWorkChatModels(profileId: string, projectId: string | undefin
     if (!projectId || !canonicalTabId) return
     let sequence = 0
     let cancelled = false
-    let fallback = workLLMSelectionFromConfig(config) ?? undefined
+    let fallback: (WorkLLMSelection & { engine?: string }) | undefined = workLLMSelectionFromConfig(config) ?? undefined
     const apply = (models: AgentProfileChatModel[]) => {
       if (!cancelled) applyWorkChatModels(profileId, projectId, models, fallback)
     }
@@ -48,10 +48,11 @@ export function useWorkChatModels(profileId: string, projectId: string | undefin
       void Promise.resolve().then(async () => {
         const [models, options] = await Promise.all([
           agentApi.listAgentProfileChatModels(profileId, projectId),
-          fallback ? Promise.resolve([]) : loadAgentProfileProviderOptions(profileId),
+          loadAgentProfileProviderOptions(profileId),
         ])
-        const option = options.find(item => item.default) || options[0]
-        if (!fallback && option) fallback = { provider: option.provider, modelId: option.model_id || '', reasoningEffort: typeof option.options?.reasoning_effort === 'string' ? option.options.reasoning_effort : undefined }
+        const option = options.find(item => item.provider === fallback?.provider) || options.find(item => item.default) || options[0]
+        if (fallback && option?.provider === fallback.provider) fallback = { ...fallback, engine: option.id }
+        if (!fallback && option) fallback = { engine: option.id, provider: option.provider, modelId: option.model_id || '', reasoningEffort: typeof option.options?.reasoning_effort === 'string' ? option.options.reasoning_effort : undefined }
         if (current === sequence) apply(models)
       }).catch(() => undefined) // Shared/read-only projects never gain an owner's registry access.
     }
