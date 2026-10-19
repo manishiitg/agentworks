@@ -859,9 +859,9 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
           onDragOver={event => overTab(event, targetKey)}
           onDrop={event => dropTab(event, targetKey)}
           onDragEnd={endDrag}
-          className={`flex items-center rounded border-l-2 ${dropKey === targetKey && draggingKey !== key ? 'border-primary bg-primary/10' : 'border-transparent'} ${draggingKey === key ? 'opacity-50' : ''}`}
+          className={`group/chat-tab relative flex items-center rounded border-l-2 ${dropKey === targetKey && draggingKey !== key ? 'border-primary bg-primary/10' : 'border-transparent'} ${draggingKey === key ? 'opacity-50' : ''}`}
           title={key ? 'Drag to reorder this chat' : undefined}
-        >{key && <GripVertical aria-hidden="true" className="h-3 w-3 shrink-0 cursor-grab text-muted-foreground/60" />}<AgentWorksChatTabItem
+        >{key && <GripVertical aria-hidden="true" className="absolute left-0 top-1/2 h-3 w-2 -translate-y-1/2 cursor-grab text-muted-foreground/60 opacity-0 group-hover/chat-tab:opacity-100 group-focus-within/chat-tab:opacity-100" />}<AgentWorksChatTabItem
         tab={tab}
         isActive={tab.tabId === activeTabId}
         canClose={tab.tabId !== canonicalTabId}

@@ -148,3 +148,50 @@ it.each(['agentworks', 'relays', 'work', 'code', 'mcp-gateway'] as ProductSurfac
     expect(host.textContent).not.toContain('Done')
   } finally { await act(async () => root.unmount()); host.remove() }
 })
+
+it.each([undefined, 'agentworks', 'relays', 'work', 'code', 'mcp-gateway'] as (ProductSurface | undefined)[])('reserves the same status space through blank, idle, running, waiting and completion for %s tabs', async surface => {
+  const { useChatStore } = await import('../../stores/useChatStore')
+  const original = useChatStore.getState()
+  const host = document.createElement('div'); document.body.append(host)
+  const root = createRoot(host)
+  const tab = { tabId: 'status-layout', name: 'Reports', sessionId: 'status-session' } as ChatTab
+  vi.useFakeTimers()
+  try {
+    useChatStore.setState({ chatTabs: {}, activeSessionsCache: [] })
+    const render = async (overrides: Partial<ChatTab> = {}, blank = false) => {
+      await act(async () => root.render(<AgentWorksChatTabItem tab={{ ...tab, ...overrides }} isActive={false} canClose={false} isBlank={blank} productSurface={surface} onTabClick={() => {}} onCloseTab={() => {}} />))
+      await act(async () => { vi.advanceTimersByTime(1200) })
+    }
+    await render({}, true)
+    const slot = host.querySelector('[data-chat-status-slot]')!
+    const slotClasses = slot.className
+    expect(slotClasses).toContain('w-3')
+    expect(slotClasses).toContain('shrink-0')
+    expect(slot.childElementCount).toBe(0)
+
+    const expectSlot = (label: string | null) => {
+      expect(host.querySelector('[data-chat-status-slot]')).toBe(slot)
+      expect(slot.className).toBe(slotClasses)
+      expect(slot.querySelector('[role="img"]')?.getAttribute('aria-label') ?? null).toBe(label)
+      expect(host.querySelector('[title="Reports"]')?.textContent).toBe('Reports')
+      expect(host.textContent).not.toContain('Done')
+    }
+    await render()
+    expectSlot(surface ? null : 'Ready')
+    await render({ isStreaming: true })
+    expectSlot('Working')
+    await act(async () => { useChatStore.setState({ activeSessionsCache: [{ session_id: tab.sessionId, needs_user_input: true }] as never }) })
+    await render()
+    expectSlot('Needs your input')
+    await act(async () => { useChatStore.setState({ activeSessionsCache: [] }) })
+    await render({ hasUnreadCompletion: true })
+    expectSlot('Completed — open to mark as seen')
+    await render()
+    expectSlot(surface ? null : 'Ready')
+  } finally {
+    await act(async () => root.unmount())
+    vi.useRealTimers()
+    host.remove()
+    useChatStore.setState(original, true)
+  }
+})
