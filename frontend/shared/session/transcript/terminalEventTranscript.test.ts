@@ -965,6 +965,36 @@ describe('tool grouping across repeated assistant updates', () => {
     }))
   }
 
+  it('groups calls across invisible server phase updates, including an update inside a tool pair', () => {
+    const events = Array.from({ length: 6 }, (_, index) => {
+      const [start, end] = call(`call-${index}`)
+      return [start, evt({
+        id: `phase-${index}`, session_id: 's1', type: 'turn_phase',
+        data: { data: { phase: 'running', text: 'Working', since: '2026-10-19T15:46:47Z' } } as never,
+      }), end]
+    }).flat()
+    const items = buildTranscriptItems(events)
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ kind: 'tools', toolCount: 6 })
+    if (items[0].kind === 'tools') {
+      expect(pairToolCalls(items[0].events)).toHaveLength(6)
+      expect(items[0].events.some(event => event.type === 'turn_phase')).toBe(false)
+    }
+  })
+
+  it('keeps answers, failures and user messages as boundaries beside hidden phases', () => {
+    const phase = evt({ id: 'phase', session_id: 's1', type: 'turn_phase' })
+    for (const boundary of [
+      evt({ id: 'answer', session_id: 's1', type: 'llm_generation_end', data: { data: { content: 'The report is ready.' } } as never }),
+      evt({ id: 'failure', session_id: 's1', type: 'conversation_error', data: { data: { error: 'Connection lost.' } } as never }),
+      evt({ id: 'user', session_id: 's1', type: 'user_message', data: { content: 'Try the other report.' } as never }),
+    ]) {
+      const items = buildTranscriptItems([...call('before'), phase, boundary, ...call('after')])
+      expect(items.map(item => item.kind)).toEqual(['tools', 'event', 'tools'])
+      expect(items[1]).toMatchObject({ event: { id: boundary.id } })
+    }
+  })
+
   it('groups six calls when identical replayed updates arrive between them', () => {
     const events = Array.from({ length: 6 }, (_, index) => [
       update(`update-${index}`, 'The download finished. The full run is still in progress.'),
