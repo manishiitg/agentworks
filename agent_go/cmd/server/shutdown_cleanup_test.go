@@ -270,6 +270,35 @@ func TestHandleStopSessionCancelsActiveWorkAndPreventsPaneReuse(t *testing.T) {
 	}
 }
 
+func TestHandleStopSessionPreservesFinishedResultsForPreservedConversation(t *testing.T) {
+	const sessionID = "preserved-results"
+	registry := NewBackgroundAgentRegistry()
+	finished := &BackgroundAgent{ID: "finished", SessionID: sessionID, Status: BGAgentCompleted, Result: "saved result"}
+	registry.Register(sessionID, finished)
+	api := &StreamingAPI{
+		activeSessions:     map[string]*ActiveSessionInfo{sessionID: {SessionID: sessionID, Status: "running"}},
+		stoppedSessions:    map[string]bool{},
+		bgAgentRegistry:    registry,
+		pendingCompletions: map[string][]string{sessionID: {finished.ID}},
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/session/stop?preserveConversation=true", nil)
+	request.Header.Set("X-Session-ID", sessionID)
+	response := httptest.NewRecorder()
+	api.handleStopSession(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("stop failed: %d %s", response.Code, response.Body.String())
+	}
+	if got := registry.Get(sessionID, finished.ID); got == nil || got.GetSnapshot().Result != "saved result" {
+		t.Fatal("preserved conversation lost the completed result payload")
+	}
+	if got := api.pendingCompletions[sessionID]; len(got) != 1 || got[0] != finished.ID {
+		t.Fatalf("preserved conversation lost its queued completion: %v", got)
+	}
+	if !api.autoNotificationSessionUnreachable(sessionID) {
+		t.Fatal("preserved conversation resumed automatic delivery before a new message")
+	}
+}
+
 func TestHandleStopSessionKeepsInteractiveConversationResumable(t *testing.T) {
 	const sessionID = "interactive-workflow-chat"
 	canceled := false
