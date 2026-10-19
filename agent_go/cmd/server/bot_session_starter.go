@@ -386,7 +386,7 @@ func (api *StreamingAPI) finalResponseForExecution(sessionID, executionID string
 		}
 		switch event.Type {
 		case "unified_completion":
-			if text := endEventText(event.Data.Data); text != "" {
+			if text := api.fullEndEventText(sessionID, event.Data.Data); text != "" {
 				return text
 			}
 		case "llm_generation_end":
@@ -394,11 +394,49 @@ func (api *StreamingAPI) finalResponseForExecution(sessionID, executionID string
 			// accepts several terminal types); the newest generation
 			// of a completed turn is its final assistant text.
 			if fallback == "" {
-				fallback = endEventText(event.Data.Data)
+				fallback = api.fullEndEventText(sessionID, event.Data.Data)
 			}
 		}
 	}
 	return fallback
+}
+
+// fullEndEventText is endEventText for an answer too large for the event
+// journal: the stored row keeps only its first 16 KB (truncated, artifact_id),
+// so read the whole event back from its chat artifact. A workflow Crew step
+// saves this answer as its output file, so a preview would be a corrupt file.
+func (api *StreamingAPI) fullEndEventText(sessionID string, data interface{}) string {
+	text := endEventText(data)
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return text
+	}
+	var summary struct {
+		Truncated  bool   `json:"truncated"`
+		ArtifactID string `json:"artifact_id"`
+	}
+	if json.Unmarshal(raw, &summary) != nil || !summary.Truncated || summary.ArtifactID == "" {
+		return text
+	}
+	full, err := api.eventStore.ReadDurableChatArtifact(sessionID, summary.ArtifactID)
+	if err != nil {
+		log.Printf("[FINAL_RESPONSE] session=%s artifact=%s unreadable, using the 16 KB preview: %v", sessionID, summary.ArtifactID, err)
+		return text
+	}
+	// The artifact is the whole journal event; its payload sits under nested "data" keys.
+	var node map[string]interface{}
+	if json.Unmarshal(full, &node) != nil {
+		return text
+	}
+	for node != nil {
+		for _, key := range []string{"final_result", "content"} {
+			if value, ok := node[key].(string); ok && strings.TrimSpace(value) != "" {
+				return strings.TrimSpace(value)
+			}
+		}
+		node, _ = node["data"].(map[string]interface{})
+	}
+	return text
 }
 
 // endEventText extracts the final assistant text from a turn-end event

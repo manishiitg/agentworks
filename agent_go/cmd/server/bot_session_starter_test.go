@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -320,5 +322,27 @@ func TestSlackCrewRouteAcceptsLogicalAndPhysicalFolder(t *testing.T) {
 	req.SelectedFolder = "_users/owner-2/Chats/Work/projects/sde"
 	if level, _ := botRouteProfileAccessForRequest(claims, req); level != WorkflowAccessNone {
 		t.Fatalf("crew route reached another owner's folder: %q", level)
+	}
+}
+
+// A workflow Crew step saved only the journal's 16 KB preview of a long answer
+// as its output file (a cut-off JSON object); the run result must be whole.
+func TestFinalResponseForExecutionReadsAnOversizedAnswerWhole(t *testing.T) {
+	journal, err := internalevents.OpenSQLiteEventJournal(filepath.Join(t.TempDir(), "events.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = journal.Close() })
+	store := internalevents.NewEventStore(10)
+	store.SetDurableJournal(journal)
+	api := &StreamingAPI{eventStore: store}
+	answer := `{"items":"` + strings.Repeat("x", 80*1024) + `"}`
+	completion := pkgevents.NewUnifiedCompletionEvent("coding_agent", "retained", "", answer, "completed", time.Second, 1)
+	store.AddEvent("crew-session", internalevents.Event{
+		ID: "big-turn", Type: "unified_completion", SessionID: "crew-session", ExecutionID: "big-turn",
+		Data: &pkgevents.AgentEvent{Type: pkgevents.EventType("unified_completion"), Data: completion},
+	})
+	if got := api.finalResponseForExecution("crew-session", "big-turn"); got != answer {
+		t.Fatalf("final response is %d bytes, want the whole %d-byte answer", len(got), len(answer))
 	}
 }
