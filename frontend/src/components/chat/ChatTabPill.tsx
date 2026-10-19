@@ -106,6 +106,13 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     setStatus(rawStatus)
   }, [rawStatus, status])
   const dot = TAB_STATUS_DOT[status]
+  const previousStatus = useRef(status)
+  const [announcement, setAnnouncement] = useState('')
+  useEffect(() => {
+    if (previousStatus.current === status) return
+    previousStatus.current = status
+    setAnnouncement(`${displayName}: ${TAB_STATUS_DOT[status].label}`)
+  }, [status, displayName])
   const isBusy = running || status === 'busy'
   useEffect(() => {
     if (!isRenaming) setRenameDraft(tab.name)
@@ -146,6 +153,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       }`}
     >
       {productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
+      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</span>
       {isPulseConversationSession(tab.sessionId) && <PulseIcon className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Pulse" role="img" />}
       <span data-chat-status-slot className="grid h-3 w-3 shrink-0 place-items-center">
         {!isBlank && (!productSurface || status !== 'ready') && (status === 'busy'

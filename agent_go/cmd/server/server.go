@@ -12260,6 +12260,7 @@ func (api *StreamingAPI) recordLiveCodingAgentUserMessage(sessionID, message, pr
 	eventData.Metadata = map[string]interface{}{
 		"source":          "coding_agent_live_input",
 		"provider":        provider,
+		"agent_label":     providerDisplayLabel(provider),
 		"message_id":      messageID,
 		"delivery_status": deliveryStatus,
 	}
