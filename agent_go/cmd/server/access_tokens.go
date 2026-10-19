@@ -467,7 +467,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		// consent, workflow authority and file access for either mutation.
 		return c.AccessToken == nil || c.AccessToken.Allows("workflows:read") || c.AccessToken.Allows("runs:execute")
 	}
-	if strings.HasPrefix(tool.Name, "builder_") || tool.Name == "plan" || tool.Name == "workflow_upgrade" || tool.Name == "workflow_crews" {
+	if strings.HasPrefix(tool.Name, "builder_") || tool.Name == "plan" || tool.Name == "workflow_upgrade" || tool.Name == "workflow_crews" || isExternalWorkflowAccountTool(tool.Name) {
 		return c.AccessToken != nil && (c.AccessToken.BuilderAccess() || c.AccessToken.RelayBuilderAccess())
 	}
 	if isExternalRelayAuthoringTool(tool.Name) {

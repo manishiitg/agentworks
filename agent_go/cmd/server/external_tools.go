@@ -250,6 +250,10 @@ func externalTools() ([]externalTool, error) {
 		}
 		externalContractUpgradeDefinition(add)
 		externalSettingsDefinitions(add)
+		if err := externalWorkflowAccountDefinitions(add); err != nil {
+			externalCatalogErr = err
+			return
+		}
 		externalBrowserConnectionsDefinition(add)
 		externalScheduleDefinitions(add)
 		externalWorkflowTeamDefinition(add)
@@ -941,6 +945,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if tool.Name == "run_after_run" {
 		api.externalRunAfterRun(w, r, args, *selected)
+		return
+	}
+	if isExternalWorkflowAccountTool(tool.Name) {
+		api.externalWorkflowAccountCall(w, r, tool.Name, args, *selected)
 		return
 	}
 	if isExternalSettingsTool(tool.Name) {

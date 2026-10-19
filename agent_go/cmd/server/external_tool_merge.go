@@ -31,8 +31,9 @@ var externalToolMerges = []externalToolMerge{
 		{"create", "create_dashboard"}, {"update", "update_dashboard"}, {"validate", "validate_dashboard"},
 		{"export_motion", "export_dashboard_motion"}, {"preview", "preview_dashboard"}, {"publish", "publish_dashboard"}, {"restore", "restore_dashboard"},
 	}},
-	{"settings", "Read and change the setup of a workflow, Flow or Crew; inspect saved secret sources for these and your own Code projects: models, MCP servers, skills, secrets, Pulse, browser mode, notifications and after-run steps.", [][2]string{
+	{"settings", "Read and change the setup of a workflow, Flow or Crew; inspect saved secret sources for these and your own Code projects: models, MCP servers, skills, secrets, personal Google/Slack accounts, Pulse, browser mode, notifications and after-run steps.", [][2]string{
 		{"get", "get_settings"}, {"update", "update_settings"}, {"secret_sources", "get_secret_sources"},
+		{"google_account", "workflow_google_account"}, {"slack_account", "workflow_slack_account"},
 	}},
 	{"needs_you", "Shares Home's question/decision collector. List what is waiting on you across workflows and Crews, then answer or dismiss one; answered decisions awaiting application include apply_message for the Builder. home action=attention also includes failed-run review items.", [][2]string{
 		{"list", "list_needs_you"}, {"answer", "answer_needs_you"}, {"dismiss", "dismiss_needs_you"},

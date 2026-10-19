@@ -128,6 +128,14 @@ func TestPersonalSlackConnectionsAcrossSurfaces(t *testing.T) {
 	if _, handled, _ := api.resolvePlaceAttachedMCP(runCtx, "slack-unselected-run", internal); handled {
 		t.Fatal("another item's run used the saved account")
 	}
+	workflowAccountMCPRequest(t, api, "editor", "slack", map[string]any{"action": "attach", "connection_id": id}, 200)
+	workflowAccountMCPRequest(t, api, "runner", "slack", map[string]any{"action": "list_saved"}, 403)
+	workflowAccountMCPRequest(t, api, "builder", "slack", map[string]any{"action": "attach", "connection_owner": "editor", "connection_id": id}, 403)
+	workflowAccountMCPRequest(t, api, "editor", "slack", map[string]any{"action": "detach", "connection_id": id}, 200)
+	if !slackSelected("editor", id, root) {
+		t.Fatal("MCP detach removed another item's account selection")
+	}
+	call("editor", "Workflow/orders", "attach", "editor", id, 200)
 	// The same sealed login remains selected after the connector loses Builder.
 	withMemoryUserDirectory(t, `{"users":[{"id":"builder","username":"builder","can_create":true},{"id":"editor","username":"editor"},{"id":"runner","username":"runner"},{"id":"boss","username":"boss","admin":true}]}`)
 	if resolved, handled, err := api.resolvePlaceAttachedMCP(context.Background(), "slack-selected-crew", internal); !handled || err != nil || resolved.Config.OAuth.TokenFile != cfg.OAuth.TokenFile {

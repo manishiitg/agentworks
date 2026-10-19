@@ -168,9 +168,10 @@ esac
 	if err != nil || !strings.Contains(out, "mine") || strings.Contains(out, "Other account") {
 		t.Fatalf("saved accounts: %s %v", out, err)
 	}
-	if _, err := reg["manage_google_account"].execute(ctx, map[string]any{"action": "detach", "connection_id": "mine"}); err != nil {
-		t.Fatal(err)
-	}
+	workflowAccountMCPRequest(t, api, "editor", "google", map[string]any{"action": "attach", "connection_id": "mine"}, 200)
+	workflowAccountMCPRequest(t, api, "runner", "google", map[string]any{"action": "list_saved"}, 403)
+	workflowAccountMCPRequest(t, api, "builder", "google", map[string]any{"action": "attach", "connection_id": "mine"}, 403)
+	workflowAccountMCPRequest(t, api, "editor", "google", map[string]any{"action": "detach", "connection_id": "mine"}, 200)
 	if _, err := svc.ConnectionForScope("mine", selected); err == nil {
 		t.Fatal("detached account still usable")
 	}

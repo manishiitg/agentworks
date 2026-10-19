@@ -163,6 +163,12 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	for _, tool := range allowed {
+		if isExternalWorkflowAccountTool(tool.Name) {
+			instructions += " Workflow and Flow personal accounts: settings action=google_account or slack_account takes workflow_id and account containing the native account action. Start with account.action=list_saved, then attach/detach a saved account here; connect/reconnect returns a browser sign-in link. Existing Builder consent and account ownership apply. detach affects this item only; disconnect removes the saved connection everywhere. Browser sign-in and incoming-email sender approval remain human actions."
+			break
+		}
+	}
+	for _, tool := range allowed {
 		if tool.Name == "create_crew" {
 			instructions += " " + externalMCPCrewAuthoringInstructions
 			break
