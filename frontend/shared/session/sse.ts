@@ -28,7 +28,7 @@ export interface SSEOptions {
   callbacks: SSECallbacks
   baseUrl: string
   /** Bearer token sent only in the Authorization header. */
-  token?: string | null
+  token?: string | null | (() => string | null)
   workingSet?: 'session' | 'all'
   /** Resume chat from the durable SQLite sequence log, not the live window. */
   durableChat?: boolean
@@ -108,8 +108,9 @@ export class SSEConnection {
       const controller = new AbortController()
       this.abort = controller
       try {
+        const token = typeof this.opts.token === 'function' ? this.opts.token() : this.opts.token
         const res = await fetch(this.url(), {
-          headers: { Accept: 'text/event-stream', ...(this.opts.token ? { Authorization: `Bearer ${this.opts.token}` } : {}) },
+          headers: { Accept: 'text/event-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           signal: controller.signal,
           credentials: 'include',
           cache: 'no-store',

@@ -3,8 +3,8 @@ import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { expect, it, vi } from 'vitest'
 
-const endpoint = vi.hoisted(() => ({ baseUrl: '' }))
-vi.mock('./api', () => ({ getApiBaseUrl: () => endpoint.baseUrl, getAuthToken: () => 'test-sign-in' }))
+const endpoint = vi.hoisted(() => ({ baseUrl: '', token: 'test-sign-in' }))
+vi.mock('./api', () => ({ getApiBaseUrl: () => endpoint.baseUrl, getAuthToken: () => endpoint.token }))
 vi.mock('../utils/logger', () => ({ logger: { debug() {}, warn() {}, error() {} } }))
 
 it('browser chat streams authenticate by header and resume complete frame cursors over real HTTP', async () => {
@@ -18,6 +18,7 @@ it('browser chat streams authenticate by header and resume complete frame cursor
       const frames = Buffer.from(': heartbeat\r\nevent: event\r\nid: 8\r\ndata: {"events":[],\r\ndata: "label":"é"}\r\n\r\nevent: cursor\nid: 9\ndata: {}\n\nevent: event\nid: 999\ndata: {"events":[]}')
       const split = frames.indexOf(Buffer.from('é')) + 1
       res.write(frames.subarray(0, split))
+      endpoint.token = 'refreshed-sign-in'
       res.end(frames.subarray(split)) // Final incomplete frame must not advance the cursor.
     } else {
       res.write('event: status\ndata: {"session_status":"completed"}\n\n')
@@ -41,7 +42,7 @@ it('browser chat streams authenticate by header and resume complete frame cursor
     })])
     expect(requests).toEqual([
       { url: '/api/sessions/session-test/events/stream?working_set=session&durable_chat=1&since=7', authorization: 'Bearer test-sign-in' },
-      { url: '/api/sessions/session-test/events/stream?working_set=session&durable_chat=1&since=9', authorization: 'Bearer test-sign-in' },
+      { url: '/api/sessions/session-test/events/stream?working_set=session&durable_chat=1&since=9', authorization: 'Bearer refreshed-sign-in' },
     ])
     expect(onMessage).toHaveBeenCalledExactlyOnceWith({ events: [], label: 'é' })
     expect(connection.lastIndex).toBe(9)

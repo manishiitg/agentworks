@@ -466,8 +466,8 @@ func (g *gateway) verifyAgentToken(token string) (string, bool) {
 }
 
 // bearerToken is the credential a request carries: an Authorization header,
-// or ?token= for the places a browser cannot set a header (SSE, WebSocket
-// upgrades, file links).
+// or ?token= for the places a browser cannot set a header (WebSocket
+// upgrades and file links). Browser SSE refuses query credentials below.
 func bearerToken(r *http.Request) string {
 	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 		return strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
@@ -565,8 +565,8 @@ func (g *gateway) serveAgent(w http.ResponseWriter, r *http.Request) {
 		g.agent.ServeHTTP(w, r)
 		return
 	}
-	// An explicit bearer token wins. Public file links and browser SSE cannot
-	// attach a custom header, so the agent API also supports ?token=. Preserve
+	// An explicit bearer token wins. Public file links and WebSocket upgrades
+	// cannot attach a custom header, so the agent API also supports ?token=. Preserve
 	// that token as a bearer credential instead of replacing it with the
 	// gateway's service identity; the token determines which user's workspace
 	// the public file handler reads from.
@@ -845,6 +845,12 @@ func isChromeExtensionBrowserRequest(r *http.Request) bool {
 }
 
 func (g *gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
+	// Do not promote a browser stream's URL credential to a bearer header.
+	// Enforce this before either shared-password or per-user authentication.
+	if (r.URL.Path == "/api/live" || strings.HasPrefix(r.URL.Path, "/api/sessions/") && strings.HasSuffix(r.URL.Path, "/events/stream")) && r.URL.Query().Has("token") {
+		http.Error(w, "Use an Authorization header for event streams", http.StatusBadRequest)
+		return
+	}
 	if isWebhookRequest(r) || isGmailSetupBrowserRequest(r) || isChromeExtensionBrowserRequest(r) {
 		r.Header.Del("X-User-ID")
 		g.agent.ServeHTTP(w, r)

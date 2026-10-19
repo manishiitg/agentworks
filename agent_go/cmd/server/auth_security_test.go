@@ -206,3 +206,40 @@ func TestCORSMiddlewareRejectsNonLoopbackOrigin(t *testing.T) {
 		t.Fatalf("Access-Control-Allow-Origin = %q, want empty", got)
 	}
 }
+
+// A URL token must never authenticate a browser stream, including when a
+// caller supplies a valid header too. Other URL-only clients are unchanged.
+func TestAuthEventStreamsRejectQueryTokens(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "false")
+	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
+	token, err := GenerateJWT("default", "user", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	for _, path := range []string{"/api/live", "/api/sessions/chat/events/stream"} {
+		for _, query := range []string{"", "?token=", "?token=" + token} {
+			req := httptest.NewRequest(http.MethodGet, path+query, nil)
+			req.Header.Set("Authorization", "Bearer "+token)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			want := http.StatusNoContent
+			if query != "" {
+				want = http.StatusBadRequest
+			}
+			if rec.Code != want || strings.Contains(rec.Body.String(), token) {
+				t.Fatalf("stream path=%s query_present=%t status=%d want=%d", path, query != "", rec.Code, want)
+			}
+		}
+	}
+	// No token, and a token supplied only in the query, cannot bypass auth.
+	for _, suffix := range []string{"", "?token=" + token} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/live"+suffix, nil))
+		if rec.Code != http.StatusUnauthorized && rec.Code != http.StatusBadRequest {
+			t.Fatalf("anonymous stream status=%d", rec.Code)
+		}
+	}
+}

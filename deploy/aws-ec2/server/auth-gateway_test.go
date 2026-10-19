@@ -914,3 +914,34 @@ func TestChromeExtensionGatewayExemptionIsExact(t *testing.T) {
 		}
 	}
 }
+
+func TestGatewayEventStreamsRejectQueryTokens(t *testing.T) {
+	for _, disableGate := range []bool{false, true} {
+		calls := 0
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		defer upstream.Close()
+		g := &gateway{agent: proxyFor(upstream.URL), disablePasswordGate: disableGate}
+		for _, path := range []string{"/api/live", "/api/sessions/chat/events/stream"} {
+			for _, header := range []string{"", "Bearer aw_pat_fixture"} {
+				req := httptest.NewRequest(http.MethodGet, path+"?token=fixture-sign-in", nil)
+				req.Header.Set("Authorization", header)
+				rec := httptest.NewRecorder()
+				g.ServeHTTP(rec, req)
+				if rec.Code != http.StatusBadRequest || calls != 0 || strings.Contains(rec.Body.String(), "fixture-sign-in") {
+					t.Fatalf("gate=%v path=%s status=%d calls=%d", disableGate, path, rec.Code, calls)
+				}
+			}
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("Authorization", "Bearer aw_pat_fixture")
+			rec := httptest.NewRecorder()
+			g.ServeHTTP(rec, req)
+			if rec.Code != http.StatusNoContent {
+				t.Fatalf("header-only gate=%v path=%s status=%d", disableGate, path, rec.Code)
+			}
+			calls = 0
+		}
+	}
+}

@@ -209,8 +209,14 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Require JWT authentication. EventSource/SSE callers may pass the token as
-		// a query parameter because browsers cannot set custom SSE headers.
+		// Browser event streams send Authorization headers. Reject URL credentials
+		// even when a valid header is present; old clients must reconnect without
+		// putting their sign-in token in proxy logs.
+		if headerOnlyEventStream(r.URL.Path) && r.URL.Query().Has("token") {
+			http.Error(w, "Use an Authorization header for event streams", http.StatusBadRequest)
+			return
+		}
+		// Query authentication remains for WebSocket upgrades and signed links.
 		authHeader := r.Header.Get("Authorization")
 		cookieScope := ""
 		if authHeader == "" {
@@ -329,6 +335,11 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		ctx := productpolicy.WithSelection(context.WithValue(r.Context(), UserContextKey, claims), builderProductSelection(claims))
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// headerOnlyEventStream covers the browser's chat and live-notice SSE routes.
+func headerOnlyEventStream(path string) bool {
+	return path == "/api/live" || strings.HasPrefix(path, "/api/sessions/") && strings.HasSuffix(path, "/events/stream")
 }
 
 // shouldSkipAuth returns true for paths that don't require authentication

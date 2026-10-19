@@ -1931,17 +1931,17 @@ export const agentApi = {
   // Returns the URL to the PNG QR. Kept for callers that need a direct URL.
   getWhatsAppPairURL: (size = 384, bust?: number): string => {
     const b = bust ?? Date.now()
-    const token = getAuthToken()
-    const tokenParam = token ? `&token=${encodeURIComponent(token)}` : ''
-    return `${API_BASE_URL}/api/whatsapp/pair?size=${size}&_=${b}${tokenParam}`
+    return `${API_BASE_URL}/api/whatsapp/pair?size=${size}&_=${b}`
   },
 
   // Fetches the QR PNG and preserves backend error text. This avoids the
   // <img>-tag failure mode where 409/503 responses only render as a broken image.
   getWhatsAppPairQR: async (size = 384, bust?: number): Promise<Blob> => {
+    const token = getAuthToken()
     const response = await fetch(agentApi.getWhatsAppPairURL(size, bust), {
       method: 'GET',
       cache: 'no-store',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
     if (!response.ok) {
       const text = (await response.text()).trim()
