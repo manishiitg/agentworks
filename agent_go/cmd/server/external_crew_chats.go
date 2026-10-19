@@ -61,6 +61,7 @@ func externalCrewChatDefinitions(add func(string, string, bool, bool, map[string
 }
 
 type externalCrewChat struct {
+	IsMain    bool   `json:"is_main"`
 	ChatID    string `json:"chat_id"`
 	Name      string `json:"name"`
 	SessionID string `json:"session_id"`
@@ -87,21 +88,25 @@ func (api *StreamingAPI) crewChats(r *http.Request, userID, crewID, workspace st
 	identities, _ := defaultProductConversationRegistryStore().agentIdentities(r.Context(), userID, product.ProfileID, workspaceTokenProjectID(crewID))
 	chats := []externalCrewChat{}
 	for _, record := range records {
-		chat := externalCrewChat{SessionID: record.SessionID, UpdatedAt: record.UpdatedAt, key: record.ConversationKey}
+		chat := externalCrewChat{SessionID: record.SessionID, UpdatedAt: record.UpdatedAt, key: record.ConversationKey, IsMain: record.IsMainChat}
 		switch {
 		case record.ConversationKey == crewID:
 			chat.ChatID, chat.Name = "main", "Main chat"
 		case strings.HasPrefix(record.ConversationKey, crewID+codeChatSideMarker):
 			chat.ChatID = strings.TrimPrefix(record.ConversationKey, crewID+codeChatSideMarker)
-			chat.Name = firstNonEmptyTrimmed(identities[record.ConversationKey].Name, titles[record.SessionID], "Chat "+chat.ChatID)
+			fallback := "Chat " + chat.ChatID
+			if chat.IsMain {
+				fallback = "Main chat"
+			}
+			chat.Name = firstNonEmptyTrimmed(identities[record.ConversationKey].Name, titles[record.SessionID], fallback)
 		default:
 			continue
 		}
 		chats = append(chats, chat)
 	}
 	sort.SliceStable(chats, func(i, j int) bool {
-		if (chats[i].ChatID == "main") != (chats[j].ChatID == "main") {
-			return chats[i].ChatID == "main"
+		if chats[i].IsMain != chats[j].IsMain {
+			return chats[i].IsMain
 		}
 		return chats[i].UpdatedAt > chats[j].UpdatedAt
 	})
@@ -110,7 +115,7 @@ func (api *StreamingAPI) crewChats(r *http.Request, userID, crewID, workspace st
 
 func findCrewChat(chats []externalCrewChat, id string) (externalCrewChat, bool) {
 	for _, chat := range chats {
-		if chat.ChatID == id || chat.SessionID == id {
+		if (id == "main" && chat.IsMain) || chat.ChatID == id || chat.SessionID == id {
 			return chat, true
 		}
 	}
@@ -239,7 +244,7 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 	case "side_rename":
 		chat, found := findCrewChat(chats, externalArg(args, "chat_id"))
 		name, nameErr := externalChatName(args)
-		if !found || chat.ChatID == "main" || nameErr != nil || name == "" {
+		if !found || chat.IsMain || nameErr != nil || name == "" {
 			externalError(w, 404, "chat_not_found", "Pass a side chat's chat_id from list and a name up to 120 characters.")
 			return
 		}
@@ -254,7 +259,7 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 		externalJSON(w, map[string]any{"crew_id": crewID, "chat_id": chat.ChatID, "name": name})
 	case "side_close", "stop":
 		chat, found := findCrewChat(chats, externalArg(args, "chat_id"))
-		if !found || (action == "side_close" && chat.ChatID == "main") {
+		if !found || (action == "side_close" && chat.IsMain) {
 			externalError(w, 404, "chat_not_found", "Pass a chat_id from list (side_close: a side chat).")
 			return
 		}
@@ -293,13 +298,15 @@ func (api *StreamingAPI) crewAskChat(r *http.Request, userID, crewID, workspace,
 	if !found {
 		return nil, false
 	}
-	return &codeChat{Key: chat.key, ID: chat.ChatID, Name: chat.Name, SessionID: chat.SessionID, UpdatedAt: chat.UpdatedAt}, true
+	return &codeChat{IsMain: chat.IsMain, Key: chat.key, ID: chat.ChatID, Name: chat.Name, SessionID: chat.SessionID, UpdatedAt: chat.UpdatedAt}, true
 }
 
 func crewSideChatCount(chats []externalCrewChat) int {
-	ids := make([]string, len(chats))
-	for i, c := range chats {
-		ids[i] = c.ChatID
+	n := 0
+	for _, chat := range chats {
+		if !chat.IsMain {
+			n++
+		}
 	}
-	return sideChatsOf(ids, "main")
+	return n
 }

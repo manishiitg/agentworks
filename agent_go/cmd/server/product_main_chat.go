@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -20,6 +21,10 @@ var errMainChatBusy = errors.New("wait for both chats to finish and clear their 
 func swappableMainChatKey(projectID, key string) bool {
 	id := strings.TrimPrefix(key, projectID+codeChatSideMarker)
 	return key != id && id != "" && !strings.Contains(id, ":") && !strings.HasPrefix(id, "fn.") && !strings.HasPrefix(id, "agent-")
+}
+
+func validProjectMainRecord(userID, profileID, projectID, workspace string, record ProductConversationRecord) bool {
+	return record.SessionID != "" && record.ProfileID == profileID && (record.ConversationKey == projectID || swappableMainChatKey(projectID, record.ConversationKey)) && workspacePathsMatchForUser(userID, record.WorkspacePath, workspace)
 }
 
 func originalMainChatKey(projectID, conversationID string) string {
@@ -58,6 +63,38 @@ func (store productConversationRegistryStore) resolveProjectMainAddress(ctx cont
 		return binding, err
 	}
 	mainKey := strings.TrimSpace(manifest.MainChatKey)
+	if mainKey != "" {
+		record, exists := doc.Entries[productConversationRegistryEntryKey(profile.ID, mainKey)]
+		if !exists || !validProjectMainRecord(userID, profile.ID, manifest.ID, binding.WorkspacePath, record) {
+			// Fix forward using only this caller's ordinary chats in the same
+			// project. Prefer the original root, otherwise the newest chat.
+			var replacement ProductConversationRecord
+			for _, candidate := range doc.Entries {
+				if !validProjectMainRecord(userID, profile.ID, manifest.ID, binding.WorkspacePath, candidate) {
+					continue
+				}
+				if replacement.SessionID == "" || candidate.ConversationKey == manifest.ID || (replacement.ConversationKey != manifest.ID && (candidate.UpdatedAt > replacement.UpdatedAt || (candidate.UpdatedAt == replacement.UpdatedAt && candidate.ConversationKey < replacement.ConversationKey))) {
+					replacement = candidate
+				}
+			}
+			if replacement.SessionID != "" {
+				log.Printf("product main chat: repairing missing pointer project=%s previous=%s replacement=%s", manifest.ID, mainKey, replacement.ConversationKey)
+				if replacement.ConversationKey == manifest.ID {
+					mainKey, manifest.SessionID = "", replacement.SessionID
+				} else {
+					mainKey = replacement.ConversationKey
+					if err := store.writeMainChatPointer(ctx, binding.ManifestPath, mainKey, replacement.SessionID); err != nil {
+						return binding, err
+					}
+				}
+			} else if manifest.SessionID != "" {
+				// No surviving slot: reopen the manifest's existing session,
+				// keeping its transcript rather than creating an empty session.
+				log.Printf("product main chat: restoring missing pointer project=%s previous=%s from manifest session", manifest.ID, mainKey)
+				mainKey = ""
+			}
+		}
+	}
 	if mainKey == "" {
 		// Backup is per registry, before its first legacy move; never overwrite.
 		backup := path + ".before-chat-ids.json"

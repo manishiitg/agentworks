@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"testing"
@@ -118,5 +119,60 @@ func TestStableProjectChatCannotBeReboundByAStaleBrowserSession(t *testing.T) {
 	binding := productConversationBinding{ConversationKey: "crew:chat:reviewer", ResourceID: "crew", ProjectMainChatKey: "crew:chat:reviewer"}
 	if shouldRebindWorkConversation(profile, binding, ProductConversationRecord{SessionID: "current"}, "previous", true) {
 		t.Fatal("stale browser retargeted a stable chat ID")
+	}
+}
+
+func TestMissingMainPointerRepairsOnlyThisCallersOrdinaryChats(t *testing.T) {
+	for _, rootSurvives := range []bool{true, false} {
+		t.Run(fmt.Sprint(rootSurvives), func(t *testing.T) {
+			store, files := memoryProductConversationStore()
+			ctx := context.Background()
+			profile := routeTestProfile("work", true, "")
+			root := "_users/u/Chats/Work/projects/crew"
+			binding := productConversationBinding{ResourceID: "crew", WorkspacePath: root, ManifestPath: root + "/product.json", ProjectMainAddress: true}
+			files[binding.ManifestPath] = `{"product":"work","id":"crew","main_chat_key":"crew:chat:missing","session_id":"lost"}`
+			doc := productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{}}
+			for key, updated := range map[string]string{"crew:chat:old": "2026-01-01", "crew:chat:new": "2026-10-19", "crew:chat:fn.run": "9999", "other:chat:foreign": "9999"} {
+				doc.Entries["work/"+key] = ProductConversationRecord{ProfileID: "work", ConversationKey: key, ConversationID: key, SessionID: "s-" + key, WorkspacePath: root, UpdatedAt: updated}
+			}
+			want := "crew:chat:new"
+			if rootSurvives {
+				doc.Entries["work/crew"] = ProductConversationRecord{ProfileID: "work", ConversationKey: "crew", ConversationID: "original", SessionID: "s-original", WorkspacePath: root}
+				want = originalMainChatKey("crew", "original")
+			}
+			if err := store.writeDocument(ctx, productConversationRegistryPath("u"), doc); err != nil {
+				t.Fatal(err)
+			}
+			resolved, err := store.resolveProjectMainAddress(ctx, "u", profile, binding)
+			if err != nil || resolved.ConversationKey != want {
+				t.Fatalf("repair = %+v, %v; want %s", resolved, err, want)
+			}
+			var manifest productProjectManifest
+			if err := json.Unmarshal([]byte(files[binding.ManifestPath]), &manifest); err != nil || manifest.MainChatKey != want {
+				t.Fatalf("repaired pointer was not saved: %+v %v", manifest, err)
+			}
+		})
+	}
+}
+
+func TestSharedCallerLegacyRootKeepsItsOwnMainRole(t *testing.T) {
+	store, files := memoryProductConversationStore()
+	root := "_users/owner/Chats/Work/projects/crew"
+	files[root+"/product.json"] = `{"product":"work","id":"crew","main_chat_key":"crew:chat:owners-main"}`
+	doc := productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{
+		"work/crew":           {ProfileID: "work", ConversationKey: "crew", SessionID: "run-person-main", WorkspacePath: root},
+		"work/crew:chat:mine": {ProfileID: "work", ConversationKey: "crew:chat:mine", SessionID: "run-person-side", WorkspacePath: root},
+	}}
+	if err := store.writeDocument(context.Background(), productConversationRegistryPath("run-person"), doc); err != nil {
+		t.Fatal(err)
+	}
+	chats, err := store.projectChats(context.Background(), "run-person", "work", "crew")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, chat := range chats {
+		if chat.IsMainChat != (chat.SessionID == "run-person-main") {
+			t.Fatalf("owner pointer changed Run person's role: %+v", chat)
+		}
 	}
 }

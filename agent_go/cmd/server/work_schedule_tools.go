@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 )
 
@@ -120,11 +119,11 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			if !hasEnabled {
 				enabled = true
 			}
-			// Set from a Code side chat (tab), it runs back in that chat
+			// Set from a project side chat (tab), it runs back in that chat
 			// (owner, 2026-10-07); from the main chat it runs in the main chat.
 			chatKey := ""
-			if !isolated && strings.EqualFold(profileID, codeproduct.ProfileID) {
-				if project, chatErr := api.codeChatsFor(internalBotRequestContext(ctx, userID), userID, sessionID, workspacePath); chatErr == nil && project.Self.Key != project.ProjectID {
+			if !isolated && isProjectProfileID(profileID) {
+				if project, chatErr := api.codeChatsFor(internalBotRequestContext(ctx, userID), userID, sessionID, workspacePath); chatErr == nil && !project.Self.IsMain {
 					chatKey = project.Self.Key
 				}
 			}

@@ -438,7 +438,10 @@ func (store productConversationRegistryStore) projectChats(ctx context.Context, 
 					if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
 						return nil, err
 					}
-					if manifest.MainChatKey != "" {
+					// A Run person keeps their own unmigrated root; an owner's
+					// shared manifest must not take that caller's main role away.
+					_, ownLegacyRoot := document.Entries[main]
+					if manifest.MainChatKey != "" && !ownLegacyRoot {
 						mainKey = manifest.MainChatKey
 					}
 				}

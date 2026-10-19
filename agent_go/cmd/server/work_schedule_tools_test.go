@@ -105,3 +105,43 @@ func TestProjectScheduleRunsInItsSideChat(t *testing.T) {
 		t.Fatalf("main chat queue key = %q", got)
 	}
 }
+
+// Main is a role, so a schedule created there follows a later main change;
+// a side-created schedule remains pinned to that physical chat.
+func TestScheduleCreatedFromMigratedMainUsesTheMainAddress(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	env.api.agentProfiles = env.svc.registry
+	ctx := internalBotRequestContext(t.Context(), "owner")
+	profile, err := env.svc.registry.Resolve("work", 0, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, owned, err := resolveConversationBindingForUser(ctx, "owner", profile, "beta")
+	if err != nil || !owned {
+		t.Fatalf("binding: %v %v", owned, err)
+	}
+	chat, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, "owner", profile, binding, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := &recordingRegistrar{}
+	if err := env.api.registerWorkScheduleTools(reg, "work", "owner", chat.SessionID, binding.WorkspacePath, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.tools["create_project_schedule"].exec(ctx, map[string]interface{}{"name": "Check", "message": "Check status", "in_minutes": float64(60)}); err != nil {
+		t.Fatal(err)
+	}
+	jobs, err := env.svc.JobsForUser(ctx, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, job := range jobs {
+		if job.ProjectID == "beta" && job.Schedule.Name == "Check" {
+			if job.Schedule.ChatKey != "" {
+				t.Fatalf("main schedule pinned to physical key %q", job.Schedule.ChatKey)
+			}
+			return
+		}
+	}
+	t.Fatal("created schedule missing")
+}

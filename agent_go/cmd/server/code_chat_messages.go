@@ -240,7 +240,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 			if chat.Purpose != "" {
 				item["purpose"] = chat.Purpose
 			}
-			if chat.Key == project.Self.Key {
+			if chat.Key == project.Self.Key || chat.SessionID == project.Self.SessionID {
 				item["this_chat"] = true
 			}
 			out = append(out, item)
@@ -386,7 +386,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				if err != nil {
 					return "", err
 				}
-				if chat.Key == project.Self.Key {
+				if chat.Key == project.Self.Key || chat.SessionID == project.Self.SessionID {
 					return "", fmt.Errorf("a chat cannot ask itself")
 				}
 				base, err := resolveCaller(ctx)
