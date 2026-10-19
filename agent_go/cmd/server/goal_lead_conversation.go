@@ -247,8 +247,12 @@ func listGoalLeadMessages(ctx context.Context, workspacePath string, limit int) 
 		return []GoalLeadMessage{}, err
 	}
 	defer db.Close()
-	if err := ensureGoalLeadSchema(ctx, db); err != nil {
+	var exists bool
+	if err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='goal_lead_messages')`).Scan(&exists); err != nil {
 		return nil, err
+	}
+	if !exists {
+		return []GoalLeadMessage{}, nil
 	}
 	if limit <= 0 {
 		limit = 50
@@ -656,6 +660,43 @@ func (api *StreamingAPI) goalLeadConversationView(ctx context.Context, workspace
 		view["error"] = err.Error()
 		return view
 	}
+	return api.projectGoalLeadConversation(ctx, workspacePath, view, conv)
+}
+
+// savedGoalLeadConversationView reads the same conversation projection without
+// creating a conversation or its schema. MCP status is an observation, even
+// before Pulse has ever run or while it is OFF.
+func (api *StreamingAPI) savedGoalLeadConversationView(ctx context.Context, workspacePath string) map[string]interface{} {
+	view := map[string]interface{}{"has_goal": workflowHasGoal(ctx, workspacePath), "messages": []GoalLeadMessage{}, "busy": false}
+	_, db, err := openPulseStoreDB(ctx, workspacePath, false)
+	if err != nil {
+		view["error"] = err.Error()
+		return view
+	}
+	if db == nil {
+		return view
+	}
+	defer db.Close()
+	var exists bool
+	if err = db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='goal_lead_conversation')`).Scan(&exists); err != nil {
+		view["error"] = err.Error()
+		return view
+	}
+	if !exists {
+		return view
+	}
+	conv, err := readGoalLeadConversation(ctx, db)
+	if err != nil {
+		view["error"] = err.Error()
+		return view
+	}
+	if conv == nil {
+		return view
+	}
+	return api.projectGoalLeadConversation(ctx, workspacePath, view, *conv)
+}
+
+func (api *StreamingAPI) projectGoalLeadConversation(ctx context.Context, workspacePath string, view map[string]interface{}, conv goalLeadConversation) map[string]interface{} {
 	view["session_id"] = conv.SessionID
 	view["started_at"] = conv.StartedAt
 	view["generation"] = conv.Generation

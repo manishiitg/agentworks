@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -68,5 +69,35 @@ func TestExternalPulseOffChatHasPlainNextStep(t *testing.T) {
 	w := f.call(t, token, "builder_pulse_chat", map[string]any{"message": "How is the goal doing?"}, 409)
 	if !strings.Contains(w.Body.String(), errPulseOff.Error()) {
 		t.Fatalf("OFF chat needs the plain next step: %s", w.Body)
+	}
+}
+
+// Status used to return saved Pulse context records instead of the current
+// screen's status. Reading it must also remain possible while Pulse is OFF.
+func TestExternalPulseStatusUsesCurrentScreenWhileOff(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","created_by":"owner","access":{"owners":["owner"],"readers":["reader"]},"pulse":{"enabled":false}}`)
+	w := f.call(t, "reader", "manage_pulse", map[string]any{"workflow_id": "invoices", "action": "status"})
+	if w.Code != 200 {
+		t.Fatalf("status: %d %s", w.Code, w.Body)
+	}
+	var page map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	conversation, _ := page["conversation"].(map[string]any)
+	if page["goal_status"] == nil || page["workflow_id"] != "invoices" || page["records"] != nil || conversation["busy"] != false || conversation["has_goal"] != false || page["next_pulse"] != nil {
+		t.Fatalf("not the inactive current Pulse view: %s", w.Body)
+	}
+	_, db, err := openPulseStoreDB(t.Context(), "Workflow/invoices", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if db != nil {
+		defer db.Close()
+		var tables int
+		if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name IN ('goal_lead_conversation','goal_lead_messages')`).Scan(&tables); err != nil || tables != 0 {
+			t.Fatalf("status created conversation state: tables=%d error=%v", tables, err)
+		}
 	}
 }

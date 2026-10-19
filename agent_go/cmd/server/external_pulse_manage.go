@@ -2,7 +2,7 @@ package server
 
 import (
 	"net/http"
-	"net/url"
+	"time"
 )
 
 // Pulse controls over MCP, through the Pulse tab's own handlers and checks:
@@ -11,7 +11,7 @@ import (
 // (update_settings pulse); talking to Pulse is builder_pulse_chat.
 
 func externalPulseManageDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_pulse", "Work with a workflow's Pulse (the agent that owns its goal) the way the Pulse tab does. status: goal, latest goal check, findings, focus areas and decisions. run_now: start a Pulse pass now. goal_check_now: run the daily goal check now. focus_area: confirm, reject, add, extend or close a focus area. goal_memory: replace the goal memory text. Turn Pulse on, set outward actions with update_settings (pulse); talk to Pulse with builder_pulse_chat. Changes need owner or editor access; running needs run access.", true, true, map[string]any{
+	add("manage_pulse", "Work with a workflow's Pulse (the agent that owns its goal) the way the Pulse tab does. status: the current Pulse screen's goal status, last check, last change, next check and conversation. Reading status never starts a Pulse turn. run_now: start a Pulse pass now. goal_check_now: run the daily goal check now. focus_area: confirm, reject, add, extend or close a focus area. goal_memory: replace the goal memory text. Turn Pulse on, set outward actions with update_settings (pulse); talk to Pulse with builder_pulse_chat. Changes need owner or editor access; running needs run access.", true, true, map[string]any{
 		"action": map[string]any{"type": "string", "enum": []any{"status", "run_now", "goal_check_now", "focus_area", "goal_memory"}},
 		"focus": map[string]any{"type": "object", "additionalProperties": false, "description": "For focus_area.", "properties": map[string]any{
 			"action":   map[string]any{"type": "string", "enum": []any{"confirm", "reject", "add", "extend", "close"}},
@@ -47,7 +47,14 @@ func (api *StreamingAPI) externalPulseManageCall(w http.ResponseWriter, r *http.
 	respond := func(status int, body []byte) { externalScheduleRespond(w, status, body) }
 	switch action {
 	case "status":
-		respond(scheduleHandler(r, api.handleGetPulseContext, http.MethodGet, "/api/workflow/pulse-context", nil, url.Values{"workspace_path": {path}}, nil))
+		page, err := pulseOverview(r.Context(), path, time.Now().UTC())
+		if err != nil {
+			externalFailure(w, err)
+			return
+		}
+		page["workflow_id"] = workflow.Manifest.ID
+		page["conversation"] = api.savedGoalLeadConversationView(r.Context(), path)
+		externalJSON(w, page)
 	case "run_now", "goal_check_now":
 		if api.scheduler == nil {
 			externalError(w, 503, "scheduler_unavailable", "The scheduler is not running on this server.")

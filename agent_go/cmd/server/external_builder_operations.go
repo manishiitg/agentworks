@@ -603,7 +603,9 @@ var externalBuilderManagedTools = []string{
 	"create_human_input_request", "get_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request", "withdraw_human_input_request",
 	"list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "export_dashboard_motion", "publish_dashboard", "restore_dashboard", "get_dashboard_link", "get_dashboard_share", "share_dashboard",
 	"read_file", "write_file", "list_files", "search_files",
-	"add_step", "manage_group", "manage_step_route", "change_step_type", "maintain_plan", "create_plan", "delete_plan_steps", "get_step_prompts", "update_step", "update_step_config", "update_validation_schema", "update_variable", "validate_plan_change", "get_plan_prompt_health", "get_contract_upgrades", "get_llm_config", "get_workflow_command_guidance", "human_feedback", "get_file_link", "get_report_link",
+	// Native migration tools retain the Builder's access, prerequisite and
+	// version-order checks; external Builders have no shell transport.
+	"migrate_agent_code_items", "migrate_agent_steps", "migrate_goal_agents", "migrate_workflow_skills", "migrate_declared_execution_mode", "strip_declared_execution_mode", "set_workflow_contract_version", "add_step", "manage_group", "manage_step_route", "change_step_type", "maintain_plan", "create_plan", "delete_plan_steps", "get_step_prompts", "update_step", "update_step_config", "update_validation_schema", "update_variable", "validate_plan_change", "get_plan_prompt_health", "get_contract_upgrades", "get_llm_config", "get_workflow_command_guidance", "human_feedback", "get_file_link", "get_report_link",
 }
 
 var externalBuilderKnowledgeTools = knowledgebase.ToolNames()

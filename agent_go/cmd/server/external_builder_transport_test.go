@@ -147,7 +147,12 @@ func TestExternalBuilderTransportKeepsPermissionBoundary(t *testing.T) {
 				t.Fatal("denied tool projected", name)
 			}
 		}
-		for _, forbidden := range []string{"execute_shell_command", "diff_patch_workspace_file", "set_workflow_contract_version", "manage_vault_access"} {
+		for _, migration := range []string{"migrate_agent_code_items", "migrate_agent_steps", "migrate_goal_agents", "migrate_workflow_skills", "migrate_declared_execution_mode", "strip_declared_execution_mode", "set_workflow_contract_version"} {
+			if !slices.Contains(names, migration) || accessTokenRunToolDenied(claims, migration) {
+				t.Fatalf("native Builder migration still unavailable: %s", migration)
+			}
+		}
+		for _, forbidden := range []string{"execute_shell_command", "diff_patch_workspace_file", "manage_vault_access"} {
 			if slices.Contains(names, forbidden) {
 				t.Fatal("unsafe tool projected", forbidden)
 			}
