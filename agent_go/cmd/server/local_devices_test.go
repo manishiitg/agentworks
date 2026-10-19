@@ -87,8 +87,8 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 		t.Fatalf("cross-user %v", err)
 	}
 	registrar := &recordingRegistrar{}
-	if err = api.registerLocalWorkspaceTools(registrar, newProductToolGate(nil), owner, false, localWorkspaceTestSession(api, owner, &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"}), &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil || len(registrar.tools) != 2 {
-		t.Fatalf("tools %+v %v", registrar.tools, err)
+	if err = api.registerLocalWorkspaceTools(registrar, newProductToolGate(nil), owner, false, localWorkspaceTestSession(api, owner, &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"}), &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil || len(registrar.tools) != 3 {
+		t.Fatalf("local tool count=%d: %v", len(registrar.tools), err)
 	}
 
 	baseline := api.lastQueryRequests["local-code"]
@@ -226,7 +226,7 @@ func TestLocalDeviceBrowserAndUnscopedTokenCannotConnect(t *testing.T) {
 
 func TestLocalDeviceConnectionExplainsRejection(t *testing.T) {
 	_, server, store, _, token := localDeviceTestServer(t)
-	_, unscoped, err := store.Issue(t.Context(), accesstokens.Token{Name: "Agent", UserID: "owner", Username: "owner", Scopes: []string{"files:read"}, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
+	_, unscoped, err := store.Issue(t.Context(), accesstokens.Token{Name: "Agent", UserID: "owner", Username: "owner", Scopes: []string{"files:read"}, AllWorkflows: true, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
