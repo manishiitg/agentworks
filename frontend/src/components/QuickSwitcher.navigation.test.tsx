@@ -130,10 +130,10 @@ it('ranks exact names first, then recency before match strength and activity, wi
   })
   const rowIds = () => [...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))
   expect(rowIds()).toEqual([
-    'code:exact', 'panel:analytics:exact',
+    'code:exact', 'panel:analytics:exact', 'panel:analytics:name',
     'workflow:keyword', 'code:substring', 'code:recent',
     'code:running', 'code:current', 'code:olderA', 'code:olderB',
-    'panel:analytics:name', 'panel:analytics:keywords',
+    'panel:analytics:keywords',
   ])
   expect(host.querySelector('[data-navigation-id="code:exact"]')?.className).toContain('bg-blue-50')
 
@@ -145,6 +145,21 @@ it('ranks exact names first, then recency before match strength and activity, wi
     input.dispatchEvent(new Event('input', { bubbles: true }))
   })
   expect(rowIds()).toEqual(['panel:analytics:name', 'panel:analytics:keywords'])
+})
+
+it('keeps named panel commands ahead of recently visited incidental matches, with stable ties', async () => {
+  const { host } = await renderNavigation('sett', undefined, true, () => {
+    useProductSurfaceStore.setState({ productSurface: 'code' })
+    useChatStore.setState({ chatTabs: {
+      recent: { tabId: 'recent', name: 'Weekly settings report', createdAt: 9000, metadata: { agentProfileId: 'code' } },
+    } as never })
+    usePanelSwitcherStore.getState().register('code', { panels: [
+      { id: 'z-settings', label: 'Settings' }, { id: 'a-settings', label: 'Settings' },
+    ], open: vi.fn() })
+  })
+  const ids = [...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))
+  expect(ids.slice(0, 2)).toEqual(['panel:a-settings', 'panel:z-settings'])
+  expect(ids).toContain('code:recent')
 })
 
 it('browses all workflows or Relays from footer icons without requiring typed scopes', async () => {

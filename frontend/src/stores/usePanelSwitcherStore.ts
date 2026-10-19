@@ -40,7 +40,10 @@ export const usePanelSwitcherStore = create<PanelSwitcherState>(set => ({
 export function useRegisterPanelSwitcher(surface: ProductSurface | null | undefined, panels: PanelSwitcherPanel[], open: (id: string, section?: string) => void) {
   const openRef = useRef(open)
   openRef.current = open
-  const key = panels.map(panel => `${panel.id}:${panel.label}:${panel.group || ''}:${(panel.sections ?? []).map(section => section.id).join(',')}`).join('|')
+  const key = JSON.stringify(panels.map(panel => [
+    panel.id, panel.label, panel.group ?? '',
+    (panel.sections ?? []).map(section => [section.id, section.label, section.keywords ?? '']),
+  ]))
   useEffect(() => {
     if (!surface) return
     const stableOpen = (id: string, section?: string) => openRef.current(id, section)
