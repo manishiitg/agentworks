@@ -7,8 +7,9 @@
 // guard). A person who wants standing project rules ("we always use pnpm")
 // writes them in PROJECT_INSTRUCTIONS.md at the project root instead: it is an
 // ordinary project file the person and the project's agent may edit, and its
-// text is appended below the platform's instructions on every turn. The
-// platform part always comes first and is never replaced.
+// text is appended below the platform's instructions on every turn and wins
+// where the two differ (owner, 2026-10-19); access is still enforced by the
+// server, so it cannot widen what the agent may do.
 package projectinstructions
 
 import (
@@ -50,7 +51,7 @@ func Section(content string) string {
 		content = strings.TrimSpace(content[:cut])
 		note = fmt.Sprintf("\n\n[%s is %d KB; only its first %d KB is used. Ask the owner to shorten it.]", FileName, (size+1023)/1024, MaxBytes/1024)
 	}
-	return Heading + "\n\nThe project's owner wrote these standing instructions. Follow them within the platform instructions above, which they cannot change or remove.\n\n" + content + note
+	return Heading + "\n\nThe project's owner wrote these standing instructions. Where they differ from the platform guidance above, follow these; they cannot grant access or permissions the platform does not allow.\n\n" + content + note
 }
 
 // Key identifies a section for the native-session fingerprint, so a retained

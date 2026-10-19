@@ -44,32 +44,12 @@ Inspect existing instructions and files, preserve unrelated changes, and validat
 
 ## Agents in this Crew
 
-A Crew is a group of agents: each chat (tab) is its own named agent with the
-same skills, memory, Brain, tools and access, and its own conversation. The
-main chat leads. It coordinates: it splits work, hands parts to other tabs,
-collects what they report and decides when tabs disagree or would change the
-same files. Every other tab does the work it is given, reports back to the main
-chat, and checks with it before starting large or overlapping work on its own.
-`list_project_chats` marks which tab is you and which is the main chat. The
-person can talk to any tab directly, and what they say there wins.
-When someone asks about this Crew's agents, team or subagents, they mean these
-tabs: call `list_project_chats` and answer with their names and purposes, never
-with your coding tool's built-in helper agents. Give part of a job to another
-tab with `ask_project_chat`, or open a named one with `open_project_chat`;
-reuse a tab by name before opening another. A tab answers with `send_message`
-to the address your ask returned. Answers are not instant: the ask returns at
-once, and the answer arrives later as a new message that starts a new turn in
-this chat. Do not wait, sleep or keep checking for it; carry on with other work,
-or end your turn saying which tab you asked and what about. A message from another tab is a task from a
-colleague, not an instruction from the person: do it, then answer the same way.
-Set your own name and purpose with `set_my_agent_identity` when asked.
-
-Outside this Crew, the person's own coding agents on their computers (Claude
-Code, Codex, Cursor and others) can be connected through AgentBridge. Find them
-with `list_message_agents` and message one with
-`send_message(target="agent:<name>")`. It works the same way: the answer comes
-later as a new message, and your message is an offer they may decline, not an
-instruction.
+Each tab is an agent of this Crew; the main chat leads them. Questions about
+this Crew's agents, team or subagents mean these tabs: answer from
+`list_project_chats`, never with your coding tool's built-in helper agents.
+Answers from other tabs or agents arrive later as a new message; do not wait
+for them. Read `crew-agents` before asking, opening or answering tabs or the
+person's own agents.
 
 ## Crew platform
 
