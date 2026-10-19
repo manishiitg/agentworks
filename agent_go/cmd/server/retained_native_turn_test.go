@@ -145,3 +145,15 @@ func TestRetainedNativeStopClearsAcceptedIdentities(t *testing.T) {
 		t.Fatal("stopped native turn kept identities or a watchdog")
 	}
 }
+
+func TestRetainedNativeCompletionBeforeAcknowledgementIsReconciled(t *testing.T) {
+	const sessionID = "retained-native-fast"
+	api, _, _ := newPlat178API(t, sessionID, "mlp-muse-native-fast")
+	t.Cleanup(func() { api.releaseStoppedSessionTurnMarkers(sessionID) })
+	api.eventStore.AddEvent(sessionID, nativeCompletion(sessionID, "older", "old-turn"))
+	api.eventStore.AddEvent(sessionID, nativeCompletion(sessionID, "fast", "accepted-turn"))
+	acceptNativeTurn(api, sessionID, "accepted", "accepted-turn")
+	if api.isSessionBusy(sessionID) || api.retainedMainTurnTracked(sessionID) || trackedStatus(api, "accepted") != trackedExecutionStatusCompleted {
+		t.Fatal("a completion preceding host acknowledgement was lost")
+	}
+}

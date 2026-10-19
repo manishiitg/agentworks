@@ -9445,6 +9445,7 @@ func (api *StreamingAPI) markMCPAgentSessionTurnRunningWithNativeID(sessionID, e
 	api.retainedMainTurnCanonicalIDs[executionID] = retainedTurnIdentity{ID: strings.TrimSpace(nativeTurnID)}
 	api.retainedMainTurnsMu.Unlock()
 	api.markMCPAgentSessionTurnRunning(sessionID, executionID)
+	api.reconcileAcceptedNativeCompletions(sessionID, nativeTurnID)
 }
 
 func (api *StreamingAPI) markRetainedMainCodingTurnRunningWithOwner(sessionID string, sessionOwnsCompletion bool, executionIDs ...string) {
@@ -10086,7 +10087,7 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 	startedAt, tracked := api.retainedMainTurns[sessionID]
 	expectedNativeID, nativeKnown := api.retainedMainTurnCanonicalIDs[api.retainedMainTurnExecutionIDs[sessionID]]
 	api.retainedMainTurnsMu.Unlock()
-	if !tracked || (!event.Timestamp.IsZero() && event.Timestamp.Before(startedAt)) {
+	if !tracked || (!nativeKnown && !event.Timestamp.IsZero() && event.Timestamp.Before(startedAt)) {
 		return
 	}
 	if nativeKnown && !retainedSessionCompletion(event) {

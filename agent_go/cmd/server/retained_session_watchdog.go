@@ -34,6 +34,27 @@ func retainedSessionCompletion(event events.Event) bool {
 	return mcpAgentSessionCompletion(event) || completionMetadataString(event, "source") == "retained_session_watchdog"
 }
 
+// A very short response can finish between Session.Send returning and the
+// host recording its acknowledgement. Reconcile only this accepted native ID
+// (and its explicit SDK follow-up), never an earlier answer selected by time.
+func (api *StreamingAPI) reconcileAcceptedNativeCompletions(sessionID, nativeID string) {
+	if api.eventStore == nil || strings.TrimSpace(nativeID) == "" {
+		return
+	}
+	found := false
+	for _, event := range api.eventStore.GetAllEventsRaw(sessionID) {
+		if !retainedMainTurnCompletionEvent(event.Type) || !mcpAgentSessionCompletion(event) {
+			continue
+		}
+		if retainedCompletionTurnID(event) == strings.TrimSpace(nativeID) {
+			found = true
+		}
+		if found {
+			api.observeRetainedMainTurnEvent(sessionID, event)
+		}
+	}
+}
+
 // The SDK owns success. This backstop can only report failure, never infer an
 // answer from a quiet pane or a previous sidecar result.
 func (api *StreamingAPI) watchMCPAgentSessionTurn(ctx context.Context, sessionID string, snapshot terminals.Snapshot, startedAt time.Time) {
