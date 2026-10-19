@@ -40,7 +40,7 @@ type turnInactivityState struct {
 // terminal repaints and background results waiting for the foreground do not
 // reset this clock. Tools with no end event are conservatively protected.
 func (state *turnInactivityState) observe(event events.Event, now time.Time) bool {
-	if state.ending || (!event.Timestamp.IsZero() && event.Timestamp.Before(state.startedAt)) {
+	if !event.Timestamp.IsZero() && event.Timestamp.Before(state.startedAt) {
 		return false
 	}
 	owner := events.ResolveTerminalOwnerID(state.sessionID, event, nil)
@@ -211,7 +211,15 @@ func (api *StreamingAPI) watchTurnInactivity(ctx context.Context, sessionID, exe
 					if watchCtx.Err() != nil {
 						return
 					}
-					if onIdle(errTurnInactive) {
+					// Re-check progress after claiming the deadline, before taking
+					// action. A tool/output event racing the timer wins.
+					api.turnInactivityMu.Lock()
+					stillQuiet := api.turnInactivity[sessionID][watchKey] == state && !state.waiting && len(state.openToolNames()) == 0 && time.Since(state.lastOutputAt) >= turnInactiveAfter
+					if api.eventStore != nil && len(api.eventStore.OpenMainToolNames(sessionID)) > 0 {
+						stillQuiet = false
+					}
+					api.turnInactivityMu.Unlock()
+					if stillQuiet && onIdle(errTurnInactive) {
 						log.Printf("[TURN IDLE] ended session=%s turn=%s idle=%s", sessionID, executionID, idle.Round(time.Second))
 						return
 					}
@@ -246,8 +254,11 @@ func (api *StreamingAPI) emitIdleTurnFailure(sessionID, executionID string) {
 	}
 	now := time.Now()
 	completion := unifiedevents.NewUnifiedCompletionEventWithError("server", "", "", errTurnInactive.Error(), turnInactiveAfter, 0)
+	completion.SessionID = sessionID
 	completion.Metadata["source"] = "turn_idle_timeout"
-	api.eventStore.AddEvent(sessionID, events.Event{ID: fmt.Sprintf("turn-idle-end-%d", now.UnixNano()), Type: "unified_completion", Timestamp: now, SessionID: sessionID, ExecutionID: executionID, ExecutionKind: "main_agent", Data: unifiedevents.NewAgentEvent(completion)})
+	agentEvent := unifiedevents.NewAgentEvent(completion)
+	agentEvent.SessionID = sessionID
+	api.eventStore.AddEvent(sessionID, events.Event{ID: fmt.Sprintf("turn-idle-end-%d", now.UnixNano()), Type: "unified_completion", Timestamp: now, SessionID: sessionID, ExecutionID: executionID, ExecutionKind: "main_agent", Data: agentEvent})
 }
 
 func (api *StreamingAPI) watchRetainedTurnInactivity(ctx context.Context, sessionID string, snapshot terminals.Snapshot, startedAt time.Time) func() {
@@ -260,7 +271,10 @@ func (api *StreamingAPI) watchRetainedTurnInactivity(ctx context.Context, sessio
 			// Retained input bypasses the foreground lane. Hold the lane while
 			// interrupting it, so queued work cannot start between interruption
 			// and recording this exact turn's failure.
-			release := api.lockSessionInputLane(sessionID)
+			release, acquired := api.tryLockSessionInputLane(sessionID, 0)
+			if !acquired {
+				return false
+			}
 			defer release()
 			api.retainedMainTurnsMu.Lock()
 			current := api.retainedMainTurns[sessionID].Equal(startedAt) && api.retainedMainTurnExecutionIDs[sessionID] == executionID

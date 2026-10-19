@@ -1859,7 +1859,7 @@ func (api *StreamingAPI) schedulePendingCompletionRetryAfter(sessionID string, d
 
 		if api.autoNotificationSessionUnreachable(sessionID) {
 			// Explicitly stopped, or inactive with no resident agent left to wake:
-			// log a warning so the discard is observable rather than silent.
+			// keep delivery paused while retaining results for resume.
 			api.pendingMu.Lock()
 			nPending := len(api.pendingCompletions[sessionID])
 			delete(api.completionRetryBusyAttempts, sessionID)
