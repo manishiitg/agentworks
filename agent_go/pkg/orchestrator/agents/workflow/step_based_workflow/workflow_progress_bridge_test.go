@@ -122,9 +122,10 @@ func TestWorkflowProgressBridgeWaitsForOrchestratorStepCompletion(t *testing.T) 
 		Type:      orchestrator_events.OrchestratorAgentStart,
 		Timestamp: time.Now(),
 		Data: &orchestrator_events.OrchestratorAgentStartEvent{
-			AgentType: "delegating_agent",
-			AgentName: "[Route] Execution",
-			StepIndex: 6,
+			BaseEventData: baseevents.BaseEventData{Metadata: map[string]interface{}{"current_step_id": "step-execution-pipeline"}},
+			AgentType:     "delegating_agent",
+			AgentName:     "[Route] Execution",
+			StepIndex:     6,
 		},
 	}
 	if err := bridge.HandleEvent(context.Background(), start); err != nil {
@@ -184,6 +185,69 @@ func TestWorkflowProgressBridgeWaitsForOrchestratorStepCompletion(t *testing.T) 
 	}
 	if exec := session.StepRegistry.Get(notifier.completes[0].id); exec == nil || exec.Status != WorkshopStepDone {
 		t.Fatalf("todo-task execution should be done after authoritative completion, got %#v", exec)
+	}
+}
+
+func TestWorkflowProgressBridgeMatchesStableStepAcrossLifecycleIndices(t *testing.T) {
+	notifier := &recordingExecutionNotifier{}
+	session := &WorkshopChatSession{StepRegistry: NewWorkshopStepRegistry(), executionNotifier: notifier}
+	bridge := &workflowProgressBridge{session: session, parentID: "workflow-full-run238"}
+	// BaseOrchestratorAgent's start has no positional index; the context-aware
+	// bridge stamps the stable plan step ID on its base metadata.
+	start := &baseevents.AgentEvent{
+		Type: orchestrator_events.OrchestratorAgentStart,
+		Data: &orchestrator_events.OrchestratorAgentStartEvent{
+			BaseEventData: baseevents.BaseEventData{Metadata: map[string]interface{}{"current_step_id": "trade-orchestrator"}},
+			AgentType:     "delegating_agent", AgentName: "Trade Orchestrator", StepIndex: 0,
+		},
+	}
+	if err := bridge.HandleEvent(t.Context(), start); err != nil {
+		t.Fatal(err)
+	}
+	if len(notifier.starts) != 1 {
+		t.Fatalf("starts = %d, want one", len(notifier.starts))
+	}
+	startedID := notifier.starts[0].ID
+	completion := &baseevents.AgentEvent{
+		Type: orchestrator_events.AgentStepCompleted,
+		Data: &AgentStepCompletedEvent{
+			StepID: "trade-orchestrator", StepTitle: "Trade Orchestrator — Score & Build Trade Plans",
+			StepIndex: 3, CompletionReason: "Trade plans completed",
+		},
+	}
+	if err := bridge.HandleEvent(t.Context(), completion); err != nil {
+		t.Fatal(err)
+	}
+	if len(notifier.starts) != 1 || len(notifier.completes) != 1 || notifier.completes[0].id != startedID {
+		t.Fatalf("completion created a second mirror: starts=%+v completes=%+v", notifier.starts, notifier.completes)
+	}
+	// A later parent failure runs orphan cleanup. It must preserve this known
+	// success, rather than mark the old index-0 record as a failed orphan.
+	<-bridge.finishProgressAfterChildrenStop()
+	if snap, ok := session.StepRegistry.GetSnapshot(startedID); !ok || snap.Status != WorkshopStepDone || snap.Err != nil {
+		t.Fatalf("completed step changed during parent cleanup: %+v", snap)
+	}
+}
+
+func TestWorkflowProgressBridgeStableIdentityIsStepAndParentScoped(t *testing.T) {
+	first := &workflowProgressBridge{parentID: "workflow-full-one"}
+	second := &workflowProgressBridge{parentID: "workflow-full-two"}
+	id := first.workflowProgressExecIDForStart("trade", "delegating_agent", "Shared title", 0)
+	otherStep := first.workflowProgressExecIDForStart("deliver", "delegating_agent", "Shared title", 0)
+	otherParent := second.workflowProgressExecIDForStart("trade", "delegating_agent", "Shared title", 0)
+	if id == otherStep || id == otherParent {
+		t.Fatal("different plan steps or parent runs shared an execution ID")
+	}
+	matched, started := first.workflowProgressExecIDForEnd("trade", "generic_execution", "Updated title", 3)
+	if !started || matched != id {
+		t.Fatalf("stable step changed identity with presentation: %q, started=%v", matched, started)
+	}
+	legacy := first.workflowProgressExecIDForStart("", "delegating_agent", "Legacy", 0)
+	if matched, started := first.workflowProgressExecIDForEnd("", "delegating_agent", "Legacy", 0); !started || matched != legacy {
+		t.Fatal("legacy exact-match identity changed")
+	}
+	if _, started := first.workflowProgressExecIDForEnd("", "delegating_agent", "Legacy", 3); started {
+		t.Fatal("legacy events without step IDs were guessed across positions")
 	}
 }
 

@@ -1420,8 +1420,8 @@ func (b *workflowProgressBridge) HandleEvent(ctx context.Context, event *baseeve
 	switch event.Type {
 	case orchestrator_events.OrchestratorAgentStart:
 		if startEvent, ok := event.Data.(*orchestrator_events.OrchestratorAgentStartEvent); ok && workflowProgressTracksAgent(startEvent.AgentType, startEvent.AgentName) {
-			execID := b.workflowProgressExecIDForStart(startEvent.AgentType, startEvent.AgentName, startEvent.StepIndex)
 			stepID := workflowProgressStepID(startEvent)
+			execID := b.workflowProgressExecIDForStart(stepID, startEvent.AgentType, startEvent.AgentName, startEvent.StepIndex)
 			if stepID == "" {
 				stepID = startEvent.AgentName
 			}
@@ -1466,6 +1466,7 @@ func (b *workflowProgressBridge) HandleEvent(ctx context.Context, event *baseeve
 				// Use the plan-level step ID stamped by context_aware_bridge, falling back to
 				// the full agent name so query_step(step_id=<plan-id>) works out of the box.
 				stepID := workflowProgressStepID(endEvent)
+				progressID, alreadyStarted := b.workflowProgressExecIDForEnd(stepID, agentType, stepName, endEvent.StepIndex)
 				if stepID == "" {
 					stepID = stepName
 				}
@@ -1480,7 +1481,6 @@ func (b *workflowProgressBridge) HandleEvent(ctx context.Context, event *baseeve
 					execErr = fmt.Errorf("%s", result)
 				}
 
-				progressID, alreadyStarted := b.workflowProgressExecIDForEnd(agentType, stepName, endEvent.StepIndex)
 				progressExec := &WorkshopStepExecution{
 					ID:     progressID,
 					StepID: stepID,
@@ -1542,7 +1542,7 @@ func (b *workflowProgressBridge) HandleEvent(ctx context.Context, event *baseeve
 				result = "Todo task step completed"
 			}
 
-			progressID, alreadyStarted := b.workflowProgressExecIDForEnd("delegating_agent", stepName, completedEvent.StepIndex)
+			progressID, alreadyStarted := b.workflowProgressExecIDForEnd(completedEvent.StepID, "delegating_agent", stepName, completedEvent.StepIndex)
 			if b.session != nil && b.session.StepRegistry != nil {
 				b.session.StepRegistry.Register(&WorkshopStepExecution{
 					ID:     progressID,
@@ -1647,15 +1647,24 @@ func workflowProgressDisplayName(agentName string) string {
 	return agentName
 }
 
-func workflowProgressKey(agentType, agentName string, stepIndex int) string {
-	return fmt.Sprintf("%s:%d:%s", strings.TrimSpace(agentType), stepIndex, strings.TrimSpace(agentName))
+func workflowProgressKey(stepID, agentType, agentName string, stepIndex int) string {
+	// The base-agent lifecycle omits the positional StepIndex (zero), while
+	// AgentStepCompleted carries the controller's real index. Both carry the
+	// plan step ID. A display name/index mismatch must not create a second
+	// progress mirror and leave the first to fail during parent cleanup.
+	// This map belongs to one parent run; legacy events without a stable ID
+	// retain their exact old identity rather than guessing by name alone.
+	if stepID = strings.TrimSpace(stepID); stepID != "" {
+		return "step:" + stepID
+	}
+	return fmt.Sprintf("legacy:%s:%d:%s", strings.TrimSpace(agentType), stepIndex, strings.TrimSpace(agentName))
 }
 
-func (b *workflowProgressBridge) workflowProgressExecIDForStart(agentType, agentName string, stepIndex int) string {
+func (b *workflowProgressBridge) workflowProgressExecIDForStart(stepID, agentType, agentName string, stepIndex int) string {
 	if b == nil {
 		return fmt.Sprintf("workflow-step-%d-%s", stepIndex, workflowExecutionIDToken())
 	}
-	key := workflowProgressKey(agentType, agentName, stepIndex)
+	key := workflowProgressKey(stepID, agentType, agentName, stepIndex)
 	b.progressMu.Lock()
 	defer b.progressMu.Unlock()
 	if b.progressID == nil {
@@ -1669,11 +1678,11 @@ func (b *workflowProgressBridge) workflowProgressExecIDForStart(agentType, agent
 	return id
 }
 
-func (b *workflowProgressBridge) workflowProgressExecIDForEnd(agentType, agentName string, stepIndex int) (string, bool) {
+func (b *workflowProgressBridge) workflowProgressExecIDForEnd(stepID, agentType, agentName string, stepIndex int) (string, bool) {
 	if b == nil {
 		return fmt.Sprintf("workflow-step-%d-%s", stepIndex, workflowExecutionIDToken()), false
 	}
-	key := workflowProgressKey(agentType, agentName, stepIndex)
+	key := workflowProgressKey(stepID, agentType, agentName, stepIndex)
 	b.progressMu.Lock()
 	defer b.progressMu.Unlock()
 	if b.progressID == nil {
