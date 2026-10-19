@@ -133,11 +133,7 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 			props["workspace_id"] = externalString("Stable work:<id> or code:<id> from workspace action=list.")
 		}
 		if merge.name == "functions" {
-			for _, key := range []string{"name", "description", "instructions"} {
-				props[key] = externalString("Published function " + key)
-			}
-			props["input_schema"] = map[string]any{"type": "object"}
-			props["result_schema"] = map[string]any{"type": "object"}
+			props = externalFunctionProperties(props, order)
 		}
 		props["action"] = map[string]any{"type": "string", "enum": stringsToAny(order)}
 		catalog = append(catalog, externalTool{
@@ -239,6 +235,9 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 			}
 		}
 	}
+	if tool.Name == "functions" {
+		props = externalFunctionProperties(props, allowed)
+	}
 	props["action"] = map[string]any{"type": "string", "enum": stringsToAny(allowed)}
 	out := tool
 	if len(allowed) > 1 {
@@ -255,6 +254,32 @@ func firstSentence(text string) string {
 		return text[:i+1]
 	}
 	return text
+}
+
+// Function authoring takes one flat definition. Do not inherit project-update
+// fields (including its batch functions patch) from the update_crew executor.
+func externalFunctionProperties(in map[string]any, actions []string) map[string]any {
+	out := map[string]any{}
+	for _, key := range []string{"workspace_id", "crew_id", "workflow_id", "function", "args", "wait_seconds", "submission_id", "run_mode", "call_id", "request_id", "response", "limit"} {
+		if value, ok := in[key]; ok {
+			out[key] = value
+		}
+	}
+	for _, action := range actions {
+		if action != "define" && action != "update" && action != "delete" {
+			continue
+		}
+		out["crew_id"] = externalString("Crew to edit; alternatively pass workspace_id.")
+		for _, key := range []string{"name", "description", "instructions"} {
+			out[key] = externalString("define/update: function " + key + " (required). delete: only name is required.")
+		}
+		out["input_schema"] = map[string]any{"type": "object"}
+		out["result_schema"] = map[string]any{"type": "object"}
+		out["execution"] = map[string]any{"type": "string", "enum": []any{"tab", "fresh"}, "description": crewFunctionExecutionHelp}
+		out["agent"] = externalString(crewFunctionAgentHelp)
+		break
+	}
+	return out
 }
 
 // externalListedTools is what a connection is shown: allowed tools, merged
@@ -296,8 +321,11 @@ func externalResolveMerged(tool externalTool, args map[string]any) (externalTool
 	}
 	action := externalArg(args, "action")
 	if tool.Name == "functions" && (action == "define" || action == "update" || action == "delete") {
+		if _, nested := args["functions"]; nested {
+			return tool, args, fmt.Errorf("functions action=%s takes one function using top-level name, description and instructions; use crew action=update for a functions batch", action)
+		}
 		fn := map[string]any{}
-		for _, key := range []string{"name", "description", "instructions", "input_schema", "result_schema"} {
+		for _, key := range []string{"name", "description", "instructions", "input_schema", "result_schema", "execution", "agent"} {
 			if v, ok := args[key]; ok {
 				fn[key] = v
 			}

@@ -155,3 +155,45 @@ func TestExternalMergedCallDropsFieldsOnlyAnotherMemberTakes(t *testing.T) {
 		t.Fatalf("an unknown field was silently dropped: %v", rest)
 	}
 }
+
+// The advertised shape used to include a nested functions patch that dispatch
+// silently replaced with an empty definition (PLAT-856-200).
+func TestExternalFunctionAuthoringHasOneFlatShape(t *testing.T) {
+	tool, ok := externalCatalogTool("functions")
+	if !ok {
+		t.Fatal("functions missing")
+	}
+	listed, ok := externalMergedForClaims(&UserClaims{UserID: "owner"}, tool)
+	if !ok {
+		t.Fatal("functions not listed")
+	}
+	props := listed.InputSchema["properties"].(map[string]any)
+	for _, spec := range tool.actions {
+		for _, name := range externalMemberNames(spec) {
+			if name == "update_crew" {
+				continue
+			}
+			member, _ := externalCatalogTool(name)
+			for key := range member.InputSchema["properties"].(map[string]any) {
+				if props[key] == nil {
+					t.Fatalf("%s lost parameter %s from the merged schema", name, key)
+				}
+			}
+		}
+	}
+	if props["functions"] != nil || props["files"] != nil || props["execution"] == nil {
+		t.Fatalf("function schema inherited project fields or lost execution: %v", props)
+	}
+	_, _, err := externalResolveMerged(tool, map[string]any{"action": "update", "crew_id": "c", "functions": map[string]any{"upsert": []any{map[string]any{"name": "summarize"}}}})
+	if err == nil || !strings.Contains(err.Error(), "top-level") {
+		t.Fatalf("nested patch should get an actionable refusal: %v", err)
+	}
+	member, rest, err := externalResolveMerged(tool, map[string]any{"action": "update", "crew_id": "c", "name": "summarize", "description": "Summarize input", "instructions": "Summarize the request", "execution": "tab", "agent": "summaries"})
+	if err != nil || member.Name != "update_crew" {
+		t.Fatalf("flat function dispatch: %s %v", member.Name, err)
+	}
+	fn := rest["functions"].(map[string]any)["upsert"].([]any)[0].(map[string]any)
+	if fn["name"] != "summarize" || fn["execution"] != "tab" || fn["agent"] != "summaries" || rest["name"] != nil || rest["agent"] != nil {
+		t.Fatalf("function fields lost or treated as project fields: %v", rest)
+	}
+}
