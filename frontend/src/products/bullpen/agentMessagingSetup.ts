@@ -86,7 +86,7 @@ export const messagingGuides: MessagingGuide[] = [
     ],
   },
   {
-    id: 'muse', name: 'Muse', status: 'Live messaging · Monitor idle wake', available: true,
+    id: 'muse', name: 'Muse Code', status: 'Live messaging · Monitor idle wake', available: true,
     requirements: ['Muse 1.4.6 or a compatible release, Python 3, and a current AgentWorks CLI on PATH.', 'The CLI must support Muse hooks, agentworks plugin mcp muse and agentworks watch. Approve the plugin MCP and the native Monitor tool when Muse asks.'],
     versions: 'Tested idle Monitor: Muse 1.4.6-R6000.1 and plugin 0.1.6; plugin/hook setup was also tested on 1.4.4-R5419.1. The Monitor requires the current AgentWorks CLI with Muse watch support, available from 12 Oct 2026. Older plugins use turn-boundary hooks only.',
     install: [

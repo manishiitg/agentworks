@@ -22,7 +22,7 @@ const views = [
   { id: 'agents' as const, label: 'Agents', icon: UsersRound },
   { id: 'setup' as const, label: 'Connect an agent', icon: Terminal },
 ]
-const providerNames: Record<string, string> = { codex: 'Codex', claude: 'Claude Code', muse: 'Muse', pi: 'Pi', cursor: 'Cursor', agy: 'agy' }
+const providerNames: Record<string, string> = { codex: 'Codex', claude: 'Claude Code', muse: 'Muse Code', pi: 'Pi', cursor: 'Cursor', agy: 'agy' }
 
 function AgentAddress({ target }: { target: string }) {
   const [copied, setCopied] = useState(false)
