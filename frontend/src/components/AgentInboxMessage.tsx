@@ -32,12 +32,11 @@ export function AgentInboxMessage({ message, timestamp, artifact = null }: { mes
     <article data-testid="agent-inbox-message" className="my-3 w-[min(92%,52rem)] border-l-2 border-primary/50 pl-3 text-left">
       <header className="flex flex-wrap items-center gap-x-2 gap-y-0.5 pb-1 text-xs">
         <Icon className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
-        <span className="min-w-0 break-words font-medium text-foreground">{showKind ? `${kind} · ${message.sender}` : message.sender}</span>
-        <span className="text-[11px] text-muted-foreground">Agent message</span>
+        <span className="min-w-0 break-words text-muted-foreground">From <span className="font-medium text-foreground">{showKind ? `${kind} · ${message.sender}` : message.sender}</span> to this chat</span>
         {timestamp && <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">{timestamp}</span>}
       </header>
       <div className="min-w-0 pb-1">
-        <div className="break-words text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(22px*var(--chat-scale,1))]">
+        <div className="break-words text-[length:calc(13px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] [&_li]:!text-[length:calc(13px*var(--chat-scale,1))] [&_p]:!text-[length:calc(13px*var(--chat-scale,1))] [&_li]:!leading-[calc(20px*var(--chat-scale,1))] [&_p]:!leading-[calc(20px*var(--chat-scale,1))]">
           {long && !expanded
             ? <p className="whitespace-pre-wrap">{body.slice(0, PREVIEW_LIMIT).trimEnd()}…</p>
             : <ConversationMarkdownRenderer content={body} framed={false} maxHeight="none" copyableCode />}
