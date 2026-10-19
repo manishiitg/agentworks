@@ -362,8 +362,14 @@ func TestSessionShellConfigRequiresSessionIdentity(t *testing.T) {
 	source := "blank-config-copy-source"
 	SetSessionFolderGuard(source, []string{"Workflow/source"}, []string{"Workflow/source/output"})
 	t.Cleanup(func() { ClearSessionShellConfig(source) })
+	clearInvalid := func(id string) {
+		sessionShellConfigsMu.Lock()
+		delete(sessionShellConfigs, id)
+		sessionShellConfigsMu.Unlock()
+	}
 	for _, id := range []string{"", " \t"} {
-		ClearSessionShellConfig(id)
+		clearInvalid(id)
+		t.Cleanup(func() { clearInvalid(id) })
 		SetSessionWorkingDir(id, "Workflow/unrelated")
 		SetSessionShellEnv(id, map[string]string{"WORKFLOW_KB_ACCESS": "write"})
 		sessionShellConfigsMu.RLock()
@@ -380,7 +386,7 @@ func TestSessionShellConfigRequiresSessionIdentity(t *testing.T) {
 		if GetSessionShellConfig(id) != nil || GetSessionBrowserMode(id) != "" || CopySessionFolderGuard(id, "target") || CopySessionFolderGuard(source, id) {
 			t.Fatal("a blank session ID resolved or copied shell authority")
 		}
-		ClearSessionShellConfig(id)
+		clearInvalid(id)
 	}
 }
 
