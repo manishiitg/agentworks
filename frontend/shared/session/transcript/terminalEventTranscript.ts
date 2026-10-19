@@ -5,6 +5,7 @@ import { parseProductInteraction } from '../interactions'
 import { isMainAgentTerminal } from './terminalIdentity'
 import type { PollingEvent, TerminalSnapshot } from '../types'
 import { compareTerminalEvents } from './terminalEventPage'
+import { distinctServerTurns, eventTurnID } from '../eventTurnIdentity'
 
 // FORMATTED VIEW VISIBILITY CONTRACT
 //
@@ -503,7 +504,7 @@ export function collapseCompletedLifecycleStarts(events: PollingEvent[]): Pollin
     // The retained main execution can answer multiple human turns; only its
     // current turn's lifecycle carriers supersede each other. Child execution
     // outcomes still collapse by their execution identity.
-    lastTerminalByKey.set(isMainAgentLifecycle(event) ? `${mainTurn}:${key}` : key, event)
+    lastTerminalByKey.set(isMainAgentLifecycle(event) ? `${eventTurnID(event) || mainTurn}:${key}` : key, event)
   }
   const supersededTerminals = new Set<PollingEvent>()
   mainTurn = 0
@@ -513,7 +514,7 @@ export function collapseCompletedLifecycleStarts(events: PollingEvent[]): Pollin
     if (!descriptor?.terminal) continue
     const key = lifecycleKey(event, aliasExecutions)
     if (!key) continue
-    if (lastTerminalByKey.get(isMainAgentLifecycle(event) ? `${mainTurn}:${key}` : key) !== event) supersededTerminals.add(event)
+    if (lastTerminalByKey.get(isMainAgentLifecycle(event) ? `${eventTurnID(event) || mainTurn}:${key}` : key) !== event) supersededTerminals.add(event)
   }
 
   return events.filter(event => !hiddenStarts.has(event) && !supersededTerminals.has(event))
@@ -1033,7 +1034,7 @@ function comparableAnswer(text: string): string {
 // meant for. A retained main execution spans many user turns, so both kinds
 // of answer deduplication must also stop at a user-message boundary.
 function dropAnswersRepeatedByCompletionCard(events: PollingEvent[]): PollingEvent[] {
-  const completionAnswersByTurn = new Map<number, string[]>()
+  const completionAnswersByTurn = new Map<number, { text: string; turnID: string }[]>()
   let turn = 0
   for (const event of events) {
     if (event.type === 'user_message') turn += 1
@@ -1041,13 +1042,13 @@ function dropAnswersRepeatedByCompletionCard(events: PollingEvent[]): PollingEve
     const text = comparableAnswer(answerText(event))
     if (text) {
       const answers = completionAnswersByTurn.get(turn) || []
-      answers.push(text)
+      answers.push({ text, turnID: eventTurnID(event) })
       completionAnswersByTurn.set(turn, answers)
     }
   }
 
   turn = 0
-  let lastCompletion: { executionID: string; text: string } | null = null
+  let lastCompletion: { executionID: string; text: string; turnID: string } | null = null
   return events.filter(event => {
     const type = event.type || ''
     if (type === 'user_message') {
@@ -1059,14 +1060,17 @@ function dropAnswersRepeatedByCompletionCard(events: PollingEvent[]): PollingEve
       const text = comparableAnswer(answerText(event))
       if (!text) return true
       const executionID = lifecycleExecutionID(event)
-      if (lastCompletion && lastCompletion.executionID === executionID && lastCompletion.text === text) {
+      const turnID = eventTurnID(event)
+      if (lastCompletion && lastCompletion.executionID === executionID && lastCompletion.text === text && !distinctServerTurns(lastCompletion.turnID, turnID)) {
         return false
       }
-      lastCompletion = { executionID, text }
+      lastCompletion = { executionID, text, turnID }
       return true
     }
 
-    const completionAnswers = completionAnswersByTurn.get(turn) || []
+    const completionAnswers = (completionAnswersByTurn.get(turn) || [])
+      .filter(done => !distinctServerTurns(done.turnID, eventTurnID(event)))
+      .map(done => done.text)
     if (type !== 'llm_generation_end' || completionAnswers.length === 0) return true
     const text = comparableAnswer(answerText(event))
     // Exact equality is definitive even for a one-word reply. The backend
@@ -1096,7 +1100,7 @@ function dropRepeatedAssistantResponses(events: PollingEvent[]): PollingEvent[] 
     const text = comparableAnswer(answerText(event))
     if (!text) return true
     const execution = lifecycleExecutionID(event)
-    const turn = metadataField(eventFields(event), 'turn_id')
+    const turn = eventTurnID(event)
     if (previous?.text === text && previous.execution === execution && previous.turn === turn) return false
     previous = { text, execution, turn }
     return true

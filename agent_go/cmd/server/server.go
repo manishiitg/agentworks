@@ -585,10 +585,10 @@ type StreamingAPI struct {
 	retainedMainTurnExecutionIDs map[string]string
 	// A retained CLI can accept another message while its current response is
 	// still running. Coding providers queue that input as a distinct turn, so
-	// preserve the corresponding execution roots in submission order. Settling
-	// the current answer must promote the next root instead of completing every
-	// message at the first idle boundary.
+	// preserve the corresponding execution roots in submission order. Inputs
+	// sharing a native turn finish together; later native turns keep their owner.
 	retainedMainTurnPendingExecutionIDs map[string][]string
+	retainedMainTurnCanonicalIDs        map[string]retainedTurnIdentity
 	retainedMainTurnWatchCancels        map[string]context.CancelFunc
 	// retainedMainTurnCompletionEmitted guards emitRetainedMainTurnStreamCompletion
 	// against firing twice for one logical turn. Idle-composer detection
@@ -9437,6 +9437,17 @@ func (api *StreamingAPI) markMCPAgentSessionTurnRunning(sessionID string, execut
 	api.markRetainedMainCodingTurnRunningWithOwner(sessionID, true, executionIDs...)
 }
 
+func (api *StreamingAPI) markMCPAgentSessionTurnRunningWithNativeID(sessionID, executionID, nativeTurnID string) {
+	api.retainedMainTurnsMu.Lock()
+	if api.retainedMainTurnCanonicalIDs == nil {
+		api.retainedMainTurnCanonicalIDs = make(map[string]retainedTurnIdentity)
+	}
+	api.retainedMainTurnCanonicalIDs[executionID] = retainedTurnIdentity{ID: strings.TrimSpace(nativeTurnID)}
+	api.retainedMainTurnsMu.Unlock()
+	api.markMCPAgentSessionTurnRunning(sessionID, executionID)
+	api.reconcileAcceptedNativeCompletions(sessionID, nativeTurnID)
+}
+
 func (api *StreamingAPI) markRetainedMainCodingTurnRunningWithOwner(sessionID string, sessionOwnsCompletion bool, executionIDs ...string) {
 	if api == nil || api.terminalStore == nil {
 		return
@@ -9498,6 +9509,7 @@ func (api *StreamingAPI) markRetainedMainCodingTurnRunningWithOwner(sessionID st
 		}
 		previousWatchCancel := api.retainedMainTurnWatchCancels[sessionID]
 		api.retainedMainTurns[sessionID] = time.Now()
+		startedAt := api.retainedMainTurns[sessionID]
 		api.retainedMainTurnExecutionIDs[sessionID] = executionID
 		api.retainedMainTurnWatchCancels[sessionID] = watchCancel
 		api.retainedMainTurnsMu.Unlock()
@@ -9507,7 +9519,7 @@ func (api *StreamingAPI) markRetainedMainCodingTurnRunningWithOwner(sessionID st
 		api.setSessionBusy(sessionID, true)
 		api.updateSessionStatus(sessionID, "running")
 		if sessionOwnsCompletion {
-			watchCancel()
+			go api.watchMCPAgentSessionTurn(watchCtx, sessionID, snapshot, startedAt)
 		} else {
 			go api.observeRetainedMainTurnStream(watchCtx, sessionID, snapshot, provider)
 		}
@@ -9797,8 +9809,14 @@ func (api *StreamingAPI) handleRetainedMainTurnStreamClosed(
 ) {
 	api.retainedMainTurnsMu.Lock()
 	turnStartedAt, tracked := api.retainedMainTurns[sessionID]
+	_, sessionOwned := api.retainedMainTurnCanonicalIDs[api.retainedMainTurnExecutionIDs[sessionID]]
 	api.retainedMainTurnsMu.Unlock()
 	if !tracked || ctx.Err() != nil {
+		return
+	}
+	if sessionOwned {
+		// Never reattach a success-inferencing compatibility observer for SDK
+		// work. Its failure-only watchdog remains responsible for lost exits.
 		return
 	}
 	if finalResult := api.retainedTurnFinalResponse(provider, sessionID, turnStartedAt); strings.TrimSpace(finalResult) != "" {
@@ -9838,6 +9856,9 @@ func (api *StreamingAPI) settleUnansweredRetainedPromotion(sessionID string, sna
 	promotedID := strings.TrimSpace(api.retainedMainTurnExecutionIDs[sessionID])
 	backlog := append([]string(nil), api.retainedMainTurnPendingExecutionIDs[sessionID]...)
 	delete(api.retainedMainTurnPendingExecutionIDs, sessionID)
+	for _, id := range backlog {
+		delete(api.retainedMainTurnCanonicalIDs, id)
+	}
 	api.retainedMainTurnsMu.Unlock()
 	log.Printf("[RETAINED_TURN] Promoted execution %s showed no new CLI output within %s; treating it and %d pending input(s) as answered by the previous response session=%s terminal=%s provider=%s",
 		promotedID, waited.Round(time.Second), len(backlog), sessionID, snapshot.TerminalID, provider)
@@ -9856,6 +9877,9 @@ func (api *StreamingAPI) failRetainedTurnExecutions(sessionID, reason string) {
 	api.retainedMainTurnsMu.Lock()
 	ids := append([]string{api.retainedMainTurnExecutionIDs[sessionID]}, api.retainedMainTurnPendingExecutionIDs[sessionID]...)
 	delete(api.retainedMainTurnPendingExecutionIDs, sessionID)
+	for _, id := range ids {
+		delete(api.retainedMainTurnCanonicalIDs, id)
+	}
 	api.retainedMainTurnsMu.Unlock()
 	for _, id := range ids {
 		if id = strings.TrimSpace(id); id != "" {
@@ -9871,6 +9895,10 @@ func (api *StreamingAPI) emitRetainedMainTurnStreamCompletion(sessionID string, 
 	now := time.Now()
 	api.retainedMainTurnsMu.Lock()
 	executionID := strings.TrimSpace(api.retainedMainTurnExecutionIDs[sessionID])
+	if _, sessionOwned := api.retainedMainTurnCanonicalIDs[executionID]; sessionOwned {
+		api.retainedMainTurnsMu.Unlock()
+		return
+	}
 	turnStartedAt := api.retainedMainTurns[sessionID]
 	alreadyEmitted := !turnStartedAt.IsZero() && api.retainedMainTurnCompletionEmitted[sessionID].Equal(turnStartedAt)
 	if !alreadyEmitted && !turnStartedAt.IsZero() {
@@ -9954,6 +9982,7 @@ func (api *StreamingAPI) emitRetainedMainTurnStreamCompletion(sessionID string, 
 		end := &unifiedevents.StreamingEndEvent{
 			BaseEventData: unifiedevents.BaseEventData{Timestamp: now, Metadata: map[string]interface{}{
 				"kind": "terminal", "provider": string(provider), "source": "coding_agent_sidecar", "retained": true,
+				"terminal_outcome": status,
 			}},
 			Duration:     now.Sub(turnStartedAt).String(),
 			FinishReason: "retained_completion",
@@ -10013,12 +10042,18 @@ func (api *StreamingAPI) retainedMainTurnTracked(sessionID string) bool {
 }
 
 func retainedMainTurnCompletionEvent(eventType string) bool {
-	switch strings.ToLower(strings.TrimSpace(eventType)) {
-	case "streaming_end", "agent_end", "conversation_end", "unified_completion":
-		return true
-	default:
-		return false
+	// Transport boundaries must not consume another accepted input's reply.
+	return strings.EqualFold(strings.TrimSpace(eventType), "unified_completion")
+}
+
+func retainedCompletionTurnID(event events.Event) string {
+	if event.Data == nil {
+		return ""
 	}
+	if id := strings.TrimSpace(event.Data.TurnID); id != "" {
+		return id
+	}
+	return completionMetadataString(event, "turn_id")
 }
 
 // mcpAgentSessionCompletion reports whether this is the canonical completion
@@ -10051,8 +10086,16 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 
 	api.retainedMainTurnsMu.Lock()
 	startedAt, tracked := api.retainedMainTurns[sessionID]
+	expectedNativeID, nativeKnown := api.retainedMainTurnCanonicalIDs[api.retainedMainTurnExecutionIDs[sessionID]]
 	api.retainedMainTurnsMu.Unlock()
-	if !tracked || (!event.Timestamp.IsZero() && event.Timestamp.Before(startedAt)) {
+	if !tracked || (!nativeKnown && !event.Timestamp.IsZero() && event.Timestamp.Before(startedAt)) {
+		return
+	}
+	if nativeKnown && !retainedSessionCompletion(event) {
+		return
+	}
+	if nativeID := retainedCompletionTurnID(event); retainedSessionCompletion(event) && nativeKnown && !expectedNativeID.matches(nativeID) && completionMetadataString(event, "source") != "retained_session_watchdog" {
+		log.Printf("[RETAINED_TURN] Ignoring other native turn completion session=%s turn=%s expected=%s", sessionID, nativeID, expectedNativeID.ID)
 		return
 	}
 	// Live input reached the CLI while this completion's Session.Run was
@@ -10062,6 +10105,16 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 	// took the older response as the input's answer and left the CLI's real
 	// reply with no stream (server B 2026-09-29 06:27).
 	if completionMetadataFlag(event, mcpagent.LiveInputFollowupMetadataKey) {
+		// Run's steered inputs move to the SDK's next lifecycle without resending.
+		api.retainedMainTurnsMu.Lock()
+		if id := retainedCompletionTurnID(event); id != "" {
+			for _, execution := range append([]string{api.retainedMainTurnExecutionIDs[sessionID]}, api.retainedMainTurnPendingExecutionIDs[sessionID]...) {
+				if nativeID, known := api.retainedMainTurnCanonicalIDs[execution]; known && nativeID.ID == id {
+					api.retainedMainTurnCanonicalIDs[execution] = retainedTurnIdentity{FollowupFrom: id}
+				}
+			}
+		}
+		api.retainedMainTurnsMu.Unlock()
 		log.Printf("[RETAINED_TURN] Completion precedes a live-input follow-up; keeping the input's turn open session=%s", sessionID)
 		return
 	}
@@ -10088,19 +10141,6 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		}
 	}
 
-	// streaming_end is first applied by the terminal observer. It can reject an
-	// intermediate provider end while the pane still shows newer active work.
-	// Higher-level completion events are definitive and may settle the retained
-	// logical turn while deliberately keeping the tmux process alive for resume.
-	if eventType != "streaming_end" && snapshot.Active {
-		if completed, changed := api.terminalStore.MarkTurnCompleted(snapshot.TerminalID); changed {
-			snapshot = completed
-		}
-	}
-	if snapshot.Active {
-		return
-	}
-
 	api.retainedMainTurnsMu.Lock()
 	currentStart, stillTracked := api.retainedMainTurns[sessionID]
 	executionID := strings.TrimSpace(api.retainedMainTurnExecutionIDs[sessionID])
@@ -10108,11 +10148,57 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 	var nextWatchCtx context.Context
 	var nextSnapshot terminals.Snapshot
 	var nextProvider llmproviders.Provider
+	var nextStartedAt time.Time
+	nextSessionOwned := false
 	promotedExecutionID := ""
 	failedPendingExecutionIDs := []string(nil)
+	completedPendingExecutionIDs := []string(nil)
 	if stillTracked && currentStart.Equal(startedAt) {
+		if completionMetadataString(event, "source") == "retained_session_watchdog" && event.ExecutionID != executionID {
+			api.retainedMainTurnsMu.Unlock()
+			return
+		}
 		watchCancel = api.retainedMainTurnWatchCancels[sessionID]
 		pending := api.retainedMainTurnPendingExecutionIDs[sessionID]
+		if _, known := api.retainedMainTurnCanonicalIDs[executionID]; known && !retainedSessionCompletion(event) {
+			api.retainedMainTurnsMu.Unlock()
+			return
+		}
+		if retainedSessionCompletion(event) {
+			if nativeID := retainedCompletionTurnID(event); nativeID != "" {
+				if expected, known := api.retainedMainTurnCanonicalIDs[executionID]; known && !expected.matches(nativeID) && completionMetadataString(event, "source") != "retained_session_watchdog" {
+					api.retainedMainTurnsMu.Unlock()
+					return
+				}
+				remaining := make([]string, 0, len(pending))
+				for _, id := range pending {
+					if expected, known := api.retainedMainTurnCanonicalIDs[id]; known && expected.matches(nativeID) {
+						completedPendingExecutionIDs = append(completedPendingExecutionIDs, id)
+						delete(api.retainedMainTurnCanonicalIDs, id)
+					} else {
+						remaining = append(remaining, id)
+					}
+				}
+				pending = remaining
+				api.retainedMainTurnPendingExecutionIDs[sessionID] = remaining
+			}
+		}
+		// Validate native ownership before changing the terminal snapshot. A late
+		// old completion must not make the newer native turn look idle.
+		if completion, ok := retainedCompletionPayload(event); ok &&
+			(completion.Error != "" || completion.Status == "failed" || completion.Status == "error" || completion.Status == "timeout") {
+			if failed, changed := api.terminalStore.MarkTurnFailed(snapshot.TerminalID); changed {
+				snapshot = failed
+			}
+			if completionMetadataFlag(event, "process_exited") {
+				if closed, changed := api.terminalStore.MarkProcessClosed(snapshot.TerminalID, completion.Error); changed {
+					snapshot = closed
+				}
+			}
+		} else if completed, changed := api.terminalStore.MarkTurnCompleted(snapshot.TerminalID); changed {
+			snapshot = completed
+		}
+		delete(api.retainedMainTurnCanonicalIDs, executionID)
 		if len(pending) > 0 && !strings.EqualFold(strings.TrimSpace(snapshot.State), "failed") {
 			promotedExecutionID = strings.TrimSpace(pending[0])
 			api.retainedMainTurnPendingExecutionIDs[sessionID] = append([]string(nil), pending[1:]...)
@@ -10121,10 +10207,10 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 			// active and begins it immediately after that response completes.
 			// Move the boundary forward so the prior completion cannot settle it.
 			api.retainedMainTurns[sessionID] = time.Now()
-			// The mcpagent Session owns only the response that was active when
-			// delivery began. Once it emits that completion its bridge can close,
-			// while the CLI continues with already-queued input. Observe the live
-			// terminal for every promoted turn so its later response is not lost.
+			nextStartedAt = api.retainedMainTurns[sessionID]
+			_, nextSessionOwned = api.retainedMainTurnCanonicalIDs[promotedExecutionID]
+			// SDK-owned promoted inputs keep the SDK as their completion owner.
+			// Only cold compatibility turns may infer success from a sidecar.
 			var nextCancel context.CancelFunc
 			nextWatchCtx, nextCancel = context.WithCancel(context.Background())
 			api.retainedMainTurnWatchCancels[sessionID] = nextCancel
@@ -10133,11 +10219,15 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		} else {
 			if strings.EqualFold(strings.TrimSpace(snapshot.State), "failed") {
 				failedPendingExecutionIDs = append(failedPendingExecutionIDs, pending...)
+				for _, id := range pending {
+					delete(api.retainedMainTurnCanonicalIDs, id)
+				}
 			}
 			delete(api.retainedMainTurns, sessionID)
 			delete(api.retainedMainTurnExecutionIDs, sessionID)
 			delete(api.retainedMainTurnPendingExecutionIDs, sessionID)
 			delete(api.retainedMainTurnWatchCancels, sessionID)
+			delete(api.retainedMainTurnCompletionEmitted, sessionID)
 		}
 	} else {
 		stillTracked = false
@@ -10156,6 +10246,7 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		if executionID != "" {
 			api.completeTrackedExecution(executionID, trackedExecutionStatusFailed, "retained coding-agent turn failed", nil)
 		}
+		failedPendingExecutionIDs = append(failedPendingExecutionIDs, completedPendingExecutionIDs...)
 		for _, pendingID := range failedPendingExecutionIDs {
 			if pendingID = strings.TrimSpace(pendingID); pendingID != "" && pendingID != executionID {
 				api.completeTrackedExecution(pendingID, trackedExecutionStatusFailed, "retained coding-agent turn failed", nil)
@@ -10165,12 +10256,19 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		if executionID != "" {
 			api.completeTrackedExecution(executionID, trackedExecutionStatusCompleted, "", nil)
 		}
+		for _, id := range completedPendingExecutionIDs {
+			api.completeTrackedExecution(id, trackedExecutionStatusCompleted, "", nil)
+		}
 		if promotedExecutionID != "" {
 			api.terminalStore.MarkTurnRunning(snapshot.TerminalID)
 			api.setSessionBusy(sessionID, true)
 			api.updateSessionStatus(sessionID, "running")
 			if nextWatchCtx != nil {
-				go api.observeRetainedMainTurnStreamMode(nextWatchCtx, sessionID, nextSnapshot, nextProvider, true)
+				if nextSessionOwned {
+					go api.watchMCPAgentSessionTurn(nextWatchCtx, sessionID, nextSnapshot, nextStartedAt)
+				} else {
+					go api.observeRetainedMainTurnStreamMode(nextWatchCtx, sessionID, nextSnapshot, nextProvider, true)
+				}
 			}
 		} else {
 			api.setSessionBusy(sessionID, false)
@@ -10190,10 +10288,21 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 	if outcome == "" {
 		outcome = "completed"
 	}
-	log.Printf("[RETAINED_TURN] Settled retained main-agent turn from structured %s event session=%s terminal=%s state=%s next_execution=%s outcome=%s",
-		eventType, sessionID, snapshot.TerminalID, snapshot.State, promotedExecutionID, outcome)
+	log.Printf("[RETAINED_TURN] Settled retained main-agent turn from structured %s event session=%s terminal=%s state=%s next_execution=%s outcome=%s turn=%s covered_inputs=%d",
+		eventType, sessionID, snapshot.TerminalID, snapshot.State, promotedExecutionID, outcome, retainedCompletionTurnID(event), 1+len(completedPendingExecutionIDs))
 	if promotedExecutionID == "" {
 		api.kickConversationTurnQueue(sessionID)
+	} else if nextSessionOwned {
+		// A later native completion may already be in the event store. Reconcile
+		// it after this reply is saved, preserving accepted-input/history order.
+		api.retainedMainTurnsMu.Lock()
+		identity := api.retainedMainTurnCanonicalIDs[promotedExecutionID]
+		api.retainedMainTurnsMu.Unlock()
+		nativeID := identity.ID
+		if nativeID == "" {
+			nativeID = identity.FollowupFrom
+		}
+		api.reconcileAcceptedNativeCompletions(sessionID, nativeID)
 	}
 }
 
@@ -10258,14 +10367,14 @@ func (api *StreamingAPI) deliverRetainedMainTerminalInput(ctx context.Context, s
 }
 
 func (api *StreamingAPI) recordRetainedTerminalLiveInput(sessionID, message, provider, clientMessageID string, executionIDs ...string) string {
-	return api.recordRetainedLiveInput(sessionID, message, provider, clientMessageID, false, executionIDs...)
+	return api.recordRetainedLiveInput(sessionID, message, provider, clientMessageID, false, "", executionIDs...)
 }
 
-func (api *StreamingAPI) recordMCPAgentSessionLiveInput(sessionID, message, provider, clientMessageID string, executionIDs ...string) string {
-	return api.recordRetainedLiveInput(sessionID, message, provider, clientMessageID, true, executionIDs...)
+func (api *StreamingAPI) recordMCPAgentSessionLiveInput(sessionID, message, provider, clientMessageID, nativeTurnID string, executionIDs ...string) string {
+	return api.recordRetainedLiveInput(sessionID, message, provider, clientMessageID, true, nativeTurnID, executionIDs...)
 }
 
-func (api *StreamingAPI) recordRetainedLiveInput(sessionID, message, provider, clientMessageID string, sessionOwnsCompletion bool, executionIDs ...string) string {
+func (api *StreamingAPI) recordRetainedLiveInput(sessionID, message, provider, clientMessageID string, sessionOwnsCompletion bool, nativeTurnID string, executionIDs ...string) string {
 	messageID := newSteerMessageID()
 	executionID := "live-turn:" + messageID
 	if len(executionIDs) > 0 && strings.TrimSpace(executionIDs[0]) != "" {
@@ -10281,7 +10390,7 @@ func (api *StreamingAPI) recordRetainedLiveInput(sessionID, message, provider, c
 	api.trackConversationTurnStart(executionID, sessionID, request)
 	api.recordLiveCodingAgentUserMessage(sessionID, message, provider, messageID, "sent_to_cli", clientMessageID)
 	if sessionOwnsCompletion {
-		api.markMCPAgentSessionTurnRunning(sessionID, executionID)
+		api.markMCPAgentSessionTurnRunningWithNativeID(sessionID, executionID, nativeTurnID)
 	} else {
 		api.markRetainedMainCodingTurnRunning(sessionID, executionID)
 	}
@@ -11299,7 +11408,7 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 			} else if delivery.Status == mcpagent.UserMessageDeliveryStatusSentToCLI {
 				provider := string(delivery.Provider)
 				noteLiveInputDelivered(sessionID, string(delivery.Provider), message, withSessionMode(sessionModeFromContext(r.Context()), message))
-				messageID := api.recordMCPAgentSessionLiveInput(sessionID, message, provider, clientMessageIDFromContext(r.Context()), queryID)
+				messageID := api.recordMCPAgentSessionLiveInput(sessionID, message, provider, clientMessageIDFromContext(r.Context()), delivery.TurnID, queryID)
 				api.persistLiveInputUserMessage(r.Context(), sessionID, message)
 				w.Header().Set("Content-Type", "application/json")
 				response := QueryResponse{
@@ -11602,7 +11711,7 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 				return
 			} else if delivery.Status == mcpagent.UserMessageDeliveryStatusSentToCLI {
 				provider := string(delivery.Provider)
-				messageID := api.recordMCPAgentSessionLiveInput(sessionID, req.Message, provider, clientMessageIDFromContext(r.Context()))
+				messageID := api.recordMCPAgentSessionLiveInput(sessionID, req.Message, provider, clientMessageIDFromContext(r.Context()), delivery.TurnID)
 				writeRetainedTerminalLiveInputResponseWithMessageID(w, sessionID, provider, messageID)
 				log.Printf("[LIVE INPUT] Delivered through durable mcpagent session=%s provider=%s transport=%s: %.80s", sessionID, provider, delivery.Transport, req.Message)
 				api.persistLiveInputUserMessage(r.Context(), sessionID, req.Message)

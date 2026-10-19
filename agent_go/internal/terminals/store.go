@@ -2076,7 +2076,7 @@ func (s *Store) markInactive(sessionID, ownerID string, metadata map[string]inte
 	// order instead of letting any old busy line override completion. A pane whose
 	// latest visible state is still an active spinner remains running; some CLIs
 	// emit an intermediate end event before their TUI has actually settled.
-	explicitOutcome := terminalLatestExplicitOutcome(snapshot.Content)
+	explicitOutcome := firstNonEmpty(stringValue(metadata, "terminal_outcome"), terminalLatestExplicitOutcome(snapshot.Content))
 	if terminalContentLooksBusy(snapshot.Content) && explicitOutcome == "" &&
 		!terminalHasSettledPromptAfterBusy(snapshot.Content, metadata) {
 		snapshot.Active = true

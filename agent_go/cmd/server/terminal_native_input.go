@@ -306,7 +306,7 @@ func (o *nativeTerminalObserver) accept(text string, acceptedAt time.Time) {
 			o.mu.Lock()
 			o.sessionOwnsCompletion = true
 			o.mu.Unlock()
-			o.api.markMCPAgentSessionTurnRunning(o.snapshot.SessionID, turnID)
+			o.api.markMCPAgentSessionTurnRunningWithNativeID(o.snapshot.SessionID, turnID, turnID)
 		} else {
 			o.mu.Lock()
 			o.sessionOwnsCompletion = false

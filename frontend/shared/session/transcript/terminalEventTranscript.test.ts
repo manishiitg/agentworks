@@ -1004,6 +1004,29 @@ describe('final answer visibility (CDP step regression)', () => {
 })
 
 describe('answer shown exactly once', () => {
+  it.each(['unified_completion', 'agent_end'])('keeps separate native %s turns when both prompts arrive before their replies', completionType => {
+    const events = [
+      ...[1, 2].map(turn => evt({ id: `user-${turn}`, type: 'user_message', data: { data: { content: `Prompt ${turn}` } } as never })),
+      ...[1, 2].flatMap(turn => [
+        evt({ id: `gen-${turn}`, type: 'llm_generation_end', execution_id: 'main:s1', data: { turn_id: `turn-${turn}`, data: { content: 'Done.' } } as never }),
+        evt({ id: `done-${turn}`, type: completionType, execution_id: 'main:s1', data: { data: { final_result: 'Done.', status: 'completed', metadata: { turn_id: `turn-${turn}` } } } as never }),
+        evt({ id: `replay-${turn}`, type: completionType, execution_id: 'main:s1', data: { turn_id: `turn-${turn}`, data: { final_result: 'Done.', status: 'completed' } } as never }),
+      ]),
+    ]
+    const keys = buildTranscriptItems(events).map(item => item.key)
+    expect(keys.slice(0, 2)).toEqual(['user-1', 'user-2'])
+    expect(keys).toHaveLength(4)
+    expect(keys.some(key => key === 'done-1' || key === 'replay-1')).toBe(true)
+    expect(keys.some(key => key === 'done-2' || key === 'replay-2')).toBe(true)
+  })
+
+  it('keeps an uncompleted generation from another explicit native turn', () => {
+    expect(buildTranscriptItems([
+      evt({ id: 'gen', type: 'llm_generation_end', data: { turn_id: 'one', data: { content: 'Done.' } } as never }),
+      evt({ id: 'done', type: 'unified_completion', data: { turn_id: 'two', data: { final_result: 'Done.', status: 'completed' } } as never }),
+    ]).map(item => item.key)).toEqual(['gen', 'done'])
+  })
+
   it.each(['unified_completion', 'agent_end'])('keeps identical %s answers to separate messages in a retained main execution', completionType => {
     const events = [1, 2, 3].flatMap(turn => [
       evt({ id: `user-${turn}`, type: 'user_message', data: { data: { content: 'Which model are you using?' } } as never }),

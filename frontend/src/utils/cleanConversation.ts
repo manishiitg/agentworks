@@ -12,6 +12,7 @@ import {
 } from '../platform/chat/productChatFailure'
 import { pairToolCalls, isAssistantUpdate } from './terminalEventTranscript'
 import { isConversationContinuityNotice } from '../components/ConversationContinuityNotice'
+import { distinctServerTurns, eventTurnID } from '../../shared/session/eventTurnIdentity'
 
 /**
  * A background task's output message is often the raw tool payload (a JSON object holding the whole command). Show the task's own
@@ -151,12 +152,15 @@ function isChildExecution(event: PollingEvent, payload: Record<string, unknown>)
 export function buildCleanConversationItems(events: PollingEvent[]): ConversationItem[] {
 	const items: ConversationItem[] = []
 	let lastAssistantContent = ''
+  let lastAssistantTurnID = ''
+  const itemTurnIDs = new WeakMap<ConversationItem, string>()
 	let completedAssistantAwaitingUsage: ConversationItem | undefined
 	const pendingFrontendUserEchoes = new Map<string, number>()
 	const { cards: questionCards } = codingAgentQuestionCards(normalizeTranscriptChunkEvents(events))
-	const pushUnique = (item: ConversationItem) => {
+	const pushUnique = (item: ConversationItem, turnID = '') => {
 		const previous = items.at(-1)
-		if (previous?.role === item.role && previous.content === item.content) return
+		if (previous?.role === item.role && previous.content === item.content && !distinctServerTurns(itemTurnIDs.get(previous) || '', turnID)) return
+    itemTurnIDs.set(item, turnID)
 		items.push(item)
 	}
 
@@ -195,6 +199,7 @@ export function buildCleanConversationItems(events: PollingEvent[]): Conversatio
       // The same answer can legitimately recur after another user message.
       // Only collapse duplicate final-answer carriers within the current turn.
       lastAssistantContent = ''
+      lastAssistantTurnID = ''
       completedAssistantAwaitingUsage = undefined
       continue
     }
@@ -231,11 +236,13 @@ export function buildCleanConversationItems(events: PollingEvent[]): Conversatio
       const previous = items.at(-1)
       const assistantUpdate = isAssistantUpdate(event)
       const role = assistantUpdate ? 'progress' : 'reasoning'
-      if (payload.is_delta === true && previous?.role === role && !!previous.assistantUpdate === assistantUpdate) {
-        items[items.length - 1] = { ...previous, content: appendStreamingText(previous.content, content, true) }
+      if (payload.is_delta === true && previous?.role === role && !!previous.assistantUpdate === assistantUpdate && !distinctServerTurns(itemTurnIDs.get(previous) || '', eventTurnID(event))) {
+        const updated = { ...previous, content: appendStreamingText(previous.content, content, true) }
+        itemTurnIDs.set(updated, eventTurnID(event) || itemTurnIDs.get(previous) || '')
+        items[items.length - 1] = updated
         continue
       }
-      pushUnique({ id: event.id, role, content, timestamp: event.timestamp, ...(assistantUpdate ? { assistantUpdate: true } : {}) })
+      pushUnique({ id: event.id, role, content, timestamp: event.timestamp, ...(assistantUpdate ? { assistantUpdate: true } : {}) }, eventTurnID(event))
       continue
     }
 
@@ -245,13 +252,14 @@ export function buildCleanConversationItems(events: PollingEvent[]): Conversatio
     // replies after refresh, not just the user's prompts.
     if (event.type === 'llm_generation_end' || event.type === 'unified_completion' || event.type === 'conversation_end') {
       const content = humanReadableAgentResult(firstText(payload.content, payload.final_result, payload.result))
+      const turnID = eventTurnID(event)
 			const isIntermediateUpdate = payload.restored_intermediate_update === true
 			const rawError = firstText(payload.error, asRecord(payload.error)?.message)
 			const failureText = rawError || (looksLikeProductChatFailure(content) ? content : '')
 			if (failureText) {
 				pushUnique(productFailureItem(event, payload, failureText))
 				completedAssistantAwaitingUsage = undefined
-			} else if (content && (isIntermediateUpdate || content !== lastAssistantContent)) {
+			} else if (content && (isIntermediateUpdate || content !== lastAssistantContent || distinctServerTurns(lastAssistantTurnID, turnID))) {
 				if (!isIntermediateUpdate) {
           // Coding CLIs commonly emit the final prose once as a transcript
           // chunk and again as unified_completion. The chunk is progress only
@@ -259,7 +267,7 @@ export function buildCleanConversationItems(events: PollingEvent[]): Conversatio
           // instead of showing the same answer twice in two visual styles.
           for (let index = items.length - 1; index >= 0; index -= 1) {
             if (items[index].role === 'user') break
-            if (items[index].role === 'progress' && items[index].content === content) {
+            if (items[index].role === 'progress' && items[index].content === content && !distinctServerTurns(itemTurnIDs.get(items[index]) || '', turnID)) {
               items.splice(index, 1)
               break
             }
@@ -272,10 +280,11 @@ export function buildCleanConversationItems(events: PollingEvent[]): Conversatio
           timestamp: event.timestamp,
           ...(isIntermediateUpdate ? { assistantUpdate: true } : {}),
         }
-				pushUnique(assistantItem)
+				pushUnique(assistantItem, turnID)
         if (!isIntermediateUpdate) {
           completedAssistantAwaitingUsage = assistantItem
           lastAssistantContent = content
+          lastAssistantTurnID = turnID
         }
       }
       continue
