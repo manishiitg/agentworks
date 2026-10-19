@@ -88,6 +88,7 @@ type Manager struct {
 	browserRecords   map[string]BrowserConnection
 	accountBrowsers  map[string]*accountBrowser
 	selectedBrowsers map[string]string
+	pairingFailures  map[string]PairingFailure
 }
 
 var Default = New()
@@ -775,7 +776,15 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 	ok = ok && exists
 	m.mu.Unlock()
 	if !ok {
-		conn.WriteJSON(envelope{Type: "error", Workspace: "Connection code is invalid or was reset"})
+		// Old project-only extensions cannot use an account connection code.
+		// Validate its account before recording feedback; invalid tokens never
+		// identify a user or reveal whether another account exists.
+		if exists && credential.Account && credential.User != "" && hello.BrowserID == "" &&
+			(authorize == nil || authorize(credential.User, "", "", "") == nil) {
+			m.rejectOutdatedExtension(conn, credential.User, hello.Version)
+		} else {
+			m.rejectPairing(conn, "", "invalid_connection_code", "Connection code is invalid or was reset", "")
+		}
 		return
 	}
 	if authorize != nil && authorize(g.User, g.Scope, g.Label, g.ProfileID) != nil {

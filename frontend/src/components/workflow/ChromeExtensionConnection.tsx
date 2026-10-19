@@ -5,22 +5,14 @@ import { Button } from '../ui/Button'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { openBrowserConnections, type SavedBrowserConnection } from '../BrowserConnectionsDialog'
 import { getRuntimeAppName, runtimeBrandingConfig } from '../../runtime-branding'
+import { extensionVersionOlder } from '../../utils/extensionVersion'
+export { extensionVersionOlder } from '../../utils/extensionVersion'
 
 export interface ChromeExtensionStatus {
   selected: boolean; connected: boolean; account_connected?: boolean; tabs: number; workspace?: string; connection_id?: string; tab_titles?: string[]
   browser_id?: string; browsers?: SavedBrowserConnection[]; message?: string; extension_version?: string; latest_extension_version?: string
 }
 
-/** True when dotted version a is older than b; unknown versions are not "older". */
-export function extensionVersionOlder(a?: string, b?: string): boolean {
-  if (!a || !b) return false
-  const left = a.split('.').map(Number), right = b.split('.').map(Number)
-  for (let i = 0; i < Math.max(left.length, right.length); i++) {
-    const x = left[i] || 0, y = right[i] || 0
-    if (x !== y) return x < y
-  }
-  return false
-}
 const emptyStatus: ChromeExtensionStatus = { selected: false, connected: false, tabs: 0 }
 
 // Keep the connection alive in the panel's state even when settings is closed.

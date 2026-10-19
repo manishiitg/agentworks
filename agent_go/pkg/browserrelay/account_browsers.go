@@ -95,6 +95,9 @@ func (m *Manager) PairAccount(user string, reset bool) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	token, err := m.connectionCode(user, "", "", "", reset)
+	if err == nil {
+		delete(m.pairingFailures, user)
+	}
 	if err == nil && reset {
 		for k, a := range m.accountBrowsers {
 			if strings.HasPrefix(k, user+"\x00") {
@@ -303,6 +306,10 @@ func (m *Manager) serveAccountBrowser(conn *websocket.Conn, hello envelope, auth
 		_ = conn.WriteJSON(envelope{Type: "error", Workspace: "This account is unavailable. Sign in to AgentWorks again."})
 		return
 	}
+	if extensionVersionBefore(hello.Version, MinimumExtensionVersion) {
+		m.rejectOutdatedExtension(conn, user, hello.Version)
+		return
+	}
 	projects := m.availableProjects(hello.Token, authorize)
 	if displayName != nil {
 		for i := range projects {
@@ -355,6 +362,7 @@ func (m *Manager) serveAccountBrowser(conn *websocket.Conn, hello envelope, auth
 	a := &accountBrowser{conn: conn, token: hello.Token}
 	old := m.accountBrowsers[k]
 	m.accountBrowsers[k] = a
+	delete(m.pairingFailures, user)
 	if old != nil {
 		old.close()
 	}
