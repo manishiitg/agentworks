@@ -81,7 +81,7 @@ func TestMovedProjectDiscoveryUsesOnlyRegisteredRoot(t *testing.T) {
 			if count != 1 {
 				t.Fatalf("MCP listed project %d times: %s", count, w)
 			}
-			if items, err := listWorkspaceProjectsForOwner(ctx, fixtureUserA, fixtureUserA, "", product); err != nil || (origin == "work" && len(items) != 1) {
+			if items, err := listWorkspaceProjectsForOwner(ctx, fixtureUserA, fixtureUserA, "", product); err != nil || len(items) != 1 {
 				t.Fatalf("Builder directory=%v err=%v", items, err)
 			}
 			// A missing current manifest cannot redirect deletion to the old location.

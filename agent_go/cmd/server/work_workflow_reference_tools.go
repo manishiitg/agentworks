@@ -72,8 +72,8 @@ func listWorkspaceProjectsForOwner(ctx context.Context, userID, ownerID, query s
 	}
 	// Crews that moved to the shared root (PLAT-442 step 4) belong to their manifest owner.
 	shared := []string{}
-	if product.ProfileID == crewProfileID {
-		shared, err = listSharedCrewManifestPaths(ctx, store, ownerID)
+	if isProjectProfileID(product.ProfileID) {
+		shared, err = listSharedCrewManifestPaths(ctx, store, ownerID, product.ProfileID)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("list Crew projects: %w", err)
