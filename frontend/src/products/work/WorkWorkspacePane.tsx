@@ -3,6 +3,7 @@ import { workWorkspacePanels } from './workWorkspacePanels'
 import { WorkContextPanel, WorkContextTools } from './WorkContextPanel'
 import { WorkspaceContextButton } from '../../components/workspace/WorkspaceContextButton'
 import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { DollarSign, Laptop, Settings } from 'lucide-react'
 import { DashboardCreateDraftButton } from '../../components/workflow/DashboardEmptyState'
 import { AskAIButton } from '../../components/workflow/AskAIButton'
@@ -86,6 +87,9 @@ function usePendingCrewSuggestions(workspacePath: string, enabled: boolean, view
 export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ sessionId = '', workspacePath, view, onViewChange, enabledPanels, readOnly, showShell = false, showActivityMonitor = true, compactContext = false }: { compactContext?: boolean; sessionId?: string; workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean; showActivityMonitor?: boolean }) {
   // Both legacy origins use the merged Crew suggestion feature.
   const product = useProjectProduct()
+  const representedSessionIds = useChatStore(useShallow(state => Object.values(state.chatTabs)
+    .filter(tab => tab.metadata?.agentProfileWorkspace === workspacePath && tab.metadata?.agentProfileBuilder !== true)
+    .map(tab => tab.sessionId).filter((id): id is string => Boolean(id))))
   const isCode = product.profileId === 'code'
   const filePreference = useCodeFilesPreference(sessionId)
   const localCodeSession = isCode && filePreference.location === 'computer'
@@ -122,7 +126,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
       {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkspaceToolbarButton key={item.id} {...item} connected={item.id === 'browser' ? browserConnected : undefined} badge={item.id === 'suggestions' ? pendingSuggestions : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
     </div>
 
-  if (compactContext && !localCodeSession && !readOnly) return <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1"><TooltipProvider delayDuration={150}>{showActivityMonitor && <GlobalActivityMonitor/>}<WorkspaceContextButton inContext={view==='context'} onClick={()=>onViewChange('context')}/><WorkContextTools view={view} onOpen={onViewChange} enabledPanels={enabledPanels} panels={[...visibleViews,...visibleOps,...visibleSetup]} profileId={product.profileId}/></TooltipProvider></div>
+  if (compactContext && !localCodeSession && !readOnly) return <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1"><TooltipProvider delayDuration={150}>{showActivityMonitor && <GlobalActivityMonitor representedSessionIds={representedSessionIds}/>}<WorkspaceContextButton inContext={view==='context'} onClick={()=>onViewChange('context')}/><WorkContextTools view={view} onOpen={onViewChange} enabledPanels={enabledPanels} panels={[...visibleViews,...visibleOps,...visibleSetup]} profileId={product.profileId}/></TooltipProvider></div>
 
   if (localCodeSession) return <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1">
     <TooltipProvider delayDuration={150}>
@@ -137,7 +141,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   return (
     <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1 max-md:min-w-0 max-md:shrink max-md:flex-wrap max-md:justify-end">
       <TooltipProvider delayDuration={150}>
-        {showActivityMonitor && <GlobalActivityMonitor />}
+        {showActivityMonitor && <GlobalActivityMonitor representedSessionIds={representedSessionIds} />}
         {visibleViews.some(item => item.id === 'dashboard') && <ReportDocumentSwitcher workspacePath={workspacePath} active={view === 'dashboard'} onOpen={() => onViewChange('dashboard')} />}
         <WorkspaceToolbarFrame>
           {/* A Crew and a Cowork project show their views first; a Dev Code shows them (Automation, Costs) after its working tools. */}
