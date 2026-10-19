@@ -193,7 +193,8 @@ function workflowPresetForActivity(
   return undefined
 }
 
-export const GlobalActivityMonitor: React.FC = () => {
+const noRepresentedSessions: readonly string[] = []
+export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly string[] }> = ({ representedSessionIds = noRepresentedSessions }) => {
   const sidebar = useProductNavigationSidebar()
   const panelRef = useRef<HTMLDivElement>(null)
   const [panelPosition, setPanelPosition] = useState({ left: 0, top: 0 })
@@ -241,8 +242,8 @@ export const GlobalActivityMonitor: React.FC = () => {
     [activeTabId, chatTabs, selectedModeCategory, showWorkflowsOverview, showProviders],
   )
   const visibleSessions = useMemo(
-    () => visibleActivitySessions(activeSessions, currentSessionId),
-    [activeSessions, currentSessionId],
+    () => visibleActivitySessions(activeSessions, currentSessionId, representedSessionIds),
+    [activeSessions, currentSessionId, representedSessionIds],
   )
 
   const visibleActivityKeys = useMemo(() => {
@@ -259,11 +260,12 @@ export const GlobalActivityMonitor: React.FC = () => {
   const fallbackBuilderTabs = useMemo(
     () => Object.values(chatTabs).filter(tab =>
       tab.tabId !== activeTabId &&
+      (!tab.sessionId || !representedSessionIds.includes(tab.sessionId)) &&
       (!tab.metadata?.agentProfileId || tab.metadata.agentProfileId === 'work') &&
       isLocalActivityFallbackTab(tab) &&
       !activityKeysForTab(tab).some(key => visibleActivityKeys.has(key))
     ),
-    [chatTabs, activeTabId, visibleActivityKeys],
+    [chatTabs, activeTabId, visibleActivityKeys, representedSessionIds],
   )
 
   const sortedSessions = useMemo(() => {

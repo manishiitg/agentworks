@@ -116,9 +116,11 @@ export function currentActiveSession(
 export function visibleActivitySessions(
   activeSessions: ActiveSessionInfo[],
   currentSessionId: string | null,
+  representedSessionIds: readonly string[] = [],
 ): ActiveSessionInfo[] {
-  if (!currentSessionId) return activeSessions
-  return activeSessions.filter(session => session.session_id !== currentSessionId)
+  const represented = new Set(representedSessionIds)
+  return activeSessions.filter(session => session.session_id !== currentSessionId &&
+    (!represented.has(session.session_id) || hasLiveBackgroundAgents(session)))
 }
 
 export function statusTone(

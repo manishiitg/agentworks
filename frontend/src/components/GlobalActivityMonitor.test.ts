@@ -221,3 +221,13 @@ describe('visibleActivitySessions', () => {
     expect(visible.map(s => s.session_id)).toEqual(['plain-session', 'retained-session'])
   })
 })
+
+
+it('keeps the Crew header count for hidden/background work rather than repeating visible tab spinners', () => {
+  const visible = minimalSession({ session_id: 'visible-side' })
+  const hidden = minimalSession({ session_id: 'schedule' })
+  const background = minimalSession({ session_id: 'background', has_running_background_agents: true, running_background_agent_count: 1 })
+  expect(visibleActivitySessions([visible, hidden, background], null, ['visible-side', 'background']).map(session => session.session_id)).toEqual(['schedule', 'background'])
+  expect(visibleActivitySessions([visible], null, ['visible-side'])).toEqual([])
+  expect(visibleActivitySessions([visible], null)).toEqual([visible])
+})
