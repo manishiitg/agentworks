@@ -211,7 +211,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
             if (closeStopsSession && tab.sessionId) setClosingSessionId(tab.sessionId)
             else onCloseTab(tab.tabId)
           }}
-          className={`ml-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-gray-400 transition-colors ${isBusy ? 'cursor-not-allowed opacity-40' : 'hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200'}`}
+          className={`ml-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-gray-400 opacity-0 transition-colors focus:opacity-100 ${isBusy ? 'cursor-not-allowed group-hover:opacity-40' : 'group-hover:opacity-100 hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200'}`}
           aria-label={isBusy ? `${displayName} is still running — stop it before closing` : `Close ${displayName}`}
           title={isBusy ? 'Still running — stop the run before closing' : 'Close tab'}
         >
