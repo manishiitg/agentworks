@@ -376,6 +376,12 @@ func TestBrainUnownedWorkflowBelongsToTheLocalPerson(t *testing.T) {
 	if len(project.Owners) != 1 || project.Owners[0] != "admin" {
 		t.Fatalf("local owners = %v", project.Owners)
 	}
+	// A workflow run carries its person as the run's user ID, not claims; Brain still reads as that person.
+	t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", "1") // the local app's default start includes Brain
+	runCtx := context.WithValue(t.Context(), common.UserIDKey, "admin")
+	if _, err := knowledgebaseReadReferencedNote(runCtx, workspace, "Company/missing.md"); err != nil && strings.Contains(err.Error(), "Brain is unavailable to this run") {
+		t.Fatal("a run with its person was refused Brain:", err)
+	}
 	t.Setenv("MULTI_USER_MODE", "true")
 	if _, err := knowledgeProjectLoad(t.Context(), "admin", workspace, true); err == nil {
 		t.Fatal("a multi-user local install must still refuse an unowned workflow")

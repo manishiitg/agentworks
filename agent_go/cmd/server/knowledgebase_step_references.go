@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
@@ -19,6 +21,11 @@ func init() {
 // step never reads a Brain folder its person or project may not read.
 func knowledgebaseReadReferencedNote(ctx context.Context, workspacePath, notePath string) (string, error) {
 	claims := GetUserFromContext(ctx)
+	// A workflow run carries its person as the run's user ID (the caller, or a schedule's owner), not as claims.
+	// Brain reads as that person, under their own folder roles (owner, 2026-10-19).
+	if userID, _ := ctx.Value(common.UserIDKey).(string); claims == nil && strings.TrimSpace(userID) != "" {
+		claims = &UserClaims{UserID: userID}
+	}
 	if !knowledgebaseMCPAllowed(claims) {
 		return "", fmt.Errorf("Brain is unavailable to this run")
 	}
