@@ -76,6 +76,8 @@ def main():
         start['ts'] = find_notice(start['client_msg_id'])
         state_file.write_text(json.dumps(state) + '\n')
     parent = start.get('ts') if a.phase == 'finish' else None
+    if a.phase == 'finish' and not parent:
+        raise RuntimeError('A completion notice needs its confirmed start thread')
     if event.get('attempted'):
         found = find_notice(event['client_msg_id'], parent)
         if found:
