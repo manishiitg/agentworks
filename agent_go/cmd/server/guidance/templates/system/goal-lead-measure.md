@@ -39,10 +39,15 @@ definitions alone do not establish that measurement works.
 5. **Attribution.** If `soul.md` asks what moves the goal (per action, per
    channel), check that runs record it. If not, that is a measurement gap.
 
-Ask Builder to repair the existing recording step or measurement route and
-verify source-backed DB history. Collection must respect current access and
-account constraints; when automatic collection is unsuitable, use a dated
-manual reading instead of risking the account. When a baseline period ends,
+Ask Builder to repair the existing recording path and verify the relevant DB history.
+When only the owner knows the number, ask Builder to raise one clear question
+through the existing owner-input mechanism and save the dated answer as a
+normal observation. Use the existing schedule if a recurring question is
+needed. This needs no new collector framework, proof folder or fixture suite
+unless actual changed code requires a focused check. Preserve immutable metric
+meaning: reuse its ID when the method is unchanged; use a new ID when the source
+or meaning changes, without relabeling old readings. Collection still respects
+current access and account constraints. When a baseline period ends,
 or a goal still has no target after two weeks, propose one useful target as
 an owner decision, reusing an existing pending question. Record the actual
 measurement limitation and what would settle it; independent goal work can

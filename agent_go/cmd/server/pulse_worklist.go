@@ -486,7 +486,7 @@ func createPulseTools() ([]llmtypes.Tool, map[string]interface{}, map[string]str
 					"pulse_run_id":        map[string]interface{}{"type": "string", "description": "The current Pulse run id."},
 					"status":              map[string]interface{}{"type": "string", "enum": []string{"on_track", "at_risk", "off_track", "not_measured"}},
 					"key_number":          map[string]interface{}{"type": "string", "description": "The key goal number and its date in plain words, e.g. \"+2 subscribers on 7 Oct\"."},
-					"summary":             map[string]interface{}{"type": "string", "minLength": 1, "description": "One or two plain sentences for the owner: progress, your approach judgment/recommendation when reviewed, and the main uncertainty."},
+					"summary":             map[string]interface{}{"type": "string", "minLength": 1, "description": "Two or three short plain sentences for the owner: result and judgment, obstacle or uncertainty, and next action. Keep technical inventories in existing detail records."},
 					"action_taken":        map[string]interface{}{"type": "string", "description": "What you did about it, if anything."},
 					"decision_id":         map[string]interface{}{"type": "string", "description": "The create_human_input_request id when you asked the owner."},
 					"next_check_in_hours": map[string]interface{}{"type": "number", "minimum": 1, "maximum": 168, "description": "When to check the goal next, in hours from now; bounded to 6–168 hours (24 when omitted). Pick the earliest useful outcome or approach checkpoint as well as repairs. Earlier Goal Work check_at dates share these bounds. When Pulse is off, no next check is scheduled."},

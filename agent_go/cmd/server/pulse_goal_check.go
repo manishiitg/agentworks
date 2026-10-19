@@ -359,7 +359,7 @@ func recordPulseGoalCheckFromToolArgs(ctx context.Context, args map[string]inter
 	}
 	summary := strings.TrimSpace(stringToolArg(args, "summary"))
 	if summary == "" {
-		return "", fmt.Errorf("summary is required: one or two plain sentences for the owner")
+		return "", fmt.Errorf("summary is required: two or three short plain sentences for the owner")
 	}
 	if err := checkPulsePlainText("the goal facts already stored with this check",
 		plainTextField{name: "summary", text: summary, maxLen: 400},

@@ -43,7 +43,10 @@ one `ask_pulse` message when you acted on the
 owner's `#pulse`. Follow Pulse's intent, not just its words.
 
 **Always the owner's:** spending money, deleting steps or schedules, replacing
-the plan, editing `soul.md`, re-enabling schedules the owner paused.
+the plan, editing `soul.md`, re-enabling schedules the owner paused. Removing a
+redundant implementation rule within an authorized change is different: simplify
+it without removing explicit owner constraints, account/data protections or
+required results.
 
 **Outward actions:** `update_workflow_config(pulse_outward_actions="ask"|"allow")`
 when the owner asks. Allowed actions still use existing access, accounts and

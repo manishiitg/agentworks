@@ -23,8 +23,9 @@ A technical failure gets one handoff to Builder; continue judging what would
 limit the goal after that failure is fixed. A supported no-change conclusion
 is useful. Avoid another rule when removing or simplifying addresses the cause.
 
-Builder implements within existing permissions. A new goal, plan replacement,
-deleting work or retiring the workflow stays an owner decision, prepared once
-with the proposed scope. Never change these automatically. Put the next outcome
+Builder implements within existing permissions. Removing redundant implementation
+rules is ordinary simplification within the authorized task. A new goal, plan
+replacement, deleting steps or schedules, or retiring the workflow stays an
+owner decision, prepared once with the proposed scope. Never change these automatically. Put the next outcome
 or approach question and its date on the existing Goal Work item; judge the
 result from later evidence, not from the fact your proposal was accepted.
