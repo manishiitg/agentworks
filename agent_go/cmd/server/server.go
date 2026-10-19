@@ -4317,10 +4317,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Hold the existing lane across the backlog check and admission. If
 		// the drainer acquired it first, admission still appends behind it.
 		release, acquired := api.tryLockSessionInputLane(sessionID, 0)
-		api.queueConversationTurnResponse(w, r, currentUserID, sessionID, req)
 		if acquired {
-			release()
+			defer release()
 		}
+		api.queueConversationTurnResponse(w, r, currentUserID, sessionID, req)
 		return
 	}
 	preferRetainedDelivery := !api.externalBuilderOwnsSession(sessionID) && shouldTryRetainedDeliveryBeforeQueue(r.Context(), req, sessionID)
