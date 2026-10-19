@@ -4,7 +4,7 @@ import { LocalBridge } from './bridge.mjs';
 import { Delivery } from './delivery.mjs';
 import { Host, personCommand } from './host.mjs';
 
-const help = 'AgentWorks: /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks detach stops delivery; /agentworks agents shows available agents; /agentworks share publishes this chat's agent to the network; /agentworks unshare takes it back. Type the command yourself.';
+const help = 'AgentWorks: /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks detach stops delivery; /agentworks agents shows available agents; /agentworks share publishes the agent from this chat to the network; /agentworks unshare takes it back. Type the command yourself.';
 
 export default function (pi: ExtensionAPI) {
   const bridge = new LocalBridge();
