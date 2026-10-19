@@ -79,7 +79,7 @@ func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 		if monitor {
 			in.Action = "status"
 		}
-		out, err := CallLocalBridge(callCtx, root, in)
+		out, err := CallMessagingBridge(callCtx, root, in)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}

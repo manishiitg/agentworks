@@ -3,6 +3,7 @@ package agentworksclient
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -655,5 +656,105 @@ func TestCodexOwnAttachRebuildsAMissingChatConnection(t *testing.T) {
 		t.Fatal("the chat still points at the lost connection file")
 	} else if _, err = os.Stat(got.ConfigPath); err != nil {
 		t.Fatalf("the new connection file was not written: %v", err)
+	}
+}
+
+// Regression: a scheduled Codex turn used the messaging CLI after its provider
+// restarted and stopped at "not attached", even though this chat's lease remained.
+func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
+	if err := localIPCSupported(); err != nil {
+		t.Skip(err)
+	}
+	var attachments atomic.Int32
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/agents/events") {
+			w.WriteHeader(http.StatusOK)
+			w.(http.Flusher).Flush()
+			<-r.Context().Done()
+			return
+		}
+		var body struct {
+			Action  string `json:"action"`
+			Name    string `json:"agent_name"`
+			Session string `json:"native_session_id"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.Action == "attach" {
+			id := attachments.Add(1)
+			_ = json.NewEncoder(w).Encode(AgentAttachment{ID: fmt.Sprintf("renewed-%d", id), AgentID: "agent-" + body.Session, AgentName: body.Name, Provider: "codex", SessionID: body.Session})
+			return
+		}
+		_, _ = w.Write([]byte(`{"agents":[],"message_ids":[]}`))
+	}))
+	defer remote.Close()
+	root, err := os.MkdirTemp("", "aw-resume")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	config := filepath.Join(root, "parent.json")
+	if err = SaveConfig(config, Config{Server: remote.URL, Token: "fixture-token"}); err != nil {
+		t.Fatal(err)
+	}
+	seed := func(session, id string, closed bool) *localSession {
+		return &localSession{Attachment: AgentAttachment{ID: id, AgentID: "agent-" + session, AgentName: "saved-" + session, Provider: "codex", SessionID: session}, HostKey: "prior-process", AccountSenders: true, OwnCLI: true, Offline: true, ServerClosed: closed, ConfigPath: config, ParentConfigPath: config, Offers: map[string]localOffer{}}
+	}
+	if err = atomicLiveJSON(filepath.Join(root, "sessions.json"), map[string]*localSession{
+		localBridgeKey("codex", "saved"):  seed("saved", "lease-saved", false),
+		localBridgeKey("codex", "closed"): seed("closed", "lease-closed", true),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- ServeLocalBridge(ctx, root, LocalBridgeOptions{HostAlive: func(string, string) bool { return true }})
+	}()
+	defer func() { cancel(); <-done }()
+	for i := 0; i < 100; i++ {
+		if _, err = CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "ping"}); err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := LocalBridgeRequest{Action: "peers", Provider: "codex", SessionID: "saved", HostKey: "current-process"}
+	before, err := CallLocalBridge(ctx, root, request)
+	if err != nil || !before.Offline || before.Attached {
+		t.Fatalf("fixture did not reproduce offline messaging: %+v %v", before, err)
+	}
+	got, err := CallMessagingBridge(ctx, root, request)
+	if err != nil || !got.Attached || got.Attachment.AgentID != "agent-saved" || got.Attachment.AgentName != "saved-saved" {
+		t.Fatalf("messaging did not resume the same saved agent: %+v %v", got, err)
+	}
+	if attachments.Load() != 1 {
+		t.Fatal("messaging must renew the lease only once")
+	}
+	// SessionEnd closes the server lease but keeps this chat's saved identity.
+	if _, err = CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "offline", Provider: "codex", SessionID: "saved", HostKey: "current-process"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = CallMessagingBridge(ctx, root, request)
+	if err != nil || !got.Attached || got.Attachment.AgentID != "agent-saved" || got.Attachment.AgentName != "saved-saved" || attachments.Load() != 2 {
+		t.Fatalf("a resumed chat did not reconnect after SessionEnd: %+v %v", got, err)
+	}
+	for _, session := range []string{"never-attached", "closed"} {
+		request.SessionID = session
+		got, err = CallMessagingBridge(ctx, root, request)
+		if got.Attached || session == "closed" && err == nil {
+			t.Fatalf("messaging revived %s: %+v %v", session, got, err)
+		}
+	}
+	if _, err = CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "detach", Provider: "codex", SessionID: "saved", HostKey: "current-process"}); err != nil {
+		t.Fatal(err)
+	}
+	request.SessionID = "saved"
+	if got, err = CallMessagingBridge(ctx, root, request); err != nil || got.Attached {
+		t.Fatalf("messaging revived an explicit detach: %+v %v", got, err)
+	}
+	if attachments.Load() != 2 {
+		t.Fatal("an unavailable chat was attached")
 	}
 }

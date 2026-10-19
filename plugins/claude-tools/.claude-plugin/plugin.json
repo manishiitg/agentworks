@@ -1,6 +1,6 @@
 {
   "name": "agentworks-tools",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "AgentWorks messaging tools for Claude Code with no hooks: ask your agent to connect, share, message and ping",
   "author": {
     "name": "AgentWorks"

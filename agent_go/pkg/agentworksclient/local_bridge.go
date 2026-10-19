@@ -355,6 +355,29 @@ func CallLocalBridge(ctx context.Context, root string, request LocalBridgeReques
 	return out, nil
 }
 
+// CallMessagingBridge reconnects a previously attached Codex chat after a local
+// process restart. An offline reply means the requested action was not run, so
+// it can be retried once after the existing exact-session resume succeeds.
+// Missing sessions, explicit detaches and server-closed leases are not revived.
+func CallMessagingBridge(ctx context.Context, root string, request LocalBridgeRequest) (LocalBridgeReply, error) {
+	out, err := CallLocalBridge(ctx, root, request)
+	if err != nil || !out.Offline || out.Attachment.ID == "" || request.Provider != "codex" || request.SessionID == "" || request.HostKey == "" || out.Attachment.SessionID != request.SessionID || out.Attachment.Provider != request.Provider {
+		return out, err
+	}
+	switch request.Action {
+	case "peers", "send", "read", "reply", "reply_inbox", "ack", "purpose", "ping_person", "get_file":
+	default:
+		return out, nil
+	}
+	resume := LocalBridgeRequest{Action: "resume", Provider: request.Provider, SessionID: request.SessionID, HostKey: request.HostKey}
+	reconnected, err := CallLocalBridge(ctx, root, resume)
+	if err != nil || !reconnected.Attached {
+		return reconnected, err
+	}
+	log.Printf("[BRIDGE] messaging retry provider=%s chat=%s action=%s attachment=%s", request.Provider, boundedMuseHint(request.SessionID), request.Action, boundedMuseHint(reconnected.Attachment.ID))
+	return CallLocalBridge(ctx, root, request)
+}
+
 func localConfiguredClient(path string) (*Client, error) {
 	cfg, err := LoadConfig(path)
 	if err != nil {
@@ -889,6 +912,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			// come back on its own. The person's attach in the chat is what restores it.
 			return LocalBridgeReply{Error: "This chat was disconnected. Type /agentworks attach in it to connect again."}
 		}
+		log.Printf("[BRIDGE] resume provider=%s chat=%s attachment=%s", in.Provider, boundedMuseHint(in.SessionID), boundedMuseHint(s.Attachment.ID))
 		in.Action = "attach"
 		in.ConfigPath = s.ParentConfigPath
 		in.AgentName = s.Attachment.AgentName

@@ -877,7 +877,7 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 			request.AttachmentID = status.Attachment.ID
 		}
-		out, err := agentworksclient.CallLocalBridge(cmd.Context(), root, request)
+		out, err := agentworksclient.CallMessagingBridge(cmd.Context(), root, request)
 		if err != nil {
 			return err
 		}
