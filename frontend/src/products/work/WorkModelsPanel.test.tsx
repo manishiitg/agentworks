@@ -17,7 +17,7 @@ const state = vi.hoisted(() => ({
 }))
 vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: (selector: (value: typeof state) => unknown) => selector(state) }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (selector: (value: typeof state) => unknown) => selector(state) }))
-vi.mock('./projectProduct', () => ({ useProjectProduct: () => state.product }))
+vi.mock('./projectProduct', async original => ({ ...await original<typeof import('./projectProduct')>(), useProjectProduct: () => state.product }))
 vi.mock('../../components/workflow/WorkflowLLMConfigurationPanel', () => ({ default: (props: typeof state.configurationProps) => { state.configurationProps = props; return null } }))
 vi.mock('../../components/providers/GuidedProviderTerminal', () => ({ default: () => null }))
 vi.mock('../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: {} }))
