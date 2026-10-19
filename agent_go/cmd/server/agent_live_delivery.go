@@ -121,6 +121,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		return
 	}
 	a := &s.Agents[index]
+	ackDelivery := ""
 	switch externalArg(args, "action") {
 	case "attach":
 		provider, session, purpose := externalArg(args, "provider"), externalArg(args, "native_session_id"), strings.TrimSpace(externalArg(args, "purpose"))
@@ -164,20 +165,31 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 				if m.ID != externalArg(args, "message_id") || dest.NamedAgentID != a.ID || dest.UserID != claims.UserID {
 					continue
 				}
-				if m.LiveAttachment != a.Attachment.ID || !s.shareSenderAllowed(*c, m.From, claims.UserID, time.Now().UTC()) {
+				// A mailbox receipt follows an explicit body read by this exact
+				// attached agent. Recheck current authority instead of requiring an
+				// earlier SSE offer, which may belong to its previous lease.
+				mailbox := transport == "mailbox"
+				if mailbox && !serverAuthoredKind(m.Kind) {
+					if api.recheckAgentMessageAdmission(r.Context(), *c, *m) != nil || api.externalAuthorizeMessagePeer(r.Context(), claims, c.Endpoints[m.From], false) != nil {
+						externalError(w, 409, "receipt_refused", "Incoming message is no longer authorized.")
+						return
+					}
+				}
+				if (!mailbox && m.LiveAttachment != a.Attachment.ID) || !s.shareSenderAllowed(*c, m.From, claims.UserID, time.Now().UTC()) {
 					externalError(w, 409, "receipt_refused", "The message was not offered to this exact attachment or its sender is outside this account.")
 					return
 				}
-				if delivery == "processed" && m.Delivery != "admitted" && m.Delivery != "typed" && m.Delivery != "processed" {
-					externalError(w, 409, "not_admitted", "Only an admitted or typed message can be acknowledged as processed.")
-					return
-				}
 				if m.Delivery == "processed" && delivery != "processed" {
-					externalError(w, 409, "receipt_refused", "A processed receipt cannot be downgraded.")
-					return
+					if delivery == "failed" {
+						externalError(w, 409, "receipt_refused", "A processed receipt cannot be downgraded.")
+						return
+					}
+					// A late admission or a retry cannot undo completed processing.
+					delivery = "processed"
 				}
 				m.Delivery = delivery
 				stampReceipt(m, delivery, time.Now().UTC())
+				m.LiveAttachment = a.Attachment.ID
 				m.LiveTransport = transport
 				m.LiveSession = a.Attachment.SessionID
 				providerForTransport := map[string]string{"claude_session": "claude", "claude_channel": "claude", "claude_hook": "claude", "codex_queue": "codex", "codex_desktop": "codex", "codex_hook": "codex", "cursor_hook": "cursor", "muse_session": "muse", "muse_hook": "muse", "agy_hook": "agy", "pi_hook": "pi", "pi_extension": "pi"}
@@ -186,6 +198,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 					return
 				}
 				found = true
+				ackDelivery = delivery
 			}
 		}
 		if !found {
@@ -199,8 +212,9 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 	}
 	out := map[string]any{"agent_id": a.ID, "agent_name": a.Name, "purpose": a.Purpose, "status": externalArg(args, "action") + "ed"}
 	if externalArg(args, "action") == "ack" {
-		out["delivery"] = externalArg(args, "delivery")
+		out["delivery"] = ackDelivery
 		out["message_id"] = externalArg(args, "message_id")
+		log.Printf("[AGENT-MESSAGE-ACK] message=%s agent=%s attachment=%s delivery=%s transport=%s", externalArg(args, "message_id"), a.Name, a.Attachment.ID, ackDelivery, externalArg(args, "transport"))
 	}
 	if a.Attachment != nil {
 		out["attachment_id"] = a.Attachment.ID
@@ -415,6 +429,7 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 	}
 	history, _ := args["history"].(bool)
 	permitted := []string{}
+	inboxes := map[string]string{}
 	reasons := map[string]string{} // message id -> why it was left out (logged; counted for the client)
 	for _, id := range ids {
 		for _, c := range s.Conversations {
@@ -423,7 +438,7 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 					continue
 				}
 				switch {
-				case c.Endpoints[1-m.From].NamedAgentID != a.ID:
+				case c.Endpoints[1-m.From].NamedAgentID != a.ID || c.Endpoints[1-m.From].UserID != a.UserID:
 					reasons[id] = "not_addressed_to_this_agent"
 					continue
 				case !history && m.LiveAttachment != a.Attachment.ID:
@@ -436,6 +451,7 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 				src := c.Endpoints[m.From]
 				if serverAuthoredKind(m.Kind) {
 					permitted = append(permitted, id)
+					inboxes[id] = c.ID
 					continue
 				}
 				if !s.shareSenderAllowed(c, m.From, live.UserID, time.Now().UTC()) {
@@ -451,6 +467,7 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 					continue
 				}
 				permitted = append(permitted, id)
+				inboxes[id] = c.ID
 			}
 		}
 	}
@@ -475,7 +492,7 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 		externalError(w, 403, "attachment_refused", "Attachment changed.")
 		return
 	}
-	externalJSON(w, map[string]any{"message_ids": permitted, "held_reasons": held})
+	externalJSON(w, map[string]any{"message_ids": permitted, "inbox_ids": inboxes, "held_reasons": held})
 }
 
 // validateLogged remembers when each (message, reason) was last written: a held message is checked every few seconds, so a

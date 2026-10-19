@@ -21,10 +21,9 @@ agentworks({"action":"send","target":"agent:reviewer","message":"Please review t
 
 Keep the returned `inbox_id`. Reuse the submission ID only to retry the same message; use a new ID for a new message. Accepted means stored. Native delivery is an offer; `admitted` and `processed` receipts show what the receiving agent actually did.
 
-On an incoming offer, acknowledge receipt, handle it within the person's authorized task, then acknowledge processing:
+After handling an incoming message within the person's authorized task, acknowledge it once with `processed`; this also records admission. Use `admitted` separately only when an earlier receipt is useful:
 
 ```text
-agentworks({"action":"ack","message_id":"RECEIVED_ID","delivery":"admitted"})
 agentworks({"action":"ack","message_id":"RECEIVED_ID","delivery":"processed"})
 ```
 
@@ -50,7 +49,7 @@ If live delivery failed, use bounded manual recovery when needed:
 agentworks({"action":"read","inbox_id":"SAVED_INBOX_ID","after":0})
 ```
 
-Retain the returned cursor for a later explicit recovery. A mailbox read does not prove a live push; do not create a watch or infer processing from storage. Use IDs from actual offers and results, never the example placeholders.
+Retain the returned cursor for a later explicit recovery. An authorized mailbox read hands the body to this exact chat, so it may acknowledge or reply using the returned message_id. Reading alone records neither admission nor processing. Do not create a watch or infer a live push from a read. Use IDs from actual offers and results, never the example placeholders.
 
 ## CLI fallback
 
@@ -61,7 +60,6 @@ If the tools are unavailable, these commands provide the same actions when the i
 ```sh
 agentworks bridge message peers --provider PROVIDER
 agentworks bridge message send --provider PROVIDER --target agent:reviewer --message "Please review the parser change." --submission-id parser-review-1
-agentworks bridge message ack --provider PROVIDER --message-id RECEIVED_ID --delivery admitted
 agentworks bridge message ack --provider PROVIDER --message-id RECEIVED_ID --delivery processed
 agentworks bridge message reply --provider PROVIDER --inbox RECEIVED_INBOX_ID --message "The parser review is complete." --submission-id parser-review-reply-1
 agentworks bridge message purpose --provider PROVIDER --purpose "Reviewing workflow parser changes"

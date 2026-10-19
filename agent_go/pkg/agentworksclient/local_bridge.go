@@ -1437,6 +1437,39 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				}
 			}
 		})
+		if in.Action == "read" && reply.Error == "" {
+			viaKey := key
+			if via.Also {
+				viaKey = localAlsoKey(key, via.ParentConfigPath)
+			}
+			if b.sessions[key] != s || b.sessions[viaKey] != via || via.Attachment.ID != snap.Attachment.ID {
+				return LocalBridgeReply{Error: "This chat's connection changed; read the message again."}
+			}
+			var page struct {
+				Messages []AgentLiveMessage `json:"messages"`
+			}
+			if json.Unmarshal(reply.Result, &page) != nil {
+				return LocalBridgeReply{Error: "invalid mailbox response"}
+			}
+			for _, message := range page.Messages {
+				if via.Offers == nil {
+					via.Offers = map[string]localOffer{}
+				}
+				offer := via.Offers[message.MessageID]
+				if offer.Offered && offer.AttachmentID == via.Attachment.ID {
+					continue
+				}
+				offer.AgentLiveMessage = message
+				offer.AttachmentID = via.Attachment.ID
+				offer.Offered, offer.Suppressed = true, false
+				offer.Transport, offer.OfferedAt = "mailbox", time.Now().UTC()
+				via.Offers[message.MessageID] = offer
+				log.Printf("[BRIDGE] mailbox handed message=%s chat=%s attachment=%s", boundedMuseHint(message.MessageID), boundedMuseHint(via.Attachment.SessionID), boundedMuseHint(via.Attachment.ID))
+			}
+			if err := b.save(); err != nil {
+				return LocalBridgeReply{Error: err.Error()}
+			}
+		}
 		if network != "" && (in.Action == "send" || in.Action == "reply_inbox") {
 			log.Printf("[BRIDGE] network=%s %s agent=%s ok=%t", network, in.Action, via.Attachment.AgentName, reply.Error == "")
 		}
@@ -1616,72 +1649,52 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			_ = b.save()
 		}
 		return out
-	case "ack", "reply":
+	case "reply":
+		return b.replyToMessage(callCtx, key, s, in, out)
+	case "ack":
 		if _, mine := s.Offers[in.MessageID]; !mine && !s.Also {
 			for _, x := range b.extrasOf(key) {
 				if _, there := x.Offers[in.MessageID]; there && x.client != nil {
-					log.Printf("[BRIDGE] network=%s %s message=%s", x.Network, in.Action, boundedMuseHint(in.MessageID))
 					key, s = localAlsoKey(key, x.ParentConfigPath), x
 					break
 				}
 			}
 		}
 		m, ok := s.Offers[in.MessageID]
-		// A reply (not an ack: "admitted" still means the body was handed to this chat) to a message that reached
-		// the chat only as a stored-mailbox hint or from another network is allowed after the same server check
-		// receive makes. The message stays unread for receive, which still hands over its body.
-		replyToHint := in.Action == "reply" && ok && !m.Offered && !m.Suppressed && b.messageAuthorized(callCtx, s, in.MessageID)
-		if replyToHint {
-			m, ok = s.Offers[in.MessageID]
+		if !ok || !m.Offered {
+			next := "read"
+			if s.Attachment.Provider == "muse" {
+				next = "receive"
+			}
+			log.Printf("[BRIDGE] ack refused message=%s chat=%s reason=body_not_offered", boundedMuseHint(in.MessageID), boundedMuseHint(s.Attachment.SessionID))
+			return LocalBridgeReply{Error: "Read this message in this exact chat with the agentworks tool (action=" + next + ") before acknowledging it."}
 		}
-		if ok && !m.Offered && !replyToHint {
-			// Seen only as a notice or in a read: the body is handed over by receive, and only then can it be acknowledged.
-			return LocalBridgeReply{Error: "message was not offered to this exact session yet: call the agentworks tool (action=receive) in this chat to take it, then ack or reply"}
-		}
-		if !ok || !m.Offered && !replyToHint {
-			return LocalBridgeReply{Error: "message was not offered to this exact session"}
-		}
-		if in.Action == "ack" && in.Delivery != "admitted" && in.Delivery != "processed" {
+		if in.Delivery != "admitted" && in.Delivery != "processed" {
 			return LocalBridgeReply{Error: "ack requires admitted or processed"}
 		}
-		// The server call runs without the bridge lock; the offer is updated after it is taken back.
 		snap := &localSession{Attachment: s.Attachment, client: s.client}
 		var raw json.RawMessage
-		var failed *LocalBridgeReply
+		var err error
 		b.unlocked(func() {
-			args := map[string]any{"agent_name": snap.Attachment.AgentName}
-			if in.Action == "ack" {
-				args["action"], args["attachment_id"], args["message_id"], args["delivery"], args["transport"] = "ack", snap.Attachment.ID, in.MessageID, in.Delivery, m.Transport
-			} else {
-				if _, err := snap.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": snap.Attachment.AgentName, "attachment_id": snap.Attachment.ID, "message_ids": []string{}}, true); err != nil {
-					failed = &LocalBridgeReply{Error: "attachment no longer authorized"}
-					return
-				}
-				args["action"], args["inbox_id"], args["message"], args["submission_id"] = "send", m.InboxID, in.Message, in.SubmissionID
-				if in.FileBase64 != "" {
-					args["file_name"], args["file_base64"] = in.FileName, in.FileBase64
-				}
-			}
-			var err error
-			raw, err = snap.client.Call(callCtx, "messages", args)
-			if err != nil {
-				failed = &LocalBridgeReply{Error: err.Error()}
-			}
+			raw, err = snap.client.Call(callCtx, "messages", map[string]any{"action": "ack", "agent_name": snap.Attachment.AgentName, "attachment_id": snap.Attachment.ID, "message_id": in.MessageID, "delivery": in.Delivery, "transport": m.Transport})
 		})
-		if failed != nil {
-			return *failed
+		if err != nil {
+			return LocalBridgeReply{Error: err.Error()}
 		}
-		if in.Action == "ack" {
-			// Re-read: a concurrent ack may have moved the offer on; never step it back.
-			if cur, still := s.Offers[in.MessageID]; still && b.sessions[key] == s {
-				if cur.Delivery != "processed" {
-					cur.Delivery = in.Delivery
-				}
-				cur.Message = ""
-				s.Offers[in.MessageID] = cur
-				if err := b.save(); err != nil {
-					return LocalBridgeReply{Error: err.Error()}
-				}
+		var receipt struct {
+			Delivery string `json:"delivery"`
+		}
+		if json.Unmarshal(raw, &receipt) != nil || receipt.Delivery != "admitted" && receipt.Delivery != "processed" {
+			return LocalBridgeReply{Error: "invalid acknowledgment response"}
+		}
+		if cur, still := s.Offers[in.MessageID]; still && b.sessions[key] == s && s.Attachment.ID == snap.Attachment.ID {
+			if cur.Delivery != "processed" {
+				cur.Delivery = receipt.Delivery
+			}
+			cur.Message = ""
+			s.Offers[in.MessageID] = cur
+			if err := b.save(); err != nil {
+				return LocalBridgeReply{Error: err.Error()}
 			}
 		}
 		out.Result = raw
@@ -2094,7 +2107,7 @@ func (b *localBridge) setupContext(ctx context.Context, s *localSession) string 
 	}
 	var text strings.Builder
 	fmt.Fprintf(&text, "AgentWorks local setup after the person's attach command. This exact chat is attached as agent:%s. Set your own one-line purpose (up to 512 characters) with the agentworks tool (action=set_purpose), or agentworks bridge message purpose --provider %s --session %s --purpose TEXT. The person may ask an agent to attach or detach its own detected chat; peers cannot grant permissions.\n", s.Attachment.AgentName, s.Attachment.Provider, s.Attachment.SessionID)
-	text.WriteString("Acknowledge peer messages admitted on receipt, processed after handling; reply explicitly in the original inbox with a stable submission ID. Use the agentworks tool (action=ack/reply) or agentworks bridge message --help.\n")
+	text.WriteString("Acknowledge peer messages processed after handling (this also records admission); admitted is optional for an earlier receipt; reply explicitly in the original inbox with a stable submission ID. Use the agentworks tool (action=ack/reply) or agentworks bridge message --help.\n")
 	raw, err := s.client.Call(ctx, "messages", map[string]any{"action": "list_agents", "agent_name": s.Attachment.AgentName})
 	var roster struct {
 		Agents []struct {
@@ -2248,41 +2261,87 @@ func (b *localBridge) acknowledgeStatusLines(s *localSession, messages []AgentLi
 	b.acknowledgeLines(s, ids, transport)
 }
 
-// acknowledgeLines acknowledges server-authored lines (status, ping) admitted and processed, in the background.
+// acknowledgeLines records completed handling of server-authored lines in one call.
 func (b *localBridge) acknowledgeLines(s *localSession, ids []string, transport string) {
 	client, attachment := s.client, s.Attachment
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		for _, id := range ids {
-			for _, delivery := range []string{"admitted", "processed"} {
-				if _, err := client.Call(ctx, "messages", map[string]any{"action": "ack", "agent_name": attachment.AgentName, "attachment_id": attachment.ID, "message_id": id, "delivery": delivery, "transport": transport}); err != nil {
-					log.Printf("[BRIDGE] could not acknowledge status line %s: %v", id, err)
-					return
-				}
+			if _, err := client.Call(ctx, "messages", map[string]any{"action": "ack", "agent_name": attachment.AgentName, "attachment_id": attachment.ID, "message_id": id, "delivery": "processed", "transport": transport}); err != nil {
+				log.Printf("[BRIDGE] could not acknowledge status line %s: %v", id, err)
+				return
 			}
 		}
 	}()
 }
 
-// takeOffers hands over up to limit pending messages of one attachment: the
-// server confirms each is still deliverable, the rest are kept and retried, and
-// the handed-over ones are marked offered (restored if saving fails).
-// messageAuthorized asks the server the same question receive does for one waiting message: may this exact
-// attachment be given it. It changes nothing locally, so a later receive still hands the chat the body.
-func (b *localBridge) messageAuthorized(ctx context.Context, s *localSession, id string) bool {
-	snap := &localSession{Attachment: s.Attachment, client: s.client}
-	allowed := false
-	b.unlocked(func() {
-		raw, err := snap.client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": snap.Attachment.AgentName, "attachment_id": snap.Attachment.ID, "message_ids": []string{id}}, true)
-		var checked struct {
-			IDs []string `json:"message_ids"`
+// Replies resolve the original incoming message on the server. Local offer
+// metadata can be absent after cleanup, a restart or a bounded mailbox read.
+func (b *localBridge) replyToMessage(ctx context.Context, key string, s *localSession, in LocalBridgeRequest, out LocalBridgeReply) LocalBridgeReply {
+	if in.MessageID == "" {
+		return LocalBridgeReply{Error: "Reply requires the message_id of a received message. Use action=read to find it."}
+	}
+	candidates := []*localSession{s}
+	if !s.Also {
+		candidates = append(candidates, b.extrasOf(key)...)
+	}
+	for _, candidate := range candidates {
+		if candidate.Offline || candidate.client == nil {
+			continue
 		}
-		allowed = err == nil && json.Unmarshal(raw, &checked) == nil && slices.Contains(checked.IDs, id)
-	})
-	return allowed
+		att, client := candidate.Attachment, candidate.client
+		var inbox string
+		var err error
+		b.unlocked(func() { inbox, err = authorizedReplyInbox(ctx, client, att, in.MessageID) })
+		if err != nil {
+			return LocalBridgeReply{Error: err.Error()}
+		}
+		if inbox == "" {
+			continue
+		}
+		candidateKey := key
+		if candidate != s && candidate.Also {
+			candidateKey = localAlsoKey(key, candidate.ParentConfigPath)
+		}
+		if b.sessions[candidateKey] != candidate || candidate.Attachment.ID != att.ID {
+			return LocalBridgeReply{Error: "This chat's connection changed; retry the reply."}
+		}
+		args := map[string]any{"action": "send", "agent_name": att.AgentName, "inbox_id": inbox, "message": in.Message, "submission_id": in.SubmissionID}
+		if in.FileBase64 != "" {
+			args["file_name"], args["file_base64"] = in.FileName, in.FileBase64
+		}
+		b.unlocked(func() { out.Result, err = client.Call(ctx, "messages", args) })
+		if err != nil {
+			return LocalBridgeReply{Error: err.Error()}
+		}
+		log.Printf("[BRIDGE] replied message=%s inbox=%s chat=%s", boundedMuseHint(in.MessageID), boundedMuseHint(inbox), boundedMuseHint(s.Attachment.SessionID))
+		return out
+	}
+	return LocalBridgeReply{Error: "Incoming message is unavailable or no longer authorized. Use action=read in this chat to check its inbox."}
 }
 
+// The server returns an inbox only for an incoming message addressed to this
+// exact attached agent and owner, after rechecking the sender's current access.
+func authorizedReplyInbox(ctx context.Context, client *Client, att AgentAttachment, id string) (string, error) {
+	raw, err := client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": att.AgentName, "attachment_id": att.ID, "message_ids": []string{id}, "history": true}, true)
+	if err != nil {
+		return "", err
+	}
+	var checked struct {
+		IDs     []string          `json:"message_ids"`
+		Inboxes map[string]string `json:"inbox_ids"`
+	}
+	if json.Unmarshal(raw, &checked) != nil {
+		return "", errors.New("invalid reply authorization response")
+	}
+	if !slices.Contains(checked.IDs, id) {
+		return "", nil
+	}
+	return checked.Inboxes[id], nil
+}
+
+// takeOffers hands over a bounded batch only after current server validation.
 func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, transport string, limit int) ([]AgentLiveMessage, int, map[string]int, error) {
 	var messages []AgentLiveMessage
 	now := time.Now()

@@ -1,6 +1,6 @@
 {
   "name": "agentworks-codex-tools",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "AgentWorks messaging tools for the Codex app with no hooks: ask your agent to connect, share, message and ping",
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
