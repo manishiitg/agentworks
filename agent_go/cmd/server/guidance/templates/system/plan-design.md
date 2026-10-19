@@ -84,9 +84,6 @@ can see, chat with and tune it (owner, 2026-10-19). Suggest moving a step to a
 Crew when any one is true: the same kind of work is needed by more than one
 workflow or route; it gets better by remembering past runs; or a person would
 want to ask it questions or tune it. Length or skills alone are not a reason.
-When several routes of one workflow reuse the same work and gain from shared
-memory and context, use one Crew for them: one named agent they share, or one
-agent per route when each route needs its own history.
 Keep mechanical work (fetch, transform, validate, deploy) and writing this
 workflow's own records in the workflow. Suggest, never move on your own: the
 owner decides. A Crew cannot write this workflow's database or files, so the
