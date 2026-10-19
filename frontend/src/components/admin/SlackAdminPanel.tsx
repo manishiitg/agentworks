@@ -63,7 +63,9 @@ function SlackAdminSections() {
     try {
       // Channel routes belong to workflows; carry them through unchanged.
       await agentApi.updateSlackFeedbackConfig({
-        enabled, bot_mode: enabled, bot_token: botToken || original.bot_token, app_token: appToken || original.app_token,
+        enabled, bot_mode: enabled,
+        bot_token: botToken || original.bot_token || '',
+        app_token: appToken || original.app_token || '',
         channel_routing: original.channel_routing || {},
       })
       setTestResult(null)
