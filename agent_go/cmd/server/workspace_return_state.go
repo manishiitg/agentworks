@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 type workspaceLayout struct {
@@ -262,7 +263,18 @@ func (api *StreamingAPI) handleWorkspaceReturnState(w http.ResponseWriter, r *ht
 			kind := map[string]string{"work": "work", "code": "code", "agentworks": "workflow", "relays": "relay"}[incoming.Last.Surface]
 			target, err := api.projectMCPTarget(r.Context(), claims, projectMCPAudience{Kind: kind, ID: incoming.Last.ID, Access: "view"})
 			if err != nil || kind == "" {
-				http.Error(w, "This workspace is no longer available.", 403)
+				causeStatus := wf.StatusCode(err)
+				status := http.StatusForbidden
+				message := "This workspace is no longer available."
+				// A temporary discovery/service failure cannot establish that a
+				// project was revoked. Keep the saved preference and ask for retry;
+				// missing and denied projects still share the same refusal below.
+				if kind != "" && (causeStatus >= 500 || r.Context().Err() != nil) {
+					status = http.StatusServiceUnavailable
+					message = "Could not check your workspace access. Try again shortly."
+				}
+				log.Printf("[WORKSPACE_STATE] access check refused user=%q surface=%q id=%q status=%d cause_status=%d context_error=%v", claims.UserID, incoming.Last.Surface, incoming.Last.ID, status, causeStatus, r.Context().Err())
+				http.Error(w, message, status)
 				return
 			}
 			work = []homeWork{{Surface: incoming.Last.Surface, ID: incoming.Last.ID, WorkspacePath: target.Root}}
