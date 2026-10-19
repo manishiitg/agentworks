@@ -92,6 +92,8 @@ type ProductAgentIdentity struct {
 	Purpose   string `json:"purpose,omitempty"`
 	UpdatedBy string `json:"updated_by,omitempty"`
 	UpdatedAt string `json:"updated_at,omitempty"`
+	// Position orders the person's side tabs in the strip (1 is first); 0 means not placed yet.
+	Position int `json:"position,omitempty"`
 }
 
 const (
@@ -155,6 +157,45 @@ func (store productConversationRegistryStore) setAgentIdentity(ctx context.Conte
 	}
 	log.Printf("[AGENT_IDENTITY] %s set the agent %s to name=%q purpose=%q", identity.UpdatedBy, entryKey, identity.Name, identity.Purpose)
 	return identity, nil
+}
+
+// setSideChatOrder saves the order of one project's side tabs as the person arranged them: conversationKeys come
+// first to last. A key that is not an open side tab of this project is refused; tabs left out keep no position.
+func (store productConversationRegistryStore) setSideChatOrder(ctx context.Context, userID, profileID, projectID string, conversationKeys []string) error {
+	projectID = strings.TrimSpace(projectID)
+	path := productConversationRegistryPath(userID)
+	mutex := productConversationRegistryMutex(path)
+	mutex.Lock()
+	defer mutex.Unlock()
+	document, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return err
+	}
+	if document.Agents == nil {
+		document.Agents = map[string]ProductAgentIdentity{}
+	}
+	prefix := productConversationRegistryEntryKey(profileID, projectID) + codeChatSideMarker
+	positions := map[string]int{}
+	for i, key := range conversationKeys {
+		entryKey := productConversationRegistryEntryKey(profileID, strings.TrimSpace(key))
+		if _, ok := document.Entries[entryKey]; !ok || !strings.HasPrefix(entryKey, prefix) {
+			return fmt.Errorf("that tab is not open in this project")
+		}
+		positions[entryKey] = i + 1
+	}
+	for entryKey := range document.Entries {
+		if !strings.HasPrefix(entryKey, prefix) {
+			continue
+		}
+		identity := document.Agents[entryKey]
+		if identity.Position == positions[entryKey] {
+			continue
+		}
+		identity.Position = positions[entryKey]
+		document.Agents[entryKey] = identity
+	}
+	document.Version = productConversationRegistryVersion
+	return store.writeDocument(ctx, path, document)
 }
 
 // agentIdentities returns the saved identities of one project's agents, keyed by conversation key.

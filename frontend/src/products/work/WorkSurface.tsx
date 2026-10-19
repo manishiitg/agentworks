@@ -6,7 +6,7 @@ import { replaceProductSelection } from '../../utils/productUrlNavigation'
 import { markFeatureUsed } from '../../utils/featureUsage'
 import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../../utils/workspaceViewPreference'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Loader2, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, Loader2, Plus, Trash2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { ProductChatLandingCard } from '../../components/chat/ProductChatLandingCard'
@@ -576,14 +576,49 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
   // A new tab is a new agent and always gets a name first (owner, 2026-10-19); null = not naming.
   const [newTabName, setNewTabName] = useState<string | null>(null)
   const canonicalSessionId = chatTabs[canonicalTabId]?.sessionId
+  // The main chat first, then side tabs in the order the person dragged them into, then the rest by age.
+  const workTabRank = (tab: ChatTab) => tab.tabId === canonicalTabId ? 0 : !isWorkSideChatTab(tab, projectId) ? 3 : (tab.metadata?.agentProfileTabPosition || 0) > 0 ? 1 : 2
   const tabs = Object.values(chatTabs)
     .filter(tab => belongsToWorkProject(tab, projectId) && (
       tab.tabId === canonicalTabId ||
       isWorkSideChatTab(tab, projectId) ||
       (tab.metadata?.isViewOnly === true && tab.sessionId !== canonicalSessionId)
     ))
-    .sort((a, b) => a.tabId === canonicalTabId ? -1 : b.tabId === canonicalTabId ? 1 : a.createdAt - b.createdAt)
+    .sort((a, b) => workTabRank(a) - workTabRank(b) || (a.metadata?.agentProfileTabPosition || 0) - (b.metadata?.agentProfileTabPosition || 0) || a.createdAt - b.createdAt)
   const sideChats = tabs.filter(tab => isWorkSideChatTab(tab, projectId))
+  // The strip shows the first few tabs; the rest are one click away in "More" (owner, 2026-10-19).
+  const visibleTabs = tabs.slice(0, WORK_VISIBLE_TABS)
+  const moreTabs = tabs.slice(WORK_VISIBLE_TABS)
+  const activeInMore = moreTabs.find(tab => tab.tabId === activeTabId)
+  const [moreOpen, setMoreOpen] = useState(false)
+  const moreRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!moreOpen) return
+    const close = (event: MouseEvent) => { if (!moreRef.current?.contains(event.target as Node)) setMoreOpen(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [moreOpen])
+  // Dragging a side tab onto another saves the new order on the server; the strip then follows the server's order.
+  const [draggingKey, setDraggingKey] = useState<string | null>(null)
+  const applyServerOrder = (listed: { conversation_key: string; position?: number }[]) => {
+    const state = useChatStore.getState()
+    for (const chat of listed) {
+      const tab = Object.values(state.chatTabs).find(item => item.metadata?.agentProfileConversationKey === chat.conversation_key)
+      if (tab && (tab.metadata?.agentProfileTabPosition || 0) !== (chat.position || 0)) state.setTabMetadata(tab.tabId, { agentProfileTabPosition: chat.position || 0 })
+    }
+  }
+  const moveSideChat = async (fromKey: string, toKey: string) => {
+    const keys = sideChats.map(tab => tab.metadata?.agentProfileConversationKey).filter((key): key is string => !!key)
+    const from = keys.indexOf(fromKey)
+    const to = keys.indexOf(toKey)
+    if (from < 0 || to < 0 || from === to) return
+    keys.splice(to, 0, ...keys.splice(from, 1))
+    try {
+      applyServerOrder(await agentApi.orderAgentProfileSideChats(profileId, projectId, keys))
+    } catch (cause) {
+      useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not save the tab order.', 'error')
+    }
+  }
   const projectActivity = useChatStore(state => workProjectActivity(state.activeSessionsCache, tabs, projectId))
   const selectTab = (nextTabId: string) => { activateTab(nextTabId) }
   const closeProjectTab = (closingTabId: string) => {
@@ -655,6 +690,7 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
               state.setTabMetadata(existing.tabId, { agentProfileEngine: chat.provider, agentProfileModelID: chat.model_id, agentProfileConnectionID: chat.connection_id, agentProfileChatProvider: chat.provider, agentProfileChatConnectionID: chat.connection_id })
             }
             if (existing.name !== chat.name) state.renameTab(existing.tabId, chat.name)
+            if ((existing.metadata?.agentProfileTabPosition || 0) !== (chat.position || 0)) state.setTabMetadata(existing.tabId, { agentProfileTabPosition: chat.position || 0 })
             continue
           }
           if (tabs.filter(tab => isWorkSideChatTab(tab, projectId)).length >= WORK_SIDE_CHAT_LIMIT) return
@@ -664,6 +700,7 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
             agentProfileBuilder: false,
             agentProfileConversationKey: chat.conversation_key,
             agentProfileConversationId: chat.conversation_id,
+            agentProfileTabPosition: chat.position || 0,
             ...(chat.agent_id ? { agentProfileEngine: chat.provider, agentProfileModelID: chat.model_id, agentProfileConnectionID: chat.connection_id, agentProfileChatProvider: chat.provider, agentProfileChatConnectionID: chat.connection_id } : {}),
             agentProfileMCPSelectionInitialized: true,
           }, chat.session_id)
@@ -728,8 +765,17 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       <div ref={stripRef} className="flex min-w-0 items-center gap-1 overflow-x-auto [&>*]:shrink-0" data-testid="work-chat-tab-strip">
-      {tabs.map(tab => <AgentWorksChatTabItem
-        key={tab.tabId}
+      {visibleTabs.map(tab => {
+        const key = isWorkSideChatTab(tab, projectId) ? tab.metadata?.agentProfileConversationKey : undefined
+        return <div
+          key={tab.tabId}
+          draggable={!!key}
+          onDragStart={key ? event => { event.dataTransfer.effectAllowed = 'move'; setDraggingKey(key) } : undefined}
+          onDragOver={key && draggingKey && draggingKey !== key ? event => event.preventDefault() : undefined}
+          onDrop={key && draggingKey ? event => { event.preventDefault(); void moveSideChat(draggingKey, key) } : undefined}
+          onDragEnd={() => setDraggingKey(null)}
+          className={draggingKey && draggingKey === key ? 'opacity-50' : undefined}
+        ><AgentWorksChatTabItem
         tab={tab}
         isActive={tab.tabId === activeTabId}
         canClose={tab.tabId !== canonicalTabId}
@@ -742,8 +788,39 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
         onCloseTab={closeProjectTab}
         closeStopsSession={isWorkSideChatTab(tab, projectId)}
         onRenameTab={isWorkSideChatTab(tab, projectId) ? renameSideChat : undefined}
-      />)}
+      /></div>
+      })}
       </div>
+      {moreTabs.length > 0 && (
+        <div ref={moreRef} className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => setMoreOpen(open => !open)}
+            aria-expanded={moreOpen}
+            className={`inline-flex h-7 max-w-40 items-center gap-1 rounded-md px-2 text-xs transition-colors hover:bg-muted ${activeInMore ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground'}`}
+            title="More tabs"
+            data-testid="work-more-tabs"
+          >
+            <span className="truncate">{activeInMore ? workSideChatDisplayName(activeInMore.name) : `${moreTabs.length} more`}</span>
+            <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+          </button>
+          {moreOpen && (
+            <div className="absolute left-0 top-8 z-50 min-w-48 rounded-md border border-border bg-popover p-1 shadow-md" role="menu">
+              {moreTabs.map(tab => (
+                <button
+                  key={tab.tabId}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => { setMoreOpen(false); selectTab(tab.tabId) }}
+                  className={`block w-full truncate rounded px-2 py-1.5 text-left text-xs hover:bg-muted ${tab.tabId === activeTabId ? 'font-medium text-foreground' : 'text-muted-foreground'}`}
+                >
+                  {isWorkSideChatTab(tab, projectId) ? workSideChatDisplayName(tab.name) : tab.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
 
       {allowSideChats && newTabName !== null && (
@@ -786,6 +863,8 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
     </div>
   )
 }
+
+const WORK_VISIBLE_TABS = 5
 
 function WorkNewChatGuide({ sharedBy, product, cowork }: { sharedBy?: string; product: ProjectProductConfig; cowork?: boolean }) {
   if (cowork) return <CrewStarterGuide />

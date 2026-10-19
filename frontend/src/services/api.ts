@@ -1295,6 +1295,12 @@ export const agentApi = {
     return response.data
   },
 
+  /** Saves the order the person dragged a project's side tabs into; answers with the tabs in that order. */
+  orderAgentProfileSideChats: async (profileId: string, projectId: string, conversationKeys: string[]): Promise<AgentProfileSideChat[]> => {
+    const response = await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats/order`, { project_id: projectId, conversation_keys: conversationKeys })
+    return response.data
+  },
+
   /** Forgets a closed Code side chat (tab) on the server; its history is kept. */
   closeAgentProfileSideChat: async (profileId: string, conversationKey: string): Promise<void> => {
     await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/conversation/close`, { conversation_key: conversationKey })

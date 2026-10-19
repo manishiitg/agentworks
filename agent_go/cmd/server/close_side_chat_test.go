@@ -75,3 +75,33 @@ func TestSideChatCapIsCountedFromTheRegistry(t *testing.T) {
 		t.Fatalf("another project has its own cap: %v", err)
 	}
 }
+
+// The person's tab order is saved per side tab; a tab of another project cannot be placed (owner, 2026-10-19).
+func TestSideChatOrderIsSavedAndStaysInTheProject(t *testing.T) {
+	files := map[string]string{}
+	store := productConversationRegistryStore{
+		read: func(_ context.Context, path string) (string, bool, error) {
+			raw, ok := files[path]
+			return raw, ok, nil
+		},
+		write: func(_ context.Context, path, content string) error { files[path] = content; return nil },
+		now:   time.Now, newID: func() string { return "x" },
+	}
+	entries := map[string]ProductConversationRecord{}
+	for _, key := range []string{"p1", "p1:chat:aa", "p1:chat:bb", "p1:chat:cc", "p2:chat:zz"} {
+		entries["work/"+key] = ProductConversationRecord{ConversationKey: key, SessionID: "s-" + key}
+	}
+	raw, _ := json.Marshal(productConversationRegistryDocument{Version: 1, Entries: entries})
+	files[productConversationRegistryPath("u1")] = string(raw)
+	ctx := context.Background()
+	if err := store.setSideChatOrder(ctx, "u1", "work", "p1", []string{"p1:chat:cc", "p1:chat:aa"}); err != nil {
+		t.Fatal(err)
+	}
+	identities, _ := store.agentIdentities(ctx, "u1", "work", "p1")
+	if identities["p1:chat:cc"].Position != 1 || identities["p1:chat:aa"].Position != 2 || identities["p1:chat:bb"].Position != 0 {
+		t.Fatalf("positions = %+v", identities)
+	}
+	if err := store.setSideChatOrder(ctx, "u1", "work", "p1", []string{"p2:chat:zz"}); err == nil {
+		t.Fatal("a tab of another project was placed in this one")
+	}
+}

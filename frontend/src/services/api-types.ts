@@ -269,6 +269,8 @@ export interface AgentProfileSideChat {
   conversation_id?: string
   session_id: string
   name: string
+  /** Where the person put this tab in the strip (1 is first); absent until they reorder. */
+  position?: number
 }
 
 export interface AgentProfileConversationResponse {
