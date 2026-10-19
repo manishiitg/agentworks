@@ -68,7 +68,7 @@ func externalCodeRunDefinitions(add func(name, description string, write, scoped
 		"wait_seconds": externalInteger(0, externalCrewMaxWaitSeconds),
 	}, "project_id")
 	chatArg := map[string]any{"project_id": project["project_id"], "chat_id": externalString("A side chat id from code action=chats.")}
-	add("open_my_code_chat", "Open a new side chat (tab) in one of your Code projects (up to "+strconv.Itoa(externalCrewMaxSideChats)+"), as the + in the app does; give it a name with the optional name argument (names are unique in a project); talk in it with code action=ask chat_id=<the id returned>. Chats in one project can message each other with the agent's list_project_chats and ask_project_chat tools."+suffix, true, false, map[string]any{"project_id": project["project_id"], "name": externalString("A short tab name, optional.")}, "project_id")
+	add("open_my_code_chat", "Open a new side chat (tab) in one of your Code projects (up to "+strconv.Itoa(externalCrewMaxSideChats)+"), as the + in the app does; give it a name saying what the agent is for (required, unique in a project); talk in it with code action=ask chat_id=<the id returned>. Chats in one project can message each other with the agent's list_project_chats and ask_project_chat tools."+suffix, true, false, map[string]any{"project_id": project["project_id"], "name": externalString("A short tab name saying what the agent is for.")}, "project_id", "name")
 	add("rename_my_code_chat", "Rename one of your Code project's side chats (tab). The main chat keeps its project name."+suffix, true, false, map[string]any{"project_id": project["project_id"], "chat_id": externalString("A side chat id from code action=chats."), "name": externalString("The new tab name.")}, "project_id", "chat_id", "name")
 	add("close_my_code_chat", "Close one of your Code project's side chats (tab). The main chat cannot be closed, and a chat that is still working must be stopped first."+suffix, true, false, chatArg, "project_id", "chat_id")
 	add("stop_my_code_chat", "Stop the turn running in one of your Code project's tabs (name or id; with none, your own tab)."+suffix, true, false, map[string]any{"project_id": project["project_id"], "chat_id": externalString("A chat id from code action=chats; default main.")}, "project_id")
@@ -212,14 +212,7 @@ func (api *StreamingAPI) externalCodeRunCall(w http.ResponseWriter, r *http.Requ
 			externalError(w, status, "too_many_chats", message)
 			return
 		}
-		out := map[string]any{"project_id": projectID, "chat_id": id, "next": "Talk in it with code action=ask chat_id=" + id + "."}
-		if chatName != "" {
-			out["name"] = chatName
-		}
-		if message != "" {
-			out["name_error"] = message
-		}
-		externalJSON(w, out)
+		externalJSON(w, map[string]any{"project_id": projectID, "chat_id": id, "name": chatName, "next": "Talk in it with code action=ask chat_id=" + id + "."})
 	case "rename_my_code_chat":
 		chatName, nameErr := externalChatName(args)
 		target := findCodeChat(chats, str("chat_id"))
@@ -571,22 +564,19 @@ func (api *StreamingAPI) externalCodeRunOpenTab(r *http.Request, claims *UserCla
 	if sideChatsOf(ids, codeChatMainName) >= externalCrewMaxSideChats {
 		return "", http.StatusConflict, fmt.Sprintf("This project already has %d side tabs. Close one first (code action=close_chat); they are: %s.", externalCrewMaxSideChats, strings.Join(names, ", "))
 	}
-	if chatName != "" && codeChatNameTaken(chats, chatName, "") {
+	if strings.TrimSpace(chatName) == "" {
+		return "", http.StatusBadRequest, "Give the new tab a name, a few words saying what this agent is for."
+	}
+	if codeChatNameTaken(chats, chatName, "") {
 		return "", http.StatusConflict, "A tab named " + chatName + " already exists in this project; use it, or pick another name."
 	}
 	raw := make([]byte, 4)
 	_, _ = rand.Read(raw)
 	id := hex.EncodeToString(raw)
-	status, body := scheduleHandler(r, api.handleResolveAgentProfileConversation, http.MethodPost, "/api/agent-profiles/code/conversation", map[string]string{"id": profileID}, nil, AgentProfileConversationRequest{ConversationKey: projectID + codeChatSideMarker + id})
+	// The conversation route names the new tab (its agent identity and history title).
+	status, body := scheduleHandler(r, api.handleResolveAgentProfileConversation, http.MethodPost, "/api/agent-profiles/code/conversation", map[string]string{"id": profileID}, nil, AgentProfileConversationRequest{ConversationKey: projectID + codeChatSideMarker + id, Name: chatName})
 	if status >= 400 {
 		return "", status, string(body)
-	}
-	if chatName != "" {
-		// A Code tab's name is its agent identity (what the tab list shows); the history title follows when the chat exists.
-		_ = nameNewSideChat(claims.UserID, binding.WorkspacePath, chatName, body)
-		if err := setCodeTabName(r.Context(), claims.UserID, projectID+codeChatSideMarker+id, chatName, profileID); err != nil {
-			return id, 0, "The tab is open but could not be named: " + err.Error()
-		}
 	}
 	return id, 0, ""
 }

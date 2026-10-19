@@ -233,7 +233,7 @@ func (api *StreamingAPI) handleSwitchAgentProfileConversation(w http.ResponseWri
 	if !ok {
 		return
 	}
-	unlock, capErr := guardNewSideChat(r.Context(), userID, slot.profile.ID, slot.binding.ConversationKey)
+	unlock, _, capErr := guardNewSideChat(r.Context(), userID, slot.profile.ID, slot.binding.ConversationKey)
 	if capErr != nil {
 		writeAgentProfileError(w, http.StatusConflict, capErr.Error())
 		return

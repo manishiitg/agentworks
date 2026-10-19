@@ -36,33 +36,20 @@ func sideChatsOf(ids []string, main string) int {
 	return n
 }
 
-// externalChatName validates the optional name an agent gives a new or renamed tab.
+// externalChatName validates the name an agent gives a new or renamed tab; a tab always has one.
 func externalChatName(args map[string]any) (string, error) {
 	name := strings.TrimSpace(externalArg(args, "name"))
 	if name == "" {
-		return "", nil
+		return "", fmt.Errorf("give the tab a name, a few words saying what this agent is for")
 	}
 	return normalizeChatHistoryTitle(name)
 }
 
-// nameNewSideChat gives a side chat just opened through the conversation route its title, and
-// returns the new chat's session. It reads the session from the route's reply.
-func nameNewSideChat(userID, workspace, name string, body []byte) error {
-	if name == "" {
-		return nil
-	}
-	var reply AgentProfileConversationResponse
-	if err := json.Unmarshal(body, &reply); err != nil || strings.TrimSpace(reply.SessionID) == "" {
-		return fmt.Errorf("the new chat has no session yet")
-	}
-	return RenameChatHistorySession(userID, reply.SessionID, workspace, name)
-}
-
 func externalCrewChatDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_crew_chats", "Your own chats with a Crew, as in the Crew screen. list: your main chat, side chats and earlier chats. read: one chat's messages (chat_id or session_id from list). new: archive your main chat and start a fresh one. side_open / side_close: open (up to "+strconv.Itoa(externalCrewMaxSideChats)+", optional name) or close a side chat; side_rename: give a side chat a new name (chat_id, name); talk in it with ask_crew chat_id. delete: remove an earlier chat (not the live main chat). stop: stop the turn running in one of your chats. tools: list exact native presentation/background schemas. tool: execute tool_name with arguments in an explicit chat_id from list; only your live chat can be used. Human confirmations remain in the chat.", true, false, map[string]any{
+	add("manage_crew_chats", "Your own chats with a Crew, as in the Crew screen. list: your main chat, side chats and earlier chats. read: one chat's messages (chat_id or session_id from list). new: archive your main chat and start a fresh one. side_open / side_close: open (up to "+strconv.Itoa(externalCrewMaxSideChats)+", name required) or close a side chat; side_rename: give a side chat a new name (chat_id, name); talk in it with ask_crew chat_id. delete: remove an earlier chat (not the live main chat). stop: stop the turn running in one of your chats. tools: list exact native presentation/background schemas. tool: execute tool_name with arguments in an explicit chat_id from list; only your live chat can be used. Human confirmations remain in the chat.", true, false, map[string]any{
 		"crew_id":    externalString("Crew ID from list_crews."),
 		"action":     map[string]any{"type": "string", "enum": []any{"list", "read", "new", "side_open", "side_close", "side_rename", "delete", "stop", "tools", "tool"}},
-		"name":       externalString("A short tab name, for side_open (optional) and side_rename."),
+		"name":       externalString("A short tab name saying what the agent is for; required for side_open and side_rename."),
 		"chat_id":    externalString("main or a side chat id from list."),
 		"tool_name":  externalString("Exact native name from tools."),
 		"arguments":  map[string]any{"type": "object"},
@@ -224,23 +211,12 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 		raw := make([]byte, 4)
 		_, _ = rand.Read(raw)
 		id := hex.EncodeToString(raw)
-		status, body := scheduleHandler(r, api.handleResolveAgentProfileConversation, http.MethodPost, "/api/agent-profiles/work/conversation", vars, nil, AgentProfileConversationRequest{ConversationKey: crewID + codeChatSideMarker + id})
+		status, body := scheduleHandler(r, api.handleResolveAgentProfileConversation, http.MethodPost, "/api/agent-profiles/work/conversation", vars, nil, AgentProfileConversationRequest{ConversationKey: crewID + codeChatSideMarker + id, Name: name})
 		if status >= 400 {
 			respond(status, body)
 			return
 		}
-		out := map[string]any{"crew_id": crewID, "chat_id": id, "next": "Talk in it with ask_crew chat_id=" + id + "."}
-		if name != "" {
-			// An empty tab has no transcript for history listing yet. Use the
-			// same per-caller tab identity as the existing Code naming path.
-			_ = nameNewSideChat(claims.UserID, workspace, name, body)
-			if err := setCodeTabName(ctx, claims.UserID, crewID+codeChatSideMarker+id, name, manifest.Product); err != nil {
-				out["name_error"] = "The chat is open but could not be named: " + err.Error()
-			} else {
-				out["name"] = name
-			}
-		}
-		externalJSON(w, out)
+		externalJSON(w, map[string]any{"crew_id": crewID, "chat_id": id, "name": name, "next": "Talk in it with ask_crew chat_id=" + id + "."})
 	case "side_rename":
 		chat, found := findCrewChat(chats, externalArg(args, "chat_id"))
 		name, nameErr := externalChatName(args)

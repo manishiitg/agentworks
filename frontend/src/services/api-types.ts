@@ -255,6 +255,8 @@ export interface AgentProfileConversationRequest {
   resource_id?: string
   /** An earlier conversation of the slot to make live again (…/conversation/switch). */
   session_id?: string
+  /** Required to open a NEW side tab: the agent's name (the server refuses an unnamed one). */
+  name?: string
 }
 
 /** An open side tab of a Code or Crew project as the server knows it. */

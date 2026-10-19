@@ -1254,7 +1254,7 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 			key = chatKey // an existing chat keeps its own title
 		} else if chatKey != "" && job.AgentName != "" {
 			// A named Crew agent is created on first use, within the Crew's chat limit.
-			if capErr := checkSideChatCapacity(runCtx, defaultProductConversationRegistryStore(), job.UserID, job.Profile.ID, chatKey); capErr != nil {
+			if _, capErr := checkSideChatCapacity(runCtx, defaultProductConversationRegistryStore(), job.UserID, job.Profile.ID, chatKey); capErr != nil {
 				bindErr = fmt.Errorf("This Crew already has %d chats, so agent %q cannot be added. Close a chat in the Crew or reuse an existing agent name.", externalCrewMaxSideChats, job.AgentName)
 			}
 			key, created = chatKey, true

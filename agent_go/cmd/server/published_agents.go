@@ -141,7 +141,7 @@ func (api *StreamingAPI) openPublishedAgent(r *http.Request, p *publishedProject
 	if err != nil {
 		return ProductConversationRecord{}, err
 	}
-	chat, err := api.resolveAgentProfileConversation(r, profile, p.conversationKey())
+	chat, err := api.resolveAgentProfileConversation(r, profile, p.conversationKey(), p.Name)
 	if err != nil {
 		return chat, err
 	}

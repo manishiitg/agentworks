@@ -70,6 +70,9 @@ type AgentProfileConversationRequest struct {
 	// SessionID names an earlier conversation of the slot to make live again
 	// (POST …/conversation/switch); the other conversation routes ignore it.
 	SessionID string `json:"session_id,omitempty"`
+	// Name is required when the key opens a NEW side chat (tab): every agent
+	// in a project has a name (owner, 2026-10-19).
+	Name string `json:"name,omitempty"`
 }
 
 func agentProfileResumeConversationKey(profileID string, input AgentProfileConversationRequest) string {
@@ -578,7 +581,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	// due schedule back. Scheduled runs enter through Run, never here, so a
 	// check-in's own turns are not mistaken for family activity.
 	productInteractions.Note(r.Context(), GetUserIDFromContext(r.Context()), profile.Product)
-	conversation, err := api.resolveAgentProfileConversation(r, profile, input.ConversationKey)
+	conversation, err := api.resolveAgentProfileConversation(r, profile, input.ConversationKey, "")
 	if err != nil {
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
 		return
@@ -672,7 +675,7 @@ func (api *StreamingAPI) handleResolveAgentProfileConversation(w http.ResponseWr
 	// Opening the product's conversation is what the app does on launch: the
 	// family is here, so a due check-in waits for a quiet moment.
 	productInteractions.Note(r.Context(), GetUserIDFromContext(r.Context()), profile.Product)
-	conversation, err := api.resolveAgentProfileConversation(r, profile, input.ConversationKey)
+	conversation, err := api.resolveAgentProfileConversation(r, profile, input.ConversationKey, input.Name)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
 		return
@@ -767,13 +770,24 @@ func initializeProductConversationWorkspace(ctx context.Context, userID string, 
 	return nil
 }
 
-func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profile agentprofiles.Profile, requestedKey string) (ProductConversationRecord, error) {
+// A new side chat (tab) needs name; it becomes the tab's agent name and title.
+func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profile agentprofiles.Profile, requestedKey, name string) (ProductConversationRecord, error) {
 	userID := productWorkspaceUserID(r.Context())
-	unlock, capErr := guardNewSideChat(r.Context(), userID, profile.ID, requestedKey)
+	unlock, isNew, capErr := guardNewSideChat(r.Context(), userID, profile.ID, requestedKey)
 	if capErr != nil {
 		return ProductConversationRecord{}, capErr
 	}
 	defer unlock()
+	if isNew {
+		if strings.TrimSpace(name) == "" {
+			return ProductConversationRecord{}, fmt.Errorf("Give the new tab a name, a few words saying what this agent is for.")
+		}
+		normalized, err := normalizeChatHistoryTitle(name)
+		if err != nil {
+			return ProductConversationRecord{}, err
+		}
+		name = normalized
+	}
 	// Crew Run mode: opening resolves under whichever owner holds the
 	// project. Reader bindings carry no manifest path, so the registry
 	// below stays reader-scoped and project initialization (which
@@ -871,6 +885,12 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 	}
 	if !api.canUseSessionIDForQuery(r, record.SessionID) {
 		return ProductConversationRecord{}, fmt.Errorf("product conversation session belongs to another user")
+	}
+	if isNew {
+		if err := setCodeTabName(r.Context(), userID, record.ConversationKey, name, profile.ID); err != nil {
+			return ProductConversationRecord{}, err
+		}
+		_ = RenameChatHistorySession(userID, record.SessionID, binding.WorkspacePath, name)
 	}
 	return record, nil
 }
@@ -1161,40 +1181,42 @@ func limitsSideChats(profileID string) bool { return profileID == "code" || prof
 // the caller holds the lock until the chat exists, so two requests cannot both pass the check.
 // Every route that can create a side chat's registry entry (open, resume, the shared resolver)
 // goes through it. Other keys get a no-op.
-func guardNewSideChat(ctx context.Context, userID, profileID, key string) (unlock func(), err error) {
+func guardNewSideChat(ctx context.Context, userID, profileID, key string) (unlock func(), isNew bool, err error) {
 	if !limitsSideChats(profileID) || !isSideChatConversationKey(key) {
-		return func() {}, nil
+		return func() {}, false, nil
 	}
 	lock := sideChatLock(userID, profileID, key)
 	lock.Lock()
-	if err := checkSideChatCapacity(ctx, defaultProductConversationRegistryStore(), userID, profileID, key); err != nil {
+	isNew, err = checkSideChatCapacity(ctx, defaultProductConversationRegistryStore(), userID, profileID, key)
+	if err != nil {
 		lock.Unlock()
-		return nil, err
+		return nil, false, err
 	}
-	return lock.Unlock, nil
+	return lock.Unlock, isNew, nil
 }
 
 // checkSideChatCapacity refuses a NEW side chat key once the project already has the most the
 // product allows (externalCrewMaxSideChats). The count is the registry's, not a browser's tabs.
-func checkSideChatCapacity(ctx context.Context, store productConversationRegistryStore, userID, profileID, key string) error {
+// isNew reports that key is not open yet.
+func checkSideChatCapacity(ctx context.Context, store productConversationRegistryStore, userID, profileID, key string) (isNew bool, err error) {
 	project, _, _ := strings.Cut(strings.TrimSpace(key), codeChatSideMarker)
 	records, err := store.projectChats(ctx, userID, profileID, project)
 	if err != nil {
-		return nil // an unreadable registry is the resolve step's error to report
+		return false, nil // an unreadable registry is the resolve step's error to report
 	}
 	sides := 0
 	for _, record := range records {
 		if record.ConversationKey == strings.TrimSpace(key) {
-			return nil // already open: not a new chat
+			return false, nil // already open: not a new chat
 		}
 		if record.ConversationKey != project {
 			sides++
 		}
 	}
 	if sides >= externalCrewMaxSideChats {
-		return fmt.Errorf("this project already has %d side chats; close one first", externalCrewMaxSideChats)
+		return true, fmt.Errorf("this project already has %d side chats; close one first", externalCrewMaxSideChats)
 	}
-	return nil
+	return true, nil
 }
 
 // isSideChatConversationKey accepts only a side chat's key, "<projectId>:chat:<id>";

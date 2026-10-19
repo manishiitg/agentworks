@@ -387,7 +387,7 @@ func accountSwitchTestSetup(t *testing.T, key string) (*StreamingAPI, *http.Requ
 	}
 	api := &StreamingAPI{agentProfiles: registry}
 	req := profileRouteRequest("POST", "/", nil, "alice")
-	conversation, err := api.resolveAgentProfileConversation(req, profile, key)
+	conversation, err := api.resolveAgentProfileConversation(req, profile, key, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +404,7 @@ func TestProductTurnAllowsGlobalProviderSwitch(t *testing.T) {
 		t.Fatalf("first turn: %v", err)
 	}
 	// Production resolves the binding fresh on every turn.
-	conversation, err := api.resolveAgentProfileConversation(req, profile, "main")
+	conversation, err := api.resolveAgentProfileConversation(req, profile, "main", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -415,7 +415,7 @@ func TestProductTurnAllowsGlobalProviderSwitch(t *testing.T) {
 	if query.Provider != "muse-cli" {
 		t.Fatalf("rebound provider = %q", query.Provider)
 	}
-	rebound, err := api.resolveAgentProfileConversation(req, profile, "main")
+	rebound, err := api.resolveAgentProfileConversation(req, profile, "main", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -432,7 +432,7 @@ func TestProductTurnAccountChangeKeepsTheConversation(t *testing.T) {
 	if _, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "hi", Engine: "muse-cli"}, conversation); err != nil {
 		t.Fatalf("first turn: %v", err)
 	}
-	conversation, err := api.resolveAgentProfileConversation(req, profile, "main")
+	conversation, err := api.resolveAgentProfileConversation(req, profile, "main", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,7 +440,7 @@ func TestProductTurnAccountChangeKeepsTheConversation(t *testing.T) {
 	if _, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "hi", Engine: "muse-cli", ConnectionID: "account-B"}, conversation); err != nil {
 		t.Fatalf("shared-to-private switch should be allowed, got: %v", err)
 	}
-	rebound, err := api.resolveAgentProfileConversation(req, profile, "main")
+	rebound, err := api.resolveAgentProfileConversation(req, profile, "main", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -451,7 +451,7 @@ func TestProductTurnAccountChangeKeepsTheConversation(t *testing.T) {
 	if _, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "hi", Engine: "muse-cli", ConnectionID: "account-A"}, rebound); err != nil {
 		t.Fatalf("private-to-private switch should be allowed, got: %v", err)
 	}
-	after, _ := api.resolveAgentProfileConversation(req, profile, "main")
+	after, _ := api.resolveAgentProfileConversation(req, profile, "main", "")
 	if after.ConversationID != conversation.ConversationID || after.ConnectionID != "account-A" {
 		t.Fatalf("conversation %q/%q, want the same conversation on account-A", after.ConversationID, after.ConnectionID)
 	}
@@ -487,7 +487,7 @@ func TestProviderSwitchKeepsTheChatsAccount(t *testing.T) {
 					t.Fatal(err)
 				}
 				// Production resolves the binding fresh on every turn.
-				if conversation, err = api.resolveAgentProfileConversation(req, profile, "main"); err != nil {
+				if conversation, err = api.resolveAgentProfileConversation(req, profile, "main", ""); err != nil {
 					t.Fatal(err)
 				}
 				return query, conversation
@@ -516,7 +516,7 @@ func TestProductRuntimeSwitchRetiresDurableSession(t *testing.T) {
 	if _, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "first", Engine: "codex-cli"}, conversation); err != nil {
 		t.Fatal(err)
 	}
-	conversation, err := api.resolveAgentProfileConversation(req, profile, "main")
+	conversation, err := api.resolveAgentProfileConversation(req, profile, "main", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -531,7 +531,7 @@ func TestProductRuntimeSwitchRetiresDurableSession(t *testing.T) {
 	if _, exists := mcpagent.LookupSession(conversation.SessionID); exists {
 		t.Fatal("old durable session still registered")
 	}
-	rebound, err := api.resolveAgentProfileConversation(req, profile, "main")
+	rebound, err := api.resolveAgentProfileConversation(req, profile, "main", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -564,7 +564,7 @@ func TestProductRuntimeChangeDuringRunningTurnDefersTheRestart(t *testing.T) {
 	if _, err := prepareProductConversationTurn(req.Context(), "alice", profile, AgentProfileChatRequest{Message: "first", Engine: "codex-cli"}, conversation); err != nil {
 		t.Fatal(err)
 	}
-	conversation, err := api.resolveAgentProfileConversation(req, profile, "main")
+	conversation, err := api.resolveAgentProfileConversation(req, profile, "main", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -595,7 +595,7 @@ func TestProductSameProviderModelSwitchRetiresDurableSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conversation, err = api.resolveAgentProfileConversation(req, profile, "main")
+	conversation, err = api.resolveAgentProfileConversation(req, profile, "main", "")
 	if err != nil {
 		t.Fatal(err)
 	}

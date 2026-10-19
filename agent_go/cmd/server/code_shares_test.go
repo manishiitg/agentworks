@@ -185,7 +185,7 @@ func TestOwnerCodeFollowUpBeforeHistoryIsSaved(t *testing.T) {
 	api, profile := newCodePrivacyFixture(t)
 	putCodeShares(t, api, "owner", `{"grants":[{"user":"owner","role":"editor"}]}`)
 	req := profileRouteRequest(http.MethodPost, "/", nil, "owner")
-	first, err := api.resolveAgentProfileConversation(req, profile, "c0de0001-0000")
+	first, err := api.resolveAgentProfileConversation(req, profile, "c0de0001-0000", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestOwnerCodeFollowUpBeforeHistoryIsSaved(t *testing.T) {
 	follow := profileRouteRequest(http.MethodPost, "/", nil, "owner")
 	follow.Header.Set("X-Session-ID", first.SessionID)
 	follow.Header.Set("X-Conversation-Continuation", "true")
-	again, err := api.resolveAgentProfileConversation(follow, profile, "c0de0001-0000")
+	again, err := api.resolveAgentProfileConversation(follow, profile, "c0de0001-0000", "")
 	if err != nil {
 		t.Fatalf("follow-up while the first turn runs: %v", err)
 	}

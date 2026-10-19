@@ -573,6 +573,8 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
     activeTabId: state.activeTabId,
   })))
   const [opening, setOpening] = useState(false)
+  // A new tab is a new agent and always gets a name first (owner, 2026-10-19); null = not naming.
+  const [newTabName, setNewTabName] = useState<string | null>(null)
   const canonicalSessionId = chatTabs[canonicalTabId]?.sessionId
   const tabs = Object.values(chatTabs)
     .filter(tab => belongsToWorkProject(tab, projectId) && (
@@ -597,16 +599,18 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
   }
   // A side chat is a second full Builder chat in the same project: same
   // folder, model, MCPs and skills as the primary, its own conversation.
-  const openSideChat = async () => {
-    if (opening || sideChats.length >= WORK_SIDE_CHAT_LIMIT) return
+  const openSideChat = async (requestedName: string) => {
+    const name = requestedName.trim()
+    if (!name || opening || sideChats.length >= WORK_SIDE_CHAT_LIMIT) return
     const primary = chatTabs[canonicalTabId]
     if (!primary) return
     setOpening(true)
     try {
       const key = workSideChatKey(projectId, globalThis.crypto.randomUUID().slice(0, 8))
-      const conversation = await agentApi.resolveAgentProfileConversation(profileId, { conversation_key: key })
+      // The server names the new tab's agent and its chat title from this name.
+      const conversation = await agentApi.resolveAgentProfileConversation(profileId, { conversation_key: key, name })
+      setNewTabName(null)
       const chatStore = useChatStore.getState()
-      const name = `Chat ${sideChats.length + 2}`
       const tabId = await chatStore.createChatTab(name, {
         ...primary.metadata,
         agentProfileBuilder: false,
@@ -615,9 +619,6 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
         agentProfileMCPSelectionInitialized: true,
       }, conversation.session_id)
       chatStore.renameTab(tabId, name)
-      // The server knows the tab by this name too, so the other chats of the
-      // Code can address it ("Chat 2") with ask_project_chat (PLAT-648).
-      void agentApi.renameChatHistorySession(conversation.session_id, name, primary.metadata?.agentProfileWorkspace).catch(() => undefined)
       chatStore.setTabConfig(tabId, {
         selectedServers: primary.config.selectedServers,
         selectedSkills: primary.config.selectedSkills,
@@ -696,9 +697,7 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
   // (PLAT-571), only while Code is the product on screen and never for a key
   // the terminal already took (it marks its own Alt keys handled).
   const tabsRef = useRef(tabs)
-  const openSideChatRef = useRef(openSideChat)
   tabsRef.current = tabs
-  openSideChatRef.current = openSideChat
   useEffect(() => {
     if (!allowSideChats) return
     const onKeyDown = (event: KeyboardEvent) => {
@@ -709,7 +708,7 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
       event.preventDefault()
       markFeatureUsed(action.kind === 'new' ? 'chat-tab-new' : 'chat-tab-keys')
       if (action.kind === 'new') {
-        void openSideChatRef.current()
+        setNewTabName(current => current ?? '')
         return
       }
       const target = tabsRef.current[action.index]
@@ -761,10 +760,30 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
         await hydrateTabEvents(chat.session_id, { workspacePath: primary.metadata?.agentProfileWorkspace, fallbackToChatHistory: true, preferChatHistory: true })
       }} />}
 
-      {allowSideChats && (
+      {allowSideChats && newTabName !== null && (
+        <form
+          className="flex shrink-0 items-center"
+          onSubmit={event => { event.preventDefault(); void openSideChat(newTabName) }}
+        >
+          <input
+            autoFocus
+            value={newTabName}
+            onChange={event => setNewTabName(event.target.value)}
+            onKeyDown={event => { if (event.key === 'Escape') setNewTabName(null) }}
+            onBlur={() => { if (!opening && !newTabName.trim()) setNewTabName(null) }}
+            maxLength={120}
+            disabled={opening}
+            placeholder="Name this agent, e.g. research"
+            aria-label="New tab name"
+            className="h-7 w-48 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            data-testid="work-new-chat-tab-name"
+          />
+        </form>
+      )}
+      {allowSideChats && newTabName === null && (
         <button
           type="button"
-          onClick={() => { void openSideChat() }}
+          onClick={() => setNewTabName('')}
           disabled={opening || sideChats.length >= WORK_SIDE_CHAT_LIMIT}
           className={`ml-0.5 inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md text-xs text-primary transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 ${sideChats.length === 0 ? 'px-2' : 'w-7'}`}
           aria-label="New chat tab"

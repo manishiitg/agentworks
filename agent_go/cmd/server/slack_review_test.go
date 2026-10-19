@@ -495,7 +495,7 @@ func TestSlackProfileTurnUsesWebConversationWithoutWhatsApp(t *testing.T) {
 	}
 	api := &StreamingAPI{agentProfiles: registry}
 	webRequest := profileRouteRequest("POST", "/", nil, "alice")
-	conversation, err := api.resolveAgentProfileConversation(webRequest, profile, "main")
+	conversation, err := api.resolveAgentProfileConversation(webRequest, profile, "main", "")
 	if err != nil {
 		t.Fatal(err)
 	}

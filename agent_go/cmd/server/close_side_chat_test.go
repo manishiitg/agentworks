@@ -65,13 +65,13 @@ func TestSideChatCapIsCountedFromTheRegistry(t *testing.T) {
 	}
 	raw, _ := json.Marshal(productConversationRegistryDocument{Version: 1, Entries: entries})
 	files[productConversationRegistryPath("u1")] = string(raw)
-	if err := checkSideChatCapacity(context.Background(), store, "u1", "code", "p1:chat:new"); err == nil {
+	if _, err := checkSideChatCapacity(context.Background(), store, "u1", "code", "p1:chat:new"); err == nil {
 		t.Fatal("a new side chat past the cap must be refused")
 	}
-	if err := checkSideChatCapacity(context.Background(), store, "u1", "code", "p1:chat:03"); err != nil {
+	if _, err := checkSideChatCapacity(context.Background(), store, "u1", "code", "p1:chat:03"); err != nil {
 		t.Fatalf("reopening an existing side chat must work: %v", err)
 	}
-	if err := checkSideChatCapacity(context.Background(), store, "u1", "code", "p2:chat:new"); err != nil {
+	if _, err := checkSideChatCapacity(context.Background(), store, "u1", "code", "p2:chat:new"); err != nil {
 		t.Fatalf("another project has its own cap: %v", err)
 	}
 }

@@ -234,6 +234,15 @@ func TestExternalCrewChatsAreYourOwn(t *testing.T) {
 	if code, _ := chats(bounded, map[string]any{"crew_id": "alpha", "action": "list"}); code != 403 {
 		t.Fatalf("Crew-bounded connection listed another Crew's chats: %d", code)
 	}
+	// Every new tab is a named agent (owner, 2026-10-19): the server refuses an unnamed one, whoever opens it.
+	if code, _ := chats(owner, map[string]any{"crew_id": "beta", "action": "side_open"}); code == 200 {
+		t.Fatal("an unnamed tab was opened over MCP")
+	}
+	unnamed := httptest.NewRequest("POST", "/", nil)
+	unnamed = unnamed.WithContext(context.WithValue(unnamed.Context(), UserContextKey, owner))
+	if status, _ := scheduleHandler(unnamed, env.api.handleResolveAgentProfileConversation, "POST", "/api/agent-profiles/work/conversation", map[string]string{"id": "work"}, nil, AgentProfileConversationRequest{ConversationKey: "beta" + codeChatSideMarker + "unnamed1"}); status != 422 {
+		t.Fatalf("the conversation route opened an unnamed tab: %d", status)
+	}
 	// A named empty tab must be discoverable before it has a transcript.
 	code, opened := chats(owner, map[string]any{"crew_id": "beta", "action": "side_open", "name": "Research"})
 	if code != 200 || opened["name_error"] != nil {
