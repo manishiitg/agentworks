@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 )
 
 // This is presentation and dispatch eligibility, never an authorization grant.
@@ -30,6 +31,21 @@ func (api *StreamingAPI) queuedMessageDeliveryState(sessionID string, req QueryR
 	api.runningAgentsMux.RUnlock()
 	occupied := api.conversationTurnOccupied(sessionID)
 	if agent == nil {
+		// A retained native turn survives the foreground running-agent entry.
+		// Use its accepted turn ownership plus the live transport, not merely
+		// a retained pane or a coding-provider capability flag.
+		if api.hasRetainedQueuedSteerTurn(sessionID) {
+			if snapshot, live := api.liveMainCodingTmuxSnapshot(sessionID); live {
+				provider := retainedCodingAgentProvider(snapshot)
+				contract, coding := codingAgentProviderContract(provider, "")
+				if coding && contract.SupportsLiveInput {
+					if !api.liveSteerProviderTransportReady(sessionID, provider) {
+						return "starting", false
+					}
+					return "running", !req.DisableLiveInputDelivery
+				}
+			}
+		}
 		if occupied {
 			return "starting", false
 		}
@@ -42,6 +58,16 @@ func (api *StreamingAPI) queuedMessageDeliveryState(sessionID string, req QueryR
 		return "waiting", false
 	}
 	return "running", !req.DisableLiveInputDelivery && agentSupportsLiveInputDelivery(agent) && api.canSteerSession(sessionID)
+}
+
+func (api *StreamingAPI) hasRetainedQueuedSteerTurn(sessionID string) bool {
+	if session, ok := mcpagent.LookupSession(sessionID); ok && session.ActiveTurnID() != "" {
+		return true
+	}
+	api.retainedMainTurnsMu.Lock()
+	_, accepted := api.retainedMainTurns[sessionID]
+	api.retainedMainTurnsMu.Unlock()
+	return accepted
 }
 
 func queuedRequestProvider(req QueryRequest) string {

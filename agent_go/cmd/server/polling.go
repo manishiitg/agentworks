@@ -85,6 +85,10 @@ func (api *StreamingAPI) canSteerSession(sessionID string) bool {
 // only — delivery itself re-verifies pane liveness.
 func (api *StreamingAPI) liveSteerTransportReady(sessionID string, runningAgent *mcpagent.Agent) bool {
 	provider := strings.ToLower(strings.TrimSpace(string(mcpagent.ReadAgentRuntimeInfo(runningAgent).Provider)))
+	return api.liveSteerProviderTransportReady(sessionID, provider)
+}
+
+func (api *StreamingAPI) liveSteerProviderTransportReady(sessionID, provider string) bool {
 	if api != nil && api.internalSteerTransportReady != nil {
 		return api.internalSteerTransportReady(provider, sessionID)
 	}

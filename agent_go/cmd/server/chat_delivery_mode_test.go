@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/llm"
@@ -154,6 +155,28 @@ func TestChatDeliverySteerCannotFallBackToANewTurn(t *testing.T) {
 	w = httptest.NewRecorder()
 	if !api.tryDeliverQueryAsLiveInput(w, r, "chat", "keep queued", "query") || w.Code != http.StatusConflict || w.Header().Get("X-Queued-Steer-Unavailable") != "true" {
 		t.Fatalf("unavailable live delivery was not refused: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestChatDeliveryQueueRetainedTurnSurvivesForegroundCleanup(t *testing.T) {
+	const sid = "retained-queue-state"
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	api.terminalStore = terminals.NewStore()
+	api.terminalStore.HandleEvent(sid, codingAgentTmuxReaperChunkEvent(time.Now(), sid, "main:"+sid, "mlp-claude-code-retained-queue-state"))
+	api.retainedMainTurns = map[string]time.Time{sid: time.Now()}
+	ready := true
+	api.internalSteerTransportReady = func(_, _ string) bool { return ready }
+	if reason, allowed := api.queuedMessageDeliveryState(sid, QueryRequest{}); reason != "running" || !allowed {
+		t.Fatalf("retained turn = %s / %t", reason, allowed)
+	}
+	ready = false
+	if reason, allowed := api.queuedMessageDeliveryState(sid, QueryRequest{}); reason != "starting" || allowed {
+		t.Fatalf("lost transport = %s / %t", reason, allowed)
+	}
+	delete(api.retainedMainTurns, sid)
+	ready = true
+	if reason, allowed := api.queuedMessageDeliveryState(sid, QueryRequest{}); reason != "waiting" || allowed {
+		t.Fatalf("retained pane alone = %s / %t", reason, allowed)
 	}
 }
 
