@@ -5,7 +5,9 @@ import { afterEach, expect, it, vi } from 'vitest'
 import WorkflowSelectionDialog from './WorkflowSelectionDialog'
 import { workflowManifestApi } from '../services/api'
 import { loadProductProjects } from '../platform/chat/productProjects'
+import { listFunctionReferences } from '../api/functionReferences'
 
+vi.mock('../api/functionReferences', () => ({ listFunctionReferences: vi.fn() }))
 vi.mock('../services/api', () => ({ workflowManifestApi: { listWorkflowManifests: vi.fn() } }))
 vi.mock('../platform/chat/productProjects', () => ({ loadProductProjects: vi.fn() }))
 vi.mock('../stores/useAuthStore', () => ({ useAuthStore: (selector: (state: { user: { id: string } }) => unknown) => selector({ user: { id: 'reader' } }) }))
@@ -144,4 +146,35 @@ it('ignores slow results from a previous opening after fresh discovery has revok
   expect(host.textContent).toContain('No accessible workflows or Crews')
   await act(async () => finishOld(allowed as Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>))
   expect(host.textContent).not.toContain('Shared automation')
+})
+
+it('browses function metadata without choosing the whole project, then adds a named function reference', async () => {
+  vi.mocked(loadProductProjects).mockResolvedValue([])
+  vi.mocked(workflowManifestApi.listWorkflowManifests).mockResolvedValue(allowed as Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>)
+  vi.mocked(listFunctionReferences).mockResolvedValue([{ name: 'export_report', description: 'Export this month’s report' }])
+  const onSelect = vi.fn()
+  const { host } = await mount(onSelect)
+  const browse = host.querySelector<HTMLButtonElement>('[aria-label="Browse functions for Shared automation"]')!
+  await act(async () => {
+    browse.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+    browse.click()
+  })
+  expect(onSelect).not.toHaveBeenCalled()
+  expect(listFunctionReferences).toHaveBeenCalledWith('workflow:shared')
+  expect(host.textContent).toContain('Export this month’s report')
+  await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="reference-functions"] button')!.click())
+  expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ presetId: 'workflow:shared', workspacePath: 'Workflow/shared', functionName: 'export_report' }))
+})
+
+it('discards old function metadata when the picker is closed and access is revoked', async () => {
+  let finishFunctions!: (value: Awaited<ReturnType<typeof listFunctionReferences>>) => void
+  vi.mocked(loadProductProjects).mockResolvedValue([])
+  vi.mocked(workflowManifestApi.listWorkflowManifests).mockResolvedValueOnce(allowed as Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>).mockResolvedValueOnce({ success: true, total: 0, workflows: [] })
+  vi.mocked(listFunctionReferences).mockReturnValueOnce(new Promise(resolve => { finishFunctions = resolve }))
+  const { host, render } = await mount()
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Browse functions for Shared automation"]')!.click())
+  await render(false); await render(true)
+  await act(async () => finishFunctions([{ name: 'private_old_function' }]))
+  expect(host.textContent).not.toContain('private_old_function')
+  expect(host.querySelector('[data-testid="reference-functions"]')).toBeNull()
 })
