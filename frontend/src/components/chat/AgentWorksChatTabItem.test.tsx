@@ -136,3 +136,15 @@ it('does not duplicate foreground work on the workspace title while preserving e
     expect(container.querySelector('[aria-label="Working"]')).not.toBeNull()
   } finally { await act(async () => root.unmount()); container.remove(); useChatStore.setState(original, true) }
 })
+
+it.each(['agentworks', 'relays', 'work', 'code', 'mcp-gateway'] as ProductSurface[])('keeps %s completion state in the dot and accessible label without repeating Done', async surface => {
+  const host = document.createElement('div'); document.body.append(host)
+  const root = createRoot(host)
+  try {
+    const tab = { tabId: 'completion-dot', name: 'Reports', hasUnreadCompletion: true } as ChatTab
+    await act(async () => root.render(<AgentWorksChatTabItem tab={tab} isActive={false} canClose={false} isBlank={false} productSurface={surface} onTabClick={() => {}} onCloseTab={() => {}} />))
+    expect(host.querySelector('[aria-label="Completed — open to mark as seen"]')).not.toBeNull()
+    expect(host.textContent).toBe('Reports')
+    expect(host.textContent).not.toContain('Done')
+  } finally { await act(async () => root.unmount()); host.remove() }
+})
