@@ -257,7 +257,12 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 		externalCommunicationError(w, 404, "not_found", err)
 		return
 	}
-	out, err := api.sendAgentMessage(context.WithoutCancel(r.Context()), claims.UserID, caller, target, externalArg(args, "message"), inbox, externalArg(args, "submission_id"))
+	file, err := prepareMessageFile(args)
+	if err != nil {
+		externalError(w, 400, "message_refused", err.Error())
+		return
+	}
+	out, err := api.sendAgentMessage(context.WithoutCancel(r.Context()), claims.UserID, caller, target, externalArg(args, "message"), inbox, externalArg(args, "submission_id"), file)
 	if err != nil {
 		externalCommunicationError(w, 400, "message_refused", err)
 		return
@@ -318,20 +323,6 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 	case "get_file":
 		api.externalAgentMessageFile(w, r, args)
 	case "send":
-		dropFile, err := api.attachMessageFile(r, claims.UserID, args)
-		if err != nil {
-			externalError(w, 400, "message_refused", err.Error())
-			return
-		}
-		if dropFile != nil {
-			sw := &fileSendStatus{ResponseWriter: w, status: http.StatusOK}
-			w = sw
-			defer func() {
-				if sw.status >= 400 {
-					dropFile()
-				}
-			}()
-		}
 		var target triggerTarget
 		if inbox == "" || externalArg(args, "crew_id") != "" || externalArg(args, "workflow_id") != "" || externalArg(args, "target") != "" {
 			var err error

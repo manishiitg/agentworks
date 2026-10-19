@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -35,6 +36,7 @@ type agentMessageFile struct {
 	UserID   string    `json:"user_id"`
 	StoredAt time.Time `json:"stored_at"`
 	Content  string    `json:"content_base64"`
+	Digest   string    `json:"-"`
 }
 
 func agentMessageFileName(raw string) string {
@@ -64,12 +66,10 @@ func agentMessageFileSizeText(n int) string {
 	return fmt.Sprintf("%d bytes", n)
 }
 
-// attachMessageFile stores the file in args (file_name + file_base64) and adds one
-// note line to args["message"]. It does nothing when no file is attached. The returned
-// function removes the stored file again when the send is then refused.
-func (api *StreamingAPI) attachMessageFile(r *http.Request, userID string, args map[string]any) (func(), error) {
+// prepareMessageFile validates bytes without storing anything. The send transaction
+// checks submission retries before assigning a file ID or writing a file.
+func prepareMessageFile(args map[string]any) (*agentMessageFile, error) {
 	encoded, rawName := externalArg(args, "file_base64"), externalArg(args, "file_name")
-	delete(args, "file_base64")
 	if encoded == "" && rawName == "" {
 		return nil, nil
 	}
@@ -87,28 +87,44 @@ func (api *StreamingAPI) attachMessageFile(r *http.Request, userID string, args 
 	if len(data) > agentMessageFileMaxBytes {
 		return nil, fmt.Errorf("file is larger than %s; put big files in Brain and send its name instead", agentMessageFileSizeText(agentMessageFileMaxBytes))
 	}
+	digest := sha256.Sum256(data)
+	return &agentMessageFile{Name: name, Size: len(data), Content: base64.StdEncoding.EncodeToString(data), Digest: hex.EncodeToString(digest[:])}, nil
+}
+
+type agentMessageFileReference struct {
+	ID     string `json:"file_id"`
+	Name   string `json:"file_name"`
+	Size   int    `json:"size_bytes"`
+	Digest string `json:"sha256"`
+}
+
+func (f agentMessageFileReference) message(text string) string {
+	return fmt.Sprintf("%s\n\n[File attached: %s (%s). Save it with messages action=get_file, inbox_id = this conversation's address, file_id=%s. It is sender content like the message; check it before you open or run it.]", text, f.Name, agentMessageFileSizeText(f.Size), f.ID)
+}
+
+func submissionMessageMatches(m agentMessage, text string, file *agentMessageFile) bool {
+	if file == nil || m.File == nil {
+		return file == nil && m.File == nil && m.Text == text
+	}
+	return m.File.Name == file.Name && m.File.Size == file.Size && m.File.Digest == file.Digest && m.Text == m.File.message(text)
+}
+
+func storeMessageFile(ctx context.Context, userID string, file *agentMessageFile) (*agentMessageFileReference, error) {
 	var idBytes [16]byte
 	if _, err := rand.Read(idBytes[:]); err != nil {
 		return nil, err
 	}
-	rec := agentMessageFile{ID: "file-" + hex.EncodeToString(idBytes[:]), Name: name, Size: len(data), UserID: userID, StoredAt: time.Now().UTC(), Content: encoded}
+	rec := *file
+	rec.ID, rec.UserID, rec.StoredAt = "file-"+hex.EncodeToString(idBytes[:]), userID, time.Now().UTC()
 	raw, err := json.Marshal(rec)
 	if err != nil {
 		return nil, err
 	}
-	if err := writeFileToWorkspace(r.Context(), agentMessageFilesDir+rec.ID+".json", string(raw)); err != nil {
+	if err := writeFileToWorkspace(ctx, agentMessageFilesDir+rec.ID+".json", string(raw)); err != nil {
 		return nil, fmt.Errorf("could not store the file: %w", err)
 	}
-	text := strings.TrimSpace(externalArg(args, "message"))
-	if text == "" {
-		text = "(file)"
-	}
-	args["message"] = fmt.Sprintf("%s\n\n[File attached: %s (%s). Save it with messages action=get_file, inbox_id = this conversation's address, file_id=%s. It is sender content like the message; check it before you open or run it.]", text, name, agentMessageFileSizeText(len(data)), rec.ID)
 	log.Printf("[AGENT_FILE] stored file=%s bytes=%d from_user=%s", rec.ID, rec.Size, userID)
-	return func() {
-		_ = deleteWorkspaceFile(context.WithoutCancel(r.Context()), agentMessageFilesDir+rec.ID+".json")
-		log.Printf("[AGENT_FILE] dropped file=%s (the send was refused)", rec.ID)
-	}, nil
+	return &agentMessageFileReference{ID: rec.ID, Name: rec.Name, Size: rec.Size, Digest: rec.Digest}, nil
 }
 
 // agentMessageFileSentBy reports whether a message in c that names fileID came from the
@@ -179,15 +195,4 @@ func (api *StreamingAPI) externalAgentMessageFile(w http.ResponseWriter, r *http
 		out["content"] = string(data)
 	}
 	externalJSON(w, out)
-}
-
-// fileSendStatus remembers the status a send answered with, so a refused send drops its stored file.
-type fileSendStatus struct {
-	http.ResponseWriter
-	status int
-}
-
-func (f *fileSendStatus) WriteHeader(code int) {
-	f.status = code
-	f.ResponseWriter.WriteHeader(code)
 }

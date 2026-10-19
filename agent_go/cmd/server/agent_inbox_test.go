@@ -2,10 +2,13 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -212,6 +215,87 @@ func TestHostedAgentInboxOverMCP(t *testing.T) {
 			}
 		}
 	}
+	t.Run("file submission retries keep one message and one file", func(t *testing.T) {
+		fileArgs := map[string]any{"action": "send", "agent_name": "browser-helper", "target": "agent:terminal-helper", "message": "Review this file", "submission_id": "hosted-file", "file_name": "report.txt", "file_base64": base64.StdEncoding.EncodeToString([]byte("example report"))}
+		first := call(hosted, fileArgs, true)
+		if again := call(hosted, fileArgs, true); again["message_id"] != first["message_id"] || again["inbox_id"] != first["inbox_id"] {
+			t.Fatalf("file retry duplicated the message: first=%v retry=%v", first, again)
+		}
+		// The explicit conversation path uses the same submission check.
+		fileArgs["inbox_id"] = first["inbox_id"]
+		if again := call(hosted, fileArgs, true); again["message_id"] != first["message_id"] {
+			t.Fatalf("file retry inside the inbox duplicated the message: %v", again)
+		}
+		for key, changed := range map[string]any{"file_base64": base64.StdEncoding.EncodeToString([]byte("changed report")), "file_name": "different.txt", "message": "Different request"} {
+			original := fileArgs[key]
+			fileArgs[key] = changed
+			call(hosted, fileArgs, false)
+			fileArgs[key] = original
+		}
+		withoutFile := map[string]any{"action": "send", "agent_name": "browser-helper", "inbox_id": first["inbox_id"], "message": "Review this file", "submission_id": "hosted-file"}
+		call(hosted, withoutFile, false)
+		// Concurrent CLI retries cannot create orphan files either.
+		replyFile := map[string]any{"action": "send", "agent_name": "terminal-helper", "inbox_id": first["inbox_id"], "submission_id": "cli-file-reply", "file_name": "reply.txt", "file_base64": base64.StdEncoding.EncodeToString([]byte("example reply"))}
+		results := make(chan error, 6)
+		ids := make(chan string, 6)
+		for range 6 {
+			go func() {
+				raw, err := cli.Call(ctx, "messages", replyFile)
+				var out map[string]any
+				if err == nil {
+					err = json.Unmarshal(raw, &out)
+				}
+				if err == nil {
+					ids <- fmt.Sprint(out["message_id"])
+				}
+				results <- err
+			}()
+		}
+		for range 6 {
+			if err := <-results; err != nil {
+				t.Fatal(err)
+			}
+		}
+		firstReply := <-ids
+		for range 5 {
+			if id := <-ids; id != firstReply {
+				t.Fatalf("concurrent retry created another reply: %s != %s", id, firstReply)
+			}
+		}
+		st, err := readAgentMessageStore(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range st.Conversations {
+			if c.ID != first["inbox_id"] {
+				continue
+			}
+			if len(c.Messages) != 2 {
+				t.Fatalf("file retries stored %d messages, want 2", len(c.Messages))
+			}
+			for _, m := range c.Messages {
+				fileID := regexp.MustCompile(`file-[0-9a-f]{32}`).FindString(m.Text)
+				if fileID == "" {
+					t.Fatal("file message lost its attachment")
+				}
+				got := call(hosted, map[string]any{"action": "get_file", "agent_name": "browser-helper", "inbox_id": c.ID, "file_id": fileID}, true)
+				if got["file_name"] == "" || got["content_base64"] == "" {
+					t.Fatalf("retried file is unavailable: %v", got)
+				}
+			}
+		}
+		e.mock.mu.Lock()
+		defer e.mock.mu.Unlock()
+		files := 0
+		for path := range e.mock.files {
+			if strings.HasPrefix(path, agentMessageFilesDir) {
+				files++
+			}
+		}
+		if files != 2 {
+			t.Fatalf("file retries or refused changes left %d files, want 2", files)
+		}
+	})
 	// Product-scoped OAuth and PAT display names cannot claim hosted provenance.
 	scoped := issue("owner", false, []string{"wf_reports"})
 	init(scoped)

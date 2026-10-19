@@ -75,6 +75,8 @@ type agentMessage struct {
 	PingedAt           time.Time `json:"pinged_at,omitempty"`   // the sender pinged the person once for this message
 	PingSender         string    `json:"ping_sender,omitempty"` // on a ping line: the agent that pinged
 	PingCount          int       `json:"ping_count,omitempty"`  // on a ping line: messages it is waiting on
+
+	File *agentMessageFileReference `json:"file,omitempty"`
 }
 type agentConversation struct {
 	ID        string                  `json:"inbox_id"`
@@ -313,9 +315,20 @@ func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) err
 
 // sendAgentMessage creates an address for a contact, or sends in a previously
 // authorized conversation. Only the two exact endpoints can use that address.
-func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, message, inboxID, submissionID string) (map[string]interface{}, error) {
+func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, message, inboxID, submissionID string, files ...*agentMessageFile) (map[string]interface{}, error) {
 	message = strings.TrimSpace(message)
-	if message == "" || len([]rune(message)) > codeChatMessageMaxRune {
+	var file *agentMessageFile
+	if len(files) > 0 {
+		file = files[0]
+	}
+	checkedMessage := message
+	if file != nil {
+		if message == "" {
+			message = "(file)"
+		}
+		checkedMessage = (agentMessageFileReference{ID: "file-00000000000000000000000000000000", Name: file.Name, Size: file.Size}).message(message)
+	}
+	if message == "" || len([]rune(checkedMessage)) > codeChatMessageMaxRune {
 		return nil, fmt.Errorf("message must contain 1 to %d characters", codeChatMessageMaxRune)
 	}
 	if len(submissionID) > 128 {
@@ -395,7 +408,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 				}
 				for _, m := range prior.Messages {
 					if m.From == 0 && m.Submission == submissionID {
-						if m.Text != message {
+						if !submissionMessageMatches(m, message, file) {
 							agentMessageMu.Unlock()
 							return nil, fmt.Errorf("submission_id already used for a different message")
 						}
@@ -463,7 +476,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	if submissionID != "" {
 		for _, m := range c.Messages {
 			if m.From == side && m.Submission == submissionID {
-				if m.Text != message {
+				if !submissionMessageMatches(m, message, file) {
 					agentMessageMu.Unlock()
 					return nil, fmt.Errorf("submission_id already used for a different message")
 				}
@@ -497,6 +510,14 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	}
 	c.Next++
 	m := agentMessage{ID: "msg-" + uuid.NewString(), Sequence: c.Next, From: side, Text: message, SentAt: time.Now().UTC(), Submission: submissionID, Delivery: "pending"}
+	if file != nil {
+		m.File, err = storeMessageFile(ctx, userID, file)
+		if err != nil {
+			agentMessageMu.Unlock()
+			return nil, err
+		}
+		m.Text = m.File.message(message)
+	}
 	if dest.External {
 		m.Delivery = "stored"
 	}
@@ -519,6 +540,10 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 		out[k] = v
 	}
 	err = saveAgentMessageStore(ctx, s)
+	if err != nil && m.File != nil {
+		_ = deleteWorkspaceFile(context.WithoutCancel(ctx), agentMessageFilesDir+m.File.ID+".json")
+		log.Printf("[AGENT_FILE] dropped file=%s (the send was refused)", m.File.ID)
+	}
 	agentMessageMu.Unlock()
 	if err != nil {
 		return nil, err
