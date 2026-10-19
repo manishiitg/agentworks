@@ -575,6 +575,8 @@ type StreamingAPI struct {
 	sessionBusy      map[string]bool
 	sessionBusySince map[string]time.Time
 	sessionBusyMu    sync.RWMutex
+	turnInactivityMu sync.Mutex
+	turnInactivity   map[string]map[string]*turnInactivityState
 
 	// retainedMainTurns tracks direct follow-up turns submitted to a persistent
 	// coding-CLI tmux after the server-managed foreground Go turn has ended.
@@ -605,7 +607,8 @@ type StreamingAPI struct {
 	pendingMu          sync.RWMutex
 	// completionRetryScheduled guards schedulePendingCompletionRetry so at most one
 	// retry timer runs per session at a time. Guarded by pendingMu.
-	completionRetryScheduled map[string]bool
+	completionRetryScheduled    map[string]bool
+	completionRetryBusyAttempts map[string]int // pendingMu; busy retries back off without discarding results
 
 	// Pending start notifications — background agent IDs that started while
 	// the main session was busy. These are synthetic user messages just like
@@ -2333,6 +2336,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	eventStore.SetEventPreparer(prepareUserMessageAttachments)
 	eventStore.SetEventAddedCallback(func(sessionID string, event events.Event) {
 		terminalEventObserver(sessionID, event)
+		api.observeTurnInactivity(sessionID, event)
 		api.observeRetainedMainTurnEvent(sessionID, event)
 		if event.Data != nil {
 			if call, ok := unifiedevents.ToolCallRecordFromEvent(event.Data.Data); ok {
@@ -8296,7 +8300,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Create a cancellable context for agent execution using background context
 		// This prevents the agent from being canceled when the HTTP request ends
-		agentCtx, agentCancel := context.WithCancel(context.Background())
+		agentCtx, cancelTurn := context.WithCancelCause(context.Background())
+		agentCancel = func() { cancelTurn(context.Canceled) }
+		stopIdleWatch := api.watchTurnInactivity(agentCtx, sessionID, queryID, time.Now(), nil, func(reason error) bool { cancelTurn(reason); return true })
+		defer stopIdleWatch()
 		agentCtx = queryLogCtx.Context(agentCtx)
 		agentCtx = withConversationTurnExecutionID(agentCtx, queryID)
 
@@ -8622,7 +8629,26 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		log.Printf("[AGENT DEBUG] Entering streaming loop for query %s", queryID)
 		log.Printf("[COMPLETION_TRACE] stage=agentworks_stream_wait_started session=%q query=%q", sessionID, queryID)
-		for chunk := range textChan {
+	streamLoop:
+		for {
+			var chunk string
+			select {
+			case <-agentCtx.Done():
+				turnStatus = trackedExecutionStatusCanceled
+				turnError = context.Cause(agentCtx).Error()
+				if errors.Is(context.Cause(agentCtx), errTurnInactive) {
+					turnStatus = trackedExecutionStatusFailed
+					api.updateSessionStatus(sessionID, "error")
+					api.emitIdleTurnFailure(sessionID, queryID)
+				}
+				discardAbandonedSyntheticStream(sessionID, textChan)
+				return
+			case value, open := <-textChan:
+				if !open {
+					break streamLoop
+				}
+				chunk = value
+			}
 			log.Printf("[AGENT DEBUG] raw chunk (len=%d): %s", len(chunk), chunk)
 			chunkCount++
 
@@ -9665,6 +9691,8 @@ func (api *StreamingAPI) observeRetainedMainTurnStreamMode(
 	if turnStartedAt.IsZero() {
 		turnStartedAt = time.Now()
 	}
+	stopIdleWatch := api.watchRetainedTurnInactivity(ctx, sessionID, snapshot, turnStartedAt)
+	defer stopIdleWatch()
 	output := make(chan struct{}, 1)
 	var realOutputSeen atomic.Bool
 	stream, unsubscribe, err := api.liveAttach.observeOutput(snapshot.TmuxSession, func([]byte) {
