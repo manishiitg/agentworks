@@ -1,8 +1,10 @@
 package agentprofiles
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
+	"log"
 	"path"
 	"strings"
 	"unicode/utf8"
@@ -45,6 +47,7 @@ func RegisterEmbeddedSkillsRendered(fsys fs.FS, bindings []SkillFileBinding, ren
 	if render == nil {
 		render = func(text string) string { return text }
 	}
+	var skipped []error
 	for _, binding := range bindings {
 		data, err := fs.ReadFile(fsys, binding.Path)
 		if err != nil {
@@ -58,7 +61,10 @@ func RegisterEmbeddedSkillsRendered(fsys fs.FS, bindings []SkillFileBinding, ren
 					Description string `yaml:"description"`
 				}
 				if err := yaml.Unmarshal([]byte(content[4:end+4]), &metadata); err != nil {
-					return fmt.Errorf("parse skill %q frontmatter: %w", binding.Name, err)
+					// One bad skill header skips that skill; the rest still register and the error is returned (PLAT-861-262).
+					log.Printf("[SKILLS] skipped bundled skill %q: its header does not parse: %v", binding.Name, err)
+					skipped = append(skipped, fmt.Errorf("parse skill %q frontmatter: %w", binding.Name, err))
+					continue
 				}
 				if strings.TrimSpace(description) == "" {
 					description = strings.TrimSpace(metadata.Description)
@@ -98,7 +104,7 @@ func RegisterEmbeddedSkillsRendered(fsys fs.FS, bindings []SkillFileBinding, ren
 			return fmt.Errorf("register skill %q: %w", binding.Name, err)
 		}
 	}
-	return nil
+	return errors.Join(skipped...)
 }
 
 // RegisterSkills registers already-materialized skills directly -- for a

@@ -2128,7 +2128,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 	if productEnabled("video-studio") {
 		if err := videoproduct.RegisterProductSkills(); err != nil {
-			log.Fatalf("Failed to register Video Studio skills: %v", err)
+			log.Printf("[SKILLS] Video Studio skills: some were not registered; the server keeps running: %v", err)
 		}
 		if err := videoproduct.SyncVisibleSkillsForExistingProjects(os.Getenv("WORKSPACE_DOCS_PATH")); err != nil {
 			log.Printf("Failed to sync visible Video Studio skills into existing projects: %v", err)
@@ -2145,7 +2145,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 	if productEnabled("sparkquill") {
 		if err := sparkquillproduct.RegisterProductSkills(); err != nil {
-			log.Fatalf("Failed to register SparkQuill skills: %v", err)
+			log.Printf("[SKILLS] SparkQuill skills: some were not registered; the server keeps running: %v", err)
 		}
 		for _, profile := range sparkquillproduct.BuiltinAgentProfiles() {
 			profile.Product = sparkquillproduct.ProductName
@@ -2164,7 +2164,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		// for why this registration is inert until something explicitly
 		// requests AgentProfileID="agentworks".
 		if err := agentworksproduct.RegisterProductSkills(); err != nil {
-			log.Fatalf("Failed to register AgentWorks skills: %v", err)
+			log.Printf("[SKILLS] AgentWorks skills: some were not registered; the server keeps running: %v", err)
 		}
 		for _, profile := range agentworksproduct.BuiltinAgentProfiles() {
 			profile.Product = "agentworks"
@@ -2197,7 +2197,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 	if productEnabled("work") {
 		if err := workproduct.RegisterProductSkills(); err != nil {
-			log.Fatalf("Failed to register Work skills: %v", err)
+			log.Printf("[SKILLS] Work skills: some were not registered; the server keeps running: %v", err)
 		}
 		for _, profile := range workproduct.BuiltinAgentProfiles() {
 			profile.Product = "work"
@@ -2212,7 +2212,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 	if productEnabled(codeproduct.ProfileID) {
 		if err := codeproduct.RegisterProductSkills(); err != nil {
-			log.Fatalf("Failed to register Code skills: %v", err)
+			log.Printf("[SKILLS] Code skills: some were not registered; the server keeps running: %v", err)
 		}
 		for _, profile := range codeproduct.BuiltinAgentProfiles() {
 			profile.Product = codeproduct.ProfileID
