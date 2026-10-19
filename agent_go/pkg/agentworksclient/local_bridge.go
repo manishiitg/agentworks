@@ -697,6 +697,9 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 			}, func() {
 				b.mu.Lock()
 				defer b.mu.Unlock()
+				if b.closed || streamCtx.Err() != nil {
+					return
+				}
 				s.streamOnline = true
 				s.ServerClosed = false // The server accepted this same lease; no attachment is created.
 				s.LastError = ""
