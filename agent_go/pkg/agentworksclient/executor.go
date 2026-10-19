@@ -3,6 +3,7 @@ package agentworksclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -52,7 +53,8 @@ func (c *Client) ServeExecutor(ctx context.Context, executor *localfiles.Executo
 			return &APIError{Status: 409, Code: "device_busy", Message: "The previous device connection is still closing; reconnect with backoff."}
 		}
 		if websocket.IsCloseError(err, websocket.ClosePolicyViolation) {
-			if closeErr, ok := err.(*websocket.CloseError); ok {
+			var closeErr *websocket.CloseError
+			if errors.As(err, &closeErr) {
 				switch closeErr.Text {
 				case "invalid executor handshake":
 					return &APIError{Status: 409, Code: "invalid_executor_handshake", Message: "The local folder connection could not be verified. Update AgentWorks from the app's connection setup, then try sharing the folder again."}
