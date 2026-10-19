@@ -35,26 +35,55 @@ it('closes a scheduled view without stopping the run and returns to its own buil
   expect(mocks.state.closeTab).toHaveBeenCalledWith('run', false)
   expect(mocks.activate).toHaveBeenCalledWith('builder')
 })
-it('stops an idle side chat and closes its server-owned key before removing the tab', async () => {
+it('lets the server release an idle chat and close its key before removing the tab', async () => {
   setup()
   await closeWorkspaceChatTab('side')
-  expect(mocks.stop).toHaveBeenCalledWith('side')
+  expect(mocks.stop).not.toHaveBeenCalled()
   expect(mocks.closeSide).toHaveBeenCalledWith('code', 'p:chat:side')
   expect(mocks.state.closeTab).toHaveBeenCalledWith('side', false)
   expect(mocks.activate).toHaveBeenCalledWith('primary')
 })
-it('keeps a working side chat open, including work reported only by the server', async () => {
+it('shows the server busy refusal and keeps the chat open without stopping it', async () => {
   setup()
   mocks.state.activeSessionsCache = [{ session_id: 'side', status: 'running' }]
+  mocks.closeSide.mockRejectedValueOnce({ response: { status: 409, data: { error: 'This agent is still working. Stop it before closing.' } } })
   await closeWorkspaceChatTab('side')
-  expect(mocks.state.addToast).toHaveBeenCalled()
+  expect(mocks.closeSide).toHaveBeenCalledWith('code', 'p:chat:side')
+  expect(mocks.state.addToast).toHaveBeenCalledWith('This agent is still working. Stop it before closing.', 'error')
   expect(mocks.stop).not.toHaveBeenCalled()
   expect(mocks.state.closeTab).not.toHaveBeenCalled()
+  expect(mocks.activate).not.toHaveBeenCalled()
 })
-it('abandons the remaining close operations if the account changes while stopping', async () => {
-  setup()
-  mocks.stop.mockImplementationOnce(async () => { mocks.current = false })
+it('does not use stale browser activity to overrule a successful server close', async () => {
+  setup({ ...side, isStreaming: true, hasRunningBgAgents: true })
+  mocks.state.activeSessionsCache = [{ session_id: 'side', status: 'running' }]
   await closeWorkspaceChatTab('side')
-  expect(mocks.closeSide).not.toHaveBeenCalled()
+  expect(mocks.closeSide).toHaveBeenCalledWith('code', 'p:chat:side')
+  expect(mocks.stop).not.toHaveBeenCalled()
+  expect(mocks.state.closeTab).toHaveBeenCalledWith('side', false)
+})
+it.each([400, 403, 404])('preserves the local tab and shows a server refusal with status %s', async status => {
+  setup()
+  mocks.closeSide.mockRejectedValueOnce({ response: { status, data: { error: 'This agent cannot be closed.' } } })
+  await closeWorkspaceChatTab('side')
+  expect(mocks.state.addToast).toHaveBeenCalledWith('This agent cannot be closed.', 'error')
+  expect(mocks.state.closeTab).not.toHaveBeenCalled()
+})
+it('abandons local changes if the account changes while the server closes the chat', async () => {
+  setup()
+  mocks.closeSide.mockImplementationOnce(async () => { mocks.current = false })
+  await closeWorkspaceChatTab('side')
+  expect(mocks.closeSide).toHaveBeenCalled()
+  expect(mocks.state.closeTab).not.toHaveBeenCalled()
+  expect(mocks.activate).not.toHaveBeenCalled()
+})
+it('does not show a previous account’s refusal after identity changes', async () => {
+  setup()
+  mocks.closeSide.mockImplementationOnce(async () => {
+    mocks.current = false
+    throw { response: { status: 403, data: { error: 'Private previous account error' } } }
+  })
+  await closeWorkspaceChatTab('side')
+  expect(mocks.state.addToast).not.toHaveBeenCalled()
   expect(mocks.state.closeTab).not.toHaveBeenCalled()
 })
