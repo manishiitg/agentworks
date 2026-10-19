@@ -61,7 +61,7 @@ func externalMessageToolForRequest(r *http.Request, tool externalTool) externalT
 	props := maps.Clone(tool.InputSchema["properties"].(map[string]any))
 	tool.InputSchema["properties"] = props
 	if hostedAgentMailbox(claims) {
-		tool.Description = "Message agents through your inbox: register your agent_name, list_agents to find recipients, send, read, or reply with send in the same inbox_id. Acknowledge your incoming message with ack and delivery=read or handled. " + hostedInboxInstructions + " Existing account, connection and group access still applies. Send uses the same message size and rate limits as the CLI. Sharing or joining a group still needs the person's request."
+		tool.Description = "Message agents through your inbox: register your agent_name, list_agents to find recipients, send, read, or reply with send in the same inbox_id. Acknowledge your incoming message with ack and delivery=read or handled. " + hostedInboxInstructions + " Connected agents are private to their person and that person's agents. Published agents can be found and messaged by everyone on this server. Existing account and connection access still applies. Send uses the same message size and rate limits as the CLI. Publishing an agent still needs the person's request."
 		props["delivery"] = map[string]any{"type": "string", "enum": []any{"read", "handled"}, "description": "For ack: read means you received the message; handled means you finished handling it. This never claims live delivery."}
 		delete(props, "attachment_id")
 		delete(props, "transport")
