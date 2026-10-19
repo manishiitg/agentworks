@@ -31,9 +31,10 @@ func sameAccountAgentSender(source agentMessageEndpoint, userID string) bool {
 
 var agentLiveEvents = struct {
 	sync.Mutex
-	changed chan struct{}
-	online  map[string]string
-}{changed: make(chan struct{}), online: map[string]string{}}
+	changed      chan struct{}
+	online       map[string]string
+	lastRecorded map[string]time.Time
+}{changed: make(chan struct{}), online: map[string]string{}, lastRecorded: map[string]time.Time{}}
 
 // Attachment is a person-configured CLI operation, not an agent MCP tool.
 // The native bridge gets this credential from its explicit launch config.
@@ -89,6 +90,69 @@ func namedAgentOnline(a namedMessageAgent) bool {
 	agentLiveEvents.Lock()
 	defer agentLiveEvents.Unlock()
 	return a.Attachment != nil && a.Attachment.DeliveryContract == 2 && agentLiveEvents.online[a.ID] == a.Attachment.ID
+}
+
+// Discovery expires; the address, publication and stored messages do not.
+// Hosted product chats are projected separately and do not use this directory.
+func namedAgentDiscoverable(a namedMessageAgent, now time.Time) bool {
+	if namedAgentOnline(a) {
+		return true
+	}
+	last := a.CreatedAt
+	if a.LastOnlineAt.After(last) {
+		last = a.LastOnlineAt
+	}
+	return !last.IsZero() && !last.Before(now.Add(-12*time.Hour))
+}
+
+// Only an authenticated exact stream, or a successfully authorized mailbox
+// read/send, records activity. This never creates a lease or a read receipt.
+func recordNamedAgentActivity(ctx context.Context, agentID, attachmentID string, force bool) {
+	if agentID == "" {
+		return
+	}
+	now := time.Now().UTC()
+	agentLiveEvents.Lock()
+	recent := now.Sub(agentLiveEvents.lastRecorded[agentID]) < time.Minute
+	agentLiveEvents.Unlock()
+	if !force && recent {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer cancel()
+	agentMessageMu.Lock()
+	defer agentMessageMu.Unlock()
+	s, err := readAgentMessageStore(ctx)
+	if err != nil {
+		log.Printf("[AGENT-PRESENCE] check=read status=failed agent=%s", agentID)
+		return
+	}
+	for i := range s.Agents {
+		a := &s.Agents[i]
+		if a.ID != agentID {
+			continue
+		}
+		if attachmentID != "" {
+			if a.Attachment == nil || a.Attachment.ID != attachmentID {
+				return
+			}
+		} else if a.EverAttached || a.Attachment != nil {
+			return // Reading an offline CLI inbox does not invent a live stream.
+		}
+		if !force && now.Sub(a.LastOnlineAt) < time.Minute {
+			return
+		}
+		a.LastOnlineAt = now
+		if err := saveAgentMessageStore(ctx, s); err != nil {
+			log.Printf("[AGENT-PRESENCE] check=save status=failed agent=%s", agentID)
+			return
+		}
+		agentLiveEvents.Lock()
+		agentLiveEvents.lastRecorded[agentID] = now
+		agentLiveEvents.Unlock()
+		log.Printf("[AGENT-PRESENCE] status=recorded agent=%s last_online_at=%s", agentID, now.Format(time.RFC3339Nano))
+		return
+	}
 }
 
 func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.Request, args map[string]any) {
@@ -263,6 +327,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 	log.Printf("[AGENT-STREAM] connected agent=%s attachment=%s", a.ID, id)
 	agentLiveEvents.online[a.ID] = id
 	agentLiveEvents.Unlock()
+	recordNamedAgentActivity(r.Context(), a.ID, id, true)
 	defer func() {
 		log.Printf("[AGENT-STREAM] disconnected agent=%s attachment=%s", a.ID, id)
 		agentLiveEvents.Lock()
@@ -270,6 +335,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 			delete(agentLiveEvents.online, a.ID)
 		}
 		agentLiveEvents.Unlock()
+		recordNamedAgentActivity(r.Context(), a.ID, id, true)
 	}()
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
@@ -381,6 +447,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 			if write(map[string]any{"type": "heartbeat"}) != nil {
 				return
 			}
+			recordNamedAgentActivity(r.Context(), a.ID, id, false)
 		}
 	}
 }

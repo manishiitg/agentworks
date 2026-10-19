@@ -34,6 +34,8 @@ func TestPublishAgentToTheNetworkBetweenAccounts(t *testing.T) {
 	mux.HandleFunc("/api/external/v1/call", env.api.handleExternalCall)
 	mux.HandleFunc("/api/external/v1/tools", env.api.handleExternalTools)
 	mux.HandleFunc("/api/external/v1/agents/sharing", env.api.handleAgentSharing)
+	mux.HandleFunc("/api/external/v1/agents/events", env.api.handleAgentEvents)
+	mux.HandleFunc("/api/external/v1/agents/attachment", env.api.handleAgentAttachment)
 	srv := httptest.NewServer(AuthMiddleware(mux))
 	defer srv.Close()
 	t.Setenv("PUBLIC_URL", srv.URL)
@@ -153,6 +155,107 @@ func TestPublishAgentToTheNetworkBetweenAccounts(t *testing.T) {
 	if !found {
 		t.Fatalf("list_agents must show a published agent to everyone: %v", listed)
 	}
+	// Discovery expires after 12 hours, while the stable address and inbox keep
+	// working. Neither received mail nor directory reads refresh the recipient.
+	ageHelper := func() string {
+		t.Helper()
+		agentMessageMu.Lock()
+		defer agentMessageMu.Unlock()
+		st, e := readAgentMessageStore(ctx)
+		if e != nil {
+			t.Fatal(e)
+		}
+		id := ""
+		for i := range st.Agents {
+			if st.Agents[i].UserID == "alice" && st.Agents[i].Name == "helper" {
+				st.Agents[i].CreatedAt = time.Now().Add(-24 * time.Hour)
+				st.Agents[i].LastOnlineAt = time.Now().Add(-13 * time.Hour)
+				id = st.Agents[i].ID
+			}
+		}
+		if id == "" {
+			t.Fatal("registered helper missing")
+		}
+		if e = saveAgentMessageStore(ctx, st); e != nil {
+			t.Fatal(e)
+		}
+		agentLiveEvents.Lock()
+		delete(agentLiveEvents.lastRecorded, id) // move the coalescing clock with the aged record
+		agentLiveEvents.Unlock()
+		return id
+	}
+	listedHelper := func(client *agentworksclient.Client, expected bool) {
+		t.Helper()
+		page, e := try(client, map[string]any{"action": "list_agents"})
+		if e != nil {
+			t.Fatal(e)
+		}
+		found := false
+		for _, row := range page["agents"].([]any) {
+			name := row.(map[string]any)["agent_name"]
+			found = found || name == "helper" || name == "alice/helper"
+		}
+		if found != expected {
+			t.Fatalf("helper discovery=%t, want %t", found, expected)
+		}
+	}
+	stableID := ageHelper()
+	listedHelper(alice, false)
+	listedHelper(carol, false)
+	queued, e := try(bob, map[string]any{"action": "send", "agent_name": "scout", "target": "agent:alice/helper", "message": "mail while hidden", "submission_id": "hidden-mail"})
+	if e != nil || queued["delivery"] != "stored" || queued["inbox_id"] != receipt["inbox_id"] {
+		t.Fatalf("hidden agent lost its original inbox: %v %v", queued, e)
+	}
+	listedHelper(alice, false)
+	listedHelper(carol, false)
+	if _, e = try(alice, map[string]any{"action": "read", "agent_name": "helper"}); e != nil {
+		t.Fatal(e)
+	}
+	listedHelper(alice, true) // authenticated mailbox use counts, not inbound mail
+	listedHelper(carol, true)
+	if _, e = try(alice, map[string]any{"action": "register", "agent_name": "companion"}); e != nil {
+		t.Fatal(e)
+	}
+	ageHelper()
+	if _, e = try(alice, map[string]any{"action": "send", "agent_name": "helper", "target": "agent:companion", "message": "mailbox sends while hidden", "submission_id": "hidden-sender"}); e != nil {
+		t.Fatal(e)
+	}
+	listedHelper(carol, true)
+	ageHelper()
+	attachment, e := alice.AttachAgent(ctx, agentworksclient.AgentAttachmentOptions{AgentName: "helper", Provider: "codex", SessionID: "exact-helper-session"})
+	if e != nil || attachment.AgentID != stableID {
+		t.Fatalf("reattach changed the stable name: %v %v", attachment, e)
+	}
+	listedHelper(carol, false) // an attachment alone is not a live listener
+	liveCtx, disconnect := context.WithCancel(ctx)
+	defer disconnect()
+	connected, streamed, finished := make(chan struct{}), make(chan string, 20), make(chan error, 1)
+	go func() {
+		finished <- alice.StreamAgentMessages(liveCtx, attachment, func(m agentworksclient.AgentLiveMessage) error {
+			streamed <- m.MessageID
+			return nil
+		}, func() { close(connected) })
+	}()
+	select {
+	case <-connected:
+	case <-time.After(5 * time.Second):
+		t.Fatal("exact helper stream did not reconnect")
+	}
+	listedHelper(alice, true)
+	listedHelper(carol, true)
+	for {
+		select {
+		case id := <-streamed:
+			if id == queued["message_id"] {
+				disconnect()
+				<-finished
+				goto restored
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("reconnected agent did not receive mail stored while hidden")
+		}
+	}
+restored:
 	// Unpublishing ends access at once, in both directions.
 	if _, err = alice.ShareAgent(ctx, "unshare", "helper"); err != nil {
 		t.Fatal(err)

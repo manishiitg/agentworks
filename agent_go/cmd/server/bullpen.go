@@ -74,7 +74,7 @@ func (api *StreamingAPI) handleBullpenAgentUsage(w http.ResponseWriter, r *http.
 	}
 	items := []map[string]interface{}{}
 	for _, a := range s.Agents {
-		if a.UserID == claims.UserID && a.Attachment != nil {
+		if a.UserID == claims.UserID && a.Attachment != nil && namedAgentDiscoverable(a, time.Now().UTC()) {
 			items = append(items, map[string]interface{}{"agent_id": a.ID})
 		}
 	}

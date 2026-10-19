@@ -21,8 +21,9 @@ func TestBullpenAccountDirectoryOverAuthenticatedHTTP(t *testing.T) {
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks,bullpen")
 	ctx := context.Background()
 	if err := saveAgentMessageStore(ctx, agentMessageStore{Agents: []namedMessageAgent{
-		{ID: "own-id", UserID: "owner", Name: "own-agent", Purpose: "Reviewing changes", Connections: []string{"private-connection"}, Attachment: &namedAgentAttachment{DeliveryContract: 2, ID: "own-attach", Provider: "claude", SessionID: "own-session"}},
-		{ID: "foreign-id", UserID: "other", Name: "foreign-agent", Connections: []string{"foreign-connection"}, Attachment: &namedAgentAttachment{DeliveryContract: 2, ID: "foreign-attach", Provider: "claude", SessionID: "foreign-session"}},
+		{ID: "own-id", UserID: "owner", Name: "own-agent", CreatedAt: time.Now().UTC(), Purpose: "Reviewing changes", Connections: []string{"private-connection"}, Attachment: &namedAgentAttachment{DeliveryContract: 2, ID: "own-attach", Provider: "claude", SessionID: "own-session"}},
+		{ID: "foreign-id", UserID: "other", Name: "foreign-agent", CreatedAt: time.Now().UTC(), Connections: []string{"foreign-connection"}, Attachment: &namedAgentAttachment{DeliveryContract: 2, ID: "foreign-attach", Provider: "claude", SessionID: "foreign-session"}},
+		{ID: "old-id", UserID: "owner", Name: "offline-hidden", CreatedAt: time.Now().Add(-24 * time.Hour), LastOnlineAt: time.Now().Add(-13 * time.Hour)},
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +86,7 @@ func TestBullpenAccountDirectoryOverAuthenticatedHTTP(t *testing.T) {
 			getAt("owner", path, http.StatusOK)
 		}
 	}()
-	if !strings.Contains(body, "own-agent") || strings.Contains(body, "foreign-agent") || strings.Contains(body, "private-connection") || strings.Contains(body, "native_session_id") {
+	if !strings.Contains(body, "own-agent") || strings.Contains(body, "offline-hidden") || strings.Contains(body, "foreign-agent") || strings.Contains(body, "private-connection") || strings.Contains(body, "native_session_id") {
 		t.Fatalf("directory ownership or metadata leak: %s", body)
 	}
 	if body = get("other", http.StatusOK); !strings.Contains(body, "foreign-agent") || strings.Contains(body, "own-agent") {

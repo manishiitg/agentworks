@@ -297,6 +297,7 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if caller.NamedAgentID != "" {
+		recordNamedAgentActivity(r.Context(), caller.NamedAgentID, "", false)
 		out["agent_name"] = caller.Label
 		out["next"] = "Check replies with messages action=read. Reply with action=send in the same inbox, using your agent_name and a new submission_id. Replies are optional; sending does not prove the other agent has it."
 	}
@@ -416,6 +417,7 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 				out["commands_run"] = commands
 			}
 		}
+		recordNamedAgentActivity(r.Context(), caller.NamedAgentID, "", false)
 		externalJSON(w, out)
 	default:
 		externalError(w, 400, "invalid_arguments", "action must be register, unregister, list_agents, send, read, state, ack or update_purpose; live attachment is configured by the person through the CLI")

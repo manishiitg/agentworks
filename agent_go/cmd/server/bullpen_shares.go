@@ -367,7 +367,7 @@ func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[
 			continue
 		}
 		for _, a := range s.Agents {
-			if a.ID != sh.AgentID {
+			if a.ID != sh.AgentID || !namedAgentDiscoverable(a, now) {
 				continue
 			}
 			owner := shareOwnerLabel(sh.OwnerUserID)

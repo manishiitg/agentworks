@@ -36,6 +36,7 @@ type namedMessageAgent struct {
 	Name             string                `json:"name"`
 	Connections      []string              `json:"allowed_connection_ids"`
 	CreatedAt        time.Time             `json:"created_at"`
+	LastOnlineAt     time.Time             `json:"last_online_at,omitempty"`
 	Purpose          string                `json:"purpose,omitempty"`
 	PurposeUpdatedAt time.Time             `json:"purpose_updated_at,omitempty"`
 	Attachment       *namedAgentAttachment `json:"attachment,omitempty"`
@@ -162,8 +163,9 @@ func listNamedMessageAgents(ctx context.Context, userID string) (map[string]inte
 // atomic workspace snapshot without waiting for mutation/receipt transactions.
 func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessageStore, withUsage bool) map[string]interface{} {
 	items := []map[string]interface{}{}
+	now := time.Now().UTC()
 	for _, a := range s.Agents {
-		if a.UserID == userID {
+		if a.UserID == userID && namedAgentDiscoverable(a, now) {
 			item := map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "delivery_mode": agentDeliveryMode(a), "published": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0, "provider": func() string {
 				if a.Attachment != nil {
 					return a.Attachment.Provider
@@ -180,7 +182,7 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 	if withUsage {
 		hydrateOwnerUsage(ctx, userID, items, s.Agents)
 	}
-	items = append(items, s.sharedAgentItems(userID, time.Now().UTC())...)
+	items = append(items, s.sharedAgentItems(userID, now)...)
 	sort.Slice(items, func(i, j int) bool { return items[i]["agent_name"].(string) < items[j]["agent_name"].(string) })
 	return map[string]interface{}{"agents": items}
 }
@@ -535,6 +537,7 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 					out["sent"] = sent
 				}
 			}
+			recordNamedAgentActivity(ctx, a.ID, "", false)
 			return out, nil
 		}
 		select {
