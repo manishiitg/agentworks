@@ -28,6 +28,7 @@ type clientChatTelemetryEvent struct {
 	EventType        string  `json:"event_type,omitempty"`
 	Transport        string  `json:"transport,omitempty"`
 	TabID            string  `json:"tab_id,omitempty"`
+	TargetTabID      string  `json:"target_tab_id,omitempty"`
 	ClientTime       string  `json:"client_time"`
 	PerformanceMS    float64 `json:"performance_ms"`
 	ServerEventTime  string  `json:"server_event_time,omitempty"`
@@ -53,6 +54,7 @@ var allowedClientChatTelemetryPhases = map[string]bool{
 	"catchup_received": true,
 	"processed":        true,
 	"painted":          true,
+	"tab_reorder":      true,
 }
 
 func boundedTelemetryField(value string, max int) string {
@@ -101,6 +103,7 @@ func (api *StreamingAPI) handleClientChatTelemetry(w http.ResponseWriter, r *htt
 			"event_type":         boundedTelemetryField(event.EventType, 80),
 			"transport":          boundedTelemetryField(event.Transport, 32),
 			"tab_id":             boundedTelemetryField(event.TabID, 160),
+			"target_tab_id":      boundedTelemetryField(event.TargetTabID, 160),
 			"client_time":        boundedTelemetryField(event.ClientTime, 40),
 			"performance_ms":     event.PerformanceMS,
 			"server_event_time":  boundedTelemetryField(event.ServerEventTime, 40),

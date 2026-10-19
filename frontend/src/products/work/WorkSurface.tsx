@@ -5,9 +5,10 @@ import { currentProductRoute, routeView } from '../../utils/productRoutes'
 import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { replaceProductSelection } from '../../utils/productUrlNavigation'
 import { markFeatureUsed } from '../../utils/featureUsage'
+import { recordTabReorderTelemetry } from '../../utils/chatDeliveryTelemetry'
 import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../../utils/workspaceViewPreference'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { ChevronDown, Loader2, Plus, Trash2, X } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { Check, ChevronDown, ChevronUp, GripVertical, Loader2, Plus, Trash2, X } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { ProductChatLandingCard } from '../../components/chat/ProductChatLandingCard'
@@ -562,7 +563,7 @@ function useWorkChatTab(
   }
 }
 
-function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allowSideChats }: {
+export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allowSideChats }: {
   projectId: string
   projectName: string
   canonicalTabId: string
@@ -594,17 +595,49 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
   const visibleTabs = activeIndex >= WORK_VISIBLE_TABS
     ? [...tabs.slice(0, WORK_VISIBLE_TABS - 1), tabs[activeIndex]]
     : tabs.slice(0, WORK_VISIBLE_TABS)
-  const moreTabs = tabs.filter(tab => !visibleTabs.includes(tab))
   const [moreOpen, setMoreOpen] = useState(false)
   const moreRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!moreOpen) return
     const close = (event: MouseEvent) => { if (!moreRef.current?.contains(event.target as Node)) setMoreOpen(false) }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { setMoreOpen(false); moreRef.current?.querySelector<HTMLButtonElement>('button')?.focus() } }
     document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
+    document.addEventListener('keydown', escape)
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', escape) }
   }, [moreOpen])
   // Dragging a side tab onto another saves the new order on the server; the strip then follows the server's order.
   const [draggingKey, setDraggingKey] = useState<string | null>(null)
+  const [dropKey, setDropKey] = useState<string | null>(null)
+  const drag = useRef<{ key: string; tabId: string; attemptId: string; dropped: boolean } | null>(null)
+  const dragMime = 'application/x-agentworks-chat-key'
+  const startDrag = (event: ReactDragEvent<HTMLDivElement>, key: string, tabId: string) => {
+    if ((event.target as Element).closest('button,input')) { event.preventDefault(); return }
+    // A payload is required by native browser drag/drop. A ref keeps source
+    // identity stable while React renders the selected tab or drop indicator.
+    event.dataTransfer.setData(dragMime, key)
+    event.dataTransfer.setData('text/plain', key)
+    event.dataTransfer.effectAllowed = 'move'
+    drag.current = { key, tabId, attemptId: crypto.randomUUID(), dropped: false }
+    setDraggingKey(key)
+    if (canonicalSessionId) recordTabReorderTelemetry(canonicalSessionId, drag.current.attemptId, 'start', tabId)
+  }
+  const endDrag = () => {
+    const attempt = drag.current
+    if (attempt && !attempt.dropped && canonicalSessionId) recordTabReorderTelemetry(canonicalSessionId, attempt.attemptId, 'cancel', attempt.tabId)
+    drag.current = null; setDraggingKey(null); setDropKey(null)
+  }
+  const overTab = (event: ReactDragEvent<HTMLDivElement>, key: string | undefined) => {
+    if (!drag.current || !key) return
+    event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDropKey(key)
+  }
+  const dropTab = (event: ReactDragEvent<HTMLDivElement>, key: string | undefined) => {
+    const attempt = drag.current
+    if (!attempt || !key) return
+    event.preventDefault(); event.stopPropagation()
+    attempt.dropped = true
+    void moveSideChat(attempt.key, key, attempt)
+    setDropKey(null)
+  }
   const applyServerOrder = (listed: { conversation_key: string; position?: number }[]) => {
     const state = useChatStore.getState()
     for (const chat of listed) {
@@ -612,15 +645,20 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
       if (tab && (tab.metadata?.agentProfileTabPosition || 0) !== (chat.position || 0)) state.setTabMetadata(tab.tabId, { agentProfileTabPosition: chat.position || 0 })
     }
   }
-  const moveSideChat = async (fromKey: string, toKey: string) => {
+  const moveSideChat = async (fromKey: string, toKey: string, attempt: { key: string; tabId: string; attemptId: string; dropped: boolean } = { key: fromKey, tabId: sideChats.find(tab => tab.metadata?.agentProfileConversationKey === fromKey)?.tabId || '', attemptId: crypto.randomUUID(), dropped: true }) => {
     const keys = sideChats.map(tab => tab.metadata?.agentProfileConversationKey).filter((key): key is string => !!key)
     const from = keys.indexOf(fromKey)
     const to = keys.indexOf(toKey)
-    if (from < 0 || to < 0 || from === to) return
+    const targetId = sideChats.find(tab => tab.metadata?.agentProfileConversationKey === toKey)?.tabId
+    const trace = (status: 'drop' | 'no_change' | 'saved' | 'failed') => { if (canonicalSessionId) recordTabReorderTelemetry(canonicalSessionId, attempt.attemptId, status, attempt.tabId, targetId) }
+    trace('drop')
+    if (from < 0 || to < 0 || from === to) { trace('no_change'); return }
     keys.splice(to, 0, ...keys.splice(from, 1))
     try {
       applyServerOrder(await agentApi.orderAgentProfileSideChats(profileId, projectId, keys))
+      trace('saved')
     } catch (cause) {
+      trace('failed')
       useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not save the tab order.', 'error')
     }
   }
@@ -772,15 +810,18 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
       <div ref={stripRef} className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-testid="work-chat-tab-strip">
       {visibleTabs.map(tab => {
         const key = isWorkSideChatTab(tab, projectId) ? tab.metadata?.agentProfileConversationKey : undefined
+        const targetKey = key || (tab.tabId === canonicalTabId ? sideChats[0]?.metadata?.agentProfileConversationKey : undefined)
         return <div
           key={tab.tabId}
+          data-chat-tab-id={tab.tabId}
           draggable={!!key}
-          onDragStart={key ? event => { event.dataTransfer.effectAllowed = 'move'; setDraggingKey(key) } : undefined}
-          onDragOver={key && draggingKey && draggingKey !== key ? event => event.preventDefault() : undefined}
-          onDrop={key && draggingKey ? event => { event.preventDefault(); void moveSideChat(draggingKey, key) } : undefined}
-          onDragEnd={() => setDraggingKey(null)}
-          className={draggingKey && draggingKey === key ? 'opacity-50' : undefined}
-        ><AgentWorksChatTabItem
+          onDragStart={key ? event => startDrag(event, key, tab.tabId) : undefined}
+          onDragOver={event => overTab(event, targetKey)}
+          onDrop={event => dropTab(event, targetKey)}
+          onDragEnd={endDrag}
+          className={`flex items-center rounded border-l-2 ${dropKey === targetKey && draggingKey !== key ? 'border-primary bg-primary/10' : 'border-transparent'} ${draggingKey === key ? 'opacity-50' : ''}`}
+          title={key ? 'Drag to reorder this chat' : undefined}
+        >{key && <GripVertical aria-hidden="true" className="h-3 w-3 shrink-0 cursor-grab text-muted-foreground/60" />}<AgentWorksChatTabItem
         tab={tab}
         isActive={tab.tabId === activeTabId}
         canClose={tab.tabId !== canonicalTabId}
@@ -796,46 +837,52 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
       /></div>
       })}
       </div>
-      {moreTabs.length > 0 && (
+      {tabs.length > 1 && (
         <div ref={moreRef} className="relative shrink-0">
           <button
             type="button"
             onClick={() => setMoreOpen(open => !open)}
             aria-expanded={moreOpen}
             className="inline-flex h-7 max-w-40 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted"
-            title="More tabs"
+            title="All chats: switch, reorder or close"
+            aria-haspopup="dialog"
             data-testid="work-more-tabs"
           >
-            <span className="truncate">{`${moreTabs.length} more`}</span>
+            <span className="truncate">{`Chats · ${tabs.length}`}</span>
             <ChevronDown className="h-3.5 w-3.5 shrink-0" />
           </button>
           {moreOpen && (
-            <div className="absolute left-0 top-8 z-50 min-w-48 rounded-md border border-border bg-popover p-1 shadow-md" role="menu">
-              {moreTabs.map(tab => {
+            <div className="absolute right-0 top-8 z-50 max-h-80 min-w-64 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md" role="dialog" aria-label="Project chats">
+              {tabs.map(tab => {
                 const key = isWorkSideChatTab(tab, projectId) ? tab.metadata?.agentProfileConversationKey : undefined
                 const label = isWorkSideChatTab(tab, projectId) ? workSideChatDisplayName(tab.name) : tab.name
                 return <div
                   key={tab.tabId}
-                  role="menuitem"
+                  data-chat-list-id={tab.tabId}
                   draggable={!!key}
-                  onDragStart={key ? event => { event.dataTransfer.effectAllowed = 'move'; setDraggingKey(key) } : undefined}
-                  onDragOver={key && draggingKey && draggingKey !== key ? event => event.preventDefault() : undefined}
-                  onDrop={key && draggingKey ? event => { event.preventDefault(); void moveSideChat(draggingKey, key) } : undefined}
-                  onDragEnd={() => setDraggingKey(null)}
+                  onDragStart={key ? event => startDrag(event, key, tab.tabId) : undefined}
+                  onDragOver={event => overTab(event, key || sideChats[0]?.metadata?.agentProfileConversationKey)}
+                  onDrop={event => dropTab(event, key || sideChats[0]?.metadata?.agentProfileConversationKey)}
+                  onDragEnd={endDrag}
                   className="group flex items-center rounded hover:bg-muted"
                 >
+                  {key && <GripVertical aria-hidden="true" className="ml-1 h-3 w-3 shrink-0 cursor-grab text-muted-foreground/60" />}
                   <button
                     type="button"
                     onClick={() => { setMoreOpen(false); selectTab(tab.tabId) }}
                     className={`min-w-0 flex-1 truncate px-2 py-1.5 text-left text-xs ${tab.tabId === activeTabId ? 'font-medium text-foreground' : 'text-muted-foreground'}`}
                   >
-                    {label}
+                    {tab.tabId === activeTabId && <Check aria-hidden="true" className="mr-1 inline h-3 w-3" />}{label}
                   </button>
+                  {key && <>
+                    <button type="button" disabled={sideChats.indexOf(tab) === 0} aria-label={`Move ${label} earlier`} className="rounded p-1 text-muted-foreground hover:bg-muted disabled:opacity-25" onClick={() => { const prior = sideChats[sideChats.indexOf(tab)-1]?.metadata?.agentProfileConversationKey; if (prior) void moveSideChat(key, prior) }}><ChevronUp className="h-3 w-3" /></button>
+                    <button type="button" disabled={sideChats.indexOf(tab) === sideChats.length-1} aria-label={`Move ${label} later`} className="rounded p-1 text-muted-foreground hover:bg-muted disabled:opacity-25" onClick={() => { const next = sideChats[sideChats.indexOf(tab)+1]?.metadata?.agentProfileConversationKey; if (next) void moveSideChat(key, next) }}><ChevronDown className="h-3 w-3" /></button>
+                  </>}
                   {tab.tabId !== canonicalTabId && (
                     <button
                       type="button"
                       onClick={() => { setMoreOpen(false); closeProjectTab(tab.tabId) }}
-                      className="mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-gray-400 opacity-0 hover:bg-gray-200 hover:text-gray-700 focus:opacity-100 group-hover:opacity-100 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                      className="mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-gray-400 opacity-70 hover:bg-gray-200 hover:text-gray-700 focus:opacity-100 group-hover:opacity-100 dark:hover:bg-gray-700 dark:hover:text-gray-200"
                       aria-label={`Close ${label}`}
                       title="Close tab"
                     >
