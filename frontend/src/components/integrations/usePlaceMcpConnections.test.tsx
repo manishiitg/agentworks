@@ -65,7 +65,7 @@ it('Connect sends the request to the agent chat, no popup, and says whose login 
   // The rule is a plain line on the page, not a dialog in the way.
   expect(host.textContent).toContain('used by everyone with access to this')
   expect(host.textContent).toContain('Available')
-  expect(host.textContent).toContain('Google apps tab')
+  expect(host.textContent).toContain('Google apps panel in Connections')
   expect(host.textContent).toContain('GITHUB_TOKEN')
   await act(async () => { host.querySelector('[aria-label="Available servers"] button')!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
   await settle()

@@ -76,7 +76,7 @@ describe('shared Ask in chat dispatch for reports', () => {
   it('creates a chat when this automation has none', async () => {
     const result = await sendWorkspacePaneMessageToChat({ workspacePath: 'Workflow/one', message: 'Run visual QA' })
     expect(result).toEqual({ tabId: 'fresh', reused: false, queuedBehindRunningTurn: false })
-    expect(mocks.chat.createChatTab).toHaveBeenCalledExactlyOnceWith('Automation Builder', expect.objectContaining({ presetQueryId: 'one', phaseId: 'workflow-builder' }))
+    expect(mocks.chat.createChatTab).toHaveBeenCalledExactlyOnceWith('Automation Builder', expect.objectContaining({ presetQueryId: 'one', phaseId: 'workflow-builder' }), undefined, undefined)
   })
 
   it('creates a chat when only a view-only schedule exists', async () => {

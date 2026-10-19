@@ -19,6 +19,7 @@ import VaultsControl from '../topbar/VaultsControl'
 import { TooltipProvider } from '../ui/tooltip'
 import { useAppStore } from '../../stores/useAppStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
+import { visibleProductSurfaceIDs } from '../../products/productSurfaceConfig'
 import type { ProductSurface } from '../../products/productSurfaceConfig'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterAll(() => vi.unstubAllGlobals())
@@ -42,19 +43,24 @@ it.each([false, true])('keeps existing permission gates inside the labeled menu 
     expect(menu.hidden).toBe(true)
   } finally { await act(async () => root.unmount()); host.remove() }
 })
-it('does not expose Vault to a restricted account, and supports keyboard dismissal', async () => {
+it('keeps personal accounts available without shared Vault access, and supports keyboard dismissal', async () => {
   auth.user.allowed_products = ['work']
   window.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'server', enabledProductSurfaces: ['agentworks', 'work', 'code', 'relays', 'mcp-gateway'], gatewayUrl: 'http://127.0.0.1:18136' }
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
   try {
     await act(async () => root.render(<TooltipProvider><ProductSettingsMenu><VaultsControl /><UsersControl /></ProductSettingsMenu></TooltipProvider>))
-    expect(host.querySelector('[aria-label="My vaults"]')).toBeNull()
+    expect(host.querySelector('[aria-label="My vaults"]')).not.toBeNull()
+    expect(visibleProductSurfaceIDs(auth.user.allowed_products)).not.toContain('mcp-gateway')
     expect(host.querySelector('[aria-label="Users and access"]')).toBeNull()
     const trigger = host.querySelector<HTMLButtonElement>('[aria-label="Settings"]')!
     await act(async () => trigger.click())
     await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
     expect(document.activeElement).toBe(trigger)
+    auth.user.can_create = false
+    await act(async () => root.render(<TooltipProvider><ProductSettingsMenu><VaultsControl /><UsersControl /></ProductSettingsMenu></TooltipProvider>))
+    expect(host.querySelector('[aria-label="My vaults"]')).toBeNull()
+    expect(host.querySelector('[aria-label="Users and access"]')).toBeNull()
   } finally { await act(async () => root.unmount()); host.remove() }
 })
 

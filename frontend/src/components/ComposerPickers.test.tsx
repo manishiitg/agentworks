@@ -25,7 +25,7 @@ const key = async (key: string, init: KeyboardEventInit = {}, target: EventTarge
   await act(async () => { target.dispatchEvent(event) })
   return event
 }
-const commands = (searchQuery = 'pulse-review', isOpen = true) => root.render(<CommandSelectionDialog isOpen={isOpen} searchQuery={searchQuery}
+const commands = (searchQuery = 'review-plan', isOpen = true) => root.render(<CommandSelectionDialog isOpen={isOpen} searchQuery={searchQuery}
   inputRef={inputRef} listId="commands" onActiveOptionChange={onActive} onClose={onClose} onSelectCommand={onSelect}
   position={{ bottom: 10, left: 10 }} modeCategory="workflow" workshopMode="workshop" />)
 const files = (searchQuery = '', isOpen = true) => root.render(<FileSelectionDialog isOpen={isOpen} searchQuery={searchQuery}
@@ -41,7 +41,7 @@ beforeEach(() => {
   root = createRoot(host)
   useWorkspaceStore.setState({ files: [{ filepath: 'Workflow', type: 'folder', children: [{ filepath: 'Workflow/report.md', type: 'file' }] }, { filepath: 'plan.json', type: 'file' }] })
   setProductCommands(toAgentworksCommandDefinitions([
-    { name: 'run-technical-review', description: 'Review', icon: 'check-circle', aliases: ['pulse-review'], menuHidden: false, prompt: 'Review {{context}}.' },
+    { name: 'design-plan', description: 'Review', icon: 'check-circle', aliases: ['review-plan'], menuHidden: false, prompt: 'Review {{context}}.' },
   ]))
 })
 afterEach(async () => {

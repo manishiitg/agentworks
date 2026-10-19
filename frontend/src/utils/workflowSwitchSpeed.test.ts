@@ -17,12 +17,14 @@ vi.hoisted(() => {
   })
 })
 const listRunningWorkflows = vi.hoisted(() => vi.fn())
+const getWorkflowBuilderSessions = vi.hoisted(() => vi.fn())
+vi.mock('../hooks/useWorkflowBuilderBindings', () => ({ currentWorkflowBuilderBinding: () => undefined, publishWorkflowBuilderBinding: vi.fn(), workflowBuilderMutation: () => 0 }))
 vi.mock('../services/api', async importOriginal => {
   const actual = await importOriginal<typeof import('../services/api')>()
-  return { ...actual, agentApi: { ...actual.agentApi, listRunningWorkflows } }
+  return { ...actual, agentApi: { ...actual.agentApi, listRunningWorkflows, getWorkflowBuilderSessions } }
 })
 
-import type { ActiveSessionInfo, PollingEvent } from '../services/api-types'
+import type { ActiveSessionInfo, PollingEvent, WorkflowBuilderSessionResponse } from '../services/api-types'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
 import type { CustomPreset } from '../types/preset'
 import { openWorkflowPresetPage } from './workflowSessionRestore'
@@ -68,11 +70,14 @@ const otherTab = builderTab({
   metadata: { mode: 'workflow', phaseId: 'workflow-builder', presetQueryId: 'workflow-b' },
 })
 
+let bindings: ReturnType<typeof deferred<{success:boolean; bindings:Record<string, WorkflowBuilderSessionResponse>}>>
 let activeSessions: ReturnType<typeof deferred<ActiveSessionInfo[]>>
 let running: ReturnType<typeof deferred<{ running: [] }>>
 
 beforeEach(() => {
   resetWorkflowNavigationForTests()
+  bindings = deferred<{success:boolean; bindings:Record<string, WorkflowBuilderSessionResponse>}>()
+  getWorkflowBuilderSessions.mockReturnValue(bindings.promise)
   activeSessions = deferred<ActiveSessionInfo[]>()
   running = deferred<{ running: [] }>()
   listRunningWorkflows.mockReturnValue(running.promise)
@@ -84,10 +89,11 @@ beforeEach(() => {
 afterEach(() => {
   useChatStore.setState({ chatTabs: {}, activeTabId: null, tabEvents: {} })
   listRunningWorkflows.mockReset()
+  getWorkflowBuilderSessions.mockReset()
 })
 
 describe('switching to a workflow', () => {
-  it('shows a workflow seen earlier from memory before any server read returns', async () => {
+  it('waits for the server binding before choosing a cached workflow chat', async () => {
     const cached = builderTab()
     useChatStore.setState({
       chatTabs: { [cached.tabId]: cached, [otherTab.tabId]: otherTab },
@@ -97,17 +103,14 @@ describe('switching to a workflow', () => {
 
     const opening = openWorkflowPresetPage(preset)
 
-    // Synchronously on the click: no round trip stands between the user and
-    // the last conversation they saw in this workflow.
-    expect(useChatStore.getState().activeTabId).toBe(cached.tabId)
-
-    activeSessions.resolve([])
-    running.resolve({ running: [] })
+    // Cached timestamp/tab order is not authority to select a Builder.
+    expect(useChatStore.getState().activeTabId).toBe(otherTab.tabId)
+    bindings.resolve({success:true, bindings:{'workflow-a':{success:true, is_builder:true, preset_query_id:'workflow-a', session_id:'session-a', source:'live', status:'completed', events:[]}}})
     await opening
     expect(useChatStore.getState().activeTabId).toBe(cached.tabId)
   })
 
-  it('reads the running registry alongside active sessions, not after them', async () => {
+  it('reads the canonical binding without racing legacy running-session lists', async () => {
     const cached = builderTab()
     useChatStore.setState({
       chatTabs: { [cached.tabId]: cached },
@@ -118,16 +121,14 @@ describe('switching to a workflow', () => {
     const opening = openWorkflowPresetPage(preset)
     await Promise.resolve()
 
-    // The active-session read is still pending, yet the registry read has
-    // already been issued.
-    expect(listRunningWorkflows).toHaveBeenCalledTimes(1)
-
-    activeSessions.resolve([])
-    running.resolve({ running: [] })
+    expect(getWorkflowBuilderSessions).toHaveBeenCalledExactlyOnceWith([{preset_query_id:'workflow-a', workspace_path:'Workflow/a'}])
+    expect(listRunningWorkflows).not.toHaveBeenCalled()
+    expect(useChatStore.getState().getActiveSessions).not.toHaveBeenCalled()
+    bindings.resolve({success:true, bindings:{}})
     await opening
   })
 
-  it('waits for resolution when the workflow has nothing in memory', async () => {
+  it('does not pick an empty remembered tab without a server binding', async () => {
     const empty = builderTab()
     useChatStore.setState({
       chatTabs: { [empty.tabId]: empty, [otherTab.tabId]: otherTab },
@@ -138,9 +139,8 @@ describe('switching to a workflow', () => {
     const opening = openWorkflowPresetPage(preset)
     expect(useChatStore.getState().activeTabId).toBe(otherTab.tabId)
 
-    activeSessions.resolve([])
-    running.resolve({ running: [] })
+    bindings.resolve({success:true, bindings:{}})
     await opening
-    expect(useChatStore.getState().activeTabId).toBe(empty.tabId)
+    expect(useChatStore.getState().activeTabId).toBe(otherTab.tabId)
   })
 })

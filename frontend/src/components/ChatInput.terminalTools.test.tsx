@@ -417,16 +417,13 @@ describe('terminal toolbar shared tools', () => {
     } finally { outside.remove(); window.removeEventListener(MAIN_TERMINAL_FOCUS_EVENT, focus) }
   })
 
-  it('opens a command options dialog without the composer or unrelated chat draft', async () => {
-    await act(async () => setProductCommands([{ command: 'run-technical-review', description: 'Review', icon: 'terminal',
+  it('runs an active product command without opening the composer or consuming its saved draft', async () => {
+    await act(async () => setProductCommands([{ command: 'design-plan', description: 'Review', icon: 'terminal',
       source: 'product', modes: ['workflow'], execute: ctx => ctx.onSubmit('focused review') }]))
     await act(async () => button('Browse commands').click())
-    const command = [...host.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent?.includes('/run-technical-review'))!
+    const command = [...host.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent?.includes('/design-plan'))!
     await act(async () => command.click())
     expect(composer().hidden).toBe(true)
-    expect(document.querySelector('[role="dialog"]')).not.toBeNull()
-    expect(document.querySelector<HTMLTextAreaElement>('[role="dialog"] textarea')!.value).toBe('')
-    await act(async () => document.querySelector<HTMLFormElement>('[role="dialog"]')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
     expect(send).toHaveBeenCalledWith('focused review', expect.objectContaining({ sourceTabId: 'A' }))
     expect(textarea().value).toBe('review this file')
     expect(composer().hidden).toBe(true)
