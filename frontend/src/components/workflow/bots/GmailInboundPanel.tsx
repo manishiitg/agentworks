@@ -10,7 +10,7 @@ import { GMAIL_INBOUND_SETUP_INSTRUCTIONS, useGmailInboundUIEnabled } from './gm
 const setupMessage = buildAskAIMessage({
   view: 'Incoming email',
   summary: 'Help me connect Gmail and choose what incoming email should start.',
-  instructions: 'Inspect get_gmail_trigger and list_gmail_connections for this target. Explain the current setup, then ask which mailbox, task or saved workflow route, senders and email conditions I want. Use manage_gmail_trigger for configuration; discover account and route IDs yourself. sender_allowlist accepts exact addresses or @domains with OR; subject_contains_any and body_contains_any support alternative phrases. For different actions, configure ordered named rules with stable IDs: a Crew/Code instruction or a workflow saved route and groups for each rule. First matching enabled rule wins; no match skips mail. Read the saved rules and preserve untouched rules and their IDs before replacing the list. Common filters restrict every rule. Only propose additional senders when I ask. Public mailbox domain entries such as @gmail.com are rejected; use exact addresses. If sender_consent.required and not approved, tell me to review the saved configuration and confirm in the Incoming email pane. Tool calls and chat messages cannot grant sender consent. Never claim external senders are active before approval. For requested automated notifications, use allow_automatic with an explicit sender_allowlist and explain the saved rule. Preserve existing settings unless I ask to change them. If needed, prepare a Google consent link with action="connect" and wait for me to complete consent before enabling the trigger. ' + GMAIL_INBOUND_SETUP_INSTRUCTIONS + ' Return the receiving address and verified readiness. Configuration in the Incoming email panel is read-only; only the signed-in owner can confirm or revoke sender access there.',
+  instructions: 'Inspect get_gmail_trigger and list_gmail_connections for this target. Explain the current setup, then ask which mailbox, task or saved workflow route, senders and email conditions I want. Use manage_gmail_trigger for configuration; discover account and route IDs yourself. sender_allowlist accepts exact addresses or @domains with OR; subject_contains_any and body_contains_any support alternative phrases. For different actions, configure ordered named rules with stable IDs: a Crew/Code instruction or a workflow saved route and groups for each rule. First matching enabled rule wins; no match skips mail. Read the saved rules and preserve untouched rules and their IDs before replacing the list. Common filters restrict every rule. Only propose additional senders when I ask. Public mailbox domain entries such as @gmail.com are rejected; use exact addresses. If sender_consent.required and not approved, show the sender approval card in this chat after reading the saved configuration; I can also confirm in the Incoming email pane. Tool calls and chat messages cannot grant sender consent. Never claim external senders are active before approval. For requested automated notifications, use allow_automatic with an explicit sender_allowlist and explain the saved rule. Preserve existing settings unless I ask to change them. If needed, prepare a Google consent link with action="connect" and wait for me to complete consent before enabling the trigger. ' + GMAIL_INBOUND_SETUP_INSTRUCTIONS + ' Return the receiving address and verified readiness. Configuration in the Incoming email panel is read-only; only the signed-in owner can confirm or revoke sender access through the app approval button in chat or the pane.',
 })
 
 const fetchMessage = buildAskAIMessage({
@@ -76,7 +76,13 @@ export function GmailInboundPanel(props: GmailInboundPanelProps) {
   return enabled ? <GmailInboundPanelContent {...props} /> : null
 }
 
-function GmailInboundPanelContent({ workspacePath, connections = [], refreshToken = 0, onCounts, onAsk }: GmailInboundPanelProps) {
+// Chat and the right pane use the same review, hash-bound action and refreshed state.
+export function GmailSenderApproval({ workspacePath }: { workspacePath: string }) {
+  const enabled = useGmailInboundUIEnabled()
+  return enabled ? <GmailInboundPanelContent workspacePath={workspacePath} approvalOnly /> : null
+}
+
+function GmailInboundPanelContent({ workspacePath, connections = [], refreshToken = 0, onCounts, onAsk, approvalOnly = false }: GmailInboundPanelProps & { approvalOnly?: boolean }) {
   const [state, setState] = useState<GmailInboundState | null>(null)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
@@ -146,6 +152,44 @@ function GmailInboundPanelContent({ workspacePath, connections = [], refreshToke
   const rules = route?.rules || []
   const provisioning = state?.setup?.provisioning
   const setupJob = provisioning?.job
+  const senderConsentContent = route && state?.sender_consent?.required && <section className="space-y-3 rounded-md border p-3" aria-label="Email sender access">
+        <h4 className="font-medium">{state.sender_consent.approved ? 'Additional sender access approved' : 'Your approval is required for additional senders'}</h4>
+        <p className="text-muted-foreground">These senders can start this target using your tools, connected accounts and files. Email replies may share its results with them. Domain entries cover every address at that domain.</p>
+        <ul className="space-y-1">{state.sender_consent.senders.map(sender => <li key={sender}><code className="break-all">{sender}</code></li>)}</ul>
+        {state.sender_consent.blocked_reason && <p role="alert" className="text-destructive">{state.sender_consent.blocked_reason} Ask Builder to use exact addresses.</p>}
+        {state.sender_consent.approved ? <Button size="sm" variant="outline" disabled={confirmingSenders} onClick={() => { void confirmSenders('revoke') }}>Revoke additional sender access</Button> : <>
+          <p className="text-muted-foreground">Additional senders are blocked until you approve. Review the saved conditions and actions. Approval covers this configuration; changes to senders, rules, replies or enabled state require approval again.</p>
+          <label className="flex items-start gap-2"><input type="checkbox" className="mt-1" checked={senderRiskAccepted} disabled={confirmingSenders || !!state.sender_consent.blocked_reason} onChange={event => setSenderRiskAccepted(event.target.checked)} /><span>I trust these senders to run this target with my access and receive enabled email replies.</span></label>
+          <Button size="sm" disabled={!senderRiskAccepted || confirmingSenders || !!state.sender_consent.blocked_reason} onClick={() => { void confirmSenders('approve') }}>{confirmingSenders ? 'Confirming…' : 'Approve additional senders'}</Button>
+        </>}
+      </section>
+  const routeContent = route && <div className="space-y-2 rounded-md border p-3">
+        <p className="font-medium">{route.name || 'Gmail trigger'} · {route.enabled ? 'Enabled' : 'Disabled'}</p>
+        <p className="text-muted-foreground">Receiving account: {account?.email || account?.display_name || state?.receiving_account || route.connection_id}</p>
+        <div className="break-all font-mono text-xs">{route.address}</div>
+        <Button size="sm" variant="outline" onClick={async () => { try { await navigator.clipboard.writeText(route.address); setCopied(true) } catch { setError('Could not copy the address. Select and copy it manually.') } }}>{copied ? 'Copied' : 'Copy email address'}</Button>
+        {!rules.length && <p className="text-muted-foreground">Starts: {route.workflow_trigger ? workflowAction(route) : 'A project chat; replies continue the same chat'}</p>}
+        {!rules.length && !!route.group_names?.length && <p className="text-muted-foreground">Groups: {route.group_names.join(', ')}</p>}
+        <p className="text-muted-foreground">Email final response: {route.reply ? 'On' : 'Off'} · {rules.length ? 'Sender policy is shown on each rule' : filters?.sender_allowlist?.length ? 'Listed senders only' : 'Owner email only'}</p>
+        {filters?.allow_automatic && <p className="text-muted-foreground">Automated notifications from listed senders: Allowed</p>}
+        <p className="text-muted-foreground">{rules.length ? 'Common filters' : 'Filters'}: {conditions.length ? `${conditions.join(' · ')} (all condition groups must match)` : 'None'}</p>
+        {!!rules.length && <section className="space-y-2 border-t pt-3" aria-label="Email rules">
+          <h4 className="font-medium">Email rules · {rules.length}</h4>
+          <p className="text-xs text-muted-foreground">Checked in order. The first matching enabled rule runs; no match skips the email. Ask Builder to add, change, pause, or reorder rules.</p>
+          <ol className="space-y-2">{rules.map((rule, index) => <EmailRuleCard key={rule.id} rule={rule} order={index + 1} workflow={route.workflow_trigger} commonFilters={filters} />)}</ol>
+        </section>}
+        <p className="text-muted-foreground">{!route.enabled ? 'Incoming email is disabled.' : state?.error ? state.error : state?.sender_consent?.required && !state.sender_consent.approved ? 'Additional email senders are awaiting owner approval.' : state?.watch_ready ? 'Ready to receive email.' : 'Registering your mailbox. This usually takes a few seconds.'}</p>
+        {!!state?.deliveries.length && <details><summary>Recent email activity</summary><ul className="mt-2 space-y-1">{state.deliveries.map(d => <li key={d.id}>{d.rule_name ? `${d.rule_name} · ` : d.rule_id ? `${d.rule_id} · ` : ''}{d.status === 'staged' ? 'Waiting for mailbox sync' : d.status.replaceAll('_', ' ')}{d.error ? ` — ${d.error}` : ''}</li>)}</ul></details>}
+      </div>
+  if (approvalOnly) return <section aria-label="Review email sender approval" className="space-y-3 rounded-md border p-3 text-sm">
+    <h4 className="font-medium">Review email senders{state?.target_name ? ` · ${state.target_name}` : ''}</h4>
+    {!state && !error && <p>Loading saved email rules…</p>}
+    {error && <p role="alert" className="text-destructive">{error}</p>}
+    {state && !route && <p>No incoming email trigger is saved for this target.</p>}
+    {routeContent}
+    {senderConsentContent}
+    {state && route && !state.sender_consent?.required && <p>No additional sender approval is needed.</p>}
+  </section>
   return <FormSection title="Incoming email" description="Ask Builder to connect Gmail, choose chat instructions or workflow routes, or disable this trigger. This panel shows the saved configuration." actions={<AskAIButton workspacePath={workspacePath} onAsk={onAsk} message={setupMessage} />}>
     <div className="space-y-3 text-sm">
       {error && <p role="alert" className="text-destructive">{error}</p>}
@@ -177,35 +221,8 @@ function GmailInboundPanelContent({ workspacePath, connections = [], refreshToke
         <p className="text-xs text-muted-foreground">Ask Builder to check progress. Infrastructure readiness is separate from connecting a mailbox and testing email delivery.</p>
       </section>}
       {state?.configured && state.setup?.oauth_clients.length !== 0 && !route && <p className="text-muted-foreground">No Gmail trigger configured. Ask Builder to link a connected account.</p>}
-      {route && state?.sender_consent?.required && <section className="space-y-3 rounded-md border p-3" aria-label="Email sender access">
-        <h4 className="font-medium">{state.sender_consent.approved ? 'Additional sender access approved' : 'Your approval is required for additional senders'}</h4>
-        <p className="text-muted-foreground">These senders can start this target using your tools, connected accounts and files. Email replies may share its results with them. Domain entries cover every address at that domain.</p>
-        <ul className="space-y-1">{state.sender_consent.senders.map(sender => <li key={sender}><code className="break-all">{sender}</code></li>)}</ul>
-        {state.sender_consent.blocked_reason && <p role="alert" className="text-destructive">{state.sender_consent.blocked_reason} Ask Builder to use exact addresses.</p>}
-        {state.sender_consent.approved ? <Button size="sm" variant="outline" disabled={confirmingSenders} onClick={() => { void confirmSenders('revoke') }}>Revoke additional sender access</Button> : <>
-          <p className="text-muted-foreground">Additional senders are blocked until you approve. Review the saved conditions and actions below. Approval covers this configuration; changes to senders, rules, replies or enabled state require approval again.</p>
-          <label className="flex items-start gap-2"><input type="checkbox" className="mt-1" checked={senderRiskAccepted} disabled={confirmingSenders || !!state.sender_consent.blocked_reason} onChange={event => setSenderRiskAccepted(event.target.checked)} /><span>I trust these senders to run this target with my access and receive enabled email replies.</span></label>
-          <Button size="sm" disabled={!senderRiskAccepted || confirmingSenders || !!state.sender_consent.blocked_reason} onClick={() => { void confirmSenders('approve') }}>{confirmingSenders ? 'Confirming…' : 'Approve additional senders'}</Button>
-        </>}
-      </section>}
-      {route && <div className="space-y-2 rounded-md border p-3">
-        <p className="font-medium">{route.name || 'Gmail trigger'} · {route.enabled ? 'Enabled' : 'Disabled'}</p>
-        <p className="text-muted-foreground">Receiving account: {account?.email || account?.display_name || route.connection_id}</p>
-        <div className="break-all font-mono text-xs">{route.address}</div>
-        <Button size="sm" variant="outline" onClick={async () => { try { await navigator.clipboard.writeText(route.address); setCopied(true) } catch { setError('Could not copy the address. Select and copy it manually.') } }}>{copied ? 'Copied' : 'Copy email address'}</Button>
-        {!rules.length && <p className="text-muted-foreground">Starts: {route.workflow_trigger ? workflowAction(route) : 'A project chat; replies continue the same chat'}</p>}
-        {!rules.length && !!route.group_names?.length && <p className="text-muted-foreground">Groups: {route.group_names.join(', ')}</p>}
-        <p className="text-muted-foreground">Email final response: {route.reply ? 'On' : 'Off'} · {rules.length ? 'Sender policy is shown on each rule' : filters?.sender_allowlist?.length ? 'Listed senders only' : 'Owner email only'}</p>
-        {filters?.allow_automatic && <p className="text-muted-foreground">Automated notifications from listed senders: Allowed</p>}
-        <p className="text-muted-foreground">{rules.length ? 'Common filters' : 'Filters'}: {conditions.length ? `${conditions.join(' · ')} (all condition groups must match)` : 'None'}</p>
-        {!!rules.length && <section className="space-y-2 border-t pt-3" aria-label="Email rules">
-          <h4 className="font-medium">Email rules · {rules.length}</h4>
-          <p className="text-xs text-muted-foreground">Checked in order. The first matching enabled rule runs; no match skips the email. Ask Builder to add, change, pause, or reorder rules.</p>
-          <ol className="space-y-2">{rules.map((rule, index) => <EmailRuleCard key={rule.id} rule={rule} order={index + 1} workflow={route.workflow_trigger} commonFilters={filters} />)}</ol>
-        </section>}
-        <p className="text-muted-foreground">{!route.enabled ? 'Incoming email is disabled.' : state?.error ? state.error : state?.sender_consent?.required && !state.sender_consent.approved ? 'Additional email senders are awaiting owner approval.' : state?.watch_ready ? 'Ready to receive email.' : 'Registering your mailbox. This usually takes a few seconds.'}</p>
-        {!!state?.deliveries.length && <details><summary>Recent email activity</summary><ul className="mt-2 space-y-1">{state.deliveries.map(d => <li key={d.id}>{d.rule_name ? `${d.rule_name} · ` : d.rule_id ? `${d.rule_id} · ` : ''}{d.status === 'staged' ? 'Waiting for mailbox sync' : d.status.replaceAll('_', ' ')}{d.error ? ` — ${d.error}` : ''}</li>)}</ul></details>}
-      </div>}
+      {senderConsentContent}
+      {routeContent}
       <AskAIButton workspacePath={workspacePath} onAsk={onAsk} message={fetchMessage} label="Fetch emails" />
       <p className="text-xs text-muted-foreground">Fetch matching emails into chat. Recent email activity shows saved trigger deliveries.</p>
     </div>

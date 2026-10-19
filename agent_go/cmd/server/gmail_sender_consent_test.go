@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -36,8 +37,17 @@ func approveGmailSendersForTest(t *testing.T, api *StreamingAPI, route gmailinbo
 func TestGmailSenderConsentBlocksInjectedProposalsAndStaleApproval(t *testing.T) {
 	api, ctx, _ := gmailTriggerFixture(t)
 	args := map[string]interface{}{"action": "configure", "connection_id": "mail", "group_names": []string{"prod"}, "route_selections": map[string]string{"triage": "support"}, "filters": map[string]interface{}{"sender_allowlist": []string{"owner@example.com", "evil@attacker.example"}}}
-	if _, err := api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", args); err != nil {
+	result, err := api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", args)
+	if err != nil {
 		t.Fatal(err)
+	}
+	var response map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(result), &response); err != nil {
+		t.Fatal(err)
+	}
+	var hint map[string]string
+	if err := json.Unmarshal(response["sender_approval"], &hint); err != nil || hint["type"] != "gmail_sender_approval" || hint["workspace_path"] != "Workflow/mail" {
+		t.Fatalf("missing chat review hint: %s", response["sender_approval"])
 	}
 	routes, _ := api.gmailInbound.Store.Routes(ctx)
 	route := routes[0]

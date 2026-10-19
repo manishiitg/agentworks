@@ -222,6 +222,19 @@ func (api *StreamingAPI) inboundTarget(ctx context.Context, owner, path string) 
 	r.ProjectID = m.ID
 	return r, nil
 }
+
+// Display metadata is resolved from the same owner-checked target as the route.
+func (api *StreamingAPI) gmailInboundTargetLabel(ctx context.Context, target gmailinbound.Route) string {
+	if target.ProfileID != "" && api.productSchedules != nil {
+		if _, _, manifest, err := api.productSchedules.projectManifest(ctx, target.OwnerID, target.ProfileID, target.ProjectID); err == nil {
+			return manifest.displayTitle()
+		}
+	} else if manifest, found, err := ReadWorkflowManifest(ctx, target.WorkspacePath); err == nil && found {
+		return workflowDisplayLabel(target.WorkspacePath, manifest)
+	}
+	return workflowNameFromWorkspacePath(target.WorkspacePath)
+}
+
 func (api *StreamingAPI) gmailInboundRoute(config gmailInboundConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		owner := productWorkspaceUserID(r.Context())
@@ -400,12 +413,23 @@ func (api *StreamingAPI) gmailInboundRoute(config gmailInboundConfig) http.Handl
 		scope, _ := gmailRequestScope(r, target.WorkspacePath)
 		response := map[string]interface{}{"configured": api.gmailInbound != nil && len(config.Topics) > 0, "route": existing, "deliveries": []gmailinbound.DeliveryStatus{}, "setup": map[string]interface{}{"oauth_clients": gmailTriggerOAuthClients(config), "can_connect_account": scope.CodeWorkspace != "" || currentUserIsAdmin(r), "admin_setup": gmailInboundAdminSetup(config), "provisioning": api.gmailSetupStatus(r.Context())}}
 		if existing != nil {
+			response["target_name"] = api.gmailInboundTargetLabel(r.Context(), target)
+			if svc := services.GetGmailService(); svc != nil {
+				if conn, found := svc.GetConnection(existing.ConnectionID); found {
+					response["receiving_account"] = conn.Email
+				}
+			}
 			consent, consentErr := api.gmailInbound.Store.SenderConsentStatus(r.Context(), *existing, gmailOwnerEmail(*existing))
 			if consentErr != nil {
 				http.Error(w, "Cannot verify email sender approval", 500)
 				return
 			}
 			response["sender_consent"] = consent
+			if consent.Required {
+				// A presentation hint only. Chat must reload saved state and use the
+				// same signed-in-owner endpoint as the Incoming email pane.
+				response["sender_approval"] = map[string]string{"type": "gmail_sender_approval", "workspace_path": target.WorkspacePath}
+			}
 			if m, e := api.gmailInbound.Store.MailboxStatus(r.Context(), existing.ConnectionID); e == nil {
 				response["watch_ready"] = m.Cursor != ""
 				response["error"] = m.LastError

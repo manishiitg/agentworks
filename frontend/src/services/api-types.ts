@@ -4210,6 +4210,8 @@ export interface GmailInboundRule {
 }
 
 export interface GmailInboundState {
+  target_name?: string
+  receiving_account?: string
   sender_consent?: { required: boolean; approved: boolean; config_hash: string; senders: string[]; blocked_reason?: string }
   setup?: {
     oauth_clients: string[]

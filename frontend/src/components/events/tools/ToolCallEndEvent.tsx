@@ -1,4 +1,5 @@
 import React from 'react'
+import { GmailSenderApprovalFromTool } from '../../workflow/bots/GmailSenderApprovalFromTool'
 import type { ToolCallEndEvent } from '../../../generated/events'
 import { MarkdownRenderer } from '../../ui/MarkdownRenderer'
 import { CsvRenderer } from '../../ui/CsvRenderer'
@@ -72,7 +73,12 @@ function isCodeExecutionTool(name: string): boolean {
   return name === 'discover_code_structure' || name === 'discover_code_files' || name === 'write_code' || name === 'get_api_spec' || name === 'execute_shell_command'
 }
 
-export const ToolCallEndEventDisplay: React.FC<ToolCallEndEventProps> = ({ event }) => {
+export const ToolCallEndEventDisplay: React.FC<ToolCallEndEventProps> = ({ event }) => <>
+  <GmailSenderApprovalFromTool toolName={event.tool_name} result={event.result} />
+  <ToolCallEndContent event={event} />
+</>
+
+const ToolCallEndContent: React.FC<ToolCallEndEventProps> = ({ event }) => {
   const normalizedToolName = event.tool_name ? normalizeMCPToolName(event.tool_name) : event.tool_name
 
   if (normalizedToolName && isWorkspaceTool(normalizedToolName)) {

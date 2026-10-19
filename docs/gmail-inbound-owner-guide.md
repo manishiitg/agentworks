@@ -136,8 +136,8 @@ an existing rule, and does not create a recurring agent email-check schedule.
 ## Owner confirmation for additional senders
 
 Builder can propose sender lists, but cannot grant them authority. Non-owner
-senders require a separate confirmation in the signed-in owner's Incoming email
-pane, covering the saved target, mailbox, filters, rule actions, enabled state
+senders require a separate confirmation through the signed-in owner's app approval button in chat
+or the Incoming email pane, covering the saved target, mailbox, filters, rule actions, enabled state
 and email replies. Review the sender list and saved actions, acknowledge the
 access granted, then approve. Use Revoke additional sender access to withdraw
 it. Configuration remains in Builder; the pane exposes only this dedicated

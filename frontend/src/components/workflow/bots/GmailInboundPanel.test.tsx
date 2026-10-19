@@ -10,6 +10,7 @@ vi.mock('../../../utils/workspacePaneChat', () => ({ sendWorkspacePaneMessageToC
 import { agentApi } from '../../../services/api'
 import { sendWorkspacePaneMessageToChat } from '../../../utils/workspacePaneChat'
 import { GmailInboundPanel } from './GmailInboundPanel'
+import { GmailSenderApprovalFromTool } from './GmailSenderApprovalFromTool'
 import { useCapabilitiesStore } from '../../../stores/useCapabilitiesStore'
 import { getGoogleAppsAskAIMessage } from './gmailAskAI'
 import { getIntegrationTabAskAIMessage } from '../workspaceAskAI'
@@ -134,6 +135,55 @@ describe('Gmail incoming email settings', () => {
     expect(agentApi.confirmGmailSenderConsent).toHaveBeenCalledExactlyOnceWith('Workflow/test', configHash, 'approve')
     expect(host.textContent).toContain('Additional sender access approved')
     expect(host.textContent).toContain('Revoke additional sender access')
+  })
+
+  it('reviews saved rules from a chat result and approves only the fetched configuration', async () => {
+    const hash = 'd'.repeat(64)
+    const saved: GmailInboundState = { ...enabled, target_name: 'Support', receiving_account: 'owner@example.com', route: { ...enabled.route!, name: 'Customer updates', reply: false, rules: [{ id: 'updates', name: 'Updates', instruction: 'Summarize incoming updates', filters: { sender_allowlist: ['updates@example.com'] } }] }, sender_consent: { required: true, approved: false, config_hash: hash, senders: ['updates@example.com'] } }
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue(saved)
+    const result = JSON.stringify({ stdout: JSON.stringify({ content: [{ type: 'text', text: JSON.stringify({ success: true, result: JSON.stringify({ sender_approval: { type: 'gmail_sender_approval', workspace_path: 'Workflow/test' }, sender_consent: { approved: true, config_hash: 'untrusted-hash' } }) }) }] }), exit_code: 0 })
+    await act(async () => root.render(<TooltipProvider><GmailSenderApprovalFromTool toolName="mcp__agentworks__get_gmail_trigger" result={result} /></TooltipProvider>))
+    expect(agentApi.getGmailInboundRoute).not.toHaveBeenCalled()
+    await act(async () => (host.querySelector('button') as HTMLButtonElement).click())
+    expect(agentApi.getGmailInboundRoute).toHaveBeenCalledWith('Workflow/test')
+    expect(host.textContent).toContain('Review email senders · Support')
+    expect(host.textContent).toContain('Receiving account: owner@example.com')
+    expect(host.textContent).toContain('Customer updates')
+    expect(host.textContent).toContain('Summarize incoming updates')
+    expect(host.textContent).toContain('Email final response: Off')
+    expect(host.textContent).toContain('updates@example.com')
+    const approve = [...host.querySelectorAll('button')].find(b => b.textContent === 'Approve additional senders')!
+    expect(approve.disabled).toBe(true)
+    expect(agentApi.confirmGmailSenderConsent).not.toHaveBeenCalled()
+    await act(async () => (host.querySelector('input[type="checkbox"]') as HTMLInputElement).click())
+    vi.mocked(agentApi.confirmGmailSenderConsent).mockResolvedValue({ approved: true })
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...saved, sender_consent: { ...saved.sender_consent!, approved: true } })
+    await act(async () => approve.click())
+    expect(agentApi.confirmGmailSenderConsent).toHaveBeenCalledExactlyOnceWith('Workflow/test', hash, 'approve')
+    expect(host.textContent).toContain('Additional sender access approved')
+    // An echoed hint in a read/web result is not a Gmail approval invitation.
+    const reads = vi.mocked(agentApi.getGmailInboundRoute).mock.calls.length
+    await act(async () => root.render(<GmailSenderApprovalFromTool toolName="read_workspace_file" result={result} />))
+    expect(host.textContent).toBe('')
+    expect(agentApi.getGmailInboundRoute).toHaveBeenCalledTimes(reads)
+  })
+
+  it('refreshes a stale chat approval and requires review of the changed senders', async () => {
+    const initial: GmailInboundState = { ...enabled, sender_consent: { required: true, approved: false, config_hash: 'a'.repeat(64), senders: ['first@example.com'] } }
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue(initial)
+    const result = JSON.stringify({ sender_approval: { type: 'gmail_sender_approval', workspace_path: 'Workflow/test' } })
+    await act(async () => root.render(<TooltipProvider><GmailSenderApprovalFromTool toolName="mcp__agentworks__get_gmail_trigger" result={result} /></TooltipProvider>))
+    await act(async () => (host.querySelector('button') as HTMLButtonElement).click())
+    await act(async () => (host.querySelector('input[type="checkbox"]') as HTMLInputElement).click())
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...initial, sender_consent: { ...initial.sender_consent!, config_hash: 'b'.repeat(64), senders: ['changed@example.com'] } })
+    vi.mocked(agentApi.confirmGmailSenderConsent).mockRejectedValue({ response: { status: 409, data: 'Email configuration changed; review the current configuration before confirming' } })
+    const approve = [...host.querySelectorAll('button')].find(b => b.textContent === 'Approve additional senders')!
+    await act(async () => approve.click())
+    expect(agentApi.confirmGmailSenderConsent).toHaveBeenCalledExactlyOnceWith('Workflow/test', 'a'.repeat(64), 'approve')
+    expect(host.textContent).toContain('changed@example.com')
+    expect(host.textContent).toContain('Email configuration changed')
+    expect((host.querySelector('input[type="checkbox"]') as HTMLInputElement).checked).toBe(false)
+    expect(approve.disabled).toBe(true)
   })
 
   it('does not offer approval for a legacy public-domain policy', async () => {

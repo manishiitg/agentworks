@@ -5,7 +5,8 @@ import { expect, it, vi } from 'vitest'
 
 vi.mock('../ui/MarkdownRenderer', () => ({ MarkdownRenderer: ({ content }: { content: string }) => <p>{content}</p> }))
 
-import { ConversationViewer } from './ConversationViewer'
+import { ConversationViewer, ConversationToolResponseDisplay } from './ConversationViewer'
+import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
@@ -26,5 +27,27 @@ it('renders recognized old messages and keeps unsupported backend records out of
   } finally {
     await act(async () => root.unmount())
     host.remove()
+  }
+})
+
+// Native agents and saved transcripts share this renderer. The human action
+// must stay visible even while the long JSON tool result is collapsed.
+it('shows the sender review action outside collapsed native tool output', async () => {
+  const previous = useCapabilitiesStore.getState().capabilities
+  useCapabilitiesStore.setState({ capabilities: { ...previous, local_mode: false } as NonNullable<typeof previous> })
+  const host = document.createElement('div')
+  document.body.append(host)
+  const root = createRoot(host)
+  try {
+    const content = JSON.stringify({ sender_approval: { type: 'gmail_sender_approval', workspace_path: 'Workflow/test' }, details: 'saved rules '.repeat(100) })
+    await act(async () => root.render(<ConversationToolResponseDisplay toolName="mcp__agentworks__manage_gmail_trigger" content={content} />))
+    const review = [...host.querySelectorAll('button')].find(button => button.textContent === 'Review and approve senders')
+    expect(review).toBeDefined()
+    expect(review?.getAttribute('aria-expanded')).toBe('false')
+    expect(host.querySelector('pre')).toBeNull()
+  } finally {
+    await act(async () => root.unmount())
+    host.remove()
+    useCapabilitiesStore.setState({ capabilities: previous })
   }
 })
