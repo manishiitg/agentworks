@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronDown, Loader2, MessageSquare, Pencil, X } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, Loader2, MessageSquare, Pencil, X } from 'lucide-react'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { readableGeneratedChatTitle } from '../../utils/generatedChatTitle'
 import { foregroundTurnState } from '../../utils/foregroundTurnActivity'
@@ -27,6 +27,7 @@ export interface ChatTabPillProps {
   /** False for a run/inspection tab whose close only hides a view. */
   closeStopsSession?: boolean
   onRename?: (name: string) => Promise<boolean | void>
+  onMakeMain?: (tabId: string) => void
   onMakeInteractive?: (tabId: string) => void
 }
 
@@ -45,7 +46,7 @@ const TAB_STATUS_DOT: Record<TabStatus, { cls: string; label: string }> = {
 /** The shared Chat tab pill used by workflows, Work, and Vault. */
 export const ChatTabPill = React.memo<ChatTabPillProps>(({
   tab, isActive, canClose, isBlank, displayName: displayNameOverride, titleOverride, productSurface, workspaceActivity,
-  onTabClick, onCloseTab, onRename, onMakeInteractive, readOnly = false, closeStopsSession = false,
+  onTabClick, onCloseTab, onRename, onMakeInteractive, onMakeMain, readOnly = false, closeStopsSession = false,
 }) => {
   const rawName = displayNameOverride ?? tab.name
   const displayName = readableGeneratedChatTitle(rawName, tab.metadata?.isScheduledRun) ||
@@ -195,6 +196,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
           <Pencil className="h-2.5 w-2.5" />
         </button>
       )}
+      {onMakeMain && !readOnly && !isBlank && <button type="button" disabled={isBusy} onClick={event => { event.stopPropagation(); onMakeMain(tab.tabId) }} aria-label={`Make ${displayName} the main chat`} title="Make this the main chat" className="ml-0.5 grid h-4 w-4 shrink-0 place-items-center rounded text-muted-foreground opacity-0 hover:bg-muted hover:text-foreground group-hover:opacity-100 focus:opacity-100 disabled:opacity-40"><ArrowUpRight className="h-3 w-3" /></button>}
       {ALLOW_MAKE_SCHEDULE_INTERACTIVE && onMakeInteractive && tab.metadata?.isViewOnly && (tab.metadata?.isScheduledRun || tab.metadata?.isBotRun) && !readOnly && (
         <button type="button" onClick={(event) => { event.stopPropagation(); onMakeInteractive(tab.tabId) }} className="ml-0.5 rounded p-0.5 text-blue-600 opacity-80 hover:bg-blue-100 hover:opacity-100 dark:text-blue-300 dark:hover:bg-blue-900/40" title="Interact in Automation Builder" aria-label="Interact in Automation Builder">
           <MessageSquare className="h-3 w-3" />

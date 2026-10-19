@@ -478,6 +478,8 @@ export interface ChatTab {
     // Stable product-domain identity used by the server conversation registry.
     // Singleton products omit it; keyed products use a project/resource id.
     agentProfileConversationKey?: string
+    // Project main is a role pointer; the physical conversation key stays fixed.
+    agentProfileIsMainChat?: boolean
     // Where the person put this side tab in the strip, as the server saved it (1 is first; 0/absent = not placed).
     agentProfileTabPosition?: number
     // Server-issued logical conversation identity. This remains stable even

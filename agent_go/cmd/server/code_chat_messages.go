@@ -26,6 +26,7 @@ const (
 )
 
 type codeChat struct {
+	IsMain    bool
 	Key       string // conversation key: <projectId> or <projectId>:chat:<id>
 	ID        string // "main" or the side chat's id
 	Name      string
@@ -86,11 +87,11 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 			continue
 		}
 		chat := codeChat{Key: record.ConversationKey, SessionID: record.SessionID, UpdatedAt: record.UpdatedAt}
-		if record.ConversationKey == manifest.ID {
-			chat.ID, chat.Name = codeChatMainName, "Main chat"
-		} else {
-			chat.ID = strings.TrimPrefix(record.ConversationKey, manifest.ID+codeChatSideMarker)
-			chat.Name = firstNonEmptyTrimmed(titles[record.SessionID], "Chat "+chat.ID)
+		chat.ID = strings.TrimPrefix(record.ConversationKey, manifest.ID+codeChatSideMarker)
+		chat.IsMain = record.IsMainChat
+		chat.Name = firstNonEmptyTrimmed(titles[record.SessionID], "Chat "+chat.ID)
+		if chat.IsMain {
+			chat.Name = "Main chat"
 		}
 		// The person's or the agent's own name wins over the chat's automatic title.
 		if identity, ok := identities[record.ConversationKey]; ok {
@@ -106,8 +107,8 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 		return denied, unavailable
 	}
 	sort.SliceStable(project.Chats, func(i, j int) bool {
-		if (project.Chats[i].ID == codeChatMainName) != (project.Chats[j].ID == codeChatMainName) {
-			return project.Chats[i].ID == codeChatMainName
+		if project.Chats[i].IsMain != project.Chats[j].IsMain {
+			return project.Chats[i].IsMain
 		}
 		return project.Chats[i].UpdatedAt > project.Chats[j].UpdatedAt
 	})
@@ -122,6 +123,14 @@ func (p codeChatProject) find(raw string) (codeChat, error) {
 	}
 	if want == "primary" || want == "main chat" {
 		want = codeChatMainName
+	}
+	if want == codeChatMainName {
+		for _, chat := range p.Chats {
+			if chat.IsMain {
+				chat.Key = p.ProjectID // Explicit main is an address, not the physical ID listed to callers.
+				return chat, nil
+			}
+		}
 	}
 	var matches []codeChat
 	for _, chat := range p.Chats {
@@ -174,7 +183,7 @@ func (api *StreamingAPI) codeChatTurnRequest(ctx context.Context, userID string,
 		return nil, "", unavailable
 	}
 	conversation, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, userID, profile, binding, "")
-	if err != nil || conversation.SessionID != target.Chat.SessionID {
+	if err != nil || (target.Chat.Key != binding.ResourceID && conversation.SessionID != target.Chat.SessionID) {
 		return nil, "", unavailable
 	}
 	reqMap, sessionID, _, err := productBotTurnRequest(ctx, userID, profile, conversation, services.BotIncomingMessage{Text: text}, services.ThreadID{})
@@ -227,7 +236,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 	describe := func(project codeChatProject) []map[string]interface{} {
 		out := make([]map[string]interface{}, 0, len(project.Chats))
 		for _, chat := range project.Chats {
-			item := map[string]interface{}{"id": chat.ID, "name": chat.Name, "working": api.conversationTurnOccupied(chat.SessionID)}
+			item := map[string]interface{}{"id": chat.ID, "name": chat.Name, "is_main": chat.IsMain, "working": api.conversationTurnOccupied(chat.SessionID)}
 			if chat.Purpose != "" {
 				item["purpose"] = chat.Purpose
 			}

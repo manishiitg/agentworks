@@ -99,7 +99,7 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 	}
 	out := []AgentProfileSideChat{}
 	for _, record := range records {
-		if !isSideChatConversationKey(record.ConversationKey) || !workspacePathsMatchForUser(userID, record.WorkspacePath, slot.binding.WorkspacePath) {
+		if record.IsMainChat || !isSideChatConversationKey(record.ConversationKey) || !workspacePathsMatchForUser(userID, record.WorkspacePath, slot.binding.WorkspacePath) {
 			continue
 		}
 		id := strings.TrimPrefix(record.ConversationKey, projectID+codeChatSideMarker)
@@ -164,6 +164,9 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 		if key != projectID && !strings.HasPrefix(key, projectID+codeChatSideMarker) {
 			writeAgentProfileError(w, http.StatusBadRequest, "that chat is not part of this project")
 			return
+		}
+		if key == projectID {
+			key = slot.binding.ConversationKey
 		}
 		if engine := strings.TrimSpace(input.Engine); engine != "" {
 			if _, offered := findProviderOptionByID(slot.profile.Runtime.ProviderOptions, engine); !offered {

@@ -35,6 +35,7 @@ var (
 // AgentWorks history/runtime owner. They are intentionally separate so a
 // future runtime migration does not change the product conversation identity.
 type ProductConversationRecord struct {
+	IsMainChat      bool   `json:"-"`
 	ConnectionID    string `json:"connection_id,omitempty"`
 	ConversationID  string `json:"conversation_id"`
 	ConversationKey string `json:"conversation_key"`
@@ -419,6 +420,7 @@ func (store productConversationRegistryStore) projectChats(ctx context.Context, 
 		return nil, err
 	}
 	var chats []ProductConversationRecord
+	mainKeys := map[string]string{}
 	main := productConversationRegistryEntryKey(profileID, projectID)
 	side := main + ":chat:"
 	for entryKey, record := range document.Entries {
@@ -426,6 +428,23 @@ func (store productConversationRegistryStore) projectChats(ctx context.Context, 
 			continue
 		}
 		if entryKey == main || (strings.HasPrefix(entryKey, side) && len(entryKey) > len(side) && !strings.Contains(entryKey[len(side):], ":")) {
+			mainKey, known := mainKeys[record.WorkspacePath]
+			if !known {
+				mainKey = projectID // Transitional legacy display until first resolve migrates it.
+				if raw, found, readErr := store.read(ctx, strings.TrimSuffix(record.WorkspacePath, "/")+"/product.json"); readErr != nil {
+					return nil, readErr
+				} else if found {
+					var manifest productProjectManifest
+					if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
+						return nil, err
+					}
+					if manifest.MainChatKey != "" {
+						mainKey = manifest.MainChatKey
+					}
+				}
+				mainKeys[record.WorkspacePath] = mainKey
+			}
+			record.IsMainChat = record.ConversationKey == mainKey
 			chats = append(chats, record)
 		}
 	}
@@ -571,6 +590,8 @@ func (store productConversationRegistryStore) forget(ctx context.Context, userID
 }
 
 type productConversationBinding struct {
+	ProjectMainChatKey          string
+	ProjectMainAddress          bool
 	ConversationKey             string
 	WorkspacePath               string
 	ManifestPath                string
@@ -679,6 +700,7 @@ func (store productConversationRegistryStore) resolveOrCreate(
 		existing.ProjectSelectedServers = append([]string(nil), binding.ProjectSelectedServers...)
 		existing.ProjectSelectedSkills = append([]string(nil), binding.ProjectSelectedSkills...)
 		existing.ProjectWorkflowContextPaths = append([]string(nil), binding.ProjectWorkflowContextPaths...)
+		existing.IsMainChat = existing.ConversationKey == binding.ProjectMainChatKey
 		return existing, nil
 	}
 
@@ -711,6 +733,7 @@ func (store productConversationRegistryStore) resolveOrCreate(
 	if err := store.writeDocument(ctx, path, document); err != nil {
 		return ProductConversationRecord{}, err
 	}
+	record.IsMainChat = record.ConversationKey == binding.ProjectMainChatKey
 	return record, nil
 }
 
@@ -786,6 +809,7 @@ func (store productConversationRegistryStore) rotate(
 	if err := store.writeDocument(ctx, path, document); err != nil {
 		return ProductConversationRecord{}, err
 	}
+	record.IsMainChat = record.ConversationKey == binding.ProjectMainChatKey
 	return record, nil
 }
 
@@ -968,6 +992,7 @@ func (m productProjectManifest) displayTitle() string {
 }
 
 type productProjectManifest struct {
+	MainChatKey                  string          `json:"main_chat_key,omitempty"`
 	KnowledgebaseContractHistory json.RawMessage `json:"knowledgebase_contract_history,omitempty"`
 	SharedKnowledgebase          json.RawMessage `json:"shared_knowledgebase,omitempty"`
 	KnowledgebaseMode            string          `json:"knowledgebase_mode,omitempty"`
@@ -1042,7 +1067,11 @@ func defaultProductProjectStore() productProjectStore {
 }
 
 func resolveProductProjectBinding(ctx context.Context, userID string, profile agentprofiles.Profile, projectID string) (productConversationBinding, error) {
-	return resolveProductProjectBindingWithStore(ctx, userID, profile, projectID, defaultProductProjectStore())
+	binding, err := resolveProductProjectBindingWithStore(ctx, userID, profile, projectID, defaultProductProjectStore())
+	if err != nil {
+		return binding, err
+	}
+	return defaultProductConversationRegistryStore().resolveProjectMainAddress(ctx, userID, profile, binding)
 }
 
 // errProjectNotFound marks "no such project in this root", as opposed to a project that is there and broken
@@ -1197,11 +1226,16 @@ func resolveProductProjectBindingInRoot(
 			// "off".
 			ProjectNativeAgentTools: true,
 		}
+		matched.ProjectMainChatKey = strings.TrimSpace(manifest.MainChatKey)
+		matched.ProjectMainAddress = conversationKey == resourceProjectID
 		// Only the legacy/default project chat is tied to product.json's one
 		// session_id. Additional tabs are independent and live solely in the
 		// shared product conversation registry.
-		if conversationKey != resourceProjectID {
+		if conversationKey != resourceProjectID && conversationKey != matched.ProjectMainChatKey {
 			matched.ManifestPath = ""
+			matched.AuthoritativeSessionID = ""
+		}
+		if matched.ProjectMainChatKey != "" {
 			matched.AuthoritativeSessionID = ""
 		}
 	}

@@ -203,6 +203,10 @@ func resolveCrewProjectBinding(ctx context.Context, callerID string, profile age
 		}
 		// The owner opening a project registers it once (PLAT-449) and leaves the owner as information in its manifest.
 		ensureProjectOwnerID(ctx, binding.WorkspacePath, callerID)
+		binding, err = defaultProductConversationRegistryStore().resolveProjectMainAddress(ctx, callerID, profile, binding)
+		if err != nil {
+			return crewProjectBinding{}, err
+		}
 		return crewProjectBinding{OwnerID: sanitizeUserIDForPath(callerID), OwnedByCaller: true, Binding: binding}, nil
 	}
 	// Only origins with a Run audience resolve under another owner. This is

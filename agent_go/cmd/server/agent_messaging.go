@@ -1067,25 +1067,24 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 		}
 		var binding productConversationBinding
 		if dest.ChatKey != "" && !strings.HasPrefix(dest.ChatKey, "messages:") {
-			binding, _, err = resolveConversationBindingForUser(ctx, dest.UserID, profile, dest.ID)
-			binding.ConversationKey = dest.ChatKey
-			if strings.HasPrefix(dest.ChatKey, "session:") {
+			key := dest.ChatKey
+			if strings.HasPrefix(key, "session:") {
 				document, loadErr := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(dest.UserID))
 				if loadErr != nil {
 					return session, loadErr
 				}
-				found := false
+				key = ""
 				for _, record := range document.Entries {
 					if record.SessionID == session && record.ProfileID == dest.Profile && record.ResourceID == dest.ID {
-						binding.ConversationKey = record.ConversationKey
-						found = true
+						key = record.ConversationKey
 						break
 					}
 				}
-				if !found {
+				if key == "" {
 					return session, fmt.Errorf("receiving conversation was replaced")
 				}
 			}
+			binding, _, err = resolveConversationBindingForUser(ctx, dest.UserID, profile, key)
 		} else {
 			// A later message or wakeup for a conversation that already has a
 			// receiving chat must reach that same chat, whatever inbox carries it.
@@ -1102,7 +1101,7 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 		if err != nil {
 			return session, err
 		}
-		if session != "" && session != conversation.SessionID {
+		if session != "" && session != conversation.SessionID && dest.ChatKey != dest.ID {
 			return session, fmt.Errorf("receiving conversation was replaced")
 		}
 		session = conversation.SessionID

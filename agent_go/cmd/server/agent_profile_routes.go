@@ -87,6 +87,7 @@ func agentProfileResumeConversationKey(profileID string, input AgentProfileConve
 }
 
 type AgentProfileConversationResponse struct {
+	IsMainChat      bool   `json:"is_main_chat,omitempty"`
 	ConversationID  string `json:"conversation_id"`
 	ConversationKey string `json:"conversation_key"`
 	SessionID       string `json:"session_id"`
@@ -681,6 +682,7 @@ func (api *StreamingAPI) handleResolveAgentProfileConversation(w http.ResponseWr
 		return
 	}
 	writeAgentProfileJSON(w, http.StatusOK, AgentProfileConversationResponse{
+		IsMainChat:      conversation.IsMainChat,
 		ConversationID:  conversation.ConversationID,
 		ConversationKey: conversation.ConversationKey,
 		SessionID:       conversation.SessionID,
@@ -734,6 +736,7 @@ func (api *StreamingAPI) handleRotateAgentProfileConversation(w http.ResponseWri
 		return
 	}
 	writeAgentProfileJSON(w, http.StatusOK, AgentProfileConversationResponse{
+		IsMainChat:      conversation.IsMainChat,
 		ConversationID:  conversation.ConversationID,
 		ConversationKey: conversation.ConversationKey,
 		SessionID:       conversation.SessionID,
@@ -902,7 +905,7 @@ func shouldRebindWorkConversation(
 	preferredSessionID string,
 	verifiedForWorkspace bool,
 ) bool {
-	if !isProjectProfileID(profile.ID) || !verifiedForWorkspace {
+	if !isProjectProfileID(profile.ID) || !verifiedForWorkspace || binding.ProjectMainChatKey != "" {
 		return false
 	}
 	// The base project key is the permanent Builder/current-project slot and is
@@ -1220,7 +1223,7 @@ func checkSideChatCapacity(ctx context.Context, store productConversationRegistr
 		if record.ConversationKey == strings.TrimSpace(key) {
 			return false, nil // already open: not a new chat
 		}
-		if record.ConversationKey != project {
+		if !record.IsMainChat {
 			sides++
 		}
 	}
@@ -1270,6 +1273,10 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 	binding, err := resolveProductConversationBinding(r.Context(), userID, profile, input.ConversationKey)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	if binding.ProjectMainChatKey != "" && binding.ConversationKey == binding.ProjectMainChatKey {
+		writeAgentProfileError(w, http.StatusBadRequest, "the main chat cannot be closed; choose another main chat first")
 		return
 	}
 	store := defaultProductConversationRegistryStore()

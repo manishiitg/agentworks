@@ -121,11 +121,11 @@ func (api *StreamingAPI) externalCodeRunChats(ctx context.Context, userID, proje
 			continue
 		}
 		chat := codeChat{Key: record.ConversationKey, SessionID: record.SessionID, UpdatedAt: record.UpdatedAt}
-		if record.ConversationKey == projectID {
-			chat.ID, chat.Name = codeChatMainName, "Main chat"
-		} else {
-			chat.ID = strings.TrimPrefix(record.ConversationKey, projectID+codeChatSideMarker)
-			chat.Name = firstNonEmptyTrimmed(titles[record.SessionID], "Chat "+chat.ID)
+		chat.ID = strings.TrimPrefix(record.ConversationKey, projectID+codeChatSideMarker)
+		chat.IsMain = record.IsMainChat
+		chat.Name = firstNonEmptyTrimmed(titles[record.SessionID], "Chat "+chat.ID)
+		if chat.IsMain {
+			chat.Name = "Main chat"
 		}
 		if identity, ok := identities[record.ConversationKey]; ok {
 			chat.Name = firstNonEmptyTrimmed(identity.Name, chat.Name)
@@ -134,8 +134,8 @@ func (api *StreamingAPI) externalCodeRunChats(ctx context.Context, userID, proje
 		chats = append(chats, chat)
 	}
 	sort.SliceStable(chats, func(i, j int) bool {
-		if (chats[i].ID == codeChatMainName) != (chats[j].ID == codeChatMainName) {
-			return chats[i].ID == codeChatMainName
+		if chats[i].IsMain != chats[j].IsMain {
+			return chats[i].IsMain
 		}
 		return chats[i].UpdatedAt > chats[j].UpdatedAt
 	})
@@ -183,7 +183,7 @@ func (api *StreamingAPI) externalCodeRunCall(w http.ResponseWriter, r *http.Requ
 	describe := func() []map[string]any {
 		out := make([]map[string]any, 0, len(chats))
 		for _, chat := range chats {
-			item := map[string]any{"chat_id": chat.ID, "name": chat.Name, "working": api.conversationTurnOccupied(chat.SessionID), "local": api.codeLocalSession(chat.SessionID)}
+			item := map[string]any{"chat_id": chat.ID, "name": chat.Name, "is_main": chat.IsMain, "working": api.conversationTurnOccupied(chat.SessionID), "local": api.codeLocalSession(chat.SessionID)}
 			if chat.Purpose != "" {
 				item["purpose"] = chat.Purpose
 			}
@@ -216,7 +216,7 @@ func (api *StreamingAPI) externalCodeRunCall(w http.ResponseWriter, r *http.Requ
 	case "rename_my_code_chat":
 		chatName, nameErr := externalChatName(args)
 		target := findCodeChat(chats, str("chat_id"))
-		if target != nil && target.ID == codeChatMainName {
+		if target != nil && target.IsMain {
 			target = nil
 		}
 		if target != nil && chatName != "" && codeChatNameTaken(chats, chatName, target.ID) {
@@ -239,7 +239,7 @@ func (api *StreamingAPI) externalCodeRunCall(w http.ResponseWriter, r *http.Requ
 			chatID = externalCallerTabName(ctx, claims)
 		}
 		chat := findCodeChat(chats, chatID)
-		if chat == nil || (name == "close_my_code_chat" && chat.ID == codeChatMainName) {
+		if chat == nil || (name == "close_my_code_chat" && chat.IsMain) {
 			externalError(w, http.StatusNotFound, "chat_not_found", "Pass the tab (its name or chat_id from code action=chats); to close it must be a side tab.")
 			return
 		}
@@ -494,6 +494,11 @@ func findCodeChat(chats []codeChat, key string) *codeChat {
 		return nil
 	}
 	for i := range chats {
+		if strings.EqualFold(key, codeChatMainName) && chats[i].IsMain {
+			alias := chats[i]
+			alias.Key, _, _ = strings.Cut(alias.Key, codeChatSideMarker)
+			return &alias
+		}
 		if strings.EqualFold(chats[i].ID, key) {
 			return &chats[i]
 		}
@@ -554,14 +559,17 @@ func (api *StreamingAPI) externalCodeRunOpenTab(r *http.Request, claims *UserCla
 		profileID = profileIDs[0]
 	}
 	ids := make([]string, len(chats))
+	mainID := codeChatMainName
 	names := []string{}
 	for i, c := range chats {
 		ids[i] = c.ID
-		if c.ID != codeChatMainName {
+		if c.IsMain {
+			mainID = c.ID
+		} else {
 			names = append(names, c.Name)
 		}
 	}
-	if sideChatsOf(ids, codeChatMainName) >= externalCrewMaxSideChats {
+	if sideChatsOf(ids, mainID) >= externalCrewMaxSideChats {
 		return "", http.StatusConflict, fmt.Sprintf("This project already has %d side tabs. Close one first (code action=close_chat); they are: %s.", externalCrewMaxSideChats, strings.Join(names, ", "))
 	}
 	if strings.TrimSpace(chatName) == "" {
