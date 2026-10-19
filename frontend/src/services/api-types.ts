@@ -281,11 +281,6 @@ export interface AgentProfileSideChat {
   position?: number
 }
 
-export interface AgentProfileMainChatChange {
-  main: { session_id: string; conversation_id: string; conversation_key: string }
-  previous_main: { session_id: string; conversation_id: string; conversation_key: string }
-}
-
 export interface AgentProfileConversationResponse {
   is_main_chat?: boolean
   conversation_id: string

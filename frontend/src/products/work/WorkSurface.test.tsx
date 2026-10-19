@@ -281,8 +281,26 @@ describe('CreateWorkProjectDialog', () => {
 
 
 describe('Crew native tab dragging', () => {
+  it('uses the sidebar server order and counts agents without counting schedule or bot activity views', async () => {
+    const make = (id: string, position = 0, activity = false) => ({ tabId: id, sessionId: `session-${id}`, name: id, createdAt: id === 'z' ? 1 : 900, config: {}, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: id === 'main', agentProfileConversationKey: id === 'main' ? 'crew:chat:root-main' : `crew:chat:${id}`, agentProfileTabPosition: position, ...(activity ? { isViewOnly: true, isScheduledRun: id === 'schedule', isBotRun: id === 'bot' } : {}) } } as ChatTab)
+    useChatStore.setState({ chatTabs: { z: make('z'), bot: make('bot', 0, true), main: make('main'), a: make('a'), schedule: make('schedule', 0, true), b: make('b', 1) }, activeTabId: 'b' })
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats={false} />))
+      const ids = (selector: string, attribute: string) => [...host.querySelectorAll(selector)].map(node => node.getAttribute(attribute))
+      expect(ids('[data-chat-tab-id]', 'data-chat-tab-id')).toEqual(['main', 'b', 'a', 'bot', 'schedule'])
+      const menu = host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!
+      expect(menu.textContent).toBe('Agents · 4')
+      await act(async () => menu.click())
+      expect(ids('[data-chat-list-id]', 'data-chat-list-id')).toEqual(['main', 'b', 'a', 'bot', 'schedule', 'z'])
+      expect(host.querySelector('[aria-label="Agents"] [title="Close activity view"]')).not.toBeNull()
+      expect(host.querySelector('[aria-label="Close Crew"]')).toBeNull()
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
+
   it.each(['a', 'b'])('keeps a drag source and drop target working while %s is selected', async active => {
-    const make = (id: string, position: number) => ({ tabId: id, sessionId: `session-${id}`, name: id, createdAt: position, config: {}, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileConversationKey: id === 'main' ? 'crew' : `crew:chat:${id}`, agentProfileTabPosition: position } } as ChatTab)
+    const make = (id: string, position: number) => ({ tabId: id, sessionId: `session-${id}`, name: id, createdAt: position, config: {}, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: id === 'main', agentProfileConversationKey: id === 'main' ? 'crew' : `crew:chat:${id}`, agentProfileTabPosition: position } } as ChatTab)
     useChatStore.setState({ chatTabs: { main: make('main', 0), a: make('a', 1), b: make('b', 2) }, activeTabId: active })
     const list = vi.spyOn(agentApi, 'listAgentProfileSideChats').mockResolvedValue([])
     const order = vi.spyOn(agentApi, 'orderAgentProfileSideChats').mockResolvedValue([{ conversation_key: 'crew:chat:b', session_id: 'session-b', name: 'b', position: 1 }, { conversation_key: 'crew:chat:a', session_id: 'session-a', name: 'a', position: 2 }])
@@ -290,11 +308,10 @@ describe('Crew native tab dragging', () => {
     const root = createRoot(host)
     try {
       await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats />))
-      const handle = host.querySelector('[data-chat-tab-id="a"] > .lucide-grip-vertical')!
-      expect(handle.getAttribute('class')).toContain('absolute')
-      expect(handle.getAttribute('class')).toContain('opacity-0')
-      expect(handle.getAttribute('class')).toContain('group-hover/chat-tab:opacity-100')
-      expect(handle.getAttribute('class')).toContain('group-focus-within/chat-tab:opacity-100')
+      const strip = host.querySelector('[data-testid="work-chat-tab-strip"]')!
+      expect(strip.querySelector('.lucide-grip-vertical')).toBeNull()
+      expect(strip.querySelector('[aria-label="Close a"]')).toBeNull()
+      expect(strip.querySelector('[title="Make this the main chat"]')).toBeNull()
       const dataTransfer = { setData: vi.fn(), effectAllowed: '', dropEffect: '' }
       const gesture = (kind: string, node: Element) => { const event = new Event(kind, { bubbles: true, cancelable: true }); Object.defineProperty(event, 'dataTransfer', { value: dataTransfer }); node.dispatchEvent(event) }
       await act(async () => gesture('dragstart', host.querySelector('[data-chat-tab-id="a"]')!))
@@ -303,9 +320,9 @@ describe('Crew native tab dragging', () => {
       await act(async () => gesture('drop', host.querySelector('[data-chat-tab-id="b"]')!))
       expect(order).toHaveBeenCalledWith('work', 'crew', ['crew:chat:b', 'crew:chat:a'])
       const menu = host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!
-      expect(menu.textContent).toContain('Chats · 3')
+      expect(menu.textContent).toContain('Agents · 3')
       await act(async () => menu.click())
-      expect(host.querySelector('[aria-label="Project chats"]')?.textContent).toContain('a')
+      expect(host.querySelector('[aria-label="Agents"]')?.textContent).toContain('a')
       expect(host.querySelector('[aria-label="Move a earlier"]')).not.toBeNull()
       expect(host.querySelector('[aria-label="Close a"]')).not.toBeNull()
     } finally { await act(async () => root.unmount()); host.remove(); list.mockRestore(); order.mockRestore() }

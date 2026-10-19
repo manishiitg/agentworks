@@ -3,14 +3,13 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"testing"
 )
 
-func TestMainPointerMigrationAndChangesKeepChatIdentities(t *testing.T) {
+func TestFixedMainMigrationKeepsChatIdentities(t *testing.T) {
 	for _, profileID := range []string{"work", "code"} {
 		t.Run(profileID, func(t *testing.T) {
 			store, files := memoryProductConversationStore()
@@ -38,34 +37,20 @@ func TestMainPointerMigrationAndChangesKeepChatIdentities(t *testing.T) {
 				t.Fatal("legacy migration lost its stable ID or registry backup")
 			}
 			migrated := files[productConversationRegistryPath("u")]
-			change, err := store.setMainChat(ctx, "u", profile, resolved, "crew:chat:reviewer", "original-session", "review-session", func(string, string) error { return nil })
-			if err != nil {
-				t.Fatal(err)
-			}
-			if change.Main.ConversationKey != "crew:chat:reviewer" || change.PreviousMain.ConversationKey != physical || change.PreviousMain.SessionID != "original-session" {
-				t.Fatalf("changed a chat's identity: %+v", change)
-			}
-			if files[productConversationRegistryPath("u")] != migrated {
-				t.Fatal("moving main changed registry entries, identities, models or histories")
-			}
 			var metadataAfter productProjectManifest
 			if err := json.Unmarshal([]byte(files[binding.ManifestPath]), &metadataAfter); err != nil {
 				t.Fatal(err)
 			}
 			if metadataAfter.Schedules[0].ChatKey != "crew:chat:reviewer" || metadataAfter.Schedules[1].Condition.Target.ChatID != "reviewer" {
-				t.Fatal("main pointer retargeted a schedule or watcher")
+				t.Fatal("fixed main migration retargeted a schedule or watcher")
 			}
 
 			current, err := store.resolveProjectMainAddress(ctx, "u", profile, binding)
-			if err != nil || current.ConversationKey != "crew:chat:reviewer" {
-				t.Fatalf("main alias did not follow pointer: %+v %v", current, err)
-			}
-			_, err = store.setMainChat(ctx, "u", profile, current, physical, "review-session", "original-session", func(string, string) error { return nil })
-			if err != nil {
-				t.Fatal(err)
+			if err != nil || current.ConversationKey != physical {
+				t.Fatalf("fixed main address changed: %+v %v", current, err)
 			}
 			if files[productConversationRegistryPath("u")] != migrated || files[productConversationRegistryPath("u")+".before-chat-ids.json"] != before {
-				t.Fatal("second pointer move rewrote chat data or the backup")
+				t.Fatal("resolving fixed main rewrote chat data or the backup")
 			}
 			saved, err := store.loadDocument(ctx, productConversationRegistryPath("u"))
 			if err != nil {
@@ -74,44 +59,33 @@ func TestMainPointerMigrationAndChangesKeepChatIdentities(t *testing.T) {
 			if _, legacyLeft := saved.Entries[legacy]; legacyLeft {
 				t.Fatal("root address still owns chat contents")
 			}
+			main := saved.Entries[profileID+"/"+physical]
+			if main.SessionID != "original-session" || main.ConversationID != "original-conversation" || main.ModelID != "original-runtime" || saved.Agents[profileID+"/"+physical].Name != "Lead" {
+				t.Fatal("fixed main lost its original session, conversation, model or identity")
+			}
 			if saved.Agents[review].Name != "Reviewer" || saved.Agents[review].ModelID != "own-review" || saved.Agents[review].Position != 3 || saved.Previous[profileID+"/"+physical][0].SessionID != "prior-original" {
-				t.Fatal("pointer moves changed named callers or models/history")
+				t.Fatal("fixed main migration changed named callers or models/history")
 			}
 		})
 	}
 }
 
-func TestMainPointerRejectsProtectedKeysAndBusyOrStaleRequests(t *testing.T) {
-	store, files := memoryProductConversationStore()
-	ctx := context.Background()
-	profile := routeTestProfile("work", true, "")
-	binding := productConversationBinding{ResourceID: "crew", ManifestPath: "manifest", WorkspacePath: "_users/u/Chats/Work/projects/crew"}
-	for _, key := range []string{"other:chat:reviewer", "crew:chat:fn.run", "crew:chat:agent-id", "crew"} {
-		if _, err := store.setMainChat(ctx, "u", profile, binding, key, "main", "target", nil); !errors.Is(err, errInvalidMainChat) {
-			t.Fatalf("accepted protected key %q: %v", key, err)
+func TestFixedMainRecordRejectsProtectedOrForeignChats(t *testing.T) {
+	workspace := "_users/u/Chats/Work/projects/crew"
+	for _, key := range []string{"other:chat:reviewer", "crew:chat:fn.run", "crew:chat:agent-id"} {
+		record := ProductConversationRecord{ProfileID: "work", ConversationKey: key, SessionID: "session", WorkspacePath: workspace}
+		if validProjectMainRecord("u", "work", "crew", workspace, record) {
+			t.Fatalf("accepted protected or foreign main record %q", key)
 		}
 	}
-	files[binding.ManifestPath] = `{"product":"work","id":"crew","main_chat_key":"crew:chat:root-a","session_id":"main"}`
-	doc := productConversationRegistryDocument{Version: 1, Entries: map[string]ProductConversationRecord{
-		"work/crew:chat:root-a":   {ProfileID: "work", ConversationKey: "crew:chat:root-a", SessionID: "main", WorkspacePath: binding.WorkspacePath},
-		"work/crew:chat:reviewer": {ProfileID: "work", ConversationKey: "crew:chat:reviewer", SessionID: "target", WorkspacePath: binding.WorkspacePath},
-	}}
-	if err := store.writeDocument(ctx, productConversationRegistryPath("u"), doc); err != nil {
-		t.Fatal(err)
-	}
-	before := files[binding.ManifestPath]
-	for _, user := range []string{"u", "another-person"} {
-		if _, err := store.setMainChat(ctx, user, profile, binding, "crew:chat:reviewer", "stale", "target", nil); !errors.Is(err, errMainChatChanged) {
-			t.Fatal("accepted stale or another person's chat", err)
+	for _, record := range []ProductConversationRecord{
+		{ProfileID: "code", ConversationKey: "crew:chat:root-a", SessionID: "session", WorkspacePath: workspace},
+		{ProfileID: "work", ConversationKey: "crew:chat:root-a", SessionID: "session", WorkspacePath: "_users/another/Chats/Work/projects/crew"},
+	} {
+		if validProjectMainRecord("u", "work", "crew", workspace, record) {
+			t.Fatal("accepted another profile's or caller's chat")
 		}
 	}
-	if _, err := store.setMainChat(ctx, "u", profile, binding, "crew:chat:reviewer", "main", "target", func(string, string) error { return errMainChatBusy }); !errors.Is(err, errMainChatBusy) {
-		t.Fatal(err)
-	}
-	if files[binding.ManifestPath] != before {
-		t.Fatal("refusal moved main")
-	}
-
 }
 
 func TestStableProjectChatCannotBeReboundByAStaleBrowserSession(t *testing.T) {
