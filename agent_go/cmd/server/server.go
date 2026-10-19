@@ -4400,6 +4400,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// The turn this input starts is paid by the chat's owner; its usage rows name who sent it.
 		costobserver.SetRetainedInputSource(sessionID, req.TriggeredBy, req.TriggeredByLabel)
 	}
+	r = r.WithContext(context.WithValue(r.Context(), retainedQueueInputKey{}, retainedQueueInput{Request: req}))
 	if retainedWorkflowCompatible && api.tryDeliverQueryAsLiveInput(w, r, sessionID, req.Query, queryID, requestReceivedAt) {
 		return
 	}
@@ -11474,6 +11475,10 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 		} else {
 			sessionInputCtx, sessionInputCancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
 			deliveryStartedAt := time.Now()
+			if api.queueIdleRetainedInput(w, r, sessionID, retainedSession.ActiveTurnID() != "") {
+				sessionInputCancel()
+				return true
+			}
 			delivery, err := retainedSession.Send(sessionInputCtx, withSessionMode(sessionModeFromContext(r.Context()), message))
 			sessionInputCancel()
 			if err != nil {
@@ -11518,6 +11523,10 @@ func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *ht
 		// also recovers a stale/closed warm Session without paying for full Agent
 		// reconstruction, preserving PLAT-102's latency guarantee.
 		fallbackCtx, fallbackCancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
+		if api.conversationTurnHasBacklog(GetUserIDFromContext(r.Context()), sessionID) && api.queueIdleRetainedInput(w, r, sessionID, !retainedCLIAtPrompt(api, sessionID)) {
+			fallbackCancel()
+			return true
+		}
 		retainedProvider, handled, err := api.deliverRetainedMainTerminalInput(fallbackCtx, sessionID, withSessionMode(sessionModeFromContext(r.Context()), message))
 		fallbackCancel()
 		if handled {
@@ -11759,18 +11768,15 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 		queuedRequest.Message = ""
 		queuedRequest.TriggeredBy = "interactive"
 		queuedRequest.IsAutoNotification = false
-		turn, position, queueErr := api.enqueueConversationTurn(r.Context(), GetUserIDFromContext(r.Context()), sessionID, queuedRequest)
-		if queueErr != nil {
-			http.Error(w, "Cannot durably queue conversation turn: "+queueErr.Error(), http.StatusServiceUnavailable)
-			return
-		}
-		api.recordQueuedConversationUserMessage(sessionID, turn)
-		api.kickConversationTurnQueue(sessionID)
-		_ = json.NewEncoder(w).Encode(LiveInputResponse{
-			Success: true, Message: "Queued behind the active conversation turn",
-			DeliveryStatus: "queued_for_turn", MessageID: turn.ID, QueryID: turn.ID, QueuePosition: position,
-		})
+		api.queueLiveInputTurnResponse(w, r, GetUserIDFromContext(r.Context()), sessionID, queuedRequest)
 		return
+	}
+
+	if policyKnown {
+		queuedRequest := policyRequest
+		queuedRequest.Query, queuedRequest.Message = req.Message, ""
+		queuedRequest.TriggeredBy, queuedRequest.IsAutoNotification = "interactive", false
+		r = r.WithContext(context.WithValue(r.Context(), retainedQueueInputKey{}, retainedQueueInput{Request: queuedRequest, LiveInput: true}))
 	}
 
 	// One durable mcpagent Session owns warm delivery across transports and
@@ -11783,6 +11789,10 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 		} else {
 			sessionInputCtx, sessionInputCancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
 			deliveryStartedAt := time.Now()
+			if api.queueIdleRetainedInput(w, r, sessionID, retainedSession.ActiveTurnID() != "") {
+				sessionInputCancel()
+				return
+			}
 			delivery, err := retainedSession.Send(sessionInputCtx, req.Message)
 			sessionInputCancel()
 			if err != nil {
@@ -11806,6 +11816,10 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 	if tryColdRetainedFallback {
 		// Same cold-restart/stale-session compatibility as /api/query above.
 		fallbackCtx, fallbackCancel := context.WithTimeout(r.Context(), liveCodingAgentDeliveryTimeout)
+		if api.conversationTurnHasBacklog(GetUserIDFromContext(r.Context()), sessionID) && api.queueIdleRetainedInput(w, r, sessionID, !retainedCLIAtPrompt(api, sessionID)) {
+			fallbackCancel()
+			return
+		}
 		retainedProvider, handled, err := api.deliverRetainedMainTerminalInput(fallbackCtx, sessionID, req.Message)
 		fallbackCancel()
 		if handled {

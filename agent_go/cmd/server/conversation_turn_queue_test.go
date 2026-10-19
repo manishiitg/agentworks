@@ -458,3 +458,39 @@ func TestUnreadableCallerQueueDoesNotBlockAnotherSharedSender(t *testing.T) {
 		}
 	}
 }
+
+func TestRetainedSendRechecksIdleBacklogAtDeliveryBoundary(t *testing.T) {
+	for _, liveRoute := range []bool{false, true} {
+		t.Run(fmt.Sprint(liveRoute), func(t *testing.T) {
+			api := newConversationTurnQueueTestAPI(map[string]string{})
+			ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "u"})
+			if _, _, err := api.enqueueConversationTurn(ctx, "u", "s", QueryRequest{AgentMode: "multi-agent", Query: "older"}); err != nil {
+				t.Fatal(err)
+			}
+			// This is the request admitted before the asynchronous provider send.
+			ctx = context.WithValue(ctx, retainedQueueInputKey{}, retainedQueueInput{Request: QueryRequest{AgentMode: "multi-agent", Query: "newer"}, LiveInput: liveRoute})
+			ctx = context.WithValue(ctx, internalQueuedTurnAdmissionKey{}, func(string) { api.conversationTurnQueueDraining["s"] = true })
+			r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
+			if api.queueIdleRetainedInput(httptest.NewRecorder(), r, "s", true) {
+				t.Fatal("compatible active steering was queued")
+			}
+			w := httptest.NewRecorder()
+			if !api.queueIdleRetainedInput(w, r, "s", false) {
+				t.Fatal("CLI became idle but newer input bypassed its backlog")
+			}
+			if api.sessionTurnInProgress("s") {
+				t.Fatal("queue admission leaked the input lane")
+			}
+			turns := api.mustReadTurnQueueForTest(t, "u")
+			if len(turns) != 2 || turns[0].Request.Query != "older" || turns[1].Request.Query != "newer" {
+				t.Fatalf("late send reordered: %+v", turns)
+			}
+			if liveRoute {
+				var reply LiveInputResponse
+				if err := json.Unmarshal(w.Body.Bytes(), &reply); err != nil || !reply.Success || reply.DeliveryStatus != "queued_for_turn" {
+					t.Fatalf("live-input queue reply: %+v %v", reply, err)
+				}
+			}
+		})
+	}
+}
