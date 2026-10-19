@@ -189,7 +189,7 @@ func TestWorkflowModePromptsKeepSeparateContractsWithLinkedPaths(t *testing.T) {
 	if slices.Contains(agentworksproduct.ChatSkills("run"), "workflow-commands") || !slices.Contains(agentworksproduct.ChatSkills("builder"), "workflow-commands") {
 		t.Fatal("Run received Builder-only authoring skills")
 	}
-	if !strings.Contains(workflowCLIWorkspaceInstructions("Workflow/linked"), "`cd project && ...`") {
+	if !strings.Contains(workflowCLIWorkspaceInstructions("Workflow/linked"), "never `cd project`") {
 		t.Fatal("native shell commands lack a real-workflow working directory")
 	}
 }

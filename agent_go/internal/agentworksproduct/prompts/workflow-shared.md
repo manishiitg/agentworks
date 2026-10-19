@@ -14,7 +14,8 @@ For requests touching the goal, real effects or a recorded decision, look up onl
 
 When using a private coding CLI runtime, `project/` links to the real workflow.
 Native file paths use `project/<path>` (for example `project/soul/soul.md`);
-commands that need workflow-relative paths use `cd project && ...`. Paths in
+commands that need workflow-relative paths run from the absolute workflow folder
+{{.AbsWorkspacePath}}, never through `project/`. Paths in
 workspace bridge tools and the workflow references below remain relative to the
 real workflow, without the `project/` prefix. Keep durable work under the link
 and generated CLI instructions, skills and configuration in the private runtime.

@@ -151,9 +151,6 @@ func TestWorkshopPromptShellExamplesUseAbsolutePaths(t *testing.T) {
 		if span == "jq -n --arg" {
 			continue
 		}
-		if span == "cd project && ..." {
-			continue // explicit private linked-CLI exception, never a bridge cwd assumption
-		}
 		if verb == "cd" {
 			t.Errorf("workshop prompt contains a `cd` command (%q), which the same prompt forbids. "+
 				"Use an absolute path instead.", span)

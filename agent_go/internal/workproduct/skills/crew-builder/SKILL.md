@@ -9,8 +9,9 @@ before making changes; use their dedicated tools and names, never secret values.
 Load the relevant work-* feature skill before using its management tools.
 
 In the private CLI runtime, `project/` links to the real Crew. Read, create,
-rename and edit durable project files there; use `cd project && ...` for commands
-that need project-relative paths. Bridge tools use Crew-relative paths without
+rename and edit durable project files there; for commands that need
+project-relative paths, cd to the Crew's absolute path (named in your instructions),
+never `cd project`. Bridge tools use Crew-relative paths without
 `project/`. Preserve the project's own instructions and configuration. Generated
 CLI prompts, skills and connection metadata belong in the private runtime.
 
