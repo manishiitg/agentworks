@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/guidancesessions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"github.com/pkoukk/tiktoken-go"
@@ -173,6 +174,10 @@ func TestExternalGuidanceCrewAndBrainSkillDelivery(t *testing.T) {
 	})
 	t.Run("Brain", func(t *testing.T) {
 		api, service := knowledgebaseServerTest(t)
+		// Another runtime's empty-key configuration must not bind a direct MCP
+		// request to that unrelated project. Named sessions keep their policy.
+		common.SetSessionWorkingDir("", t.TempDir())
+		t.Cleanup(func() { common.ClearSessionShellConfig("") })
 		t.Setenv("AUTH_SECRET", "brain-guidance-test-secret")
 		t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 		principal := knowledgebase.Principal{IdentityID: "admin", IsAdmin: true}

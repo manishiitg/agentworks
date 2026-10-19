@@ -542,6 +542,9 @@ func cloneSessionShellConfig(cfg *SessionShellConfig) *SessionShellConfig {
 }
 
 func updateSessionShellConfig(sessionID string, update func(*SessionShellConfig)) {
+	if strings.TrimSpace(sessionID) == "" {
+		return
+	}
 	sessionShellConfigsMu.Lock()
 	defer sessionShellConfigsMu.Unlock()
 	cfg := cloneSessionShellConfig(sessionShellConfigs[sessionID])
@@ -675,6 +678,9 @@ func SetSessionBrowserMode(sessionID, mode string) {
 // GetSessionBrowserMode returns configured browser intent, or "" if none was
 // set. CDP reachability must be queried live through agent_browser status.
 func GetSessionBrowserMode(sessionID string) string {
+	if strings.TrimSpace(sessionID) == "" {
+		return ""
+	}
 	sessionShellConfigsMu.RLock()
 	defer sessionShellConfigsMu.RUnlock()
 	if cfg := sessionShellConfigs[sessionID]; cfg != nil {
@@ -791,6 +797,9 @@ func SetSessionBrowserNamespace(sessionID, namespace string) {
 // write restrictions AND the same blocked-write exceptions. Returns true if a
 // guard was copied.
 func CopySessionFolderGuard(fromSessionID, toSessionID string) bool {
+	if strings.TrimSpace(fromSessionID) == "" || strings.TrimSpace(toSessionID) == "" {
+		return false
+	}
 	src := GetSessionShellConfig(fromSessionID)
 	if src == nil || (!src.FolderGuardSet && len(src.ReadPaths) == 0 && len(src.WritePaths) == 0 && len(src.BlockedPaths) == 0 && len(src.BlockedWritePaths) == 0) {
 		return false
@@ -837,6 +846,9 @@ var SessionWorkflowCapabilityResolver func(workflowPath string, kbRead bool) (re
 var SessionKnowledgebaseBlockedPaths func(workspace string) []string
 
 func GetSessionShellConfig(sessionID string) *SessionShellConfig {
+	if strings.TrimSpace(sessionID) == "" {
+		return nil
+	}
 	sessionShellConfigsMu.RLock()
 	original := sessionShellConfigs[sessionID]
 	if original == nil {

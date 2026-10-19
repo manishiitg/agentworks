@@ -171,7 +171,8 @@ func TestExternalRelayBuilderAndPublishingRespectRoles(t *testing.T) {
 	}
 	f.call(t, reader, "builder_chat", map[string]any{"message": "Edit", "submission_id": "read-edit"}, 403)
 	_, editor := f.token(t, "outsider", relayConsentScopes, false)
-	f.relayCall(t, editor, "publish_relay", map[string]any{"workflow_id": "invoices"}, 200)
+	// A former editor runs published versions; only owners can publish.
+	f.relayCall(t, editor, "publish_relay", map[string]any{"workflow_id": "invoices"}, 403)
 	f.relayCall(t, writer, "chat", map[string]any{"workflow_id": "invoices", "message": "Edit"}, 400)
 	f.relayCall(t, writer, "execute_step", map[string]any{"workflow_id": "invoices", "step_id": "answer"}, 400)
 	f.relayCall(t, writer, "update_relay", map[string]any{"workflow_id": "invoices", "label": "Updated"}, 200)

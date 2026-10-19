@@ -211,12 +211,14 @@ func knowledgebaseRuntimePolicy(ctx context.Context, userID string, principal *k
 	if session == "" {
 		session, _ = ctx.Value(common.WorkflowSessionIDKey).(string)
 	}
+	// A direct MCP request has no project session and uses the person's Brain
+	// folder roles. An empty-key shell configuration is not session authority.
+	if session == "" {
+		return nil
+	}
 	cfg := common.GetSessionShellConfig(session)
 	if cfg == nil {
-		if session != "" {
-			return &knowledgebase.Error{Code: "FORBIDDEN", Message: "Session knowledge policy is unavailable."}
-		}
-		return nil
+		return &knowledgebase.Error{Code: "FORBIDDEN", Message: "Session knowledge policy is unavailable."}
 	}
 	workspace := cfg.WorkflowPath
 	if workspace == "" {

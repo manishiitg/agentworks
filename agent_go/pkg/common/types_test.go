@@ -358,6 +358,32 @@ func TestReadOnlyWorkflowSessionKeepsAttachedFolderGrantsReadOnly(t *testing.T) 
 	}
 }
 
+func TestSessionShellConfigRequiresSessionIdentity(t *testing.T) {
+	source := "blank-config-copy-source"
+	SetSessionFolderGuard(source, []string{"Workflow/source"}, []string{"Workflow/source/output"})
+	t.Cleanup(func() { ClearSessionShellConfig(source) })
+	for _, id := range []string{"", " \t"} {
+		ClearSessionShellConfig(id)
+		SetSessionWorkingDir(id, "Workflow/unrelated")
+		SetSessionShellEnv(id, map[string]string{"WORKFLOW_KB_ACCESS": "write"})
+		sessionShellConfigsMu.RLock()
+		_, stored := sessionShellConfigs[id]
+		sessionShellConfigsMu.RUnlock()
+		if stored {
+			t.Fatal("a blank session ID stored shell authority")
+		}
+		// Even an invalid entry left by an earlier caller cannot be read or
+		// copied as authority for a request with no session identity.
+		sessionShellConfigsMu.Lock()
+		sessionShellConfigs[id] = &SessionShellConfig{WorkingDir: "Workflow/unrelated", FolderGuardSet: true, BrowserMode: "cdp"}
+		sessionShellConfigsMu.Unlock()
+		if GetSessionShellConfig(id) != nil || GetSessionBrowserMode(id) != "" || CopySessionFolderGuard(id, "target") || CopySessionFolderGuard(source, id) {
+			t.Fatal("a blank session ID resolved or copied shell authority")
+		}
+		ClearSessionShellConfig(id)
+	}
+}
+
 func TestSessionShellConfigIsImmutableAcrossCallers(t *testing.T) {
 	sessionID := "immutable-shell-config"
 	defer ClearSessionShellConfig(sessionID)

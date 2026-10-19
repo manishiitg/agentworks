@@ -261,7 +261,7 @@ func firstSentence(text string) string {
 // fields (including its batch functions patch) from the update_crew executor.
 func externalFunctionProperties(in map[string]any, actions []string) map[string]any {
 	out := map[string]any{}
-	for _, key := range []string{"workspace_id", "crew_id", "workflow_id", "function", "args", "wait_seconds", "submission_id", "run_mode", "call_id", "request_id", "response", "limit"} {
+	for _, key := range []string{"workspace_id", "crew_id", "workflow_id", "function", "args", "wait_seconds", "submission_id", "run_mode", "call_id", "request_id", "response", "limit", "after", "after_event", "message_limit", "file", "offset"} {
 		if value, ok := in[key]; ok {
 			out[key] = value
 		}

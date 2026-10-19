@@ -57,10 +57,10 @@ func TestExternalGuardedWriteOverMCPSeparateVolume(t *testing.T) {
 		}
 	}
 
-	// Relay authors can edit source, memory and local skills with their existing
+	// Relay co-owners can edit source, memory and local skills with their existing
 	// consent. No additional file permission is issued or attached to this client.
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"editor","products":["relays"]}]}`)
-	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["other"],"editors":["owner"]}}`)
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["other","owner"]}}`)
 	relayClaims := writeTestClaims("owner")
 	relayClaims.AccessToken.Scopes = []string{"workflows:read", "files:read", "runs:execute", "relays:write"}
 	relaySrv := serveExternalMCP(t, f.api, relayClaims)
@@ -73,8 +73,8 @@ func TestExternalGuardedWriteOverMCPSeparateVolume(t *testing.T) {
 			t.Fatal("Relay file missing", p)
 		}
 	}
-	// A project reader cannot keep authoring through an editable account.
-	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["other"],"readers":["owner"]}}`)
+	// An old editor entry grants Run access, not Builder access.
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["other"],"editors":["owner"]}}`)
 	projectDenied := callRemoteTool(t, ctx, relayClient, "call_tool", map[string]any{"name": "write_file", "arguments": map[string]any{"workflow_id": "invoices", "path": "docs/reader.md", "content": "denied", "expected_revision": "missing", "request_id": "reader"}})
 	if !projectDenied.IsError {
 		t.Fatal("project downgrade retained file write access")

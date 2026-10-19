@@ -81,13 +81,13 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 	}
 	scheduleID := schedules[0].(map[string]any)["id"].(string)
 
-	// Only the owner edits; a reader gets a clear refusal and nothing changes.
-	if code, out := externalCrewRequest(t, env, other, "update_crew", map[string]any{"crew_id": crewID, "role": "Hijacked"}); code != 403 {
+	// A new Crew is private. Another person cannot discover or edit it.
+	if code, out := externalCrewRequest(t, env, other, "update_crew", map[string]any{"crew_id": crewID, "role": "Hijacked"}); code != 404 {
 		t.Fatalf("non-owner update = %d %v", code, out)
 	}
 	code, got = externalCrewRequest(t, env, other, "get_crew", map[string]any{"crew_id": crewID})
-	if code != 200 || got["role"] != "Support triage lead" || got["access"].(map[string]any)["can_edit"] != false {
-		t.Fatalf("reader view = %d %v", code, got)
+	if code != 404 {
+		t.Fatalf("unshared Crew visible to another person = %d %v", code, got)
 	}
 
 	// A bad section refuses the whole update before anything is written.
@@ -147,7 +147,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 	}
 
 	// Export carries skill files and function instructions: owner only.
-	if code, out := externalCrewRequest(t, env, other, "export_crew", map[string]any{"crew_id": crewID}); code != 403 {
+	if code, out := externalCrewRequest(t, env, other, "export_crew", map[string]any{"crew_id": crewID}); code != 404 {
 		t.Fatalf("a non-owner export must be refused, got %d %v", code, out)
 	}
 	// Export -> import on another account reproduces the Crew, schedules off.
