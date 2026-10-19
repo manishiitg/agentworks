@@ -1067,6 +1067,9 @@ func resolveProductProjectBindingInRoot(
 		if !strings.HasPrefix(candidate, rootPrefix) || !strings.HasSuffix(candidate, "/product.json") {
 			continue
 		}
+		if isProjectProfileID(profile.ID) && !projectDiscoveryRootIsCurrent(strings.TrimSuffix(candidate, "/product.json")) {
+			continue
+		}
 		if ownerOK != nil {
 			// The shared root: exactly <root>/<folder>/product.json, and not a hidden bookkeeping folder.
 			folder := strings.TrimSuffix(strings.TrimPrefix(candidate, rootPrefix), "/product.json")

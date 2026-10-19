@@ -110,6 +110,7 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 
 	if action == "list" {
 		items := []map[string]any{}
+		seen := map[string]bool{}
 		for _, product := range projectProducts {
 			if !workspaceOriginAllowed(claims, product.ProfileID) {
 				continue
@@ -126,10 +127,14 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 						continue
 					}
 					key := product.ProfileID + ":" + row.ID
+					if seen[key] {
+						continue
+					}
 					binding, doc, ok := api.resolveExternalWorkspace(r.Context(), claims, key)
 					if !ok {
 						continue
 					}
+					seen[key] = true
 					items = append(items, map[string]any{"workspace_id": key, "id": doc.ID, "profile_id": product.ProfileID, "name": doc.displayTitle(), "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller]})
 				}
 			}

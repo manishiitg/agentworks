@@ -97,7 +97,8 @@ func listProjectManifestPaths(ctx context.Context, store productProjectStore, us
 	if ownExists {
 		for _, candidate := range own {
 			candidate = filepath.ToSlash(strings.TrimSpace(candidate))
-			if !strings.HasPrefix(candidate, rootPrefix) || !strings.HasSuffix(candidate, "/product.json") {
+			if !strings.HasPrefix(candidate, rootPrefix) || !strings.HasSuffix(candidate, "/product.json") ||
+				!projectDiscoveryRootIsCurrent(strings.TrimSuffix(candidate, "/product.json")) {
 				continue
 			}
 			if _, dup := seen[candidate]; dup {

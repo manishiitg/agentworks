@@ -316,6 +316,7 @@ func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agent
 	}
 	rows := []sharedProjectSummary{}
 	seenManifests := make(map[string]bool)
+	seenProjects := make(map[string]bool)
 	for _, candidate := range paths {
 		if !strings.HasSuffix(candidate, "/product.json") || seenManifests[candidate] {
 			continue
@@ -324,6 +325,9 @@ func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agent
 		// root and as a top-level item, yielding the same manifest twice.
 		seenManifests[candidate] = true
 		projectRoot := strings.TrimSuffix(candidate, "/product.json")
+		if !projectDiscoveryRootIsCurrent(projectRoot) {
+			continue
+		}
 		if sharedOnly && !crewSharedWith(projectRoot, claims.UserID) && !crewIsCoOwner(projectRoot, claims.UserID) {
 			continue
 		}
@@ -331,9 +335,10 @@ func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agent
 			continue
 		}
 		manifest, err := readCrewProjectManifests(ctx, profile.ID, projectRoot)
-		if err != nil {
+		if err != nil || seenProjects[manifest.ID] {
 			continue
 		}
+		seenProjects[manifest.ID] = true
 		rows = append(rows, summarizeSharedProject(ctx, claims, ownerID, projectRoot, manifest))
 	}
 	return rows

@@ -43,6 +43,17 @@ func projectStorageRoot(rec projectOwnerRecord) string {
 	return workspaceref.PhysicalPathOf(rec.OwnerID, product.ProjectsRoot, rec.Folder)
 }
 
+// Discovery and project-ID resolution use only the registered location. An old
+// filesystem link is not another project and must never become a delete target.
+func projectDiscoveryRootIsCurrent(root string) bool {
+	id, ok := projectIdentityOf(root)
+	if !ok {
+		return true
+	}
+	rec, registered := defaultProjectOwners().Lookup(id.Product, id.Folder)
+	return !registered || projectStorageRoot(rec) == root
+}
+
 func validateProjectStorageRecord(rec projectOwnerRecord) error {
 	if !isProjectProfileID(rec.Product) {
 		return fmt.Errorf("unknown project origin")
