@@ -77,6 +77,15 @@ func (api *StreamingAPI) watchMCPAgentSessionTurn(ctx context.Context, sessionID
 			if !tracked || !owned || !current.Equal(startedAt) {
 				return
 			}
+			// The main snapshot may be structured/tmux-less, or the provider may
+			// have rebound its pane since this watcher started. Only a current,
+			// named pane can supply evidence of a missing process.
+			latest, exists := api.terminalStore.GetRaw(snapshot.TerminalID)
+			if !exists || latest.SessionID != sessionID || strings.TrimSpace(latest.TmuxSession) == "" {
+				misses = 0
+				continue
+			}
+			snapshot = latest
 			switch inspectRetainedMainTurnTmuxState(snapshot.TmuxSession) {
 			case codingTmuxPaneMissing, codingTmuxPaneDead:
 				misses++

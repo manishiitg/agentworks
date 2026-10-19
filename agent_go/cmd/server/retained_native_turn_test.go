@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -147,6 +148,45 @@ func TestRetainedNativeLongTurnKeepsItsCompletionOwner(t *testing.T) {
 	api.observeRetainedMainTurnEvent(sessionID, nativeCompletion(sessionID, "long-done", "native-long"))
 	if api.isSessionBusy(sessionID) || trackedStatus(api, "long") != trackedExecutionStatusCompleted {
 		t.Fatal("long native turn lost its real completion")
+	}
+}
+
+func TestRetainedNativeWatchdogUsesCurrentNamedPane(t *testing.T) {
+	for _, mode := range []string{"empty", "unknown", "renamed"} {
+		t.Run(mode, func(t *testing.T) {
+			var checks atomic.Int64
+			inspect := func(name string) codingTmuxPaneState {
+				checks.Add(1)
+				if mode == "unknown" {
+					return codingTmuxPaneUnknown
+				}
+				if name == "replacement-pane" {
+					return codingTmuxPaneAlive
+				}
+				return codingTmuxPaneMissing
+			}
+			plat178Thresholds(t, time.Hour, time.Hour, 5*time.Millisecond, inspect)
+			const sessionID = "retained-native-current-pane"
+			api, terminalStore, terminalID := newPlat178API(t, sessionID, "original-pane")
+			t.Cleanup(func() { api.releaseStoppedSessionTurnMarkers(sessionID) })
+			if mode == "empty" {
+				terminalStore.MarkProcessClosed(terminalID, "host has no pane name")
+			}
+			acceptNativeTurn(api, sessionID, "current", "native-current")
+			if mode == "renamed" {
+				terminalStore.HandleEvent(sessionID, codingAgentTmuxReaperChunkEvent(time.Now(), sessionID, "main:"+sessionID, "replacement-pane"))
+			}
+			time.Sleep(40 * time.Millisecond)
+			if !api.isSessionBusy(sessionID) || trackedStatus(api, "current") != trackedExecutionStatusRunning {
+				t.Fatal("unknown or stale pane name failed a healthy native turn")
+			}
+			if mode == "empty" && checks.Load() != 0 {
+				t.Fatal("empty pane name was inspected as a missing process")
+			}
+			if mode != "empty" && checks.Load() == 0 {
+				t.Fatal("named-pane watchdog never checked its current snapshot")
+			}
+		})
 	}
 }
 
