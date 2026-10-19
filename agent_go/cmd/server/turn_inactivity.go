@@ -30,6 +30,8 @@ type idleTool struct {
 type turnInactivityState struct {
 	sessionID, executionID  string
 	startedAt, lastOutputAt time.Time
+	turnStartedAt           time.Time
+	lastAnnouncedActivity   time.Time
 	tools                   map[string]idleTool
 	waiting, ending         bool
 	quietMinute             int
@@ -112,16 +114,20 @@ func (state *turnInactivityState) openToolNames() []string {
 
 func (api *StreamingAPI) observeTurnInactivity(sessionID string, event events.Event) {
 	api.turnInactivityMu.Lock()
-	var resumed []*turnInactivityState
+	var updates []*turnInactivityState
 	for _, state := range api.turnInactivity[sessionID] {
-		if state.observe(event, time.Now()) {
+		resumed := state.observe(event, time.Now())
+		// Publish real progress at most once a second while streaming. The
+		// existing watchdog tick flushes the final activity between updates.
+		if resumed || state.lastOutputAt.Sub(state.lastAnnouncedActivity) >= time.Second {
+			state.lastAnnouncedActivity = state.lastOutputAt
 			copied := *state
-			resumed = append(resumed, &copied)
+			updates = append(updates, &copied)
 		}
 	}
 	api.turnInactivityMu.Unlock()
-	for _, state := range resumed {
-		api.emitTurnQuietPhase(state, false, 0)
+	for _, state := range updates {
+		api.emitTurnActivityState(state)
 	}
 }
 
@@ -129,7 +135,7 @@ func (api *StreamingAPI) observeTurnInactivity(sessionID string, event events.Ev
 // An older watcher can never cancel the session's next turn. A false onIdle
 // means ownership changed or native interruption failed; it remains protected.
 func (api *StreamingAPI) watchTurnInactivity(ctx context.Context, sessionID, executionID string, startedAt time.Time, eligible func() bool, onIdle func(error) bool) func() {
-	state := &turnInactivityState{sessionID: sessionID, executionID: executionID, startedAt: startedAt, lastOutputAt: startedAt, tools: map[string]idleTool{}}
+	state := &turnInactivityState{sessionID: sessionID, executionID: executionID, startedAt: startedAt, turnStartedAt: startedAt, lastOutputAt: startedAt, tools: map[string]idleTool{}}
 	watchKey := fmt.Sprintf("%s:%p", executionID, state)
 	api.turnInactivityMu.Lock()
 	if api.turnInactivity == nil {
@@ -139,20 +145,37 @@ func (api *StreamingAPI) watchTurnInactivity(ctx context.Context, sessionID, exe
 		api.turnInactivity[sessionID] = map[string]*turnInactivityState{}
 	}
 	// A live input shares the CLI's current progress and in-flight tools.
+	sharedProgress := false
 	for _, previous := range api.turnInactivity[sessionID] {
 		if previous.ending {
 			continue
 		}
-		if previous.lastOutputAt.After(state.lastOutputAt) {
+		// A new human steer shares this CLI's actual last progress, even when
+		// that progress predates admission. Admission is not agent activity.
+		if !sharedProgress || previous.lastOutputAt.After(state.lastOutputAt) {
 			state.lastOutputAt = previous.lastOutputAt
+		}
+		sharedProgress = true
+		origin := previous.turnStartedAt
+		if origin.IsZero() {
+			origin = previous.startedAt
+		}
+		if origin.Before(state.turnStartedAt) {
+			state.turnStartedAt = origin
 		}
 		for id, tool := range previous.tools {
 			state.tools[id] = tool
 		}
 		state.waiting = state.waiting || previous.waiting
+		if previous.quietMinute > state.quietMinute {
+			state.quietMinute = previous.quietMinute
+		}
 	}
 	api.turnInactivity[sessionID][watchKey] = state
+	state.lastAnnouncedActivity = state.lastOutputAt
+	initialActivity := *state
 	api.turnInactivityMu.Unlock()
+	api.emitTurnActivityState(&initialActivity)
 	watchCtx, cancel := context.WithCancel(ctx)
 	stop := func() {
 		cancel()
@@ -199,6 +222,10 @@ func (api *StreamingAPI) watchTurnInactivity(ctx context.Context, sessionID, exe
 				if quiet {
 					state.quietMinute = quietMinute
 				}
+				activityChanged := current && !state.lastOutputAt.Equal(state.lastAnnouncedActivity)
+				if activityChanged {
+					state.lastAnnouncedActivity = state.lastOutputAt
+				}
 				copied := *state
 				api.turnInactivityMu.Unlock()
 				if !current {
@@ -228,6 +255,8 @@ func (api *StreamingAPI) watchTurnInactivity(ctx context.Context, sessionID, exe
 					api.turnInactivityMu.Unlock()
 				} else if quiet {
 					api.emitTurnQuietPhase(&copied, true, quietMinute)
+				} else if activityChanged {
+					api.emitTurnActivityState(&copied)
 				}
 			}
 		}
@@ -236,16 +265,39 @@ func (api *StreamingAPI) watchTurnInactivity(ctx context.Context, sessionID, exe
 }
 
 func (api *StreamingAPI) emitTurnQuietPhase(state *turnInactivityState, quiet bool, minutes int) {
+	if quiet {
+		state.quietMinute = minutes
+	} else {
+		state.quietMinute = 0
+	}
+	api.emitTurnActivityState(state)
+}
+
+func (api *StreamingAPI) emitTurnActivityState(state *turnInactivityState) {
 	if api.eventStore == nil {
 		return
 	}
-	phase, text := "running", ""
-	if quiet {
-		phase, text = "quiet", fmt.Sprintf("Still working · no update for %d min", minutes)
+	phase, text, since := api.eventStore.TurnPhaseSnapshot(state.sessionID)
+	if phase == "" {
+		phase, text, since = "starting", "Starting the agent", state.startedAt
+	}
+	if state.waiting {
+		phase, text = "waiting_for_you", "Waiting for your answer"
+	} else if state.quietMinute > 0 {
+		phase, text = "quiet", fmt.Sprintf("Still working · no update for %d min", state.quietMinute)
+	}
+	origin := state.turnStartedAt
+	if origin.IsZero() {
+		origin = state.startedAt
 	}
 	now := time.Now()
-	data := &unifiedevents.GenericEventData{BaseEventData: unifiedevents.BaseEventData{Timestamp: now}, Data: map[string]interface{}{"phase": phase, "text": text, "since": state.startedAt.UTC().Format(time.RFC3339Nano), "last_output_at": state.lastOutputAt.UTC().Format(time.RFC3339Nano)}}
-	api.eventStore.AddEvent(state.sessionID, events.Event{ID: fmt.Sprintf("turn-quiet-%d", now.UnixNano()), Type: "turn_phase", Timestamp: now, SessionID: state.sessionID, ExecutionID: state.executionID, ExecutionKind: "main_agent", Data: unifiedevents.NewAgentEvent(data)})
+	data := &unifiedevents.GenericEventData{BaseEventData: unifiedevents.BaseEventData{Timestamp: now}, Data: map[string]interface{}{
+		"phase": phase, "text": text, "since": since.UTC().Format(time.RFC3339Nano),
+		"turn_started_at":  origin.UTC().Format(time.RFC3339Nano),
+		"last_activity_at": state.lastOutputAt.UTC().Format(time.RFC3339Nano),
+		"last_output_at":   state.lastOutputAt.UTC().Format(time.RFC3339Nano),
+	}}
+	api.eventStore.AddEvent(state.sessionID, events.Event{ID: fmt.Sprintf("turn-activity-%d", now.UnixNano()), Type: "turn_phase", Timestamp: now, SessionID: state.sessionID, ExecutionID: state.executionID, ExecutionKind: "main_agent", Data: unifiedevents.NewAgentEvent(data)})
 }
 
 func (api *StreamingAPI) emitIdleTurnFailure(sessionID, executionID string) {

@@ -155,3 +155,59 @@ func TestCanceledTextDrainReleasesCallerForFinalHistoryCapture(t *testing.T) {
 		t.Fatal("cancellation stranded final history capture")
 	}
 }
+
+func TestLiveInputInheritsActualActivityInsteadOfHumanAdmission(t *testing.T) {
+	api := &StreamingAPI{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	origin := time.Now().Add(-5 * time.Minute)
+	lastOutput := origin.Add(time.Minute)
+	stop := api.watchTurnInactivity(ctx, "chat", "root", origin, nil, func(error) bool { return false })
+	defer stop()
+	api.turnInactivityMu.Lock()
+	for _, state := range api.turnInactivity["chat"] {
+		state.lastOutputAt = lastOutput
+		state.quietMinute = 4
+		state.tools["in-flight"] = idleTool{name: "shell", open: true}
+	}
+	api.turnInactivityMu.Unlock()
+	admitted := time.Now()
+	stopInput := api.watchTurnInactivity(ctx, "chat", "steer", admitted, nil, func(error) bool { return false })
+	defer stopInput()
+	api.turnInactivityMu.Lock()
+	defer api.turnInactivityMu.Unlock()
+	found := false
+	for _, state := range api.turnInactivity["chat"] {
+		if state.executionID != "steer" {
+			continue
+		}
+		found = true
+		if !state.startedAt.Equal(admitted) || !state.turnStartedAt.Equal(origin) || !state.lastOutputAt.Equal(lastOutput) || state.quietMinute != 4 || len(state.openToolNames()) != 1 {
+			t.Fatalf("live input lost shared progress or its generation fence: %+v", state)
+		}
+	}
+	if !found {
+		t.Fatal("live input watcher was not registered")
+	}
+}
+
+func TestActivityMetadataUsesTheInactivityClock(t *testing.T) {
+	store := events.NewEventStore(100)
+	api := &StreamingAPI{eventStore: store}
+	origin := time.Now().Add(-3 * time.Minute).UTC()
+	lastOutput := origin.Add(time.Minute)
+	state := &turnInactivityState{sessionID: "activity-clock", executionID: "root", startedAt: origin, turnStartedAt: origin, lastOutputAt: lastOutput, quietMinute: 2}
+	api.emitTurnActivityState(state)
+	all := store.GetAllEventsRaw("activity-clock")
+	if len(all) != 1 || all[0].Type != "turn_phase" {
+		t.Fatalf("expected one backwards-compatible phase event: %+v", all)
+	}
+	payload, ok := all[0].Data.Data.(*unifiedevents.GenericEventData)
+	if !ok || payload.Data["turn_started_at"] != origin.Format(time.RFC3339Nano) || payload.Data["last_activity_at"] != lastOutput.Format(time.RFC3339Nano) || payload.Data["phase"] != "quiet" {
+		t.Fatalf("wrong activity metadata: %+v", payload)
+	}
+	state.observe(all[0], time.Now())
+	if !state.lastOutputAt.Equal(lastOutput) {
+		t.Fatal("publishing the clock reset its own inactivity")
+	}
+}

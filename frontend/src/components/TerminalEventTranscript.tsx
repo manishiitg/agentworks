@@ -1,6 +1,6 @@
 import { CodingAgentQuestionCard } from './CodingAgentQuestionCard'
 import { WorkingStatus } from './chat/WorkingStatus'
-import { currentTurnPhase, currentTurnStartedAt, lastAgentOutputAt, type TurnPhase } from '../utils/turnStart'
+import { currentTurnActivity, currentTurnPhase, type TurnPhase } from '../utils/turnStart'
 import { codingAgentQuestionCards, withClosedQuestions, type CodingAgentQuestionAnswerHandler } from '../utils/codingAgentQuestions'
 import { AgentRuntimeActivityIndicator } from './AgentRuntimeActivityIndicator'
 import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
@@ -1145,8 +1145,9 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   // a new object and would otherwise re-render the footer for nothing.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const usage = useMemo(() => liveUsageSummary(statusMeta), [usageKey])
-  const turnStartedAt = useMemo(() => currentTurnStartedAt(events), [events])
-  const lastOutputAt = useMemo(() => lastAgentOutputAt(events), [events])
+  const turnActivity = useMemo(() => currentTurnActivity(events), [events])
+  const turnStartedAt = turnActivity?.turnStartedAt
+  const lastOutputAt = turnActivity?.lastActivityAt
   const turnPhase = useMemo(() => currentTurnPhase(events), [events])
   const historyContext = useMemo<TranscriptHistoryContext>(() => ({
     hasOlder: Boolean(hasOlder && onLoadOlder),

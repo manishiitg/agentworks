@@ -79,3 +79,28 @@ export function currentTurnPhase(events: readonly Pick<PollingEvent, 'type' | 'd
   }
   return undefined
 }
+
+// Only the inactivity watcher's server clock is authoritative. Phase changes,
+// human steers and truncated/reloaded event windows must not invent a start.
+export interface TurnActivity {
+  turnStartedAt: number
+  lastActivityAt: number
+}
+
+export function currentTurnActivity(events: readonly Pick<PollingEvent, 'type' | 'data'>[] | undefined): TurnActivity | undefined {
+  if (!events) return undefined
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (TURN_END_EVENTS.has(event.type ?? '')) return undefined
+    if (event.type !== 'turn_phase') continue
+    const outer = event.data as unknown as Record<string, unknown> | undefined
+    const inner = (outer?.data ?? {}) as Record<string, unknown>
+    const payload = (inner.data ?? inner) as Record<string, unknown>
+    const turnStartedAt = typeof payload.turn_started_at === 'string' ? Date.parse(payload.turn_started_at) : NaN
+    const lastActivityAt = typeof payload.last_activity_at === 'string' ? Date.parse(payload.last_activity_at) : NaN
+    if (Number.isFinite(turnStartedAt) && Number.isFinite(lastActivityAt) && lastActivityAt >= turnStartedAt) {
+      return { turnStartedAt, lastActivityAt }
+    }
+  }
+  return undefined
+}

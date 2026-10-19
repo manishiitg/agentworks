@@ -29,7 +29,7 @@ it('shows no tip, and never asks for one, where tips are switched off (dashboard
   }
 })
 
-it('says how long the agent has been quiet once it has produced nothing for a minute and a half', async () => {
+it('renders elapsed server activity time without deciding quiet in the browser', async () => {
   vi.useFakeTimers()
   const host = document.createElement('div')
   const root = createRoot(host)
@@ -38,14 +38,15 @@ it('says how long the agent has been quiet once it has produced nothing for a mi
     await act(async () => root.render(<WorkingTipsContext.Provider value={false}><WorkingStatus startedAt={now - 300_000} lastOutputAt={now - 60_000} /></WorkingTipsContext.Provider>))
     expect(host.querySelector('[data-testid="working-quiet"]')).toBeNull()
     await act(async () => { await vi.advanceTimersByTimeAsync(40_000) })
-    expect(host.querySelector('[data-testid="working-quiet"]')?.textContent).toContain('no new output for 1m 40s')
+    expect(host.textContent).toContain('1m 40s since update')
+    expect(host.textContent).not.toContain('no new output')
   } finally {
     act(() => root.unmount())
     vi.useRealTimers()
   }
 })
 
-it('says the agent is starting, not a playful word, until the server reports it running, and restarts the clock then', async () => {
+it('uses agent activity rather than phase start, with whole turn duration in the tooltip', async () => {
   vi.useFakeTimers()
   const host = document.createElement('div')
   const root = createRoot(host)
@@ -53,11 +54,17 @@ it('says the agent is starting, not a playful word, until the server reports it 
     const now = Date.now()
     await act(async () => root.render(<WorkingTipsContext.Provider value={false}><WorkingStatus startedAt={now - 300_000} lastOutputAt={now - 300_000} phase={{ phase: 'starting', text: 'Starting Muse', since: now - 12_000 }} /></WorkingTipsContext.Provider>))
     expect(host.querySelector('[data-testid="working-word"]')?.textContent).toBe('Starting Muse')
-    expect(host.textContent).toContain('(12s)')
+    expect(host.textContent).toContain('5m 00s since update')
+    expect(host.querySelector('[title]')?.getAttribute('title')).toBe('Turn duration: 5m 00s')
     expect(host.querySelector('[data-testid="working-quiet"]')).toBeNull()
     await act(async () => root.render(<WorkingTipsContext.Provider value={false}><WorkingStatus startedAt={now - 300_000} lastOutputAt={now} phase={{ phase: 'running', text: '', since: now }} /></WorkingTipsContext.Provider>))
     expect(host.querySelector('[data-testid="working-word"]')?.textContent).not.toContain('Starting')
-    expect(host.textContent).toContain('(0s)')
+    expect(host.textContent).toContain('0s since update')
+    await act(async () => root.render(<WorkingTipsContext.Provider value={false}><WorkingStatus startedAt={now - 300_000} lastOutputAt={now} phase={{ phase: 'retrying', text: 'Retrying', since: now - 1_000 }} /></WorkingTipsContext.Provider>))
+    expect(host.textContent).toContain('0s since update')
+    await act(async () => root.render(<WorkingTipsContext.Provider value={false}><WorkingStatus startedAt={now - 300_000} lastOutputAt={now - 120_000} phase={{ phase: 'quiet', text: 'Still working · no update for 2 min', since: now }} /></WorkingTipsContext.Provider>))
+    expect(host.textContent).toContain('Still working · no update for 2 min')
+    expect(host.textContent).not.toContain('since update')
   } finally {
     act(() => root.unmount())
     vi.useRealTimers()

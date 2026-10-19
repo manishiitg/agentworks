@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { currentTurnPhase, currentTurnStartedAt, lastAgentOutputAt } from './turnStart'
+import { currentTurnActivity, currentTurnPhase, currentTurnStartedAt, lastAgentOutputAt } from './turnStart'
 
 const at = (iso: string) => Date.parse(iso)
 const ev = (type: string, timestamp: string) => ({ type, timestamp })
@@ -42,5 +42,24 @@ describe('currentTurnPhase', () => {
     expect(currentTurnPhase([phaseEvent('running', '', '2026-10-15T10:01:00Z'), { type: 'unified_completion', data: undefined }] as never)).toBeUndefined()
     expect(currentTurnPhase([user] as never)).toBeUndefined()
     expect(currentTurnPhase(undefined)).toBeUndefined()
+  })
+})
+
+
+describe('currentTurnActivity', () => {
+  const activity = { type: 'turn_phase', data: { data: { data: { phase: 'running', since: '2026-10-15T10:02:00Z', turn_started_at: '2026-10-15T10:01:00Z', last_activity_at: '2026-10-15T10:02:30Z' } } } }
+
+  it('restores the server clock even in a truncated event window', () => {
+    expect(currentTurnActivity([activity] as never)).toEqual({ turnStartedAt: at('2026-10-15T10:01:00Z'), lastActivityAt: at('2026-10-15T10:02:30Z') })
+  })
+
+  it('does not reset for user input or phase-only announcements', () => {
+    expect(currentTurnActivity([activity, { type: 'user_message' }, { type: 'turn_phase', data: { data: { phase: 'retrying', since: '2026-10-15T10:04:00Z' } } }] as never)).toEqual(currentTurnActivity([activity] as never))
+  })
+
+  it('does not infer a clock from history or keep a completed turn clock', () => {
+    expect(currentTurnActivity([ev('unified_completion', '2026-10-15T10:00:00Z'), ev('user_message', '2026-10-15T10:01:00Z')] as never)).toBeUndefined()
+    expect(currentTurnActivity([activity, { type: 'unified_completion' }] as never)).toBeUndefined()
+    expect(currentTurnActivity(undefined)).toBeUndefined()
   })
 })
