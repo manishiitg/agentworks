@@ -29,8 +29,6 @@ func FeatureSkillsForSession(profile Profile, attached []*llmtypes.Skill) []*llm
 					if end := strings.Index(google[3:], "\n## "); end >= 0 {
 						google = google[:end+3]
 					}
-					google = strings.ReplaceAll(google, "a shared account connection shown in **Setup > Bots**", "a private project account connection available only in the owner's chats")
-					google = strings.ReplaceAll(google, "connection configuration remains account-wide and shared with AgentWorks", "connection configuration remains private to this project")
 					body += "\n" + google
 				}
 				// Code's private-Gmail variant also retains incoming-email procedures;
@@ -47,11 +45,6 @@ func FeatureSkillsForSession(profile Profile, attached []*llmtypes.Skill) []*llm
 		}
 		if copy.Name == FeatureSkillName(profile.ID, "work-workflow-files") {
 			switch FeatureOption(profile, "workflow-references", "direction") {
-			case "code_peers":
-				copy.Description += " Use before function calls to Crews and workflows."
-				copy.Content += "\n## Calling Crews and workflows from Code\n\nA Code can call accessible Crews/workflows with list_functions and call_function and the exact selected target. A Code project has no functions of its own and nothing can call into it: Code is private and Crews and workflows are shared. To reach another chat of this same Code use ask_project_chat. Calls never attach or share Code files.\n"
-			case "":
-				copy.Content += "\n## Code projects have no functions\n\nCode is private and Crews and workflows are shared, so nothing shared calls into a Code project and `#code:<id>` is not a call target. Calls never attach or share Code files.\n"
 			case "outbound":
 				if start := strings.Index(copy.Content, "- **Offer**"); start >= 0 {
 					if end := strings.Index(copy.Content[start:], "Calls that would loop"); end >= 0 {

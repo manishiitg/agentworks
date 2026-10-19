@@ -388,15 +388,10 @@ func featureTools(id string, tools []string, options map[string]string) ([]strin
 	case "workflow-references":
 		switch direction := strings.TrimSpace(options["direction"]); direction {
 		case "", "both":
-		case "code_peers":
-			// Code is private and has no functions of its own: it may call
-			// Crews and workflows and answer its own chats' asks, but never
-			// declares functions (owner, 2026-10-09).
-			drop = map[string]bool{"define_function": true, "delete_function": true}
 		case "outbound":
 			drop = workflowReferenceCalleeTools
 		default:
-			return nil, fmt.Errorf("feature %q: invalid direction %q (want both, outbound or code_peers)", id, direction)
+			return nil, fmt.Errorf("feature %q: invalid direction %q (want both or outbound)", id, direction)
 		}
 	case "mcp":
 		switch scope := strings.TrimSpace(options["scope"]); scope {
@@ -448,8 +443,6 @@ func featureTools(id string, tools []string, options map[string]string) ([]strin
 // the tools the default extension describes.
 func featurePromptExtension(id, extension string, options map[string]string) string {
 	switch {
-	case id == "workflow-references" && strings.TrimSpace(options["direction"]) == "code_peers":
-		return "This private Code can call authorized Crews/workflows with functions. It has no functions of its own and nothing can call into it. Read the attached `work-workflow-files` skill before using references or functions."
 	case id == "mcp" && strings.TrimSpace(options["scope"]) == "personal":
 		return "MCP connections here belong to this {{product}}: they are added with its owner's own sign-in and used by every chat in it. Read the attached `work-mcp` skill before connecting or using one. Use manage_my_mcp_servers to list the catalog and this {{product}}'s connections, and to connect or remove one (only the owner connects); never install, add or authenticate a platform-wide connection."
 	case id == "workflow-references" && strings.TrimSpace(options["direction"]) == "outbound":
@@ -495,8 +488,6 @@ func FeaturePromptExtensions(profile Profile) []string {
 			}
 		case "workflow-references":
 			switch feature.Options["direction"] {
-			case "code_peers":
-				rule = "A Code may call accessible Crews/workflows. A Code has no functions of its own and nothing can call into it. Calls never share its folder. Codes never enter the public Crew/MCP catalog."
 			case "outbound":
 				rule = "Crew/workflow calling is outbound only; this workspace cannot define or answer functions, and private workspaces are not valid targets."
 			default:
