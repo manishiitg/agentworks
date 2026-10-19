@@ -2609,7 +2609,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/admin/mcp-apps", requireAdmin(api.handleListMCPApps)).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/mcp-apps/{key}", requireAdmin(api.handlePutMCPApp)).Methods("PUT", "DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/integrations/slack/accounts", api.handlePersonalSlackAccounts).Methods("GET", "POST", "OPTIONS")
-	apiRouter.HandleFunc("/integrations/slack/bots", api.handleSlackVaultBots).Methods("GET", "POST")
+	apiRouter.HandleFunc("/integrations/slack/bots", api.handleSlackVaultBots).Methods("GET", "POST", "OPTIONS")
 	apiRouter.HandleFunc("/mcp/place", api.handleListPlaceMCP).Methods("GET")
 	apiRouter.HandleFunc("/mcp/place", api.handleAddPlaceMCP).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/mcp/place/{name}/connect", api.handleConnectPlaceMCP).Methods("POST", "OPTIONS")

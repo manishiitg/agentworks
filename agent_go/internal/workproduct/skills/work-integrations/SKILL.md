@@ -11,8 +11,8 @@ from selection for this project. MCP setup has its own `work-mcp` skill.
 ## Personal Google and Slack accounts
 
 Manage saved accounts in **My Vault → Your connected accounts**. In this
-project’s **Connections**, choose **Use here** or **Remove here** for a saved
-account. It is one login reused across products, separate from shared vaults.
+project’s **Connections → Google apps** or **Slack → Act in Slack**, choose
+**Use here** or **Remove here** for a saved account. It is one login reused across products, separate from shared vaults.
 Use `manage_google_account` or `manage_slack_account` to inspect and manage
 these same accounts from chat; connect returns the real sign-in link. Never
 create a second MCP connection for an account already saved there. Only its

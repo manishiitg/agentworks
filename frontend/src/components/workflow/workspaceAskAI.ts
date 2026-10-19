@@ -170,7 +170,7 @@ export function getIdentityTabAskAIMessage(tab: IdentityTabId): string {
 
 // The Access view holds two tabs, so its header Ask AI follows the
 // active tab instead of the view.
-export type AccessTabId = 'workflow' | 'users' | 'slack'
+export type AccessTabId = 'workflow' | 'users'
 
 const ACCESS_TAB_ASK_AI_MESSAGE: Record<AccessTabId, { label: string; summary: string; instructions?: string }> = {
   workflow: {
@@ -181,10 +181,7 @@ const ACCESS_TAB_ASK_AI_MESSAGE: Record<AccessTabId, { label: string; summary: s
     label: 'Access · Users',
     summary: "Help me manage this deployment's accounts and roles. Explain the current setup and ask what should change, without asking me to reveal passwords in chat.",
   },
-  slack: {
-    label: 'My Vault · Slack',
-    summary: "Help me manage this deployment's shared Slack bot and see which workflows have their own bot. Guide me through Slack app setup in the settings UI without asking for tokens in chat.",
-  },
+
 }
 
 export function getAccessTabAskAIMessage(tab: AccessTabId): string {

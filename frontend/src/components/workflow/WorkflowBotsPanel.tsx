@@ -6,7 +6,6 @@ import { WhatsAppSetup } from './bots/WhatsAppSetup'
 import { RouteChip } from './bots/RouteChips'
 import { ChannelRow } from './bots/AddChannel'
 import { routeId } from './bots/types'
-import { AskAIButton } from './AskAIButton'
 import { WorkspaceViewTabs } from './WorkspaceViewTabs'
 
 
@@ -21,8 +20,6 @@ type WorkflowBotsPanelProps = {
    * project pane) omit it and get the Slack/WhatsApp tabs.
    */
   fixedChannel?: BotChannel
-  /** Slack: only this target's own app, 1:1 direct messages (a Code). */
-  ownBotOnly?: boolean
 }
 
 type BotChannel = 'slack' | 'whatsapp'
@@ -35,33 +32,11 @@ const CHANNEL_TABS: Array<{ value: BotChannel; label: string }> = [
 // Composition over useWorkflowBots: status card, route chips, add-channel
 // rows, and the Slack/WhatsApp drill-ins. Never owns a scroll container:
 // every host (the Integrations Bots tab, the Work project pane) scrolls.
-export default function WorkflowBotsPanel({ workspacePath, target, scopeNoun = 'workflow', onAsk, fixedChannel, ownBotOnly = false }: WorkflowBotsPanelProps) {
+export default function WorkflowBotsPanel({ workspacePath, target, scopeNoun = 'workflow', fixedChannel }: WorkflowBotsPanelProps) {
   const bots = useWorkflowBots(workspacePath, target, 'bots')
   const { setup, setSetup, workflowId, workflowRoutes, routeError, waRoutingError } = bots
   const [internalChannel, setInternalChannel] = usePersistentTab<BotChannel>('agentworks.tab.bots-channel', 'slack', ['slack', 'whatsapp'])
   const channel = fixedChannel ?? internalChannel
-
-  const askSlackSetup = (
-    <AskAIButton
-      workspacePath={workspacePath}
-      onAsk={onAsk}
-      label={ownBotOnly ? 'Ask AI to set up Slack' : scopeNoun === 'project' ? 'Ask Crew to set up Slack' : 'Ask Builder to set up Slack'}
-      message={ownBotOnly
-        ? `Help me set up this ${scopeNoun}'s own Slack bot. It answers 1:1 direct messages only, never in channels, and never through the shared bot. Guide me through creating the Slack app (with the im:history, im:read and users:read.email scopes and the App Home Messages tab) and entering its credentials in the settings UI, without requesting tokens in chat.`
-        : `Read builder-reference/references/slack-bot-routing.md, inspect get_slack_bot_settings, and help me set up Slack for this ${scopeNoun}. First ask whether it should have its own bot (a Slack app that answers only for this ${scopeNoun}, in any channel it is invited to, with no routes) or use the shared bot in specific channels. For its own bot, guide me through app creation and credentials in the settings UI without requesting tokens in chat. For the shared bot, use the existing scoped tools to create the route once the channel ID is clear; use run mode without asking for a grant. Everyone in the channel is allowed by default; ask about blocked emails only if I need exclusions.`}
-    />
-  )
-
-  // Publishing the bot's App Home tab needs the owner's full-mode chat: only
-  // there does the slack tool take any Slack API method (views.publish).
-  const askSlackHomeTab = (
-    <AskAIButton
-      workspacePath={workspacePath}
-      onAsk={onAsk}
-      label="Ask AI to publish the Home tab"
-      message={`Design and publish this ${scopeNoun}'s Slack bot App Home tab (what people see when they open the app in Slack). First read what this ${scopeNoun} does, then draft a Block Kit home view: a one-line intro, what it can help with, three example questions, and how to reach it (mention it in a channel, or DM it). Show me the draft and wait for my OK. Then publish it with the slack tool: method views.publish, parameters user_id and view (type "home"). Find my Slack user ID with users.lookupByEmail (ask me for my Slack email if you do not know it). If Slack refuses, tell me exactly why; a disabled Home tab means turning on App Home > Home Tab in the Slack app.`}
-    />
-  )
 
   if (setup !== null) {
     return (
@@ -81,7 +56,7 @@ export default function WorkflowBotsPanel({ workspacePath, target, scopeNoun = '
             {setup !== 'slack' && <span className="text-xs font-normal text-muted-foreground">· shared across AgentWorks</span>}
           </div>
         </div>
-        {setup === 'slack' ? <SlackSetup bots={bots} headerAction={askSlackSetup} homeTabAction={askSlackHomeTab} /> : <WhatsAppSetup bots={bots} />}
+        {setup === 'slack' ? <SlackSetup bots={bots} /> : <WhatsAppSetup bots={bots} />}
       </div>
     )
   }

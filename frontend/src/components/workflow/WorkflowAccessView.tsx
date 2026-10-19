@@ -67,8 +67,6 @@ export default function WorkflowAccessView({ workspacePath, relayMode = false }:
         helpTopic={`Access · ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'This workflow'}`}
         subtitle={activeTab === 'users'
           ? 'Accounts and roles for this deployment.'
-          : activeTab === 'slack'
-            ? 'The shared Slack bot and every workflow bot in this deployment.'
             : isRelay
               ? `${scopeName} · one owner builds it; everyone else runs it.`
               : `${scopeName} · one Leader owns the goal; Contributors work through assigned routes.`}

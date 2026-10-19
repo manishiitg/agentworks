@@ -319,6 +319,10 @@ func slackPlatformTargetOn(ctx context.Context, api *StreamingAPI, ref services.
 }
 
 func (api *StreamingAPI) handleSlackVaultBots(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	args := map[string]any{"action": "list_saved"}
 	workspace := r.URL.Query().Get("workspace_path")
 	if r.Method == http.MethodPost {
