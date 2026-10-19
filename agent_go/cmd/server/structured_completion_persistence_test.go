@@ -171,6 +171,34 @@ func TestStructuredCompletionPreservesBothAnswersAfterRapidPrompts(t *testing.T)
 	}
 }
 
+func TestStructuredCompletionDoesNotAdoptIdenticalUncheckpointedForegroundAnswer(t *testing.T) {
+	const sessionID = "foreground-then-retained"
+	const workspacePath = "Workflow/project"
+	conversation := workspacePath + "/builder/conversation/2026-09-21/" + chatHistoryConversationFileName(sessionID)
+	raw, _ := json.Marshal(map[string]interface{}{
+		"session_id": sessionID, "user_id": "alice",
+		"conversation_history": []map[string]interface{}{
+			{"Role": "human", "Parts": []map[string]string{{"Text": "first"}}},
+			{"Role": "human", "Parts": []map[string]string{{"Text": "second"}}},
+			{"Role": "ai", "Parts": []map[string]string{{"Text": "same answer"}}},
+		},
+	})
+	workspace := &mockWorkspaceAPI{files: map[string]string{conversation: string(raw)}}
+	server := httptest.NewServer(workspace)
+	defer server.Close()
+	t.Setenv("WORKSPACE_API_URL", server.URL)
+	api := &StreamingAPI{}
+	for range 2 {
+		if !api.appendStructuredAssistantReply("alice", sessionID, workspacePath, "new-native-turn", "same answer", retainedCompletionEvent(sessionID, "new-native-turn", "new-completion", "same answer")) {
+			t.Fatal("failed to append the retained reply")
+		}
+	}
+	var persisted builderConversationLog
+	if json.Unmarshal([]byte(workspace.files[conversation]), &persisted) != nil || len(persisted.ConversationHistory) != 4 {
+		t.Fatalf("native reply was mistaken for an old foreground answer: %+v", persisted.ConversationHistory)
+	}
+}
+
 // A Code or Work project chat keeps its transcript inside the project and the server does not know its workspace
 // folder (a restart empties every in-memory map); the reply to a live input must still be saved, found through the
 // chat's active session.
