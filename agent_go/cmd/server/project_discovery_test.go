@@ -81,10 +81,22 @@ func TestMovedProjectDiscoveryUsesOnlyRegisteredRoot(t *testing.T) {
 			if count != 1 {
 				t.Fatalf("MCP listed project %d times: %s", count, w)
 			}
+			if items, err := listWorkspaceProjectsForOwner(ctx, fixtureUserA, fixtureUserA, "", product); err != nil || (origin == "work" && len(items) != 1) {
+				t.Fatalf("Builder directory=%v err=%v", items, err)
+			}
 			// A missing current manifest cannot redirect deletion to the old location.
 			delete(f.Mock.files, current+"/product.json")
 			if got, err := resolveProductProjectBinding(ctx, fixtureUserA, profile, id); err == nil {
 				t.Fatalf("resolved retired root: %+v", got)
+			}
+			if err := os.RemoveAll(filepath.Join(f.Docs, current)); err != nil {
+				t.Fatal(err)
+			}
+			if err := removeDeletedProjectLinks(current); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Lstat(filepath.Join(f.Docs, old)); !os.IsNotExist(err) {
+				t.Fatalf("old link remains after deletion: %v", err)
 			}
 		})
 	}

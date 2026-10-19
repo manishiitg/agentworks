@@ -389,6 +389,9 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		writeAgentProfileError(w, 500, "The Crew folder was removed, but imported publication history cleanup needs a retry.")
 		return
 	}
+	if err := removeDeletedProjectLinks(binding.WorkspacePath); err != nil {
+		log.Printf("[CREW_DELETE] project=%s old-link cleanup failed: %v", projectID, err)
+	}
 	if id, ok := projectIdentityOf(binding.WorkspacePath); ok {
 		// The project is gone: so is its registry entry (best effort; a stale entry only reserves a folder name).
 		if err := defaultProjectOwners().Remove(id.Product, id.Folder); err != nil {

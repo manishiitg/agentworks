@@ -3,11 +3,14 @@ package server
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
@@ -183,4 +186,55 @@ func projectStorageOwner(root string) string {
 		return ""
 	}
 	return owner
+}
+
+// Remove only registered old links to a project that has just been deleted.
+func removeDeletedProjectLinks(root string) error {
+	id, ok := projectIdentityOf(root)
+	if !ok {
+		return nil
+	}
+	rec, found := defaultProjectOwners().Lookup(id.Product, id.Folder)
+	if !found || projectStorageRoot(rec) != root {
+		return nil
+	}
+	docsPath := fsutil.WorkspaceDocsRoot()
+	docs, err := os.OpenRoot(docsPath)
+	if err != nil {
+		return err
+	}
+	defer docs.Close()
+	product, _ := projectProductForProfile(rec.Product)
+	for _, alias := range rec.Aliases {
+		old, ok := projectIdentityOf(alias)
+		if !ok || old.Shared || old.Product != rec.Product || old.Folder != rec.Folder || old.PathOwner != rec.OwnerID || alias == root {
+			continue
+		}
+		parent, err := openProjectDir(docs, rec.OwnerID, product.ProjectsRoot)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		info, err := parent.Lstat(rec.Folder)
+		if err == nil && info.Mode()&os.ModeSymlink != 0 {
+			target, linkErr := parent.Readlink(rec.Folder)
+			if linkErr == nil {
+				if !filepath.IsAbs(target) {
+					target = filepath.Join(docsPath, filepath.Dir(alias), target)
+				}
+				if filepath.Clean(target) == filepath.Join(docsPath, root) {
+					err = parent.Remove(rec.Folder)
+				}
+			} else {
+				err = linkErr
+			}
+		}
+		parent.Close()
+		if err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }

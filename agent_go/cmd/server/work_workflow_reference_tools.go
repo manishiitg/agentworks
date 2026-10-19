@@ -97,6 +97,9 @@ func listWorkspaceProjectsForOwner(ctx context.Context, userID, ownerID, query s
 			continue
 		}
 		seen[candidate] = true
+		if !projectDiscoveryRootIsCurrent(strings.TrimSuffix(candidate, "/product.json")) {
+			continue
+		}
 		// Another owner's Crew is listed only while it is shared with others (not made private, sharing on).
 		if access != "owner" && !crewSharedWith(strings.TrimSuffix(candidate, "/product.json"), userID) && !crewIsCoOwner(strings.TrimSuffix(candidate, "/product.json"), userID) {
 			continue
