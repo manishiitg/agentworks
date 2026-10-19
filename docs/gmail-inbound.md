@@ -40,7 +40,7 @@ trash remain excluded. Mail predating binding activation never executes.
 
 Standard server deployments package and run the one-off migration automatically
 after stopping the old backend and before activating the new release. Migration
-failure stops activation without restarting an incompatible backend. Missing or
+failure stops activation and restores the old backend against the original data. Missing or
 already migrated databases need no action; an empty old schema is updated too.
 For a custom deployment, stop the old backend and run it before starting the new one:
 

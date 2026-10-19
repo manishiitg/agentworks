@@ -71,13 +71,17 @@ class GmailMigration(unittest.TestCase):
                 self.assertNotIn('address TEXT NOT NULL UNIQUE', db.execute("SELECT sql FROM sqlite_master WHERE name='routes'").fetchone()[0])
             self.assertEqual(self.migrate(dbfile, docs).returncode, 0)
 
-    def test_failed_migration_never_activates_or_restarts_candidate(self):
+    def test_failed_migration_restores_old_backend_without_activating_candidate(self):
         rootless = (ROOT / 'deploy/rootless-linux/build-and-activate.sh').read_text()
         aws = (ROOT / 'deploy/aws-ec2/server/build-and-activate.sh').read_text()
         for label, source in [('rootless', rootless), ('aws', aws)]:
             with self.subTest(label=label), tempfile.TemporaryDirectory() as tmp:
                 app = Path(tmp)
-                dbfile, docs, manifest = old_store(app, invalid_manifest=True)
+                dbfile, docs, manifest = old_store(app)
+                # Fail inside the SQL transaction, after manifest writes.
+                with sqlite3.connect(dbfile) as db:
+                    db.execute("DROP TABLE deliveries")
+                manifest_before = manifest.read_bytes()
                 before = dbfile.read_bytes()
                 old = app / 'old'
                 old.mkdir()
@@ -93,10 +97,10 @@ class GmailMigration(unittest.TestCase):
                 systemctl.chmod(0o755)
                 if label == 'rootless':
                     cleanup = source[source.index('cleanup_build() {'):source.index('trap cleanup_build EXIT')]
-                    block = source[source.index('systemctl --user stop "$PRODUCT-agent"'):source.index('vault_install "$BUILD_DIR"')]
+                    block = source[source.index('# The personal inbox schema must be ready'):source.index('vault_install "$BUILD_DIR"')]
                     script = 'MIGRATION_STOPPED_AGENT=0\n' + cleanup + 'trap cleanup_build EXIT\n' + block
                 else:
-                    start = source.index('systemctl --user stop video-studio-agent; python3')
+                    start = source.index('stopped=1; systemctl --user stop video-studio-agent; python3')
                     end = source.index("; migration_state=", start)
                     block = source[start:end].replace('$REMOTE_RELEASE', str(release)).replace('$REMOTE_APP', str(app)).replace('/data/video-studio/docs', str(docs))
                     script = "stopped=0\ntrap 'if [ \"$stopped\" = 1 ]; then systemctl --user restart video-studio-agent; fi' EXIT\n" + block
@@ -104,10 +108,10 @@ class GmailMigration(unittest.TestCase):
                 result = subprocess.run(['bash', '-c', 'set -euo pipefail\n' + script], env=env, capture_output=True, text=True)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn('stop ', (app / 'calls').read_text())
-                self.assertNotIn('restart', (app / 'calls').read_text())
+                self.assertIn('restart', (app / 'calls').read_text())
                 self.assertEqual((app / 'current').resolve(), old.resolve())
                 self.assertEqual(dbfile.read_bytes(), before)
-                self.assertEqual(manifest.read_text(), 'invalid')
+                self.assertEqual(manifest.read_bytes(), manifest_before)
 
 
 if __name__ == '__main__':

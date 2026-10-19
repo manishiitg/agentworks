@@ -514,10 +514,13 @@ except Exception:
 done
 
 # The personal inbox schema must be ready before this release can start.
-# Keep cleanup from restarting an incompatible backend if migration fails.
+# Migration failure restores the original data, so cleanup restarts the old
+# release. After success it must never restart old code over the new schema.
+MIGRATION_STOPPED_AGENT=1
 systemctl --user stop "$PRODUCT-agent"
 python3 "$BUILD_DIR/migrations/gmail-personal-inbox.py" \
   "$REMOTE_APP/state/gmail-inbound/email.db" --workspace-root "$REMOTE_APP/data/docs"
+MIGRATION_STOPPED_AGENT=0
 ln -sfn "$BUILD_DIR" "$REMOTE_APP/current"
 MIGRATION_STOPPED_AGENT=1
 vault_install "$BUILD_DIR" "$REMOTE_APP" "$PRODUCT"
