@@ -27,7 +27,7 @@ func TestHostedAgentMessageUsesCanonicalChatKey(t *testing.T) {
 	registry, _ := json.Marshal(productConversationRegistryDocument{Version: 1, Entries: map[string]ProductConversationRecord{"code/" + key: record}})
 	initial, _ := json.Marshal(agentMessageStore{Agents: []namedMessageAgent{{ID: "agent-receiver", UserID: "owner", Name: "receiver", EverAttached: true, Attachment: &namedAgentAttachment{ID: "lease", DeliveryContract: 2}}}})
 	env.mock.mu.Lock()
-	env.mock.files[root+"/product.json"] = `{"schema_version":1,"product":"code","id":"example","owner_id":"owner","title":"Example"}`
+	env.mock.files[root+"/product.json"] = `{"schema_version":1,"product":"code","id":"example","owner_id":"owner","title":"Example","session_id":"project-main"}`
 	env.mock.files[productConversationRegistryPath("owner")] = string(registry)
 	env.mock.files[agentMessagesPath] = string(initial)
 	env.mock.mu.Unlock()
