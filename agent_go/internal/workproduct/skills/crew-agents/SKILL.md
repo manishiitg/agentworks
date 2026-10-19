@@ -1,6 +1,6 @@
 ---
 name: crew-agents
-description: Read before working with this Crew's other tabs (agents) or the person's own agents: asking, opening and naming tabs, the main chat's lead role, answers that arrive later, function tabs and AgentBridge agents.
+description: "Read before working with this Crew's other tabs (agents) or the person's own agents - asking, opening and naming tabs, the main chat's lead role, answers that arrive later, function tabs and AgentBridge agents."
 ---
 
 # Agents in this Crew
