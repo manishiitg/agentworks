@@ -24,7 +24,7 @@ import LlmModalHost from '../../components/topbar/LlmModalHost'
 import { TopBarEntitySelector } from '../../components/topbar/TopBarEntitySelector'
 import { UpdateProgressToast } from '../../components/UpdateProgressToast'
 import api, { agentApi } from '../../services/api'
-import { CHAT_MODELS_REFRESH, useWorkChatModels } from './useWorkChatModels'
+import { useWorkChatModels } from './useWorkChatModels'
 import { useAppStore } from '../../stores/useAppStore'
 import { useChatStore, waitForChatStoreHydration, type ChatTab } from '../../stores/useChatStore'
 import { useModeStore } from '../../stores/useModeStore'
@@ -476,7 +476,6 @@ function useWorkChatTab(
         if (keepActive) activateTab(keepActive)
         chatStore.setTabMetadata(canonicalTabId, { ...projectMetadata, agentProfileMCPSelectionInitialized: true })
         chatStore.setTabConfig(canonicalTabId, { selectedServers: savedServers, selectedSkills: savedSkills })
-        window.dispatchEvent(new Event(CHAT_MODELS_REFRESH))
 
         // Earlier UI versions could open the canonical session as a read-only
         // history tab. Remove only those local duplicate projections; the

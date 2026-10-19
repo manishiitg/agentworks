@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"sort"
@@ -137,6 +138,58 @@ type AgentProfileChatModel struct {
 	DisplayLabel    string `json:"display_label,omitempty"`
 }
 
+type AgentProfileEffectiveChatModel struct {
+	AgentProfileChatModel
+	Provider     string `json:"provider"`
+	ConnectionID string `json:"connection_id,omitempty"`
+	OwnModel     bool   `json:"own_model"`
+	Error        string `json:"error,omitempty"`
+}
+
+// Resolve metadata with the same engine/model validator used for a turn.
+// Only the current project choice and an explicit chat choice participate.
+func effectiveProfileChatModel(profile agentprofiles.Profile, binding productConversationBinding, chat ProductConversationRecord, own ProductAgentIdentity) (AgentProfileEffectiveChatModel, error) {
+	provider, model := resolveProfileRuntimeModel(profile.Runtime, "", "")
+	connection, effort := "", ""
+	if builder := presetPrimaryLLMForChat(binding.ProjectLLMConfig); builder != nil {
+		provider, model, connection = builder.Provider, builder.ModelID, builder.ConnectionID
+		effort, _ = builder.Options["reasoning_effort"].(string)
+	}
+	engine := ""
+	for _, option := range profile.Runtime.ProviderOptions {
+		if option.Provider == provider {
+			engine = option.ID
+			if effort == "" {
+				effort, _ = option.Options["reasoning_effort"].(string)
+			}
+			break
+		}
+	}
+	if own.Engine != "" {
+		option, offered := findProviderOptionByID(profile.Runtime.ProviderOptions, own.Engine)
+		if !offered {
+			return AgentProfileEffectiveChatModel{}, fmt.Errorf("chat engine %q is unavailable", own.Engine)
+		}
+		if option.Provider != provider {
+			connection = ""
+		}
+		engine, model, effort = own.Engine, own.ModelID, own.ReasoningEffort
+	}
+	if engine == "" {
+		return AgentProfileEffectiveChatModel{}, fmt.Errorf("the project's model provider is unavailable")
+	}
+	// An explicit engine/model avoids the legacy runtime fallback. Keep the
+	// current account binding: turn admission retains it only for this provider.
+	query, err := queryRequestForAgentProfileChat(profile, AgentProfileChatRequest{Message: "Model metadata", Engine: engine, ModelID: model, ConnectionID: connection, ReasoningEffort: effort}, chat)
+	if err != nil {
+		return AgentProfileEffectiveChatModel{}, err
+	}
+	return AgentProfileEffectiveChatModel{
+		AgentProfileChatModel: AgentProfileChatModel{ConversationKey: chat.ConversationKey, Engine: engine, ModelID: query.ModelID, ReasoningEffort: query.ReasoningEffort},
+		Provider:              query.Provider, ConnectionID: query.ConnectionID, OwnModel: own.Engine != "",
+	}, nil
+}
+
 // Presentation only: the provider catalog owns readable names; model IDs and
 // the runtime selection sent to a turn stay unchanged.
 func chatModelDisplayLabel(runtime agentprofiles.RuntimePolicy, engine, modelID string) string {
@@ -235,20 +288,30 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ConversationKey < out[j].ConversationKey })
-	provider, modelID := resolveProfileRuntimeModel(slot.profile.Runtime, "", "")
-	if builder := presetPrimaryLLMForChat(slot.binding.ProjectLLMConfig); builder != nil {
-		provider, modelID = builder.Provider, builder.ModelID
-	} else if slot.binding.ProjectLLMConfig == nil {
-		// Match turn admission for older projects: their last bound runtime
-		// wins until the project configuration is backfilled.
-		current, found, _, err := store.history(r.Context(), userID, slot.profile, slot.binding)
-		if err != nil {
-			writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if found && strings.TrimSpace(current.Provider) != "" {
-			provider, modelID = current.Provider, current.ModelID
-		}
+	chats, err := store.projectChats(r.Context(), userID, slot.profile.ID, projectID)
+	if err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
-	writeAgentProfileJSON(w, http.StatusOK, map[string]any{"chat_models": out, "default_model_label": chatModelDisplayLabel(slot.profile.Runtime, provider, modelID)})
+	effective := []AgentProfileEffectiveChatModel{}
+	for _, chat := range chats {
+		if publicationAgentID(chat.ConversationKey) != "" || !workspacePathsMatchForUser(userID, chat.WorkspacePath, slot.binding.WorkspacePath) {
+			continue
+		}
+		row, err := effectiveProfileChatModel(slot.profile, slot.binding, chat, identities[chat.ConversationKey])
+		if err == nil {
+			query := QueryRequest{Provider: row.Provider, ModelID: row.ModelID, ConnectionID: row.ConnectionID}
+			err = constrainProductChatModel(r.Context(), &query)
+			row.ModelID = query.ModelID
+		}
+		if err != nil {
+			// One unavailable selection must not hide other chats or prevent
+			// opening Models to repair it. Do not invent a replacement runtime.
+			effective = append(effective, AgentProfileEffectiveChatModel{AgentProfileChatModel: AgentProfileChatModel{ConversationKey: chat.ConversationKey, DisplayLabel: "Model unavailable"}, OwnModel: identities[chat.ConversationKey].Engine != "", Error: "Choose an available model in Models."})
+			continue
+		}
+		row.DisplayLabel = chatModelDisplayLabel(slot.profile.Runtime, row.Engine, row.ModelID)
+		effective = append(effective, row)
+	}
+	writeAgentProfileJSON(w, http.StatusOK, map[string]any{"chat_models": out, "effective_chat_models": effective, "can_open_models": slot.canBuild})
 }

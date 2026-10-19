@@ -29,7 +29,10 @@ vi.mock('../../utils/agentProfileCapabilities', async importOriginal => ({
   loadAgentProfileProviderOptions: vi.fn(async () => state.options),
 }))
 
-import { WorkModelsPanel } from './WorkModelsPanel'
+import { WorkModelsPanel as WorkModelsPanelInner } from './WorkModelsPanel'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+function WorkModelsPanel(props: React.ComponentProps<typeof WorkModelsPanelInner>) { return <QueryClientProvider client={queryClient}><WorkModelsPanelInner {...props} /></QueryClientProvider> }
 import { llmConfigService } from '../../services/llm-config-api'
 import { agentApi } from '../../services/api'
 
@@ -257,7 +260,7 @@ describe('caller-owned chat models', () => {
     museFixture()
     state.product.profileId = 'work'
     Object.assign(agentApi, { listAgentProfileChatModels: models, listAgentProfileSideChats: chats, setAgentProfileChatModel: save })
-    models.mockResolvedValue([{ conversation_key: mainKey, engine: 'muse-cli', model_id: 'muse-spark-1.3', reasoning_effort: 'high' }])
+    models.mockResolvedValue([{ conversation_key: mainKey, engine: 'muse-cli', model_id: 'muse-spark-1.3', reasoning_effort: 'high', display_label: 'Muse · Spark 1.3' }])
     chats.mockResolvedValue([{ conversation_key: 'crew:chat:review', name: 'Review', session_id: 'review-session' }])
     save.mockResolvedValue([])
     const host = document.createElement('div'); document.body.append(host)
@@ -270,8 +273,8 @@ describe('caller-owned chat models', () => {
 
   it('lists main and side chats, distinguishing an own model from the Crew default', async () => {
     const { host } = await renderChatModels()
-    expect(host.querySelector('[aria-label="Models by chat"]')?.textContent).toContain('Main chatMuse · muse-spark-1.3')
-    expect(host.querySelector('[aria-label="Models by chat"]')?.textContent).toContain('ReviewSame as Crew')
+    expect(host.querySelector('[aria-label="Models by chat"]')?.textContent).toContain('Main chatMuse · Spark 1.3')
+    expect(host.querySelector('[aria-label="Models by chat"]')?.textContent).toContain("ReviewCrew's model")
     expect(save).not.toHaveBeenCalled()
   })
 
@@ -280,23 +283,23 @@ describe('caller-owned chat models', () => {
     const { host, onRuntimeChange } = await renderChatModels()
     const main = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent?.startsWith('Main chat'))!
     await act(async () => main.click())
-    const inherit = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === 'Use Crew default')!
+    const inherit = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === "Use Crew's model")!
     await act(async () => inherit.click())
     expect(save).toHaveBeenCalledWith('work', 'crew', { conversation_key: 'crew', engine: '', model_id: undefined, reasoning_effort: undefined })
     expect(onRuntimeChange).not.toHaveBeenCalled()
-    expect(host.querySelector('[aria-label="Models by chat"]')?.textContent).toContain('Main chatSame as Crew')
+    expect(host.querySelector('[aria-label="Models by chat"]')?.textContent).toContain("Main chatCrew's model")
   })
-  it('edits the physical main-chat ID after the project pointer changes', async () => {
+  it('edits the fixed physical main-chat ID after migration', async () => {
     const metadata = state.chatTabs.project.metadata
     const original = { ...metadata }
-    Object.assign(metadata, { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: true, agentProfileConversationKey: 'crew:chat:promoted' })
+    Object.assign(metadata, { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: true, agentProfileConversationKey: 'crew:chat:root-original' })
     save.mockClear()
     try {
-      const { host, onRuntimeChange } = await renderChatModels('crew:chat:promoted')
-      expect(host.querySelector('[aria-label="Models by chat"]')?.textContent).toContain('Main chatMuse · muse-spark-1.3')
-      const reset = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === 'Use Crew default')!
+      const { host, onRuntimeChange } = await renderChatModels('crew:chat:root-original')
+      expect(host.querySelector('[aria-label="Models by chat"]')?.textContent).toContain('Main chatMuse · Spark 1.3')
+      const reset = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === "Use Crew's model")!
       await act(async () => reset.click())
-      expect(save).toHaveBeenCalledWith('work', 'crew', expect.objectContaining({ conversation_key: 'crew:chat:promoted', engine: '' }))
+      expect(save).toHaveBeenCalledWith('work', 'crew', expect.objectContaining({ conversation_key: 'crew:chat:root-original', engine: '' }))
       expect(onRuntimeChange).not.toHaveBeenCalled()
     } finally {
       for (const key of Object.keys(metadata)) Reflect.deleteProperty(metadata, key)

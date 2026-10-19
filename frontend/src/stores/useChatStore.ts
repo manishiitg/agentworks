@@ -499,6 +499,7 @@ export interface ChatTab {
     agentProfileChatModelOverride?: boolean
     // Server-rendered compact agent/model name, never used to select a runtime.
     agentProfileChatModelLabel?: string
+    agentProfileCanOpenModels?: boolean
     agentProfileEngine?: string
     // A model within that engine's provider (the composer's switcher). Sent as
     // `model_id` on every profile query; empty keeps the option's own model.

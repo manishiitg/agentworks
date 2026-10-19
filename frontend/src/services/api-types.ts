@@ -268,6 +268,14 @@ export interface AgentProfileChatModel {
   display_label?: string
 }
 
+/** Effective caller-owned runtime resolved by the server for one chat. */
+export interface AgentProfileEffectiveChatModel extends AgentProfileChatModel {
+  provider: string
+  connection_id?: string
+  own_model: boolean
+  error?: string
+}
+
 /** An open side tab of a Code or Crew project as the server knows it. */
 export interface AgentProfileSideChat {
  agent_id?: string

@@ -1,44 +1,47 @@
 import { describe, expect, it } from 'vitest'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
+import type { AgentProfileEffectiveChatModel } from '../../services/api-types'
 import { applyWorkChatModels } from './useWorkChatModels'
 import { setWorkProjectRuntimeSelection } from './workTabs'
 
 const chat = (id: string, key: string, extra: Partial<NonNullable<ChatTab['metadata']>> = {}) => ({
   tabId: id, sessionId: id, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileConversationKey: key, ...extra },
 } as ChatTab)
+const effective = (key: string, own = false): AgentProfileEffectiveChatModel => ({ conversation_key: key, engine: 'cursor', provider: 'cursor-cli', model_id: 'auto', connection_id: 'server-account', own_model: own, display_label: 'Cursor · auto' })
 
 describe('server chat-model projection', () => {
-  it('projects server labels without changing runtime identity or marking display-only updates dirty', () => {
+  it('copies effective runtime, inheritance and edit permission directly from the server', () => {
     useChatStore.setState({ chatTabs: { main: chat('main', 'crew'), side: chat('side', 'crew:chat:review') } })
-    const models = [{ conversation_key: 'crew', engine: 'cursor-cli', model_id: 'auto', display_label: 'Cursor · auto' }]
-    const fallback = { provider: 'claude-code', modelId: 'claude-sonnet-5-5' }
-    applyWorkChatModels('work', 'crew', models, fallback, 'Claude · Sonnet 5.5')
-    let tabs = useChatStore.getState().chatTabs
-    expect(tabs.main.metadata).toMatchObject({ agentProfileChatModelLabel: 'Cursor · auto', agentProfileChatModelOverride: true, agentProfileModelID: 'auto' })
-    expect(tabs.side.metadata).toMatchObject({ agentProfileChatModelLabel: 'Claude · Sonnet 5.5', agentProfileChatModelOverride: false, agentProfileModelID: 'claude-sonnet-5-5' })
+    applyWorkChatModels('work', 'crew', [effective('crew', true), effective('crew:chat:review')], false)
+    const tabs = useChatStore.getState().chatTabs
+    expect(tabs.main.metadata).toMatchObject({ agentProfileChatModelLabel: 'Cursor · auto', agentProfileChatModelOverride: true, agentProfileEngine: 'cursor', agentProfileModelID: 'auto', agentProfileConnectionID: 'server-account', agentProfileCanOpenModels: false })
+    expect(tabs.side.metadata).toMatchObject({ agentProfileChatModelOverride: false, agentProfileEngine: 'cursor', agentProfileModelID: 'auto' })
+  })
+
+  it('does not change runtime identity for label-only updates and clears stale labels on a project model change', () => {
+    useChatStore.setState({ chatTabs: { main: chat('main', 'crew'), side: chat('side', 'crew:chat:review') } })
+    const rows = [effective('crew', true), effective('crew:chat:review')]
+    applyWorkChatModels('work', 'crew', rows, true)
     useChatStore.getState().setTabMetadata('side', { agentProfileRuntimeDirty: false })
-    applyWorkChatModels('work', 'crew', models, fallback, 'Claude · Sonnet')
-    tabs = useChatStore.getState().chatTabs
-    expect(tabs.side.metadata).toMatchObject({ agentProfileChatModelLabel: 'Claude · Sonnet', agentProfileRuntimeDirty: false, agentProfileModelID: 'claude-sonnet-5-5' })
+    applyWorkChatModels('work', 'crew', [rows[0], { ...rows[1], display_label: 'Cursor · Auto' }], true)
+    expect(useChatStore.getState().chatTabs.side.metadata).toMatchObject({ agentProfileChatModelLabel: 'Cursor · Auto', agentProfileRuntimeDirty: false, agentProfileModelID: 'auto' })
     setWorkProjectRuntimeSelection('crew', 'side', { engine: 'codex-cli', provider: 'codex-cli', modelId: 'gpt-6' })
     expect(useChatStore.getState().chatTabs.side.metadata?.agentProfileChatModelLabel).toBeUndefined()
     expect(useChatStore.getState().chatTabs.main.metadata?.agentProfileChatModelLabel).toBe('Cursor · auto')
   })
 
-  it('keeps an explicit model on main while default changes update only inheriting chats', () => {
-    useChatStore.setState({ chatTabs: { main: chat('main', 'crew'), side: chat('side', 'crew:chat:review') } })
-    applyWorkChatModels('work', 'crew', [{ conversation_key: 'crew', engine: 'muse-cli', model_id: 'own-model' }], { provider: 'codex-cli', modelId: 'crew-model' })
-    setWorkProjectRuntimeSelection('crew', 'main', { engine: 'claude-code', provider: 'claude-code', modelId: 'new-crew-model' })
-    expect(useChatStore.getState().chatTabs.main.metadata).toMatchObject({ agentProfileChatModelOverride: true, agentProfileEngine: 'muse-cli', agentProfileModelID: 'own-model' })
-    expect(useChatStore.getState().chatTabs.side.metadata).toMatchObject({ agentProfileChatModelOverride: false, agentProfileModelID: 'new-crew-model' })
+  it('never invents a model for missing records or modifies other profiles, history and published agents', () => {
+    const protectedTabs = { other: chat('other', 'crew', { agentProfileId: 'code' }), history: chat('history', 'crew', { isViewOnly: true }), published: chat('published', 'crew:chat:agent-id'), missing: chat('missing', 'crew:chat:missing') }
+    useChatStore.setState({ chatTabs: { main: chat('main', 'crew', { agentProfileChatModelOverride: true }), ...protectedTabs } })
+    applyWorkChatModels('work', 'crew', [effective('crew')], true)
+    const tabs = useChatStore.getState().chatTabs
+    expect(tabs.main.metadata).toMatchObject({ agentProfileChatModelOverride: false, agentProfileConnectionID: 'server-account', agentProfileCanOpenModels: true })
+    for (const tab of Object.values(protectedTabs)) expect(tabs[tab.tabId]).toBe(tab)
   })
 
-  it('clears an override from server data and leaves other profiles, read-only and published agents untouched', () => {
-    const protectedTabs = { other: chat('other', 'crew', { agentProfileId: 'code' }), history: chat('history', 'crew', { isViewOnly: true }), published: chat('published', 'crew:chat:agent-id') }
-    useChatStore.setState({ chatTabs: { main: chat('main', 'crew', { agentProfileChatModelOverride: true }), ...protectedTabs } })
-    applyWorkChatModels('work', 'crew', [], { provider: 'codex-cli', modelId: 'default-model', connectionId: 'own-account' })
-    const tabs = useChatStore.getState().chatTabs
-    expect(tabs.main.metadata).toMatchObject({ agentProfileChatModelOverride: false, agentProfileModelID: 'default-model', agentProfileConnectionID: 'own-account' })
-    for (const tab of Object.values(protectedTabs)) expect(tabs[tab.tabId]).toBe(tab)
+  it('keeps unavailable selections repairable without inventing a replacement runtime', () => {
+    useChatStore.setState({ chatTabs: { main: chat('main', 'crew', { agentProfileEngine: 'cursor', agentProfileModelID: 'auto', agentProfileRuntimeDirty: false }) } })
+    applyWorkChatModels('work', 'crew', [{ conversation_key: 'crew', engine: '', provider: '', own_model: true, display_label: 'Model unavailable', error: 'Choose an available model in Models.' }], true)
+    expect(useChatStore.getState().chatTabs.main.metadata).toMatchObject({ agentProfileChatModelLabel: 'Model unavailable', agentProfileCanOpenModels: true, agentProfileEngine: 'cursor', agentProfileModelID: 'auto', agentProfileRuntimeDirty: false })
   })
 })
