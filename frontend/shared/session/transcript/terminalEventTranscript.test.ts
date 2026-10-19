@@ -204,6 +204,29 @@ describe('selectTerminalEvents — owned terminal (workflow step, message-sequen
 
 describe('selectTerminalEvents — main agent', () => {
   it.each([null, terminal({ session_id: 's1', owner_id: 'main:s1', execution_kind: 'main_agent' })])(
+    'keeps quick sends in order while the first durable echo replaces its pending row',
+    (main) => {
+      const message = (id: string, timestamp: string, provisional: boolean) => evt({
+        id, session_id: 's1', type: 'user_message', timestamp,
+        data: { data: { content: id, metadata: { client_message_id: id, ...(provisional ? { provisional: true } : {}) } } } as never,
+      })
+      const first = message('user:first', '2026-10-19T11:13:03.626Z', true)
+      const second = message('user:second', '2026-10-19T11:13:06.397Z', true)
+      const earlierReply = evt({ id: 'earlier-reply', session_id: 's1', type: 'unified_completion', timestamp: '2026-10-19T11:13:08Z', data: { data: { final_result: 'Earlier turn result' } } as never })
+      const echoedFirst = message(first.id, '2026-10-19T11:13:12.629Z', false)
+      const echoedSecond = message(second.id, '2026-10-19T11:13:29.732Z', false)
+      const ids = (events: PollingEvent[]) => selectTerminalEvents(events, main).map(event => event.id)
+      expect(ids([first, second])).toEqual([first.id, second.id])
+      // The store replaces each pending row by appending its durable echo.
+      // Server acceptance time is later than the other row's local send time.
+      expect(ids([second, earlierReply, echoedFirst])).toEqual(['earlier-reply', first.id, second.id])
+      expect(ids([earlierReply, echoedFirst, echoedSecond])).toEqual(['earlier-reply', first.id, second.id])
+      // Replaying a confirmed transcript still honors server timestamps.
+      expect(ids([echoedSecond, echoedFirst, earlierReply])).toEqual(['earlier-reply', first.id, second.id])
+    },
+  )
+
+  it.each([null, terminal({ session_id: 's1', owner_id: 'main:s1', execution_kind: 'main_agent' })])(
     'keeps pre-restart replies before new work when the server sequence restarts',
     (main) => {
       const oldReply = evt({

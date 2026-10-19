@@ -889,6 +889,16 @@ function isOwnTerminalLifecycleStart(event: PollingEvent, terminal: TerminalSnap
 }
 
 function compareConversationEvents(a: PollingEvent, b: PollingEvent): number {
+  // Pending sends have local timestamps, not a position in the server's
+  // transcript yet. Keep them in a stable tail until their durable echoes
+  // replace them. Otherwise the first echo's later acceptance timestamp
+  // sorts below the second pending send, briefly reversing two quick sends.
+  // Proven events still keep the server's order (including a reply that was
+  // already in progress when a person sent a follow-up).
+  const pending = (event: PollingEvent) => event.type === 'user_message' &&
+    (eventFields(event).metadata as Record<string, unknown> | undefined)?.provisional === true
+  const pendingOrder = Number(pending(a)) - Number(pending(b))
+  if (pendingOrder) return pendingOrder
   // The main chat survives server restarts; EventStore's per-session sequence
   // counter does not. Comparing those counters across restored and live events
   // placed yesterday's replies below today's work. Prefer the event timestamp
