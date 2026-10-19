@@ -290,11 +290,10 @@ describe('Crew native tab dragging', () => {
     const root = createRoot(host)
     try {
       await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats />))
-      const handle = host.querySelector('[data-chat-tab-id="a"] > .lucide-grip-vertical')!
-      expect(handle.getAttribute('class')).toContain('absolute')
-      expect(handle.getAttribute('class')).toContain('opacity-0')
-      expect(handle.getAttribute('class')).toContain('group-hover/chat-tab:opacity-100')
-      expect(handle.getAttribute('class')).toContain('group-focus-within/chat-tab:opacity-100')
+      const strip = host.querySelector('[data-testid="work-chat-tab-strip"]')!
+      expect(strip.querySelector('.lucide-grip-vertical')).toBeNull()
+      expect(strip.querySelector('[aria-label="Close a"]')).toBeNull()
+      expect(strip.querySelector('[title="Make this the main chat"]')).toBeNull()
       const dataTransfer = { setData: vi.fn(), effectAllowed: '', dropEffect: '' }
       const gesture = (kind: string, node: Element) => { const event = new Event(kind, { bubbles: true, cancelable: true }); Object.defineProperty(event, 'dataTransfer', { value: dataTransfer }); node.dispatchEvent(event) }
       await act(async () => gesture('dragstart', host.querySelector('[data-chat-tab-id="a"]')!))
@@ -303,7 +302,7 @@ describe('Crew native tab dragging', () => {
       await act(async () => gesture('drop', host.querySelector('[data-chat-tab-id="b"]')!))
       expect(order).toHaveBeenCalledWith('work', 'crew', ['crew:chat:b', 'crew:chat:a'])
       const menu = host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!
-      expect(menu.textContent).toContain('Chats · 3')
+      expect(menu.textContent).toContain('Agents · 3')
       await act(async () => menu.click())
       expect(host.querySelector('[aria-label="Project chats"]')?.textContent).toContain('a')
       expect(host.querySelector('[aria-label="Move a earlier"]')).not.toBeNull()

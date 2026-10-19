@@ -25,7 +25,6 @@ import { TopBarEntitySelector } from '../../components/topbar/TopBarEntitySelect
 import { UpdateProgressToast } from '../../components/UpdateProgressToast'
 import api, { agentApi } from '../../services/api'
 import { CHAT_MODELS_REFRESH, useWorkChatModels } from './useWorkChatModels'
-import { MAIN_CHAT_CHANGED, applyMainChatChange, canMakeMainChat } from './mainChatSwap'
 import { useAppStore } from '../../stores/useAppStore'
 import { useChatStore, waitForChatStoreHydration, type ChatTab } from '../../stores/useChatStore'
 import { useModeStore } from '../../stores/useModeStore'
@@ -416,15 +415,6 @@ function useWorkChatTab(
   legacyRuntimeHandlerRef.current = onLegacyRuntimeDiscovered
   const projectId = session?.id
   useWorkChatModels(product.profileId, projectId, session?.llmConfig, canonicalTabId)
-  const [bindingRevision, setBindingRevision] = useState(0)
-  useEffect(() => {
-    const changed = (event: Event) => {
-      const detail = (event as CustomEvent<{ profileId: string; projectId: string }>).detail
-      if (detail?.profileId === product.profileId && detail.projectId === projectId) setBindingRevision(value => value + 1)
-    }
-    window.addEventListener(MAIN_CHAT_CHANGED, changed)
-    return () => window.removeEventListener(MAIN_CHAT_CHANGED, changed)
-  }, [product.profileId, projectId])
 
   useEffect(() => {
     const target = sessionRef.current
@@ -524,7 +514,7 @@ function useWorkChatTab(
     }
     void prepare()
     return () => { cancelled = true }
-  }, [product, projectId, bindingRevision])
+  }, [product, projectId])
 
   // Manifest changes (identity, model, MCPs, or skills) update the existing
   // local tab in place. They must not restart the expensive conversation
@@ -579,37 +569,17 @@ function useWorkChatTab(
   }
 }
 
-export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allowSideChats, onMainChanged }: {
+export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allowSideChats }: {
   projectId: string
   projectName: string
   canonicalTabId: string
   profileId: string
   allowSideChats: boolean
-  onMainChanged?: () => void
 }) {
   const { chatTabs, activeTabId } = useChatStore(useShallow(state => ({
     chatTabs: state.chatTabs,
     activeTabId: state.activeTabId,
   })))
-  const [changingMain, setChangingMain] = useState(false)
-  const [mainTargetId, setMainTargetId] = useState<string | null>(null)
-  const changeMain = async () => {
-    const state = useChatStore.getState()
-    const main = state.chatTabs[canonicalTabId]
-    const target = mainTargetId ? state.chatTabs[mainTargetId] : undefined
-    const key = target?.metadata?.agentProfileConversationKey
-    if (changingMain || !main?.sessionId || !target?.sessionId || !canMakeMainChat(key, projectId)) return
-    setChangingMain(true)
-    try {
-      const result = await agentApi.makeAgentProfileMainChat(profileId, projectId, key!, main.sessionId, target.sessionId)
-      applyMainChatChange(projectId, result)
-      setMainTargetId(null)
-      window.dispatchEvent(new CustomEvent(MAIN_CHAT_CHANGED, { detail: { profileId, projectId } }))
-      window.dispatchEvent(new Event('agentworks:chat-models-refresh'))
-      onMainChanged?.()
-    } catch (cause) { state.addToast(cause instanceof Error ? cause.message : 'Could not change the main chat.', 'error') }
-    finally { setChangingMain(false) }
-  }
   const [opening, setOpening] = useState(false)
   // A new tab is a new agent and always gets a name first (owner, 2026-10-19); null = not naming.
   const [newTabName, setNewTabName] = useState<string | null>(null)
@@ -859,12 +829,12 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
           onDragOver={event => overTab(event, targetKey)}
           onDrop={event => dropTab(event, targetKey)}
           onDragEnd={endDrag}
-          className={`group/chat-tab relative flex items-center rounded border-l-2 ${dropKey === targetKey && draggingKey !== key ? 'border-primary bg-primary/10' : 'border-transparent'} ${draggingKey === key ? 'opacity-50' : ''}`}
+          className={`flex items-center rounded border-l-2 ${dropKey === targetKey && draggingKey !== key ? 'border-primary bg-primary/10' : 'border-transparent'} ${draggingKey === key ? 'opacity-50' : ''}`}
           title={key ? 'Drag to reorder this chat' : undefined}
-        >{key && <GripVertical aria-hidden="true" className="absolute left-0 top-1/2 h-3 w-2 -translate-y-1/2 cursor-grab text-muted-foreground/60 opacity-0 group-hover/chat-tab:opacity-100 group-focus-within/chat-tab:opacity-100" />}<AgentWorksChatTabItem
+        ><AgentWorksChatTabItem
         tab={tab}
         isActive={tab.tabId === activeTabId}
-        canClose={tab.tabId !== canonicalTabId}
+        canClose={false}
         isBlank={false}
         displayName={tab.tabId === canonicalTabId ? projectName : isWorkSideChatTab(tab, projectId) ? workSideChatDisplayName(tab.name) : tab.name}
         workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined}
@@ -874,7 +844,6 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         onCloseTab={closeProjectTab}
         closeStopsSession={isWorkSideChatTab(tab, projectId)}
         onRenameTab={isWorkSideChatTab(tab, projectId) ? renameSideChat : undefined}
-        onMakeMain={allowSideChats && canMakeMainChat(key, projectId) ? setMainTargetId : undefined}
       /></div>
       })}
       </div>
@@ -885,11 +854,11 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
             onClick={() => setMoreOpen(open => !open)}
             aria-expanded={moreOpen}
             className="inline-flex h-7 max-w-40 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted"
-            title="All chats: switch, reorder or close"
+            title="Agents: switch, reorder or close"
             aria-haspopup="dialog"
             data-testid="work-more-tabs"
           >
-            <span className="truncate">{`Chats · ${tabs.length}`}</span>
+            <span className="truncate">{`Agents · ${tabs.length}`}</span>
             <ChevronDown className="h-3.5 w-3.5 shrink-0" />
           </button>
           {moreOpen && (
@@ -937,8 +906,6 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         </div>
       )}
 
-
-      <ConfirmationDialog isOpen={mainTargetId !== null} onClose={() => setMainTargetId(null)} onConfirm={() => void changeMain()} isLoading={changingMain} loadingText="Changing main chat…" title="Make this the main chat?" message="Both chats keep their history. The current main chat becomes a tab. Schedules and messages sent to the main chat will go to this one." confirmText="Make main chat" type="info" />
       {allowSideChats && newTabName !== null && (
         <form
           className="flex shrink-0 items-center"
@@ -1725,7 +1692,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               chatOpen={chatOpen} panelOpen={panelOpen} splitRatio={shownSplitRatio}
               mobilePreview={reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
               onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => { if (!(isShared && sharedCrewHasDashboard === false)) setPanelOpen(true) }}
-              tabs={tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} profileId={product.profileId} allowSideChats={!isWorkSessionRun(selected)} onMainChanged={() => { void refresh() }} /> : <div className="min-w-0 flex-1" />}
+              tabs={tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} profileId={product.profileId} allowSideChats={!isWorkSessionRun(selected)} /> : <div className="min-w-0 flex-1" />}
               toolbar={<WorkWorkspaceToolbar compactContext={!localCodeSession && !isWorkSessionRun(selected)} sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={isWorkSessionRun(selected)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} />}
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView, localCodeSession) } as React.HTMLAttributes<HTMLElement>}

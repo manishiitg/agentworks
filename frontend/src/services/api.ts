@@ -53,7 +53,6 @@ import type {
   AgentProfileConversationResponse,
   AgentProfileSideChat,
   AgentProfileChatModel,
-  AgentProfileMainChatChange,
   SharedProjectFileEntry,
   SharedProjectSummary,
   CodeAdminWorkspace,
@@ -161,7 +160,6 @@ export type {
   AgentProfileConversationResponse,
   AgentProfileSideChat,
   AgentProfileChatModel,
-  AgentProfileMainChatChange,
   GetEventsResponse,
   MCPServerConfig,
   ChatSession,
@@ -1325,13 +1323,6 @@ export const agentApi = {
     const response = await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/chat-models`, { project_id: projectId, ...choice })
     if (!Array.isArray(response.data.chat_models)) throw new Error('Chat models are unavailable on this server.')
     return response.data.chat_models
-  },
-
-  makeAgentProfileMainChat: async (profileId: string, projectId: string, conversationKey: string, mainSessionId: string, targetSessionId: string): Promise<AgentProfileMainChatChange> => {
-    const response = await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/main-chat`, {
-      project_id: projectId, conversation_key: conversationKey, main_session_id: mainSessionId, side_session_id: targetSessionId,
-    })
-    return response.data
   },
 
   /** Saves the order the person dragged a project's side tabs into; answers with the tabs in that order. */

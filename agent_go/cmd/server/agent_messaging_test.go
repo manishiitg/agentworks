@@ -206,7 +206,7 @@ func TestWakeupFromAMessageChatWakesThatChat(t *testing.T) {
 	}
 }
 
-func TestMainAddressedWakeupFollowsPointerAndSessionAddressesStayPinned(t *testing.T) {
+func TestFixedMainAndPhysicalChatWakeupsStayPinned(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
 	ctx := internalBotRequestContext(context.Background(), "owner")
@@ -231,9 +231,6 @@ func TestMainAddressedWakeupFollowsPointerAndSessionAddressesStayPinned(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.setMainChat(ctx, "owner", profile, binding, target.ConversationKey, original.SessionID, target.SessionID, func(string, string) error { return nil }); err != nil {
-		t.Fatal(err)
-	}
 	endpoint := agentMessageEndpoint{UserID: "owner", Kind: triggerCallerCrew, ID: "alpha", Profile: "work", Path: linkAlphaPath, Label: "Alpha", Session: original.SessionID, ChatKey: "alpha"}
 	old := agentMessageTurn
 	t.Cleanup(func() { agentMessageTurn = old })
@@ -242,7 +239,7 @@ func TestMainAddressedWakeupFollowsPointerAndSessionAddressesStayPinned(t *testi
 		received = session
 		return internalSessionTurnResult{}, nil
 	}
-	for _, check := range []struct{ key, want string }{{"alpha", target.SessionID}, {"session:" + original.SessionID, original.SessionID}} {
+	for _, check := range []struct{ key, want string }{{"alpha", original.SessionID}, {target.ConversationKey, target.SessionID}, {"session:" + original.SessionID, original.SessionID}} {
 		endpoint.ChatKey = check.key
 		conversation := agentConversation{ID: "wakeup-pointer-test", Endpoints: [2]agentMessageEndpoint{endpoint, endpoint}}
 		if _, err := env.api.deliverAgentMessage(ctx, conversation, agentMessage{From: 0, Text: "wake up", Wakeup: true}); err != nil {

@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -14,17 +13,15 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
-var errInvalidMainChat = errors.New("choose an ordinary chat in this project")
-var errMainChatChanged = errors.New("these chats changed; reload the project before changing the main chat")
-var errMainChatBusy = errors.New("wait for both chats to finish and clear their queued messages, then try again")
+var errInvalidMainChat = errors.New("the project main chat has an invalid ID")
 
-func swappableMainChatKey(projectID, key string) bool {
+func ordinaryProjectChatKey(projectID, key string) bool {
 	id := strings.TrimPrefix(key, projectID+codeChatSideMarker)
 	return key != id && id != "" && !strings.Contains(id, ":") && !strings.HasPrefix(id, "fn.") && !strings.HasPrefix(id, "agent-")
 }
 
 func validProjectMainRecord(userID, profileID, projectID, workspace string, record ProductConversationRecord) bool {
-	return record.SessionID != "" && record.ProfileID == profileID && (record.ConversationKey == projectID || swappableMainChatKey(projectID, record.ConversationKey)) && workspacePathsMatchForUser(userID, record.WorkspacePath, workspace)
+	return record.SessionID != "" && record.ProfileID == profileID && (record.ConversationKey == projectID || ordinaryProjectChatKey(projectID, record.ConversationKey)) && workspacePathsMatchForUser(userID, record.WorkspacePath, workspace)
 }
 
 func originalMainChatKey(projectID, conversationID string) string {
@@ -32,7 +29,7 @@ func originalMainChatKey(projectID, conversationID string) string {
 	return projectID + codeChatSideMarker + "root-" + hex.EncodeToString(sum[:6])
 }
 
-// main is an address, never a physical chat ID. Transitional lazy migration:
+// main is the fixed project address, never a physical chat ID. Lazy migration:
 // move a legacy root slot once, with a plain registry backup; thereafter the
 // root address resolves only through main_chat_key. Remove this migration
 // once the owner-authorized server rollouts have moved their registries.
@@ -161,7 +158,7 @@ func (store productConversationRegistryStore) resolveProjectMainAddress(ctx cont
 			return binding, err
 		}
 	}
-	if !swappableMainChatKey(manifest.ID, mainKey) {
+	if !ordinaryProjectChatKey(manifest.ID, mainKey) {
 		return binding, errInvalidMainChat
 	}
 	record, exists := doc.Entries[productConversationRegistryEntryKey(profile.ID, mainKey)]
@@ -193,55 +190,4 @@ func (store productConversationRegistryStore) writeMainChatPointer(ctx context.C
 		return err
 	}
 	return store.write(ctx, path, string(encoded)+"\n")
-}
-
-type mainChatChange struct {
-	Main         ProductConversationRecord `json:"main"`
-	PreviousMain ProductConversationRecord `json:"previous_main"`
-}
-
-// Changing main moves only the role pointer. Every chat binding, agent name,
-// model choice, previous conversation and key-addressed caller stays intact.
-func (store productConversationRegistryStore) setMainChat(ctx context.Context, userID string, profile agentprofiles.Profile, binding productConversationBinding, targetKey, expectedMain, expectedTarget string, guard func(string, string) error) (mainChatChange, error) {
-	projectID := binding.ResourceID
-	if !isProjectProfileID(profile.ID) || projectID == "" || !swappableMainChatKey(projectID, targetKey) || binding.ManifestPath == "" {
-		return mainChatChange{}, errInvalidMainChat
-	}
-	path := productConversationRegistryPath(userID)
-	lock := productConversationRegistryMutex(path)
-	lock.Lock()
-	defer lock.Unlock()
-	doc, err := store.loadDocument(ctx, path)
-	if err != nil {
-		return mainChatChange{}, err
-	}
-	raw, found, err := store.read(ctx, binding.ManifestPath)
-	if err != nil {
-		return mainChatChange{}, err
-	}
-	if !found {
-		return mainChatChange{}, errMainChatChanged
-	}
-	var manifest productProjectManifest
-	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
-		return mainChatChange{}, err
-	}
-	previous, previousOK := doc.Entries[productConversationRegistryEntryKey(profile.ID, manifest.MainChatKey)]
-	target, targetOK := doc.Entries[productConversationRegistryEntryKey(profile.ID, targetKey)]
-	if !previousOK || !targetOK || previous.SessionID != expectedMain || target.SessionID != expectedTarget || previous.SessionID == "" || target.SessionID == "" {
-		return mainChatChange{}, errMainChatChanged
-	}
-	for _, record := range []ProductConversationRecord{previous, target} {
-		if record.ProfileID != profile.ID || !workspacePathsMatchForUser(userID, record.WorkspacePath, binding.WorkspacePath) {
-			return mainChatChange{}, fmt.Errorf("%w: both chats must belong to this project", errInvalidMainChat)
-		}
-	}
-	if err := guard(previous.SessionID, target.SessionID); err != nil {
-		return mainChatChange{}, err
-	}
-	if err := store.writeMainChatPointer(ctx, binding.ManifestPath, targetKey, target.SessionID); err != nil {
-		return mainChatChange{}, err
-	}
-	target.IsMainChat = true
-	return mainChatChange{Main: target, PreviousMain: previous}, nil
 }
