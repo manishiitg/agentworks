@@ -267,6 +267,13 @@ The three delivery states mean:
 Only the receiving agent's own acknowledgement moves a message forward;
 sending never proves receipt.
 
+An active conversation has no hourly message cap. Messages still waiting after
+24 hours stop trying to reach the receiving chat; their history and receipts
+remain available. Scheduled wakeups and server notices keep their existing behavior.
+
+Agents that have been offline for more than 12 hours leave the agent lists.
+They return automatically when they reconnect, keeping their name and message history.
+
 Live delivery depends on the provider. Claude's native session messaging and
 Codex desktop native delivery can wake idle chats; ordinary Codex CLI hooks
 need a turn boundary unless an exact shared-daemon queue route is verified.
