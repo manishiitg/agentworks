@@ -33,7 +33,7 @@ func tabFinalAnswerText(c agentConversation, m agentMessage, source, dest agentM
 			return ""
 		}
 	}
-	text := dest.Label + " finished the work you asked for (message " + m.ID + ") without writing back, so here is its last answer:\n\n" + final
+	text := dest.Label + " finished the work you asked for without writing back, so here is its last answer:\n\n" + final
 	if r := []rune(text); len(r) > codeChatMessageMaxRune {
 		text = string(r[:codeChatMessageMaxRune-1]) + "…"
 	}
