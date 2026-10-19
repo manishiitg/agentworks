@@ -108,36 +108,45 @@ func TestRetainedNativeInterruptSettlesAllCoveredInputs(t *testing.T) {
 }
 
 func TestRetainedNativeMissingCompletionHasFailureBackstop(t *testing.T) {
-	for _, paneGone := range []bool{false, true} {
-		t.Run(map[bool]string{false: "timeout", true: "pane-gone"}[paneGone], func(t *testing.T) {
-			inspect := paneAlive
-			if paneGone {
-				inspect = func(string) codingTmuxPaneState { return codingTmuxPaneMissing }
-			}
-			plat178Thresholds(t, time.Hour, 150*time.Millisecond, 10*time.Millisecond, inspect)
-			const sessionID = "retained-native-lost"
-			api, _, terminalID := newPlat178API(t, sessionID, "mlp-muse-native-lost")
-			acceptNativeTurn(api, sessionID, "first", "native-one")
-			acceptNativeTurn(api, sessionID, "later", "native-two")
-			waitNotBusy(t, api, sessionID, 2*time.Second)
-			for _, id := range []string{"first", "later"} {
-				if got := trackedStatus(api, id); got != trackedExecutionStatusFailed {
-					t.Fatalf("lost completion left %s status=%s", id, got)
-				}
-			}
-			api.retainedMainTurnsMu.Lock()
-			remaining := len(api.retainedMainTurnCanonicalIDs)
-			api.retainedMainTurnsMu.Unlock()
-			if remaining != 0 {
-				t.Fatal("failure leaked native identities")
-			}
-			if paneGone {
-				snapshot, _ := api.terminalStore.GetRaw(terminalID)
-				if snapshot.ProcessState != "closed" || snapshot.TmuxSession != "" {
-					t.Fatal("missing pane was left available for resume")
-				}
-			}
-		})
+	inspect := func(string) codingTmuxPaneState { return codingTmuxPaneMissing }
+	plat178Thresholds(t, time.Hour, time.Hour, 10*time.Millisecond, inspect)
+	const sessionID = "retained-native-lost"
+	api, _, terminalID := newPlat178API(t, sessionID, "mlp-muse-native-lost")
+	acceptNativeTurn(api, sessionID, "first", "native-one")
+	acceptNativeTurn(api, sessionID, "later", "native-two")
+	waitNotBusy(t, api, sessionID, 2*time.Second)
+	for _, id := range []string{"first", "later"} {
+		if got := trackedStatus(api, id); got != trackedExecutionStatusFailed {
+			t.Fatalf("lost completion left %s status=%s", id, got)
+		}
+	}
+	api.retainedMainTurnsMu.Lock()
+	remaining := len(api.retainedMainTurnCanonicalIDs)
+	api.retainedMainTurnsMu.Unlock()
+	if remaining != 0 {
+		t.Fatal("failure leaked native identities")
+	}
+	snapshot, _ := api.terminalStore.GetRaw(terminalID)
+	if snapshot.ProcessState != "closed" || snapshot.TmuxSession != "" {
+		t.Fatal("missing pane was left available for resume")
+	}
+}
+
+func TestRetainedNativeLongTurnKeepsItsCompletionOwner(t *testing.T) {
+	plat178Thresholds(t, time.Hour, 20*time.Millisecond, 5*time.Millisecond, paneAlive)
+	const sessionID = "retained-native-long"
+	api, _, _ := newPlat178API(t, sessionID, "mlp-muse-native-long")
+	t.Cleanup(func() { api.releaseStoppedSessionTurnMarkers(sessionID) })
+	acceptNativeTurn(api, sessionID, "long", "native-long")
+	// Exceed the cold compatibility deadline several times. A live SDK turn
+	// must still accept its eventual canonical completion, however long it runs.
+	time.Sleep(80 * time.Millisecond)
+	if !api.isSessionBusy(sessionID) || trackedStatus(api, "long") != trackedExecutionStatusRunning {
+		t.Fatal("wall-clock deadline released a legitimate native turn")
+	}
+	api.observeRetainedMainTurnEvent(sessionID, nativeCompletion(sessionID, "long-done", "native-long"))
+	if api.isSessionBusy(sessionID) || trackedStatus(api, "long") != trackedExecutionStatusCompleted {
+		t.Fatal("long native turn lost its real completion")
 	}
 }
 
@@ -147,8 +156,13 @@ func TestRetainedNativeStopClearsAcceptedIdentities(t *testing.T) {
 	acceptNativeTurn(api, sessionID, "first", "native-one")
 	acceptNativeTurn(api, sessionID, "second", "native-two")
 	api.releaseStoppedSessionTurnMarkers(sessionID)
-	if api.retainedMainTurnTracked(sessionID) || len(api.retainedMainTurnCanonicalIDs) != 0 || len(api.retainedMainTurnWatchCancels) != 0 {
+	if api.isSessionBusy(sessionID) || api.retainedMainTurnTracked(sessionID) || len(api.retainedMainTurnCanonicalIDs) != 0 || len(api.retainedMainTurnWatchCancels) != 0 {
 		t.Fatal("stopped native turn kept identities or a watchdog")
+	}
+	for _, id := range []string{"first", "second"} {
+		if got := trackedStatus(api, id); got != trackedExecutionStatusCanceled {
+			t.Fatalf("stop left accepted %s status=%s", id, got)
+		}
 	}
 }
 
@@ -161,5 +175,24 @@ func TestRetainedNativeCompletionBeforeAcknowledgementIsReconciled(t *testing.T)
 	acceptNativeTurn(api, sessionID, "accepted", "accepted-turn")
 	if api.isSessionBusy(sessionID) || api.retainedMainTurnTracked(sessionID) || trackedStatus(api, "accepted") != trackedExecutionStatusCompleted {
 		t.Fatal("a completion preceding host acknowledgement was lost")
+	}
+}
+
+func TestRetainedNativeOutOfOrderCompletionIsReconciledOnPromotion(t *testing.T) {
+	const sessionID = "retained-native-reordered"
+	api, _, _ := newPlat178API(t, sessionID, "mlp-muse-native-reordered")
+	t.Cleanup(func() { api.releaseStoppedSessionTurnMarkers(sessionID) })
+	acceptNativeTurn(api, sessionID, "first", "native-one")
+	acceptNativeTurn(api, sessionID, "second", "native-two")
+	api.eventStore.AddEvent(sessionID, nativeCompletion(sessionID, "second-ended", "native-two"))
+	api.eventStore.AddEvent(sessionID, nativeCompletion(sessionID, "first-ended", "native-one"))
+	deadline := time.Now().Add(time.Second)
+	for (api.isSessionBusy(sessionID) || trackedStatus(api, "second") == trackedExecutionStatusRunning) && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	for _, id := range []string{"first", "second"} {
+		if got := trackedStatus(api, id); got != trackedExecutionStatusCompleted {
+			t.Fatalf("out-of-order completion lost %s status=%s", id, got)
+		}
 	}
 }

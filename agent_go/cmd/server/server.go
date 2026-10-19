@@ -10292,6 +10292,17 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		eventType, sessionID, snapshot.TerminalID, snapshot.State, promotedExecutionID, outcome, retainedCompletionTurnID(event), 1+len(completedPendingExecutionIDs))
 	if promotedExecutionID == "" {
 		api.kickConversationTurnQueue(sessionID)
+	} else if nextSessionOwned {
+		// A later native completion may already be in the event store. Reconcile
+		// it after this reply is saved, preserving accepted-input/history order.
+		api.retainedMainTurnsMu.Lock()
+		identity := api.retainedMainTurnCanonicalIDs[promotedExecutionID]
+		api.retainedMainTurnsMu.Unlock()
+		nativeID := identity.ID
+		if nativeID == "" {
+			nativeID = identity.FollowupFrom
+		}
+		api.reconcileAcceptedNativeCompletions(sessionID, nativeID)
 	}
 }
 

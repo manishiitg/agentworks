@@ -695,17 +695,11 @@ func (api *StreamingAPI) releaseStoppedSessionTurnMarkers(sessionID string) {
 	if api == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
-	if retained, ok := mcpagent.LookupSession(sessionID); ok && retained != nil && retained.ActiveTurnID() != "" {
-		if err := retained.Close(); err != nil {
-			log.Printf("[STOP] session=%s could not close the retained session: %v", sessionID, err)
-		} else {
-			log.Printf("[STOP] session=%s released the retained session's active turn", sessionID)
-		}
-	}
 	api.retainedMainTurnsMu.Lock()
 	_, retainedTurn := api.retainedMainTurns[sessionID]
 	watchCancel := api.retainedMainTurnWatchCancels[sessionID]
-	for _, id := range append([]string{api.retainedMainTurnExecutionIDs[sessionID]}, api.retainedMainTurnPendingExecutionIDs[sessionID]...) {
+	executionIDs := append([]string{api.retainedMainTurnExecutionIDs[sessionID]}, api.retainedMainTurnPendingExecutionIDs[sessionID]...)
+	for _, id := range executionIDs {
 		delete(api.retainedMainTurnCanonicalIDs, id)
 	}
 	delete(api.retainedMainTurns, sessionID)
@@ -717,7 +711,18 @@ func (api *StreamingAPI) releaseStoppedSessionTurnMarkers(sessionID string) {
 	if watchCancel != nil {
 		watchCancel()
 	}
+	for _, id := range executionIDs {
+		api.completeTrackedExecution(id, trackedExecutionStatusCanceled, "coding-agent session stopped", nil)
+	}
+	if retained, ok := mcpagent.LookupSession(sessionID); ok && retained != nil && retained.ActiveTurnID() != "" {
+		if err := retained.Close(); err != nil {
+			log.Printf("[STOP] session=%s could not close the retained session: %v", sessionID, err)
+		} else {
+			log.Printf("[STOP] session=%s released the retained session's active turn", sessionID)
+		}
+	}
 	if retainedTurn {
+		api.setSessionBusy(sessionID, false)
 		log.Printf("[STOP] session=%s released the retained main turn record", sessionID)
 	}
 	if dropped := api.dropStartedConversationTurns(sessionID); dropped > 0 {

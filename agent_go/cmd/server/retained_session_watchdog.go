@@ -59,9 +59,6 @@ func (api *StreamingAPI) reconcileAcceptedNativeCompletions(sessionID, nativeID 
 // answer from a quiet pane or a previous sidecar result.
 func (api *StreamingAPI) watchMCPAgentSessionTurn(ctx context.Context, sessionID string, snapshot terminals.Snapshot, startedAt time.Time) {
 	interval := retainedMainTurnPaneCheckInterval
-	if retainedMainTurnStuckFailAfter < interval {
-		interval = retainedMainTurnStuckFailAfter
-	}
 	if interval <= 0 {
 		interval = time.Second
 	}
@@ -89,8 +86,6 @@ func (api *StreamingAPI) watchMCPAgentSessionTurn(ctx context.Context, sessionID
 			reason := ""
 			if misses >= retainedMainTurnPaneMissesToFail {
 				reason = "coding-agent terminal exited before its native turn completed"
-			} else if time.Since(startedAt) >= retainedMainTurnStuckFailAfter {
-				reason = fmt.Sprintf("coding-agent turn produced no canonical completion within %s", retainedMainTurnStuckFailAfter)
 			}
 			if reason != "" {
 				api.failMCPAgentSessionTurn(sessionID, snapshot, startedAt, reason, misses >= retainedMainTurnPaneMissesToFail)
