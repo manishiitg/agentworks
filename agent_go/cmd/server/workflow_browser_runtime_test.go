@@ -89,13 +89,28 @@ func TestWorkflowStepBrowserHTTPBridgeKeepsAccountExtension(t *testing.T) {
 	}
 	defer conn.Close()
 	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	if err := conn.WriteJSON(map[string]string{"type": "pair", "token": token, "scope": scope}); err != nil {
+	if err := conn.WriteJSON(map[string]interface{}{"type": "pair", "token": token, "scope": scope, "features": []string{"chat-clients"}}); err != nil {
 		t.Fatal(err)
 	}
 	var paired map[string]interface{}
 	if err := conn.ReadJSON(&paired); err != nil || paired["type"] != "paired" {
 		t.Fatalf("pair failed: %v", err)
 	}
+	conn.SetReadDeadline(time.Time{})
+	registered := make(chan string, 8)
+	go func() {
+		for {
+			var e map[string]interface{}
+			if conn.ReadJSON(&e) != nil {
+				return
+			}
+			if e["type"] == "client-register" {
+				id, _ := e["client_id"].(string)
+				registered <- id
+				_ = conn.WriteJSON(map[string]string{"type": "client-ready", "client_id": id})
+			}
+		}
+	}()
 
 	api := &StreamingAPI{eventStore: events.NewEventStore(10)}
 	api.eventStore.SetSessionOwner(parent, "alice")
@@ -151,11 +166,15 @@ func TestWorkflowStepBrowserHTTPBridgeKeepsAccountExtension(t *testing.T) {
 		}
 	}
 	child := parent + "-execution"
-	// Both steps used the parent's controller, rather than claiming ownership
-	// independently. Also prove conflicting identities and unregistered sessions
+	// Both steps browsed through the run's one client (the trusted root), and a
+	// second chat on the same connection gets its own client instead of being
+	// refused. Also prove conflicting identities and unregistered sessions
 	// cannot borrow this account's extension.
-	if _, release, err := m.Lookup("alice", scope).AcquireFor(context.Background(), parent); err != nil {
-		t.Fatal(err)
+	if got := len(registered); got != 1 {
+		t.Fatalf("steps registered %d clients, want the run's one", got)
+	}
+	if _, release, err := m.Lookup("alice", scope).AcquireClient(context.Background(), "builder-chat", false); err != nil {
+		t.Fatalf("another chat was locked out of the browser: %v", err)
 	} else {
 		release()
 	}

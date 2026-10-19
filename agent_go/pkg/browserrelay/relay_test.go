@@ -73,14 +73,6 @@ func TestRelayPairingIsolationAndStop(t *testing.T) {
 		t.Fatal(err)
 	}
 	release()
-	if _, release, err := b.AcquireFor(context.Background(), "chat-one"); err != nil {
-		t.Fatal(err)
-	} else {
-		release()
-	}
-	if _, _, err := b.AcquireFor(context.Background(), "chat-two"); err == nil {
-		t.Fatal("second conversation could reuse cached refs")
-	}
 	client, _, err := websocket.DefaultDialer.Dial(endpoint, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -98,7 +90,7 @@ func TestRelayPairingIsolationAndStop(t *testing.T) {
 		c.Close()
 		t.Fatal("wrong capability admitted")
 	}
-	_, focusRelease, err := b.AcquireForActive(context.Background(), "chat-one", true)
+	_, focusRelease, err := b.AcquireForActive(context.Background(), true)
 	if err != nil {
 		t.Fatal(err)
 	}

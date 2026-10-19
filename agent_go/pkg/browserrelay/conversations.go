@@ -22,6 +22,7 @@ type Client struct {
 	cdp                    *websocket.Conn
 	tabs                   int
 	recordingInterruptions uint64
+	lastUsed               time.Time
 	ready                  chan struct{}
 }
 
@@ -52,17 +53,12 @@ func (c *Client) RecordingEpoch() uint64 {
 	return c.recordingInterruptions
 }
 
-// Code conversations have independent CLI/reference state, but the project
-// gate still serializes complete tool actions. Workflow/delegate handoff and
-// legacy Crew controller behavior retain their existing root identity.
+// Every chat (a Crew tab, a Builder or Pulse chat, a workflow run) browses the
+// one shared browser through its own client: its own tabs, selected tab and
+// element references. The owner is the trusted root ID, so a run's steps and
+// delegates share the run's client. The project gate still serializes complete
+// tool actions, so two chats never act at once and none can lock the browser.
 func (b *Binding) AcquireClient(ctx context.Context, owner string, active bool) (*Client, func(), error) {
-	if b.profile != "code" {
-		endpoint, release, err := b.AcquireForActive(ctx, owner, active)
-		if err != nil {
-			return nil, nil, err
-		}
-		return &Client{binding: b, endpoint: endpoint, session: b.session}, release, nil
-	}
 	if owner == "" {
 		return nil, nil, errors.New("CHROME_EXTENSION_ACCESS: a trusted chat identity is required")
 	}
@@ -83,7 +79,7 @@ func (b *Binding) AcquireClient(ctx context.Context, owner string, active bool) 
 		return fail(b.disconnectedError())
 	}
 	if !b.chatClients {
-		return fail(errors.New("CHROME_EXTENSION_UPDATE_REQUIRED: reload Browser Bridge 0.4.6 or newer for independent Code chat tabs"))
+		return fail(errors.New("CHROME_EXTENSION_UPDATE_REQUIRED: reload Browser Bridge 0.4.6 or newer so each chat gets its own tabs"))
 	}
 	var client *Client
 	for _, c := range b.clients {
@@ -93,8 +89,23 @@ func (b *Binding) AcquireClient(ctx context.Context, owner string, active bool) 
 		}
 	}
 	if client == nil {
-		if len(b.clients) >= 32 {
-			return fail(errors.New("CHROME_EXTENSION_CLIENT_LIMIT: stop or close an unused Code chat before browsing"))
+		// At the cap the least recently used client gives way (its tabs close);
+		// it is idle, since this caller holds the gate. Refusing would make the
+		// next run fail the way one locked controller did.
+		if len(b.clients) >= maxChatClients {
+			var oldest *Client
+			for _, c := range b.clients {
+				if oldest == nil || c.lastUsed.Before(oldest.lastUsed) {
+					oldest = c
+				}
+			}
+			delete(b.clients, oldest.id)
+			if oldest.cdp != nil {
+				oldest.cdp.Close()
+				oldest.cdp = nil
+			}
+			b.extension.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			_ = b.extension.WriteJSON(envelope{Type: "client-release", ClientID: oldest.id})
 		}
 		capability := secret()
 		id := conversationID(b.key, owner)
@@ -113,6 +124,7 @@ func (b *Binding) AcquireClient(ctx context.Context, owner string, active bool) 
 			return fail(errors.New("Chrome client registration failed"))
 		}
 	}
+	client.lastUsed = time.Now()
 	b.active = active
 	b.mu.Unlock()
 	timer := time.NewTimer(10 * time.Second)
@@ -147,7 +159,9 @@ func interruptedRecording(raw json.RawMessage) bool {
 		(e.Params.Reason == "recording_target_detached" || e.Params.Reason == "recording_target_unshared")
 }
 
-// ReleaseConversation revokes only the named Code chat's private capability.
+const maxChatClients = 32
+
+// ReleaseConversation revokes only the named chat's private capability.
 // It leaves the account token, project connection and other chats untouched.
 func (m *Manager) ReleaseConversation(ctx context.Context, owner, scope string) []string {
 	if owner == "" || scope == "" {
@@ -156,7 +170,7 @@ func (m *Manager) ReleaseConversation(ctx context.Context, owner, scope string) 
 	m.mu.Lock()
 	var bindings []*Binding
 	for _, b := range m.bindings {
-		if b.profile == "code" && strings.HasSuffix(b.key, "\x00"+scope) {
+		if strings.HasSuffix(b.key, "\x00"+scope) {
 			bindings = append(bindings, b)
 		}
 	}
@@ -195,9 +209,6 @@ func (m *Manager) ReleaseConversation(ctx context.Context, owner, scope string) 
 func (b *Binding) ConversationTabs(owner string) int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.profile != "code" {
-		return b.tabs
-	}
 	for _, c := range b.clients {
 		if c.owner == owner {
 			return c.tabs

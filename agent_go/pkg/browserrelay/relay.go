@@ -56,7 +56,6 @@ type Status struct {
 type Binding struct {
 	mu                                 sync.Mutex
 	key, capability, endpoint, session string
-	owner                              string
 	clients                            map[string]*Client
 	chatClients                        bool
 	profile                            string
@@ -425,18 +424,13 @@ func (b *Binding) disconnectedError() error {
 func (b *Binding) Session() string { return b.session }
 func (b *Binding) Profile() string { return b.profile }
 func (b *Binding) Acquire(ctx context.Context) (string, func(), error) {
-	return b.AcquireFor(ctx, "")
+	return b.AcquireForActive(ctx, false)
 }
 
-// A connection has one controlling conversation. Delegates use the root ID.
-// Switching conversations requires explicit re-pairing, so cached refs from
-// another chat can never become actions in this browser session.
-func (b *Binding) AcquireFor(ctx context.Context, owner string) (string, func(), error) {
-	return b.AcquireForActive(ctx, owner, false)
-}
-
+// The project-level controller serves the connection itself; chats always
+// browse through their own client (AcquireClient), so no chat ever holds it.
 // Visible activation is opt-in for one serialized tool call, never sticky.
-func (b *Binding) AcquireForActive(ctx context.Context, owner string, active bool) (string, func(), error) {
+func (b *Binding) AcquireForActive(ctx context.Context, active bool) (string, func(), error) {
 	select {
 	case b.gate <- struct{}{}:
 	case <-ctx.Done():
@@ -448,13 +442,6 @@ func (b *Binding) AcquireForActive(ctx context.Context, owner string, active boo
 	if b.extension == nil || time.Now().After(b.expires) {
 		release()
 		return "", nil, b.disconnectedError()
-	}
-	if owner != "" {
-		if b.owner != "" && b.owner != owner {
-			release()
-			return "", nil, errors.New("CHROME_EXTENSION_BUSY: another chat controls this Chrome connection; reconnect Chrome to switch chats")
-		}
-		b.owner = owner
 	}
 	b.active = active
 	return b.endpoint, func() {
