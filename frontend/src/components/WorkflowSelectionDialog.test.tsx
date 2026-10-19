@@ -181,7 +181,12 @@ it('browses function metadata without choosing the whole project, then adds a na
   expect(onSelect).not.toHaveBeenCalled()
   expect(listFunctionReferences).toHaveBeenCalledWith('workflow:shared')
   expect(host.textContent).toContain('Export this month’s report')
-  await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="reference-functions"] button')!.click())
+  expect(document.activeElement).toBe(host.querySelector('[data-testid="reference-functions"] button'))
+  // Even if the user returns focus to search, Enter chooses the function
+  // being browsed rather than silently inserting the whole project.
+  const input = host.querySelector('input')!
+  input.focus()
+  await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })))
   expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ presetId: 'workflow:shared', workspacePath: 'Workflow/shared', functionName: 'export_report' }))
 })
 

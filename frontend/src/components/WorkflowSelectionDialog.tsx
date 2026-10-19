@@ -41,8 +41,14 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
   const [localQuery, setLocalQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const functionListRef = useRef<HTMLDivElement>(null)
   const functionRequest = useRef(0)
   const [functionResult, setFunctionResult] = useState<{ project: string; loading: boolean; items: FunctionReference[]; error?: string } | null>(null)
+  useEffect(() => {
+    if (functionResult && !functionResult.loading && functionResult.items.length > 0) {
+      functionListRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
+    }
+  }, [functionResult])
 
   // Refs so keyboard handler always has fresh values
   const selectedIndexRef = useRef(0)
@@ -222,6 +228,11 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
     const items = filteredWorkflowsRef.current
     const idx = selectedIndexRef.current
     if (items.length > 0 && idx >= 0 && idx < items.length) {
+      if (functionResult?.project === items[idx].presetId) {
+        const firstFunction = functionResult.items[0]
+        if (firstFunction) onSelectWorkflowRef.current({ ...items[idx], functionName: firstFunction.name })
+        return
+      }
       onSelectWorkflowRef.current(items[idx])
     }
   }
@@ -296,7 +307,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
                 onClick={event => { event.stopPropagation(); browseFunctions(workflow) }}
               >Functions<ChevronDown className="h-3 w-3" aria-hidden="true" /></button>}
             </div>
-            {functionResult?.project === workflow.presetId && <div className="border-b border-border bg-muted/30 py-1 pl-9 pr-3" data-testid="reference-functions">
+            {functionResult?.project === workflow.presetId && <div ref={functionListRef} className="border-b border-border bg-muted/30 py-1 pl-9 pr-3" data-testid="reference-functions">
               {functionResult.loading || functionResult.error || functionResult.items.length === 0
                 ? <p className="py-2 text-xs text-muted-foreground" role="status">{functionResult.loading ? 'Loading functions…' : functionResult.error || 'No published functions yet.'}</p>
                 : functionResult.items.map(fn => <button
