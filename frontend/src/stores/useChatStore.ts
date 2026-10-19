@@ -497,6 +497,8 @@ export interface ChatTab {
     agentProfileChatConnectionID?: string
     // True only for an explicit caller-owned chat-model registry choice.
     agentProfileChatModelOverride?: boolean
+    // Server-rendered compact agent/model name, never used to select a runtime.
+    agentProfileChatModelLabel?: string
     agentProfileEngine?: string
     // A model within that engine's provider (the composer's switcher). Sent as
     // `model_id` on every profile query; empty keeps the option's own model.

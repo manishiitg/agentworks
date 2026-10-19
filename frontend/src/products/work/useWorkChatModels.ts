@@ -11,7 +11,7 @@ export const CHAT_MODELS_CHANGED = 'agentworks:chat-models-changed'
 export const CHAT_MODELS_REFRESH = 'agentworks:chat-models-refresh'
 
 // Server registry, not local storage, owns each person's per-chat choice.
-export function applyWorkChatModels(profileId: string, projectId: string, models: AgentProfileChatModel[], fallback?: WorkLLMSelection & { engine?: string }) {
+export function applyWorkChatModels(profileId: string, projectId: string, models: AgentProfileChatModel[], fallback?: WorkLLMSelection & { engine?: string }, defaultLabel?: string) {
   const store = useChatStore.getState()
   for (const tab of Object.values(store.chatTabs)) {
     const key = tab.metadata?.agentProfileConversationKey
@@ -23,11 +23,13 @@ export function applyWorkChatModels(profileId: string, projectId: string, models
     const effort = own?.reasoning_effort || (own ? undefined : fallback?.reasoningEffort)
     const connection = !own || own.engine === (fallback?.engine || fallback?.provider) ? fallback?.connectionId : undefined
     const changed = tab.metadata?.agentProfileEngine !== engine || tab.metadata?.agentProfileModelID !== modelId || tab.metadata?.agentProfileReasoningEffort !== effort || tab.metadata?.agentProfileConnectionID !== connection
-    if (!changed && tab.metadata?.agentProfileChatModelOverride === Boolean(own)) continue
+    const label = own ? own.display_label : defaultLabel
+    if (!changed && tab.metadata?.agentProfileChatModelOverride === Boolean(own) && tab.metadata?.agentProfileChatModelLabel === label) continue
     store.setTabMetadata(tab.tabId, {
       agentProfileChatModelOverride: Boolean(own), agentProfileEngine: engine,
       agentProfileModelID: modelId, agentProfileReasoningEffort: effort,
       agentProfileConnectionID: connection,
+      agentProfileChatModelLabel: label,
       ...(changed ? { agentProfileRuntimeDirty: Boolean(tab.sessionId) } : {}),
     })
   }
@@ -40,20 +42,21 @@ export function useWorkChatModels(profileId: string, projectId: string | undefin
     let sequence = 0
     let cancelled = false
     let fallback: (WorkLLMSelection & { engine?: string }) | undefined = workLLMSelectionFromConfig(config) ?? undefined
+    let defaultLabel: string | undefined
     const apply = (models: AgentProfileChatModel[]) => {
-      if (!cancelled) applyWorkChatModels(profileId, projectId, models, fallback)
+      if (!cancelled) applyWorkChatModels(profileId, projectId, models, fallback, defaultLabel)
     }
     const load = () => {
       const current = ++sequence
       void Promise.resolve().then(async () => {
         const [models, options] = await Promise.all([
-          agentApi.listAgentProfileChatModels(profileId, projectId),
+          agentApi.getAgentProfileChatModelState(profileId, projectId),
           loadAgentProfileProviderOptions(profileId),
         ])
         const option = options.find(item => item.provider === fallback?.provider) || options.find(item => item.default) || options[0]
         if (fallback && option?.provider === fallback.provider) fallback = { ...fallback, engine: option.id }
         if (!fallback && option) fallback = { engine: option.id, provider: option.provider || option.id, modelId: option.model_id || '', reasoningEffort: typeof option.options?.reasoning_effort === 'string' ? option.options.reasoning_effort : undefined }
-        if (current === sequence) apply(models)
+        if (current === sequence) { defaultLabel = models.default_model_label; apply(models.chat_models) }
       }).catch(() => undefined) // Shared/read-only projects never gain an owner's registry access.
     }
     const changed = (event: Event) => {

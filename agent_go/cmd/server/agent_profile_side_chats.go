@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
 // AgentProfileSideChat is one open tab of a Code or Crew project as the server knows it.
@@ -132,6 +134,48 @@ type AgentProfileChatModel struct {
 	Engine          string `json:"engine,omitempty"`
 	ModelID         string `json:"model_id,omitempty"`
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	DisplayLabel    string `json:"display_label,omitempty"`
+}
+
+// Presentation only: the provider catalog owns readable names; model IDs and
+// the runtime selection sent to a turn stay unchanged.
+func chatModelDisplayLabel(runtime agentprofiles.RuntimePolicy, engine, modelID string) string {
+	provider := engine
+	for _, option := range runtime.ProviderOptions {
+		if option.ID == engine || option.Provider == engine {
+			provider = option.Provider
+			if modelID == "" {
+				modelID = option.ModelID
+			}
+			break
+		}
+	}
+	label := providerDisplayLabel(provider)
+	switch provider {
+	case "cursor-cli":
+		label = "Cursor"
+	case "claude-code":
+		label = "Claude"
+	case "codex-cli":
+		label = "Codex"
+	case "pi-cli":
+		label = "Pi"
+	}
+	model := modelNameForProviderModel(provider, modelID)
+	if strings.EqualFold(modelID, "auto") {
+		model = "auto"
+	}
+	if provider == "claude-code" {
+		model = strings.TrimPrefix(model, "Claude ")
+	}
+	model = strings.TrimSuffix(model, " (Cursor Agent CLI)")
+	if model == "" {
+		model = "default"
+	}
+	if label == "" {
+		return model
+	}
+	return label + " · " + model
 }
 
 // handleAgentProfileChatModels lists (GET ?project_id=) or sets (POST) the model of each chat of one project: the
@@ -187,9 +231,24 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 	out := []AgentProfileChatModel{}
 	for key, identity := range identities {
 		if identity.Engine != "" {
-			out = append(out, AgentProfileChatModel{ConversationKey: key, Engine: identity.Engine, ModelID: identity.ModelID, ReasoningEffort: identity.ReasoningEffort})
+			out = append(out, AgentProfileChatModel{ConversationKey: key, Engine: identity.Engine, ModelID: identity.ModelID, ReasoningEffort: identity.ReasoningEffort, DisplayLabel: chatModelDisplayLabel(slot.profile.Runtime, identity.Engine, identity.ModelID)})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ConversationKey < out[j].ConversationKey })
-	writeAgentProfileJSON(w, http.StatusOK, map[string]any{"chat_models": out})
+	provider, modelID := resolveProfileRuntimeModel(slot.profile.Runtime, "", "")
+	if builder := presetPrimaryLLMForChat(slot.binding.ProjectLLMConfig); builder != nil {
+		provider, modelID = builder.Provider, builder.ModelID
+	} else if slot.binding.ProjectLLMConfig == nil {
+		// Match turn admission for older projects: their last bound runtime
+		// wins until the project configuration is backfilled.
+		current, found, _, err := store.history(r.Context(), userID, slot.profile, slot.binding)
+		if err != nil {
+			writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if found && strings.TrimSpace(current.Provider) != "" {
+			provider, modelID = current.Provider, current.ModelID
+		}
+	}
+	writeAgentProfileJSON(w, http.StatusOK, map[string]any{"chat_models": out, "default_model_label": chatModelDisplayLabel(slot.profile.Runtime, provider, modelID)})
 }

@@ -8,6 +8,23 @@ const chat = (id: string, key: string, extra: Partial<NonNullable<ChatTab['metad
 } as ChatTab)
 
 describe('server chat-model projection', () => {
+  it('projects server labels without changing runtime identity or marking display-only updates dirty', () => {
+    useChatStore.setState({ chatTabs: { main: chat('main', 'crew'), side: chat('side', 'crew:chat:review') } })
+    const models = [{ conversation_key: 'crew', engine: 'cursor-cli', model_id: 'auto', display_label: 'Cursor · auto' }]
+    const fallback = { provider: 'claude-code', modelId: 'claude-sonnet-5-5' }
+    applyWorkChatModels('work', 'crew', models, fallback, 'Claude · Sonnet 5.5')
+    let tabs = useChatStore.getState().chatTabs
+    expect(tabs.main.metadata).toMatchObject({ agentProfileChatModelLabel: 'Cursor · auto', agentProfileChatModelOverride: true, agentProfileModelID: 'auto' })
+    expect(tabs.side.metadata).toMatchObject({ agentProfileChatModelLabel: 'Claude · Sonnet 5.5', agentProfileChatModelOverride: false, agentProfileModelID: 'claude-sonnet-5-5' })
+    useChatStore.getState().setTabMetadata('side', { agentProfileRuntimeDirty: false })
+    applyWorkChatModels('work', 'crew', models, fallback, 'Claude · Sonnet')
+    tabs = useChatStore.getState().chatTabs
+    expect(tabs.side.metadata).toMatchObject({ agentProfileChatModelLabel: 'Claude · Sonnet', agentProfileRuntimeDirty: false, agentProfileModelID: 'claude-sonnet-5-5' })
+    setWorkProjectRuntimeSelection('crew', 'side', { engine: 'codex-cli', provider: 'codex-cli', modelId: 'gpt-6' })
+    expect(useChatStore.getState().chatTabs.side.metadata?.agentProfileChatModelLabel).toBeUndefined()
+    expect(useChatStore.getState().chatTabs.main.metadata?.agentProfileChatModelLabel).toBe('Cursor · auto')
+  })
+
   it('keeps an explicit model on main while default changes update only inheriting chats', () => {
     useChatStore.setState({ chatTabs: { main: chat('main', 'crew'), side: chat('side', 'crew:chat:review') } })
     applyWorkChatModels('work', 'crew', [{ conversation_key: 'crew', engine: 'muse-cli', model_id: 'own-model' }], { provider: 'codex-cli', modelId: 'crew-model' })

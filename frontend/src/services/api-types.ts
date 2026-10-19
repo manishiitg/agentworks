@@ -265,6 +265,7 @@ export interface AgentProfileChatModel {
   engine: string
   model_id?: string
   reasoning_effort?: string
+  display_label?: string
 }
 
 /** An open side tab of a Code or Crew project as the server knows it. */

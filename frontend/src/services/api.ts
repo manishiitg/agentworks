@@ -1319,6 +1319,12 @@ export const agentApi = {
     return response.data.chat_models
   },
 
+  getAgentProfileChatModelState: async (profileId: string, projectId: string): Promise<{ chat_models: AgentProfileChatModel[]; default_model_label?: string }> => {
+    const response = await api.get(`/api/agent-profiles/${encodeURIComponent(profileId)}/chat-models`, { params: { project_id: projectId } })
+    if (!Array.isArray(response.data.chat_models)) throw new Error('Chat models are unavailable on this server.')
+    return response.data
+  },
+
   setAgentProfileChatModel: async (profileId: string, projectId: string, choice: AgentProfileChatModel): Promise<AgentProfileChatModel[]> => {
     const response = await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/chat-models`, { project_id: projectId, ...choice })
     if (!Array.isArray(response.data.chat_models)) throw new Error('Chat models are unavailable on this server.')
