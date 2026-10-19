@@ -77,7 +77,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   const [tick, setTick] = useState(0)
   const [opening, setOpening] = useState<string | null>(null)
   const [closing, setClosing] = useState<string | null>(null)
-  const [collapsed, setCollapsed] = useState<string[]>([])
+  const [collapsed, setCollapsed] = useState<string[]>(['Recent'])
   const [visibleRecent, setVisibleRecent] = useState(8)
   const allowed = intersectAllowedProductSurfaces(enabledProductSurfaces(), user?.allowed_products)
   useLiveRefetch(
@@ -94,7 +94,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   )
   useEffect(() => {
     setLimit(30)
-    setCollapsed([])
+    setCollapsed(['Recent'])
     setVisibleRecent(8)
   }, [scope])
   useEffect(() => {
@@ -374,11 +374,17 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     const origin = row.originLabel || (trigger === 'Scheduled' ? 'Schedule' : trigger) || ''
     const SourceIcon = origin === 'Slack' ? Slack : origin === 'WhatsApp' ? MessageCircle : trigger === 'Webhook' ? Webhook : scheduled ? CalendarClock : MessageSquare
     const sourceLabel = origin || (scheduled ? 'Schedule' : 'Chat')
+    const hasSourceIcon = !!workspaceEntry || !!origin || scheduled || row.builder || /^Chat(?: \d+)?$/.test(title)
+    // Repeat times only when they distinguish otherwise identical runs. Exact
+    // timestamps and origins remain in the hover/accessibility labels.
+    const repeatedRun = scheduled && rows.some(other => other.id !== row.id && other.scheduled &&
+      other.surface === row.surface && other.workflowId === row.workflowId &&
+      other.projectId === row.projectId && other.workspace === row.workspace &&
+      sidebarChatDisplayTitle(other, workspaceTitle) === title)
     const details = [
       duplicateWorkspaceName ? PRODUCT_SURFACE_LABELS[row.surface] : '',
-      origin && !title.startsWith(origin) ? origin : '',
-      row.waiting ? 'Needs you' : row.group === 'Running' ? 'Working' : '',
-      scheduled ? date : '',
+      row.waiting ? 'Needs you' : '',
+      repeatedRun ? date : '',
     ]
       .filter(Boolean)
       .join(' · ')
@@ -389,6 +395,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
         <button
           type="button"
           title={`${isGeneratedSidebarPrompt(row.title) ? title : row.title} · ${PRODUCT_SURFACE_LABELS[row.surface]}${date ? ` · ${date}` : ''}`}
+          aria-label={`${title} · ${PRODUCT_SURFACE_LABELS[row.surface]}${sourceLabel !== 'Chat' ? ` · ${sourceLabel}` : ''}${date ? ` · ${date}` : ''}${row.waiting ? ' · Needs you' : row.group === 'Running' ? ' · Running' : ''}`}
           aria-current={selected ? 'page' : undefined}
           onClick={() => {
             void open(row).catch(() =>
@@ -397,13 +404,13 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
           }}
           className={`mb-0.5 flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${canClose ? 'pr-8' : ''} ${selected ? 'bg-foreground/[0.08] text-foreground' : 'text-foreground/75 hover:bg-muted hover:text-foreground'}`}
         >
-          <span className="shrink-0 opacity-60" title={sourceLabel} aria-hidden="true">
+          {hasSourceIcon && <span className="shrink-0 opacity-60" title={sourceLabel} aria-hidden="true">
             {workspaceEntry ? (
               <ProductSurfaceIcon surface={row.surface} className="h-4 w-4" />
             ) : (
               <SourceIcon className="h-3.5 w-3.5" />
             )}
-          </span>
+          </span>}
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[13px] leading-5">{title}</span>
             {details && (
@@ -491,7 +498,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
           <ProductSurfaceIcon surface={workspace.surface} className="h-4 w-4 shrink-0" />
           <span className="min-w-0 flex-1 truncate font-medium">{workspace.title}</span>
           {workspaces.filter(item => item.title === workspace.title).length > 1 && <span className="text-[10px] text-muted-foreground">{PRODUCT_SURFACE_LABELS[workspace.surface]}</span>}
-          {(running > 0 || waiting > 0) && <span
+          {hidden && (running > 0 || waiting > 0) && <span
             className={`shrink-0 text-[10px] tabular-nums ${waiting ? 'text-amber-500' : running ? 'text-primary' : 'text-muted-foreground/60'}`}
           >
             {[running ? `${running} working` : '', waiting ? `${waiting} needs you` : '']

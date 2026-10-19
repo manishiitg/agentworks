@@ -168,15 +168,37 @@ it('shows per-chat running state under one collapsible workspace without merging
   mocks.history.mockResolvedValue({ sessions: [] })
   await render(async (host) => {
     const heading = host.querySelector<HTMLButtonElement>('[title="Code · Accounting · 2 chats · 2 running"]')!
-    expect(heading.textContent).toContain('2 working')
+    expect(heading.textContent).not.toContain('2 working')
     const panel = host.querySelector<HTMLDivElement>(`#${heading.getAttribute('aria-controls')}`)!
     expect(panel.querySelectorAll('[title="Analysis · Code"]')).toHaveLength(2)
     expect(panel.querySelectorAll('[aria-label="Running"]')).toHaveLength(2)
     await act(async () => heading.click())
     expect(panel.hidden).toBe(true)
     expect(heading.getAttribute('aria-expanded')).toBe('false')
+    expect(heading.textContent).toContain('2 working')
     await act(async () => heading.click())
     expect(panel.hidden).toBe(false)
+    expect(heading.textContent).not.toContain('2 working')
+  })
+})
+
+it('starts Recent collapsed and keeps ordinary named chats free of repeated status text', async () => {
+  mocks.tabs = {
+    analysis: { tabId: 'analysis', sessionId: 'analysis', name: 'Monthly analysis', createdAt: 1, isStreaming: true,
+      metadata: { agentProfileId: 'code', agentProfileProjectId: 'one', agentProfileProjectTitle: 'Accounting' } },
+  }
+  mocks.history.mockResolvedValue({ sessions: [{ session_id: 'code:project:old', title: 'Previous report' }] })
+  await render(async host => {
+    const recent = host.querySelector<HTMLButtonElement>('[aria-controls="sidebar-chats-recent"]')!
+    const panel = host.querySelector<HTMLDivElement>('#sidebar-chats-recent')!
+    expect(recent.getAttribute('aria-expanded')).toBe('false')
+    expect(panel.hidden).toBe(true)
+    const chat = host.querySelector<HTMLButtonElement>('[title="Monthly analysis · Code"]')!
+    expect(chat.textContent).toBe('Monthly analysis')
+    expect(chat.querySelector('[aria-label="Running"]')).not.toBeNull()
+    await act(async () => recent.click())
+    expect(panel.hidden).toBe(false)
+    expect(panel.textContent).toContain('Previous report')
   })
 })
 
