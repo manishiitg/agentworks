@@ -1460,6 +1460,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 					continue
 				}
 				offer.AgentLiveMessage = message
+				// The caller receives the body in this response; only receipt and
+				// routing metadata need to remain in the local journal.
+				offer.Message = ""
 				offer.AttachmentID = via.Attachment.ID
 				offer.Offered, offer.Suppressed = true, false
 				offer.Transport, offer.OfferedAt = "mailbox", time.Now().UTC()
