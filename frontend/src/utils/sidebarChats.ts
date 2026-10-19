@@ -16,7 +16,9 @@ import type { WorkflowBuilderBindings } from './currentWorkflowBuilder'
 
 export type SidebarProject = {
   id: string
+  workspaceId?: string
   workspacePath: string
+  aliases?: string[]
   title: string
   surface: 'work' | 'code'
 }
@@ -118,6 +120,7 @@ export function sidebarChats({
   presets,
   allowed,
   projects = [],
+  projectInventoryKnown = false,
   allowedWorkflowIds,
   jobs = [],
   builders,
@@ -128,6 +131,7 @@ export function sidebarChats({
   presets: (CustomPreset | PredefinedPreset)[]
   allowed: ProductSurface[]
   projects?: SidebarProject[]
+  projectInventoryKnown?: boolean
   allowedWorkflowIds?: string[] | null
   jobs?: ScheduledJob[]
   builders?: WorkflowBuilderBindings
@@ -138,6 +142,8 @@ export function sidebarChats({
     (!allowedWorkflowIds ||
       !['agentworks', 'relays'].includes(row.surface) ||
       (!!row.workflowId && allowedWorkflowIds.includes(row.workflowId)))
+  const collect = (row: SidebarChat) => accepts(row) ||
+    (projectInventoryKnown && (row.surface === 'work' || row.surface === 'code') && !!row.projectId)
   for (const tab of Object.values(tabs)) {
     const meta = tab.metadata
     const scope = sidebarScope(
@@ -196,7 +202,7 @@ export function sidebarChats({
         meta?.agentProfileProjectTitle ||
         row.workspace?.split('/').filter(Boolean).pop() ||
         row.title
-    if (accepts(row) && (!rows.has(id) || tab.lastAccessedAt! > rows.get(id)!.time))
+    if (collect(row) && (!rows.has(id) || tab.lastAccessedAt! > rows.get(id)!.time))
       rows.set(id, row)
   }
   for (const session of active) {
@@ -259,7 +265,7 @@ export function sidebarChats({
       activity: session,
       waiting: runtimeNeedsUserInput(session),
     }
-    if (accepts(row)) rows.set(row.id, row)
+    if (collect(row)) rows.set(row.id, row)
   }
   for (const session of recent) {
     const existing = rows.get(session.session_id)
@@ -303,7 +309,28 @@ export function sidebarChats({
       history: { ...session, workspace_path: workspace },
       waiting: false,
     }
-    if (accepts(row)) rows.set(row.id, row)
+    if (collect(row)) rows.set(row.id, row)
+  }
+  // Only the server's canonical inventory may join legacy project aliases.
+  // Names never identify a project. Failed/loading discovery is not revocation.
+  if (projectInventoryKnown) {
+    for (const [id, row] of rows) {
+      if (row.surface !== 'work' && row.surface !== 'code') continue
+      const matchingPath = row.workspace ? projects.filter(project =>
+        [project.workspacePath, ...(project.aliases || [])].some(path => normalizedWorkspace(path) === normalizedWorkspace(row.workspace))) : []
+      const candidates = matchingPath.length > 0 ? matchingPath : projects.filter(project => project.surface === row.surface && project.id === row.projectId)
+      const project = candidates.length === 1 ? candidates[0] : undefined
+      if (!project) {
+        rows.delete(id)
+        continue
+      }
+      row.surface = project.surface
+      row.projectId = project.id
+      row.workspace = project.workspacePath
+      row.workspaceTitle = project.title
+      if (row.history) row.history = { ...row.history, workspace_path: project.workspacePath }
+      if (!accepts(row)) rows.delete(id)
+    }
   }
   // The scheduler encodes the first eight job-ID characters in run IDs.
   // Resolve only a unique scoped match; prefix collisions must never mislabel a run.

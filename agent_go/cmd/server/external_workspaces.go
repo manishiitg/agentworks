@@ -109,37 +109,7 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 	}
 
 	if action == "list" {
-		items := []map[string]any{}
-		seen := map[string]bool{}
-		for _, product := range projectProducts {
-			if !workspaceOriginAllowed(claims, product.ProfileID) {
-				continue
-			}
-			profile, err := api.agentProfiles.Resolve(product.ProfileID, 0, claims.UserID)
-			if err != nil {
-				continue
-			}
-			owners := append([]string{claims.UserID}, crewProjectOwnerCandidates(claims.UserID)...)
-			for _, owner := range owners {
-				rows := listProjectsForOwner(r.Context(), claims, profile, owner, owner != claims.UserID)
-				for _, row := range rows {
-					if q := strings.ToLower(strings.TrimSpace(externalArg(args, "query"))); q != "" && !strings.Contains(strings.ToLower(row.Title), q) {
-						continue
-					}
-					key := product.ProfileID + ":" + row.ID
-					if seen[key] {
-						continue
-					}
-					binding, doc, ok := api.resolveExternalWorkspace(r.Context(), claims, key)
-					if !ok {
-						continue
-					}
-					seen[key] = true
-					items = append(items, map[string]any{"workspace_id": key, "id": doc.ID, "profile_id": product.ProfileID, "name": doc.displayTitle(), "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller]})
-				}
-			}
-		}
-		externalJSON(w, map[string]any{"workspaces": items})
+		api.listExternalWorkspaces(w, r, args, false)
 		return
 	}
 	if action == "create" || action == "import" {
@@ -293,10 +263,73 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 	api.externalCrewCall(w, r, member, memberArgs)
 }
 
+// Navigation adds app-only routing metadata to the same admitted workspace list.
+// Origin, canonical root and audience remain decided by the existing resolvers.
+func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.Request, args map[string]any, navigation bool) {
+	claims := GetUserFromContext(r.Context())
+	items := []map[string]any{}
+	seen := map[string]bool{}
+	for _, product := range projectProducts {
+		if !workspaceOriginAllowed(claims, product.ProfileID) {
+			continue
+		}
+		profile, err := api.agentProfiles.Resolve(product.ProfileID, 0, claims.UserID)
+		if err != nil {
+			continue
+		}
+		owners := append([]string{claims.UserID}, crewProjectOwnerCandidates(claims.UserID)...)
+		for _, owner := range owners {
+			rows := listProjectsForOwner(r.Context(), claims, profile, owner, owner != claims.UserID)
+			for _, row := range rows {
+				if q := strings.ToLower(strings.TrimSpace(externalArg(args, "query"))); q != "" && !strings.Contains(strings.ToLower(row.Title), q) {
+					continue
+				}
+				key := product.ProfileID + ":" + row.ID
+				if seen[key] {
+					continue
+				}
+				binding, doc, ok := api.resolveExternalWorkspace(r.Context(), claims, key)
+				if !ok {
+					continue
+				}
+				seen[key] = true
+				item := map[string]any{"workspace_id": key, "id": doc.ID, "profile_id": product.ProfileID, "name": doc.displayTitle(), "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller]}
+				if navigation {
+					root := binding.Binding.WorkspacePath
+					item["workspace_path"] = canonicalChatHistoryWorkspacePath(claims.UserID, root)
+					if identity, known := projectIdentityOf(root); known {
+						if record, registered := defaultProjectOwners().Lookup(identity.Product, identity.Folder); registered && record.ProjectID == doc.ID && projectStorageRoot(record) == root {
+							aliases := []string{}
+							for _, alias := range record.Aliases {
+								aliases = append(aliases, canonicalChatHistoryWorkspacePath(claims.UserID, alias))
+							}
+							item["aliases"] = aliases
+						}
+					}
+				}
+				items = append(items, item)
+			}
+		}
+	}
+	externalJSON(w, map[string]any{"workspaces": items})
+}
+
 func (api *StreamingAPI) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
 	var args map[string]any
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20)).Decode(&args); err != nil {
 		externalError(w, 400, "invalid_arguments", "Send a workspace action.")
+		return
+	}
+	if externalArg(args, "action") == "list" && externalArg(args, "detail") == "navigation" {
+		claims := GetUserFromContext(r.Context())
+		if claims == nil || strings.TrimSpace(claims.UserID) == "" || claims.AccessToken != nil || claims.Scope != "" ||
+			claims.ExecutionPrincipal != nil || claims.ExternalBuilderOperationID != "" || claims.BotRouteGrant != "" ||
+			claims.Provider == "bot_owner" || claims.Provider == "bot_route" || claims.Provider == slackDMProvider || !externalWorkspaceAllowed(claims) {
+			externalError(w, http.StatusForbidden, "forbidden", "Sign in to browse projects.")
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		api.listExternalWorkspaces(w, r, args, true)
 		return
 	}
 	api.externalWorkspaceCall(w, r, args)

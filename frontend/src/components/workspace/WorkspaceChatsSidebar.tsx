@@ -66,6 +66,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   const [directory, setDirectory] = useState<{
     scope: string
     projects: SidebarProject[]
+    authoritative: boolean
   } | null>(null)
   const [scheduleCatalog, setScheduleCatalog] = useState<{
     scope: string
@@ -75,6 +76,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   const resumeHistory = useResumePreviousChat()
   const [limit, setLimit] = useState(30)
   const [tick, setTick] = useState(0)
+  const [directoryTick, setDirectoryTick] = useState(0)
   const [opening, setOpening] = useState<string | null>(null)
   const [closing, setClosing] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState<string[]>(['Recent'])
@@ -92,6 +94,10 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       minIntervalMs: 2000,
     }
   )
+  useLiveRefetch(() => setDirectoryTick(value => value + 1), {
+    kinds: ['sessions'], fallbackMs: 60000, safetyMs: 60000, minIntervalMs: 30000,
+    enabled: allowed.includes('work') || allowed.includes('code'),
+  })
   useEffect(() => {
     setLimit(30)
     setCollapsed(['Recent'])
@@ -140,37 +146,30 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   }, [scope, limit, tick, presets.map((preset) => preset.id).join(','), allowed.join(',')])
   useEffect(() => {
     let disposed = false
-    void import('../../products/work/workSessions')
-      .then(async (module) => {
-        const { CODE_PRODUCT } = await import('../../products/work/projectProduct')
-        const results = await Promise.allSettled([
-          allowed.includes('work') ? module.loadWorkSessionsIncludingShared() : Promise.resolve([]),
-          allowed.includes('code')
-            ? module.loadWorkSessionsIncludingShared(CODE_PRODUCT)
-            : Promise.resolve([]),
-        ])
-        if (!disposed)
+    const identity = captureChatIdentity()
+    if (!allowed.includes('work') && !allowed.includes('code')) {
+      setDirectory({ scope, projects: [], authoritative: true })
+      return
+    }
+    void agentApi.listWorkspaceNavigation()
+      .then(result => {
+        if (!disposed && isChatIdentityCurrent(identity))
           setDirectory({
             scope,
-            projects: results.flatMap((result, index) =>
-              result.status === 'fulfilled'
-                ? result.value.map((item) => ({
-                    id: item.id,
-                    workspacePath: item.workspacePath,
-                    title: item.identity?.name || item.title,
-                    surface: index === 0 ? ('work' as const) : ('code' as const),
-                  }))
-                : []
-            ),
+            authoritative: true,
+            projects: result.workspaces.filter(item => allowed.includes(item.profile_id)).map(item => ({
+              id: item.id, workspaceId: item.workspace_id, workspacePath: item.workspace_path,
+              aliases: item.aliases, title: item.name, surface: item.profile_id,
+            })),
           })
       })
       .catch(() => {
-        if (!disposed) setDirectory({ scope, projects: [] })
+        if (!disposed && isChatIdentityCurrent(identity)) setDirectory({ scope, projects: [], authoritative: false })
       })
     return () => {
       disposed = true
     }
-  }, [scope, allowed.join(',')])
+  }, [scope, directoryTick, allowed.join(','), Object.keys(tabs).join(',')])
   useEffect(() => {
     let disposed = false
     const identity = captureChatIdentity()
@@ -245,6 +244,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
         presets,
         allowed,
         projects: directory?.scope === scope ? directory.projects : [],
+        projectInventoryKnown: directory?.scope === scope && directory.authoritative,
         allowedWorkflowIds: user?.allowed_workflow_ids,
         jobs: scheduleCatalog?.scope === scope ? scheduleCatalog.jobs : [],
         builders: builderBindings,
@@ -582,6 +582,11 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
             </div>
           </section>
         )}
+        {directory?.scope === scope && !directory.authoritative && (
+          <button className="px-2 py-3 text-left text-xs text-muted-foreground underline" onClick={() => setDirectoryTick(value => value + 1)}>
+            Some projects could not load. Try again.
+          </button>
+        )}
         {!history && (
           <p className="px-2 py-3 text-xs text-muted-foreground">Loading recent chats…</p>
         )}
@@ -593,7 +598,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
             Some recent chats could not load · Retry
           </button>
         )}
-        {history && !history.error && !rows.length && (
+        {history && !history.error && !rows.length && directory?.scope === scope && directory.authoritative && (
           <p className="px-2 py-3 text-xs text-muted-foreground">No chats yet.</p>
         )}
         {history &&

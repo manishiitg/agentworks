@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   active: [] as any[],
   selectedTab: null as string | null,
   history: vi.fn(),
+  navigation: vi.fn(async () => { throw new Error('inventory unavailable') }),
   openTab: vi.fn(),
   setMetadata: vi.fn(),
   openActivity: vi.fn(),
@@ -56,7 +57,7 @@ vi.mock('../../stores/useProductSurfaceStore', () => ({
   }),
 }))
 vi.mock('../../api/scheduler', () => ({ schedulerApi: { listJobs: async () => ({ jobs: [] }) } }))
-vi.mock('../../services/api', () => ({ agentApi: { listChatHistorySessions: mocks.history } }))
+vi.mock('../../services/api', () => ({ agentApi: { listChatHistorySessions: mocks.history, listWorkspaceNavigation: mocks.navigation } }))
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: vi.fn() }))
 vi.mock('../../hooks/useResumePreviousChat', () => ({ useResumePreviousChat: () => mocks.resume }))
 vi.mock('./SidebarStepInspections', () => ({ default: () => null }))
@@ -149,7 +150,7 @@ it('discards an old account’s late history response', async () => {
       finish({ sessions: [{ session_id: 'code:project:private', title: 'Alice private chat' }] })
     )
     expect(host.textContent).not.toContain('Alice private chat')
-    expect(host.textContent).toContain('No chats yet.')
+    expect(host.textContent).toContain('Some projects could not load')
   })
 })
 it('does not turn an unavailable history catalog into a false empty state', async () => {
@@ -265,8 +266,8 @@ it('labels the parent source and returns from inspection to the parent chat', as
   }
   mocks.history.mockResolvedValue({sessions:[]})
   await render(async host=>{
-    expect(host.querySelector('[title="Daily briefing · Goals"]')?.textContent).toContain('Schedule')
-    expect(host.querySelector('[title="Customer question · Goals"]')?.textContent).toContain('WhatsApp')
+    expect(host.querySelector('[title="Daily briefing · Goals"]')?.getAttribute('aria-label')).toContain('Schedule')
+    expect(host.querySelector('[title="Customer question · Goals"]')?.getAttribute('aria-label')).toContain('WhatsApp')
     const main=host.querySelector<HTMLButtonElement>('[title="Planning · Goals"]')!
     expect(main.textContent).toBe('Planning')
     await act(async()=>main.click())

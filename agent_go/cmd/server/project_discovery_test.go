@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
@@ -81,6 +83,32 @@ func TestMovedProjectDiscoveryUsesOnlyRegisteredRoot(t *testing.T) {
 			if count != 1 {
 				t.Fatalf("MCP listed project %d times: %s", count, w)
 			}
+			// The sidebar uses this same list, with the registered old spelling
+			// supplied only to the signed-in app for grouping existing chats.
+			nav := httptest.NewRecorder()
+			f.API.handleWorkspaces(nav, httptest.NewRequest("POST", "/api/workspaces", strings.NewReader(`{"action":"list","detail":"navigation"}`)).WithContext(ctx))
+			var navigation struct {
+				Workspaces []struct {
+					WorkspaceID string   `json:"workspace_id"`
+					Path        string   `json:"workspace_path"`
+					Aliases     []string `json:"aliases"`
+				} `json:"workspaces"`
+			}
+			if nav.Code != 200 || json.Unmarshal(nav.Body.Bytes(), &navigation) != nil {
+				t.Fatalf("navigation: %d %s", nav.Code, nav.Body.String())
+			}
+			count = 0
+			for _, item := range navigation.Workspaces {
+				if item.WorkspaceID == origin+":"+id {
+					count++
+					if item.Path != current || len(item.Aliases) != 1 || item.Aliases[0] != canonicalChatHistoryWorkspacePath(fixtureUserA, old) {
+						t.Fatalf("wrong navigation identity: %+v", item)
+					}
+				}
+			}
+			if count != 1 || strings.Contains(string(w), "workspace_path") {
+				t.Fatalf("navigation count=%d or MCP shape changed: %s", count, w)
+			}
 			if items, err := listWorkspaceProjectsForOwner(ctx, fixtureUserA, fixtureUserA, "", product); err != nil || len(items) != 1 {
 				t.Fatalf("Builder directory=%v err=%v", items, err)
 			}
@@ -99,5 +127,36 @@ func TestMovedProjectDiscoveryUsesOnlyRegisteredRoot(t *testing.T) {
 				t.Fatalf("old link remains after deletion: %v", err)
 			}
 		})
+	}
+}
+
+// Owner navigation includes Local projects; publishing/reference discovery still
+// excludes them, and a token cannot opt into the app's routing metadata.
+func TestWorkspaceNavigationKeepsOwnerLocalAndRejectsTokenDetail(t *testing.T) {
+	f := newMultiUserFixture(t, legacyIdentityLayout())
+	root := legacyIdentityLayout().CodePhysical(fixtureUserA, fixtureCodeFolder)
+	raw := strings.Replace(f.Mock.files[root+"/product.json"], `"product":"code"`, `"mode":"local","product":"code"`, 1)
+	f.put(root+"/product.json", raw)
+	request := func(claims *UserClaims, body string) *httptest.ResponseRecorder {
+		out := httptest.NewRecorder()
+		ctx := context.WithValue(context.Background(), UserContextKey, claims)
+		f.API.handleWorkspaces(out, httptest.NewRequest("POST", "/api/workspaces", strings.NewReader(body)).WithContext(ctx))
+		return out
+	}
+	owner := request(f.Claims(fixtureUserA), `{"action":"list","detail":"navigation"}`)
+	if owner.Code != 200 || !strings.Contains(owner.Body.String(), `"workspace_id":"code:`+fixtureCodeID+`"`) || owner.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("owner Local navigation: %d %s", owner.Code, owner.Body.String())
+	}
+	other := request(f.Claims(fixtureUserB), `{"action":"list","detail":"navigation"}`)
+	if other.Code != 200 || strings.Contains(other.Body.String(), fixtureCodeID) {
+		t.Fatalf("other account saw Local: %d %s", other.Code, other.Body.String())
+	}
+	token := f.Claims(fixtureUserA)
+	token.AccessToken = &accesstokens.Token{Scopes: []string{"code:run", "crews:read"}, AllCrews: true}
+	if out := request(token, `{"action":"list","detail":"navigation"}`); out.Code != 403 {
+		t.Fatalf("token got app detail: %d %s", out.Code, out.Body.String())
+	}
+	if out := request(token, `{"action":"list"}`); out.Code != 200 || strings.Contains(out.Body.String(), "workspace_path") {
+		t.Fatalf("normal token list changed: %d %s", out.Code, out.Body.String())
 	}
 }
