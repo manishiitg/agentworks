@@ -171,9 +171,11 @@ REPO_ROOT="$WORKSPACE_ROOT/mcp-agent-builder-go"
 OUT="$BUILDS/$NAME.partial"
 JOBS="${BUILD_JOBS:-$(nproc)}"
 export PATH="$BUILDS/.toolchain/go/bin:$HOME/.local/go/bin:/usr/local/go/bin:$PATH"
-export GOMAXPROCS="$JOBS" GOFLAGS="-p=$JOBS" NODE_OPTIONS=--max-old-space-size=4096
-export GOCACHE="$BUILDS/.cache/go-build" GOMODCACHE="$BUILDS/.cache/gomod" npm_config_cache="$BUILDS/.cache/npm"
+export GOMAXPROCS="$JOBS" GOFLAGS="-p=$JOBS -modcacherw" NODE_OPTIONS=--max-old-space-size=4096
+# No build caches are kept on the server: they live in the scratch folder, which the exit trap removes.
+export GOCACHE="$WORK/cache/go-build" GOMODCACHE="$WORK/cache/gomod" npm_config_cache="$WORK/cache/npm"
 mkdir -p "$GOCACHE" "$GOMODCACHE" "$npm_config_cache"
+rm -rf "$BUILDS/.cache"
 for command in git go gcc npm node python3 file sha256sum; do command -v "$command" >/dev/null || { echo "Missing $command" >&2; exit 1; }; done
 rm -rf "$OUT"
 mkdir -p "$OUT/bin" "$OUT/frontend" "$OUT/static" "$OUT/downloads" "$OUT/packages"
