@@ -29,12 +29,17 @@ func sameAccountAgentSender(source agentMessageEndpoint, userID string) bool {
 	return source.UserID == userID && (source.Guest == "" || source.Guest == userID)
 }
 
+type agentLiveStream struct {
+	attachmentID string
+	cancel       context.CancelFunc
+}
+
 var agentLiveEvents = struct {
 	sync.Mutex
 	changed      chan struct{}
-	online       map[string]string
+	online       map[string]*agentLiveStream
 	lastRecorded map[string]time.Time
-}{changed: make(chan struct{}), online: map[string]string{}, lastRecorded: map[string]time.Time{}}
+}{changed: make(chan struct{}), online: map[string]*agentLiveStream{}, lastRecorded: map[string]time.Time{}}
 
 // Attachment is a person-configured CLI operation, not an agent MCP tool.
 // The native bridge gets this credential from its explicit launch config.
@@ -89,7 +94,8 @@ func namedAgentPresence(a namedMessageAgent) string {
 func namedAgentOnline(a namedMessageAgent) bool {
 	agentLiveEvents.Lock()
 	defer agentLiveEvents.Unlock()
-	return a.Attachment != nil && a.Attachment.DeliveryContract == 2 && agentLiveEvents.online[a.ID] == a.Attachment.ID
+	stream := agentLiveEvents.online[a.ID]
+	return a.Attachment != nil && a.Attachment.DeliveryContract == 2 && stream != nil && stream.attachmentID == a.Attachment.ID
 }
 
 // Discovery expires; the address, publication and stored messages do not.
@@ -318,20 +324,25 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 		externalError(w, 500, "stream_unavailable", "Streaming is unavailable.")
 		return
 	}
+	// An authorized reconnect replaces the old socket, keeping the exact lease.
+	// A half-open listener must not block recovery until a proxy timeout.
+	streamCtx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	r = r.WithContext(streamCtx)
+	stream := &agentLiveStream{attachmentID: id, cancel: cancel}
 	agentLiveEvents.Lock()
-	if active, busy := agentLiveEvents.online[a.ID]; busy && active == id {
-		agentLiveEvents.Unlock()
-		externalError(w, 409, "agent_already_connected", "This agent already has a live listener.")
-		return
+	if previous := agentLiveEvents.online[a.ID]; previous != nil && previous.cancel != nil {
+		previous.cancel()
+		log.Printf("[AGENT-STREAM] replaced agent=%s old=%s new=%s", a.ID, previous.attachmentID, id)
 	}
 	log.Printf("[AGENT-STREAM] connected agent=%s attachment=%s", a.ID, id)
-	agentLiveEvents.online[a.ID] = id
+	agentLiveEvents.online[a.ID] = stream
 	agentLiveEvents.Unlock()
 	recordNamedAgentActivity(r.Context(), a.ID, id, true)
 	defer func() {
 		log.Printf("[AGENT-STREAM] disconnected agent=%s attachment=%s", a.ID, id)
 		agentLiveEvents.Lock()
-		if agentLiveEvents.online[a.ID] == id {
+		if agentLiveEvents.online[a.ID] == stream {
 			delete(agentLiveEvents.online, a.ID)
 		}
 		agentLiveEvents.Unlock()

@@ -49,7 +49,7 @@ func TestBullpenAdminClosesAttachmentAndRemovesStaleName(t *testing.T) {
 		t.Fatalf("stale name not removed: %v %s", out, code)
 	}
 	agentLiveEvents.Lock()
-	agentLiveEvents.online["agent-live"] = "attach-x"
+	agentLiveEvents.online["agent-live"] = &agentLiveStream{attachmentID: "attach-x"}
 	agentLiveEvents.Unlock()
 	defer func() { agentLiveEvents.Lock(); delete(agentLiveEvents.online, "agent-live"); agentLiveEvents.Unlock() }()
 	agentMessageMu.Lock()

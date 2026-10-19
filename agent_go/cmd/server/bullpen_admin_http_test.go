@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -66,7 +67,8 @@ func TestBullpenAdminCloseEndsStreamAndOwnerCanReattach(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		agentLiveEvents.Lock()
-		online := agentLiveEvents.online[attachment.AgentID] == attachment.ID
+		active := agentLiveEvents.online[attachment.AgentID]
+		online := active != nil && active.attachmentID == attachment.ID
 		agentLiveEvents.Unlock()
 		if online {
 			break
@@ -75,6 +77,36 @@ func TestBullpenAdminCloseEndsStreamAndOwnerCanReattach(t *testing.T) {
 			t.Fatal("stream never connected")
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+	// Reconnect while the prior socket is still open: the same authorized
+	// lease must recover immediately, and old cleanup cannot erase presence.
+	reconnected := make(chan struct{})
+	replacementEnded := make(chan error, 1)
+	go func() {
+		replacementEnded <- owner.StreamAgentMessages(streamCtx, attachment, func(agentworksclient.AgentLiveMessage) error { return nil }, func() { close(reconnected) })
+	}()
+	select {
+	case <-reconnected:
+	case err := <-replacementEnded:
+		t.Fatalf("same-lease reconnect refused: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("same-lease reconnect waited for the old socket")
+	}
+	select {
+	case <-ended:
+	case <-time.After(5 * time.Second):
+		t.Fatal("replaced stream remained open")
+	}
+	ended = replacementEnded
+	if !namedAgentOnline(namedMessageAgent{ID: attachment.AgentID, Attachment: &namedAgentAttachment{ID: attachment.ID, DeliveryContract: 2}}) {
+		t.Fatal("old listener cleanup removed replacement presence")
+	}
+	wrongLease := attachment
+	wrongLease.ID = "attach-not-current"
+	err = owner.StreamAgentMessages(streamCtx, wrongLease, func(agentworksclient.AgentLiveMessage) error { return nil })
+	var refused *agentworksclient.APIError
+	if !errors.As(err, &refused) || refused.Status != http.StatusForbidden {
+		t.Fatalf("wrong lease was not refused: %v", err)
 	}
 	listed, _, code, _ := env.api.bullpenAdminAct(ctx, "root", "list", map[string]any{})
 	if code != "" {
