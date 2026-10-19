@@ -148,6 +148,25 @@ it('ignores slow results from a previous opening after fresh discovery has revok
   expect(host.textContent).not.toContain('Shared automation')
 })
 
+it('keeps the highlighted Crew when a slow workflow list inserts rows ahead of it', async () => {
+  let finishWorkflows!: (result: Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>) => void
+  vi.mocked(workflowManifestApi.listWorkflowManifests).mockReturnValueOnce(new Promise(resolve => { finishWorkflows = resolve }))
+  vi.mocked(loadProductProjects).mockResolvedValueOnce(['alpha', 'beta'].map(id => ({
+    schemaVersion: 1, product: 'work', id, title: id, description: '', templates: [],
+    sessionId: `work:${id}`, workspacePath: `Chats/Work/projects/${id}`,
+    createdAt: '', updatedAt: '', selectedServers: [], selectedSkills: [],
+    selectedSecrets: [], selectedGlobalSecrets: [], workflowContextPaths: [],
+    selectionConfigInitialized: true, secretSelectionInitialized: true, runtimeConfigInitialized: true,
+  })))
+  const onSelect = vi.fn()
+  const { host } = await mount(onSelect)
+  const input = host.querySelector('input')!
+  await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })))
+  await act(async () => finishWorkflows(allowed as Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>))
+  await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })))
+  expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ presetId: 'crew:beta', label: 'beta' }))
+})
+
 it('browses function metadata without choosing the whole project, then adds a named function reference', async () => {
   vi.mocked(loadProductProjects).mockResolvedValue([])
   vi.mocked(workflowManifestApi.listWorkflowManifests).mockResolvedValue(allowed as Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>)
