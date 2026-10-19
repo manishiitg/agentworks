@@ -14,7 +14,7 @@ export function RelayContextPanel({ workspacePath }: { workspacePath: string | n
   const { documents, defaultPath } = useReportDocuments(workspacePath || '')
   if (!workspacePath) return null
   return (
-    <WorkspaceContextCard product="relays" consolidateConnections summary="Run this Flow and review its results." availableShortcuts={workflowContextViews(true, multiUser).filter(item => !isProjectSettingsPanel(item.id)).map(item => ({ ...item, onClick: () => open(item.id, item.id === 'mcp' ? 'overview' : undefined) }))} moreTools={<WorkspaceMoreTools items={workflowContextViews(true, multiUser).filter(item => item.id !== 'mcp' && !isProjectSettingsPanel(item.id)).map(item => ({ ...item, label: item.id === 'flow' ? 'Flow' : item.id === 'workshop' ? 'Triggers' : item.label, onClick: () => open(item.id) }))} />}>
+    <WorkspaceContextCard product="relays" consolidateConnections availableShortcuts={workflowContextViews(true, multiUser).filter(item => !isProjectSettingsPanel(item.id)).map(item => ({ ...item, onClick: () => open(item.id, item.id === 'mcp' ? 'overview' : undefined) }))} moreTools={<WorkspaceMoreTools items={workflowContextViews(true, multiUser).filter(item => item.id !== 'mcp' && !isProjectSettingsPanel(item.id)).map(item => ({ ...item, label: item.id === 'flow' ? 'Flow' : item.id === 'workshop' ? 'Triggers' : item.label, onClick: () => open(item.id) }))} />}>
       <Section title="Work & results">
         <Shortcut id="flow" label="Flow & runs" icon={Route}><Row icon={Route} onClick={() => open('flow')}>Flow &amp; runs</Row></Shortcut>
         <Shortcut id="report" label="Dashboard" icon={LayoutDashboard}>

@@ -34,7 +34,7 @@ beforeEach(() => {
 })
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; host.remove() })
 async function render(product: ShortcutProduct = 'work', restricted = false, legacy?: ShortcutProduct) {
-  await act(async () => root!.render(<WorkspaceContextCard product={product} legacyProduct={legacy} availableShortcuts={restricted ? [] : [{ id: 'files', label: 'Files', icon: Files, onClick: () => {} }]}>
+  await act(async () => root!.render(<WorkspaceContextCard product={product} summary="Overview subtitle" legacyProduct={legacy} availableShortcuts={restricted ? [] : [{ id: 'files', label: 'Files', icon: Files, onClick: () => {} }]}>
     <Shortcut id="dashboard" label="Dashboard" icon={LayoutDashboard}><button>Dashboard</button><p>Live results</p></Shortcut>
     {!restricted && <Shortcut id="memory" label="Memory & skills" icon={BookOpen}><button>Memory &amp; skills</button><p>2 waiting</p></Shortcut>}
   </WorkspaceContextCard>))
@@ -50,7 +50,13 @@ const checkbox = (label: string) => [...host.querySelectorAll('label')].find(ite
 it.each(['agentworks', 'relays', 'work', 'code'] as ShortcutProduct[])('loads and saves preferences through the %s product key', async product => {
   await render(product)
   expect(mocks.get).toHaveBeenCalledWith(product, undefined, expect.any(AbortSignal))
+  expect(host.textContent).not.toContain('Project overview')
+  expect(host.textContent).not.toContain('Overview subtitle')
+  const search = host.querySelector('[aria-label="All views"]')!
+  expect(search.closest('.overflow-y-auto')).toBeNull()
+  expect([...host.querySelectorAll('.overflow-y-auto')].some(region => region.textContent?.includes('Live results'))).toBe(true)
   await click('Edit shortcuts')
+  expect(host.querySelector('h2')?.textContent).toBe('Edit shortcuts')
   expect(checkbox('Dashboard')).toBeDefined()
   await click('Done')
   expect(mocks.save).toHaveBeenCalledWith(product, expect.objectContaining({ version: 1, revision: 2, shortcuts: null }))

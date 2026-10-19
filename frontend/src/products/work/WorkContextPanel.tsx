@@ -105,7 +105,7 @@ export function WorkContextPanel({
   const fallback = workWorkspacePanels({ profileId, enabledPanels })
   const available = (panels ?? [...fallback.views, ...fallback.ops, ...fallback.setup]).filter(item => allowed(item.id))
   return (
-    <WorkspaceContextCard product={policy.shortcutPreferenceProduct ?? profileId} legacyProduct={policy.shortcutPreferenceLegacyProduct} consolidateConnections availableShortcuts={available.filter(item => !isProjectSettingsPanel(item.id)).map(item => ({ ...item, onClick: () => { if (item.id === 'mcp') setWorkspaceViewTarget('mcp', 'overview'); onOpen(item.id) } }))} moreTools={<WorkspaceMoreTools items={available.filter(item => item.id !== 'mcp' && !isProjectSettingsPanel(item.id)).map(item => ({ ...item, onClick: () => onOpen(item.id) }))} />} summary="Results, scheduled work and tools for this project.">
+    <WorkspaceContextCard product={policy.shortcutPreferenceProduct ?? profileId} legacyProduct={policy.shortcutPreferenceLegacyProduct} consolidateConnections availableShortcuts={available.filter(item => !isProjectSettingsPanel(item.id)).map(item => ({ ...item, onClick: () => { if (item.id === 'mcp') setWorkspaceViewTarget('mcp', 'overview'); onOpen(item.id) } }))} moreTools={<WorkspaceMoreTools items={available.filter(item => item.id !== 'mcp' && !isProjectSettingsPanel(item.id)).map(item => ({ ...item, onClick: () => onOpen(item.id) }))} />}>
       {allowed('dashboard') && (
         <Shortcut id="dashboard" label="Dashboard" icon={LayoutDashboard}>
         <Section title="Results">

@@ -88,7 +88,7 @@ export function WorkflowContextPanel({ workspacePath }: { workspacePath: string 
   // schedule flags must not turn it back on in the context summary.
   const pulseEnabled = manifest?.pulse?.enabled === true
   return (
-    <WorkspaceContextCard product="agentworks" consolidateConnections summary="Results, scheduled work and reviews for this project." availableShortcuts={workflowContextViews(false, multiUser).filter(item => !isProjectSettingsPanel(item.id)).map(item => ({ ...item, onClick: () => open(item.id, item.id === 'mcp' ? 'overview' : undefined) }))} moreTools={<WorkspaceMoreTools items={[
+    <WorkspaceContextCard product="agentworks" consolidateConnections availableShortcuts={workflowContextViews(false, multiUser).filter(item => !isProjectSettingsPanel(item.id)).map(item => ({ ...item, onClick: () => open(item.id, item.id === 'mcp' ? 'overview' : undefined) }))} moreTools={<WorkspaceMoreTools items={[
       ...workflowContextViews(false, multiUser).filter(item => item.id !== 'mcp' && !isProjectSettingsPanel(item.id)).map(item => ({ ...item, onClick: () => open(item.id) })),
       { id: 'global-activity', label: 'Activity', icon: Activity, onClick: () => openProjectActivity(workspacePath) },
     ]} />}>

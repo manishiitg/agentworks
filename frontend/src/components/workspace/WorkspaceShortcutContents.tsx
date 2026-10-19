@@ -6,8 +6,8 @@ import type { ShortcutProduct } from '../../services/contextShortcuts'
 import { collectContextShortcuts, contextShortcutOptions, type WorkspaceShortcut } from './workspaceShortcuts'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 
-export function WorkspaceShortcutContents({ product, legacy, summary, children, available, moreTools, consolidateConnections = false }: {
-  product: ShortcutProduct; legacy?: ShortcutProduct; summary?: string; children: ReactNode; available?: readonly WorkspaceShortcut[]; moreTools?: ReactNode; consolidateConnections?: boolean
+export function WorkspaceShortcutContents({ product, legacy, children, available, moreTools, consolidateConnections = false }: {
+  product: ShortcutProduct; legacy?: ShortcutProduct; children: ReactNode; available?: readonly WorkspaceShortcut[]; moreTools?: ReactNode; consolidateConnections?: boolean
 }) {
   const preferences = useContextShortcuts(product, legacy)
   const options = contextShortcutOptions(children, available)
@@ -65,17 +65,18 @@ export function WorkspaceShortcutContents({ product, legacy, summary, children, 
   </div> : <p className="py-3 text-xs text-muted-foreground">Add the shortcuts you want to keep here.</p>
   const openSearch = () => window.dispatchEvent(new CustomEvent('open-quick-switcher', { detail: { query: '@panels ' } }))
   return <>
-    <header className="border-b border-border pb-3">
+    {editing && <header className="shrink-0 border-b border-border pb-3">
       <div className="flex items-center gap-2">
-        {editing && <button type="button" aria-label="Cancel shortcut changes" title="Cancel shortcut changes" disabled={busy && preferences.entry?.status === 'ready'} onClick={cancel} className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"><ArrowLeft className="h-3.5 w-3.5" /></button>}
-        <h2 className="flex-1 text-sm font-semibold text-foreground">{editing ? 'Edit shortcuts' : 'Project overview'}</h2>
-        {editing && !busy && <span className="text-[10px] text-muted-foreground">{visibleDraft.filter(id => draft.selected.has(id)).length} shown</span>}
+        <button type="button" aria-label="Cancel shortcut changes" title="Cancel shortcut changes" disabled={busy && preferences.entry?.status === 'ready'} onClick={cancel} className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"><ArrowLeft className="h-3.5 w-3.5" /></button>
+        <h2 className="flex-1 text-sm font-semibold text-foreground">Edit shortcuts</h2>
+        {!busy && <span className="text-[10px] text-muted-foreground">{visibleDraft.filter(id => draft.selected.has(id)).length} shown</span>}
       </div>
-      <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{editing ? `${PRODUCT_SURFACE_LABELS[product]} · Just for you` : summary}</p>
-    </header>
-    {editing ? <div ref={editor} aria-label="Shortcut editor" aria-busy={busy}>
+      <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{PRODUCT_SURFACE_LABELS[product]} · Just for you</p>
+    </header>}
+    {editing ? <div ref={editor} aria-label="Shortcut editor" aria-busy={busy} className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
       {preferences.entry?.status === 'loading' ? <p className="py-4 text-xs text-muted-foreground">Loading your shortcuts…</p> : preferences.entry?.status === 'error' ? <button type="button" onClick={() => void begin()} className="py-3 text-xs text-muted-foreground underline">Could not load your shortcuts · Retry</button> : <>
-        <div className="max-h-[min(55dvh,30rem)] overflow-y-auto overscroll-contain pr-1">
+        <div>
         {visibleDraft.map((id, index) => {
           const item = byID.get(id)!, Icon = item.icon
           return <div key={id} data-shortcut-row={id} className="flex min-h-10 items-center gap-1 rounded-md hover:bg-background/30">
@@ -102,15 +103,18 @@ export function WorkspaceShortcutContents({ product, legacy, summary, children, 
       </>}
       {error && <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>}
       {error.includes('Reload') && <button type="button" onClick={() => void begin()} className="mt-2 text-xs underline">Reload saved shortcuts</button>}
-      <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-3">
+      </div>
+      <div className="mt-3 flex shrink-0 items-center justify-between gap-2 border-t border-border pt-3">
         <button type="button" disabled={busy || preferences.entry?.status !== 'ready'} onClick={() => { setDraft({ order: [...new Set([...defaults, ...options.map(item => item.id)])], selected: new Set(defaults), reset: true }); setError('') }} className="flex items-center gap-1.5 rounded py-1.5 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50"><RotateCcw className="h-3.5 w-3.5" />Reset to default</button>
         <button type="button" disabled={busy || preferences.entry?.status !== 'ready'} onClick={() => void save()} className="rounded-md bg-foreground px-3.5 py-1.5 text-xs font-medium text-background disabled:opacity-50">{busy ? preferences.entry?.status === 'loading' ? 'Loading…' : 'Saving…' : 'Done'}</button>
       </div>
     </div> : <>
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain">
       {content}
       {moreTools}
       {preferences.entry?.status === 'error' && <p role="status" className="text-[11px] text-muted-foreground">Could not load saved shortcuts. <button type="button" onClick={() => void preferences.load()} className="underline">Retry</button></p>}
-      <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
+      </div>
+      <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border pt-3">
         {preferences.available && <button type="button" onClick={() => void begin()} className="flex items-center gap-1.5 rounded py-1 text-[11px] text-muted-foreground hover:text-foreground"><SlidersHorizontal className="h-3.5 w-3.5" />Edit shortcuts</button>}
         <button type="button" aria-label="All views" title="Find a panel" onClick={openSearch} className="ml-auto flex items-center gap-2 rounded px-1 py-1 text-xs text-muted-foreground hover:text-foreground"><Search className="h-3.5 w-3.5" /><kbd className="rounded border border-border px-1 py-0.5 text-[10px]">{typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl+K'}</kbd></button>
       </div>

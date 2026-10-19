@@ -271,8 +271,11 @@ it('labels the parent source and returns from inspection to the parent chat', as
   await render(async host=>{
     expect(host.querySelector('[title="Daily briefing · Goals"]')?.getAttribute('aria-label')).toContain('Schedule')
     expect(host.querySelector('[title="Customer question · Goals"]')?.getAttribute('aria-label')).toContain('WhatsApp')
+    expect(host.querySelector('[title="Daily briefing · Goals"] [title="Schedule"] svg')).not.toBeNull()
+    expect(host.querySelector('[title="Customer question · Goals"] [title="WhatsApp"] svg')).not.toBeNull()
     const main=host.querySelector<HTMLButtonElement>('[title="Planning · Goals"]')!
     expect(main.textContent).toBe('Planning')
+    expect(main.querySelector('[title="Chat"]')).toBeNull()
     await act(async()=>main.click())
     expect(mocks.setMetadata).toHaveBeenCalledWith('main',{stepInspections:{items:[target],activeId:null}})
     expect(mocks.openTab).toHaveBeenCalledWith('main')

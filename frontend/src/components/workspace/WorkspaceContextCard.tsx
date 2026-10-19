@@ -5,25 +5,25 @@ import type { WorkspaceShortcut } from './workspaceShortcuts'
 import type { ShortcutProduct } from '../../services/contextShortcuts'
 export { WorkspaceContextShortcut } from './workspaceShortcuts'
 
-export function WorkspaceContextCard({ children, summary, title = 'Project overview', product, legacyProduct, availableShortcuts, moreTools, consolidateConnections }: { children: ReactNode; summary?: string; title?: string; product?: ShortcutProduct; legacyProduct?: ShortcutProduct; availableShortcuts?: readonly WorkspaceShortcut[]; moreTools?: ReactNode; consolidateConnections?: boolean }) {
+export function WorkspaceContextCard({ children, summary, title, product, legacyProduct, availableShortcuts, moreTools, consolidateConnections }: { children: ReactNode; summary?: string; title?: string; product?: ShortcutProduct; legacyProduct?: ShortcutProduct; availableShortcuts?: readonly WorkspaceShortcut[]; moreTools?: ReactNode; consolidateConnections?: boolean }) {
   return (
-    <div className="p-3 sm:p-4">
+    <div className="h-full min-h-0 p-3 sm:p-4">
       <aside
         aria-label="Workspace context"
-        className="space-y-3 rounded-2xl border border-border bg-muted/70 p-4 shadow-sm dark:bg-zinc-800/80"
+        className="flex h-full min-h-0 flex-col gap-3 overflow-hidden rounded-2xl border border-border bg-muted/70 p-4 shadow-sm dark:bg-zinc-800/80"
       >
-        {product ? <WorkspaceShortcutContents product={product} legacy={legacyProduct} summary={summary} available={availableShortcuts} moreTools={moreTools} consolidateConnections={consolidateConnections}>{children}</WorkspaceShortcutContents> : <><header className="border-b border-border pb-3">
+        {product ? <WorkspaceShortcutContents product={product} legacy={legacyProduct} available={availableShortcuts} moreTools={moreTools} consolidateConnections={consolidateConnections}>{children}</WorkspaceShortcutContents> : <>{(title || summary) && <header className="shrink-0 border-b border-border pb-3">
           <h2 className="text-sm font-semibold text-foreground">{title}</h2>
           {summary && <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{summary}</p>}
-        </header>
-        {children}
+        </header>}
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain">{children}</div>
         <button
           type="button"
           aria-label="All views"
           onClick={() =>
             window.dispatchEvent(new CustomEvent('open-quick-switcher', { detail: { query: '@panels ' } }))
           }
-          className="flex w-full items-center gap-2.5 border-t border-border px-1 pt-3 text-xs text-muted-foreground hover:text-foreground"
+          className="flex w-full shrink-0 items-center gap-2.5 border-t border-border px-1 pt-3 text-xs text-muted-foreground hover:text-foreground"
         >
           <Search className="h-3.5 w-3.5" />
           <span className="flex-1 text-left">Find a panel</span>

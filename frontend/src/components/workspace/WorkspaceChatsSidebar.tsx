@@ -374,7 +374,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     const origin = row.originLabel || (trigger === 'Scheduled' ? 'Schedule' : trigger) || ''
     const SourceIcon = origin === 'Slack' ? Slack : origin === 'WhatsApp' ? MessageCircle : trigger === 'Webhook' ? Webhook : scheduled ? CalendarClock : MessageSquare
     const sourceLabel = origin || (scheduled ? 'Schedule' : 'Chat')
-    const hasSourceIcon = !!workspaceEntry || !!origin || scheduled || row.builder || /^Chat(?: \d+)?$/.test(title)
+    const hasSourceIcon = !!workspaceEntry || !!origin || scheduled
     // Repeat times only when they distinguish otherwise identical runs. Exact
     // timestamps and origins remain in the hover/accessibility labels.
     const repeatedRun = scheduled && rows.some(other => other.id !== row.id && other.scheduled &&

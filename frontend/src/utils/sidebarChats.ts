@@ -13,6 +13,7 @@ import { pulseTurnDisplayText } from './chatMessageContent'
 import { botPlatformLabel } from './globalActivityPresentation'
 import { readableGeneratedChatTitle } from './generatedChatTitle'
 import type { WorkflowBuilderBindings } from './currentWorkflowBuilder'
+import { compareWorkChatOrder, workChatTabOrder, type WorkChatOrder } from '../products/work/workTabs'
 
 export type SidebarProject = {
   id: string
@@ -34,6 +35,7 @@ export type SidebarChat = {
   workspace?: string
   workspaceTitle?: string
   createdTime?: number
+  chatOrder?: WorkChatOrder
   originLabel?: string
   builder?: boolean
   surface: ProductSurface
@@ -180,6 +182,7 @@ export function sidebarChats({
           : tab.name),
       workspace: meta?.agentProfileWorkspace,
       createdTime: tab.createdAt,
+      chatOrder: workChatTabOrder(tab),
       originLabel: botPlatformLabel(meta?.botPlatform, id),
       builder: scope.workflowId
         ? false
@@ -426,8 +429,9 @@ export function sidebarWorkspaceGroups(rows: SidebarChat[]) {
   }
   for (const group of groups.values())
     group.chats.sort(
-      (a, b) =>
-        Number(!!b.builder) - Number(!!a.builder) ||
+      (a, b) => group.surface === 'work' || group.surface === 'code'
+        ? compareWorkChatOrder(a.chatOrder || { conversationKey: a.id }, b.chatOrder || { conversationKey: b.id })
+        : Number(!!b.builder) - Number(!!a.builder) ||
         (a.createdTime || 0) - (b.createdTime || 0) ||
         a.id.localeCompare(b.id)
     )

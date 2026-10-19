@@ -15,6 +15,28 @@ export type ProductEngineSelectionDetail = Partial<WorkRuntimeSelection> & {
   tabId?: string
 }
 
+export type WorkChatOrder = {
+  isMainChat?: boolean
+  position?: number
+  conversationKey: string
+}
+
+/** Render the server's main role and saved order, independent of chat activity. */
+export function compareWorkChatOrder(a: WorkChatOrder, b: WorkChatOrder): number {
+  const position = (row: WorkChatOrder) => row.position && row.position > 0 ? row.position : Number.MAX_SAFE_INTEGER
+  return Number(!!b.isMainChat) - Number(!!a.isMainChat) ||
+    position(a) - position(b) ||
+    (a.conversationKey === b.conversationKey ? 0 : a.conversationKey < b.conversationKey ? -1 : 1)
+}
+
+export function workChatTabOrder(tab: ChatTab): WorkChatOrder {
+  return {
+    isMainChat: tab.metadata?.agentProfileIsMainChat,
+    position: tab.metadata?.agentProfileTabPosition,
+    conversationKey: tab.metadata?.agentProfileConversationKey || tab.sessionId || tab.tabId,
+  }
+}
+
 export function belongsToWorkProject(tab: ChatTab, projectId: string): boolean {
   // Crew and Code project ids are UUIDs, so one check serves both products.
   return Boolean(isProjectProductId(tab.metadata?.agentProfileId) && (

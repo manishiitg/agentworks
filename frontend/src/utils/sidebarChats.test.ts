@@ -246,12 +246,25 @@ it('resolves real schedule names for distinct runs, refuses ambiguous prefixes a
   expect(sidebarChats({ ...input, jobs: [job, { ...job, id: '9db4dc39-b', name: 'Different job' }] }).find((row) => row.id === id)?.title).toBe('Trading · Scheduled run')
 })
 
-it('keeps open workspace and chat order stable when access times change', () => {
-  const make = (access: number) => sidebarWorkspaceGroups(sidebarChats({
-    tabs: { one: tab('one', { createdAt: 1, lastAccessedAt: access }), two: tab('two', { createdAt: 2, lastAccessedAt: 1 }), crew: tab('crew', { createdAt: 3, metadata: { agentProfileId: 'work', agentProfileProjectId: 'ca', agentProfileProjectTitle: 'Accounting' } }) },
-    active: [], recent: [], presets: [], allowed: ['code', 'work'],
-  })).map((group) => ({ id: group.id, chats: group.chats.map((row) => row.id) }))
-  expect(make(1)).toEqual(make(999999))
+it('renders server main role and saved tab positions, never creation or activity order', () => {
+  const side = (id: string, position: number, createdAt: number) => tab(id, { createdAt, metadata: {
+    agentProfileId: 'work', agentProfileProjectId: 'project', agentProfileConversationKey: `project:chat:${id}`,
+    agentProfileTabPosition: position,
+  } })
+  const tabs = {
+    main: tab('main', { createdAt: 999, metadata: { agentProfileId: 'work', agentProfileProjectId: 'project',
+      agentProfileConversationKey: 'project:chat:physical-main', agentProfileIsMainChat: true } }),
+    second: side('second', 2, 1), first: side('first', 1, 2),
+    z: side('z', 0, 3), a: side('a', 0, 4),
+  }
+  const order = () => sidebarWorkspaceGroups(sidebarChats({ tabs, active: [], recent: [], presets: [], allowed: ['work'] }))[0].chats.map(row => row.id)
+  expect(order()).toEqual(['main', 'first', 'second', 'a', 'z'])
+  tabs.second.lastAccessedAt = 999999
+  tabs.second.isStreaming = true
+  expect(order()).toEqual(['main', 'first', 'second', 'a', 'z'])
+  tabs.second.metadata!.agentProfileTabPosition = 1
+  tabs.first.metadata!.agentProfileTabPosition = 2
+  expect(order()).toEqual(['main', 'second', 'first', 'a', 'z'])
 })
 it('includes authorized Slack and WhatsApp activity under their real workspaces with source labels', () => {
   const rows = sidebarChats({ tabs: {}, active: [
