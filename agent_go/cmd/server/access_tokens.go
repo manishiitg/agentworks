@@ -399,7 +399,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if tool.Name == "costs" {
 		return externalCostsAllowed(c)
 	}
-	if tool.Name == externalUsersTool {
+	if tool.Name == externalUsersTool || tool.Name == externalSignInAppsTool {
 		return externalUsersAllowed(c)
 	}
 	if tool.actions != nil {

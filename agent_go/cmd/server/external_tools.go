@@ -238,6 +238,7 @@ func externalTools() ([]externalTool, error) {
 		// Shared-account token limits (get: code:review or users:manage; set: users:manage, admins).
 		externalTokenLimitDefinitions(add)
 		externalUsersDefinition(add)
+		externalSignInAppsDefinition(add)
 		externalCostsDefinition(add)
 		externalBullpenAdminDefinition(add)
 		externalBrainAdminDefinition(add)
@@ -788,6 +789,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if isExternalTokenLimitTool(tool.Name) {
 		api.externalTokenLimitCall(w, r, tool.Name, call.Arguments)
+		return
+	}
+	if tool.Name == externalSignInAppsTool {
+		api.externalSignInAppsCall(w, r, call.Arguments)
 		return
 	}
 	if tool.Name == externalUsersTool {

@@ -641,6 +641,7 @@ chat:
       # breakdown/detail with opaque source references, under current sharing and consent.
       - costs
       - users
+      - sign_in_apps
     prompt:
       file: prompts/run.md
       includes: [prompts/workflow-shared.md]
