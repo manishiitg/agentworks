@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
@@ -10,7 +11,38 @@ import (
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
+	llmproviders "github.com/manishiitg/multi-llm-provider-go"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
+
+func newRunHandoffAPI(t *testing.T, sessionID, tmuxSession string) *StreamingAPI {
+	api, _, _ := newPlat178API(t, sessionID, tmuxSession)
+	api.internalDurableAckHandler = func(context.Context, llmproviders.Provider, string, string) (llmtypes.DurableAck, error) {
+		return llmtypes.DurableAck{Outcome: llmtypes.DurableAckConfirmed}, nil
+	}
+	return api
+}
+
+func acceptRunHandoffInput(t *testing.T, api *StreamingAPI, sessionID, executionID, nativeID string, acceptedAt ...time.Time) {
+	t.Helper()
+	boundary := time.Now()
+	if len(acceptedAt) > 0 {
+		boundary = acceptedAt[0]
+	}
+	id := api.recordMCPAgentSessionLiveInputAt(sessionID, executionID, "muse-cli", "", nativeID, boundary, executionID)
+	// The real recorder defers answer events until the durable ack. Wait for
+	// that mocked ack rather than asserting while the event-store hold is active.
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		for _, event := range api.eventStore.GetAllEventsRaw(sessionID) {
+			if event.ID == id+":confirmed" {
+				return
+			}
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("mocked durable acknowledgment did not flush accepted input")
+}
 
 // Session.Run's ordinary completion is canonical, but has no retained source
 // and no terminal ID. The old nativeCompletion fixture concealed this shape.
@@ -28,11 +60,11 @@ func TestRetainedCanonicalRunHandoffBeforeAndAfterAcknowledgement(t *testing.T) 
 	for _, lateAck := range []bool{false, true} {
 		t.Run(fmt.Sprint("late-ack-", lateAck), func(t *testing.T) {
 			const sessionID = "canonical-run-handoff"
-			api, _, _ := newPlat178API(t, sessionID, "mlp-muse-run-handoff")
+			api := newRunHandoffAPI(t, sessionID, "mlp-muse-run-handoff")
 			t.Cleanup(func() { api.releaseStoppedSessionTurnMarkers(sessionID) })
 			started := time.Now()
 			accept := func() {
-				api.recordMCPAgentSessionLiveInputAt(sessionID, "input", "muse-cli", "", "run-one", started, "input")
+				acceptRunHandoffInput(t, api, sessionID, "input", "run-one", started)
 			}
 			if !lateAck {
 				accept()
@@ -68,7 +100,7 @@ func TestRetainedCanonicalRunFourLaterSteersPersistOwnReplies(t *testing.T) {
 	server := httptest.NewServer(workspace)
 	defer server.Close()
 	t.Setenv("WORKSPACE_API_URL", server.URL)
-	api, _, _ := newPlat178API(t, sessionID, "mlp-muse-four-steers")
+	api := newRunHandoffAPI(t, sessionID, "mlp-muse-four-steers")
 	t.Cleanup(func() { api.releaseStoppedSessionTurnMarkers(sessionID) })
 	api.activeSessions[sessionID].UserID = "alice"
 	api.sessionWorkspaceFolders = map[string]string{sessionID: workspacePath}
@@ -78,7 +110,7 @@ func TestRetainedCanonicalRunFourLaterSteersPersistOwnReplies(t *testing.T) {
 	api.eventStore.AddEvent(sessionID, canonicalRunHandoff(sessionID, "finished-run"))
 	for i := 1; i <= 4; i++ {
 		input, nativeID := fmt.Sprintf("input-%d", i), fmt.Sprintf("reply-%d", i)
-		api.recordMCPAgentSessionLiveInputAt(sessionID, input, "claude-code", "", "finished-run", time.Now(), input)
+		acceptRunHandoffInput(t, api, sessionID, input, "finished-run")
 		if !api.isSessionBusy(sessionID) || trackedStatus(api, input) != trackedExecutionStatusRunning {
 			t.Fatalf("old replay consumed fresh input %d", i)
 		}
@@ -110,11 +142,11 @@ func TestRetainedCanonicalRunFourLaterSteersPersistOwnReplies(t *testing.T) {
 
 func TestRetainedCanonicalRunFollowupCompletionCoversLaterAcceptedInput(t *testing.T) {
 	const sessionID = "run-handoff-known-pending"
-	api, _, _ := newPlat178API(t, sessionID, "mlp-muse-known-pending")
+	api := newRunHandoffAPI(t, sessionID, "mlp-muse-known-pending")
 	t.Cleanup(func() { api.releaseStoppedSessionTurnMarkers(sessionID) })
-	acceptNativeTurn(api, sessionID, "steer", "run-one")
+	acceptRunHandoffInput(t, api, sessionID, "steer", "run-one")
 	api.eventStore.AddEvent(sessionID, canonicalRunHandoff(sessionID, "run-one"))
-	acceptNativeTurn(api, sessionID, "newer", "known-two")
+	acceptRunHandoffInput(t, api, sessionID, "newer", "known-two")
 	api.eventStore.AddEvent(sessionID, nativeCompletion(sessionID, "newer-reply", "known-two"))
 	// The later Send adopts the active follow-up lifecycle. There is no second
 	// followup-one completion: this single reply must settle both inputs.
@@ -130,9 +162,9 @@ func TestRetainedCanonicalRunFollowupCompletionCoversLaterAcceptedInput(t *testi
 
 func TestRetainedCanonicalRunRequiresExactAcceptedHandoff(t *testing.T) {
 	const sessionID = "canonical-run-no-fallback"
-	api, _, _ := newPlat178API(t, sessionID, "mlp-muse-no-fallback")
+	api := newRunHandoffAPI(t, sessionID, "mlp-muse-no-fallback")
 	t.Cleanup(func() { api.releaseStoppedSessionTurnMarkers(sessionID) })
-	acceptNativeTurn(api, sessionID, "input", "run-one")
+	acceptRunHandoffInput(t, api, sessionID, "input", "run-one")
 	wrong := canonicalRunHandoff(sessionID, "child-or-old-run")
 	api.observeRetainedMainTurnEvent(sessionID, wrong)
 	unmarked := canonicalRunHandoff(sessionID, "run-one")
@@ -149,9 +181,9 @@ func TestRetainedCanonicalRunRequiresExactAcceptedHandoff(t *testing.T) {
 
 func TestRetainedNativeCompletionWithoutTimestampStillMatchesExactOwner(t *testing.T) {
 	const sessionID = "native-unknown-timestamp"
-	api, _, _ := newPlat178API(t, sessionID, "mlp-muse-unknown-timestamp")
+	api := newRunHandoffAPI(t, sessionID, "mlp-muse-unknown-timestamp")
 	t.Cleanup(func() { api.releaseStoppedSessionTurnMarkers(sessionID) })
-	acceptNativeTurn(api, sessionID, "input", "native-one")
+	acceptRunHandoffInput(t, api, sessionID, "input", "native-one")
 	event := nativeCompletion(sessionID, "reply", "native-one")
 	event.Timestamp = time.Time{}
 	api.observeRetainedMainTurnEvent(sessionID, event)
@@ -162,11 +194,11 @@ func TestRetainedNativeCompletionWithoutTimestampStillMatchesExactOwner(t *testi
 
 func TestRetainedNativeOldExactCompletionCannotAnswerFreshInput(t *testing.T) {
 	const sessionID = "native-old-exact-replay"
-	api, _, _ := newPlat178API(t, sessionID, "mlp-muse-old-exact-replay")
+	api := newRunHandoffAPI(t, sessionID, "mlp-muse-old-exact-replay")
 	t.Cleanup(func() { api.releaseStoppedSessionTurnMarkers(sessionID) })
 	old := nativeCompletion(sessionID, "old-reply", "native-one")
 	api.eventStore.AddEvent(sessionID, old)
-	acceptNativeTurn(api, sessionID, "fresh", "native-one")
+	acceptRunHandoffInput(t, api, sessionID, "fresh", "native-one")
 	if !api.isSessionBusy(sessionID) || trackedStatus(api, "fresh") != trackedExecutionStatusRunning {
 		t.Fatal("old exact-ID replay consumed a fresh accepted input")
 	}
