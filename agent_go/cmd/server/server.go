@@ -9982,6 +9982,7 @@ func (api *StreamingAPI) emitRetainedMainTurnStreamCompletion(sessionID string, 
 		end := &unifiedevents.StreamingEndEvent{
 			BaseEventData: unifiedevents.BaseEventData{Timestamp: now, Metadata: map[string]interface{}{
 				"kind": "terminal", "provider": string(provider), "source": "coding_agent_sidecar", "retained": true,
+				"terminal_outcome": status,
 			}},
 			Duration:     now.Sub(turnStartedAt).String(),
 			FinishReason: "retained_completion",
@@ -10188,6 +10189,11 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 			(completion.Error != "" || completion.Status == "failed" || completion.Status == "error" || completion.Status == "timeout") {
 			if failed, changed := api.terminalStore.MarkTurnFailed(snapshot.TerminalID); changed {
 				snapshot = failed
+			}
+			if completionMetadataFlag(event, "process_exited") {
+				if closed, changed := api.terminalStore.MarkProcessClosed(snapshot.TerminalID, completion.Error); changed {
+					snapshot = closed
+				}
 			}
 		} else if completed, changed := api.terminalStore.MarkTurnCompleted(snapshot.TerminalID); changed {
 			snapshot = completed

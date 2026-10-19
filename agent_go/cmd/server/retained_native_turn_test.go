@@ -116,7 +116,7 @@ func TestRetainedNativeMissingCompletionHasFailureBackstop(t *testing.T) {
 			}
 			plat178Thresholds(t, time.Hour, 150*time.Millisecond, 10*time.Millisecond, inspect)
 			const sessionID = "retained-native-lost"
-			api, _, _ := newPlat178API(t, sessionID, "mlp-muse-native-lost")
+			api, _, terminalID := newPlat178API(t, sessionID, "mlp-muse-native-lost")
 			acceptNativeTurn(api, sessionID, "first", "native-one")
 			acceptNativeTurn(api, sessionID, "later", "native-two")
 			waitNotBusy(t, api, sessionID, 2*time.Second)
@@ -130,6 +130,12 @@ func TestRetainedNativeMissingCompletionHasFailureBackstop(t *testing.T) {
 			api.retainedMainTurnsMu.Unlock()
 			if remaining != 0 {
 				t.Fatal("failure leaked native identities")
+			}
+			if paneGone {
+				snapshot, _ := api.terminalStore.GetRaw(terminalID)
+				if snapshot.ProcessState != "closed" || snapshot.TmuxSession != "" {
+					t.Fatal("missing pane was left available for resume")
+				}
 			}
 		})
 	}

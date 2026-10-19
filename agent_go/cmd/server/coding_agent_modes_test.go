@@ -1447,8 +1447,8 @@ func TestRetainedTurnCompletionUsesSidecarFinalResponse(t *testing.T) {
 	}, llmproviders.ProviderCodexCLI, "completed", "")
 
 	recorded := store.GetAllEventsRaw(sessionID)
-	if len(recorded) != 1 {
-		t.Fatalf("recorded events=%d, want 1", len(recorded))
+	if len(recorded) != 2 || recorded[0].Type != "unified_completion" || recorded[1].Type != "streaming_end" {
+		t.Fatalf("recorded events=%+v, want one completion and its transport end", recorded)
 	}
 	agentEvent := recorded[0].Data
 	if agentEvent == nil {
@@ -1499,8 +1499,8 @@ func TestRetainedTurnCompletionSkipsDuplicateForSameTurn(t *testing.T) {
 	api.emitRetainedMainTurnStreamCompletion(sessionID, snapshot, llmproviders.ProviderCodexCLI, "completed", "")
 
 	recorded := store.GetAllEventsRaw(sessionID)
-	if len(recorded) != 1 {
-		t.Fatalf("recorded events=%d, want 1 (duplicate completion for the same turn must be suppressed)", len(recorded))
+	if len(recorded) != 2 || recorded[0].Type != "unified_completion" || recorded[1].Type != "streaming_end" {
+		t.Fatalf("recorded events=%+v, want one completion/end pair (duplicate turn must be suppressed)", recorded)
 	}
 }
 
@@ -1555,8 +1555,8 @@ func TestRetainedTurnCompletionEmitsAgainForANewTurn(t *testing.T) {
 	api.emitRetainedMainTurnStreamCompletion(sessionID, snapshot, llmproviders.ProviderCodexCLI, "completed", "")
 
 	recorded := store.GetAllEventsRaw(sessionID)
-	if len(recorded) != 2 {
-		t.Fatalf("recorded events=%d, want 2 (a new turn must still get its own completion)", len(recorded))
+	if len(recorded) != 4 || recorded[0].Type != "unified_completion" || recorded[1].Type != "streaming_end" || recorded[2].Type != "unified_completion" || recorded[3].Type != "streaming_end" {
+		t.Fatalf("recorded events=%+v, want one completion/end pair per native turn", recorded)
 	}
 }
 

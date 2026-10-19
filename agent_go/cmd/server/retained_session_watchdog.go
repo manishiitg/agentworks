@@ -93,14 +93,14 @@ func (api *StreamingAPI) watchMCPAgentSessionTurn(ctx context.Context, sessionID
 				reason = fmt.Sprintf("coding-agent turn produced no canonical completion within %s", retainedMainTurnStuckFailAfter)
 			}
 			if reason != "" {
-				api.failMCPAgentSessionTurn(sessionID, snapshot, startedAt, reason)
+				api.failMCPAgentSessionTurn(sessionID, snapshot, startedAt, reason, misses >= retainedMainTurnPaneMissesToFail)
 				return
 			}
 		}
 	}
 }
 
-func (api *StreamingAPI) failMCPAgentSessionTurn(sessionID string, snapshot terminals.Snapshot, startedAt time.Time, reason string) {
+func (api *StreamingAPI) failMCPAgentSessionTurn(sessionID string, snapshot terminals.Snapshot, startedAt time.Time, reason string, processExited bool) {
 	api.retainedMainTurnsMu.Lock()
 	current, tracked := api.retainedMainTurns[sessionID]
 	executionID := api.retainedMainTurnExecutionIDs[sessionID]
@@ -113,6 +113,7 @@ func (api *StreamingAPI) failMCPAgentSessionTurn(sessionID string, snapshot term
 	completion := unifiedevents.NewUnifiedCompletionEventWithError("coding_agent", "retained", "", strings.TrimSpace(reason), now.Sub(startedAt), 1)
 	completion.Metadata["source"] = "retained_session_watchdog"
 	completion.Metadata["turn_id"] = nativeID.ID
+	completion.Metadata["process_exited"] = processExited
 	event := events.Event{
 		ID: fmt.Sprintf("retained-session-failure-%d", now.UnixNano()), Type: "unified_completion", Timestamp: now,
 		SessionID: sessionID, ExecutionID: executionID, ExecutionKind: "main_agent",
