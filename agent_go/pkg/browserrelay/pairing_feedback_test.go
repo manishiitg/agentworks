@@ -153,3 +153,70 @@ func TestExtensionProtocolVersionComparison(t *testing.T) {
 		}
 	}
 }
+
+func TestPairingUnknownRevokedAndDeniedCodesHaveIdenticalErrorsAndCloseFrames(t *testing.T) {
+	var expectedPayload string
+	for _, mode := range []string{"unknown-account", "unknown-project", "revoked-account", "revoked-project", "denied-account", "denied-project", "revoked-during-account-check", "revoked-during-project-check", "revoked-during-update-check"} {
+		t.Run(mode, func(t *testing.T) {
+			m := New()
+			defer m.Close()
+			token, err := m.PairForProfile("alice", "project", "Projects/one", "work")
+			if err != nil {
+				t.Fatal(err)
+			}
+			hello := envelope{Type: "pair", Token: token, BrowserID: "11111111-1111-4111-8111-111111111111", Version: "0.4.9"}
+			if strings.Contains(mode, "project") {
+				hello.Scope, hello.BrowserID = "project", ""
+			}
+			if mode == "revoked-during-update-check" {
+				hello.Scope, hello.BrowserID = "missing", ""
+			}
+			if strings.HasPrefix(mode, "unknown-") {
+				hello.Token = "unknown-code"
+			} else if strings.HasPrefix(mode, "revoked-") && !strings.Contains(mode, "during") {
+				if _, err := m.PairAccount("alice", true); err != nil {
+					t.Fatal(err)
+				}
+			}
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				m.ServeExtensionAuthorized(w, r, func(string, string, string, string) error {
+					if strings.HasPrefix(mode, "denied-") {
+						return errors.New("denied")
+					}
+					if strings.Contains(mode, "during") {
+						_, err := m.PairAccount("alice", true)
+						return err
+					}
+					return nil
+				})
+			}))
+			defer srv.Close()
+			conn, _, err := websocket.DefaultDialer.Dial(strings.Replace(srv.URL, "http", "ws", 1), http.Header{"Origin": {"chrome-extension://example"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+			if err := conn.WriteJSON(hello); err != nil {
+				t.Fatal(err)
+			}
+			_, payload, err := conn.ReadMessage()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if expectedPayload == "" {
+				expectedPayload = string(payload)
+			} else if string(payload) != expectedPayload {
+				t.Fatalf("credential state leaked through response: %s != %s", payload, expectedPayload)
+			}
+			_, _, err = conn.ReadMessage()
+			var closed *websocket.CloseError
+			if !errors.As(err, &closed) || closed.Code != 4002 || closed.Text != "invalid_connection_code" {
+				t.Fatalf("credential state leaked through close frame: %v", err)
+			}
+			if m.PairingFailure("alice") != nil || m.PairingFailure("bob") != nil || len(m.Browsers("alice")) != 0 {
+				t.Fatal("untrusted/denied pairing stored attributed feedback or connected a browser")
+			}
+		})
+	}
+}

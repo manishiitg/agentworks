@@ -100,3 +100,16 @@ func (m *Manager) rejectPairing(conn *websocket.Conn, user, reason, message, ver
 func (m *Manager) rejectOutdatedExtension(conn *websocket.Conn, user, version string) {
 	m.rejectPairing(conn, user, "extension_outdated", "Update your browser extension to "+MinimumExtensionVersion+" or later. Download the extension, replace its folder and click Reload in your browser's Extensions page. Then copy a new connection code.", version)
 }
+
+// Unknown, revoked and denied credentials deliberately produce the same
+// payload and close frame. Neither channel may reveal a code's validity.
+func (m *Manager) rejectConnectionCode(conn *websocket.Conn) {
+	m.rejectPairing(conn, "", "invalid_connection_code", "Connection code is invalid or was reset. Copy a new code from Browser connections.", "")
+}
+
+func (m *Manager) connectionCodeStillOwned(token, user string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	current, exists := m.pairs[token]
+	return exists && user != "" && current.User == user
+}

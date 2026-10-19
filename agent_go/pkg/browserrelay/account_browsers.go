@@ -305,12 +305,16 @@ func (m *Manager) serveAccountBrowser(conn *websocket.Conn, hello envelope, auth
 	credential, exists := m.pairs[hello.Token]
 	m.mu.Unlock()
 	if !exists || credential.User == "" {
-		m.rejectPairing(conn, "", "invalid_connection_code", "Connection code is invalid or was reset. Copy a new code from Browser connections.", "")
+		m.rejectConnectionCode(conn)
 		return
 	}
 	user := credential.User
 	if authorize != nil && authorize(user, "", "", "") != nil {
-		m.rejectPairing(conn, "", "access_denied", "This account is unavailable. Sign in to AgentWorks again.", "")
+		m.rejectConnectionCode(conn)
+		return
+	}
+	if !m.connectionCodeStillOwned(hello.Token, user) {
+		m.rejectConnectionCode(conn)
 		return
 	}
 	if extensionVersionBefore(hello.Version, MinimumExtensionVersion) {
@@ -327,7 +331,7 @@ func (m *Manager) serveAccountBrowser(conn *websocket.Conn, hello envelope, auth
 	current, ok := m.pairs[hello.Token]
 	if !ok || current.User != user {
 		m.mu.Unlock()
-		m.rejectPairing(conn, "", "invalid_connection_code", "Connection code is invalid or was reset. Copy a new code from Browser connections.", "")
+		m.rejectConnectionCode(conn)
 		return
 	}
 	k := key(user, hello.BrowserID)

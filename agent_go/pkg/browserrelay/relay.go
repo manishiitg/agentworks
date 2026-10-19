@@ -782,15 +782,16 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 		// identify a user or reveal whether another account exists.
 		if exists && credential.Account && credential.User != "" && hello.BrowserID == "" &&
 			(hello.Version == "" || extensionVersionBefore(hello.Version, MinimumExtensionVersion)) &&
-			(authorize == nil || authorize(credential.User, "", "", "") == nil) {
+			(authorize == nil || authorize(credential.User, "", "", "") == nil) &&
+			m.connectionCodeStillOwned(hello.Token, credential.User) {
 			m.rejectOutdatedExtension(conn, credential.User, hello.Version)
 		} else {
-			m.rejectPairing(conn, "", "invalid_connection_code", "Connection code is invalid or was reset. Copy a new code from Browser connections.", "")
+			m.rejectConnectionCode(conn)
 		}
 		return
 	}
 	if authorize != nil && authorize(g.User, g.Scope, g.Label, g.ProfileID) != nil {
-		m.rejectPairing(conn, "", "access_denied", "This account no longer has browser access to the workspace. Sign in again or ask the project owner for access.", "")
+		m.rejectConnectionCode(conn)
 		return
 	}
 	available := m.availableProjects(hello.Token, authorize)
@@ -809,7 +810,7 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 	checked, granted := resolveProject(current, g.Scope)
 	if !exists || !granted || !sameProject(checked, g) {
 		m.mu.Unlock()
-		m.rejectPairing(conn, "", "invalid_connection_code", "Connection code is invalid or was reset. Copy a new code from Browser connections.", "")
+		m.rejectConnectionCode(conn)
 		return
 	}
 	// An offline browser may have missed the explicit Disconnect close frame.
