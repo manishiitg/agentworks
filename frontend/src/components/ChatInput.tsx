@@ -2619,7 +2619,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       ).catch(() => {})
 
       addToast(
-        localCodeMode ? `${uploadedPaths.length} attachment${uploadedPaths.length > 1 ? 's' : ''} ready` : `Uploaded ${uploadedPaths.length}/${files.length} file${files.length > 1 ? 's' : ''} to ${uploadTargetFolder}`,
+        insertedIntoTerminal ? `${uploadedPaths.length} file${uploadedPaths.length > 1 ? 's' : ''} added to terminal` : `${uploadedPaths.length} attachment${uploadedPaths.length > 1 ? 's' : ''} ready for your next message`,
         'success'
       )
 

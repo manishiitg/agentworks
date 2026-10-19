@@ -579,13 +579,22 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       const aRank = itemSearchMatchRank(a, q)
       const bRank = itemSearchMatchRank(b, q)
       if ((aRank === 0) !== (bRank === 0)) return aRank === 0 ? -1 : 1
+      // Commands have no visit history. Give their name matches a fixed
+      // position instead of treating them as the oldest possible chat.
+      // Fixed buckets also keep the comparator transitive across row types.
+      const bucket = (item: QuickSwitcherItem, rank: number) =>
+        rank === 0 ? 0 : item.type === 'panel' || item.type === 'menu' || item.type === 'product'
+          ? rank < 3 ? 0 : 2
+          : 1
+      const bucketOrder = bucket(a, aRank) - bucket(b, bRank)
+      if (bucketOrder) return bucketOrder
       const recencyOrder = b.lastAccessedAt - a.lastAccessedAt
       if (recencyOrder) return recencyOrder
       const matchOrder = aRank - bRank
       if (matchOrder) return matchOrder
       const activityOrder = compareItemActivity(a, b)
       if (activityOrder) return activityOrder
-      return a.label.localeCompare(b.label)
+      return a.label.localeCompare(b.label) || a.id.localeCompare(b.id)
     })
 
     return filtered
