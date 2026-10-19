@@ -38,8 +38,11 @@ Gmail DMARC authentication (or the connected mailbox's own sent message) remains
 required. Ordinary notifications are accepted; auto-replies, bounces, spam and
 trash remain excluded. Mail predating binding activation never executes.
 
-For an existing product-address database, run the explicit one-off migration
-before the new server starts:
+Standard server deployments package and run the one-off migration automatically
+after stopping the old backend and before activating the new release. Migration
+failure stops activation without restarting an incompatible backend. Missing or
+already migrated databases need no action; an empty old schema is updated too.
+For a custom deployment, stop the old backend and run it before starting the new one:
 
 ```sh
 python3 scripts/migrations/gmail-personal-inbox.py /PRIVATE_STATE/gmail-inbound/email.db --workspace-root /WORKSPACE_DOCUMENTS

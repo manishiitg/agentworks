@@ -17,11 +17,30 @@ parser.add_argument("database", help="Private gmail-inbound/email.db file")
 parser.add_argument("--workspace-root", required=True, help="Filesystem root of workspace documents")
 args = parser.parse_args()
 if not os.path.isfile(args.database):
-    parser.error("The inbox database does not exist; a new installation needs no migration.")
+    print("No Gmail inbox database; nothing to migrate.")
+    raise SystemExit(0)
 db = sqlite3.connect(args.database, timeout=30)
 schema = db.execute("SELECT sql FROM sqlite_master WHERE name='routes' AND type='table'").fetchone()
-if not schema or "address TEXT NOT NULL UNIQUE" not in schema[0]:
-    raise SystemExit("The product-address schema is not present; no migration performed.")
+if not schema:
+    db.close()
+    print("No Gmail routes table; nothing to migrate.")
+    raise SystemExit(0)
+columns = {row[1] for row in db.execute("PRAGMA table_info(routes)")}
+if not {"id", "owner", "workspace", "connection", "address", "data", "enabled"} <= columns:
+    raise SystemExit("Unrecognized Gmail routes schema; migration stopped.")
+# Detect the retired constraint by index columns, independent of SQL formatting.
+unique_address = False
+for index in db.execute("PRAGMA index_list(routes)").fetchall():
+    if index[2]:
+        name = index[1].replace('"', '""')
+        if [row[2] for row in db.execute(f'PRAGMA index_info("{name}")')] == ["address"]:
+            unique_address = True
+if not unique_address:
+    db.close()
+    print("Gmail personal inbox schema already current; nothing to migrate.")
+    raise SystemExit(0)
+# An empty old store still needs its unique-address constraint removed so its
+# first future personal inbox can be bound to more than one product.
 root = Path(args.workspace_root).resolve(strict=True)
 # Resolve and inspect before making any change. Old Gmail schedule entries are
 # removed, because their public address field is no longer a valid binding.

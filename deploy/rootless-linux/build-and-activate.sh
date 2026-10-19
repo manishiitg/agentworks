@@ -115,6 +115,8 @@ python3 "$REPO_ROOT/deploy/common/prune-releases.py" "$REMOTE_APP" --apply --onl
   || echo 'warning: could not make room before the deploy' >&2
 mkdir -p "$BUILD_DIR/bin" "$BUILD_DIR/frontend" "$BUILD_DIR/configs"
 touch "$BUILD_DIR/.deploying"
+mkdir -p "$BUILD_DIR/migrations"
+install -m 0755 "$REPO_ROOT/scripts/migrations/gmail-personal-inbox.py" "$BUILD_DIR/migrations/gmail-personal-inbox.py"
 cleanup_build() {
   if declare -F vault_recover >/dev/null; then vault_recover; fi
   if [[ "$MIGRATION_STOPPED_AGENT" == 1 ]]; then
@@ -511,16 +513,13 @@ except Exception:
   sleep 5
 done
 
-# Activate the immutable release before any opted-in migration. The migration
-# marker and data live outside releases, while every subsequent service start
-# must resolve binaries and assets from this exact candidate.
-ln -sfn "$BUILD_DIR" "$REMOTE_APP/current"
-
-# Stop the old agent once for every migration below. Setting the flag first
-# means any failure from here on restarts the agent via cleanup_build instead
-# of leaving the product down.
-MIGRATION_STOPPED_AGENT=1
+# The personal inbox schema must be ready before this release can start.
+# Keep cleanup from restarting an incompatible backend if migration fails.
 systemctl --user stop "$PRODUCT-agent"
+python3 "$BUILD_DIR/migrations/gmail-personal-inbox.py" \
+  "$REMOTE_APP/state/gmail-inbound/email.db" --workspace-root "$REMOTE_APP/data/docs"
+ln -sfn "$BUILD_DIR" "$REMOTE_APP/current"
+MIGRATION_STOPPED_AGENT=1
 vault_install "$BUILD_DIR" "$REMOTE_APP" "$PRODUCT"
 
 # One-time migration of legacy Workflow Builder chats, if this product opted
