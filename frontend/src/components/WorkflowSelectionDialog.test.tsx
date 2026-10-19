@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import WorkflowSelectionDialog from './WorkflowSelectionDialog'
 import { workflowManifestApi } from '../services/api'
 import { loadProductProjects } from '../platform/chat/productProjects'
@@ -13,6 +13,7 @@ vi.mock('../platform/chat/productProjects', () => ({ loadProductProjects: vi.fn(
 vi.mock('../stores/useAuthStore', () => ({ useAuthStore: (selector: (state: { user: { id: string } }) => unknown) => selector({ user: { id: 'reader' } }) }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanups: (() => void)[] = []
+beforeEach(() => { vi.mocked(listFunctionReferences).mockReset().mockResolvedValue([]) })
 afterEach(() => { cleanups.splice(0).forEach(fn => fn()); vi.clearAllMocks() })
 const allowed = { success: true, total: 1, workflows: [{ workspace_path: 'Workflow/shared', manifest: { id: 'shared', label: 'Shared automation' } }] }
 async function mount(onSelectWorkflow = vi.fn(), onClose = vi.fn()) {
@@ -167,27 +168,46 @@ it('keeps the highlighted Crew when a slow workflow list inserts rows ahead of i
   expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ presetId: 'crew:beta', label: 'beta' }))
 })
 
-it('browses function metadata without choosing the whole project, then adds a named function reference', async () => {
+it('shows functions inline without stealing focus and selects the highlighted project or function', async () => {
   vi.mocked(loadProductProjects).mockResolvedValue([])
   vi.mocked(workflowManifestApi.listWorkflowManifests).mockResolvedValue(allowed as Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>)
-  vi.mocked(listFunctionReferences).mockResolvedValue([{ name: 'export_report', description: 'Export this month’s report' }])
+  vi.mocked(listFunctionReferences).mockResolvedValue([
+    { name: 'export_report', description: 'Export this month’s report' },
+    { name: 'send_report', description: 'Send the report to the team' },
+  ])
   const onSelect = vi.fn()
   const { host } = await mount(onSelect)
-  const browse = host.querySelector<HTMLButtonElement>('[aria-label="Browse functions for Shared automation"]')!
-  await act(async () => {
-    browse.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
-    browse.click()
-  })
-  expect(onSelect).not.toHaveBeenCalled()
+  const input = host.querySelector('input')!
+  const press = async (key: string) => { await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))) }
+  expect(host.querySelector('[aria-label^="Browse functions"]')).toBeNull()
   expect(listFunctionReferences).toHaveBeenCalledWith('workflow:shared')
   expect(host.textContent).toContain('Export this month’s report')
-  expect(document.activeElement).toBe(host.querySelector('[data-testid="reference-functions"] button'))
-  // Even if the user returns focus to search, Enter chooses the function
-  // being browsed rather than silently inserting the whole project.
-  const input = host.querySelector('input')!
-  input.focus()
-  await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })))
-  expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ presetId: 'workflow:shared', workspacePath: 'Workflow/shared', functionName: 'export_report' }))
+  expect(document.activeElement).toBe(input)
+  await press('Enter')
+  expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ presetId: 'workflow:shared' }))
+  expect(onSelect.mock.lastCall?.[0].functionName).toBeUndefined()
+  await press('ArrowDown'); await press('Enter')
+  expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ functionName: 'export_report' }))
+  await press('ArrowDown'); await press('Enter')
+  expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ functionName: 'send_report' }))
+  await press('ArrowUp'); await press('Enter')
+  expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ functionName: 'export_report' }))
+  expect(document.activeElement).toBe(input)
+  expect(listFunctionReferences).toHaveBeenCalledTimes(1)
+})
+
+it('uses the same arrow selection when a function button receives keyboard focus', async () => {
+  vi.mocked(loadProductProjects).mockResolvedValue([])
+  vi.mocked(workflowManifestApi.listWorkflowManifests).mockResolvedValue(allowed as Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>)
+  vi.mocked(listFunctionReferences).mockResolvedValue([{ name: 'first' }, { name: 'second' }])
+  const onSelect = vi.fn()
+  const { host } = await mount(onSelect)
+  const button = host.querySelector<HTMLButtonElement>('[data-testid="reference-functions"] button')!
+  await act(async () => button.focus())
+  await act(async () => button.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })))
+  await act(async () => button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })))
+  expect(onSelect).toHaveBeenCalledTimes(1)
+  expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ functionName: 'second' }))
 })
 
 it('discards old function metadata when the picker is closed and access is revoked', async () => {
@@ -196,7 +216,7 @@ it('discards old function metadata when the picker is closed and access is revok
   vi.mocked(workflowManifestApi.listWorkflowManifests).mockResolvedValueOnce(allowed as Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>).mockResolvedValueOnce({ success: true, total: 0, workflows: [] })
   vi.mocked(listFunctionReferences).mockReturnValueOnce(new Promise(resolve => { finishFunctions = resolve }))
   const { host, render } = await mount()
-  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Browse functions for Shared automation"]')!.click())
+  expect(listFunctionReferences).toHaveBeenCalledWith('workflow:shared')
   await render(false); await render(true)
   await act(async () => finishFunctions([{ name: 'private_old_function' }]))
   expect(host.textContent).not.toContain('private_old_function')
