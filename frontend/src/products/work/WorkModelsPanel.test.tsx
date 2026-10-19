@@ -253,11 +253,11 @@ describe('caller-owned chat models', () => {
   const models = vi.fn()
   const chats = vi.fn()
   const save = vi.fn()
-  async function renderChatModels() {
+  async function renderChatModels(mainKey = 'crew') {
     museFixture()
     state.product.profileId = 'work'
     Object.assign(agentApi, { listAgentProfileChatModels: models, listAgentProfileSideChats: chats, setAgentProfileChatModel: save })
-    models.mockResolvedValue([{ conversation_key: 'crew', engine: 'muse-cli', model_id: 'muse-spark-1.3', reasoning_effort: 'high' }])
+    models.mockResolvedValue([{ conversation_key: mainKey, engine: 'muse-cli', model_id: 'muse-spark-1.3', reasoning_effort: 'high' }])
     chats.mockResolvedValue([{ conversation_key: 'crew:chat:review', name: 'Review', session_id: 'review-session' }])
     save.mockResolvedValue([])
     const host = document.createElement('div'); document.body.append(host)
@@ -286,4 +286,22 @@ describe('caller-owned chat models', () => {
     expect(onRuntimeChange).not.toHaveBeenCalled()
     expect(host.querySelector('[aria-label="Models by chat"]')?.textContent).toContain('Main chatSame as Crew')
   })
+  it('edits the physical main-chat ID after the project pointer changes', async () => {
+    const metadata = state.chatTabs.project.metadata
+    const original = { ...metadata }
+    Object.assign(metadata, { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: true, agentProfileConversationKey: 'crew:chat:promoted' })
+    save.mockClear()
+    try {
+      const { host, onRuntimeChange } = await renderChatModels('crew:chat:promoted')
+      expect(host.querySelector('[aria-label="Models by chat"]')?.textContent).toContain('Main chatMuse · muse-spark-1.3')
+      const reset = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === 'Use Crew default')!
+      await act(async () => reset.click())
+      expect(save).toHaveBeenCalledWith('work', 'crew', expect.objectContaining({ conversation_key: 'crew:chat:promoted', engine: '' }))
+      expect(onRuntimeChange).not.toHaveBeenCalled()
+    } finally {
+      for (const key of Object.keys(metadata)) Reflect.deleteProperty(metadata, key)
+      Object.assign(metadata, original)
+    }
+  })
+
 })

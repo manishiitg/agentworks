@@ -11,6 +11,8 @@ with their purposes, marks which tab is you and which is the main chat.
 
 ## Who leads
 
+Chat IDs stay fixed. `main` is an address for the chat currently marked `is_main` in the list; use a listed ID to keep addressing the same agent after the main chat changes.
+
 The main chat leads. It splits work, hands parts to other tabs, collects what
 they report and decides when tabs disagree or would change the same files.
 Every other tab does the work it is given, reports back to the main chat and

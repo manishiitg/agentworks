@@ -38,7 +38,7 @@ export function workSideChatKey(projectId: string, id: string): string {
 
 export function isWorkSideChatTab(tab: ChatTab | undefined, projectId?: string): boolean {
   const key = tab?.metadata?.agentProfileConversationKey
-  if (!tab || !key || tab.metadata?.isViewOnly === true || tab.metadata?.agentProfileBuilder === true) return false
+  if (!tab || !key || tab.metadata?.agentProfileIsMainChat || tab.metadata?.isViewOnly === true || tab.metadata?.agentProfileBuilder === true) return false
   return projectId ? key.startsWith(`${projectId}:chat:`) : /:chat:[^:]+$/.test(key)
 }
 

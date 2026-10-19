@@ -91,8 +91,15 @@ func TestCrewTabsFindEachOtherOnlyForTheOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	project, err := env.api.codeChatsFor(ctx, "owner", conversation.SessionID, binding.WorkspacePath)
-	if err != nil || project.ProfileID != "work" || project.Self.ID != codeChatMainName {
+	if err != nil || project.ProfileID != "work" || !project.Self.IsMain || project.Self.ID == codeChatMainName {
 		t.Fatalf("owner's Crew chat = %+v, %v", project, err)
+	}
+	reg := &recordingRegistrar{}
+	if err := env.api.registerCodeChatTools(reg, nil, "owner", conversation.SessionID, binding.WorkspacePath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.tools["ask_project_chat"].exec(ctx, map[string]interface{}{"chat": "main", "message": "Self ask"}); err == nil || err.Error() != "a chat cannot ask itself" {
+		t.Fatalf("main alias self-ask = %v", err)
 	}
 	if target := codeChatTarget(project, project.Self, binding.WorkspacePath); target.CrewProfile != "work" {
 		t.Fatalf("a Crew tab is addressed as %q", target.CrewProfile)

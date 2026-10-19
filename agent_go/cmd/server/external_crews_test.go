@@ -229,6 +229,20 @@ func TestExternalCrewChatsAreYourOwn(t *testing.T) {
 	if code, out := chats(owner, map[string]any{"crew_id": "beta", "action": "list"}); code != 200 || out["chats"] == nil {
 		t.Fatalf("list own chats = %d %v", code, out)
 	}
+	// The migrated main is listed by physical ID, with its role separate.
+	mainRows := env.api.crewChats(httptest.NewRequest("GET", "/", nil), owner.UserID, "beta", linkBetaPath)
+	mainChat, found := findCrewChat(mainRows, "main")
+	if !found || !mainChat.IsMain || !strings.HasPrefix(mainChat.ChatID, "root-") || crewSideChatCount(mainRows) != 0 {
+		t.Fatalf("migrated main discovery = %+v, found=%v", mainRows, found)
+	}
+	if code, out := chats(owner, map[string]any{"crew_id": "beta", "action": "set_model", "chat_id": "main", "engine": ""}); code != 200 {
+		t.Fatalf("MCP main model alias = %d %v", code, out)
+	}
+	for _, action := range []string{"side_close", "side_rename"} {
+		if code, _ := chats(owner, map[string]any{"crew_id": "beta", "action": action, "chat_id": mainChat.ChatID, "name": "Renamed"}); code != 404 {
+			t.Fatalf("main physical ID allowed %s: %d", action, code)
+		}
+	}
 
 	bounded := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Name: "laptop", Scopes: []string{"crews:read", "crews:run"}, CrewIDs: []string{"beta"}}}
 	if code, _ := chats(bounded, map[string]any{"crew_id": "alpha", "action": "list"}); code != 403 {
