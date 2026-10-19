@@ -85,7 +85,11 @@ func validateRouteScheduleMessages(schedule WorkflowSchedule) error {
 	check := func(messages []string) error {
 		for _, message := range messages {
 			if strings.Contains(message, "run_full_workflow") {
-				return fmt.Errorf("This schedule already runs the workflow; remove the extra run message.")
+				name := strings.TrimSpace(schedule.Name)
+				if name == "" {
+					name = schedule.ID
+				}
+				return fmt.Errorf("Schedule %q already runs the workflow; remove its extra 'run the full workflow' message", name)
 			}
 		}
 		return nil

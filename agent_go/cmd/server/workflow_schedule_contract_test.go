@@ -56,12 +56,12 @@ func TestManifestRefusesExtraFullRunMessageForSavedRoute(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			manifest := NewWorkflowManifest("Scheduled work")
 			manifest.Schedules = []WorkflowSchedule{{
-				ID: "daily", CronExpression: "0 9 * * *", Timezone: "UTC",
+				ID: "daily", Name: "Daily work", CronExpression: "0 9 * * *", Timezone: "UTC",
 				GroupNames: []string{"default"}, RouteSelections: tc.routes, Messages: tc.messages,
 			}}
 			err := ValidateManifest(manifest)
 			if tc.wantErr {
-				if err == nil || !strings.Contains(err.Error(), "This schedule already runs the workflow; remove the extra run message.") {
+				if err == nil || !strings.Contains(err.Error(), `Schedule "Daily work" already runs the workflow; remove its extra 'run the full workflow' message`) {
 					t.Fatalf("validation = %v, want duplicate-run refusal", err)
 				}
 			} else if err != nil {
