@@ -40,13 +40,16 @@ func TestPrepareBrowserArtifactRewritesNamedScreenshot(t *testing.T) {
 	}
 }
 
-func TestPrepareBrowserArtifactLeavesNoTargetScreenshotAlone(t *testing.T) {
+// A screenshot without a path is staged like a named one and kept in the
+// project's screenshots folder (ceb502e3d): agent-browser's own default folder
+// does not exist on a deployment.
+func TestPrepareBrowserArtifactStagesPathlessScreenshot(t *testing.T) {
 	plan, err := prepareBrowserArtifact("screenshot", []string{"--full-page"}, "owner", "session")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan != nil {
-		t.Fatalf("no-target screenshot unexpectedly produced plan: %#v", plan)
+	if plan == nil || plan.Transfer == nil || !strings.HasPrefix(plan.Transfer.DestinationPath, "screenshots/") {
+		t.Fatalf("pathless screenshot was not staged into screenshots/: %#v", plan)
 	}
 }
 
