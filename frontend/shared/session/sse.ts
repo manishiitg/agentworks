@@ -1,13 +1,12 @@
 // The agent server's session event stream, for any app.
 //
-// Two transports behind one class: the browser's EventSource (what
-// AgentWorks has always used; the token rides in the query string because
-// EventSource cannot send headers) and fetch streaming (the token rides in
-// a header, and it runs under node for tests). Both parse the same named
+// Fetch streaming keeps sign-in tokens in the Authorization header, never
+// in request URLs. Browser and other app clients parse the same named
 // frames: "event" (a batch of events plus the session's runtime state) and
 // "status" (state only). The SSE id of each frame is the store index to
 // resume from.
 import type { SSEEventMessage, SSEStatusMessage } from './types'
+import { readEventStream } from './eventStream'
 
 export interface SSECallbacks {
   onMessage: (msg: SSEEventMessage) => void
@@ -28,10 +27,8 @@ export interface SSEOptions {
   sinceIndex: number
   callbacks: SSECallbacks
   baseUrl: string
-  /** Bearer token; query-string for EventSource, header for fetch. */
+  /** Bearer token sent only in the Authorization header. */
   token?: string | null
-  /** "eventsource" (default in browsers) or "fetch". */
-  transport?: 'eventsource' | 'fetch'
   workingSet?: 'session' | 'all'
   /** Resume chat from the durable SQLite sequence log, not the live window. */
   durableChat?: boolean
@@ -42,7 +39,6 @@ export interface SSEOptions {
 const silent: SSELogger = { debug: () => {}, warn: () => {}, error: () => {} }
 
 export class SSEConnection {
-  private eventSource: EventSource | null = null
   private abort: AbortController | null = null
   private sinceIndex: number
   private consecutiveErrors = 0
@@ -60,21 +56,18 @@ export class SSEConnection {
     this.connect()
   }
 
-  private url(forEventSource: boolean): string {
+  private url(): string {
     const params = new URLSearchParams()
     // Detailed child transcripts are fetched only for the selected terminal.
     params.set('working_set', this.opts.workingSet ?? 'session')
     if (this.opts.durableChat) params.set('durable_chat', '1')
     if (this.sinceIndex >= 0) params.set('since', String(this.sinceIndex))
-    if (forEventSource && this.opts.token) params.set('token', this.opts.token)
     return `${this.opts.baseUrl.replace(/\/+$/, '')}/api/sessions/${encodeURIComponent(this.opts.sessionId)}/events/stream?${params}`
   }
 
   private connect() {
     if (this.closed) return
-    const transport = this.opts.transport ?? (typeof EventSource === 'undefined' ? 'fetch' : 'eventsource')
-    if (transport === 'eventsource') this.connectEventSource()
-    else void this.connectFetch()
+    void this.connectFetch()
   }
 
   private handleEventFrame(data: string, lastEventId: string | number | undefined) {
@@ -110,39 +103,30 @@ export class SSEConnection {
     return true
   }
 
-  private connectEventSource() {
-    const source = new EventSource(this.url(true), { withCredentials: true })
-    this.eventSource = source
-    source.onopen = () => {
-      this.consecutiveErrors = 0
-      this.open = true
-      this.log.debug('SSE', `Connected to session ${this.opts.sessionId}`)
-      this.opts.callbacks.onOpen?.()
-    }
-    source.addEventListener('event', (e: MessageEvent) => this.handleEventFrame(e.data, e.lastEventId))
-    source.addEventListener('status', (e: MessageEvent) => this.handleStatusFrame(e.data))
-    source.onerror = (e: Event) => {
-      this.open = false
-      // Below the threshold EventSource reconnects itself with Last-Event-ID.
-      this.failure(e)
-    }
-  }
-
   private async connectFetch() {
     while (!this.closed) {
       const controller = new AbortController()
       this.abort = controller
       try {
-        const res = await fetch(this.url(false), {
+        const res = await fetch(this.url(), {
           headers: { Accept: 'text/event-stream', ...(this.opts.token ? { Authorization: `Bearer ${this.opts.token}` } : {}) },
           signal: controller.signal,
+          credentials: 'include',
+          cache: 'no-store',
         })
         if (!res.ok || !res.body) throw new Error(`event stream HTTP ${res.status}`)
         this.consecutiveErrors = 0
         this.open = true
         this.log.debug('SSE', `Connected to session ${this.opts.sessionId}`)
         this.opts.callbacks.onOpen?.()
-        await this.readFrames(res.body)
+        await readEventStream(res.body, controller.signal, ({ event, data, id }) => {
+          if (event === 'event' || event === '') this.handleEventFrame(data, id)
+          else if (event === 'status') this.handleStatusFrame(data)
+          else if (event === 'cursor' && id !== undefined) {
+            const cursor = Number.parseInt(id, 10)
+            if (!Number.isNaN(cursor)) this.sinceIndex = cursor
+          }
+        })
         this.open = false
         if (this.closed) return
         // The server ended the stream; resume from the last id like EventSource would.
@@ -156,53 +140,10 @@ export class SSEConnection {
     }
   }
 
-  private async readFrames(body: ReadableStream<Uint8Array>) {
-    const reader = body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-    let eventName = ''
-    let id: string | undefined
-    let dataLines: string[] = []
-    const flush = () => {
-      if (dataLines.length > 0) {
-        const data = dataLines.join('\n')
-        if (eventName === 'event' || eventName === '') this.handleEventFrame(data, id)
-        else if (eventName === 'status') this.handleStatusFrame(data)
-        else if (eventName === 'cursor' && id !== undefined) {
-          const cursor = Number.parseInt(id, 10)
-          if (!Number.isNaN(cursor)) this.sinceIndex = cursor
-        }
-      }
-      eventName = ''
-      id = undefined
-      dataLines = []
-    }
-    for (;;) {
-      const { value, done } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      let nl: number
-      while ((nl = buffer.indexOf('\n')) >= 0) {
-        const line = buffer.slice(0, nl).replace(/\r$/, '')
-        buffer = buffer.slice(nl + 1)
-        if (line === '') { flush(); continue }
-        if (line.startsWith(':')) continue
-        if (line.startsWith('id:')) { id = line.slice(3).trim(); continue }
-        if (line.startsWith('event:')) { eventName = line.slice(6).trim(); continue }
-        if (line.startsWith('data:')) { dataLines.push(line.slice(5).replace(/^ /, '')); continue }
-      }
-    }
-    flush()
-  }
-
   /** Close the connection permanently. */
   close() {
     this.closed = true
     this.open = false
-    if (this.eventSource) {
-      this.eventSource.close()
-      this.eventSource = null
-    }
     if (this.abort) {
       this.abort.abort()
       this.abort = null
@@ -217,7 +158,6 @@ export class SSEConnection {
 
   /** Whether the connection is currently open. */
   get isConnected(): boolean {
-    if (this.eventSource) return this.eventSource.readyState !== EventSource.CLOSED
     return this.open
   }
 

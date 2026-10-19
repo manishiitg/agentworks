@@ -3,36 +3,37 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 vi.mock('./api', () => ({ getApiBaseUrl: () => 'http://host', getAuthToken: () => 'tok' }))
 
-class FakeEventSource {
-  static CONNECTING = 0
-  static OPEN = 1
-  static CLOSED = 2
-  static instances: FakeEventSource[] = []
-  readyState = FakeEventSource.OPEN
-  onerror: (() => void) | null = null
-  private handlers = new Map<string, ((event: MessageEvent<string>) => void)[]>()
-  url: string
-  constructor(url: string) {
+class FakeStream {
+  static instances: FakeStream[] = []
+  readonly controller: ReadableStreamDefaultController<Uint8Array>
+  readonly body: ReadableStream<Uint8Array>
+  readonly url: string
+  readonly init: RequestInit
+  closed = false
+  constructor(url: string, init: RequestInit) {
     this.url = url
-    FakeEventSource.instances.push(this)
-  }
-  addEventListener(type: string, handler: (event: MessageEvent<string>) => void) {
-    this.handlers.set(type, [...(this.handlers.get(type) ?? []), handler])
+    this.init = init
+    let controller!: ReadableStreamDefaultController<Uint8Array>
+    this.body = new ReadableStream({ start(c) { controller = c }, cancel: () => { this.closed = true } })
+    this.controller = controller
+    FakeStream.instances.push(this)
   }
   emit(type: string, data: unknown) {
-    for (const handler of this.handlers.get(type) ?? []) handler({ data: JSON.stringify(data) } as MessageEvent<string>)
+    this.controller.enqueue(new TextEncoder().encode(`event: ${type}\r\ndata: ${JSON.stringify(data)}\r\n\r\n`))
   }
-  close() { this.readyState = FakeEventSource.CLOSED }
 }
 
 beforeEach(() => {
-  FakeEventSource.instances = []
-  vi.stubGlobal('EventSource', FakeEventSource)
+  FakeStream.instances = []
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+    const stream = new FakeStream(url, init)
+    return { ok: true, body: stream.body }
+  }))
   vi.resetModules()
 })
 afterEach(() => vi.unstubAllGlobals())
 
-it('opens one stream with the token, ignores the first resync, and routes notices by kind and workflow', async () => {
+it('opens one stream with header authentication, ignores the first resync, and routes notices by kind and workflow', async () => {
   const { liveFeed } = await import('./liveFeed')
   const report = vi.fn()
   const plan = vi.fn()
@@ -43,11 +44,13 @@ it('opens one stream with the token, ignores the first resync, and routes notice
   const offLegacyCrewPlan = liveFeed.subscribe(['plan'], '_users/alice/Chats/Work/projects/team', legacyCrewPlan)
   const offHeader = liveFeed.subscribe(['sessions', 'schedules'], null, header)
 
-  expect(FakeEventSource.instances).toHaveLength(1)
-  const source = FakeEventSource.instances[0]
-  expect(source.url).toBe('http://host/api/live?token=tok')
+  expect(FakeStream.instances).toHaveLength(1)
+  const source = FakeStream.instances[0]
+  expect(source.url).toBe('http://host/api/live')
+  expect(source.init.headers).toMatchObject({ Authorization: 'Bearer tok' })
 
   source.emit('resync', {})
+  await vi.waitFor(() => expect(liveFeed.getStatus()).toBe('live'))
   expect(liveFeed.getStatus()).toBe('live')
   expect(report).not.toHaveBeenCalled()
   expect(header).not.toHaveBeenCalled()
@@ -56,42 +59,44 @@ it('opens one stream with the token, ignores the first resync, and routes notice
   source.emit('change', { kind: 'plan', workflow: 'Workflow/other' })
   expect(plan).not.toHaveBeenCalled()
   source.emit('change', { kind: 'plan', workflow: 'Workflow/trader' })
-  expect(plan).toHaveBeenCalledTimes(1)
+  await vi.waitFor(() => expect(plan).toHaveBeenCalledTimes(1))
   expect(legacyCrewPlan).not.toHaveBeenCalled()
   source.emit('change', { kind: 'plan' })
-  expect(legacyCrewPlan).toHaveBeenCalledTimes(1)
+  await vi.waitFor(() => expect(legacyCrewPlan).toHaveBeenCalledTimes(1))
   source.emit('change', { kind: 'human_inputs', workflow: 'Workflow/trader' })
   expect(report).not.toHaveBeenCalled()
   source.emit('change', { kind: 'report', workflow: 'Workflow/trader' })
   source.emit('change', { kind: 'schedules' })
-  expect(report).toHaveBeenCalledTimes(1)
+  await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(1))
   expect(header).toHaveBeenCalledTimes(1)
 
   // A reconnect's resync may have missed notices: everyone refetches.
   source.emit('resync', {})
-  expect(report).toHaveBeenCalledTimes(2)
+  await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(2))
   expect(header).toHaveBeenCalledTimes(2)
 
   offReport()
   offPlan()
   offLegacyCrewPlan()
   offHeader()
-  expect(source.readyState).toBe(FakeEventSource.CLOSED)
+  expect(source.init.signal?.aborted).toBe(true)
   expect(liveFeed.getStatus()).toBe('offline')
 })
 
-it('reports offline after a refused connection so panels fall back to polling', async () => {
+it('falls back after failed connects, retries slowly, and cancels on last unsubscribe', async () => {
   vi.useFakeTimers()
   try {
+    vi.mocked(fetch).mockResolvedValue({ ok: false, status: 401 } as Response)
     const { liveFeed } = await import('./liveFeed')
     const off = liveFeed.subscribe(['sessions'], null, () => {})
-    const source = FakeEventSource.instances[0]
-    source.readyState = FakeEventSource.CLOSED
-    source.onerror?.()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(fetch).toHaveBeenCalledTimes(3)
     expect(liveFeed.getStatus()).toBe('offline')
-    vi.advanceTimersByTime(60_000)
-    expect(FakeEventSource.instances).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(fetch).toHaveBeenCalledTimes(4)
     off()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(fetch).toHaveBeenCalledTimes(4)
   } finally {
     vi.useRealTimers()
   }

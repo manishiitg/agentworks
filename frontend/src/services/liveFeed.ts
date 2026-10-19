@@ -3,6 +3,7 @@
 // their normal endpoints. Chat conversations keep their own per-session
 // streams and never use this. See docs/design/live_update_feed.md.
 import { getApiBaseUrl, getAuthToken } from './api'
+import { readEventStream } from '../../shared/session/eventStream'
 
 // Keep in sync with agent_go/internal/livefeed/livefeed.go.
 export type LiveFeedKind = 'sessions' | 'schedules' | 'notifications' | 'human_inputs' | 'report' | 'plan' | 'ui_control' | 'browser'
@@ -37,7 +38,7 @@ export function liveFeedWorkflowRoot(path: string | null | undefined): string | 
 }
 
 class LiveFeed {
-  private source: EventSource | null = null
+  private source: AbortController | null = null
   private listeners = new Set<Listener>()
   private statusListeners = new Set<(status: LiveFeedStatus) => void>()
   private status: LiveFeedStatus = 'offline'
@@ -71,56 +72,54 @@ class LiveFeed {
   }
 
   private ensureOpen() {
-    if (this.source || this.retryTimer || typeof EventSource === 'undefined') return
+    if (this.source || this.retryTimer || typeof fetch === 'undefined') return
     this.open()
   }
 
-  private open() {
+  private async open() {
     this.retryTimer = null
     if (this.listeners.size === 0) return
-    const params = new URLSearchParams()
+    const url = `${getApiBaseUrl().replace(/\/+$/, '')}/api/live`
     const token = getAuthToken()
-    if (token) params.set('token', token)
-    const query = params.toString()
-    const url = `${getApiBaseUrl().replace(/\/+$/, '')}/api/live${query ? `?${query}` : ''}`
     if (this.status !== 'offline' || !this.everConnected) this.setStatus('connecting')
-    const source = new EventSource(url)
+    const source = new AbortController()
     this.source = source
-
-    source.addEventListener('resync', () => {
-      this.failures = 0
-      this.setStatus('live')
-      // The first resync only confirms the stream: panels have just loaded
-      // their data. After a reconnect anything may have been missed.
-      if (this.everConnected) this.notifyAll()
-      this.everConnected = true
-    })
-    source.addEventListener('change', (event) => {
-      let notice: LiveFeedNotice
-      try {
-        notice = JSON.parse((event as MessageEvent<string>).data)
-      } catch {
-        return
-      }
-      for (const listener of this.listeners) {
-        if (!listener.kinds.has(notice.kind)) continue
-        if (notice.workflow && listener.workflow && listener.workflow !== notice.workflow) continue
-        listener.onChange(notice)
-      }
-    })
-    source.onerror = () => {
-      // EventSource retries by itself after a dropped stream; only a refused
-      // or repeatedly failing connection needs our fallback.
-      if (source.readyState !== EventSource.CLOSED && this.status === 'live') {
-        this.setStatus('connecting')
-        return
-      }
-      this.failures += 1
-      if (source.readyState === EventSource.CLOSED || this.failures >= MAX_FAST_RETRIES) {
-        source.close()
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: 'text/event-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        credentials: 'include',
+        cache: 'no-store',
+        signal: source.signal,
+      })
+      if (!response.ok || !response.body) throw new Error(`live stream HTTP ${response.status}`)
+      await readEventStream(response.body, source.signal, ({ event, data }) => {
+        if (event === 'resync') {
+          this.failures = 0
+          this.setStatus('live')
+          // The first resync confirms the stream; later ones refetch anything
+          // missed while disconnected, using the normal authorized endpoints.
+          if (this.everConnected) this.notifyAll()
+          this.everConnected = true
+        } else if (event === 'change') {
+          let notice: LiveFeedNotice
+          try { notice = JSON.parse(data) } catch { return }
+          for (const listener of this.listeners) {
+            if (!listener.kinds.has(notice.kind)) continue
+            if (notice.workflow && listener.workflow && listener.workflow !== notice.workflow) continue
+            listener.onChange(notice)
+          }
+        }
+      })
+    } catch {
+      // The existing panels poll while offline; retry the stream below.
+    } finally {
+      if (this.source === source && !source.signal.aborted) {
+        source.abort()
         this.source = null
-        this.setStatus('offline')
-        this.retryTimer = setTimeout(() => this.open(), SLOW_RETRY_MS)
+        this.failures += 1
+        const offline = this.failures >= MAX_FAST_RETRIES
+        this.setStatus(offline ? 'offline' : 'connecting')
+        this.retryTimer = setTimeout(() => { void this.open() }, offline ? SLOW_RETRY_MS : 1000)
       }
     }
   }
@@ -132,7 +131,7 @@ class LiveFeed {
   private close() {
     if (this.retryTimer) clearTimeout(this.retryTimer)
     this.retryTimer = null
-    this.source?.close()
+    this.source?.abort()
     this.source = null
     this.failures = 0
     this.setStatus('offline')

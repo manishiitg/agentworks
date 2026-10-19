@@ -8,6 +8,6 @@ export type { SSECallbacks }
 
 export class SSEConnection extends SharedSSEConnection {
   constructor(sessionId: string, sinceIndex: number, callbacks: SSECallbacks, durableChat = true) {
-    super({ sessionId, sinceIndex, callbacks, baseUrl: getApiBaseUrl(), token: getAuthToken(), transport: 'eventsource', durableChat, log: logger })
+    super({ sessionId, sinceIndex, callbacks, baseUrl: getApiBaseUrl(), token: getAuthToken(), durableChat, log: logger })
   }
 }

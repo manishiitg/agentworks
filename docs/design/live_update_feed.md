@@ -173,8 +173,9 @@ burst. No file watching is needed.
 
 **Route `GET /api/live`.**
 
-- **Auth:** the existing `AuthMiddleware`. `?token=` is already supported for
-  EventSource.
+- **Auth:** the existing `AuthMiddleware`, with the sign-in token in the
+  Authorization header. The client reads SSE with fetch; credentials never
+  appear in the event-stream URL.
 - **Filtering:** it drops workflow-scoped notices for workflows the user
   cannot see.
   - The check uses `workflowAccessForWorkspacePath`, cached per connection.

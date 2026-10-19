@@ -124,7 +124,7 @@ export function followSession(cfg: SessionClientConfig, sessionId: string, since
     const token = await cfg.token()
     if (stopped) return
     conn = new SSEConnection({
-      sessionId, sinceIndex: cursor, baseUrl: cfg.baseUrl, token, transport: 'fetch', workingSet: cfg.workingSet, durableChat: cfg.durableChat, log: cfg.log,
+      sessionId, sinceIndex: cursor, baseUrl: cfg.baseUrl, token, workingSet: cfg.workingSet, durableChat: cfg.durableChat, log: cfg.log,
       callbacks: {
         onMessage: (msg) => {
           const index = conn?.lastIndex ?? cursor
