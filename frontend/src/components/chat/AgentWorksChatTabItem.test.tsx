@@ -144,7 +144,7 @@ it.each(['agentworks', 'relays', 'work', 'code', 'mcp-gateway'] as ProductSurfac
     const tab = { tabId: 'completion-dot', name: 'Reports', hasUnreadCompletion: true } as ChatTab
     await act(async () => root.render(<AgentWorksChatTabItem tab={tab} isActive={false} canClose={false} isBlank={false} productSurface={surface} onTabClick={() => {}} onCloseTab={() => {}} />))
     expect(host.querySelector('[aria-label="Completed — open to mark as seen"]')).not.toBeNull()
-    expect(host.textContent).toBe('Reports')
+    expect(host.querySelector('[title="Reports"]')?.textContent).toBe('Reports')
     expect(host.textContent).not.toContain('Done')
   } finally { await act(async () => root.unmount()); host.remove() }
 })
