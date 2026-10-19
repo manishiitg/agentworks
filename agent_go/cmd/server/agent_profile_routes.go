@@ -1060,6 +1060,17 @@ func writeAgentProfileJSON(w http.ResponseWriter, status int, value interface{})
 // owns history/native restoration and runtime rebinding, so connector turns
 // pick up the same migrations as web turns.
 func prepareProductConversationTurn(ctx context.Context, userID string, profile agentprofiles.Profile, input AgentProfileChatRequest, conversation ProductConversationRecord) (QueryRequest, error) {
+	// A chat with its own model (chosen by the person on the Crew's Models page) runs on it for every turn:
+	// typed in the app, or a workflow, function, schedule or another chat reaching it. The browser sends
+	// the Crew's model for every tab, so the server's per-chat choice wins.
+	if own, err := defaultProductConversationRegistryStore().agentIdentity(ctx, userID, profile.ID, conversation.ConversationKey); err == nil && own.Engine != "" {
+		if _, offered := findProviderOptionByID(profile.Runtime.ProviderOptions, own.Engine); offered {
+			if !strings.EqualFold(strings.TrimSpace(input.Engine), own.Engine) {
+				input.ConnectionID = ""
+			}
+			input.Engine, input.ModelID, input.ReasoningEffort = own.Engine, own.ModelID, own.ReasoningEffort
+		}
+	}
 	query, err := queryRequestForAgentProfileChat(profile, input, conversation)
 	if err != nil {
 		return QueryRequest{}, err

@@ -649,3 +649,21 @@ func TestGetRelayCommandCatalogWithoutGenericRuntimeRegistration(t *testing.T) {
 		t.Fatal("disabled Relay catalog was exposed")
 	}
 }
+
+// A chat with its own model (set on the Crew's Models page) runs on it whatever reaches it: the browser still sends
+// the Crew's model, and a workflow or function sends none (owner, 2026-10-19).
+func TestChatOwnModelWinsForEveryTurn(t *testing.T) {
+	_, req, profile, conversation := accountSwitchTestSetup(t, "main")
+	if _, err := defaultProductConversationRegistryStore().setAgentModel(req.Context(), "alice", profile.ID, conversation.ConversationKey, "codex-cli", "gpt-6-astra", "", "alice"); err != nil {
+		t.Fatal(err)
+	}
+	for _, input := range []AgentProfileChatRequest{{Message: "typed", Engine: "muse-cli"}, {Message: "called by a workflow"}} {
+		query, err := prepareProductConversationTurn(req.Context(), "alice", profile, input, conversation)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if query.Provider != "codex-cli" || query.ModelID != "gpt-6-astra" {
+			t.Fatalf("%q ran on %q/%q, want the chat's own codex-cli/gpt-6-astra", input.Message, query.Provider, query.ModelID)
+		}
+	}
+}

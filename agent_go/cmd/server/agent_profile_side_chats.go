@@ -125,3 +125,68 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 	})
 	return out, nil
 }
+
+// AgentProfileChatModel is one chat's own model on the Crew's Models page; an empty Engine follows the Crew's model.
+type AgentProfileChatModel struct {
+	ConversationKey string `json:"conversation_key"`
+	Engine          string `json:"engine,omitempty"`
+	ModelID         string `json:"model_id,omitempty"`
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+}
+
+// handleAgentProfileChatModels lists (GET ?project_id=) or sets (POST) the model of each chat of one project: the
+// main chat and its tabs. Only the person whose chats they are changes them, by hand (owner, 2026-10-19).
+func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	var input AgentProfileChatModel
+	projectID := strings.TrimSpace(r.URL.Query().Get("project_id"))
+	if r.Method == http.MethodPost {
+		var body struct {
+			ProjectID string `json:"project_id"`
+			AgentProfileChatModel
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, maxAgentProfileRequestBytes)).Decode(&body); err != nil {
+			writeAgentProfileError(w, http.StatusBadRequest, "send the project, the chat and its model")
+			return
+		}
+		projectID, input = strings.TrimSpace(body.ProjectID), body.AgentProfileChatModel
+	}
+	userID, slot, ok := api.agentProfileConversationSlot(w, r, projectID)
+	if !ok {
+		return
+	}
+	store := defaultProductConversationRegistryStore()
+	if r.Method == http.MethodPost {
+		key := strings.TrimSpace(input.ConversationKey)
+		if key != projectID && !strings.HasPrefix(key, projectID+codeChatSideMarker) {
+			writeAgentProfileError(w, http.StatusBadRequest, "that chat is not part of this project")
+			return
+		}
+		if engine := strings.TrimSpace(input.Engine); engine != "" {
+			if _, offered := findProviderOptionByID(slot.profile.Runtime.ProviderOptions, engine); !offered {
+				writeAgentProfileError(w, http.StatusUnprocessableEntity, "that model provider is not available here")
+				return
+			}
+		}
+		if _, err := store.setAgentModel(r.Context(), userID, slot.profile.ID, key, input.Engine, input.ModelID, input.ReasoningEffort, userID); err != nil {
+			writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
+	}
+	identities, err := store.agentIdentities(r.Context(), userID, slot.profile.ID, projectID)
+	if err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	out := []AgentProfileChatModel{}
+	for key, identity := range identities {
+		if identity.Engine != "" {
+			out = append(out, AgentProfileChatModel{ConversationKey: key, Engine: identity.Engine, ModelID: identity.ModelID, ReasoningEffort: identity.ReasoningEffort})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ConversationKey < out[j].ConversationKey })
+	writeAgentProfileJSON(w, http.StatusOK, map[string]any{"chat_models": out})
+}

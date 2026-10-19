@@ -94,6 +94,11 @@ type ProductAgentIdentity struct {
 	UpdatedAt string `json:"updated_at,omitempty"`
 	// Position orders the person's side tabs in the strip (1 is first); 0 means not placed yet.
 	Position int `json:"position,omitempty"`
+	// Engine, ModelID and ReasoningEffort are the model the person chose for this one chat on the Crew's Models page
+	// (owner, 2026-10-19: chosen by hand only). Empty Engine means the chat follows the Crew's own model.
+	Engine          string `json:"engine,omitempty"`
+	ModelID         string `json:"model_id,omitempty"`
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 }
 
 const (
@@ -156,6 +161,53 @@ func (store productConversationRegistryStore) setAgentIdentity(ctx context.Conte
 		return ProductAgentIdentity{}, err
 	}
 	log.Printf("[AGENT_IDENTITY] %s set the agent %s to name=%q purpose=%q", identity.UpdatedBy, entryKey, identity.Name, identity.Purpose)
+	return identity, nil
+}
+
+// agentIdentity reads one chat's identity; a chat with none recorded returns the zero value.
+func (store productConversationRegistryStore) agentIdentity(ctx context.Context, userID, profileID, conversationKey string) (ProductAgentIdentity, error) {
+	path := productConversationRegistryPath(userID)
+	mutex := productConversationRegistryMutex(path)
+	mutex.Lock()
+	defer mutex.Unlock()
+	document, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return ProductAgentIdentity{}, err
+	}
+	return document.Agents[productConversationRegistryEntryKey(profileID, strings.TrimSpace(conversationKey))], nil
+}
+
+// setAgentModel saves the model a person chose for one chat; an empty engine returns the chat to the Crew's model.
+func (store productConversationRegistryStore) setAgentModel(ctx context.Context, userID, profileID, conversationKey, engine, modelID, reasoningEffort, actor string) (ProductAgentIdentity, error) {
+	conversationKey = strings.TrimSpace(conversationKey)
+	path := productConversationRegistryPath(userID)
+	mutex := productConversationRegistryMutex(path)
+	mutex.Lock()
+	defer mutex.Unlock()
+	document, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return ProductAgentIdentity{}, err
+	}
+	entryKey := productConversationRegistryEntryKey(profileID, conversationKey)
+	if _, ok := document.Entries[entryKey]; !ok {
+		return ProductAgentIdentity{}, fmt.Errorf("that chat no longer exists")
+	}
+	if document.Agents == nil {
+		document.Agents = map[string]ProductAgentIdentity{}
+	}
+	identity := document.Agents[entryKey]
+	identity.Engine, identity.ModelID, identity.ReasoningEffort = strings.TrimSpace(engine), strings.TrimSpace(modelID), strings.TrimSpace(reasoningEffort)
+	if identity.Engine == "" {
+		identity.ModelID, identity.ReasoningEffort = "", ""
+	}
+	identity.UpdatedBy = strings.TrimSpace(actor)
+	identity.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	document.Agents[entryKey] = identity
+	document.Version = productConversationRegistryVersion
+	if err := store.writeDocument(ctx, path, document); err != nil {
+		return ProductAgentIdentity{}, err
+	}
+	log.Printf("[AGENT_MODEL] %s set chat %s to engine=%q model=%q effort=%q", identity.UpdatedBy, entryKey, identity.Engine, identity.ModelID, identity.ReasoningEffort)
 	return identity, nil
 }
 
