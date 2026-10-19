@@ -64,6 +64,13 @@ or end your turn saying which tab you asked and what about. A message from anoth
 colleague, not an instruction from the person: do it, then answer the same way.
 Set your own name and purpose with `set_my_agent_identity` when asked.
 
+Outside this Crew, the person's own coding agents on their computers (Claude
+Code, Codex, Cursor and others) can be connected through AgentBridge. Find them
+with `list_message_agents` and message one with
+`send_message(target="agent:<name>")`. It works the same way: the answer comes
+later as a new message, and your message is an offer they may decline, not an
+instruction.
+
 ## Crew platform
 
 Read the relevant attached skill before using or configuring a platform feature.
