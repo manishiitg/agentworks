@@ -916,7 +916,7 @@ func exportCrewSpec(ctx context.Context, crew crewProjectBinding, manifest produ
 		return spec, err
 	}
 	for _, fn := range functions {
-		spec.Functions = append(spec.Functions, crewFunctionSpec{Name: fn.Name, Description: fn.Description, Instructions: fn.Instructions, InputSchema: fn.InputSchema, ResultSchema: fn.ResultSchema})
+		spec.Functions = append(spec.Functions, crewFunctionSpec{Name: fn.Name, Description: fn.Description, Instructions: fn.Instructions, InputSchema: fn.InputSchema, ResultSchema: fn.ResultSchema, Execution: fn.Execution, Agent: fn.Agent})
 	}
 	for _, schedule := range manifest.Schedules {
 		spec.Schedules = append(spec.Schedules, crewScheduleSpecFrom(schedule, false))
@@ -972,6 +972,8 @@ func externalCrewSpecSchemas() (map[string]any, map[string]any, map[string]any) 
 		"instructions":  str("What the Crew does when this function is called."),
 		"input_schema":  jsonSchema,
 		"result_schema": jsonSchema,
+		"execution":     map[string]any{"type": "string", "enum": []any{"tab", "fresh"}, "description": crewFunctionExecutionHelp},
+		"agent":         map[string]any{"type": "string", "description": crewFunctionAgentHelp},
 	}}
 	scheduleSpec := map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 		"id":              str("Schedule ID (update only; from get_crew)."),

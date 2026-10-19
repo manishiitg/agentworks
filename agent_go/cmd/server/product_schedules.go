@@ -1302,7 +1302,9 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 			runCtx = costActivityContext(runCtx, functionCall.UserID, "function_call", functionCall.ID)
 			common.SetSessionShellEnv(sessionID, structuredFunctionShellEnvironment(functionCall))
 		}
-		defer retireProductCodingCLI(sessionID, "isolated function execution ended")
+		if job.Schedule.Isolated {
+			defer retireProductCodingCLI(sessionID, "isolated function execution ended")
+		}
 	}
 	s.mu.Lock()
 	run.SessionID = sessionID

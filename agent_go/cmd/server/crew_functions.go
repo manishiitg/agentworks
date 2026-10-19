@@ -84,6 +84,29 @@ type crewFunction struct {
 	UpdatedAt    time.Time              `json:"updated_at"`
 	// TriggerID is set on a workflow function: the function trigger it runs.
 	TriggerID string `json:"trigger_id,omitempty"`
+	// Execution is where a Crew function runs (owner, 2026-10-19): "tab" (the default, also when empty) is its own
+	// named tab that keeps earlier calls' history; "fresh" is a new chat for every call.
+	Execution string `json:"execution,omitempty"`
+	// Agent names the tab for "tab" execution; empty uses the function's name. Functions naming one agent share it.
+	Agent string `json:"agent,omitempty"`
+}
+
+// crewFunctionExecutionHelp and crewFunctionAgentHelp describe where a Crew function runs, for every authoring tool.
+const (
+	crewFunctionExecutionHelp = `Where calls run. "tab" (default): the function's own named tab, which keeps earlier calls' history; calls take turns. "fresh": a new chat for every call. A shared tab lets one caller's input steer later calls there, so use "fresh" for functions that take untrusted or private input.`
+	crewFunctionAgentHelp     = "Optional tab name for execution tab; empty uses the function's name. Functions with the same agent share one tab."
+)
+
+// crewFunctionTabPrefix keeps function tabs apart from the person's own tabs and Crew-step agents, so a function never
+// runs in a chat someone types in.
+const crewFunctionTabPrefix = "fn-"
+
+// tabName is the tab a call of this Crew function runs in, or "" for a fresh chat per call.
+func (fn crewFunction) tabName() string {
+	if strings.EqualFold(strings.TrimSpace(fn.Execution), "fresh") {
+		return ""
+	}
+	return firstNonEmptyTrimmed(fn.Agent, fn.Name)
 }
 
 type crewFunctionsDoc struct {
@@ -219,10 +242,14 @@ type crewFunctionSpec struct {
 	Instructions string                 `json:"instructions"`
 	InputSchema  map[string]interface{} `json:"input_schema,omitempty"`
 	ResultSchema map[string]interface{} `json:"result_schema,omitempty"`
+	Execution    string                 `json:"execution,omitempty"`
+	Agent        string                 `json:"agent,omitempty"`
 }
 
 func (spec crewFunctionSpec) normalized() crewFunctionSpec {
 	spec.Name = strings.TrimSpace(spec.Name)
+	spec.Execution = strings.ToLower(strings.TrimSpace(spec.Execution))
+	spec.Agent = strings.Join(strings.Fields(spec.Agent), " ")
 	spec.Description = strings.TrimSpace(spec.Description)
 	spec.Instructions = strings.TrimSpace(spec.Instructions)
 	return spec
@@ -234,6 +261,12 @@ func (spec crewFunctionSpec) validate() error {
 	}
 	if spec.Description == "" || spec.Instructions == "" {
 		return fmt.Errorf("description and instructions are required")
+	}
+	if spec.Execution != "" && spec.Execution != "tab" && spec.Execution != "fresh" {
+		return fmt.Errorf(`execution is "tab" (its own named tab, the default) or "fresh" (a new chat for every call)`)
+	}
+	if len([]rune(spec.Agent)) > productAgentNameMaxRunes || (spec.Agent != "" && crewAgentChatID(spec.Agent) == "") {
+		return fmt.Errorf("agent must be a short tab name with letters or digits")
 	}
 	if len(spec.InputSchema) > 0 && spec.InputSchema["type"] != "object" {
 		return fmt.Errorf("input_schema must have type object (named arguments)")
@@ -251,10 +284,11 @@ func upsertCrewFunction(functions []crewFunction, spec crewFunctionSpec, creator
 		if functions[i].Name == spec.Name {
 			functions[i].Description, functions[i].Instructions = spec.Description, spec.Instructions
 			functions[i].InputSchema, functions[i].ResultSchema, functions[i].UpdatedAt = spec.InputSchema, spec.ResultSchema, now
+			functions[i].Execution, functions[i].Agent = spec.Execution, spec.Agent
 			return functions, true
 		}
 	}
-	return append(functions, crewFunction{Name: spec.Name, Description: spec.Description, Instructions: spec.Instructions, InputSchema: spec.InputSchema, ResultSchema: spec.ResultSchema, CreatedBy: creator, CreatedAt: now, UpdatedAt: now}), false
+	return append(functions, crewFunction{Name: spec.Name, Description: spec.Description, Instructions: spec.Instructions, InputSchema: spec.InputSchema, ResultSchema: spec.ResultSchema, Execution: spec.Execution, Agent: spec.Agent, CreatedBy: creator, CreatedAt: now, UpdatedAt: now}), false
 }
 
 // crewFunctionAskName is the implicit function every Crew
@@ -474,6 +508,8 @@ type crewFunctionCall struct {
 	CallerChatSession string `json:"caller_chat_session,omitempty"`
 	TargetChat        string `json:"target_chat,omitempty"`
 	TargetChatSession string `json:"target_chat_session,omitempty"`
+	// TabName is the Crew function tab this call runs in; empty for a fresh chat per call.
+	TabName string `json:"tab_name,omitempty"`
 
 	// argsKey identifies the exact arguments, for joining identical calls.
 	argsKey       string
@@ -837,6 +873,8 @@ func (api *StreamingAPI) dispatchTargetTrigger(ctx context.Context, userID strin
 	delete(body, "run_mode")
 	runAsOwner, _ := body["run_as_owner"].(bool)
 	delete(body, "run_as_owner")
+	functionTab, _ := body["function_tab"].(string)
+	delete(body, "function_tab")
 	data, err := json.Marshal(body)
 	if err != nil {
 		return internalTriggerDeliveryResult{}, fmt.Errorf("invalid payload")
@@ -847,7 +885,7 @@ func (api *StreamingAPI) dispatchTargetTrigger(ctx context.Context, userID strin
 		delivery, err = api.productSchedules.dispatchInternalProductTrigger(ctx, internalCrewTriggerCall{
 			UserID: userID, ProfileID: target.CrewProfile, ProjectID: target.CrewID, TriggerID: triggerID,
 			Caller: caller.Stamp, DeliveryID: deliveryID, Event: event, Payload: data, CallerLabel: caller.Label,
-			CallerPath: caller.Path, PinRunMode: runMode, RunAsOwner: runAsOwner,
+			CallerPath: caller.Path, PinRunMode: runMode, RunAsOwner: runAsOwner, AgentName: functionTab,
 		})
 	case triggerCallerWorkflow:
 		delivery, err = api.scheduler.dispatchInternalWorkflowTrigger(ctx, internalWorkflowTriggerCall{
@@ -877,9 +915,17 @@ What to do:
 Arguments (validated against the function's input schema):
 %s
 
-This is a fresh isolated internal trigger execution. Read the Crew's MEMORY.md and relevant skills/files before assuming information is unknown. Shared project files remain available under the owner's existing authority. Your output folder is %s; put files for this caller there. Do not assume an isolated chat isolates shared files.
+%s Read the Crew's MEMORY.md and relevant skills/files before assuming information is unknown. Shared project files remain available under the owner's existing authority. Your output folder is %s; put files for this caller there. Do not assume an isolated chat isolates shared files.
 Report meaningful progress with report_function_progress(call_id=%q, message=...). Complete required work and await any background outcome required by the function before ending. Your final assistant message is automatically returned to the caller; do not call a result-return tool.
-%s`, call.ID, call.CallerKind, call.CallerLabel, fn.Name, instructions, string(encodedArgs), call.outputRelativeFolder(), call.ID, structuredFunctionOutputInstructions(call))
+%s`, call.ID, call.CallerKind, call.CallerLabel, fn.Name, instructions, string(encodedArgs), crewFunctionPlaceText(call), call.outputRelativeFolder(), call.ID, structuredFunctionOutputInstructions(call))
+}
+
+// crewFunctionPlaceText tells the agent where this call runs: its function tab keeps earlier calls, a fresh chat does not.
+func crewFunctionPlaceText(call *crewFunctionCall) string {
+	if call.TabName != "" {
+		return fmt.Sprintf("This call runs in the function tab %q, which keeps earlier calls' history; earlier calls are context only, so answer this call on its own.", call.TabName)
+	}
+	return "This is a fresh isolated internal trigger execution."
 }
 
 // startCrewFunctionCall validates, records and dispatches one call and
@@ -984,6 +1030,9 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		argsKey: argsKey,
 		RunMode: crewRunModeFromContext(ctx), admissionHeld: target.Kind == triggerCallerCrew,
 	}
+	if target.Kind == triggerCallerCrew {
+		call.TabName = fn.tabName()
+	}
 	call.ExecutionScope, _ = ctx.Value(structuredFunctionExecutionScopeKey{}).(string)
 	call.Publication = fn.publication
 	fromPath := caller.Path
@@ -994,6 +1043,9 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 		"task":    crewFunctionTaskText(call, fn, args),
 		"from":    map[string]interface{}{"kind": caller.Stamp.Type, "name": caller.Label, "workspace_path": fromPath},
 		"payload": map[string]interface{}{"function": fn.Name, "call_id": id, "args": args},
+	}
+	if call.TabName != "" {
+		body["function_tab"] = call.TabName // read, and removed, by dispatchTargetTrigger
 	}
 	if call.RunMode {
 		body["run_mode"] = true // read, and removed, by dispatchTargetTrigger
@@ -1545,6 +1597,8 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 			"instructions":  map[string]interface{}{"type": "string", "description": "What the target Crew does when this function is called."},
 			"input_schema":  schemaSchema,
 			"result_schema": schemaSchema,
+			"execution":     map[string]interface{}{"type": "string", "enum": []interface{}{"tab", "fresh"}, "description": crewFunctionExecutionHelp},
+			"agent":         map[string]interface{}{"type": "string", "maxLength": productAgentNameMaxRunes, "description": crewFunctionAgentHelp},
 		},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = withClaims(ctx)
@@ -1562,6 +1616,8 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		spec.Name, _ = args["name"].(string)
 		spec.Description, _ = args["description"].(string)
 		spec.Instructions, _ = args["instructions"].(string)
+		spec.Execution, _ = args["execution"].(string)
+		spec.Agent, _ = args["agent"].(string)
 		spec = spec.normalized()
 		if err := spec.validate(); err != nil {
 			return "", err

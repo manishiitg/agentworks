@@ -705,8 +705,16 @@ func (s *ProductScheduleService) deliverProductTrigger(ctx context.Context, matc
 	if !claimed {
 		return internalTriggerDeliveryResult{RunID: runID, DeliveryID: deliveryID, Duplicate: true, Status: existing.Status}, nil
 	}
+	functionTab := ""
 	if match.FunctionCallID != "" {
-		match.Trigger.Message = strings.Replace(match.Trigger.Message, crewCallPrivateConversationNote, "This is a fresh isolated function execution; no earlier conversation is included.", 1)
+		functionTab = crewAgentChatID(match.AgentName)
+	}
+	if match.FunctionCallID != "" {
+		note := "This is a fresh isolated function execution; no earlier conversation is included."
+		if functionTab != "" {
+			note = "This call runs in this function's own tab, which keeps earlier calls' history."
+		}
+		match.Trigger.Message = strings.Replace(match.Trigger.Message, crewCallPrivateConversationNote, note, 1)
 	} else if projectCallConversation(match) {
 		match.Trigger.Message = crewCallMessage(match.Trigger.Message, match.SharedProjectOwner)
 	}
@@ -734,15 +742,24 @@ func (s *ProductScheduleService) deliverProductTrigger(ctx context.Context, matc
 	}
 	if match.FunctionCallID != "" {
 		job.Schedule.Isolated = true
+		job.Schedule.ChatKey = ""
+		job.AgentName = ""
 		job.AutomationKind = "function"
 		job.ConversationKey = match.FunctionCallID
 		job.ProjectCaller = nil // function isolation never depends on changing project owners
+		// By default a function runs in its own named tab, made on first call, in the owner's Crew (owner, 2026-10-19).
+		// Its key carries a prefix of its own, so it is never the main chat, a person's tab or a Crew-step agent.
+		if functionTab != "" {
+			job.Schedule.Isolated = false
+			job.Schedule.ChatKey = match.Manifest.ID + codeChatSideMarker + crewFunctionTabPrefix + functionTab
+			job.AgentName = match.AgentName
+		}
 	}
 	functionCallID := match.FunctionCallID
 	if functionCallID == "" && match.Trigger.IsInternal() && strings.HasPrefix(deliveryID, "fn-") {
 		functionCallID = deliveryID
 	}
-	_, dispatchErr := s.runWithOptions(context.Background(), job, "webhook", time.Time{}, productScheduleRunOptions{RunID: runID, Webhook: metadata, FunctionCallID: functionCallID, Detach: true, AllowQueue: match.FunctionCallID == ""})
+	_, dispatchErr := s.runWithOptions(context.Background(), job, "webhook", time.Time{}, productScheduleRunOptions{RunID: runID, Webhook: metadata, FunctionCallID: functionCallID, Detach: true, AllowQueue: match.FunctionCallID == "" || functionTab != ""})
 	switch {
 	case dispatchErr == nil:
 		return internalTriggerDeliveryResult{RunID: runID, DeliveryID: deliveryID, Status: "accepted"}, nil
