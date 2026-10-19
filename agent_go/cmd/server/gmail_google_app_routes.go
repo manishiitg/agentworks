@@ -32,8 +32,9 @@ func gmailGoogleAppReturnURI(r *http.Request) string { return deriveOAuthRedirec
 
 // GoogleAppRoutes wires the platform-app endpoints.
 func GoogleAppRoutes(router *mux.Router, api *StreamingAPI) {
+	router.HandleFunc("/api/integrations/google/accounts", api.handlePersonalGoogleAccounts).Methods("GET", "POST", "OPTIONS")
 	router.HandleFunc("/api/human-feedback/gmail/google-app", googleAppStatusHandler(api)).Methods("GET")
-	router.HandleFunc("/api/human-feedback/gmail/google-app/connect", googleAppConnectHandler(api)).Methods("POST", "OPTIONS")
+	router.HandleFunc("/api/human-feedback/gmail/google-app/company-connect", googleAppConnectHandler(api)).Methods("POST", "OPTIONS")
 }
 
 func googleAppStatusHandler(api *StreamingAPI) http.HandlerFunc {
@@ -79,8 +80,12 @@ func googleAppConnectHandler(api *StreamingAPI) http.HandlerFunc {
 		}
 		// A person connects their own account to a Code they own; a shared (organisation)
 		// account is an admin's.
-		if scope.Workspace == "" && !currentUserIsAdmin(r) {
+		if !currentUserIsAdmin(r) {
 			writeWorkflowPermissionDenied(w, "admin")
+			return
+		}
+		if scope.Workspace != "" {
+			http.Error(w, "Manage personal accounts in My Vault, then choose Use here in the product.", http.StatusForbidden)
 			return
 		}
 		if _, err := services.EnsurePlatformOAuthClient(r.Context(), clientID, clientSecret); err != nil {

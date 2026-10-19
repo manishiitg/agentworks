@@ -83,30 +83,41 @@ func (api *StreamingAPI) connectGmailTriggerAccount(ctx context.Context, workspa
 		name, _ := args["name"].(string)
 		name = googleAppDisplayName(name)
 		read := true
-		var body []byte
-		var handler http.HandlerFunc
 		if clientName == services.PlatformGoogleClientName {
-			body, err = json.Marshal(GoogleAppConnectRequest{WorkspacePath: workspace, DisplayName: name, AllowReadAccess: &read})
-			handler = googleAppConnectHandler(api)
+			clientID, clientSecret, ok := platformGoogleApp()
+			if !ok {
+				return "", fmt.Errorf("Ask an administrator to set up Google sign-in.")
+			}
+			if _, err := services.EnsurePlatformOAuthClient(ctx, clientID, clientSecret); err != nil {
+				return "", err
+			}
+		}
+		if scope.CodeWorkspace != "" {
+			created, err := svc.CreateOrReusePersonalGooglePending(ctx, services.GmailConnectionInput{Personal: true, OwnerID: scope.UserID, Workspaces: googleSelectedWorkspaces(scope.Workspace), DisplayName: name, ClientName: clientName, AllowReadAccess: &read})
+			if err != nil {
+				return "", err
+			}
+			id = created.ID
 		} else {
-			body, err = json.Marshal(GmailConnectionRequest{WorkspacePath: workspace, DisplayName: name, ClientName: clientName, AllowReadAccess: &read})
-			handler = createGmailConnectionHandler(api)
+			// Company mailboxes keep their existing administrator-only setup.
+			body, err := json.Marshal(GmailConnectionRequest{DisplayName: name, ClientName: clientName, AllowReadAccess: &read})
+			if err != nil {
+				return "", err
+			}
+			rec := httptest.NewRecorder()
+			createGmailConnectionHandler(api)(rec, httptest.NewRequest(http.MethodPost, requestURL, bytes.NewReader(body)).WithContext(ctx))
+			if rec.Code != http.StatusCreated {
+				return "", fmt.Errorf("%s", strings.TrimSpace(rec.Body.String()))
+			}
+			var created struct {
+				ID string `json:"id"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+				return "", err
+			}
+			id = created.ID
 		}
-		if err != nil {
-			return "", err
-		}
-		rec := httptest.NewRecorder()
-		handler(rec, httptest.NewRequest(http.MethodPost, requestURL, bytes.NewReader(body)).WithContext(ctx))
-		if rec.Code != http.StatusCreated {
-			return "", fmt.Errorf("%s", strings.TrimSpace(rec.Body.String()))
-		}
-		var created struct {
-			ID string `json:"id"`
-		}
-		if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
-			return "", err
-		}
-		id = created.ID
+
 	}
 	conn, err := svc.ConnectionForScope(id, scope)
 	if err != nil {

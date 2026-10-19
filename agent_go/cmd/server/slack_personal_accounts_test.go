@@ -46,8 +46,22 @@ func TestPersonalSlackConnectionsAcrossSurfaces(t *testing.T) {
 		_ = json.Unmarshal(rec.Body.Bytes(), &out)
 		return out
 	}
+	// Saving from My Vault creates no product attachment. Both surfaces reuse
+	// the same sealed login once the person explicitly chooses Use here.
+	central := call("editor", "", "connect", "", "", 200)
+	centralID, _ := central["connection_id"].(string)
+	saved, err := api.personalSlackAccounts(googleAppRequest(http.MethodGet, "/", "", "editor"), "")
+	if err != nil || len(saved.Accounts) != 1 || saved.Accounts[0].Selected {
+		t.Fatalf("central account: %+v %v", saved, err)
+	}
+	if again := call("editor", "", "connect", "", "", 200); again["connection_id"] != centralID {
+		t.Fatal("central Slack duplicated account")
+	}
 	created := call("editor", "Workflow/orders", "connect", "", "", 200)
 	id, _ := created["connection_id"].(string)
+	if id != centralID {
+		t.Fatal("product created another Slack login")
+	}
 	if id == "" || created["status"] != "needs_client_id" {
 		t.Fatalf("missing app setup next step: %+v", created)
 	}

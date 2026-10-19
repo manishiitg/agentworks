@@ -4,11 +4,10 @@ import { useWorkflowManifestStore } from '../../../stores/useWorkflowManifestSto
 import { useAuthStore } from '../../../stores/useAuthStore'
 import { useCanWriteWorkflow } from '../../../hooks/useCanWriteWorkflow'
 import type {
-    BotRoute, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailOAuthClient, GmailTestResponse,
-    GoogleServiceGrant, SlackConfig, SlackConfigRequest, SlackTestResponse, SlackUsableBot, ChannelRoute, WhatsAppRoute, WhatsAppStatus,
+    BotRoute, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailTestResponse,
+    SlackConfig, SlackConfigRequest, SlackTestResponse, SlackUsableBot, ChannelRoute, WhatsAppRoute, WhatsAppStatus,
 } from '../../../services/api-types'
 import { routeId, type ChannelKind, type WorkflowRoute } from './types'
-import { gmailOAuthAttemptCompleted } from './gmailOAuthState'
 import { slackConnectionStatus } from './slackConnectionStatus'
 import { resolveWorkflowSlackConnection, sameBotWorkspacePath, selectedWorkflowSlackReady } from './slackWorkflowConnection'
 import { withSlackDryRun } from './slackDryRun'
@@ -197,35 +196,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
   // not adopted connections, and the card then simply says so.
   const [gmailConnections, setGmailConnections] = useState<GmailConnection[]>([])
   const [gmailConnectionsBusy, setGmailConnectionsBusy] = useState<string | null>(null)
-  // Named OAuth clients (the Google Cloud app a connection authorizes
-  // under). Treated 1:1 with a sending account in the UI: registering one
-  // creates its account and starts sign-in immediately
-  // (createGmailOAuthClient), and removing the account also removes its
-  // client (removeGmailMailboxAndClient) — upload+email is one action, not
-  // two separate entities to manage. The backend still allows a client to
-  // back more than one account (an older client created before this UI
-  // simplification might), which is why removal only cascades when the
-  // client truly has no other account left using it.
-  const [gmailOAuthClients, setGmailOAuthClients] = useState<GmailOAuthClient[]>([])
-  const [gmailOAuthClientsBusy, setGmailOAuthClientsBusy] = useState(false)
   const [gmailOAuthClientError, setGmailOAuthClientError] = useState<string | null>(null)
-  // The email the operator intends to sign in with this client — used to
-  // derive the client's internal name (slugified) instead of asking for an
-  // arbitrary label, since the mailbox is what an operator actually thinks
-  // in terms of. The email itself is not verified until sign-in; this is a
-  // naming hint, not a claim about which account will actually authorize.
-  const [gmailNewClientEmail, setGmailNewClientEmail] = useState('')
-  // Set while a Google sign-in is in flight, so the row can say it is waiting.
-  const [gmailAuthPending, setGmailAuthPending] = useState<string | null>(null)
-  // The authorize URL handed to the browser, kept so the UI can offer it as
-  // copyable text. openExternal/window.open land in whichever Chrome profile
-  // is frontmost, which is often not the profile holding the mailbox being
-  // connected. Copying the address bar out of that tab does not work: by
-  // then Chrome has followed Google's redirects, and the bar holds a
-  // continuation URL whose token is bound to the originating profile's
-  // cookies — pasting it into another profile fails with a bare "400 ...
-  // malformed". Only this original authorize URL is safe to paste anywhere.
-  const [gmailAuthUrl, setGmailAuthUrl] = useState<string | null>(null)
   const [gmailTestedTo, setGmailTestedTo] = useState<string | null>(null)
 
   // ── Loaders ───────────────────────────────────────────────────────────────
@@ -325,15 +296,6 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
     }
   }, [gmailScopeWorkspace, canManageSharedGmail])
 
-  const loadGmailOAuthClients = useCallback(async () => {
-    try {
-      const data = await agentApi.listGmailOAuthClients()
-      setGmailOAuthClients(data.clients || [])
-    } catch {
-      setGmailOAuthClients([])
-    }
-  }, [])
-
   // Every mutation re-reads the list rather than patching local state, so the
   // server stays the single source of truth for status and which is default.
   const runGmailConnectionAction = useCallback(
@@ -353,135 +315,6 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
     },
     [loadGmailConnections],
   )
-
-  // Open Google's consent screen and refresh once the account is connected.
-  //
-  // Electron blocks window.open, so prefer the desktop bridge that opens the
-  // system browser. Signing in there is also better than a popup: people can
-  // see the real accounts.google.com address bar, which is exactly what they
-  // should check before typing a password.
-  const connectGmailAccount = useCallback(async (id: string) => {
-    try {
-      setGmailError(null)
-      setGmailAuthPending(id)
-      setGmailAuthUrl(null)
-      // Capture server state before starting. Reconnect often begins while
-      // the old token is still healthy, so `ready === true` cannot prove the
-      // new consent flow completed.
-      const beforeData = await agentApi.listGmailConnections(gmailScopeWorkspace)
-      const before = beforeData.connections.find(entry => entry.id === id)
-      if (!before) throw new Error(`Gmail connection ${id} no longer exists.`)
-      const { auth_url } = await agentApi.startGmailConnectionAuth(id)
-      setGmailAuthUrl(auth_url)
-
-      const electronAPI = (window as unknown as {
-        electronAPI?: { openExternal?: (url: string) => void }
-      }).electronAPI
-      const popup = electronAPI?.openExternal
-        ? (electronAPI.openExternal(auth_url), null)
-        : window.open(auth_url, 'gmail-oauth', 'width=520,height=680')
-
-      if (!electronAPI?.openExternal && !popup) {
-        setGmailError('Allow pop-ups for this app, then try connecting again.')
-        setGmailAuthPending(null)
-        setGmailAuthUrl(null)
-        return
-      }
-
-      // The callback lands on the server, not in this document, so there is no
-      // event here to listen for — and with an external browser there is no
-      // window to watch closing either. Poll until the server reports that
-      // this attempt changed the persisted connection, not merely `ready`
-      // from a credential that existed before Reconnect was clicked.
-      //
-      // The window matches the server's 15-minute pending-state TTL
-      // (gmailOAuthPendingTTL) rather than guessing shorter: anyone whose
-      // mailbox lives in a different Chrome profile has to open that profile
-      // and paste the copied link across by hand, and giving up while the
-      // server would still accept the callback strands them mid-sign-in.
-      const startedAt = Date.now()
-      let popupClosedNoticeShown = false
-      let pollInFlight = false
-      const timer = window.setInterval(async () => {
-        if (pollInFlight) return
-        pollInFlight = true
-        const timedOut = Date.now() - startedAt > 15 * 60 * 1000
-        if (popup?.closed && !popupClosedNoticeShown) {
-          popupClosedNoticeShown = true
-          // Closing the first popup often means the mailbox belongs to a
-          // different browser profile. Keep the server attempt and copyable
-          // link alive so it can be pasted there instead.
-          setGmailError('The sign-in window was closed. Use the Copy link option below to continue in another browser profile.')
-        }
-
-        try {
-          const data = await agentApi.listGmailConnections(gmailScopeWorkspace).catch(() => null)
-          const after = data?.connections?.find(entry => entry.id === id)
-          const connected = gmailOAuthAttemptCompleted(before, after)
-          if (!connected && !timedOut) return
-
-          window.clearInterval(timer)
-          setGmailAuthPending(null)
-          setGmailAuthUrl(null)
-          setGmailError(connected ? null : 'Sign-in did not complete before the link expired. Try connecting again.')
-          await loadGmailConnections()
-        } finally {
-          pollInFlight = false
-        }
-      }, 1500)
-    } catch (error) {
-      setGmailAuthPending(null)
-      setGmailAuthUrl(null)
-      setGmailError(gmailErrorMessage(error, 'Could not start Google sign-in'))
-    }
-  }, [gmailScopeWorkspace, loadGmailConnections])
-
-  // Registers the OAuth client, creates its sending account, and immediately
-  // opens Google's consent screen for it — upload + email + one click is the
-  // whole flow; there's no separate "now click Sign in with Google" step to
-  // remember, since 99% of the time the mailbox being added is the same one
-  // the client's credentials are for.
-  // allowReadAccess opts the new mailbox into gmail.readonly on top of
-  // gmail.send. Defaults off: notifications only ever send, so the consent
-  // screen asks for the minimum unless the operator deliberately widens it.
-  // services requests additional Google Workspace scopes (Drive, Sheets...)
-  // beyond Gmail — see GoogleServiceGrant. Also defaults to none.
-  const createGmailOAuthClient = useCallback(async (
-    email: string,
-    clientSecretJson: unknown,
-    allowReadAccess = false,
-    allowAgentWriteAccess = false,
-    services: GoogleServiceGrant[] = [],
-  ) => {
-    const trimmedEmail = email.trim()
-    // Backend name pattern is lowercase letters/digits/hyphens only (it
-    // becomes a directory name) — an email's @ and . don't qualify, so
-    // derive a slug from it rather than asking the operator for a second,
-    // arbitrary label.
-    const name = trimmedEmail.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 63)
-    try {
-      setGmailOAuthClientsBusy(true)
-      setGmailOAuthClientError(null)
-      const client = await agentApi.createGmailOAuthClient(name, clientSecretJson)
-      const connection = await agentApi.createGmailConnection({
-        ...(gmailScopeWorkspace ? { workspace_path: gmailScopeWorkspace } : {}),
-        display_name: trimmedEmail,
-        client_name: client.name,
-        allow_read_access: allowReadAccess,
-        allow_agent_write_access: allowAgentWriteAccess,
-        services,
-      })
-      await Promise.all([loadGmailOAuthClients(), loadGmailConnections()])
-      setGmailNewClientEmail('')
-      void connectGmailAccount(connection.id)
-      return true
-    } catch (error) {
-      setGmailOAuthClientError(gmailErrorMessage(error, 'Failed to register the OAuth client'))
-      return false
-    } finally {
-      setGmailOAuthClientsBusy(false)
-    }
-  }, [gmailScopeWorkspace, loadGmailOAuthClients, loadGmailConnections, connectGmailAccount])
 
   // Account owners can remove their own credentials. Only an admin also
   // cleans up an unused shared OAuth client registration.
@@ -503,13 +336,13 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
           // orphaned client can still be removed later from its own row.
         })
       }
-      await Promise.all([loadGmailConnections(), loadGmailOAuthClients()])
+      await loadGmailConnections()
     } catch (error) {
       setGmailError(gmailErrorMessage(error, 'Failed to remove the sending account'))
     } finally {
       setGmailConnectionsBusy(null)
     }
-  }, [canManageSharedGmail, gmailConnections, loadGmailConnections, loadGmailOAuthClients, workspacePath])
+  }, [canManageSharedGmail, gmailConnections, loadGmailConnections, workspacePath])
 
   const loadGmail = useCallback(async (background = false) => {
     try {
@@ -532,8 +365,7 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
       setGmailChecking(false)
     }
     void loadGmailConnections()
-    void loadGmailOAuthClients()
-  }, [loadGmailConnections, loadGmailOAuthClients])
+  }, [loadGmailConnections])
 
   useEffect(() => {
     void loadEmails()
@@ -1236,12 +1068,10 @@ export function useWorkflowBots(workspacePath: string | null, target?: BotRouteT
     gmailLoading, gmailChecking, gmailSaving, gmailTesting, gmailError, gmailSuccess, gmailTestResult,
     gmailBlockedDefaults, gmailDefaultIsBlocked, gmailTestPassed, gmailCanEnable, gmailHasChanges, loadGmail, saveGmail, testGmail,
     // gmail senders (multi-account)
-    gmailConnections, gmailConnectionsBusy, gmailAuthPending, gmailAuthUrl,
-    loadGmailConnections, runGmailConnectionAction, connectGmailAccount,
+    gmailConnections, gmailConnectionsBusy,
+    loadGmailConnections, runGmailConnectionAction,
     // gmail OAuth clients (named Google Cloud apps connections authorize under)
-    gmailOAuthClients, gmailOAuthClientsBusy, gmailOAuthClientError,
-    gmailNewClientEmail, setGmailNewClientEmail,
-    loadGmailOAuthClients, createGmailOAuthClient, removeGmailMailboxAndClient,
+    gmailOAuthClientError, removeGmailMailboxAndClient,
   }
 }
 

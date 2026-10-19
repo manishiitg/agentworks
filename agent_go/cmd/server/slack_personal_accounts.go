@@ -104,16 +104,21 @@ func (api *StreamingAPI) personalSlackAccounts(r *http.Request, workspace string
 	out := slackAccountsResponse{Accounts: []slackAccountRow{}, Notice: slackAccountNotice}
 	actor := personalConnectionActor(r.Context())
 	if actor == "" || !canManagePersonalConnection(r, actor) {
-		return out, fmt.Errorf("Sign in to manage your Slack accounts in Integrations → Slack.")
+		return out, fmt.Errorf("Sign in to manage your Slack accounts in My Vault.")
+	}
+	if workspace == "" {
+		if err := personalAccountManagementScope(r, workspace, false); err != nil {
+			return out, err
+		}
 	}
 	root := personalConnectionItemRoot(actor, workspace)
-	_, buildErr := personalConnectionItemScope(r, workspace, true, "Slack", "Integrations → Slack")
-	out.CanConnect = buildErr == nil
+	_, buildErr := personalConnectionItemScope(r, workspace, true, "Slack", "My Vault")
+	out.CanConnect = personalAccountManagementScope(r, workspace, true) == nil
 	out.SignInReady = api.slackSignInReady()
 	// A person's own saved accounts stay private. A product Builder may also
 	// inspect and detach accounts explicitly selected for this item.
 	owners := map[string]bool{actor: true}
-	if buildErr == nil {
+	if workspace != "" && buildErr == nil {
 		attached, err := placeMCPAttachmentsFor(root)
 		if err != nil {
 			return out, err
@@ -134,7 +139,7 @@ func (api *StreamingAPI) personalSlackAccounts(r *http.Request, workspace string
 			return out, err
 		}
 		for _, server := range servers {
-			selected := slackSelected(owner, server.Name, root)
+			selected := workspace != "" && slackSelected(owner, server.Name, root)
 			if !isPersonalSlack(server) || owner != actor && !selected {
 				continue
 			}
@@ -142,7 +147,7 @@ func (api *StreamingAPI) personalSlackAccounts(r *http.Request, workspace string
 			if owner != actor {
 				label = shareOwnerLabel(owner) + "'s Slack"
 			}
-			out.Accounts = append(out.Accounts, slackAccountRow{personalConnectionPermissions: personalConnectionAccess(r, owner, workspace, selected, "Slack", "Integrations → Slack"), ID: server.Name, Owner: owner, Label: label, Selected: selected, Connected: placeMCPServerConnected(dir, owner, server), Mine: owner == actor})
+			out.Accounts = append(out.Accounts, slackAccountRow{personalConnectionPermissions: personalConnectionAccess(r, owner, workspace, selected, "Slack", "My Vault"), ID: server.Name, Owner: owner, Label: label, Selected: selected, Connected: placeMCPServerConnected(dir, owner, server), Mine: owner == actor})
 		}
 	}
 	sort.Slice(out.Accounts, func(i, j int) bool {
@@ -158,11 +163,16 @@ func (api *StreamingAPI) personalSlackAccounts(r *http.Request, workspace string
 func (api *StreamingAPI) personalSlackOperation(r *http.Request, workspace string, args map[string]interface{}) (any, error) {
 	actor := personalConnectionActor(r.Context())
 	if actor == "" || !canManagePersonalConnection(r, actor) {
-		return nil, fmt.Errorf("Sign in to manage your Slack accounts in Integrations → Slack.")
+		return nil, fmt.Errorf("Sign in to manage your Slack accounts in My Vault.")
 	}
 	action, _ := args["action"].(string)
 	if action == "list_saved" {
 		return api.personalSlackAccounts(r, workspace)
+	}
+	if action != "detach" && (workspace == "" || action == "connect") {
+		if err := personalAccountManagementScope(r, workspace, action == "connect"); err != nil {
+			return nil, err
+		}
 	}
 	id, _ := args["connection_id"].(string)
 	owner, _ := args["connection_owner"].(string)
@@ -174,11 +184,11 @@ func (api *StreamingAPI) personalSlackOperation(r *http.Request, workspace strin
 	}
 	root := personalConnectionItemRoot(actor, workspace)
 	if action == "connect" {
-		scope, err := personalConnectionItemScope(r, workspace, true, "Slack", "Integrations → Slack")
+		err := personalAccountManagementScope(r, workspace, true)
 		if err != nil {
 			return nil, err
 		}
-		root, owner = scope.Workspace, actor
+		root, owner = personalConnectionItemRoot(actor, workspace), actor
 		label, _ := args["label"].(string)
 		if strings.TrimSpace(label) == "" {
 			label = "My Slack account"
@@ -191,11 +201,13 @@ func (api *StreamingAPI) personalSlackOperation(r *http.Request, workspace strin
 			return nil, err
 		}
 		if signedIn {
-			if err := attachPersonalLoginToPlace(actor, id, root); err != nil {
-				return nil, err
+			if workspace != "" {
+				if err := attachPersonalLoginToPlace(actor, id, root); err != nil {
+					return nil, err
+				}
 			}
 			log.Printf("[SLACK_ACCOUNTS] actor=%s account=%s owner=%s item=%s reason=connect_existing", actor, id, actor, root)
-			return map[string]any{"connection_id": id, "selected": true, "message": "Your Slack is now used here.", "notice": slackAccountNotice}, nil
+			return map[string]any{"connection_id": id, "selected": workspace != "", "message": "Your saved Slack account is connected.", "notice": slackAccountNotice}, nil
 		}
 		if id == "" {
 			saved, _, err := api.ensurePersonalMCP(r.Context(), actor, placeMCPServer{Label: label}, "Slack")
@@ -204,27 +216,33 @@ func (api *StreamingAPI) personalSlackOperation(r *http.Request, workspace strin
 			}
 			id = saved.Name
 		}
-		if err := attachPersonalLoginToPlace(actor, id, root); err != nil {
-			return nil, err
+		if workspace != "" {
+			if err := attachPersonalLoginToPlace(actor, id, root); err != nil {
+				return nil, err
+			}
 		}
-		log.Printf("[SLACK_ACCOUNTS] actor=%s account=%s owner=%s item=%s reason=connect_and_select", actor, id, owner, root)
+		reason := "connect_saved"
+		if workspace != "" {
+			reason = "connect_and_select"
+		}
+		log.Printf("[SLACK_ACCOUNTS] actor=%s account=%s owner=%s item=%s reason=%s", actor, id, owner, root, reason)
 	}
 	if _, err := personalSlackServer(owner, id); err != nil {
 		return nil, err
 	}
 	selected := slackSelected(owner, id, root)
-	permissions := personalConnectionAccess(r, owner, workspace, selected, "Slack", "Integrations → Slack")
+	permissions := personalConnectionAccess(r, owner, workspace, selected, "Slack", "My Vault")
 	switch action {
 	case "attach":
 		if !permissions.CanAdd {
-			return nil, fmt.Errorf("Add your own saved Slack account to an item you build, from Integrations → Slack.")
+			return nil, fmt.Errorf("Add your own saved Slack account to an item you build, from My Vault.")
 		}
 		if err := attachPersonalLoginToPlace(owner, id, root); err != nil {
 			return nil, err
 		}
 	case "detach":
 		if !permissions.CanDetach {
-			return nil, fmt.Errorf("Ask this item's Builder or the account owner to remove it in Integrations → Slack.")
+			return nil, fmt.Errorf("Ask this item's Builder or the account owner to remove it in My Vault.")
 		}
 		if err := forgetPlaceMCP(owner, id, root); err != nil {
 			return nil, err
@@ -266,14 +284,14 @@ func (api *StreamingAPI) personalSlackOperation(r *http.Request, workspace strin
 		}
 	case "connect", "reconnect":
 		if !permissions.CanReconnect {
-			return nil, fmt.Errorf("Only the account owner can sign in again. Ask them to reconnect this saved Slack account in Integrations → Slack.")
+			return nil, fmt.Errorf("Only the account owner can sign in again. Ask them to reconnect this saved Slack account in My Vault.")
 		}
 		authURL, discovery, _, err := api.startPlaceMCPSignIn(owner, id, deriveOAuthRedirectURI(r), "", nil)
 		if err != nil {
 			return nil, err
 		}
 		if discovery != nil {
-			return map[string]any{"connection_id": id, "status": discovery.Status, "message": "Ask an administrator to set up the Slack sign-in app in Integrations → Slack. Then choose Sign in again. Slack's app must allow its MCP server; the app name should be AgentWorks.", "redirect_uri": discovery.RedirectURI, "notice": slackAccountNotice}, nil
+			return map[string]any{"connection_id": id, "status": discovery.Status, "message": "Ask an administrator to set up the Slack sign-in app in My Vault. Then choose Sign in again. Slack's app must allow its MCP server; the app name should be AgentWorks.", "redirect_uri": discovery.RedirectURI, "notice": slackAccountNotice}, nil
 		}
 		return map[string]any{"connection_id": id, "auth_url": authURL, "next": "Open this link and sign in with Slack, then return here. This account is used only in the items you explicitly add it to.", "notice": slackAccountNotice}, nil
 	default:
@@ -306,7 +324,7 @@ func (api *StreamingAPI) handlePersonalSlackAccounts(w http.ResponseWriter, r *h
 }
 
 func (api *StreamingAPI) registerPersonalSlackAccountTool(reg definitionToolRegistrar, workspace string) error {
-	return reg.RegisterCustomTool("manage_slack_account", "Manage personal Slack accounts for this item, separate from its bot. list_saved: saved accounts and those added here, with current permissions. connect: connect a new account and explicitly add it here, returning a sign-in link. attach/detach: add a saved account here or remove it only here. reconnect: sign in again. disconnect: remove the saved account everywhere. Current Builders, including workflow editors, can add their own account. Only the account owner signs in or reconnects; account owners or administrators can disconnect the saved connection. Shared runs use this item's selected account, with the caller's existing access. "+slackAccountNotice, map[string]interface{}{"type": "object", "additionalProperties": false, "required": []string{"action"}, "properties": map[string]interface{}{
+	return reg.RegisterCustomTool("manage_slack_account", "Manage personal Slack accounts saved in My Vault, separate from the item’s bot. Without an item, connect saves the account without selecting it anywhere. list_saved: saved accounts and those added here, with current permissions. connect: connect a new account and explicitly add it here, returning a sign-in link. attach/detach: add a saved account here or remove it only here. reconnect: sign in again. disconnect: remove the saved account everywhere. Current Builders, including workflow editors, can add their own account. Only the account owner signs in or reconnects; account owners or administrators can disconnect the saved connection. Shared runs use this item's selected account, with the caller's existing access. "+slackAccountNotice, map[string]interface{}{"type": "object", "additionalProperties": false, "required": []string{"action"}, "properties": map[string]interface{}{
 		"action":           map[string]interface{}{"type": "string", "enum": []string{"list_saved", "connect", "attach", "detach", "reconnect", "disconnect"}},
 		"connection_id":    map[string]interface{}{"type": "string", "description": "Exact saved account ID returned by list_saved."},
 		"connection_owner": map[string]interface{}{"type": "string", "description": "Owner returned by list_saved; omit for your own account."},

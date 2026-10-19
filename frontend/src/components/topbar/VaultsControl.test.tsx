@@ -18,14 +18,14 @@ async function render(user: unknown) {
   return host
 }
 
-// A Code-only account (products ["code"]) saw "My vaults" in the left menu because the entry only checked can_create (2026-10-09).
+// Personal account management is available independently of shared Vault access.
 describe('My vaults entry', () => {
   it('shows for an account that may open Vault', async () => {
     const host = await render({ id: 'a', can_create: true, allowed_products: ['code', 'mcp-gateway'] })
     expect(host.querySelector('[aria-label="My vaults"]')).not.toBeNull()
   })
-  it('is hidden from an account whose products leave Vault out, and from read-only accounts', async () => {
-    expect((await render({ id: 'b', can_create: true, allowed_products: ['code'] })).querySelector('[aria-label="My vaults"]')).toBeNull()
+  it('is available without shared Vault access and stays hidden from Run accounts', async () => {
+    expect((await render({ id: 'b', can_create: true, allowed_products: ['code'] })).querySelector('[aria-label="My vaults"]')).not.toBeNull()
     document.body.innerHTML = ''
     expect((await render({ id: 'c', can_create: false, allowed_products: ['code', 'mcp-gateway'] })).querySelector('[aria-label="My vaults"]')).toBeNull()
   })

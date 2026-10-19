@@ -33,7 +33,18 @@ type GmailOAuthStartResponse struct {
 // GmailOAuthRoutes wires the sign-in endpoints.
 func GmailOAuthRoutes(router *mux.Router, api *StreamingAPI) {
 	router.HandleFunc("/api/human-feedback/gmail/connections/{id}/auth/start",
-		requireGmailConnectionManager(startGmailOAuthHandler(api))).Methods("POST", "OPTIONS")
+		requireGmailConnectionManager(func(w http.ResponseWriter, r *http.Request) {
+			svc, err := ensureGmailService()
+			if err != nil {
+				http.Error(w, "Could not load Google accounts.", 500)
+				return
+			}
+			if c, ok := svc.GetConnection(mux.Vars(r)["id"]); ok && c.IsPrivate() {
+				http.Error(w, "Reconnect personal accounts in My Vault.", http.StatusForbidden)
+				return
+			}
+			startGmailOAuthHandler(api)(w, r)
+		})).Methods("POST", "OPTIONS")
 	router.HandleFunc(gmailOAuthCallbackPath,
 		gmailOAuthCallbackHandler(api)).Methods("GET")
 }

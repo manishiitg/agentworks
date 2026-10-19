@@ -25,7 +25,7 @@ Connections are private to the authenticated person, even in a shared {{product}
   catalog. It returns a sign-in link for the person to open with their own
   account. Only this {{product}}'s owner can connect; anyone else can list.
   Google apps (Gmail, Drive, Calendar, Docs, Sheets, Slides) and GitHub are
-  not MCP connections: Google is the **Google apps** tab (the person signs in
+  not MCP connections: Google accounts are managed in **My Vault → Your connected accounts**, then selected in this item’s **Connections → Google apps** (the person signs in
   there and you use it through `google_workspace_cli`); GitHub is a personal
   access token in the secret `GITHUB_TOKEN`, used with git and the GitHub API.
   Point the person there instead of trying `connect`.
