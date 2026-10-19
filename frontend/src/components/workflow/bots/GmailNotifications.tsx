@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useAppStore } from '../../../stores/useAppStore'
 import { Loader2, Mail } from 'lucide-react'
 import { agentApi } from '../../../services/api'
 import { Button } from '../../ui/Button'
@@ -13,7 +13,7 @@ import { AskAIButton } from '../AskAIButton'
 import type { WorkflowBots } from './useWorkflowBots'
 import { StatusBanner } from './StatusBanner'
 import { GoogleAccountList } from '../../../products/work/GoogleAccountList'
-import { GoogleAccountConnect } from '../../../products/work/GoogleAccountConnect'
+import PersonalAccountsPanel from '../../integrations/PersonalAccountsPanel'
 import { GmailInboundPanel } from './GmailInboundPanel'
 import { getGoogleAppsAskAIMessage, useGmailInboundUIEnabled } from './gmailAskAI'
 
@@ -32,62 +32,20 @@ type GmailNotificationsBots = Pick<WorkflowBots,
   | 'gmailOAuthClientError' | 'removeGmailMailboxAndClient' | 'loadGmailConnections'
 >
 
-// Shown while a sign-in is in flight, so the link can be pasted into a
-// different Chrome profile than the one the auto-opened tab landed in —
-// copying the address bar out of that tab does not work (see gmailAuthUrl's
-// comment in useWorkflowBots.ts for why).
-function SignInLinkBox({ url }: { url: string }) {
-  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(url)
-      setCopyState('copied')
-    } catch {
-      setCopyState('failed')
-    }
-    window.setTimeout(() => setCopyState('idle'), 2000)
-  }
-
-  return (
-    <div className="mt-2 rounded-md border border-border bg-muted/40 p-2">
-      <p className="text-xs text-muted-foreground">
-        A tab opened in your default Chrome profile. If this mailbox lives in a different profile,
-        open that profile and paste this link there — copying the address bar out of the tab that
-        opened will not work, since Google ties it to the profile it started in.
-      </p>
-      <div className="mt-1.5 flex items-center gap-2">
-        <code className="flex-1 truncate rounded bg-background px-2 py-1 font-mono text-[11px] text-muted-foreground">
-          {url}
-        </code>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleCopy}
-          className="shrink-0"
-        >
-          {copyState === 'copied' ? 'Copied!' : copyState === 'failed' ? 'Copy failed' : 'Copy link'}
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow', onAsk, platformConnect }: {
+export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow', onAsk }: {
   bots: GmailNotificationsBots
   workspacePath: string | null
   scopeNoun?: 'workflow' | 'project' | 'relay'
-  /** The shared Google form supports both company and named OAuth apps. */
-  platformConnect?: ReactNode
   onAsk?: (message: string) => void | Promise<void>
 }) {
+  const openVault = useAppStore(state => state.setAdminPage)
   const incomingGmail = useGmailInboundUIEnabled()
   const {
     gmailConnectionsReadOnly: readOnly, gmailSettingsReadOnly, canRemoveGmailConnection,
     gmailConfig, setGmailConfig, gmailBlockedText, setGmailBlockedText,
     gmailLoading, gmailSaving, gmailTesting, gmailError, gmailSuccess, gmailTestResult,
     gmailBlockedDefaults, gmailDefaultIsBlocked, gmailCanEnable, gmailHasChanges, saveGmail, testGmail,
-    gmailConnections, gmailConnectionsBusy, gmailAuthPending, gmailAuthUrl,
+    gmailConnections, gmailConnectionsBusy,
     runGmailConnectionAction, connectGmailAccount,
     gmailOAuthClientError, removeGmailMailboxAndClient,
   } = bots
@@ -121,29 +79,17 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
               />
             }
           >
-              {readOnly && <p className="mb-3 text-xs text-muted-foreground" role="status">
-                {workspacePath && /(?:^|\/)Chats\/Code\/projects\//.test(workspacePath)
-                  ? "Only this Code's owner can manage its Google accounts."
-                  : 'An admin manages shared Gmail accounts. You can remove your own connected account.'}
-              </p>}
+              {workspacePath && <PersonalAccountsPanel provider="google" workspacePath={workspacePath} onChanged={bots.loadGmailConnections} />}
               {gmailOAuthClientError && <StatusBanner tone="error">{gmailOAuthClientError}</StatusBanner>}
-              {gmailConnections.length === 0 ? <p className="text-xs text-muted-foreground">No Google account connected yet.</p> : (
-                <GoogleAccountList
-                  workspacePath={workspacePath}
-                  connections={gmailConnections}
-                  busyId={gmailConnectionsBusy}
-                  readOnly={readOnly}
-                  canRemove={canRemoveGmailConnection}
-                  onSendTest={conn => runGmailConnectionAction(conn.id, () => agentApi.testGmailConnectionById(conn.id, gmailConfig.default_to || undefined))}
-                  onSetDefault={conn => runGmailConnectionAction(conn.id, () => agentApi.setDefaultGmailConnection(conn.id))}
-                  onToggle={conn => runGmailConnectionAction(conn.id, () => agentApi.updateGmailConnection(conn.id, { enabled: !conn.enabled }))}
-                  onReconnect={conn => connectGmailAccount(conn.id)}
-                  onRemove={conn => handleRemoveMailbox(conn)}
-                />
-              )}
-              {gmailAuthPending && gmailAuthUrl && <SignInLinkBox url={gmailAuthUrl} />}
-              {platformConnect || (workspacePath && <GoogleAccountConnect key={workspacePath} workspacePath={workspacePath}
-                privateAccount={/(?:^|\/)Chats\/Code\/projects\//.test(workspacePath)} readOnly={readOnly} addedConnectionIds={gmailConnections.map(account => account.id)} onChanged={() => { void bots.loadGmailConnections() }} />)}
+              {gmailConnections.some(account => !account.personal) && <div className="mt-4"><p className="mb-2 text-xs font-medium">Company accounts</p><GoogleAccountList
+                workspacePath={workspacePath}
+                connections={gmailConnections.filter(account => !account.personal)}
+                busyId={gmailConnectionsBusy} readOnly={readOnly} canRemove={canRemoveGmailConnection}
+                onSendTest={conn => runGmailConnectionAction(conn.id, () => agentApi.testGmailConnectionById(conn.id, gmailConfig.default_to || undefined))}
+                onSetDefault={conn => runGmailConnectionAction(conn.id, () => agentApi.setDefaultGmailConnection(conn.id))}
+                onToggle={conn => runGmailConnectionAction(conn.id, () => agentApi.updateGmailConnection(conn.id, { enabled: !conn.enabled }))}
+                onReconnect={conn => connectGmailAccount(conn.id)} onRemove={handleRemoveMailbox} onChangeAccess={() => openVault('vaults')}
+              /></div>}
           </FormSection>
           <FormSection
             title="Company delivery defaults"

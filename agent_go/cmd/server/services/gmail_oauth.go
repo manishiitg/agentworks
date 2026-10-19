@@ -370,10 +370,11 @@ func CompleteGmailOAuth(ctx context.Context, state, code string) (string, string
 	// never lands in the shared one.
 	home := gogHomeDir()
 	if svc := GetGmailService(); svc != nil {
-		conn, ok := svc.GetConnection(pending.ConnectionID)
-		if !ok {
-			return "", "", nil, fmt.Errorf("this Google connection no longer exists — start again from the Gmail settings")
+		conn, err := svc.ResolvePersonalGoogleIdentity(ctx, pending.ConnectionID, email)
+		if err != nil {
+			return "", "", nil, err
 		}
+		pending.ConnectionID = conn.ID
 		if conn.IsPrivate() && strings.TrimSpace(conn.Email) != "" && !strings.EqualFold(strings.TrimSpace(conn.Email), email) {
 			return "", "", nil, fmt.Errorf("This is a different Google account; connect it as a new account.")
 		}

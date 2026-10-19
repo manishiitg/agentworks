@@ -89,6 +89,54 @@ esac
 		}
 	}
 
+	// My Vault has no product selection and no shared-vault dependency.
+	t.Setenv("GMAIL_OAUTH_CLIENTS_DIR", t.TempDir())
+	restoreClientStore := services.SetGogClientStore(services.StoreGogClientForTest)
+	t.Cleanup(restoreClientStore)
+	if _, err := services.CreateOAuthClient(context.Background(), "personal-app", []byte(`{"web":{"client_id":"fixture.apps.googleusercontent.com","client_secret":"fixture-secret"}}`), false); err != nil {
+		t.Fatal(err)
+	}
+	central := &StreamingAPI{}
+	centralCall := func(body, user string, want int) map[string]any {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		central.handlePersonalGoogleAccounts(rec, googleAppRequest(http.MethodPost, "http://localhost:8000/api/integrations/google/accounts", body, user))
+		if rec.Code != want {
+			t.Fatalf("My Vault %s: %d %s", user, rec.Code, rec.Body.String())
+		}
+		var out map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return out
+	}
+	body := `{"action":"connect","client_name":"personal-app","allow_read_access":true,"allow_agent_write_access":false,"services":[{"service":"docs","write":true}],"owner_id":"builder","workspaces":["Workflow/orders"],"config_home":"/ignored"}`
+	created := centralCall(body, "editor", 200)
+	id, _ := created["connection_id"].(string)
+	pending, found := svc.GetConnection(id)
+	if !found || !pending.Personal || pending.OwnerID != "editor" || len(pending.Workspaces) != 0 || pending.ConfigHome != "" || !pending.AllowReadAccess || len(pending.Services) != 1 {
+		t.Fatalf("central account identity/grants: %+v", pending)
+	}
+	if !strings.Contains(created["auth_url"].(string), "localhost%3A8000") {
+		t.Fatal("local callback lost")
+	}
+	if again := centralCall(body, "editor", 200); again["connection_id"] != id {
+		t.Fatal("repeated Connect duplicated pending account")
+	}
+	// A verified duplicate uses the existing ID, store and selections; another
+	// owner's identical address is never reused.
+	resolved, err := svc.ResolvePersonalGoogleIdentity(context.Background(), id, "EDITOR@example.com")
+	if err != nil || resolved.ID != "mine" || len(resolved.Workspaces) != 2 || len(resolved.Services) != 0 {
+		t.Fatalf("verified identity reuse: %+v %v", resolved, err)
+	}
+	if _, ok := svc.GetConnection(id); ok {
+		t.Fatal("duplicate pending account retained")
+	}
+	list := centralCall(`{"action":"list_saved"}`, "editor", 200)
+	listJSON, _ := json.Marshal(list)
+	if strings.Contains(string(listJSON), `"id":"other"`) || strings.Contains(string(listJSON), `"id":"company"`) {
+		t.Fatal("My Vault exposed another person's account")
+	}
+	centralCall(body, "runner", 403)
+	centralCall(`{"action":"reconnect","connection_id":"mine"}`, "builder", 403)
 	selected := services.GmailUseScope{Workspace: "Workflow/orders", UserID: "runner"}
 	if c, err := svc.ConnectionForScope("mine", selected); err != nil || c.ID != "mine" {
 		t.Fatalf("shared caller selected=%+v %v", c, err)

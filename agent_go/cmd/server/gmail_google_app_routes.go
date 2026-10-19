@@ -32,6 +32,7 @@ func gmailGoogleAppReturnURI(r *http.Request) string { return deriveOAuthRedirec
 
 // GoogleAppRoutes wires the platform-app endpoints.
 func GoogleAppRoutes(router *mux.Router, api *StreamingAPI) {
+	router.HandleFunc("/api/integrations/google/accounts", api.handlePersonalGoogleAccounts).Methods("GET", "POST", "OPTIONS")
 	router.HandleFunc("/api/human-feedback/gmail/google-app", googleAppStatusHandler(api)).Methods("GET")
 	router.HandleFunc("/api/human-feedback/gmail/google-app/connect", googleAppConnectHandler(api)).Methods("POST", "OPTIONS")
 }

@@ -79,7 +79,7 @@ The Automation pane lists your watchers and, for shared products, who owns the w
 
 ## Personal Slack accounts
 
-Use `manage_slack_account` to list saved accounts, connect a new one, add it to this item, remove it only here, or disconnect it everywhere. The website offers the same actions in **Integrations → Slack**. Existing Builders (including workflow editors) can explicitly add their own saved account; only the account owner signs in or reconnects, while owners or administrators can disconnect the saved connection. Signing in opens Slack in the browser, never a terminal or a request for a token in chat.
+Use `manage_slack_account` to list saved accounts, connect a new one, add it to this item, remove it only here, or disconnect it everywhere. On the website, save or reconnect accounts in **My Vault → Your connected accounts**. This item’s **Connections → Slack** has **Use here / Remove here** for those same records; it does not start another sign-in. Existing Builders (including workflow editors) can explicitly add their own saved account; only the account owner signs in or reconnects, while owners or administrators can disconnect the saved connection. Signing in opens Slack in the browser, never a terminal or a request for a token in chat.
 
 Connect once and explicitly add the account to every item that should use it. Shared runs use the account selected for this item, not the caller's Slack login. Messages appear as sent by that person with Slack's app attribution. Anyone who can run or change the item can send as that person through it. State this consequence when adding the account. Removing it here leaves other items connected. It stays selected until explicitly removed, including after its connector loses Builder access.
 
@@ -104,8 +104,9 @@ servers, and available secrets.
   prove Gmail consent. If no connection is returned, say no account is connected;
   ask which account the user wants to connect without suggesting a provider email.
 
-- Gmail is a shared account connection shown in **Setup > Bots**, not an MCP
-  server. Incoming email is a Gmail trigger with a unique receiving address. Check `list_gmail_connections`
+- Gmail uses saved Google accounts in **My Vault → Your connected accounts**,
+  selected with **Use here** in this project’s **Connections → Google apps**;
+  it is not an MCP server. Incoming email is a Gmail trigger with a unique receiving address. Check `list_gmail_connections`
   before searching the MCP catalog or claiming Gmail is unavailable.
 - Before calling `google_workspace_cli`, use `list_skills` to check whether the
   upstream `gog` skills are installed. If they are missing, call
@@ -156,7 +157,7 @@ When asked to connect Slack or configure a route, inspect `get_slack_bot_setting
 4. Invite the bot to the desired channel. Obtain the exact channel ID from Slack's channel details, then create a route for the current workflow/project with `create_slack_bot_route`. Channel IDs belong only to routes; there is no global/default channel. Use `run` for bot routes. Do not ask users to choose a grant or offer bot authoring mode. Confirm with `get_slack_bot_settings` after the change.
 5. Everyone in a routed channel is allowed by default. To exclude users, set that route's `blocked_emails`; use `[]` to clear the list. Do not create a global Allowed Users list. The same app may serve different channels, each with its own workflow/project destination.
 
-Notify controls outbound workflow notifications and human feedback. Bots controls conversations and channel routing. Gmail account settings have their own Setup > Gmail section and are not part of Bots.
+Notify controls outbound workflow notifications and human feedback. Bots controls conversations and channel routing. Gmail accounts are managed in My Vault and selected in Connections → Google apps, separately from Bots.
 
 Bot routes use `run`, which gives runtime/read-only authority. Do not offer `owner` or workflow authoring through the bot. The Slack sender is audit metadata and never supplies execution permissions. Only an authenticated interactive owner may create, update, or remove a route. A Slack-origin session cannot manage routes. Legacy owner/Build routes are restricted to Run when decoded and revalidated. Read-only sessions receive inspection tools, not mutation tools. Permission changes invalidate running bot work and are rechecked on every turn.
 

@@ -4,8 +4,6 @@ import { Button } from '../../components/ui/Button'
 import ConnectionIcon from '../../components/connectors/ConnectionIcon'
 import { GmailSetupGuide } from '../../components/workflow/bots/GmailSetupGuide'
 import { googleAppApi } from '../../api/googleApp'
-import { agentApi } from '../../services/api'
-import type { GmailConnection } from '../../services/api-types'
 import { CHANGE_GOOGLE_ACCESS_EVENT, GOOGLE_ACCESS_SERVICES, GOOGLE_SERVICES, googleAccessLabel, type GoogleAccessLevel } from './googleAccountAccess'
 
 type Level = GoogleAccessLevel
@@ -18,12 +16,10 @@ const errorText = (cause: unknown, fallback: string) => {
 }
 
 /** One permission form for company OAuth apps, named JSON uploads and existing accounts. */
-export function GoogleAccountConnect({ workspacePath, onChanged, readOnly = false, addedConnectionIds = [] }: { workspacePath: string; onChanged?: () => void; privateAccount?: boolean; readOnly?: boolean; addedConnectionIds?: string[] }) {
-  const lockedReason = "Only this item's Builder can add a Google account. Ask them to open Google apps."
-  const [saved, setSaved] = useState<GmailConnection[]>([])
-  const [addedIds, setAddedIds] = useState<string[]>([])
-  const [savedId, setSavedId] = useState('')
-
+export function GoogleAccountConnect({ onChanged, canConnect = true }: { onChanged?: () => void; canConnect?: boolean }) {
+  const workspacePath = ''
+  const readOnly = false
+  const lockedReason = 'Manage your personal Google account in My Vault.'
   const [configured, setConfigured] = useState<boolean | null>(null)
   const [clients, setClients] = useState<{ name: string }[]>([])
   const [source, setSource] = useState('')
@@ -35,17 +31,6 @@ export function GoogleAccountConnect({ workspacePath, onChanged, readOnly = fals
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [opened, setOpened] = useState(false)
-  useEffect(() => {
-    let cancelled = false
-    void agentApi.listSavedGoogleAccounts().then(available => {
-      if (cancelled) return
-      setSaved(available.connections)
-
-    }).catch(() => { if (!cancelled) setSaved([]) })
-    return () => { cancelled = true }
-  }, [workspacePath, opened])
-  const addedKey = addedConnectionIds.join(',')
-  useEffect(() => setAddedIds(addedKey ? addedKey.split(',') : []), [addedKey])
   const [authUrl, setAuthUrl] = useState('')
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(true)
@@ -91,7 +76,7 @@ export function GoogleAccountConnect({ workspacePath, onChanged, readOnly = fals
   }, [workspacePath])
 
   const connect = useCallback(async () => {
-    if (readOnly || busy) return
+    if (readOnly || busy || (!changing && !canConnect)) return
     setBusy(true); setError(null); setOpened(false)
     try {
       const services = SERVICES.filter(s => (levels[s.key] ?? 'off') !== 'off').map(s => ({ service: s.key, write: levels[s.key] === 'write' }))
@@ -136,7 +121,7 @@ export function GoogleAccountConnect({ workspacePath, onChanged, readOnly = fals
     } finally {
       setBusy(false)
     }
-  }, [workspacePath, levels, gmail, onChanged, changing, readOnly, busy, source, configured, clientName, clientFile])
+  }, [workspacePath, levels, gmail, onChanged, changing, readOnly, busy, source, configured, clientName, clientFile, canConnect])
 
 
   const changedCount = changing ? GOOGLE_ACCESS_SERVICES.filter(service => {
@@ -167,29 +152,7 @@ export function GoogleAccountConnect({ workspacePath, onChanged, readOnly = fals
       <p className="mt-3 text-xs leading-5 text-muted-foreground">
         Sign in once with your own Google account, then add it to the items you build. The agent uses it through the server and never sees your password or token.
       </p>
-      <p className="mt-2 text-xs leading-5 text-muted-foreground">Anyone who can run or change this item can use this Google account through it. Removing it here leaves your other items connected. Company accounts are managed by an administrator.</p>
-      {!readOnly && !changing && saved.length > 0 && <div className="mt-3 rounded-md border border-border p-3">
-        <label className="block text-xs font-medium">Add a saved Google account
-          <select aria-label="Saved Google account" value={savedId} disabled={busy} onChange={event => setSavedId(event.target.value)} className="mt-2 w-full rounded-md border border-border bg-background p-2">
-            <option value="">Choose one of your accounts</option>
-            {saved.filter(account => !addedIds.includes(account.id)).map(account => <option key={account.id} value={account.id}>{account.email || account.display_name}</option>)}
-          </select>
-        </label>
-        <Button className="mt-2" disabled={busy || !savedId} onClick={async () => {
-          setBusy(true); setError(null)
-          try { await agentApi.selectGoogleAccount(savedId, workspacePath, true); setAddedIds(ids => [...ids, savedId]); setSavedId(''); onChanged?.() }
-          catch (cause) { setError(errorText(cause, 'Could not add the account.')) }
-          finally { setBusy(false) }
-        }}>Add to this item</Button>
-        <p className="mt-2 text-xs text-muted-foreground">To stop using an account everywhere, disconnect the saved account below.</p>
-        {saved.map(account => <div key={account.id} className="mt-2 flex items-center justify-between gap-2 text-xs"><span>{account.email || account.display_name}</span><button type="button" disabled={busy} className="text-destructive disabled:opacity-50" onClick={async () => {
-          if (!window.confirm('Disconnect this saved Google account from every item?')) return
-          setBusy(true); setError(null)
-          try { await agentApi.deleteGmailConnection(account.id); setSaved(accounts => accounts.filter(entry => entry.id !== account.id)); onChanged?.() }
-          catch (cause) { setError(errorText(cause, 'Could not disconnect the saved account.')) }
-          finally { setBusy(false) }
-        }}>Disconnect everywhere</button></div>)}
-      </div>}
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">Choose Use here in a product to let that product use this account. Saving it here does not add it to a product or a shared vault. Company accounts are managed by an administrator.</p>
       {readOnly && <p role="note" className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-800 dark:text-amber-200">{lockedReason}</p>}
       {sourceError && <p role="alert" className="mt-2 text-xs text-amber-600 dark:text-amber-400">{sourceError}</p>}
       {!changing && <div className="mt-3 space-y-2 rounded-md border border-border p-3">
@@ -264,7 +227,7 @@ export function GoogleAccountConnect({ workspacePath, onChanged, readOnly = fals
             <div className="mt-1 max-w-72 leading-4">{changing ? 'Changes are saved when you continue. Approve new permissions with Google.' : 'Review and approve these permissions with Google.'}</div>
           </div>
         </div>
-        <Button size="sm" disabled={busy || readOnly || (!changing && (!source || configured === null || (source === 'upload' && (!clientName.trim() || !clientFile))))} onClick={() => { void connect() }}>
+        <Button size="sm" disabled={busy || readOnly || (!changing && (!canConnect || !source || configured === null || (source === 'upload' && (!clientName.trim() || !clientFile))))} onClick={() => { void connect() }}>
           {busy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null}{readOnly ? 'Ask the Builder to connect' : changing ? 'Sign in again with Google' : 'Connect Google account'}<ArrowRight className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
         </Button>
       </div>
