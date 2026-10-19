@@ -425,3 +425,21 @@ it('finds Connections through its previous Integrations name without exposing ot
   await act(async () => host.querySelector('[data-navigation-id="panel:mcp"]')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
   expect(open).toHaveBeenCalledWith('mcp', undefined)
 })
+
+
+it('distinguishes saved Crew side-chat names and activates the existing tab', async () => {
+  const { host } = await renderNavigation('Shared Crew', ['work'], false, () => {
+    useChatStore.setState({ chatTabs: Object.fromEntries(['main', 'Finance', 'Research'].map((name, index) => [name, {
+      tabId: name, name, createdAt: index + 1, config: {}, events: [],
+      metadata: { mode: 'multi-agent', agentProfileId: 'work', agentProfileProjectId: 'p1', agentProfileProjectTitle: 'Shared Crew', agentProfileConversationKey: index ? `p1:chat:${name}` : 'p1' },
+    }])) as never })
+  })
+  expect(host.querySelector('[data-navigation-id="crew:main"]')?.textContent).toContain('Main')
+  for (const name of ['Finance', 'Research']) {
+    const row = host.querySelector(`[data-navigation-id="crew:${name}"]`)!
+    expect(row.textContent).toContain(name)
+    await act(async () => { row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
+    expect(useChatStore.getState().activeTabId).toBe(name)
+    expect(Object.keys(useChatStore.getState().chatTabs)).toHaveLength(3)
+  }
+})

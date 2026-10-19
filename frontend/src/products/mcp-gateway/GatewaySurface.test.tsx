@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { requestServiceChat, useServiceChatNavigation } from '../../utils/serviceChatNavigation'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -53,6 +54,7 @@ describe('GatewaySurface', () => {
   const openAssistant = () => shortcut('Vault assistant')
   const closeAssistant = async () => { await act(async () => button(container!, 'Back to Vault overview').click()) }
   beforeEach(() => {
+    useServiceChatNavigation.setState({ request: null })
     const values = new Map<string, string>()
     vi.stubGlobal('localStorage', { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key), clear: () => values.clear() })
   })
@@ -71,6 +73,16 @@ describe('GatewaySurface', () => {
     surfaceRoot = createRoot(container); await act(async () => surfaceRoot!.render(<GatewaySurface standalone={standalone} />))
   }
   function healthy() { stubGatewayUrl(BASE); const mock = vi.fn((url: string, _init?: RequestInit) => healthyFetch()(url)); vi.stubGlobal('fetch', mock); return mock }
+
+  it('opens a selected existing Vault conversation without creating a new tab', async () => {
+    healthy(); await renderSurface()
+    chatRuntime.state.chatTabs.saved = { tabId: 'saved', sessionId: 'saved-session', metadata: { agentProfileId: 'caplayer', isViewOnly: true } }
+    await act(async () => { requestServiceChat('mcp-gateway', 'saved') })
+    expect(container!.querySelector('[aria-label="Vault chat"]')?.hasAttribute('hidden')).toBe(false)
+    expect(chatRuntime.hydrate).toHaveBeenCalledWith('saved-session', expect.objectContaining({ workspacePath: 'Chats/CapLayer' }))
+    expect(chatRuntime.resolve).not.toHaveBeenCalled()
+    expect(chatRuntime.state.createChatTab).not.toHaveBeenCalled()
+  })
 
   it('starts with Connected MCPs in main and all shortcuts, without preparing a chat', async () => {
     healthy(); await renderSurface()

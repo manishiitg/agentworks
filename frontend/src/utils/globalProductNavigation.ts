@@ -1,3 +1,4 @@
+import { requestServiceChat } from './serviceChatNavigation'
 import { isProductSurface } from '../products/productSurfaceConfig'
 import type { ActiveSessionInfo } from '../services/api-types'
 import { useChatStore, type ChatTab } from '../stores/useChatStore'
@@ -57,9 +58,11 @@ export function openGlobalTab(tabId: string): boolean {
     surfaces.setProductSurface('work')
   } else if (tab.metadata?.agentProfileId === 'caplayer') {
     surfaces.setProductSurface('mcp-gateway')
+    requestServiceChat('mcp-gateway', tabId)
   } else if (tab.metadata?.agentProfileId && isProductSurface(tab.metadata.agentProfileId)) {
     if (tab.metadata.agentProfileId === 'video-studio') surfaces.setLastVideoProjectId(tab.metadata.agentProfileProjectId || null)
     surfaces.setProductSurface(tab.metadata.agentProfileId)
+    if (tab.metadata.agentProfileId === 'knowledgebase') requestServiceChat('knowledgebase', tabId)
   } else {
     surfaces.setProductSurface(workflowSurfaceForPreset(tab.metadata?.presetQueryId))
   }

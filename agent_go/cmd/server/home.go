@@ -83,10 +83,16 @@ func (api *StreamingAPI) homeInventory(ctx context.Context) ([]homeWork, error) 
 				out = append(out, homeWork{Surface: "work", ID: fmt.Sprint(row["id"]), Label: fmt.Sprint(row["name"]), WorkspacePath: fmt.Sprint(row["workspace_path"])})
 			}
 		}
-		// Code is private to its owner; scoped external tokens have no Code scope.
+		// Code-origin projects keep their existing audience rules; scoped external tokens have no Code scope.
 		if homeProductAllowed(claims, "code") && claims.AccessToken == nil {
 			if profile, err := api.agentProfiles.Resolve("code", 0, claims.UserID); err == nil {
-				for _, row := range listProjectsForOwner(ctx, claims, profile, claims.UserID, false) {
+				rows := listProjectsForOwner(ctx, claims, profile, claims.UserID, false)
+				if projectSharingEnabled() {
+					for _, ownerID := range crewProjectOwnerCandidates(claims.UserID) {
+						rows = append(rows, listSharedProjectsForOwner(ctx, claims, profile, ownerID)...)
+					}
+				}
+				for _, row := range rows {
 					out = append(out, homeWork{Surface: "code", ID: row.ID, Label: row.Title, WorkspacePath: row.WorkspacePath, UpdatedAt: row.UpdatedAt})
 				}
 			}

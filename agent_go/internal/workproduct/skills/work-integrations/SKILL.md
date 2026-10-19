@@ -25,6 +25,11 @@ Slack bots keep their administrator setup.
 
 ## Secrets
 
+Open **Connections → Secrets**. To show it in the current project with
+`perform_ui_action`, use `view="mcp", action="open", target="secrets"`.
+There is no separate Secrets side-menu panel. Never claim it opened unless
+the UI action confirms success.
+
 - Call `list_secrets` before creating, replacing, or deleting a secret.
 - `set_workflow_secret` and `delete_workflow_secret` manage project-scoped
   secrets in {{product}} (legacy tool names for the shared project store).
@@ -35,7 +40,7 @@ Slack bots keep their administrator setup.
 - {{product}} stores attached secret names in `workflow.json` under
   `capabilities.selected_secrets`, using the AgentWorks workflow contract.
   Secret values remain encrypted outside the manifest. <!-- product:mcp-gateway -->Shared Vault credentials also require the executing user's current group permission.<!-- /product --> Respect the user's
-  selections in **Integrations > Secrets**; do not attach an unrelated credential.
+  selections in **Connections > Secrets**; do not attach an unrelated credential.
 - A read-only workflow or Crew reference never grants its secrets.
 <!-- product:mcp-gateway -->- A read-only workflow or Crew reference never grants its secrets. To reuse a
   credential across projects, it goes into Vault: a Vault administrator shares

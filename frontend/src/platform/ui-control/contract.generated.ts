@@ -164,12 +164,15 @@ export const UI_CONTROL_CONTRACT = {
     },
     {
       "id": "mcp",
-      "label": "Integrations",
+      "label": "Connections",
       "actions": [
         "open",
         "refresh"
       ],
-      "targets": []
+      "targets": [
+        "secrets"
+      ],
+      "target_kind": "view_section"
     },
     {
       "id": "playbooks",

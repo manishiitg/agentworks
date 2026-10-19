@@ -74,6 +74,10 @@ export async function applyUIAction(
       if (host.getClientRects().length === 0) return
       // The marker lives INSIDE Suspense, not in its loading fallback.
       if (!host.querySelector('[data-ui-view-mounted]')) return
+      if (action.view === 'mcp' && action.target) {
+        const section = host.querySelector<HTMLElement>('[data-ui-view-section]')
+        if (section?.dataset.uiViewSection !== action.target || section.getClientRects().length === 0) return
+      }
       if (action.view === 'flow' && action.target) {
         // Wait for the actual node, including lazy canvas/data loading. Never
         // interpolate a caller's target into a selector or synthesize clicks.
@@ -110,7 +114,7 @@ export async function applyUIAction(
     }
     const observer = new MutationObserver(check)
     const timer = setTimeout(() => finish('failed', action.target ? 'target_not_found' : 'render_failed'), Math.min(8000, expires - Date.now()))
-    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-ui-view', 'data-ui-plan-step', 'data-ui-file-path', 'data-ui-file-ready', 'open', 'class'] })
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-ui-view', 'data-ui-view-section', 'data-ui-plan-step', 'data-ui-file-path', 'data-ui-file-ready', 'open', 'class'] })
     signal.addEventListener('abort', aborted, { once: true })
     document.addEventListener('pointerdown', interrupted, true)
     document.addEventListener('keydown', interrupted, true)

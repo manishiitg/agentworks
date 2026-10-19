@@ -389,7 +389,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       .map(tab => {
         const activeSession = tab.sessionId ? visibleActiveSessions.find(session => session.session_id === tab.sessionId) : undefined
         const project = tab.metadata?.agentProfileIdentityName || tab.metadata?.agentProfileProjectTitle || 'Crew'
-        const role = tab.metadata?.agentProfileBuilder ? 'Builder' : 'Chat'
+        const role = isWorkSideChatTab(tab) ? tab.name : 'Main'
         return {
           type: 'crew' as const,
           id: `crew:${tab.tabId}`,

@@ -1,3 +1,4 @@
+import { currentServiceChatRequest, useServiceChatNavigation } from '../../utils/serviceChatNavigation'
 import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { useWorkspaceViewPreference } from '../../hooks/useWorkspaceViewPreference'
 import { normalizeViewFrom } from '../../utils/workspaceViewPreference'
@@ -52,7 +53,12 @@ function GatewayAdminWorkspace({ base, standalone, page, onPage }: { base: strin
   const [chatRequested, setChatRequested] = useState(false)
   const [mobilePane, setMobilePane] = useState<'chat' | 'workspace'>('chat')
   const [panel, setPanel] = useWorkspaceViewPreference<GatewayPanel>('mcp-gateway', base, 'servers', normalizeVaultPanel)
-  const { tabId, error, prepare, retry, openNew } = useVaultChat(chatRequested || (!readOnly && !page && panel === 'models'))
+  const navigation = currentServiceChatRequest(useServiceChatNavigation(state => state.request), 'mcp-gateway')
+  const { tabId, error, prepare, retry, openNew } = useVaultChat(!readOnly && (chatRequested || (!page && panel === 'models')), navigation?.tabId)
+  useEffect(() => {
+    if (readOnly) { setChatOpen(false); return }
+    if (navigation) { setChatRequested(true); setChatOpen(true); setMobilePane('workspace') }
+  }, [navigation, readOnly])
   const openChat = () => { setChatRequested(true); setChatOpen(true); setMobilePane('workspace') }
   const closeChat = () => { setChatOpen(false); setMobilePane('workspace') }
   const openPanel = (next: GatewayPanel) => { setPanel(next); onPage(null); setMobilePane('chat') }
@@ -137,7 +143,7 @@ function GatewayAdminWorkspace({ base, standalone, page, onPage }: { base: strin
     divider={<WorkspaceSplitDivider ratio={ratio} onPointerDown={resize} onStep={delta => updateRatio(ratioRef.current + delta, true)} className="md:row-start-2" />}
     workspace={<div className="h-full min-h-0 overflow-y-auto">
       <div hidden={chatOpen}><button type="button" onClick={() => setMobilePane('chat')} className="mx-4 mt-3 inline-flex items-center gap-2 text-xs text-muted-foreground md:hidden"><ArrowLeft className="h-3.5 w-3.5" />Back to management</button><GatewayContextPanel panel={panel} page={page} onOpen={openPanel} onPage={openPage} onChat={openChat} readOnly={readOnly} /></div>
-      {chatRequested && <section hidden={!chatOpen} aria-label="Vault chat" className="h-full min-h-0 flex-col" style={{ display: chatOpen ? 'flex' : 'none' }}>
+      {chatRequested && !readOnly && <section hidden={!chatOpen} aria-label="Vault chat" className="h-full min-h-0 flex-col" style={{ display: chatOpen ? 'flex' : 'none' }}>
         <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2"><WorkspaceViewIconButton label="Back to Vault overview" icon={ArrowLeft} onClick={closeChat} /><MessageCircle className="h-4 w-4 text-muted-foreground" /><h2 className="text-sm font-medium">Vault assistant</h2></div>
         <div className="min-h-0 flex-1">{error ? <div className="p-6 text-sm"><p role="alert" className="text-destructive">{error}</p><button type="button" onClick={retry} className="mt-2 underline">Retry assistant</button></div> : tabId ? <ChatArea tabId={tabId} compact showProductSteerAction showProductTerminalControl
           composerPlaceholder="Connect an MCP server or describe an access policy…" onNewChat={openNew}

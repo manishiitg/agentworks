@@ -291,3 +291,63 @@ func TestWorkspaceStateRestoresEmptyRegisteredSideChat(t *testing.T) {
 		t.Fatalf("unregistered session restored: %+v", got)
 	}
 }
+
+func TestHomeInventoryIncludesOnlyAdmittedSharedCode(t *testing.T) {
+	api, _ := newCodePrivacyFixture(t)
+	t.Setenv("AGENT_PRODUCTS", "code")
+	registry := withProjectOwnerRegistry(t)
+	withProjectSharing(t, true)
+	const folder = "app-c0de0001"
+	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: folder, OwnerID: "owner", ProjectID: "c0de0001-0000"}); err != nil {
+		t.Fatal(err)
+	}
+	claims := &UserClaims{UserID: "other"}
+	request := adminRequest("GET", "/api/home", "", claims, nil)
+	contains := func() bool {
+		t.Helper()
+		items, err := api.homeInventory(request.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range items {
+			if item.ID == "c0de0001-0000" {
+				if item.WorkspacePath != codePrivacyOwnerRoot {
+					t.Fatalf("wrong owner root: %+v", item)
+				}
+				return true
+			}
+		}
+		return false
+	}
+	if contains() {
+		t.Fatal("private Code leaked into return inventory")
+	}
+	if err := registry.SetRunPeople("code", folder, []string{"other"}); err != nil {
+		t.Fatal(err)
+	}
+	if !contains() {
+		t.Fatal("shared Code missing from return inventory")
+	}
+	if err := registry.SetRunPeople("code", folder, nil); err != nil {
+		t.Fatal(err)
+	}
+	if contains() {
+		t.Fatal("revoked Run audience retained in return inventory")
+	}
+	if _, err := registry.AddCoOwner("code", folder, "other"); err != nil {
+		t.Fatal(err)
+	}
+	if !contains() {
+		t.Fatal("co-owned Code missing from return inventory")
+	}
+	if _, err := registry.RemoveCoOwner("code", folder, "other"); err != nil {
+		t.Fatal(err)
+	}
+	if contains() {
+		t.Fatal("revoked co-owner retained in return inventory")
+	}
+	claims.AccessToken = &accesstokens.Token{Scopes: []string{"crews:read"}}
+	if contains() {
+		t.Fatal("scoped token reached Code return inventory")
+	}
+}
