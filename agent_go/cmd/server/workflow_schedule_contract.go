@@ -75,6 +75,32 @@ func validateScheduleMessages(messages []string, directMessagesReason string) er
 	return nil
 }
 
+// A route-backed schedule already dispatches the saved workflow route before
+// its messages. Explicit full-workflow tool references in those later messages
+// are invalid authoring input, rather than something to deduplicate at runtime.
+func validateRouteScheduleMessages(schedule WorkflowSchedule) error {
+	if len(schedule.RouteSelections) == 0 {
+		return nil
+	}
+	check := func(messages []string) error {
+		for _, message := range messages {
+			if strings.Contains(message, "run_full_workflow") {
+				return fmt.Errorf("This schedule already runs the workflow; remove the extra run message.")
+			}
+		}
+		return nil
+	}
+	if err := check(schedule.Messages); err != nil {
+		return err
+	}
+	for _, item := range schedule.CalendarItems {
+		if err := check(item.Messages); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func scheduleMessagesAdvisory(messages []string, directMessagesReason string) string {
 	needsReason, _ := scheduleMessagesNeedExplicitReason(messages)
 	if !needsReason {

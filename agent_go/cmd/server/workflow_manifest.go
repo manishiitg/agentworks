@@ -1014,6 +1014,9 @@ func ValidateManifest(m *WorkflowManifest) error {
 		}
 	}
 	for i, sched := range m.Schedules {
+		if err := validateRouteScheduleMessages(sched); err != nil {
+			return fmt.Errorf("schedules[%d]: %w", i, err)
+		}
 		if isPythonRelay(m) && (len(sched.RouteSelections) != 0 || (sched.Webhook != nil && (strings.TrimSpace(sched.Webhook.StepID) != "" || sched.Webhook.PayloadMappings != nil))) {
 			return fmt.Errorf("Python Flows run relay.py; workflow step targets and payload routing are not supported")
 		}

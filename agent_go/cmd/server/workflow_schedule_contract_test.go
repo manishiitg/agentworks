@@ -40,6 +40,37 @@ func TestScheduledWorkshopMessagesRunsRouteBeforeCustomFollowUp(t *testing.T) {
 	}
 }
 
+func TestManifestRefusesExtraFullRunMessageForSavedRoute(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		routes   map[string]string
+		messages []string
+		wantErr  bool
+	}{
+		{"duplicate tool call", map[string]string{"router": "standard"}, []string{`Call run_full_workflow(group_name="default", route_selections={"router":"standard"})`}, true},
+		{"tool name without arguments", map[string]string{"router": "standard"}, []string{"Use run_full_workflow for the daily work."}, true},
+		{"genuine follow-up", map[string]string{"router": "standard"}, []string{"After the selected work completes, report the result."}, false},
+		{"route only", map[string]string{"router": "standard"}, nil, false},
+		{"direct message only", nil, []string{`Call run_full_workflow(group_name="default")`}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			manifest := NewWorkflowManifest("Scheduled work")
+			manifest.Schedules = []WorkflowSchedule{{
+				ID: "daily", CronExpression: "0 9 * * *", Timezone: "UTC",
+				GroupNames: []string{"default"}, RouteSelections: tc.routes, Messages: tc.messages,
+			}}
+			err := ValidateManifest(manifest)
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "This schedule already runs the workflow; remove the extra run message.") {
+					t.Fatalf("validation = %v, want duplicate-run refusal", err)
+				}
+			} else if err != nil {
+				t.Fatalf("valid schedule rejected: %v", err)
+			}
+		})
+	}
+}
+
 func TestValidateScheduleMessagesRequiresReasonForInlineProcedure(t *testing.T) {
 	procedure := []string{"Run sqlite3 db/db.sqlite SELECT * FROM queue"}
 	if err := validateScheduleMessages(procedure, ""); err == nil {
