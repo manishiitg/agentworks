@@ -725,7 +725,7 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 	if err != nil || !before.Offline || before.Attached {
 		t.Fatalf("fixture did not reproduce offline messaging: %+v %v", before, err)
 	}
-	got, err := CallMessagingBridge(ctx, root, request)
+	got, err := CallMessagingBridge(ctx, root, request, nil)
 	if err != nil || !got.Attached || got.Attachment.AgentID != "agent-saved" || got.Attachment.AgentName != "saved-saved" {
 		t.Fatalf("messaging did not resume the same saved agent: %+v %v", got, err)
 	}
@@ -736,13 +736,13 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 	if _, err = CallLocalBridge(ctx, root, LocalBridgeRequest{Action: "offline", Provider: "codex", SessionID: "saved", HostKey: "current-process"}); err != nil {
 		t.Fatal(err)
 	}
-	got, err = CallMessagingBridge(ctx, root, request)
+	got, err = CallMessagingBridge(ctx, root, request, nil)
 	if err != nil || !got.Attached || got.Attachment.AgentID != "agent-saved" || got.Attachment.AgentName != "saved-saved" || attachments.Load() != 2 {
 		t.Fatalf("a resumed chat did not reconnect after SessionEnd: %+v %v", got, err)
 	}
 	for _, session := range []string{"never-attached", "closed"} {
 		request.SessionID = session
-		got, err = CallMessagingBridge(ctx, root, request)
+		got, err = CallMessagingBridge(ctx, root, request, nil)
 		if got.Attached || session == "closed" && err == nil {
 			t.Fatalf("messaging revived %s: %+v %v", session, got, err)
 		}
@@ -751,7 +751,7 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 		t.Fatal(err)
 	}
 	request.SessionID = "saved"
-	if got, err = CallMessagingBridge(ctx, root, request); err != nil || got.Attached {
+	if got, err = CallMessagingBridge(ctx, root, request, nil); err != nil || got.Attached {
 		t.Fatalf("messaging revived an explicit detach: %+v %v", got, err)
 	}
 	if attachments.Load() != 2 {

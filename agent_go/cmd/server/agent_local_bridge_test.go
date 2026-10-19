@@ -245,7 +245,7 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	}
 	cli(true, "detach")
 	base := agentworksclient.LocalBridgeRequest{Provider: "claude", SessionID: "exact-hook-session", HostKey: "exact-parent-process"}
-	plugin, err := agentworksclient.NewPluginMCPServer(context.Background(), root, "claude", base.HostKey, false)
+	plugin, err := agentworksclient.NewPluginMCPServer(context.Background(), root, "claude", base.HostKey, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +327,7 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 		t.Fatal("purpose child acquired registration authority")
 	}
 	// A desktop MCP child is shared, so only host metadata chooses the chat.
-	codexPlugin, e := agentworksclient.NewPluginMCPServer(context.Background(), root, "codex", "desktop-parent", false)
+	codexPlugin, e := agentworksclient.NewPluginMCPServer(context.Background(), root, "codex", "desktop-parent", false, nil)
 	if e != nil {
 		t.Fatal(e)
 	}

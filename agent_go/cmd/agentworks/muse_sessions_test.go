@@ -54,11 +54,11 @@ func TestMusePluginExactProcessBoundary(t *testing.T) {
 		if _, err = os.Stat(root); !os.IsNotExist(err) {
 			t.Fatal("unattached hook started bridge", err)
 		}
-		server, err := agentworksclient.NewPluginMCPServer(context.Background(), root, "muse", host, false)
+		server, err := agentworksclient.NewPluginMCPServer(context.Background(), root, "muse", host, false, nil)
 		if err != nil || len(server.ListTools()) != 1 || server.ListTools()["agentworks"] == nil || !strings.Contains(server.ListTools()["agentworks"].Tool.Description, "get_file") || !strings.Contains(server.ListTools()["agentworks"].Tool.Description, "ping_person") || !strings.Contains(server.ListTools()["agentworks"].Tool.Description, "set_purpose") {
 			t.Fatal("Muse messaging child unavailable or overbroad", err)
 		}
-		if _, err = agentworksclient.NewPluginMCPServer(context.Background(), root, "muse", host, true); err == nil {
+		if _, err = agentworksclient.NewPluginMCPServer(context.Background(), root, "muse", host, true, nil); err == nil {
 			t.Fatal("Muse obtained Claude native-channel authority")
 		}
 		return

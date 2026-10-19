@@ -13,17 +13,18 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// NewPluginMCPServer has no credentials and cannot attach a session. The host
-// key identifies its exact Claude or Muse process; the person hook supplies session_id
-// when attaching. Native is enabled only by the person's channel launcher.
-func NewPluginMCPServer(ctx context.Context, root, provider, hostKey string, native bool, sessionIDs ...string) (*server.MCPServer, error) {
-	return newPluginMCPServer(ctx, root, provider, hostKey, native, sessionIDs, nil, nil)
+// NewPluginMCPServer has no credentials and cannot create a first attachment.
+// startBridge restores a missing helper only for an already saved Codex chat.
+// The host key identifies the provider process; native is enabled only by the
+// person's channel launcher.
+func NewPluginMCPServer(ctx context.Context, root, provider, hostKey string, native bool, startBridge func(context.Context) error, sessionIDs ...string) (*server.MCPServer, error) {
+	return newPluginMCPServer(ctx, root, provider, hostKey, native, sessionIDs, nil, nil, startBridge)
 }
 
 // Muse can switch chats within one process. Resolve its current native-hook
 // UUID on each call instead of inferring whichever old lease shares the host.
 func NewMusePluginMCPServer(ctx context.Context, root, hostKey string, session func() (string, error)) (*server.MCPServer, error) {
-	return newPluginMCPServer(ctx, root, "muse", hostKey, false, nil, session, nil)
+	return newPluginMCPServer(ctx, root, "muse", hostKey, false, nil, session, nil, nil)
 }
 
 // Cursor resolves the exact chat for each call: a CLI process has one chat
@@ -32,10 +33,10 @@ func NewMusePluginMCPServer(ctx context.Context, root, hostKey string, session f
 // The resolver gets the tool name and full arguments; the child never infers a
 // session from the arguments themselves.
 func NewCursorPluginMCPServer(ctx context.Context, root, hostKey string, session func(tool string, args map[string]any) (string, error)) (*server.MCPServer, error) {
-	return newPluginMCPServer(ctx, root, "cursor", hostKey, false, nil, nil, session)
+	return newPluginMCPServer(ctx, root, "cursor", hostKey, false, nil, nil, session, nil)
 }
 
-func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, native bool, sessionIDs []string, museSession func() (string, error), callSession func(tool string, args map[string]any) (string, error)) (*server.MCPServer, error) {
+func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, native bool, sessionIDs []string, museSession func() (string, error), callSession func(tool string, args map[string]any) (string, error), startBridge func(context.Context) error) (*server.MCPServer, error) {
 	if provider != "claude" && provider != "codex" && provider != "muse" && provider != "cursor" || native && provider != "claude" {
 		return nil, errors.New("unsupported plugin provider")
 	}
@@ -79,7 +80,7 @@ func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 		if monitor {
 			in.Action = "status"
 		}
-		out, err := CallMessagingBridge(callCtx, root, in)
+		out, err := CallMessagingBridge(callCtx, root, in, startBridge)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}

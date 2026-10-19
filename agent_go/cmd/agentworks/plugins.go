@@ -338,7 +338,9 @@ func pluginCommand(o *options) *cobra.Command {
 		if args[0] == "muse" {
 			bridge, err = agentworksclient.NewMusePluginMCPServer(ctx, dir, host, func() (string, error) { return museSessionForHost(dir, host) })
 		} else {
-			bridge, err = agentworksclient.NewPluginMCPServer(ctx, dir, args[0], host, args[0] == "claude" && o.getenv("AGENTWORKS_CLAUDE_CHANNEL") == "1", os.Getenv("CODEX_THREAD_ID"))
+			bridge, err = agentworksclient.NewPluginMCPServer(ctx, dir, args[0], host, args[0] == "claude" && o.getenv("AGENTWORKS_CLAUDE_CHANNEL") == "1", func(ctx context.Context) error {
+				return ensureLocalBridge(ctx, dir, o)
+			}, os.Getenv("CODEX_THREAD_ID"))
 		}
 		if err != nil {
 			return err
@@ -877,7 +879,9 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 			request.AttachmentID = status.Attachment.ID
 		}
-		out, err := agentworksclient.CallMessagingBridge(cmd.Context(), root, request)
+		out, err := agentworksclient.CallMessagingBridge(cmd.Context(), root, request, func(ctx context.Context) error {
+			return ensureLocalBridge(ctx, root, o)
+		})
 		if err != nil {
 			return err
 		}

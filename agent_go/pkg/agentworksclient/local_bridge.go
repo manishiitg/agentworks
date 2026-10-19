@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode"
 
@@ -355,19 +356,43 @@ func CallLocalBridge(ctx context.Context, root string, request LocalBridgeReques
 	return out, nil
 }
 
-// CallMessagingBridge reconnects a previously attached Codex chat after a local
-// process restart. An offline reply means the requested action was not run, so
-// it can be retried once after the existing exact-session resume succeeds.
+// CallMessagingBridge recovers a saved Codex connection on demand. A missing
+// helper can be started with the caller's existing launcher. An offline reply
+// means the action was not run, so it can be retried after exact-session resume.
 // Missing sessions, explicit detaches and server-closed leases are not revived.
-func CallMessagingBridge(ctx context.Context, root string, request LocalBridgeRequest) (LocalBridgeReply, error) {
+func CallMessagingBridge(ctx context.Context, root string, request LocalBridgeRequest, startBridge func(context.Context) error) (LocalBridgeReply, error) {
 	out, err := CallLocalBridge(ctx, root, request)
-	if err != nil || !out.Offline || out.Attachment.ID == "" || request.Provider != "codex" || request.SessionID == "" || request.HostKey == "" || out.Attachment.SessionID != request.SessionID || out.Attachment.Provider != request.Provider {
+	if request.Provider != "codex" || request.SessionID == "" || request.HostKey == "" {
 		return out, err
 	}
 	switch request.Action {
 	case "peers", "send", "read", "reply", "reply_inbox", "ack", "purpose", "ping_person", "get_file":
 	default:
-		return out, nil
+		return out, err
+	}
+	// A refused/missing socket means no action reached the helper. Only a saved
+	// connection for this exact native chat may start it; a first connection,
+	// explicit detach or server-closed connection must stay disconnected.
+	if startBridge != nil && (errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED)) {
+		var saved map[string]*localSession
+		if readLiveJSON(filepath.Join(root, "sessions.json"), &saved) != nil {
+			return out, err
+		}
+		s := saved[localBridgeKey(request.Provider, request.SessionID)]
+		if s == nil || s.ServerClosed || !s.AccountSenders || s.ParentConfigPath == "" || s.Attachment.ID == "" || s.Attachment.Provider != request.Provider || s.Attachment.SessionID != request.SessionID {
+			return out, err
+		}
+		startup, cancel := context.WithTimeout(ctx, 8*time.Second)
+		err = startBridge(startup)
+		cancel()
+		if err != nil {
+			return out, fmt.Errorf("AgentWorks could not restart its connection helper: %w", err)
+		}
+		log.Printf("[BRIDGE] messaging helper restarted provider=%s chat=%s", request.Provider, boundedMuseHint(request.SessionID))
+		out, err = CallLocalBridge(ctx, root, request)
+	}
+	if err != nil || !out.Offline || out.Attachment.ID == "" || out.Attachment.SessionID != request.SessionID || out.Attachment.Provider != request.Provider {
+		return out, err
 	}
 	resume := LocalBridgeRequest{Action: "resume", Provider: request.Provider, SessionID: request.SessionID, HostKey: request.HostKey}
 	reconnected, err := CallLocalBridge(ctx, root, resume)
