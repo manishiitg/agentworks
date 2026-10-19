@@ -587,9 +587,13 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
     .sort((a, b) => workTabRank(a) - workTabRank(b) || (a.metadata?.agentProfileTabPosition || 0) - (b.metadata?.agentProfileTabPosition || 0) || a.createdAt - b.createdAt)
   const sideChats = tabs.filter(tab => isWorkSideChatTab(tab, projectId))
   // The strip shows the first few tabs; the rest are one click away in "More" (owner, 2026-10-19).
-  const visibleTabs = tabs.slice(0, WORK_VISIBLE_TABS)
-  const moreTabs = tabs.slice(WORK_VISIBLE_TABS)
-  const activeInMore = moreTabs.find(tab => tab.tabId === activeTabId)
+  // The tab the person is in is always on the strip (in the last place when it would fall into More), so it can be
+  // seen and dragged.
+  const activeIndex = tabs.findIndex(tab => tab.tabId === activeTabId)
+  const visibleTabs = activeIndex >= WORK_VISIBLE_TABS
+    ? [...tabs.slice(0, WORK_VISIBLE_TABS - 1), tabs[activeIndex]]
+    : tabs.slice(0, WORK_VISIBLE_TABS)
+  const moreTabs = tabs.filter(tab => !visibleTabs.includes(tab))
   const [moreOpen, setMoreOpen] = useState(false)
   const moreRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -797,26 +801,32 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
             type="button"
             onClick={() => setMoreOpen(open => !open)}
             aria-expanded={moreOpen}
-            className={`inline-flex h-7 max-w-40 items-center gap-1 rounded-md px-2 text-xs transition-colors hover:bg-muted ${activeInMore ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground'}`}
+            className="inline-flex h-7 max-w-40 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted"
             title="More tabs"
             data-testid="work-more-tabs"
           >
-            <span className="truncate">{activeInMore ? workSideChatDisplayName(activeInMore.name) : `${moreTabs.length} more`}</span>
+            <span className="truncate">{`${moreTabs.length} more`}</span>
             <ChevronDown className="h-3.5 w-3.5 shrink-0" />
           </button>
           {moreOpen && (
             <div className="absolute left-0 top-8 z-50 min-w-48 rounded-md border border-border bg-popover p-1 shadow-md" role="menu">
-              {moreTabs.map(tab => (
-                <button
+              {moreTabs.map(tab => {
+                const key = isWorkSideChatTab(tab, projectId) ? tab.metadata?.agentProfileConversationKey : undefined
+                return <button
                   key={tab.tabId}
                   type="button"
                   role="menuitem"
+                  draggable={!!key}
+                  onDragStart={key ? event => { event.dataTransfer.effectAllowed = 'move'; setDraggingKey(key) } : undefined}
+                  onDragOver={key && draggingKey && draggingKey !== key ? event => event.preventDefault() : undefined}
+                  onDrop={key && draggingKey ? event => { event.preventDefault(); void moveSideChat(draggingKey, key) } : undefined}
+                  onDragEnd={() => setDraggingKey(null)}
                   onClick={() => { setMoreOpen(false); selectTab(tab.tabId) }}
                   className={`block w-full truncate rounded px-2 py-1.5 text-left text-xs hover:bg-muted ${tab.tabId === activeTabId ? 'font-medium text-foreground' : 'text-muted-foreground'}`}
                 >
                   {isWorkSideChatTab(tab, projectId) ? workSideChatDisplayName(tab.name) : tab.name}
                 </button>
-              ))}
+              })}
             </div>
           )}
         </div>
