@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -36,8 +37,27 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	mux.HandleFunc("/api/external/v1/call", env.api.handleExternalCall)
 	mux.HandleFunc("/api/external/v1/agents/events", env.api.handleAgentEvents)
 	var slowMuseValidate atomic.Bool
+	var failNativeValidate atomic.Bool
+	nativeValidateFailed := make(chan struct{}, 1)
 	validateStarted, validateRelease := make(chan struct{}, 1), make(chan struct{})
 	mux.HandleFunc("/api/external/v1/agents/attachment", func(w http.ResponseWriter, r *http.Request) {
+		if failNativeValidate.Load() {
+			body, _ := io.ReadAll(r.Body)
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			var in struct {
+				Action string   `json:"action"`
+				Name   string   `json:"agent_name"`
+				IDs    []string `json:"message_ids"`
+			}
+			_ = json.Unmarshal(body, &in)
+			if in.Action == "validate" && in.Name == "hook-reviewer" && len(in.IDs) > 0 && failNativeValidate.Swap(false) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte(`{"error":{"code":"unavailable","message":"Temporary connection failure"}}`))
+				nativeValidateFailed <- struct{}{}
+				return
+			}
+		}
 		if slowMuseValidate.Load() {
 			body, _ := io.ReadAll(r.Body)
 			r.Body = io.NopCloser(bytes.NewReader(body))
@@ -781,6 +801,24 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("recovered route did not deliver retained message")
 	}
+	// A transient authorization-service failure happens BEFORE a native offer.
+	// The already-connected stream and existing housekeeping must restart its
+	// consumer, without a new lease or replaying an earlier ambiguous offer.
+	failNativeValidate.Store(true)
+	afterFailure := send("native delivery resumes after pre-offer validation failure")
+	select {
+	case <-nativeValidateFailed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("native validation failure was not exercised")
+	}
+	select {
+	case out := <-nativeOffers:
+		if out.Attachment.ID != approvedLease || len(out.Messages) != 1 || out.Messages[0].MessageID != afterFailure["message_id"] {
+			t.Fatal("native validation recovery changed identity or replayed an ambiguous offer", out)
+		}
+	case <-time.After(35 * time.Second):
+		t.Fatal("connected stream did not restart its native consumer after validation recovered")
+	}
 	// A person attach on that exact native lease starts setup immediately,
 	// without waiting for a peer message; restarting cannot repeat it.
 	setupNative := nativeAttach
@@ -808,6 +846,57 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 	case out := <-nativeOffers:
 		t.Fatal("restart replayed setup or an ambiguous offer", out)
 	case <-time.After(100 * time.Millisecond):
+	}
+	// A reconnect digest can cover more than the validator's 20-ID request
+	// limit. Cache the real backlog without a native consumer, then restore it.
+	stop(cancel, done)
+	bridgeOptions.NativeOffer = nil
+	oldIDs := map[string]bool{}
+	for i := 0; i < 25; i++ {
+		receipt := send("older backlog " + strconv.Itoa(i))
+		oldIDs[receipt["message_id"].(string)] = true
+	}
+	agentMessageMu.Lock()
+	backlog, e := readAgentMessageStore(context.Background())
+	if e == nil {
+		for ci := range backlog.Conversations {
+			for mi := range backlog.Conversations[ci].Messages {
+				m := &backlog.Conversations[ci].Messages[mi]
+				if oldIDs[m.ID] {
+					m.SentAt = time.Now().Add(-2 * time.Hour)
+				}
+			}
+		}
+		e = saveAgentMessageStore(context.Background(), backlog)
+	}
+	agentMessageMu.Unlock()
+	if e != nil {
+		t.Fatal(e)
+	}
+	freshAfterBacklog := send("fresh body beside the old digest")
+	cancel, done = start()
+	defer cancel()
+	deadline = time.Now().Add(5 * time.Second)
+	for local(routeStatus).Pending < 26 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if local(routeStatus).Pending != 26 {
+		t.Fatal("backlog was not cached before native recovery")
+	}
+	stop(cancel, done)
+	bridgeOptions.NativeOffer = func(_ context.Context, _ string, out agentworksclient.LocalBridgeReply) error {
+		nativeOffers <- out
+		return agentworksclient.ErrNativeOfferUnconfirmed
+	}
+	cancel, done = start()
+	defer cancel()
+	select {
+	case out := <-nativeOffers:
+		if out.Attachment.ID != approvedLease || len(out.Messages) != 2 || out.Messages[0].InboxID != "agentworks-digest" || !strings.Contains(out.Messages[0].Message, "25 older unacknowledged messages") || out.Messages[1].MessageID != freshAfterBacklog["message_id"] {
+			t.Fatal("large digest lost validation, identity or the fresh body", out)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("backlog larger than the server validation cap blocked native delivery")
 	}
 	offlineNative := base
 	offlineNative.Action = "offline"

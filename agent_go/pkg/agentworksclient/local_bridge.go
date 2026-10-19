@@ -534,11 +534,13 @@ func ServeLocalBridge(ctx context.Context, root string, options ...LocalBridgeOp
 	for _, a := range missingHostNotices {
 		b.options.Notify(a, "Legacy attachment is offline. Ask this chat to run agentworks attach to reconnect; its process binding must be verified.")
 	}
+	b.mu.Lock()
 	for _, s := range b.sessions {
 		if s.client != nil && !s.Offline {
 			b.start(ctx, s)
 		}
 	}
+	b.mu.Unlock()
 	shutdown := make(chan struct{})
 	var shutdownOnce sync.Once
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -704,6 +706,7 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 				s.ServerClosed = false // The server accepted this same lease; no attachment is created.
 				s.LastError = ""
 				backoff = time.Second
+				b.startNative(s)
 				log.Printf("[BRIDGE-STREAM] connected network=%s agent=%s attachment=%s", s.Network, s.Attachment.AgentName, s.Attachment.ID)
 				_ = b.save()
 				b.wake()
@@ -777,11 +780,13 @@ func (b *localBridge) recoverNativeRoute(s *localSession) bool {
 	return true
 }
 
+// Caller holds b.mu: the worker flag is checked and set together.
 func (b *localBridge) startNative(s *localSession) {
-	if s.Also || s.NativeRemote == "" || b.options.NativeOffer == nil || s.nativeStarted || s.deliveryCtx == nil {
+	if b.closed || s.Offline || s.Also || s.NativeRemote == "" || b.options.NativeOffer == nil || s.nativeStarted || s.deliveryCtx == nil || s.deliveryCtx.Err() != nil {
 		return
 	}
 	s.nativeStarted = true
+	log.Printf("[BRIDGE-NATIVE] started agent=%s attachment=%s", s.Attachment.AgentName, s.Attachment.ID)
 	b.workers.Add(1)
 	hostKey := s.HostKey
 	go func() { defer b.workers.Done(); b.nativeLoop(s.deliveryCtx, s, hostKey) }()
@@ -1775,9 +1780,20 @@ func localPending(s *localSession) bool {
 }
 
 func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey string) {
+	reason := "context_done"
+	defer func() {
+		b.mu.Lock()
+		s.nativeStarted = false
+		b.mu.Unlock()
+		log.Printf("[BRIDGE-NATIVE] stopped agent=%s attachment=%s reason=%s", s.Attachment.AgentName, s.Attachment.ID, reason)
+	}()
 	for ctx.Err() == nil {
 		out := b.handle(ctx, ctx, LocalBridgeRequest{Action: "next", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, AttachmentID: s.Attachment.ID, HostKey: hostKey, Transport: nativeCodexTransport(s.NativeRemote)})
 		if !out.Attached || out.Error != "" {
+			reason = "not_attached"
+			if out.Error != "" {
+				reason = "next_refused"
+			}
 			return
 		}
 		if len(out.Messages) == 0 && out.SetupContext == "" {
@@ -2136,6 +2152,9 @@ func (b *localBridge) housekeeping(ctx context.Context) {
 					s.cancel()
 				}
 			}
+			if s.streamOnline && !s.ServerClosed {
+				b.startNative(s)
+			}
 		}
 		_ = b.save()
 		b.wake()
@@ -2458,20 +2477,44 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 		}
 	}()
 	snap := &localSession{Attachment: s.Attachment, client: s.client}
-	var raw json.RawMessage
-	var err error
-	b.unlocked(func() {
-		raw, err = snap.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": snap.Attachment.AgentName, "attachment_id": snap.Attachment.ID, "message_ids": ids}, true)
-	})
-	if err != nil {
-		return nil, 0, nil, errors.New("attachment or messages no longer authorized")
-	}
-	var checked struct {
+	type validation struct {
 		IDs         []string       `json:"message_ids"`
 		HeldReasons map[string]int `json:"held_reasons"`
 	}
-	if json.Unmarshal(raw, &checked) != nil {
-		return nil, 0, nil, errors.New("invalid pending validation")
+	validate := func(picked []string) (validation, error) {
+		checked := validation{HeldReasons: map[string]int{}}
+		for offset := 0; offset < len(picked); offset += 20 {
+			chunk := picked[offset:min(offset+20, len(picked))]
+			raw, err := snap.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": snap.Attachment.AgentName, "attachment_id": snap.Attachment.ID, "message_ids": chunk}, true)
+			if err != nil {
+				var apiErr *APIError
+				status, code := 0, "request_failed"
+				if errors.As(err, &apiErr) {
+					status, code = apiErr.Status, apiErr.Code
+				}
+				log.Printf("[BRIDGE-NATIVE] validation_failed agent=%s attachment=%s http_status=%d code=%q chunk=%d requested_ids=%d", snap.Attachment.AgentName, snap.Attachment.ID, status, code, offset/20+1, len(picked))
+				return validation{}, err // no part of this round can be offered
+			}
+			var part validation
+			if json.Unmarshal(raw, &part) != nil {
+				log.Printf("[BRIDGE-NATIVE] validation_failed agent=%s attachment=%s code=invalid_validation_response chunk=%d requested_ids=%d", snap.Attachment.AgentName, snap.Attachment.ID, offset/20+1, len(picked))
+				return validation{}, errors.New("invalid pending validation")
+			}
+			checked.IDs = append(checked.IDs, part.IDs...)
+			for reason, count := range part.HeldReasons {
+				checked.HeldReasons[reason] += count
+			}
+		}
+		if len(picked) > 20 {
+			log.Printf("[BRIDGE-NATIVE] validated agent=%s attachment=%s requested_ids=%d chunks=%d", snap.Attachment.AgentName, snap.Attachment.ID, len(picked), (len(picked)+19)/20)
+		}
+		return checked, nil
+	}
+	var checked validation
+	var err error
+	b.unlocked(func() { checked, err = validate(ids) })
+	if err != nil {
+		return nil, 0, nil, errors.New("attachment or messages no longer authorized")
 	}
 	// The lock was released: stop if this session is gone, and drop messages that were acknowledged, removed or
 	// replaced meanwhile.
@@ -2504,24 +2547,18 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 				left = append(left, id)
 			}
 		}
-		var raw2 json.RawMessage
+		var again validation
 		var e error
-		b.unlocked(func() {
-			raw2, e = snap.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": snap.Attachment.AgentName, "attachment_id": snap.Attachment.ID, "message_ids": left}, true)
-		})
-		if e == nil {
-			var again struct {
-				IDs         []string       `json:"message_ids"`
-				HeldReasons map[string]int `json:"held_reasons"`
-			}
-			if json.Unmarshal(raw2, &again) == nil {
-				for _, id := range again.IDs {
-					allowed[id] = true
-				}
-				checked.HeldReasons = again.HeldReasons
-			}
+		b.unlocked(func() { again, e = validate(left) })
+		if e != nil {
+			return nil, 0, nil, errors.New("attachment or messages no longer authorized")
 		}
+		for _, id := range again.IDs {
+			allowed[id] = true
+		}
+		checked.HeldReasons = again.HeldReasons
 	}
+
 	held := 0
 	previous := map[string]localOffer{}
 	filtered := []AgentLiveMessage{}
