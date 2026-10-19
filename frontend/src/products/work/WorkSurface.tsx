@@ -645,7 +645,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       if (tab && (tab.metadata?.agentProfileTabPosition || 0) !== (chat.position || 0)) state.setTabMetadata(tab.tabId, { agentProfileTabPosition: chat.position || 0 })
     }
   }
-  const moveSideChat = async (fromKey: string, toKey: string, attempt = { key: fromKey, tabId: sideChats.find(tab => tab.metadata?.agentProfileConversationKey === fromKey)?.tabId || '', attemptId: crypto.randomUUID(), dropped: true }) => {
+  const moveSideChat = async (fromKey: string, toKey: string, attempt: { key: string; tabId: string; attemptId: string; dropped: boolean } = { key: fromKey, tabId: sideChats.find(tab => tab.metadata?.agentProfileConversationKey === fromKey)?.tabId || '', attemptId: crypto.randomUUID(), dropped: true }) => {
     const keys = sideChats.map(tab => tab.metadata?.agentProfileConversationKey).filter((key): key is string => !!key)
     const from = keys.indexOf(fromKey)
     const to = keys.indexOf(toKey)
