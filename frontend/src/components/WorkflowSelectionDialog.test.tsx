@@ -115,3 +115,33 @@ it('closes itself when the typed reference matches nothing (e.g. a ticket number
   expect(host.textContent).toContain('Shared automation')
   expect(onClose).not.toHaveBeenCalled()
 })
+
+it('shows fresh workflow references while Crew discovery is still pending, then retains only authorized successes on failure', async () => {
+  let rejectCrews!: (reason: Error) => void
+  vi.mocked(workflowManifestApi.listWorkflowManifests).mockResolvedValueOnce(allowed as Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>)
+  vi.mocked(loadProductProjects).mockReturnValueOnce(new Promise((_, reject) => { rejectCrews = reject }))
+  const onSelect = vi.fn()
+  const { host } = await mount(onSelect)
+  expect(host.textContent).toContain('Shared automation')
+  expect(host.textContent).toContain('Loading more references')
+  const row = [...host.querySelectorAll('[class*="cursor-pointer"]')].find(row => row.textContent?.includes('Shared automation'))!
+  await act(async () => row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })))
+  expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: 'Workflow/shared' }))
+  await act(async () => rejectCrews(new Error('access discovery unavailable')))
+  expect(host.textContent).toContain('Shared automation')
+  expect(host.textContent).toContain('Some references could not be loaded')
+})
+
+it('ignores slow results from a previous opening after fresh discovery has revoked access', async () => {
+  let finishOld!: (result: Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>) => void
+  vi.mocked(workflowManifestApi.listWorkflowManifests)
+    .mockReturnValueOnce(new Promise(resolve => { finishOld = resolve }))
+    .mockResolvedValueOnce({ success: true, total: 0, workflows: [] })
+  vi.mocked(loadProductProjects).mockResolvedValue([])
+  const { host, render } = await mount()
+  await render(false)
+  await render(true)
+  expect(host.textContent).toContain('No accessible workflows or Crews')
+  await act(async () => finishOld(allowed as Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>))
+  expect(host.textContent).not.toContain('Shared automation')
+})
