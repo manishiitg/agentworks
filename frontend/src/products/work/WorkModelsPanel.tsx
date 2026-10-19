@@ -62,6 +62,8 @@ export function WorkModelsPanel({
   const tab = useChatStore(state => state.chatTabs[tabId])
   const projectId = projectIdProp || tab?.metadata?.agentProfileProjectId
   const initialModelTarget = tab?.metadata?.agentProfileConversationKey
+  const mainChatKey = useChatStore(state => Object.values(state.chatTabs).find(chat =>
+    chat.metadata?.agentProfileId === effectiveProfileId && chat.metadata?.agentProfileProjectId === projectId && chat.metadata?.agentProfileIsMainChat === true)?.metadata?.agentProfileConversationKey) || projectId
   const supportsChatModels = isProjectProductId(effectiveProfileId) && Boolean(projectId)
   const [chatModels, setChatModels] = useState<AgentProfileChatModel[]>([])
   const [modelChats, setModelChats] = useState<AgentProfileSideChat[]>([])
@@ -424,7 +426,7 @@ export function WorkModelsPanel({
             <span className="font-medium">Crew default</span><span className="text-xs text-muted-foreground">For chats without their own model</span>
           </button>
           {chatModelsLoading ? <p role="status" className="px-3 py-2 text-xs text-muted-foreground">Loading chats…</p> : [
-            { conversation_key: projectId!, name: 'Main chat' },
+            { conversation_key: mainChatKey!, name: 'Main chat' },
             ...modelChats,
           ].map(chat => {
             const own = chatModels.find(model => model.conversation_key === chat.conversation_key)

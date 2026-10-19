@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"testing"
 )
 
@@ -15,7 +17,7 @@ func TestMainPointerMigrationAndChangesKeepChatIdentities(t *testing.T) {
 			root := "_users/u/Chats/Work/projects/crew"
 			profile := routeTestProfile(profileID, true, "")
 			binding := productConversationBinding{ConversationKey: "crew", ResourceID: "crew", WorkspacePath: root, ManifestPath: root + "/product.json", ProjectMainAddress: true}
-			metadata, _ := json.Marshal(productProjectManifest{ID: "crew", Product: profileID, Title: "Crew", SessionID: "original-session"})
+			metadata, _ := json.Marshal(productProjectManifest{ID: "crew", Product: profileID, Title: "Crew", SessionID: "original-session", Schedules: []productschedule.Schedule{{ID: "scheduled-review", ChatKey: "crew:chat:reviewer"}, {ID: "watcher", Condition: &conditiontrigger.Config{Target: conditiontrigger.Target{Kind: "agent", ChatID: "reviewer"}}}}})
 			files[binding.ManifestPath] = string(metadata)
 			legacy, review := profileID+"/crew", profileID+"/crew:chat:reviewer"
 			doc := productConversationRegistryDocument{Version: 1, Entries: map[string]ProductConversationRecord{
@@ -45,6 +47,14 @@ func TestMainPointerMigrationAndChangesKeepChatIdentities(t *testing.T) {
 			if files[productConversationRegistryPath("u")] != migrated {
 				t.Fatal("moving main changed registry entries, identities, models or histories")
 			}
+			var metadataAfter productProjectManifest
+			if err := json.Unmarshal([]byte(files[binding.ManifestPath]), &metadataAfter); err != nil {
+				t.Fatal(err)
+			}
+			if metadataAfter.Schedules[0].ChatKey != "crew:chat:reviewer" || metadataAfter.Schedules[1].Condition.Target.ChatID != "reviewer" {
+				t.Fatal("main pointer retargeted a schedule or watcher")
+			}
+
 			current, err := store.resolveProjectMainAddress(ctx, "u", profile, binding)
 			if err != nil || current.ConversationKey != "crew:chat:reviewer" {
 				t.Fatalf("main alias did not follow pointer: %+v %v", current, err)
