@@ -36,6 +36,9 @@ type turnInactivityState struct {
 	waiting, ending         bool
 	quietMinute             int
 	warnedTools             bool
+	context                 context.Context
+	eligible                func() bool
+	activityOwners          map[string]bool
 }
 
 // This is turn activity, not session activity. Human input, browser heartbeats,
@@ -46,7 +49,7 @@ func (state *turnInactivityState) observe(event events.Event, now time.Time) boo
 		return false
 	}
 	owner := events.ResolveTerminalOwnerID(state.sessionID, event, nil)
-	if owner != "" && owner != "main:"+state.sessionID && owner != state.executionID {
+	if owner != "" && owner != "main:"+state.sessionID && owner != state.executionID && !state.activityOwners[owner] {
 		return false
 	}
 	if kind := strings.ToLower(event.ExecutionKind); kind != "" && kind != "main_agent" && kind != "main" && kind != "chat" {
@@ -116,10 +119,7 @@ func (api *StreamingAPI) observeTurnInactivity(sessionID string, event events.Ev
 	api.turnInactivityMu.Lock()
 	var updates []*turnInactivityState
 	for _, state := range api.turnInactivity[sessionID] {
-		resumed := state.observe(event, time.Now())
-		// Publish real progress at most once a second while streaming. The
-		// existing watchdog tick flushes the final activity between updates.
-		if resumed || state.lastOutputAt.Sub(state.lastAnnouncedActivity) >= time.Second {
+		if state.observe(event, time.Now()) {
 			state.lastAnnouncedActivity = state.lastOutputAt
 			copied := *state
 			updates = append(updates, &copied)
@@ -135,7 +135,28 @@ func (api *StreamingAPI) observeTurnInactivity(sessionID string, event events.Ev
 // An older watcher can never cancel the session's next turn. A false onIdle
 // means ownership changed or native interruption failed; it remains protected.
 func (api *StreamingAPI) watchTurnInactivity(ctx context.Context, sessionID, executionID string, startedAt time.Time, eligible func() bool, onIdle func(error) bool) func() {
-	state := &turnInactivityState{sessionID: sessionID, executionID: executionID, startedAt: startedAt, turnStartedAt: startedAt, lastOutputAt: startedAt, tools: map[string]idleTool{}}
+	return api.watchTurnInactivityMode(ctx, sessionID, executionID, startedAt, eligible, onIdle, false)
+}
+
+// Only a retained live-input watcher may share the still-live root's progress.
+// A fresh foreground/synthetic query always gets its own acceptance grace.
+func (api *StreamingAPI) watchTurnInactivityMode(ctx context.Context, sessionID, executionID string, startedAt time.Time, eligible func() bool, onIdle func(error) bool, shareProgress bool) func() {
+	candidates := map[string]*turnInactivityState{}
+	if shareProgress {
+		api.turnInactivityMu.Lock()
+		for key, previous := range api.turnInactivity[sessionID] {
+			candidates[key] = previous
+		}
+		api.turnInactivityMu.Unlock()
+		// Eligibility can acquire other server locks; never call it under
+		// turnInactivityMu. Revalidate membership and activity below.
+		for key, previous := range candidates {
+			if previous.context.Err() != nil || (previous.eligible != nil && !previous.eligible()) {
+				delete(candidates, key)
+			}
+		}
+	}
+	state := &turnInactivityState{sessionID: sessionID, executionID: executionID, startedAt: startedAt, turnStartedAt: startedAt, lastOutputAt: startedAt, tools: map[string]idleTool{}, context: ctx, eligible: eligible, activityOwners: map[string]bool{executionID: true}}
 	watchKey := fmt.Sprintf("%s:%p", executionID, state)
 	api.turnInactivityMu.Lock()
 	if api.turnInactivity == nil {
@@ -146,8 +167,8 @@ func (api *StreamingAPI) watchTurnInactivity(ctx context.Context, sessionID, exe
 	}
 	// A live input shares the CLI's current progress and in-flight tools.
 	sharedProgress := false
-	for _, previous := range api.turnInactivity[sessionID] {
-		if previous.ending {
+	for key, previous := range candidates {
+		if api.turnInactivity[sessionID][key] != previous || previous.ending || time.Since(previous.lastOutputAt) >= turnInactiveAfter || previous.context.Err() != nil {
 			continue
 		}
 		// A new human steer shares this CLI's actual last progress, even when
@@ -156,6 +177,12 @@ func (api *StreamingAPI) watchTurnInactivity(ctx context.Context, sessionID, exe
 			state.lastOutputAt = previous.lastOutputAt
 		}
 		sharedProgress = true
+		// The CLI may attribute steered output to either accepted execution.
+		// Share only these proven live aliases, keeping child/other owners out.
+		for owner := range previous.activityOwners {
+			state.activityOwners[owner] = true
+		}
+		previous.activityOwners[executionID] = true
 		origin := previous.turnStartedAt
 		if origin.IsZero() {
 			origin = previous.startedAt
@@ -317,7 +344,7 @@ func (api *StreamingAPI) watchRetainedTurnInactivity(ctx context.Context, sessio
 	api.retainedMainTurnsMu.Lock()
 	executionID := api.retainedMainTurnExecutionIDs[sessionID]
 	api.retainedMainTurnsMu.Unlock()
-	return api.watchTurnInactivity(ctx, sessionID, executionID, startedAt,
+	return api.watchTurnInactivityMode(ctx, sessionID, executionID, startedAt,
 		func() bool { return !api.hasActiveTurnCancel(sessionID) },
 		func(reason error) bool {
 			// Retained input bypasses the foreground lane. Hold the lane while
@@ -367,7 +394,7 @@ func (api *StreamingAPI) watchRetainedTurnInactivity(ctx context.Context, sessio
 				acknowledge()
 			}
 			return true
-		})
+		}, true)
 }
 
 func (api *StreamingAPI) emitWaitingBackgroundResults(sessionID string, count int) {
