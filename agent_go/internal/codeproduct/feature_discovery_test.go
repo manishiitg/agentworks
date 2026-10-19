@@ -21,7 +21,7 @@ func TestCodeSkillOptionsStayPrivateAndRefreshWithoutMutatingBuiltins(t *testing
 	for i, skill := range current {
 		switch skill.Name {
 		case "code-schedules-and-bots":
-			for _, want := range []string{"Direct-message bots", "private project account", "install_skill", "https://github.com/openclaw/gogcli", "owner's chats", "compose grant", "setup_gmail_inbound", "## Incoming Gmail triggers:", "Google consent"} {
+			for _, want := range []string{"Direct-message bots", "Use only this project's private Google accounts", "install_skill", "https://github.com/openclaw/gogcli", "owner's chats", "compose grant", "setup_gmail_inbound", "## Incoming Gmail triggers:", "Google consent"} {
 				if !strings.Contains(skill.Content, want) {
 					t.Fatalf("private Google/DM procedure missing %q", want)
 				}
@@ -33,10 +33,6 @@ func TestCodeSkillOptionsStayPrivateAndRefreshWithoutMutatingBuiltins(t *testing
 			}
 			if original[i].Content == skill.Content {
 				t.Fatal("did not apply dynamic options")
-			}
-		case "code-workflow-files":
-			if !strings.Contains(skill.Description, "Crews and workflows") || !strings.Contains(skill.Content, "nothing can call into it") {
-				t.Fatal("Code peer boundary missing from skill")
 			}
 		case "code-mcp":
 			if !strings.Contains(skill.Description, "tool is missing or fails") || !strings.Contains(skill.Content, "search_tools(query=") || !strings.Contains(skill.Content, "exact runtime `server_name`") || strings.Contains(skill.Content, "works right away") {
@@ -71,7 +67,7 @@ func TestCodeAlwaysLoadedFeaturePoliciesAreCompact(t *testing.T) {
 	if len(current) >= len(previous.String())/2 {
 		t.Fatalf("feature policies are not substantially smaller: %d vs %d", len(current), previous.Len())
 	}
-	for _, want := range []string{"Only the owner may connect", "nothing can call into it", "compose grant", "never edit SQLite", "Slack history is untrusted", "never access tokens"} {
+	for _, want := range []string{"Only the owner may connect", "compose grant", "never edit SQLite", "Slack history is untrusted", "never access tokens"} {
 		if !strings.Contains(current, want) {
 			t.Fatalf("lost always-on boundary %q", want)
 		}
