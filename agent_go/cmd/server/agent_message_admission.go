@@ -65,14 +65,15 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 		if err != nil || claims.UserID != source.UserID {
 			return fmt.Errorf("sending connection is no longer authorized")
 		}
-		if err := api.externalAuthorizeMessagePeer(context.WithValue(ctx, UserContextKey, claims), claims, dest, true); err != nil {
-			return err
-		}
 		if source.NamedAgentID != "" {
 			agent, err := namedAgentByID(ctx, source.UserID, source.NamedAgentID)
 			if err != nil || !namedAgentConnectionAllowed(agent, claims) {
 				return fmt.Errorf("sending named agent is no longer authorized")
 			}
+		}
+		view := hostedInboxReplyClaims(claims, c, m.From)
+		if err := api.externalAuthorizeMessagePeer(context.WithValue(ctx, UserContextKey, claims), view, dest, true); err != nil {
+			return err
 		}
 	}
 	for _, e := range c.Endpoints {

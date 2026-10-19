@@ -30,8 +30,21 @@ func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claim
 		for side, endpoint := range conversation.Endpoints {
 			if endpoint.External && messageEndpointMatches(endpoint, claims.UserID, caller) {
 				peer := conversation.Endpoints[1-side]
-				if err := api.externalAuthorizeMessagePeer(ctx, claims, peer, send); err != nil {
+				peerClaims := claims
+				// The hosted chat opened this inbox with this exact attached
+				// agent. Answering it is mail, not a grant of product tools.
+				// First sends and every other connection keep their own scopes.
+				if send {
+					peerClaims = hostedInboxReplyClaims(claims, conversation, side)
+				}
+				if err := api.externalAuthorizeMessagePeer(ctx, peerClaims, peer, send); err != nil {
+					if send {
+						log.Printf("[AGENT-REPLY] check=peer_authorization status=refused inbox=%s agent=%s peer_session=%s", conversation.ID, caller.NamedAgentID, peer.Session)
+					}
 					return agentMessageEndpoint{}, err
+				}
+				if peerClaims != claims {
+					log.Printf("[AGENT-REPLY] check=hosted_peer_authorization status=allowed inbox=%s agent=%s peer_session=%s", conversation.ID, caller.NamedAgentID, peer.Session)
 				}
 				return peer, nil
 			}
@@ -51,6 +64,22 @@ func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claim
 		}
 	}
 	return agentMessageEndpoint{}, fmt.Errorf("conversation unavailable or access denied")
+}
+
+// This authority belongs to the original inbox, not to the connection's tools.
+// Use the same boundary at submission and again at queued delivery.
+func hostedInboxReplyClaims(claims *UserClaims, c agentConversation, side int) *UserClaims {
+	if claims == nil || claims.AccessToken == nil || side != 1 {
+		return claims
+	}
+	source, peer, token := c.Endpoints[1], c.Endpoints[0], claims.AccessToken
+	if !source.External || source.UserID != claims.UserID || token.BoundAgentID == "" || token.BoundAgentID != source.NamedAgentID ||
+		peer.External || peer.UserID != claims.UserID || !slices.ContainsFunc(c.Messages, func(m agentMessage) bool {
+		return m.From == 0 && !serverAuthoredKind(m.Kind)
+	}) {
+		return claims
+	}
+	return messagePeerView(claims, false)
 }
 
 // messagePeerView is the access used to judge a chat inside AgentWorks that sent to an attached agent:

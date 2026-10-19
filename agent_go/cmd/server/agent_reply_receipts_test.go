@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -189,6 +190,103 @@ func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 	other.Action, other.MessageID, other.Message, other.SubmissionID = "reply", id, "Take over", "other-agent-reply"
 	if _, e := agentworksclient.CallLocalBridge(ctx, root, other); e == nil {
 		t.Fatal("another agent replied by message ID")
+	}
+	// A messaging-only child can answer the exact hosted chat that opened its
+	// inbox, without gaining product tools. Exercise submission AND queued
+	// delivery through the real HTTP server/helper; replace only the model.
+	for _, profile := range codeproduct.BuiltinAgentProfiles() {
+		profile.Product = codeproduct.ProfileID
+		if e := env.svc.registry.RegisterProfile(profile); e != nil {
+			t.Fatal(e)
+		}
+	}
+	const hostedRoot = "_users/owner/Chats/Code/projects/example"
+	const hostedKey = "example:chat:abcdef12"
+	const hostedSession = "product-33333333-2222-4333-8444-555555555555"
+	record := ProductConversationRecord{ProfileID: codeproduct.ProfileID, ConversationKey: hostedKey, SessionID: hostedSession, WorkspacePath: hostedRoot, ResourceID: "example"}
+	registry, _ := json.Marshal(productConversationRegistryDocument{Version: 1, Entries: map[string]ProductConversationRecord{"code/" + hostedKey: record}})
+	env.mock.mu.Lock()
+	env.mock.files[hostedRoot+"/product.json"] = `{"schema_version":1,"product":"code","id":"example","owner_id":"owner","title":"Example","session_id":"project-main"}`
+	env.mock.files[productConversationRegistryPath("owner")] = string(registry)
+	env.mock.mu.Unlock()
+	reg := &recordingRegistrar{}
+	if e := env.api.registerAgentMessagingTools(reg, "owner", hostedSession, QueryRequest{}, crewTriggerLinkCaller(hostedRoot), func(string) {}); e != nil {
+		t.Fatal(e)
+	}
+	hostedReceipt, err := reg.tools["send_message"].exec(internalBotRequestContext(ctx, "owner"), map[string]interface{}{"target": "agent:receiver", "message": "Please answer here", "submission_id": "hosted-review"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hosted map[string]any
+	if err = json.Unmarshal([]byte(hostedReceipt), &hosted); err != nil {
+		t.Fatal(err)
+	}
+	hostedID, hostedInbox := hosted["message_id"].(string), hosted["inbox_id"].(string)
+	tool(map[string]any{"action": "read", "inbox_id": hostedInbox}, false)
+	tool(map[string]any{"action": "ack", "message_id": hostedID, "delivery": "processed"}, false)
+	oldTurn := agentMessageTurn
+	agentMessageTurn = func(_ *StreamingAPI, _ context.Context, request map[string]interface{}, session, _ string) (internalSessionTurnResult, error) {
+		if session != hostedSession || request["agent_message_inbox"] != hostedInbox {
+			t.Errorf("reply reached another chat: session=%s inbox=%v", session, request["agent_message_inbox"])
+		}
+		return internalSessionTurnResult{}, nil
+	}
+	defer func() { agentMessageTurn = oldTurn }()
+	response := tool(map[string]any{"action": "reply", "message_id": hostedID, "message": "Answered", "submission_id": "hosted-answer"}, false)
+	var replyReceipt map[string]any
+	if json.Unmarshal(response.Result, &replyReceipt) != nil || replyReceipt["inbox_id"] != hostedInbox {
+		t.Fatal("hosted reply lost the original inbox")
+	}
+	var original agentConversation
+	deadline = time.Now().Add(5 * time.Second)
+	for {
+		agentMessageMu.Lock()
+		store, e := readAgentMessageStore(ctx)
+		agentMessageMu.Unlock()
+		if e != nil {
+			t.Fatal(e)
+		}
+		for _, conversation := range store.Conversations {
+			if conversation.ID == hostedInbox {
+				original = conversation
+			}
+		}
+		if len(original.Messages) == 2 && original.Messages[1].Delivery == "delivered" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("hosted reply did not pass live admission: %+v", original.Messages)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	for _, refusal := range []string{"agent_opened", "different_chat", "another_person", "status_only"} {
+		conversation := original
+		conversation.ID = "inbox-" + refusal
+		incoming := original.Messages[0]
+		incoming.ID = "msg-" + refusal
+		conversation.Messages = []agentMessage{incoming}
+		switch refusal {
+		case "agent_opened":
+			conversation.Endpoints[0], conversation.Endpoints[1] = conversation.Endpoints[1], conversation.Endpoints[0]
+			conversation.Messages[0].From = 1
+		case "different_chat":
+			conversation.Endpoints[0].ChatKey = "session:" + hostedSession
+		case "another_person":
+			conversation.Endpoints[0].UserID = "other"
+		case "status_only":
+			conversation.Messages[0].Kind = "status"
+		}
+		agentMessageMu.Lock()
+		store, e := readAgentMessageStore(ctx)
+		if e == nil {
+			store.Conversations = append(store.Conversations, conversation)
+			e = saveAgentMessageStore(ctx, store)
+		}
+		agentMessageMu.Unlock()
+		if e != nil {
+			t.Fatal(e)
+		}
+		tool(map[string]any{"action": "reply", "message_id": incoming.ID, "message": "Must refuse", "submission_id": refusal}, true)
 	}
 	// Rotating the receiver lease makes the old MCP child's receipts fail.
 	if _, e := parent.AttachAgent(ctx, agentworksclient.AgentAttachmentOptions{AgentName: "receiver", Provider: "codex", SessionID: "replacement-session"}); e != nil {
