@@ -177,6 +177,7 @@ type localSession struct {
 	// holds as stored is not taken for a new late arrival and delivered a second time.
 	Retired       map[string]time.Time `json:"retired,omitempty"`
 	client        *Client
+	streamOnline  bool
 	cancel        context.CancelFunc
 	deliveryCtx   context.Context
 	nativeStarted bool
@@ -306,7 +307,7 @@ func (b *localBridge) extrasOf(primary string) []*localSession {
 func (b *localBridge) networkStates(primary string) []LocalNetworkState {
 	var out []LocalNetworkState
 	for _, x := range b.extrasOf(primary) {
-		out = append(out, LocalNetworkState{Network: x.Network, AgentName: x.Attachment.AgentName, Online: !x.Offline && x.client != nil, ConfigPath: x.ParentConfigPath, LastError: x.LastError})
+		out = append(out, LocalNetworkState{Network: x.Network, AgentName: x.Attachment.AgentName, Online: !x.Offline && !x.ServerClosed && x.streamOnline, ConfigPath: x.ParentConfigPath, LastError: x.LastError})
 	}
 	return out
 }
@@ -632,6 +633,7 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 	streamCtx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
 	s.deliveryCtx = streamCtx
+	log.Printf("[BRIDGE-STREAM] start network=%s agent=%s attachment=%s", s.Network, s.Attachment.AgentName, s.Attachment.ID)
 	b.startNative(s)
 	b.workers.Add(1)
 	go func() {
@@ -681,6 +683,7 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 				previousThrough := s.SeenThrough
 				s.SeenThrough = max(s.SeenThrough, m.Sequence)
 				s.Offers[m.MessageID] = localOffer{AgentLiveMessage: m}
+				log.Printf("[BRIDGE-STREAM] received network=%s attachment=%s message=%s", s.Network, s.Attachment.ID, m.MessageID)
 				if err := b.save(); err != nil {
 					delete(s.Offers, m.MessageID)
 					s.SeenThrough = previousThrough
@@ -691,8 +694,19 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 					go b.options.Notify(s.Attachment, "")
 				}
 				return nil
+			}, func() {
+				b.mu.Lock()
+				defer b.mu.Unlock()
+				s.streamOnline = true
+				s.ServerClosed = false // The server accepted this same lease; no attachment is created.
+				s.LastError = ""
+				backoff = time.Second
+				log.Printf("[BRIDGE-STREAM] connected network=%s agent=%s attachment=%s", s.Network, s.Attachment.AgentName, s.Attachment.ID)
+				_ = b.save()
+				b.wake()
 			})
 			b.mu.Lock()
+			s.streamOnline = false
 			var watchErr *APIError
 			if errors.As(err, &watchErr) && (watchErr.Status == 401 || watchErr.Status == 403 || watchErr.Status == 404 || watchErr.Code == "agent_attachment_closed") {
 				if museWatchActive(s) {
@@ -703,6 +717,14 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 			if errors.As(err, &watchErr) && watchErr.Code == "agent_attachment_closed" && !s.ServerClosed {
 				s.ServerClosed = true
 				_ = b.save()
+			}
+			code, status := "stream_disconnected", 0
+			if errors.As(err, &watchErr) {
+				code, status = watchErr.Code, watchErr.Status
+			}
+			if streamCtx.Err() == nil {
+				s.LastError = fmt.Sprintf("Live delivery disconnected (%s, HTTP %d).", code, status)
+				log.Printf("[BRIDGE-STREAM] disconnected network=%s agent=%s attachment=%s code=%s status=%d", s.Network, s.Attachment.AgentName, s.Attachment.ID, code, status)
 			}
 			b.wake()
 			b.mu.Unlock()
@@ -753,7 +775,7 @@ func (b *localBridge) recoverNativeRoute(s *localSession) bool {
 }
 
 func (b *localBridge) startNative(s *localSession) {
-	if s.NativeRemote == "" || b.options.NativeOffer == nil || s.nativeStarted || s.deliveryCtx == nil {
+	if s.Also || s.NativeRemote == "" || b.options.NativeOffer == nil || s.nativeStarted || s.deliveryCtx == nil {
 		return
 	}
 	s.nativeStarted = true
@@ -1342,9 +1364,18 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	if s.Offline && in.Action != "status" && in.Action != "detach" && in.Action != "cleanup" && in.Action != "offline" {
 		return out
 	}
-	for _, v := range s.Offers {
-		if !v.Offered && !v.Suppressed {
-			out.Pending++
+	pendingSessions := []*localSession{s}
+	if !s.Also {
+		pendingSessions = append(pendingSessions, b.extrasOf(key)...)
+	}
+	for _, pending := range pendingSessions {
+		if pending.Offline {
+			continue
+		}
+		for _, v := range pending.Offers {
+			if !v.Offered && !v.Suppressed {
+				out.Pending++
+			}
 		}
 	}
 	if in.Action == "reply" && in.MessageID == "" && in.InboxID != "" {
@@ -1438,6 +1469,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 		})
 		if in.Action == "read" && reply.Error == "" {
+			var result map[string]json.RawMessage
+			if json.Unmarshal(reply.Result, &result) == nil {
+				result["network"], _ = json.Marshal(network)
+				reply.Result, _ = json.Marshal(result)
+			}
 			viaKey := key
 			if via.Also {
 				viaKey = localAlsoKey(key, via.ParentConfigPath)

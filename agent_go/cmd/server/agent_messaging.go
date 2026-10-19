@@ -1160,6 +1160,18 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			if c.Stamp.Type == triggerCallerWorkflow && isGoalLeadSessionID(sessionID) {
 				key = pulseBuilderChatKey
 			}
+			if c.Stamp.Type == triggerCallerCrew && isProjectProfileID(c.Stamp.ProfileID) {
+				records, readErr := defaultProductConversationRegistryStore().projectChats(ctx, userID, c.Stamp.ProfileID, c.Stamp.ID)
+				if readErr != nil {
+					return triggerLinkCaller{}, readErr
+				}
+				for _, record := range records {
+					if record.SessionID == sessionID {
+						key = record.ConversationKey
+						break
+					}
+				}
+			}
 			c.Chat = &codeChat{Key: key, SessionID: sessionID, Name: c.Label}
 		}
 		return c, err

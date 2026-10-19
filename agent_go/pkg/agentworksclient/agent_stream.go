@@ -81,7 +81,7 @@ var streamIdleLimit = 45 * time.Second
 // StreamAgentMessages keeps one authenticated connection open. The server
 // pushes on durable writes; this never polls the messages tool. Reconnect and
 // adapter de-duplication belong to the caller, which owns its native session.
-func (c *Client) StreamAgentMessages(ctx context.Context, attachment AgentAttachment, receive func(AgentLiveMessage) error) error {
+func (c *Client) StreamAgentMessages(ctx context.Context, attachment AgentAttachment, receive func(AgentLiveMessage) error, connected ...func()) error {
 	token, err := c.authToken(ctx)
 	if err != nil {
 		return err
@@ -127,6 +127,15 @@ func (c *Client) StreamAgentMessages(ctx context.Context, attachment AgentAttach
 		}
 		if err = json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &frame); err != nil {
 			return fmt.Errorf("invalid agent event: %w", err)
+		}
+		if frame.Type == "connected" {
+			if frame.AttachmentID != attachment.ID {
+				return errors.New("agent stream does not match this attachment")
+			}
+			for _, notify := range connected {
+				notify()
+			}
+			continue
 		}
 		if frame.Type == "closed" {
 			return &APIError{Status: 403, Code: "agent_attachment_closed", Message: "The attachment or its connection is no longer authorized."}

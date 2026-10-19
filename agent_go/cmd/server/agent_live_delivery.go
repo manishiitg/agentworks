@@ -260,9 +260,11 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 		externalError(w, 409, "agent_already_connected", "This agent already has a live listener.")
 		return
 	}
+	log.Printf("[AGENT-STREAM] connected agent=%s attachment=%s", a.ID, id)
 	agentLiveEvents.online[a.ID] = id
 	agentLiveEvents.Unlock()
 	defer func() {
+		log.Printf("[AGENT-STREAM] disconnected agent=%s attachment=%s", a.ID, id)
 		agentLiveEvents.Lock()
 		if agentLiveEvents.online[a.ID] == id {
 			delete(agentLiveEvents.online, a.ID)
@@ -332,9 +334,15 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 			}
 			if !status {
 				if e = api.recheckAgentMessageAdmission(r.Context(), c, m); e != nil {
+					if validateLogDue(m.ID, "stream_admission_refused", time.Now()) {
+						log.Printf("[AGENT-STREAM] held message=%s attachment=%s reason=admission_recheck_failed", m.ID, id)
+					}
 					continue
 				}
 				if e = api.externalAuthorizeMessagePeer(r.Context(), live, source, false); e != nil {
+					if validateLogDue(m.ID, "stream_sender_refused", time.Now()) {
+						log.Printf("[AGENT-STREAM] held message=%s attachment=%s reason=sender_authorization_failed", m.ID, id)
+					}
 					continue
 				}
 			}
@@ -347,6 +355,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 			if e = recordAgentMessageOffer(r.Context(), a.ID, id, m.ID); e != nil {
 				return
 			}
+			log.Printf("[AGENT-STREAM] offered message=%s attachment=%s", m.ID, id)
 			frame := map[string]any{"type": "message", "attachment_id": id, "message_id": m.ID, "inbox_id": c.ID, "sender": endpointDisplayLabel(source, dest.UserID), "sender_id": source.NamedAgentID, "message": m.Text, "sequence": m.AgentSequence, "delivery": m.Delivery, "sent_at": m.SentAt}
 			offered := m
 			offered.LiveAttachment = id

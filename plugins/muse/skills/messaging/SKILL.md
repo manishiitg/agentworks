@@ -49,6 +49,8 @@ If live delivery failed, use bounded manual recovery when needed:
 agentworks({"action":"read","inbox_id":"SAVED_INBOX_ID","after":0})
 ```
 
+For a network this chat already joined, add `network: "SAVED_LOGIN"` to the read action (CLI: `--network SAVED_LOGIN`). Omitted means the primary network. Each network has its own inboxes and cursor; keep its returned cursor with that network. Both connected networks deliver live automatically; a recovery read does not join or switch a network.
+
 Retain the returned cursor for a later explicit recovery. An authorized mailbox read hands the body to this exact chat, so it may acknowledge or reply using the returned message_id. Reading alone records neither admission nor processing. Do not create a watch or infer a live push from a read. Use IDs from actual offers and results, never the example placeholders.
 
 ## CLI fallback

@@ -119,11 +119,12 @@ func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 		}
 		return call(ctx, in, req)
 	})
-	AddPluginAction(s, mcp.NewTool("agent_message_read", mcp.WithDescription("Explicit bounded mailbox recovery for this attached identity; never start a watch/polling loop."), mcp.WithString("inbox_id"), mcp.WithNumber("after")), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	AddPluginAction(s, mcp.NewTool("agent_message_read", mcp.WithDescription("Explicit bounded mailbox recovery for this attached identity; never start a watch/polling loop."), mcp.WithString("inbox_id"), mcp.WithNumber("after"), mcp.WithString("network", mcp.Description("Optional saved network name for a connection this chat already joined; omitted reads its primary network."))), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		a := req.GetArguments()
 		inbox, _ := a["inbox_id"].(string)
 		cursor, _ := a["after"].(float64)
-		return call(ctx, LocalBridgeRequest{Action: "read", InboxID: inbox, Cursor: int(cursor)}, req)
+		network, _ := a["network"].(string)
+		return call(ctx, LocalBridgeRequest{Action: "read", InboxID: inbox, Cursor: int(cursor), Network: network}, req)
 	})
 	AddPluginAction(s, mcp.NewTool("agent_message_ping_person", mcp.WithDescription("Ping the person behind an agent that has not answered a message you sent: they get one desktop notification. Once per message, only when the reply matters; never on a loop."), mcp.WithString("message_id", mcp.Required())), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		id, _ := req.GetArguments()["message_id"].(string)

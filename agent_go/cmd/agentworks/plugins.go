@@ -803,7 +803,7 @@ func bridgeCommand(o *options) *cobra.Command {
 	serve.Flags().StringVar(&piRootOverride, "pi-root", "", "Pi SDK configured root")
 	_ = serve.Flags().MarkHidden("pi-root")
 	cmd.AddCommand(serve)
-	var provider, session, messageID, delivery, message, submission, target, inbox, purpose, cursorAttachment, filePath, fileID, saveDir string
+	var provider, session, messageID, delivery, message, submission, target, inbox, purpose, cursorAttachment, filePath, fileID, saveDir, network string
 	var cursor int
 	call := &cobra.Command{Use: "message ACTION", Args: cobra.ExactArgs(1), Short: "Messaging for this exact attached provider session", RunE: func(cmd *cobra.Command, args []string) error {
 		host, err := providerHostKey(provider)
@@ -856,7 +856,7 @@ func bridgeCommand(o *options) *cobra.Command {
 				return err
 			}
 		}
-		request := agentworksclient.LocalBridgeRequest{Action: args[0], Provider: provider, SessionID: session, HostKey: host, MessageID: messageID, Delivery: delivery, Message: message, SubmissionID: submission, Target: target, InboxID: inbox, Purpose: purpose, Cursor: cursor, FileID: fileID, SaveDir: saveDir}
+		request := agentworksclient.LocalBridgeRequest{Action: args[0], Provider: provider, SessionID: session, HostKey: host, MessageID: messageID, Delivery: delivery, Message: message, SubmissionID: submission, Target: target, InboxID: inbox, Purpose: purpose, Cursor: cursor, FileID: fileID, SaveDir: saveDir, Network: network}
 		if filePath != "" {
 			if args[0] != "send" && args[0] != "reply" {
 				return errors.New("--file works with send and reply")
@@ -909,6 +909,7 @@ func bridgeCommand(o *options) *cobra.Command {
 	call.Flags().StringVar(&purpose, "purpose", "", "Describe what this attached agent works on")
 	call.Flags().IntVar(&cursor, "after", 0, "Explicit mailbox recovery cursor")
 	call.Flags().StringVar(&inbox, "inbox", "", "Conversation address")
+	call.Flags().StringVar(&network, "network", "", "Saved network this chat already joined (read)")
 	call.AddCommand(museWatchCommand(o))
 	cmd.AddCommand(call)
 
