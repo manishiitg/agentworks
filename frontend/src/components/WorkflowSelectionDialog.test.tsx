@@ -19,7 +19,7 @@ const allowed = { success: true, total: 1, workflows: [{ workspace_path: 'Workfl
 async function mount(onSelectWorkflow = vi.fn(), onClose = vi.fn()) {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
-  const render = async (isOpen: boolean) => { await act(async () => root.render(<WorkflowSelectionDialog isOpen={isOpen} onClose={onClose} onSelectWorkflow={onSelectWorkflow} searchQuery="" position={{ bottom: 0, left: 0 }} />)) }
+  const render = async (isOpen: boolean, searchQuery = '') => { await act(async () => root.render(<WorkflowSelectionDialog isOpen={isOpen} onClose={onClose} onSelectWorkflow={onSelectWorkflow} searchQuery={searchQuery} position={{ bottom: 0, left: 0 }} />)) }
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
   await render(true)
   return { host, render }
@@ -89,10 +89,13 @@ it('lists Crew projects with identity and selects their guarded workspace path',
 
   expect(host.textContent).toContain('Shared automation')
   expect(host.textContent).toContain('Harbor')
-  expect(host.textContent).toContain('Release operations')
+  expect(host.textContent).not.toContain('Release operations')
+  expect(host.textContent).not.toContain('Chats/Work/projects/')
   expect(host.textContent).toContain('crew')
   const crewRow = [...host.querySelectorAll('[class*="cursor-pointer"]')].find(row => row.textContent?.includes('Harbor'))
   expect(crewRow).toBeDefined()
+  expect(crewRow!.getAttribute('title')).toContain('Release operations')
+  expect(crewRow!.getAttribute('title')).toContain('Chats/Work/projects/release-operations-crew-1')
   await act(async () => crewRow!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })))
   expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({
     presetId: 'crew:crew-1',
@@ -181,7 +184,8 @@ it('shows functions inline without stealing focus and selects the highlighted pr
   const press = async (key: string) => { await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))) }
   expect(host.querySelector('[aria-label^="Browse functions"]')).toBeNull()
   expect(listFunctionReferences).toHaveBeenCalledWith('workflow:shared')
-  expect(host.textContent).toContain('Export this month’s report')
+  expect(host.textContent).toContain('export_report')
+  expect(host.querySelector('[title="Export this month’s report"]')).not.toBeNull()
   expect(document.activeElement).toBe(input)
   await press('Enter')
   expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ presetId: 'workflow:shared' }))
@@ -221,4 +225,93 @@ it('discards old function metadata when the picker is closed and access is revok
   await act(async () => finishFunctions([{ name: 'private_old_function' }]))
   expect(host.textContent).not.toContain('private_old_function')
   expect(host.querySelector('[data-testid="reference-functions"]')).toBeNull()
+})
+
+it('searches function names across accessible Crew, Goal and Flow projects without a separate expansion step', async () => {
+  vi.mocked(workflowManifestApi.listWorkflowManifests).mockResolvedValue({ success: true, total: 2, workflows: [
+    { workspace_path: 'Workflow/goal', manifest: { id: 'goal', label: 'Sales goal' } },
+    { workspace_path: 'Workflow/flow', manifest: { id: 'flow', label: 'Invoice flow' } },
+  ] } as Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>)
+  vi.mocked(loadProductProjects).mockResolvedValue([{
+    schemaVersion: 1, product: 'work', id: 'crew', title: 'Operations', description: '', templates: [],
+    sessionId: 'work:crew', workspacePath: 'Chats/Work/projects/crew',
+    createdAt: '', updatedAt: '', selectedServers: [], selectedSkills: [],
+    selectedSecrets: [], selectedGlobalSecrets: [], workflowContextPaths: [],
+    selectionConfigInitialized: true, secretSelectionInitialized: true, runtimeConfigInitialized: true,
+  }])
+  vi.mocked(listFunctionReferences).mockImplementation(async target => [
+    { name: target === 'workflow:goal' ? 'weekly_report' : target === 'workflow:flow' ? 'invoice_report' : 'team_report' },
+    { name: 'unrelated_action' },
+  ])
+  const onSelect = vi.fn(); const onClose = vi.fn()
+  const { host, render } = await mount(onSelect, onClose)
+  await render(true, 'REPORT')
+  const names = () => [...host.querySelectorAll('[data-reference-row]')].map(row => row.textContent?.trim())
+  expect(names()).toEqual(['Invoice flowworkflow', 'invoice_report', 'Operationscrew', 'team_report', 'Sales goalworkflow', 'weekly_report'])
+  expect(host.textContent).not.toContain('unrelated_action')
+  expect(onClose).not.toHaveBeenCalled()
+  const input = host.querySelector('input')!
+  const press = async (key: string) => { await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))) }
+  await press('ArrowDown'); await press('Enter')
+  expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ presetId: 'workflow:flow', functionName: 'invoice_report' }))
+  await press('ArrowDown'); await press('Enter')
+  expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ presetId: 'crew:crew' }))
+  expect(onSelect.mock.lastCall?.[0].functionName).toBeUndefined()
+  await press('ArrowDown'); await press('Enter')
+  expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ presetId: 'crew:crew', functionName: 'team_report' }))
+  await press('ArrowLeft'); await press('ArrowRight'); await press('Enter')
+  expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ functionName: 'team_report' }))
+  expect(listFunctionReferences).toHaveBeenCalledTimes(3)
+})
+
+it('waits for function discovery before dismissing a query that matches no project name', async () => {
+  let finishFunctions!: (value: Awaited<ReturnType<typeof listFunctionReferences>>) => void
+  vi.mocked(loadProductProjects).mockResolvedValue([])
+  vi.mocked(workflowManifestApi.listWorkflowManifests).mockResolvedValue(allowed as Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>)
+  vi.mocked(listFunctionReferences).mockReturnValue(new Promise(resolve => { finishFunctions = resolve }))
+  const onClose = vi.fn()
+  const { host, render } = await mount(vi.fn(), onClose)
+  await render(true, 'export_report')
+  expect(host.textContent).toContain('Searching functions')
+  expect(onClose).not.toHaveBeenCalled()
+  await act(async () => finishFunctions([{ name: 'export_report' }]))
+  expect(host.textContent).toContain('Shared automation')
+  expect(host.textContent).toContain('export_report')
+  expect(onClose).not.toHaveBeenCalled()
+})
+
+it('keeps searching partial results usable when function discovery fails for another project', async () => {
+  vi.mocked(loadProductProjects).mockResolvedValue([])
+  vi.mocked(workflowManifestApi.listWorkflowManifests).mockResolvedValue({ success: true, total: 2, workflows: [
+    { workspace_path: 'Workflow/ok', manifest: { id: 'ok', label: 'Available' } },
+    { workspace_path: 'Workflow/revoked', manifest: { id: 'revoked', label: 'Restricted' } },
+  ] } as Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>)
+  vi.mocked(listFunctionReferences).mockImplementation(async target => {
+    if (target === 'workflow:revoked') throw new Error('forbidden')
+    return [{ name: 'export_report' }]
+  })
+  const onSelect = vi.fn(); const onClose = vi.fn()
+  const { host, render } = await mount(onSelect, onClose)
+  await render(true, 'export_report')
+  expect(host.textContent).toContain('Available')
+  expect(host.textContent).not.toContain('Restricted')
+  expect(host.textContent).toContain('Some references could not be loaded')
+  await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="reference-functions"] button')!.click())
+  expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ presetId: 'workflow:ok', functionName: 'export_report' }))
+  expect(onClose).not.toHaveBeenCalled()
+})
+
+it('limits discovery requests and abandons queued projects when closed', async () => {
+  const finishRequests: ((items: Awaited<ReturnType<typeof listFunctionReferences>>) => void)[] = []
+  vi.mocked(loadProductProjects).mockResolvedValue([])
+  vi.mocked(workflowManifestApi.listWorkflowManifests).mockResolvedValue({ success: true, total: 8, workflows:
+    Array.from({ length: 8 }, (_, i) => ({ workspace_path: `Workflow/${i}`, manifest: { id: String(i), label: `Project ${i}` } })),
+  } as Awaited<ReturnType<typeof workflowManifestApi.listWorkflowManifests>>)
+  vi.mocked(listFunctionReferences).mockImplementation(() => new Promise(resolve => finishRequests.push(resolve)))
+  const { host, render } = await mount()
+  expect(listFunctionReferences).toHaveBeenCalledTimes(4)
+  await render(false)
+  await act(async () => finishRequests.forEach(finish => finish([{ name: 'old_private_function' }])))
+  expect(listFunctionReferences).toHaveBeenCalledTimes(4)
+  expect(host.textContent).not.toContain('old_private_function')
 })
