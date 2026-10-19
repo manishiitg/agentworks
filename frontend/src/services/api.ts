@@ -52,6 +52,7 @@ import type {
   AgentProfileConversationRequest,
   AgentProfileConversationResponse,
   AgentProfileSideChat,
+  AgentProfileChatModel,
   SharedProjectFileEntry,
   SharedProjectSummary,
   CodeAdminWorkspace,
@@ -158,6 +159,7 @@ export type {
   AgentProfileConversationRequest,
   AgentProfileConversationResponse,
   AgentProfileSideChat,
+  AgentProfileChatModel,
   GetEventsResponse,
   MCPServerConfig,
   ChatSession,
@@ -1309,6 +1311,18 @@ export const agentApi = {
   listAgentProfileSideChats: async (profileId: string, projectId: string): Promise<AgentProfileSideChat[]> => {
     const response = await api.get(`/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats`, { params: { project_id: projectId } })
     return response.data
+  },
+
+  listAgentProfileChatModels: async (profileId: string, projectId: string): Promise<AgentProfileChatModel[]> => {
+    const response = await api.get(`/api/agent-profiles/${encodeURIComponent(profileId)}/chat-models`, { params: { project_id: projectId } })
+    if (!Array.isArray(response.data.chat_models)) throw new Error('Chat models are unavailable on this server.')
+    return response.data.chat_models
+  },
+
+  setAgentProfileChatModel: async (profileId: string, projectId: string, choice: AgentProfileChatModel): Promise<AgentProfileChatModel[]> => {
+    const response = await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/chat-models`, { project_id: projectId, ...choice })
+    if (!Array.isArray(response.data.chat_models)) throw new Error('Chat models are unavailable on this server.')
+    return response.data.chat_models
   },
 
   /** Saves the order the person dragged a project's side tabs into; answers with the tabs in that order. */

@@ -259,6 +259,14 @@ export interface AgentProfileConversationRequest {
   name?: string
 }
 
+/** A caller-owned model choice; omitted chats follow the project default. */
+export interface AgentProfileChatModel {
+  conversation_key: string
+  engine: string
+  model_id?: string
+  reasoning_effort?: string
+}
+
 /** An open side tab of a Code or Crew project as the server knows it. */
 export interface AgentProfileSideChat {
  agent_id?: string
