@@ -120,6 +120,7 @@ func TestHandleStopSessionCancelsActiveWorkAndPreventsPaneReuse(t *testing.T) {
 		Status:    BGAgentRunning,
 		cancel:    func() { backgroundCanceled = true },
 	})
+	registry.Register("session-1", &BackgroundAgent{ID: "bg-finished", SessionID: "session-1", Status: BGAgentCompleted})
 
 	api := &StreamingAPI{
 		agentCancelFuncs: map[string]context.CancelFunc{
@@ -153,7 +154,7 @@ func TestHandleStopSessionCancelsActiveWorkAndPreventsPaneReuse(t *testing.T) {
 			"session-1": true,
 		},
 		pendingCompletions: map[string][]string{
-			"session-1": {"bg-1"},
+			"session-1": {"bg-finished"},
 		},
 		lastQueryRequests: map[string]QueryRequest{
 			"session-1": {Query: "old"},
@@ -167,6 +168,17 @@ func TestHandleStopSessionCancelsActiveWorkAndPreventsPaneReuse(t *testing.T) {
 		},
 	}
 	api.workshopChatSessions.Store("drifted-workshop-key", workshop)
+	// A retry already armed before Stop may still fire afterward. Capture it
+	// without a timer so the full stop path must keep delivery paused.
+	previousRetry := completionRetryAfterFunc
+	t.Cleanup(func() { completionRetryAfterFunc = previousRetry })
+	var retry func()
+	retryCount := 0
+	completionRetryAfterFunc = func(_ time.Duration, run func()) {
+		retry = run
+		retryCount++
+	}
+	api.schedulePendingCompletionRetry("session-1")
 
 	req := httptest.NewRequest(http.MethodPost, "/api/session/stop", nil)
 	req.Header.Set("X-Session-ID", "session-1")
@@ -222,8 +234,21 @@ func TestHandleStopSessionCancelsActiveWorkAndPreventsPaneReuse(t *testing.T) {
 	if registry.Get("session-1", "bg-1") != nil {
 		t.Fatalf("background agent registry was not cleaned up")
 	}
-	if _, ok := api.pendingCompletions["session-1"]; ok {
-		t.Fatalf("pending completions were not cleared")
+	if !api.autoNotificationSessionUnreachable("session-1") {
+		t.Fatal("full Stop did not suppress automatic result delivery")
+	}
+	if retry == nil {
+		t.Fatal("expected a completion retry armed before Stop")
+	}
+	retry()
+	if got := api.pendingCompletions["session-1"]; len(got) != 1 || got[0] != "bg-finished" {
+		t.Fatalf("pending completion IDs changed after stopped retry: %v", got)
+	}
+	if retryCount != 1 || api.completionRetryScheduled["session-1"] {
+		t.Fatal("stopped completion delivery re-armed itself")
+	}
+	if api.isSyntheticTurn("session-1") || api.activeSessions["session-1"].Status != "stopped" {
+		t.Fatal("completion retry restarted the stopped chat")
 	}
 	if _, ok := api.lastQueryRequests["session-1"]; ok {
 		t.Fatalf("last query request was not cleared")
@@ -242,6 +267,35 @@ func TestHandleStopSessionCancelsActiveWorkAndPreventsPaneReuse(t *testing.T) {
 	}
 	if body := rec.Body.String(); !strings.Contains(body, "Session stopped") {
 		t.Fatalf("unexpected stop response body: %q", body)
+	}
+}
+
+func TestHandleStopSessionPreservesFinishedResultsForPreservedConversation(t *testing.T) {
+	const sessionID = "preserved-results"
+	registry := NewBackgroundAgentRegistry()
+	finished := &BackgroundAgent{ID: "finished", SessionID: sessionID, Status: BGAgentCompleted, Result: "saved result"}
+	registry.Register(sessionID, finished)
+	api := &StreamingAPI{
+		activeSessions:     map[string]*ActiveSessionInfo{sessionID: {SessionID: sessionID, Status: "running"}},
+		stoppedSessions:    map[string]bool{},
+		bgAgentRegistry:    registry,
+		pendingCompletions: map[string][]string{sessionID: {finished.ID}},
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/session/stop?preserveConversation=true", nil)
+	request.Header.Set("X-Session-ID", sessionID)
+	response := httptest.NewRecorder()
+	api.handleStopSession(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("stop failed: %d %s", response.Code, response.Body.String())
+	}
+	if got := registry.Get(sessionID, finished.ID); got == nil || got.GetSnapshot().Result != "saved result" {
+		t.Fatal("preserved conversation lost the completed result payload")
+	}
+	if got := api.pendingCompletions[sessionID]; len(got) != 1 || got[0] != finished.ID {
+		t.Fatalf("preserved conversation lost its queued completion: %v", got)
+	}
+	if !api.autoNotificationSessionUnreachable(sessionID) {
+		t.Fatal("preserved conversation resumed automatic delivery before a new message")
 	}
 }
 
