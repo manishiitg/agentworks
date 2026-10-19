@@ -21,7 +21,7 @@ it('shows one grouped menu, keeps Ops collapsed and routes moved destinations', 
     expect([...host.querySelectorAll('h2,summary')].map(node => node.textContent)).toEqual(['Use & share', 'Connections', 'Ops'])
     expect(host.querySelector('details')?.open).toBe(false)
     const buttons = [...host.querySelectorAll('button')]
-    for (const label of ['Dashboard', 'Share', 'Schedules', 'Watchers', 'Webhooks', 'Functions', 'Slack app', 'Slack account', 'Memory & skills', 'Chat history', 'Settings']) expect(buttons.filter(button => button.textContent === label)).toHaveLength(1)
+    for (const label of ['Dashboard', 'Share', 'Schedules', 'Watchers', 'Webhooks', 'Functions', 'Slack', 'Memory & skills', 'Chat history', 'Settings']) expect(buttons.filter(button => button.textContent === label)).toHaveLength(1)
     expect(host.textContent).not.toContain('More tools')
     expect(host.textContent).not.toContain('Edit shortcuts')
     await act(async () => buttons.find(button => button.textContent === 'Webhooks')!.click())

@@ -3,7 +3,6 @@ import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { ShieldCheck } from 'lucide-react'
 import WorkflowTeamView from './WorkflowTeamView'
 import UsersAdminPanel from '../admin/UsersAdminPanel'
-import SlackAdminPanel from '../admin/SlackAdminPanel'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { hasWorkflowOwnerAccess } from '../../utils/workflowPermissions'
@@ -21,7 +20,6 @@ interface WorkflowAccessViewProps {
 const ACCESS_TABS: Array<{ value: AccessTabId; label: string }> = [
   { value: 'workflow', label: 'This workflow' },
   { value: 'users', label: 'Users' },
-  { value: 'slack', label: 'Slack' },
 ]
 
 /**
@@ -49,8 +47,7 @@ export default function WorkflowAccessView({ workspacePath, relayMode = false }:
   const workflowTab = isMultiUser && !!workspacePath && (canShareWorkflow || myAccess === 'read')
   const workflowReadOnly = !canShareWorkflow
   const usersTab = canManageUsers
-  const slackTab = isAdmin
-  const visibleTabs = ACCESS_TABS.filter(option => (option.value === 'workflow' && workflowTab) || (option.value === 'users' && usersTab) || (option.value === 'slack' && slackTab))
+  const visibleTabs = ACCESS_TABS.filter(option => (option.value === 'workflow' && workflowTab) || (option.value === 'users' && usersTab))
   const [tab, setTab] = usePersistentTab<AccessTabId>('agentworks.tab.access', 'workflow', ACCESS_TABS.map(option => option.value))
   const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0]?.value
   useWorkspaceViewTarget('access', target => { if (visibleTabs.some(option => option.value === target)) setTab(target as AccessTabId) })
@@ -101,8 +98,7 @@ export default function WorkflowAccessView({ workspacePath, relayMode = false }:
                 : <WorkflowTeamView workspacePath={workspacePath} readOnly={workflowReadOnly} />
             ) : activeTab === 'users' ? (
               <UsersAdminPanel />
-            ) : activeTab === 'slack' ? (
-              <SlackAdminPanel />
+
             ) : null}
           </div>
         )}

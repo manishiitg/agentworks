@@ -36,7 +36,6 @@ type externalMessagingTarget struct {
 }
 
 func (api *StreamingAPI) externalMessagingCall(w http.ResponseWriter, r *http.Request, args map[string]any, target externalMessagingTarget) {
-	ctx := r.Context()
 	action := externalArg(args, "action")
 	respond := func(status int, body []byte) { externalScheduleRespond(w, status, body) }
 	scope := url.Values{"workspace_path": {target.path}, "profile_id": {target.profile}}
@@ -55,36 +54,18 @@ func (api *StreamingAPI) externalMessagingCall(w http.ResponseWriter, r *http.Re
 	switch action {
 	case "status":
 		out := map[string]any{"kind": target.kind, "id": target.id}
-		if status, body := scheduleHandler(r, slackTargetSettingsHandler(api), http.MethodGet, "/api/human-feedback/slack/targets/settings", nil, scope, nil); status == http.StatusOK && json.Valid(body) {
-			out["slack_routing"] = json.RawMessage(body)
+		accounts, err := api.personalSlackAccounts(r, target.path)
+		if err != nil {
+			externalError(w, 403, "account_unavailable", err.Error())
+			return
 		}
-		selected := ""
-		if target.manifest != nil {
-			selected = target.manifest.Capabilities.SlackConnectionID
-		} else if status, body := scheduleHandler(r, projectSlackConnectionHandler(api), http.MethodGet, "/api/human-feedback/slack/connections/project/selection", nil, scope, nil); status == http.StatusOK {
-			var picked struct {
-				SlackConnectionID string `json:"slack_connection_id"`
-			}
-			_ = json.Unmarshal(body, &picked)
-			selected = picked.SlackConnectionID
+		out["act_in_slack"] = accounts
+		state, err := api.slackVaultBotState(r, target.path)
+		if err != nil {
+			externalError(w, 403, "bot_unavailable", err.Error())
+			return
 		}
-		// Only bots that can answer here: the shared one and this project's own.
-		bots := []map[string]any{}
-		if svc, err := ensureSlackService(); err == nil {
-			defaultID := svc.DefaultConnectionID()
-			for _, conn := range svc.ListConnections() {
-				own := strings.Trim(conn.WorkspacePath, "/") != "" && strings.Trim(conn.WorkspacePath, "/") == strings.Trim(target.path, "/")
-				if conn.WorkspacePath != "" && !own {
-					continue
-				}
-				bots = append(bots, map[string]any{"connection_id": conn.ID, "name": conn.DisplayName, "enabled": conn.Enabled, "shared": conn.WorkspacePath == "", "default": conn.ID == defaultID})
-			}
-		}
-		if selected == "" {
-			selected = "shared"
-		}
-		out["slack_bot"], out["bots"] = selected, bots
-		out["whatsapp"] = "Pair your own WhatsApp in the app (manage_messaging whatsapp_link says where); it runs as you."
+		out["slack_bot"], out["bots"], out["allow_bots"], out["slack_routing"] = state["selected_id"], state["bots"], state["allow_bots"], state["settings"]
 		externalJSON(w, out)
 	case "set_target":
 		payload := map[string]any{"workspace_path": target.path, "profile_id": target.profile}
@@ -127,25 +108,17 @@ func (api *StreamingAPI) externalMessagingCall(w http.ResponseWriter, r *http.Re
 		respond(dryRun())
 	case "use_bot":
 		id := strings.TrimSpace(externalArg(args, "connection_id"))
-		if id == "" {
-			externalError(w, 400, "invalid_arguments", "connection_id is required: a bot id from status, or \"shared\".")
-			return
-		}
 		if id == "shared" {
-			id = ""
-		}
-		if target.manifest != nil {
-			if err := requireSlackTargetOwner(ctx, api, slackTargetFromRequest(ctx, target.path, target.profile)); err != nil {
-				externalError(w, 403, "forbidden", err.Error())
-				return
+			if svc, err := ensureSlackService(); err == nil {
+				id = svc.DefaultConnectionID()
 			}
-			caps := target.manifest.Capabilities
-			caps.SlackConnectionID = id
-			respond(scheduleHandler(r, requireWorkflowWriteAccess(api.handleUpdateWorkflowManifest), http.MethodPut, "/api/workflows/manifest", nil, nil,
-				UpdateWorkflowManifestRequest{WorkspacePath: target.path, Capabilities: &caps}))
+		}
+		result, err := api.slackVaultBotOperation(r, target.path, map[string]any{"action": "select", "connection_id": id})
+		if err != nil {
+			externalError(w, 403, "bot_unavailable", err.Error())
 			return
 		}
-		respond(scheduleHandler(r, projectSlackConnectionHandler(api), http.MethodPut, "/api/human-feedback/slack/connections/project/selection", nil, scope, map[string]any{"slack_connection_id": id}))
+		externalJSON(w, result)
 	case "whatsapp_link":
 		place := "the workflow"
 		if target.kind == "crew" {

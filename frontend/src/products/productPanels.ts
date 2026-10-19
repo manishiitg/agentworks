@@ -69,7 +69,6 @@ export interface PanelSection { id: string; label: string; keywords?: string }
 
 /** Existing integration target IDs, flattened by MCPs & secrets navigation. */
 export const INTEGRATION_SECTIONS: PanelSection[] = [
-  { id: 'slack-app', label: 'Slack app', keywords: 'use share bot incoming channel conversations' },
   ...PROJECT_INTEGRATION_SECTIONS.filter(section => section.value !== 'apps').map(section => ({ id: section.value, label: section.value === 'apps' ? 'Connection overview' : section.value === 'cli' ? 'MCP access' : section.label, keywords: section.value === 'apps' ? `${section.description} Tools & secrets Apps & tools` : section.description })),
   ...projectPluginTabs().map(tab => ({ id: tab.value, label: tab.label, keywords: 'mcp tools' })),
 ]

@@ -1,3 +1,5 @@
+import { VaultSlackBots } from './integrations/VaultSlackBots'
+import SlackAdminPanel from './admin/SlackAdminPanel'
 import { useAuthStore } from '../stores/useAuthStore'
 import { visibleProductSurfaceIDs, isLocalProductInstallation } from '../products/productSurfaceConfig'
 import { McpAppsSection } from '../products/work/McpAppsSection'
@@ -476,6 +478,8 @@ export default function MyVaultsPage() {
         <div className="mx-auto w-full max-w-3xl space-y-4 p-4 text-xs sm:p-6">
           {isAdmin && <McpAppsSection />}
           <PersonalAccountsPanel />
+          <VaultSlackBots />
+          {isAdmin && <section aria-label="Company Slack bot"><h2 className="mb-3 text-sm font-semibold">Company Slack bot</h2><SlackAdminPanel /></section>}
           {sharedVaultsEnabled && <>
           <h2 className="pt-3 text-base font-semibold">Shared vaults</h2>
           <div className="flex flex-wrap items-start justify-between gap-3">

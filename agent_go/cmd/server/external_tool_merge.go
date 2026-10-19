@@ -33,7 +33,7 @@ var externalToolMerges = []externalToolMerge{
 	}},
 	{"settings", "Read and change the setup of a workflow, Flow or Crew; inspect saved secret sources for these and your own Code projects: models, MCP servers, skills, secrets, personal Google/Slack accounts, Pulse, browser mode, notifications and after-run steps.", [][2]string{
 		{"get", "get_settings"}, {"update", "update_settings"}, {"secret_sources", "get_secret_sources"},
-		{"google_account", "workflow_google_account"}, {"slack_account", "workflow_slack_account"},
+		{"google_account", "workflow_google_account"}, {"slack_account", "workflow_slack_account"}, {"slack_bot", "workflow_slack_bot"},
 	}},
 	{"needs_you", "Shares Home's question/decision collector. List what is waiting on you across workflows and Crews, then answer or dismiss one; answered decisions awaiting application include apply_message for the Builder. home action=attention also includes failed-run review items.", [][2]string{
 		{"list", "list_needs_you"}, {"answer", "answer_needs_you"}, {"dismiss", "dismiss_needs_you"},

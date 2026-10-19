@@ -7,12 +7,12 @@ import { WorkspaceContextRow as Row } from './WorkspaceContextCard'
 
 export function projectConnectionSections(options: Parameters<typeof workspaceIntegrationShortcuts>[0]) {
   const admitted = workspaceIntegrationShortcuts(options)
-  return ['brain', 'secrets', 'connected', 'gmail', 'slack', 'folders'].flatMap(id => admitted.find(item => item.id === `mcp:${id}`) ?? [])
+  return ['brain', 'secrets', 'connected', 'gmail', 'folders'].flatMap(id => admitted.find(item => item.id === `mcp:${id}`) ?? [])
 }
 
 export function projectChannelSections(slack: boolean, whatsapp: boolean) {
   return [
-    ...(slack ? [{ id: 'slack-app', label: 'Slack app', icon: Slack }] : []),
+    ...(slack ? [{ id: 'slack', label: 'Slack', icon: Slack }] : []),
     ...(whatsapp ? [{ id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle }] : []),
     { id: 'cli', label: 'MCP access', icon: AppWindow },
   ]

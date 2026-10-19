@@ -62,8 +62,8 @@ const INTEGRATION_TAB_ASK_AI_MESSAGE: Record<IntegrationTabId, { label: string; 
     summary: "Help me find, create, or configure a skill for this workflow. Ask what capability or guidance it should provide.",
   },
   slack: {
-    label: 'Connections · Slack',
-    summary: "Help me choose the Slack account this workflow uses to read or send messages. Explain current account permissions before changing the selection. Incoming Slack app conversations are configured in Use & share.",
+    label: 'Slack',
+    summary: "Help me choose the Slack account this workflow uses to read or send messages. Explain current account permissions before changing the selection. Act in Slack and the bot choice share this Slack page. Use manage_slack_account to attach a saved personal account and manage_slack_bot to choose an existing bot from My Vault. Flows offer Act in Slack only.",
     instructions: "Inspect authorized personal Slack accounts and current project selection. Preserve the server's account send/read rules. Never request tokens in chat.",
   },
   whatsapp: {
@@ -182,7 +182,7 @@ const ACCESS_TAB_ASK_AI_MESSAGE: Record<AccessTabId, { label: string; summary: s
     summary: "Help me manage this deployment's accounts and roles. Explain the current setup and ask what should change, without asking me to reveal passwords in chat.",
   },
   slack: {
-    label: 'Access · Slack',
+    label: 'My Vault · Slack',
     summary: "Help me manage this deployment's shared Slack bot and see which workflows have their own bot. Guide me through Slack app setup in the settings UI without asking for tokens in chat.",
   },
 }

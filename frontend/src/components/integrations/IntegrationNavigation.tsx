@@ -11,7 +11,7 @@ export function integrationNavigationOptions(sections: readonly IntegrationSecti
   return [
     ...(sections.some(section => section.value === 'apps') ? plugins.filter(item => item.value !== 'available' && item.value !== 'skills')
       .map(item => ({ ...item, label: item.value === 'connected' ? 'MCPs' : item.label, icon: pluginIcons[item.value] })) : []),
-    ...sections.filter(section => !['apps', 'whatsapp', 'cli'].includes(section.value)),
+    ...sections.filter(section => !['apps', 'slack', 'whatsapp', 'cli'].includes(section.value)),
   ]
 }
 

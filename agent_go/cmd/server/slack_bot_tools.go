@@ -501,6 +501,9 @@ func (api *StreamingAPI) registerSlackBotTools(registrar definitionToolRegistrar
 	if !canMutate {
 		return nil
 	}
+	if err := api.registerSlackVaultBotTool(registrar, workspace); err != nil {
+		return err
+	}
 
 	// Reuse the UI handler so credential encryption, operator authorization,
 	// route preservation, session revocation and connector activation stay shared.

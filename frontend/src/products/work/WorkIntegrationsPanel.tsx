@@ -1,7 +1,7 @@
 import { ProjectSecretsPanel } from '../../components/integrations/ProjectSecretsPanel'
 import { useState } from 'react'
 import { Laptop, Server, Users } from 'lucide-react'
-import SlackAccountsPanel from '../../components/integrations/SlackAccountsPanel'
+import { ProductSlackPanel } from '../../components/integrations/ProductSlackPanel'
 import { projectChannelLabel, type ProjectChannel } from '../../components/integrations/projectChannels'
 import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
 import WorkflowEmailPanel from '../../components/workflow/WorkflowEmailPanel'
@@ -35,7 +35,7 @@ function integrationTabAskAIMessage(noun: string, incomingGmail: boolean): Recor
     folders: `Help me attach things to this ${noun} project: folders or workflows and Crews as reference material. Ask what is needed and why, then set it up; folders should allow viewing only unless saving changes is needed. For shared knowledge, open Connections, then choose Brain from Add connection.`,
     secrets: `Help me select project or permitted Vault secrets for this ${noun} project. Never ask for secret values in chat.`,
     skills: `Help me with this ${noun} project's skills. Explain what's available and ask what I want to add or change.`,
-    slack: `Help me choose the Slack account this ${noun} uses to read or send messages. Explain current account permissions before changing the selection. Incoming Slack app conversations are configured in Use & share. Never request tokens in chat.`,
+    slack: `Help me choose the Slack account this ${noun} uses to read or send messages. Explain current account permissions before changing the selection. Use manage_slack_account for Act in Slack and manage_slack_bot to choose an existing Vault bot on this same Slack page. Credentials are managed only in My Vault. Never request tokens in chat.`,
     whatsapp: `Help me with this ${noun} project's WhatsApp bot. Explain what's connected and ask what I want to change.`,
     gmail: getGoogleAppsAskAIMessage(`${noun} project`, incomingGmail),
     cli: 'Help me connect an AI agent to this installation through MCP. Explain the HTTP MCP URL and browser sign-in, and ask which AI app I use.',
@@ -125,7 +125,7 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
   const navigationOptions = [...integrationNavigationOptions(visibleTabs, pluginTabs), ...(canEdit ? [{ value: 'agents', label: 'Agents from your computer', icon: Laptop }] : [])]
   const selectConnection = (target: string) => {
     if (target === 'agents' && canEdit) { setSharing(false); setOverview(false); setTab('agents'); return }
-    if (target === 'cli' || (target === 'slack-app' && visibleTabs.some(option => option.value === 'slack')) || (target === 'whatsapp' && visibleTabs.some(option => option.value === 'whatsapp'))) { setSharing(true); setShareChannel(target as ProjectChannel); return }
+    if (target === 'cli' || (target === 'slack' && visibleTabs.some(option => option.value === 'slack')) || (target === 'whatsapp' && visibleTabs.some(option => option.value === 'whatsapp'))) { setSharing(true); setShareChannel(target as ProjectChannel); return }
     if (target === 'overview' || target === 'apps') { setSharing(false); setOverview(true); setTab('apps'); return }
     if (!visibleTabs.some(option => option.value === target) && !pluginTabs.some(option => option.value === target)) return
     setSharing(false); setOverview(false)
@@ -162,7 +162,7 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
       />
       <div data-ui-view-section={sharing ? shareChannel : activeConnection} key={`${sharing ? shareChannel : activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
         {sharing ? <>
-          {shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <WorkflowBotsPanel channelOnly workspacePath={workspacePath} fixedChannel={shareChannel === 'slack-app' ? 'slack' : 'whatsapp'} scopeNoun="project" ownBotOnly={product.profileId === 'code'} onAsk={onAsk} target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }} />}
+          {shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <>{shareChannel === 'slack' ? <ProductSlackPanel workspacePath={workspacePath} noun="Crew" /> : <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" scopeNoun="project" onAsk={onAsk} target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }} />}</>}
         </> : <>
         {overview && canEdit && <button type="button" onClick={() => selectConnection('agents')} className="mb-4 flex w-full items-center gap-2 rounded-md border border-border p-3 text-left text-sm hover:bg-muted/40"><Laptop className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />Agents from your computer</button>}
         {activeTab === 'agents' && canEdit && <CrewPublishedAgents key={`${product.profileId}:${projectId}`} profileId={product.profileId} projectId={projectId} />}
@@ -198,7 +198,6 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
           onAsk={onAsk}
           askMessage={integrationTabAskAIMessage(product.noun, incomingGmail).folders}
         />}
-        {activeTab === 'slack' && <SlackAccountsPanel workspacePath={workspacePath} />}
         {activeTab === 'gmail' && (
           <>
             {/* The deployment's Google app: an admin stores the Google OAuth client once. */}

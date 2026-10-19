@@ -45,14 +45,14 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-async function renderPanel(fixedChannel?: "slack" | "whatsapp", channelOnly = false) {
+async function renderPanel(fixedChannel?: "slack" | "whatsapp") {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   await act(async () =>
     root.render(
       <TooltipProvider>
-        <WorkflowBotsPanel workspacePath="/workflows/demo" fixedChannel={fixedChannel} channelOnly={channelOnly} />
+        <WorkflowBotsPanel workspacePath="/workflows/demo" fixedChannel={fixedChannel} />
       </TooltipProvider>,
     ),
   );
@@ -94,11 +94,9 @@ it("gives Slack its own one-question tab with no channel row", async () => {
   expect(whatsapp.querySelector('[data-testid="slack-settings"]')).toBeNull();
 });
 
-it("shows only incoming bot setup in Use & share while preserving the legacy mixed host", async () => {
-  const legacy = await renderPanel("slack");
-  expect(legacy.querySelector('[data-testid="sending-account"]')).not.toBeNull();
-  const incoming = await renderPanel("slack", true);
-  expect(incoming.querySelector('[data-testid="sending-account"]')).toBeNull();
-  expect(incoming.querySelector('[data-testid="slack-settings"]')).not.toBeNull();
-  expect(incoming.querySelector('details')).toBeNull();
+it("uses the same Slack page in all hosts without a credential form", async () => {
+ const host = await renderPanel("slack")
+ expect(host.querySelector('[data-testid="slack-settings"]')).not.toBeNull()
+ expect(host.querySelector('[data-testid="sending-account"]')).toBeNull()
+ expect(host.querySelector('input[type="password"]')).toBeNull()
 });

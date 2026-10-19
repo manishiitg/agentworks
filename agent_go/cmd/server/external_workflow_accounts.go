@@ -3,7 +3,7 @@ package server
 import "net/http"
 
 func isExternalWorkflowAccountTool(name string) bool {
-	return name == "workflow_google_account" || name == "workflow_slack_account"
+	return name == "workflow_google_account" || name == "workflow_slack_account" || name == "workflow_slack_bot"
 }
 
 // Reuse the native account schemas and operations rather than copying account
@@ -23,6 +23,11 @@ func externalWorkflowAccountDefinitions(add func(string, string, bool, bool, map
 			"account": tool.schema,
 		}, "account")
 	}
+	if err := api.registerSlackVaultBotTool(reg, ""); err != nil {
+		return err
+	}
+	tool := reg["manage_slack_bot"]
+	add("workflow_slack_bot", "Choose a My Vault bot for this Goal with the same operation as its Slack page. Flows support Act in Slack only. "+tool.description, true, true, map[string]any{"bot": tool.schema}, "bot")
 	return nil
 }
 
@@ -39,7 +44,10 @@ func (api *StreamingAPI) externalWorkflowAccountCall(w http.ResponseWriter, r *h
 	account, _ := args["account"].(map[string]any)
 	var result any
 	var err error
-	if name == "workflow_google_account" {
+	if name == "workflow_slack_bot" {
+		bot, _ := args["bot"].(map[string]any)
+		result, err = api.slackVaultBotOperation(r, workflow.WorkspacePath, bot)
+	} else if name == "workflow_google_account" {
 		result, err = api.personalGoogleOperation(r, workflow.WorkspacePath, account)
 	} else {
 		result, err = api.personalSlackOperation(r, workflow.WorkspacePath, account)

@@ -178,7 +178,6 @@ export const UI_CONTROL_CONTRACT = {
         "folders",
         "slack",
         "gmail",
-        "slack-app",
         "whatsapp",
         "cli"
       ],

@@ -49,7 +49,7 @@ it('groups search like the menu and does not advertise the retired Bots tab', ()
   render(CREW_PRODUCT, {})
   const entries = usePanelSwitcherStore.getState().entries.work!.panels
   expect(entries.find(item => item.id === 'schedules:triggers')).toMatchObject({ label: 'Webhooks', group: 'Use & share' })
-  expect(entries.find(item => item.id === 'mcp:slack')).toMatchObject({ label: 'Slack account', group: 'Connections' })
+  expect(entries.find(item => item.id === 'mcp:slack')).toMatchObject({ label: 'Slack', group: 'Use & share' })
   expect(entries.find(item => item.id === 'history')).toMatchObject({ label: 'Chat history', group: 'Ops' })
   expect(entries.flatMap(item => item.sections ?? []).some(item => item.id === 'bots')).toBe(false)
 })

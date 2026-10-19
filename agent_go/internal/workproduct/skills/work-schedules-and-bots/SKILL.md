@@ -391,3 +391,16 @@ settings does not restore a revoked receipt. Old allowlists need confirmation
 after this change. Public suffixes and common public mailbox domains (including
 `@gmail.com`, `@googlemail.com`, `@outlook.com`, `@yahoo.com`) are rejected. Use
 exact addresses instead; organization domains still require owner confirmation.
+
+### Slack accounts and bots
+
+Open the project's **Slack** page under Use & share. **Act in Slack** selects
+an existing personal account from My Vault with `manage_slack_account` (list_saved,
+attach/detach). The account owner can read/search; other callers can send only.
+**Talk to this Crew** selects a saved bot using `manage_slack_bot` (list_saved,
+select). Use the exact saved connection ID; do not create another bot connection
+for each project. Bot tokens and the company bot are managed only in **My Vault**;
+admin sign-in app credentials are under My Vault → Sign-in apps. Existing bot
+owner/admin and caller permissions apply. Do not guide people to Connections or
+Access to manage Slack credentials. Flows offer Act in Slack only; do not attach
+incoming bots to them.

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { CheckCircle, Loader2, MessageSquare, Users } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import type { SlackConfig, SlackTestResponse } from '../../services/api-types'
-import { SettingsCard, SettingsEmpty } from '../ui/SettingsCard'
+import { SettingsCard } from '../ui/SettingsCard'
 import { Button } from '../ui/Button'
 import { SecretField } from '../ui/SecretField'
 import { ToggleRow } from '../ui/ToggleRow'
@@ -10,21 +10,16 @@ import { StatusBanner } from '../workflow/bots/StatusBanner'
 import { SlackAppSetupSteps, SlackChecksView, SlackManifestSetup, SlackPermissionsChecklist, SlackTokenHint } from '../workflow/bots/SlackAppSetupSteps'
 
 /**
- * Access → Slack (admins): the platform side of Slack. The shared bot is the
+ * My Vault → Company Slack bot (admins): the platform side of Slack. The shared bot is the
  * default app every workflow without its own bot answers through, in the
  * channels routed to it. Workflows and crew projects set up their own bots
  * and shared-bot channels from their own Slack tab.
  */
 export default function SlackAdminPanel() {
-  return <SlackAdminSections showWorkflowBots />
+  return <SlackAdminSections />
 }
 
-/** The shared bot's settings alone, for a workflow's Slack tab. */
-export function SharedSlackBotSettings({ onSaved }: { onSaved?: () => void }) {
-  return <SlackAdminSections onSaved={onSaved} />
-}
-
-function SlackAdminSections({ showWorkflowBots = false, onSaved }: { showWorkflowBots?: boolean; onSaved?: () => void }) {
+function SlackAdminSections() {
   const [original, setOriginal] = useState<SlackConfig | null>(null)
   const [enabled, setEnabled] = useState(false)
   const [botToken, setBotToken] = useState('')
@@ -43,8 +38,8 @@ function SlackAdminSections({ showWorkflowBots = false, onSaved }: { showWorkflo
       const data = await agentApi.getSlackFeedbackConfig()
       setOriginal(data)
       setEnabled(!!data.enabled && !!data.bot_mode)
-      setBotToken(data.bot_token || '')
-      setAppToken(data.app_token || '')
+      setBotToken('')
+      setAppToken('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load Slack settings')
     } finally {
@@ -56,8 +51,8 @@ function SlackAdminSections({ showWorkflowBots = false, onSaved }: { showWorkflo
   const canManage = original?.manage_default_allowed === true
   const dirty = !!original && (
     enabled !== (!!original.enabled && !!original.bot_mode)
-    || botToken !== (original.bot_token || '')
-    || appToken !== (original.app_token || '')
+    || botToken !== ''
+    || appToken !== ''
   )
 
   const save = async (): Promise<boolean> => {
@@ -68,13 +63,12 @@ function SlackAdminSections({ showWorkflowBots = false, onSaved }: { showWorkflo
     try {
       // Channel routes belong to workflows; carry them through unchanged.
       await agentApi.updateSlackFeedbackConfig({
-        enabled, bot_mode: enabled, bot_token: botToken, app_token: appToken,
+        enabled, bot_mode: enabled, bot_token: botToken || original.bot_token, app_token: appToken || original.app_token,
         channel_routing: original.channel_routing || {},
       })
       setTestResult(null)
       setSuccess('Shared bot saved.')
       await load()
-      onSaved?.()
       return true
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save Slack settings')
@@ -101,7 +95,6 @@ function SlackAdminSections({ showWorkflowBots = false, onSaved }: { showWorkflo
     return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
   }
 
-  const workflowBots = (original?.connections || []).filter(conn => !conn.is_default && conn.workspace_path)
   const disabledTitle = canManage ? undefined : 'Only a platform admin can change the shared bot'
 
   return (
@@ -138,30 +131,9 @@ function SlackAdminSections({ showWorkflowBots = false, onSaved }: { showWorkflo
         {testResult && <SlackChecksView result={testResult} />}
       </SettingsCard>
 
-      {showWorkflowBots && <PlatformBotProducts canManage={canManage} />}
+      <PlatformBotProducts canManage={canManage} />
 
-      {showWorkflowBots && <SettingsCard
-        icon={<MessageSquare className="h-4 w-4 text-muted-foreground" />}
-        title="Workflow and crew bots"
-        count={workflowBots.length}
-        description="Bots that answer only for their own workflow or crew project, in any channel they're invited to. Owners manage them from that workflow's Slack tab."
-      >
-        {workflowBots.length === 0 ? (
-          <SettingsEmpty>No workflow has its own bot yet.</SettingsEmpty>
-        ) : (
-          <ul className="divide-y divide-border">
-            {workflowBots.map(conn => (
-              <li key={conn.id} className="flex items-center gap-2 py-2">
-                <span className="font-medium text-foreground">{conn.display_name}</span>
-                <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground" title={conn.workspace_path}>{conn.workspace_path}</span>
-                <span className={conn.enabled && conn.configured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>
-                  {!conn.configured ? 'Missing tokens' : conn.enabled ? 'Ready' : 'Disabled'}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </SettingsCard>}
+
     </div>
   )
 }

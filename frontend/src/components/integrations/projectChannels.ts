@@ -1,2 +1,2 @@
-export type ProjectChannel = 'slack-app' | 'whatsapp' | 'cli'
-export const projectChannelLabel = (channel: ProjectChannel) => channel === 'cli' ? 'MCP access' : channel === 'slack-app' ? 'Slack app' : 'WhatsApp'
+export type ProjectChannel = 'slack' | 'whatsapp' | 'cli'
+export const projectChannelLabel = (channel: ProjectChannel) => channel === 'cli' ? 'MCP access' : channel === 'slack' ? 'Slack' : 'WhatsApp'

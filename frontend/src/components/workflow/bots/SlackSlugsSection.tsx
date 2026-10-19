@@ -21,8 +21,9 @@ export const slackErrorText = (err: unknown, fallback: string): string => {
   return err instanceof Error ? err.message : fallback
 }
 
-export function SlackSlugsSection({ destination, noun, readOnly, dmOnly = false, settings, onSettings }: {
+export function SlackSlugsSection({ destination, noun, readOnly, dmOnly = false, settings, onSettings, hideSwitch = false }: {
   destination: SlackDestination
+  hideSwitch?: boolean
   noun: string
   readOnly: boolean
   /** A Code: 1:1 DMs only, never channels. */
@@ -68,7 +69,7 @@ export function SlackSlugsSection({ destination, noun, readOnly, dmOnly = false,
 
   return (
     <div className="space-y-3">
-      <ToggleRow
+      {!hideSwitch && <ToggleRow
         label={`Answer through @${botName}`}
         description={settings.platform_bot
           ? 'On. Turning it off cuts access at once, including open threads.'
@@ -77,7 +78,7 @@ export function SlackSlugsSection({ destination, noun, readOnly, dmOnly = false,
         onCheckedChange={checked => void run('switch', () => agentApi.updateSlackTargetSettings(destination, { platform_bot: checked }))}
         disabled={!canManage || !!busy || (!settings.platform_bot && !settings.product_allowed)}
         disabledTitle={title}
-      />
+      />}
       <div className="space-y-2 rounded-md border border-border bg-background p-2">
         <p className="text-xs font-medium text-foreground">How it appears in Slack's "who should answer" list</p>
         <Input

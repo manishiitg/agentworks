@@ -1,3 +1,4 @@
+import { ProductSlackPanel } from '../integrations/ProductSlackPanel'
 import { selectWorkspacePaneWorkflowTab } from '../../utils/workspacePaneChat'
 import { capabilitiesEqual, mergeRemoteCapabilities } from './workflowCapabilitiesSync'
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -41,7 +42,6 @@ import WorkflowFolderAccessView from './WorkflowFolderAccessView'
 import WorkflowUpdatesView from './WorkflowUpdatesView'
 import { useGmailInboundUIEnabled } from './bots/gmailAskAI'
 
-const SlackAccountsPanel = lazy(() => import('../integrations/SlackAccountsPanel'))
 
 // Which sections exist is decided by the registry in workspaceViews.ts; this
 // panel only carries the per-section copy.
@@ -135,7 +135,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
   const activeIdentityTab = identityTabs.some(option => option.value === identityTab) ? identityTab : 'general'
   const navigationOptions = integrationNavigationOptions(mcpTabs, pluginTabs)
   const selectConnection = (target: string) => {
-    if (target === 'cli' || (!relayMode && target === 'slack-app' && mcpTabs.some(option => option.value === 'slack')) || (!relayMode && target === 'whatsapp' && mcpTabs.some(option => option.value === 'whatsapp'))) { setSharing(true); setShareChannel(target as ProjectChannel); return }
+    if (target === 'cli' || (target === 'slack' && mcpTabs.some(option => option.value === 'slack')) || (!relayMode && target === 'whatsapp' && mcpTabs.some(option => option.value === 'whatsapp'))) { setSharing(true); setShareChannel(target as ProjectChannel); return }
     if (target === 'overview' || target === 'apps') { setSharing(false); setOverview(true); setTab('apps'); return }
     if (!mcpTabs.some(option => option.value === target) && !pluginTabs.some(option => option.value === target)) return
     setSharing(false); setOverview(false)
@@ -368,7 +368,7 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
               <div>
                 <div data-ui-view-section={sharing ? shareChannel : activeConnection} key={`${workspacePath}:${sharing ? shareChannel : activeMcpTab}:${tabNonce}`}>
                 {sharing ? <>
-                  {workspacePath && (shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <WorkflowBotsPanel channelOnly workspacePath={workspacePath} fixedChannel={shareChannel === 'slack-app' ? 'slack' : 'whatsapp'} />)}
+                  {workspacePath && (shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <>{shareChannel === 'slack' ? <ProductSlackPanel workspacePath={workspacePath} noun={relayMode ? 'Flow' : 'Goal'} allowBots={!relayMode} /> : <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" />}</>)}
                 </> : <>
                 {overview && workspacePath && <ConnectedProjectAccounts workspacePath={workspacePath} options={navigationOptions} onOpen={selectConnection} />}
                 {activeMcpTab === 'apps' && workspacePath && <ProjectPluginsPanel tab={pluginTab}
@@ -428,11 +428,6 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                 )}
                 {!relayMode && activeMcpTab === 'folders' && (
                   <WorkflowFolderAccessView workspacePath={workspacePath} hideHeader manageOwnScroll={false} />
-                )}
-                {activeMcpTab === 'slack' && (
-                  <div className="mt-3">
-                    {workspacePath && <Suspense fallback={null}><SlackAccountsPanel key={workspacePath} workspacePath={workspacePath} /></Suspense>}
-                  </div>
                 )}
                 {activeMcpTab === 'gmail' && (
                   <div className="mt-3">

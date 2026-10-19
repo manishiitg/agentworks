@@ -29,7 +29,7 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
       <ShareDashboardButton workspacePath={workspacePath} inline />
       {!relayMode && <Row icon={Monitor} onClick={() => open('browser')}>Browser</Row>}
       <WorkspaceAutomationRows relay={relayMode} onOpen={section => open('workshop', section)} />
-      <WorkspaceChannelRows onOpen={openConnection} slack={!relayMode} whatsapp={!relayMode} />
+      <WorkspaceChannelRows onOpen={openConnection} slack={true} whatsapp={!relayMode} />
     </Group>
     <Group title="Connections">
       <WorkspaceConnectionRows onOpen={openConnection} relayMode={relayMode} />

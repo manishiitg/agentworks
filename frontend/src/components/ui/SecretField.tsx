@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useId, useState } from "react"
 import { Eye, EyeOff } from "lucide-react"
 
 import { Input } from "./Input"
@@ -35,13 +35,15 @@ export function SecretField({
   name,
 }: SecretFieldProps) {
   const [shown, setShown] = useState(false)
+  const inputID = useId()
   return (
     <div>
-      <Label className="mb-2 block">
+      <Label htmlFor={inputID} className="mb-2 block">
         {label} {required && <span className="text-red-500">*</span>}
       </Label>
       <div className="relative" title={disabled ? disabledTitle : undefined}>
         <Input
+          id={inputID}
           type={shown ? "text" : "password"}
           value={value}
           onChange={event => onChange(event.target.value)}
