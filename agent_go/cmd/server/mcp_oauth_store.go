@@ -459,8 +459,12 @@ func (s *mcpOAuthStore) Refresh(ctx context.Context, raw, clientID, resource str
 		}
 		return grant, "", "", errors.New("refresh token reuse detected")
 	}
-	if revoked.Valid || expiry <= time.Now().Unix() {
-		mcpOAuthAudit(grant, "refresh_refused", "revoked_or_expired")
+	if revoked.Valid {
+		mcpOAuthAudit(grant, "refresh_refused", "already_revoked")
+		return grant, "", "", errors.New("invalid refresh token")
+	}
+	if expiry <= time.Now().Unix() {
+		mcpOAuthAudit(grant, "refresh_refused", "refresh_expired")
 		return grant, "", "", errors.New("invalid refresh token")
 	}
 	if err = json.Unmarshal([]byte(scopes), &grant.Scopes); err != nil {
