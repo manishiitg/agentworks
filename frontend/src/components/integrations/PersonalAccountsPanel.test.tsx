@@ -7,6 +7,7 @@ vi.mock('../../services/api', () => ({ default: mocks, getApiBaseUrl: () => 'htt
 vi.mock('../../stores/useAppStore', () => ({ useAppStore: (select: (state: unknown) => unknown) => select({ setAdminPage: mocks.openVault }) }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { id: 'builder' } }) }))
 vi.mock('../../products/work/GoogleAccountConnect', () => ({ GoogleAccountConnect: () => <div>Central Google sign-in</div> }))
+vi.mock('../workflow/bots/gmailAskAI', () => ({ useGmailInboundUIEnabled: () => true }))
 import PersonalAccountsPanel from './PersonalAccountsPanel'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterEach(() => vi.clearAllMocks())
@@ -36,4 +37,20 @@ it('manages personal accounts centrally without selecting a product', async () =
     await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Connect Slack account')!.click())
     expect(mocks.post).toHaveBeenLastCalledWith('/api/integrations/slack/accounts', { action: 'connect', workspace_path: '', connection_id: undefined, connection_owner: undefined })
   } finally { act(() => root.unmount()) }
+})
+
+it('selects a saved account for one inbox without attaching it to any product', async () => {
+ const account={id:'saved',owner:'builder',label:'owner@example.com',connected:true,can_use_inbox:true,google:{email:'owner@example.com',allow_read_access:true,auth:{scopes:[]}}}
+ mocks.get.mockResolvedValue({data:{can_connect:false,accounts:[account],incoming_email:{inbox:null,bindings:[]}}})
+ const host=document.createElement('div');const root=createRoot(host)
+ try {
+ await act(async()=>root.render(<PersonalAccountsPanel provider="google"/>))
+ await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Use for incoming email')!.click())
+ expect(mocks.post).toHaveBeenLastCalledWith('/api/integrations/google/accounts',{action:'select_inbox',workspace_path:'',connection_id:'saved',connection_owner:'builder'})
+ mocks.get.mockResolvedValue({data:{can_connect:false,accounts:[account],incoming_email:{inbox:{id:'inbox',connection_id:'saved',address:'owner+agent-random@example.com'},receiving_account:'owner@example.com',bindings:[]}}})
+ await act(async()=>window.dispatchEvent(new Event('focus')))
+ expect(host.textContent).toContain('Anyone who emails this address')
+ await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='New address')!.click())
+ expect(mocks.post).toHaveBeenLastCalledWith('/api/integrations/google/accounts',{action:'rotate_inbox',workspace_path:'',connection_id:undefined,connection_owner:undefined})
+ } finally { await act(async()=>root.unmount()) }
 })

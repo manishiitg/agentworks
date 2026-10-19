@@ -60,14 +60,7 @@ it('lists external webhooks only; caller bindings live under Functions', async (
   expect(host.textContent).toContain('Own conversation')
 })
 
-it('sends incoming-email help to the scoped project chat rather than a workflow', async () => {
-  const { host } = await mount({ workspacePath: 'Chats/Work/projects/p1' })
-  const button = [...host.querySelectorAll('button')].find(node => node.textContent === 'Ask AI')!
-  const clock = vi.spyOn(Date, 'now').mockReturnValue(1000)
-  try {
-    await act(async () => button.click())
-    clock.mockReturnValue(1700)
-    await act(async () => button.click())
-    expect(sendWorkspacePaneMessageToChat).toHaveBeenCalledExactlyOnceWith({ profileId: 'work', conversationKey: 'p1', message: expect.stringContaining('Incoming email') })
-  } finally { clock.mockRestore() }
+it('keeps email configuration in its own Automation section', async () => {
+ const {host}=await mount({workspacePath:'Chats/Work/projects/p1'})
+ expect(host.textContent).not.toContain('Incoming email')
 })

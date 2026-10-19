@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -32,7 +33,8 @@ func Open(path string) (*Store, error) {
 	s := &Store{db: db}
 	_, e = db.Exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS mailboxes(connection TEXT PRIMARY KEY,email TEXT NOT NULL,cursor TEXT NOT NULL DEFAULT '',generation INTEGER NOT NULL DEFAULT 1,processed INTEGER NOT NULL DEFAULT 0,renew_at INTEGER NOT NULL DEFAULT 0,next_sync INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT '',started_at INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS routes(id TEXT PRIMARY KEY,owner TEXT NOT NULL,workspace TEXT NOT NULL,connection TEXT NOT NULL,address TEXT NOT NULL UNIQUE,data TEXT NOT NULL,enabled INTEGER NOT NULL,UNIQUE(owner,workspace));
+CREATE TABLE IF NOT EXISTS routes(id TEXT PRIMARY KEY,owner TEXT NOT NULL,workspace TEXT NOT NULL,connection TEXT NOT NULL,address TEXT NOT NULL,data TEXT NOT NULL,enabled INTEGER NOT NULL,UNIQUE(owner,workspace));
+CREATE TABLE IF NOT EXISTS inboxes(id TEXT PRIMARY KEY,owner TEXT NOT NULL UNIQUE,connection TEXT NOT NULL,address TEXT NOT NULL UNIQUE);
 CREATE TABLE IF NOT EXISTS sender_consents(route TEXT PRIMARY KEY,owner TEXT NOT NULL,config_hash TEXT NOT NULL,approved_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS deliveries(id TEXT PRIMARY KEY,route TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'staged',session TEXT NOT NULL DEFAULT '',response TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,received_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS delivery_pending ON deliveries(status,created_at);
@@ -181,19 +183,6 @@ func (s *Store) Enqueue(ctx context.Context, r Route, m Message) error {
 // Select and reserve the first matching authorized rule atomically. Redelivery
 // keeps its original rule; a later configuration change never replays an email.
 func (s *Store) EnqueueAuthorized(ctx context.Context, r Route, m Message, authorize func(context.Context, Route, Message) error) error {
-	tx, e := s.db.BeginTx(ctx, nil)
-	if e != nil {
-		return e
-	}
-	defer tx.Rollback()
-	// A redelivery remains harmless even while the queue is full.
-	var exists bool
-	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM deliveries WHERE id=?)`, r.ID+":"+m.ID).Scan(&exists); e != nil {
-		return e
-	}
-	if exists {
-		return tx.Commit()
-	}
 	candidates := []Route{r}
 	if len(r.Rules) > 0 {
 		candidates = nil
@@ -205,16 +194,33 @@ func (s *Store) EnqueueAuthorized(ctx context.Context, r Route, m Message, autho
 			}
 		}
 	}
-	reason := "No enabled email rule matched"
-	selectedID, selectedName := "", ""
-	authorized := false
-	for _, candidate := range candidates {
-		if authorize != nil {
-			if !candidate.AcceptsMessageKind(m) || authorize(ctx, candidate, m) != nil {
-				continue
+	if authorize != nil {
+		permitted := candidates[:0]
+		for _, candidate := range candidates {
+			if candidate.AcceptsMessageKind(m) && authorize(ctx, candidate, m) == nil {
+				permitted = append(permitted, candidate)
 			}
 		}
-		authorized = true
+		candidates = permitted
+		if len(candidates) == 0 {
+			return nil
+		}
+	}
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	var exists bool
+	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM deliveries WHERE id=?)`, r.ID+":"+m.ID).Scan(&exists); e != nil {
+		return e
+	}
+	if exists {
+		return tx.Commit()
+	}
+	reason := "No enabled email rule matched"
+	selectedID, selectedName := "", ""
+	for _, candidate := range candidates {
 		mismatch := candidate.FilterMismatch(m)
 		if required, allRules := candidate.NewThreadScope(); mismatch == "" && required {
 			var accepted bool
@@ -236,9 +242,6 @@ func (s *Store) EnqueueAuthorized(ctx context.Context, r Route, m Message, autho
 		if len(r.Rules) == 0 {
 			reason = mismatch
 		}
-	}
-	if authorize != nil && !authorized {
-		return tx.Commit() // Preserve the existing no-history behavior for unauthorized mail.
 	}
 	if reason == "" {
 		var count int
@@ -265,7 +268,11 @@ func (s *Store) EnqueueAuthorized(ctx context.Context, r Route, m Message, autho
 	if e != nil {
 		return e
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	log.Printf("[GMAIL-INBOUND] admission=%s route=%s message=%s rule=%s", status, r.ID, m.ID, selectedID)
+	return nil
 }
 
 // Recheck changed filters before execution. A queued message may be the first

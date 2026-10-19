@@ -190,7 +190,17 @@ func (s *Service) syncMailbox(ctx context.Context, m Mailbox) error {
 			if !matched {
 				continue
 			}
-			if e = s.Store.EnqueueAuthorized(ctx, r, message, s.Authorize); e != nil {
+			authorize := s.Authorize
+			if authorize != nil {
+				authorize = func(ctx context.Context, route Route, msg Message) error {
+					err := s.Authorize(ctx, route, msg)
+					if err != nil {
+						log.Printf("[GMAIL-INBOUND] admission=blocked route=%s message=%s reason=%s", route.ID, msg.ID, err.Error())
+					}
+					return err
+				}
+			}
+			if e = s.Store.EnqueueAuthorized(ctx, r, message, authorize); e != nil {
 				return e
 			}
 		}

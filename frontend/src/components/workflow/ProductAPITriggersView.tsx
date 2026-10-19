@@ -1,11 +1,9 @@
-import { GmailInboundPanel } from './bots/GmailInboundPanel'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import axios from 'axios'
 import { Copy, Webhook } from 'lucide-react'
 import { apiTriggerURL, productWebhooksApi, type ProductAPITrigger, type ProductTriggerScope } from '../../api/productWebhooks'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
-import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 
 const buttonClass = 'rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50'
 
@@ -17,7 +15,6 @@ function errorMessage(error: unknown): string {
 export default function ProductAPITriggersView({ scope, workspacePath, onViewRuns, deliveryHistory, headerAction, hideHeader = false, refreshToken = 0, onCounts, onAsk }: { scope: ProductTriggerScope; workspacePath?: string; onViewRuns?: () => void; deliveryHistory?: ReactNode; headerAction?: React.ReactNode; hideHeader?: boolean; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }) {
   const { profileId, projectId } = scope
   const [triggers, setTriggers] = useState<ProductAPITrigger[]>([])
-  const [gmailCounts, setGmailCounts] = useState({ active: 0, paused: 0 })
   const [issued, setIssued] = useState<ProductAPITrigger | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -38,8 +35,8 @@ export default function ProductAPITriggersView({ scope, workspacePath, onViewRun
 
   const activeTriggers = triggers.filter(trigger => trigger.enabled).length
   useEffect(() => {
-    onCounts?.({ active: activeTriggers + gmailCounts.active, paused: triggers.length - activeTriggers + gmailCounts.paused })
-  }, [onCounts, activeTriggers, triggers.length, gmailCounts])
+    onCounts?.({ active: activeTriggers, paused: triggers.length - activeTriggers })
+  }, [onCounts, activeTriggers, triggers.length])
 
   const save = async (trigger: ProductAPITrigger, rotate = false) => {
     if (busy) return
@@ -78,7 +75,6 @@ export default function ProductAPITriggersView({ scope, workspacePath, onViewRun
     />}
     <div className="space-y-4 p-4">
     <p className="text-xs leading-relaxed text-muted-foreground">Webhooks let outside systems (GitHub, CI) start work. Each one runs in this {profileId === 'code' ? 'Code' : 'Crew'} project's main chat or in its own continuing conversation. Other projects, workflows and MCP/CLI tools call this project through Functions instead. {!deliveryHistory && onViewRuns && <button type="button" className="underline text-foreground" onClick={onViewRuns}>View delivery history</button>}</p>
-    {workspacePath && <GmailInboundPanel workspacePath={workspacePath} refreshToken={refreshToken} onCounts={setGmailCounts} onAsk={onAsk ?? (message => sendWorkspacePaneMessageToChat({ profileId, conversationKey: projectId, message }).then(() => undefined))} />}
     {error && <p role="alert" className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
     {issued?.secret && <section className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
       <h3 className="text-sm font-medium">New secret for {issued.name}</h3>

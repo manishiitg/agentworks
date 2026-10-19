@@ -9,14 +9,13 @@ import (
 )
 
 // Content conditions combine with AND; alternatives within an *_any list or
-// sender allowlist combine with OR. Without senders, authorization stays owner-only.
+// sender allowlist combine with OR. Sender conditions are optional; the personal inbox approval owns authorization.
 type Filters struct {
 	SenderAllowlist    []string `json:"sender_allowlist,omitempty"`
 	SubjectContains    []string `json:"subject_contains,omitempty"`
 	BodyContains       []string `json:"body_contains,omitempty"`
 	SubjectContainsAny []string `json:"subject_contains_any,omitempty"`
 	BodyContainsAny    []string `json:"body_contains_any,omitempty"`
-	AllowAutomatic     bool     `json:"allow_automatic,omitempty"`
 	HasAttachments     *bool    `json:"has_attachments,omitempty"`
 	NewThreadsOnly     bool     `json:"new_threads_only,omitempty"`
 }
@@ -79,9 +78,6 @@ func NormalizeFilters(f *Filters) (*Filters, error) {
 		}
 		out.SenderAllowlist[i] = sender
 	}
-	if out.AllowAutomatic && len(out.SenderAllowlist) == 0 {
-		return nil, fmt.Errorf("allow_automatic requires an explicit sender_allowlist")
-	}
 	if len(out.SenderAllowlist) == 0 && len(out.SubjectContains) == 0 && len(out.BodyContains) == 0 && len(out.SubjectContainsAny) == 0 && len(out.BodyContainsAny) == 0 && out.HasAttachments == nil && !out.NewThreadsOnly {
 		return nil, nil
 	}
@@ -137,12 +133,6 @@ func (f *Filters) SenderAllowed(from string) bool {
 		}
 	}
 	return false
-}
-
-// Explicitly selected notification senders may generate automated mail. Spam,
-// trash, bounces and automatic replies are always excluded to prevent loops.
-func (f *Filters) AcceptsMessageKind(m Message) bool {
-	return !m.Blocked && (!m.Automatic || f != nil && f.AllowAutomatic && f.SenderAllowed(m.From))
 }
 
 // Mismatch returns a human-readable reason, without putting email content in it.

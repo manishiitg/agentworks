@@ -1,4 +1,3 @@
-import { GmailInboundPanel } from './bots/GmailInboundPanel'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import axios from 'axios'
 import { Copy, GitBranch, ShieldCheck, Webhook, Zap } from 'lucide-react'
@@ -111,7 +110,6 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
         <Zap className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <p className="min-w-0 [overflow-wrap:anywhere]">Create a webhook or change its routing by asking Builder. Each webhook accepts up to four deliveries at once; additional deliveries receive a retry response.</p>
       </div>
-      <GmailInboundPanel workspacePath={workspacePath} refreshToken={refreshToken} onAsk={onAsk} />
       {error && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
       {issued?.secret && (
         <section className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3">

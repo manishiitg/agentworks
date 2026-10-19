@@ -14,7 +14,10 @@ func TestSenderConsentIsPrivateDurableAndConfigurationBound(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	r := Route{ID: "target", OwnerID: "owner", ProjectID: "code", WorkspacePath: "Chats/Code/projects/app", Address: "owner+agent-target@example.com", ConnectionID: "mail", Enabled: true, Reply: true, Filters: &Filters{SenderAllowlist: []string{"owner@example.com", "person@gmail.com"}}}
+	r := Route{InboxID: "inbox", ID: "target", OwnerID: "owner", ProjectID: "code", WorkspacePath: "Chats/Code/projects/app", Address: "owner+agent-target@example.com", ConnectionID: "mail", Enabled: true, Reply: true, Filters: &Filters{SenderAllowlist: []string{"owner@example.com", "person@gmail.com"}}}
+	if err := store.SaveInbox(ctx, Inbox{ID: r.InboxID, OwnerID: r.OwnerID, ConnectionID: r.ConnectionID, Address: r.Address}); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.SaveRoute(ctx, r, "owner@example.com"); err != nil {
 		t.Fatal(err)
 	}
@@ -71,6 +74,7 @@ func TestSenderConsentHashCoversEveryAuthorityBearingField(t *testing.T) {
 	base := Route{ID: "r", OwnerID: "owner", ProjectID: "project", WorkspacePath: "Workflow/a", ConnectionID: "mail", Address: "a@example.com", Enabled: true, Reply: true, Rules: []Rule{{ID: "rule", Name: "Rule", Instruction: "Run X", Filters: &Filters{SenderAllowlist: []string{"person@example.com"}}}}}
 	for _, edit := range []func(*Route){
 		func(r *Route) { r.OwnerID = "other" },
+		func(r *Route) { r.InboxID = "other-inbox" },
 		func(r *Route) { r.ConnectionID = "other-mail" },
 		func(r *Route) { r.ProjectID = "other-target" },
 		func(r *Route) { r.WorkspacePath = "Workflow/b" },
@@ -80,7 +84,7 @@ func TestSenderConsentHashCoversEveryAuthorityBearingField(t *testing.T) {
 			r.Rules = []Rule{{ID: "rule", Name: "Rule", Instruction: "Run Y", Filters: base.Rules[0].Filters}}
 		},
 		func(r *Route) {
-			r.Filters = &Filters{SenderAllowlist: []string{"@company.example"}, AllowAutomatic: true}
+			r.Filters = &Filters{SenderAllowlist: []string{"@company.example"}}
 		},
 	} {
 		changed := base

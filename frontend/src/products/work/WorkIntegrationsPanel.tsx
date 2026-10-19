@@ -15,7 +15,6 @@ import { ProjectVaultPanel } from '../../components/integrations/ProjectVaultPan
 import { ProjectKnowledgebasePanel } from '../../components/workflow/ProjectKnowledgebasePanel'
 import { WorkFoldersSection } from './WorkIdentityPanel'
 import { ProjectMcpPanel } from '../../components/integrations/ProjectMcpPanel'
-import { McpAppsSection } from './McpAppsSection'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { useChatStore } from '../../stores/useChatStore'
@@ -249,7 +248,6 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
         {activeTab === 'gmail' && (
           <>
             {/* The deployment's Google app: an admin stores the Google OAuth client once. */}
-            {isAdmin && <McpAppsSection />}
             {/* All products use the server's Google app; the shared email panel
                 preserves private Code ownership and shared-account admin permissions. */}
             <WorkflowEmailPanel

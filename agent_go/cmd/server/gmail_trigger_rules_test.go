@@ -132,7 +132,6 @@ func TestGmailRulesAuthorizeSendersPerActionAndIntersectCommonPolicy(t *testing.
 	api, ctx, _ := gmailTriggerFixture(t)
 	rules := workflowEmailRules()
 	rules[1].Filters.SenderAllowlist = []string{"updates@vendor.example"}
-	rules[1].Filters.AllowAutomatic = true
 	if _, err := api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", map[string]interface{}{"action": "configure", "connection_id": "mail", "rules": rules}); err != nil {
 		t.Fatal(err)
 	}

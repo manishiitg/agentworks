@@ -16,13 +16,14 @@ import (
 
 type personalGoogleAccountRow struct {
 	personalConnectionPermissions
-	ID        string                  `json:"id"`
-	Owner     string                  `json:"owner"`
-	Label     string                  `json:"label"`
-	Selected  bool                    `json:"selected"`
-	Connected bool                    `json:"connected"`
-	Mine      bool                    `json:"mine"`
-	Google    GmailConnectionResponse `json:"google"`
+	CanUseInbox bool                    `json:"can_use_inbox"`
+	ID          string                  `json:"id"`
+	Owner       string                  `json:"owner"`
+	Label       string                  `json:"label"`
+	Selected    bool                    `json:"selected"`
+	Connected   bool                    `json:"connected"`
+	Mine        bool                    `json:"mine"`
+	Google      GmailConnectionResponse `json:"google"`
 }
 
 // The website and Builder/MCP use the same saved records and operations.
@@ -40,6 +41,8 @@ func (api *StreamingAPI) personalGoogleOperation(r *http.Request, workspace stri
 	actor := personalConnectionActor(r.Context())
 	id, _ := args["connection_id"].(string)
 	switch action {
+	case "get_inbox", "select_inbox", "rotate_inbox":
+		return api.personalGmailInboxOperation(r, workspace, args)
 	case "list_saved":
 		accounts := []personalGoogleAccountRow{}
 		scope := gmailToolScope(workspace)
@@ -55,9 +58,21 @@ func (api *StreamingAPI) personalGoogleOperation(r *http.Request, workspace stri
 			if !c.IsPrivate() {
 				permissions.CanManage, permissions.CanReconnect = conn.CanManage, conn.CanReconnect
 			}
-			accounts = append(accounts, personalGoogleAccountRow{personalConnectionPermissions: permissions, ID: c.ID, Owner: c.OwnerID, Label: conn.Email, Selected: selected, Connected: conn.Auth.Authenticated, Mine: c.OwnerID == actor, Google: conn})
+			accounts = append(accounts, personalGoogleAccountRow{personalConnectionPermissions: permissions, CanUseInbox: c.OwnerID == actor || !c.IsPrivate() && currentUserIsAdmin(r) && canRemoveGmailConnection(r, c), ID: c.ID, Owner: c.OwnerID, Label: conn.Email, Selected: selected, Connected: conn.Auth.Authenticated, Mine: c.OwnerID == actor, Google: conn})
 		}
-		return map[string]any{"accounts": accounts, "can_connect": personalAccountManagementScope(r, workspace, true) == nil, "notice": googleAccountSharingNotice}, nil
+		result := map[string]any{"accounts": accounts, "can_connect": personalAccountManagementScope(r, workspace, true) == nil, "notice": googleAccountSharingNotice}
+		if api.gmailInbound != nil {
+			inbox, err := api.gmailInbound.Store.Inbox(r.Context(), actor)
+			if err != nil {
+				return nil, err
+			}
+			state, err := api.personalGmailInboxState(r, inbox)
+			if err != nil {
+				return nil, err
+			}
+			result["incoming_email"] = state
+		}
+		return result, nil
 	case "attach", "detach":
 		if err := selectGoogleAccount(r, id, workspace, action == "attach"); err != nil {
 			return nil, err
@@ -160,9 +175,9 @@ func (api *StreamingAPI) handlePersonalGoogleAccounts(w http.ResponseWriter, r *
 
 func (api *StreamingAPI) registerPersonalGoogleAccountTool(reg definitionToolRegistrar, workspace string) error {
 	return reg.RegisterCustomTool("manage_google_account",
-		"Manage personal Google accounts saved in My Vault. list_saved shows reusable accounts and whether they are used here. connect saves your account and, when called from an item you build, explicitly adds it here, returning a Google sign-in link. attach/detach adds or removes the saved account here; disconnect removes it everywhere; reconnect signs in again and can update permissions. Website account management is in My Vault. Only the account owner signs in; existing Builder and account-management permissions apply. Company accounts stay administrator-managed. "+googleAccountSharingNotice,
+		"Manage personal Google accounts saved in My Vault. list_saved shows reusable accounts and whether they are used here. connect saves your account and, when called from an item you build, explicitly adds it here, returning a Google sign-in link. attach/detach adds or removes the saved account here; disconnect removes it everywhere; reconnect signs in again and can update permissions. Website account management is in My Vault. Only the account owner signs in; existing Builder and account-management permissions apply. For incoming email, get_inbox inspects your one personal receiving address. select_inbox chooses an existing Gmail connection with observed read consent, without another sign-in or item grant; rotate_inbox replaces a leaked address. A changed address invalidates existing bindings; configure each chosen target again and ask the person to review its approval. Mail reaches every explicitly enabled and approved trigger. Gmail decides what reaches the address; optional trigger conditions belong to the user. Company accounts stay administrator-managed. "+googleAccountSharingNotice,
 		map[string]interface{}{"type": "object", "properties": map[string]interface{}{
-			"action":                   map[string]interface{}{"type": "string", "enum": []string{"list_saved", "connect", "attach", "detach", "disconnect", "reconnect"}},
+			"action":                   map[string]interface{}{"type": "string", "enum": []string{"list_saved", "connect", "attach", "detach", "disconnect", "reconnect", "get_inbox", "select_inbox", "rotate_inbox"}},
 			"connection_id":            map[string]interface{}{"type": "string"},
 			"client_name":              map[string]interface{}{"type": "string", "description": "Optional saved Google sign-in app; omit to use the company app."},
 			"allow_read_access":        map[string]interface{}{"type": "boolean"},

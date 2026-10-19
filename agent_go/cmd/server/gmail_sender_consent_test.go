@@ -56,8 +56,8 @@ func TestGmailSenderConsentBlocksInjectedProposalsAndStaleApproval(t *testing.T)
 		t.Fatal("injected agent configuration activated an external sender")
 	}
 	message.From = "owner@example.com"
-	if err := api.authorizeInboundEmail(ctx, route, message); err != nil {
-		t.Fatalf("owner lost the owner-only path: %v", err)
+	if err := api.authorizeInboundEmail(ctx, route, message); err == nil {
+		t.Fatal("owner email bypassed configuration approval")
 	}
 	for _, key := range []string{"approved", "sender_consent", "confirm"} {
 		if _, err := api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", map[string]interface{}{"action": "configure", key: true}); err == nil {

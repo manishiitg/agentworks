@@ -43,6 +43,8 @@ vi.mock('../workflow/AskAIButton', () => ({
   },
 }))
 
+vi.mock('../workflow/bots/gmailAskAI', () => ({ useGmailInboundUIEnabled: () => true }))
+vi.mock('../workflow/bots/GmailInboundPanel', () => ({ gmailInboundSetupMessage: 'Configure incoming email', GmailInboundPanel: (props: { workspacePath: string; onAsk?: (message:string) => void }) => <button data-testid="incoming-email" onClick={() => props.onAsk?.('email help')}>{props.workspacePath}</button> }))
 import { AutomationHubPanel } from './AutomationHubPanel'
 
 const { chatProps } = vi.hoisted(() => ({ chatProps: { current: null as null | Record<string, unknown> } }))
@@ -111,7 +113,7 @@ describe('AutomationHubPanel', () => {
       expect(panel?.className).toContain('flex-1')
       expect(panel?.className).toContain('min-w-0')
       const tabs = Array.from(host.querySelectorAll<HTMLButtonElement>('[aria-label="Automation center"] [role="tab"]'))
-      expect(tabs.map(tab => tab.textContent)).toEqual(['Schedules', 'Webhooks', 'Watchers', 'Functions', 'Bots', 'Chats'])
+      expect(tabs.map(tab => tab.textContent)).toEqual(['Schedules', 'Webhooks', 'Incoming email', 'Watchers', 'Functions', 'Bots', 'Chats'])
       expect(host.querySelector('[data-testid="schedules"]')?.getAttribute('data-hide-header')).toBe('true')
 
       await act(async () => { tabs.find(tab => tab.textContent === 'Chats')!.click(); await Promise.resolve() })
@@ -381,3 +383,15 @@ describe('AutomationHubPanel Ask AI', () => {
     }
   })
 })
+
+ it('opens the email section from the server target and retains project Ask routing', async () => {
+ const host=document.createElement('div'); const root=createRoot(host); const onAsk=vi.fn()
+ storeState.workspaceViewTarget={view:'workshop',target:'email',token:1}
+ try {
+ await act(async()=>root.render(<AutomationHubPanel entityType="product" workspacePath="Chats/Work/projects/project" productTriggerScope={{profileId:'work',projectId:'project'}} onAskAI={onAsk}/>))
+ const email=host.querySelector<HTMLButtonElement>('[data-testid="incoming-email"]')
+ expect(email).not.toBeNull()
+ await act(async()=>email!.click())
+ expect(onAsk).toHaveBeenCalledWith('email help')
+ } finally { storeState.workspaceViewTarget=null; await act(async()=>root.unmount()) }
+ })

@@ -4210,7 +4210,6 @@ export interface GmailInboundFilters {
   body_contains?: string[]
   subject_contains_any?: string[]
   body_contains_any?: string[]
-  allow_automatic?: boolean
   has_attachments?: boolean
   new_threads_only?: boolean
 }
@@ -4227,6 +4226,7 @@ export interface GmailInboundRule {
 }
 
 export interface GmailInboundState {
+  inbox?: { id: string; address: string; connection_id: string } | null
   target_name?: string
   receiving_account?: string
   sender_consent?: { required: boolean; approved: boolean; config_hash: string; senders: string[]; blocked_reason?: string }

@@ -14,7 +14,6 @@ import type { WorkflowBots } from './useWorkflowBots'
 import { StatusBanner } from './StatusBanner'
 import { GoogleAccountList } from '../../../products/work/GoogleAccountList'
 import PersonalAccountsPanel from '../../integrations/PersonalAccountsPanel'
-import { GmailInboundPanel } from './GmailInboundPanel'
 import { getGoogleAppsAskAIMessage, useGmailInboundUIEnabled } from './gmailAskAI'
 
 function gmailBackendLabel(backend: string | undefined): { name: string; install: string } {
@@ -131,7 +130,6 @@ export function GmailNotifications({ bots, workspacePath, scopeNoun = 'workflow'
           </FormSection>
           </>
         )}
-      {workspacePath && scopeNoun !== 'relay' && <GmailInboundPanel workspacePath={workspacePath} connections={gmailConnections} onAsk={onAsk} />}
     </div>
   )
 }

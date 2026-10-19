@@ -13,6 +13,7 @@ import (
 )
 
 type Route struct {
+	InboxID         string            `json:"inbox_id"`
 	Rules           []Rule            `json:"rules,omitempty"`
 	SelectedRuleID  string            `json:"-"` // Selected durably at admission, never supplied by email.
 	Filters         *Filters          `json:"filters,omitempty"`

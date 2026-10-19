@@ -69,16 +69,21 @@ func validateConsentPolicy(r Route) error {
 
 func (s *Store) SenderConsentStatus(ctx context.Context, r Route, ownerEmail string) (SenderConsentStatus, error) {
 	status := SenderConsentStatus{ConfigHash: SenderPolicyHash(r), Senders: additionalSenders(r, ownerEmail)}
-	status.Required = len(status.Senders) > 0
+	status.Required = true
+	inbox, err := s.Inbox(ctx, r.OwnerID)
+	if err != nil {
+		return status, err
+	}
+	if inbox == nil || !inbox.Matches(r) {
+		status.BlockedReason = "Your inbox address changed. Ask Builder to reconnect this trigger to the current address, then review it again."
+		return status, nil
+	}
 	if err := validateConsentPolicy(r); err != nil {
 		status.BlockedReason = err.Error()
 		return status, nil
 	}
-	if !status.Required {
-		return status, nil
-	}
 	var approvedHash, raw string
-	err := s.db.QueryRowContext(ctx, `SELECT c.config_hash,r.data FROM sender_consents c JOIN routes r ON r.id=c.route WHERE c.route=? AND c.owner=? AND r.owner=?`, r.ID, r.OwnerID, r.OwnerID).Scan(&approvedHash, &raw)
+	err = s.db.QueryRowContext(ctx, `SELECT c.config_hash,r.data FROM sender_consents c JOIN routes r ON r.id=c.route WHERE c.route=? AND c.owner=? AND r.owner=?`, r.ID, r.OwnerID, r.OwnerID).Scan(&approvedHash, &raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return status, nil
 	}
@@ -104,6 +109,10 @@ func (s *Store) ConfirmSenderConsent(ctx context.Context, owner, routeID, expect
 		return fmt.Errorf("email configuration changed; review the current configuration before confirming")
 	}
 	if approve {
+		var inbox Inbox
+		if err := tx.QueryRowContext(ctx, `SELECT id,owner,connection,address FROM inboxes WHERE owner=?`, owner).Scan(&inbox.ID, &inbox.OwnerID, &inbox.ConnectionID, &inbox.Address); err != nil || !inbox.Matches(current) {
+			return fmt.Errorf("your inbox address changed; ask Builder to reconnect this trigger before approval")
+		}
 		if err := validateConsentPolicy(current); err != nil {
 			return err
 		}

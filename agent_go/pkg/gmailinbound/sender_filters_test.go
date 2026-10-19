@@ -25,7 +25,7 @@ func TestSenderAllowlistAndAlternativePhrases(t *testing.T) {
 			t.Fatal("an OR group bypassed the other required conditions")
 		}
 	}
-	for _, f := range []*Filters{{SenderAllowlist: []string{"*"}}, {SenderAllowlist: []string{"@*.example.com"}}, {SenderAllowlist: []string{"@example.com.evil@example.com"}}, {SenderAllowlist: []string{"Name <user@example.com>"}}, {SenderAllowlist: []string{"@-example.com"}}, {AllowAutomatic: true}} {
+	for _, f := range []*Filters{{SenderAllowlist: []string{"*"}}, {SenderAllowlist: []string{"@*.example.com"}}, {SenderAllowlist: []string{"@example.com.evil@example.com"}}, {SenderAllowlist: []string{"Name <user@example.com>"}}, {SenderAllowlist: []string{"@-example.com"}}} {
 		if _, err := NormalizeFilters(f); err == nil {
 			t.Fatalf("invalid policy accepted: %+v", f)
 		}
@@ -50,13 +50,13 @@ func (c *notificationClient) Message(_ context.Context, id string) (RawMessage, 
 	}
 	return r, nil
 }
-func TestNotificationsRequireOptInAndNeverAllowReplyLoops(t *testing.T) {
+func TestInboxNotificationsNeverAllowReplyLoops(t *testing.T) {
 	for _, tc := range []struct {
 		name, header, value   string
 		optIn, spam, accepted bool
 	}{
 		{"notification allowed", "Auto-Submitted", "auto-generated", true, false, true},
-		{"notification without opt-in", "Auto-Submitted", "auto-generated", false, false, false},
+		{"notification without opt-in", "Auto-Submitted", "auto-generated", false, false, true},
 		{"mailing list opted in", "List-ID", "news.vendor.example", true, false, true},
 		{"automatic reply", "Auto-Submitted", "auto-replied; owner-email=x@example.com", true, false, false},
 		{"bounce", "Return-Path", "<>", true, false, false},
@@ -66,7 +66,7 @@ func TestNotificationsRequireOptInAndNeverAllowReplyLoops(t *testing.T) {
 			ctx := context.Background()
 			s := testStore(t)
 			r := testRoute()
-			r.Filters = &Filters{SenderAllowlist: []string{"updates@vendor.example"}, AllowAutomatic: tc.optIn}
+			r.Filters = &Filters{SenderAllowlist: []string{"updates@vendor.example"}}
 			if err := s.SaveRoute(ctx, r, "owner@example.com"); err != nil {
 				t.Fatal(err)
 			}

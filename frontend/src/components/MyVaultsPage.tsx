@@ -1,5 +1,6 @@
 import { useAuthStore } from '../stores/useAuthStore'
 import { visibleProductSurfaceIDs, isLocalProductInstallation } from '../products/productSurfaceConfig'
+import { McpAppsSection } from '../products/work/McpAppsSection'
 import PersonalAccountsPanel from './integrations/PersonalAccountsPanel'
 import { WorkspacePageHeader } from './workspace/WorkspacePageHeader'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
@@ -426,6 +427,7 @@ function VaultCard({ vault, onChanged }: { vault: VaultView; onChanged: () => vo
 }
 
 export default function MyVaultsPage() {
+  const isAdmin = useAuthStore(state => state.user?.is_admin === true)
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const sharedVaultsEnabled = !isLocalProductInstallation() && visibleProductSurfaceIDs(allowedProducts).includes('mcp-gateway')
   const addToast = useChatStore(state => state.addToast)
@@ -472,6 +474,7 @@ export default function MyVaultsPage() {
       </WorkspacePageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl space-y-4 p-4 text-xs sm:p-6">
+          {isAdmin && <McpAppsSection />}
           <PersonalAccountsPanel />
           {sharedVaultsEnabled && <>
           <h2 className="pt-3 text-base font-semibold">Shared vaults</h2>

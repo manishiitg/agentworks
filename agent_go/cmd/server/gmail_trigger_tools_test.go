@@ -67,6 +67,9 @@ func gmailTriggerFixture(t *testing.T) (*StreamingAPI, context.Context, *mockWor
 	t.Cleanup(func() { _ = store.Close() })
 	api := &StreamingAPI{gmailInbound: &gmailinbound.Service{Store: store}}
 	api.scheduler = NewSchedulerService(api)
+	if err := store.SaveInbox(context.Background(), gmailinbound.Inbox{ID: "personal-inbox", OwnerID: "owner", ConnectionID: "mail", Address: "owner+agent-123456781234123412341234567890ab@example.com"}); err != nil {
+		t.Fatal(err)
+	}
 	return api, sharedSecretsRequest("GET", "/", "owner", nil).Context(), mock
 }
 
@@ -272,6 +275,9 @@ func TestGmailBuilderProjectTriggersAndPrivateCodeAccounts(t *testing.T) {
 				t.Fatal(err)
 			}
 			args["connection_id"] = "private"
+			if err := api.gmailInbound.Store.SaveInbox(ctx, gmailinbound.Inbox{ID: "personal-inbox", OwnerID: "owner", ConnectionID: "private", Address: "owner+agent-123456781234123412341234567890ab@example.com"}); err != nil {
+				t.Fatal(err)
+			}
 		}
 		if _, err := api.gmailTriggerToolRequest(ctx, "human", root, args); err != nil {
 			t.Fatalf("%s trigger: %v", product, err)
@@ -501,7 +507,7 @@ func TestGmailBuilderConnectPreservesPrivateCodeScopeAndPlatformCallback(t *test
 
 func TestGmailExplicitSendersAreOwnerConfiguredAndAuthenticated(t *testing.T) {
 	api, ctx, _ := gmailTriggerFixture(t)
-	args := map[string]interface{}{"action": "configure", "connection_id": "mail", "group_names": []string{"prod"}, "route_selections": map[string]string{"triage": "support"}, "filters": map[string]interface{}{"sender_allowlist": []string{"@example.com", "updates@vendor.example"}, "allow_automatic": true, "subject_contains_any": []string{"Training", "Notion"}}}
+	args := map[string]interface{}{"action": "configure", "connection_id": "mail", "group_names": []string{"prod"}, "route_selections": map[string]string{"triage": "support"}, "filters": map[string]interface{}{"sender_allowlist": []string{"@example.com", "updates@vendor.example"}, "subject_contains_any": []string{"Training", "Notion"}}}
 	if _, err := api.gmailTriggerToolRequest(ctx, "human", "Workflow/mail", args); err != nil {
 		t.Fatal(err)
 	}
@@ -540,8 +546,8 @@ func TestGmailExplicitSendersAreOwnerConfiguredAndAuthenticated(t *testing.T) {
 		t.Fatal("clearing filters widened owner-only access")
 	}
 	m.From = "owner@example.com"
-	if err := api.authorizeInboundEmail(ctx, r, m); err != nil {
-		t.Fatalf("owner default rejected: %v", err)
+	if err := api.authorizeInboundEmail(ctx, r, m); err == nil {
+		t.Fatal("changed configuration bypassed approval for owner sender")
 	}
 	reader := sharedSecretsRequest("GET", "/", "reader", nil).Context()
 	if _, err := api.gmailTriggerToolRequest(reader, "human", "Workflow/mail", args); err == nil {

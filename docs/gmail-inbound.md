@@ -1,42 +1,51 @@
 # Incoming Gmail conversations
 
-Crew, Workflow, and Code owners can link a connected Gmail account in the
-Builder chat using `get_gmail_trigger` and `manage_gmail_trigger`. The Email
-and Triggers panels show read-only state. Configuring incoming email creates a stable address such
-as `manish+agent-<route-id>@customer.example`. Google delivers it to the existing
-`manish@customer.example` mailbox; no SMTP server, separate Google user, or MX change
-is needed. This works with personal Gmail and Google Workspace accounts
-whose mail is hosted by Gmail. Google Workspace administrators can restrict
-OAuth apps or tagged delivery; test receipt in the real mailbox first.
+Each person chooses one connected Gmail account in My Vault and receives one
+random plus-address on that mailbox. It is independent of owner and product IDs;
+no new mailbox, SMTP server, Google user, MX record or duplicate login is created.
+Builder binds each chosen Crew, Code project or workflow to that personal inbox.
+One shared mailbox watch feeds independent, deduplicated deliveries to every
+enabled and owner-approved binding. Gmail controls what reaches the address;
+there is no mandatory label, sender list or content filter.
 
-Crew and Code Gmail conversations get isolated application chats; replies
-continue the same chat. Workflow Gmail triggers store `kind=gmail` in the
-workflow manifest and bind exact `route_selections`/`group_names`, or a
-standalone `step_id`. Each incoming message (including a reply) executes that
-saved binding through the existing authenticated trigger pipeline, producing
-an isolated run and delivery history. Email cannot change the route. Legacy
-unbound workflow email chats remain until the owner configures their binding
-with Builder. Optional final responses go to the
-authenticated sender with the receiving address in Reply-To. Gmail read
-access is required; fixed replies use the existing notification sending
-permission, separately from agent write access. The ordinary account needs
-its Gmail send scope if replies are enabled.
+The existing owner browser approval is required for every binding, including
+owner-sent email. It binds the personal inbox/address/account, target, actions,
+optional conditions, enabled state and reply setting. Anyone who knows the
+address can email it and start approved work with the owner's access. The UI
+says this plainly. New address in My Vault rotates the random tag and immediately
+invalidates all old bindings and approvals at admission, execution and reply.
+Builder must reconnect each chosen trigger and the owner must review it again.
 
-Without an explicit sender list, only the target owner's email from the user
-directory is accepted. The interactive owner can instead authorize exact
-addresses or exact `@domain` entries through `filters.sender_allowlist`. Entries
-combine with OR and replace the owner-only policy; add the owner's address too
-if it should remain accepted. A domain does not match subdomains or lookalike
-suffixes. Incoming requests run as the route owner with its existing scoped
-connection, target and workflow binding; a sender cannot change configuration.
-Gmail's DMARC authentication must still pass for the From domain, or Gmail must
-identify the message as the connected account's own sent mail. Automated
-notifications require `allow_automatic=true` plus an explicit sender list.
-Automatic replies, bounces, spam and trash remain blocked. Shared-project
-readers cannot configure a route. Code continues to use only that Code's private
-Google connection.
+My Vault owns account sign-in and access changes. Product Connections select
+existing accounts and keep their current grants. Automation → Incoming email
+shows saved bindings, approvals and activity. Sign-in apps for Google and Slack
+are administrator-managed in My Vault; a personal Slack account is separate from
+the bot that exposes a product under Use & share.
 
-## Builder-guided administrator setup
+Crew/Code email conversations are isolated by binding, sender and email thread.
+Workflow deliveries run exact saved routes/groups or a standalone step through
+the authenticated trigger pipeline. Optional ordered rules select one action
+within a binding; other bindings still receive their own delivery. Incoming
+content is untrusted and cannot change access, secrets, sharing or configuration.
+Replies go only to the authenticated sender with the personal address in Reply-To.
+Google read consent is required; replies also need a granted send scope.
+
+Gmail DMARC authentication (or the connected mailbox's own sent message) remains
+required. Ordinary notifications are accepted; auto-replies, bounces, spam and
+trash remain excluded. Mail predating binding activation never executes.
+
+For an existing product-address database, run the explicit one-off migration
+before the new server starts:
+
+```sh
+python3 scripts/migrations/gmail-personal-inbox.py /PRIVATE_STATE/gmail-inbound/email.db
+```
+
+It creates a private SQLite backup, removes address uniqueness across bindings,
+pauses old routes, revokes approvals and rejects queued work. It retains target
+IDs, optional conditions and history. Then choose the user's personal inbox in
+My Vault, reconnect each chosen binding through Builder, and approve it. There
+is no product-address fallback. Fresh installations need no migration.
 
 Local UI does not offer automatic Incoming email or Cloud receiving setup.
 Google account connections and read/send permissions remain available. This
@@ -294,17 +303,16 @@ exact saved workflow binding or project chat. Configuration accepts optional
 `filters`:
 
 - `sender_allowlist`: exact addresses or `@domain` entries, matched with OR;
-  omission or an empty list uses the owner-only sender policy.
+  omission or an empty list adds no sender condition after binding approval.
 - `subject_contains` and `body_contains`: literal substrings, every keyword
   must match (existing AND behavior).
 - `subject_contains_any` and `body_contains_any`: literal substrings, at least
   one keyword in each configured list must match (OR alternatives).
 - `has_attachments`: true needs attachments; false needs none; omitted permits
   either. `new_threads_only` excludes replies and previously accepted threads.
-- `allow_automatic`: opt-in for automated notifications from explicit allowed
-  senders. It requires a nonempty sender list. Auto-replied mail (including
-  parameterized Auto-Submitted values), null return-path bounces, spam and trash
-  are blocked regardless of opt-in; List-ID/auto-generated notifications may pass.
+- Ordinary notifications are accepted. Automatic replies, bounces, spam and
+  trash remain blocked, including parameterized Auto-Submitted auto-replied mail.
+
 
 Separate groups combine with AND. Keywords are case-insensitive, trimmed and
 deduplicated, with at most 10 entries per field and 256 bytes per entry. Sender
@@ -313,14 +321,14 @@ names are rejected. For example, accepting Training senders OR an inspected
 notification address, plus either subject phrase:
 
 ```json
-{"sender_allowlist":["@example.com","updates@vendor.example"],"subject_contains_any":["Training","Notion"],"allow_automatic":true}
+{"sender_allowlist":["@example.com","updates@vendor.example"],"subject_contains_any":["Training","Notion"]}
 ```
 
 The notification address here is a placeholder; Builder inspects the actual
 sender in the owner's mailbox rather than inventing a service's email domain.
 Only widen senders when the owner requests it. Omitted filters are preserved;
 a supplied filter object replaces the entire set; `{}` clears them and restores
-owner-only sending. No content filters are added by default.
+the approved personal address without sender conditions. No content filters are added by default.
 
 New-threads-only rejects `In-Reply-To`/`References` replies and a Gmail thread
 already accepted for this target. Admission is serialized in the durable
@@ -362,7 +370,7 @@ For a project rule the action is instead `"instruction":"Send X message"`,
 with no workflow fields. One authenticated email starts at most one action:
 select the first enabled rule whose sender authorization, common filters and
 rule filters match. No match skips it. Rule sender lists inherit the common
-list/owner-only policy when omitted; an explicit rule list still intersects any
+list when present, or no sender condition when omitted; an explicit rule list still intersects any
 explicit common list. Common content filters always restrict every rule.
 Automatic notifications require opt-in and an explicit sender list at either
 level; blocked message kinds remain blocked.
@@ -416,13 +424,13 @@ References: [Gmail push notifications](https://developers.google.com/workspace/g
 [authenticated Pub/Sub push](https://docs.cloud.google.com/pubsub/docs/authenticate-push-subscriptions),
 and [gog watch commands](https://github.com/openclaw/gogcli/blob/main/docs/watch.md).
 
-## Owner confirmation for additional senders
+## Owner confirmation for incoming email
 
-Builder can propose sender lists, but cannot grant them authority. Non-owner
+Builder can propose sender lists, but cannot grant them authority. All
 senders require a separate confirmation through the signed-in owner's app approval button in chat
 or the Incoming email pane, covering the saved target, mailbox, filters, rule actions, enabled state
 and email replies. Review the sender list and saved actions, acknowledge the
-access granted, then approve. Use Revoke additional sender access to withdraw
+access granted, then approve. Use Revoke incoming email approval to withdraw
 it. Configuration remains in Builder; the pane exposes only this dedicated
 security confirmation and revocation. Chat approval is insufficient.
 

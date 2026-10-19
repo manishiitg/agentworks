@@ -122,10 +122,10 @@ describe('Gmail incoming email settings', () => {
     vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue(pending)
     vi.mocked(agentApi.confirmGmailSenderConsent).mockResolvedValue({ approved: true })
     await render()
-    const approve = [...host.querySelectorAll('button')].find(b => b.textContent === 'Approve additional senders')!
+    const approve = [...host.querySelectorAll('button')].find(b => b.textContent === 'Approve incoming email')!
     expect(approve.disabled).toBe(true)
     expect(host.textContent).toContain('connected accounts and files')
-    expect(host.textContent).toContain('Additional senders are blocked')
+    expect(host.textContent).toContain('Incoming email is blocked')
     expect(host.textContent).not.toContain('Ready to receive email.')
     expect(agentApi.confirmGmailSenderConsent).not.toHaveBeenCalled()
     await act(async () => (host.querySelector('input[type="checkbox"]') as HTMLInputElement).click())
@@ -133,8 +133,8 @@ describe('Gmail incoming email settings', () => {
     vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...pending, sender_consent: { ...pending.sender_consent!, approved: true } })
     await act(async () => approve.click())
     expect(agentApi.confirmGmailSenderConsent).toHaveBeenCalledExactlyOnceWith('Workflow/test', configHash, 'approve')
-    expect(host.textContent).toContain('Additional sender access approved')
-    expect(host.textContent).toContain('Revoke additional sender access')
+    expect(host.textContent).toContain('Incoming email approved')
+    expect(host.textContent).toContain('Revoke incoming email approval')
   })
 
   it('reviews saved rules from a chat result and approves only the fetched configuration', async () => {
@@ -152,7 +152,7 @@ describe('Gmail incoming email settings', () => {
     expect(host.textContent).toContain('Summarize incoming updates')
     expect(host.textContent).toContain('Email final response: Off')
     expect(host.textContent).toContain('updates@example.com')
-    const approve = [...host.querySelectorAll('button')].find(b => b.textContent === 'Approve additional senders')!
+    const approve = [...host.querySelectorAll('button')].find(b => b.textContent === 'Approve incoming email')!
     expect(approve.disabled).toBe(true)
     expect(agentApi.confirmGmailSenderConsent).not.toHaveBeenCalled()
     await act(async () => (host.querySelector('input[type="checkbox"]') as HTMLInputElement).click())
@@ -160,7 +160,7 @@ describe('Gmail incoming email settings', () => {
     vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...saved, sender_consent: { ...saved.sender_consent!, approved: true } })
     await act(async () => approve.click())
     expect(agentApi.confirmGmailSenderConsent).toHaveBeenCalledExactlyOnceWith('Workflow/test', hash, 'approve')
-    expect(host.textContent).toContain('Additional sender access approved')
+    expect(host.textContent).toContain('Incoming email approved')
     // An echoed hint in a read/web result is not a Gmail approval invitation.
     const reads = vi.mocked(agentApi.getGmailInboundRoute).mock.calls.length
     await act(async () => root.render(<GmailSenderApprovalFromTool toolName="read_workspace_file" result={result} />))
@@ -177,7 +177,7 @@ describe('Gmail incoming email settings', () => {
     await act(async () => (host.querySelector('input[type="checkbox"]') as HTMLInputElement).click())
     vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...initial, sender_consent: { ...initial.sender_consent!, config_hash: 'b'.repeat(64), senders: ['changed@example.com'] } })
     vi.mocked(agentApi.confirmGmailSenderConsent).mockRejectedValue({ response: { status: 409, data: 'Email configuration changed; review the current configuration before confirming' } })
-    const approve = [...host.querySelectorAll('button')].find(b => b.textContent === 'Approve additional senders')!
+    const approve = [...host.querySelectorAll('button')].find(b => b.textContent === 'Approve incoming email')!
     await act(async () => approve.click())
     expect(agentApi.confirmGmailSenderConsent).toHaveBeenCalledExactlyOnceWith('Workflow/test', 'a'.repeat(64), 'approve')
     expect(host.textContent).toContain('changed@example.com')
@@ -189,8 +189,8 @@ describe('Gmail incoming email settings', () => {
   it('does not offer approval for a legacy public-domain policy', async () => {
     vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, sender_consent: { required: true, approved: false, config_hash: 'b'.repeat(64), senders: ['@gmail.com'], blocked_reason: 'Public mailbox domains are not allowed' } })
     await render()
-    expect(host.textContent).toContain('Ask Builder to use exact addresses')
-    const approve = [...host.querySelectorAll('button')].find(b => b.textContent === 'Approve additional senders')!
+    expect(host.textContent).toContain('Ask Builder to update this trigger')
+    const approve = [...host.querySelectorAll('button')].find(b => b.textContent === 'Approve incoming email')!
     const checkbox = host.querySelector('input[type="checkbox"]') as HTMLInputElement
     expect(approve.disabled).toBe(true)
     expect(checkbox.disabled).toBe(true)
@@ -204,7 +204,7 @@ describe('Gmail incoming email settings', () => {
     vi.mocked(agentApi.confirmGmailSenderConsent).mockResolvedValue({ approved: false })
     await render()
     vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...approved, sender_consent: { ...approved.sender_consent!, approved: false } })
-    const revoke = [...host.querySelectorAll('button')].find(b => b.textContent === 'Revoke additional sender access')!
+    const revoke = [...host.querySelectorAll('button')].find(b => b.textContent === 'Revoke incoming email approval')!
     await act(async () => revoke.click())
     expect(agentApi.confirmGmailSenderConsent).toHaveBeenCalledExactlyOnceWith('Workflow/test', configHash, 'revoke')
     expect(host.textContent).toContain('Your approval is required')
@@ -255,12 +255,11 @@ describe('Gmail incoming email settings', () => {
   })
 
   it('explains alternative sender and phrase rules without offering setup editors', async () => {
-    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, filters: { sender_allowlist: ['@example.com', 'updates@vendor.example'], subject_contains_any: ['Training', 'Notion'], allow_automatic: true } } })
+    vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, filters: { sender_allowlist: ['@example.com', 'updates@vendor.example'], subject_contains_any: ['Training', 'Notion'] } } })
     await render()
     expect(host.textContent).toContain('Sender is @example.com OR updates@vendor.example')
     expect(host.textContent).toContain('Subject contains any: “Training” OR “Notion”')
     expect(host.textContent).toContain('Listed senders only')
-    expect(host.textContent).toContain('Automated notifications from listed senders: Allowed')
     expect(host.textContent).not.toContain('Owner email only')
     expect(host.querySelector('select, input, form')).toBeNull()
   })
@@ -281,7 +280,7 @@ describe('Gmail incoming email settings', () => {
   it('shows ordered project rules, saved messages, paused state and matched activity read-only', async () => {
     vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ ...enabled, route: { ...enabled.route!, rules: [
       { id: 'project-a', name: 'Training requests', filters: { sender_allowlist: ['@example.com'], subject_contains_any: ['Training', 'project-a'] }, instruction: 'Send X message' },
-      { id: 'notion', name: 'Notion updates', enabled: false, filters: { sender_allowlist: ['updates@vendor.example'], allow_automatic: true }, instruction: 'Send Y message' },
+      { id: 'notion', name: 'Notion updates', enabled: false, filters: { sender_allowlist: ['updates@vendor.example'] }, instruction: 'Send Y message' },
     ] }, deliveries: [{ id: 'delivery', status: 'completed', session_id: 'chat', rule_id: 'project-a', rule_name: 'Training requests' }] })
     const onAsk = vi.fn()
     await render('Chats/Code/projects/code-1', onAsk)

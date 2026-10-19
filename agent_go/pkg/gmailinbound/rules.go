@@ -84,8 +84,8 @@ func (r Route) SenderFilters() (*Filters, error) {
 }
 
 func (r Route) AcceptsMessageKind(m Message) bool {
-	selected, err := r.SelectedRule()
-	return err == nil && (r.Filters.AcceptsMessageKind(m) || selected != nil && selected.Filters.AcceptsMessageKind(m))
+	_, err := r.SelectedRule()
+	return err == nil && !m.Blocked
 }
 
 func (r Route) FilterMismatch(m Message) string {
