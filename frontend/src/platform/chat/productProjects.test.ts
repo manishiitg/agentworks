@@ -153,27 +153,27 @@ describe('loadProductProjects with Crews at the shared root', () => {
     })
   })
 
-  it('lists the Crews in the owner tree and, when asked, the ones the user owns at Crew/<folder>', async () => {
-    listOwnSharedProjects.mockResolvedValue({ projects: [{ id: 'moved', workspace_path: 'Crew/moved-3c4d' }] })
+  it('loads the current locations chosen by the server', async () => {
+    listOwnSharedProjects.mockResolvedValue({ projects: [{ id: 'legacy', workspace_path: 'Chats/Work/projects/legacy-1a2b' }, { id: 'moved', workspace_path: 'Crew/moved-3c4d' }] })
     const projects = await loadProductProjects('Chats/Work/projects', 'work', { includeOwnSharedProjects: true })
     expect(projects.map(p => [p.id, p.workspacePath]).sort()).toEqual([
       ['legacy', 'Chats/Work/projects/legacy-1a2b'],
       ['moved', 'Crew/moved-3c4d'],
     ])
     expect(listOwnSharedProjects).toHaveBeenCalledWith('work')
+    expect(getPlannerFiles).not.toHaveBeenCalled()
   })
 
-  it('does not ask for them by default, and survives a server that has no such list', async () => {
+  it('uses folder discovery for other products and surfaces Crew catalog failures', async () => {
     const plain = await loadProductProjects('Chats/Work/projects', 'work')
     expect(plain.map(p => p.id)).toEqual(['legacy'])
     expect(listOwnSharedProjects).not.toHaveBeenCalled()
     listOwnSharedProjects.mockRejectedValue(new Error('404'))
-    const withOld = await loadProductProjects('Chats/Work/projects', 'work', { includeOwnSharedProjects: true })
-    expect(withOld.map(p => p.id)).toEqual(['legacy'])
+    await expect(loadProductProjects('Chats/Work/projects', 'work', { includeOwnSharedProjects: true })).rejects.toThrow('404')
   })
 
-  it('does not list a Crew twice', async () => {
-    listOwnSharedProjects.mockResolvedValue({ projects: [{ id: 'legacy', workspace_path: 'Chats/Work/projects/legacy-1a2b' }] })
+  it('ignores retired folder entries for a moved Crew', async () => {
+    listOwnSharedProjects.mockResolvedValue({ projects: [{ id: 'moved', workspace_path: 'Crew/moved-3c4d' }] })
     const projects = await loadProductProjects('Chats/Work/projects', 'work', { includeOwnSharedProjects: true })
     expect(projects).toHaveLength(1)
   })

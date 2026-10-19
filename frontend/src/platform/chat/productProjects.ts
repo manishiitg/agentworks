@@ -209,7 +209,7 @@ export function parseProductProjectManifest<P extends string>(
 
 type ProductProjectStorageOptions = {
   runtimeManifestName?: string
-  /** Also load the Crews the user owns at the shared root (Crew/<folder>), which a listing of the user's own projects root does not show. */
+  /** Load owned Crews from the server's project catalog. */
   includeOwnSharedProjects?: boolean
 }
 
@@ -244,23 +244,12 @@ function applyRuntimeManifest<P extends string>(project: ProductProject<P>, cont
 }
 
 export async function loadProductProjects<P extends string>(root: string, product: P, storage: ProductProjectStorageOptions = {}): Promise<ProductProject<P>[]> {
-  // The folder listing, the shared-project listing and each project's two manifest reads used to run one
-  // after another, so opening Crew or Code waited for 1 + 2N round trips in a row (slow on server A, PLAT-531).
-  // Independent requests now run together.
-  const [response, own] = await Promise.all([
-    agentApi.getPlannerFiles(root, -1, 2),
-    storage.includeOwnSharedProjects
-      // A server without shared-root Crews (or an older one) has none to add.
-      ? agentApi.listOwnSharedProjects(product).catch(() => null)
-      : Promise.resolve(null),
-  ])
-  const manifests = dedupeByFilepath(
-    flattenFiles(responseFiles(response)).filter((file) => file.type !== 'folder' && file.filepath.endsWith('/product.json')),
-  )
-  for (const shared of own?.projects || []) {
-    const filepath = `${shared.workspace_path}/product.json`
-    if (!manifests.some(file => file.filepath === filepath)) manifests.push({ filepath, type: 'file' } as (typeof manifests)[number])
-  }
+  // The server selects each Crew's current registered location. Folder scans
+  // can include retired filesystem links and cannot decide project identity.
+  const manifests = storage.includeOwnSharedProjects
+    ? (await agentApi.listOwnSharedProjects(product)).projects.map(project => ({ filepath: `${project.workspace_path}/product.json`, type: 'file', last_modified: undefined }))
+    : dedupeByFilepath(flattenFiles(responseFiles(await agentApi.getPlannerFiles(root, -1, 2)))
+      .filter(file => file.type !== 'folder' && file.filepath.endsWith('/product.json')))
   const projects = await Promise.all(manifests.map(async (file) => {
     const workspacePath = file.filepath.replace(/\/product\.json$/, '')
     const runtimeRead = storage.runtimeManifestName
