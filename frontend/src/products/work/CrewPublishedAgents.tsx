@@ -60,7 +60,7 @@ export function CrewPublishedAgents({ profileId, projectId }: { profileId: strin
     </div>)}
     {!busy && !error && !agents.length && <p className="text-muted-foreground">Bring an agent you already use on your computer into this project.</p>}
     <details className="text-xs text-muted-foreground"><summary className="w-fit cursor-pointer rounded underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">How to add an agent</summary>
-      <p className="mt-2 max-w-prose leading-relaxed">On your computer, run <code>agentworks publish</code> from your coding chat, or choose <strong>Publish to Crew</strong> in the local app. Select this Crew as the destination. Review what will be shared before publishing. Return here to open its chat.</p>
+      <p className="mt-2 max-w-prose leading-relaxed">On your computer, choose <strong>Publish to Crew</strong> in the AgentWorks app and select this Crew. Developers can also run <code>agentworks publish</code> from a coding chat. Review what will be shared before publishing. Return here to open its chat.</p>
     </details>
     {error && <p role="alert" className="text-xs text-destructive">{error} <button type="button" className="underline" disabled={busy} onClick={() => setAttempt(value => value + 1)}>Retry</button></p>}
   </section>

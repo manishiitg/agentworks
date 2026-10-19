@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 vi.mock('../../hooks/useBrowserToolbarConnection', () => ({ useBrowserToolbarConnection: () => false }))
 vi.mock('../../components/GlobalActivityMonitor', () => ({ GlobalActivityMonitor: () => <button aria-label="Active work monitor">Active work</button> }))
 
+import { agentApi } from '../../services/api'
 import { setProjectMode, writeCodeFilesPreference } from './codeLocalFiles'
 import { usePanelSwitcherStore } from '../../stores/usePanelSwitcherStore'
 import { useChatStore } from '../../stores/useChatStore'
@@ -17,8 +18,8 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 let root: Root
 let host: HTMLDivElement
-beforeEach(() => { host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host) })
-afterEach(() => { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals() })
+beforeEach(() => { vi.spyOn(agentApi, 'listReportHumanInputs').mockResolvedValue({ success: true, inputs: [] }); host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host) })
+afterEach(() => { act(() => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 const render = (product: typeof CODE_PRODUCT, props: { view?: WorkWorkspaceView; compactContext?: boolean; showShell?: boolean; readOnly?: boolean; showActivityMonitor?: boolean; sessionId?: string; enabledPanels?: Set<string> }) => act(() => {
   root.render(
