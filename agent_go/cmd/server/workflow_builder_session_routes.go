@@ -23,8 +23,17 @@ const workflowBuilderConversationDateLayout = "2006-01-02"
 // Automation and cross-owner assistant conversations are not the main
 // workflow chat, even when they use the workflow-builder phase.
 func separateWorkflowConversation(sessionID string) bool {
-	return strings.HasPrefix(sessionID, "wfask-") || strings.HasPrefix(sessionID, "schedule-")
+	return strings.HasPrefix(sessionID, "wfask-") || strings.HasPrefix(sessionID, "schedule-") || externalRunSessionID(sessionID)
 }
+
+// MCP run-tool sessions (externalRunSessionSetup) are Run-mode conversations,
+// so a Builder message without a session_id never continues one of them.
+func externalRunSessionID(sessionID string) bool {
+	return strings.HasPrefix(sessionID, externalRunSessionMarker) ||
+		(strings.HasPrefix(sessionID, "pat-") && strings.Contains(sessionID, "-"+externalRunSessionMarker))
+}
+
+const externalRunSessionMarker = "run-"
 
 type workflowBuilderSessionResponse struct {
 	IsBuilder          bool                              `json:"is_builder"`

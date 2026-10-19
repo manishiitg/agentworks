@@ -83,7 +83,7 @@ func (api *StreamingAPI) externalRunSessionSetup(w http.ResponseWriter, r *http.
 		return "", false, false
 	}
 	if sessionID == "" {
-		sessionID = uuid.NewString()
+		sessionID = externalRunSessionMarker + uuid.NewString()
 		if claims.AccessToken != nil {
 			sessionID = accessTokenSessionPrefix(claims) + sessionID
 		}

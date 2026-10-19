@@ -267,3 +267,17 @@ func TestExternalRunInstructionPassesArgumentsThrough(t *testing.T) {
 		t.Fatalf("empty instruction wrong: %s", got)
 	}
 }
+
+// A Builder message sent without a session_id once continued the caller's
+// latest MCP run-tool session instead of the Builder chat (19 Oct).
+func TestExternalRunSessionIsNeverTheBuilderChat(t *testing.T) {
+	claims := &UserClaims{AccessToken: &accesstokens.Token{ID: "3315ebc6490dbbea"}}
+	run := accessTokenSessionPrefix(claims) + externalRunSessionMarker + "3fb54cc4-abf7-4607-86a3-f4248abd1b46"
+	builder := accessTokenSessionPrefix(claims) + "455e81f4-4d14-4f2c-b8e3-ad288067ab94"
+	if !separateWorkflowConversation(run) || !separateWorkflowConversation(externalRunSessionMarker+"x") {
+		t.Fatal("an MCP run session was eligible as the Builder chat")
+	}
+	if separateWorkflowConversation(builder) {
+		t.Fatal("an MCP Builder chat was treated as a run session")
+	}
+}
