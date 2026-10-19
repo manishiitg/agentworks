@@ -13,9 +13,26 @@ import (
 
 type retainedTurnIdentity struct {
 	ID string
+	// Captured before provider delivery, not when its acknowledgement returns.
+	// A replay may identify Run's handoff but must never answer a newer input.
+	AcceptedAt time.Time
 	// Run completion promises a subsequent SDK lifecycle; a replay of Run's
 	// completion must not claim that follow-up merely because its ID is new.
 	FollowupFrom string
+}
+
+func (identity retainedTurnIdentity) matchesCompletion(event events.Event) bool {
+	return identity.matches(retainedCompletionTurnID(event)) &&
+		(identity.AcceptedAt.IsZero() || event.Timestamp.IsZero() || !event.Timestamp.Before(identity.AcceptedAt))
+}
+
+// A normal Session.Run completion has the canonical lifecycle marker but no
+// retained-session source. Only its exact accepted ID may hand off ownership;
+// it cannot itself settle or persist a retained input.
+func retainedRunHandoff(event events.Event, identity retainedTurnIdentity) bool {
+	return identity.ID != "" && identity.ID == retainedCompletionTurnID(event) &&
+		completionMetadataFlag(event, "canonical_turn_completion") &&
+		completionMetadataFlag(event, "live_input_followup")
 }
 
 func (identity retainedTurnIdentity) matches(nativeID string) bool {
@@ -43,7 +60,8 @@ func (api *StreamingAPI) reconcileAcceptedNativeCompletions(sessionID, nativeID 
 	}
 	found := false
 	for _, event := range api.eventStore.GetAllEventsRaw(sessionID) {
-		if !retainedMainTurnCompletionEvent(event.Type) || !mcpAgentSessionCompletion(event) {
+		if !retainedMainTurnCompletionEvent(event.Type) ||
+			(!mcpAgentSessionCompletion(event) && !completionMetadataFlag(event, "canonical_turn_completion")) {
 			continue
 		}
 		if retainedCompletionTurnID(event) == strings.TrimSpace(nativeID) {
