@@ -12,6 +12,7 @@ import { chatHistorySessionTitle } from './chatHistoryTitle'
 import { pulseTurnDisplayText } from './chatMessageContent'
 import { botPlatformLabel } from './globalActivityPresentation'
 import { readableGeneratedChatTitle } from './generatedChatTitle'
+import type { WorkflowBuilderBindings } from './currentWorkflowBuilder'
 
 export type SidebarProject = {
   id: string
@@ -70,6 +71,13 @@ export function sidebarScope(
   presetId = '',
   presets: (CustomPreset | PredefinedPreset)[] = []
 ): { surface: ProductSurface; projectId?: string; workflowId?: string } | null {
+  const workflowPreset = presets.find(item => item.id === presetId) || (path
+    ? presets.find(item => normalizedWorkspace(item.selectedFolder?.filepath) === normalizedWorkspace(path))
+    : undefined)
+  if (workflowPreset) return {
+    surface: workflowPreset.workflowKind === 'relay' ? 'relays' : 'agentworks',
+    workflowId: workflowPreset.id,
+  }
   const project =
     sessionId.match(/^(work|code):project:([^:]+)/) ||
     path.match(/Chats\/(Work|Code)\/projects\/([^/]+)/i)
@@ -96,13 +104,10 @@ export function sidebarScope(
         knowledgebase: 'knowledgebase',
       }[singleton[1].toLowerCase()] as ProductSurface,
     }
-  const preset = presets.find(
-    (item) => item.id === presetId || item.selectedFolder?.filepath === path
-  )
-  if (preset || /^Workflow\//.test(path) || presetId)
+  if (/^Workflow\//.test(normalizedWorkspace(path)) || presetId)
     return {
-      surface: preset?.workflowKind === 'relay' ? 'relays' : 'agentworks',
-      workflowId: preset?.id || presetId,
+      surface: 'agentworks',
+      workflowId: presetId || undefined,
     }
   return null
 }
@@ -115,6 +120,7 @@ export function sidebarChats({
   projects = [],
   allowedWorkflowIds,
   jobs = [],
+  builders,
 }: {
   tabs: Record<string, ChatTab>
   active: ActiveSessionInfo[]
@@ -124,6 +130,7 @@ export function sidebarChats({
   projects?: SidebarProject[]
   allowedWorkflowIds?: string[] | null
   jobs?: ScheduledJob[]
+  builders?: WorkflowBuilderBindings
 }): SidebarChat[] {
   const rows = new Map<string, SidebarChat>()
   const accepts = (row: SidebarChat) =>
@@ -150,7 +157,7 @@ export function sidebarChats({
     const id = tab.sessionId || tab.tabId
     const row: SidebarChat = {
       ...scope,
-      projectId: meta?.agentProfileProjectId || scope.projectId,
+      projectId: scope.workflowId ? undefined : meta?.agentProfileProjectId || scope.projectId,
       id,
       tabId: tab.tabId,
       title:
@@ -168,13 +175,11 @@ export function sidebarChats({
       workspace: meta?.agentProfileWorkspace,
       createdTime: tab.createdAt,
       originLabel: botPlatformLabel(meta?.botPlatform, id),
-      builder:
-        meta?.agentProfileBuilder === true ||
-        (meta?.mode === 'workflow' &&
-          meta.phaseId === 'workflow-builder' &&
-          meta.isViewOnly !== true),
+      builder: scope.workflowId
+        ? false
+        : meta?.agentProfileBuilder === true,
       workspaceTitle:
-        presets.find((preset) => preset.id === meta?.presetQueryId)?.label ||
+        presets.find((preset) => preset.id === scope.workflowId)?.label ||
         meta?.agentProfileIdentityName ||
         meta?.agentProfileProjectTitle,
       group: tab.isStreaming || tab.hasRunningBgAgents ? 'Running' : 'Open',
@@ -186,7 +191,7 @@ export function sidebarChats({
       row.title =
         presets.find(
           (preset) =>
-            preset.id === meta?.presetQueryId || preset.selectedFolder?.filepath === row.workspace
+            preset.id === scope.workflowId
         )?.label ||
         meta?.agentProfileProjectTitle ||
         row.workspace?.split('/').filter(Boolean).pop() ||
@@ -278,7 +283,7 @@ export function sidebarChats({
       )
     const workspaceTitle =
       project?.title ||
-      presets.find((preset) => preset.selectedFolder?.filepath === workspace)?.label ||
+      presets.find((preset) => preset.id === scope.workflowId)?.label ||
       workspace?.split('/').filter(Boolean).pop() ||
       'Chat'
     const row: SidebarChat = {
@@ -339,6 +344,32 @@ export function sidebarChats({
     if (!row.runTime && match && match[2].length >= 16)
       row.runTime = Math.floor(Number(match[2]) / 1e6)
   }
+  if (builders !== undefined) {
+    for (const preset of presets) {
+      const binding = builders[preset.id]
+      const current = binding?.session_id
+      for (const [id, row] of rows) {
+        if (row.workflowId !== preset.id) continue
+        const role = binding?.sessions?.[id]
+        if (!binding || !role || role.kind === 'history') { rows.delete(id); continue }
+        row.builder = role?.is_builder === true
+        if (row.builder && row.group === 'Recent') row.group = 'Open'
+      }
+      if (!current || rows.has(current) || !binding || current !== binding.session_id) continue
+      const row: SidebarChat = {
+        id: current, title: preset.label || 'Builder', builder: true,
+        surface: preset.workflowKind === 'relay' ? 'relays' : 'agentworks', workflowId: preset.id,
+        workspace: preset.selectedFolder?.filepath, workspaceTitle: preset.label,
+        group: 'Open', time: Date.parse(binding.updated_at || '') || 0, waiting: false,
+        activity: {
+          session_id: current, observer_id: '', agent_mode: 'workflow_phase', status: binding.status,
+          preset_query_id: preset.id, workspace_path: preset.selectedFolder?.filepath,
+          created_at: '', last_activity: binding.updated_at || '',
+        },
+      }
+      if (accepts(row)) rows.set(current, row)
+    }
+  }
   const rank = { Running: 0, Open: 1, Recent: 2 }
   return [...rows.values()].sort(
     (a, b) => rank[a.group] - rank[b.group] || b.time - a.time || a.id.localeCompare(b.id)
@@ -353,7 +384,7 @@ export function sidebarWorkspaceGroups(rows: SidebarChat[]) {
   >()
   for (const row of rows) {
     if (row.group === 'Recent') continue
-    const id = `${row.surface}:${row.projectId || row.workflowId || normalizedWorkspace(row.workspace) || row.surface}`
+    const id = `${row.surface}:${row.workflowId || row.projectId || normalizedWorkspace(row.workspace) || row.surface}`
     let group = groups.get(id)
     if (!group) {
       group = {

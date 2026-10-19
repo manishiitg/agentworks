@@ -1519,6 +1519,7 @@ export interface ActiveSessionInfo {
   preset_query_id?: string
   phase_id?: string
   phase_name?: string
+  workshop_mode?: 'workshop' | 'run' | string
   bot_platform?: string
   triggered_by?: string
   /** Who or what started the run, e.g. "Called by server A Flow Tester". */
@@ -2006,6 +2007,8 @@ export interface GetSessionEventsResponse {
 }
 
 export interface WorkflowBuilderSessionResponse {
+  is_builder?: boolean;
+  sessions?: Record<string, { is_builder: boolean; kind: 'builder' | 'history' | 'run' }>;
   success: boolean;
   source: 'live' | 'workspace' | 'none';
   session_id?: string;

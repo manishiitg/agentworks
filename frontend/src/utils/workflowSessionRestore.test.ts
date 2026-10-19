@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
-import { isScheduledWorkflowSession, pickWorkflowActiveSession } from './workflowSessionRestore'
+import { useChatStore, type ChatTab } from '../stores/useChatStore'
+import { describe, expect, it, vi } from 'vitest'
+import { ensureWorkflowComposerTab, isScheduledWorkflowSession, pickWorkflowActiveSession } from './workflowSessionRestore'
 import type { ActiveSessionInfo, RunningWorkflowInfo } from '../services/api-types'
 
 const session = (overrides: Partial<ActiveSessionInfo> = {}): ActiveSessionInfo => ({
@@ -93,4 +94,21 @@ describe('workflow session restore classification', () => {
 
     expect(pickWorkflowActiveSession([running], preset, {})?.session_id).toBe(running.session_id)
   })
+})
+
+
+it('opens an empty composer without selecting an archived Builder or minting a server chat', async () => {
+  const original = useChatStore.getState()
+  const old = { tabId: 'old', sessionId: 'old-server-session', name: 'Automation Builder',
+    metadata: { mode: 'workflow', presetQueryId: 'wf-empty', phaseId: 'workflow-builder' } } as ChatTab
+  const create = vi.fn().mockResolvedValue('blank-composer')
+  useChatStore.setState({ chatTabs: { old }, createChatTab: create })
+  try {
+    const [first, concurrent] = await Promise.all([ensureWorkflowComposerTab('wf-empty'), ensureWorkflowComposerTab('wf-empty')])
+    expect(first).toBe('blank-composer')
+    expect(concurrent).toBe(first)
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(create).toHaveBeenCalledWith('Automation Builder', expect.objectContaining({ isWorkflowDraft: true, presetQueryId: 'wf-empty' }), undefined, { activate: false })
+    expect(useChatStore.getState().chatTabs.old.sessionId).toBe('old-server-session')
+  } finally { useChatStore.setState(original) }
 })

@@ -2,6 +2,7 @@ import { expect, it } from 'vitest'
 import { sidebarChats, sidebarScope, sidebarWorkspaceGroups, sidebarChatDisplayTitle, type SidebarChat } from './sidebarChats'
 import type { ChatTab } from '../stores/useChatStore'
 import type { ActiveSessionInfo } from '../services/api-types'
+import type { WorkflowBuilderSessionResponse } from '../services/api-types'
 const tab = (id: string, patch: Partial<ChatTab> = {}) =>
   ({
     tabId: id,
@@ -25,6 +26,48 @@ const activity = (id: string, patch: Partial<ActiveSessionInfo> = {}) =>
     observer_id: '',
     ...patch,
   }) as ActiveSessionInfo
+
+it('shows only the server current Goal Builder, groups path aliases and preserves run lanes and stored history', () => {
+  const preset = { id: 'linkedin', label: 'LinkedIn', selectedFolder: { filepath: 'Workflow/linkedin' } } as never
+  const builderMeta = { mode: 'workflow' as const, phaseId: 'workflow-builder', presetQueryId: 'linkedin' }
+  const tabs = {
+    current: tab('current', { metadata: { ...builderMeta, agentProfileProjectId: 'stale-project-id' } }),
+    old: tab('old', { lastAccessedAt: 999, metadata: { ...builderMeta, agentProfileWorkspace: '/_users/alice/Workflow/linkedin/' } }),
+    pulse: tab('schedule-goallead--pulse_123', { metadata: { mode: 'workflow', presetQueryId: 'linkedin', isViewOnly: true, isScheduledRun: true } }),
+    run: tab('run', { metadata: { mode: 'workflow', presetQueryId: 'linkedin', isViewOnly: true, isExecutionRun: true } }),
+  }
+  const recent = [{ session_id: 'old', workspace_path: 'Workflow/linkedin', message_count: 8 },
+    { session_id: 'older', workspace_path: '/_users/alice/Workflow/linkedin/', message_count: 8 }]
+  const input = { tabs, active: [], recent, presets: [preset], allowed: ['agentworks' as const],
+    builders: { linkedin: { success: true, events: [], source: 'live', session_id: 'current', status: 'running', sessions: {
+      current: { is_builder: true, kind: 'builder' }, old: { is_builder: false, kind: 'history' }, older: { is_builder: false, kind: 'history' },
+      'schedule-goallead--pulse_123': { is_builder: false, kind: 'run' }, run: { is_builder: false, kind: 'run' },
+    } } as WorkflowBuilderSessionResponse } }
+  const rows = sidebarChats(input)
+  expect(rows.map(row => row.id).sort()).toEqual(['current', 'run', 'schedule-goallead--pulse_123'].sort())
+  expect(sidebarWorkspaceGroups(rows)).toHaveLength(1)
+  expect(sidebarWorkspaceGroups(rows)[0].id).toBe('agentworks:linkedin')
+  expect(tabs.old.sessionId).toBe('old')
+  expect(recent).toHaveLength(2)
+  expect(sidebarChats({ ...input, allowedWorkflowIds: [] })).toEqual([])
+})
+
+it('uses the same one-Builder rule for Flows while leaving named Crew chats alone', () => {
+  const preset = { id: 'flow', workflowKind: 'relay', label: 'API', selectedFolder: { filepath: 'Workflow/api' } } as never
+  const rows = sidebarChats({
+    tabs: {
+      old: tab('old', { metadata: { mode: 'workflow', phaseId: 'workflow-builder', presetQueryId: 'flow' } }),
+      first: tab('first', { name: 'Sales', metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew' } }),
+      second: tab('second', { name: 'Research', metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew' } }),
+    }, active: [], recent: [], presets: [preset], allowed: ['relays', 'work'],
+    builders: { flow: { success: true, events: [], source: 'workspace', session_id: 'current', status: 'completed', sessions: {
+      current: { is_builder: true, kind: 'builder' }, old: { is_builder: false, kind: 'history' },
+    } } as WorkflowBuilderSessionResponse },
+  })
+  expect(rows.map(row => row.id).sort()).toEqual(['current', 'first', 'second'])
+  expect(rows.find(row => row.id === 'current')?.surface).toBe('relays')
+  expect(rows.find(row => row.id === 'current')?.workflowId).toBe('flow')
+})
 
 it('uses readable display labels while preserving custom titles and original session data', () => {
   const row = { id: 'schedule-cron--workflow_123', title: 'WORKFLOW REVIEW BEFORE A RUN. workspace_path="Workflow/trading", pulse_run_id="one"', surface: 'agentworks', group: 'Open', time: 1, waiting: false, scheduled: true } as SidebarChat

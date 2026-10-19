@@ -27,21 +27,23 @@ func separateWorkflowConversation(sessionID string) bool {
 }
 
 type workflowBuilderSessionResponse struct {
-	Revision           uint64            `json:"revision,omitempty"`
-	Success            bool              `json:"success"`
-	Source             string            `json:"source"`
-	SessionID          string            `json:"session_id,omitempty"`
-	PhaseID            string            `json:"phase_id,omitempty"`
-	Status             string            `json:"status"`
-	DisplayStatus      string            `json:"display_status,omitempty"`
-	PresetQueryID      string            `json:"preset_query_id,omitempty"`
-	WorkspacePath      string            `json:"workspace_path,omitempty"`
-	WorkflowName       string            `json:"workflow_name,omitempty"`
-	UpdatedAt          string            `json:"updated_at,omitempty"`
-	ConversationPath   string            `json:"conversation_path,omitempty"`
-	Events             []json.RawMessage `json:"events"`
-	Total              int               `json:"total"`
-	LastProcessedIndex int               `json:"last_processed_index"`
+	IsBuilder          bool                              `json:"is_builder"`
+	Sessions           map[string]workflowSidebarSession `json:"sessions,omitempty"`
+	Revision           uint64                            `json:"revision,omitempty"`
+	Success            bool                              `json:"success"`
+	Source             string                            `json:"source"`
+	SessionID          string                            `json:"session_id,omitempty"`
+	PhaseID            string                            `json:"phase_id,omitempty"`
+	Status             string                            `json:"status"`
+	DisplayStatus      string                            `json:"display_status,omitempty"`
+	PresetQueryID      string                            `json:"preset_query_id,omitempty"`
+	WorkspacePath      string                            `json:"workspace_path,omitempty"`
+	WorkflowName       string                            `json:"workflow_name,omitempty"`
+	UpdatedAt          string                            `json:"updated_at,omitempty"`
+	ConversationPath   string                            `json:"conversation_path,omitempty"`
+	Events             []json.RawMessage                 `json:"events"`
+	Total              int                               `json:"total"`
+	LastProcessedIndex int                               `json:"last_processed_index"`
 }
 
 type builderConversationLog struct {
@@ -114,8 +116,34 @@ func (api *StreamingAPI) handleGetWorkflowBuilderSession(w http.ResponseWriter, 
 		http.Error(w, "preset_query_id or workspace_path is required", http.StatusBadRequest)
 		return
 	}
-	if access, _ := workflowAccessForWorkspacePath(r.Context(), GetUserFromContext(r.Context()), workspacePath); access == WorkflowAccessNone {
+	claims := GetUserFromContext(r.Context())
+	if IsMultiUserMode() && claims == nil {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+	access, manifest := workflowAccessForWorkspacePath(r.Context(), claims, workspacePath)
+	if access == WorkflowAccessNone || (manifest != nil && !userAllowedWorkflowID(claims, manifest.ID)) {
 		http.Error(w, "workflow access denied", http.StatusForbidden)
+		return
+	}
+	// Sidebar discovery needs an identity, not every event or a scan of step
+	// logs. Keep the same per-person Builder boundary as transcript restoration.
+	if r.URL.Query().Get("summary_only") == "true" {
+		if manifest == nil {
+			http.Error(w, "workflow not found", http.StatusNotFound)
+			return
+		}
+		if !strings.HasPrefix(workspacePath, "Workflow/") || (presetQueryID != "" && presetQueryID != manifest.ID) {
+			http.Error(w, "workflow identity does not match workspace", http.StatusBadRequest)
+			return
+		}
+		presetQueryID = manifest.ID
+		summary, err := api.currentWorkflowBuilderSummary(r.Context(), presetQueryID, workspacePath)
+		if err != nil {
+			http.Error(w, "failed to resolve Builder chat", http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(summary)
 		return
 	}
 

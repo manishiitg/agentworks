@@ -15,7 +15,8 @@ import { normalizeWorkspacePath } from './workspacePathUtils'
 import { activateWorkflowTab, beginWorkflowNavigation, isCurrentWorkflowNavigation, selectWorkflowPreset } from './workflowNavigation'
 import { scheduleTabLabel } from './scheduleTabLabel'
 import { resolveWorkflowTabForSession } from './workflowTabResolution'
-import { cachedWorkflowTabIdForPreset } from './workflowTabOwnership'
+import { captureChatIdentity, isChatIdentityCurrent } from './chatIdentity'
+import { currentWorkflowBuilderBinding, publishWorkflowBuilderBinding, workflowBuilderMutation } from '../hooks/useWorkflowBuilderBindings'
 
 type RestoreWorkflowSessionOptions = {
   preset?: CustomPreset | PredefinedPreset
@@ -119,75 +120,6 @@ export function pickWorkflowActiveSession(
       if (priorityDelta !== 0) return priorityDelta
       return Date.parse(b.last_activity || b.created_at || '') - Date.parse(a.last_activity || a.created_at || '')
     })[0]
-}
-
-function runningWorkflowFallbackName(workflow: RunningWorkflowInfo): string {
-  return workflow.preset_name ||
-    workflow.title ||
-    workflow.workspace_path?.split('/').filter(Boolean).pop() ||
-    workflow.query ||
-    'Automation'
-}
-
-function sessionFromRunningWorkflow(workflow: RunningWorkflowInfo): ActiveSessionInfo {
-  const timestamp = workflow.started_at || new Date().toISOString()
-  const label = runningWorkflowFallbackName(workflow)
-  return {
-    session_id: workflow.session_id,
-    observer_id: '',
-    agent_mode: 'workflow',
-    status: workflow.status || 'running',
-    last_activity: timestamp,
-    created_at: timestamp,
-    query: workflow.query || label,
-    title: workflow.title || label,
-    workflow_name: label,
-    workflow_label: label,
-    workspace_path: workflow.workspace_path,
-    preset_name: workflow.preset_name,
-    preset_query_id: workflow.preset_query_id,
-    triggered_by: workflow.triggered_by,
-    current_execution_name: workflow.current_step_title || workflow.phase_name || workflow.title,
-    needs_user_input: workflow.needs_user_input,
-    waiting_message: workflow.waiting_message,
-    waiting_since: workflow.waiting_since,
-  }
-}
-
-function isRunningWorkflowEntry(entry: RunningWorkflowInfo): boolean {
-  const status = (entry.status || '').toLowerCase()
-  return status === 'running' ||
-    status === 'active' ||
-    status === 'in_progress' ||
-    status === 'paused' ||
-    status === 'waiting' ||
-    status === 'waiting_for_input' ||
-    status === 'waiting_feedback' ||
-    !!entry.needs_user_input
-}
-
-function runningWorkflowMatchesPreset(
-  workflow: RunningWorkflowInfo,
-  preset: CustomPreset | PredefinedPreset,
-): boolean {
-  if (workflow.preset_query_id && workflow.preset_query_id === preset.id) return true
-  const workflowPath = normalizeWorkspacePath(workflow.workspace_path)
-  const presetPath = normalizeWorkspacePath(preset.selectedFolder?.filepath)
-  return !!workflowPath && !!presetPath && workflowPath === presetPath
-}
-
-async function findRunningWorkflowForPreset(
-  preset: CustomPreset | PredefinedPreset,
-): Promise<RunningWorkflowInfo | undefined> {
-  try {
-    const response = await agentApi.listRunningWorkflows()
-    return (response.running || [])
-      .filter(workflow => workflow.session_id && isRunningWorkflowEntry(workflow))
-      .filter(workflow => runningWorkflowMatchesPreset(workflow, preset))
-      .sort((a, b) => new Date(b.started_at || 0).getTime() - new Date(a.started_at || 0).getTime())[0]
-  } catch {
-    return undefined
-  }
 }
 
 export function isScheduledWorkflowSession(session: ActiveSessionInfo, runningWorkflow?: RunningWorkflowInfo): boolean {
@@ -386,19 +318,6 @@ export async function openWorkflowPresetPage(
   selectWorkflowPreset(preset)
 
   const title = options.title || preset.label || 'Automation'
-  const chatStore = useChatStore.getState()
-
-  // Switching back to a workflow seen earlier in this page: show its last
-  // conversation from memory at once. The lookups below still run and move
-  // to another tab only when they resolve a different conversation.
-  const cachedTabId = options.activeSession
-    ? undefined
-    : cachedWorkflowTabIdForPreset(preset.id, chatStore.chatTabs, chatStore.tabEvents)
-  if (cachedTabId) {
-    activateWorkflowTab(cachedTabId, { expectedGeneration: navigationGeneration })
-    useWorkflowStore.getState().setShowChatArea(true)
-  }
-
   if (options.activeSession) {
     await openActiveSession(options.activeSession, {
       preset,
@@ -410,55 +329,59 @@ export async function openWorkflowPresetPage(
     return
   }
 
-  // Both reads are independent; start the running-registry read alongside
-  // the active-session read instead of after it.
-  const runningWorkflowPromise = options.runningWorkflow
-    ? Promise.resolve(options.runningWorkflow)
-    : findRunningWorkflowForPreset(preset)
-  const activeSession = pickWorkflowActiveSession(await chatStore.getActiveSessions(), preset, useChatStore.getState().chatTabs)
-
-  if (!isCurrentWorkflowNavigation(navigationGeneration, preset.id)) return
-
-  if (activeSession && followsOnWorkflowSwitch(activeSession)) {
-    await openActiveSession(activeSession, {
-      preset,
-      runningWorkflow: options.runningWorkflow,
-      title,
-      source: options.source,
-      navigationGeneration,
-    })
+  const identity = captureChatIdentity()
+  if (!preset.selectedFolder?.filepath) return
+  const bindingMutation = workflowBuilderMutation()
+  let binding = currentWorkflowBuilderBinding(preset.id)
+  try {
+    const response = await agentApi.getWorkflowBuilderSessions([{
+      preset_query_id: preset.id, workspace_path: preset.selectedFolder.filepath,
+    }])
+    if (!isChatIdentityCurrent(identity) || !isCurrentWorkflowNavigation(navigationGeneration, preset.id)) return
+    if (bindingMutation !== workflowBuilderMutation()) return
+    binding = response.bindings[preset.id]
+    if (binding) publishWorkflowBuilderBinding(binding, identity)
+  } catch {
+    // A previously verified server binding can survive a transient outage.
+    // Browser timestamps and remembered tab order never choose a replacement.
+  }
+  if (!binding || !isChatIdentityCurrent(identity) || !isCurrentWorkflowNavigation(navigationGeneration, preset.id)) return
+  if (binding.session_id) {
+    await restoreWorkflowSessionChat({
+      session_id: binding.session_id, observer_id: '', agent_mode: 'workflow_phase',
+      status: binding.source === 'live' ? binding.status : 'completed',
+      preset_query_id: preset.id, workspace_path: preset.selectedFolder.filepath,
+      created_at: '', last_activity: binding.updated_at || '',
+    }, { preset, navigationGeneration, scrollToBottom: options.scrollToBottom })
     return
   }
-
-  const runningWorkflow = await runningWorkflowPromise
-  if (!isCurrentWorkflowNavigation(navigationGeneration, preset.id)) return
-  if (runningWorkflow?.session_id && followsOnWorkflowSwitch(sessionFromRunningWorkflow(runningWorkflow), runningWorkflow)) {
-    await openActiveSession(sessionFromRunningWorkflow(runningWorkflow), {
-      preset,
-      runningWorkflow,
-      title,
-      source: options.source,
-      navigationGeneration,
-    })
-    return
-  }
-
-  const latestStore = useChatStore.getState()
-  const tabId = (await resolveWorkflowTabForSession({
-    getTabs: () => useChatStore.getState().chatTabs,
-    getTabEvents: () => useChatStore.getState().tabEvents,
-    presetQueryId: preset.id,
-    name: 'Automation Builder',
-    metadata: { mode: 'workflow', phaseId: 'workflow-builder', phaseName: 'Automation Builder', presetQueryId: preset.id },
-    createChatTab: latestStore.createChatTab,
-    updateTabSessionId: latestStore.updateTabSessionId,
-  })).tabId
-
-  if (!isCurrentWorkflowNavigation(navigationGeneration, preset.id)) return
-
+  const tabId = await ensureWorkflowComposerTab(preset.id)
+  if (!isChatIdentityCurrent(identity) || !isCurrentWorkflowNavigation(navigationGeneration, preset.id)) return
   activateWorkflowTab(tabId, { expectedGeneration: navigationGeneration })
   useWorkflowStore.getState().setShowChatArea(true)
   if (options.scrollToBottom === true) requestChatScrollToBottom()
+}
+
+// A blank input surface is not a server Builder binding. Discovery is read-only;
+// the first admitted interactive send records its session on the server.
+const pendingComposers = new Map<string, Promise<string>>()
+export async function ensureWorkflowComposerTab(presetId: string): Promise<string> {
+  const identity = captureChatIdentity()
+  const key = JSON.stringify([identity, presetId])
+  const pending = pendingComposers.get(key)
+  if (pending) return pending
+  const store = useChatStore.getState()
+  const existing = Object.values(store.chatTabs).find(tab =>
+    tab.metadata?.presetQueryId === presetId && tab.metadata?.isWorkflowDraft === true &&
+    !tab.metadata?.isViewOnly && !tab.isStreaming &&
+    store.getTabEvents(tab.sessionId || tab.tabId).length === 0)
+  if (existing) return existing.tabId
+  const promise = store.createChatTab('Automation Builder', {
+    mode: 'workflow', phaseId: 'workflow-builder', phaseName: 'Automation Builder',
+    presetQueryId: presetId, isWorkflowDraft: true,
+  }, undefined, { activate: false })
+  pendingComposers.set(key, promise)
+  try { return await promise } finally { pendingComposers.delete(key) }
 }
 
 type ReadOnlyWorkflowRunOptions = RestoreWorkflowSessionOptions & {
