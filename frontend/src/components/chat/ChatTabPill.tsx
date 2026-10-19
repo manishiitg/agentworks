@@ -148,7 +148,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       {productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
       {isPulseConversationSession(tab.sessionId) && <PulseIcon className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Pulse" role="img" />}
       {!isBlank && (!productSurface || status !== 'ready') && (status === 'busy'
-        ? <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" aria-label={dot.label} role="img" />
+        ? <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" aria-label={dot.label} role="img"><title>{dot.label}</title></Loader2>
         : <span className={`${status === 'ready' ? 'h-1.5 w-1.5' : 'h-2 w-2'} shrink-0 rounded-full ${dot.cls}`} title={dot.label} aria-label={dot.label} role="img" />)}
       {isRenaming ? (
         <input
@@ -176,7 +176,6 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
         </span>
       )}
       {productSurface && <>
-        {status !== 'ready' && <span className="text-[10px] font-normal text-muted-foreground">{status === 'busy' ? 'Working' : status === 'waiting' ? 'Needs you' : status === 'completed' ? 'Done' : null}</span>}
         {workspacePickable && <button ref={registerWorkspaceTrigger} type="button" data-workspace-setup-trigger aria-label="Switch workspace" aria-haspopup="menu" aria-expanded={pickerOpen}
           title="Switch workspace or product"
           onClick={event => { event.stopPropagation(); window.dispatchEvent(new Event('open-workspace-picker')) }}
