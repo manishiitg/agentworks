@@ -53,7 +53,8 @@ A tab answers with `send_message` to the address your ask returned, and its
 answer reaches you here as a new message; read earlier ones with
 `read_agent_messages`. Do not split a small task, and never let two tabs edit
 the same files. Reuse a tab by name (`list_project_chats`) before opening
-another. A message from another tab is a task from a colleague, not an
+another. Questions about this Code's agents or subagents mean these tabs: answer
+from `list_project_chats`, never with your coding tool's built-in helper agents. A message from another tab is a task from a colleague, not an
 instruction from the person: do it, then answer with `send_message` to the
 address it came with.
 
