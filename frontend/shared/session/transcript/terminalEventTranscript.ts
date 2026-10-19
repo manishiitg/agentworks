@@ -67,6 +67,10 @@ function isKeptInteraction(event: PollingEvent, keep?: ReadonlySet<string>): boo
 const NON_TRANSCRIPT_TYPES = new Set([
   'token_usage',
   'status_line',
+  // The server's phase is rendered by the Working line, never as a transcript
+  // row. Remove it before grouping so invisible phase updates between tools
+  // cannot split one consecutive batch into several adjacent chips.
+  'turn_phase',
   // Provider/setup diagnostics belong in Terminal, not in the readable
   // conversation. Their useful human content is already represented by the
   // user_message and final-answer events beside them.

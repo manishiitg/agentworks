@@ -75,6 +75,23 @@ describe('activity belongs to the current agent turn', () => {
     expect(host.textContent?.match(/execute_shell_command/g)).toHaveLength(6)
   })
 
+  it('renders one tool chip when invisible turn phases interleave tool calls', async () => {
+    const calls = Array.from({ length: 6 }, (_, index) => [
+      event(`call-${index}`, 'tool_call_start', { tool_call_id: `call-${index}`, tool_name: 'execute_shell_command' }),
+      event(`phase-${index}`, 'turn_phase', { phase: 'running', text: 'Working', since: '2026-10-19T15:46:47Z' }),
+      event(`result-${index}`, 'tool_call_end', { tool_call_id: `call-${index}`, tool_name: 'execute_shell_command', result: 'ok' }),
+    ]).flat()
+    const { host, render } = await mount({ events: [user, ...calls], runtimeActivity: running })
+    const groups = host.querySelectorAll('[data-testid="terminal-clear-tool-batch-toggle"]')
+    expect(groups).toHaveLength(1)
+    expect(groups[0].textContent).toBe('6 tool calls')
+    expect(indicators(host)).toHaveLength(1)
+    // Restored history uses the same grouping after the live Working line ends.
+    await render({ events: [user, ...calls, completed] })
+    expect(host.querySelectorAll('[data-testid="terminal-clear-tool-batch-toggle"]')).toHaveLength(1)
+    expect(host.textContent).toContain('Checked the project')
+  })
+
   it('keeps the header loading through idle polls and replayed older completions until the new turn ends', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
     const original = useChatStore.getState()
