@@ -41,7 +41,7 @@ Combine actions into one step when they share one objective and output contract,
 |---|---|
 | A coherent task requiring judgment and tools | `agent`: complete task in the description, optional explicitly authored later phases, backend validation and repair in the same conversation |
 | Deterministic Python work | `scripted`: saved code, typed inputs, real outputs and validation |
-| Persistent specialist context or multi-agent coordination | `crew`: explicit call to a Crew trigger |
+| A specialist that is reused, learns from past runs, or that people want to talk to | `crew`: explicit call to a named Crew agent (see Step 4) |
 | A major fixed fork | `routing` |
 | A small fixed fork | `branch` |
 
@@ -78,6 +78,20 @@ Keep these as scripted `predefined_routes` or authored scripted batches. LLM
 specialists, ongoing memory and multi-agent coordination belong to an explicit
 Crew step. Do not put conversational child agents or ad hoc LLM spawning inside
 a Goal step. Preserve existing authored phases unless reviewed as redundant.
+
+Keep workflow agent steps simple and put specialist work in a Crew, where people
+can see, chat with and tune it (owner, 2026-10-19). Suggest moving a step to a
+Crew when any one is true: the same kind of work is needed by more than one
+workflow or route; it gets better by remembering past runs; or a person would
+want to ask it questions or tune it. Length or skills alone are not a reason.
+When several routes of one workflow reuse the same work and gain from shared
+memory and context, use one Crew for them: one named agent they share, or one
+agent per route when each route needs its own history.
+Keep mechanical work (fetch, transform, validate, deploy) and writing this
+workflow's own records in the workflow. Suggest, never move on your own: the
+owner decides. A Crew cannot write this workflow's database or files, so the
+Crew step returns its result (saved as the step's output) and a short workflow
+step after it saves that result where the workflow keeps its records.
 
 ### Step 5: When to Use Agent
 
