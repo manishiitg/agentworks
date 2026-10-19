@@ -174,7 +174,9 @@ func TestRetainedNativeWatchdogUsesCurrentNamedPane(t *testing.T) {
 			}
 			acceptNativeTurn(api, sessionID, "current", "native-current")
 			if mode == "renamed" {
-				terminalStore.HandleEvent(sessionID, codingAgentTmuxReaperChunkEvent(time.Now(), sessionID, "main:"+sessionID, "replacement-pane"))
+				if _, rebound := terminalStore.RebindLiveTmux(terminalID, "replacement-pane"); !rebound {
+					t.Fatal("could not rebind the native pane")
+				}
 			}
 			time.Sleep(40 * time.Millisecond)
 			if !api.isSessionBusy(sessionID) || trackedStatus(api, "current") != trackedExecutionStatusRunning {
