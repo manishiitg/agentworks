@@ -426,9 +426,34 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 				}
 			}
 		}
-		// Internal contacts reuse the exact two endpoints. External callers create
-		// a fresh inbox unless they explicitly select their previously returned one.
-		if !e.External || e.ConditionJob != "" {
+		// Registered agents have stable identities in either direction. Reuse
+		// their most recently active conversation under this exact sharing grant.
+		// Anonymous external contacts still select their own explicit inbox.
+		if e.External && dest.External && e.NamedAgentID != "" && dest.NamedAgentID != "" {
+			var latest time.Time
+			for i := range s.Conversations {
+				c := &s.Conversations[i]
+				for candidateSide := 0; candidateSide < 2; candidateSide++ {
+					if !sameNamedAgentConversationEndpoint(c.Endpoints[candidateSide], e) || !sameNamedAgentConversationEndpoint(c.Endpoints[1-candidateSide], dest) {
+						continue
+					}
+					var active time.Time
+					if len(c.Messages) > 0 {
+						active = c.Messages[len(c.Messages)-1].SentAt
+					}
+					if index < 0 || active.After(latest) {
+						index, side, latest = i, candidateSide, active
+					}
+				}
+			}
+			if index >= 0 {
+				// Keep displayed names and send-time authority current. They are
+				// not part of either agent's stable conversation identity.
+				s.Conversations[index].Endpoints[side] = e
+				s.Conversations[index].Endpoints[1-side] = dest
+				log.Printf("[AGENT-MESSAGE-THREAD] inbox=%s sender=%s recipient=%s reused=true", s.Conversations[index].ID, e.NamedAgentID, dest.NamedAgentID)
+			}
+		} else if !e.External || e.ConditionJob != "" {
 			for i := range s.Conversations {
 				c := &s.Conversations[i]
 				if c.Endpoints[0] == e && sameAgentMessageContact(c.Endpoints[1], dest) {
@@ -1234,6 +1259,15 @@ func (api *StreamingAPI) agentMessageSessionClosed(session string) bool {
 	}
 	active, ok := api.getActiveSession(session)
 	return ok && active != nil && active.Status == "stopped"
+}
+
+// Stable named-agent contacts do not change when a display name, attachment or
+// sending connection changes. A different owner or sharing grant is separate.
+func sameNamedAgentConversationEndpoint(existing, requested agentMessageEndpoint) bool {
+	return existing.External && requested.External && requested.NamedAgentID != "" &&
+		existing.NamedAgentID == requested.NamedAgentID && existing.UserID == requested.UserID &&
+		existing.Kind == requested.Kind && existing.ID == requested.ID &&
+		existing.ShareID == requested.ShareID && existing.ShareVersion == requested.ShareVersion
 }
 
 func sameAgentMessageContact(existing, requested agentMessageEndpoint) bool {

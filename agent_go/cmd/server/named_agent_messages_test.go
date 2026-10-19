@@ -97,7 +97,20 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 	if again := call(worker, send, true); again["message_id"] != receipt["message_id"] {
 		t.Fatal("uncertain send duplicated")
 	}
-	call(owner, map[string]any{"action": "send", "agent_name": "reviewer", "inbox_id": inbox, "message": "Review received"}, true)
+	// Sending to the same named peer in either direction preserves the inbox,
+	// even without an explicit reply or a locally retained offer.
+	back := call(owner, map[string]any{"action": "send", "agent_name": "reviewer", "target": "agent:worker", "message": "Review received", "submission_id": "review-answer"}, true)
+	if back["inbox_id"] != inbox {
+		t.Fatal("reverse named send split the conversation")
+	}
+	followup := map[string]any{"action": "send", "agent_name": "worker", "target": "agent:reviewer", "message": "Additional context", "submission_id": "review-context"}
+	next := call(worker, followup, true)
+	if next["inbox_id"] != inbox || next["sequence"] != float64(3) {
+		t.Fatal("follow-up named send split or reset the conversation")
+	}
+	if retry := call(worker, followup, true); retry["message_id"] != next["message_id"] {
+		t.Fatal("thread reuse duplicated a retry")
+	}
 	if n := len(call(worker, map[string]any{"action": "read", "agent_name": "worker"}, true)["messages"].([]any)); n != 1 {
 		t.Fatal("named reply missing")
 	}
@@ -117,14 +130,14 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 		}
 	}
 	page = call(owner, map[string]any{"action": "read", "agent_name": "reviewer", "after": page["next_cursor"]}, true)
-	if len(page["messages"].([]any)) != 2 {
+	if len(page["messages"].([]any)) != 3 {
 		t.Fatalf("internal contacts missing or cursor confused: %v", page)
 	}
 	// Durable store reload preserves names and the global mailbox cursor.
 	agentMessageMu.Lock()
 	saved, e := readAgentMessageStore(context.Background())
 	agentMessageMu.Unlock()
-	if e != nil || len(saved.Agents) != 2 || saved.NextAgentSequence != 4 {
+	if e != nil || len(saved.Agents) != 2 || saved.NextAgentSequence != 5 {
 		t.Fatalf("durable registration/cursor: %+v %v", saved, e)
 	}
 	call(owner, map[string]any{"action": "register", "agent_name": "reviewer", "allowed_connection_ids": []string{workerToken.ID}}, true)

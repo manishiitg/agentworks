@@ -130,6 +130,9 @@ func TestSharedAgentMessagingBetweenTwoAccounts(t *testing.T) {
 	if err != nil || queued["delivery"] != "stored" {
 		t.Fatalf("queued send: %v %v", queued, err)
 	}
+	if queued["inbox_id"] != first["inbox_id"] {
+		t.Fatal("same granted agent pair split the conversation")
+	}
 	if status, code, msg := env.api.revokeShare(context.Background(), "alice", share["share_id"].(string)); code != "" {
 		t.Fatalf("revoke: %d %s %s", status, code, msg)
 	}
@@ -157,5 +160,12 @@ func TestSharedAgentMessagingBetweenTwoAccounts(t *testing.T) {
 				t.Fatalf("pending message of a revoked share is %q, want suppressed", m.Delivery)
 			}
 		}
+	}
+	if _, _, code, msg := env.api.createShare(context.Background(), "alice", "helper", "bob", time.Hour); code != "" {
+		t.Fatal(msg)
+	}
+	regranted, err := send(bob, "scout", "agent:alice/helper", "new grant")
+	if err != nil || regranted["inbox_id"] == first["inbox_id"] {
+		t.Fatalf("new grant reused revoked conversation: %v %v", regranted, err)
 	}
 }
