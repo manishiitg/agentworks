@@ -3125,6 +3125,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/workflow/update", api.handleUpdateWorkflow).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/workflow/constants", orchtypes.HandleWorkflowConstants).Methods("GET")
 	apiRouter.HandleFunc("/workflow/builder-session", api.handleGetWorkflowBuilderSession).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/workflow/builder-session", api.handleNewWorkflowBuilderSession).Methods("POST")
+	apiRouter.HandleFunc("/workflow/builder-sessions", api.handleWorkflowBuilderBindings).Methods("POST")
 	apiRouter.HandleFunc("/dashboards", api.handleDashboards).Methods("POST")
 	api.registerDashboardQuestionRoutes(apiRouter)
 	api.registerDashboardFunctionRoutes(apiRouter)
@@ -4484,6 +4486,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				},
 			})
 			return
+		}
+	}
+
+	if req.AgentMode == "workflow_phase" && req.PhaseID == "workflow-builder" && resolvedProfile == nil && !currentUserIsReadOnly {
+		active, _ := api.getActiveSession(sessionID)
+		policy := resolveWorkflowChatPolicy(sessionID, req, active, currentUserIsReadOnly)
+		if policy.Mode == "builder" && policy.Origin == "interactive" {
+			if err := recordWorkflowBuilderSend(r.Context(), workflowBuilderScope{PresetID: req.PresetQueryID, Workspace: req.SelectedFolder}, sessionID); err != nil {
+				http.Error(w, "could not record Builder chat", http.StatusServiceUnavailable)
+				return
+			}
 		}
 	}
 

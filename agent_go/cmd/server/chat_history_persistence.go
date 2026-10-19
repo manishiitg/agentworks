@@ -2040,6 +2040,7 @@ func listWorkflowBuilderHistoryFromDisk(userID, workflowPath string, readBudget 
 	// The index is the normal path. Full transcript reads below are only the
 	// one-time compatibility migration for conversations saved before the
 	// index existed (or for an externally modified transcript).
+	indexChanged := !index.Complete
 	sessions := make([]ChatHistorySession, 0, len(refs))
 	for _, sr := range refs {
 		session, ok := indexedLocalChatHistorySession(index, sr.ref)
@@ -2054,13 +2055,18 @@ func listWorkflowBuilderHistoryFromDisk(userID, workflowPath string, readBudget 
 			}
 			session.ConversationPath = sr.ref.workspacePath
 			putLocalChatHistoryIndexEntry(&index, sr.ref, session)
+			indexChanged = true
 		}
 		session.AgentMode = "workflow"
-		preserveChatHistorySessionTitle(&index, &session)
+		if preserveChatHistorySessionTitle(&index, &session) {
+			indexChanged = true
+		}
 		sessions = append(sessions, session)
 	}
 	index.Complete = true
-	_ = writeLocalChatHistoryIndex(indexLocalPath, &index)
+	if indexChanged {
+		_ = writeLocalChatHistoryIndex(indexLocalPath, &index)
+	}
 	if readBudget > 0 {
 		return paginateChatHistorySessions(sessions, readBudget, 0), true
 	}

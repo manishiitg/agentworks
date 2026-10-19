@@ -21,8 +21,10 @@ import {
   PRODUCT_SURFACE_LABELS,
 } from '../../products/productSurfaceConfig'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
+import { useWorkflowBuilderBindings } from '../../hooks/useWorkflowBuilderBindings'
 import {
   sidebarChats,
+  sidebarScope,
   sidebarWorkspaceGroups,
   sidebarChatDisplayTitle,
   isGeneratedSidebarPrompt,
@@ -218,6 +220,21 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     })
   }, [pendingHistory, selectedTab, tabs, product, resumeHistory])
   const history = snapshot?.scope === scope ? snapshot : null
+  const scopedSessions = [
+    ...Object.values(tabs).map(tab => ({ id: tab.sessionId || tab.tabId, workflow: sidebarScope(tab.sessionId || '', tab.metadata?.agentProfileWorkspace,
+      tab.metadata?.agentProfileId, tab.metadata?.presetQueryId, presets)?.workflowId })),
+    ...active.map(session => ({ id: session.session_id, workflow: sidebarScope(session.session_id, session.workspace_path, '', session.preset_query_id, presets)?.workflowId })),
+    ...(history?.sessions || []).map(session => ({ id: session.session_id, workflow: sidebarScope(session.session_id,
+      session.workspace_path || session.runtime?.workspace_path, '', '', presets)?.workflowId })),
+  ]
+  const workflowIds = new Set(scopedSessions.map(session => session.workflow))
+  const builderSessions: Record<string, string[]> = {}
+  for (const id of [...workflowIds].filter((id): id is string => !!id).sort())
+    builderSessions[id] = [...new Set(scopedSessions.filter(session => session.workflow === id).map(session => session.id))].sort()
+  const builderPresets = presets.filter(preset => workflowIds.has(preset.id) &&
+    allowed.includes(preset.workflowKind === 'relay' ? 'relays' : 'agentworks') &&
+    (!user?.allowed_workflow_ids || user.allowed_workflow_ids.includes(preset.id)))
+  const builderBindings = useWorkflowBuilderBindings(builderPresets, builderSessions)
   const rows = useMemo(
     () =>
       sidebarChats({
@@ -229,6 +246,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
         projects: directory?.scope === scope ? directory.projects : [],
         allowedWorkflowIds: user?.allowed_workflow_ids,
         jobs: scheduleCatalog?.scope === scope ? scheduleCatalog.jobs : [],
+        builders: builderBindings,
       }),
     [
       tabs,
@@ -240,6 +258,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       scope,
       user?.allowed_workflow_ids,
       scheduleCatalog,
+      builderBindings,
     ]
   )
   useEffect(() => {

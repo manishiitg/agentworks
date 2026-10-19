@@ -1,4 +1,5 @@
 import { codeChatAttachmentPaths } from '../utils/codeChatAttachments'
+import { publishWorkflowBuilderBinding } from '../hooks/useWorkflowBuilderBindings'
 import { useConversationOlderPages } from '../hooks/useConversationOlderPages'
 import { codeLocalFilesForChat, codeChatModeForChat } from '../products/work/codeLocalFiles'
 import { useMcpOAuthChatNotifications } from '../hooks/useMcpOAuthChatNotifications'
@@ -3439,6 +3440,22 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     const targetTab = targetTabId ? chatStore.getTab(targetTabId) : activeTab
     const stillOwnsTarget = () => isChatIdentityCurrent(identity) && (!targetTab ||
       useChatStore.getState().getTab(targetTab.tabId)?.sessionId === targetTab.sessionId)
+    let newWorkflowSession: string | undefined
+    if (targetTab?.metadata?.mode === 'workflow' && targetTab.metadata.phaseId === 'workflow-builder' &&
+        !targetTab.metadata.isViewOnly && !targetTab.metadata.isScheduledRun && !targetTab.metadata.isBotRun && !targetTab.metadata.isExecutionRun) {
+      const preset = useGlobalPresetStore.getState().workflowPresets.find(item => item.id === targetTab.metadata?.presetQueryId)
+      if (!preset?.selectedFolder?.filepath) { addToast('Could not find this workflow.', 'error'); return }
+      try {
+        const binding = await agentApi.startNewWorkflowBuilderSession(preset.id, preset.selectedFolder.filepath)
+        if (!stillOwnsTarget()) return
+        if (!binding.success || !binding.is_builder || !binding.session_id) throw new Error('Builder chat unavailable')
+        newWorkflowSession = binding.session_id
+        publishWorkflowBuilderBinding(binding, identity, true)
+      } catch {
+        addToast('Could not start a new chat. Your existing conversation was kept.', 'error')
+        return
+      }
+    }
     // Stop the previous backend session first (if it exists). This closes any
     // tmux-backed CLI owner before the tab rotates to a fresh AgentWorks
     // session, preventing two pi-cli sessions from sharing the Chats cwd.
@@ -3498,7 +3515,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 
     if (targetTab) {
       activateTab(targetTab.tabId)
-      chatStore.resetTabChat(targetTab.tabId, rotatedConversation?.session_id)
+      chatStore.resetTabChat(targetTab.tabId, newWorkflowSession || rotatedConversation?.session_id)
       if (rotatedConversation) {
         chatStore.setTabMetadata(targetTab.tabId, {
           agentProfileConversationId: rotatedConversation.conversation_id,

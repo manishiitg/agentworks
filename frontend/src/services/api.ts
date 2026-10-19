@@ -1207,18 +1207,34 @@ export const agentApi = {
 
   getWorkflowBuilderSession: async (
     presetQueryId?: string,
-    workspacePath?: string
+    workspacePath?: string,
+    summaryOnly = false,
   ): Promise<WorkflowBuilderSessionResponse> => {
     const params: Record<string, string> = {}
     if (presetQueryId) params.preset_query_id = presetQueryId
     if (workspacePath) params.workspace_path = workspacePath
+    if (summaryOnly) params.summary_only = 'true'
     return dedupedGet(
-      `workflow-builder-session:${presetQueryId || ''}:${workspacePath || ''}`,
+      `workflow-builder-session:${captureChatIdentity()}:${presetQueryId || ''}:${workspacePath || ''}:${summaryOnly}`,
       async () => {
         const response = await api.get('/api/workflow/builder-session', { params })
         return response.data
       }
     )
+  },
+
+  getWorkflowBuilderSessions: async (workflows: { preset_query_id: string; workspace_path: string; session_ids?: string[] }[]): Promise<{ success: boolean; bindings: Record<string, WorkflowBuilderSessionResponse> }> => {
+    const sorted = [...workflows].sort((a, b) => a.preset_query_id.localeCompare(b.preset_query_id))
+    return dedupedGet(`workflow-builder-batch:${captureChatIdentity()}:${JSON.stringify(sorted)}`,
+      async () => (await api.post('/api/workflow/builder-sessions', { workflows: sorted })).data)
+  },
+
+  startNewWorkflowBuilderSession: async (presetId: string, workspacePath: string): Promise<WorkflowBuilderSessionResponse> => {
+    const identity = captureChatIdentity()
+    const response = await api.post('/api/workflow/builder-session', { preset_query_id: presetId, workspace_path: workspacePath }, { chatIdentityGeneration: identity })
+    assertChatIdentityCurrent(identity)
+    invalidateDedupedGetPrefix('workflow-builder-batch:')
+    return response.data
   },
 
   // Start a new agent query
