@@ -2,7 +2,9 @@ package agentworksclient
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -28,7 +30,7 @@ func (c *Client) ServeExecutor(ctx context.Context, executor *localfiles.Executo
 	if err != nil {
 		if response != nil {
 			defer response.Body.Close()
-			return &APIError{Status: response.StatusCode, Code: "executor_connection_failed", Message: "Executor connection was rejected; sign in with devices:connect permission."}
+			return executorConnectionError(response)
 		}
 		return fmt.Errorf("executor connection failed: %w", err)
 	}
@@ -50,7 +52,15 @@ func (c *Client) ServeExecutor(ctx context.Context, executor *localfiles.Executo
 			return &APIError{Status: 409, Code: "device_busy", Message: "The previous device connection is still closing; reconnect with backoff."}
 		}
 		if websocket.IsCloseError(err, websocket.ClosePolicyViolation) {
-			return &APIError{Status: 409, Code: "executor_rejected", Message: "Device ID is already connected or the executor handshake was rejected."}
+			if closeErr, ok := err.(*websocket.CloseError); ok {
+				switch closeErr.Text {
+				case "invalid executor handshake":
+					return &APIError{Status: 409, Code: "invalid_executor_handshake", Message: "The local folder connection could not be verified. Update AgentWorks from the app's connection setup, then try sharing the folder again."}
+				case "device connection is no longer authorized":
+					return &APIError{Status: 403, Code: "device_authorization_lost", Message: "Access to this local folder connection is no longer approved. Open Local CLI connection in the app and follow its setup to reconnect."}
+				}
+			}
+			return &APIError{Status: 409, Code: "executor_rejected", Message: "The server rejected the local folder connection. Open Local CLI connection in the app to check its setup."}
 		}
 		return fmt.Errorf("executor handshake rejected")
 	}
@@ -144,4 +154,33 @@ func (c *Client) ServeExecutor(ctx context.Context, executor *localfiles.Executo
 			}
 		}(request)
 	}
+}
+
+// Only the server's structured error is suitable for display. A proxy's HTML,
+// plain response body or authentication headers are not a connection reason.
+func executorConnectionError(response *http.Response) *APIError {
+	e := &APIError{Status: response.StatusCode, Code: "executor_connection_failed", Message: "The server could not accept the local folder connection. Try again; if it continues, contact your administrator."}
+	switch response.StatusCode {
+	case http.StatusUnauthorized:
+		e.Message = "Your AgentWorks sign-in could not be verified. Open Local CLI connection in the app and follow its setup to sign in again."
+	case http.StatusForbidden:
+		e.Message = "The server did not allow this local folder connection. Open Local CLI connection in the app to check its setup, or contact your administrator."
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, 8193))
+	if err != nil || len(data) > 8192 {
+		return e
+	}
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(data, &body) == nil && body.Error.Message != "" && len(body.Error.Message) <= 2048 {
+		e.Message = body.Error.Message
+		if body.Error.Code != "" && len(body.Error.Code) <= 100 {
+			e.Code = body.Error.Code
+		}
+	}
+	return e
 }

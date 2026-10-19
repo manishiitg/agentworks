@@ -224,6 +224,40 @@ func TestLocalDeviceBrowserAndUnscopedTokenCannotConnect(t *testing.T) {
 	}
 }
 
+func TestLocalDeviceConnectionExplainsRejection(t *testing.T) {
+	_, server, store, _, token := localDeviceTestServer(t)
+	_, unscoped, err := store.Issue(t.Context(), accesstokens.Token{Name: "Agent", UserID: "owner", Username: "owner", Scopes: []string{"files:read"}, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, token, code, message string
+		status                     int
+	}{
+		{"sign_in", "invalid-test-token", "executor_connection_failed", "sign-in could not be verified", 401},
+		{"consent", unscoped, "insufficient_scope", "permission to share local folders", 403},
+		{"handshake", token, "invalid_executor_handshake", "local folder connection could not be verified", 409},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client, err := agentworksclient.New(server.URL, tc.token)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			// The invalid hello must be refused before any folder or command runs.
+			err = client.ServeExecutor(ctx, &localfiles.Executor{}, func() { t.Error("rejected executor connected") })
+			var apiErr *agentworksclient.APIError
+			if !errors.As(err, &apiErr) || apiErr.Status != tc.status || apiErr.Code != tc.code || !strings.Contains(apiErr.Message, tc.message) {
+				t.Fatalf("connection rejection = %v", err)
+			}
+			if strings.Contains(err.Error(), tc.token) {
+				t.Fatal("connection error exposed the credential")
+			}
+		})
+	}
+}
+
 func TestLocalDeviceToolsRejectConnectorPrincipals(t *testing.T) {
 	api := &StreamingAPI{}
 	for _, claims := range []*UserClaims{{UserID: "owner", Provider: "bot_route"}, {UserID: "owner", Provider: "bot_owner"}, {UserID: "owner", Provider: slackDMProvider}, {UserID: "owner", ExecutionPrincipal: &ExecutionPrincipal{Kind: "bot_route"}}, {UserID: "owner", BotRouteGrant: "run"}} {

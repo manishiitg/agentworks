@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -252,37 +253,64 @@ func (device *localDeviceConnection) authorized(ctx context.Context) bool {
 }
 func (api *StreamingAPI) handleLocalDeviceConnect(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
+	owner, agentID, deviceID := "", "", ""
+	if claims != nil {
+		owner = claims.UserID
+		if claims.AccessToken != nil {
+			agentID = claims.AccessToken.BoundAgentID
+		}
+	}
+	upgraded := false
+	connectionEvent := func(status int, check string) {
+		httpStatus := status
+		if upgraded {
+			httpStatus = http.StatusSwitchingProtocols
+		}
+		log.Printf("[LOCAL-DEVICE] http_status=%d status=%d check=%s user=%q agent=%q device=%q", httpStatus, status, check, owner, agentID, deviceID)
+	}
 	if claims == nil || claims.AccessToken == nil || !claims.AccessToken.Allows("devices:connect") {
-		externalError(w, 403, "insufficient_scope", "An explicitly approved devices:connect connection is required.")
+		connectionEvent(http.StatusForbidden, "device_consent")
+		externalError(w, 403, "insufficient_scope", "This connection does not have permission to share local folders. Open Local CLI connection in the app and follow its setup to approve access.")
 		return
 	}
-	upgrader := websocket.Upgrader{ReadBufferSize: 4096, WriteBufferSize: 4096}
+	upgrader := websocket.Upgrader{ReadBufferSize: 4096, WriteBufferSize: 4096, Error: func(w http.ResponseWriter, r *http.Request, status int, _ error) {
+		connectionEvent(status, "websocket_upgrade")
+		externalError(w, status, "executor_upgrade_failed", "The local folder connection could not be opened. Check that your network allows live connections, or contact your administrator.")
+	}}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
+	upgraded = true
 	defer conn.Close()
 	conn.SetReadLimit(localfiles.MaxMessageBytes)
 	conn.SetReadDeadline(time.Now().Add(15 * time.Second))
 	var hello localfiles.Hello
 	if err = conn.ReadJSON(&hello); err != nil || hello.Validate() != nil {
+		connectionEvent(http.StatusBadRequest, "executor_handshake")
 		conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "invalid executor handshake"), time.Now().Add(time.Second))
 		return
 	}
+	deviceID = hello.DeviceID
 	device := &localDeviceConnection{hello: hello, owner: claims.UserID, claims: claims, conn: conn, done: make(chan struct{}), ready: make(chan struct{}), pending: map[string]chan localfiles.Response{}, slots: make(chan struct{}, 8)}
 	if !device.authorized(r.Context()) {
+		connectionEvent(http.StatusForbidden, "live_device_authorization")
+		conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "device connection is no longer authorized"), time.Now().Add(time.Second))
 		return
 	}
 	key := claims.UserID + "/" + hello.DeviceID
 	if _, loaded := api.localDevices.LoadOrStore(key, device); loaded {
+		connectionEvent(http.StatusConflict, "device_already_connected")
 		conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "device is already connected"), time.Now().Add(time.Second))
 		return
 	}
 	defer func() { api.localDevices.CompareAndDelete(key, device); close(device.done) }()
 	conn.SetWriteDeadline(time.Now().Add(15 * time.Second))
 	if err = conn.WriteJSON(map[string]bool{"connected": true}); err != nil {
+		connectionEvent(http.StatusBadGateway, "connection_ack")
 		return
 	}
+	connectionEvent(http.StatusSwitchingProtocols, "connected")
 	close(device.ready)
 	conn.SetReadDeadline(time.Now().Add(75 * time.Second))
 	conn.SetPongHandler(func(string) error { return conn.SetReadDeadline(time.Now().Add(75 * time.Second)) })
@@ -301,6 +329,7 @@ func (api *StreamingAPI) handleLocalDeviceConnect(w http.ResponseWriter, r *http
 				active := device.authorized(ctx)
 				cancel()
 				if !active {
+					connectionEvent(http.StatusForbidden, "live_device_authorization")
 					conn.Close()
 					return
 				}

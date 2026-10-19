@@ -2,12 +2,14 @@ package agentworksclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,6 +18,33 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
+
+func TestExecutorHTTPRejectionDoesNotEchoUpstreamBody(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, message string
+		status              int
+	}{
+		{"proxy", "<html>private-upstream-diagnostic</html>", "server could not accept", 502},
+		{"forbidden", `{"error":"private-upstream-diagnostic"}`, "server did not allow", 403},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				fmt.Fprint(w, tc.body)
+			}))
+			defer server.Close()
+			client, err := New(server.URL, "test-token")
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = client.ServeExecutor(t.Context(), &localfiles.Executor{}, nil)
+			var apiErr *APIError
+			if !errors.As(err, &apiErr) || apiErr.Status != tc.status || !strings.Contains(apiErr.Message, tc.message) || strings.Contains(err.Error(), "private-upstream-diagnostic") || strings.Contains(err.Error(), "devices:connect") {
+				t.Fatalf("unsafe or misleading rejection: %v", err)
+			}
+		})
+	}
+}
 
 func TestExecutorShellKeepsHeartbeatAndHandlesCancellation(t *testing.T) {
 	capability := security.CurrentSandboxCapability()
