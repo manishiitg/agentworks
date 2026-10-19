@@ -200,10 +200,13 @@ func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	const hostedRoot = "_users/owner/Chats/Code/projects/example"
+	const hostedRoot = "Crew/example"
 	const hostedKey = "example:chat:abcdef12"
 	const hostedSession = "product-33333333-2222-4333-8444-555555555555"
-	record := ProductConversationRecord{ProfileID: codeproduct.ProfileID, ConversationKey: hostedKey, SessionID: hostedSession, WorkspacePath: hostedRoot, ResourceID: "example"}
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: codeproduct.ProfileID, Folder: "example", OwnerID: "owner", ProjectID: "example", Shared: true}); err != nil {
+		t.Fatal(err)
+	}
+	record := ProductConversationRecord{ConversationID: "conversation-44444444-2222-4333-8444-555555555555", ProfileID: codeproduct.ProfileID, ConversationKey: hostedKey, SessionID: hostedSession, WorkspacePath: hostedRoot, ResourceID: "example"}
 	registry, _ := json.Marshal(productConversationRegistryDocument{Version: 1, Entries: map[string]ProductConversationRecord{"code/" + hostedKey: record}})
 	env.mock.mu.Lock()
 	env.mock.files[hostedRoot+"/product.json"] = `{"schema_version":1,"product":"code","id":"example","owner_id":"owner","title":"Example","session_id":"project-main"}`

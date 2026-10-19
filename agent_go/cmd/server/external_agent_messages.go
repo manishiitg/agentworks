@@ -72,9 +72,9 @@ func hostedInboxReplyClaims(claims *UserClaims, c agentConversation, side int) *
 	if claims == nil || claims.AccessToken == nil || side != 1 {
 		return claims
 	}
-	source, peer, token := c.Endpoints[1], c.Endpoints[0], claims.AccessToken
-	if !source.External || source.UserID != claims.UserID || token.BoundAgentID == "" || token.BoundAgentID != source.NamedAgentID ||
-		peer.External || peer.UserID != claims.UserID || !slices.ContainsFunc(c.Messages, func(m agentMessage) bool {
+	agent, hosted, token := c.Endpoints[1], c.Endpoints[0], claims.AccessToken
+	if !agent.External || agent.UserID != claims.UserID || token.BoundAgentID == "" || token.BoundAgentID != agent.NamedAgentID ||
+		hosted.External || hosted.UserID != claims.UserID || !slices.ContainsFunc(c.Messages, func(m agentMessage) bool {
 		return m.From == 0 && !serverAuthoredKind(m.Kind)
 	}) {
 		return claims

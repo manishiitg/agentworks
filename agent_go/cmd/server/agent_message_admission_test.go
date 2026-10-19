@@ -52,12 +52,15 @@ func TestAgentMessageStateIsOwnerOnlyAndDeliveryRechecksAuthority(t *testing.T) 
 		}
 	}
 	// The accepted queued submission loses authority before a receiving turn.
+	// Use the current owner: another person's private Crew is not an initial
+	// access grant, even when a token names its ID.
+	c.Endpoints[0].UserID, c.Endpoints[0].ID = "owner", "owner"
 	tokens, err := openAccessTokens()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer tokens.Close()
-	token, _, err := tokens.Issue(ctx, accesstokens.Token{Name: "message-probe", UserID: "other", Scopes: []string{"crews:run"}, CrewIDs: []string{"beta"}, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
+	token, _, err := tokens.Issue(ctx, accesstokens.Token{Name: "message-probe", UserID: "owner", Scopes: []string{"crews:run"}, CrewIDs: []string{"beta"}, ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,13 +68,14 @@ func TestAgentMessageStateIsOwnerOnlyAndDeliveryRechecksAuthority(t *testing.T) 
 	if err := env.api.recheckAgentMessageAdmission(ctx, c, msg); err != nil {
 		t.Fatalf("current connection refused: %v", err)
 	}
-	if err := tokens.Revoke(ctx, token.ID, "other", time.Now()); err != nil {
+	if err := tokens.Revoke(ctx, token.ID, "owner", time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := env.api.deliverAgentMessage(ctx, c, msg); err == nil || !strings.Contains(err.Error(), "connection") {
 		t.Fatalf("revoked submission admitted: %v", err)
 	}
 	msg.SenderConnectionID = ""
+	c.Endpoints[0].UserID, c.Endpoints[0].ID = "other", "other"
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"other","username":"other","disabled":true}]}`)
 	if _, err := env.api.deliverAgentMessage(ctx, c, msg); err == nil || !strings.Contains(err.Error(), "disabled") {
 		t.Fatalf("disabled participant admitted: %v", err)
