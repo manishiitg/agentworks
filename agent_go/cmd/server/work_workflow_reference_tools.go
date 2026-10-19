@@ -56,6 +56,12 @@ func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string
 }
 
 func listWorkspaceProjectsForOwner(ctx context.Context, userID, ownerID, query string, product projectProduct) ([]map[string]interface{}, error) {
+	return listWorkspaceProjectsForOwnerWithNavigation(ctx, userID, ownerID, query, product, false)
+}
+
+// Navigation includes the owner's Local projects; references/functions retain
+// their existing exclusion. Both use the same registered roots and audience.
+func listWorkspaceProjectsForOwnerWithNavigation(ctx context.Context, userID, ownerID, query string, product projectProduct, navigation bool) ([]map[string]interface{}, error) {
 	root := agentProfileRuntimeWorkspace(ownerID, product.ProjectsRoot)
 	if sanitizeUserIDForPath(ownerID) != sanitizeUserIDForPath(userID) && root == agentProfileRuntimeWorkspace(userID, product.ProjectsRoot) {
 		// Single-account layouts share one Chats root; don't list it twice.
@@ -100,6 +106,13 @@ func listWorkspaceProjectsForOwner(ctx context.Context, userID, ownerID, query s
 		if !projectDiscoveryRootIsCurrent(strings.TrimSuffix(candidate, "/product.json")) {
 			continue
 		}
+		if navigation {
+			if identity, known := projectIdentityOf(strings.TrimSuffix(candidate, "/product.json")); known {
+				if record, registered := defaultProjectOwners().Lookup(identity.Product, identity.Folder); registered && sanitizeUserIDForPath(record.OwnerID) != sanitizeUserIDForPath(ownerID) {
+					continue
+				}
+			}
+		}
 		// Another owner's Crew is listed only while it is shared with others (not made private, sharing on).
 		if access != "owner" && !crewSharedWith(strings.TrimSuffix(candidate, "/product.json"), userID) && !crewIsCoOwner(strings.TrimSuffix(candidate, "/product.json"), userID) {
 			continue
@@ -115,7 +128,8 @@ func listWorkspaceProjectsForOwner(ctx context.Context, userID, ownerID, query s
 		if json.Unmarshal([]byte(raw), &manifest) != nil || !strings.EqualFold(strings.TrimSpace(manifest.Product), product.ProfileID) {
 			continue
 		}
-		if product.ProfileID == "code" && codeProjectMode(ctx, strings.TrimSuffix(candidate, "/product.json")) == "local" {
+		if product.ProfileID == "code" && codeProjectMode(ctx, strings.TrimSuffix(candidate, "/product.json")) == "local" &&
+			(!navigation || sanitizeUserIDForPath(ownerID) != sanitizeUserIDForPath(userID)) {
 			continue
 		}
 		id := strings.TrimSpace(manifest.ID)

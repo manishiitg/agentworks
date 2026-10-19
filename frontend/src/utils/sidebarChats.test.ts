@@ -3,6 +3,39 @@ import { sidebarChats, sidebarScope, sidebarWorkspaceGroups, sidebarChatDisplayT
 import type { ChatTab } from '../stores/useChatStore'
 import type { ActiveSessionInfo } from '../services/api-types'
 import type { WorkflowBuilderSessionResponse } from '../services/api-types'
+
+it('groups registered project aliases by server identity, drops absent projects and keeps equal-name projects distinct', () => {
+  const legacy = 'Chats/Code/projects/private-old'
+  const canonical = 'Crew/private-current'
+  const tabs = {
+    main: tab('main', { name: 'Main', metadata: { agentProfileId: 'code', agentProfileProjectId: 'private-id', agentProfileWorkspace: legacy } }),
+    schedule: tab('schedule-run', { name: 'Daily wrap-up', metadata: { agentProfileId: 'work', agentProfileProjectId: 'legacy-id', agentProfileWorkspace: canonical, isScheduledRun: true } }),
+    other: tab('other', { metadata: { agentProfileId: 'work', agentProfileProjectId: 'other-id', agentProfileWorkspace: 'Crew/other' } }),
+    ghost: tab('ghost', { metadata: { agentProfileId: 'work', agentProfileProjectId: 'deleted-test', agentProfileWorkspace: 'Crew/deleted-test' } }),
+  }
+  const rows = sidebarChats({ tabs, active: [], recent: [], presets: [], allowed: ['code', 'work'], projectInventoryKnown: true,
+    projects: [
+      { id: 'private-id', workspaceId: 'code:private-id', surface: 'code', title: 'SDE Private', workspacePath: canonical, aliases: [legacy] },
+      { id: 'other-id', workspaceId: 'work:other-id', surface: 'work', title: 'SDE Private', workspacePath: 'Crew/other' },
+    ],
+  })
+  expect(rows.map(row => row.id).sort()).toEqual(['main', 'other', 'schedule-run'])
+  const groups = sidebarWorkspaceGroups(rows)
+  expect(groups).toHaveLength(2)
+  expect(groups.find(group => group.id === 'code:private-id')?.chats.map(row => row.id)).toEqual(['main', 'schedule-run'])
+  expect(groups.find(group => group.id === 'work:other-id')?.chats).toHaveLength(1)
+  expect(tabs.schedule.metadata?.agentProfileProjectId).toBe('legacy-id')
+})
+
+it('does not treat inventory failure as revocation or canonical aliases as a product grant', () => {
+  const tabs = { one: tab('one', { metadata: { agentProfileId: 'work', agentProfileProjectId: 'project', agentProfileWorkspace: 'Crew/project' } }) }
+  const base = { tabs, active: [], recent: [], presets: [], allowed: ['work' as const] }
+  expect(sidebarChats({ ...base, projectInventoryKnown: false, projects: [] })).toHaveLength(1)
+  expect(sidebarChats({ ...base, projectInventoryKnown: true, projects: [] })).toHaveLength(0)
+  expect(sidebarChats({ ...base, projectInventoryKnown: true, projects: [
+    { id: 'project', workspaceId: 'code:project', surface: 'code', title: 'Private', workspacePath: 'Crew/project' },
+  ] })).toHaveLength(0)
+})
 const tab = (id: string, patch: Partial<ChatTab> = {}) =>
   ({
     tabId: id,

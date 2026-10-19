@@ -299,6 +299,10 @@ func (api *StreamingAPI) handleWorkspaces(w http.ResponseWriter, r *http.Request
 		externalError(w, 400, "invalid_arguments", "Send a workspace action.")
 		return
 	}
+	if externalArg(args, "action") == "list" && externalArg(args, "detail") == "navigation" {
+		api.listWorkspaceNavigation(w, r, args)
+		return
+	}
 	api.externalWorkspaceCall(w, r, args)
 }
 

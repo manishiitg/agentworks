@@ -1369,6 +1369,17 @@ export const agentApi = {
     return response.data
   },
 
+  /** Minimal app navigation from the current canonical project inventory. */
+  listWorkspaceNavigation: async (): Promise<{ navigation_version: number; workspaces: Array<{ workspace_id: string; id: string; profile_id: 'work' | 'code'; name: string; workspace_path: string; aliases?: string[] }> }> => {
+    const response = await api.post('/api/workspaces', { action: 'list', detail: 'navigation' })
+    const result = response.data
+    if (result.navigation_version !== 1 || !Array.isArray(result.workspaces) || result.workspaces.some((item: { workspace_id?: string; id?: string; profile_id?: string; workspace_path?: string }) =>
+      !item.id || !['work', 'code'].includes(item.profile_id || '') || !item.workspace_path || item.workspace_id !== `${item.profile_id}:${item.id}`)) {
+      throw new Error('Project navigation is unavailable.')
+    }
+    return result
+  },
+
   /** The Crews the signed-in user owns that live at the shared root (Crew/<folder>); older servers have none. */
   listOwnSharedProjects: async (profileId: string): Promise<{ projects: Array<{ id: string; title?: string; workspace_path: string }> }> => {
     const response = await api.get(
