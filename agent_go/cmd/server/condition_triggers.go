@@ -249,7 +249,7 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 	if err := c.current(ctx, job, cfg); err != nil {
 		return nil, err
 	}
-	root := agentProfileRuntimeWorkspace(job.UserID, job.WorkspacePath)
+	root := canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(job.UserID, job.WorkspacePath))
 	source, found, err := c.s.readFile(ctx, path.Join(root, cfg.Script))
 	if err != nil || !found {
 		return nil, errors.New("watcher script is unavailable")
@@ -300,6 +300,14 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 	result, err := client.ExecuteShellCommand(ctx, workspace.ExecuteShellCommandParams{Command: command, WorkingDirectory: runRoot, Timeout: &timeout})
 	if err != nil || result.CommandFailed() {
 		detail := result.Stderr
+		if err != nil {
+			detail = err.Error()
+		} else if detail == "" {
+			detail = result.Error
+		}
+		if detail == "" {
+			detail = fmt.Sprintf("exit code %d", result.ExitCode)
+		}
 		for _, value := range env {
 			if value != "" {
 				detail = strings.ReplaceAll(detail, value, "[redacted]")

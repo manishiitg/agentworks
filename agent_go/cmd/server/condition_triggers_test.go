@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +14,7 @@ import (
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 )
 
 func conditionCodeFixture(t *testing.T) (triggerLinkEnv, context.Context, string) {
@@ -265,5 +269,62 @@ func TestConditionOnceDisablesAndAdmitsOnlyAcceptedMessage(t *testing.T) {
 	message.Submission = conditiontrigger.Submission(conditionKey(job), "ticket")
 	if err := env.api.recheckAgentMessageAdmission(ctx, conversation, message); !errors.Is(err, conditiontrigger.ErrPaused) {
 		t.Fatal("changed action admitted", err)
+	}
+}
+
+// A saved Watcher retains its private binding after a move, but its scratch
+// directory and shell guard must use the real project folder.
+func TestMovedProjectWatcherUsesCanonicalShellDirectory(t *testing.T) {
+	env, ctx, oldRoot := conditionCodeFixture(t)
+	c := env.svc.conditionService()
+	out, err := c.manage(ctx, "owner", "code", "checks", map[string]interface{}{"action": "create", "request_id": "moved-check", "trigger": map[string]interface{}{"name": "Check", "cron_expression": "*/5 * * * *", "timezone": "UTC", "script": "code/triggers/check.py", "target": map[string]interface{}{"kind": "agent", "message": "Handle"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := out.(map[string]interface{})["id"].(string)
+	job, err := env.svc.Job(ctx, "owner", projectScheduleJobID("code", "checks", id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const root = "Crew/checks"
+	registry := withProjectOwnerRegistry(t)
+	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: "checks", OwnerID: "owner", ProjectID: "checks", CanonicalRoot: root, BindingRoot: oldRoot, Shared: true, Aliases: []string{oldRoot}, Private: true, AudienceConfigured: true}); err != nil {
+		t.Fatal(err)
+	}
+	env.mock.mu.Lock()
+	for name, contents := range env.mock.files {
+		if strings.HasPrefix(name, oldRoot+"/") {
+			env.mock.files[root+strings.TrimPrefix(name, oldRoot)] = contents
+		}
+	}
+	env.mock.mu.Unlock()
+	stubCrewLookups(t, map[string]string{root: "owner"}, map[string]string{oldRoot: root})
+	var got workspace.ExecuteShellCommandParams
+	fail := false
+	ws := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/execute" {
+			env.mock.ServeHTTP(w, r)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Error(err)
+		}
+		if fail {
+			http.Error(w, "Working directory must be within the workspace", http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"success": true, "data": map[string]interface{}{"stdout": `{"events":[],"state":{}}`, "exit_code": 0}})
+	}))
+	t.Cleanup(ws.Close)
+	t.Setenv("WORKSPACE_API_URL", ws.URL)
+	if output, err := c.runScript(conditionContext(ctx, job), *job.Schedule.Condition, json.RawMessage(`{}`)); err != nil || string(output) != `{"events":[],"state":{}}` {
+		t.Fatalf("detector result: %s, %v", output, err)
+	}
+	if !strings.HasPrefix(got.WorkingDirectory, root+"/.condition-runs/") || got.FolderGuard == nil || !got.FolderGuard.Enabled || !slices.Equal(got.FolderGuard.ReadPaths, []string{got.WorkingDirectory}) || !slices.Equal(got.FolderGuard.WritePaths, []string{got.WorkingDirectory}) {
+		t.Fatalf("moved Watcher shell escaped its canonical scratch directory: %+v", got)
+	}
+	fail = true
+	if _, err := c.runScript(conditionContext(ctx, job), *job.Schedule.Condition, json.RawMessage(`{}`)); err == nil || !strings.Contains(err.Error(), "Working directory must be within the workspace") {
+		t.Fatalf("workspace startup error was discarded: %v", err)
 	}
 }

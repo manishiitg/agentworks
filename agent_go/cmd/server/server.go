@@ -6540,7 +6540,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					// else branch below instead -- it keeps the same chat-wide
 					// grants, including the pulse/ write grant, a profile-less turn
 					// already has.
-					profileRoot := agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
+					// Private account identity keeps its binding; shell and file guards use the real project folder.
+					profileBindingRoot := agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
+					profileRoot := canonicalCrewWorkspaceRoot(profileBindingRoot)
 					profileWrite := strings.TrimSuffix(profileRoot, "/") + "/"
 					sandbox := resolvedProfile.Definition.Runtime.Sandbox
 					// Crew references (# tags and attached Crews, any owner) are
@@ -6672,7 +6674,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						// The chat's person is pinned once; personal MCP servers
 						// and secrets follow the pin, never the mutable session
 						// owner, and a turn from anyone else is refused.
-						if pinErr := pinCodeSession(sessionID, currentUserID, profileRoot); pinErr != nil {
+						if pinErr := pinCodeSession(sessionID, currentUserID, profileBindingRoot); pinErr != nil {
 							if errors.Is(pinErr, errCodeSessionPinnedToAnother) {
 								sendError("This Code chat belongs to another person. Open your own chat of this Code.", true)
 							} else {
@@ -6682,7 +6684,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						}
 						// Google accounts and other Code-private resources key off
 						// this mark, which survives shell-config clears.
-						common.MarkCodeSession(sessionID, profileRoot)
+						common.MarkCodeSession(sessionID, profileBindingRoot)
 						// workflow.json (MCP selection, sharing-relevant settings)
 						// and product.json change only through the role-checked
 						// API and tools, never a file write from a chat.
@@ -6931,7 +6933,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				browserGuard := func(execs codingAgentToolExecutors) codingAgentToolExecutors {
 					if !isWorkflowPhase {
 						if resolvedProfile != nil && !isGlobalScopedProfile(resolvedProfile) {
-							profileRoot := agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
+							profileRoot := canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder))
 							profileReadOnly := agentProfileReadOnlyFolders(resolvedProfile.Definition.Runtime.Sandbox, workflowReadOnlyFolders)
 							// Crew Run mode: browser tools in a reader turn
 							// keep the project readable but unwritable,
