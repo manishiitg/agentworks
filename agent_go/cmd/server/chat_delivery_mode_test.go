@@ -32,7 +32,7 @@ func TestChatDeliveryModeDurableQueueActions(t *testing.T) {
 	first := enqueue("first-client", "first")
 	second := enqueue("second-client", "second")
 	// No background worker is involved in owner actions in this harness.
-	api.conversationTurnQueueOwners = map[string]string{}
+	api.conversationTurnQueueOwners = map[string]map[string]bool{}
 	request := func(method, id, user string, handler http.HandlerFunc) *httptest.ResponseRecorder {
 		t.Helper()
 		r := httptest.NewRequest(method, "/api/sessions/chat/queued-messages", nil)
@@ -93,7 +93,7 @@ func TestChatDeliveryQueueReasonAndSteerEligibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	api.conversationTurnQueueOwners = map[string]string{}
+	api.conversationTurnQueueOwners = map[string]map[string]bool{}
 	release := api.lockSessionInputLane("chat")
 	defer release()
 	ready := false
@@ -188,7 +188,7 @@ func TestChatDeliveryQueueKeepsOwnerAndTokenBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	api.conversationTurnQueueOwners = map[string]string{}
+	api.conversationTurnQueueOwners = map[string]map[string]bool{}
 	for _, claims := range []*UserClaims{{UserID: "other"}, {UserID: "owner", AccessToken: &accesstokens.Token{ID: "token"}}, {}} {
 		for _, handler := range []http.HandlerFunc{api.handleQueuedConversationMessages, api.handleSteerQueuedConversationMessage, api.handleRemoveQueuedConversationMessage} {
 			r := httptest.NewRequest(http.MethodPost, "/api/sessions/chat/queued-messages", nil)
