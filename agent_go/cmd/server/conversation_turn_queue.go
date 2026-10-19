@@ -24,6 +24,10 @@ const conversationTurnQueueVersion = 1
 
 type conversationTurnQueueExecutionKey struct{}
 
+// Internal callers install their result waiter before a durable turn becomes
+// claimable. This callback is request-local and is never persisted in the queue.
+type internalQueuedTurnAdmissionKey struct{}
+
 func withConversationTurnQueueExecution(ctx context.Context) context.Context {
 	return context.WithValue(ctx, conversationTurnQueueExecutionKey{}, true)
 }
@@ -211,6 +215,11 @@ func (api *StreamingAPI) enqueueConversationTurn(ctx context.Context, userID, se
 	}
 	api.conversationTurnQueueOwners[sessionID] = userID
 	api.conversationTurnQueueMu.Unlock()
+	// Keep the queue document lock through admission: an existing queue watcher
+	// can claim immediately after unlock, even before this caller kicks it.
+	if admitted, ok := ctx.Value(internalQueuedTurnAdmissionKey{}).(func(string)); ok {
+		admitted(turn.ID)
+	}
 	return turn, position, nil
 }
 
