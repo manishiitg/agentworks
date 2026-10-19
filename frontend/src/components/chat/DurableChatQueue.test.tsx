@@ -6,7 +6,7 @@ import { expect, it, vi } from 'vitest'
 import type { PendingQueuedMessage } from '../../../shared/session/types'
 
 const fixture = vi.hoisted(() => ({
-  messages: [{ message_id: 'queued-1', client_message_id: 'client-1', content: 'Review the settings page.', queue_position: 1 }] as PendingQueuedMessage[],
+  messages: [{ message_id: 'queued-1', client_message_id: 'client-1', content: 'Review the settings page.', queue_position: 1, queue_reason: 'running', can_steer: true }] as PendingQueuedMessage[],
   events: [] as any[],
   remove: vi.fn(), steer: vi.fn(), retry: vi.fn(),
 }))
@@ -31,7 +31,7 @@ it('restores the server queue and keeps a failed remove visible until the server
   document.body.append(host)
   const root = createRoot(host)
   let client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const render = () => root.render(<QueryClientProvider client={client}><DurableChatQueue sessionId="chat-1" tabId="A" busy canSteer /></QueryClientProvider>)
+  const render = () => root.render(<QueryClientProvider client={client}><DurableChatQueue sessionId="chat-1" tabId="A" busy /></QueryClientProvider>)
   const flush = async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) }) }
   try {
     await act(async () => render())
@@ -73,7 +73,7 @@ it('keeps a failed queued message and its text on reload, retries only on click'
   const host = document.createElement('div')
   const root = createRoot(host)
   let client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const render = () => root.render(<QueryClientProvider client={client}><DurableChatQueue sessionId="chat-1" tabId="A" busy={false} canSteer /></QueryClientProvider>)
+  const render = () => root.render(<QueryClientProvider client={client}><DurableChatQueue sessionId="chat-1" tabId="A" busy={false} /></QueryClientProvider>)
   const flush = async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) }) }
   try {
     await act(async () => render())
@@ -113,7 +113,7 @@ it('says the chat is being updated and offers no Steer now, but keeps Remove so 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const flush = async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) }) }
   try {
-    await act(async () => root.render(<QueryClientProvider client={client}><DurableChatQueue sessionId="chat-1" tabId="A" busy canSteer /></QueryClientProvider>))
+    await act(async () => root.render(<QueryClientProvider client={client}><DurableChatQueue sessionId="chat-1" tabId="A" busy /></QueryClientProvider>))
     await flush()
     expect(host.textContent).toContain('Updating this chat')
     expect(host.textContent).toContain('Go on with the plan.')
@@ -127,3 +127,27 @@ it('says the chat is being updated and offers no Steer now, but keeps Remove so 
     host.remove()
   }
 })
+
+for (const reason of ['starting', 'waiting', undefined] as const) {
+  it(`uses server ${reason ?? 'legacy'} queue state without inferring steering from a busy tab`, async () => {
+    fixture.messages = [{ message_id: 'state-1', client_message_id: 'state-client', content: 'Follow up', queue_reason: reason, can_steer: false }]
+    const host = document.createElement('div')
+    const root = createRoot(host)
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    try {
+      await act(async () => root.render(<QueryClientProvider client={client}><DurableChatQueue sessionId="chat-1" tabId="A" busy /></QueryClientProvider>))
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+      expect(host.textContent).not.toContain('Steer now')
+      expect(host.textContent).toContain('Remove')
+      expect(host.querySelector('[title="Sends automatically when the current turn finishes"]')).toBeNull()
+      if (reason === 'starting') {
+        expect(host.textContent).toContain('Starting agent…')
+        expect(host.querySelector('[title="The agent is starting or resuming. Your message will send automatically."]')).toBeTruthy()
+      }
+    } finally {
+      await act(async () => root.unmount())
+      client.clear()
+      host.remove()
+    }
+  })
+}

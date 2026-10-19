@@ -3080,7 +3080,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       <ChatComposerArea product={isProductSurface} className={inputPadX}>
         <ChatComposerForm product={isProductSurface} onSubmit={handleSubmit} aboveCard={<>
           <div ref={setMicBannerHost} className="empty:hidden" />
-          {tabSessionId && activeTabId && !isViewOnly && <Suspense fallback={null}><DurableChatQueue key={tabSessionId} sessionId={tabSessionId} tabId={activeTabId} busy={isTurnInFlight} canSteer={canSteer || supportsLiveCodingAgentInput} /></Suspense>}
+          {tabSessionId && activeTabId && !isViewOnly && <Suspense fallback={null}><DurableChatQueue key={tabSessionId} sessionId={tabSessionId} tabId={activeTabId} busy={isTurnInFlight} /></Suspense>}
         </>}>
             {/* Queued messages: a message sent while the agent is still working is
                 held here until the current turn ends, then sent as the next one.
