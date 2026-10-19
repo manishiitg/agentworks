@@ -94,7 +94,7 @@ func setupCommand(o *options) *cobra.Command {
 		var noHooks, withHooks bool
 		sub := &cobra.Command{Use: app.provider, Args: cobra.NoArgs, Short: "Set up " + app.name + " for AgentWorks (every project)", Long: "Installs the AgentWorks plugin for " + app.name + " with its own plugin commands, for every project. Running it again is safe. It does not trust hooks, sign in or connect a chat; you do those next.", RunE: func(cmd *cobra.Command, _ []string) error {
 			o.setupAll = true
-			// Owner 2026-10-16: no hooks is the default for Claude Code and the Codex app ("hooks are not smooth").
+			// Windows Codex uses hooks by default; other setups keep the tools-only default.
 			// --hooks installs the full plugin (typed /agentworks shortcuts, delivery at the end of a turn,
 			// reconnect after a restart); the Codex command line needs it.
 			if withHooks && noHooks {
@@ -106,6 +106,9 @@ func setupCommand(o *options) *cobra.Command {
 				// full plugin stays when it is installed; --no-hooks is how to switch them off.
 				if !withHooks && !noHooks && hooksPluginInstalled(app.provider) {
 					withHooks, keptHooks = true, true
+				}
+				if !withHooks && !noHooks && app.provider == "codex" && runtime.GOOS == "windows" {
+					withHooks = true
 				}
 				noHooks = !withHooks
 			}
@@ -128,6 +131,9 @@ func setupCommand(o *options) *cobra.Command {
 			}
 			if noHooks {
 				return fmt.Errorf("--no-hooks is available for Claude Code and the Codex app; %s needs its hooks", app.name)
+			}
+			if app.provider == "codex" && runtime.GOOS == "windows" {
+				say("AgentWorks will check for messages when Codex starts, when you send a prompt, and when a reply finishes. Messages that arrive while Codex is idle wait until then. Run agentworks setup codex --no-hooks to turn this off.")
 			}
 			if err := installAgentPlugin(cmd.Context(), o, app.provider); err != nil {
 				return fmt.Errorf("%s setup was not completed: %w", app.name, err)
@@ -152,8 +158,8 @@ func setupCommand(o *options) *cobra.Command {
 			return nil
 		}}
 		if app.provider == "claude" || app.provider == "codex" {
-			sub.Flags().BoolVar(&noHooks, "no-hooks", false, "Install the tools only, with no hooks (the default); you ask the agent to connect")
-			sub.Flags().BoolVar(&withHooks, "hooks", false, "Install the full plugin with hooks (typed /agentworks shortcuts, automatic reconnect); the Codex command line needs this")
+			sub.Flags().BoolVar(&noHooks, "no-hooks", false, "Install the tools only, with no hooks; you ask the agent to connect")
+			sub.Flags().BoolVar(&withHooks, "hooks", false, "Install the full plugin with hooks (typed /agentworks shortcuts, automatic reconnect); the default for Windows Codex, needed for the Codex command line")
 		}
 		cmd.AddCommand(sub)
 	}

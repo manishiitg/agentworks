@@ -118,7 +118,12 @@ over MCP (Cowork, ChatGPT) send with `file_name` and `file_base64` on
 CLI: `agentworks bridge message send ... --file PATH`, and `get_file --inbox ID
 --file-id ID [--out DIR]`.
 
-`agentworks setup claude` and `agentworks setup codex` install no hooks by default
+Windows Codex setup uses hooks by default. AgentWorks checks for messages when
+Codex starts, when you send a prompt, and when a reply finishes. Messages that
+arrive while Codex is idle wait until then. Review the hooks in Codex once;
+installation does not trust them. Use `agentworks setup codex --no-hooks` for tools only.
+
+`agentworks setup claude` and Codex setup on macOS/Linux install no hooks by default
 (nothing shows as "blocked"): skills and message tools only. For the full plugin
 with hooks, add `--hooks` (the Codex command line needs it). Without hooks you give up delivery at the end of
 a turn if the live connection drops, automatic reconnect after a restart (say

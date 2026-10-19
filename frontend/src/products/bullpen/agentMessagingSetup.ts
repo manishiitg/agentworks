@@ -11,13 +11,13 @@ export type MessagingGuide = {
 }
 export const messagingGuides: MessagingGuide[] = [
   {
-    id: 'codex', name: 'Codex', status: 'Live messaging · app idle wake', available: true,
+    id: 'codex', name: 'Codex', status: 'Messaging · turn-boundary hooks', available: true,
     requirements: ['A Codex CLI with plugin hooks and the AgentWorks CLI on PATH.', 'A normal CLI session uses turn-boundary hooks unless its exact shared-daemon queue route is verified. Choose Codex app for desktop setup.'],
     versions: 'Plugin: agentworks-codex 1.0.7. Use a compatible Codex CLI with hooks and the current AgentWorks CLI with own-session support. No universal Codex minimum is pinned.',
     install: [{ label: 'Set up Codex (every project)', text: 'agentworks setup codex' }],
     alternativeInstall: [{ label: 'Install Codex plugin step by step', text: 'codex plugin marketplace add manishiitg/agentworks-plugins\ncodex plugin add agentworks-codex@agentworks' }], alternativeNote: 'The setup command runs these same steps for you.',
     update: [{ label: 'Update Codex plugin', text: 'codex plugin marketplace upgrade agentworks\ncodex plugin add agentworks-codex@agentworks' }],
-    installNote: 'The marketplace supplies updates; the installed plugin is a separate entry. Enable AgentWorks and reload Codex after installation or update. In the Codex app, agentworks setup codex installs no hooks by default (you then ask the agent to connect). Using the Codex command line, or want the typed shortcuts? Run agentworks setup codex --hooks.',
+    installNote: 'Enable AgentWorks and reload Codex after installation or update. Windows setup uses hooks by default. On macOS/Linux, add --hooks for the Codex command line or automatic reconnect. Use --no-hooks for tools only.',
     approval: 'Review the exact plugin hooks yourself. In the Codex CLI, use /hooks. Installing the plugin never approves its hooks.',
     attach: '/agentworks attach codex-review', ownRequest: 'Attach this chat to AgentWorks as codex-review.',
     delivery: 'CLI hooks offer messages at turn boundaries. Native idle delivery requires a verified exact-session daemon queue route. A notification or a queue write alone is not a processed receipt.',
@@ -33,6 +33,7 @@ export const messagingGuides: MessagingGuide[] = [
     ],
     app: {
       name: 'Codex app',
+      status: 'Messaging · macOS idle wake',
       requirements: ['Needs the Codex desktop app and the AgentWorks CLI. No separate Codex CLI needed.'],
       versions: 'Plugin: agentworks-codex 1.0.7. App installation/configuration inspected on macOS 26.1007.30912. Use an AgentWorks build with Codex app discovery; hook approval remains in the app.',
       install: [],
@@ -50,7 +51,7 @@ export const messagingGuides: MessagingGuide[] = [
       update: [],
       updateSteps: ['Open Settings → Plugins → Marketplace and select Upgrade for agentworks.', 'Reload Codex as requested, check the AgentWorks package version and review changed hooks in Settings → Hooks. Keep your enabled/disabled choice.'],
       approval: 'Review AgentWorks hooks in the app yourself. Installation does not grant hook trust or attach a chat. App and bundled CLI use the same Codex home by default; a custom CODEX_HOME must match in both.',
-      delivery: 'The desktop adapter can wake an idle attached chat. Hook-only delivery waits for a turn boundary. Confirm admitted and processed receipts; installation or a notification alone does not prove delivery.',
+      delivery: 'On macOS, the desktop adapter can wake an idle attached chat. Windows uses hooks: messages arrive when Codex starts, when you send a prompt, or when a reply finishes. Messages arriving while idle wait until then. Confirm admitted and processed receipts; installation alone does not prove delivery.',
       menus: [
         { entry: 'Settings → Plugins / Marketplace', who: 'You', description: 'Install, enable and update AgentWorks in the app; no standalone Codex terminal command is required.' },
         { entry: 'Settings → Hooks', who: 'You', description: 'Review AgentWorks definitions and their trust state. Reload hooks after a change if prompted.' },
