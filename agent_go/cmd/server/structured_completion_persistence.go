@@ -151,6 +151,16 @@ func (api *StreamingAPI) appendStructuredAssistantReply(userID, sessionID, works
 	if len(history) > 0 {
 		last := history[len(history)-1]
 		alreadyPresent = last.Role == llmtypes.ChatMessageTypeAI && strings.TrimSpace(messageContentText(last)) == strings.TrimSpace(final)
+		// Two rapid prompts can precede both answers. Identical prose is not
+		// proof of a replay when another native turn already owns the tail row.
+		for _, raw := range checkpoints {
+			checkpoint, _ := raw.(map[string]interface{})
+			index, known := checkpoint["history_index"].(float64)
+			if !known || int(index) == len(history)-1 {
+				alreadyPresent = false
+				break
+			}
+		}
 	}
 	if !alreadyPresent {
 		history = append(history, llmtypes.MessageContent{
@@ -164,9 +174,10 @@ func (api *StreamingAPI) appendStructuredAssistantReply(userID, sessionID, works
 		completedAt = time.Now()
 	}
 	checkpoints[turnID] = map[string]interface{}{
-		"event_id":     event.ID,
-		"sequence":     event.Sequence,
-		"completed_at": completedAt.UTC().Format(time.RFC3339Nano),
+		"event_id":      event.ID,
+		"sequence":      event.Sequence,
+		"completed_at":  completedAt.UTC().Format(time.RFC3339Nano),
+		"history_index": len(history) - 1,
 	}
 	record[structuredTurnCheckpointsField] = checkpoints
 	record["conversation_history"] = history

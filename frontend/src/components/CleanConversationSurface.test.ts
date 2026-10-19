@@ -14,6 +14,26 @@ function event(id: string, type: string, data: Record<string, unknown>, extra: P
 }
 
 describe('buildCleanConversationItems', () => {
+  it('keeps both native answers after two quick sends and deduplicates only their own replay', () => {
+    const items = buildCleanConversationItems([
+      event('user-1', 'user_message', { content: 'First prompt' }),
+      event('user-2', 'user_message', { content: 'Second prompt' }),
+      ...[1, 2].flatMap(turn => [
+        event(`done-${turn}`, 'unified_completion', { final_result: 'Done.', metadata: { turn_id: `turn-${turn}` } }),
+        event(`replay-${turn}`, 'unified_completion', { final_result: 'Done.' }, { data: { turn_id: `turn-${turn}`, data: { final_result: 'Done.' } } as PollingEvent['data'] }),
+      ]),
+    ])
+    expect(items.map(item => item.id)).toEqual(['user-1', 'user-2', 'done-1', 'done-2'])
+  })
+
+  it('does not replace progress from a different native turn with identical final prose', () => {
+    const items = buildCleanConversationItems([
+      event('progress', 'conversation_thinking', { thinking: 'Done.', metadata: { presentation: 'assistant_update', turn_id: 'one' } }),
+      event('done', 'unified_completion', { final_result: 'Done.', metadata: { turn_id: 'two' } }),
+    ])
+    expect(items.map(item => item.id)).toEqual(['progress', 'done'])
+  })
+
   it('shows an identical final answer once for each user turn', () => {
     const events = [1, 2, 3].flatMap(turn => [
       event(`user-${turn}`, 'user_message', { content: 'Which model are you using?' }),

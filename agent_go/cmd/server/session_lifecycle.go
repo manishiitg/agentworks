@@ -704,8 +704,19 @@ func (api *StreamingAPI) releaseStoppedSessionTurnMarkers(sessionID string) {
 	}
 	api.retainedMainTurnsMu.Lock()
 	_, retainedTurn := api.retainedMainTurns[sessionID]
+	watchCancel := api.retainedMainTurnWatchCancels[sessionID]
+	for _, id := range append([]string{api.retainedMainTurnExecutionIDs[sessionID]}, api.retainedMainTurnPendingExecutionIDs[sessionID]...) {
+		delete(api.retainedMainTurnCanonicalIDs, id)
+	}
 	delete(api.retainedMainTurns, sessionID)
+	delete(api.retainedMainTurnExecutionIDs, sessionID)
+	delete(api.retainedMainTurnPendingExecutionIDs, sessionID)
+	delete(api.retainedMainTurnWatchCancels, sessionID)
+	delete(api.retainedMainTurnCompletionEmitted, sessionID)
 	api.retainedMainTurnsMu.Unlock()
+	if watchCancel != nil {
+		watchCancel()
+	}
 	if retainedTurn {
 		log.Printf("[STOP] session=%s released the retained main turn record", sessionID)
 	}

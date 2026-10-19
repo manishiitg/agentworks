@@ -137,6 +137,40 @@ func TestStructuredCompletionPreservesLegitimateRepeatedRepliesAcrossTurns(t *te
 	}
 }
 
+func TestStructuredCompletionPreservesBothAnswersAfterRapidPrompts(t *testing.T) {
+	const sessionID = "rapid-replies"
+	const workspacePath = "Workflow/project"
+	conversation := workspacePath + "/builder/conversation/2026-09-21/" + chatHistoryConversationFileName(sessionID)
+	raw, _ := json.Marshal(map[string]interface{}{
+		"session_id": sessionID, "user_id": "alice",
+		"conversation_history": []map[string]interface{}{
+			{"Role": "human", "Parts": []map[string]string{{"Text": "first"}}},
+			{"Role": "human", "Parts": []map[string]string{{"Text": "second"}}},
+		},
+	})
+	workspace := &mockWorkspaceAPI{files: map[string]string{conversation: string(raw)}}
+	server := httptest.NewServer(workspace)
+	defer server.Close()
+	t.Setenv("WORKSPACE_API_URL", server.URL)
+	api := &StreamingAPI{}
+	for _, turnID := range []string{"turn-one", "turn-two", "turn-two"} {
+		if !api.appendStructuredAssistantReply("alice", sessionID, workspacePath, turnID, "same answer", retainedCompletionEvent(sessionID, turnID, "completion-"+turnID, "same answer")) {
+			t.Fatal("failed to persist rapid reply")
+		}
+	}
+	var persisted builderConversationLog
+	if json.Unmarshal([]byte(workspace.files[conversation]), &persisted) != nil || len(persisted.ConversationHistory) != 4 {
+		t.Fatalf("distinct native replies were collapsed or replayed: %+v", persisted.ConversationHistory)
+	}
+	before := workspace.files[conversation]
+	if api.appendStructuredAssistantReply("bob", sessionID, workspacePath, "wrong-user", "private", retainedCompletionEvent(sessionID, "wrong-user", "wrong-user", "private")) {
+		t.Fatal("another user was allowed to append to the transcript")
+	}
+	if workspace.files[conversation] != before {
+		t.Fatal("denied append changed private history")
+	}
+}
+
 // A Code or Work project chat keeps its transcript inside the project and the server does not know its workspace
 // folder (a restart empties every in-memory map); the reply to a live input must still be saved, found through the
 // chat's active session.
