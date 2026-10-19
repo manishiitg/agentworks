@@ -150,6 +150,7 @@ func ProductWebhookRoutes(router *mux.Router, svc *ProductScheduleService) {
 	router.HandleFunc("/api/product-webhooks/{id}/runs", svc.listProductWebhookRuns).Methods("GET")
 	router.HandleFunc("/api/product-webhooks/{id}/runs/{run}/payload", svc.getProductWebhookPayload).Methods("GET")
 	router.HandleFunc("/api/crew-functions", svc.listCrewFunctionsHTTP).Methods("GET")
+	router.HandleFunc("/api/function-references", svc.listFunctionReferencesHTTP).Methods("GET")
 	router.HandleFunc("/api/crew-functions/{name}", svc.deleteCrewFunctionHTTP).Methods("DELETE")
 	router.HandleFunc("/api/hooks/product/{id}", svc.receiveProductWebhook).Methods("POST")
 	router.HandleFunc("/api/hooks/product/{id}/runs/{run}", svc.getProductWebhookRun).Methods("GET")

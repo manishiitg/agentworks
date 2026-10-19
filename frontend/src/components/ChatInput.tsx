@@ -2431,7 +2431,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }, [closeComposerPickers, terminalCommandPalette, tabSessionId])
   const handleFileDialogClose = closeComposerPickers
 
-  const handleWorkflowSelect = useCallback((workflow: { presetId: string; label: string; workspacePath: string }) => {
+  const handleWorkflowSelect = useCallback((workflow: { presetId: string; label: string; workspacePath: string; functionName?: string }) => {
     if (!textareaRef.current || hashPosition === -1 || !activeTabId) return
 
     const beforeHash = inputText.substring(0, hashPosition)
@@ -2452,7 +2452,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       }, 0)
       return
     }
-    const tag = referenceTag(workflow)
+    const projectTag = referenceTag(workflow)
+    const tag = workflow.functionName ? `${projectTag} (function: ${workflow.functionName})` : projectTag
     const newQuery = beforeHash + tag + ' ' + afterSearch
 
     // Update local state immediately

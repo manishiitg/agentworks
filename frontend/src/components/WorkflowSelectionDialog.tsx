@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
-import { Layers, Search } from 'lucide-react'
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react'
+import { ChevronDown, Layers, Search } from 'lucide-react'
+import { listFunctionReferences, type FunctionReference } from '../api/functionReferences'
 import { workflowManifestApi } from '../services/api'
 import { useAuthStore } from '../stores/useAuthStore'
 import { loadProductProjects } from '../platform/chat/productProjects'
@@ -14,6 +15,8 @@ interface WorkflowItem {
   kind: 'workflow' | 'crew' | 'pulse'
   icon?: string
   secondaryLabel?: string
+  functionTarget?: string
+  functionName?: string
 }
 
 interface WorkflowSelectionDialogProps {
@@ -34,16 +37,23 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
   position,
   includePulse = false
 }) => {
-  const [selectedIndex, setSelectedIndex] = useState(0)
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null)
   const [localQuery, setLocalQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const functionListRef = useRef<HTMLDivElement>(null)
+  const functionRequest = useRef(0)
+  const [functionResult, setFunctionResult] = useState<{ project: string; loading: boolean; items: FunctionReference[]; error?: string } | null>(null)
+  useEffect(() => {
+    if (functionResult && !functionResult.loading && functionResult.items.length > 0) {
+      functionListRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
+    }
+  }, [functionResult])
 
   // Refs so keyboard handler always has fresh values
-  const selectedIndexRef = useRef(selectedIndex)
+  const selectedIndexRef = useRef(0)
   const onCloseRef = useRef(onClose)
   const onSelectWorkflowRef = useRef(onSelectWorkflow)
-  useEffect(() => { selectedIndexRef.current = selectedIndex }, [selectedIndex])
   useEffect(() => { onCloseRef.current = onClose }, [onClose])
   useEffect(() => { onSelectWorkflowRef.current = onSelectWorkflow }, [onSelectWorkflow])
 
@@ -55,15 +65,31 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
   // Auto-focus on open, reset on close
   useEffect(() => {
     if (isOpen) {
-      setSelectedIndex(0)
+      setSelectedPresetId(null)
       setTimeout(() => searchInputRef.current?.focus(), 50)
     } else {
       setLocalQuery('')
-      setSelectedIndex(0)
+      setSelectedPresetId(null)
     }
   }, [isOpen])
 
   const userID = useAuthStore(state => state.user?.id)
+  useEffect(() => {
+    functionRequest.current += 1
+    setFunctionResult(null)
+    return () => { functionRequest.current += 1 }
+  }, [isOpen, userID])
+  const browseFunctions = (workflow: WorkflowItem) => {
+    const request = ++functionRequest.current
+    if (functionResult?.project === workflow.presetId) { setFunctionResult(null); return }
+    if (!workflow.functionTarget) return
+    setFunctionResult({ project: workflow.presetId, loading: true, items: [] })
+    void listFunctionReferences(workflow.functionTarget).then(items => {
+      if (functionRequest.current === request) setFunctionResult({ project: workflow.presetId, loading: false, items })
+    }).catch(() => {
+      if (functionRequest.current === request) setFunctionResult({ project: workflow.presetId, loading: false, items: [], error: 'Functions are unavailable. Check project access or try again.' })
+    })
+  }
   const [referenceResult, setReferenceResult] = useState<{ userID?: string; items: WorkflowItem[]; pending: number } | null>(null)
   const [loadError, setLoadError] = useState(false)
   // Fetch fresh permission-filtered workflows and user-scoped Crew projects
@@ -91,6 +117,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
         workspacePath: workflow.workspace_path,
         kind: 'workflow',
         icon: workflow.manifest.icon,
+        functionTarget: `workflow:${workflow.manifest.id || workflow.workspace_path}`,
       }))
     }).catch(failed).finally(finish)
     void loadProductProjects(WORK_PROJECTS_ROOT, WORK_PROFILE_ID, { includeOwnSharedProjects: true }).then(crews => {
@@ -103,6 +130,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
           workspacePath: crew.workspacePath,
           kind: 'crew',
           icon: crew.identity?.icon,
+          functionTarget: `workspace:${crew.product}:${crew.id}`,
         }
       })
     }).catch(failed).finally(finish)
@@ -141,11 +169,21 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
     return filtered
   }, [localQuery, allReferences])
 
+  // Keep the highlighted project when another discovery source finishes,
+  // including when workflows are inserted before the visible Crew rows.
+  const selectedIndex = Math.max(0, filteredWorkflows.findIndex(item => item.presetId === selectedPresetId))
   const filteredWorkflowsRef = useRef(filteredWorkflows)
-  useEffect(() => { filteredWorkflowsRef.current = filteredWorkflows }, [filteredWorkflows])
+  useLayoutEffect(() => {
+    filteredWorkflowsRef.current = filteredWorkflows
+    selectedIndexRef.current = selectedIndex
+  }, [filteredWorkflows, selectedIndex])
 
-  // Reset selected index when results change
-  useEffect(() => { setSelectedIndex(0) }, [localQuery, allReferences])
+  useEffect(() => { setSelectedPresetId(null) }, [localQuery])
+  const moveSelection = (delta: number) => {
+    const items = filteredWorkflowsRef.current
+    const nextIndex = Math.max(0, Math.min(selectedIndexRef.current + delta, items.length - 1))
+    setSelectedPresetId(items[nextIndex]?.presetId ?? null)
+  }
 
   // Scroll selected item into view
   useEffect(() => {
@@ -165,10 +203,10 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
         onCloseRef.current()
       } else if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setSelectedIndex(prev => Math.min(prev + 1, filteredWorkflowsRef.current.length - 1))
+        moveSelection(1)
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
-        setSelectedIndex(prev => Math.max(prev - 1, 0))
+        moveSelection(-1)
       }
     }
 
@@ -190,6 +228,11 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
     const items = filteredWorkflowsRef.current
     const idx = selectedIndexRef.current
     if (items.length > 0 && idx >= 0 && idx < items.length) {
+      if (functionResult?.project === items[idx].presetId) {
+        const firstFunction = functionResult.items[0]
+        if (firstFunction) onSelectWorkflowRef.current({ ...items[idx], functionName: firstFunction.name })
+        return
+      }
       onSelectWorkflowRef.current(items[idx])
     }
   }
@@ -219,8 +262,8 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
             onChange={e => setLocalQuery(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleEnter() }
-              else if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); setSelectedIndex(prev => Math.min(prev + 1, filteredWorkflowsRef.current.length - 1)) }
-              else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); setSelectedIndex(prev => Math.max(prev - 1, 0)) }
+              else if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); moveSelection(1) }
+              else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); moveSelection(-1) }
               else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onCloseRef.current() }
             }}
             className="w-full pl-7 pr-2 py-1.5 text-xs rounded-md border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
@@ -236,8 +279,8 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
           </div>
         ) : (
           filteredWorkflows.map((workflow, index) => (
+            <div key={workflow.presetId}>
             <div
-              key={`${workflow.presetId}-${index}`}
               className={`px-3 py-2 cursor-pointer flex items-center gap-2 text-sm transition-colors ${
                 index === selectedIndex
                   ? 'bg-primary/10 text-primary border-l-2 border-primary'
@@ -254,6 +297,26 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
                 {workflow.secondaryLabel && <div className="truncate text-xs text-muted-foreground">{workflow.secondaryLabel}</div>}
                 {workflow.workspacePath && <div className="text-xs text-muted-foreground truncate">{workflow.workspacePath}</div>}
               </div>
+              {workflow.functionTarget && <button
+                type="button"
+                aria-label={`Browse functions for ${workflow.label}`}
+                aria-expanded={functionResult?.project === workflow.presetId}
+                className="flex shrink-0 items-center gap-1 rounded px-1.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                onMouseDown={event => { event.preventDefault(); event.stopPropagation() }}
+                onKeyDown={event => { if (event.key !== 'Escape') event.stopPropagation() }}
+                onClick={event => { event.stopPropagation(); browseFunctions(workflow) }}
+              >Functions<ChevronDown className="h-3 w-3" aria-hidden="true" /></button>}
+            </div>
+            {functionResult?.project === workflow.presetId && <div ref={functionListRef} className="border-b border-border bg-muted/30 py-1 pl-9 pr-3" data-testid="reference-functions">
+              {functionResult.loading || functionResult.error || functionResult.items.length === 0
+                ? <p className="py-2 text-xs text-muted-foreground" role="status">{functionResult.loading ? 'Loading functions…' : functionResult.error || 'No published functions yet.'}</p>
+                : functionResult.items.map(fn => <button
+                    type="button" key={fn.name}
+                    className="block w-full rounded px-2 py-1.5 text-left hover:bg-muted"
+                    onKeyDown={event => { if (event.key !== 'Escape') event.stopPropagation() }}
+                    onClick={() => onSelectWorkflow({ ...workflow, functionName: fn.name })}
+                  ><span className="block text-xs font-medium">{fn.name}</span>{fn.description && <span className="line-clamp-2 text-xs text-muted-foreground">{fn.description}</span>}</button>)}
+            </div>}
             </div>
           ))
         )}
