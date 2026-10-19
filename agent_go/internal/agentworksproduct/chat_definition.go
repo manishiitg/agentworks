@@ -47,7 +47,7 @@ func validateChatDefinitions(fsys fs.FS, m ProductManifest) error {
 			}
 		}
 		if mode == "builder" {
-			expected := map[string]bool{"create_workflow": true, "plan": true, "workflow_upgrade": true, "workflow_crews": true, "builder_chat": true, "builder_status": true, "builder_reply_input": true, "builder_cancel": true, "builder_file_history": true, "builder_restore_file": true, "builder_pulse_chat": true, "builder_pulse_status": true}
+			expected := map[string]bool{"create_workflow": true, "plan": true, "workflow_upgrade": true, "workflow_crews": true, "workflow_google_account": true, "workflow_slack_account": true, "builder_chat": true, "builder_status": true, "builder_reply_input": true, "builder_cancel": true, "builder_file_history": true, "builder_restore_file": true, "builder_pulse_chat": true, "builder_pulse_status": true}
 			for _, name := range def.ExternalTools {
 				if !expected[name] {
 					return fmt.Errorf("invalid Builder external tool %q", name)
