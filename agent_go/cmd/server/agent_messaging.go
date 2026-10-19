@@ -149,7 +149,27 @@ var agentMessageVersion atomic.Int64
 var agentMessageLastResume atomic.Int64
 
 const agentConversationIdleKeep = 7 * 24 * time.Hour
+const agentPendingMessageKeep = 24 * time.Hour
 const agentConversationPerUser = 300
+
+func agentMessagePendingExpired(m agentMessage, now time.Time) bool {
+	return !m.Wakeup && !serverAuthoredKind(m.Kind) && (m.Delivery == "stored" || m.Delivery == "pending") && !m.SentAt.IsZero() && now.Sub(m.SentAt) > agentPendingMessageKeep
+}
+
+func expirePendingAgentMessages(s *agentMessageStore, now time.Time) int {
+	cleared := 0
+	for ci := range s.Conversations {
+		for mi := range s.Conversations[ci].Messages {
+			m := &s.Conversations[ci].Messages[mi]
+			if agentMessagePendingExpired(*m, now) {
+				m.Delivery = "expired"
+				m.Error = "Pending delivery cleared after 24 hours; message history kept."
+				cleared++
+			}
+		}
+	}
+	return cleared
+}
 
 func agentConversationActivity(c agentConversation) time.Time {
 	if n := len(c.Messages); n > 0 {
@@ -720,7 +740,8 @@ func (api *StreamingAPI) recoverAgentMessages() {
 	agentMessageMu.Lock()
 	s, err := readAgentMessageStore(context.Background())
 	if err == nil {
-		changed := false
+		cleared := expirePendingAgentMessages(&s, time.Now().UTC())
+		changed := cleared > 0
 		for i := range s.Conversations {
 			for j := range s.Conversations[i].Messages {
 				m := &s.Conversations[i].Messages[j]
@@ -732,7 +753,9 @@ func (api *StreamingAPI) recoverAgentMessages() {
 			}
 		}
 		if changed {
-			_ = saveAgentMessageStore(context.Background(), s)
+			if saveAgentMessageStore(context.Background(), s) == nil && cleared > 0 {
+				log.Printf("[AGENT-MESSAGE-EXPIRY] cleared=%d history=retained", cleared)
+			}
 		}
 	}
 	agentMessageMu.Unlock()
@@ -745,9 +768,18 @@ func (api *StreamingAPI) resumeAgentMessages() {
 	config, configErr := LoadSchedulerConfig(context.Background())
 	agentMessageMu.Lock()
 	s, err := readAgentMessageStore(context.Background())
-	if err == nil && configErr == nil {
-		if materializeAgentWakeupsAllowed(&s, time.Now().UTC(), config) {
+	if err == nil {
+		now := time.Now().UTC()
+		cleared := expirePendingAgentMessages(&s, now)
+		changed := cleared > 0
+		if configErr == nil {
+			changed = materializeAgentWakeupsAllowed(&s, now, config) || changed
+		}
+		if changed {
 			err = saveAgentMessageStore(context.Background(), s)
+			if err == nil && cleared > 0 {
+				log.Printf("[AGENT-MESSAGE-EXPIRY] cleared=%d history=retained", cleared)
+			}
 		}
 	}
 	agentMessageMu.Unlock()
@@ -766,7 +798,7 @@ func (api *StreamingAPI) resumeAgentMessages() {
 
 func pendingInternalAgentMessage(c agentConversation) bool {
 	for _, m := range c.Messages {
-		if m.Delivery == "pending" && !c.Endpoints[1-m.From].External {
+		if m.Delivery == "pending" && !agentMessagePendingExpired(m, time.Now().UTC()) && !c.Endpoints[1-m.From].External {
 			return true
 		}
 	}
@@ -809,7 +841,7 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				for _, c := range s.Conversations {
 					if c.ID == id {
 						for _, m := range c.Messages {
-							if m.Delivery == "pending" && !c.Endpoints[1-m.From].External {
+							if m.Delivery == "pending" && !agentMessagePendingExpired(m, time.Now().UTC()) && !c.Endpoints[1-m.From].External {
 								conv = c
 								msg = m
 								has = true
@@ -853,12 +885,14 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 			// message remains available and restart records uncertain delivery.
 			agentMessageMu.Lock()
 			claimed, claimErr := readAgentMessageStore(ctx)
+			didClaim := false
 			if claimErr == nil {
 				for i := range claimed.Conversations {
 					if claimed.Conversations[i].ID == id {
 						for j := range claimed.Conversations[i].Messages {
-							if claimed.Conversations[i].Messages[j].ID == msg.ID {
-								claimed.Conversations[i].Messages[j].Delivery = "dispatching"
+							if current := &claimed.Conversations[i].Messages[j]; current.ID == msg.ID && current.Delivery == "pending" && !agentMessagePendingExpired(*current, time.Now().UTC()) {
+								current.Delivery = "dispatching"
+								didClaim = true
 							}
 						}
 					}
@@ -870,6 +904,10 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				followPending = false
 				lane.Unlock()
 				return
+			}
+			if !didClaim {
+				lane.Unlock()
+				continue
 			}
 			deliveryCtx, cancel := context.WithTimeout(internalBotRequestContext(ctx, dest.UserID), goalLeadTurnHardCap)
 			session, deliveryErr := api.deliverAgentMessage(deliveryCtx, conv, msg)

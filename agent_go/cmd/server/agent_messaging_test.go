@@ -174,6 +174,9 @@ func TestAgentMessageWakeupsStayExplicit(t *testing.T) {
 	if s.Wakeups[0].ID != wake["wakeup_id"] || s.Conversations[1].Endpoints[1].Session != "alpha" || !s.Conversations[1].Messages[0].Wakeup {
 		t.Fatalf("timer lost exact session: %+v", s)
 	}
+	if n := expirePendingAgentMessages(&s, time.Now().Add(48*time.Hour)); n != 0 || s.Conversations[1].Messages[0].Delivery != "pending" {
+		t.Fatal("peer backlog expiry cleared a scheduled wakeup")
+	}
 }
 
 // A Crew that sets a wakeup from the chat a message started must be woken in

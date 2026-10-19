@@ -374,7 +374,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 		var waiting []pending
 		for _, c := range store.Conversations {
 			for _, m := range c.Messages {
-				if m.Delivery == "stored" && !sent[m.ID] && c.Endpoints[1-m.From].NamedAgentID == a.ID {
+				if m.Delivery == "stored" && !agentMessagePendingExpired(m, time.Now().UTC()) && !sent[m.ID] && c.Endpoints[1-m.From].NamedAgentID == a.ID {
 					waiting = append(waiting, pending{c, m})
 				}
 			}
@@ -505,6 +505,7 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 	}
 	history, _ := args["history"].(bool)
 	permitted := []string{}
+	cleared := []string{}
 	inboxes := map[string]string{}
 	reasons := map[string]string{} // message id -> why it was left out (logged; counted for the client)
 	for _, id := range ids {
@@ -516,6 +517,13 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 				switch {
 				case c.Endpoints[1-m.From].NamedAgentID != a.ID || c.Endpoints[1-m.From].UserID != a.UserID:
 					reasons[id] = "not_addressed_to_this_agent"
+					if !history {
+						cleared = append(cleared, id)
+					}
+					continue
+				case !history && (m.Delivery == "expired" || agentMessagePendingExpired(m, time.Now().UTC())):
+					cleared = append(cleared, id)
+					reasons[id] = "expired_pending"
 					continue
 				case !history && m.LiveAttachment != a.Attachment.ID:
 					reasons[id] = "offered_to_another_lease"
@@ -555,6 +563,9 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 		}
 		if !left {
 			reason = "not_found"
+			if !history {
+				cleared = append(cleared, id)
+			}
 		}
 		held[reason]++
 		if strings.HasPrefix(reason, "already_") {
@@ -568,7 +579,7 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 		externalError(w, 403, "attachment_refused", "Attachment changed.")
 		return
 	}
-	externalJSON(w, map[string]any{"message_ids": permitted, "inbox_ids": inboxes, "held_reasons": held})
+	externalJSON(w, map[string]any{"message_ids": permitted, "cleared_message_ids": cleared, "inbox_ids": inboxes, "held_reasons": held})
 }
 
 // validateLogged remembers when each (message, reason) was last written: a held message is checked every few seconds, so a

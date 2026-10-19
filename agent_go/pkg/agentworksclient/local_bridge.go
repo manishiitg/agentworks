@@ -2492,6 +2492,7 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 	snap := &localSession{Attachment: s.Attachment, client: s.client}
 	type validation struct {
 		IDs         []string       `json:"message_ids"`
+		ClearedIDs  []string       `json:"cleared_message_ids"`
 		HeldReasons map[string]int `json:"held_reasons"`
 	}
 	validate := func(picked []string) (validation, error) {
@@ -2514,6 +2515,7 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 				return validation{}, errors.New("invalid pending validation")
 			}
 			checked.IDs = append(checked.IDs, part.IDs...)
+			checked.ClearedIDs = append(checked.ClearedIDs, part.ClearedIDs...)
 			for reason, count := range part.HeldReasons {
 				checked.HeldReasons[reason] += count
 			}
@@ -2549,6 +2551,10 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 	}
 	messages = still
 	allowed := map[string]bool{}
+	cleared := map[string]bool{}
+	for _, id := range checked.ClearedIDs {
+		cleared[id] = true
+	}
 	for _, id := range checked.IDs {
 		allowed[id] = true
 	}
@@ -2556,7 +2562,7 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 		// Try to release what the server left out once more before saying anything about it.
 		var left []string
 		for _, id := range ids {
-			if !allowed[id] {
+			if !allowed[id] && !cleared[id] {
 				left = append(left, id)
 			}
 		}
@@ -2569,6 +2575,9 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 		for _, id := range again.IDs {
 			allowed[id] = true
 		}
+		for _, id := range again.ClearedIDs {
+			cleared[id] = true
+		}
 		checked.HeldReasons = again.HeldReasons
 	}
 
@@ -2577,7 +2586,11 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 	filtered := []AgentLiveMessage{}
 	for _, m := range messages {
 		previous[m.MessageID] = s.Offers[m.MessageID]
-		if allowed[m.MessageID] {
+		if cleared[m.MessageID] {
+			v := s.Offers[m.MessageID]
+			v.Suppressed, v.Message = true, ""
+			s.Offers[m.MessageID] = v
+		} else if allowed[m.MessageID] {
 			filtered = append(filtered, m)
 			if v := s.Offers[m.MessageID]; !v.DeniedAt.IsZero() {
 				v.DeniedAt, v.RetryAt = time.Time{}, time.Time{}
@@ -2605,7 +2618,7 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 	if held > 0 {
 		var left []string
 		for _, m := range previous {
-			if !allowed[m.MessageID] {
+			if !allowed[m.MessageID] && !cleared[m.MessageID] {
 				left = append(left, m.MessageID)
 			}
 		}
@@ -2647,6 +2660,9 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 			s.Offers[id] = old
 		}
 		return nil, 0, nil, err
+	}
+	if len(cleared) > 0 {
+		log.Printf("[BRIDGE-NATIVE] cleared_pending agent=%s attachment=%s cleared=%d", s.Attachment.AgentName, s.Attachment.ID, len(cleared))
 	}
 	b.acknowledgeStatusLines(s, filtered, transport)
 	if len(staleIDs) > 0 {

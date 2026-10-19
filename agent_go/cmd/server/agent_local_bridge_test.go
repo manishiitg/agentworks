@@ -874,16 +874,44 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 		t.Fatal(e)
 	}
 	freshAfterBacklog := send("fresh body beside the old digest")
+	expiredBacklog := send("old pending delivery keeps its history")
+	missingBacklog := send("removed server message must leave the local queue")
 	cancel, done = start()
 	defer cancel()
 	deadline = time.Now().Add(5 * time.Second)
-	for local(routeStatus).Pending < 26 && time.Now().Before(deadline) {
+	for local(routeStatus).Pending < 28 && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
-	if local(routeStatus).Pending != 26 {
+	if local(routeStatus).Pending != 28 {
 		t.Fatal("backlog was not cached before native recovery")
 	}
 	stop(cancel, done)
+	// Cross the cutoff after the body is cached locally, so the real server
+	// validator must drain it without offering it or inventing a receipt.
+	agentMessageMu.Lock()
+	backlog, e = readAgentMessageStore(context.Background())
+	if e == nil {
+		for ci := range backlog.Conversations {
+			kept := backlog.Conversations[ci].Messages[:0]
+			for mi := range backlog.Conversations[ci].Messages {
+				m := backlog.Conversations[ci].Messages[mi]
+				if m.ID == missingBacklog["message_id"] {
+					continue
+				}
+				if m.ID == expiredBacklog["message_id"] {
+					m.SentAt = time.Now().Add(-25 * time.Hour)
+				}
+				kept = append(kept, m)
+			}
+			backlog.Conversations[ci].Messages = kept
+		}
+		e = saveAgentMessageStore(context.Background(), backlog)
+	}
+	agentMessageMu.Unlock()
+	if e != nil {
+		t.Fatal(e)
+	}
+	env.api.resumeAgentMessages()
 	bridgeOptions.NativeOffer = func(_ context.Context, _ string, out agentworksclient.LocalBridgeReply) error {
 		nativeOffers <- out
 		return agentworksclient.ErrNativeOfferUnconfirmed
@@ -897,6 +925,26 @@ func TestAgentLocalBridgeRestartAndAdmission(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("backlog larger than the server validation cap blocked native delivery")
+	}
+	if out := local(routeStatus); out.Pending != 0 {
+		t.Fatal("expired cached body remained pending", out)
+	}
+	agentMessageMu.Lock()
+	backlog, e = readAgentMessageStore(context.Background())
+	agentMessageMu.Unlock()
+	if e != nil {
+		t.Fatal(e)
+	}
+	retainedExpired := false
+	for _, c := range backlog.Conversations {
+		for _, m := range c.Messages {
+			if m.ID == expiredBacklog["message_id"] {
+				retainedExpired = m.Delivery == "expired" && m.Text == "old pending delivery keeps its history" && m.AdmittedAt.IsZero() && m.ProcessedAt.IsZero()
+			}
+		}
+	}
+	if !retainedExpired {
+		t.Fatal("clearing old delivery lost its history or fabricated acknowledgment")
 	}
 	offlineNative := base
 	offlineNative.Action = "offline"

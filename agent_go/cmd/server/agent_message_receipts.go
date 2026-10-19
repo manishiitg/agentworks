@@ -17,6 +17,8 @@ func receiptState(m agentMessage, destAgent *namedMessageAgent, destNamed bool) 
 		name = destAgent.Name
 	}
 	switch m.Delivery {
+	case "expired":
+		return "not_delivered", "Pending delivery cleared after 24 hours; message history kept."
 	case "processed":
 		return "handled", fmt.Sprintf("%s has it and has handled it.", name)
 	case "admitted", "typed", "delivered":
