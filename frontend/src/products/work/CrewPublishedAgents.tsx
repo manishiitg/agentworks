@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import api from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
@@ -18,15 +18,17 @@ export function CrewPublishedAgents({ profileId, projectId }: { profileId: strin
   const owner = useAuthStore(state => state.user?.id)
   const connection = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const workspaceId = `${profileId}:${projectId}`
+  const mounted = useRef(false)
   useEffect(() => {
     let disposed = false
+    mounted.current = true
     const identity = captureChatIdentity()
     setBusy(true); setError('')
     void api.post<{ agents: Agent[] }>('/api/workspaces', { action: 'agents', workspace_id: workspaceId })
       .then(({ data }) => { if (!disposed && isChatIdentityCurrent(identity)) setSnapshot({ scope: workspaceId, identity, agents: data.agents }) })
       .catch(cause => { if (!disposed && isChatIdentityCurrent(identity)) setError(localFileError(cause)) })
       .finally(() => { if (!disposed && isChatIdentityCurrent(identity)) setBusy(false) })
-    return () => { disposed = true }
+    return () => { disposed = true; mounted.current = false }
   }, [workspaceId, owner, connection, attempt])
   const agents = snapshot?.scope === workspaceId && isChatIdentityCurrent(snapshot.identity) ? snapshot.agents : []
   const choose = async (agent: Agent) => {
@@ -34,7 +36,7 @@ export function CrewPublishedAgents({ profileId, projectId }: { profileId: strin
     setBusy(true); setError('')
     try {
       const { data } = await api.post<PublishedAgentChat>('/api/workspaces', { action: 'open_agent', workspace_id: workspaceId, agent_id: agent.agent_id })
-      if (isChatIdentityCurrent(identity)) await openPublishedAgentChat(projectId, data)
+      if (mounted.current && isChatIdentityCurrent(identity)) await openPublishedAgentChat(projectId, data)
     } catch (cause) { if (isChatIdentityCurrent(identity)) setError(localFileError(cause)) }
     finally { if (isChatIdentityCurrent(identity)) setBusy(false) }
   }
@@ -43,7 +45,7 @@ export function CrewPublishedAgents({ profileId, projectId }: { profileId: strin
     setBusy(true); setError('')
     try {
       const { data } = await api.get<Blob>('/api/external/v1/publication-history', { params: { workspace_id: workspaceId, agent_id: agent.agent_id }, responseType: 'blob' })
-      if (!isChatIdentityCurrent(identity)) return
+      if (!mounted.current || !isChatIdentityCurrent(identity)) return
       const url = URL.createObjectURL(data); const link = document.createElement('a')
       link.href = url; link.download = 'imported-chat.jsonl'; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch (cause) { if (isChatIdentityCurrent(identity)) setError(localFileError(cause)) }
@@ -58,7 +60,7 @@ export function CrewPublishedAgents({ profileId, projectId }: { profileId: strin
     </div>)}
     {!busy && !error && !agents.length && <p className="text-muted-foreground">Bring an agent you already use on your computer into this project.</p>}
     <details className="text-xs text-muted-foreground"><summary className="w-fit cursor-pointer rounded underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">How to add an agent</summary>
-      <p className="mt-2 max-w-prose leading-relaxed">Open the project on your computer, choose <strong>Publish to Crew</strong>, then select this Crew as the destination. Review what will be shared before publishing. Return here to open its chat.</p>
+      <p className="mt-2 max-w-prose leading-relaxed">On your computer, run <code>agentworks publish</code> from your coding chat, or choose <strong>Publish to Crew</strong> in the local app. Select this Crew as the destination. Review what will be shared before publishing. Return here to open its chat.</p>
     </details>
     {error && <p role="alert" className="text-xs text-destructive">{error} <button type="button" className="underline" disabled={busy} onClick={() => setAttempt(value => value + 1)}>Retry</button></p>}
   </section>
