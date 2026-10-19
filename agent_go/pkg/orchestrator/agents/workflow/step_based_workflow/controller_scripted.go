@@ -15,6 +15,8 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	orchevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
+	"github.com/manishiitg/mcpagent/agent/codeexec"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -912,6 +914,48 @@ if problems:
 print('[preflight] Python bundle syntax, top-level imports and configuration OK', flush=True)
 `
 
+// A saved script must use its step's tools, independently of the caller's
+// chat tools. In particular a pinned Run chat has no database tools to lend
+// its group session. Give each invocation its own registry so parallel helpers
+// cannot replace one another's access or leave broader tools on a cached group.
+func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(step PlanStepInterface, guard *workspace.FolderGuardConfig, dbAccess string, env map[string]string) func() {
+	sessionID := fmt.Sprintf("script-step-%s-%d", step.GetID(), time.Now().UnixNano())
+	if hcpo.httpSessionID != "" {
+		mcpagent.RegisterHTTPSession(hcpo.httpSessionID, sessionID)
+	}
+	hcpo.configureSubAgentSessionGuard(sessionID, "scripted", step.GetID(), guard.ReadPaths, guard.WritePaths)
+	common.SetSessionFolderGuardBlockedWritePaths(sessionID, guard.BlockedWritePaths)
+	common.SetSessionFolderGuardBlockedPaths(sessionID, guard.BlockedPaths)
+	configureWorkflowDBSession(sessionID, hcpo.GetWorkspacePath(), dbAccess, false)
+	if parent := common.GetSessionShellConfig(hcpo.GetMCPSessionID()); parent != nil {
+		hcpo.bindWorkshopBrowserSession(sessionID, parent.BrowserSessionID)
+	}
+	_, executors := hcpo.prepareOrchestratorCustomTools(stepConfigWithDescribedHumanTools(getAgentConfigs(step), step), dbAccess)
+	bridgeTools := make(map[string]func(context.Context, map[string]interface{}) (string, error), len(executors))
+	allow := make(map[string]bool, len(executors))
+	for name, executor := range executors {
+		if fn, ok := executor.(func(context.Context, map[string]interface{}) (string, error)); ok {
+			bridgeTools[name] = fn
+			allow[name] = true
+		}
+	}
+	codeexec.InitRegistryForSession(sessionID, bridgeTools, hcpo.GetLogger())
+	codeexec.SetSessionToolAllowList(sessionID, allow)
+	env["MCP_SESSION_ID"] = sessionID
+	if url := buildSessionScopedMCPAPIURL(sessionID); url != "" {
+		env["MCP_API_URL"] = url
+	}
+	common.PopulateMCPBridgeShortEnv(env)
+	registerStepSessionShellEnv(sessionID, env["STEP_OUTPUT_DIR"], env["STEP_EXECUTION_DIR"], env["DB_PATH"], env["RUN_FOLDER"], env)
+	configureWorkshopToolAgentBridgeSession(sessionID)
+	hcpo.GetLogger().Info(fmt.Sprintf("[SCRIPT_BRIDGE] Registered step tools session=%s step=%s db_access=%s tools=%d", sessionID, step.GetID(), dbAccess, len(bridgeTools)))
+	return func() {
+		codeexec.CleanupSession(sessionID)
+		common.ClearSessionShellConfig(sessionID)
+		mcpagent.CloseSession(sessionID)
+	}
+}
+
 // execScriptedScript runs python3 <mainPy> <args...> via the workspace shell API.
 // Uses workspace.Client (same path as the LLM agent's execute_shell_command tool) so that
 // folder guard, ExtraEnv (SECRET_*, MCP_API_URL), and path handling all work consistently.
@@ -1006,6 +1050,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) execScriptedScript(
 	// contract explicitly in this child process. This is context-local and cannot
 	// leak between concurrently running todo routes.
 	extraEnv = appendScriptedDelegationEnv(ctx, extraEnv)
+	releaseBridge := hcpo.configureScriptBridgeSession(step, guard, dbAccess, extraEnv)
+	defer releaseBridge()
 	if len(scriptedParameterDefinitions(step)) > 0 {
 		if _, present := extraEnv[ScriptedParametersEnv]; !present {
 			extraEnv[ScriptedParametersEnv] = "{}"
