@@ -290,6 +290,11 @@ describe('Crew native tab dragging', () => {
     const root = createRoot(host)
     try {
       await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats />))
+      const handle = host.querySelector('[data-chat-tab-id="a"] > .lucide-grip-vertical')!
+      expect(handle.getAttribute('class')).toContain('absolute')
+      expect(handle.getAttribute('class')).toContain('opacity-0')
+      expect(handle.getAttribute('class')).toContain('group-hover/chat-tab:opacity-100')
+      expect(handle.getAttribute('class')).toContain('group-focus-within/chat-tab:opacity-100')
       const dataTransfer = { setData: vi.fn(), effectAllowed: '', dropEffect: '' }
       const gesture = (kind: string, node: Element) => { const event = new Event(kind, { bubbles: true, cancelable: true }); Object.defineProperty(event, 'dataTransfer', { value: dataTransfer }); node.dispatchEvent(event) }
       await act(async () => gesture('dragstart', host.querySelector('[data-chat-tab-id="a"]')!))
