@@ -1,7 +1,7 @@
 // The real shared panels in Chromium with account/API responses. This checks
 // interaction/layout, not live Google consent or deployed mail delivery.
 import assert from 'node:assert/strict'
-import {mkdir} from 'node:fs/promises'
+import {mkdir,writeFile} from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
 import {createServer} from 'vite'
@@ -20,6 +20,8 @@ try{
   const account={id:'saved',owner:'owner',label:'owner@example.com',mine:true,connected:true,can_use_inbox:true,google:{id:'saved',email:'owner@example.com',enabled:true,allow_read_access:true,auth:{scopes:['https://www.googleapis.com/auth/gmail.readonly']}}}
   await page.route('**/api/**',async route=>{
    const url=new URL(route.request().url());let data={}
+   // Vite also serves source modules from /src/api/. Only mock backend URLs.
+   if(!url.pathname.startsWith('/api/'))return route.continue()
    if(url.pathname.endsWith('/integrations/google/accounts')){
     if(route.request().method()==='POST')actions.push(route.request().postDataJSON().action)
     data={accounts:[account],can_connect:false,incoming_email:{inbox:{id:'inbox',address,connection_id:'saved'},receiving_account:'owner@example.com',bindings:[]}}
@@ -30,6 +32,7 @@ try{
    else if(url.pathname.includes('/google-apps'))data={can_connect:false,oauth_clients:[],connections:[]}
    return route.fulfill({contentType:'application/json',body:JSON.stringify(data)})
   })
+  try{
   await page.goto(server.resolvedUrls.local[0]+`scripts/test-fixtures/gmail-inbox-qa.html?theme=${theme}`)
   await page.getByRole('heading',{name:'Your incoming email',exact:true}).waitFor()
   assert.match(await page.getByLabel('Your incoming email').textContent(),/Anyone who emails this address/)
@@ -50,6 +53,12 @@ try{
   assert.deepEqual(actions,['rotate_inbox','approve'])
   await page.screenshot({path:path.join(output,`gmail-approval-${name}.png`),fullPage:true})
   assert.deepEqual(errors,[])
+  }catch(error){
+   console.error(`${name} browser errors:`,errors)
+   await writeFile(path.join(output,`gmail-failure-${name}.html`),await page.content())
+   await page.screenshot({path:path.join(output,`gmail-failure-${name}.png`),fullPage:true})
+   throw error
+  }
   await page.close()
  }
  console.log('Gmail inbox browser checks passed: My Vault, Slack admin setup, explicit rotation and per-binding approval on desktop/mobile.')
