@@ -9,9 +9,10 @@ const createPlannerFolder = vi.hoisted(() => vi.fn().mockResolvedValue({}))
 const deleteAgentProfileProject = vi.hoisted(() => vi.fn().mockResolvedValue({ success: true }))
 const listSharedProjects = vi.hoisted(() => vi.fn())
 const loadProductProjects = vi.hoisted(() => vi.fn())
+const changeProjectTemplate = vi.hoisted(() => vi.fn())
 
 vi.mock('../../services/api', () => ({
-  agentApi: { createProductProject: createServerProject, createPlannerFolder, deleteAgentProfileProject, getPlannerFileContent, listSharedProjects, updatePlannerFile },
+  agentApi: { changeProjectTemplate, createProductProject: createServerProject, createPlannerFolder, deleteAgentProfileProject, getPlannerFileContent, listSharedProjects, updatePlannerFile },
   getApiBaseUrl: () => '',
   getAuthToken: () => null,
 }))
@@ -123,74 +124,25 @@ describe('createWorkSession', () => {
     expect(createPlannerFolder).not.toHaveBeenCalled()
   })
 
-  it('adds Tax Export to Finance Analyst without changing identity, existing skill, or setup progress', async () => {
-    const files = serverFiles
-    files.clear()
-    updatePlannerFile.mockImplementation(async (path: string, content: string) => { files.set(path, content); return {} })
-    getPlannerFileContent.mockImplementation(async (path: string) => {
-      const content = files.get(path)
-      if (content === undefined) throw { response: { status: 404 } }
-      return { data: { content } }
-    })
-    try {
-      const original = await createWorkSession('My Finance Analyst', 'Review the shop’s finances.', '📊', 'finance-analyst')
-      const financeSetupPath = `${original.workspacePath}/TEMPLATE_SETUP.json`
-      const financeSetup = JSON.parse(files.get(financeSetupPath)!)
-      financeSetup.completed_steps = ['identity', 'skill']
-      files.set(financeSetupPath, JSON.stringify(financeSetup))
-      const updated = await installWorkSessionTemplate(original, 'tax-export')
-      const product = JSON.parse(files.get(`${original.workspacePath}/product.json`)!)
-      const runtime = JSON.parse(files.get(`${original.workspacePath}/workflow.json`)!)
-      expect(updated.templates).toEqual([{ id: 'finance-analyst', version: 1 }, { id: 'tax-export', version: 1 }])
-      expect(product.identity).toEqual({ name: 'My Finance Analyst', icon: '📊', role: 'Finance analyst for this business' })
-      expect(product.description).toBe('Review the shop’s finances.')
-      expect(runtime.capabilities.selected_skills).toEqual(['finance-analyst', 'tax-export'])
-      expect(files.get(financeSetupPath)).toBe(JSON.stringify(financeSetup))
-      expect(JSON.parse(files.get(`${original.workspacePath}/templates/tax-export/TEMPLATE_SETUP.json`)!).checks).toHaveLength(8)
-      await expect(installWorkSessionTemplate(updated, 'tax-export')).rejects.toThrow('already installed')
-    } finally {
-      updatePlannerFile.mockReset().mockResolvedValue({})
-      getPlannerFileContent.mockReset()
-    }
+  it('installs a template through the server while keeping the local project identity', async () => {
+    const original = await createWorkSession('My Finance Analyst', 'Review finances.', '📊', 'finance-analyst')
+    changeProjectTemplate.mockResolvedValueOnce({ templates:[{id:'finance-analyst', version:1}, {id:'tax-export', version:1}], selected_skills:['finance-analyst','tax-export'] })
+    updatePlannerFile.mockClear()
+    const updated = await installWorkSessionTemplate(original, 'tax-export')
+    expect(changeProjectTemplate).toHaveBeenLastCalledWith(original.product, original.id, 'install_template', 'tax-export')
+    expect(updated).toMatchObject({ ...original, templates:[{id:'finance-analyst',version:1},{id:'tax-export',version:1}], selectedSkills:['finance-analyst','tax-export'] })
+    expect(updatePlannerFile).not.toHaveBeenCalled()
   })
 
-  it('adds multiple Billing packs to one Crew without replacing identity or completed setup', async () => {
-    const files = serverFiles
-    files.clear()
-    updatePlannerFile.mockImplementation(async (path: string, content: string) => { files.set(path, content); return {} })
-    getPlannerFileContent.mockImplementation(async (path: string) => {
-      const content = files.get(path)
-      if (content === undefined) throw { response: { status: 404 } }
-      return { data: { content } }
-    })
-    try {
-      const original = await createWorkSession('Billing Desk', 'Review customer billing issues.', '💳', 'billing-operations-coordinator')
-      const baseSetupPath = `${original.workspacePath}/templates/billing-operations-coordinator/TEMPLATE_SETUP.json`
-      const baseSetup = JSON.parse(files.get(baseSetupPath)!)
-      baseSetup.completed_steps = ['identity', 'skill']
-      files.set(baseSetupPath, JSON.stringify(baseSetup))
-      const withInvoices = await installWorkSessionTemplate(original, 'invoice-chasing')
-      const withRefunds = await installWorkSessionTemplate(withInvoices, 'refund-review')
-      const product = JSON.parse(files.get(`${original.workspacePath}/product.json`)!)
-      const runtime = JSON.parse(files.get(`${original.workspacePath}/workflow.json`)!)
-      expect(withRefunds.templates).toEqual([
-        { id: 'billing-operations-coordinator', version: 1 },
-        { id: 'invoice-chasing', version: 1 },
-        { id: 'refund-review', version: 1 },
-      ])
-      expect(product.identity).toEqual({ name: 'Billing Desk', icon: '💳', role: 'Subscription billing and payment operations coordinator' })
-      expect(runtime.capabilities.selected_skills).toEqual(['billing-operations-coordinator', 'invoice-chasing', 'refund-review'])
-      expect(files.get(baseSetupPath)).toBe(JSON.stringify(baseSetup))
-      for (const id of ['invoice-chasing', 'refund-review']) {
-        const setup = JSON.parse(files.get(`${original.workspacePath}/templates/${id}/TEMPLATE_SETUP.json`)!)
-        expect(setup.completed_steps).toEqual([])
-        expect(setup.checks).toHaveLength(9)
-      }
-    } finally {
-      updatePlannerFile.mockReset().mockResolvedValue({})
-      getPlannerFileContent.mockReset()
-    }
+  it('keeps server template refusal visible instead of writing around it', async () => {
+    const original = await createWorkSession('Billing Desk', 'Review billing.', '💳', 'billing-operations-coordinator')
+    const refusal = { response:{status:403} }
+    changeProjectTemplate.mockRejectedValueOnce(refusal)
+    updatePlannerFile.mockClear()
+    await expect(installWorkSessionTemplate(original, 'invoice-chasing')).rejects.toBe(refusal)
+    expect(updatePlannerFile).not.toHaveBeenCalled()
   })
+
 })
 
 describe('deleteWorkSession', () => {

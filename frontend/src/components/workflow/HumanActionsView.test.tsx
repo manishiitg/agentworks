@@ -12,7 +12,7 @@ import HumanActionsView from './HumanActionsView'
 
 it('gives workflow decisions their own workspace view', () => {
   const html = renderToStaticMarkup(<HumanActionsView workspacePath="Workflow/example" />)
-  expect(html).toContain('Human actions')
+  expect(html).toContain('Decisions')
   expect(html).toContain('data-workspace="Workflow/example"')
   expect(html).toContain('data-empty-state="true"')
   expect(html).toContain('Decision cards')

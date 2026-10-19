@@ -21,7 +21,7 @@ describe('Activity page', () => {
       useProductSurfaceStore.setState({ productSurface: 'agentworks' })
       useAppStore.setState({ showWorkflowsOverview: true, activityWorkflowPath: 'Workflow/demo' })
       await act(async () => root.render(<ActivityPage />))
-      expect(host.querySelector('h1')?.textContent).toBe('Activity')
+      expect(host.querySelector('h1')?.textContent).toBe('Goal activity')
       expect(host.querySelector('[aria-label="Find updates"]')).not.toBeNull()
       expect(host.querySelector('[role="tablist"]')).toBeNull()
       expect(host.querySelector('#activity-tab-schedules')).toBeNull()

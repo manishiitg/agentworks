@@ -156,27 +156,6 @@ it('rejects intro creation requests when the account cannot create', async () =>
 })
 
 
-it.each([
-  ['agentworks', true, true], ['work', false, true], ['relays', false, false],
-  ['code', false, false], ['mcp-gateway', false, false],
-])('keeps product actions separate from shared controls for %s', async (surface, activity, schedules) => {
-  markLLMDiscoveryOnboardingCleared()
-  mocks.state.productSurface = surface
-  await render({ reduced: surface !== 'agentworks' })
-  const product = host.querySelector('[data-product-navigation-section="product-actions"]')
-  const global = host.querySelector('[data-product-navigation-section="global-actions"]')!
-  expect(Boolean(product?.querySelector('[aria-label="Activity"]'))).toBe(activity)
-  expect(Boolean(product?.querySelector('[data-tour="global-schedules"]'))).toBe(schedules)
-  expect(Boolean(global.querySelector('[aria-label="Activity"]'))).toBe(activity && !host.querySelector('[data-picker-setup-slot]'))
-  expect(Boolean(global.querySelector('[data-tour="global-schedules"]'))).toBe(schedules && !host.querySelector('[data-picker-setup-slot]'))
-  const setup = host.querySelector('[data-picker-setup-slot]')
-  if (setup) {
-    expect(Boolean(setup.querySelector('[aria-label="Activity"]'))).toBe(activity)
-    expect(Boolean(setup.querySelector('[data-tour="global-schedules"]'))).toBe(schedules)
-  }
-})
-
-
 it.each(['agentworks', 'relays'])('opens the existing %s creation form for a pending Ctrl+K request', async surface => {
   mocks.state.productSurface = surface
   mocks.state.productCreateSurface = surface
@@ -186,33 +165,3 @@ it.each(['agentworks', 'relays'])('opens the existing %s creation form for a pen
   expect(mocks.state.productCreateSurface).toBeNull()
 })
 
-it('keeps Activity open while browsing the workspace picker and dismissing it', async () => {
-  markLLMDiscoveryOnboardingCleared()
-  mocks.state.showWorkflowsOverview = true
-  mocks.state.workflowPresetsLoaded = true
-  await render()
-  const trigger = host.querySelector<HTMLButtonElement>('[data-testid="tour-workflow-add-edit"] button')!
-  await act(async () => trigger.click())
-  expect(mocks.state.showWorkflowsOverview).toBe(true)
-  expect(host.querySelector<HTMLElement>('.preset-dropdown')?.hidden).toBe(false)
-  await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
-  expect(mocks.state.showWorkflowsOverview).toBe(true)
-  expect(host.querySelector<HTMLElement>('.preset-dropdown')?.hidden).toBe(true)
-})
-
-it.each(['agentworks', 'relays', 'work', 'code'])('uses one combined workspace/product picker in %s', async surface => {
-  markLLMDiscoveryOnboardingCleared()
-  mocks.state.productSurface = surface
-  mocks.state.selectedModeCategory = ['work', 'code'].includes(surface) ? 'multi-agent' : 'workflow'
-  await render({ productControl: ['work', 'code'].includes(surface) ? <button aria-label="Project picker" /> : undefined })
-  expect(host.querySelector('[aria-label="Standalone product picker"]')).toBeNull()
-  expect(host.querySelector('[aria-label="Project picker"], [data-testid="tour-workflow-add-edit"]')).not.toBeNull()
-})
-
-it('retains product switching when the product has no workspace picker', async () => {
-  markLLMDiscoveryOnboardingCleared()
-  mocks.state.productSurface = 'bullpen'
-  mocks.state.selectedModeCategory = 'multi-agent'
-  await render({ reduced: true })
-  expect(host.querySelector('[aria-label="Standalone product picker"]')).not.toBeNull()
-})

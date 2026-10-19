@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   user: { id: 'alice', allowed_products: null, allowed_workflow_ids: null } as any,
   tabs: {} as any,
   presets: [] as any[],
+  builders: {} as Record<string, any>,
   product: 'code',
   active: [] as any[],
   selectedTab: null as string | null,
@@ -58,6 +59,7 @@ vi.mock('../../stores/useProductSurfaceStore', () => ({
 }))
 vi.mock('../../api/scheduler', () => ({ schedulerApi: { listJobs: async () => ({ jobs: [] }) } }))
 vi.mock('../../services/api', () => ({ agentApi: { listChatHistorySessions: mocks.history, listWorkspaceNavigation: mocks.navigation } }))
+vi.mock('../../hooks/useWorkflowBuilderBindings', () => ({ useWorkflowBuilderBindings: () => mocks.builders }))
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: vi.fn() }))
 vi.mock('../../hooks/useResumePreviousChat', () => ({ useResumePreviousChat: () => mocks.resume }))
 vi.mock('./SidebarStepInspections', () => ({ default: () => null }))
@@ -88,6 +90,7 @@ afterEach(() => {
   vi.clearAllMocks()
   mocks.tabs = {}
   mocks.presets = []
+  mocks.builders = {}
   mocks.product = 'code'
   mocks.active = []
   mocks.selectedTab = null
@@ -281,6 +284,7 @@ it('mounts workspace-level Inspect discovery for the selected Goal even when onl
   mocks.presets = [{ id: 'goal', label: 'Research', selectedFolder: { filepath: 'Workflow/demo' } }]
   mocks.tabs = { main: { tabId: 'main', sessionId: 'main-chat', name: 'Research', createdAt: 1, metadata: { mode: 'workflow', phaseId: 'workflow-builder', presetQueryId: 'goal' } } }
   mocks.selectedTab = 'main'
+  mocks.builders = { goal: { sessions: { 'main-chat': { is_builder: true } } } }
   mocks.history.mockResolvedValue({ sessions: [] })
   await render(async host => {
     const discovery = host.querySelector('[data-workspace-discovery="goal"]')!

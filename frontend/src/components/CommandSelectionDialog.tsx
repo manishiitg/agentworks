@@ -78,6 +78,7 @@ export const CommandSelectionDialog: React.FC<CommandSelectionDialogProps> = ({
     const filtered = allCommands.filter(cmd =>
       cmd.command.toLowerCase().includes(query) ||
       cmd.description.toLowerCase().includes(query) ||
+      cmd.aliases?.some(alias => alias.toLowerCase().includes(query)) ||
       cmd.searchTerms?.some(term => term.toLowerCase().includes(query))
     )
 
