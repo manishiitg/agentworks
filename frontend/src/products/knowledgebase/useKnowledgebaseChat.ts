@@ -12,7 +12,7 @@ type PendingAsk = { message: string; identity: ReturnType<typeof captureChatIden
 
 /** Brain's existing conversation is resolved only for an explicit chat or
  * model-settings request. Closing the secondary pane keeps its draft alive. */
-export function useKnowledgebaseChat(bootstrap: KnowledgeBootstrap | null, scope: string, models: boolean, selectedTabId?: string) {
+export function useKnowledgebaseChat(bootstrap: KnowledgeBootstrap | null, scope: string, models: boolean, selectedTabId?: string, navigationToken?: number) {
   const chatRef = useRef<ChatAreaRef>(null)
   const [requested, setRequested] = useState<string | null>(null)
   const [state, setState] = useState<{ scope: string; tabId: string | null; error: string; busy: boolean }>({ scope, tabId: null, error: '', busy: false })
@@ -74,7 +74,7 @@ export function useKnowledgebaseChat(bootstrap: KnowledgeBootstrap | null, scope
       pending.current.splice(0).forEach(job => job.reject(new Error(knowledgebaseError(error))))
     })
     return () => { cancelled = true }
-  }, [enabled, workspace, scope, attempt, selectedTabId])
+  }, [enabled, workspace, scope, attempt, selectedTabId, navigationToken])
   useEffect(() => {
     if (!canChat) {
       setRequested(null)

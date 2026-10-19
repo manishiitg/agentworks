@@ -82,6 +82,11 @@ describe('GatewaySurface', () => {
     expect(chatRuntime.hydrate).toHaveBeenCalledWith('saved-session', expect.objectContaining({ workspacePath: 'Chats/CapLayer' }))
     expect(chatRuntime.resolve).not.toHaveBeenCalled()
     expect(chatRuntime.state.createChatTab).not.toHaveBeenCalled()
+    await act(async () => button(container!, 'New assistant conversation').click())
+    expect(container!.querySelector('[data-testid="shared-chat-area"]')?.getAttribute('data-tab-id')).toBe('tab-new')
+    await act(async () => { requestServiceChat('mcp-gateway', 'saved') })
+    expect(container!.querySelector('[data-testid="shared-chat-area"]')?.getAttribute('data-tab-id')).toBe('saved')
+    expect(chatRuntime.state.createChatTab).toHaveBeenCalledTimes(1)
   })
 
   it('starts with Connected MCPs in main and all shortcuts, without preparing a chat', async () => {

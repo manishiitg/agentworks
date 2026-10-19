@@ -11,7 +11,7 @@ const PROFILE = 'caplayer'
 const WORKSPACE = 'Chats/CapLayer'
 
 /** Vault's existing durable chat, prepared only for an explicit assistant action. */
-export function useVaultChat(enabled: boolean, selectedTabId?: string) {
+export function useVaultChat(enabled: boolean, selectedTabId?: string, navigationToken?: number) {
   const [tabId, setTabId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const generation = useRef(0)
@@ -68,7 +68,7 @@ export function useVaultChat(enabled: boolean, selectedTabId?: string) {
     pending.current = operation
     return operation
   }, [selectedTabId])
-  useEffect(() => { if (enabled) void prepare(false, !!selectedTabId) }, [enabled, prepare, selectedTabId])
+  useEffect(() => { if (enabled) void prepare(false, !!selectedTabId) }, [enabled, prepare, selectedTabId, navigationToken])
   useEffect(() => () => { generation.current += 1; ready.current = null; pending.current = null }, [])
   return { tabId, error, prepare, retry: () => void prepare(false, true), openNew: () => void prepare(true) }
 }

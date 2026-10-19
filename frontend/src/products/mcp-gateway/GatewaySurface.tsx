@@ -54,7 +54,7 @@ function GatewayAdminWorkspace({ base, standalone, page, onPage }: { base: strin
   const [mobilePane, setMobilePane] = useState<'chat' | 'workspace'>('chat')
   const [panel, setPanel] = useWorkspaceViewPreference<GatewayPanel>('mcp-gateway', base, 'servers', normalizeVaultPanel)
   const navigation = currentServiceChatRequest(useServiceChatNavigation(state => state.request), 'mcp-gateway')
-  const { tabId, error, prepare, retry, openNew } = useVaultChat(!readOnly && (chatRequested || (!page && panel === 'models')), navigation?.tabId)
+  const { tabId, error, prepare, retry, openNew } = useVaultChat(!readOnly && (chatRequested || (!page && panel === 'models')), navigation?.tabId, navigation?.token)
   useEffect(() => {
     if (readOnly) { setChatOpen(false); return }
     if (navigation) { setChatRequested(true); setChatOpen(true); setMobilePane('workspace') }

@@ -57,7 +57,7 @@ export function KnowledgebaseSurface() {
   const [openScope, setOpenScope] = useState<string | null>(null)
   const chatOpen = canManage && openScope === scope
   const navigation = currentServiceChatRequest(useServiceChatNavigation(state => state.request), 'knowledgebase')
-  const chat = useKnowledgebaseChat(bootstrap, scope, canManage && view === 'models', navigation?.tabId)
+  const chat = useKnowledgebaseChat(bootstrap, scope, canManage && view === 'models', navigation?.tabId, navigation?.token)
   const [ratio, setRatio] = useState(readRatio)
   const [mobilePane, setMobilePane] = useState<'chat' | 'workspace'>('chat')
   const containerRef = useRef<HTMLDivElement>(null)
