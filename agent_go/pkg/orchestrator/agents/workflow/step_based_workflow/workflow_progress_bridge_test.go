@@ -227,6 +227,22 @@ func TestWorkflowProgressBridgeMatchesStableStepAcrossLifecycleIndices(t *testin
 	if snap, ok := session.StepRegistry.GetSnapshot(startedID); !ok || snap.Status != WorkshopStepDone || snap.Err != nil {
 		t.Fatalf("completed step changed during parent cleanup: %+v", snap)
 	}
+	// A loop/retry is a new physical execution, even within the same parent.
+	if err := bridge.HandleEvent(t.Context(), start); err != nil {
+		t.Fatal(err)
+	}
+	if len(notifier.starts) != 2 || notifier.starts[1].ID == startedID {
+		t.Fatalf("second start reused an ended mirror: %+v", notifier.starts)
+	}
+	if snap, _ := session.StepRegistry.GetSnapshot(startedID); snap.Status != WorkshopStepDone {
+		t.Fatal("second start overwrote the first completed attempt")
+	}
+	if err := bridge.HandleEvent(t.Context(), completion); err != nil {
+		t.Fatal(err)
+	}
+	if len(notifier.completes) != 2 || notifier.completes[1].id != notifier.starts[1].ID {
+		t.Fatalf("second completion did not settle its own mirror: %+v", notifier.completes)
+	}
 }
 
 func TestWorkflowProgressBridgeStableIdentityIsStepAndParentScoped(t *testing.T) {

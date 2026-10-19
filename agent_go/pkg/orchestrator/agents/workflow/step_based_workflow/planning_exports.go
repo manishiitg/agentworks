@@ -1397,6 +1397,7 @@ type workflowProgressBridge struct {
 	groupName      string
 	progressMu     sync.Mutex
 	progressID     map[string]string
+	progressEnded  map[string]bool
 	ownedSubAgents *workshopSubAgentCleanup
 }
 
@@ -1670,11 +1671,12 @@ func (b *workflowProgressBridge) workflowProgressExecIDForStart(stepID, agentTyp
 	if b.progressID == nil {
 		b.progressID = make(map[string]string)
 	}
-	if id := b.progressID[key]; id != "" {
+	if id := b.progressID[key]; id != "" && !b.progressEnded[key] {
 		return id
 	}
 	id := fmt.Sprintf("%s-step-%d-%s", b.parentID, stepIndex, workflowExecutionIDToken())
 	b.progressID[key] = id
+	delete(b.progressEnded, key)
 	return id
 }
 
@@ -1688,6 +1690,10 @@ func (b *workflowProgressBridge) workflowProgressExecIDForEnd(stepID, agentType,
 	if b.progressID == nil {
 		b.progressID = make(map[string]string)
 	}
+	if b.progressEnded == nil {
+		b.progressEnded = make(map[string]bool)
+	}
+	b.progressEnded[key] = true
 	if id := b.progressID[key]; id != "" {
 		return id, true
 	}
