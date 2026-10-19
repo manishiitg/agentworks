@@ -1236,6 +1236,7 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 	runID := firstNonEmptyTrimmed(options.RunID, uuid.NewString())
 	var binding productConversationBinding
 	var bindErr error
+	newAgentName := "" // set when this run creates a named Crew agent's tab
 	if job.GuestCallerID != "" && !currentProductCallerHasAccess(runCtx, job.GuestCallerID, job.WorkspacePath) {
 		bindErr = fmt.Errorf("This Crew is no longer shared with the caller. Ask its owner for access.")
 		scheduleLogf("[PRODUCT_TRIGGER_ACCESS] actor=%s profile=%s project=%s result=denied reason=current_share", sanitizeUserIDForPath(job.GuestCallerID), job.Profile.ID, job.ProjectID)
@@ -1249,7 +1250,6 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 		// A schedule set from a side chat (tab) runs there while that chat
 		// exists; otherwise, and for every other schedule, in the main chat.
 		key := job.ProjectID
-		created := false
 		if chatKey := scheduleChatKey(job); chatKey != "" && projectChatExists(runCtx, job.UserID, job.Profile.ID, job.ProjectID, chatKey) {
 			key = chatKey // an existing chat keeps its own title
 		} else if chatKey != "" && job.AgentName != "" {
@@ -1257,12 +1257,12 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 			if _, capErr := checkSideChatCapacity(runCtx, defaultProductConversationRegistryStore(), job.UserID, job.Profile.ID, chatKey); capErr != nil {
 				bindErr = fmt.Errorf("This Crew already has %d chats, so agent %q cannot be added. Close a chat in the Crew or reuse an existing agent name.", externalCrewMaxSideChats, job.AgentName)
 			}
-			key, created = chatKey, true
+			key, newAgentName = chatKey, job.AgentName
 		}
 		if bindErr == nil {
 			binding, bindErr = resolveProductConversationBinding(runCtx, job.UserID, job.Profile, key)
-			if bindErr == nil && created {
-				binding.Title = job.AgentName
+			if bindErr == nil && newAgentName != "" {
+				binding.Title = newAgentName
 			}
 		}
 	} else if job.Schedule.Isolated {
@@ -1280,6 +1280,12 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 		setupErr := fmt.Errorf("open product conversation: %w", err)
 		s.failAutomationSetupRun(job, options, setupErr)
 		return "", setupErr
+	}
+	if newAgentName != "" {
+		// The same agent name every other way of opening a tab stores (resolveAgentProfileConversation).
+		if err := setCodeTabName(runCtx, job.UserID, conversation.ConversationKey, newAgentName, job.Profile.ID); err != nil {
+			scheduleLogf("[CREW_AGENT_NAME] profile=%s project=%s result=unnamed error=%v", job.Profile.ID, job.ProjectID, err)
+		}
 	}
 	sessionID := conversation.SessionID
 	var functionCall *crewFunctionCall
