@@ -58,5 +58,7 @@ func (api *StreamingAPI) handleAccountBrowsers(w http.ResponseWriter, r *http.Re
 	for _, b := range browsers {
 		connected = connected || b.Connected
 	}
-	json.NewEncoder(w).Encode(map[string]any{"browsers": browsers, "account_connected": connected, "latest_extension_version": browserrelay.LatestExtensionVersion()})
+	json.NewEncoder(w).Encode(map[string]any{"browsers": browsers, "account_connected": connected,
+		"latest_extension_version": browserrelay.LatestExtensionVersion(), "minimum_extension_version": browserrelay.MinimumExtensionVersion,
+		"pairing_error": browserrelay.Default.PairingFailure(claims.UserID)})
 }

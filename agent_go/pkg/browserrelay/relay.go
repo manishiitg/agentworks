@@ -88,6 +88,7 @@ type Manager struct {
 	browserRecords   map[string]BrowserConnection
 	accountBrowsers  map[string]*accountBrowser
 	selectedBrowsers map[string]string
+	pairingFailures  map[string]PairingFailure
 }
 
 var Default = New()
@@ -763,6 +764,7 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 	var hello envelope
 	if conn.ReadJSON(&hello) != nil || hello.Type != "pair" {
+		m.rejectPairing(conn, "", "invalid_pairing_request", "Could not read the browser connection. Reload the extension and copy a new code from Browser connections.", "")
 		return
 	}
 	if hello.Scope == "" && hello.BrowserID != "" {
@@ -775,11 +777,21 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 	ok = ok && exists
 	m.mu.Unlock()
 	if !ok {
-		conn.WriteJSON(envelope{Type: "error", Workspace: "Connection code is invalid or was reset"})
+		// Old project-only extensions cannot use an account connection code.
+		// Validate its account before recording feedback; invalid tokens never
+		// identify a user or reveal whether another account exists.
+		if exists && credential.Account && credential.User != "" && hello.BrowserID == "" &&
+			(hello.Version == "" || extensionVersionBefore(hello.Version, MinimumExtensionVersion)) &&
+			(authorize == nil || authorize(credential.User, "", "", "") == nil) &&
+			m.connectionCodeStillOwned(hello.Token, credential.User) {
+			m.rejectOutdatedExtension(conn, credential.User, hello.Version)
+		} else {
+			m.rejectConnectionCode(conn)
+		}
 		return
 	}
 	if authorize != nil && authorize(g.User, g.Scope, g.Label, g.ProfileID) != nil {
-		conn.WriteJSON(envelope{Type: "error", Workspace: "This account no longer has browser access to the workspace"})
+		m.rejectConnectionCode(conn)
 		return
 	}
 	available := m.availableProjects(hello.Token, authorize)
@@ -798,37 +810,38 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 	checked, granted := resolveProject(current, g.Scope)
 	if !exists || !granted || !sameProject(checked, g) {
 		m.mu.Unlock()
-		conn.WriteJSON(envelope{Type: "error", Workspace: "Connection code was reset; copy it again"})
+		m.rejectConnectionCode(conn)
 		return
 	}
 	// An offline browser may have missed the explicit Disconnect close frame.
 	// Resume cannot recreate a selection removed by the authenticated app.
 	if hello.Resume && m.bindings[key(g.User, g.Scope)] == nil {
 		m.mu.Unlock()
-		conn.WriteJSON(envelope{Type: "error", Workspace: "Browser connection was disconnected; connect again to enable access"})
+		m.rejectPairing(conn, g.User, "browser_disconnected", "Browser connection was disconnected; connect again to enable access.", hello.Version)
 		return
 	}
 	if err := m.start(); err != nil {
 		m.mu.Unlock()
+		m.rejectPairing(conn, g.User, "browser_service_unavailable", "The browser service could not start. Try again shortly.", hello.Version)
 		return
 	}
 
 	if err := m.persistSelection("", &g); err != nil {
 		m.mu.Unlock()
-		conn.WriteJSON(envelope{Type: "error", Workspace: "Cannot save Chrome selection; reconnect after checking server storage"})
+		m.rejectPairing(conn, g.User, "browser_storage_unavailable", "Cannot save your browser selection. Ask your administrator to check server storage, then reconnect.", hello.Version)
 		return
 	}
 	chosen := m.selectedBrowsers[key(g.User, g.Scope)]
 	if chosen != "" && chosen != hello.BrowserID {
 		m.mu.Unlock()
-		conn.WriteJSON(envelope{Type: "error", Workspace: "This project uses a different browser. Choose this browser in the project's Browser settings first."})
+		m.rejectPairing(conn, g.User, "different_browser_selected", "This project uses a different browser. Choose this browser in the project's Browser settings first.", hello.Version)
 		return
 	}
 	if hello.BrowserID != "" {
 		a := m.accountBrowsers[key(g.User, hello.BrowserID)]
 		if a == nil || !a.connected() || a.token != hello.Token || chosen != hello.BrowserID {
 			m.mu.Unlock()
-			conn.WriteJSON(envelope{Type: "error", Workspace: "Connect this browser to your account and choose it in Browser settings first."})
+			m.rejectPairing(conn, g.User, "browser_not_selected", "Connect this browser to your account and choose it in Browser settings first.", hello.Version)
 			return
 		}
 	}
@@ -843,7 +856,12 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 	}
 	b.mu.Lock()
 	m.bindings[b.key] = b
+	_, hadPairingFailure := m.pairingFailures[g.User]
+	delete(m.pairingFailures, g.User)
 	m.mu.Unlock()
+	if hadPairingFailure {
+		notifyChange(key(g.User, ""))
+	}
 	if old != nil {
 		old.closeWithReason("Connected from another browser")
 	}
