@@ -1276,7 +1276,7 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 		return
 	}
 	if binding.ProjectMainChatKey != "" && binding.ConversationKey == binding.ProjectMainChatKey {
-		writeAgentProfileError(w, http.StatusBadRequest, "the main chat cannot be closed; choose another main chat first")
+		writeAgentProfileError(w, http.StatusBadRequest, "The main agent cannot be closed.")
 		return
 	}
 	store := defaultProductConversationRegistryStore()
@@ -1285,11 +1285,11 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// A stopped chat's pane is gone but the terminal store keeps listing it live until the watchdog confirms (PLAT-815),
-	// and a finished chat keeps its coding CLI alive between turns; the app stops such a chat before it closes the tab,
-	// while the MCP tools only call this route (PLAT-819). Both are let go here; a chat with a turn in flight is refused.
+	// A stopped pane may remain listed until the watchdog confirms (PLAT-815),
+	// and a finished chat retains an idle coding CLI. Release both here for app
+	// and MCP callers (PLAT-819); refuse a chat with a turn in flight.
 	if hasCurrent && api.sessionStillWorkingAfterIdleRelease(current.SessionID) {
-		writeAgentProfileError(w, http.StatusConflict, "This chat is still working; stop it before closing the tab")
+		writeAgentProfileError(w, http.StatusConflict, "This agent is still working. Stop it before closing.")
 		return
 	}
 	if _, err := store.removeSlot(r.Context(), userID, profile, binding); err != nil {
