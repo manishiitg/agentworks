@@ -43,3 +43,10 @@ describe('closed semantic UI control contract', () => {
     expect(supportedAction({ ...base, view: 'unknown', action: 'open' })).toBe(false)
   })
 })
+
+
+it('opens Secrets only as a bounded Connections section', () => {
+  expect(supportedAction({ ...base, view: 'mcp', action: 'open', target: 'secrets' })).toBe(true)
+  expect(supportedAction({ ...base, view: 'mcp', action: 'open', target: 'guessed' })).toBe(false)
+  expect(supportedAction({ ...base, view: 'secrets', action: 'open' })).toBe(false)
+})

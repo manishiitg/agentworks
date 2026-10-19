@@ -34,6 +34,6 @@ export function ProjectPluginsPanel({ connections, secrets, skills, vault, initi
   if (!active) return null
   return <div className="space-y-4">
     {controlledTab === undefined && <WorkspaceViewTabs value={active} onChange={value => setTab(value as PluginTab)} options={[...visible]} ariaLabel="Integrations" />}
-    <div role="tabpanel" aria-label={visible.find(item => item.value === active)?.label}>{content[active]}</div>
+    <div role="tabpanel" data-ui-view-section={active} aria-label={visible.find(item => item.value === active)?.label}>{content[active]}</div>
   </div>
 }

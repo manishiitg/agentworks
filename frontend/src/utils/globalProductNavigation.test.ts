@@ -1,3 +1,4 @@
+import { useServiceChatNavigation } from './serviceChatNavigation'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // Persisted stores need a Storage before they are created at import time.
 // Node < 25 has no global localStorage (CI runs Node 20), so provide one.
@@ -73,6 +74,7 @@ describe('global AgentWorks and Crew navigation', () => {
     useChatStore.setState({ chatTabs: { [tab.tabId]: tab } })
     expect(openGlobalTab(tab.tabId)).toBe(true)
     expect(useProductSurfaceStore.getState().productSurface).toBe('knowledgebase')
+    expect(useServiceChatNavigation.getState().request).toMatchObject({ surface: 'knowledgebase', tabId: 'knowledge-chat' })
     await openGlobalActivitySession(session({ workspace_path: '_users/priya/Chats/Knowledgebase' }))
     expect(useProductSurfaceStore.getState().productSurface).toBe('knowledgebase')
     expect(openCanonicalActivitySession).not.toHaveBeenCalled()

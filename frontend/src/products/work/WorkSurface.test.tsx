@@ -18,6 +18,9 @@ vi.mock('../../stores/useLLMStore', () => ({
 }))
 
 describe('fresh deep links keep their view', () => {
+  it('does not resolve a phantom Secrets view to project identity', () => {
+    expect(normalizeWorkWorkspaceView('secrets')).toBeNull()
+  })
   afterEach(() => { window.history.pushState(null, '', '/') })
 
   it('resolves a Crew schedules link instead of the identity default', () => {

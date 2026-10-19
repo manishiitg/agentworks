@@ -1,3 +1,4 @@
+import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { closeWorkspaceChatTab } from '../../utils/closeWorkspaceChatTab'
 import { useWorkspaceReturn } from '../../hooks/useWorkspaceReturn'
 import { currentProductRoute, routeView } from '../../utils/productRoutes'
@@ -79,13 +80,13 @@ const WORK_UI_PRESENTATION_VIEWS = {
   context: 'context', report: 'dashboard', plan: 'plan', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
   suggestions: 'suggestions', identity: 'identity', mcp: 'mcp', shell: 'shell',
   // Legacy agent + preference ids land on the consolidated Setup views.
-  skills: 'mcp', secrets: 'identity', llm: 'identity', bots: 'mcp', email: 'mcp', folders: 'identity',
+  skills: 'mcp', llm: 'identity', bots: 'mcp', email: 'mcp', folders: 'identity',
 } as const satisfies Record<string, WorkWorkspaceView>
 type WorkUIPresentationView = keyof typeof WORK_UI_PRESENTATION_VIEWS
 const WORK_UI_LABELS: Record<WorkUIPresentationView, string> = {
   context: 'Context', report: 'Dashboard', plan: 'Plan', memory: 'Memory', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automation', schedules: 'Automation', files: 'Files',
-  suggestions: 'Suggestions', identity: 'Identity', mcp: 'Integrations', shell: 'Terminal',
-  skills: 'Skills', secrets: 'Secrets', llm: 'Agent configuration', bots: 'Bots', email: 'Gmail', folders: 'Attached folders',
+  suggestions: 'Suggestions', identity: 'Identity', mcp: 'Connections', shell: 'Terminal',
+  skills: 'Skills', llm: 'Agent configuration', bots: 'Bots', email: 'Gmail', folders: 'Attached folders',
 }
 
 function workPresentationView(view: WorkWorkspaceView, localCodeSession = false): WorkUIPresentationView {
@@ -1213,6 +1214,10 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       const automationTarget = view === 'bots' ? 'bots' : target === 'webhooks' ? 'triggers' : target || 'schedules'
       useWorkflowStore.getState().openWorkspaceView('workshop', automationTarget)
     }
+    if (panel === 'mcp' && target) {
+      if (target === 'secrets' && workspacePanels && !workspacePanels.has('secrets')) return
+      setWorkspaceViewTarget('mcp', target)
+    }
     setPanelOpen(true)
     selectWorkspaceView(panel)
   }, [selected?.shared, selectWorkspaceView, sharedPanels, showShell, workspacePanels, localCodeSession])
@@ -1235,7 +1240,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       (!localCodeSession || ['files', 'costs', 'llm'].includes(view)),
     labelForView: (view) => localCodeSession && view === 'files' ? 'Local CLI connection' : localCodeSession && view === 'llm' ? 'Models' : WORK_UI_LABELS[view as WorkUIPresentationView] ?? view,
     actorLabel: product.noun,
-    getTarget: (view) => view === 'workshop' || view === 'schedules' ? useWorkflowStore.getState().workspaceViewTarget?.target : undefined,
+    getTarget: (view, host) => view === 'mcp' ? host?.querySelector<HTMLElement>('[data-ui-view-section]')?.dataset.uiViewSection : view === 'workshop' || view === 'schedules' ? useWorkflowStore.getState().workspaceViewTarget?.target : undefined,
   }), [openWorkPresentationView, product.noun, workspaceView, workspacePanels, localCodeSession])
   useWorkspaceUIControl(activeSessionId ?? undefined, workUIAdapter)
 

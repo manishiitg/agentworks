@@ -110,3 +110,17 @@ func TestWorkUIOnlyRegistersForInteractiveWorkChat(t *testing.T) {
 		})
 	}
 }
+
+func TestWorkUISecretsUsesConnectionsSection(t *testing.T) {
+	for _, contract := range []uiContract{workUIControlContract, codeUIControlContract} {
+		if err := validateUIActionForContract(contract, "mcp", "open", "secrets"); err != nil {
+			t.Fatalf("%s Connections Secrets refused: %v", contract.Product, err)
+		}
+		if err := validateUIActionForContract(contract, "secrets", "open", ""); err == nil {
+			t.Fatalf("%s retained standalone Secrets alias", contract.Product)
+		}
+		if err := validateUIActionForContract(contract, "mcp", "open", "guessed"); err == nil {
+			t.Fatalf("%s accepted unknown Connections target", contract.Product)
+		}
+	}
+}

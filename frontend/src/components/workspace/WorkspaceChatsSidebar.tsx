@@ -1,3 +1,4 @@
+import { requestServiceChat } from '../../utils/serviceChatNavigation'
 import ConnectedAgentsSidebar from './ConnectedAgentsSidebar'
 import { useResumePreviousChat } from '../../hooks/useResumePreviousChat'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
@@ -323,6 +324,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
           },
         })
         openProductWorkspace(row.surface)
+        if (row.surface === 'knowledgebase' || row.surface === 'mcp-gateway') requestServiceChat(row.surface)
         return
       }
       const session: ActiveSessionInfo = row.activity || {

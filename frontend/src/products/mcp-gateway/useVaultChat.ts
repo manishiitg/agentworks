@@ -11,15 +11,15 @@ const PROFILE = 'caplayer'
 const WORKSPACE = 'Chats/CapLayer'
 
 /** Vault's existing durable chat, prepared only for an explicit assistant action. */
-export function useVaultChat(enabled: boolean) {
+export function useVaultChat(enabled: boolean, selectedTabId?: string, navigationToken?: number) {
   const [tabId, setTabId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const generation = useRef(0)
   const ready = useRef<string | null>(null)
   const pending = useRef<Promise<string | null> | null>(null)
   const prepare = useCallback((newConversation = false, force = false): Promise<string | null> => {
-    if (!newConversation && pending.current) return pending.current
-    if (!newConversation && !force && ready.current) return Promise.resolve(ready.current)
+    if (!newConversation && !force && pending.current) return pending.current
+    if (!newConversation && !force && ready.current && (!selectedTabId || ready.current === selectedTabId)) return Promise.resolve(ready.current)
     const request = ++generation.current
     const identity = captureChatIdentity()
     const current = () => request === generation.current && isChatIdentityCurrent(identity)
@@ -27,6 +27,15 @@ export function useVaultChat(enabled: boolean) {
     const operation = (async () => {
       await waitForChatStoreHydration()
       if (!current()) return null
+      if (selectedTabId && !newConversation) {
+        const existing = useChatStore.getState().chatTabs[selectedTabId]
+        if (existing?.metadata?.agentProfileId !== PROFILE || !existing.sessionId) throw new Error('This Vault chat is no longer available.')
+        await hydrateTabEvents(existing.sessionId, { workspacePath: WORKSPACE, preferChatHistory: true, fallbackToChatHistory: true })
+        if (!current()) return null
+        ready.current = selectedTabId
+        setTabId(selectedTabId)
+        return selectedTabId
+      }
       const conversation = newConversation
         ? await agentApi.startNewAgentProfileConversation(PROFILE, { conversation_key: 'main' })
         : await agentApi.resolveAgentProfileConversation(PROFILE, { conversation_key: 'main' }, null)
@@ -58,8 +67,8 @@ export function useVaultChat(enabled: boolean) {
     }).finally(() => { if (request === generation.current) pending.current = null })
     pending.current = operation
     return operation
-  }, [])
-  useEffect(() => { if (enabled) void prepare() }, [enabled, prepare])
+  }, [selectedTabId])
+  useEffect(() => { if (enabled) void prepare(false, !!selectedTabId) }, [enabled, prepare, selectedTabId, navigationToken])
   useEffect(() => () => { generation.current += 1; ready.current = null; pending.current = null }, [])
   return { tabId, error, prepare, retry: () => void prepare(false, true), openNew: () => void prepare(true) }
 }

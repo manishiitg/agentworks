@@ -1,3 +1,4 @@
+import { clearServiceChatRequest, currentServiceChatRequest, useServiceChatNavigation } from '../../utils/serviceChatNavigation'
 import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { useWorkspaceViewPreference } from '../../hooks/useWorkspaceViewPreference'
 import { normalizeViewFrom } from '../../utils/workspaceViewPreference'
@@ -52,7 +53,14 @@ function GatewayAdminWorkspace({ base, standalone, page, onPage }: { base: strin
   const [chatRequested, setChatRequested] = useState(false)
   const [mobilePane, setMobilePane] = useState<'chat' | 'workspace'>('chat')
   const [panel, setPanel] = useWorkspaceViewPreference<GatewayPanel>('mcp-gateway', base, 'servers', normalizeVaultPanel)
-  const { tabId, error, prepare, retry, openNew } = useVaultChat(chatRequested || (!readOnly && !page && panel === 'models'))
+  const navigation = currentServiceChatRequest(useServiceChatNavigation(state => state.request), 'mcp-gateway')
+  const { tabId, error, prepare, retry, openNew } = useVaultChat(chatRequested || (!readOnly && !page && panel === 'models'), navigation?.tabId, navigation?.token)
+  useEffect(() => {
+    if (navigation) {
+      setChatRequested(true); setChatOpen(true); setMobilePane('workspace')
+      return () => clearServiceChatRequest(navigation)
+    }
+  }, [navigation])
   const openChat = () => { setChatRequested(true); setChatOpen(true); setMobilePane('workspace') }
   const closeChat = () => { setChatOpen(false); setMobilePane('workspace') }
   const openPanel = (next: GatewayPanel) => { setPanel(next); onPage(null); setMobilePane('chat') }

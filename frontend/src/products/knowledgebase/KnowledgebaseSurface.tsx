@@ -1,3 +1,4 @@
+import { clearServiceChatRequest, currentServiceChatRequest, useServiceChatNavigation } from '../../utils/serviceChatNavigation'
 import { currentProductRoute } from '../../utils/productRoutes'
 import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { useWorkspaceViewPreference } from '../../hooks/useWorkspaceViewPreference'
@@ -55,7 +56,8 @@ export function KnowledgebaseSurface() {
   useProductUrlView('knowledgebase', { view: effectiveView, folder })
   const [openScope, setOpenScope] = useState<string | null>(null)
   const chatOpen = canManage && openScope === scope
-  const chat = useKnowledgebaseChat(bootstrap, scope, canManage && view === 'models')
+  const navigation = currentServiceChatRequest(useServiceChatNavigation(state => state.request), 'knowledgebase')
+  const chat = useKnowledgebaseChat(bootstrap, scope, canManage && view === 'models', navigation?.tabId, navigation?.token)
   const [ratio, setRatio] = useState(readRatio)
   const [mobilePane, setMobilePane] = useState<'chat' | 'workspace'>('chat')
   const containerRef = useRef<HTMLDivElement>(null)
@@ -106,6 +108,12 @@ export function KnowledgebaseSurface() {
     setOpenScope(null); setMobilePane('chat'); drag.stop()
     setFolder(currentProductRoute()?.surface === 'knowledgebase' ? currentProductRoute()?.folder ?? '' : '')
   }, [scope, drag.stop])
+  useEffect(() => {
+    if (navigation && canManage) {
+      chat.request(); setOpenScope(scope); setMobilePane('workspace')
+      return () => clearServiceChatRequest(navigation)
+    }
+  }, [navigation, canManage, scope])
   useEffect(() => {
     if (chatOpen && chat.tabId && !globalPage) activateTab(chat.tabId)
   }, [chatOpen, chat.tabId, globalPage])

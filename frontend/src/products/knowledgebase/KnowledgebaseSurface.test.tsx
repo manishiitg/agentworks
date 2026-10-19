@@ -24,12 +24,14 @@ vi.mock('../../utils/activateTab', () => ({ activateTab: mocks.activate }))
 vi.mock('./KnowledgebaseWorkspacePane', () => ({ KnowledgebaseWorkspacePane: ({ view, modelSettings, onAsk }: any) => <div data-testid="workspace">{view === 'models' ? modelSettings : view}{onAsk && <button onClick={() => void onAsk()}>Inspect selected folder</button>}</div> }))
 vi.mock('./KnowledgebaseModelSettings', () => ({ KnowledgebaseModelSettings: () => <span>Shared model settings</span> }))
 vi.mock('./KnowledgebaseAccessConfirmation', () => ({ KnowledgebaseAccessConfirmation: () => <div data-testid="existing-approval-flow" /> }))
+import { requestServiceChat, useServiceChatNavigation } from '../../utils/serviceChatNavigation'
 import { KnowledgebaseSurface } from './KnowledgebaseSurface'
 import { usePanelSwitcherStore } from '../../stores/usePanelSwitcherStore'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanups: (() => void)[] = []
 afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); document.body.innerHTML = ''; window.localStorage?.clear(); vi.clearAllMocks() })
 beforeEach(() => {
+  useServiceChatNavigation.setState({ request: null })
   mocks.backupConfigured = false; mocks.isAdmin = true; mocks.canWrite = true; mocks.submit.mockResolvedValue(undefined)
   mocks.chatProps = {}; mocks.state.chatTabs = {}
   mocks.resolve.mockResolvedValue({ conversation_id: 'old', conversation_key: 'main', session_id: 'old' })
@@ -156,4 +158,24 @@ describe('Brain library with a secondary access chat', () => {
     expect(mocks.state.createChatTab).not.toHaveBeenCalled()
     expect(host.querySelector('[data-testid="shared-chat"]')).toBeNull()
   })
+})
+
+
+it('opens the selected existing Brain conversation without resolving a different main chat', async () => {
+  mocks.state.chatTabs.saved = { tabId: 'saved', sessionId: 'saved-session', metadata: { agentProfileId: 'knowledgebase', isViewOnly: true } }
+  requestServiceChat('knowledgebase', 'saved')
+  await mount()
+  expect(mocks.chatProps.tabId).toBe('saved')
+  expect(mocks.state.createChatTab).not.toHaveBeenCalled()
+  expect(mocks.resolve).not.toHaveBeenCalled()
+  expect(mocks.hydrate).toHaveBeenCalledWith('saved-session', expect.objectContaining({ workspacePath: 'Chats/Knowledgebase' }))
+})
+
+it('does not open a requested Brain chat without write permission', async () => {
+  mocks.canWrite = false
+  requestServiceChat('knowledgebase', 'saved')
+  await mount()
+  expect(mocks.resolve).not.toHaveBeenCalled()
+  expect(mocks.hydrate).not.toHaveBeenCalled()
+  expect(mocks.state.createChatTab).not.toHaveBeenCalled()
 })
