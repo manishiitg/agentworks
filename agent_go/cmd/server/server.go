@@ -1518,6 +1518,9 @@ func shouldTryRetainedDeliveryBeforeQueue(ctx context.Context, req QueryRequest,
 		(claims != nil && claims.AccessToken != nil) {
 		return false
 	}
+	if isScheduledCrewChatDelivery(ctx) {
+		return true
+	}
 	// A person's follow-up in a bot conversation (Slack DM or thread,
 	// WhatsApp) steers the running CLI, like a message in the web chat
 	// (user decision 2026-09-26: always steer with tmux). Workflow bot turns
@@ -4354,9 +4357,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		api.interruptWorkflowPolicySession(sessionID, req.Provider)
 	}
-	// Automated schedule and webhook turns must preserve turn boundaries. They
-	// queue on the session input lane instead of steering a person's currently
-	// running Crew reply through retained CLI live input.
+	// Isolated automation, functions and webhooks preserve turn boundaries.
+	// A scheduled Crew-chat message has trusted chat-routing intent and uses
+	// the same compatible live-input attempt as a typed message.
 	//
 	// Product chats are eligible for retained delivery like any other chat.
 	// LLMConfigSource=agent-profile only records that the profile owns the
@@ -4398,7 +4401,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// A human message gets one attempt at a compatible retained CLI before it
 	// becomes a new turn. If no target exists, this persisted queue owns the
 	// message; an uncertain send above never falls through and double-dispatches.
-	// Claimed queue workers and non-human producers skip retained delivery.
+	// Claimed queue workers and producers without trusted chat intent skip retained delivery.
 	if preferRetainedDelivery && api.queueOccupiedConversationTurn(w, r, currentUserID, sessionID, req) {
 		return
 	}

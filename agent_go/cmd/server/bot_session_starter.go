@@ -282,7 +282,10 @@ func (api *StreamingAPI) startSessionInternalWithResult(
 	// Schedules, triggers and bots use the same durable dispatcher as browser
 	// chat. Internal callers wait for their exact queued result; the HTTP path
 	// acknowledges immediately. A claimed worker carries the bypass marker.
-	if !conversationTurnQueueExecution(ctx) {
+	if isScheduledCrewChatDelivery(ctx) {
+		log.Printf("[INTERNAL_CHAT_DELIVERY] session=%s user=%s source=crew_schedule route=chat_router", sessionID, userID)
+	}
+	if !conversationTurnQueueExecution(ctx) && !isScheduledCrewChatDelivery(ctx) {
 		var queuedRequest QueryRequest
 		if decodeErr := json.Unmarshal(body, &queuedRequest); decodeErr == nil &&
 			shouldUseDurableConversationTurnQueue(queuedRequest) &&

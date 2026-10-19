@@ -83,7 +83,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 		return err
 	}
 	if !readOnly {
-		if err := register("create_project_schedule", "Create one schedule for this project: recurring (cron_expression) or one-time (in_minutes, or run_at for an exact moment). A one-time schedule runs once and never again, for example 'check the deploy in 3 hours'. Choose crew_chat to queue work in the main project conversation, or isolated for this schedule's own persistent automation conversation.", map[string]interface{}{
+		if err := register("create_project_schedule", "Create one schedule for this project: recurring (cron_expression) or one-time (in_minutes, or run_at for an exact moment). A one-time schedule runs once and never again, for example 'check the deploy in 3 hours'. Choose crew_chat to send a normal message into the project chat (steering it if already running), or isolated for this schedule's own persistent automation conversation.", map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"name":            map[string]interface{}{"type": "string"},

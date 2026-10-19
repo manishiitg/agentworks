@@ -1100,6 +1100,7 @@ func (s *ProductScheduleService) runWithOptions(ctx context.Context, job product
 	}
 	claim, err := s.claimAutomationRun(ctx, job, triggerSource, scheduledFor, options, onStarted)
 	if err != nil {
+		scheduleLogf("[PRODUCT-SCHEDULE] handoff-claim job=%s user=%s profile=%s project=%s destination=%s error=%v", job.ID(), job.UserID, job.Profile.ID, job.ProjectID, runDestination(job.Schedule.Isolated), err)
 		return "", err
 	}
 	if options.Detach {
@@ -1126,6 +1127,12 @@ func (s *ProductScheduleService) claimAutomationRun(ctx context.Context, job pro
 		jobKey += "#" + job.ConversationKey
 	}
 	convKey := job.UserID + "\x1f" + conversationKeyForJob(job)
+	if scheduleUsesCrewChatDelivery(job) {
+		// Different schedules are independent messages to the same chat, just
+		// like typed input. Keep only the per-job overlap guard here; the chat
+		// router owns live delivery and any necessary fallback queue.
+		convKey = jobKey
+	}
 	runCtx, cancel := context.WithCancel(ctx)
 	s.mu.Lock()
 	if s.conversations[convKey] || (s.heldConversation != nil && s.heldConversation(convKey)) {
@@ -1399,7 +1406,15 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 		if functionCall != nil {
 			functionCall.appendExecutionMessage("user", message)
 		}
-		turnResult, err := s.executeAutomationTurn(runCtx, reqMap, sessionID, job.UserID)
+		deliveryCtx := runCtx
+		route := "turn"
+		if scheduleUsesCrewChatDelivery(job) {
+			deliveryCtx = context.WithValue(runCtx, scheduledCrewChatDeliveryKey{}, true)
+			route = "chat"
+		}
+		scheduleLogf("[PRODUCT-SCHEDULE] handoff job=%s user=%s profile=%s project=%s session=%s turn=%d route=%s", job.ID(), job.UserID, job.Profile.ID, job.ProjectID, sessionID, i+1, route)
+		turnResult, err := s.executeAutomationTurn(deliveryCtx, reqMap, sessionID, job.UserID)
+		scheduleLogf("[PRODUCT-SCHEDULE] handoff-result job=%s user=%s session=%s query=%s error=%v", job.ID(), job.UserID, sessionID, turnResult.QueryID, err)
 		if err != nil {
 			runErr = fmt.Errorf("message %d/%d: %w", i+1, len(messages), err)
 			break
