@@ -764,7 +764,7 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
   }, [activeTabId, tabs.length])
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
-      <div ref={stripRef} className="flex min-w-0 items-center gap-1 overflow-x-auto [&>*]:shrink-0" data-testid="work-chat-tab-strip">
+      <div ref={stripRef} className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-testid="work-chat-tab-strip">
       {visibleTabs.map(tab => {
         const key = isWorkSideChatTab(tab, projectId) ? tab.metadata?.agentProfileConversationKey : undefined
         return <div
