@@ -11291,6 +11291,12 @@ func (api *StreamingAPI) tryDeliverQueryAsLiveInput(w http.ResponseWriter, r *ht
 	if api == nil || strings.TrimSpace(message) == "" {
 		return false
 	}
+	if isQueuedMessageSteer(r.Context()) {
+		// The owner action already returned 202 and this is its background
+		// dispatch. Keep the durable claim until an actual delivery result;
+		// the browser's early-accept timeout must not discard this queue row.
+		return api.deliverQueryAsLiveInputNow(w, r, sessionID, message, queryID, receivedAt...)
+	}
 	// Text typed in the CLI's own composer does not block a chat send: only the person who owns the
 	// chat can reach that terminal, and the refusal (423) was a false alarm for real users.
 	detached := r.WithContext(context.WithoutCancel(r.Context()))

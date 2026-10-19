@@ -119,6 +119,12 @@ func TestChatDeliveryQueueReasonAndSteerEligibility(t *testing.T) {
 	check("starting", false) // agent registered, transport still launching
 	ready = true
 	check("running", true)
+	if reason, allowed := api.queuedMessageDeliveryState("chat", QueryRequest{Provider: "codex-cli"}); reason != "refreshing" || allowed {
+		t.Fatalf("changed provider = %s / %t", reason, allowed)
+	}
+	if reason, allowed := api.queuedMessageDeliveryState("chat", QueryRequest{DisableLiveInputDelivery: true}); reason != "running" || allowed {
+		t.Fatalf("next-turn-only request = %s / %t", reason, allowed)
+	}
 	api.setConversationTurnRuntimeChange("chat", true)
 	check("refreshing", false)
 	api.setConversationTurnRuntimeChange("chat", false)
@@ -132,6 +138,23 @@ func TestChatDeliveryQueueReasonAndSteerEligibility(t *testing.T) {
 	release()
 	delete(api.agentCancelFuncs, "chat")
 	check("waiting", false)
+}
+
+func TestChatDeliverySteerCannotFallBackToANewTurn(t *testing.T) {
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	ctx := context.WithValue(context.Background(), queuedMessageSteerKey{}, true)
+	r := httptest.NewRequest(http.MethodPost, "/api/query", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+	if !api.queueConversationTurnResponse(w, r, "owner", "chat", QueryRequest{Query: "keep queued"}) || w.Code != http.StatusConflict || w.Header().Get("X-Queued-Steer-Unavailable") != "true" {
+		t.Fatalf("unexpected fallback: %d %s", w.Code, w.Body.String())
+	}
+	if got := api.mustReadTurnQueueForTest(t, "owner"); len(got) != 0 {
+		t.Fatalf("duplicate inserted: %+v", got)
+	}
+	w = httptest.NewRecorder()
+	if !api.tryDeliverQueryAsLiveInput(w, r, "chat", "keep queued", "query") || w.Code != http.StatusConflict || w.Header().Get("X-Queued-Steer-Unavailable") != "true" {
+		t.Fatalf("unavailable live delivery was not refused: %d %s", w.Code, w.Body.String())
+	}
 }
 
 func TestChatDeliveryQueueKeepsOwnerAndTokenBoundaries(t *testing.T) {
