@@ -1,6 +1,10 @@
 package server
 
-import "github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+import (
+	"sort"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+)
 
 // Token-backed Run conversations cannot use the shell to reach registered
 // tools. Project their existing Run surface onto the direct model/CLI bridge.
@@ -15,5 +19,27 @@ func externalWorkflowTransport(claims *UserClaims, workflowRun bool, gate *produ
 			directBridge = append(directBridge, name)
 		}
 	}
+	return false, directBridge
+}
+
+// A token-backed Crew chat has the same unavailable shell as a workflow Run
+// chat. Project only its existing product allowlist onto the native bridge;
+// registration, Run restrictions and execution-time checks remain in force.
+func externalProjectTransport(claims *UserClaims, gate *productToolGate) (codeExecution bool, directBridge []string) {
+	if claims == nil || claims.AccessToken == nil || !gate.enforcing() {
+		return true, nil
+	}
+	gate.mu.Lock()
+	names := make([]string, 0, len(gate.allowed))
+	for name := range gate.allowed {
+		names = append(names, name)
+	}
+	gate.mu.Unlock()
+	for _, name := range names {
+		if gate.Allows(name) && !accessTokenRunToolDenied(claims, name) {
+			directBridge = append(directBridge, name)
+		}
+	}
+	sort.Strings(directBridge)
 	return false, directBridge
 }

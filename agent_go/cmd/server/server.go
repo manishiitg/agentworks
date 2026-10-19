@@ -6157,7 +6157,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		toolGate.AllowWorkflowNotifications(isWorkflowPhase && !relayChat && workflowNotificationsForPath(workflowPhaseFolder))
 		claims := GetUserFromContext(r.Context())
 		workflowRun := isWorkflowPhase && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && currentUserIsReadOnly && !relayChat
-		if workflowRun && claims != nil && claims.AccessToken != nil {
+		projectTokenChat := resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && claims != nil && claims.AccessToken != nil
+		if (workflowRun || projectTokenChat) && claims != nil && claims.AccessToken != nil {
 			// Apply the existing token denylist to registration and the core CLI
 			// bridge as well as execution, so an unusable shell is not advertised.
 			toolGate.DenyWhere(func(name string) bool { return accessTokenRunToolDenied(claims, name) })
@@ -6174,6 +6175,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		defer toolGate.logSurface(sessionID)
 		useCodeExecutionMode, platformBridgeTools := externalWorkflowTransport(claims, workflowRun, toolGate)
+		if projectTokenChat {
+			useCodeExecutionMode, platformBridgeTools = externalProjectTransport(claims, toolGate)
+		}
 		log.Printf("[CODE_EXECUTION] session=%s code_execution=%v browser_mode=%s direct_bridge_tools=%v", sessionID, useCodeExecutionMode, req.BrowserMode, platformBridgeTools)
 		clarificationAvailable := requestFromAttendedChat(r) && codingAgentRequestHasAttendingUser(&req, sessionID) &&
 			!currentUserIsReadOnly && (!isWorkflowPhase || isWorkflowBuilderPhase) && !relayChat &&
@@ -8032,6 +8036,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		if err := llmAgent.AddObserver(costObs); err != nil {
 			sendError(fmt.Sprintf("Failed to attach cost observer: %v", err), true)
 			return
+		}
+
+		if projectTokenChat {
+			// Include names declared by profile factories during registration,
+			// rather than freezing the bridge from the initial policy alone.
+			_, platformBridgeTools = externalProjectTransport(claims, toolGate)
+			if err := llmAgent.SetAdditionalBridgeTools(platformBridgeTools); err != nil {
+				sendError(fmt.Sprintf("Failed to set project bridge tools: %v", err), true)
+				return
+			}
+			log.Printf("[CODE_EXECUTION] session=%s code_execution=false registered_direct_bridge_tools=%v", sessionID, platformBridgeTools)
 		}
 
 		// Freeze the incrementally assembled chat identity and runtime before any

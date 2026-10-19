@@ -651,6 +651,18 @@ func (w *LLMAgentWrapper) GetUnderlyingAgent() *mcpagent.Agent {
 	return w.agent
 }
 
+// SetAdditionalBridgeTools records the completed, admitted tool surface before
+// finalization. Product factories can declare public tool names during assembly.
+func (w *LLMAgentWrapper) SetAdditionalBridgeTools(names []string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.finalized {
+		return errors.New("agent definition is already finalized")
+	}
+	w.runtime.Tools.AdditionalBridge = append([]string(nil), names...)
+	return nil
+}
+
 // SetInstalledSkillResolver configures read_skill fallback resolution for the
 // immutable agent that this wrapper will finalize. Setting it only on
 // GetUnderlyingAgent() is incorrect: FinalizeDefinition replaces that draft.

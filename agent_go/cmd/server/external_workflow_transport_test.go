@@ -153,3 +153,23 @@ func TestExternalRunToolsThroughMCPBridge(t *testing.T) {
 		t.Fatalf("native bridge retained revoked workflow access: %+v %v", result, err)
 	}
 }
+
+// PLAT-856-199: a registered project reader must not need the shell that
+// external tokens cannot use. Run and product restrictions still win.
+func TestExternalProjectTransportUsesAdmittedToolsOnly(t *testing.T) {
+	claims := &UserClaims{AccessToken: &accesstokens.Token{}}
+	gate := newProductToolGateForAllowlist("project-example", []string{"list_project_chats", "write_file", "execute_shell_command", "google_workspace_cli"})
+	gate.DenyReaderTools("write_file")
+	code, names := externalProjectTransport(claims, gate)
+	if code || len(names) != 1 || names[0] != "list_project_chats" {
+		t.Fatalf("wrong token project bridge: code=%v names=%v", code, names)
+	}
+	gate.Declare("list_functions") // Product factories resolve names after the initial transport.
+	_, names = externalProjectTransport(claims, gate)
+	if !slices.Contains(names, "list_functions") {
+		t.Fatal("late-declared product tool lost from final bridge")
+	}
+	if code, names := externalProjectTransport(&UserClaims{}, gate); !code || len(names) != 0 {
+		t.Fatal("website transport changed")
+	}
+}
