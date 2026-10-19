@@ -1537,7 +1537,7 @@ func shouldTryRetainedDeliveryBeforeQueue(ctx context.Context, req QueryRequest,
 
 func (api *StreamingAPI) queueOccupiedConversationTurn(w http.ResponseWriter, r *http.Request, userID, sessionID string, req QueryRequest) bool {
 	if !shouldUseDurableConversationTurnQueue(req) || conversationTurnQueueExecution(r.Context()) ||
-		!(api.conversationTurnOccupied(sessionID) || api.externalBuilderOwnsSession(sessionID)) {
+		!(api.conversationTurnOccupied(sessionID) || api.externalBuilderOwnsSession(sessionID) || api.conversationTurnHasBacklog(userID, sessionID)) {
 		return false
 	}
 	return api.queueConversationTurnResponse(w, r, userID, sessionID, req)
@@ -4313,6 +4313,16 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		retireProductCodingCLI(sessionID, "product chat: runtime configuration changed")
 		req.RestartCodingCLI = false
 	}
+	if api.shouldWaitForQueuedConversation(r.Context(), currentUserID, sessionID, req) {
+		// Hold the existing lane across the backlog check and admission. If
+		// the drainer acquired it first, admission still appends behind it.
+		release, acquired := api.tryLockSessionInputLane(sessionID, 0)
+		api.queueConversationTurnResponse(w, r, currentUserID, sessionID, req)
+		if acquired {
+			release()
+		}
+		return
+	}
 	preferRetainedDelivery := !api.externalBuilderOwnsSession(sessionID) && shouldTryRetainedDeliveryBeforeQueue(r.Context(), req, sessionID)
 	if !preferRetainedDelivery && api.queueOccupiedConversationTurn(w, r, currentUserID, sessionID, req) {
 		return
@@ -4459,6 +4469,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			releaseInputLane()
 		}
 	}()
+	// Another request may have durably queued while this request acquired
+	// the lane. Give the drainer its older turn before doing any agent work.
+	if releaseInputLane != nil && !conversationTurnQueueExecution(r.Context()) && shouldUseDurableConversationTurnQueue(req) && api.conversationTurnHasBacklog(currentUserID, sessionID) {
+		api.queueConversationTurnResponse(w, r, currentUserID, sessionID, req)
+		// The deferred lane release kicks the drainer after durable admission.
+		return
+	}
 	if _, delegated := r.Context().Value(agentMessageAdmissionKey{}).(func(string) (func(), error)); delegated {
 		releaseAuthority, admissionErr := acquireAgentMessageAuthority(r.Context(), sessionID)
 		if admissionErr != nil {
@@ -11736,7 +11753,7 @@ func (api *StreamingAPI) handleLiveInputMessage(w http.ResponseWriter, r *http.R
 	// changed Workflow authority must cancel/relaunch the stale runtime now,
 	// rather than waiting behind it.
 	if policyKnown && shouldUseDurableConversationTurnQueue(policyRequest) &&
-		api.conversationTurnOccupied(sessionID) {
+		(api.conversationTurnOccupied(sessionID) || api.conversationTurnHasBacklog(GetUserIDFromContext(r.Context()), sessionID)) {
 		queuedRequest := policyRequest
 		queuedRequest.Query = req.Message
 		queuedRequest.Message = ""
