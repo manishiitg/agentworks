@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -54,7 +55,7 @@ func TestRetainedDeliveryPrecedesTurnQueueOnlyForHumanInput(t *testing.T) {
 func newConversationTurnQueueTestAPI(files map[string]string) *StreamingAPI {
 	return &StreamingAPI{
 		sessionInputLanes:              map[string]*sessionInputLane{},
-		conversationTurnQueueOwners:    map[string]string{},
+		conversationTurnQueueOwners:    map[string]map[string]bool{},
 		conversationTurnQueueDraining:  map[string]bool{},
 		conversationTurnQueueWaiters:   map[string]chan queuedConversationTurnResult{},
 		conversationTurnQueueCallbacks: map[string]func(event *unifiedevents.AgentEvent){},
@@ -333,7 +334,7 @@ func TestRuntimeChangeEndsOnlyAnIdleLiveTurn(t *testing.T) {
 
 func TestQueuedBacklogBlocksIdleRetainedDeliveryButKeepsActiveSteering(t *testing.T) {
 	api := newConversationTurnQueueTestAPI(map[string]string{})
-	api.conversationTurnQueueOwners["s"] = "u"
+	api.conversationTurnQueueOwners["s"] = map[string]bool{"u": true}
 	req := QueryRequest{AgentMode: "multi-agent"}
 	ctx := context.Background()
 	if !api.shouldWaitForQueuedConversation(ctx, "u", "s", req) {
@@ -344,8 +345,8 @@ func TestQueuedBacklogBlocksIdleRetainedDeliveryButKeepsActiveSteering(t *testin
 		t.Fatal("dispatch gap allowed a new retained turn")
 	}
 	api.conversationTurnQueueDraining["s"] = false
-	if api.shouldWaitForQueuedConversation(ctx, "other", "s", req) || api.shouldWaitForQueuedConversation(withConversationTurnQueueExecution(ctx), "u", "s", req) {
-		t.Fatal("another caller or claimed turn was treated as fresh backlog input")
+	if api.shouldWaitForQueuedConversation(withConversationTurnQueueExecution(ctx), "u", "s", req) {
+		t.Fatal("claimed turn was treated as fresh backlog input")
 	}
 	// Hold only the existing lane; do not start a model turn or queue worker.
 	lane := api.sessionInputLaneFor("s")
@@ -373,5 +374,87 @@ func TestFreshIdleInputAppendsBehindAlreadyAdmittedTurns(t *testing.T) {
 	turns := api.mustReadTurnQueueForTest(t, "u")
 	if len(turns) != 2 || turns[0].Request.Query != "older" || turns[1].Request.Query != "newer" {
 		t.Fatalf("queue reordered: %+v", turns)
+	}
+}
+
+func TestSharedSessionDrainsEveryCallersQueueInAdmissionOrder(t *testing.T) {
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	for i, owner := range []string{"alice", "bob", "alice"} {
+		ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: owner, Provider: owner + "-provider"})
+		if _, _, err := api.enqueueConversationTurn(ctx, owner, "shared", QueryRequest{AgentMode: "multi-agent", Query: fmt.Sprint(i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := api.conversationQueueOwners("shared"); len(got) != 2 {
+		t.Fatalf("one caller replaced another's queue index: %v", got)
+	}
+	// Even another authorized sender must queue behind this session's backlog.
+	if !api.conversationTurnHasBacklog("third-caller", "shared") {
+		t.Fatal("another caller could overtake admitted shared-session work")
+	}
+	for i, owner := range []string{"alice", "bob", "alice"} {
+		turn, ok, err := api.claimOldestConversationTurn(context.Background(), "shared")
+		if err != nil || !ok || turn.UserID != owner || turn.Principal.Provider != owner+"-provider" || turn.Request.Query != fmt.Sprint(i) {
+			t.Fatalf("turn %d: %+v %v %v", i, turn, ok, err)
+		}
+		if err := api.removeConversationTurn(context.Background(), turn); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, ok, err := api.claimOldestConversationTurn(context.Background(), "shared"); err != nil || ok {
+		t.Fatalf("empty claim: %v %v", ok, err)
+	}
+	if len(api.conversationQueueOwners("shared")) != 0 {
+		t.Fatal("empty owner memberships retained")
+	}
+}
+
+func TestSharedSessionStopKeepsOtherCallersUnclaimedMessages(t *testing.T) {
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	for _, owner := range []string{"alice", "bob"} {
+		if _, _, err := api.enqueueConversationTurn(context.Background(), owner, "shared", QueryRequest{AgentMode: "multi-agent", Query: owner}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	claimed, ok, err := api.claimOldestConversationTurn(context.Background(), "shared")
+	if err != nil || !ok || claimed.UserID != "alice" {
+		t.Fatalf("claim: %+v %v %v", claimed, ok, err)
+	}
+	if got := api.dropStartedConversationTurns("shared"); got != 1 {
+		t.Fatalf("dropped %d rows, want only the claimed row", got)
+	}
+	bob := api.mustReadTurnQueueForTest(t, "bob")
+	if len(bob) != 1 || bob[0].StartedAt != nil || bob[0].Request.Query != "bob" {
+		t.Fatalf("another caller's waiting message was deleted: %+v", bob)
+	}
+	if next, ok, err := api.claimOldestConversationTurn(context.Background(), "shared"); err != nil || !ok || next.UserID != "bob" {
+		t.Fatalf("waiting caller no longer dispatches: %+v %v %v", next, ok, err)
+	}
+}
+
+func TestUnreadableCallerQueueDoesNotBlockAnotherSharedSender(t *testing.T) {
+	for _, broken := range []string{"{invalid", `{"version":999,"turns":[]}`} {
+		files := map[string]string{}
+		api := newConversationTurnQueueTestAPI(files)
+		if _, _, err := api.enqueueConversationTurn(context.Background(), "alice", "shared", QueryRequest{AgentMode: "multi-agent", Query: "alice"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := api.enqueueConversationTurn(context.Background(), "bob", "shared", QueryRequest{AgentMode: "multi-agent", Query: "bob"}); err != nil {
+			t.Fatal(err)
+		}
+		files[conversationTurnQueuePath("alice")] = broken
+		turn, ok, err := api.claimOldestConversationTurn(context.Background(), "shared")
+		if err != nil || !ok || turn.UserID != "bob" {
+			t.Fatalf("Alice's broken queue blocked Bob: %+v %v %v", turn, ok, err)
+		}
+		if err := api.removeConversationTurn(context.Background(), turn); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok, err := api.claimOldestConversationTurn(context.Background(), "shared"); ok || err == nil {
+			t.Fatalf("unreadable owner's retry signal lost: %v %v", ok, err)
+		}
+		if !api.conversationTurnHasBacklog("alice", "shared") || files[conversationTurnQueuePath("alice")] != broken {
+			t.Fatal("unreadable queue was dropped or rewritten")
+		}
 	}
 }

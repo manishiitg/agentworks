@@ -210,10 +210,7 @@ func (api *StreamingAPI) enqueueConversationTurn(ctx context.Context, userID, se
 		}
 	}
 	api.conversationTurnQueueMu.Lock()
-	if api.conversationTurnQueueOwners == nil {
-		api.conversationTurnQueueOwners = make(map[string]string)
-	}
-	api.conversationTurnQueueOwners[sessionID] = userID
+	api.registerConversationQueueOwnerLocked(userID, sessionID)
 	api.conversationTurnQueueMu.Unlock()
 	// Keep the queue document lock through admission: an existing queue watcher
 	// can claim immediately after unlock, even before this caller kicks it.
@@ -231,7 +228,90 @@ func (api *StreamingAPI) conversationTurnHasBacklog(userID, sessionID string) bo
 	}
 	api.conversationTurnQueueMu.Lock()
 	defer api.conversationTurnQueueMu.Unlock()
-	return api.conversationTurnQueueOwners[sessionID] == userID
+	return len(api.conversationTurnQueueOwners[sessionID]) > 0
+}
+
+// Caller holds conversationTurnQueueMu. Membership follows a successful
+// durable write; two authorized callers never replace each other's owner.
+func (api *StreamingAPI) registerConversationQueueOwnerLocked(userID, sessionID string) {
+	if api.conversationTurnQueueOwners == nil {
+		api.conversationTurnQueueOwners = make(map[string]map[string]bool)
+	}
+	if api.conversationTurnQueueOwners[sessionID] == nil {
+		api.conversationTurnQueueOwners[sessionID] = make(map[string]bool)
+	}
+	api.conversationTurnQueueOwners[sessionID][userID] = true
+}
+
+func (api *StreamingAPI) conversationQueueOwners(sessionID string) []string {
+	api.conversationTurnQueueMu.Lock()
+	defer api.conversationTurnQueueMu.Unlock()
+	owners := make([]string, 0, len(api.conversationTurnQueueOwners[sessionID]))
+	for owner := range api.conversationTurnQueueOwners[sessionID] {
+		owners = append(owners, owner)
+	}
+	sort.Strings(owners)
+	return owners
+}
+
+// One session drainer picks the oldest eligible head from its already known
+// callers. Documents and delayed principals remain isolated per caller.
+func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessionID string) (queuedConversationTurn, bool, error) {
+	var oldest queuedConversationTurn
+	var readErr error
+	for _, owner := range api.conversationQueueOwners(sessionID) {
+		lock := productConversationRegistryMutex(conversationTurnQueuePath(owner))
+		lock.Lock()
+		turns, err := api.readConversationTurnQueue(ctx, owner)
+		if err != nil {
+			lock.Unlock()
+			logTurnQueue("cannot read queue for owner %s in session %s: %v", owner, sessionID, err)
+			readErr = errors.Join(readErr, err)
+			continue // One caller's unreadable document must not block others.
+		}
+		var head queuedConversationTurn
+		for _, turn := range turns {
+			if turn.UserID == owner && turn.SessionID == sessionID && turn.StartedAt == nil && turn.DeliveryError == "" {
+				head = turn
+				break
+			}
+		}
+		if head.ID == "" {
+			// Keep the file lock through index cleanup: a concurrent enqueue
+			// must register again after we remove this empty membership.
+			api.conversationTurnQueueMu.Lock()
+			delete(api.conversationTurnQueueOwners[sessionID], owner)
+			if len(api.conversationTurnQueueOwners[sessionID]) == 0 {
+				delete(api.conversationTurnQueueOwners, sessionID)
+			}
+			api.conversationTurnQueueMu.Unlock()
+		} else if oldest.ID == "" || head.CreatedAt.Before(oldest.CreatedAt) || (head.CreatedAt.Equal(oldest.CreatedAt) && head.ID < oldest.ID) {
+			oldest = head
+		}
+		lock.Unlock()
+	}
+	if oldest.ID == "" {
+		return queuedConversationTurn{}, false, readErr
+	}
+	lock := productConversationRegistryMutex(conversationTurnQueuePath(oldest.UserID))
+	lock.Lock()
+	defer lock.Unlock()
+	turns, err := api.readConversationTurnQueue(ctx, oldest.UserID)
+	if err != nil {
+		return queuedConversationTurn{}, false, err
+	}
+	for i := range turns {
+		if turns[i].ID == oldest.ID && turns[i].UserID == oldest.UserID && turns[i].SessionID == sessionID && turns[i].StartedAt == nil && turns[i].DeliveryError == "" {
+			now := time.Now().UTC()
+			turns[i].StartedAt = &now
+			if err := api.writeConversationTurnQueue(ctx, oldest.UserID, turns); err != nil {
+				return queuedConversationTurn{}, false, err
+			}
+			return turns[i], true, nil
+		}
+	}
+	// An explicit owner action took the selected head. Re-evaluate heads.
+	return queuedConversationTurn{}, false, nil
 }
 
 // Compatible input may still steer a genuinely active turn. It must not
@@ -337,12 +417,14 @@ func (api *StreamingAPI) removeConversationTurn(ctx context.Context, turn queued
 // execution (StartedAt set): the turn they belong to has been stopped and will never remove
 // them. Unstarted entries stay queued. Returns how many were removed.
 func (api *StreamingAPI) dropStartedConversationTurns(sessionID string) int {
-	api.conversationTurnQueueMu.Lock()
-	userID := api.conversationTurnQueueOwners[sessionID]
-	api.conversationTurnQueueMu.Unlock()
-	if userID == "" {
-		return 0
+	dropped := 0
+	for _, owner := range api.conversationQueueOwners(sessionID) {
+		dropped += api.dropStartedConversationTurnsForOwner(owner, sessionID)
 	}
+	return dropped
+}
+
+func (api *StreamingAPI) dropStartedConversationTurnsForOwner(userID, sessionID string) int {
 	ctx := context.Background()
 	path := conversationTurnQueuePath(userID)
 	lock := productConversationRegistryMutex(path)
@@ -395,8 +477,7 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 		api.conversationTurnQueueMu.Unlock()
 		return
 	}
-	userID := api.conversationTurnQueueOwners[sessionID]
-	if userID == "" {
+	if len(api.conversationTurnQueueOwners[sessionID]) == 0 {
 		api.conversationTurnQueueMu.Unlock()
 		return
 	}
@@ -404,16 +485,45 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 	api.conversationTurnQueueMu.Unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	turn, ok := api.claimNextConversationTurn(ctx, userID, sessionID)
+	turn, ok, err := api.claimOldestConversationTurn(ctx, sessionID)
 	cancel()
 	if !ok {
 		api.conversationTurnQueueMu.Lock()
 		delete(api.conversationTurnQueueDraining, sessionID)
-		delete(api.conversationTurnQueueOwners, sessionID)
+		pending := len(api.conversationTurnQueueOwners[sessionID]) > 0
 		api.conversationTurnQueueMu.Unlock()
+		if err != nil {
+			logTurnQueue("cannot claim oldest turn for %s: %v", sessionID, err)
+			api.retryUnreadableConversationQueue(sessionID)
+		} else if pending {
+			// Admission or an explicit owner action changed a head while
+			// claiming. The next kick uses a fresh registered-owner snapshot.
+			go api.kickConversationTurnQueue(sessionID)
+		}
 		return
 	}
 	go api.executeQueuedConversationTurn(turn)
+}
+
+// Reuse the one-watcher-per-session guard. A failed queue read keeps its
+// owner registered and gets another chance without spinning or blocking others.
+func (api *StreamingAPI) retryUnreadableConversationQueue(sessionID string) {
+	api.conversationTurnQueueMu.Lock()
+	if api.conversationTurnQueueWatching == nil {
+		api.conversationTurnQueueWatching = make(map[string]bool)
+	}
+	if api.conversationTurnQueueWatching[sessionID] || len(api.conversationTurnQueueOwners[sessionID]) == 0 {
+		api.conversationTurnQueueMu.Unlock()
+		return
+	}
+	api.conversationTurnQueueWatching[sessionID] = true
+	api.conversationTurnQueueMu.Unlock()
+	time.AfterFunc(5*time.Second, func() {
+		api.conversationTurnQueueMu.Lock()
+		delete(api.conversationTurnQueueWatching, sessionID)
+		api.conversationTurnQueueMu.Unlock()
+		api.kickConversationTurnQueue(sessionID)
+	})
 }
 
 const conversationTurnQueueWatchInterval = 2 * time.Second
@@ -426,7 +536,7 @@ func (api *StreamingAPI) watchOccupiedConversationTurnQueue(sessionID, occupant 
 	if api.conversationTurnQueueWatching == nil {
 		api.conversationTurnQueueWatching = make(map[string]bool)
 	}
-	if api.conversationTurnQueueWatching[sessionID] || api.conversationTurnQueueOwners[sessionID] == "" {
+	if api.conversationTurnQueueWatching[sessionID] || len(api.conversationTurnQueueOwners[sessionID]) == 0 {
 		api.conversationTurnQueueMu.Unlock()
 		return
 	}
@@ -439,7 +549,7 @@ func (api *StreamingAPI) watchOccupiedConversationTurnQueue(sessionID, occupant 
 		idleChecks := 0
 		for range ticker.C {
 			api.conversationTurnQueueMu.Lock()
-			queued := api.conversationTurnQueueOwners[sessionID] != ""
+			queued := len(api.conversationTurnQueueOwners[sessionID]) > 0
 			api.conversationTurnQueueMu.Unlock()
 			if !queued {
 				break
@@ -697,6 +807,7 @@ func (api *StreamingAPI) recoverConversationTurnQueue(ctx context.Context) {
 			}
 		}
 	}
+	sessions := map[string]bool{}
 	users := make([]string, 0, len(userIDs))
 	for userID := range userIDs {
 		users = append(users, userID)
@@ -727,16 +838,15 @@ func (api *StreamingAPI) recoverConversationTurnQueue(ctx context.Context) {
 		}
 		lock.Unlock()
 		api.conversationTurnQueueMu.Lock()
-		if api.conversationTurnQueueOwners == nil {
-			api.conversationTurnQueueOwners = make(map[string]string)
-		}
 		for _, turn := range turns {
-			api.conversationTurnQueueOwners[turn.SessionID] = userID
+			api.registerConversationQueueOwnerLocked(userID, turn.SessionID)
+			sessions[turn.SessionID] = true
 		}
 		api.conversationTurnQueueMu.Unlock()
-		for _, turn := range turns {
-			api.kickConversationTurnQueue(turn.SessionID)
-		}
+	}
+	// Discover every known caller before choosing a session's oldest head.
+	for session := range sessions {
+		api.kickConversationTurnQueue(session)
 	}
 }
 

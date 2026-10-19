@@ -253,10 +253,7 @@ func (api *StreamingAPI) handleRetryQueuedConversationMessage(w http.ResponseWri
 		return
 	}
 	api.conversationTurnQueueMu.Lock()
-	if api.conversationTurnQueueOwners == nil {
-		api.conversationTurnQueueOwners = make(map[string]string)
-	}
-	api.conversationTurnQueueOwners[turn.SessionID] = userID
+	api.registerConversationQueueOwnerLocked(userID, turn.SessionID)
 	api.conversationTurnQueueMu.Unlock()
 	api.kickConversationTurnQueue(turn.SessionID)
 	w.Header().Set("Content-Type", "application/json")

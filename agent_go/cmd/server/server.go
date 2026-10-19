@@ -647,7 +647,7 @@ type StreamingAPI struct {
 	// Durable turns waiting behind that shared lane. Every producer reaches the
 	// same dispatcher; tmux remains an execution transport, never a queue.
 	conversationTurnQueueMu       sync.Mutex
-	conversationTurnQueueOwners   map[string]string
+	conversationTurnQueueOwners   map[string]map[string]bool
 	conversationTurnQueueDraining map[string]bool
 	conversationTurnQueueWatching map[string]bool
 	// Sessions whose queued message waits only to relaunch the CLI with a changed
@@ -2302,7 +2302,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		sessionAgents:                       make(map[string]*agent.LLMAgentWrapper),
 		runningAgents:                       make(map[string]*mcpagent.Agent),
 		sessionInputLanes:                   make(map[string]*sessionInputLane),
-		conversationTurnQueueOwners:         make(map[string]string),
+		conversationTurnQueueOwners:         make(map[string]map[string]bool),
 		conversationTurnQueueDraining:       make(map[string]bool),
 		conversationTurnQueueWaiters:        make(map[string]chan queuedConversationTurnResult),
 		conversationTurnQueueCallbacks:      make(map[string]func(event *unifiedevents.AgentEvent)),
