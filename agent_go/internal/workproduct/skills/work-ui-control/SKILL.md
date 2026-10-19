@@ -43,7 +43,7 @@ These are {{product}} views, not AgentWorks Workflow views:
 | `workshop` | Automations | Inspect `schedules`, `conditions` (Watchers), `triggers` (Webhooks) , `functions` or `email` (Incoming email). Only use advertised targets. |
 | `schedules` | Schedules | Inspect a scheduled caller or its advertised webhook target. |
 | `identity` | Settings | Inspect the project name, instructions and model configuration. |
-| `mcp` | Connections and channels | Inspect admitted MCPs, Vault & secrets, Brain, folders & workflows, Google apps or Slack account. Channel targets are `slack-app`, `whatsapp` and `cli` (MCP access), when advertised. |
+| `mcp` | Connections and channels | Inspect admitted MCPs, Vault & secrets, Brain, folders & workflows, Google apps. The single Slack page offers Act in Slack and a saved Vault bot choice; credentials are managed in My Vault. Channel targets are `slack`, `whatsapp` and `cli` (MCP access), when advertised. |
 | `llm` | Models | Open model settings when advertised. |
 | `folders` | Folders & workflows | Inspect admitted attached resources when advertised. |
 

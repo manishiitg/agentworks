@@ -16,7 +16,7 @@ func TestSlackCredentialToolsRequireInteractiveMutationAdmission(t *testing.T) {
 		if err := api.registerSlackBotTools(reg, "session", "Workflow/example", "", admitted, false); err != nil {
 			t.Fatal(err)
 		}
-		for _, name := range []string{"configure_slack_bot", "get_slack_bot_credentials"} {
+		for _, name := range []string{"configure_slack_bot", "get_slack_bot_credentials", "manage_slack_bot"} {
 			tool, found := reg.tools[name]
 			if found != admitted {
 				t.Fatalf("%s admission = %v, want %v", name, found, admitted)

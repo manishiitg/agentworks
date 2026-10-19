@@ -56,7 +56,7 @@ func TestWorkUIRegistersSamePresentationToolFamilyWithWorkViews(t *testing.T) {
 	if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "schedules", "action": "open", "target": "webhooks"}); err != nil || !strings.Contains(out, "browser_disconnected") {
 		t.Fatalf("webhooks open=%s err=%v", out, err)
 	}
-	if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "mcp", "action": "open", "target": "slack-app"}); err != nil || !strings.Contains(out, "browser_disconnected") {
+	if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "mcp", "action": "open", "target": "slack"}); err != nil || !strings.Contains(out, "browser_disconnected") {
 		t.Fatalf("Slack channel open=%s err=%v", out, err)
 	}
 	if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "flow", "action": "open"}); err != nil || !strings.Contains(out, "unsupported_view") {

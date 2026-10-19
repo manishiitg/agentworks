@@ -54,6 +54,15 @@ func (api *StreamingAPI) externalMessagingCall(w http.ResponseWriter, r *http.Re
 	switch action {
 	case "status":
 		out := map[string]any{"kind": target.kind, "id": target.id}
+		out["whatsapp"] = "Pair your own WhatsApp in the app (manage_messaging whatsapp_link says where); it runs as you."
+		if target.manifest != nil && target.manifest.Kind == "relay" {
+			out["whatsapp"] = "Flows offer Act in Slack only."
+		}
+		if _, err := personalConnectionItemScope(r, target.path, true, "Slack", "Slack"); err != nil {
+			out["status"] = "Ask this item's Builder to configure Slack. Your existing Run access is unchanged."
+			externalJSON(w, out)
+			return
+		}
 		accounts, err := api.personalSlackAccounts(r, target.path)
 		if err != nil {
 			externalError(w, 403, "account_unavailable", err.Error())
