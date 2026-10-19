@@ -1256,6 +1256,9 @@ func (s *ProductScheduleService) executeAutomationRun(runCtx context.Context, ca
 			// A named Crew agent is created on first use, within the Crew's chat limit.
 			if _, capErr := checkSideChatCapacity(runCtx, defaultProductConversationRegistryStore(), job.UserID, job.Profile.ID, chatKey); capErr != nil {
 				bindErr = fmt.Errorf("This Crew already has %d chats, so agent %q cannot be added. Close a chat in the Crew or reuse an existing agent name.", externalCrewMaxSideChats, job.AgentName)
+				if job.AutomationKind == "function" {
+					bindErr = fmt.Errorf("This Crew already has %d chats, so function tab %q cannot be added. Close a chat in the Crew, or set the function to run fresh.", externalCrewMaxSideChats, job.AgentName)
+				}
 			}
 			key, newAgentName = chatKey, job.AgentName
 		}

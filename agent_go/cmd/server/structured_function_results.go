@@ -457,6 +457,11 @@ func (api *StreamingAPI) addCrewFunctionReadDetails(ctx context.Context, out map
 		}
 		call.mu.Lock()
 		sid := call.SessionID
+		// A function tab is shared by every call to it, so its journal holds other callers' inputs and answers and
+		// whatever the owner typed there. A tab call returns only its own messages and result, never tab events.
+		if call.TabName != "" {
+			sid = ""
+		}
 		call.mu.Unlock()
 		if sid != "" {
 			_, _ = api.eventStore.GetLatestEventIndex(sid) // bounded durable journal hydration

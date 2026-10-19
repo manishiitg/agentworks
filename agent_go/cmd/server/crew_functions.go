@@ -98,8 +98,8 @@ const (
 )
 
 // crewFunctionTabPrefix keeps function tabs apart from the person's own tabs and Crew-step agents, so a function never
-// runs in a chat someone types in.
-const crewFunctionTabPrefix = "fn-"
+// runs in a chat someone types in. Agent slugs are [a-z0-9-] only, so no agent name can produce the dot.
+const crewFunctionTabPrefix = "fn."
 
 // tabName is the tab a call of this Crew function runs in, or "" for a fresh chat per call.
 func (fn crewFunction) tabName() string {
