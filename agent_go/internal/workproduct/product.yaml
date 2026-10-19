@@ -81,6 +81,11 @@ profile:
       - read_project_files
       - get_file_link
       - get_report_link
+      # The Crew's agents are its tabs: open, list and message them, and set this tab's own name and purpose.
+      - open_project_chat
+      - list_project_chats
+      - ask_project_chat
+      - set_my_agent_identity
     # Populated by features above. Not enabled, deliberately: workflow
     # schedule/route tools,
     # pulse/improvement tools, workflow-step orchestration, media-generation tools,
