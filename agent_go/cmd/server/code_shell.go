@@ -163,7 +163,10 @@ func (api *StreamingAPI) codeShellTargetFull(r *http.Request) (userID, shellID, 
 	if mode := codeProjectMode(r.Context(), project.Binding.WorkspacePath); profileID == "code" && (mode == "cowork" || mode == "local") {
 		return "", "", "", "", "", http.StatusForbidden, "The terminal is available in server Dev projects. Open your Local folder on your computer."
 	}
-	root = agentProfileRuntimeWorkspace(project.OwnerID, project.Binding.WorkspacePath)
+	// The authorized binding can still name the pre-move location. Send the
+	// trusted canonical root to both the shell and its guard; the workspace
+	// correctly refuses a symlink from a private user tree into Crew/.
+	root = canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(project.OwnerID, project.Binding.WorkspacePath))
 	shellProjectID := projectID
 	if profileID != "code" {
 		shellProjectID = profileID + ":" + projectID
@@ -273,7 +276,7 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 	}
 	socket, err := codeShellStart(withCodeShellUser(r.Context(), userID), shellID, workDir, api.codeShellFolderGuard(r.Context(), userID, root), cols, rows)
 	if err != nil {
-		log.Printf("[CODE_SHELL] start %s: %v", shellID, err)
+		log.Printf("[CODE_SHELL] start shell=%s user=%s owner=%s project=%s workspace=%q: %v", shellID, userID, ownerID, projectID, workDir, err)
 		http.Error(w, "could not start the shell", http.StatusServiceUnavailable)
 		return
 	}
@@ -298,7 +301,7 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 	codeShellViewer(shellID, socket, +1)
 	codeShellConn(shellID, conn, true)
 	// An audit trail of who had a terminal open on which Code (the keystrokes themselves are not recorded).
-	log.Printf("[CODE_SHELL] %s opened terminal %s of %s/%s", userID, shellID, ownerID, projectID)
+	log.Printf("[CODE_SHELL] %s opened terminal %s of %s/%s workspace=%q", userID, shellID, ownerID, projectID, workDir)
 	opened := time.Now()
 	defer func() {
 		log.Printf("[CODE_SHELL] %s closed terminal %s of %s/%s after %s", userID, shellID, ownerID, projectID, time.Since(opened).Round(time.Second))
