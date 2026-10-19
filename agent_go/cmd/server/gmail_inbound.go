@@ -219,10 +219,10 @@ func (api *StreamingAPI) inboundTarget(ctx context.Context, owner, path string) 
 	}
 	claims := GetUserFromContext(internalBotRequestContext(ctx, owner))
 	level, m := workflowAccessForWorkspacePath(ctx, claims, r.WorkspacePath)
-	if m == nil || m.ID == "" || m.Kind == "relay" || (level != WorkflowAccessOwner && level != WorkflowAccessWrite) {
+	if m == nil || m.ID == "" || m.Kind == "relay" || level != WorkflowAccessOwner {
 		return r, fmt.Errorf("workflow access unavailable")
 	}
-	if m.hasOwnershipRecord() && !containsID(m.effectiveOwners(), owner) {
+	if !m.hasOwnershipRecord() || !containsID(m.effectiveOwners(), owner) {
 		return r, fmt.Errorf("only a workflow owner can configure incoming email")
 	}
 	r.ProjectID = m.ID
@@ -456,7 +456,7 @@ func (api *StreamingAPI) gmailInboundRoute(config gmailInboundConfig) http.Handl
 				response["sender_approval"] = map[string]string{"type": "gmail_sender_approval", "workspace_path": target.WorkspacePath}
 			}
 			if m, e := api.gmailInbound.Store.MailboxStatus(r.Context(), existing.ConnectionID); e == nil {
-				response["watch_ready"] = m.Cursor != ""
+				response["watch_ready"] = m.Cursor != "" && m.RenewAt > time.Now().Unix()
 				response["error"] = m.LastError
 			}
 			history, _ := api.gmailInbound.Store.History(r.Context(), existing.ID)
@@ -504,7 +504,10 @@ func (api *StreamingAPI) authorizeInboundEmail(ctx context.Context, r gmailinbou
 		return fmt.Errorf("incoming email unavailable")
 	}
 	inbox, err := api.gmailInbound.Store.Inbox(ctx, r.OwnerID)
-	if err != nil || inbox == nil || !inbox.Matches(r) {
+	if err != nil {
+		return fmt.Errorf("%w: cannot read personal inbox", gmailinbound.ErrAdmissionRetry)
+	}
+	if inbox == nil || !inbox.Matches(r) {
 		return fmt.Errorf("personal inbox address changed; reconnect this trigger")
 	}
 	parts := strings.SplitN(inbox.Address, "+agent-", 2)
@@ -528,7 +531,10 @@ func (api *StreamingAPI) authorizeInboundEmail(ctx context.Context, r gmailinbou
 	// No sender list is mandatory for a personal address. The signed-in owner
 	// approves who can invoke this exact binding, including its optional rules.
 	consent, err := api.gmailInbound.Store.SenderConsentStatus(ctx, r, gmailOwnerEmail(r))
-	if err != nil || !consent.Approved {
+	if err != nil {
+		return fmt.Errorf("%w: cannot read inbox approval", gmailinbound.ErrAdmissionRetry)
+	}
+	if !consent.Approved {
 		return fmt.Errorf("incoming email requires owner approval for this configuration")
 	}
 	policy, err := r.SenderFilters()

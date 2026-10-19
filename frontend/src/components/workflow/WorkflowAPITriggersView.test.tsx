@@ -147,12 +147,12 @@ it('keeps functions out of the webhooks list and points to the Functions tab', a
   expect(host.textContent).toContain('Automation → Functions')
 })
 
-it('shows the Builder Gmail binding as a read-only trigger', async () => {
+it('keeps the Builder Gmail binding out of Webhooks', async () => {
   vi.mocked(workflowWebhooksApi.list).mockResolvedValue({ triggers: [{ ...trigger, id: 'gmail', kind: 'gmail', path: '', name: 'Mail triage' }], groups: ['prod'], routes: [] })
   vi.mocked(agentApi.getGmailInboundRoute).mockResolvedValue({ configured: true, watch_ready: true, deliveries: [], route: { id: 'gmail', name: 'Mail triage', address: 'owner+agent-id@example.com', connection_id: 'mail', enabled: true, reply: true, workflow_trigger: true, route_selections: { triage: 'support' }, group_names: ['prod'] } })
   const host = await mount()
-  expect(host.textContent).toContain('owner+agent-id@example.com')
-  expect(host.textContent).toContain('triage → support')
+  expect(host.textContent).not.toContain('owner+agent-id@example.com')
+  expect(agentApi.getGmailInboundRoute).not.toHaveBeenCalled()
   expect(host.textContent).not.toContain('/api/hooks/workflow/gmail')
   expect(host.querySelector('input, select')).toBeNull()
   expect([...host.querySelectorAll('button')].some(button => ['Pause', 'Enable', 'Remove', 'Rotate secret'].includes(button.textContent || ''))).toBe(false)

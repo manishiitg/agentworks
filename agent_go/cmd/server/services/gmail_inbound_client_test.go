@@ -72,6 +72,16 @@ esac
 	if _, _, e = c.Watch(context.Background()); e != nil {
 		t.Fatalf("private owner scope rejected: %v", e)
 	}
+	svc.config.Connections[0].Personal = true
+	svc.config.Connections[0].Workspaces = []string{"Workflow/second"}
+	c.Scope = GmailUseScope{UserID: "owner", Workspace: "Workflow/removed"}
+	if _, _, e = c.Watch(context.Background()); e != nil {
+		t.Fatalf("removed item stranded shared mailbox watch: %v", e)
+	}
+	svc.config.Connections[0].Workspaces = nil
+	if _, _, e = c.Watch(context.Background()); e == nil {
+		t.Fatal("watch survived removal of every account selection")
+	}
 }
 
 func TestGmailInboundReplyHeadersAndBody(t *testing.T) {

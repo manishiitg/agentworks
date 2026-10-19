@@ -10,7 +10,7 @@ import { GMAIL_INBOUND_SETUP_INSTRUCTIONS, useGmailInboundUIEnabled } from './gm
 export const gmailInboundSetupMessage = buildAskAIMessage({
   view: 'Incoming email',
   summary: 'Help me connect Gmail and choose what incoming email should start.',
-  instructions: 'Inspect get_gmail_trigger and manage_google_account(action="get_inbox"). Each person has one address on a connected Gmail mailbox, managed in My Vault. Reuse it for each chosen product; do not create a new address or another Google login for this target. If no inbox exists, list saved Google accounts and use select_inbox with my chosen readable account. Add the existing account here with attach only if needed and I request this product to use it. Use manage_gmail_trigger to configure the requested chat instructions or saved workflow route, or disable it. Discover account and route IDs yourself. By default any authenticated email reaching my personal address runs every enabled and approved trigger independently. I control what reaches the address in Gmail; do not require labels, sender lists or content filters. Optional trigger conditions and ordered rules are only for a requested routing choice; preserve them when I did not ask to change them. Show the approval card after saving: I must review anyone reaching this address using my tools, accounts, files and enabled replies. Typed assent and agent tools cannot approve it. ' + GMAIL_INBOUND_SETUP_INSTRUCTIONS + ' Return the personal address and verified readiness. Saved setup does not prove delivery.',
+  instructions: 'Inspect get_gmail_trigger and manage_google_account(action="get_inbox"). Each person has one address on a connected Gmail mailbox, managed in My Vault. Reuse it for each chosen product; do not create a new address or another Google login for this target. If no inbox exists, list saved Google accounts and use select_inbox with my chosen readable account. Add the existing account here with attach only if needed and I request this product to use it. Use manage_gmail_trigger to configure the requested chat instructions or saved workflow route, or disable it. Discover account and route IDs yourself. If Gmail read consent is missing, return its Google sign-in link and wait for me to complete consent, then inspect the actual granted permission before configuring. By default any authenticated email reaching my personal address runs every enabled and approved trigger independently. I control what reaches the address in Gmail; do not require labels, sender lists or content filters. For requested different actions, configure ordered named rules with stable IDs; preserve untouched rules and their IDs. Optional trigger conditions and ordered rules are only for a requested routing choice; preserve them when I did not ask to change them. Show the approval card after saving: I must review anyone reaching this address using my tools, accounts, files and enabled replies. Typed assent and agent tools cannot approve it. ' + GMAIL_INBOUND_SETUP_INSTRUCTIONS + ' Return the personal address and verified readiness. Saved setup does not prove delivery.',
 
 })
 
@@ -65,7 +65,7 @@ function errorMessage(error: unknown, fallback = 'Could not load incoming email 
 
 // Configuration belongs to Builder tools. Both Email and Triggers show this
 // same persisted route without granting mutation authority to the pane.
-type GmailInboundPanelProps = { workspacePath: string; connections?: GmailConnection[]; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }
+type GmailInboundPanelProps = { workspacePath: string; embedded?: boolean; connections?: GmailConnection[]; refreshToken?: number; onCounts?: (counts: { active: number; paused: number }) => void; onAsk?: (message: string) => void | Promise<void> }
 
 export function GmailInboundPanel(props: GmailInboundPanelProps) {
   const enabled = useGmailInboundUIEnabled()
@@ -82,7 +82,7 @@ export function GmailSenderApproval({ workspacePath }: { workspacePath: string }
   return enabled ? <GmailInboundPanelContent workspacePath={workspacePath} approvalOnly /> : null
 }
 
-function GmailInboundPanelContent({ workspacePath, connections = [], refreshToken = 0, onCounts, onAsk, approvalOnly = false }: GmailInboundPanelProps & { approvalOnly?: boolean }) {
+function GmailInboundPanelContent({ workspacePath, connections = [], refreshToken = 0, onCounts, onAsk, embedded = false, approvalOnly = false }: GmailInboundPanelProps & { approvalOnly?: boolean }) {
   const [state, setState] = useState<GmailInboundState | null>(null)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
@@ -189,7 +189,7 @@ function GmailInboundPanelContent({ workspacePath, connections = [], refreshToke
     {senderConsentContent}
     {state && route && !state.sender_consent?.required && <p>No additional sender approval is needed.</p>}
   </section>
-  return <FormSection title="Incoming email" description="Ask Builder to connect Gmail, choose chat instructions or workflow routes, or disable this trigger. This panel shows the saved configuration." actions={<AskAIButton workspacePath={workspacePath} onAsk={onAsk} message={gmailInboundSetupMessage} />}>
+  return <FormSection title="Incoming email" description="Ask Builder to connect Gmail, choose chat instructions or workflow routes, or disable this trigger. This panel shows the saved configuration." actions={embedded ? undefined : <AskAIButton workspacePath={workspacePath} onAsk={onAsk} message={gmailInboundSetupMessage} />}>
     <div className="space-y-3 text-sm">
       {error && <p role="alert" className="text-destructive">{error}</p>}
       {state && (!state.configured || state.setup?.oauth_clients.length === 0) && <div className="space-y-2 rounded-md border p-3">

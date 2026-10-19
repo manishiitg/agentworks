@@ -16,6 +16,7 @@ interface Account {
   google?: GmailConnection
 }
 interface PersonalInbox {
+  can_manage?: boolean
   inbox: { id: string; address: string; connection_id: string } | null
   receiving_account?: string
   bindings: { name: string; enabled: boolean; approved: boolean; current_address: boolean }[]
@@ -98,9 +99,9 @@ function ProviderAccounts({ provider, workspacePath, onChanged }: { provider: Pr
       <h4 className="text-sm font-medium">Your incoming email</h4>
       {inbox.inbox ? <>
         <p className="break-all font-mono text-xs select-all">{inbox.inbox.address}</p>
-        <p className="text-xs text-muted-foreground">Delivered to {inbox.receiving_account}. This is an address on your Gmail mailbox, rather than a separate mailbox.</p>
+        <p className="text-xs text-muted-foreground">Delivered to {inbox.receiving_account}. This address delivers to your existing Gmail mailbox.</p>
         <p className="text-xs text-muted-foreground">Anyone who emails this address can start the triggers you enable and approve, using your tools, accounts and files. Enabled replies may share results. Keep this address private.</p>
-        <div className="flex gap-2"><Button variant="outline" size="xs" onClick={() => { void navigator.clipboard.writeText(inbox.inbox!.address).then(() => setMessage('Email address copied.'), () => setError('Could not copy. Select and copy the address.')) }}>Copy address</Button><Button variant="outline" size="xs" disabled={busy} onClick={() => void act('rotate_inbox')}>New address</Button></div>
+        <div className="flex gap-2"><Button variant="outline" size="xs" onClick={() => { void navigator.clipboard.writeText(inbox.inbox!.address).then(() => setMessage('Email address copied.'), () => setError('Could not copy. Select and copy the address.')) }}>Copy address</Button><Button variant="outline" size="xs" disabled={busy || inbox.can_manage === false} onClick={() => void act('rotate_inbox')}>New address</Button></div>
         <p className="text-xs text-muted-foreground">New address stops mail to the old address from starting work. Ask Builder to reconnect and approve each trigger afterward.</p>
         <ul className="space-y-1 text-xs">{inbox.bindings.map((binding,index) => <li key={index}>{binding.name} · {!binding.current_address ? 'Reconnect to your new address' : !binding.enabled ? 'Paused' : binding.approved ? 'Enabled' : 'Needs your approval'}</li>)}</ul>
         {!inbox.bindings.length && <p className="text-xs text-muted-foreground">No triggers yet. Open a product’s Builder and ask it to use your inbox.</p>}

@@ -32,7 +32,16 @@ func (c GmailInboundClient) run(ctx context.Context, readOnly bool, args ...stri
 	if svc == nil {
 		return nil, fmt.Errorf("Gmail is unavailable")
 	}
-	conn, e := svc.ConnectionForScope(c.ConnectionID, c.Scope)
+	scope := c.Scope
+	if saved, ok := svc.GetConnection(c.ConnectionID); ok && saved.Personal {
+		if scope.UserID != saved.OwnerID || len(saved.Workspaces) == 0 {
+			return nil, fmt.Errorf("personal Gmail account is not selected for any item")
+		}
+		// Account selections can change between commands in a mailbox sync.
+		// Re-resolve instead of retaining a removed item's scope for the watch.
+		scope.Workspace = saved.Workspaces[0]
+	}
+	conn, e := svc.ConnectionForScope(c.ConnectionID, scope)
 	if e != nil {
 		return nil, e
 	}
@@ -46,7 +55,7 @@ func (c GmailInboundClient) run(ctx context.Context, readOnly bool, args ...stri
 	if len(args) > 1 && args[0] == "gmail" && args[1] == "send" && !(scopesGrantGmailSend(status.Scopes) || GoogleScopesGrant(status.Scopes, GmailComposeScope)) {
 		return nil, fmt.Errorf("Gmail send permission has not been granted")
 	}
-	access, e := svc.GoogleCLIAccessForConnectionIn(ctx, c.ConnectionID, c.Scope)
+	access, e := svc.GoogleCLIAccessForConnectionIn(ctx, c.ConnectionID, scope)
 	if e != nil {
 		return nil, e
 	}

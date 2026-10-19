@@ -16,6 +16,10 @@ import (
 
 type Store struct{ db *sql.DB }
 
+// Temporary failures must retain the mailbox cursor for retry, rather than
+// looking like an owner rejection which intentionally does not keep content.
+var ErrAdmissionRetry = errors.New("retry incoming email admission")
+
 func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
@@ -197,7 +201,14 @@ func (s *Store) EnqueueAuthorized(ctx context.Context, r Route, m Message, autho
 	if authorize != nil {
 		permitted := candidates[:0]
 		for _, candidate := range candidates {
-			if candidate.AcceptsMessageKind(m) && authorize(ctx, candidate, m) == nil {
+			if !candidate.AcceptsMessageKind(m) {
+				continue
+			}
+			err := authorize(ctx, candidate, m)
+			if errors.Is(err, ErrAdmissionRetry) {
+				return err
+			}
+			if err == nil {
 				permitted = append(permitted, candidate)
 			}
 		}

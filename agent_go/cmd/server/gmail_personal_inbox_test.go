@@ -44,6 +44,11 @@ func TestGmailPersonalInboxFansOutOnlyToApprovedBindings(t *testing.T) {
 	// store. Keeping it inside admission's transaction used to deadlock.
 	bounded, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
+	if err := api.gmailInbound.Store.EnqueueAuthorized(bounded, routes[0], message, func(context.Context, gmailinbound.Route, gmailinbound.Message) error {
+		return gmailinbound.ErrAdmissionRetry
+	}); err == nil {
+		t.Fatal("temporary admission failure was swallowed")
+	}
 	for repeat := 0; repeat < 2; repeat++ {
 		for _, route := range routes {
 			if err := api.gmailInbound.Store.EnqueueAuthorized(bounded, route, message, api.authorizeInboundEmail); err != nil {

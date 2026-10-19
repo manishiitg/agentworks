@@ -48,10 +48,11 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
     if (refreshToken) void refresh()
   }, [refreshToken, refresh])
 
-  const activeTriggers = options.triggers.filter(trigger => trigger.enabled).length
+  const webhooks = options.triggers.filter(trigger => !trigger.kind)
+  const activeTriggers = webhooks.filter(trigger => trigger.enabled).length
   useEffect(() => {
-    onCounts?.({ active: activeTriggers, paused: options.triggers.length - activeTriggers })
-  }, [onCounts, activeTriggers, options.triggers.length])
+    onCounts?.({ active: activeTriggers, paused: webhooks.length - activeTriggers })
+  }, [onCounts, activeTriggers, webhooks.length])
 
   const afterSave = async () => {
     if (!workspacePath) return
@@ -92,7 +93,7 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
       {!hideHeader && <WorkspaceViewHeader
         icon={Webhook}
         title="Triggers"
-        context={<span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{options.triggers.length}</span>}
+        context={<span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{webhooks.length}</span>}
         subtitle="External events that start this workflow."
         actions={<>
           {headerAction}
@@ -100,7 +101,7 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
         </>}
         below={<div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
           <span><span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />{activeTriggers} active</span>
-          <span>{options.triggers.length - activeTriggers} paused</span>
+          <span>{webhooks.length - activeTriggers} paused</span>
           {!deliveryHistory && <button type="button" className="text-foreground underline underline-offset-2" onClick={() => onViewRuns ? onViewRuns() : useWorkflowStore.getState().openWorkspaceView('schedules')}>View delivery history</button>}
         </div>}
       />}

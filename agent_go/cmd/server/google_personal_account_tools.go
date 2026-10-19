@@ -58,7 +58,7 @@ func (api *StreamingAPI) personalGoogleOperation(r *http.Request, workspace stri
 			if !c.IsPrivate() {
 				permissions.CanManage, permissions.CanReconnect = conn.CanManage, conn.CanReconnect
 			}
-			accounts = append(accounts, personalGoogleAccountRow{personalConnectionPermissions: permissions, CanUseInbox: c.OwnerID == actor || !c.IsPrivate() && currentUserIsAdmin(r) && canRemoveGmailConnection(r, c), ID: c.ID, Owner: c.OwnerID, Label: conn.Email, Selected: selected, Connected: conn.Auth.Authenticated, Mine: c.OwnerID == actor, Google: conn})
+			accounts = append(accounts, personalGoogleAccountRow{personalConnectionPermissions: permissions, CanUseInbox: personalAccountManagementScope(r, workspace, true) == nil && (c.OwnerID == actor || !c.IsPrivate() && currentUserIsAdmin(r) && canRemoveGmailConnection(r, c)), ID: c.ID, Owner: c.OwnerID, Label: conn.Email, Selected: selected, Connected: conn.Auth.Authenticated, Mine: c.OwnerID == actor, Google: conn})
 		}
 		result := map[string]any{"accounts": accounts, "can_connect": personalAccountManagementScope(r, workspace, true) == nil, "notice": googleAccountSharingNotice}
 		if api.gmailInbound != nil {
@@ -66,7 +66,7 @@ func (api *StreamingAPI) personalGoogleOperation(r *http.Request, workspace stri
 			if err != nil {
 				return nil, err
 			}
-			state, err := api.personalGmailInboxState(r, inbox)
+			state, err := api.personalGmailInboxState(r, inbox, workspace)
 			if err != nil {
 				return nil, err
 			}

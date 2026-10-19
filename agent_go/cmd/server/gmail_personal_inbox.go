@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
@@ -28,7 +29,7 @@ func (api *StreamingAPI) personalGmailInboxOperation(r *http.Request, workspace 
 		return nil, err
 	}
 	if action == "get_inbox" {
-		return api.personalGmailInboxState(r, inbox)
+		return api.personalGmailInboxState(r, inbox, workspace)
 	}
 	if action != "select_inbox" && action != "rotate_inbox" {
 		return nil, fmt.Errorf("Choose get_inbox, select_inbox or rotate_inbox.")
@@ -71,10 +72,10 @@ func (api *StreamingAPI) personalGmailInboxOperation(r *http.Request, workspace 
 			return nil, err
 		}
 	}
-	return api.personalGmailInboxState(r, inbox)
+	return api.personalGmailInboxState(r, inbox, workspace)
 }
 
-func (api *StreamingAPI) personalGmailInboxState(r *http.Request, inbox *gmailinbound.Inbox) (any, error) {
+func (api *StreamingAPI) personalGmailInboxState(r *http.Request, inbox *gmailinbound.Inbox, workspace string) (any, error) {
 	bindings := []map[string]any{}
 	if inbox != nil {
 		routes, err := api.gmailInbound.Store.Routes(r.Context())
@@ -96,7 +97,7 @@ func (api *StreamingAPI) personalGmailInboxState(r *http.Request, inbox *gmailin
 			bindings = append(bindings, map[string]any{"name": api.gmailInboundTargetLabel(r.Context(), target), "workspace_path": route.WorkspacePath, "profile_id": route.ProfileID, "project_id": route.ProjectID, "enabled": route.Enabled, "current_address": inbox.Matches(route), "approved": consent.Approved})
 		}
 	}
-	result := map[string]any{"inbox": inbox, "bindings": bindings, "notice": "Mail reaching your address can start every trigger you enable and approve. Manage what reaches it in Gmail. A new address stops all old bindings; ask Builder to reconnect and review each one."}
+	result := map[string]any{"can_manage": personalAccountManagementScope(r, workspace, true) == nil, "inbox": inbox, "bindings": bindings, "notice": "Mail reaching your address can start every trigger you enable and approve. Manage what reaches it in Gmail. A new address stops all old bindings; ask Builder to reconnect and review each one."}
 	if inbox != nil {
 		if svc := services.GetGmailService(); svc != nil {
 			if c, found := svc.GetConnection(inbox.ConnectionID); found {
@@ -104,7 +105,7 @@ func (api *StreamingAPI) personalGmailInboxState(r *http.Request, inbox *gmailin
 			}
 		}
 		if box, err := api.gmailInbound.Store.MailboxStatus(r.Context(), inbox.ConnectionID); err == nil {
-			result["watch_ready"], result["error"] = box.Cursor != "", box.LastError
+			result["watch_ready"], result["error"] = box.Cursor != "" && box.RenewAt > time.Now().Unix(), box.LastError
 		}
 	}
 	return result, nil
