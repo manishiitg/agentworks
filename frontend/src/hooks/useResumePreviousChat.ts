@@ -46,6 +46,27 @@ export function useResumePreviousChat() {
       return
     }
 
+    // An open Crew chat already has its server-owned binding. Selecting its
+    // saved history only focuses that tab; allocating another side key would
+    // give the same conversation two tabs (PLAT-856-190).
+    const projectId = targetTab.metadata.agentProfileProjectId
+    const activeProfileId = targetTab.metadata.agentProfileId
+    if (projectId && ['code', 'work'].includes(activeProfileId) &&
+      !isExecutionHistory && session.can_resume !== false) {
+      const existing = Object.values(chatStore.chatTabs).find(tab =>
+        tab.sessionId === session.session_id &&
+        tab.metadata?.agentProfileId === activeProfileId &&
+        tab.metadata?.agentProfileProjectId === projectId &&
+        tab.metadata?.agentProfileConversationKey &&
+        tab.metadata?.agentProfileBuilder !== true &&
+        tab.metadata?.isViewOnly !== true,
+      )
+      if (existing) {
+        chatStore.switchTab(existing.tabId)
+        return
+      }
+    }
+
     // Crew owns one permanent interactive conversation. Automation runs and
     // older conversations are references to that project, not replacements
     // for its main chat. Open them in a separate read-only tab so selecting a
