@@ -43,3 +43,13 @@ it('does not open a late response after account identity changes', async () => {
     expect(openPublishedAgentChat).not.toHaveBeenCalled()
   })
 })
+
+it('does not reopen a conversation after leaving its Connections panel', async () => {
+  let finish!: (value: unknown) => void
+  vi.mocked(api.post).mockResolvedValueOnce({ data: { agents: [{ agent_id: 'research', name: 'Research' }] } }).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  await render(async host => {
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Research')!.click())
+  })
+  await act(async () => finish({ data: { session_id: 'saved' } }))
+  expect(openPublishedAgentChat).not.toHaveBeenCalled()
+})
