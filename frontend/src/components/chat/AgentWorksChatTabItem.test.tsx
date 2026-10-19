@@ -195,3 +195,31 @@ it.each([undefined, 'agentworks', 'relays', 'work', 'code', 'mcp-gateway'] as (P
     useChatStore.setState(original, true)
   }
 })
+
+it('announces a tab changing to working and waiting without repeating idle labels on mount', async () => {
+  const { useChatStore } = await import('../../stores/useChatStore')
+  const original = useChatStore.getState()
+  const host = document.createElement('div'); document.body.append(host)
+  const root = createRoot(host)
+  vi.useFakeTimers()
+  try {
+    useChatStore.setState({ chatTabs: {}, activeSessionsCache: [] })
+    const tab = { tabId: 'announced-tab', name: 'Reports', sessionId: 'announced-session' } as ChatTab
+    const render = async (streaming = false) => act(async () => root.render(<AgentWorksChatTabItem tab={{ ...tab, isStreaming: streaming }} isActive={false} canClose={false} isBlank={false} productSurface="work" onTabClick={() => {}} onCloseTab={() => {}} />))
+    await render()
+    const status = host.querySelector('[role="status"]')!
+    expect(status.textContent).toBe('')
+    await render(true)
+    expect(status.textContent).toBe('Reports: Working')
+    await act(async () => { useChatStore.setState({ activeSessionsCache: [{ session_id: tab.sessionId, needs_user_input: true }] as never }) })
+    await act(async () => { vi.advanceTimersByTime(1200) })
+    expect(status.textContent).toBe('Reports: Needs your input')
+    await act(async () => { vi.advanceTimersByTime(15_000) })
+    expect(status.textContent).toBe('Reports: Needs your input')
+  } finally {
+    await act(async () => root.unmount())
+    vi.useRealTimers()
+    host.remove()
+    useChatStore.setState(original, true)
+  }
+})

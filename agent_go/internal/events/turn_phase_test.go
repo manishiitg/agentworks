@@ -47,14 +47,13 @@ func TestTurnPhaseFollowsTheAgentNotTheClock(t *testing.T) {
 	add(es, session, "user_message", nil)
 	add(es, session, "streaming_chunk", &mcpevents.StreamingChunkEvent{Source: mcpevents.StreamingChunkSourcePromptAccepted})
 
-	// The message itself does not say which agent; the first generation does, and the line is refreshed.
+	// A model family cannot identify the CLI (Cursor can run Claude models). Startup stays neutral.
 	want := []string{
 		"starting: Starting the agent",
-		"starting: Starting Muse",
 		"retrying: Retrying: Muse did not start in 1m30s: it was showing a plugin hooks review screen (attempt 1 of 5, next in 10s)",
-		"starting: Starting Muse",
+		"starting: Starting the agent",
 		"running: ",
-		"starting: Starting Muse",
+		"starting: Starting the agent",
 		"running: ",
 	}
 	got := phaseEvents(es, session)
@@ -88,5 +87,23 @@ func TestPersistedTurnOpenFollowsTheStoredEvents(t *testing.T) {
 	add(es, session, "user_message", nil)
 	if !es.PersistedTurnOpen(session) {
 		t.Fatal("a new message opens the next turn")
+	}
+}
+
+func TestStartingUsesOnlyThisTurnsServerAgentLabel(t *testing.T) {
+	es := NewEventStore(100)
+	defer es.Stop()
+	es.EnableTurnPhase()
+	const session = "cursor-with-claude-model"
+	message := mcpevents.NewUserMessageEvent(0, "Check this", "user")
+	message.Metadata = map[string]interface{}{"provider": "cursor-cli", "agent_label": "Cursor"}
+	add(es, session, "user_message", message)
+	add(es, session, "llm_generation_start", &mcpevents.LLMGenerationStartEvent{ModelID: "claude-sonnet-5-5"})
+	add(es, session, "unified_completion", nil)
+	add(es, session, "user_message", nil)
+	add(es, session, "llm_generation_start", &mcpevents.LLMGenerationStartEvent{ModelID: "claude-sonnet-5-5"})
+	got := phaseEvents(es, session)
+	if len(got) != 2 || got[0] != "starting: Starting Cursor" || got[1] != "starting: Starting the agent" {
+		t.Fatalf("model inference or cached name survived: %q", got)
 	}
 }

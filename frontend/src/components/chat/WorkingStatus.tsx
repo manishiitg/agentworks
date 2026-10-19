@@ -31,7 +31,7 @@ function WorkingGlyph({ reduced }: { reduced: boolean }) {
 
 // One shared "the agent is working" line. Real server status wins; otherwise a friendly word that changes every few
 // seconds, with time since the server last observed agent activity. Display only: it never decides anything.
-// Screen readers get one stable "Working…" label; the changing text is hidden from them so they are not spammed.
+// Announce meaningful server state changes, never the playful words or elapsed clock.
 export function WorkingStatus({ realStatus, startedAt, lastOutputAt, phase, className }: { realStatus?: string; startedAt?: number; lastOutputAt?: number; phase?: { phase: string; text: string; since: number }; className?: string }) {
   const reduced = usePrefersReducedMotion()
   const tipsAllowed = useContext(WorkingTipsContext)
@@ -55,13 +55,15 @@ export function WorkingStatus({ realStatus, startedAt, lastOutputAt, phase, clas
   // Only server state decides quiet/waiting. The clock uses the same last
   // output/tool time as server inactivity handling, never the phase start.
   const notYetRunning = phase !== undefined && phase.phase !== 'running' && phase.text !== ''
-  const { text } = notYetRunning ? { text: phase.text } : resolveWorkingLabel(realStatus, WORKING_WORDS[reduced ? 0 : word.index])
+  const resolved = resolveWorkingLabel(realStatus, WORKING_WORDS[reduced ? 0 : word.index])
+  const text = notYetRunning ? phase.text : resolved.text
+  const accessibleText = notYetRunning ? phase.text : resolved.real ? resolved.text : WORKING_ACCESSIBLE_LABEL
   const elapsed = phase?.phase === 'waiting_for_you' || phase?.phase === 'quiet' || lastOutputAt === undefined || now < lastOutputAt
     ? '' : ` · ${formatElapsed(now - lastOutputAt)} since update`
   const durationTitle = startedAt !== undefined && now >= startedAt ? `Turn duration: ${formatElapsed(now - startedAt)}` : undefined
   return (
     <span className={`inline-flex min-w-0 max-w-full flex-col ${className ?? ''}`} data-testid="working-status">
-      <span className="sr-only" role="status" aria-live="polite">{WORKING_ACCESSIBLE_LABEL}</span>
+      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{accessibleText}</span>
       <span aria-hidden="true" className="truncate" title={durationTitle}>
         <span className="text-[hsl(var(--working-accent))]">
           <WorkingGlyph reduced={reduced} />{' '}

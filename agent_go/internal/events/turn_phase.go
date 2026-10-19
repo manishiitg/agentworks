@@ -45,43 +45,22 @@ type turnPhaseState struct {
 }
 
 var (
-	turnPhasesMu sync.Mutex
-	turnPhases   = map[string]*turnPhaseState{}
-	// turnPhaseLabels remembers the agent's name per session, so the next turn can say "Starting Muse" before any
-	// event of that turn names it.
-	turnPhaseLabels  = map[string]turnPhaseLabel{}
+	turnPhasesMu     sync.Mutex
+	turnPhases       = map[string]*turnPhaseState{}
 	turnPhaseSweptAt time.Time
 )
 
-type turnPhaseLabel struct {
-	name string
-	at   time.Time
-}
-
-// turnPhaseLabel names the agent the person chose, from the provider or (when only the model is known) its family.
-func turnPhaseLabelFor(provider, modelID string) string {
-	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "muse-cli", "muse":
-		return "Muse"
-	case "codex-cli", "codex":
-		return "Codex"
-	case "claude-code", "claude-cli":
-		return "Claude"
-	case "pi-cli":
-		return "Pi"
-	case "cursor-cli":
-		return "Cursor"
-	case "agy-cli":
-		return "Antigravity"
-	case "gemini-cli":
-		return "Gemini"
+// Only a current server-issued label identifies the CLI. A model family is
+// not an agent identity: Cursor and Pi can run Claude models too.
+func turnPhaseEventLabel(event Event) string {
+	if event.Data == nil || event.Data.Data == nil {
+		return ""
 	}
-	model := strings.ToLower(strings.TrimSpace(modelID))
-	switch {
-	case strings.HasPrefix(model, "muse-"):
-		return "Muse"
-	case strings.HasPrefix(model, "claude-"):
-		return "Claude"
+	if data, ok := event.Data.Data.(interface{ GetBaseEventData() *events.BaseEventData }); ok {
+		if base := data.GetBaseEventData(); base != nil {
+			label, _ := base.Metadata["agent_label"].(string)
+			return strings.TrimSpace(label)
+		}
 	}
 	return ""
 }
@@ -177,17 +156,13 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 				delete(turnPhases, id)
 			}
 		}
-		for id, l := range turnPhaseLabels {
-			if now.Sub(l.at) > turnPhaseStaleAfter {
-				delete(turnPhaseLabels, id)
-			}
-		}
+
 	}
 	st := turnPhases[sessionID]
 	var announce *turnPhaseState
 	set := func(phase string) {
 		if st == nil {
-			st = &turnPhaseState{label: turnPhaseLabels[sessionID].name}
+			st = &turnPhaseState{}
 			turnPhases[sessionID] = st
 		}
 		if st.phase != phase {
@@ -206,20 +181,13 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 		} else if st.phase == turnPhaseRetrying {
 			set(turnPhaseStarting)
 		}
-		if st.label == "" && event.Data != nil {
-			if d, ok := event.Data.Data.(*events.LLMGenerationStartEvent); ok {
-				st.label = turnPhaseLabelFor("", d.ModelID)
-			}
-		}
+
 	case "retry_attempt":
 		if st == nil {
 			set(turnPhaseStarting)
 		}
 		if event.Data != nil {
 			if d, ok := event.Data.Data.(*events.RetryAttemptEvent); ok {
-				if l := turnPhaseLabelFor(d.Provider, d.ModelID); l != "" {
-					st.label = l
-				}
 				set(turnPhaseRetrying)
 				st.reason = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(d.Error), turnPhaseRetrySuffix))
 				st.reason = strings.ReplaceAll(st.reason, "_", " ")
@@ -260,10 +228,10 @@ func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 			st = nil
 		}
 	}
-	if st != nil && st.label != "" {
-		turnPhaseLabels[sessionID] = turnPhaseLabel{name: st.label, at: now}
-	}
 	if st != nil {
+		if label := turnPhaseEventLabel(event); label != "" {
+			st.label = label
+		}
 		sig := fmt.Sprintf("%s|%s|%s|%d|%d|%s", st.phase, st.label, st.reason, st.attempt, st.total, st.nextIn)
 		if sig != st.announce {
 			st.announce = sig
