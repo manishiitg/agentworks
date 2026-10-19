@@ -32,7 +32,7 @@ export default function FileContextDisplay({ files, onRemoveFile, onClearAll, ag
             ? 'text-amber-700 dark:text-amber-400'
             : 'text-muted-foreground'
         }`}>
-          {agentMode === 'workflow' && !isRequiredFolderSelected ? 'Select an Automation folder:' : 'For next message:'}
+          {agentMode === 'workflow' && !isRequiredFolderSelected ? 'Select a project folder:' : 'For next message:'}
         </span>
         {files.map((file, index) => (
           <div key={file.path} className="flex items-center gap-0.5">
