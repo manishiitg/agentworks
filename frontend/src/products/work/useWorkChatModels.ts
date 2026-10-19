@@ -1,69 +1,56 @@
 import { useEffect } from 'react'
-import { loadAgentProfileProviderOptions } from '../../utils/agentProfileCapabilities'
+import { useQuery } from '@tanstack/react-query'
 import { agentApi } from '../../services/api'
-import type { AgentProfileChatModel, PresetLLMConfig } from '../../services/api-types'
+import type { AgentProfileEffectiveChatModel, PresetLLMConfig } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
 import { belongsToWorkProject } from './workTabs'
-import type { WorkLLMSelection } from './workSessions'
-import { workLLMSelectionFromConfig } from './workSessions'
+import { useAuthStore } from '../../stores/useAuthStore'
+import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
+import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 
-export const CHAT_MODELS_CHANGED = 'agentworks:chat-models-changed'
-export const CHAT_MODELS_REFRESH = 'agentworks:chat-models-refresh'
+export const workChatModelsQueryKey = (profileId: string, projectId: string) => ['project-chat-models', profileId, projectId] as const
 
-// Server registry, not local storage, owns each person's per-chat choice.
-export function applyWorkChatModels(profileId: string, projectId: string, models: AgentProfileChatModel[], fallback?: WorkLLMSelection & { engine?: string }) {
+// Project only server-issued runtime metadata. No inheritance, provider or
+// account choice is resolved in the browser.
+export function applyWorkChatModels(profileId: string, projectId: string, models: AgentProfileEffectiveChatModel[], canOpenModels = false) {
   const store = useChatStore.getState()
   for (const tab of Object.values(store.chatTabs)) {
     const key = tab.metadata?.agentProfileConversationKey
     if (!belongsToWorkProject(tab, projectId) || tab.metadata?.agentProfileId !== profileId || !key || key.startsWith(`${projectId}:chat:agent-`) || tab.metadata?.isViewOnly) continue
-    const own = models.find(model => model.conversation_key === key)
-    if (!own && !fallback) continue
-    const engine = own?.engine || fallback!.engine || fallback!.provider
-    const modelId = own?.model_id || (own ? '' : fallback!.modelId)
-    const effort = own?.reasoning_effort || (own ? undefined : fallback?.reasoningEffort)
-    const connection = !own || own.engine === (fallback?.engine || fallback?.provider) ? fallback?.connectionId : undefined
-    const changed = tab.metadata?.agentProfileEngine !== engine || tab.metadata?.agentProfileModelID !== modelId || tab.metadata?.agentProfileReasoningEffort !== effort || tab.metadata?.agentProfileConnectionID !== connection
-    if (!changed && tab.metadata?.agentProfileChatModelOverride === Boolean(own)) continue
+    const model = models.find(item => item.conversation_key === key)
+    if (!model) continue
+    if (model.error) {
+      store.setTabMetadata(tab.tabId, { agentProfileChatModelLabel: model.display_label, agentProfileChatModelOverride: model.own_model, agentProfileCanOpenModels: canOpenModels })
+      continue
+    }
+    const changed = tab.metadata?.agentProfileEngine !== model.engine || tab.metadata?.agentProfileModelID !== model.model_id || tab.metadata?.agentProfileReasoningEffort !== model.reasoning_effort
+    if (!changed && tab.metadata?.agentProfileChatModelOverride === model.own_model && tab.metadata?.agentProfileChatModelLabel === model.display_label && tab.metadata?.agentProfileCanOpenModels === canOpenModels) continue
     store.setTabMetadata(tab.tabId, {
-      agentProfileChatModelOverride: Boolean(own), agentProfileEngine: engine,
-      agentProfileModelID: modelId, agentProfileReasoningEffort: effort,
-      agentProfileConnectionID: connection,
+      agentProfileChatModelOverride: model.own_model, agentProfileEngine: model.engine,
+      agentProfileModelID: model.model_id, agentProfileReasoningEffort: model.reasoning_effort,
+      agentProfileChatModelLabel: model.display_label,
+      agentProfileCanOpenModels: canOpenModels,
       ...(changed ? { agentProfileRuntimeDirty: Boolean(tab.sessionId) } : {}),
     })
   }
 }
 
 export function useWorkChatModels(profileId: string, projectId: string | undefined, config: PresetLLMConfig | undefined, canonicalTabId: string | undefined) {
+  const account = useAuthStore(state => state.user?.id)
+  const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const identity = captureChatIdentity()
   const tabKeys = useChatStore(state => Object.values(state.chatTabs).filter(tab => projectId && belongsToWorkProject(tab, projectId)).map(tab => tab.tabId).sort().join('|'))
+  const models = useQuery({
+    queryKey: [...workChatModelsQueryKey(profileId, projectId || ''), account, workspace, identity, config ?? null, tabKeys],
+    queryFn: async () => {
+      const data = await agentApi.getAgentProfileChatModelState(profileId, projectId!)
+      if (!isChatIdentityCurrent(identity)) throw new Error('Chat account changed.')
+      return data
+    },
+    enabled: Boolean(projectId && canonicalTabId),
+    refetchOnWindowFocus: true,
+  })
   useEffect(() => {
-    if (!projectId || !canonicalTabId) return
-    let sequence = 0
-    let cancelled = false
-    let fallback: (WorkLLMSelection & { engine?: string }) | undefined = workLLMSelectionFromConfig(config) ?? undefined
-    const apply = (models: AgentProfileChatModel[]) => {
-      if (!cancelled) applyWorkChatModels(profileId, projectId, models, fallback)
-    }
-    const load = () => {
-      const current = ++sequence
-      void Promise.resolve().then(async () => {
-        const [models, options] = await Promise.all([
-          agentApi.listAgentProfileChatModels(profileId, projectId),
-          loadAgentProfileProviderOptions(profileId),
-        ])
-        const option = options.find(item => item.provider === fallback?.provider) || options.find(item => item.default) || options[0]
-        if (fallback && option?.provider === fallback.provider) fallback = { ...fallback, engine: option.id }
-        if (!fallback && option) fallback = { engine: option.id, provider: option.provider || option.id, modelId: option.model_id || '', reasoningEffort: typeof option.options?.reasoning_effort === 'string' ? option.options.reasoning_effort : undefined }
-        if (current === sequence) apply(models)
-      }).catch(() => undefined) // Shared/read-only projects never gain an owner's registry access.
-    }
-    const changed = (event: Event) => {
-      const detail = (event as CustomEvent<{ profileId: string; projectId: string; models: AgentProfileChatModel[] }>).detail
-      if (detail?.profileId === profileId && detail.projectId === projectId) { ++sequence; apply(detail.models) }
-    }
-    load()
-    window.addEventListener('focus', load)
-    window.addEventListener(CHAT_MODELS_REFRESH, load)
-    window.addEventListener(CHAT_MODELS_CHANGED, changed)
-    return () => { cancelled = true; window.removeEventListener('focus', load); window.removeEventListener(CHAT_MODELS_REFRESH, load); window.removeEventListener(CHAT_MODELS_CHANGED, changed) }
-  }, [profileId, projectId, config, canonicalTabId, tabKeys])
+    if (projectId && models.data && isChatIdentityCurrent(identity)) applyWorkChatModels(profileId, projectId, models.data.effective_chat_models, models.data.can_open_models)
+  }, [profileId, projectId, models.data, tabKeys, identity])
 }

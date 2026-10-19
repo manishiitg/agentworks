@@ -265,6 +265,14 @@ export interface AgentProfileChatModel {
   engine: string
   model_id?: string
   reasoning_effort?: string
+  display_label?: string
+}
+
+/** Effective caller-owned runtime resolved by the server for one chat. */
+export interface AgentProfileEffectiveChatModel extends AgentProfileChatModel {
+  provider: string
+  own_model: boolean
+  error?: string
 }
 
 /** An open side tab of a Code or Crew project as the server knows it. */

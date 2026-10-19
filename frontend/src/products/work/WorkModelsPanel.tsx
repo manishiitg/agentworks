@@ -6,7 +6,8 @@ import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewAct
 import GuidedProviderTerminal from '../../components/providers/GuidedProviderTerminal'
 import WorkflowLLMConfigurationPanel from '../../components/workflow/WorkflowLLMConfigurationPanel'
 import { agentApi } from '../../services/api'
-import { CHAT_MODELS_CHANGED } from './useWorkChatModels'
+import { useQueryClient } from '@tanstack/react-query'
+import { workChatModelsQueryKey } from './useWorkChatModels'
 import { isProjectProductId } from './projectProduct'
 import type { AgentProfileChatModel, AgentProfileSideChat, LLMProvider, PresetLLMConfig } from '../../services/api-types'
 import { llmConfigService, type ByokModel, type DynamicModelEntry, type ModelMetadata, type ProviderConnection, type ProviderSetupSession } from '../../services/llm-config-api'
@@ -55,6 +56,7 @@ export function WorkModelsPanel({
   // The provider options of this project's own product: a Code asks the Code
   // profile. Asking Crew's left a Code-only member (server B) with no
   // providers at all (issue #252).
+  const queryClient = useQueryClient()
   const product = useProjectProduct()
   const effectiveProfileId = profileId ?? product.profileId
   const effectiveProfileVersion = profileVersion ?? product.profileVersion
@@ -92,7 +94,7 @@ export function WorkModelsPanel({
         reasoning_effort: selection?.reasoningEffort,
       })
       setChatModels(models)
-      window.dispatchEvent(new CustomEvent(CHAT_MODELS_CHANGED, { detail: { profileId: effectiveProfileId, projectId, models } }))
+      await queryClient.invalidateQueries({ queryKey: workChatModelsQueryKey(effectiveProfileId, projectId) })
     } catch (cause) {
       setChatModelError(cause instanceof Error ? cause.message : 'Could not save this chat model.')
     } finally { setChatModelSaving(false) }
@@ -423,7 +425,7 @@ export function WorkModelsPanel({
     <>
         {supportsChatModels && <section className="mb-4 overflow-hidden rounded-xl border border-border" aria-label="Models by chat">
           <button type="button" disabled={chatModelSaving} aria-pressed={!modelTarget} onClick={() => setModelTarget('')} className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm ${!modelTarget ? 'bg-primary/10' : 'hover:bg-muted'}`}>
-            <span className="font-medium">Crew default</span><span className="text-xs text-muted-foreground">For chats without their own model</span>
+            <span className="font-medium">Crew’s model</span><span className="text-xs text-muted-foreground">For chats without their own model</span>
           </button>
           {chatModelsLoading ? <p role="status" className="px-3 py-2 text-xs text-muted-foreground">Loading chats…</p> : [
             { conversation_key: mainChatKey!, name: 'Main chat' },
@@ -432,14 +434,14 @@ export function WorkModelsPanel({
             const own = chatModels.find(model => model.conversation_key === chat.conversation_key)
             return <button key={chat.conversation_key} type="button" disabled={chatModelSaving || !chatModelsReady} aria-pressed={modelTarget === chat.conversation_key} onClick={() => setModelTarget(chat.conversation_key)} className={`flex w-full items-center justify-between gap-3 border-t border-border px-3 py-2 text-left text-sm disabled:opacity-50 ${modelTarget === chat.conversation_key ? 'bg-primary/10' : 'hover:bg-muted'}`}>
               <span className="min-w-0 truncate">{chat.name}</span>
-              <span className="max-w-[60%] truncate text-xs text-muted-foreground">{own ? `${options.find(option => option.id === own.engine)?.label || own.engine} · ${own.model_id || 'Provider default'}` : 'Same as Crew'}</span>
+              <span className="max-w-[60%] truncate text-xs text-muted-foreground">{own ? own.display_label || 'Selected model' : "Crew's model"}</span>
             </button>
           })}
         </section>}
         {chatModelError && <p role="alert" className="mb-3 text-sm text-destructive">{chatModelError}</p>}
         {modelTarget && <div className="mb-3 flex items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">{ownChatModel ? 'Own model · applies to your messages and automated turns in this chat.' : 'Same as Crew · choosing below gives this chat its own model.'}</p>
-          {ownChatModel && <button type="button" disabled={chatModelSaving} onClick={() => void saveChatModel()} className="shrink-0 text-xs font-medium text-primary hover:underline disabled:opacity-50">Use Crew default</button>}
+          <p className="text-xs text-muted-foreground">{ownChatModel ? 'Used for messages and automated work in this agent.' : "Uses the Crew's model."}</p>
+          {ownChatModel && <button type="button" disabled={chatModelSaving} onClick={() => void saveChatModel()} className="shrink-0 text-xs font-medium text-primary hover:underline disabled:opacity-50">Use Crew's model</button>}
         </div>}
         <fieldset disabled={chatModelSaving || (Boolean(modelTarget) && chatModelsLoading)} className="min-w-0 border-0 p-0">
         {savedProviderUnusable && (

@@ -2,10 +2,13 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"sort"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
 // AgentProfileSideChat is one open tab of a Code or Crew project as the server knows it.
@@ -132,6 +135,90 @@ type AgentProfileChatModel struct {
 	Engine          string `json:"engine,omitempty"`
 	ModelID         string `json:"model_id,omitempty"`
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	DisplayLabel    string `json:"display_label,omitempty"`
+}
+
+type AgentProfileEffectiveChatModel struct {
+	AgentProfileChatModel
+	Provider     string `json:"provider"`
+	ConnectionID string `json:"-"`
+	OwnModel     bool   `json:"own_model"`
+	Error        string `json:"error,omitempty"`
+}
+
+// Resolve metadata with the same engine/model validator used for a turn.
+// Only the current project choice and an explicit chat choice participate.
+func effectiveProfileChatModel(profile agentprofiles.Profile, binding productConversationBinding, chat ProductConversationRecord, own ProductAgentIdentity) (AgentProfileEffectiveChatModel, error) {
+	provider, model := resolveProfileRuntimeModel(profile.Runtime, "", "")
+	connection, effort := "", ""
+	if builder := presetPrimaryLLMForChat(binding.ProjectLLMConfig); builder != nil {
+		provider, model, connection = builder.Provider, builder.ModelID, builder.ConnectionID
+		effort, _ = builder.Options["reasoning_effort"].(string)
+	}
+	engine := ""
+	for _, option := range profile.Runtime.ProviderOptions {
+		if option.Provider == provider {
+			engine = option.ID
+			if effort == "" {
+				effort, _ = option.Options["reasoning_effort"].(string)
+			}
+			break
+		}
+	}
+	if own.Engine != "" {
+		option, offered := findProviderOptionByID(profile.Runtime.ProviderOptions, own.Engine)
+		if !offered {
+			return AgentProfileEffectiveChatModel{}, fmt.Errorf("chat engine %q is unavailable", own.Engine)
+		}
+		if option.Provider != provider {
+			connection = ""
+		}
+		engine, model, effort = own.Engine, own.ModelID, own.ReasoningEffort
+	}
+	if engine == "" {
+		return AgentProfileEffectiveChatModel{}, fmt.Errorf("the project's model provider is unavailable")
+	}
+	// An explicit engine/model avoids the legacy runtime fallback. Keep the
+	// current account binding: turn admission retains it only for this provider.
+	query, err := queryRequestForAgentProfileChat(profile, AgentProfileChatRequest{Message: "Model metadata", Engine: engine, ModelID: model, ConnectionID: connection, ReasoningEffort: effort}, chat)
+	if err != nil {
+		return AgentProfileEffectiveChatModel{}, err
+	}
+	return AgentProfileEffectiveChatModel{
+		AgentProfileChatModel: AgentProfileChatModel{ConversationKey: chat.ConversationKey, Engine: engine, ModelID: query.ModelID, ReasoningEffort: query.ReasoningEffort},
+		Provider:              query.Provider, ConnectionID: query.ConnectionID, OwnModel: own.Engine != "",
+	}, nil
+}
+
+// Presentation only: the provider catalog owns readable names; model IDs and
+// the runtime selection sent to a turn stay unchanged.
+func chatModelDisplayLabel(runtime agentprofiles.RuntimePolicy, engine, modelID string) string {
+	provider := engine
+	for _, option := range runtime.ProviderOptions {
+		if option.ID == engine || option.Provider == engine {
+			provider = option.Provider
+			if modelID == "" {
+				modelID = option.ModelID
+			}
+			break
+		}
+	}
+	label := providerDisplayLabel(provider)
+	model := modelNameForProviderModel(provider, modelID)
+	if strings.EqualFold(modelID, "auto") {
+		model = "auto"
+	}
+	if provider == "claude-code" {
+		model = strings.TrimPrefix(model, "Claude ")
+	}
+	model = strings.TrimSuffix(model, " (Cursor Agent CLI)")
+	if model == "" {
+		model = "default"
+	}
+	if label == "" {
+		return model
+	}
+	return label + " · " + model
 }
 
 // handleAgentProfileChatModels lists (GET ?project_id=) or sets (POST) the model of each chat of one project: the
@@ -187,9 +274,34 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 	out := []AgentProfileChatModel{}
 	for key, identity := range identities {
 		if identity.Engine != "" {
-			out = append(out, AgentProfileChatModel{ConversationKey: key, Engine: identity.Engine, ModelID: identity.ModelID, ReasoningEffort: identity.ReasoningEffort})
+			out = append(out, AgentProfileChatModel{ConversationKey: key, Engine: identity.Engine, ModelID: identity.ModelID, ReasoningEffort: identity.ReasoningEffort, DisplayLabel: chatModelDisplayLabel(slot.profile.Runtime, identity.Engine, identity.ModelID)})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ConversationKey < out[j].ConversationKey })
-	writeAgentProfileJSON(w, http.StatusOK, map[string]any{"chat_models": out})
+	chats, err := store.projectChats(r.Context(), userID, slot.profile.ID, projectID)
+	if err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	effective := []AgentProfileEffectiveChatModel{}
+	for _, chat := range chats {
+		if publicationAgentID(chat.ConversationKey) != "" || !workspacePathsMatchForUser(userID, chat.WorkspacePath, slot.binding.WorkspacePath) {
+			continue
+		}
+		row, err := effectiveProfileChatModel(slot.profile, slot.binding, chat, identities[chat.ConversationKey])
+		if err == nil {
+			query := QueryRequest{Provider: row.Provider, ModelID: row.ModelID, ConnectionID: row.ConnectionID}
+			err = constrainProductChatModel(r.Context(), &query)
+			row.ModelID = query.ModelID
+		}
+		if err != nil {
+			// One unavailable selection must not hide other chats or prevent
+			// opening Models to repair it. Do not invent a replacement runtime.
+			effective = append(effective, AgentProfileEffectiveChatModel{AgentProfileChatModel: AgentProfileChatModel{ConversationKey: chat.ConversationKey, DisplayLabel: "Model unavailable"}, OwnModel: identities[chat.ConversationKey].Engine != "", Error: "Choose an available model in Models."})
+			continue
+		}
+		row.DisplayLabel = chatModelDisplayLabel(slot.profile.Runtime, row.Engine, row.ModelID)
+		effective = append(effective, row)
+	}
+	writeAgentProfileJSON(w, http.StatusOK, map[string]any{"chat_models": out, "effective_chat_models": effective, "can_open_models": slot.canBuild})
 }

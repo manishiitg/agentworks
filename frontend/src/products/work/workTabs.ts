@@ -140,6 +140,7 @@ export function setWorkProjectRuntimeSelection(
       agentProfileConnectionID: selection.connectionId,
       agentProfileModelID: selection.modelId,
       agentProfileReasoningEffort: selection.reasoningEffort,
+      agentProfileChatModelLabel: undefined,
       agentProfileRuntimeDirty: Boolean(tab.sessionId),
     })
   }
