@@ -1771,23 +1771,78 @@ func resetFailedCompletionRetries(sessionID string) {
 }
 
 // scheduleFailedCompletionRetry re-arms delivery after a failed synthetic
-// turn, or discards the session's pending completions once the retries are
-// spent. The background agents' results stay in their own history.
+// turn. Once retries are spent, keep results queued for the next normal
+// turn drain; never discard a finished result because delivery failed.
 func (api *StreamingAPI) scheduleFailedCompletionRetry(sessionID string) {
 	attempts := 1
 	if previous, ok := failedCompletionRetries.Load(sessionID); ok {
 		attempts = previous.(int) + 1
 	}
 	if attempts > maxFailedCompletionRetries {
-		failedCompletionRetries.Delete(sessionID)
-		pending := api.drainPendingCompletions(sessionID)
-		log.Printf("[BG AGENT] WARNING: gave up delivering %d completion(s) to session %s after %d failed synthetic turns", len(pending), sessionID, maxFailedCompletionRetries)
+		// Pause automatic retries, not delivery itself. A normal turn ending
+		// still drains these results. Log once while the failure remains.
+		if attempts == maxFailedCompletionRetries+1 {
+			failedCompletionRetries.Store(sessionID, attempts)
+			api.pendingMu.RLock()
+			pending := len(api.pendingCompletions[sessionID])
+			api.pendingMu.RUnlock()
+			log.Printf("[BG AGENT] WARNING: retaining %d queued completion(s) for session %s after %d failed synthetic turns; automatic retries paused", pending, sessionID, maxFailedCompletionRetries)
+			api.emitWaitingBackgroundResults(sessionID, pending)
+		}
 		return
 	}
 	failedCompletionRetries.Store(sessionID, attempts)
 	delay := 5 * time.Second << (attempts - 1)
 	if delay > maxFailedCompletionBackoff {
 		delay = maxFailedCompletionBackoff
+	}
+	api.schedulePendingCompletionRetryAfter(sessionID, delay)
+}
+
+// Busy is not a delivery failure: keep every result and back off the safety-net
+// poll. The normal turn-completion drain still wakes delivery immediately.
+func (api *StreamingAPI) scheduleUndispatchedCompletionRetry(sessionID string) {
+	if api.autoNotificationSessionUnreachable(sessionID) {
+		return
+	}
+	if native, ok := mcpagent.LookupSession(sessionID); ok && native != nil && native.ActiveTurnID() != "" {
+		api.scheduleBusyCompletionRetry(sessionID)
+		return
+	}
+	if api.isSessionBusyForAutoNotification(sessionID) {
+		api.scheduleBusyCompletionRetry(sessionID)
+		return
+	}
+	api.scheduleFailedCompletionRetry(sessionID)
+}
+
+// Stop and an inactivity end are terminal outcomes of a dispatched prompt,
+// not reasons to replay that prompt. Occupancy is a pre-delivery refusal.
+func backgroundCompletionDelivered(turnErr error) bool {
+	return turnErr == nil || errors.Is(turnErr, context.Canceled) || errors.Is(turnErr, errTurnInactive)
+}
+
+func (api *StreamingAPI) scheduleCompletionOutcomeRetry(sessionID string, turnErr error) {
+	if errors.Is(turnErr, mcpagent.ErrTurnAlreadyInFlight) {
+		api.scheduleBusyCompletionRetry(sessionID)
+		return
+	}
+	api.scheduleFailedCompletionRetry(sessionID)
+}
+
+func (api *StreamingAPI) scheduleBusyCompletionRetry(sessionID string) {
+	api.pendingMu.Lock()
+	if api.completionRetryBusyAttempts == nil {
+		api.completionRetryBusyAttempts = make(map[string]int)
+	}
+	attempt := api.completionRetryBusyAttempts[sessionID]
+	if attempt < 4 {
+		api.completionRetryBusyAttempts[sessionID] = attempt + 1
+	}
+	api.pendingMu.Unlock()
+	delay := 10 * time.Second << attempt
+	if delay > time.Minute {
+		delay = time.Minute
 	}
 	api.schedulePendingCompletionRetryAfter(sessionID, delay)
 }
@@ -1811,17 +1866,18 @@ func (api *StreamingAPI) schedulePendingCompletionRetryAfter(sessionID string, d
 
 		if api.autoNotificationSessionUnreachable(sessionID) {
 			// Explicitly stopped, or inactive with no resident agent left to wake:
-			// log a warning so the discard is observable rather than silent.
-			api.pendingMu.RLock()
+			// keep delivery paused while retaining results for resume.
+			api.pendingMu.Lock()
 			nPending := len(api.pendingCompletions[sessionID])
-			api.pendingMu.RUnlock()
+			delete(api.completionRetryBusyAttempts, sessionID)
+			api.pendingMu.Unlock()
 			if nPending > 0 {
-				log.Printf("[BG AGENT] WARNING: session %s unreachable with %d pending completion(s) — discarding", sessionID, nPending)
+				log.Printf("[BG AGENT] Session %s is stopped/unreachable; keeping %d completion(s) queued until it resumes", sessionID, nPending)
 			}
 			return
 		}
 		if api.isSessionBusyForAutoNotification(sessionID) {
-			if api.canSteerSession(sessionID) {
+			if !api.isSyntheticTurn(sessionID) && api.canSteerSession(sessionID) {
 				api.requeueUnnotifiedCompletions(sessionID)
 				pending := api.drainPendingCompletions(sessionID)
 				remaining := make([]string, 0, len(pending))
@@ -1833,13 +1889,24 @@ func (api *StreamingAPI) schedulePendingCompletionRetryAfter(sessionID string, d
 				}
 				if len(remaining) > 0 {
 					api.queuePendingCompletions(sessionID, remaining)
-					api.schedulePendingCompletionRetry(sessionID)
+					api.scheduleBusyCompletionRetry(sessionID)
 				}
 				return
 			}
 			// Still busy — re-arm and check again later.
-			api.schedulePendingCompletionRetry(sessionID)
+			api.scheduleBusyCompletionRetry(sessionID)
 			return
+		}
+		// SDK occupancy can outlive the coarse busy flag. Do not reset the
+		// busy backoff until the authoritative native lifecycle is idle too.
+		nativeBusy := false
+		if native, ok := mcpagent.LookupSession(sessionID); ok && native != nil {
+			nativeBusy = native.ActiveTurnID() != ""
+		}
+		if !nativeBusy {
+			api.pendingMu.Lock()
+			delete(api.completionRetryBusyAttempts, sessionID)
+			api.pendingMu.Unlock()
 		}
 		// Recover both completions queued while busy AND any that a full
 		// notification channel dropped, then deliver in one batch.
@@ -2176,13 +2243,39 @@ func (api *StreamingAPI) filterSupersededCompletions(sessionID string, agentIDs 
 // processBatchedBackgroundAgentCompletions builds a single [AUTO-NOTIFICATION] message for one or more
 // completed agents and fires ONE synthetic turn. Subsequent drained completions are chained via
 // the synthetic turn's own defer, avoiding concurrent StreamWithEvents calls.
+func (api *StreamingAPI) firstBackgroundCompletionGroup(sessionID string, agentIDs []string) (selected, waiting []string) {
+	firstParent, haveParent := "", false
+	for _, id := range agentIDs {
+		agent := api.bgAgentRegistry.Get(sessionID, id)
+		if agent == nil {
+			continue
+		}
+		parent := strings.TrimSpace(agent.GetSnapshot().ParentExecutionID)
+		if !haveParent {
+			firstParent, haveParent = parent, true
+		}
+		if parent == firstParent {
+			selected = append(selected, id)
+		} else {
+			waiting = append(waiting, id)
+		}
+	}
+	return
+}
+
 func (api *StreamingAPI) processBatchedBackgroundAgentCompletions(sessionID string, agentIDs []string) {
 	agentIDs = api.filterSupersededCompletions(sessionID, agentIDs)
 	if len(agentIDs) == 0 {
 		return
 	}
 	if api.autoNotificationSessionUnreachable(sessionID) {
-		log.Printf("[BG AGENT] Session %s is stopped/inactive, skipping %d batched completion(s)", sessionID, len(agentIDs))
+		api.queuePendingCompletions(sessionID, agentIDs)
+		log.Printf("[BG AGENT] Session %s is stopped/inactive; keeping %d completion(s) queued", sessionID, len(agentIDs))
+		return
+	}
+	if api.isSessionBusyForAutoNotification(sessionID) {
+		api.queuePendingCompletions(sessionID, agentIDs)
+		api.schedulePendingCompletionRetry(sessionID)
 		return
 	}
 	readyAgentIDs := make([]string, 0, len(agentIDs))
@@ -2199,20 +2292,12 @@ func (api *StreamingAPI) processBatchedBackgroundAgentCompletions(sessionID stri
 	// Never combine completions owned by different message roots. Doing so would
 	// force one synthetic continuation to belong to the wrong tree (or none),
 	// allowing one schedule message to advance before its result was processed.
-	groups := make(map[string][]string)
-	for _, agentID := range agentIDs {
-		parentID := ""
-		if agent := api.bgAgentRegistry.Get(sessionID, agentID); agent != nil {
-			parentID = strings.TrimSpace(agent.GetSnapshot().ParentExecutionID)
-		}
-		groups[parentID] = append(groups[parentID], agentID)
+	selected, waiting := api.firstBackgroundCompletionGroup(sessionID, agentIDs)
+	if len(waiting) > 0 {
+		api.queuePendingCompletions(sessionID, waiting)
+		api.schedulePendingCompletionRetry(sessionID)
 	}
-	if len(groups) > 1 {
-		for _, group := range groups {
-			api.processBatchedBackgroundAgentCompletions(sessionID, group)
-		}
-		return
-	}
+	agentIDs = selected
 
 	// Single completion: use the normal individual path (simpler message).
 	if len(agentIDs) == 1 {
@@ -2296,7 +2381,7 @@ func (api *StreamingAPI) processBatchedBackgroundAgentCompletions(sessionID stri
 	// (for example when a retained CLI turn still owns the agent). Commit the
 	// notification only after the stream reports a successful terminal outcome.
 	dispatched := api.executeSyntheticTurnWithOutcome(sessionID, syntheticMsg, commonBackgroundParentExecutionID(agentRefs), func(turnErr error) {
-		delivered := turnErr == nil
+		delivered := backgroundCompletionDelivered(turnErr)
 		for _, a := range agentRefs {
 			a.finishCompletionNotification(delivered)
 		}
@@ -2304,16 +2389,16 @@ func (api *StreamingAPI) processBatchedBackgroundAgentCompletions(sessionID stri
 			resetFailedCompletionRetries(sessionID)
 			return
 		}
-		if api.autoNotificationSessionUnreachable(sessionID) {
-			return
-		}
 		for _, agentID := range emittedIDs {
 			api.queuePendingCompletion(sessionID, agentID)
 		}
-		api.scheduleFailedCompletionRetry(sessionID)
+		if api.autoNotificationSessionUnreachable(sessionID) {
+			return
+		}
+		api.scheduleCompletionOutcomeRetry(sessionID, turnErr)
 		log.Printf("[BG AGENT] Batched synthetic turn for session %s failed asynchronously for %d agent(s): %v — queued for retry", sessionID, len(emittedIDs), turnErr)
 	})
-	if !dispatched && !api.autoNotificationSessionUnreachable(sessionID) {
+	if !dispatched {
 		for _, a := range agentRefs {
 			a.finishCompletionNotification(false)
 		}
@@ -2323,7 +2408,7 @@ func (api *StreamingAPI) processBatchedBackgroundAgentCompletions(sessionID stri
 		for _, agentID := range emittedIDs {
 			api.queuePendingCompletion(sessionID, agentID)
 		}
-		api.scheduleFailedCompletionRetry(sessionID)
+		api.scheduleUndispatchedCompletionRetry(sessionID)
 		log.Printf("[BG AGENT] Batched synthetic turn for session %s did not dispatch %d agent(s) — queued for retry", sessionID, len(emittedIDs))
 	}
 }
@@ -2383,7 +2468,8 @@ func (api *StreamingAPI) backgroundNotificationOwnedBySession(sessionID string, 
 // processBackgroundAgentCompletion injects a synthetic message and triggers a new main agent turn
 func (api *StreamingAPI) processBackgroundAgentCompletion(sessionID, agentID string) {
 	if api.autoNotificationSessionUnreachable(sessionID) {
-		log.Printf("[BG AGENT] Session %s is stopped/inactive, skipping completion for agent %s", sessionID, agentID)
+		api.queuePendingCompletion(sessionID, agentID)
+		log.Printf("[BG AGENT] Session %s is stopped/inactive; keeping completion for agent %s queued", sessionID, agentID)
 		return
 	}
 	agent := api.bgAgentRegistry.Get(sessionID, agentID)
@@ -2429,27 +2515,27 @@ func (api *StreamingAPI) processBackgroundAgentCompletion(sessionID, agentID str
 	// opened stream is still only in flight; mark delivered after its terminal
 	// outcome so asynchronous occupancy/provider errors remain retryable.
 	dispatched := api.executeSyntheticTurnWithOutcome(sessionID, syntheticMsg, snap.ParentExecutionID, func(turnErr error) {
-		delivered := turnErr == nil
+		delivered := backgroundCompletionDelivered(turnErr)
 		agent.finishCompletionNotification(delivered)
 		if delivered {
 			resetFailedCompletionRetries(sessionID)
 			return
 		}
+		api.queuePendingCompletion(sessionID, agentID)
 		if api.autoNotificationSessionUnreachable(sessionID) {
 			return
 		}
-		api.queuePendingCompletion(sessionID, agentID)
-		api.scheduleFailedCompletionRetry(sessionID)
+		api.scheduleCompletionOutcomeRetry(sessionID, turnErr)
 		log.Printf("[BG AGENT] Synthetic turn for session %s failed asynchronously for agent %s: %v — queued for retry", sessionID, agentID, turnErr)
 	})
-	if !dispatched && !api.autoNotificationSessionUnreachable(sessionID) {
+	if !dispatched {
 		agent.finishCompletionNotification(false)
 		// Dispatch failed but the session is still reachable (no stored agent yet,
 		// or StreamWithEvents errored). Leave notified=false and arm the retry
 		// backstop so requeueUnnotifiedCompletions redelivers this completion
 		// instead of dropping it (no-stored-agent / stream-error drop fix).
 		api.queuePendingCompletion(sessionID, agentID)
-		api.scheduleFailedCompletionRetry(sessionID)
+		api.scheduleUndispatchedCompletionRetry(sessionID)
 		log.Printf("[BG AGENT] Synthetic turn for session %s did not dispatch agent %s — queued for retry", sessionID, agentID)
 	}
 }
@@ -2966,7 +3052,9 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 	}
 
 	// Create cancellable context for this synthetic turn
-	agentCtx, agentCancel := context.WithCancel(context.Background())
+	agentCtx, cancelTurn := context.WithCancelCause(context.Background())
+	agentCancel := func() { cancelTurn(context.Canceled) }
+	stopIdleWatch := api.watchTurnInactivity(agentCtx, sessionID, syntheticExecutionID, time.Now(), nil, func(reason error) bool { cancelTurn(reason); return true })
 	if logCtx, ok := lookupServerLogContext(sessionID); ok {
 		agentCtx = logCtx.Context(agentCtx)
 	}
@@ -3003,6 +3091,7 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 	if err != nil {
 		log.Printf("[BG AGENT] StreamWithEvents error for synthetic turn on session %s: %v", sessionID, err)
 		agentCancel()
+		stopIdleWatch()
 		unregisterRunningAgent()
 		api.agentCancelMux.Lock()
 		delete(api.agentCancelFuncs, sessionID)
@@ -3020,6 +3109,8 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 		syntheticError := "synthetic turn ended before completion was recorded"
 		var terminalErr error
 		defer func() {
+			stopIdleWatch()
+			agentCancel()
 			unregisterRunningAgent()
 
 			// Clean up cancel function
@@ -3063,7 +3154,7 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 		// usage-limit wall stops producing without closing the channel, and an
 		// unbounded consume there blocks this goroutine — and the deferred
 		// cleanup below it — forever (PLAT-101).
-		abandonReason, streamStalled := drainSyntheticTurnStream(agentCtx, textChan, func(string) {
+		abandonReason, streamStalled := drainTurnTextStream(agentCtx, textChan, func(string) {
 			api.conversationMux.Lock()
 			api.conversationHistory[sessionID] = llmAgent.GetHistory()
 			api.conversationMux.Unlock()
@@ -3075,9 +3166,15 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 			agentCancel()
 			discardAbandonedSyntheticStream(sessionID, textChan)
 		}
-		turnErr, outcomeOpen := <-outcomeChan
-		if !outcomeOpen {
-			turnErr = fmt.Errorf("synthetic turn ended without a terminal outcome")
+		var turnErr error
+		select {
+		case err, outcomeOpen := <-outcomeChan:
+			turnErr = err
+			if !outcomeOpen {
+				turnErr = fmt.Errorf("synthetic turn ended without a terminal outcome")
+			}
+		case <-agentCtx.Done():
+			turnErr = context.Cause(agentCtx)
 		}
 
 		// A stopped/canceled synthetic turn must not "complete" afterward, otherwise
@@ -3085,6 +3182,11 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 		if agentCtx.Err() != nil || api.isSessionStoppedOrInactive(sessionID) {
 			syntheticStatus = trackedExecutionStatusCanceled
 			switch {
+			case errors.Is(context.Cause(agentCtx), errTurnInactive):
+				syntheticStatus = trackedExecutionStatusFailed
+				syntheticError = errTurnInactive.Error()
+				terminalErr = errTurnInactive
+				api.emitIdleTurnFailure(sessionID, syntheticExecutionID)
 			case streamStalled:
 				// We canceled this turn ourselves because it went silent, so
 				// the context error below would describe our own reaction

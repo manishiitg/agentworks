@@ -76,6 +76,8 @@ func (api *StreamingAPI) reconcileAcceptedNativeCompletions(sessionID, nativeID 
 // The SDK owns success. This backstop can only report failure, never infer an
 // answer from a quiet pane or a previous sidecar result.
 func (api *StreamingAPI) watchMCPAgentSessionTurn(ctx context.Context, sessionID string, snapshot terminals.Snapshot, startedAt time.Time) {
+	stopIdleWatch := api.watchRetainedTurnInactivity(ctx, sessionID, snapshot, startedAt)
+	defer stopIdleWatch()
 	interval := retainedMainTurnPaneCheckInterval
 	if interval <= 0 {
 		interval = time.Second

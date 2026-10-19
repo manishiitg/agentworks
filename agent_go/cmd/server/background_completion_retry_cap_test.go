@@ -30,11 +30,11 @@ func TestFailedCompletionRetriesAreCapped(t *testing.T) {
 		t.Fatalf("attempts = %v, want %d", got, maxFailedCompletionRetries)
 	}
 	api.scheduleFailedCompletionRetry(session)
-	if _, ok := failedCompletionRetries.Load(session); ok {
-		t.Fatal("the retry counter must be cleared after giving up")
+	if attempts, _ := failedCompletionRetries.Load(session); attempts != maxFailedCompletionRetries+1 {
+		t.Fatalf("paused retry count = %v", attempts)
 	}
-	if pending := api.drainPendingCompletions(session); len(pending) != 0 {
-		t.Fatalf("pending completions = %v, want none after giving up", pending)
+	if pending := api.drainPendingCompletions(session); len(pending) != 1 || pending[0] != "agent-1" {
+		t.Fatalf("pending completions = %v, result must survive failed delivery", pending)
 	}
 	if len(delays) != maxFailedCompletionRetries || delays[0] != 5*time.Second || delays[len(delays)-1] != maxFailedCompletionBackoff {
 		t.Fatalf("retry delays = %v, want 5s doubling up to %s", delays, maxFailedCompletionBackoff)

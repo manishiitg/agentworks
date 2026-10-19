@@ -182,8 +182,9 @@ func (api *StreamingAPI) cancelSessionRuntimeWork(sessionID, closeReason string,
 	api.setSessionBusy(sessionID, false)
 
 	api.pendingMu.Lock()
-	delete(api.pendingCompletions, sessionID)
+	// Finished background results remain queued across Stop; only delivery pauses.
 	delete(api.completionRetryScheduled, sessionID)
+	delete(api.completionRetryBusyAttempts, sessionID)
 	api.pendingMu.Unlock()
 	api.pendingStartMu.Lock()
 	delete(api.pendingStartNotifications, sessionID)
@@ -334,8 +335,9 @@ func (api *StreamingAPI) handleStopSession(w http.ResponseWriter, r *http.Reques
 	// Prevent stopped sessions from being revived by queued background completions or
 	// synthetic auto-notification turns that reuse the stored agent after stop.
 	api.pendingMu.Lock()
-	delete(api.pendingCompletions, sessionID)
+	// Finished background results remain queued across Stop; only delivery pauses.
 	delete(api.completionRetryScheduled, sessionID)
+	delete(api.completionRetryBusyAttempts, sessionID)
 	api.pendingMu.Unlock()
 
 	// Clear pending start notifications so they don't leak across stop/restart

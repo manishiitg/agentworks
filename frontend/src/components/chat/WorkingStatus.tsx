@@ -62,7 +62,7 @@ export function WorkingStatus({ realStatus, startedAt, lastOutputAt, phase, clas
   const clockFrom = phase !== undefined ? phase.since : startedAt
   const elapsed = phase?.phase === 'waiting_for_you' ? '' : clockFrom !== undefined && now >= clockFrom ? ` (${formatElapsed(now - clockFrom)})` : ''
   // Honest about silence: once the agent has produced nothing for a minute and a half, say so (the server's times).
-  const quiet = !notYetRunning && lastOutputAt !== undefined && now - lastOutputAt >= QUIET_NOTE_AFTER_MS ? ` \u00b7 no new output for ${formatElapsed(now - lastOutputAt)}` : ''
+  const quiet = phase === undefined && !notYetRunning && lastOutputAt !== undefined && now - lastOutputAt >= QUIET_NOTE_AFTER_MS ? ` \u00b7 no new output for ${formatElapsed(now - lastOutputAt)}` : ''
   return (
     <span className={`inline-flex min-w-0 max-w-full flex-col ${className ?? ''}`} data-testid="working-status">
       <span className="sr-only" role="status" aria-live="polite">{WORKING_ACCESSIBLE_LABEL}</span>

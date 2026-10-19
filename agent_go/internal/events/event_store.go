@@ -2009,6 +2009,7 @@ func logStreamingChunkTelemetry(sessionID string, event Event) {
 // so an unpaired call is exactly the defect our tests cannot currently catch.
 
 type toolCallTelemetry struct {
+	owner     string
 	name      string
 	startedAt time.Time
 }
@@ -2035,6 +2036,21 @@ var (
 	settleInFlight = map[string]bool{}
 )
 
+// OpenMainToolNames protects a long-running tool even when its start arrived
+// just before a retained-turn watcher was registered. The live tool lifecycle
+// outlives the bounded event buffer; no transcript scan or browser state decides.
+func (es *EventStore) OpenMainToolNames(sessionID string) []string {
+	toolCallsMu.Lock()
+	defer toolCallsMu.Unlock()
+	var names []string
+	for _, call := range openToolCall[sessionID] {
+		if call.owner == "" || call.owner == "main:"+sessionID {
+			names = append(names, call.name)
+		}
+	}
+	return names
+}
+
 func (es *EventStore) logToolCallTelemetry(sessionID string, event Event) {
 	if event.Data == nil {
 		return
@@ -2045,7 +2061,7 @@ func (es *EventStore) logToolCallTelemetry(sessionID string, event Event) {
 		if openToolCall[sessionID] == nil {
 			openToolCall[sessionID] = map[string]*toolCallTelemetry{}
 		}
-		openToolCall[sessionID][d.ToolCallID] = &toolCallTelemetry{name: d.ToolName, startedAt: time.Now()}
+		openToolCall[sessionID][d.ToolCallID] = &toolCallTelemetry{owner: ResolveTerminalOwnerID(sessionID, event, nil), name: d.ToolName, startedAt: time.Now()}
 		open := len(openToolCall[sessionID])
 		toolCallsMu.Unlock()
 		log.Printf("[TOOL] session=%s START id=%s name=%s args_len=%d open=%d",
