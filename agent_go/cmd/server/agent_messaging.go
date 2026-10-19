@@ -656,9 +656,7 @@ func agentMessageSenderKind(e agentMessageEndpoint) string {
 	switch {
 	case e.NamedAgentID != "":
 		return "agent"
-	case e.Kind == triggerCallerCrew && e.Profile == codeproduct.ProfileID:
-		return "code"
-	case e.Kind == triggerCallerCrew:
+	case e.Kind == triggerCallerCrew: // Code and Crew are one product, Crew (PLAT-856-145)
 		return "crew"
 	case e.Kind == triggerCallerWorkflow && e.ChatKey == pulseBuilderChatKey:
 		return "pulse"
