@@ -650,6 +650,7 @@ type StreamingAPI struct {
 	conversationTurnQueueOwners   map[string]map[string]bool
 	conversationTurnQueueDraining map[string]bool
 	conversationTurnQueueWatching map[string]bool
+	conversationTurnQueueRetries  map[string]*conversationQueueRetryState
 	// Sessions whose queued message waits only to relaunch the CLI with a changed
 	// runtime (definition or provider); see endIdleTurnForRuntimeChange.
 	conversationTurnQueueRuntimeChange map[string]bool
