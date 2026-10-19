@@ -24,7 +24,7 @@ func TestScheduledCrewChatUsesNormalLiveInputPolicy(t *testing.T) {
 }
 
 func TestOnlyOwnedNonisolatedCrewSchedulesUseChatDelivery(t *testing.T) {
-	job := productScheduleJob{ProjectID: "project", Profile: agentprofiles.Profile{ID: "crew"}}
+	job := productScheduleJob{ProjectID: "project", Profile: agentprofiles.Profile{ID: "work"}}
 	if !scheduleUsesCrewChatDelivery(job) {
 		t.Fatal("Crew schedule excluded")
 	}
