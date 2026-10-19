@@ -41,6 +41,44 @@ func shouldUseDurableConversationTurnQueue(req QueryRequest) bool {
 	return !req.IsAutoNotification && shouldSerializeInteractiveQueryInput(req)
 }
 
+// Only request-local validated input crosses the asynchronous retained send.
+// It is not a new principal or a persistent runtime configuration cache.
+type retainedQueueInputKey struct{}
+type retainedQueueInput struct {
+	Request   QueryRequest
+	LiveInput bool
+}
+
+func (api *StreamingAPI) queueIdleRetainedInput(w http.ResponseWriter, r *http.Request, sessionID string, active bool) bool {
+	input, known := r.Context().Value(retainedQueueInputKey{}).(retainedQueueInput)
+	userID := GetUserIDFromContext(r.Context())
+	if active || !known || isQueuedMessageSteer(r.Context()) || conversationTurnQueueExecution(r.Context()) || !shouldUseDurableConversationTurnQueue(input.Request) || !api.conversationTurnHasBacklog(userID, sessionID) {
+		return false
+	}
+	// Recheck immediately before the provider Send. Any idle lane acquired
+	// here stays held until durable admission completes, including errors.
+	release, acquired := api.tryLockSessionInputLane(sessionID, 0)
+	if acquired {
+		defer release()
+	}
+	if input.LiveInput {
+		return api.queueLiveInputTurnResponse(w, r, userID, sessionID, input.Request)
+	}
+	return api.queueConversationTurnResponse(w, r, userID, sessionID, input.Request)
+}
+
+func (api *StreamingAPI) queueLiveInputTurnResponse(w http.ResponseWriter, r *http.Request, userID, sessionID string, req QueryRequest) bool {
+	turn, position, err := api.enqueueConversationTurn(r.Context(), userID, sessionID, req)
+	if err != nil {
+		http.Error(w, "Cannot durably queue conversation turn: "+err.Error(), http.StatusServiceUnavailable)
+		return true
+	}
+	api.recordQueuedConversationUserMessage(sessionID, turn)
+	api.kickConversationTurnQueue(sessionID)
+	_ = json.NewEncoder(w).Encode(LiveInputResponse{Success: true, Message: "Queued behind an earlier conversation turn", DeliveryStatus: "queued_for_turn", MessageID: turn.ID, QueryID: turn.ID, QueuePosition: position})
+	return true
+}
+
 type queuedBrowserInputKey struct{}
 
 type queuedBrowserInput struct {
