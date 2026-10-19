@@ -200,6 +200,7 @@ Confirm with the user before skipping backup on a recurring schedule.
 
 - Write each message as a plain instruction, like you would type in chat: `"Run the full workflow"`, `"Generate the final report"`.
 - **Route-backed mode (default)**: select planned work through `group_names` plus optional `route_selections`, and keep `messages` empty. Use this for durable workflow behavior so one canonical plan owns its lifecycle.
+- A route schedule already runs the workflow; any saved messages are only follow-ups after it. Do not add another `run_full_workflow` message.
 - **Direct-sequence mode (supported exception)**: use one or more messages when the conversation itself is genuinely schedule-specific and should not become reusable plan behavior. Set `direct_messages_reason` with the concrete tradeoff. These turns run in the workshop but are not canonical steps, so step learnings, validation/retry, repair, and Pulse attribution are weaker or unavailable unless the sequence explicitly invokes planned work.
 - Never choose solely from message length. Compare behavior, inputs/outputs, external side effects, approval boundaries, failure behavior, and expected reuse.
 - Read `variables/variables.json` for available group names and include them explicitly in the message if needed.
