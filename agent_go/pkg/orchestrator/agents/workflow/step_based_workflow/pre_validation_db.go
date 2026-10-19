@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 )
 
@@ -27,7 +28,7 @@ func validateDBRule(ctx context.Context, rule DBValidationRule, baseOrchestrator
 		return fr
 	}
 
-	rows, err := baseOrchestrator.QueryWorkflowDB(ctx, "db/db.sqlite", rule.SQL)
+	rows, err := virtualtools.QueryWorkflowDBForValidation(ctx, baseOrchestrator.WorkspaceClient, baseOrchestrator.GetWorkspacePath(), rule.SQL)
 	if err != nil {
 		fr.JSONChecks = append(fr.JSONChecks, JSONCheckResult{
 			CheckType: "db_query", Passed: false,

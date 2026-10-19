@@ -2,8 +2,61 @@ package step_based_workflow
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 )
+
+func TestDBValidatorUsesOnlyItsRegisteredManagedDatabase(t *testing.T) {
+	const own = "Workflow/validation-example"
+	session := "managed-validator-" + t.Name()
+	common.SetSessionFolderGuard(session, []string{own}, nil)
+	common.SetSessionFolderGuardBlockedPaths(session, []string{own + "/db/db.sqlite"})
+	common.SetSessionShellEnv(session, map[string]string{"WORKFLOW_DB_ACCESS": "read"})
+	t.Cleanup(func() { common.ClearSessionShellConfig(session) })
+	ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, session)
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		var query workspace.QueryWorkflowDBParams
+		if err := json.NewDecoder(r.Body).Decode(&query); err != nil {
+			t.Error(err)
+		}
+		if r.URL.Path != "/api/query" || query.DBPath != own+"/db/db.sqlite" || query.SQL != "SELECT 1 AS valid" {
+			t.Errorf("unexpected managed validation request: %s %+v", r.URL.Path, query)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"data":{"rows":[{"valid":1}]}}`))
+	}))
+	defer server.Close()
+	client := workspace.NewClient(server.URL)
+	bo := &orchestrator.BaseOrchestrator{WorkspaceClient: client}
+	bo.SetWorkspacePath(own)
+	rule := DBValidationRule{SQL: "SELECT 1 AS valid", MinRows: intp(1)}
+	if _, fail := passed(validateDBRule(ctx, rule, bo).JSONChecks); fail != 0 {
+		t.Fatal("native validation should query its own managed DB despite the raw-file block")
+	}
+	if _, err := client.QueryWorkflowDB(ctx, workspace.QueryWorkflowDBParams{DBPath: own + "/db/db.sqlite", SQL: rule.SQL}); err == nil {
+		t.Fatal("raw database access must remain blocked")
+	}
+	bo.SetWorkspacePath("Workflow/another-example")
+	if _, fail := passed(validateDBRule(ctx, rule, bo).JSONChecks); fail == 0 {
+		t.Fatal("a validator must not query another workflow's database")
+	}
+	bo.SetWorkspacePath(own)
+	common.SetSessionShellEnv(session, map[string]string{"WORKFLOW_DB_ACCESS": "none"})
+	if _, fail := passed(validateDBRule(ctx, rule, bo).JSONChecks); fail == 0 {
+		t.Fatal("disabled database access must remain disabled")
+	}
+	if requests != 1 {
+		t.Fatalf("denied calls reached the workspace service: %d requests", requests)
+	}
+}
 
 func intp(n int) *int { return &n }
 

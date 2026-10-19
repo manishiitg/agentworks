@@ -459,6 +459,22 @@ func resolveCurrentWorkflowDBPath(ctx context.Context, fallbackSessionID string)
 	return resolveWorkflowDBPathFromConfig(sessionID, cfg)
 }
 
+// QueryWorkflowDBForValidation lets a native plan validator read only its
+// owning workflow's managed database. Use the registered session capability,
+// not raw-file access, and reject a mismatched orchestrator before querying.
+func QueryWorkflowDBForValidation(ctx context.Context, client *workspace.Client, workflowPath, sql string) ([]map[string]interface{}, error) {
+	dbPath, err := resolveCurrentWorkflowDBPath(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	owner := workflowDBWorkspacePathFromCandidate(workflowPath)
+	if owner == "" || dbPath != filepath.ToSlash(filepath.Join(owner, "db", "db.sqlite")) {
+		return nil, fmt.Errorf("database validation must use the current session's own workflow")
+	}
+	result, err := client.QueryAuthorizedWorkflowDB(ctx, workspace.QueryWorkflowDBParams{DBPath: dbPath, SQL: sql})
+	return result.Rows, err
+}
+
 func resolveWorkflowDBSession(ctx context.Context, fallbackSessionID string) (string, *common.SessionShellConfig, error) {
 	sessionID := strings.TrimSpace(fallbackSessionID)
 	if ctx != nil {
