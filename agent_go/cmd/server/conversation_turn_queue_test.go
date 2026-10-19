@@ -330,3 +330,48 @@ func TestRuntimeChangeEndsOnlyAnIdleLiveTurn(t *testing.T) {
 		})
 	}
 }
+
+func TestQueuedBacklogBlocksIdleRetainedDeliveryButKeepsActiveSteering(t *testing.T) {
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	api.conversationTurnQueueOwners["s"] = "u"
+	req := QueryRequest{AgentMode: "multi-agent"}
+	ctx := context.Background()
+	if !api.shouldWaitForQueuedConversation(ctx, "u", "s", req) {
+		t.Fatal("idle retained delivery jumped ahead of backlog")
+	}
+	api.conversationTurnQueueDraining["s"] = true
+	if !api.shouldWaitForQueuedConversation(ctx, "u", "s", req) {
+		t.Fatal("dispatch gap allowed a new retained turn")
+	}
+	api.conversationTurnQueueDraining["s"] = false
+	if api.shouldWaitForQueuedConversation(ctx, "other", "s", req) || api.shouldWaitForQueuedConversation(withConversationTurnQueueExecution(ctx), "u", "s", req) {
+		t.Fatal("another caller or claimed turn was treated as fresh backlog input")
+	}
+	// Hold only the existing lane; do not start a model turn or queue worker.
+	lane := api.sessionInputLaneFor("s")
+	lane.sem <- struct{}{}
+	if api.shouldWaitForQueuedConversation(ctx, "u", "s", req) {
+		t.Fatal("backlog disabled steering an active turn")
+	}
+	<-lane.sem
+	api.dropSessionInputLaneRef("s", lane)
+}
+
+func TestFreshIdleInputAppendsBehindAlreadyAdmittedTurns(t *testing.T) {
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "u"})
+	if _, _, err := api.enqueueConversationTurn(ctx, "u", "s", QueryRequest{AgentMode: "multi-agent", Query: "older"}); err != nil {
+		t.Fatal(err)
+	}
+	// Observe admission without dispatching any paid agent work.
+	ctx = context.WithValue(ctx, internalQueuedTurnAdmissionKey{}, func(string) { api.conversationTurnQueueDraining["s"] = true })
+	r := httptest.NewRequest(http.MethodPost, "/api/query", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+	if !api.queueOccupiedConversationTurn(w, r, "u", "s", QueryRequest{AgentMode: "multi-agent", Query: "newer"}) {
+		t.Fatal("idle backlog was ignored")
+	}
+	turns := api.mustReadTurnQueueForTest(t, "u")
+	if len(turns) != 2 || turns[0].Request.Query != "older" || turns[1].Request.Query != "newer" {
+		t.Fatalf("queue reordered: %+v", turns)
+	}
+}

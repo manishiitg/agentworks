@@ -223,6 +223,27 @@ func (api *StreamingAPI) enqueueConversationTurn(ctx context.Context, userID, se
 	return turn, position, nil
 }
 
+// This index is installed only after durable admission (and rebuilt on
+// restart). A free input lane does not mean an older admitted turn vanished.
+func (api *StreamingAPI) conversationTurnHasBacklog(userID, sessionID string) bool {
+	if api == nil || userID == "" || sessionID == "" {
+		return false
+	}
+	api.conversationTurnQueueMu.Lock()
+	defer api.conversationTurnQueueMu.Unlock()
+	return api.conversationTurnQueueOwners[sessionID] == userID
+}
+
+// Compatible input may still steer a genuinely active turn. It must not
+// start a new retained turn in the idle gap before a queued turn is claimed.
+func (api *StreamingAPI) shouldWaitForQueuedConversation(ctx context.Context, userID, sessionID string, req QueryRequest) bool {
+	if conversationTurnQueueExecution(ctx) || !shouldUseDurableConversationTurnQueue(req) || !api.conversationTurnHasBacklog(userID, sessionID) {
+		return false
+	}
+	occupant := api.conversationTurnOccupiedBy(sessionID)
+	return occupant == "" || occupant == "dispatch_pending"
+}
+
 func (api *StreamingAPI) conversationTurnDispatchPending(sessionID string) bool {
 	api.conversationTurnQueueMu.Lock()
 	defer api.conversationTurnQueueMu.Unlock()
