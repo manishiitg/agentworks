@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -21,7 +23,7 @@ type WorkflowGmailTriggerConfig struct {
 	Rules        []gmailinbound.Rule   `json:"rules,omitempty"`
 	Filters      *gmailinbound.Filters `json:"filters,omitempty"`
 	ConnectionID string                `json:"connection_id"`
-	Address      string                `json:"address"`
+	InboxID      string                `json:"inbox_id"`
 	Reply        bool                  `json:"reply"`
 }
 
@@ -105,7 +107,7 @@ func (api *StreamingAPI) saveGmailWorkflowTrigger(ctx context.Context, route gma
 	if name == "" {
 		name = "Incoming Gmail"
 	}
-	sched := WorkflowSchedule{ID: route.ID, Name: name, ScheduleType: "webhook", Kind: "gmail", Timezone: "UTC", Enabled: route.Enabled, GroupNames: groups, RouteSelections: route.RouteSelections, Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "skip", PulseModeReason: "Gmail deliveries execute only the saved route.", Webhook: &WorkflowWebhookConfig{StepID: route.StepID, InputMode: "raw"}, Gmail: &WorkflowGmailTriggerConfig{ConnectionID: route.ConnectionID, Address: route.Address, Reply: route.Reply, Filters: route.Filters, Rules: route.Rules}}
+	sched := WorkflowSchedule{ID: route.ID, Name: name, ScheduleType: "webhook", Kind: "gmail", Timezone: "UTC", Enabled: route.Enabled, GroupNames: groups, RouteSelections: route.RouteSelections, Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "skip", PulseModeReason: "Gmail deliveries execute only the saved route.", Webhook: &WorkflowWebhookConfig{StepID: route.StepID, InputMode: "raw"}, Gmail: &WorkflowGmailTriggerConfig{ConnectionID: route.ConnectionID, InboxID: route.InboxID, Reply: route.Reply, Filters: route.Filters, Rules: route.Rules}}
 	index := -1
 	for i, existing := range manifest.Schedules {
 		if existing.ID == route.ID {
@@ -150,11 +152,17 @@ func (api *StreamingAPI) gmailWorkflowTrigger(ctx context.Context, route gmailin
 		if sched.ID != route.ID {
 			continue
 		}
-		if !sched.IsGmailTrigger() || !sched.Enabled || sched.Gmail == nil || sched.Gmail.ConnectionID != route.ConnectionID || sched.Gmail.Address != route.Address {
+		if !sched.IsGmailTrigger() || !sched.Enabled || sched.Gmail == nil || sched.Gmail.ConnectionID != route.ConnectionID || sched.Gmail.InboxID != route.InboxID {
 			return nil, WorkflowSchedule{}, fmt.Errorf("Gmail trigger is disabled or its mailbox binding changed")
 		}
 		if err := validateWebhookSchedule(sched); err != nil {
 			return nil, WorkflowSchedule{}, err
+		}
+		if sched.Gmail.Reply != route.Reply || !reflect.DeepEqual(route.Filters, sched.Gmail.Filters) {
+			return nil, WorkflowSchedule{}, fmt.Errorf("Gmail configuration changed; ask Builder to configure it")
+		}
+		if len(route.Rules) == 0 && len(sched.Gmail.Rules) == 0 && (!maps.Equal(route.RouteSelections, sched.RouteSelections) || !slices.Equal(normalizeScheduleGroupNames(route.GroupNames), normalizeScheduleGroupNames(sched.GroupNames)) || route.StepID != sched.Webhook.StepID) {
+			return nil, WorkflowSchedule{}, fmt.Errorf("Gmail action changed; ask Builder to configure it")
 		}
 		if len(route.Rules) > 0 || len(sched.Gmail.Rules) > 0 {
 			if !reflect.DeepEqual(route.Rules, sched.Gmail.Rules) || !reflect.DeepEqual(route.Filters, sched.Gmail.Filters) {
@@ -227,7 +235,7 @@ func (api *StreamingAPI) dispatchGmailWorkflowTrigger(ctx context.Context, d *gm
 	if err != nil {
 		return err
 	}
-	body, err := json.Marshal(d.Message)
+	body, err := json.Marshal(gmailAgentMessage(d.Route, d.Message))
 	if err != nil {
 		return err
 	}
@@ -307,7 +315,7 @@ func (api *StreamingAPI) registerGmailTriggerTools(reg definitionToolRegistrar, 
 		"has_attachments":      map[string]interface{}{"type": "boolean", "description": "True requires attachments; false requires no attachments; omit for either."},
 		"new_threads_only":     map[string]interface{}{"type": "boolean"},
 	}}
-	ruleSchema := map[string]interface{}{"type": "array", "maxItems": 20, "description": "Ordered named rules; first authorized match wins. Omission preserves rules. A supplied list replaces all; [] restores legacy single-action mode (supply workflow binding when clearing). Preserve stable IDs on edits. No match skips the email.", "items": map[string]interface{}{"type": "object", "additionalProperties": false, "required": []string{"id", "name"}, "properties": map[string]interface{}{
+	ruleSchema := map[string]interface{}{"type": "array", "maxItems": 20, "description": "Ordered named rules; first authorized match wins. Omission preserves rules. A supplied list replaces all; [] restores single saved action (supply workflow binding when clearing). Preserve stable IDs on edits. No match skips the email.", "items": map[string]interface{}{"type": "object", "additionalProperties": false, "required": []string{"id", "name"}, "properties": map[string]interface{}{
 		"id":               map[string]interface{}{"type": "string", "pattern": "^[a-zA-Z0-9_-]{1,64}$", "description": "Stable unique rule ID chosen by Builder; do not ask the user for IDs."},
 		"name":             map[string]interface{}{"type": "string", "minLength": 1, "maxLength": 120},
 		"enabled":          map[string]interface{}{"type": "boolean", "description": "Defaults true; false pauses just this rule."},
@@ -317,7 +325,7 @@ func (api *StreamingAPI) registerGmailTriggerTools(reg definitionToolRegistrar, 
 		"group_names":      map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Workflow only: required saved variable groups."},
 		"step_id":          map[string]interface{}{"type": "string", "description": "Workflow only: standalone saved step, instead of route_selections."},
 	}}}
-	return reg.RegisterCustomTool("manage_gmail_trigger", "Connect, configure or disable this target's binding to your personal incoming-email address as its interactive owner. Read get_gmail_trigger and list_gmail_connections first. Use action=connect to create an account or request read consent on connection_id and return a Google consent link; the human must authorize, then inspect again before configure. Existing account-management permissions apply. client_name is only for connect; omit when one deployed OAuth client is eligible. For workflows discover saved route IDs/groups with manage_workflow_webhook(action=list). Use ordered rules for different actions: each has stable id, name, enabled (default true), filters and either a Crew/Code instruction or a workflow route_selections and group_names (or step_id). First authorized match wins; unmatched mail is skipped. Common filters restrict every rule. Per-rule senders inherit common conditions; without sender conditions anyone reaching the personal address may start it after approval. Rules use one address/watch. Omitted rules are preserved; a supplied array replaces all rules. [] restores the legacy single action (supply its workflow binding). Never combine rules with top-level workflow bindings. Preserve rule IDs and untouched rules when editing. Without rules, configure legacy route_selections and group_names (or step_id). Optional filters: sender_allowlist accepts exact email addresses or @domains; any listed sender matches (OR), and an omitted/empty list accepts anyone reaching the personal address after owner approval. Only propose additional senders when the interactive owner requests it. All incoming senders, including the owner, are blocked until the owner clicks the app approval button in chat or the Incoming email pane for the exact saved configuration. Read get_gmail_trigger to show the chat review button; the person reviews the current saved rules there. Agent tools and typed chat confirmations cannot approve it. Read sender_consent after saving and report pending approval; public mailbox domains such as @gmail.com are rejected, use exact addresses. Changing senders, rules, replies or enabled state invalidates previous consent. Existing subject_contains/body_contains require every keyword; subject_contains_any/body_contains_any require any listed keyword. Condition groups use AND; literal matching ignores case. Ordinary automated notifications are accepted unless an optional trigger condition excludes them; auto-replies, bounces, spam and trash remain blocked. Omitted filters are preserved; filters={} clears them; a supplied filters object replaces the whole filter set. New threads only rejects replies and threads already accepted here. No filters by default. First inspect manage_google_account(action=get_inbox). If absent, select a saved readable Gmail account using manage_google_account(action=select_inbox); add that same account to this target with attach if requested and not already selected. All targets reuse the one personal inbox; never create a per-target address. The inbox has no sender/label/content policy; Gmail controls what reaches it. Optional trigger filters/rules are only for the user’s requested routing. Crew/Code email starts isolated project chats. reply/enabled default true on first setup. Disable preserves the address. No arbitrary target, wildcard senders, UI setup forms or direct gog watch changes. Return address, filter summary and verified readiness; saving alone does not prove live delivery.", map[string]interface{}{
+	return reg.RegisterCustomTool("manage_gmail_trigger", "Connect, configure or disable this target's binding to your personal incoming-email address as its interactive owner. Read get_gmail_trigger and list_gmail_connections first. Use action=connect to create an account or request read consent on connection_id and return a Google consent link; the human must authorize, then inspect again before configure. Existing account-management permissions apply. client_name is only for connect; omit when one deployed OAuth client is eligible. For workflows discover saved route IDs/groups with manage_workflow_webhook(action=list). Use ordered rules for different actions: each has stable id, name, enabled (default true), filters and either a Crew/Code instruction or a workflow route_selections and group_names (or step_id). First authorized match wins; unmatched mail is skipped. Common filters restrict every rule. Per-rule senders inherit common conditions; without sender conditions anyone reaching the personal address may start it after approval. Rules use one address/watch. Omitted rules are preserved; a supplied array replaces all rules. [] restores the single saved action (supply its workflow binding). Never combine rules with top-level workflow bindings. Preserve rule IDs and untouched rules when editing. Without rules, configure route_selections and group_names (or step_id). Optional filters: sender_allowlist accepts exact email addresses or @domains; any listed sender matches (OR), and an omitted/empty list accepts anyone reaching the personal address after owner approval. Only propose additional senders when the interactive owner requests it. All incoming senders, including the owner, are blocked until the owner clicks the app approval button in chat or the Incoming email pane for the exact saved configuration. Read get_gmail_trigger to show the chat review button; the person reviews the current saved rules there. Agent tools and typed chat confirmations cannot approve it. Read sender_consent after saving and report pending approval; public mailbox domains such as @gmail.com are rejected, use exact addresses. Changing senders, rules, replies or enabled state invalidates previous consent. Existing subject_contains/body_contains require every keyword; subject_contains_any/body_contains_any require any listed keyword. Condition groups use AND; literal matching ignores case. Ordinary automated notifications are accepted unless an optional trigger condition excludes them; auto-replies, bounces, spam and trash remain blocked. Omitted filters are preserved; filters={} clears them; a supplied filters object replaces the whole filter set. New threads only rejects replies and threads already accepted here. No filters by default. First inspect manage_google_account(action=get_inbox). If absent, select a saved readable Gmail account using manage_google_account(action=select_inbox); add that same account to this target with attach if requested and not already selected. All targets reuse the one personal inbox; never create a per-target address. The inbox has no sender/label/content policy; Gmail controls what reaches it. Optional trigger filters/rules are only for the user’s requested routing. Crew/Code email starts isolated project chats. reply/enabled default true on first setup. Disable preserves the address. No arbitrary target, wildcard senders, UI setup forms or direct gog watch changes. Return address, filter summary and verified readiness; saving alone does not prove live delivery.", map[string]interface{}{
 		"type": "object", "additionalProperties": false, "required": []string{"action"}, "properties": map[string]interface{}{
 			"action":        map[string]interface{}{"type": "string", "enum": []string{"connect", "configure", "disable"}},
 			"client_name":   map[string]interface{}{"type": "string", "description": "Only for connect: exact configured OAuth client; do not invent names."},
@@ -415,7 +423,7 @@ func (api *StreamingAPI) gmailTriggerToolRequest(ctx context.Context, session, w
 			values["route_selections"], values["group_names"], values["step_id"] = nil, nil, ""
 		} else if !isProjectWorkspacePath(workspace) {
 			if _, supplied := args["group_names"]; !supplied {
-				return "", fmt.Errorf("supply a legacy workflow binding when clearing email rules")
+				return "", fmt.Errorf("supply a saved workflow binding when clearing email rules")
 			}
 			if _, supplied := args["route_selections"]; !supplied {
 				if _, supplied := args["step_id"]; !supplied {

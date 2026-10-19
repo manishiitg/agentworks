@@ -22,7 +22,8 @@ Optional trigger conditions are available when you ask for more routing.
 
 Anyone who learns this address can email it. Approved triggers run with your
 tools, accounts and files, and enabled email replies may share results with the
-sender. Keep the address private.
+sender. Keep the address private. Shared schedules show Personal inbox; only your private
+account views show the address.
 
 After Builder saves a trigger, choose **Review and approve senders** in chat,
 or open **Automation → Incoming email**. Review its account, address, target,

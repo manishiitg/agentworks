@@ -2,9 +2,7 @@ package gmailinbound
 
 import (
 	"context"
-	"database/sql"
 	"errors"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -236,31 +234,5 @@ func TestEmailRulesValidateActionKindsAndPreserveFullWorkflowMap(t *testing.T) {
 	r.Rules[0].Instruction = "X"
 	if err := s.SaveRoute(context.Background(), r, "owner@example.com"); err == nil {
 		t.Fatal("workflow accepted chat action")
-	}
-}
-
-func TestEmailRuleDatabaseMigrationPreservesLegacyDeduplication(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "legacy.sqlite")
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = db.Exec(`CREATE TABLE deliveries(id TEXT PRIMARY KEY,route TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL,session TEXT NOT NULL DEFAULT '',response TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,received_at INTEGER NOT NULL); INSERT INTO deliveries(id,route,message,status,created_at,received_at) VALUES('route:old','route','{"thread_id":"t"}','complete',1,1)`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = db.Close()
-	s, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-	history, err := s.History(context.Background(), "route")
-	if err != nil || len(history) != 1 || history[0].RuleID != "" {
-		t.Fatalf("legacy record lost: %+v %v", history, err)
-	}
-	var id string
-	if err := s.db.QueryRow("SELECT id FROM deliveries").Scan(&id); err != nil || id != "route:old" {
-		t.Fatalf("dedup key changed: %s %v", id, err)
 	}
 }

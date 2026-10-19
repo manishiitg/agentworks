@@ -28,7 +28,7 @@ async function loadTriggers(kind: TriggerOwner['kind'], workflowKind?: 'workflow
         ? (await productWebhooksApi.list({ profileId: WORK_PROFILE_ID, projectId: owner.id })).triggers
         : (await workflowWebhooksApi.list('workspacePath' in owner ? owner.workspacePath : '')).triggers
       return triggers.filter(trigger => !trigger.kind || trigger.kind === 'gmail').map(trigger => ({
-        id: trigger.id, name: trigger.name, enabled: trigger.enabled, path: trigger.kind === 'gmail' ? trigger.gmail?.address || '' : trigger.path, owner,
+        id: trigger.id, name: trigger.name, enabled: trigger.enabled, path: trigger.kind === 'gmail' ? 'Personal inbox' : trigger.path, owner,
       }))
     }))
     results.forEach(result => {

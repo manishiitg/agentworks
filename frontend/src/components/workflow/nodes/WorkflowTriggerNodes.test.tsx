@@ -37,9 +37,10 @@ it('explains manual execution when there are no automatic triggers', async () =>
 it('shows a Gmail trigger address and saved route without a public webhook', async () => {
   const host = document.createElement('div'); const root = createRoot(host)
   try {
-    await act(async () => root.render(<WorkflowTriggerNode {...props({ id: 'gmail', title: 'Mail triage', job: { id: 'gmail', name: 'Mail triage', schedule_type: 'webhook', kind: 'gmail', enabled: true, gmail: { address: 'owner+agent-id@example.com' } }, routeSummary: { label: 'Choose: Support', canTrace: true } })} />))
+    await act(async () => root.render(<WorkflowTriggerNode {...props({ id: 'gmail', title: 'Mail triage', job: { id: 'gmail', name: 'Mail triage', schedule_type: 'webhook', kind: 'gmail', enabled: true, gmail: { inbox_id: 'personal' } }, routeSummary: { label: 'Choose: Support', canTrace: true } })} />))
     expect(host.textContent).toContain('Gmail event')
-    expect(host.textContent).toContain('owner+agent-id@example.com')
+    expect(host.textContent).toContain('Personal inbox')
+    expect(host.textContent).not.toContain('owner+agent')
     expect(host.textContent).toContain('Choose: Support')
     expect(host.textContent).not.toContain('/api/hooks/workflow')
   } finally { await act(async () => root.unmount()) }

@@ -25,7 +25,7 @@ export const WorkflowTriggerNode = memo(({ data }: NodeProps) => {
     <div className="mt-3 rounded-xl border border-border/70 bg-background/55 px-2.5 py-2">
       <p className="truncate text-xs font-medium" title={cadence}>{cadence}</p>
       {!webhook && <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{job.enabled ? `Next: ${formatLocalScheduleTime(job.next_run_at)}` : 'Schedule paused'} · {job.timezone || 'UTC'}</p>}
-      {gmail && <p className="mt-1 break-all text-[10px] font-mono select-all">{job.gmail?.address}</p>}
+      {gmail && <p className="mt-1 break-all text-[10px] font-mono select-all">Personal inbox</p>}
       {webhook && !gmail && <div className="mt-1 max-h-10 overflow-auto"><WebhookEndpoint id={job.id} name={job.name} /></div>}
     </div>
     <div className="mt-2 flex min-w-0 items-start gap-2 px-1">

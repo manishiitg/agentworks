@@ -101,7 +101,7 @@ export function ScheduleTableView({ panel, entityType = 'workflow' }: ScheduleTa
                       <ScheduleRowActions {...panel} job={job} isRunning={isRunning} isMissedJob={isMissed} menuButtonClassName="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" />
                     </div>}
                   </div>
-                  {isWebhook && <WebhookEndpoint id={job.id} name={job.name} address={job.gmail?.address} />}
+                  {isWebhook && <WebhookEndpoint id={job.id} name={job.name} email={job.kind === 'gmail'} />}
                   {job.group_names?.length ? <p className="text-xs text-muted-foreground">Groups: {job.group_names.join(', ')}</p> : null}
                   {job.after_run && !isWebhook && <p className="text-xs text-muted-foreground"><ScheduleAfterRunControls job={job} disabled={panel.isReadOnlyUser} onChange={panel.handleAfterRun} /></p>}
                   {hasRuntimePolicy && <div className="max-w-4xl space-y-1 rounded-md border border-border bg-background/70 p-3 text-xs text-muted-foreground">

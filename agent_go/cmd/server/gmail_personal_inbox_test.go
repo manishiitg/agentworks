@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -31,6 +32,13 @@ func TestGmailPersonalInboxFansOutOnlyToApprovedBindings(t *testing.T) {
 	routes, err := api.gmailInbound.Store.Routes(ctx)
 	if err != nil || len(routes) != 2 || routes[0].Address != routes[1].Address || routes[0].ID == routes[1].ID {
 		t.Fatalf("not one inbox with independent bindings: %+v %v", routes, err)
+	}
+	for _, route := range routes {
+		stored, _, err := ReadWorkflowManifest(ctx, route.WorkspacePath)
+		data, _ := json.Marshal(stored)
+		if err != nil || strings.Contains(strings.ToLower(string(data)), route.Address) {
+			t.Fatal("personal address leaked into shared configuration")
+		}
 	}
 	message := gmailinbound.Message{ID: "message", ThreadID: "thread", From: "notifications@vendor.example", Automatic: true, Authenticated: true, Recipients: []string{routes[0].Address}, ReceivedAt: time.Now().Add(time.Minute).UnixMilli()}
 	// A default binding needs approval even without any sender/content rule.
@@ -124,5 +132,24 @@ func TestGmailPersonalInboxUsesOwnSavedAccountWithoutGrantingProducts(t *testing
 	reader := sharedSecretsRequest("POST", "/", "reader", nil)
 	if _, err := api.personalGmailInboxOperation(reader, "Workflow/mail", map[string]interface{}{"action": "select_inbox", "connection_id": "mail"}); err == nil {
 		t.Fatal("another person selected the owner's inbox")
+	}
+}
+
+func TestGmailExecutionDataDoesNotPublishPersonalInboxCapability(t *testing.T) {
+	route := gmailinbound.Route{Address: "owner+agent-random@example.com"}
+	original := gmailinbound.Message{Recipients: []string{route.Address}, From: "sender@example.com", Subject: "Fwd to " + strings.ToUpper(route.Address), Body: "To: " + route.Address + "\nCc: " + strings.ToUpper(route.Address) + "\nDelivered-To: " + route.Address + "\nQuoted reply: write to " + route.Address, Attachments: []gmailinbound.Attachment{{Name: route.Address + ".txt"}}}
+	before, _ := json.Marshal(original)
+	view := gmailAgentMessage(route, original)
+	data, _ := json.Marshal(view)
+	if strings.Contains(strings.ToLower(string(data)), route.Address) || len(view.Recipients) != 0 {
+		t.Fatal("personal address leaked in workflow input")
+	}
+	query, err := gmailChatQuery(route, original)
+	if err != nil || strings.Contains(strings.ToLower(query), route.Address) || !strings.Contains(query, "untrusted content") {
+		t.Fatal("personal address leaked into project chat")
+	}
+	after, _ := json.Marshal(original)
+	if !reflect.DeepEqual(before, after) {
+		t.Fatal("formatting changed original authorization or reply data")
 	}
 }

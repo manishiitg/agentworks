@@ -179,7 +179,7 @@ func validateWebhookSchedule(s WorkflowSchedule) error {
 		return errors.New("Gmail settings require kind=gmail")
 	}
 	if s.IsGmailTrigger() {
-		if s.Gmail == nil || s.Gmail.ConnectionID == "" || s.Gmail.Address == "" || s.Caller != nil || s.Function != nil || s.Webhook == nil || s.Webhook.EncryptedSecret != "" || s.Webhook.AuthMode != "" {
+		if s.Gmail == nil || s.Gmail.ConnectionID == "" || s.Gmail.InboxID == "" || s.Caller != nil || s.Function != nil || s.Webhook == nil || s.Webhook.EncryptedSecret != "" || s.Webhook.AuthMode != "" {
 			return errors.New("Gmail triggers require a mailbox binding and issue no webhook secret")
 		}
 		if _, err := gmailinbound.NormalizeFilters(s.Gmail.Filters); err != nil {

@@ -15,6 +15,10 @@ address can email it and start approved work with the owner's access. The UI
 says this plainly. New address in My Vault rotates the random tag and immediately
 invalidates all old bindings and approvals at admission, execution and reply.
 Builder must reconnect each chosen trigger and the owner must review it again.
+Shared workflow settings contain only the stable inbox ID, never its address.
+Agent-facing mail omits transport recipients and replaces the known address in
+text (including quoted forwarding headers); the original stays in private state
+for authorization and replies. Shared catalogs show Personal inbox.
 
 My Vault owns account sign-in and access changes. Product Connections select
 existing accounts and keep their current grants. Automation → Incoming email
@@ -38,12 +42,12 @@ For an existing product-address database, run the explicit one-off migration
 before the new server starts:
 
 ```sh
-python3 scripts/migrations/gmail-personal-inbox.py /PRIVATE_STATE/gmail-inbound/email.db
+python3 scripts/migrations/gmail-personal-inbox.py /PRIVATE_STATE/gmail-inbound/email.db --workspace-root /WORKSPACE_DOCUMENTS
 ```
 
 It creates a private SQLite backup, removes address uniqueness across bindings,
-pauses old routes, revokes approvals and rejects queued work. It retains target
-IDs, optional conditions and history. Then choose the user's personal inbox in
+pauses old routes, revokes approvals and rejects queued work. It backs up affected workflow manifests in private state and removes their old
+Gmail schedule entries. Private route IDs, optional conditions and history remain. Then choose the user's personal inbox in
 My Vault, reconnect each chosen binding through Builder, and approve it. There
 is no product-address fallback. Fresh installations need no migration.
 

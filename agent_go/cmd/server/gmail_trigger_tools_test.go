@@ -108,6 +108,23 @@ func TestGmailBuilderCreatesSavedRouteAndPreservesAddress(t *testing.T) {
 	if len(routes) != 1 || routes[0].ID != first.Route.ID || routes[0].Address != first.Route.Address || routes[0].Reply || routes[0].RouteSelections["triage"] != "billing" {
 		t.Fatalf("changed address or lost settings: %+v", routes)
 	}
+	// A direct edit of shared settings cannot change the action approved in
+	// the private route. Restoring the manifest keeps this fixture usable.
+	manifest, _, _ = api.gmailWorkflowTrigger(ctx, routes[0])
+	originalSchedules := append([]WorkflowSchedule(nil), manifest.Schedules...)
+	changed := manifest.Schedules[0]
+	changed.RouteSelections = map[string]string{"triage": "support"}
+	manifest.Schedules[0] = changed
+	if err := WriteWorkflowManifest(ctx, "Workflow/mail", manifest); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := api.gmailWorkflowTrigger(ctx, routes[0]); err == nil {
+		t.Fatal("manifest edit bypassed approved private action")
+	}
+	manifest.Schedules = originalSchedules
+	if err := WriteWorkflowManifest(ctx, "Workflow/mail", manifest); err != nil {
+		t.Fatal(err)
+	}
 	// The ordinary webhook UI/API cannot reconfigure Gmail behind Builder.
 	w := httptest.NewRecorder()
 	api.scheduler.saveWorkflowWebhook(w, mux.SetURLVars(sharedSecretsRequest("PUT", "/api/workflow-webhooks/"+first.Route.ID, "owner", workflowWebhookRequest{WorkspacePath: "Workflow/mail", Name: "Bad", AuthMode: "bearer"}), map[string]string{"id": first.Route.ID}))
@@ -170,7 +187,7 @@ func TestGmailBuilderRejectsUnknownRoutesAndUntrustedCallers(t *testing.T) {
 
 func TestGmailSavedBindingFailsClosedAndRejectsPublicWebhook(t *testing.T) {
 	api, ctx, mock := gmailTriggerFixture(t)
-	route := gmailinbound.Route{ID: uuid.NewString(), OwnerID: "owner", ProjectID: "", WorkspacePath: "Workflow/mail", ConnectionID: "mail", Address: "owner+agent-test@example.com", Enabled: true, WorkflowTrigger: true, RouteSelections: map[string]string{"triage": "support"}, GroupNames: []string{"prod"}}
+	route := gmailinbound.Route{InboxID: "personal-inbox", ID: uuid.NewString(), OwnerID: "owner", ProjectID: "", WorkspacePath: "Workflow/mail", ConnectionID: "mail", Address: "owner+agent-test@example.com", Enabled: true, WorkflowTrigger: true, RouteSelections: map[string]string{"triage": "support"}, GroupNames: []string{"prod"}}
 	manifest, _, _ := ReadWorkflowManifest(ctx, route.WorkspacePath)
 	route.ProjectID = manifest.ID
 	if err := api.saveGmailWorkflowTrigger(ctx, route); err != nil {

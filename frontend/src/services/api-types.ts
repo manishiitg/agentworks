@@ -3605,7 +3605,7 @@ export interface ScheduleAfterRun {
 
 export interface ScheduledJob {
   kind?: string
-  gmail?: { connection_id: string; address: string; reply: boolean; filters?: GmailInboundFilters; rules?: GmailInboundRule[] }
+  gmail?: { connection_id: string; inbox_id: string; reply: boolean; filters?: GmailInboundFilters; rules?: GmailInboundRule[] }
   after_run?: ScheduleAfterRun
   /** Legacy, read for one release; kept in step with after_run. */
 

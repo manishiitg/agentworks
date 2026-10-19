@@ -133,7 +133,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
               </ol>
             )}
 
-            {job.schedule_type === 'webhook' && <WebhookEndpoint id={job.id} name={job.name} address={job.gmail?.address} />}
+            {job.schedule_type === 'webhook' && <WebhookEndpoint id={job.id} name={job.name} email={job.kind === 'gmail'} />}
 
             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
               <span title={formatExactDateTime(job.last_run_at)}>

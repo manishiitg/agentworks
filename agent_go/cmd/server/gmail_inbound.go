@@ -572,7 +572,26 @@ func emailConversationID(r gmailinbound.Route, m gmailinbound.Message) string {
 }
 
 // The owner-authored action stays distinct from the incoming email's data.
+// The personal address is a receiving capability, not shared execution data.
+// Keep the original message privately for authorization/reply; format only the
+// agent-facing copy, including headers quoted in forwarded text.
+func gmailAgentMessage(r gmailinbound.Route, m gmailinbound.Message) gmailinbound.Message {
+	if r.Address == "" {
+		return m
+	}
+	alias := regexp.MustCompile("(?i)" + regexp.QuoteMeta(r.Address))
+	clean := func(text string) string { return alias.ReplaceAllLiteralString(text, "[personal inbox]") }
+	m.Recipients = nil
+	m.From, m.Subject, m.Body, m.RFCMessageID = clean(m.From), clean(m.Subject), clean(m.Body), clean(m.RFCMessageID)
+	m.Attachments = append([]gmailinbound.Attachment(nil), m.Attachments...)
+	for i := range m.Attachments {
+		m.Attachments[i].Name = clean(m.Attachments[i].Name)
+	}
+	return m
+}
+
 func gmailChatQuery(r gmailinbound.Route, m gmailinbound.Message) (string, error) {
+	m = gmailAgentMessage(r, m)
 	instruction, err := r.ChatInstruction()
 	if err != nil {
 		return "", err

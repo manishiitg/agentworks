@@ -40,28 +40,13 @@ CREATE TABLE IF NOT EXISTS mailboxes(connection TEXT PRIMARY KEY,email TEXT NOT 
 CREATE TABLE IF NOT EXISTS routes(id TEXT PRIMARY KEY,owner TEXT NOT NULL,workspace TEXT NOT NULL,connection TEXT NOT NULL,address TEXT NOT NULL,data TEXT NOT NULL,enabled INTEGER NOT NULL,UNIQUE(owner,workspace));
 CREATE TABLE IF NOT EXISTS inboxes(id TEXT PRIMARY KEY,owner TEXT NOT NULL UNIQUE,connection TEXT NOT NULL,address TEXT NOT NULL UNIQUE);
 CREATE TABLE IF NOT EXISTS sender_consents(route TEXT PRIMARY KEY,owner TEXT NOT NULL,config_hash TEXT NOT NULL,approved_at INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS deliveries(id TEXT PRIMARY KEY,route TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'staged',session TEXT NOT NULL DEFAULT '',response TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,received_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS deliveries(id TEXT PRIMARY KEY,route TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'staged',session TEXT NOT NULL DEFAULT '',response TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,received_at INTEGER NOT NULL,rule_id TEXT NOT NULL DEFAULT '',rule_name TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS delivery_pending ON deliveries(status,created_at);
 CREATE INDEX IF NOT EXISTS delivery_thread ON deliveries(route,json_extract(message,'$.thread_id'));
 UPDATE deliveries SET status='uncertain',error='Server stopped during execution; inspect the saved app thread before retrying' WHERE status IN ('running','sending');`)
 	if e != nil {
 		_ = db.Close()
 		return nil, e
-	}
-	// Older inbox databases predate named rules. Keep every existing delivery
-	// and dedup key while adding optional admission metadata.
-	for _, migration := range []struct{ name, sql string }{
-		{"rule_id", "ALTER TABLE deliveries ADD COLUMN rule_id TEXT NOT NULL DEFAULT ''"},
-		{"rule_name", "ALTER TABLE deliveries ADD COLUMN rule_name TEXT NOT NULL DEFAULT ''"},
-	} {
-		var count int
-		if e = db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('deliveries') WHERE name=?", migration.name).Scan(&count); e == nil && count == 0 {
-			_, e = db.Exec(migration.sql)
-		}
-		if e != nil {
-			_ = db.Close()
-			return nil, e
-		}
 	}
 	return s, nil
 }

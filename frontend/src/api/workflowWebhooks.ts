@@ -18,7 +18,7 @@ export interface WorkflowAPITrigger {
   /** '' = external webhook, 'function' = callable function, 'internal' = one bound caller. */
   kind?: '' | 'internal' | 'function' | 'gmail'
   caller?: { type: string; id: string; profile_id?: string }
-  gmail?: { connection_id: string; address: string; reply: boolean; filters?: GmailInboundFilters }
+  gmail?: { connection_id: string; inbox_id: string; reply: boolean; filters?: GmailInboundFilters }
   function?: WorkflowFunctionSpec
 }
 

@@ -7,7 +7,7 @@ select existing accounts; never create a duplicate login for another product.
 
 1. Inspect `get_gmail_trigger` and `manage_google_account(action="get_inbox")`.
    Each person has one personal address on a connected Gmail mailbox. It is not
-   a separate mailbox. If absent, list saved accounts, ask which email address
+   a separate mailbox. Keep this address in the owner’s private account views; do not paste it into shared files, instructions, dashboards or outputs. Shared schedules use an inbox ID and show Personal inbox. If absent, list saved accounts, ask which email address
    when needed, and use `manage_google_account(action="select_inbox",
    connection_id=...)` with the chosen account's observed Gmail read consent.
    Discover IDs yourself. If sign-in or more access is needed, use the existing
