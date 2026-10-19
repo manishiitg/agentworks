@@ -451,7 +451,7 @@ export function WorkModelsPanel({
           if (!option) return
           const defaults = defaultForOption(option)
           void changeSelection({ engine: option.id, provider: option.provider, modelId: defaults.modelId, reasoningEffort: defaults.reasoningEffort })
-        }}>{options.filter(option => workProviderIds.includes(option.provider)).map(option => <option key={option.id} value={option.id}>{option.label || option.provider}</option>)}</select></label> : <WorkflowLLMConfigurationPanel
+        }}>{options.filter(option => workProviderIds.includes(option.provider || option.id)).map(option => <option key={option.id} value={option.id}>{option.label || option.provider}</option>)}</select></label> : <WorkflowLLMConfigurationPanel
           workspacePath={workspacePath}
           llmConfig={llmConfig}
           onChange={selectProvider}

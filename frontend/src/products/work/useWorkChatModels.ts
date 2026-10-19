@@ -52,7 +52,7 @@ export function useWorkChatModels(profileId: string, projectId: string | undefin
         ])
         const option = options.find(item => item.provider === fallback?.provider) || options.find(item => item.default) || options[0]
         if (fallback && option?.provider === fallback.provider) fallback = { ...fallback, engine: option.id }
-        if (!fallback && option) fallback = { engine: option.id, provider: option.provider, modelId: option.model_id || '', reasoningEffort: typeof option.options?.reasoning_effort === 'string' ? option.options.reasoning_effort : undefined }
+        if (!fallback && option) fallback = { engine: option.id, provider: option.provider || option.id, modelId: option.model_id || '', reasoningEffort: typeof option.options?.reasoning_effort === 'string' ? option.options.reasoning_effort : undefined }
         if (current === sequence) apply(models)
       }).catch(() => undefined) // Shared/read-only projects never gain an owner's registry access.
     }
