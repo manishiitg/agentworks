@@ -279,10 +279,21 @@ func (api *StreamingAPI) startSessionInternalWithResult(
 	if err != nil {
 		return internalSessionTurnResult{}, fmt.Errorf("failed to marshal query request: %w", err)
 	}
+	var queuedTurnID string
+	var queuedWaiter <-chan queuedConversationTurnResult
+	if !conversationTurnQueueExecution(ctx) {
+		ctx = context.WithValue(ctx, internalQueuedTurnAdmissionKey{}, func(turnID string) {
+			queuedTurnID = turnID
+			queuedWaiter = api.registerQueuedTurnWaiter(turnID, eventCallback)
+		})
+	}
 	// Schedules, triggers and bots use the same durable dispatcher as browser
 	// chat. Internal callers wait for their exact queued result; the HTTP path
 	// acknowledges immediately. A claimed worker carries the bypass marker.
-	if !conversationTurnQueueExecution(ctx) {
+	if isScheduledCrewChatDelivery(ctx) {
+		log.Printf("[INTERNAL_CHAT_DELIVERY] session=%s user=%s source=crew_schedule route=chat_router", sessionID, userID)
+	}
+	if !conversationTurnQueueExecution(ctx) && !isScheduledCrewChatDelivery(ctx) {
 		var queuedRequest QueryRequest
 		if decodeErr := json.Unmarshal(body, &queuedRequest); decodeErr == nil &&
 			shouldUseDurableConversationTurnQueue(queuedRequest) &&
@@ -292,11 +303,10 @@ func (api *StreamingAPI) startSessionInternalWithResult(
 			if queueErr != nil {
 				return internalSessionTurnResult{}, queueErr
 			}
-			waiter := api.registerQueuedTurnWaiter(turn.ID, eventCallback)
 			api.recordQueuedConversationUserMessage(sessionID, turn)
 			api.kickConversationTurnQueue(sessionID)
 			select {
-			case queuedResult := <-waiter:
+			case queuedResult := <-queuedWaiter:
 				return queuedResult.Result, queuedResult.Err
 			case <-ctx.Done():
 				return internalSessionTurnResult{}, ctx.Err()
@@ -344,6 +354,19 @@ func (api *StreamingAPI) startSessionInternalWithResult(
 
 	if isScheduledSession(sessionID) {
 		scheduleLogfWithContext(newServerLogContext("", "", "", userID, "", sessionID), "[BOT_SESSION] Internal session started: sessionID=%s queryID=%s", sessionID, queryResp.QueryID)
+	}
+	if queryResp.DeliveryStatus == "queued_for_turn" {
+		// The admission UUID is not the execution ID. The queue worker returns
+		// its exact execution and reply through the waiter installed before claim.
+		if queuedWaiter == nil || queuedTurnID != queryResp.MessageID {
+			return internalSessionTurnResult{}, fmt.Errorf("queued internal turn has no matching result waiter")
+		}
+		select {
+		case queuedResult := <-queuedWaiter:
+			return queuedResult.Result, queuedResult.Err
+		case <-ctx.Done():
+			return internalSessionTurnResult{}, ctx.Err()
+		}
 	}
 
 	if queryResp.Status == queryStatusLiveInputDelivered {
