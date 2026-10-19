@@ -202,19 +202,10 @@ func (api *StreamingAPI) handleListOwnSharedProjects(w http.ResponseWriter, r *h
 		WorkspacePath string `json:"workspace_path"`
 	}
 	rows := []ownProject{}
-	manifests, err := listSharedCrewManifestPaths(r.Context(), defaultProductProjectStore(), claims.UserID, profile.ID)
-	if err != nil {
-		writeAgentProfileError(w, http.StatusInternalServerError, "list projects: "+err.Error())
-		return
+	for _, project := range listProjectsForOwner(r.Context(), claims, profile, claims.UserID, false) {
+		rows = append(rows, ownProject{ID: project.ID, Title: project.Title, WorkspacePath: project.WorkspacePath})
 	}
-	for _, manifestPath := range manifests {
-		root := strings.TrimSuffix(manifestPath, "/product.json")
-		manifest, err := readCrewProjectManifests(r.Context(), profile.ID, root)
-		if err != nil {
-			continue
-		}
-		rows = append(rows, ownProject{ID: manifest.ID, Title: manifest.Title, WorkspacePath: root})
-	}
+
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].WorkspacePath < rows[j].WorkspacePath })
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"projects": rows})
 }
