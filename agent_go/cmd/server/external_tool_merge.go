@@ -54,7 +54,7 @@ var externalToolMerges = []externalToolMerge{
 		{"list", "list_files|list_crew_files"}, {"search", "search_files|search_crew_files"}, {"read", "read_file|read_crew_file"},
 		{"write", "write_file|write_crew_file"}, {"code", "list_step_code"},
 	}},
-	{"functions", "Workflow and Crew internal function triggers: isolated executions with checked inputs. List, call, inspect execution status/messages, read private output files and answer a pending input question.", [][2]string{
+	{"functions", "Workflow and Crew internal function triggers with checked inputs. Crew functions default to a named tab that keeps history and queues calls; execution=fresh starts a new chat for each call. List, call, inspect execution status/messages, read private output files and answer a pending input question.", [][2]string{
 		{"list", "list_workflow_functions|list_crew_functions"}, {"call", "call_workflow_function|call_crew_function"},
 		{"status", "get_workflow_function_call|get_crew_function_call"}, {"read", "get_workflow_function_call|get_crew_function_call"}, {"reply", "reply_workflow_function_call|reply_crew_function_call"},
 		{"calls", "list_crew_function_calls"}, {"define", "update_crew"}, {"update", "update_crew"}, {"delete", "update_crew"},

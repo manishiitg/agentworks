@@ -1716,7 +1716,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		return err
 	}
 
-	if err := register("call_function", "Call a declared function of a Crew or workflow. In an interactive Builder chat you may also call this Crew's own published functions as the signed-in person. Arguments are validated against its input schema; the target starts a fresh isolated execution and returns its final message plus file outputs. It returns status=running and a call_id; the result arrives later as an [AUTO-NOTIFICATION] unless notify=false. Reuse submission_id after an uncertain retry. Poll with get_function_call and answer pending_inputs with reply_function_call.", map[string]interface{}{
+	if err := register("call_function", "Call a declared function of a Crew or workflow. In an interactive Builder chat you may also call this Crew's own published functions as the signed-in person. Arguments are validated against its input schema; the target follows its declared execution policy and returns its final message plus file outputs. Crew functions default to their own named tab, retain earlier calls and queue to take turns; execution=fresh starts a new chat per call. It returns status=running and a call_id; the result arrives later as an [AUTO-NOTIFICATION] unless notify=false. Reuse submission_id after an uncertain retry. Poll with get_function_call and answer pending_inputs with reply_function_call.", map[string]interface{}{
 		"type": "object", "required": []string{"target", "function"}, "properties": map[string]interface{}{
 			"target":          targetSchema,
 			"function":        map[string]interface{}{"type": "string", "description": "Function name from list_functions."},

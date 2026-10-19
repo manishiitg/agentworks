@@ -76,11 +76,14 @@ A function is a typed entry point: `name` (snake_case), `description` (for calle
 (what the Crew does when called), `input_schema` and optionally `result_schema` (JSON Schema subset:
 type, properties, required, items, enum).
 
-- Each accepted call runs in a fresh, isolated execution with its own output folder
-  (`.calls/<call_id>/`), never in the Crew's main chat. A function runs with the OWNER's authority
-  for every caller, so write instructions that are safe for whoever may call them.
-- Inputs are checked before anything starts. Calls run in parallel, up to 3 running at once per Crew; beyond that
-  the caller gets a busy error and nothing is queued.
+- By default, a function runs in its own named tab, keeps earlier calls' conversation and queues
+  calls to take turns. It never runs in the Crew's main chat. Set `agent` to share a named tab
+  between functions. Set `execution: "fresh"` for a new chat for every call, especially when inputs
+  are private or untrusted: earlier input in a shared tab can influence later answers.
+- Inputs are checked before anything starts. Each call has its own output folder
+  (`.calls/<call_id>/`). A function runs with the OWNER's authority for every caller,
+  so write instructions that are safe for whoever may call it. Fresh calls may run in parallel;
+  when their running limit is reached they return a busy error without queueing.
 - With a `result_schema`, the function writes its JSON result to the file named by
   `$FUNCTION_RESULT_FILE` before it finishes (the call message also gives the path, `.calls/<call_id>/result.json`; create the folder if it is missing). The platform validates it after the run, allows one
   correction turn, then fails the call with the reason. Without a `result_schema` the final message is
@@ -94,8 +97,9 @@ type, properties, required, items, enum).
 - Builders change the Crew; people with Run access use its shared chat, dashboard and published functions under the current server checks. Share never grants Builder tools or access to Builder conversations.
 - For a conversation, use `workspace action=ask` with the discovered workspace ID and optional `chat_id`. Keep the returned chat and submission receipt; read progress and replies with `workspace action=read_chat`, `chat_id`, `after` and `wait_seconds` (up to 25). Ask without a chat ID opens or uses the caller's own conversation. A started turn is not a finished answer; inspect its returned status.
 - Legacy `ask_crew`/message tools remain available through discovery; their returned inbox receipts belong to those operations, not to `workspace` chat replies. Ask is always open to people the Crew is shared with. Inside a Crew, `schedule_message_wakeup` can set one timed wakeup in its own conversation; it does not fire while the scheduler is paused.
-- Runs have no earlier conversation. Anything a later run must know belongs in `MEMORY.md` at the
-  Crew's root or in the Crew's files; say so in `purpose` and in function `instructions`.
+- Named function tabs keep earlier calls' conversation; `execution: "fresh"` starts without it.
+  Put lasting instructions and shared knowledge in `MEMORY.md` or the Crew's files,
+  and say how to use them in `purpose` and function `instructions`.
 
 ## Files
 
