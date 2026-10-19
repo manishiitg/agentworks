@@ -148,9 +148,11 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     >
       {productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
       {isPulseConversationSession(tab.sessionId) && <PulseIcon className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Pulse" role="img" />}
-      {!isBlank && (!productSurface || status !== 'ready') && (status === 'busy'
-        ? <Loader2 className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" aria-label={dot.label} role="img"><title>{dot.label}</title></Loader2>
-        : <span className={`${status === 'ready' ? 'h-1.5 w-1.5' : 'h-2 w-2'} shrink-0 rounded-full ${dot.cls}`} title={dot.label} aria-label={dot.label} role="img" />)}
+      <span data-chat-status-slot className="grid h-3 w-3 shrink-0 place-items-center">
+        {!isBlank && (!productSurface || status !== 'ready') && (status === 'busy'
+          ? <Loader2 className="h-3 w-3 animate-spin text-[hsl(var(--info))]" aria-label={dot.label} role="img"><title>{dot.label}</title></Loader2>
+          : <span className={`${status === 'ready' ? 'h-1.5 w-1.5' : 'h-2 w-2'} rounded-full ${dot.cls}`} title={dot.label} aria-label={dot.label} role="img" />)}
+      </span>
       {isRenaming ? (
         <input
           ref={renameInputRef}
