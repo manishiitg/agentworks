@@ -224,3 +224,101 @@ func TestPrepareCodeChatAttachmentsBoundedTextAndOwnerScope(t *testing.T) {
 		t.Fatal("background attachment turn accepted")
 	}
 }
+
+// A moved project's multipart destination must match the registry path the
+// proxy authorized. Drive the real upload handler, including its symlink guard.
+func TestMovedCrewChatUploadThroughProxy(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"Owner","role":"editor","products":["code","work"]},{"id":"other","username":"Other","role":"editor","products":["code","work"]}]}`)
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	previousDocs := viper.Get("docs-dir")
+	viper.Set("docs-dir", docs)
+	t.Cleanup(func() { viper.Set("docs-dir", previousDocs) })
+	const oldLogical = "Chats/Code/projects/upload-example"
+	const oldPhysical = "_users/owner/" + oldLogical
+	const canonical = "Crew/upload-example"
+	stubCrewLookups(t, map[string]string{canonical: "owner"}, map[string]string{oldPhysical: canonical})
+	if err := os.MkdirAll(filepath.Join(docs, canonical), 0700); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(docs, oldPhysical)
+	if err := os.MkdirAll(filepath.Dir(alias), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(docs, canonical), alias); err != nil {
+		t.Fatal(err)
+	}
+	// Force both request and rewritten body onto the existing disk spool path.
+	oldCap := workspaceProxyBodyMemoryCap
+	workspaceProxyBodyMemoryCap = 128
+	t.Cleanup(func() { workspaceProxyBodyMemoryCap = oldCap })
+	router := gin.New()
+	router.POST("/api/upload", workspacehandlers.UploadFile)
+	backend := httptest.NewServer(router)
+	defer backend.Close()
+	t.Setenv("WORKSPACE_API_URL", backend.URL)
+	proxy := workspaceProxyHandler()
+	payload := []byte("\x89PNG\r\n\x00" + strings.Repeat(oldLogical, 32))
+	folder := codeChatAttachmentFolder(canonical, "chat-one")
+	for _, tc := range []struct {
+		user, root string
+		status     int
+	}{
+		{"owner", oldLogical, http.StatusOK},
+		{"owner", oldPhysical, http.StatusOK},
+		{"owner", canonical, http.StatusOK},
+		{"other", oldPhysical, http.StatusForbidden},
+		{"other", canonical, http.StatusForbidden},
+	} {
+		var body bytes.Buffer
+		form := multipart.NewWriter(&body)
+		// Browser uploads are file-first; inspect and rewrite the later folder.
+		file, err := form.CreateFormFile("file", "pasted-image.png")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.Write(payload); err != nil {
+			t.Fatal(err)
+		}
+		if err := form.WriteField("folder_path", codeChatAttachmentFolder(tc.root, "chat-one")); err != nil {
+			t.Fatal(err)
+		}
+		if err := form.Close(); err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(http.MethodPost, "/api/wp/api/upload", &body)
+		req.Header.Set("Content-Type", form.FormDataContentType())
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: tc.user}))
+		rec := httptest.NewRecorder()
+		proxy.ServeHTTP(rec, req)
+		if rec.Code != tc.status {
+			t.Fatalf("%s %s: %d %s", tc.user, tc.root, rec.Code, rec.Body.String())
+		}
+		if tc.status != http.StatusOK {
+			continue
+		}
+		var result struct {
+			Data struct {
+				FilePath string `json:"filepath"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil || result.Data.FilePath != folder+"/pasted-image.png" {
+			t.Fatalf("upload receipt did not use current Crew: %s %v", rec.Body, err)
+		}
+		data, err := os.ReadFile(filepath.Join(docs, result.Data.FilePath))
+		if err != nil || !bytes.Equal(data, payload) {
+			t.Fatal("upload bytes changed or missing", err)
+		}
+		// The admitted private binding stays stable while attachment I/O uses
+		// the upload receipt's current root, with the same-chat fence intact.
+		query := QueryRequest{SelectedFolder: oldPhysical, CodeChatAttachments: []string{result.Data.FilePath}}
+		paths, err := codeChatAttachmentPaths(query, "owner", "chat-one")
+		if err != nil || len(paths) != 1 || paths[0] != result.Data.FilePath || query.SelectedFolder != oldPhysical {
+			t.Fatalf("moved binding attachment refused: %v %v", paths, err)
+		}
+		if _, err := codeChatAttachmentPaths(query, "owner", "chat-two"); err == nil {
+			t.Fatal("another chat's image accepted")
+		}
+	}
+}

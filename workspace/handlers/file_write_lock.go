@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -24,11 +25,13 @@ func lockFileMutation(c *gin.Context, paths ...string) (func(), bool) {
 	for _, input := range paths {
 		file, err := resolveUserPath(c, strings.TrimPrefix(input, "/"))
 		if err != nil {
+			log.Printf("[FILE_MUTATION] user_id=%s stage=resolve path=%q error=%q", getUserID(c), input, err.Error())
 			c.JSON(400, gin.H{"error": "invalid mutation path"})
 			return nil, false
 		}
 		root, err := wf.MutationRoot(viper.GetString("docs-dir"), file)
 		if err != nil {
+			log.Printf("[FILE_MUTATION] user_id=%s stage=root path=%q resolved=%q error=%q", getUserID(c), input, file, err.Error())
 			c.JSON(400, gin.H{"error": "invalid mutation path"})
 			return nil, false
 		}

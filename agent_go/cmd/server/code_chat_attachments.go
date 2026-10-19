@@ -44,7 +44,7 @@ func codeChatAttachmentPaths(req QueryRequest, owner, sessionID string) ([]strin
 		return nil, fmt.Errorf("attach up to 10 files to an existing Code chat")
 	}
 	folder := codeChatAttachmentFolder(req.SelectedFolder, sessionID)
-	physical := agentProfileRuntimeWorkspace(owner, folder)
+	physical := canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(owner, folder))
 	// Product admission supplies a physical registry root; upload responses
 	// are user-relative. Derive both spellings from that same admitted root.
 	ref, ok := workspaceref.Parse(physical)
@@ -55,7 +55,11 @@ func codeChatAttachmentPaths(req QueryRequest, owner, sessionID string) ([]strin
 	seen := map[string]bool{}
 	paths := []string{}
 	for _, file := range req.CodeChatAttachments {
-		if len(file) > 1024 || !utf8.ValidString(file) || path.Clean(file) != file || strings.ContainsAny(file, "\\\x00\r\n") || (path.Dir(file) != folder && path.Dir(file) != physical) {
+		if len(file) > 1024 || !utf8.ValidString(file) || path.Clean(file) != file || strings.ContainsAny(file, "\\\x00\r\n") {
+			return nil, fmt.Errorf("attachments must belong to this chat's upload folder")
+		}
+		file = followCrewAlias(owner, file)
+		if path.Dir(file) != folder && path.Dir(file) != physical {
 			return nil, fmt.Errorf("attachments must belong to this chat's upload folder")
 		}
 		file = path.Join(physical, path.Base(file))

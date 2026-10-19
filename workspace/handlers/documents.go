@@ -2219,7 +2219,7 @@ func UploadFile(c *gin.Context) {
 		return
 	}
 
-	// File uploaded successfully
+	log.Printf("[UPLOAD] user_id=%s folder=%q file=%q bytes=%d", getUserID(c), req.FolderPath, fileName, fileSize)
 
 	// Get content type
 	contentType := header.Header.Get("Content-Type")
