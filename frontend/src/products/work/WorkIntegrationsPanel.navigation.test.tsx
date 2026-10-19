@@ -20,6 +20,7 @@ vi.mock('./WorkIdentityPanel', () => ({ WorkFoldersSection: () => <div data-cont
 vi.mock('../../components/workflow/WorkflowBotsPanel', () => ({ default: ({ fixedChannel, channelOnly, ownBotOnly }: any) => <div data-content={fixedChannel} data-channel-only={String(channelOnly)} data-own-bot-only={String(ownBotOnly)}>Existing {fixedChannel}</div> }))
 vi.mock('../../components/workflow/WorkflowEmailPanel', () => ({ default: () => <div data-content="gmail">Existing Google apps</div> }))
 vi.mock('../../components/integrations/ProjectMcpSetupPanel', () => ({ ProjectMcpSetupPanel: () => <div data-content="cli">Existing MCP setup</div> }))
+vi.mock('./CrewPublishedAgents', () => ({ CrewPublishedAgents: () => <div data-content="agents">Agents from your computer</div> }))
 vi.mock('./McpAppsSection', () => ({ McpAppsSection: () => null }))
 vi.mock('./codeLocalFiles', () => ({ useCodeFilesPreference: () => ({ location: 'server' }) }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (value: unknown) => unknown) => select({ chatTabs: {} }) }))
@@ -35,10 +36,10 @@ beforeEach(() => {
   state.allowed_products = null
 })
 afterEach(() => { cleanup.splice(0).forEach(fn => fn()); delete window.__APP_RUNTIME_CONFIG__; vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.clearAllMocks() })
-async function mount(product = CREW_PRODUCT, enabledPanels?: Set<string>) {
+async function mount(product = CREW_PRODUCT, enabledPanels?: Set<string>, canEdit = true) {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host); cleanup.push(() => { act(() => root.unmount()); host.remove() })
-  await act(async () => root.render(<ProjectProductProvider value={product}><WorkIntegrationsPanel canEdit workspacePath="Crew/example" projectId="example" projectTitle="Example" projectTemplates={[]} tabId="tab" onAsk={state.ask} onSelectedServersChange={state.save} onSelectedSkillsChange={state.save} workflowContextPaths={[]} onWorkflowContextPathsChange={state.save} enabledPanels={enabledPanels} /></ProjectProductProvider>))
+  await act(async () => root.render(<ProjectProductProvider value={product}><WorkIntegrationsPanel canEdit={canEdit} workspacePath="Crew/example" projectId="example" projectTitle="Example" projectTemplates={[]} tabId="tab" onAsk={state.ask} onSelectedServersChange={state.save} onSelectedSkillsChange={state.save} workflowContextPaths={[]} onWorkflowContextPathsChange={state.save} enabledPanels={enabledPanels} /></ProjectProductProvider>))
   return host
 }
 
@@ -107,4 +108,24 @@ it('does not expose disabled bot channels through Use & share or direct targets'
   expect(host.querySelector('[data-content="slack"]')).toBeNull()
   expect(host.querySelector('[data-content="whatsapp"]')).toBeNull()
   expect(host.querySelector('[data-content="sharing"]')).not.toBeNull()
+})
+
+
+it('keeps published agents discoverable in Connections and mounts only the selected list', async () => {
+  const host = await mount()
+  expect(host.querySelector('[data-content="agents"]')).toBeNull()
+  await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Agents from your computer')!.click())
+  expect(host.querySelector('[data-content="agents"]')).not.toBeNull()
+  expect(host.querySelector('[data-content="mcp"]')).toBeNull()
+  await act(async () => state.target('overview'))
+  expect(host.querySelector('[data-content="agents"]')).toBeNull()
+  expect(host.querySelector('[data-content="mcp"]')).not.toBeNull()
+  expect(state.ask).not.toHaveBeenCalled(); expect(state.save).not.toHaveBeenCalled()
+})
+
+it('does not expose private published agents to a viewer or through a direct section target', async () => {
+  const host = await mount(CREW_PRODUCT, undefined, false)
+  expect(host.textContent).not.toContain('Agents from your computer')
+  await act(async () => state.target('agents'))
+  expect(host.querySelector('[data-content="agents"]')).toBeNull()
 })

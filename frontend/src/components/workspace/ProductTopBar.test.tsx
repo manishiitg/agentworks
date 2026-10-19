@@ -183,3 +183,13 @@ it('keeps retained hidden pages from taking navigation away from the active head
   expect(host.querySelector('[data-terminal-focus-chrome="toolbar"] [aria-label="Product navigation"]')).not.toBeNull()
   expect(host.querySelectorAll('[aria-label="Product navigation"]')).toHaveLength(1)
 })
+
+it('keeps deployment branding in the leading slot when the sidebar is closed', async () => {
+  window.__APP_RUNTIME_CONFIG__ = { appName: 'Example', markUrl: '/brand/example.svg' }
+  try {
+    const host = await render()
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Close sidebar"]')!.click())
+    expect(host.querySelector('[data-product-navigation-leading-slot] [data-runtime-brand="sidebar"] img')?.getAttribute('src')).toBe('/brand/example.svg')
+    expect(host.querySelector('[aria-label="Product navigation"] [data-runtime-brand]')).toBeNull()
+  } finally { delete window.__APP_RUNTIME_CONFIG__ }
+})

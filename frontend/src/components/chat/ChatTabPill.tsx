@@ -18,6 +18,8 @@ export interface ChatTabPillProps {
   isBlank: boolean
   displayName?: string
   titleOverride?: string
+  /** Optional server-derived aggregate for work not already represented by an open chat tab. */
+  workspaceActivity?: 'running' | 'waiting' | null
   productSurface?: ProductSurface
   readOnly?: boolean
   onTabClick: (tabId: string) => void
@@ -42,7 +44,7 @@ const TAB_STATUS_DOT: Record<TabStatus, { cls: string; label: string }> = {
 
 /** The shared Chat tab pill used by workflows, Work, and Vault. */
 export const ChatTabPill = React.memo<ChatTabPillProps>(({
-  tab, isActive, canClose, isBlank, displayName: displayNameOverride, titleOverride, productSurface,
+  tab, isActive, canClose, isBlank, displayName: displayNameOverride, titleOverride, productSurface, workspaceActivity,
   onTabClick, onCloseTab, onRename, onMakeInteractive, readOnly = false, closeStopsSession = false,
 }) => {
   const rawName = displayNameOverride ?? tab.name
@@ -78,9 +80,11 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       foregroundTurnStarted: foreground === 'running',
     }, session).state === 'running'
   })
-  const rawStatus: TabStatus = needsInput
+  const activityNeedsInput = workspaceActivity === undefined ? needsInput : needsInput || workspaceActivity === 'waiting'
+  const activityRunning = workspaceActivity === undefined ? running : workspaceActivity === 'running'
+  const rawStatus: TabStatus = activityNeedsInput
     ? 'waiting'
-    : running
+    : activityRunning
       ? 'busy'
       : tab.hasUnreadCompletion && !isActive ? 'completed' : 'ready'
   const [status, setStatus] = useState(rawStatus)
@@ -102,7 +106,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
     setStatus(rawStatus)
   }, [rawStatus, status])
   const dot = TAB_STATUS_DOT[status]
-  const isBusy = status === 'busy'
+  const isBusy = running || status === 'busy'
   useEffect(() => {
     if (!isRenaming) setRenameDraft(tab.name)
   }, [isRenaming, tab.name])

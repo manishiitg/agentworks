@@ -7,6 +7,7 @@ vi.mock('../../hooks/usePendingCrewSuggestions', () => ({ usePendingCrewSuggesti
 vi.mock('../../components/GlobalActivityMonitor', () => ({ GlobalActivityMonitor: () => <button aria-label="Active work monitor">Active work</button> }))
 
 import { setProjectMode, writeCodeFilesPreference } from './codeLocalFiles'
+import { usePanelSwitcherStore } from '../../stores/usePanelSwitcherStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
 import { CODE_PRODUCT, CREW_PRODUCT, ProjectProductProvider } from './projectProduct'
@@ -88,9 +89,10 @@ it('keeps compact Crew navigation at the top and does not gain a Terminal', () =
   expect(host.querySelector('[aria-label="Project settings"]')).not.toBeNull()
 })
 
-it('keeps Code Terminal beside context without duplicating the bubble Files link', () => {
+it('keeps Terminal out of the compact header while retaining its optional tool and search access', () => {
   render(CODE_PRODUCT, { compactContext: true, showShell: true })
-  expect(hasTerminal()).toBe(true)
+  expect(hasTerminal()).toBe(false)
+  expect(usePanelSwitcherStore.getState().entries.code?.panels.some(panel => panel.id === 'shell')).toBe(true)
   expect(host.querySelector('[aria-label="Back to context"]')).not.toBeNull()
   const labels = Array.from(host.querySelectorAll('button')).filter(button => !button.closest('[hidden]')).map(button => button.getAttribute('aria-label') || button.textContent)
   expect(labels.some(label => label?.includes('Files'))).toBe(false)
