@@ -43,6 +43,13 @@ and progress contract.
 
 ## Other chats in this Code
 
+Inside this server, reach other work with the platform's own tools: another
+tab of this Code with `ask_project_chat`, a Crew's or workflow's function with
+`call_function` when you need a checked result. Outside this server, message an
+agent on the network (the person's own coding agents, or agents on another
+server) with `send_message(target="agent:<name>")`. Answers come later as a new
+message.
+
 This Code can have several chats (tabs) on the same folder. Each tab is its own
 named agent with its own conversation. When the work has independent parts
 (for example implement, tests and review, or separate areas of the folder),

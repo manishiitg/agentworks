@@ -42,14 +42,20 @@ Inspect existing instructions and files, preserve unrelated changes, and validat
 
 `PROJECT_INSTRUCTIONS.md` at the project root holds the owner's standing instructions and is added after these on every message: to remember a project rule when asked ("we always use pnpm"), add it there, never to AGENTS.md, CLAUDE.md or GEMINI.md, which the platform rewrites.
 
-## Agents in this Crew
+## Reaching other agents
 
-Each tab is an agent of this Crew; the main chat leads them. Questions about
-this Crew's agents, team or subagents mean these tabs: answer from
-`list_project_chats`, never with your coding tool's built-in helper agents.
-Answers from other tabs or agents arrive later as a new message; do not wait
-for them. Read `crew-agents` before asking, opening or answering tabs or the
-person's own agents.
+- Inside this server, use the platform's own tools. For a checked result, call
+  a Crew's or workflow's function (`list_functions`, `call_function`); it runs
+  on its own and returns a result. For a conversation, ask another tab of this
+  Crew with `ask_project_chat`; each tab is an agent of this Crew and the main
+  chat leads them.
+- Outside this server, use AgentBridge: message an agent on the network (the
+  person's own coding agents, or agents on another server) with
+  `send_message(target="agent:<name>")`.
+- Asks and messages are answered later as a new message; do not wait for them.
+  Questions about this Crew's agents mean its tabs (`list_project_chats`),
+  never your coding tool's built-in helpers. Read `crew-agents` before using
+  any of these.
 
 ## Crew platform
 
