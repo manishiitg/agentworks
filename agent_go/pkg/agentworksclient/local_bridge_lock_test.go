@@ -101,29 +101,47 @@ func TestAttachGateRunsOneAttachPerChat(t *testing.T) {
 // A busy server can take many seconds per call, so peers, send, read, ack and reply talk to it
 // without the bridge lock: while one of them waits, other commands still answer at once.
 func TestSlowServerCallDoesNotHoldTheBridgeLock(t *testing.T) {
-	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(300 * time.Millisecond)
-		_, _ = w.Write([]byte(`{}`))
-	}))
-	defer slow.Close()
-	client, err := New(slow.URL, "token")
-	if err != nil {
-		t.Skip("test server not accepted by the client:", err)
+	for _, action := range []string{"peers", "directories", "agent_online"} {
+		t.Run(action, func(t *testing.T) {
+			started := make(chan struct{}, 1)
+			slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				select {
+				case started <- struct{}{}:
+				default:
+				}
+				time.Sleep(300 * time.Millisecond)
+				_, _ = w.Write([]byte(`{"agents":[]}`))
+			}))
+			defer slow.Close()
+			client, err := New(slow.URL, "token")
+			if err != nil {
+				t.Fatal(err)
+			}
+			config := filepath.Join(t.TempDir(), "connection.json")
+			if err := SaveConfig(config, Config{Server: slow.URL, Token: "token"}); err != nil {
+				t.Fatal(err)
+			}
+			session := &localSession{Attachment: AgentAttachment{ID: "lease", AgentName: "a", Provider: "claude", SessionID: "s"}, HostKey: "h", AccountSenders: true, client: client, ParentConfigPath: config, Offers: map[string]localOffer{}}
+			b := &localBridge{sessions: map[string]*localSession{localBridgeKey("claude", "s"): session}, changed: make(chan struct{})}
+			done := make(chan LocalBridgeReply, 1)
+			go func() {
+				done <- b.handle(context.Background(), context.Background(), LocalBridgeRequest{Action: action, Provider: "claude", SessionID: "s", HostKey: "h", ConfigPath: config})
+			}()
+			select {
+			case <-started:
+			case <-time.After(time.Second):
+				t.Fatal("server call did not start")
+			}
+			start := time.Now()
+			b.handle(context.Background(), context.Background(), LocalBridgeRequest{Action: "status", Provider: "claude", SessionID: "s", HostKey: "h"})
+			if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
+				t.Errorf("status waited %v behind %s waiting on the server", elapsed, action)
+			}
+			if reply := <-done; reply.Error != "" {
+				t.Fatal(reply.Error)
+			}
+		})
 	}
-	session := &localSession{Attachment: AgentAttachment{ID: "lease", AgentName: "a", Provider: "claude", SessionID: "s"}, HostKey: "h", AccountSenders: true, client: client, Offers: map[string]localOffer{}}
-	b := &localBridge{sessions: map[string]*localSession{localBridgeKey("claude", "s"): session}, changed: make(chan struct{})}
-	done := make(chan struct{})
-	go func() {
-		b.handle(context.Background(), context.Background(), LocalBridgeRequest{Action: "peers", Provider: "claude", SessionID: "s", HostKey: "h"})
-		close(done)
-	}()
-	time.Sleep(60 * time.Millisecond) // the peers call is now waiting on the server
-	start := time.Now()
-	b.handle(context.Background(), context.Background(), LocalBridgeRequest{Action: "status", Provider: "claude", SessionID: "s", HostKey: "h"})
-	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
-		t.Fatalf("status waited %v behind a peers call that was only waiting on the server", elapsed)
-	}
-	<-done
 }
 
 // The whole attach, against a fake server whose attach step is slow: other commands keep

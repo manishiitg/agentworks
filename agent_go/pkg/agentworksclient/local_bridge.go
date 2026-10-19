@@ -920,7 +920,10 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
 		}
-		raw, err := client.Call(callCtx, "messages", map[string]any{"action": "list_agents"})
+		var raw json.RawMessage
+		b.unlocked(func() {
+			raw, err = client.Call(callCtx, "messages", map[string]any{"action": "list_agents"})
+		})
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
 		}
@@ -945,16 +948,26 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	if in.Action == "directories" {
 		out := LocalBridgeReply{}
 		seen := map[string]bool{}
+		type directoryRequest struct {
+			client *Client
+			name   string
+		}
+		var requests []directoryRequest
 		for _, s := range b.sessions {
 			if seen[s.ParentConfigPath] || s.client == nil {
 				continue
 			}
 			seen[s.ParentConfigPath] = true
-			raw, err := s.client.Call(callCtx, "messages", map[string]any{"action": "list_agents", "agent_name": s.Attachment.AgentName})
-			if err == nil {
-				out.Directories = append(out.Directories, LocalAgentDirectory{Server: s.client.baseURL, Agents: raw})
-			}
+			requests = append(requests, directoryRequest{client: s.client, name: s.Attachment.AgentName})
 		}
+		b.unlocked(func() {
+			for _, request := range requests {
+				raw, err := request.client.Call(callCtx, "messages", map[string]any{"action": "list_agents", "agent_name": request.name})
+				if err == nil {
+					out.Directories = append(out.Directories, LocalAgentDirectory{Server: request.client.baseURL, Agents: raw})
+				}
+			}
+		})
 		sort.Slice(out.Directories, func(i, j int) bool { return out.Directories[i].Server < out.Directories[j].Server })
 		return out
 	}
