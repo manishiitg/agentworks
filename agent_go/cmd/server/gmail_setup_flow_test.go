@@ -87,6 +87,19 @@ func TestGmailSetupConsentCompletesProvisioningAndOnlyActivatesAfterVerification
 							data = sub
 						}
 					case strings.HasSuffix(r.URL.Path, ":getIamPolicy"):
+						method := http.MethodGet
+						if r.URL.Host == "iam.googleapis.com" {
+							method = http.MethodPost
+						}
+						var body []byte
+						if r.Body != nil {
+							body, _ = io.ReadAll(r.Body)
+						}
+						if r.Method != method || len(body) != 0 || r.URL.Query().Get("options.requestedPolicyVersion") != "3" {
+							t.Errorf("invalid getIamPolicy request: %s %s", r.Method, r.URL)
+							status = 404
+							break
+						}
 						if fail {
 							status = 403
 							data = map[string]string{"error": "SECRET"}

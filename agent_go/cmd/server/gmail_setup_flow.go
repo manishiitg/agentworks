@@ -3,9 +3,11 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"html/template"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -348,7 +350,12 @@ func (api *StreamingAPI) runGmailSetup(job *gmailSetupJob, token *oauth2.Token) 
 	defer m.wg.Done()
 	ctx, cancel := context.WithTimeout(m.ctx, 4*time.Minute)
 	defer cancel()
-	progress := func(stage string) { m.mu.Lock(); job.Stage = stage; m.mu.Unlock() }
+	progress := func(stage string) {
+		m.mu.Lock()
+		job.Stage = stage
+		m.mu.Unlock()
+		log.Printf("[GMAIL-SETUP] stage=%q", stage)
+	}
 	ownerCtx := context.WithValue(ctx, UserContextKey, &job.owner)
 	var err error
 	if !gmailSetupAdmin(ownerCtx) {
@@ -376,10 +383,19 @@ func (api *StreamingAPI) runGmailSetup(job *gmailSetupJob, token *oauth2.Token) 
 	defer m.mu.Unlock()
 	m.running = false
 	if err != nil {
+		// Log only known-safe Cloud metadata, never consent state, credentials
+		// or arbitrary error bodies. The stage identifies other failure points.
+		var cloudErr *gmailsetup.APIError
+		if errors.As(err, &cloudErr) {
+			log.Printf("[GMAIL-SETUP] failed stage=%q operation=%q status=%d", job.Stage, cloudErr.Operation, cloudErr.Status)
+		} else {
+			log.Printf("[GMAIL-SETUP] failed stage=%q", job.Stage)
+		}
 		job.Stage = "Setup failed"
 		job.Error = err.Error()
 	} else {
 		job.Stage = "Receiving infrastructure ready"
+		log.Printf("[GMAIL-SETUP] completed")
 	}
 }
 

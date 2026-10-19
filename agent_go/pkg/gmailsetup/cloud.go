@@ -167,13 +167,13 @@ func (c Cloud) enable(ctx context.Context, project string, apis []string) error 
 // grants and conditional bindings. Conflicting etags fail rather than overwrite.
 func (c Cloud) grant(ctx context.Context, resource, role, member string) error {
 	policy := map[string]any{}
-	getURL := resource + ":getIamPolicy"
-	var getBody any = map[string]any{"options": map[string]int{"requestedPolicyVersion": 3}}
+	getURL := resource + ":getIamPolicy?options.requestedPolicyVersion=3"
+	method := http.MethodGet
+	// Pub/Sub reads policies with GET; IAM service accounts use POST.
 	if strings.HasPrefix(resource, "https://iam.googleapis.com/") {
-		getURL += "?options.requestedPolicyVersion=3"
-		getBody = nil
+		method = http.MethodPost
 	}
-	if e := c.request(ctx, "POST", getURL, getBody, &policy); e != nil {
+	if e := c.request(ctx, method, getURL, nil, &policy); e != nil {
 		return e
 	}
 	bindings, _ := policy["bindings"].([]any)

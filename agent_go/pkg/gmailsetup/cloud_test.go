@@ -137,8 +137,14 @@ func TestProvisionCreatesAndVerifiesOnlyReviewedResources(t *testing.T) {
 		if r.URL.Host == "cloudresourcemanager.googleapis.com" {
 			t.Fatal("required unenabled Resource Manager API")
 		}
-		if r.URL.Host == "iam.googleapis.com" && strings.HasSuffix(r.URL.Path, ":getIamPolicy") && (len(f.bodies[i]) != 0 || r.URL.Query().Get("options.requestedPolicyVersion") != "3") {
-			t.Fatalf("IAM get-policy wire format: %s %v", r.URL, f.bodies[i])
+		if strings.HasSuffix(r.URL.Path, ":getIamPolicy") {
+			method := http.MethodGet
+			if r.URL.Host == "iam.googleapis.com" {
+				method = http.MethodPost
+			}
+			if r.Method != method || len(f.bodies[i]) != 0 || r.URL.Query().Get("options.requestedPolicyVersion") != "3" {
+				t.Fatalf("get-policy wire format: %s %s %v; want %s with version query and empty body", r.Method, r.URL, f.bodies[i], method)
+			}
 		}
 	}
 	if polls != 2 {
