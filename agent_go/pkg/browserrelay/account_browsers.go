@@ -93,9 +93,16 @@ func (m *Manager) Browsers(user string) []BrowserConnection {
 }
 func (m *Manager) PairAccount(user string, reset bool) (string, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	clearedFailure := false
+	defer func() {
+		m.mu.Unlock()
+		if clearedFailure {
+			notifyChange(key(user, ""))
+		}
+	}()
 	token, err := m.connectionCode(user, "", "", "", reset)
 	if err == nil {
+		_, clearedFailure = m.pairingFailures[user]
 		delete(m.pairingFailures, user)
 	}
 	if err == nil && reset {
@@ -291,19 +298,19 @@ func (m *Manager) DisconnectBrowser(user, id string) error {
 
 func (m *Manager) serveAccountBrowser(conn *websocket.Conn, hello envelope, authorize func(string, string, string, string) error, displayName func(string, string, string) string) {
 	if !validBrowserID(hello.BrowserID) {
-		_ = conn.WriteJSON(envelope{Type: "error", Workspace: "Reload the browser extension and connect again."})
+		m.rejectPairing(conn, "", "invalid_browser_id", "Reload the browser extension and connect again.", "")
 		return
 	}
 	m.mu.Lock()
 	credential, exists := m.pairs[hello.Token]
 	m.mu.Unlock()
 	if !exists || credential.User == "" {
-		_ = conn.WriteJSON(envelope{Type: "error", Workspace: "Connection code is invalid or was reset"})
+		m.rejectPairing(conn, "", "invalid_connection_code", "Connection code is invalid or was reset. Copy a new code from Browser connections.", "")
 		return
 	}
 	user := credential.User
 	if authorize != nil && authorize(user, "", "", "") != nil {
-		_ = conn.WriteJSON(envelope{Type: "error", Workspace: "This account is unavailable. Sign in to AgentWorks again."})
+		m.rejectPairing(conn, "", "access_denied", "This account is unavailable. Sign in to AgentWorks again.", "")
 		return
 	}
 	if extensionVersionBefore(hello.Version, MinimumExtensionVersion) {
@@ -320,17 +327,19 @@ func (m *Manager) serveAccountBrowser(conn *websocket.Conn, hello envelope, auth
 	current, ok := m.pairs[hello.Token]
 	if !ok || current.User != user {
 		m.mu.Unlock()
+		m.rejectPairing(conn, "", "invalid_connection_code", "Connection code is invalid or was reset. Copy a new code from Browser connections.", "")
 		return
 	}
 	k := key(user, hello.BrowserID)
 	record, remembered := m.browserRecords[k]
 	if hello.Resume && (!remembered || !record.Enabled) {
 		m.mu.Unlock()
-		_ = conn.WriteJSON(envelope{Type: "error", Workspace: "This browser was disconnected. Connect again to enable it."})
+		m.rejectPairing(conn, user, "browser_disconnected", "This browser was disconnected. Connect again to enable it.", hello.Version)
 		return
 	}
 	if !remembered && len(m.browserRecords) >= 1000 {
 		m.mu.Unlock()
+		m.rejectPairing(conn, user, "browser_limit_reached", "The saved browser limit was reached. Ask your administrator for help.", hello.Version)
 		return
 	}
 	brand := browserBrand(hello.Browser)
@@ -356,7 +365,7 @@ func (m *Manager) serveAccountBrowser(conn *websocket.Conn, hello envelope, auth
 	m.browserRecords[k] = record
 	if err := m.persistBrowsersLocked(); err != nil {
 		m.mu.Unlock()
-		_ = conn.WriteJSON(envelope{Type: "error", Workspace: "Could not remember this browser. Try connecting again."})
+		m.rejectPairing(conn, user, "browser_storage_unavailable", "Could not remember this browser. Try connecting again.", hello.Version)
 		return
 	}
 	a := &accountBrowser{conn: conn, token: hello.Token}

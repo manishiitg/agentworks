@@ -39,6 +39,9 @@ func TestOldExtensionGetsUpdateReasonWithoutChangingProjectAuthority(t *testing.
 		if err := conn.ReadJSON(&reply); err != nil || reply.Type != "error" || reply.Reason != reason {
 			t.Fatalf("pairing error=%+v err=%v", reply, err)
 		}
+		if reason == "invalid_connection_code" && !strings.Contains(reply.Workspace, "Copy a new code from Browser connections") {
+			t.Fatalf("invalid-code feedback has no next action: %+v", reply)
+		}
 		_, _, err := conn.ReadMessage()
 		var closed *websocket.CloseError
 		if !errors.As(err, &closed) || closed.Code != 4002 || closed.Text != reason {
@@ -55,6 +58,11 @@ func TestOldExtensionGetsUpdateReasonWithoutChangingProjectAuthority(t *testing.
 		t.Fatal("rejected pairing changed authority or exposed another account's error")
 	}
 	assertRejected(connect(envelope{Type: "pair", Token: "unknown-token", Version: "0.4.9"}), "invalid_connection_code")
+	// A current or newer client with an invalid scope must not be told its
+	// extension is old. It receives the same generic code guidance.
+	assertRejected(connect(envelope{Type: "pair", Token: token, Scope: "missing", Version: "0.5.0"}), "invalid_connection_code")
+	assertRejected(connect(envelope{Type: "pair", Token: token, Scope: "missing", Version: "0.10.0"}), "invalid_connection_code")
+	assertRejected(connect(envelope{Type: "not-pair", Token: token}), "invalid_pairing_request")
 	if m.PairingFailure("bob") != nil {
 		t.Fatal("invalid token attributed feedback to another account")
 	}
@@ -68,6 +76,38 @@ func TestOldExtensionGetsUpdateReasonWithoutChangingProjectAuthority(t *testing.
 	}
 	if m.PairingFailure("alice") != nil || len(m.Browsers("alice")) != 1 {
 		t.Fatal("successful updated pairing did not clear the old setup failure")
+	}
+}
+
+func TestCopyNewBrowserCodeClearsSetupAlertAndNotifies(t *testing.T) {
+	m := New()
+	defer m.Close()
+	if _, err := m.PairAccount("alice", false); err != nil {
+		t.Fatal(err)
+	}
+	m.mu.Lock()
+	m.pairingFailures = map[string]PairingFailure{"alice": {Reason: "extension_outdated", At: time.Now().UnixMilli()}}
+	m.mu.Unlock()
+	changed := make(chan struct{}, 1)
+	SetChangeHook(func(user, scope string) {
+		if user == "alice" && scope == "" {
+			select {
+			case changed <- struct{}{}:
+			default:
+			}
+		}
+	})
+	t.Cleanup(func() { SetChangeHook(nil) })
+	if _, err := m.PairAccount("alice", false); err != nil {
+		t.Fatal(err)
+	}
+	if m.PairingFailure("alice") != nil {
+		t.Fatal("copying a new connection code left old setup feedback visible")
+	}
+	select {
+	case <-changed:
+	case <-time.After(time.Second):
+		t.Fatal("clearing setup feedback did not wake the dialog's live refetch")
 	}
 }
 
