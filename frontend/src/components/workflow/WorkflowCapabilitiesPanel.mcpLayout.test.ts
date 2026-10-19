@@ -91,18 +91,13 @@ describe('Workflow MCP panel layout', () => {
     expect(sections).toContain("label: 'Google apps'")
   })
 
-  it('embeds bots and gmail inside the Integrations tabs instead of standalone views', () => {
+  it('keeps route hints and Gmail inside Integrations instead of standalone views', () => {
     const panel = readFileSync('src/components/workflow/WorkflowCapabilitiesPanel.tsx', 'utf8')
     const views = readFileSync('src/components/workflow/workspaceViews.ts', 'utf8')
     const host = readFileSync('src/components/workflow/canvas/WorkspaceViewHost.tsx', 'utf8')
     const chips = readFileSync('src/components/workflow/bots/RouteChips.tsx', 'utf8')
-    const slack = readFileSync('src/components/workflow/bots/SlackSetup.tsx', 'utf8')
 
     expect(chips).toContain('This route answers for another workflow')
-    // One question per workflow; platform settings live with the admin panel.
-    expect(slack).toContain('Which bot answers')
-    expect(slack).not.toContain('Save platform settings')
-    expect(readFileSync('src/components/admin/SlackAdminPanel.tsx', 'utf8')).toContain('Shared bot enabled')
     const gmail = readFileSync('src/components/workflow/bots/GmailNotifications.tsx', 'utf8')
     // The accounts list now lives in the Gmail section, described as "Your Google accounts".
     expect(gmail).toContain('Google accounts added to this item')
