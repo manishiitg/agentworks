@@ -121,3 +121,18 @@ it('makes the workspace name prominent beside its product icon, with the product
   expect(name.className).toContain('font-semibold')
   expect(name.closest('[role="button"]')?.className).toContain('text-sm')
 })
+
+it('does not duplicate foreground work on the workspace title while preserving each chat spinner', async () => {
+  const { useChatStore } = await import('../../stores/useChatStore')
+  const original = useChatStore.getState()
+  const container = document.createElement('div'); document.body.append(container)
+  const root = createRoot(container)
+  const tab = { tabId: 'project-main', name: 'Main', sessionId: 'main', isStreaming: true } as ChatTab
+  try {
+    useChatStore.setState({ chatTabs: { [tab.tabId]: tab }, activeSessionsCache: [] })
+    await act(async () => root.render(<AgentWorksChatTabItem tab={tab} isActive canClose={false} isBlank={false} productSurface="work" workspaceActivity={null} onTabClick={() => {}} onCloseTab={() => {}} />))
+    expect(container.querySelector('[aria-label="Working"]')).toBeNull()
+    await act(async () => root.render(<AgentWorksChatTabItem tab={tab} isActive canClose={false} isBlank={false} productSurface="work" workspaceActivity="running" onTabClick={() => {}} onCloseTab={() => {}} />))
+    expect(container.querySelector('[aria-label="Working"]')).not.toBeNull()
+  } finally { await act(async () => root.unmount()); container.remove(); useChatStore.setState(original, true) }
+})

@@ -75,7 +75,6 @@ export default function SidebarStepInspections({ row, workspace, scope, visible,
         <GitBranch className="h-3 w-3 shrink-0 opacity-60" aria-hidden="true" />
         <span className="min-w-0 flex-1 truncate">{label}</span>
         {working || opening === key ? <Loader2 aria-label={working ? 'Step running' : 'Opening step'} className="h-3 w-3 shrink-0 animate-spin text-primary" /> : status === 'completed' ? <Check aria-label="Step completed" className="h-3 w-3 shrink-0" /> : status === 'failed' ? <CircleAlert aria-label="Step failed" className="h-3 w-3 shrink-0 text-amber-500" /> : null}
-        <span className="text-[10px] opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100">Inspect</span>
       </button>
     })}
     {!receipts && query.hasNextPage && steps.length <= limit && <button type="button" disabled={query.isFetchingNextPage} className="rounded px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground" onClick={() => void query.fetchNextPage()}>Earlier steps</button>}

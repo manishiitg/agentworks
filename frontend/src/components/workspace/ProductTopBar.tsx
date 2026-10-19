@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSPrope
 import { createPortal } from 'react-dom'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { RuntimeBrandLogo } from '../branding/RuntimeBrandLogo'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { useWorkspaceReturnStore } from '../../stores/useWorkspaceReturnStore'
 import { ProductNavigationContext, CompactProductNavigationContext, useCompactProductNavigation, useProductSettingsMenu, useProductSetupTiles } from './productNavigationContexts'
@@ -62,6 +63,7 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
     className="inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-md px-1 text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
     {open ? <PanelLeftClose className="h-4 w-4" aria-hidden="true" /> : <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />}
   </button>
+  const leading = <div className="flex shrink-0 items-center gap-2">{toggle}<RuntimeBrandLogo variant="sidebar-header" className="max-w-[10rem]" /></div>
   const controls = <nav aria-label="Product navigation" data-product-navigation="topbar" data-terminal-focus-chrome="header" data-tour-products={visibleProductSurfaceIDs(allowedProducts).join(' ')}
     className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5">
     {children}
@@ -87,7 +89,7 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
           }}
           className="absolute inset-y-0 -right-1 z-50 hidden w-2 cursor-col-resize touch-none hover:bg-primary/15 focus-visible:bg-primary/15 focus-visible:outline-none md:block" />}
       </div>}
-      {!open && (leadingTarget ? createPortal(toggle, leadingTarget) : <div data-terminal-focus-chrome="header" className="absolute left-3 top-2 z-40 rounded-lg bg-background/95">{toggle}</div>)}
+      {sidebar && !open && (leadingTarget ? createPortal(leading, leadingTarget) : <div data-terminal-focus-chrome="header" className="absolute left-3 top-2 z-40 rounded-lg bg-background/95">{leading}</div>)}
       {target ? createPortal(controls, target) : <div data-terminal-focus-chrome="header" className="absolute right-3 top-2 z-40 max-w-[calc(100%-24px)] rounded-lg bg-background/95">{controls}</div>}
     </CompactProductNavigationContext.Provider>
   </ProductNavigationContext.Provider>

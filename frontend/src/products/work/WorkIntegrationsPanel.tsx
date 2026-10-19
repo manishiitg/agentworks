@@ -1,6 +1,6 @@
 import { ProjectSecretsPanel } from '../../components/integrations/ProjectSecretsPanel'
 import { useRef, useState } from 'react'
-import { Server, Users } from 'lucide-react'
+import { Laptop, Server, Users } from 'lucide-react'
 import SlackAccountsPanel from '../../components/integrations/SlackAccountsPanel'
 import { UseSharePanel, UseShareBack, type UseShareChannel } from '../../components/integrations/UseSharePanel'
 import SkillsManagerPanel from '../../components/skills/SkillsManagerPanel'
@@ -24,12 +24,14 @@ import { isWorkIntegrationTabEnabled } from './workViewGating'
 import { isProjectProductId, useProjectProduct } from './projectProduct'
 import { getGoogleAppsAskAIMessage, useGmailInboundUIEnabled } from '../../components/workflow/bots/gmailAskAI'
 import { useCodeFilesPreference } from './codeLocalFiles'
+import { CrewPublishedAgents } from './CrewPublishedAgents'
 import { ConnectedProjectAccounts } from '../../components/integrations/ConnectedProjectAccounts'
 
-export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli'
+export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli' | 'agents'
 
 function integrationTabAskAIMessage(noun: string, incomingGmail: boolean): Record<WorkIntegrationTab, string> {
   return {
+    agents: 'Explain how to publish an agent from my computer into this project and reopen its private chat. Do not publish or change permissions without asking.',
     apps: `Help me with this ${noun} project's connected apps. Explain what's connected and ask what I want to add or change.`,
     brain: `Explain how Brain stores shared knowledge for this ${noun} project and how its agents can use notes, reference files and reusable skills. Check the current project access: can open and edit (the default, within existing folder permissions), can open only, or off. Explain team sharing through Brain folder roles. Ask what I want before changing settings or permissions.`,
     folders: `Help me attach things to this ${noun} project: folders or workflows and Crews as reference material. Ask what is needed and why, then set it up; folders should allow viewing only unless saving changes is needed. For shared knowledge, open Connections, then choose Brain from Add connection.`,
@@ -114,7 +116,7 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
   const visibleTabs = projectIntegrationSections(allowedProducts).filter(option =>
     isWorkIntegrationTabEnabled(option.value, enabledPanels, localCodeSession))
   const [tab, setTab] = useState<WorkIntegrationTab>('apps')
-  const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0]?.value ?? 'apps'
+  const activeTab = (tab === 'agents' && canEdit) || visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0]?.value ?? 'apps'
   // Every tab loads on mount, so Refresh always remounts.
   const [tabNonce, setTabNonce] = useState(0)
   const [preferredPluginTab, setPluginTab] = useProjectPluginTab()
@@ -124,8 +126,9 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
   const pluginTabs = projectPluginTabs(allowedProducts).filter(option => !enabledPanels || (option.value === 'secrets' ? enabledPanels.has('secrets') : option.value === 'skills' ? enabledPanels.has('skills') : option.value === 'vault' || enabledPanels.has('mcp')))
   const pluginTab = overview && pluginTabs.some(option => option.value === 'connected') ? 'connected' : preferredPluginTab
   const activePluginTab = pluginTabs.some(option => option.value === pluginTab) ? pluginTab : pluginTabs[0]?.value ?? 'connected'
-  const navigationOptions = integrationNavigationOptions(visibleTabs, pluginTabs)
+  const navigationOptions = [...integrationNavigationOptions(visibleTabs, pluginTabs), ...(canEdit ? [{ value: 'agents', label: 'Agents from your computer', icon: Laptop }] : [])]
   const selectConnection = (target: string) => {
+    if (target === 'agents' && canEdit) { setSharing(false); setOverview(false); setTab('agents'); return }
     if (target === 'use-share' || target === 'people') { setSharing(true); setShareChannel('overview'); return }
     if (target === 'cli' || (target === 'slack-app' && visibleTabs.some(option => option.value === 'slack')) || (target === 'whatsapp' && visibleTabs.some(option => option.value === 'whatsapp'))) { setSharing(true); setShareChannel(target as UseShareChannel); return }
     if (target === 'overview' || target === 'apps') { setSharing(false); setOverview(true); setTab('apps'); return }
@@ -189,6 +192,8 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
         {sharing ? <>
           {shareChannel === 'overview' ? <UseSharePanel workspacePath={workspacePath} slack={visibleTabs.some(option => option.value === 'slack')} whatsapp={visibleTabs.some(option => option.value === 'whatsapp')} onChannel={selectConnection} onDashboard={onOpenDashboard} /> : shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <WorkflowBotsPanel channelOnly workspacePath={workspacePath} fixedChannel={shareChannel === 'slack-app' ? 'slack' : 'whatsapp'} scopeNoun="project" ownBotOnly={product.profileId === 'code'} onAsk={onAsk} target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }} />}
         </> : <>
+        {overview && canEdit && <button type="button" onClick={() => selectConnection('agents')} className="mb-4 flex w-full items-center gap-2 rounded-md border border-border p-3 text-left text-sm hover:bg-muted/40"><Laptop className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />Agents from your computer</button>}
+        {activeTab === 'agents' && canEdit && <CrewPublishedAgents key={`${product.profileId}:${projectId}`} profileId={product.profileId} projectId={projectId} />}
         {overview && <ConnectedProjectAccounts workspacePath={workspacePath} options={navigationOptions} onOpen={selectConnection} />}
         {activeTab === 'apps' && <ProjectPluginsPanel tab={activePluginTab}
           connections={(!enabledPanels || enabledPanels.has('mcp')) ? (view => product.profileId === 'code' ? (<ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun={product.noun} canEdit={canEdit} onAsk={onAsk} selectedServers={selectedServers} onSelectedServersChange={async servers => {

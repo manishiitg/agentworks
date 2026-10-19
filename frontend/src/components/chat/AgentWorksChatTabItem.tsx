@@ -12,6 +12,7 @@ export interface AgentWorksChatTabItemProps {
   isBlank: boolean
   displayName?: string
   titleOverride?: string
+  workspaceActivity?: 'running' | 'waiting' | null
   productSurface?: ProductSurface
   onTabClick: (tabId: string) => void
   onCloseTab: (tabId: string) => void

@@ -31,7 +31,7 @@ import { activateTab } from '../../utils/activateTab'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { loadWorkProductCommands } from './workData'
 import { CREW_PRODUCT, ProjectProductProvider, type ProjectProductConfig } from './projectProduct'
-import { CrewPublishedAgents } from './CrewPublishedAgents'
+import { workProjectActivity, workSideChatDisplayName } from './workProjectPresentation'
 import { CreateCodeWorkspaceDialog } from './CreateCodeWorkspaceDialog'
 import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
@@ -584,6 +584,7 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
     ))
     .sort((a, b) => a.tabId === canonicalTabId ? -1 : b.tabId === canonicalTabId ? 1 : a.createdAt - b.createdAt)
   const sideChats = tabs.filter(tab => isWorkSideChatTab(tab, projectId))
+  const projectActivity = useChatStore(state => workProjectActivity(state.activeSessionsCache, tabs, projectId))
   const selectTab = (nextTabId: string) => { activateTab(nextTabId) }
   const closeProjectTab = (closingTabId: string) => {
     void closeWorkspaceChatTab(closingTabId, canonicalTabId).catch(() => {
@@ -733,8 +734,9 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
         isActive={tab.tabId === activeTabId}
         canClose={tab.tabId !== canonicalTabId}
         isBlank={false}
-        displayName={tab.tabId === canonicalTabId ? projectName : tab.name}
-        titleOverride={tab.tabId === canonicalTabId ? projectName : undefined}
+        displayName={tab.tabId === canonicalTabId ? projectName : isWorkSideChatTab(tab, projectId) ? workSideChatDisplayName(tab.name) : tab.name}
+        workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined}
+        titleOverride={tab.tabId === canonicalTabId ? projectName : isWorkSideChatTab(tab, projectId) ? workSideChatDisplayName(tab.name) : undefined}
         productSurface={tab.tabId === canonicalTabId ? (tab.metadata?.agentProfileId === 'code' ? 'code' : 'work') : undefined}
         onTabClick={selectTab}
         onCloseTab={closeProjectTab}
@@ -742,23 +744,7 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
         onRenameTab={isWorkSideChatTab(tab, projectId) ? renameSideChat : undefined}
       />)}
       </div>
-      {allowSideChats && <CrewPublishedAgents profileId={profileId} projectId={projectId} onOpen={async chat => {
-        const state = useChatStore.getState()
-        const existing = Object.values(state.chatTabs).find(tab => tab.sessionId === chat.session_id)
-        if (existing) { activateTab(existing.tabId); return }
-        const primary = state.chatTabs[canonicalTabId]
-        if (!primary) return
-        const id = await state.createChatTab(chat.name, { ...primary.metadata, agentProfileBuilder: false,
-          agentProfileConversationKey: chat.conversation_key, agentProfileConversationId: chat.conversation_id,
-          agentProfileEngine: chat.provider, agentProfileModelID: chat.model_id, agentProfileConnectionID: chat.connection_id,
-          agentProfileChatProvider: chat.provider, agentProfileChatConnectionID: chat.connection_id,
-          agentProfileMCPSelectionInitialized: true,
-        }, chat.session_id)
-        useChatStore.getState().renameTab(id, chat.name)
-        useChatStore.getState().setTabConfig(id, { selectedServers: primary.config.selectedServers, selectedSkills: primary.config.selectedSkills })
-        activateTab(id)
-        await hydrateTabEvents(chat.session_id, { workspacePath: primary.metadata?.agentProfileWorkspace, fallbackToChatHistory: true, preferChatHistory: true })
-      }} />}
+
 
       {allowSideChats && newTabName !== null && (
         <form

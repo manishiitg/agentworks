@@ -30,7 +30,6 @@ import { ProductSurfaceSwitcher } from './ProductSurfaceSwitcher'
 import { ProductTopBar, ProductTopBarActions, ProductTopBarMain, ProductNavigationLabel } from './workspace/ProductTopBar'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import WorkspaceTopBarControls from './WorkspaceTopBarControls'
-import { RuntimeBrandLogo } from './branding/RuntimeBrandLogo'
 import McpControl from './topbar/McpControl'
 import UsersControl from './topbar/UsersControl'
 import VaultsControl from './topbar/VaultsControl'
@@ -625,7 +624,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
   }, [showPresetDropdown, selectedModeCategory, presetsLoading, refreshPresets, getPresetsForMode])
 
   const workspaceTitleNavigation = useProductNavigationToolbarStore(state => !!state.workspaceTrigger && !!state.target && state.targetKind !== 'page')
-  const sidebarHasBrand = useProductNavigationToolbarStore(state => !!state.sidebarSettingsTarget)
   const hasWorkspacePicker = Boolean(productControl) || selectedModeCategory === 'workflow'
 
   return (
@@ -633,7 +631,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
       <ProductTopBar sidebar>
           {/* Product and current automation */}
           <ProductTopBarMain>
-            {!sidebarHasBrand && <RuntimeBrandLogo className="mr-1" />}
             {/* Product-level navigation stays separate from AgentWorks modes. */}
             {!workspaceTitleNavigation && !hasWorkspacePicker && <ProductSurfaceSwitcher className="mr-1" />}
             {!activityMonitorInWorkspace && (reduced || isGlobalPage || selectedModeCategory !== 'workflow' || !activePreset) && <GlobalActivityMonitor />}
