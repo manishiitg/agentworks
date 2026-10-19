@@ -209,8 +209,8 @@ Claude's native input queue, preserving its handling of tools and typed drafts.
 It does not relay tool approvals.
 
 The channel includes `message_id`, sender and `inbox_id`. The receiving agent calls
-`the agentworks tool (action=ack)(delivery="admitted")` when it receives the event and
-`the agentworks tool (action=ack)(delivery="processed")` after handling it. A successful HTTP send
+`the agentworks tool (action=ack)(delivery="processed")` once after handling it;
+this also records admission. An earlier `admitted` receipt is optional. A successful HTTP send
 or notification write alone leaves the receipt `stored`. Explicit
 `the agentworks tool (action=reply)` uses the original conversation and attached identity.
 Reconnecting uses exponential backoff capped at 30 seconds; acknowledged messages
@@ -308,7 +308,8 @@ cannot register another identity, read another agent, or use the general tool
 catalog. It supports named-agent messaging; product calls need a separate connection. Before releasing
 cached messages it rechecks attachment, current sender and receiver authority and
 message retention on the server. Writes and SDK enqueues are offers, not fabricated
-admitted receipts. Claude/hook receivers acknowledge admitted and processed;
+admitted receipts. Claude/hook receivers acknowledge processed once after handling
+(also records admission), with an optional earlier admitted receipt;
 Codex queue exit zero proves native queue admission, with processed still explicit.
 Replies retain the original conversation.
 
@@ -611,8 +612,8 @@ added by Claude; this cadence only controls AgentWorks text. Sender content cann
 attach or detach a session or grant permissions.
 
 A native receiver whose plugin has not been reloaded can use the narrow fallback
-`agentworks bridge message ack --provider claude --message-id ID --delivery admitted`
-and then `processed`, or `bridge message reply --provider claude --message-id ID
+`agentworks bridge message ack --provider claude --message-id ID --delivery processed`
+after handling the message, or `bridge message reply --provider claude --message-id ID
 --message TEXT --submission-id ID`. The same command also offers `send`, `read`
 and `peers` for this exact attached session. These commands use the exact provider ancestor
 and private local child connection. Codex requires its host `CODEX_THREAD_ID` and the stored provider process key;

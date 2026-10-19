@@ -43,7 +43,7 @@ async function harness(t, options = {}) {
     if (input.action === 'read') { res.end(JSON.stringify({ attached, attachment: attachment(), result: { messages: [...history.values()].filter(m => m.attachment_id === lease) } })); return; }
     if (input.action === 'ack') {
       if (input.delivery === 'processed') {
-        if (!nativeAdmitted.has(input.message_id)) { res.end(JSON.stringify({ error: 'AgentWorks not_admitted (HTTP 409): PRIVATE_ERROR_TAIL' })); return; }
+        nativeAdmitted.add(input.message_id);
         processed.add(input.message_id);
       }
       else {
@@ -159,8 +159,9 @@ test('real Pi: idle push, busy tool follow-up, exact receipt, replay and revoke'
   await until(() => userMessage(h.events, 'unacknowledged'), 'display without receiver acknowledgement');
   await new Promise(resolve => setTimeout(resolve, 300));
   assert.equal(admitted(h.requests, 'unacknowledged'), undefined, 'native display alone does not admit');
-  await h.command('prompt', { message: 'ADMITTED:unacknowledged' });
-  await until(() => admitted(h.requests, 'unacknowledged'), 'explicit receiver acknowledgement');
+  await h.command('prompt', { message: 'PROCESSED:unacknowledged' });
+  await until(() => h.processed.has('unacknowledged'), 'one explicit processed receipt also admits');
+  assert.equal(admitted(h.requests, 'unacknowledged'), undefined, 'processed needs no separate admitted call');
 
   h.events.length = 0;
   await h.command('prompt', { message: 'BUSY_TOOL' });
@@ -248,9 +249,9 @@ test('real Pi: refused/lost receipts do not block delivery or downgrade processe
   h.offer('transient');
   await until(() => admitted(h.requests, 'transient'), 'first admission temporarily fails');
   await h.command('prompt', { message: 'PROCESSED:transient' });
-  await until(() => h.processed.has('transient'), 'processing completes receiver-requested admission before its retry timer');
+  await until(() => h.processed.has('transient'), 'processing replaces the pending admission retry');
   const transit = h.requests.filter(r => r.message_id === 'transient' && r.action === 'ack');
-  assert.deepEqual(transit.map(r => r.delivery), ['admitted', 'admitted', 'processed']);
+  assert.deepEqual(transit.map(r => r.delivery), ['admitted', 'processed']);
   assert.equal(JSON.stringify(h.events).includes('PRIVATE_ERROR_TAIL'), false);
   h.waitLong();
   h.failures.set('timer', 'transient'); h.offer('timer');

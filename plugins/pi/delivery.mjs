@@ -52,7 +52,7 @@ export function formatDelivery(message, lease) {
   const note = truncated ? `\n[message truncated: read the full text with the agentworks tool (action=read) inbox ${inboxId}]` : '';
   const fenced = `<<<BEGIN ${id}>>>\n${body}${note}\n<<<END ${id}>>>`;
   return `${senderLine(message)}\n${fenced}\nreply: inbox ${inboxId} · ack: message ${id} · lease ${sanitizeToken(lease)}` +
-    '\nUse the registered AgentWorks tools: acknowledge admitted when received, processed after handling; reply explicitly in the original inbox. Only the person controls attachment.';
+    '\nUse the registered AgentWorks tools: acknowledge processed once after handling (also records admission); admitted is optional for an earlier receipt; reply explicitly in the original inbox. Only the person controls attachment.';
 }
 
 // The line that opens a batch: how many peer messages are being handed over, from whom, and how old the oldest is.
@@ -338,24 +338,10 @@ export class Delivery {
   }
 
   async action(action, id, extra = {}) {
-    if (!this.attachment || !this.accepted.has(id)) throw new Error('Message was not received in this attached Pi session');
+    if (!this.attachment || action !== 'reply' && !this.accepted.has(id)) throw new Error('Message was not received in this attached Pi session');
     const generation = this.generation;
     return this.serialize(generation, async () => {
-      // Complete an admission the receiver already explicitly requested, even
-      // when its retry timer has not fired. Display alone never creates intent.
-      if (action === 'ack' && extra.delivery === 'processed' && this.receipts.has(id)) {
-        const admission = await this.bridge.call({ action: 'ack', session_id: this.session,
-          host_key: this.host, attachment_id: this.attachment.attachment_id,
-          message_id: id, delivery: 'admitted' }, { signal: this.controller.signal });
-        if (!this.current(generation)) throw new Error('AgentWorks attachment is no longer active');
-        if (!admission.attached || admission.attachment?.attachment_id !== this.attachment.attachment_id) {
-          this.leaseChanged(); throw new Error('AgentWorks attachment is no longer active');
-        }
-        this.journal(acknowledgedEntry, id);
-        this.receipts.delete(id); this.receiptRetry.delete(id);
-      }
-      if (action === 'ack' && extra.delivery === 'admitted') {
-        if (this.processed.has(id)) throw new Error('Message is already processed');
+      if (action === 'ack' && extra.delivery === 'admitted' && !this.processed.has(id)) {
         this.journal(requestedEntry, id);
         this.receipts.add(id);
       }
@@ -371,7 +357,7 @@ export class Delivery {
       }
       if (action === 'ack' && extra.delivery === 'processed') {
         this.processed.add(id);
-        this.receipts.delete(id);
+        this.receipts.delete(id); this.receiptRetry.delete(id);
         this.journal(processedEntry, id);
       }
       return result.result;

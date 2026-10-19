@@ -87,9 +87,8 @@ receipt. The receiving agent explicitly uses the registered schemas:
 
 The extension registers one tool, `agentworks`, whose `action` argument picks the operation:
 
-- `action: "ack"` (`message_id`, `delivery`): admitted on receipt, processed after
-  handling. Processing completes a pending admission the receiver already requested;
-  display alone never creates admission intent.
+- `action: "ack"` (`message_id`, `delivery`): processed once after handling, which also records
+  admission. An earlier admitted receipt is optional; display alone never acknowledges.
 - `action: "reply"` (`message_id`, `message`, `submission_id`): optional reply in
   the original inbox; keep the same submission ID after uncertain results.
 - `action: "peers"`: discover authorized names for this attached identity.

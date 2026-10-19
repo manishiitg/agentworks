@@ -91,7 +91,7 @@ export default function (pi: ExtensionAPI) {
     read: { needs: [], run: args => delivery.control('read', { inbox_id: args.inbox_id, after: args.after }) },
   };
   register('agentworks',
-    'AgentWorks messaging for this attached Pi session. Set action: ack (message_id, delivery=admitted on receipt or processed after handling; native display alone never acknowledges), reply (message_id, message, submission_id; optional reply, reuse submission_id after an uncertain retry), peers (discover authorized named agents), set_purpose (purpose, one line up to 512 characters, at most once per minute), send (target, message, submission_id; only agents the person authorized contacting), read (optional inbox_id and after; explicit bounded mailbox recovery, never a polling loop).',
+    'AgentWorks messaging for this attached Pi session. Set action: ack (message_id, delivery=processed once after handling, also records admission; admitted is optional for an earlier receipt; native display alone never acknowledges), reply (message_id, message, submission_id; optional reply, reuse submission_id after an uncertain retry), peers (discover authorized named agents), set_purpose (purpose, one line up to 512 characters, at most once per minute), send (target, message, submission_id; only agents the person authorized contacting), read (optional inbox_id and after; explicit bounded mailbox recovery, never a polling loop).',
     Type.Object({
       action: Type.Union(Object.keys(actions).map(name => Type.Literal(name))),
       message_id: Type.Optional(Type.String()),
