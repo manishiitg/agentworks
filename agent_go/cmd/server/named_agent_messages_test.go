@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -139,6 +140,26 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 	agentMessageMu.Unlock()
 	if e != nil || len(saved.Agents) != 2 || saved.NextAgentSequence != 5 {
 		t.Fatalf("durable registration/cursor: %+v %v", saved, e)
+	}
+	// Active review conversations must continue beyond the former shared
+	// forty-message hourly budget, retaining the original inbox and receipts.
+	for i := 0; i < 45; i++ {
+		client, name, target := worker, "worker", "reviewer"
+		if i%2 == 1 {
+			client, name, target = owner, "reviewer", "worker"
+		}
+		args := map[string]any{"action": "send", "agent_name": name, "target": "agent:" + target, "message": "Review update", "submission_id": fmt.Sprintf("review-burst-%d", i)}
+		accepted := call(client, args, true)
+		if accepted["inbox_id"] != inbox || accepted["sequence"] != float64(4+i) {
+			t.Fatalf("active conversation split or stopped: %v", accepted)
+		}
+		if retry := call(client, args, true); retry["message_id"] != accepted["message_id"] {
+			t.Fatal("burst retry changed the receipt")
+		}
+	}
+	retained := call(owner, map[string]any{"action": "read", "agent_name": "reviewer", "inbox_id": inbox}, true)["messages"].([]any)
+	if len(retained) == 0 || retained[0].(map[string]any)["message_id"] != receipt["message_id"] {
+		t.Fatal("active conversation lost its original message")
 	}
 	call(owner, map[string]any{"action": "register", "agent_name": "reviewer", "allowed_connection_ids": []string{workerToken.ID}}, true)
 	call(worker, map[string]any{"action": "read", "agent_name": "reviewer"}, true)

@@ -515,17 +515,6 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			}
 		}
 	}
-	// Admission budgets are delivery controls, not conversational loop detection.
-	recent := 0
-	for _, m := range c.Messages {
-		if time.Since(m.SentAt) < time.Hour {
-			recent++
-		}
-	}
-	if recent >= 40 {
-		agentMessageMu.Unlock()
-		return nil, fmt.Errorf("conversation message limit reached; check back later")
-	}
 	if len(c.Messages) >= agentMessageKeep {
 		if c.Messages[0].Delivery == "pending" || c.Messages[0].Delivery == "dispatching" {
 			agentMessageMu.Unlock()
