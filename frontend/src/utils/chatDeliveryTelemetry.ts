@@ -12,6 +12,7 @@ export type ChatDeliveryTelemetryPhase =
   | 'catchup_received'
   | 'processed'
   | 'painted'
+  | 'tab_reorder'
 
 export type ChatDeliveryTelemetryEvent = {
   sequence: number
@@ -21,6 +22,7 @@ export type ChatDeliveryTelemetryEvent = {
   event_type?: string
   transport?: string
   tab_id?: string
+  target_tab_id?: string
   client_time: string
   performance_ms: number
   server_event_time?: string
@@ -161,6 +163,17 @@ export function recordChatSubmissionTelemetry(
     cli_accepted_at: details.cliAcceptedAt,
     server_to_cli_ms: details.serverToCLIMS,
   })
+  if (timer === undefined) timer = window.setTimeout(flush, 100)
+}
+
+/** Drag/drop diagnostics share the existing bounded, content-free transport.
+ * IDs only: never chat names, messages, paths or drag payload contents. */
+export function recordTabReorderTelemetry(sessionId: string, attemptId: string, status: 'start' | 'drop' | 'cancel' | 'saved' | 'failed' | 'no_change', sourceTabId: string, targetTabId?: string) {
+  if (typeof window === 'undefined' || !sessionId) return
+  if (queue.length >= MAX_QUEUED_EVENTS) queue.shift()
+  queue.push({ sequence: ++sequence, phase: 'tab_reorder', session_id: sessionId, submission_id: attemptId,
+    event_type: 'chat_tab', tab_id: sourceTabId, target_tab_id: targetTabId, delivery_status: status,
+    client_time: new Date().toISOString(), performance_ms: Math.round(performance.now() * 1000) / 1000 })
   if (timer === undefined) timer = window.setTimeout(flush, 100)
 }
 

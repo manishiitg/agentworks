@@ -3,10 +3,14 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CreateWorkProjectDialog } from './CreateWorkProjectDialog'
-import { normalizeWorkWorkspaceView } from './WorkSurface'
+import { normalizeWorkWorkspaceView, WorkChatTabs } from './WorkSurface'
+import { useChatStore, type ChatTab } from '../../stores/useChatStore'
+import { agentApi } from '../../services/api'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { routeView } from '../../utils/productRoutes'
 import { crewTemplates, type CrewTemplateId } from './crewTemplates'
+
+vi.mock('../../utils/chatDeliveryTelemetry', async original => ({ ...await original<typeof import('../../utils/chatDeliveryTelemetry')>(), recordTabReorderTelemetry: vi.fn() }))
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 // RunsOnPicker loads the provider manifest in an effect. This runner has no working
@@ -272,5 +276,33 @@ describe('CreateWorkProjectDialog', () => {
     expect((container.querySelector('[data-testid="work-create-project-name-input"]') as HTMLInputElement).value).toBe('Template 000')
 
     await act(async () => { root.unmount() })
+  })
+})
+
+
+describe('Crew native tab dragging', () => {
+  it.each(['a', 'b'])('keeps a drag source and drop target working while %s is selected', async active => {
+    const make = (id: string, position: number) => ({ tabId: id, sessionId: `session-${id}`, name: id, createdAt: position, config: {}, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileConversationKey: id === 'main' ? 'crew' : `crew:chat:${id}`, agentProfileTabPosition: position } } as ChatTab)
+    useChatStore.setState({ chatTabs: { main: make('main', 0), a: make('a', 1), b: make('b', 2) }, activeTabId: active })
+    const list = vi.spyOn(agentApi, 'listAgentProfileSideChats').mockResolvedValue([])
+    const order = vi.spyOn(agentApi, 'orderAgentProfileSideChats').mockResolvedValue([{ conversation_key: 'crew:chat:b', session_id: 'session-b', name: 'b', position: 1 }, { conversation_key: 'crew:chat:a', session_id: 'session-a', name: 'a', position: 2 }])
+    const host = document.createElement('div'); document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats />))
+      const dataTransfer = { setData: vi.fn(), effectAllowed: '', dropEffect: '' }
+      const gesture = (kind: string, node: Element) => { const event = new Event(kind, { bubbles: true, cancelable: true }); Object.defineProperty(event, 'dataTransfer', { value: dataTransfer }); node.dispatchEvent(event) }
+      await act(async () => gesture('dragstart', host.querySelector('[data-chat-tab-id="a"]')!))
+      expect(dataTransfer.setData).toHaveBeenCalledWith('application/x-agentworks-chat-key', 'crew:chat:a')
+      await act(async () => gesture('dragover', host.querySelector('[data-chat-tab-id="b"]')!))
+      await act(async () => gesture('drop', host.querySelector('[data-chat-tab-id="b"]')!))
+      expect(order).toHaveBeenCalledWith('work', 'crew', ['crew:chat:b', 'crew:chat:a'])
+      const menu = host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!
+      expect(menu.textContent).toContain('Chats · 3')
+      await act(async () => menu.click())
+      expect(host.querySelector('[aria-label="Project chats"]')?.textContent).toContain('a')
+      expect(host.querySelector('[aria-label="Move a earlier"]')).not.toBeNull()
+      expect(host.querySelector('[aria-label="Close a"]')).not.toBeNull()
+    } finally { await act(async () => root.unmount()); host.remove(); list.mockRestore(); order.mockRestore() }
   })
 })

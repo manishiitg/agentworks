@@ -72,3 +72,13 @@ func TestClientChatTelemetryAcceptsSendDecisionAndStagedPhases(t *testing.T) {
 		}
 	}
 }
+
+func TestClientChatTelemetryAcceptsTabGestureIDs(t *testing.T) {
+	api := &StreamingAPI{}
+	req := httptest.NewRequest(http.MethodPost, "/api/client-telemetry/chat-delivery", strings.NewReader(`{"page_id":"page-1","events":[{"phase":"tab_reorder","session_id":"main-session","tab_id":"source-tab","target_tab_id":"target-tab","submission_id":"gesture-1","delivery_status":"drop","client_time":"2026-10-19T14:00:00Z"}]}`))
+	w := httptest.NewRecorder()
+	api.handleClientChatTelemetry(w, req)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+}
