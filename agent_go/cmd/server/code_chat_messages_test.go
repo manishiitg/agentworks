@@ -70,3 +70,35 @@ func TestCodeMessagingListsOnlySiblingChats(t *testing.T) {
 		t.Fatal("explicit messaging tool absent")
 	}
 }
+
+// The tabs of a Crew are equal agents that find each other (PLAT-861-262),
+// but only in the owner's own turns: another person's turn in that Crew
+// never reaches the owner's tabs.
+func TestCrewTabsFindEachOtherOnlyForTheOwner(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	env.api.agentProfiles = env.svc.registry
+	ctx := internalBotRequestContext(t.Context(), "owner")
+	profile, err := env.svc.registry.Resolve("work", 0, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, owned, err := resolveConversationBindingForUser(ctx, "owner", profile, "beta")
+	if err != nil || !owned {
+		t.Fatalf("owner binding = %v %v", owned, err)
+	}
+	conversation, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, "owner", profile, binding, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := env.api.codeChatsFor(ctx, "owner", conversation.SessionID, binding.WorkspacePath)
+	if err != nil || project.ProfileID != "work" || project.Self.ID != codeChatMainName {
+		t.Fatalf("owner's Crew chat = %+v, %v", project, err)
+	}
+	if target := codeChatTarget(project, project.Self, binding.WorkspacePath); target.CrewProfile != "work" {
+		t.Fatalf("a Crew tab is addressed as %q", target.CrewProfile)
+	}
+	other := internalBotRequestContext(t.Context(), "other")
+	if _, err := env.api.codeChatsFor(other, "other", conversation.SessionID, binding.WorkspacePath); err == nil {
+		t.Fatal("another person's turn reached the owner's Crew tabs")
+	}
+}

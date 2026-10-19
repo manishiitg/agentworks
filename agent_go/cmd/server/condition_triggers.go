@@ -403,7 +403,7 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 		_ = RenameChatHistorySession(job.UserID, conversation.SessionID, job.WorkspacePath, newWatcherChatName(job.Schedule.Name, ev.ID))
 	}
 	chat := codeChat{Key: chatKey, ID: chatID, Name: "Code agent", SessionID: conversation.SessionID}
-	target := codeChatTarget(codeChatProject{OwnerID: job.UserID, ProjectID: job.ProjectID}, chat, job.WorkspacePath)
+	target := codeChatTarget(codeChatProject{OwnerID: job.UserID, ProfileID: codeproduct.ProfileID, ProjectID: job.ProjectID}, chat, job.WorkspacePath)
 	payload, _ := json.Marshal(ev.Payload)
 	if len(payload) > 8*1024 {
 		return "", conditiontrigger.PermanentError{Err: errors.New("agent event payload exceeds 8 KiB")}

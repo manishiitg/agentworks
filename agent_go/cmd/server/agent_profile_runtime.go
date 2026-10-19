@@ -1028,11 +1028,13 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			}
 		}
 	}
-	// The chats (tabs) of one Code message each other (PLAT-648).
-	if !readOnly && activeWorkProject && resolved.Definition.ID == codeproduct.ProfileID {
+	// The chats (tabs) of one Code or Crew message each other as equal agents (PLAT-648, PLAT-861-262).
+	if !readOnly && activeWorkProject && (resolved.Definition.ID == codeproduct.ProfileID || resolved.Definition.ID == crewProfileID) {
 		if err := api.registerCodeChatTools(registrar, gate, userID, sessionID, workspacePath); err != nil {
 			return err
 		}
+	}
+	if !readOnly && activeWorkProject && resolved.Definition.ID == codeproduct.ProfileID {
 		if err := api.registerCodeCrewTools(registrar, gate, userID, sessionID, workspacePath); err != nil {
 			return err
 		}
