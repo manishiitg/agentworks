@@ -1,4 +1,4 @@
-import { currentServiceChatRequest, useServiceChatNavigation } from '../../utils/serviceChatNavigation'
+import { clearServiceChatRequest, currentServiceChatRequest, useServiceChatNavigation } from '../../utils/serviceChatNavigation'
 import { currentProductRoute } from '../../utils/productRoutes'
 import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { useWorkspaceViewPreference } from '../../hooks/useWorkspaceViewPreference'
@@ -109,7 +109,10 @@ export function KnowledgebaseSurface() {
     setFolder(currentProductRoute()?.surface === 'knowledgebase' ? currentProductRoute()?.folder ?? '' : '')
   }, [scope, drag.stop])
   useEffect(() => {
-    if (navigation && canManage) { chat.request(); setOpenScope(scope); setMobilePane('workspace') }
+    if (navigation && canManage) {
+      chat.request(); setOpenScope(scope); setMobilePane('workspace')
+      return () => clearServiceChatRequest(navigation)
+    }
   }, [navigation, canManage, scope])
   useEffect(() => {
     if (chatOpen && chat.tabId && !globalPage) activateTab(chat.tabId)

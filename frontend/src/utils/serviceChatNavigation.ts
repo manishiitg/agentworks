@@ -12,3 +12,7 @@ export function requestServiceChat(surface: ServiceChatSurface, tabId?: string) 
 export function currentServiceChatRequest(request: Request | null, surface: ServiceChatSurface) {
   return request?.surface === surface && isChatIdentityCurrent(request.identity) ? request : null
 }
+
+export function clearServiceChatRequest(request: Request) {
+  useServiceChatNavigation.setState(state => state.request === request ? { request: null } : state)
+}
