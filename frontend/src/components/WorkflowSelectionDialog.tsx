@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useId } from 'react'
 import { Layers, Search } from 'lucide-react'
 import { listFunctionReferences, type FunctionReference } from '../api/functionReferences'
 import { workflowManifestApi } from '../services/api'
@@ -39,6 +39,8 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
   position,
   includePulse = false
 }) => {
+  const listID = useId()
+  const rowID = (item: WorkflowItem) => `${listID}-${encodeURIComponent(referenceRowKey(item))}`
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null)
   const [localQuery, setLocalQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -260,6 +262,11 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
           <input
             ref={searchInputRef}
             type="text"
+            role="combobox"
+            aria-label="Search references"
+            aria-expanded="true"
+            aria-controls={listID}
+            aria-activedescendant={selectedWorkflow ? rowID(selectedWorkflow) : undefined}
             placeholder="Search workflows and Crews..."
             value={localQuery}
             onChange={e => setLocalQuery(e.target.value)}
@@ -275,7 +282,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
       </div>
 
       {/* Workflow list */}
-      <div ref={listRef} className="overflow-y-auto max-h-64">
+      <div ref={listRef} id={listID} role="listbox" aria-label="Projects and functions" className="overflow-y-auto max-h-64">
         {filteredWorkflows.length === 0 ? (
           <div className="px-3 py-4 text-center text-muted-foreground text-sm">
             {loadingReferences ? 'Loading accessible references…' : loadError ? 'Unable to load accessible references. Close and reopen to retry.' : localQuery ? 'No references found' : 'No accessible workflows or Crews available'}
@@ -284,6 +291,9 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
           filteredWorkflows.map(workflow => (
             <div key={workflow.presetId}>
             <div
+              id={rowID(workflow)}
+              role="option"
+              aria-selected={selectedWorkflow === workflow}
               data-reference-row
               className={`px-3 py-2 cursor-pointer flex items-center gap-2 text-sm transition-colors ${
                 selectedWorkflow === workflow
@@ -308,8 +318,10 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
                 ? <p className="py-2 text-xs text-muted-foreground" role="status">{functionResult.loading ? 'Loading functions…' : functionResult.error || 'No published functions yet.'}</p>
                 : functionResult.items.map(fn => <button
                     type="button" key={fn.name}
+                    id={rowID({ ...workflow, functionName: fn.name })}
+                    role="option"
                     data-reference-row
-                    aria-pressed={selectedWorkflow?.presetId === workflow.presetId && selectedWorkflow?.functionName === fn.name}
+                    aria-selected={selectedWorkflow?.presetId === workflow.presetId && selectedWorkflow?.functionName === fn.name}
                     className={`block w-full rounded px-2 py-1.5 text-left ${selectedWorkflow?.presetId === workflow.presetId && selectedWorkflow?.functionName === fn.name ? 'bg-primary/10 text-primary' : 'hover:bg-muted'}`}
                     onMouseEnter={() => setSelectedPresetId(referenceRowKey({ ...workflow, functionName: fn.name }))}
                     onFocus={() => setSelectedPresetId(referenceRowKey({ ...workflow, functionName: fn.name }))}
