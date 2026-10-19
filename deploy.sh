@@ -447,6 +447,13 @@ echo "==> [$PRODUCT] Done."
 #   DEPLOY_SLACK_NOTIFY=1 ./deploy.sh confida
 # With no webhook set nothing is sent either, and a failed post never fails or delays a deploy.
 deploy_notify() {
+  if [[ -n "${DEPLOY_SLACK_BOT_CHANNEL:-}" ]]; then
+    python3 "$REPO_ROOT/deploy/common/slack-notice.py" \
+      --channel "$DEPLOY_SLACK_BOT_CHANNEL" --state "$DEPLOY_NOTICE_STATE" \
+      --phase "${2:-start}" --text "$1" \
+      --token-file "${DEPLOY_SLACK_BOT_TOKEN_FILE:-$HOME/.config/agentworks/agentworks-slack.env}" || true
+    return 0
+  fi
   local url="${DEPLOY_SLACK_WEBHOOK_URL:-}" file="${DEPLOY_SLACK_WEBHOOK_FILE:-$HOME/.config/agentworks/deploy-slack-webhook}"
   [[ -z "$url" && -r "$file" ]] && url="$(head -n1 "$file" | tr -d '[:space:]')"
   [[ -n "$url" ]] || return 0
@@ -493,6 +500,13 @@ deploy_changelog() {
 deploy_start_notice() {
   case "${DEPLOY_SLACK_NOTIFY:-0}" in 0|false|no|off) return 0 ;; esac
   [[ -n "$SERVER" && "$SERVER" != "-h" && "$SERVER" != "--help" ]] || return 0
+  DEPLOY_NOTICE_STARTED="$(date +%s)"
+  if [[ -n "${DEPLOY_SLACK_BOT_CHANNEL:-}" ]]; then
+    DEPLOY_NOTICE_STATE="$(mktemp "${TMPDIR:-/tmp}/agentworks-deploy-notice.XXXXXX")"
+    deploy_notify "${DEPLOY_SLACK_LABEL:-$(deploy_label)} is updating. Please pause testing; chats may disconnect briefly. Completion will be posted in this thread." start
+    trap 'deploy_finish_notice $?' EXIT
+    return 0
+  fi
   local head_line target changelog
   git -C "$REPO_ROOT" fetch -q origin main >/dev/null 2>&1 || true
   target="origin/main"
@@ -511,9 +525,9 @@ deploy_finish_notice() {
   [[ -n "${DEPLOY_NOTICE_STARTED:-}" ]] && took=" in $(( ($(date +%s) - DEPLOY_NOTICE_STARTED) / 60 )) min"
   trap - EXIT
   if [[ "$rc" == "0" ]]; then
-    deploy_notify ":white_check_mark: *$(deploy_label)* is deployed${took}. You can carry on."
+    deploy_notify ":white_check_mark: *${DEPLOY_SLACK_LABEL:-$(deploy_label)}* is deployed${took}. You can carry on." finish
   else
-    deploy_notify ":warning: The *$(deploy_label)* deploy finished${took} with a problem (exit $rc). It may still be on the previous release; the team is checking."
+    deploy_notify ":warning: The *${DEPLOY_SLACK_LABEL:-$(deploy_label)}* update hit a problem. Please pause testing while the team checks it." finish
   fi
   return "$rc"
 }
@@ -620,6 +634,13 @@ if [[ "$SERVER" == report ]]; then
   exec "$REPO_ROOT/deploy/common/profile-report-all.sh" "$@"
 fi
 
+# Private per-product notice settings decide which team hears about an update.
+notice_product="$SERVER"
+[[ "$SERVER" != excellence && "$SERVER" != all-hetzner ]] || notice_product=agents
+if [[ "$notice_product" =~ ^[a-z][a-z0-9-]{0,31}$ ]]; then
+  notice_config="$(deployments_dir)/products/$notice_product/deploy-notices.env"
+  [[ ! -f "$notice_config" ]] || source "$notice_config"
+fi
 deploy_start_notice
 
 case "$SERVER" in
