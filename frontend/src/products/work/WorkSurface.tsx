@@ -6,7 +6,7 @@ import { replaceProductSelection } from '../../utils/productUrlNavigation'
 import { markFeatureUsed } from '../../utils/featureUsage'
 import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../../utils/workspaceViewPreference'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { ChevronDown, Loader2, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, Loader2, Plus, Trash2, X } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { ProductChatLandingCard } from '../../components/chat/ProductChatLandingCard'
@@ -812,20 +812,36 @@ function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allow
             <div className="absolute left-0 top-8 z-50 min-w-48 rounded-md border border-border bg-popover p-1 shadow-md" role="menu">
               {moreTabs.map(tab => {
                 const key = isWorkSideChatTab(tab, projectId) ? tab.metadata?.agentProfileConversationKey : undefined
-                return <button
+                const label = isWorkSideChatTab(tab, projectId) ? workSideChatDisplayName(tab.name) : tab.name
+                return <div
                   key={tab.tabId}
-                  type="button"
                   role="menuitem"
                   draggable={!!key}
                   onDragStart={key ? event => { event.dataTransfer.effectAllowed = 'move'; setDraggingKey(key) } : undefined}
                   onDragOver={key && draggingKey && draggingKey !== key ? event => event.preventDefault() : undefined}
                   onDrop={key && draggingKey ? event => { event.preventDefault(); void moveSideChat(draggingKey, key) } : undefined}
                   onDragEnd={() => setDraggingKey(null)}
-                  onClick={() => { setMoreOpen(false); selectTab(tab.tabId) }}
-                  className={`block w-full truncate rounded px-2 py-1.5 text-left text-xs hover:bg-muted ${tab.tabId === activeTabId ? 'font-medium text-foreground' : 'text-muted-foreground'}`}
+                  className="group flex items-center rounded hover:bg-muted"
                 >
-                  {isWorkSideChatTab(tab, projectId) ? workSideChatDisplayName(tab.name) : tab.name}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMoreOpen(false); selectTab(tab.tabId) }}
+                    className={`min-w-0 flex-1 truncate px-2 py-1.5 text-left text-xs ${tab.tabId === activeTabId ? 'font-medium text-foreground' : 'text-muted-foreground'}`}
+                  >
+                    {label}
+                  </button>
+                  {tab.tabId !== canonicalTabId && (
+                    <button
+                      type="button"
+                      onClick={() => { setMoreOpen(false); closeProjectTab(tab.tabId) }}
+                      className="mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-gray-400 opacity-0 hover:bg-gray-200 hover:text-gray-700 focus:opacity-100 group-hover:opacity-100 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                      aria-label={`Close ${label}`}
+                      title="Close tab"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
               })}
             </div>
           )}
