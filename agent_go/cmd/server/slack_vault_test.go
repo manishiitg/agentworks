@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 )
 
 // Drive the website and native/MCP operation against the real encrypted bot
@@ -62,8 +63,15 @@ func TestSlackVaultSelectionPermissionsAcrossSurfaces(t *testing.T) {
 		body, _ := json.Marshal(map[string]any{"name": "settings", "arguments": map[string]any{
 			"workflow_id": "wf_alpha", "action": "slack_bot", "bot": map[string]any{"action": action, "connection_id": conn.ID},
 		}})
+		claims := slackConnectionClaims("alice")
 		rec := httptest.NewRecorder()
-		api.handleExternalCall(rec, adminRequest(http.MethodPost, "/api/external/call", string(body), slackConnectionClaims("alice"), nil))
+		api.handleExternalCall(rec, adminRequest(http.MethodPost, "/api/external/call", string(body), claims, nil))
+		if rec.Code != http.StatusForbidden {
+			t.Fatal("external MCP allowed bot setup without Builder consent")
+		}
+		claims.AccessToken = &accesstokens.Token{AllWorkflows: true, Scopes: []string{"builder:chat", "workflows:read", "files:read", "runs:execute"}}
+		rec = httptest.NewRecorder()
+		api.handleExternalCall(rec, adminRequest(http.MethodPost, "/api/external/call", string(body), claims, nil))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("external MCP %s: %d %s", action, rec.Code, rec.Body)
 		}
