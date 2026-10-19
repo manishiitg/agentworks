@@ -136,6 +136,35 @@ it('opens existing tabs through the shared navigator and hands recent Code histo
     expect(mocks.history).toHaveBeenCalledWith(30)
   })
 })
+it('labels remembered Goal Run chats from server kind while keeping one unnumbered Builder', async () => {
+  mocks.product = 'agentworks'
+  mocks.presets = [{ id: 'goal', label: 'Campaign', selectedFolder: { filepath: 'Workflow/campaign' } }]
+  const metadata = { mode: 'workflow', phaseId: 'workflow-builder', presetQueryId: 'goal', agentProfileBuilder: true }
+  mocks.tabs = {
+    main: { tabId: 'main', sessionId: 'main', name: 'Campaign', createdAt: 1, metadata },
+    one: { tabId: 'one', sessionId: 'pat-one', name: 'Campaign', createdAt: 1, metadata },
+    two: { tabId: 'two', sessionId: 'pat-two', name: 'Chat 2', createdAt: 1, metadata },
+    named: { tabId: 'named', sessionId: 'pat-named', name: 'Notes lookup', createdAt: 1, metadata },
+  }
+  mocks.builders = { goal: { session_id: 'main', sessions: {
+    main: { is_builder: true, kind: 'builder' },
+    'pat-one': { is_builder: false, kind: 'run' }, 'pat-two': { is_builder: false, kind: 'run' },
+    'pat-named': { is_builder: false, kind: 'run' },
+  } } }
+  mocks.history.mockResolvedValue({ sessions: [
+    { session_id: 'pat-one', created_at: '2026-10-19T15:00:00Z' },
+    { session_id: 'pat-two', created_at: '2026-10-19T16:00:00Z' },
+  ] })
+  await render(async host => {
+    expect(host.querySelectorAll('[aria-label="Chat · Goals"]')).toHaveLength(1)
+    const runs = [...host.querySelectorAll<HTMLButtonElement>('button')].filter(button => button.getAttribute('aria-label')?.startsWith('Run chat · Goals · Run'))
+    expect(runs).toHaveLength(2)
+    expect(runs[0].textContent).not.toBe(runs[1].textContent)
+    expect(runs.every(button => !button.getAttribute('aria-label')?.includes('1970'))).toBe(true)
+    expect(host.querySelector('[title="Notes lookup · Goals"]')?.textContent).toBe('Notes lookup')
+    expect(host.textContent).not.toMatch(/Chat [12]/)
+  })
+})
 it('discards an old account’s late history response', async () => {
   let finish!: (value: any) => void
   mocks.history

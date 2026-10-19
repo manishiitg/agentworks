@@ -360,7 +360,8 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     const scheduled = row.scheduled || / · Scheduled run$/i.test(row.title)
     const title = workspaceEntry || sidebarChatDisplayTitle({ ...row, scheduled }, workspaceTitle, genericChatNumber)
     const duplicateWorkspaceName = workspaceEntry && workspaces.filter(item => item.title === workspaceEntry).length > 1
-    const displayTime = scheduled ? row.runTime || 0 : row.group === 'Recent' ? row.time : 0
+    const runChat = row.workflowSessionKind === 'run'
+    const displayTime = scheduled || runChat ? row.runTime || row.createdTime || 0 : row.group === 'Recent' ? row.time : 0
     const date =
       displayTime > 0
         ? new Date(displayTime).toLocaleString(undefined, {
@@ -373,11 +374,11 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     const trigger = workflowTriggerLabel({ sessionId: row.id, triggeredBy: row.activity?.triggered_by })
     const origin = row.originLabel || (trigger === 'Scheduled' ? 'Schedule' : trigger) || ''
     const SourceIcon = origin === 'Slack' ? Slack : origin === 'WhatsApp' ? MessageCircle : trigger === 'Webhook' ? Webhook : scheduled ? CalendarClock : MessageSquare
-    const sourceLabel = origin || (scheduled ? 'Schedule' : 'Chat')
+    const sourceLabel = origin || (scheduled ? 'Schedule' : runChat ? 'Run' : 'Chat')
     const hasSourceIcon = !!workspaceEntry || !!origin || scheduled
     // Repeat times only when they distinguish otherwise identical runs. Exact
     // timestamps and origins remain in the hover/accessibility labels.
-    const repeatedRun = scheduled && rows.some(other => other.id !== row.id && other.scheduled &&
+    const repeatedRun = (scheduled || runChat) && rows.some(other => other.id !== row.id && (other.scheduled || other.workflowSessionKind === 'run') &&
       other.surface === row.surface && other.workflowId === row.workflowId &&
       other.projectId === row.projectId && other.workspace === row.workspace &&
       sidebarChatDisplayTitle(other, workspaceTitle) === title)
@@ -470,13 +471,13 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     ).length
     const waiting = workspace.chats.filter((row) => row.waiting).length
     const unnamedChats = workspace.chats
-      .filter((row) => row.title === workspace.title && !row.scheduled)
+      .filter((row) => !row.workflowId && row.title === workspace.title && !row.scheduled)
       .map((row) => row.id)
       .sort()
     const panelId = `sidebar-workspace-${index}`
     const only = workspace.chats.length === 1 ? workspace.chats[0] : null
     const onlyTab = only?.tabId ? tabs[only.tabId] : undefined
-    const primaryOnly = only && !only.scheduled && (!onlyTab || !canCloseWorkspaceChatTab(onlyTab, tabs)) && (only.builder || only.title === workspace.title)
+    const primaryOnly = only && !only.scheduled && only.workflowSessionKind !== 'run' && (!onlyTab || !canCloseWorkspaceChatTab(onlyTab, tabs)) && (only.builder || only.title === workspace.title)
     const workflowId = workspace.chats[0]?.workflowId
     const workflow = presets.find(preset => preset.id === workflowId)
     const workspaceInspections = workspace.surface === 'agentworks' && workflowId && workflow?.selectedFolder?.filepath ? <SidebarWorkspaceInspections

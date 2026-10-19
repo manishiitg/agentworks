@@ -43,8 +43,10 @@ func workflowBuilderPointerMutex(path string) *sync.Mutex {
 }
 
 func workflowBuilderHistoryKind(id, mode, bot, origin string) string {
-	// Persisted policy provenance wins, including Pulse with a non-scheduler ID.
-	if origin != "" && origin != "interactive" && origin != "notification" {
+	// Interactive and MCP Builder conversations are candidates for the one
+	// Builder. Automated provenance, including Pulse without a scheduler ID,
+	// stays a run; explicit Run mode and channel identities still win below.
+	if origin != "" && origin != "interactive" && origin != "notification" && origin != "external_builder" {
 		return "run"
 	}
 	if normalizeChatHistoryWorkshopMode(mode) == "run" || bot != "" || separateWorkflowConversation(id) ||

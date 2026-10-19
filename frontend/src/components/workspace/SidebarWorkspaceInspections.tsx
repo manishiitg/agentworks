@@ -54,7 +54,7 @@ export default function SidebarWorkspaceInspections({ workspace, workflowId, sco
       const date = receipts[0].inspection.started_at
       const title = `${origin}${date ? ` · ${new Date(date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}`
       return <div key={id}>
-        <div className="px-2 py-1 text-[10px] text-muted-foreground">{title}</div>
+        <div title={title} className="truncate px-2 py-1 text-[10px] text-muted-foreground">{title}</div>
         <SidebarStepInspections
           row={{ id, title, workspace, workflowId, surface: 'agentworks', group: 'Recent', waiting: false, time: 0 }}
           workspace={workspace} scope={scope} visible selected={selected} receipts={receipts}

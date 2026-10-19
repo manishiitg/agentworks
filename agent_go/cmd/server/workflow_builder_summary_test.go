@@ -35,6 +35,8 @@ func TestWorkflowBuilderSummaryKeepsOneOwnChatAndHistory(t *testing.T) {
 		api.activeSessions[id] = session
 	}
 	addLive("current", "alice", 0, nil)
+	chatPolicyRoles.Store("current", chatPolicyRoleSnapshot{Origin: "external_builder"})
+	t.Cleanup(func() { chatPolicyRoles.Delete("current") })
 	addLive("old-live", "alice", -time.Hour, nil)
 	addLive("bob-private", "bob", time.Hour, nil)
 	addLive("schedule-goallead--pulse_123", "alice", time.Hour, nil)
@@ -98,6 +100,8 @@ func TestWorkflowBuilderSummaryKeepsOneOwnChatAndHistory(t *testing.T) {
 		origin := "interactive"
 		if id == "pulse-marker" {
 			origin = "pulse"
+		} else if id == "current-saved" || id == "external-run-saved" {
+			origin = "external_builder"
 		}
 		data := fmt.Sprintf(`{"session_id":%q,"user_id":%q,"workshop_mode":%q,"runtime":{"chat_policy_role_origin":%q},"updated_at":%q,"conversation_history":[{"Role":"human","Parts":[{"Text":"private history"}]}]}`, id, user, mode, origin, now.Add(age).Format(time.RFC3339Nano))
 		if err := os.WriteFile(path, []byte(data), 0600); err != nil {
@@ -111,6 +115,7 @@ func TestWorkflowBuilderSummaryKeepsOneOwnChatAndHistory(t *testing.T) {
 	write("schedule-cron--job_123", "alice", "workshop", time.Hour)
 	write("wfask-external", "alice", "workshop", time.Hour)
 	write("run-saved", "alice", "run", time.Hour)
+	write("external-run-saved", "alice", "run", 2*time.Hour)
 	write("pulse-marker", "alice", "workshop", time.Hour)
 	assertCurrent("alice", "current-saved", "workspace")
 	assertCurrent("bob", "bob-saved", "workspace")
