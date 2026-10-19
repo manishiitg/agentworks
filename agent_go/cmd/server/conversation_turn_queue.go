@@ -258,13 +258,16 @@ func (api *StreamingAPI) conversationQueueOwners(sessionID string) []string {
 // callers. Documents and delayed principals remain isolated per caller.
 func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessionID string) (queuedConversationTurn, bool, error) {
 	var oldest queuedConversationTurn
+	var readErr error
 	for _, owner := range api.conversationQueueOwners(sessionID) {
 		lock := productConversationRegistryMutex(conversationTurnQueuePath(owner))
 		lock.Lock()
 		turns, err := api.readConversationTurnQueue(ctx, owner)
 		if err != nil {
 			lock.Unlock()
-			return queuedConversationTurn{}, false, err
+			logTurnQueue("cannot read queue for owner %s in session %s: %v", owner, sessionID, err)
+			readErr = errors.Join(readErr, err)
+			continue // One caller's unreadable document must not block others.
 		}
 		var head queuedConversationTurn
 		for _, turn := range turns {
@@ -288,7 +291,7 @@ func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessio
 		lock.Unlock()
 	}
 	if oldest.ID == "" {
-		return queuedConversationTurn{}, false, nil
+		return queuedConversationTurn{}, false, readErr
 	}
 	lock := productConversationRegistryMutex(conversationTurnQueuePath(oldest.UserID))
 	lock.Lock()
@@ -491,6 +494,7 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 		api.conversationTurnQueueMu.Unlock()
 		if err != nil {
 			logTurnQueue("cannot claim oldest turn for %s: %v", sessionID, err)
+			api.retryUnreadableConversationQueue(sessionID)
 		} else if pending {
 			// Admission or an explicit owner action changed a head while
 			// claiming. The next kick uses a fresh registered-owner snapshot.
@@ -499,6 +503,27 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 		return
 	}
 	go api.executeQueuedConversationTurn(turn)
+}
+
+// Reuse the one-watcher-per-session guard. A failed queue read keeps its
+// owner registered and gets another chance without spinning or blocking others.
+func (api *StreamingAPI) retryUnreadableConversationQueue(sessionID string) {
+	api.conversationTurnQueueMu.Lock()
+	if api.conversationTurnQueueWatching == nil {
+		api.conversationTurnQueueWatching = make(map[string]bool)
+	}
+	if api.conversationTurnQueueWatching[sessionID] || len(api.conversationTurnQueueOwners[sessionID]) == 0 {
+		api.conversationTurnQueueMu.Unlock()
+		return
+	}
+	api.conversationTurnQueueWatching[sessionID] = true
+	api.conversationTurnQueueMu.Unlock()
+	time.AfterFunc(5*time.Second, func() {
+		api.conversationTurnQueueMu.Lock()
+		delete(api.conversationTurnQueueWatching, sessionID)
+		api.conversationTurnQueueMu.Unlock()
+		api.kickConversationTurnQueue(sessionID)
+	})
 }
 
 const conversationTurnQueueWatchInterval = 2 * time.Second

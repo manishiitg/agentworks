@@ -431,3 +431,30 @@ func TestSharedSessionStopKeepsOtherCallersUnclaimedMessages(t *testing.T) {
 		t.Fatalf("waiting caller no longer dispatches: %+v %v %v", next, ok, err)
 	}
 }
+
+func TestUnreadableCallerQueueDoesNotBlockAnotherSharedSender(t *testing.T) {
+	for _, broken := range []string{"{invalid", `{"version":999,"turns":[]}`} {
+		files := map[string]string{}
+		api := newConversationTurnQueueTestAPI(files)
+		if _, _, err := api.enqueueConversationTurn(context.Background(), "alice", "shared", QueryRequest{AgentMode: "multi-agent", Query: "alice"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := api.enqueueConversationTurn(context.Background(), "bob", "shared", QueryRequest{AgentMode: "multi-agent", Query: "bob"}); err != nil {
+			t.Fatal(err)
+		}
+		files[conversationTurnQueuePath("alice")] = broken
+		turn, ok, err := api.claimOldestConversationTurn(context.Background(), "shared")
+		if err != nil || !ok || turn.UserID != "bob" {
+			t.Fatalf("Alice's broken queue blocked Bob: %+v %v %v", turn, ok, err)
+		}
+		if err := api.removeConversationTurn(context.Background(), turn); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok, err := api.claimOldestConversationTurn(context.Background(), "shared"); ok || err == nil {
+			t.Fatalf("unreadable owner's retry signal lost: %v %v", ok, err)
+		}
+		if !api.conversationTurnHasBacklog("alice", "shared") || files[conversationTurnQueuePath("alice")] != broken {
+			t.Fatal("unreadable queue was dropped or rewritten")
+		}
+	}
+}
