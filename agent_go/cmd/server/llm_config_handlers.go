@@ -418,15 +418,15 @@ type llmDiscoveryResponse struct {
 func providerDisplayLabel(provider string) string {
 	switch provider {
 	case "codex-cli":
-		return "OpenAI Codex CLI"
+		return "Codex"
 	case "cursor-cli":
-		return "Cursor CLI"
+		return "Cursor"
 	case "pi-cli":
-		return "Pi CLI"
+		return "Pi"
 	case "muse-cli":
 		return "Muse"
 	case "claude-code":
-		return "Claude Code"
+		return "Claude"
 	default:
 		return provider
 	}

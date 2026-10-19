@@ -141,7 +141,7 @@ type AgentProfileChatModel struct {
 type AgentProfileEffectiveChatModel struct {
 	AgentProfileChatModel
 	Provider     string `json:"provider"`
-	ConnectionID string `json:"connection_id,omitempty"`
+	ConnectionID string `json:"-"`
 	OwnModel     bool   `json:"own_model"`
 	Error        string `json:"error,omitempty"`
 }
@@ -204,16 +204,6 @@ func chatModelDisplayLabel(runtime agentprofiles.RuntimePolicy, engine, modelID 
 		}
 	}
 	label := providerDisplayLabel(provider)
-	switch provider {
-	case "cursor-cli":
-		label = "Cursor"
-	case "claude-code":
-		label = "Claude"
-	case "codex-cli":
-		label = "Codex"
-	case "pi-cli":
-		label = "Pi"
-	}
 	model := modelNameForProviderModel(provider, modelID)
 	if strings.EqualFold(modelID, "auto") {
 		model = "auto"

@@ -7,14 +7,14 @@ import { setWorkProjectRuntimeSelection } from './workTabs'
 const chat = (id: string, key: string, extra: Partial<NonNullable<ChatTab['metadata']>> = {}) => ({
   tabId: id, sessionId: id, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileConversationKey: key, ...extra },
 } as ChatTab)
-const effective = (key: string, own = false): AgentProfileEffectiveChatModel => ({ conversation_key: key, engine: 'cursor', provider: 'cursor-cli', model_id: 'auto', connection_id: 'server-account', own_model: own, display_label: 'Cursor · auto' })
+const effective = (key: string, own = false): AgentProfileEffectiveChatModel => ({ conversation_key: key, engine: 'cursor', provider: 'cursor-cli', model_id: 'auto', own_model: own, display_label: 'Cursor · auto' })
 
 describe('server chat-model projection', () => {
   it('copies effective runtime, inheritance and edit permission directly from the server', () => {
     useChatStore.setState({ chatTabs: { main: chat('main', 'crew'), side: chat('side', 'crew:chat:review') } })
     applyWorkChatModels('work', 'crew', [effective('crew', true), effective('crew:chat:review')], false)
     const tabs = useChatStore.getState().chatTabs
-    expect(tabs.main.metadata).toMatchObject({ agentProfileChatModelLabel: 'Cursor · auto', agentProfileChatModelOverride: true, agentProfileEngine: 'cursor', agentProfileModelID: 'auto', agentProfileConnectionID: 'server-account', agentProfileCanOpenModels: false })
+    expect(tabs.main.metadata).toMatchObject({ agentProfileChatModelLabel: 'Cursor · auto', agentProfileChatModelOverride: true, agentProfileEngine: 'cursor', agentProfileModelID: 'auto', agentProfileCanOpenModels: false })
     expect(tabs.side.metadata).toMatchObject({ agentProfileChatModelOverride: false, agentProfileEngine: 'cursor', agentProfileModelID: 'auto' })
   })
 
@@ -35,7 +35,7 @@ describe('server chat-model projection', () => {
     useChatStore.setState({ chatTabs: { main: chat('main', 'crew', { agentProfileChatModelOverride: true }), ...protectedTabs } })
     applyWorkChatModels('work', 'crew', [effective('crew')], true)
     const tabs = useChatStore.getState().chatTabs
-    expect(tabs.main.metadata).toMatchObject({ agentProfileChatModelOverride: false, agentProfileConnectionID: 'server-account', agentProfileCanOpenModels: true })
+    expect(tabs.main.metadata).toMatchObject({ agentProfileChatModelOverride: false, agentProfileCanOpenModels: true })
     for (const tab of Object.values(protectedTabs)) expect(tabs[tab.tabId]).toBe(tab)
   })
 

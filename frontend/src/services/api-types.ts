@@ -271,7 +271,6 @@ export interface AgentProfileChatModel {
 /** Effective caller-owned runtime resolved by the server for one chat. */
 export interface AgentProfileEffectiveChatModel extends AgentProfileChatModel {
   provider: string
-  connection_id?: string
   own_model: boolean
   error?: string
 }
