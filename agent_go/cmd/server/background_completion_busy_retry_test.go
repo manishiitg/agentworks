@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"reflect"
@@ -88,5 +89,21 @@ func TestStoppedSessionRetainsDrainedBackgroundResults(t *testing.T) {
 	got := api.drainPendingCompletions(session)
 	if !reflect.DeepEqual(got, []string{"result-a", "result-b"}) {
 		t.Fatalf("stopped session lost results: %v", got)
+	}
+}
+
+func TestDispatchedResultIsNotReplayedAfterStopOrInactivity(t *testing.T) {
+	for _, outcome := range []error{context.Canceled, errTurnInactive} {
+		agent := &BackgroundAgent{}
+		if !agent.beginCompletionNotification() {
+			t.Fatal("could not claim result")
+		}
+		agent.finishCompletionNotification(backgroundCompletionDelivered(outcome))
+		if agent.beginCompletionNotification() {
+			t.Fatalf("dispatched prompt would replay after %v", outcome)
+		}
+	}
+	if backgroundCompletionDelivered(fmt.Errorf("not admitted: %w", mcpagent.ErrTurnAlreadyInFlight)) {
+		t.Fatal("occupancy refusal marked as delivered")
 	}
 }

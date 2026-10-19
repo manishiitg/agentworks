@@ -1268,6 +1268,16 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
     )
   }
 
+  if (event.type === 'background_results_waiting') {
+    const envelope = event.data as unknown as Record<string, unknown> | undefined
+    const inner = (envelope?.data ?? envelope ?? {}) as Record<string, unknown>
+    const payload = (inner.data ?? inner) as Record<string, unknown>
+    const message = typeof payload.message === 'string' ? payload.message : ''
+    return message ? <CompactWrapper compact={compact}>
+      <div role="status" className="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground">{message}</div>
+    </CompactWrapper> : null
+  }
+
   // Synthetic Turn Ready Event (shown when a background task has completed and results are being processed)
   if (isEventType(event, 'synthetic_turn_ready')) {
     const fields = getEventData(event)

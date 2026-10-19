@@ -98,7 +98,7 @@ func TestInactivityWatcherCancelsOnlyItsExactQuietTurn(t *testing.T) {
 func TestCommonSyntheticDrainStopsWithoutProducerClosing(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	reason, _ := drainSyntheticTurnStreamWithoutIdle(ctx, make(chan string), nil)
+	reason, _ := drainTurnTextStream(ctx, make(chan string), nil)
 	if reason == "" {
 		t.Fatal("cancellation did not release silent stream")
 	}
@@ -130,5 +130,28 @@ func TestInactivityWatchProtectsToolsAlreadyRunningBeforeRegistration(t *testing
 	case <-ended:
 		t.Fatal("tool completion did not reset the inactivity clock")
 	case <-time.After(30 * time.Millisecond):
+	}
+}
+
+func TestCanceledTextDrainReleasesCallerForFinalHistoryCapture(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	chunks := make(chan string)
+	finalHistory := make(chan []string, 1)
+	go func() {
+		var seen []string
+		drainTurnTextStream(ctx, chunks, func(chunk string) { seen = append(seen, chunk) })
+		// The query's normal post-stream cleanup and persistence now follow
+		// this shared drain even when the provider leaves the stream open.
+		finalHistory <- seen
+	}()
+	chunks <- "partial reply"
+	cancel()
+	select {
+	case history := <-finalHistory:
+		if len(history) != 1 || history[0] != "partial reply" {
+			t.Fatalf("history=%v", history)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cancellation stranded final history capture")
 	}
 }

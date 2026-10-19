@@ -21,7 +21,7 @@ const turnInactiveAfter = 10 * time.Minute
 
 var turnInactivityCheckInterval = 15 * time.Second
 
-var errTurnInactive = errors.New("Turn ended after 10 minutes without agent output or tool activity.")
+var errTurnInactive = errors.New("Reply ended after 10 minutes without agent output or tool activity.")
 
 type idleTool struct {
 	name string
@@ -291,6 +291,14 @@ func (api *StreamingAPI) watchRetainedTurnInactivity(ctx context.Context, sessio
 			if native, ok := mcpagent.LookupSession(sessionID); ok && native != nil {
 				acknowledge = native.PrepareNativeInterrupt()
 			}
+			// Live input bypasses the turn lane: re-check the generation and
+			// foreground owner immediately before delivering the native key.
+			api.retainedMainTurnsMu.Lock()
+			current = api.retainedMainTurns[sessionID].Equal(startedAt) && api.retainedMainTurnExecutionIDs[sessionID] == executionID
+			api.retainedMainTurnsMu.Unlock()
+			if !current || ctx.Err() != nil || api.hasActiveTurnCancel(sessionID) {
+				return false
+			}
 			interruptCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			err := deliverCLIPaneInterrupt(interruptCtx, llmproviders.Provider(provider), sessionID)
 			cancel()
@@ -308,4 +316,15 @@ func (api *StreamingAPI) watchRetainedTurnInactivity(ctx context.Context, sessio
 			}
 			return true
 		})
+}
+
+func (api *StreamingAPI) emitWaitingBackgroundResults(sessionID string, count int) {
+	if api.eventStore == nil || count == 0 {
+		return
+	}
+	now := time.Now()
+	data := &unifiedevents.GenericEventData{BaseEventData: unifiedevents.BaseEventData{Timestamp: now}, Data: map[string]interface{}{"message": fmt.Sprintf("%d results are waiting and will arrive with your next message.", count), "count": count}}
+	agentEvent := unifiedevents.NewAgentEvent(data)
+	agentEvent.SessionID = sessionID
+	api.eventStore.AddEvent(sessionID, events.Event{ID: fmt.Sprintf("background-results-waiting-%d", now.UnixNano()), Type: "background_results_waiting", Timestamp: now, SessionID: sessionID, ExecutionID: "main:" + sessionID, ExecutionKind: "main_agent", Data: agentEvent})
 }

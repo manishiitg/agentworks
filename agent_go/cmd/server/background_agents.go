@@ -1787,6 +1787,7 @@ func (api *StreamingAPI) scheduleFailedCompletionRetry(sessionID string) {
 			pending := len(api.pendingCompletions[sessionID])
 			api.pendingMu.RUnlock()
 			log.Printf("[BG AGENT] WARNING: retaining %d queued completion(s) for session %s after %d failed synthetic turns; automatic retries paused", pending, sessionID, maxFailedCompletionRetries)
+			api.emitWaitingBackgroundResults(sessionID, pending)
 		}
 		return
 	}
@@ -1813,6 +1814,12 @@ func (api *StreamingAPI) scheduleUndispatchedCompletionRetry(sessionID string) {
 		return
 	}
 	api.scheduleFailedCompletionRetry(sessionID)
+}
+
+// Stop and an inactivity end are terminal outcomes of a dispatched prompt,
+// not reasons to replay that prompt. Occupancy is a pre-delivery refusal.
+func backgroundCompletionDelivered(turnErr error) bool {
+	return turnErr == nil || errors.Is(turnErr, context.Canceled) || errors.Is(turnErr, errTurnInactive)
 }
 
 func (api *StreamingAPI) scheduleCompletionOutcomeRetry(sessionID string, turnErr error) {
@@ -1890,9 +1897,17 @@ func (api *StreamingAPI) schedulePendingCompletionRetryAfter(sessionID string, d
 			api.scheduleBusyCompletionRetry(sessionID)
 			return
 		}
-		api.pendingMu.Lock()
-		delete(api.completionRetryBusyAttempts, sessionID)
-		api.pendingMu.Unlock()
+		// SDK occupancy can outlive the coarse busy flag. Do not reset the
+		// busy backoff until the authoritative native lifecycle is idle too.
+		nativeBusy := false
+		if native, ok := mcpagent.LookupSession(sessionID); ok && native != nil {
+			nativeBusy = native.ActiveTurnID() != ""
+		}
+		if !nativeBusy {
+			api.pendingMu.Lock()
+			delete(api.completionRetryBusyAttempts, sessionID)
+			api.pendingMu.Unlock()
+		}
 		// Recover both completions queued while busy AND any that a full
 		// notification channel dropped, then deliver in one batch.
 		api.requeueUnnotifiedCompletions(sessionID)
@@ -2366,7 +2381,7 @@ func (api *StreamingAPI) processBatchedBackgroundAgentCompletions(sessionID stri
 	// (for example when a retained CLI turn still owns the agent). Commit the
 	// notification only after the stream reports a successful terminal outcome.
 	dispatched := api.executeSyntheticTurnWithOutcome(sessionID, syntheticMsg, commonBackgroundParentExecutionID(agentRefs), func(turnErr error) {
-		delivered := turnErr == nil
+		delivered := backgroundCompletionDelivered(turnErr)
 		for _, a := range agentRefs {
 			a.finishCompletionNotification(delivered)
 		}
@@ -2500,7 +2515,7 @@ func (api *StreamingAPI) processBackgroundAgentCompletion(sessionID, agentID str
 	// opened stream is still only in flight; mark delivered after its terminal
 	// outcome so asynchronous occupancy/provider errors remain retryable.
 	dispatched := api.executeSyntheticTurnWithOutcome(sessionID, syntheticMsg, snap.ParentExecutionID, func(turnErr error) {
-		delivered := turnErr == nil
+		delivered := backgroundCompletionDelivered(turnErr)
 		agent.finishCompletionNotification(delivered)
 		if delivered {
 			resetFailedCompletionRetries(sessionID)
@@ -3139,7 +3154,7 @@ func (api *StreamingAPI) executeSyntheticTurnWithOutcome(sessionID, syntheticMsg
 		// usage-limit wall stops producing without closing the channel, and an
 		// unbounded consume there blocks this goroutine — and the deferred
 		// cleanup below it — forever (PLAT-101).
-		abandonReason, streamStalled := drainSyntheticTurnStreamWithoutIdle(agentCtx, textChan, func(string) {
+		abandonReason, streamStalled := drainTurnTextStream(agentCtx, textChan, func(string) {
 			api.conversationMux.Lock()
 			api.conversationHistory[sessionID] = llmAgent.GetHistory()
 			api.conversationMux.Unlock()

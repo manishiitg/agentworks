@@ -8629,26 +8629,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		log.Printf("[AGENT DEBUG] Entering streaming loop for query %s", queryID)
 		log.Printf("[COMPLETION_TRACE] stage=agentworks_stream_wait_started session=%q query=%q", sessionID, queryID)
-	streamLoop:
-		for {
-			var chunk string
-			select {
-			case <-agentCtx.Done():
-				turnStatus = trackedExecutionStatusCanceled
-				turnError = context.Cause(agentCtx).Error()
-				if errors.Is(context.Cause(agentCtx), errTurnInactive) {
-					turnStatus = trackedExecutionStatusFailed
-					api.updateSessionStatus(sessionID, "error")
-					api.emitIdleTurnFailure(sessionID, queryID)
-				}
-				discardAbandonedSyntheticStream(sessionID, textChan)
-				return
-			case value, open := <-textChan:
-				if !open {
-					break streamLoop
-				}
-				chunk = value
-			}
+		_, _ = drainTurnTextStream(agentCtx, textChan, func(chunk string) {
 			log.Printf("[AGENT DEBUG] raw chunk (len=%d): %s", len(chunk), chunk)
 			chunkCount++
 
@@ -8666,46 +8647,18 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			api.conversationHistory[sessionID] = incrementalHistory
 			api.conversationMux.Unlock()
 
-			// Check for context cancellation
-			select {
-			case <-streamCtx.Done():
-				turnStatus = trackedExecutionStatusCanceled
-				turnError = streamCtx.Err().Error()
-				tracer.EndTrace(traceID, map[string]interface{}{
-					"status":   "timeout",
-					"query_id": queryID,
-				})
-
-				// Update active session status to error
+		})
+		if agentCtx.Err() != nil {
+			turnStatus = trackedExecutionStatusCanceled
+			turnError = context.Cause(agentCtx).Error()
+			if errors.Is(context.Cause(agentCtx), errTurnInactive) {
+				turnStatus = trackedExecutionStatusFailed
 				api.updateSessionStatus(sessionID, "error")
-
-				// Emit server-level timeout completion event
-				// Create a timeout completion event using UnifiedCompletionEvent
-				timeoutEventData := unifiedevents.NewUnifiedCompletionEventWithError(
-					"server",              // agentType
-					req.AgentMode,         // agentMode
-					req.Query,             // question
-					"context timeout",     // error message
-					time.Since(startTime), // duration
-					0,                     // turns
-				)
-
-				agentEvent := unifiedevents.NewAgentEvent(timeoutEventData)
-				agentEvent.SessionID = sessionID
-
-				serverTimeoutEvent := events.Event{
-					ID:        fmt.Sprintf("server_timeout_%s_%d", queryID, time.Now().UnixNano()),
-					Type:      string(unifiedevents.EventTypeUnifiedCompletion),
-					Timestamp: time.Now(),
-					Data:      agentEvent,
-					SessionID: sessionID,
-				}
-				api.eventStore.AddEvent(sessionID, serverTimeoutEvent)
-				log.Printf("[SERVER DEBUG] Emitted server timeout completion event for query %s", queryID)
-				return
-			default:
+				api.emitIdleTurnFailure(sessionID, queryID)
 			}
+			discardAbandonedSyntheticStream(sessionID, textChan)
 		}
+
 		log.Printf("[COMPLETION_TRACE] stage=agentworks_stream_closed session=%q query=%q chunks=%d elapsed=%s", sessionID, queryID, chunkCount, time.Since(streamWaitStartedAt).Round(time.Millisecond))
 		log.Printf("[STREAMING_LIFECYCLE] StreamWithEvents completed | session=%s chunks=%d duration=%dms", sessionID, chunkCount, time.Since(startTime).Milliseconds())
 		log.Printf("[AGENT DEBUG] After streaming loop, streamCtx.Err(): %v", streamCtx.Err())
@@ -9013,6 +8966,20 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		{
 			api.storeSessionAgent(sessionID, llmAgent)
 			log.Printf("[BG AGENT] Stored agent for session %s for synthetic turn reuse", sessionID)
+		}
+
+		// Cancellation also runs the normal removal/history/runtime capture above.
+		// It must not be overwritten as a successful turn after persistence.
+		if agentCtx.Err() != nil {
+			turnStatus = trackedExecutionStatusCanceled
+			turnError = context.Cause(agentCtx).Error()
+			if errors.Is(context.Cause(agentCtx), errTurnInactive) {
+				turnStatus = trackedExecutionStatusFailed
+			} else if !api.isSessionMarkedStopped(sessionID) {
+				api.updateSessionStatus(sessionID, "completed")
+			}
+			tracer.EndTrace(traceID, map[string]interface{}{"status": turnStatus})
+			return
 		}
 
 		// A stop or runtime failure may close the stream while this goroutine is

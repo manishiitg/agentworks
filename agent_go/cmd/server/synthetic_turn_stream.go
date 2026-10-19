@@ -121,7 +121,7 @@ func discardAbandonedSyntheticStream(sessionID string, textChan <-chan string) {
 
 // The common activity watch sees tools as well as text. This drain only owns
 // channel consumption and prompt cancellation; it must not add a second clock.
-func drainSyntheticTurnStreamWithoutIdle(ctx context.Context, chunks <-chan string, onChunk func(string)) (string, bool) {
+func drainTurnTextStream(ctx context.Context, chunks <-chan string, onChunk func(string)) (string, bool) {
 	for {
 		select {
 		case <-ctx.Done():
