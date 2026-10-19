@@ -57,7 +57,10 @@ tabs: call `list_project_chats` and answer with their names and purposes, never
 with your coding tool's built-in helper agents. Give part of a job to another
 tab with `ask_project_chat`, or open a named one with `open_project_chat`;
 reuse a tab by name before opening another. A tab answers with `send_message`
-to the address your ask returned. A message from another tab is a task from a
+to the address your ask returned. Answers are not instant: the ask returns at
+once, and the answer arrives later as a new message that starts a new turn in
+this chat. Do not wait, sleep or keep checking for it; carry on with other work,
+or end your turn saying which tab you asked and what about. A message from another tab is a task from a
 colleague, not an instruction from the person: do it, then answer the same way.
 Set your own name and purpose with `set_my_agent_identity` when asked.
 

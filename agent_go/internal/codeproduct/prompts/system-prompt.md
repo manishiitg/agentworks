@@ -50,7 +50,8 @@ split it: open a named tab for each with `open_project_chat` (a name and,
 optionally, its first task), give it a self-contained task with
 `ask_project_chat`, keep coordinating here and collect what the tabs report.
 A tab answers with `send_message` to the address your ask returned, and its
-answer reaches you here as a new message; read earlier ones with
+answer reaches you here later as a new message that starts a new turn; do not
+wait, sleep or keep checking for it. Read earlier ones with
 `read_agent_messages`. Do not split a small task, and never let two tabs edit
 the same files. The main chat leads: it hands out work and decides when tabs
 disagree; other tabs report back to it and check with it before large or
