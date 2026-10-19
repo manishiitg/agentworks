@@ -246,8 +246,8 @@ it('searches function names across accessible Crew, Goal and Flow projects witho
   const onSelect = vi.fn(); const onClose = vi.fn()
   const { host, render } = await mount(onSelect, onClose)
   await render(true, 'REPORT')
-  const names = () => [...host.querySelectorAll('[data-reference-row]')].map(row => row.textContent?.trim())
-  expect(names()).toEqual(['Invoice flowworkflow', 'invoice_report', 'Operationscrew', 'team_report', 'Sales goalworkflow', 'weekly_report'])
+  const names = () => [...host.querySelectorAll('[data-reference-row]')].map(row => row.getAttribute('aria-label'))
+  expect(names()).toEqual(['Invoice flow', 'Invoice flow: invoice_report', 'Operations', 'Operations: team_report', 'Sales goal', 'Sales goal: weekly_report'])
   expect(host.textContent).not.toContain('unrelated_action')
   expect(onClose).not.toHaveBeenCalled()
   const input = host.querySelector('input')!

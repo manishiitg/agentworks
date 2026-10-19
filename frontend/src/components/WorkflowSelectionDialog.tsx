@@ -332,6 +332,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
             <div
               id={rowID(workflow)}
               role="option"
+              aria-label={workflow.label}
               aria-selected={selectedWorkflow === workflow}
               title={[workflow.secondaryLabel, workflow.workspacePath].filter(Boolean).join('\n') || workflow.label}
               data-reference-row
