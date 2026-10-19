@@ -24,6 +24,7 @@ import LlmModalHost from '../../components/topbar/LlmModalHost'
 import { TopBarEntitySelector } from '../../components/topbar/TopBarEntitySelector'
 import { UpdateProgressToast } from '../../components/UpdateProgressToast'
 import api, { agentApi } from '../../services/api'
+import { CHAT_MODELS_REFRESH, useWorkChatModels } from './useWorkChatModels'
 import { useAppStore } from '../../stores/useAppStore'
 import { useChatStore, waitForChatStoreHydration, type ChatTab } from '../../stores/useChatStore'
 import { useModeStore } from '../../stores/useModeStore'
@@ -413,6 +414,7 @@ function useWorkChatTab(
   sessionRef.current = session
   legacyRuntimeHandlerRef.current = onLegacyRuntimeDiscovered
   const projectId = session?.id
+  useWorkChatModels(product.profileId, projectId, session?.llmConfig, canonicalTabId)
 
   useEffect(() => {
     const target = sessionRef.current
@@ -471,6 +473,7 @@ function useWorkChatTab(
         chatStore.renameTab(canonicalTabId, 'Chat')
         chatStore.setTabMetadata(canonicalTabId, { ...projectMetadata, agentProfileMCPSelectionInitialized: true })
         chatStore.setTabConfig(canonicalTabId, { selectedServers: savedServers, selectedSkills: savedSkills })
+        window.dispatchEvent(new Event(CHAT_MODELS_REFRESH))
 
         // Earlier UI versions could open the canonical session as a read-only
         // history tab. Remove only those local duplicate projections; the
@@ -529,7 +532,7 @@ function useWorkChatTab(
       agentProfileProjectTitle: session.title,
       agentProfileProjectIcon: session.identity?.icon,
       agentProfileIdentityName: session.identity?.name,
-      ...(savedRuntime ? {
+      ...(savedRuntime && !tab.metadata?.agentProfileChatModelOverride ? {
         agentProfileEngine: savedRuntime.provider,
         agentProfileConnectionID: savedRuntime.connectionId,
         agentProfileModelID: savedRuntime.modelId,
@@ -693,6 +696,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       const tabId = await chatStore.createChatTab(name, {
         ...primary.metadata,
         agentProfileBuilder: false,
+        agentProfileChatModelOverride: false,
         agentProfileConversationKey: conversation.conversation_key,
         agentProfileConversationId: conversation.conversation_id,
         agentProfileMCPSelectionInitialized: true,
@@ -1268,6 +1272,16 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     setPanelOpen(true)
     selectWorkspaceView(panel)
   }, [selected?.shared, selectWorkspaceView, sharedPanels, showShell, workspacePanels, localCodeSession])
+  useEffect(() => {
+    const open = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId: string; conversationKey?: string }>).detail
+      if (detail?.projectId !== selected?.id || isShared || !isWorkWorkspaceViewEnabled('identity', workspacePanels, localCodeSession)) return
+      setWorkspaceViewTarget('identity', 'models')
+      selectWorkspaceView('identity')
+    }
+    window.addEventListener('agentworks:open-chat-models', open)
+    return () => window.removeEventListener('agentworks:open-chat-models', open)
+  }, [selected?.id, isShared, workspacePanels, localCodeSession, selectWorkspaceView])
   useEffect(() => {
     if (!pendingWorkView) return
     if (pendingWorkView === 'triggers') {

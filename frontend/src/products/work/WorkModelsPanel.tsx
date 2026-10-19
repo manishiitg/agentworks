@@ -5,7 +5,10 @@ import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHead
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import GuidedProviderTerminal from '../../components/providers/GuidedProviderTerminal'
 import WorkflowLLMConfigurationPanel from '../../components/workflow/WorkflowLLMConfigurationPanel'
-import type { LLMProvider, PresetLLMConfig } from '../../services/api-types'
+import { agentApi } from '../../services/api'
+import { CHAT_MODELS_CHANGED } from './useWorkChatModels'
+import { isProjectProductId } from './projectProduct'
+import type { AgentProfileChatModel, AgentProfileSideChat, LLMProvider, PresetLLMConfig } from '../../services/api-types'
 import { llmConfigService, type ByokModel, type DynamicModelEntry, type ModelMetadata, type ProviderConnection, type ProviderSetupSession } from '../../services/llm-config-api'
 import ModalPortal from '../../components/ui/ModalPortal'
 // Loaded on first use: the key setup is rare and kept the eager bundle over budget (PLAT-717).
@@ -29,6 +32,7 @@ const PROVIDERS_WITH_USAGE = new Set(['claude-code', 'codex-cli', 'muse-cli'])
 export function WorkModelsPanel({
   tabId,
   workspacePath,
+  projectId: projectIdProp,
   onAsk,
   projectLLMConfig,
   onRuntimeChange,
@@ -39,6 +43,7 @@ export function WorkModelsPanel({
 }: {
   tabId: string
   workspacePath: string
+  projectId?: string
   onAsk?: (message: string) => void
   projectLLMConfig?: PresetLLMConfig
   onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>
@@ -55,6 +60,42 @@ export function WorkModelsPanel({
   const effectiveProfileVersion = profileVersion ?? product.profileVersion
   const effectiveAccountProduct = accountProduct ?? effectiveProfileId
   const tab = useChatStore(state => state.chatTabs[tabId])
+  const projectId = projectIdProp || tab?.metadata?.agentProfileProjectId
+  const initialModelTarget = tab?.metadata?.agentProfileConversationKey
+  const supportsChatModels = isProjectProductId(effectiveProfileId) && Boolean(projectId)
+  const [chatModels, setChatModels] = useState<AgentProfileChatModel[]>([])
+  const [modelChats, setModelChats] = useState<AgentProfileSideChat[]>([])
+  const [modelTarget, setModelTarget] = useState('') // Empty = Crew default.
+  const [chatModelsLoading, setChatModelsLoading] = useState(false)
+  const [chatModelsReady, setChatModelsReady] = useState(false)
+  const [chatModelSaving, setChatModelSaving] = useState(false)
+  const [chatModelError, setChatModelError] = useState('')
+  useEffect(() => {
+    if (!supportsChatModels || !projectId) return
+    let cancelled = false
+    setChatModelsLoading(true); setChatModelsReady(false); setChatModelError(''); setModelTarget(initialModelTarget === projectId || initialModelTarget?.startsWith(`${projectId}:chat:`) ? initialModelTarget : ''); setChatModels([]); setModelChats([])
+    void Promise.resolve().then(() => Promise.all([agentApi.listAgentProfileChatModels(effectiveProfileId, projectId), agentApi.listAgentProfileSideChats(effectiveProfileId, projectId)])).then(([models, chats]) => {
+      if (!cancelled) { setChatModels(models); setModelChats(chats.filter(chat => !chat.agent_id)); setChatModelsReady(true) }
+    }).catch(() => { if (!cancelled) setChatModelError('Chat models could not be loaded. Reopen Models to retry.') })
+      .finally(() => { if (!cancelled) setChatModelsLoading(false) })
+    return () => { cancelled = true }
+  }, [effectiveProfileId, projectId, supportsChatModels, initialModelTarget])
+  const ownChatModel = modelTarget ? chatModels.find(model => model.conversation_key === modelTarget) : undefined
+  const saveChatModel = async (selection?: WorkRuntimeSelection) => {
+    if (!projectId || !modelTarget || !chatModelsReady || chatModelSaving || chatModelsLoading) return
+    setChatModelSaving(true); setChatModelError('')
+    try {
+      const models = await agentApi.setAgentProfileChatModel(effectiveProfileId, projectId, {
+        conversation_key: modelTarget, engine: selection?.engine || '', model_id: selection?.modelId,
+        reasoning_effort: selection?.reasoningEffort,
+      })
+      setChatModels(models)
+      window.dispatchEvent(new CustomEvent(CHAT_MODELS_CHANGED, { detail: { profileId: effectiveProfileId, projectId, models } }))
+    } catch (cause) {
+      setChatModelError(cause instanceof Error ? cause.message : 'Could not save this chat model.')
+    } finally { setChatModelSaving(false) }
+  }
+  const changeSelection = (selection: WorkRuntimeSelection) => modelTarget ? saveChatModel(selection) : onRuntimeChange(selection)
   const events = useChatStore(state => tab?.sessionId ? state.tabEvents[tab.sessionId] : undefined)
   const activeRuntime = useChatStore(state => tab?.sessionId
     ? state.activeSessionsCache.find(session => session.session_id === tab.sessionId)?.runtime
@@ -175,19 +216,25 @@ export function WorkModelsPanel({
   }, [options, accounts])
 
   const hasStarted = events?.some(event => event.type === 'user_message') ?? false
-  const savedSelection = workLLMSelectionFromConfig(projectLLMConfig)
-  const selectedConnectionId = savedSelection?.connectionId ?? tab?.metadata?.agentProfileConnectionID
+  const projectSelection = workLLMSelectionFromConfig(projectLLMConfig)
+  const ownOption = options.find(option => option.id === ownChatModel?.engine)
+  const savedSelection = ownChatModel ? {
+    provider: ownOption?.provider, modelId: ownChatModel.model_id || '', reasoningEffort: ownChatModel.reasoning_effort,
+    connectionId: ownOption?.provider === projectSelection?.provider ? projectSelection?.connectionId : undefined,
+  } : projectSelection
+  const selectedConnectionId = savedSelection?.connectionId ?? (supportsChatModels ? undefined : tab?.metadata?.agentProfileConnectionID)
   const savedOption = options.find(option => option.provider === savedSelection?.provider)
   // The account this chat runs on: the project's choice, else the one the chat recorded for this provider,
   // else the default the server resolves (the person's own signed-in account, newest first; else the server's).
   const runtimeOption = options.find(option => option.provider === activeRuntime?.provider)
   const metadataOption = options.find(option => option.id === tab?.metadata?.agentProfileEngine)
   const selectedOption = savedOption
-    || metadataOption
-    || runtimeOption
+    || ownOption
+    || (!supportsChatModels ? metadataOption : undefined)
+    || (!supportsChatModels ? runtimeOption : undefined)
     || options.find(option => option.default)
     || options[0]
-  const recordedConnectionId = tab?.metadata?.agentProfileChatProvider === selectedOption?.provider
+  const recordedConnectionId = !supportsChatModels && tab?.metadata?.agentProfileChatProvider === selectedOption?.provider
     ? tab?.metadata?.agentProfileChatConnectionID || undefined
     : undefined
   const ownDefaultConnectionId = accounts
@@ -238,12 +285,12 @@ export function WorkModelsPanel({
   const currentGroup = engineGroups.find(group => group.option.id === selectedOption?.id)
   const selectedAllowedModels = keyService ? inUseAccount?.allowed_models : allowedModelsFor(selectedOption?.provider, selectedConnectionId)
   const selectedDefaults = defaultForOption(selectedOption, selectedConnectionId)
-  const metadataMatchesSelectedProvider = tab?.metadata?.agentProfileEngine === selectedOption?.id
+  const metadataMatchesSelectedProvider = !supportsChatModels && tab?.metadata?.agentProfileEngine === selectedOption?.id
   // Only an allowed model is shown selected; a saved one the account no longer allows reads as its first allowed model
   // (the server runs it that way too).
   const currentModelId = allowedModelOrFirst(savedSelection?.modelId
     || (metadataMatchesSelectedProvider ? tab?.metadata?.agentProfileModelID : undefined)
-    || activeRuntime?.model_id
+    || (!supportsChatModels ? activeRuntime?.model_id : undefined)
     || selectedDefaults.modelId, selectedAllowedModels)
   const keyModelChoices = useMemo<ModelMetadata[] | null>(() => {
     if (!keyService) return null
@@ -327,14 +374,14 @@ export function WorkModelsPanel({
   const switchToNewKey = (record: ProviderConnection, picks: string[]) => {
     setKeySetupOpen(false)
     if (!piOption) return
-    void onRuntimeChange({ engine: piOption.id, connectionId: record.id, provider: 'pi-cli', modelId: picks[0] || '', reasoningEffort: undefined })
+    void changeSelection({ engine: piOption.id, connectionId: record.id, provider: 'pi-cli', modelId: picks[0] || '', reasoningEffort: undefined })
   }
 
   const selectProvider = (config: PresetLLMConfig) => {
     const option = options.find(candidate => candidate.provider === config.provider)
     if (!option) return
     const defaults = defaultForOption(option, config.connection_id)
-    void onRuntimeChange({
+    void changeSelection({
       engine: option.id,
       connectionId: config.connection_id,
       provider: option.provider,
@@ -345,7 +392,7 @@ export function WorkModelsPanel({
 
   const selectModel = (modelId: string) => {
     if (!selectedOption) return
-    void onRuntimeChange({
+    void changeSelection({
       engine: selectedOption.id,
       connectionId: selectedConnectionId,
       provider: selectedOption.provider,
@@ -358,7 +405,7 @@ export function WorkModelsPanel({
 
   const selectReasoningEffort = (reasoningEffort: string) => {
     if (!selectedOption || !reasoningLevels.some(level => level.id === reasoningEffort)) return
-    void onRuntimeChange({
+    void changeSelection({
       engine: selectedOption.id,
       connectionId: selectedConnectionId,
       provider: selectedOption.provider,
@@ -372,13 +419,39 @@ export function WorkModelsPanel({
   const savedProviderUnusable = Boolean(accounts !== null && selectedOption?.provider && !workProviderIds.includes(selectedOption.provider))
   const body = (
     <>
+        {supportsChatModels && <section className="mb-4 overflow-hidden rounded-xl border border-border" aria-label="Models by chat">
+          <button type="button" disabled={chatModelSaving} aria-pressed={!modelTarget} onClick={() => setModelTarget('')} className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm ${!modelTarget ? 'bg-primary/10' : 'hover:bg-muted'}`}>
+            <span className="font-medium">Crew default</span><span className="text-xs text-muted-foreground">For chats without their own model</span>
+          </button>
+          {chatModelsLoading ? <p role="status" className="px-3 py-2 text-xs text-muted-foreground">Loading chats…</p> : [
+            { conversation_key: projectId!, name: 'Main chat' },
+            ...modelChats,
+          ].map(chat => {
+            const own = chatModels.find(model => model.conversation_key === chat.conversation_key)
+            return <button key={chat.conversation_key} type="button" disabled={chatModelSaving || !chatModelsReady} aria-pressed={modelTarget === chat.conversation_key} onClick={() => setModelTarget(chat.conversation_key)} className={`flex w-full items-center justify-between gap-3 border-t border-border px-3 py-2 text-left text-sm disabled:opacity-50 ${modelTarget === chat.conversation_key ? 'bg-primary/10' : 'hover:bg-muted'}`}>
+              <span className="min-w-0 truncate">{chat.name}</span>
+              <span className="max-w-[60%] truncate text-xs text-muted-foreground">{own ? `${options.find(option => option.id === own.engine)?.label || own.engine} · ${own.model_id || 'Provider default'}` : 'Same as Crew'}</span>
+            </button>
+          })}
+        </section>}
+        {chatModelError && <p role="alert" className="mb-3 text-sm text-destructive">{chatModelError}</p>}
+        {modelTarget && <div className="mb-3 flex items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">{ownChatModel ? 'Own model · applies to your messages and automated turns in this chat.' : 'Same as Crew · choosing below gives this chat its own model.'}</p>
+          {ownChatModel && <button type="button" disabled={chatModelSaving} onClick={() => void saveChatModel()} className="shrink-0 text-xs font-medium text-primary hover:underline disabled:opacity-50">Use Crew default</button>}
+        </div>}
+        <fieldset disabled={chatModelSaving || (Boolean(modelTarget) && chatModelsLoading)} className="min-w-0 border-0 p-0">
         {savedProviderUnusable && (
           <p role="alert" className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
             This project is set to {selectedOption?.label || selectedOption?.provider}, which is not available to you here. Choose another coding agent below; your next message uses it.
           </p>
         )}
         <SharedTokenUsageNotice className="mb-3" accountProvider={inUseConnectionId || accounts !== null ? sharedAccountProvider(inUseConnectionId, selectedOption?.provider) : undefined} />
-        <WorkflowLLMConfigurationPanel
+        {modelTarget ? <label className="flex items-center justify-between gap-3 text-sm">Coding agent<select aria-label="Chat coding agent" className="rounded-md border border-input bg-background px-2 py-1.5" value={selectedOption?.id || ''} onChange={event => {
+          const option = options.find(item => item.id === event.target.value)
+          if (!option) return
+          const defaults = defaultForOption(option)
+          void changeSelection({ engine: option.id, provider: option.provider, modelId: defaults.modelId, reasoningEffort: defaults.reasoningEffort })
+        }}>{options.filter(option => workProviderIds.includes(option.provider || option.id)).map(option => <option key={option.id} value={option.id}>{option.label || option.provider}</option>)}</select></label> : <WorkflowLLMConfigurationPanel
           workspacePath={workspacePath}
           llmConfig={llmConfig}
           onChange={selectProvider}
@@ -389,7 +462,7 @@ export function WorkModelsPanel({
           showModelsPerRole={false}
           configurationSource="agent_profile"
           product={effectiveAccountProduct}
-        />
+        />}
         <section
           className="mt-4 overflow-hidden rounded-xl border border-border bg-card"
           onKeyDown={event => {
@@ -455,7 +528,7 @@ export function WorkModelsPanel({
         )}
         </section>
         {hasStarted && <p className="mt-3 text-xs text-muted-foreground">Applies on the next message. Chat history is kept.</p>}
-        {keyEntryAvailable && (workProviderIds.length === 0 || savedProviderUnusable
+        {!modelTarget && keyEntryAvailable && (workProviderIds.length === 0 || savedProviderUnusable
           ? <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-3">
               <p className="text-sm font-medium text-foreground">No coding agent is available to you here.</p>
               <p className="mt-1 text-xs text-muted-foreground">Add your own model key (OpenRouter, NVIDIA NIM, Groq, Google AI Studio…) and chat on it. Many models are free.</p>
@@ -517,6 +590,7 @@ export function WorkModelsPanel({
             )}
           </section>
         )}
+        </fieldset>
     </>
   )
 

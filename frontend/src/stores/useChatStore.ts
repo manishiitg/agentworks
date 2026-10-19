@@ -493,6 +493,8 @@ export interface ChatTab {
     // when the project names no account (Models shows it).
     agentProfileChatProvider?: string
     agentProfileChatConnectionID?: string
+    // True only for an explicit caller-owned chat-model registry choice.
+    agentProfileChatModelOverride?: boolean
     agentProfileEngine?: string
     // A model within that engine's provider (the composer's switcher). Sent as
     // `model_id` on every profile query; empty keeps the option's own model.

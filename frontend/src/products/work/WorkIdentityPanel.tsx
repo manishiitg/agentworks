@@ -492,6 +492,7 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
           <WorkModelsPanel
             tabId={tabId}
             workspacePath={workspacePath}
+            projectId={projectId}
             projectLLMConfig={projectLLMConfig}
             onRuntimeChange={onRuntimeChange}
             hideHeader

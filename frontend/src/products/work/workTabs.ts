@@ -112,7 +112,7 @@ export function setWorkProjectRuntimeSelection(
 ): void {
   const store = useChatStore.getState()
   for (const tab of Object.values(store.chatTabs)) {
-    if (!belongsToWorkProject(tab, projectId)) continue
+    if (!belongsToWorkProject(tab, projectId) || tab.metadata?.agentProfileChatModelOverride || tab.metadata?.agentProfileConversationKey?.startsWith(`${projectId}:chat:agent-`)) continue
     store.setTabMetadata(tab.tabId, {
       agentProfileEngine: selection.engine,
       agentProfileConnectionID: selection.connectionId,

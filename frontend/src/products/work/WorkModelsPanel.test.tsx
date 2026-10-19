@@ -17,7 +17,7 @@ const state = vi.hoisted(() => ({
 }))
 vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: (selector: (value: typeof state) => unknown) => selector(state) }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (selector: (value: typeof state) => unknown) => selector(state) }))
-vi.mock('./projectProduct', () => ({ useProjectProduct: () => state.product }))
+vi.mock('./projectProduct', async original => ({ ...await original<typeof import('./projectProduct')>(), useProjectProduct: () => state.product }))
 vi.mock('../../components/workflow/WorkflowLLMConfigurationPanel', () => ({ default: (props: typeof state.configurationProps) => { state.configurationProps = props; return null } }))
 vi.mock('../../components/providers/GuidedProviderTerminal', () => ({ default: () => null }))
 vi.mock('../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: {} }))
@@ -31,6 +31,7 @@ vi.mock('../../utils/agentProfileCapabilities', async importOriginal => ({
 
 import { WorkModelsPanel } from './WorkModelsPanel'
 import { llmConfigService } from '../../services/llm-config-api'
+import { agentApi } from '../../services/api'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let root: Root | undefined
@@ -245,4 +246,44 @@ it('shows the account the chat runs on: recorded, else the own default', async (
   expect(state.configurationProps.llmConfig?.connection_id).toBe('global:muse-cli')
   delete metadata.agentProfileChatProvider; delete metadata.agentProfileChatConnectionID
   vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([])
+})
+
+
+describe('caller-owned chat models', () => {
+  const models = vi.fn()
+  const chats = vi.fn()
+  const save = vi.fn()
+  async function renderChatModels() {
+    museFixture()
+    state.product.profileId = 'work'
+    Object.assign(agentApi, { listAgentProfileChatModels: models, listAgentProfileSideChats: chats, setAgentProfileChatModel: save })
+    models.mockResolvedValue([{ conversation_key: 'crew', engine: 'muse-cli', model_id: 'muse-spark-1.3', reasoning_effort: 'high' }])
+    chats.mockResolvedValue([{ conversation_key: 'crew:chat:review', name: 'Review', session_id: 'review-session' }])
+    save.mockResolvedValue([])
+    const host = document.createElement('div'); document.body.append(host)
+    root = createRoot(host)
+    const onRuntimeChange = vi.fn()
+    await act(async () => root?.render(<WorkModelsPanel tabId="project" projectId="crew" workspacePath="/crew" hideHeader
+      projectLLMConfig={{ schema_version: 2, mode: 'explicit', builder_llm: { provider: 'muse-cli', model_id: 'muse-spark-1.3-contributor', options: { reasoning_effort: 'max' } } }} onRuntimeChange={onRuntimeChange} />))
+    return { host, onRuntimeChange }
+  }
+
+  it('lists main and side chats, distinguishing an own model from the Crew default', async () => {
+    const { host } = await renderChatModels()
+    expect(host.querySelector('[aria-label="Models by chat"]')?.textContent).toContain('Main chatMuse · muse-spark-1.3')
+    expect(host.querySelector('[aria-label="Models by chat"]')?.textContent).toContain('ReviewSame as Crew')
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('clears an own main-chat choice through the registry without changing the Crew default', async () => {
+    save.mockClear()
+    const { host, onRuntimeChange } = await renderChatModels()
+    const main = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent?.startsWith('Main chat'))!
+    await act(async () => main.click())
+    const inherit = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === 'Use Crew default')!
+    await act(async () => inherit.click())
+    expect(save).toHaveBeenCalledWith('work', 'crew', { conversation_key: 'crew', engine: '', model_id: undefined, reasoning_effort: undefined })
+    expect(onRuntimeChange).not.toHaveBeenCalled()
+    expect(host.querySelector('[aria-label="Models by chat"]')?.textContent).toContain('Main chatSame as Crew')
+  })
 })
