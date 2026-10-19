@@ -17,6 +17,8 @@ export function isWorkWorkspaceViewEnabled(view: WorkWorkspaceView, enabledPanel
   if (view === 'context') return true
   if (!enabledPanels) return true
   if (view === 'identity' || view === 'plan' || view === 'suggestions') return true
+  if (view === 'history') return enabledPanels.has('schedules')
+  if (view === 'memory') return enabledPanels.has('memory') || enabledPanels.has('skills')
   if (view === 'shell') return true
   if (view === 'mcp') return enabledPanels.has('mcp') || enabledPanels.has('skills') || (!localCodeSession && enabledPanels.has('bots')) || enabledPanels.has('secrets')
   return enabledPanels.has(view)

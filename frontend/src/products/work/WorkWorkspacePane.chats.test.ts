@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 describe('Crew chats management', () => {
   it('wires the Chats panel with rename, delete, and cleanup enabled', () => {
     const source = readFileSync('src/products/work/WorkWorkspacePane.tsx', 'utf8')
-    const block = source.match(/chatContent=\{<PreviousChatHistoryPanel[\s\S]*?\/>\}/)
+    const block = source.match(/view === 'history' && <PreviousChatHistoryPanel[\s\S]*?\/>\}/)
     expect(block).not.toBeNull()
     // readOnly would hide the row actions menu items and both Delete old
     // dropdowns. The active Crew session is filtered from the list, and the

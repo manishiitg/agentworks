@@ -1,6 +1,7 @@
-import { workspacePanelGroup } from '../../components/workspace/workspacePanelGroups'
+import { useGmailInboundUIEnabled } from '../../components/workflow/bots/gmailAskAI'
+import { projectAutomationSections, projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
 import { workWorkspacePanels } from './workWorkspacePanels'
-import { WorkContextPanel, WorkContextTools } from './WorkContextPanel'
+import { WorkContextPanel } from './WorkContextPanel'
 import { WorkspaceContextButton } from '../../components/workspace/WorkspaceContextButton'
 import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
@@ -15,9 +16,7 @@ import { WorkspaceToolbarFrame } from '../../components/workspace/WorkspaceToolb
 import { workPanelSections } from '../productPanels'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
-import { WorkspaceToolbarGroup } from '../../components/workspace/WorkspaceToolbarGroup'
 import { WorkspaceToolbarButton } from '../../components/workspace/WorkspaceToolbarButton'
-import { ReportDocumentSwitcher } from '../../components/workflow/ReportDocumentSwitcher'
 import api, { agentApi } from '../../services/api'
 import type { PresetLLMConfig } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
@@ -35,6 +34,7 @@ import { WorkIntegrationsPanel } from './WorkIntegrationsPanel'
 import type { CrewTemplateId } from './crewTemplates'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { useCodeFilesPreference, useProjectMode } from './codeLocalFiles'
+import { WorkSkillsPanel } from './WorkSkillsPanel'
 import { WorkMemoryPanel } from './WorkMemoryPanel'
 import { WorkPlanPanel } from './WorkPlanPanel'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
@@ -42,7 +42,6 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { SharedCrewFilesPanel } from './SharedCrewFilesPanel'
 import { sharedCrewFileClient } from './sharedCrewFiles'
 import { useProjectProduct } from './projectProduct'
-import { useBrowserToolbarConnection } from '../../hooks/useBrowserToolbarConnection'
 
 const CostsPopup = lazy(() => import('../../components/workflow/CostsPopup'))
 const AutomationHubPanel = lazy(() => import('../../components/automation/AutomationHubPanel').then(module => ({ default: module.AutomationHubPanel })))
@@ -54,7 +53,7 @@ const FileWorkspacePane = lazy(() => import('../../components/FileWorkspacePane'
 const CodeFilesPanel = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeFilesPanel })))
 const CodeLocalFilesSettings = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeLocalFilesSettings })))
 
-export type WorkWorkspaceView = 'context' | 'dashboard' | 'plan' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'suggestions' | 'identity' | 'mcp' | 'shell'
+export type WorkWorkspaceView = 'context' | 'dashboard' | 'plan' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'history' | 'suggestions' | 'identity' | 'mcp' | 'shell'
 
 function sendWorkProjectPaneMessage(projectId: string, message: string, profileId = 'work') {
   return sendWorkspacePaneMessageToChat({ profileId, conversationKey: projectId, message })
@@ -62,29 +61,7 @@ function sendWorkProjectPaneMessage(projectId: string, message: string, profileI
 
 // Panel lists live in products/productPanels.ts with every other product's panels.
 
-// usePendingCrewSuggestions counts suggestions waiting for the owner, for
-// the toolbar badge. Refreshed on view changes and every minute.
-function usePendingCrewSuggestions(workspacePath: string, enabled: boolean, view: WorkWorkspaceView): number {
-  const [count, setCount] = useState(0)
-  useEffect(() => {
-    if (!enabled || !workspacePath) {
-      setCount(0)
-      return
-    }
-    let cancelled = false
-    const load = () => {
-      agentApi.listReportHumanInputs(workspacePath, 'pending', 'user_suggestion')
-        .then(response => { if (!cancelled) setCount(response.inputs?.length ?? 0) })
-        .catch(() => { if (!cancelled) setCount(0) })
-    }
-    load()
-    const timer = window.setInterval(load, 60_000)
-    return () => { cancelled = true; window.clearInterval(timer) }
-  }, [workspacePath, enabled, view])
-  return count
-}
-
-export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ sessionId = '', workspacePath, view, onViewChange, enabledPanels, readOnly, showShell = false, showActivityMonitor = true, compactContext = false }: { compactContext?: boolean; sessionId?: string; workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean; showActivityMonitor?: boolean }) {
+export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ sessionId = '', workspacePath, view, onViewChange, enabledPanels, readOnly, showShell = false, showActivityMonitor = true }: { sessionId?: string; workspacePath: string; view: WorkWorkspaceView; onViewChange: (view: WorkWorkspaceView) => void; enabledPanels?: Set<string>; readOnly?: boolean; showShell?: boolean; showActivityMonitor?: boolean }) {
   // Both legacy origins use the merged Crew suggestion feature.
   const product = useProjectProduct()
   const representedSessionIds = useChatStore(useShallow(state => Object.values(state.chatTabs)
@@ -93,40 +70,34 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   const isCode = product.profileId === 'code'
   const filePreference = useCodeFilesPreference(sessionId)
   const localCodeSession = isCode && filePreference.location === 'computer'
-  const hasSuggestions = !localCodeSession
-  // A Code's toolbar reads: Dashboard | Files, Terminal, Browser | Automation, Costs | Setup (owner 2026-10-03). Its working tools
-  // are the Ops group; Automation and Costs share the next one; the Database view is not offered.
-  // A Cowork project (a private assistant for business work) reads: Dashboard, Browser, Automation, Memory, Costs | Files | Setup.
-  // Its work is dashboards, the browser and automations, so those lead; Files stays, quietly; there is no Terminal.
   const projectMode = useProjectMode(sessionId)
   const isCowork = isCode && projectMode === 'cowork'
-  const { views: visibleViews, ops: visibleOps, setup: visibleSetup } = workWorkspacePanels({ profileId: product.profileId, cowork: isCowork, localCodeSession, readOnly: Boolean(readOnly), showShell, enabledPanels })
-  const pendingSuggestions = usePendingCrewSuggestions(workspacePath, !readOnly && hasSuggestions && !compactContext, view)
-  const browserConnected = useBrowserToolbarConnection(workspacePath, product.profileId, [...visibleViews, ...visibleOps].some(item => item.id === 'browser'), !readOnly)
-  // Setup (identity, integrations) edits owner state, so someone else's
-  // Crew offers no setup views at all — not even the always-on identity.
-  // A Code's Share view is open to everyone in it (co-owners edit it, the
-  // rest see who has access); Crews have no Share view.
-  // Ops and Setup are always open and show icons only.
-  // No empty frame when every view moved elsewhere.
-  // Existing integration targets are kept while sharing has its own destination.
-  const sectionsFor = (id: string) => workPanelSections(id, isCode)
+  const incomingEmail = useGmailInboundUIEnabled()
+  const allowedProducts = useAuthStore(state => state.user?.allowed_products)
+  const inventory = workWorkspacePanels({ profileId: product.profileId, cowork: isCowork, localCodeSession, readOnly: Boolean(readOnly), showShell, enabledPanels })
+  const admitted = [...inventory.views, ...inventory.ops, ...inventory.setup]
+  const has = (id: string) => admitted.some(item => item.id === id)
+  const canConnect = has('mcp')
+  const bots = !enabledPanels || enabledPanels.has('bots')
   useRegisterPanelSwitcher(isCode ? 'code' : 'work', [
-    ...(compactContext && !localCodeSession && !readOnly ? [{ id: 'context', label: 'Project overview', group: 'Work & results' }] : []),
-    ...visibleViews.map(item => ({ id: item.id, label: item.label, group: 'Work & results', sections: sectionsFor(item.id) })),
-    ...visibleOps.map(item => ({ id: item.id, label: item.label, group: 'Knowledge & tools', sections: sectionsFor(item.id) })),
-    ...visibleSetup.map(item => ({ id: item.id, label: isCode && item.id === 'identity' ? 'Project settings' : item.label, group: 'Project setup', sections: sectionsFor(item.id) })),
-  ].map(panel => ({ ...panel, group: workspacePanelGroup(panel.id) })), (id, section) => {
-    // The Integrations, Identity and Automation panels pick up this target (useWorkspaceViewTarget).
-    if (id === 'mcp') setWorkspaceViewTarget('mcp', section ?? 'overview')
-    else if (section) setWorkspaceViewTarget(id === 'schedules' ? 'workshop' : id as 'identity', section)
+    ...(!readOnly && !localCodeSession ? [{ id: 'context', label: 'Project menu' }] : []),
+    ...admitted.filter(item => ['dashboard', 'browser'].includes(item.id)).map(item => ({ id: item.id, label: item.label, group: 'Use & share' })),
+    ...(has('dashboard') && !readOnly ? [{ id: 'context:share', label: 'Share', group: 'Use & share' }] : []),
+    ...(has('schedules') ? projectAutomationSections({ incomingEmail, triggers: enabledPanels?.has('triggers') !== false }).map(item => ({ id: `schedules:${item.id}`, label: item.label, group: 'Use & share' })) : []),
+    ...(canConnect ? projectChannelSections(bots, bots).map(item => ({ id: `mcp:${item.id}`, label: item.label, group: 'Use & share' })) : []),
+    ...(canConnect ? projectConnectionSections({ allowedProducts, workMode: true, enabledPanels, onOpen: () => {} }).map(item => ({ id: item.id, label: item.label, group: 'Connections' })) : []),
+    ...(canConnect ? [{ id: 'mcp:agents', label: 'Agents from your computer', group: 'Connections' }] : []),
+    ...admitted.filter(item => !['dashboard', 'browser', 'schedules', 'mcp'].includes(item.id)).map(item => ({ id: item.id, label: item.label, group: 'Ops', sections: workPanelSections(item.id, isCode).filter(section => item.id !== 'memory' || !enabledPanels || enabledPanels.has(section.id)) })),
+  ], (key, section) => {
+    const [id, destination] = key.split(':')
+    const target = destination ?? section
+    if (id === 'context' && target) setWorkspaceViewTarget('context', target)
+    else if (id === 'mcp') setWorkspaceViewTarget('mcp', target ?? 'overview')
+    else if (target && id === 'schedules') setWorkspaceViewTarget('workshop', target)
+    else if (target && id === 'memory') setWorkspaceViewTarget('memory', target)
+    else if (target && id === 'identity') setWorkspaceViewTarget('identity', target)
     onViewChange(id as WorkWorkspaceView)
   })
-  const viewsGroup = visibleViews.some(item => item.id !== 'dashboard') && <div className="inline-flex items-center gap-0.5 px-0.5">
-      {visibleViews.filter(item => item.id !== 'dashboard').map((item) => <WorkspaceToolbarButton key={item.id} {...item} connected={item.id === 'browser' ? browserConnected : undefined} badge={item.id === 'suggestions' ? pendingSuggestions : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}
-    </div>
-
-  if (compactContext && !localCodeSession && !readOnly) return <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1"><TooltipProvider delayDuration={150}>{showActivityMonitor && <GlobalActivityMonitor representedSessionIds={representedSessionIds}/>}<WorkspaceContextButton inContext={view==='context'} onClick={()=>onViewChange('context')}/><WorkContextTools view={view} onOpen={onViewChange} enabledPanels={enabledPanels} panels={[...visibleViews,...visibleOps,...visibleSetup]} profileId={product.profileId}/></TooltipProvider></div>
 
   if (localCodeSession) return <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1">
     <TooltipProvider delayDuration={150}>
@@ -138,26 +109,12 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
     </TooltipProvider>
   </div>
 
-  return (
-    <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1 max-md:min-w-0 max-md:shrink max-md:flex-wrap max-md:justify-end">
-      <TooltipProvider delayDuration={150}>
-        {showActivityMonitor && <GlobalActivityMonitor representedSessionIds={representedSessionIds} />}
-        {visibleViews.some(item => item.id === 'dashboard') && <ReportDocumentSwitcher workspacePath={workspacePath} active={view === 'dashboard'} onOpen={() => onViewChange('dashboard')} />}
-        <WorkspaceToolbarFrame>
-          {/* A Crew and a Cowork project show their views first; a Dev Code shows them (Automation, Costs) after its working tools. */}
-          {(!isCode || isCowork) && viewsGroup}
-          {/* Ops and Setup show their icons only: always open, no label. */}
-          {visibleOps.length > 0 && <WorkspaceToolbarGroup label="Ops" open hideToggleWhenOpen title={isCode ? 'Files, terminal and browser' : 'Operations: project files, database and costs'}>
-            <div className="inline-flex items-center gap-0.5">{visibleOps.map((item) => <WorkspaceToolbarButton key={item.id} {...item} connected={item.id === 'browser' ? browserConnected : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
-          </WorkspaceToolbarGroup>}
-          {isCode && !isCowork && viewsGroup}
-          {visibleSetup.length > 0 && <WorkspaceToolbarGroup label="Setup" open hideToggleWhenOpen title={isCode ? 'Setup: name and integrations' : 'Setup: identity and integrations'}>
-            <div className="inline-flex items-center gap-0.5">{visibleSetup.map((item) => <WorkspaceToolbarButton key={item.id} {...item} label={isCode && item.id === 'identity' ? 'Project settings' : item.label} icon={isCode && item.id === 'identity' ? Settings : item.icon} connected={item.id === 'browser' ? browserConnected : undefined} active={view === item.id} onClick={() => onViewChange(item.id)} />)}</div>
-          </WorkspaceToolbarGroup>}
-        </WorkspaceToolbarFrame>
-      </TooltipProvider>
-    </div>
-  )
+  return <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1">
+    <TooltipProvider delayDuration={150}>
+      {showActivityMonitor && <GlobalActivityMonitor representedSessionIds={representedSessionIds} />}
+      {!readOnly && <WorkspaceContextButton inContext={view === 'context'} onClick={() => onViewChange('context')} />}
+    </TooltipProvider>
+  </div>
 })
 
 function WorkBrowserPanel({ tabId, projectId, workspacePath }: { tabId: string; projectId: string; workspacePath: string }) {
@@ -431,13 +388,11 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           workspacePath={workspacePath}
           projectId={projectId}
           projectTitle={projectTitle}
-          onOpenDashboard={contextPanels.views.some(item => item.id === 'dashboard') ? () => onViewChange('dashboard') : undefined}
           projectTemplates={projectTemplates}
           tabId={tabId}
           enabledPanels={enabledPanels}
           onAsk={async message => { await ask(message) }}
           onSelectedServersChange={onSelectedServersChange}
-          onSelectedSkillsChange={onSelectedSkillsChange}
           workflowContextPaths={workflowContextPaths}
           onWorkflowContextPathsChange={onWorkflowContextPathsChange}
         />}
@@ -447,6 +402,9 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           onOpenFile={filePath => { void openProjectFile(filePath) }}
           fileClient={sharedFiles ?? undefined}
           readOnly={readOnly}
+          memoryEnabled={!enabledPanels || enabledPanels.has('memory')}
+          skillsEnabled={!enabledPanels || enabledPanels.has('skills')}
+          skillsManager={<WorkSkillsPanel workspacePath={workspacePath} projectId={projectId} tabId={tabId} onSelectedSkillsChange={onSelectedSkillsChange} />}
         />}
         <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>
           {view === 'dashboard' && <ReportView
@@ -487,18 +445,10 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
             onAsk={async message => { await ask(message) }}
             iconOnly
           />} />}
-          {view === 'schedules' && <AutomationHubPanel
-            entityType="product"
-            workspacePath={workspacePath}
-            // A Code's schedules and triggers are its owner's: they run as the
-            // owner, so someone the Code is shared with only sees them.
-            canManage={!(product.profileId === 'code' && shared)}
-            scopeNoun="project"
-            productTriggerScope={enabledPanels?.has('triggers') === false ? undefined : { profileId: product.profileId, projectId }}
-            chatContent={<PreviousChatHistoryPanel
+          {view === 'history' && <PreviousChatHistoryPanel
               workspacePath={workspacePath}
               activeSessionId={canonicalSessionId || activeSessionId}
-              title=""
+              title="Chat history"
               emptyText={`No earlier chats for this ${product.itemNoun}.`}
               recentOnly
               includeAutomationChats
@@ -511,9 +461,16 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
               actionLabel="Open"
               onSelectSession={openHistoryChat}
             />}
+          {view === 'schedules' && <AutomationHubPanel
+            entityType="product"
+            workspacePath={workspacePath}
+            // A Code's schedules and triggers are its owner's: they run as the
+            // owner, so someone the Code is shared with only sees them.
+            canManage={!(product.profileId === 'code' && shared)}
+            scopeNoun="project"
+            productTriggerScope={enabledPanels?.has('triggers') === false ? undefined : { profileId: product.profileId, projectId }}
             workflowScope={{ workflowId: projectId, workspacePath, label: projectTitle }}
             askAIMessages={{
-              chats: `Help me with this ${noun} project's automation: past chats, schedules, and triggers. Explain what's here and ask what I want to review or change.`,
               schedules: `Help me manage this project's schedules or authenticated webhook triggers. Each sends exactly one saved instruction to this ${noun} project; do not create workflow routes or workflow executions.`,
               triggers: `Help me manage this project's authenticated triggers. Each trigger sends one saved instruction to this ${noun} project.`,
               functions: `Help me with this ${noun}'s functions: typed actions other Crews and workflows can call. List them, explain what each does, and ask what I want to add or change.`,

@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { UI_CONTROL_CONTRACT } from './contract.generated'
 import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -79,7 +80,7 @@ describe('UI control lease for chats without a live session', () => {
     expect(bindCalls()).toBe(1)
 
     workflowUIControl.mockImplementation(async (_session: string, body: { operation: string }) => (
-      body.operation === 'bind' ? { binding: 'b', token: 't', workspace: 'w' } : []
+      body.operation === 'bind' ? { binding: 'b', token: 't', workspace: 'w', contract: UI_CONTROL_CONTRACT } : []
     ))
     await act(async () => {
       useChatStore.setState({ activeSessionsCache: [{ session_id: 'chat-1' } as never] })
@@ -100,7 +101,7 @@ describe('UI control lease for chats without a live session', () => {
     workflowUIControl.mockImplementation(async (_session: string, body: { operation: string }) => {
       if (body.operation !== 'bind') return []
       if (bindCalls() <= 2) throw notActive()
-      return { binding: 'b', token: 't', workspace: 'w' }
+      return { binding: 'b', token: 't', workspace: 'w', contract: UI_CONTROL_CONTRACT }
     })
     await act(async () => { root.render(<Probe session="live-chat" />) })
     expect(bindCalls()).toBe(1)
@@ -124,7 +125,7 @@ describe('UI control lease for chats without a live session', () => {
     host.dataset.uiWorkspace = 'w'
     document.body.appendChild(host)
     workflowUIControl.mockImplementation(async (_session: string, body: { operation: string }) => (
-      body.operation === 'bind' ? { binding: 'b', token: 't', workspace: 'w' } : []
+      body.operation === 'bind' ? { binding: 'b', token: 't', workspace: 'w', contract: UI_CONTROL_CONTRACT } : []
     ))
     const syncCalls = () => workflowUIControl.mock.calls.filter(([, body]) => body?.operation === 'sync').length
     await act(async () => { root.render(<Probe session="chat-1" />) })
@@ -151,7 +152,7 @@ describe('UI control lease for chats without a live session', () => {
     const stale = () => Object.assign(new Error('conflict'), { response: { status: 409, data: 'inactive_scope\n' } })
     let syncs = 0
     workflowUIControl.mockImplementation(async (_session: string, body: { operation: string }) => {
-      if (body.operation === 'bind') return { binding: `b${bindCalls()}`, token: 't', workspace: 'w' }
+      if (body.operation === 'bind') return { binding: `b${bindCalls()}`, token: 't', workspace: 'w', contract: UI_CONTROL_CONTRACT }
       if (body.operation === 'sync' && ++syncs === 1) throw stale()
       return []
     })

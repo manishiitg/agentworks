@@ -34,19 +34,23 @@ These are {{product}} views, not AgentWorks Workflow views:
 | View ID | {{product}} panel | Open it when |
 |---|---|---|
 | `report` | Dashboard | A project Dashboard was created or changed, or the user asks to see its visual project information. |
-| `memory` | Memory | `MEMORY.md` or project-local reusable skills were reviewed or changed. |
-| `database` | Database | Project-owned managed tables or rows were created, changed, or requested. |
-| `files` | Files | The user should inspect project files. {{product}} opens the panel; it does not deep-link to an individual file through UI control. |
-| `browser` | Browser | Managed browser work begins or the user asks to watch it. The stream updates without repeated refresh actions. |
-| `costs` | Costs and usage | The user asks about this {{product}} project's model usage or cost. |
-| `workshop` | Automation | The user should inspect project chats, schedules, triggers, or bots. Use only an advertised section target. |
-| `schedules` | Automation compatibility route | Open the schedules or webhook-trigger section using only an advertised target. Prefer `workshop` when its target expresses the destination. |
-| `identity` | Identity and project setup | The user should inspect project identity, selected model, secrets, or attached folders. |
-| `mcp` | Integrations | The user should inspect MCP servers, skills, bots, or connected accounts. |
+| `memory` | Memory & skills | Inspect durable memory or project-local skills. Use `memory` or `skills` as the section target when advertised. |
+| `database` | Database | Inspect project-owned managed tables or rows. |
+| `files` | Files | Inspect project files. |
+| `browser` | Browser | Watch managed browser work; the stream updates without repeated refresh actions. |
+| `costs` | Costs and usage | Inspect this project's model usage or cost. |
+| `history` | Chat history | Find and open earlier project conversations. |
+| `workshop` | Automations | Inspect `schedules`, `conditions` (Watchers), `triggers` (Webhooks) , `functions` or `email` (Incoming email). Only use advertised targets. |
+| `schedules` | Schedules | Inspect a scheduled caller or its advertised webhook target. |
+| `identity` | Settings | Inspect the project name, instructions and model configuration. |
+| `mcp` | Connections and channels | Inspect admitted MCPs, Vault & secrets, Brain, folders & workflows, Google apps or Slack account. Channel targets are `slack-app`, `whatsapp` and `cli` (MCP access), when advertised. |
+| `llm` | Models | Open model settings when advertised. |
+| `folders` | Folders & workflows | Inspect admitted attached resources when advertised. |
 
-The contract may also advertise compatibility aliases such as `skills`,
-`secrets`, `llm`, `bots`, or `folders`. Use them only when advertised; the host
-may route them into the consolidated Identity or Integrations panel.
+The project menu is Use & share, Connections, then collapsed Ops. Run people
+see only the chat and dashboard. The server's advertised contract is authoritative;
+a menu link never adds access. Chat history is in Ops; Slack account is a
+connection and Slack app is a channel. There is no Automation Bots tab.
 
 ## Boundaries
 

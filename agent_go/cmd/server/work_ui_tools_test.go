@@ -34,7 +34,7 @@ func TestWorkUIRegistersSamePresentationToolFamilyWithWorkViews(t *testing.T) {
 	if !strings.Contains(capabilities, `"targets":["schedules","webhooks"]`) {
 		t.Fatalf("Crew schedule sections missing from capabilities: %s", capabilities)
 	}
-	if !strings.Contains(capabilities, `"targets":["chats","schedules","triggers","bots"]`) {
+	if !strings.Contains(capabilities, `"targets":["schedules","conditions","triggers","functions","email"]`) {
 		t.Fatalf("Crew Automation center sections missing from capabilities: %s", capabilities)
 	}
 	for _, currentPanel := range []string{`"id":"memory"`, `"id":"identity"`} {
@@ -56,8 +56,8 @@ func TestWorkUIRegistersSamePresentationToolFamilyWithWorkViews(t *testing.T) {
 	if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "schedules", "action": "open", "target": "webhooks"}); err != nil || !strings.Contains(out, "browser_disconnected") {
 		t.Fatalf("webhooks open=%s err=%v", out, err)
 	}
-	if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "workshop", "action": "open", "target": "bots"}); err != nil || !strings.Contains(out, "browser_disconnected") {
-		t.Fatalf("Automation bots open=%s err=%v", out, err)
+	if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "mcp", "action": "open", "target": "slack-app"}); err != nil || !strings.Contains(out, "browser_disconnected") {
+		t.Fatalf("Slack channel open=%s err=%v", out, err)
 	}
 	if out, err := reg.tools["perform_ui_action"].exec(context.Background(), map[string]interface{}{"view": "flow", "action": "open"}); err != nil || !strings.Contains(out, "unsupported_view") {
 		t.Fatalf("workflow-only view was accepted: %s err=%v", out, err)
@@ -65,7 +65,7 @@ func TestWorkUIRegistersSamePresentationToolFamilyWithWorkViews(t *testing.T) {
 }
 
 func TestWorkUIContractCoversCurrentCrewPanels(t *testing.T) {
-	for _, view := range []string{"report", "memory", "database", "browser", "costs", "workshop", "schedules", "files", "identity", "mcp"} {
+	for _, view := range []string{"report", "memory", "database", "browser", "costs", "workshop", "schedules", "files", "identity", "mcp", "history"} {
 		if !validUIViewForContract(workUIControlContract, view) {
 			t.Errorf("Crew UI contract does not accept current panel %q", view)
 		}
@@ -122,5 +122,20 @@ func TestWorkUISecretsUsesConnectionsSection(t *testing.T) {
 		if err := validateUIActionForContract(contract, "mcp", "open", "guessed"); err == nil {
 			t.Fatalf("%s accepted unknown Connections target", contract.Product)
 		}
+	}
+}
+
+func TestProjectUIScopeUsesSameSectionsOnServer(t *testing.T) {
+	for _, scope := range []string{"Chats/Work/projects/demo", "Chats/Code/projects/demo"} {
+		contract := uiContractForScope(scope)
+		if err := validateUIActionForContract(contract, "memory", "open", "skills"); err != nil {
+			t.Fatalf("%s refused its Skills section: %v", scope, err)
+		}
+		if err := validateUIActionForContract(contract, "memory", "open", "guessed"); err == nil {
+			t.Fatalf("%s accepted a guessed section", scope)
+		}
+	}
+	if err := validateUIActionForContract(uiContractForScope("Workflow/example"), "memory", "open", "skills"); err == nil {
+		t.Fatal("Goal accepted a Crew-only view")
 	}
 }

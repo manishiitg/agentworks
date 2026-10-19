@@ -9,7 +9,7 @@
 // components/workflow/workspaceViews.ts (VIEWS); WORKFLOW_PANELS re-exports it.
 import {
   BookOpen, Brain, BrainCircuit, CalendarClock, Database, DollarSign, Files, Fingerprint, KeyRound, LayoutDashboard,
-  Lightbulb, Monitor, Plus, Route, Server, ShieldCheck, Terminal, UsersRound, Zap, type LucideIcon,
+  Lightbulb, MessageSquareText, Monitor, Plus, Route, Server, ShieldCheck, Terminal, UsersRound, Zap, type LucideIcon,
 } from 'lucide-react'
 import type { WorkWorkspaceView } from './work/WorkWorkspacePane'
 import type { KnowledgebaseView } from './knowledgebase/KnowledgebaseWorkspacePane'
@@ -27,19 +27,20 @@ export const WORK_PANELS: Record<'views' | 'ops' | 'setup', ProductPanel<WorkWor
     { id: 'plan', label: 'Plan', icon: Route },
     { id: 'memory', label: 'Memory & skills', icon: Brain },
     { id: 'browser', label: 'Browser', icon: Monitor },
-    { id: 'schedules', label: 'Schedules & triggers', icon: Zap },
+    { id: 'schedules', label: 'Automations', icon: Zap },
     // Change requests from other users of this Crew; the owner reviews them.
     { id: 'suggestions', label: 'Suggestions', icon: Lightbulb },
   ],
   ops: [
     { id: 'files', label: 'Files', icon: Files },
+    { id: 'history', label: 'Chat history', icon: MessageSquareText },
     // Code only: a terminal in this workspace, run as your own account and sandboxed to it (see showShell).
     { id: 'shell', label: 'Terminal', icon: Terminal },
     { id: 'database', label: 'Database', icon: Database },
     { id: 'costs', label: 'Costs and usage', icon: DollarSign },
   ],
   setup: [
-    { id: 'identity', label: 'Details & instructions', icon: Fingerprint },
+    { id: 'identity', label: 'Settings', icon: Fingerprint },
     { id: 'mcp', label: 'Connections', icon: Server },
   ],
 }
@@ -68,13 +69,12 @@ export interface PanelSection { id: string; label: string; keywords?: string }
 
 /** Existing integration target IDs, flattened by MCPs & secrets navigation. */
 export const INTEGRATION_SECTIONS: PanelSection[] = [
-  { id: 'use-share', label: 'Use & share', keywords: 'share sharing people access dashboard channels' },
   { id: 'slack-app', label: 'Slack app', keywords: 'use share bot incoming channel conversations' },
-  ...PROJECT_INTEGRATION_SECTIONS.map(section => ({ id: section.value, label: section.value === 'apps' ? 'Connection overview' : section.value === 'cli' ? 'MCP access' : section.label, keywords: section.value === 'apps' ? `${section.description} Tools & secrets Apps & tools` : section.description })),
+  ...PROJECT_INTEGRATION_SECTIONS.filter(section => section.value !== 'apps').map(section => ({ id: section.value, label: section.value === 'apps' ? 'Connection overview' : section.value === 'cli' ? 'MCP access' : section.label, keywords: section.value === 'apps' ? `${section.description} Tools & secrets Apps & tools` : section.description })),
   ...projectPluginTabs().map(tab => ({ id: tab.value, label: tab.label, keywords: 'mcp tools' })),
 ]
 /** Integrations sections a Relay offers (its panel shows only these). */
-export const RELAY_INTEGRATION_SECTION_IDS = new Set(['use-share', 'cli', 'apps', 'gmail', 'slack', ...projectPluginTabs().map(tab => tab.value)])
+export const RELAY_INTEGRATION_SECTION_IDS = new Set(['cli', 'apps', 'gmail', 'slack', ...projectPluginTabs().map(tab => tab.value)])
 
 export const WORKFLOW_IDENTITY_SECTIONS: PanelSection[] = [
   { id: 'general', label: 'General', keywords: 'name soul persona identity' },
@@ -92,7 +92,6 @@ export const AUTOMATION_SECTIONS: PanelSection[] = [
   { id: 'triggers', label: 'Webhooks', keywords: 'webhook trigger' },
   { id: 'conditions', label: 'Watchers', keywords: 'watch watcher monitor python script condition ticket event once' },
   { id: 'functions', label: 'Functions', keywords: 'function api' },
-  { id: 'bots', label: 'Bots', keywords: 'slack whatsapp bot' },
   { id: 'chats', label: 'Chats', keywords: 'chat conversation' },
 ]
 export const KNOWLEDGE_SECTIONS: PanelSection[] = [
@@ -116,7 +115,8 @@ export const WORKFLOW_PANEL_SECTIONS: Partial<Record<string, PanelSection[]>> = 
   knowledge: KNOWLEDGE_SECTIONS, access: ACCESS_SECTIONS,
 }
 export const WORK_PANEL_SECTIONS: Partial<Record<string, PanelSection[]>> = {
-  mcp: INTEGRATION_SECTIONS, identity: WORK_IDENTITY_SECTIONS, schedules: AUTOMATION_SECTIONS,
+  mcp: INTEGRATION_SECTIONS.filter(section => section.id !== 'skills'), identity: WORK_IDENTITY_SECTIONS, schedules: AUTOMATION_SECTIONS.filter(section => section.id !== 'bots' && section.id !== 'chats'),
+  memory: [{ id: 'memory', label: 'Memory' }, { id: 'skills', label: 'Skills' }],
 }
 export const VAULT_PANEL_SECTIONS: Partial<Record<string, PanelSection[]>> = { people: VAULT_PEOPLE_SECTIONS }
 

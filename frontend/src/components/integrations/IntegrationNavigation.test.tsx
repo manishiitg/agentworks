@@ -21,7 +21,7 @@ it.each([false, true])('shows resources the agent can use and leaves incoming ch
   const sections = projectIntegrationSections(null, relay)
   const plugins = projectPluginTabs()
   const options = integrationNavigationOptions(sections, plugins)
-  expect(options.map(item => item.value)).toEqual([...plugins.filter(item => item.value !== 'available').map(item => item.value), ...sections.filter(item => !['apps', 'whatsapp', 'cli'].includes(item.value)).map(item => item.value)])
+  expect(options.map(item => item.value)).toEqual([...plugins.filter(item => item.value !== 'available' && item.value !== 'skills').map(item => item.value), ...sections.filter(item => !['apps', 'whatsapp', 'cli'].includes(item.value)).map(item => item.value)])
   for (const absent of ['whatsapp', 'cli']) expect(options.map(item => item.value)).not.toContain(absent)
   expect(options.find(item => item.value === 'connected')?.label).toBe('MCPs')
   if (relay) for (const absent of ['brain', 'folders', 'whatsapp', 'cli']) expect(options.map(item => item.value)).not.toContain(absent)
@@ -39,10 +39,10 @@ it('keeps Relay search destinations consistent with its admitted connection inve
   // The registry is built at module load; deployment-backed plugin entries may
   // already be absent before this test installs its server runtime config.
   const registeredPlugins = projectPluginTabs().filter(tab => INTEGRATION_SECTIONS.some(section => section.id === tab.value))
-  expect(new Set(visible.map(section => section.id))).toEqual(new Set(['use-share', 'cli', ...projectIntegrationSections(null, true).map(section => section.value), ...registeredPlugins.map(tab => tab.value)]))
+  expect(new Set(visible.map(section => section.id))).toEqual(new Set(['cli', ...projectIntegrationSections(null, true).filter(section => section.value !== 'apps').map(section => section.value), ...registeredPlugins.map(tab => tab.value)]))
   expect(visible.map(section => section.id)).not.toContain('slack-app')
-  expect(visible.find(section => section.id === 'slack')?.label).toBe('Slack')
-  expect(visible.find(section => section.id === 'apps')?.label).toBe('Connection overview')
+  expect(visible.find(section => section.id === 'slack')?.label).toBe('Slack account')
+  expect(visible.find(section => section.id === 'apps')).toBeUndefined()
 })
 
 it('keeps setup choices behind one action, supports keyboard selection and returns to Connections', async () => {
@@ -55,13 +55,13 @@ it('keeps setup choices behind one action, supports keyboard selection and retur
   expect([...host.querySelectorAll('button')].map(button => button.textContent)).toEqual(['Add connection'])
   expect(host.querySelector('[aria-pressed]')).toBeNull()
   await act(async () => host.querySelector<HTMLButtonElement>('button')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })))
-  const slack = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === 'Slack')!
+  const slack = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === 'Slack account')!
   expect(slack).toBeDefined()
   await act(async () => slack.click())
   expect(select).toHaveBeenLastCalledWith('slack')
   expect(document.querySelector('[role="menu"]')).toBeNull()
   render(false, 'slack')
-  expect(host.textContent).toContain('Connections/Slack')
+  expect(host.textContent).toContain('Connections/Slack account')
   await act(async () => host.querySelector<HTMLButtonElement>('button')!.click())
   expect(back).toHaveBeenCalledOnce()
 })

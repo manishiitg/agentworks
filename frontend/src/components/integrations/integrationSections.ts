@@ -11,13 +11,13 @@ export interface IntegrationSectionOption {
 
 /** Shared names and descriptions for Crew, Code, workflows and Relay. */
 export const PROJECT_INTEGRATION_SECTIONS: IntegrationSectionOption[] = [
-  { value: 'apps', label: 'Tools & secrets', description: 'MCPs, secrets, skills and Vault.', icon: Blocks },
+  { value: 'apps', label: 'Tools & secrets', description: 'MCPs, secrets and Vault.', icon: Blocks },
   { value: 'brain', label: 'Brain', description: 'Shared knowledge for your agents: open and edit by default, open only, or off.', icon: Brain, requiredProduct: 'knowledgebase' },
   { value: 'folders', label: 'Folders & workflows', description: 'Folders on this server and other workflows this one can use.', icon: FolderOpen },
-  { value: 'slack', label: 'Slack', description: 'The account this agent uses to read or send Slack messages.', icon: Slack },
+  { value: 'slack', label: 'Slack account', description: 'The account this agent uses to read or send Slack messages.', icon: Slack },
   { value: 'whatsapp', label: 'WhatsApp', description: 'Use & share: let people message this project in WhatsApp.', icon: MessageCircle },
   { value: 'gmail', label: 'Google apps', description: 'Gmail, Drive, Calendar and other Google apps.', icon: Grid2X2 },
-  { value: 'cli', label: 'Use in AI apps', description: 'Connect Claude, ChatGPT or a local AI agent.', icon: AppWindow },
+  { value: 'cli', label: 'MCP access', description: 'Connect Claude, ChatGPT or a local AI agent.', icon: AppWindow },
 ]
 
 /** Product-backed integrations use the same installation and account bounds as the product menu. */
@@ -28,5 +28,5 @@ export function integrationProductAvailable(requiredProduct: ProductSurface | un
 export function projectIntegrationSections(allowedProducts?: string[] | null, relayMode = false): IntegrationSectionOption[] {
   const vaultAvailable = integrationProductAvailable('mcp-gateway', allowedProducts)
   return PROJECT_INTEGRATION_SECTIONS.filter(option => integrationProductAvailable(option.requiredProduct, allowedProducts) && (!relayMode || option.value === 'apps' || option.value === 'gmail' || option.value === 'slack'))
-    .map(option => option.value === 'apps' && !vaultAvailable ? { ...option, description: 'MCPs, project secrets and skills.' } : option)
+    .map(option => option.value === 'apps' && !vaultAvailable ? { ...option, description: 'MCPs and project secrets.' } : option)
 }

@@ -16,7 +16,7 @@ describe('workflow Ask AI placement', () => {
     const toolbar = readFileSync('src/components/workflow/canvas/WorkflowToolbar.tsx', 'utf8')
     const layout = readFileSync('src/components/workflow/WorkflowLayout.tsx', 'utf8')
     expect(toolbar).toContain('<WorkspaceContextButton')
-    expect(toolbar).toContain('<WorkflowContextTools relayMode={relayMode}')
+    expect(toolbar).not.toContain('WorkflowContextTools')
     expect(toolbar).not.toContain('<WorkspaceToolbarFrame')
     expect(toolbar).not.toContain('<ReportDocumentSwitcher')
     expect(layout).toContain("compactContext: workflowWorkspaceView === 'context'")

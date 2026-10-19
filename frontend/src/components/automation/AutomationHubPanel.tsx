@@ -192,9 +192,9 @@ export function AutomationHubPanel({
     >
       <WorkspaceViewHeader
         icon={Zap}
-        title={relayMode ? 'Flow' : 'Automation'}
+        title="Automations"
         helpTopic={`Automation · ${SECTION_DEFS.find(item => item.id === section)?.label ?? 'Chats'}`}
-        subtitle={relayMode ? 'API triggers, Watchers and chat history for this Flow.' : 'Chat history and the channels that can start work.'}
+        subtitle={relayMode ? 'Webhooks, Watchers and chat history for this Relay.' : 'Schedules and actions that start work.'}
         actions={headerActions}
         context={
           section === 'schedules' && schedulesStatus ? <ScheduleStatusPills status={schedulesStatus} />
@@ -209,7 +209,7 @@ export function AutomationHubPanel({
         tabs={{
           value: section,
           onChange: (value: string) => selectSection(value as AutomationHubSection),
-          options: SECTION_DEFS.filter(item => availableSections.has(item.id)).map(({ id, label, icon }) => ({ value: id, label: relayMode && id === 'triggers' ? 'Triggers' : label, icon })),
+          options: SECTION_DEFS.filter(item => availableSections.has(item.id)).map(({ id, label, icon }) => ({ value: id, label, icon })),
           ariaLabel: 'Automation center',
         }}
       />

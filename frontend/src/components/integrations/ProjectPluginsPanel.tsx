@@ -5,13 +5,12 @@ import type { ProductSurface } from '../../products/productSurfaceConfig'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { integrationProductAvailable } from './integrationSections'
 
-export type PluginTab = 'connected' | 'available' | 'secrets' | 'skills' | 'vault'
+export type PluginTab = 'connected' | 'available' | 'secrets' | 'skills'
 export const PROJECT_PLUGIN_TABS: Array<{ value: PluginTab; label: string; requiredProduct?: ProductSurface }> = [
   { value: 'connected', label: 'Connected MCPs' },
   { value: 'available', label: 'Available MCPs' },
-  { value: 'secrets', label: 'Secrets' },
+  { value: 'secrets', label: 'Vault & secrets' },
   { value: 'skills', label: 'Skills' },
-  { value: 'vault', label: 'Vault', requiredProduct: 'mcp-gateway' },
 ]
 
 export function projectPluginTabs(allowedProducts?: string[] | null) { return PROJECT_PLUGIN_TABS.filter(item => integrationProductAvailable(item.requiredProduct, allowedProducts)) }
@@ -28,7 +27,8 @@ export function ProjectPluginsPanel({ connections, secrets, skills, vault, initi
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const [localTab, setTab] = useState<PluginTab>(initialTab)
   const tab = controlledTab ?? localTab
-  const content = { connected: connections?.('connected'), available: connections?.('available'), secrets, skills, vault }
+  const vaultContent = integrationProductAvailable('mcp-gateway', allowedProducts) ? vault : undefined
+  const content = { connected: connections?.('connected'), available: connections?.('available'), secrets: secrets || vaultContent ? <div className="space-y-4">{secrets}{vaultContent}</div> : undefined, skills }
   const visible = projectPluginTabs(allowedProducts).filter(item => content[item.value] !== undefined)
   const active = visible.some(item => item.value === tab) ? tab : visible[0]?.value
   if (!active) return null

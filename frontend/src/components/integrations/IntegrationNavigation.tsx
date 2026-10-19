@@ -1,15 +1,15 @@
-import { ArrowLeft, Plus, KeyRound, Puzzle, ShieldCheck, Sparkles, type LucideIcon } from 'lucide-react'
+import { ArrowLeft, Plus, KeyRound, Puzzle, Sparkles, type LucideIcon } from 'lucide-react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import type { IntegrationSectionOption } from './integrationSections'
 import type { PluginTab } from './ProjectPluginsPanel'
 
 type ConnectionOption = { value: string; label: string; icon: LucideIcon }
-const pluginIcons = { connected: Puzzle, available: Puzzle, secrets: KeyRound, skills: Sparkles, vault: ShieldCheck }
+const pluginIcons = { connected: Puzzle, available: Puzzle, secrets: KeyRound, skills: Sparkles }
 
 /** Flatten the admitted inventory; existing section IDs remain valid targets. */
 export function integrationNavigationOptions(sections: readonly IntegrationSectionOption[], plugins: readonly { value: PluginTab; label: string }[]): ConnectionOption[] {
   return [
-    ...(sections.some(section => section.value === 'apps') ? plugins.filter(item => item.value !== 'available')
+    ...(sections.some(section => section.value === 'apps') ? plugins.filter(item => item.value !== 'available' && item.value !== 'skills')
       .map(item => ({ ...item, label: item.value === 'connected' ? 'MCPs' : item.label, icon: pluginIcons[item.value] })) : []),
     ...sections.filter(section => !['apps', 'whatsapp', 'cli'].includes(section.value)),
   ]
@@ -27,7 +27,7 @@ export function IntegrationNavigation({ options, value, onChange, overview, onOv
   const selected = options.find(option => option.value === (value === 'available' ? 'connected' : value))
   const accounts = options.filter(option => ['connected', 'gmail', 'slack', 'whatsapp'].includes(option.value))
   const resources = options.filter(option => !accounts.includes(option))
-  const shared = resources.filter(option => ['brain', 'vault'].includes(option.value)).sort((a, b) => Number(a.value === 'vault') - Number(b.value === 'vault'))
+  const shared = resources.filter(option => ['brain', 'secrets'].includes(option.value)).sort((a, b) => Number(a.value === 'secrets') - Number(b.value === 'secrets'))
   const project = resources.filter(option => !shared.includes(option))
   const choose = (next: string) => {
     if (options.some(option => option.value === next)) onChange(next === 'connected' && canEdit ? 'available' : next)

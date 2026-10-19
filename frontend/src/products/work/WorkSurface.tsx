@@ -79,16 +79,16 @@ const WORK_SPLIT_PREFERENCE_KEY = 'work_workspace_split_ratio'
 const LOCAL_CODE_MIN_CHAT_SHARE = 0.72
 const WORK_VIEW_PREFERENCE_KEY = 'work_workspace_view'
 const WORK_UI_PRESENTATION_VIEWS = {
-  context: 'context', report: 'dashboard', plan: 'plan', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
+  history: 'history', context: 'context', report: 'dashboard', plan: 'plan', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
   suggestions: 'suggestions', identity: 'identity', mcp: 'mcp', shell: 'shell',
   // Legacy agent + preference ids land on the consolidated Setup views.
-  skills: 'mcp', llm: 'identity', bots: 'mcp', email: 'mcp', folders: 'identity',
+  llm: 'identity', email: 'mcp', folders: 'identity',
 } as const satisfies Record<string, WorkWorkspaceView>
 type WorkUIPresentationView = keyof typeof WORK_UI_PRESENTATION_VIEWS
 const WORK_UI_LABELS: Record<WorkUIPresentationView, string> = {
-  context: 'Context', report: 'Dashboard', plan: 'Plan', memory: 'Memory', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automation', schedules: 'Automation', files: 'Files',
-  suggestions: 'Suggestions', identity: 'Identity', mcp: 'Connections', shell: 'Terminal',
-  skills: 'Skills', llm: 'Agent configuration', bots: 'Bots', email: 'Gmail', folders: 'Attached folders',
+  history: 'Chat history', context: 'Context', report: 'Dashboard', plan: 'Plan', memory: 'Memory & skills', database: 'Database', browser: 'Browser', costs: 'Costs and usage', workshop: 'Automations', schedules: 'Automations', files: 'Files',
+  suggestions: 'Suggestions', identity: 'Settings', mcp: 'Connections', shell: 'Terminal',
+  llm: 'Agent configuration', email: 'Gmail', folders: 'Attached folders',
 }
 
 function workPresentationView(view: WorkWorkspaceView, localCodeSession = false): WorkUIPresentationView {
@@ -1267,11 +1267,11 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     if (localCodeSession && !['files', 'costs', 'llm'].includes(view)) return
     if (isWorkSessionRun(selected) && !sharedPanels.has(panel)) return
     if (panel === 'schedules') {
-      const automationTarget = view === 'bots' ? 'bots' : target === 'webhooks' ? 'triggers' : target || 'schedules'
+      const automationTarget = target === 'webhooks' ? 'triggers' : target || 'schedules'
       useWorkflowStore.getState().openWorkspaceView('workshop', automationTarget)
     }
+    if (panel === 'memory' && target) setWorkspaceViewTarget('memory', target)
     if (panel === 'mcp' && target) {
-      if (target === 'secrets' && workspacePanels && !workspacePanels.has('secrets')) return
       setWorkspaceViewTarget('mcp', target)
     }
     setPanelOpen(true)
@@ -1306,7 +1306,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       (!localCodeSession || ['files', 'costs', 'llm'].includes(view)),
     labelForView: (view) => localCodeSession && view === 'files' ? 'Local CLI connection' : localCodeSession && view === 'llm' ? 'Models' : WORK_UI_LABELS[view as WorkUIPresentationView] ?? view,
     actorLabel: product.noun,
-    getTarget: (view, host) => view === 'mcp' ? host?.querySelector<HTMLElement>('[data-ui-view-section]')?.dataset.uiViewSection : view === 'workshop' || view === 'schedules' ? useWorkflowStore.getState().workspaceViewTarget?.target : undefined,
+    getTarget: (view, host) => view === 'mcp' || view === 'memory' ? host?.querySelector<HTMLElement>('[data-ui-view-section]')?.dataset.uiViewSection : view === 'workshop' || view === 'schedules' ? useWorkflowStore.getState().workspaceViewTarget?.target : undefined,
   }), [openWorkPresentationView, product.noun, workspaceView, workspacePanels, localCodeSession])
   useWorkspaceUIControl(activeSessionId ?? undefined, workUIAdapter)
 
@@ -1693,7 +1693,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               mobilePreview={reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
               onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => { if (!(isShared && sharedCrewHasDashboard === false)) setPanelOpen(true) }}
               tabs={tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} profileId={product.profileId} allowSideChats={!isWorkSessionRun(selected)} /> : <div className="min-w-0 flex-1" />}
-              toolbar={<WorkWorkspaceToolbar compactContext={!localCodeSession && !isWorkSessionRun(selected)} sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={isWorkSessionRun(selected)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} />}
+              toolbar={<WorkWorkspaceToolbar sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={isWorkSessionRun(selected)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} />}
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView, localCodeSession) } as React.HTMLAttributes<HTMLElement>}
               chat={<>

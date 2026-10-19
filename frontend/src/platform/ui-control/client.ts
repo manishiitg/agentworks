@@ -1,6 +1,8 @@
 import { UI_CONTROL_CONTRACT } from './contract.generated'
 import { requestWorkflowPlanStepFocus } from '../../utils/workflowPlanFocus'
 
+export type UIContract = { version: number; product: string; views: readonly { id: string; label: string; actions: readonly string[]; targets: readonly string[] | null; target_kind?: string }[] }
+
 export interface UISnapshot { view: string; revision: number; visible: boolean; target?: string }
 export interface UIAction {
   request_id: string
@@ -13,15 +15,15 @@ export interface UIAction {
 
 // A closed presentation adapter, deliberately NOT a click/selector API. Only
 // first-party semantic markers are inspected, never text or credential values.
-export function supportedAction(a: UIAction): boolean {
-  const view = UI_CONTROL_CONTRACT.views.find(v => v.id === a.view)
+export function supportedAction(a: UIAction, contract: UIContract = UI_CONTROL_CONTRACT): boolean {
+  const view = contract.views.find(v => v.id === a.view)
   if (!view || !(view.actions as readonly string[]).includes(a.action)) return false
   const targetKind = 'target_kind' in view ? view.target_kind : undefined
   return (a.action === 'open' || a.action === 'refresh')
     ? (!a.target || (targetKind === 'view_section'
-      ? (view.targets as readonly string[]).includes(a.target)
+      ? (view.targets ?? []).includes(a.target)
       : ((targetKind === 'plan_step_id' || targetKind === 'report_tab' || targetKind === 'workspace_file_path') && !!a.target.trim() && a.target.length <= 1024)))
-    : (view.targets as readonly string[]).includes(a.target ?? '')
+    : (view.targets ?? []).includes(a.target ?? '')
 }
 
 export function workspaceHost(workspace: string): HTMLElement | undefined {
@@ -34,9 +36,9 @@ export function workspaceHost(workspace: string): HTMLElement | undefined {
 
 export async function applyUIAction(
   action: UIAction, workspace: string, open: (view: string, target?: string) => void,
-  state: () => UISnapshot, signal: AbortSignal, refresh?: (view: string, target?: string) => void,
+  state: () => UISnapshot, signal: AbortSignal, refresh?: (view: string, target?: string) => void, contract: UIContract = UI_CONTROL_CONTRACT,
 ): Promise<{ status: string; code: string }> {
-  if (!supportedAction(action)) return { status: 'rejected', code: 'target_not_found' }
+  if (!supportedAction(action, contract)) return { status: 'rejected', code: 'target_not_found' }
   if (signal.aborted || !workspaceHost(workspace)) return { status: 'cancelled', code: 'inactive_scope' }
   if (action.expected_state_revision !== undefined && action.expected_state_revision !== state().revision)
     return { status: 'rejected', code: 'stale_state' }
@@ -74,7 +76,7 @@ export async function applyUIAction(
       if (host.getClientRects().length === 0) return
       // The marker lives INSIDE Suspense, not in its loading fallback.
       if (!host.querySelector('[data-ui-view-mounted]')) return
-      if (action.view === 'mcp' && action.target) {
+      if ((action.view === 'mcp' || action.view === 'memory') && action.target) {
         const section = host.querySelector<HTMLElement>('[data-ui-view-section]')
         if (section?.dataset.uiViewSection !== action.target || section.getClientRects().length === 0) return
       }

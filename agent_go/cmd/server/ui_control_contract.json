@@ -4,7 +4,7 @@
   "views": [
     {
       "id": "context",
-      "label": "Context",
+      "label": "Project menu",
       "actions": [
         "open",
         "refresh"
@@ -33,7 +33,7 @@
     },
     {
       "id": "costs",
-      "label": "Costs",
+      "label": "Costs and usage",
       "actions": [
         "open",
         "refresh"
@@ -42,7 +42,7 @@
     },
     {
       "id": "execution-logs",
-      "label": "Execution logs",
+      "label": "Run logs",
       "actions": [
         "open",
         "refresh"
@@ -51,7 +51,7 @@
     },
     {
       "id": "knowledge",
-      "label": "Knowledge",
+      "label": "Knowledge base",
       "target_kind": "view_section",
       "actions": [
         "open",
@@ -154,7 +154,7 @@
     },
     {
       "id": "identity",
-      "label": "Identity",
+      "label": "Settings",
       "actions": [
         "open",
         "refresh"
@@ -169,7 +169,17 @@
         "refresh"
       ],
       "targets": [
-        "secrets"
+        "connected",
+        "available",
+        "secrets",
+        "skills",
+        "brain",
+        "folders",
+        "slack",
+        "gmail",
+        "slack-app",
+        "whatsapp",
+        "cli"
       ],
       "target_kind": "view_section"
     },
@@ -184,7 +194,7 @@
     },
     {
       "id": "browser",
-      "label": "Browser automation",
+      "label": "Browser",
       "actions": [
         "open",
         "refresh"
@@ -193,7 +203,7 @@
     },
     {
       "id": "workshop",
-      "label": "Automation",
+      "label": "Automations",
       "target_kind": "view_section",
       "actions": [
         "open",
@@ -202,8 +212,10 @@
       "targets": [
         "chats",
         "schedules",
+        "conditions",
         "triggers",
-        "bots"
+        "functions",
+        "email"
       ]
     }
   ]

@@ -1,10 +1,12 @@
-import { workspacePanelGroup } from '../../workspace/workspacePanelGroups'
+import { useGmailInboundUIEnabled } from '../bots/gmailAskAI'
+import { projectAutomationSections, projectChannelSections, projectConnectionSections } from '../../workspace/WorkspaceProjectNavigation'
+import { useWorkflowManifestStore } from '../../../stores/useWorkflowManifestStore'
+import { useCanWriteWorkflow } from '../../../hooks/useCanWriteWorkflow'
 import { WorkspaceContextButton } from '../../workspace/WorkspaceContextButton'
-import { WorkflowContextTools } from '../WorkflowContextPanel'
 import React, { useEffect, useRef, useMemo, useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useWorkflowStore, type RunFolder } from '../../../stores/useWorkflowStore'
-import { PRIMARY_WORKSPACE_TOOLBAR_VIEWS, WORKSPACE_VIEWS, type WorkspaceViewId } from '../workspaceViews'
+import { type WorkspaceViewId } from '../workspaceViews'
 import { useChatStore } from '../../../stores/useChatStore'
 import { useAuthStore } from '../../../stores/useAuthStore'
 import type { VariablesManifest } from '../../../services/api-types'
@@ -16,29 +18,13 @@ import { GlobalActivityMonitor } from '../../GlobalActivityMonitor'
 import { useModeStore } from '../../../stores/useModeStore'
 import { WorkspaceTopToolbar } from '../../workspace/WorkspaceTopToolbar'
 import { useRegisterPanelSwitcher, type PanelSwitcherPanel } from '../../../stores/usePanelSwitcherStore'
-import { RELAY_INTEGRATION_SECTION_IDS, WORKFLOW_PANEL_SECTIONS } from '../../../products/productPanels'
+import { WORKFLOW_IDENTITY_SECTIONS } from '../../../products/productPanels'
 
-/** Adds each panel's tabs from the registry; a Flow's panels show fewer tabs. */
-function withPanelSections(panels: PanelSwitcherPanel[], relayMode: boolean): PanelSwitcherPanel[] {
-  return panels.map(panel => {
-    const sections = (WORKFLOW_PANEL_SECTIONS[panel.id] ?? []).filter(section =>
-      !relayMode || (panel.id === 'mcp' ? RELAY_INTEGRATION_SECTION_IDS.has(section.id) : panel.id === 'identity' ? section.id !== 'upgrades' : panel.id === 'workshop' ? ['triggers', 'conditions', 'chats'].includes(section.id) : true))
-    return sections.length ? { ...panel, sections } : panel
-  })
-}
 import { useAppStore } from '../../../stores/useAppStore'
 import { useLLMStore } from '../../../stores/useLLMStore'
 
 // Execution phase ID - special phase that should be displayed separately
 const EXECUTION_PHASE_ID = 'execution'
-const PRIMARY_TOOLBAR_VIEW_IDS = new Set<WorkspaceViewId>(['pulse', 'browser'])
-const OPERATIONS_TOOLBAR_VIEW_IDS = new Set<WorkspaceViewId>(['flow', 'workshop', 'knowledge', 'costs', 'execution-logs', 'files', 'backup', 'publish', 'notify'])
-const SETUP_TOOLBAR_LABELS: Partial<Record<WorkspaceViewId, string>> = {
-  identity: 'Details & instructions',
-  playbooks: 'Playbooks',
-  mcp: 'Connections',
-}
-
 interface WorkflowToolbarProps {
   relayMode?: boolean
   pythonRelay?: boolean
@@ -102,30 +88,42 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
 
   // No explicit view means the pane is on whichever canvas view was last open.
   const activeWorkspaceView: WorkspaceViewId = workflowWorkspaceView ?? lastCanvasView
-  // Button clusters come from the view registry, in registry order. Plan is
-  // always present, including for a new workflow with no steps yet.
-  // Browser stays visible in Views; Plan lives in Ops. A Flow keeps its Graph in Views.
-  const workspaceViewDefinitions = PRIMARY_WORKSPACE_TOOLBAR_VIEWS.filter(view => (relayMode ? view.id === 'flow' : PRIMARY_TOOLBAR_VIEW_IDS.has(view.id)) && view.id !== 'report')
-  const operationsWorkspaceViewDefinitions = PRIMARY_WORKSPACE_TOOLBAR_VIEWS.filter(view => OPERATIONS_TOOLBAR_VIEW_IDS.has(view.id) && (!relayMode || ['workshop', 'costs', 'execution-logs', 'files'].includes(view.id)))
-  const capabilityViewDefinitions = useMemo(
-    () => WORKSPACE_VIEWS.filter(view => view.toolbarGroup === 'capabilities' && (!relayMode || view.id === 'mcp' || view.id === 'identity')),
-    [relayMode],
-  )
-
-  // Share is for this workflow's owners (or an admin), multi-user mode only.
   const isMultiUser = useAuthStore(state => state.isMultiUserMode)
-  // ⌘/Ctrl+K searches the same panels this toolbar shows (owner, 2026-10-07).
-  const panelSwitcherPanels = useMemo<PanelSwitcherPanel[]>(() => withPanelSections([
-    { id: 'context', label: 'Project overview', group: 'Views' },
-    { id: 'report', label: 'Dashboard', group: 'Views' },
-    ...(relayMode ? [] : [{ id: 'pulse', label: 'Pulse reviews', group: 'Views' }, { id: 'human-actions', label: 'Decisions', group: 'Views' }]),
-    ...workspaceViewDefinitions.map(view => ({ id: view.id, label: relayMode && view.id === 'flow' ? 'Flow' : view.label, group: 'Views' })),
-    ...operationsWorkspaceViewDefinitions.map(view => ({ id: view.id, label: relayMode && view.id === 'workshop' ? 'Triggers' : view.label, group: 'Ops' })),
-    ...(relayMode ? [] : [{ id: 'backup', label: 'Backup', group: 'Ops' }, { id: 'publish', label: 'Publish', group: 'Ops' }, { id: 'notify', label: 'Notifications', group: 'Ops' }]),
-    ...capabilityViewDefinitions.map(view => ({ id: view.id, label: SETUP_TOOLBAR_LABELS[view.id] ?? view.label, group: 'Setup' })),
-    ...(isMultiUser ? [{ id: 'access', label: 'Access', group: 'Setup' }] : []),
-  ], relayMode).map(panel => ({ ...panel, group: workspacePanelGroup(panel.id) })), [relayMode, workspaceViewDefinitions, operationsWorkspaceViewDefinitions, capabilityViewDefinitions, isMultiUser])
-  useRegisterPanelSwitcher(workspacePath ? (relayMode ? 'relays' : 'agentworks') : null, panelSwitcherPanels, (id, section) => openWorkspaceView(id as WorkspaceViewId, id === 'mcp' ? section ?? 'overview' : section))
+  const incomingEmail = useGmailInboundUIEnabled()
+  const allowedProducts = useAuthStore(state => state.user?.allowed_products)
+  const canWrite = useCanWriteWorkflow(workspacePath)
+  const pulseEnabled = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest?.pulse?.enabled === true)
+  const panelSwitcherPanels: PanelSwitcherPanel[] = canWrite ? [
+    { id: 'context', label: 'Project menu' },
+    ...(!relayMode && pulseEnabled ? [{ id: 'pulse', label: 'Pulse' }] : []),
+    { id: 'report', label: 'Dashboard', group: 'Use & share' },
+    { id: 'context:share', label: 'Share', group: 'Use & share' },
+    ...(!relayMode ? [{ id: 'browser', label: 'Browser', group: 'Use & share' }] : []),
+    ...projectAutomationSections({ relay: relayMode, incomingEmail }).map(item => ({ id: `workshop:${item.id}`, label: item.label, group: 'Use & share' })),
+    ...projectChannelSections(!relayMode, !relayMode).map(item => ({ id: `mcp:${item.id}`, label: item.label, group: 'Use & share' })),
+    ...projectConnectionSections({ allowedProducts, relayMode, onOpen: () => {} }).map(item => ({ id: item.id, label: item.label, group: 'Connections' })),
+    ...(!relayMode && !pulseEnabled ? [{ id: 'pulse', label: 'Turn Pulse on', group: 'Ops' }] : []),
+    { id: 'flow', label: relayMode ? 'Flow & runs' : 'Plan', group: 'Ops' },
+    { id: 'files', label: 'Files', group: 'Ops' },
+    ...(!relayMode ? [{ id: 'knowledge', label: 'Knowledge base', group: 'Ops' }] : []),
+    { id: 'mcp:skills', label: 'Skills', group: 'Ops' },
+    { id: 'workshop:chats', label: 'Chat history', group: 'Ops' },
+    ...(!relayMode ? [{ id: 'human-actions', label: 'Decisions', group: 'Ops' }] : []),
+    { id: 'costs', label: 'Costs and usage', group: 'Ops' },
+    { id: 'execution-logs', label: 'Run logs', group: 'Ops' },
+    { id: 'identity', label: 'Settings', group: 'Ops', sections: WORKFLOW_IDENTITY_SECTIONS.filter(section => !relayMode || section.id !== 'upgrades') },
+    ...(isMultiUser ? [{ id: 'access', label: 'Team', group: 'Ops' }] : []),
+    ...(!relayMode ? [
+      { id: 'playbooks', label: 'Workflow playbooks', group: 'Ops' },
+      { id: 'backup', label: 'Backup', group: 'Ops' },
+      { id: 'publish', label: 'Publish', group: 'Ops' },
+      { id: 'notify', label: 'Notify', group: 'Ops' },
+    ] : []),
+  ] : [{ id: 'report', label: 'Dashboard', group: 'Use & share' }]
+  useRegisterPanelSwitcher(workspacePath ? (relayMode ? 'relays' : 'agentworks') : null, panelSwitcherPanels, (key, section) => {
+    const [id, target] = key.split(':')
+    openWorkspaceView(id as WorkspaceViewId, target ?? section)
+  })
   // Main workflow execution phase for the canvas toolbar
   const targetExecutionPhaseId = EXECUTION_PHASE_ID
   
@@ -266,12 +264,11 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
       <div data-tour="workflow-tools" data-testid="tour-workflow-tools" className="ml-auto flex shrink-0 items-center gap-1">
         <TooltipProvider delayDuration={150}>
           {workflowMode && !globalPageOpen && !providersOpen && <GlobalActivityMonitor />}
-          {workspacePath && <>
+          {workspacePath && canWrite && <>
             <WorkspaceContextButton
               inContext={activeWorkspaceView === 'context'}
               onClick={() => useWorkflowStore.getState().openWorkspaceView('context')}
             />
-            <WorkflowContextTools relayMode={relayMode} />
           </>}
 
         </TooltipProvider>

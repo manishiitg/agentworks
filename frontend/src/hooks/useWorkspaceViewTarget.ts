@@ -8,7 +8,7 @@ const appliedTokens = new Map<string, number>()
 
 /** Calls apply(target) once for each new target aimed at this view, including
  * one set just before the panel mounted (⌘/Ctrl+K opens a panel on a tab). */
-export function useWorkspaceViewTarget(view: WorkspaceViewId, apply: (target: string) => void, enabled = true) {
+export function useWorkspaceViewTarget(view: WorkspaceViewId | 'memory', apply: (target: string) => void, enabled = true) {
   const target = useWorkflowStore(state => state.workspaceViewTarget)
   const applyRef = useRef(apply)
   applyRef.current = apply
@@ -21,6 +21,6 @@ export function useWorkspaceViewTarget(view: WorkspaceViewId, apply: (target: st
 }
 
 /** Aims a target at a view without switching the workflow pane (Crew and Code). */
-export function setWorkspaceViewTarget(view: WorkspaceViewId, target: string) {
+export function setWorkspaceViewTarget(view: WorkspaceViewId | 'memory', target: string) {
   useWorkflowStore.setState(state => ({ workspaceViewTarget: { view, target, token: (state.workspaceViewTarget?.token ?? 0) + 1 } }))
 }

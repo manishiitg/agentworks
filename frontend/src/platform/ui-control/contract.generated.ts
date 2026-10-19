@@ -5,7 +5,7 @@ export const UI_CONTROL_CONTRACT = {
   "views": [
     {
       "id": "context",
-      "label": "Context",
+      "label": "Project menu",
       "actions": [
         "open",
         "refresh"
@@ -34,7 +34,7 @@ export const UI_CONTROL_CONTRACT = {
     },
     {
       "id": "costs",
-      "label": "Costs",
+      "label": "Costs and usage",
       "actions": [
         "open",
         "refresh"
@@ -43,7 +43,7 @@ export const UI_CONTROL_CONTRACT = {
     },
     {
       "id": "execution-logs",
-      "label": "Execution logs",
+      "label": "Run logs",
       "actions": [
         "open",
         "refresh"
@@ -52,7 +52,7 @@ export const UI_CONTROL_CONTRACT = {
     },
     {
       "id": "knowledge",
-      "label": "Knowledge",
+      "label": "Knowledge base",
       "target_kind": "view_section",
       "actions": [
         "open",
@@ -155,7 +155,7 @@ export const UI_CONTROL_CONTRACT = {
     },
     {
       "id": "identity",
-      "label": "Identity",
+      "label": "Settings",
       "actions": [
         "open",
         "refresh"
@@ -170,7 +170,17 @@ export const UI_CONTROL_CONTRACT = {
         "refresh"
       ],
       "targets": [
-        "secrets"
+        "connected",
+        "available",
+        "secrets",
+        "skills",
+        "brain",
+        "folders",
+        "slack",
+        "gmail",
+        "slack-app",
+        "whatsapp",
+        "cli"
       ],
       "target_kind": "view_section"
     },
@@ -185,7 +195,7 @@ export const UI_CONTROL_CONTRACT = {
     },
     {
       "id": "browser",
-      "label": "Browser automation",
+      "label": "Browser",
       "actions": [
         "open",
         "refresh"
@@ -194,7 +204,7 @@ export const UI_CONTROL_CONTRACT = {
     },
     {
       "id": "workshop",
-      "label": "Automation",
+      "label": "Automations",
       "target_kind": "view_section",
       "actions": [
         "open",
@@ -203,8 +213,10 @@ export const UI_CONTROL_CONTRACT = {
       "targets": [
         "chats",
         "schedules",
+        "conditions",
         "triggers",
-        "bots"
+        "functions",
+        "email"
       ]
     }
   ]

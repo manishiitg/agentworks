@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { Brain, Loader2, Sparkles } from 'lucide-react'
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
@@ -64,14 +65,20 @@ async function loadCrewSkills(workspacePath: string, files: Pick<CrewFileClient,
   return [...deduplicated.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
 
-export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, readOnly }: {
+export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, readOnly, memoryEnabled = true, skillsEnabled = true, skillsManager }: {
   workspacePath: string
   onAsk: (message: string) => Promise<void>
   onOpenFile: (filePath: string) => void
   /** Shared Crews pass the mediated client; owned Crews use the proxy. */
   fileClient?: CrewFileClient
   readOnly?: boolean
+  memoryEnabled?: boolean
+  skillsEnabled?: boolean
+  skillsManager?: ReactNode
 }) {
+  const [tab, setTab] = useState('memory')
+  const activeTab = tab === 'memory' && memoryEnabled ? 'memory' : skillsEnabled ? 'skills' : 'memory'
+  useWorkspaceViewTarget('memory', target => { if ((target === 'memory' && memoryEnabled) || (target === 'skills' && skillsEnabled)) setTab(target) })
   const [content, setContent] = useState('')
   const [skills, setSkills] = useState<CrewSkill[]>([])
   const [loading, setLoading] = useState(true)
@@ -88,8 +95,8 @@ export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, 
     setSkillsError(null)
     const files = fileClient ?? proxyCrewFileClient
     void Promise.allSettled([
-      files.readFile(`${workspacePath}/MEMORY.md`),
-      loadCrewSkills(workspacePath, files),
+      memoryEnabled ? files.readFile(`${workspacePath}/MEMORY.md`) : Promise.resolve({ data: { content: '' } }),
+      skillsEnabled ? loadCrewSkills(workspacePath, files) : Promise.resolve([]),
     ]).then(([memoryResult, skillsResult]) => {
       if (cancelled) return
       if (memoryResult.status === 'fulfilled') {
@@ -112,13 +119,14 @@ export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, 
       if (!cancelled) setLoading(false)
     })
     return () => { cancelled = true }
-  }, [fileClient, refreshNonce, workspacePath])
+  }, [fileClient, refreshNonce, workspacePath, memoryEnabled, skillsEnabled])
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
       <WorkspaceViewHeader
         icon={Brain}
-        title="Memory"
+        title="Memory & skills"
+        tabs={{ value: activeTab, onChange: setTab, options: [...(memoryEnabled ? [{ value: 'memory', label: 'Memory' }] : []), ...(skillsEnabled ? [{ value: 'skills', label: 'Skills' }] : [])], ariaLabel: 'Memory & skills' }}
         actions={<WorkspaceViewActions
           workspacePath={workspacePath}
           message={readOnly
@@ -130,13 +138,15 @@ export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, 
           refreshLabel="Refresh memory"
         />}
       />
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div data-ui-view-section={activeTab} className="min-h-0 flex-1 overflow-y-auto p-4">
         {loading ? (
           <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading memory…
           </div>
         ) : (
           <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
+            {activeTab === 'skills' && <>
+            {skillsManager}
             <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -170,8 +180,9 @@ export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, 
               </div>
               {skillsError && <p className="mt-3 text-xs text-destructive">{skillsError}</p>}
             </section>
+            </>}
 
-            <section className="min-w-0 rounded-lg border border-border bg-card p-5 shadow-sm">
+            {activeTab === 'memory' && <section className="min-w-0 rounded-lg border border-border bg-card p-5 shadow-sm">
               {memoryError && <p className="mb-4 rounded-md bg-destructive/10 p-3 text-xs text-destructive">{memoryError}</p>}
               {content.trim() ? (
                 <MarkdownRenderer
@@ -188,7 +199,7 @@ export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, 
                   </p>
                 </div>
               )}
-            </section>
+            </section>}
           </div>
         )}
       </div>

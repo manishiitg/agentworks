@@ -25,7 +25,7 @@ describe('closed semantic UI control contract', () => {
     expect(supportedAction({ ...base, view: 'schedules', action: 'open', target: 'guessed' })).toBe(false)
   })
   it('opens the bounded sections of the Automation center', () => {
-    for (const target of ['chats', 'schedules', 'triggers', 'bots']) {
+    for (const target of ['chats', 'schedules', 'conditions', 'triggers', 'functions']) {
       expect(supportedAction({ ...base, view: 'workshop', action: 'open', target })).toBe(true)
     }
     expect(supportedAction({ ...base, view: 'workshop', action: 'open', target: 'guessed' })).toBe(false)
@@ -49,4 +49,12 @@ it('opens Secrets only as a bounded Connections section', () => {
   expect(supportedAction({ ...base, view: 'mcp', action: 'open', target: 'secrets' })).toBe(true)
   expect(supportedAction({ ...base, view: 'mcp', action: 'open', target: 'guessed' })).toBe(false)
   expect(supportedAction({ ...base, view: 'secrets', action: 'open' })).toBe(false)
+})
+
+it('uses the exact server contract for Crew views, without widening Goal views', () => {
+  const action = { ...base, view: 'memory', action: 'open', target: 'skills' }
+  const crew = { version: 1, product: 'work', views: [{ id: 'memory', label: 'Memory & skills', actions: ['open'], target_kind: 'view_section', targets: ['memory', 'skills'] }] }
+  expect(supportedAction(action)).toBe(false)
+  expect(supportedAction(action, crew)).toBe(true)
+  expect(supportedAction({ ...action, target: 'guessed' }, crew)).toBe(false)
 })

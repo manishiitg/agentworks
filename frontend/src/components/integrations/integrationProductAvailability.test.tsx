@@ -32,7 +32,7 @@ it.each(['local', 'server', 'account', 'enabled', 'relay'])('keeps product integ
   if (scenario === 'account') access.allowed_products = ['work']
   await act(async () => root.render(<>
     <IntegrationSectionPicker options={projectIntegrationSections(access.allowed_products, scenario === 'relay')} onSelect={() => {}} />
-    <ProjectPluginsPanel tab="vault" connections={view => <p>{view} MCPs</p>} skills={<p>Project skills</p>} vault={<p>Vault groups</p>} />
+    <ProjectPluginsPanel tab="secrets" connections={view => <p>{view} MCPs</p>} skills={<p>Project skills</p>} vault={<p>Vault groups</p>} />
     {scenario !== 'relay' && <ProjectKnowledgebasePanel workspacePath="Workflow/example" />}
   </>))
   const menu = host.querySelector('[aria-label="Integration sections"]')!

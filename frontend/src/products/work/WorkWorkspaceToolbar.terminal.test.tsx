@@ -21,7 +21,7 @@ let host: HTMLDivElement
 beforeEach(() => { vi.spyOn(agentApi, 'listReportHumanInputs').mockResolvedValue({ success: true, inputs: [] }); host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host) })
 afterEach(() => { act(() => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
-const render = (product: typeof CODE_PRODUCT, props: { view?: WorkWorkspaceView; compactContext?: boolean; showShell?: boolean; readOnly?: boolean; showActivityMonitor?: boolean; sessionId?: string; enabledPanels?: Set<string> }) => act(() => {
+const render = (product: typeof CODE_PRODUCT, props: { view?: WorkWorkspaceView; showShell?: boolean; readOnly?: boolean; showActivityMonitor?: boolean; sessionId?: string; enabledPanels?: Set<string> }) => act(() => {
   root.render(
     <ProjectProductProvider value={product}>
       <WorkWorkspaceToolbar workspacePath="p" view="files" onViewChange={() => undefined} {...props} />
@@ -31,79 +31,25 @@ const render = (product: typeof CODE_PRODUCT, props: { view?: WorkWorkspaceView;
 const hasTerminal = () => Array.from(host.querySelectorAll('button,[role="button"]')).some(node => /Terminal/.test(node.getAttribute('aria-label') || node.textContent || ''))
   || host.innerHTML.includes('Terminal')
 
-it('shows the Terminal button in a Code the caller owns, and nowhere else', () => {
+it('keeps Terminal in the owner Code menu, without duplicate toolbar buttons', () => {
   render(CODE_PRODUCT, { showShell: true })
-  expect(hasTerminal()).toBe(true)
-  act(() => root.unmount())
-  root = createRoot(host)
+  expect(usePanelSwitcherStore.getState().entries.code?.panels.some(item => item.id === 'shell')).toBe(true)
+  expect(hasTerminal()).toBe(false)
   render(CODE_PRODUCT, { showShell: false })
-  expect(hasTerminal()).toBe(false)
-  act(() => root.unmount())
-  root = createRoot(host)
-  render(CREW_PRODUCT, { showShell: false })
-  expect(hasTerminal()).toBe(false)
+  expect(usePanelSwitcherStore.getState().entries.code?.panels.some(item => item.id === 'shell')).toBe(false)
 })
 
-it.each([['Crew', CREW_PRODUCT], ['Code', CODE_PRODUCT]] as const)('shows the shared Global Monitor in the %s workspace toolbar, including read-only projects', (_name, product) => {
-  render(product, { readOnly: true })
-  expect(host.querySelectorAll('[aria-label="Active work monitor"]')).toHaveLength(1)
-  render(product, { showActivityMonitor: false })
-  expect(host.querySelector('[aria-label="Active work monitor"]')).toBeNull()
-})
-
-it.each([false, true])('shows only connection, Costs and Models during local setup and after selection (%s)', (selected) => {
-  const storage = new Map<string, string>()
-  vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => { storage.set(key, value) } })
-  writeCodeFilesPreference('local-chat', { location: 'computer', ...(selected ? { target: { device_id: 'laptop', resource_id: 'project' } } : {}) })
-  render(CODE_PRODUCT, { sessionId: 'local-chat', showShell: true })
-  // The shared collapse control is toolbar chrome, not another product view.
-  expect([...host.querySelectorAll('button')].map(button => button.getAttribute('aria-label'))).toEqual(['Local CLI connection', 'Costs and usage', 'Models', 'Hide toolbar'])
-  act(() => writeCodeFilesPreference('local-chat', { location: 'server' }))
-  expect(hasTerminal()).toBe(true)
-  expect(host.querySelector('[aria-label="Local CLI connection"]')).toBeNull()
-  vi.unstubAllGlobals()
-})
-
-it('a Cowork project leads with Dashboard, Browser and Automation, keeps Files, and has no Terminal', () => {
-  useChatStore.setState({ chatTabs: { cw: { tabId: 'cw', sessionId: 'cowork-chat', metadata: { agentProfileProjectId: 'proj-cowork' } } as never } })
-  render(CODE_PRODUCT, { sessionId: 'cowork-chat', showShell: true })
-  expect(hasTerminal()).toBe(true) // a Dev project, until its mode is Cowork
-  act(() => setProjectMode('proj-cowork', 'cowork'))
-  expect(hasTerminal()).toBe(false)
-  const labels = [...host.querySelectorAll('button')].map(button => button.getAttribute('aria-label') || '')
-  for (const wanted of ['Dashboard', 'Browser', 'Schedules & triggers', 'Files']) expect(labels.some(label => label.includes(wanted)), wanted).toBe(true)
-  expect(labels.findIndex(label => label.includes('Browser'))).toBeLessThan(labels.findIndex(label => label.includes('Files')))
-  useChatStore.setState({ chatTabs: {} })
-})
-
-it("offers someone else's Crew only its dashboard: no Files, Memory or Terminal", () => {
-  render(CREW_PRODUCT, { readOnly: true, showShell: true, enabledPanels: new Set(['dashboard']) })
-  const names = Array.from(host.querySelectorAll('button')).filter(button => !button.closest('[hidden]')).map(button => button.getAttribute('aria-label') || button.textContent || '').join('|')
-  expect(names).not.toMatch(/Files|Memory|Terminal/)
-})
-
-it('keeps compact Crew navigation at the top and does not gain a Terminal', () => {
-  render(CREW_PRODUCT, { compactContext: true, showShell: false })
-  expect(hasTerminal()).toBe(false)
-  expect(host.querySelector('[aria-label="Back to context"]')).not.toBeNull()
-  expect(host.querySelector('[aria-label="Dashboard"]')).toBeNull()
-  expect(host.querySelector('[aria-label="Browser"]')).toBeNull()
-  expect(host.querySelector('[aria-label="Project settings"]')).not.toBeNull()
-})
-
-it('keeps Terminal out of the compact header while retaining its optional tool and search access', () => {
-  render(CODE_PRODUCT, { compactContext: true, showShell: true })
-  expect(hasTerminal()).toBe(false)
-  expect(usePanelSwitcherStore.getState().entries.code?.panels.some(panel => panel.id === 'shell')).toBe(true)
-  expect(host.querySelector('[aria-label="Back to context"]')).not.toBeNull()
-  const labels = Array.from(host.querySelectorAll('button')).filter(button => !button.closest('[hidden]')).map(button => button.getAttribute('aria-label') || button.textContent)
-  expect(labels.some(label => label?.includes('Files'))).toBe(false)
-  expect(host.querySelector('[aria-label="Project settings"]')).not.toBeNull()
-})
-
-it('has no hide-context control while the compact Crew bubble is visible', () => {
-  render(CREW_PRODUCT, { compactContext: true, view: 'context' })
-  expect(host.querySelector('[aria-label="Workspace context"]')).toBeNull()
+it('shows Run people only the dashboard inventory', () => {
+  render(CREW_PRODUCT, { readOnly: true })
+  expect(usePanelSwitcherStore.getState().entries.work?.panels.map(item => item.id)).toEqual(['dashboard'])
   expect(host.querySelector('[aria-label="Back to context"]')).toBeNull()
-  expect(host.querySelector('[aria-label="Project settings"]')).not.toBeNull()
+})
+
+it('groups search like the menu and does not advertise the retired Bots tab', () => {
+  render(CREW_PRODUCT, {})
+  const entries = usePanelSwitcherStore.getState().entries.work!.panels
+  expect(entries.find(item => item.id === 'schedules:triggers')).toMatchObject({ label: 'Webhooks', group: 'Use & share' })
+  expect(entries.find(item => item.id === 'mcp:slack')).toMatchObject({ label: 'Slack account', group: 'Connections' })
+  expect(entries.find(item => item.id === 'history')).toMatchObject({ label: 'Chat history', group: 'Ops' })
+  expect(entries.flatMap(item => item.sections ?? []).some(item => item.id === 'bots')).toBe(false)
 })

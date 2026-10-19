@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Users } from 'lucide-react'
+import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import api from '../../services/api'
 
 type ShareState = {
@@ -75,6 +76,7 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', inline = 
   }, [workspacePath])
 
   useEffect(() => { void load() }, [load])
+  useWorkspaceViewTarget('context', target => { if (target === 'share') { void loadOwners(); setOpen(true) } }, inline && state?.can_share === true)
   if (!state?.can_share) return null
 
   const save = async () => {

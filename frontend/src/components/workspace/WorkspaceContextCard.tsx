@@ -1,19 +1,14 @@
 import type { ReactNode } from 'react'
-import { Search, type LucideIcon } from 'lucide-react'
-import { WorkspaceShortcutContents } from './WorkspaceShortcutContents'
-import type { WorkspaceShortcut } from './workspaceShortcuts'
-import type { ShortcutProduct } from '../../services/contextShortcuts'
-export { WorkspaceContextShortcut } from './workspaceShortcuts'
-
-export function WorkspaceContextCard({ children, summary, title, product, legacyProduct, availableShortcuts, moreTools, consolidateConnections }: { children: ReactNode; summary?: string; title?: string; product?: ShortcutProduct; legacyProduct?: ShortcutProduct; availableShortcuts?: readonly WorkspaceShortcut[]; moreTools?: ReactNode; consolidateConnections?: boolean }) {
+import { ChevronRight, Search, type LucideIcon } from 'lucide-react'
+export function WorkspaceContextCard({ children, title, summary }: { children: ReactNode; title?: string; summary?: string }) {
   return (
     <div className="h-full min-h-0 p-3 sm:p-4">
       <aside
         aria-label="Workspace context"
         className="flex h-full min-h-0 flex-col gap-3 overflow-hidden rounded-2xl border border-border bg-muted/70 p-4 shadow-sm dark:bg-zinc-800/80"
       >
-        {product ? <WorkspaceShortcutContents product={product} legacy={legacyProduct} available={availableShortcuts} moreTools={moreTools} consolidateConnections={consolidateConnections}>{children}</WorkspaceShortcutContents> : <>{(title || summary) && <header className="shrink-0 border-b border-border pb-3">
-          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        {(title || summary) && <header className="shrink-0 border-b border-border pb-3">
+          {title && <h2 className="text-sm font-semibold text-foreground">{title}</h2>}
           {summary && <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{summary}</p>}
         </header>}
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain">{children}</div>
@@ -31,7 +26,6 @@ export function WorkspaceContextCard({ children, summary, title, product, legacy
             {typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl+K'}
           </kbd>
         </button>
-        </>}
       </aside>
     </div>
   )
@@ -54,6 +48,17 @@ export function WorkspaceContextSection({
       {children}
     </section>
   )
+}
+
+/** Ops stays available without taking space from using and sharing the project. */
+export function WorkspaceContextGroup({ title, collapsed = false, children }: { title: string; collapsed?: boolean; children: ReactNode }) {
+  if (!collapsed) return <WorkspaceContextSection title={title}>{children}</WorkspaceContextSection>
+  return <details className="group/ops border-t border-border pt-2">
+    <summary className="flex cursor-pointer list-none items-center gap-1.5 py-1 text-[11px] font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+      <ChevronRight aria-hidden="true" className="h-3 w-3 transition-transform group-open/ops:rotate-90" />{title}
+    </summary>
+    <div className="mt-1 space-y-1">{children}</div>
+  </details>
 }
 export function WorkspaceContextRow({
   icon: Icon,

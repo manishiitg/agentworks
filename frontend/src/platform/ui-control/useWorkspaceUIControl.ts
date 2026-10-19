@@ -6,7 +6,7 @@ import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { usePresentationEvents } from '../presentations/usePresentationEvents'
 import { getWorkspaceView, isWorkspaceViewId } from '../../components/workflow/workspaceViews'
 import { UI_CONTROL_CONTRACT } from './contract.generated'
-import { applyUIAction, workspaceHost, type UIAction, type UISnapshot } from './client'
+import { applyUIAction, workspaceHost, type UIAction, type UISnapshot, type UIContract } from './client'
 
 const kinds = ['workflow.ui-action']
 // Lease renewal only (server lease: 15 min). The agent's explicit view
@@ -16,7 +16,7 @@ export const UI_CONTROL_BACKUP_POLL_MS = 5 * 60_000
 // While bound and the live feed is down, nothing but this timer would pick up
 // a queued action whose chat SSE wake was missed.
 export const UI_CONTROL_BOUND_POLL_MS = 60_000
-type Binding = { binding: string; token: string; workspace: string }
+type Binding = { binding: string; token: string; workspace: string; contract: UIContract }
 // Why a sync ran. A dormant lease (its chat has no live agent session) ignores
 // the backup poll and view changes; only SSE wakes, the chat going live, or the
 // page becoming visible try to bind again. The server queues an agent's UI
@@ -121,7 +121,7 @@ export function useWorkspaceUIControl(session: string | undefined, adapter?: Wor
       try {
         if (!binding) {
           const next = await workflowUIControl(session, { version: UI_CONTROL_CONTRACT.version, operation: 'bind' }) as Binding
-          if (!next || typeof next.binding !== 'string' || typeof next.token !== 'string' || typeof next.workspace !== 'string') {
+          if (!next || typeof next.binding !== 'string' || typeof next.token !== 'string' || typeof next.workspace !== 'string' || !Array.isArray(next.contract?.views)) {
             console.warn('[WorkspaceUIControl] bind invalid_binding_response')
             return
           }
@@ -156,7 +156,7 @@ export function useWorkspaceUIControl(session: string | undefined, adapter?: Wor
               store.openWorkspaceView(view, target)
               store.refreshWorkspaceView(target)
             }
-          })
+          }, binding.contract)
           if (stopped) break
           if (result.status === 'applied') {
             revision++

@@ -39,7 +39,7 @@ afterEach(() => { cleanup.splice(0).forEach(fn => fn()); delete window.__APP_RUN
 async function mount(product = CREW_PRODUCT, enabledPanels?: Set<string>, canEdit = true) {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host); cleanup.push(() => { act(() => root.unmount()); host.remove() })
-  await act(async () => root.render(<ProjectProductProvider value={product}><WorkIntegrationsPanel canEdit={canEdit} workspacePath="Crew/example" projectId="example" projectTitle="Example" projectTemplates={[]} tabId="tab" onAsk={state.ask} onSelectedServersChange={state.save} onSelectedSkillsChange={state.save} workflowContextPaths={[]} onWorkflowContextPathsChange={state.save} enabledPanels={enabledPanels} /></ProjectProductProvider>))
+  await act(async () => root.render(<ProjectProductProvider value={product}><WorkIntegrationsPanel canEdit={canEdit} workspacePath="Crew/example" projectId="example" projectTitle="Example" projectTemplates={[]} tabId="tab" onAsk={state.ask} onSelectedServersChange={state.save} workflowContextPaths={[]} onWorkflowContextPathsChange={state.save} enabledPanels={enabledPanels} /></ProjectProductProvider>))
   return host
 }
 
@@ -51,7 +51,6 @@ it.each([CREW_PRODUCT, CODE_PRODUCT])('opens current connections for origin $pro
   expect(host.querySelector('[aria-label="MCP servers"]')).toBeNull()
   await act(async () => state.target('secrets')); expect(host.querySelector('[data-content="secrets"]')).not.toBeNull()
   expect(host.querySelector('[data-content="mcp"]')).toBeNull()
-  await act(async () => state.target('skills')); expect(host.querySelector('[data-content="skills"]')).not.toBeNull()
   await act(async () => state.target('overview')); expect(host.querySelector('[data-content="mcp"]')).not.toBeNull()
   await act(async () => state.target('secrets'))
   await act(async () => state.target('apps')); expect(host.querySelector('[data-content="mcp"]')).not.toBeNull()
@@ -60,9 +59,9 @@ it.each([CREW_PRODUCT, CODE_PRODUCT])('opens current connections for origin $pro
 
 it('keeps shortcut/search section IDs and only mounts the selected destination', async () => {
   const host = await mount()
-  for (const target of ['secrets', 'skills', 'vault', 'brain', 'folders', 'slack', 'whatsapp', 'gmail', 'cli', 'available']) {
+  for (const target of ['secrets', 'brain', 'folders', 'slack', 'whatsapp', 'gmail', 'cli', 'available']) {
     await act(async () => state.target(target))
-    expect([...host.querySelectorAll('[data-content]')].map(el => el.getAttribute('data-content'))).toEqual([target === 'available' ? 'mcp' : target === 'slack' ? 'slack-account' : target])
+    expect([...host.querySelectorAll('[data-content]')].map(el => el.getAttribute('data-content'))).toEqual(target === 'secrets' ? ['secrets', 'vault'] : [target === 'available' ? 'mcp' : target === 'slack' ? 'slack-account' : target])
   }
   expect(state.ask).not.toHaveBeenCalled(); expect(state.save).not.toHaveBeenCalled()
 })
@@ -83,10 +82,6 @@ it.each([CREW_PRODUCT, CODE_PRODUCT])('separates the sending account from sharin
   await act(async () => state.target('slack'))
   expect(host.querySelector('[data-content="slack-account"]')).not.toBeNull()
   expect(host.querySelector('[data-content="slack"]')).toBeNull()
-  await act(async () => state.target('use-share'))
-  expect(host.querySelector('h2')?.textContent).toBe('Use & share')
-  expect(host.querySelector('[data-content="sharing"]')).not.toBeNull()
-  expect(host.querySelector('[data-content="mcp"]')).toBeNull()
   await act(async () => state.target('slack-app'))
   expect(host.querySelector('[data-content="slack"]')?.getAttribute('data-channel-only')).toBe('true')
   expect(host.querySelector('[data-content="slack"]')?.getAttribute('data-own-bot-only')).toBe(String(product.profileId === 'code'))
@@ -101,13 +96,12 @@ it.each([CREW_PRODUCT, CODE_PRODUCT])('separates the sending account from sharin
 
 it('does not expose disabled bot channels through Use & share or direct targets', async () => {
   const host = await mount(CODE_PRODUCT, new Set(['secrets']))
-  await act(async () => state.target('use-share'))
   expect(host.textContent).not.toContain('Slack app')
   expect(host.textContent).not.toContain('WhatsApp')
   for (const target of ['slack-app', 'whatsapp']) await act(async () => state.target(target))
   expect(host.querySelector('[data-content="slack"]')).toBeNull()
   expect(host.querySelector('[data-content="whatsapp"]')).toBeNull()
-  expect(host.querySelector('[data-content="sharing"]')).not.toBeNull()
+  expect(host.querySelector('[data-content="secrets"]')).not.toBeNull()
 })
 
 

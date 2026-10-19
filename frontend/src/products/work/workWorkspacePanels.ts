@@ -35,10 +35,10 @@ export function workWorkspacePanels({
         ]
       : WORK_PANELS.views
   const ops = cowork
-    ? WORK_PANELS.ops.filter((item) => item.id === 'files')
+    ? WORK_PANELS.ops.filter((item) => item.id === 'files' || item.id === 'history')
     : code
       ? [
-          ...WORK_PANELS.ops.filter((item) => item.id === 'files' || item.id === 'shell' || item.id === 'database'),
+          ...WORK_PANELS.ops.filter((item) => item.id === 'files' || item.id === 'history' || item.id === 'shell' || item.id === 'database'),
           ...pick(['browser']),
         ]
       : WORK_PANELS.ops
@@ -47,12 +47,12 @@ export function workWorkspacePanels({
       .filter((item) =>
         readOnly
           ? item.id === 'dashboard' && (!enabledPanels || enabledPanels.has('dashboard'))
-          : !enabledPanels || enabledPanels.has(item.id) || item.id === 'suggestions'
+          : !enabledPanels || enabledPanels.has(item.id) || item.id === 'suggestions' || (item.id === 'memory' && enabledPanels.has('skills'))
       )
       .filter((item) => isWorkWorkspaceViewEnabled(item.id, undefined, localCodeSession))
       .filter((item) => item.id !== 'suggestions' || !localCodeSession),
     ops: ops
-      .filter((item) => !readOnly && (!enabledPanels || item.id === 'shell' || enabledPanels.has(item.id)))
+      .filter((item) => !readOnly && isWorkWorkspaceViewEnabled(item.id, enabledPanels))
       .filter((item) => item.id !== 'shell' || (showShell && !cowork))
       .filter(() => !localCodeSession),
     setup: readOnly

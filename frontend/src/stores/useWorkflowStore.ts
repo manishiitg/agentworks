@@ -302,7 +302,7 @@ interface WorkflowStore {
   workspaceViewRefreshToken: number
   /** What to focus inside the open view — a report tab, a plan step, a file path.
    * The token lets the same target fire twice. Views that cannot focus ignore it. */
-  workspaceViewTarget: { view: WorkspaceViewId; target: string; token: number } | null
+  workspaceViewTarget: { view: WorkspaceViewId | 'memory'; target: string; token: number } | null
   focusedPane: FocusedPane // Which pane gets ~75% — 'preview' (canvas) or 'chat'
   layoutDirection: LayoutDirection // Canvas layout direction ('LR' = horizontal, 'TB' = vertical)
   // The canvas view (Plan or Report) the pane shows when workflowWorkspaceView

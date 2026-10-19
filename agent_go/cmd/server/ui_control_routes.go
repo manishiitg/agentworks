@@ -90,7 +90,7 @@ func (api *StreamingAPI) handleUIControl(w http.ResponseWriter, r *http.Request)
 		var client *uiBinding
 		client, err = b.bind(session)
 		if err == nil {
-			out = map[string]interface{}{"binding": client.id, "token": client.token, "workspace": workspace, "version": uiControlContract.Version}
+			out = map[string]interface{}{"binding": client.id, "token": client.token, "workspace": workspace, "version": uiControlContract.Version, "contract": uiContractForScope(workspace)}
 		}
 	case "sync":
 		out, err = b.syncClient(session, req.Binding, req.Token, req.State)

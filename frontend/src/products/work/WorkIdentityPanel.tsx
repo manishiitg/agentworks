@@ -454,7 +454,7 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
     <div className="flex h-full min-h-0 flex-col bg-background">
       <WorkspaceViewHeader
         icon={product.hasIdentity ? Fingerprint : Settings}
-        title={modelsOnly ? 'Models' : product.hasIdentity ? 'Details & instructions' : 'Project settings'}
+        title={modelsOnly ? 'Models' : 'Settings'}
         helpTopic={`Identity · ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'General'}`}
         actions={(
           <WorkspaceViewActions

@@ -16,36 +16,33 @@ Goal step inspections appear beneath their exact owning chat or run. Server rece
 
 Goal activity is available through the Goals workspace menu and search. A compact Needs you signal in the existing Goals header opens pending/unapplied decisions. It is not an Activity entry in the global chat sidebar.
 
-## Right context card
+## Right project menu
 
-The card stays available for everyday work and shortcuts. Expanded panels use the existing header's back icon to return to it. Product settings stay in the three-dot menu.
+Crew, Goals and Relays share one menu: **Use & share**, **Connections**, then
+**Ops**, collapsed by default. Expanded panels use the header's back icon to
+return. Only the menu contents scroll; search stays visible. There is no
+More tools menu, duplicate toolbar switcher or personal shortcut editor/API.
 
-| Area | Goals | Crew | Flows |
-| --- | --- | --- | --- |
-| Results | Dashboard and report documents | Dashboard | Dashboard and recorded runs |
-| Work | Plan, schedules and triggers | Existing schedules, triggers and functions | Flow, API triggers and condition triggers |
-| Review | Pulse, decisions and activity | Existing suggestions and history | Run logs and costs |
-| Tools | Existing knowledge, browser and files | Existing memory, browser, files and admitted development tools | Existing files and history |
+Use & share holds Dashboard and every report document, Share, Browser where
+supported, Automations (Schedules, Watchers, Webhooks, Functions) and channels
+(Slack app, WhatsApp, MCP access). Relays retain their existing Webhooks and
+Watchers inventory and do not gain bot channels.
 
-The table describes navigation, not new permissions. Product-specific features and current resource roles determine which entries appear. Crew does not gain development tools merely because the shared component supports them; former Code projects retain their existing features. More tools and search keep admitted destinations discoverable.
+Connections holds admitted Brain, Vault & secrets, MCPs, Google apps, Slack
+account, folders/workflow references and Crew's agents from your computer.
+Skills and chat history live in Ops. Crew's Memory & skills contains both
+project-authored skills and the existing install/selection manager. Ops also
+holds the existing plan, files, usage and Settings destinations, with each
+product's original availability. Goals keep Publish and Notify there. Goal
+Pulse appears above the groups only when ON; when OFF, Ops links to its
+existing settings screen so the owner can turn it on. Opening settings does
+not activate Pulse or send it a message.
 
-## Connections and Use & share
-
-**Connections** contains resources an agent consumes: MCPs, Secrets, Skills, admitted Vault/Brain references, folders/workflow references, Google accounts and the personal Slack sending account. Its landing view shows connected resources. Add connection exposes the admitted choices, with Brain and Vault first when available. Selecting a resource opens its original management panel.
-
-**Use & share** contains the existing Share control, dashboard access and supported incoming channels. Share uses **Only me / Chosen people / Everyone**, with server authorization. People who can use a shared project can see the files/results that its existing rules permit; secret values and private owner conversations stay protected.
-
-Goals and Crew retain supported Slack app and WhatsApp routes. Former Code projects retain their own-bot, one-to-one Slack restriction. Flows expose API/MCP access without gaining unsupported incoming bot controls. Project-only MCP setup requires the recipient's own sign-in and existing project access; see [project MCP connections](project-mcp-connections.md).
-
-Existing section IDs and search/deep links remain valid. Grouping a destination does not widen its permission or replace its native implementation.
-
-## Personal shortcuts
-
-`GET/PUT /api/workspace-shortcuts/{product}` stores ordered preferences per signed-in person and product. Valid product keys are `agentworks`, `relays`, `work` and `code`. The request cannot select another account. Preferences are presentation only; product, feature and resource checks still decide whether a panel may open.
-
-A revision conflict returns 409. Unknown/unavailable entries and an intentionally empty layout are retained. Explicit inheritance supports the Crew/Code consolidation without inferring a merge from a disabled product or rewriting preferences on page load. Older MCP shortcut aliases continue to resolve through Connections.
-
-Corrupt, oversized or unsupported shortcut records return defaults instead of permanently blocking the editor. A subsequent valid save replaces the damaged preference. Storage transport errors remain errors. Writes serialize per person/product rather than blocking unrelated accounts.
+Share remains **Only me / Chosen people / Everyone**, controlled by the server.
+Run people have chat and dashboard only. All links retain their original
+server feature, account and resource checks; the browser adds no new roles.
+The UI-control binding returns the contract for that authorized chat's product,
+so Crew-only views are not mixed into the Goal contract.
 
 ## Server-owned workspace restore
 
