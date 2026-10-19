@@ -51,6 +51,8 @@ describe('workflow responsive pane contract', () => {
     expect(layout).not.toContain('botContent=')
     expect(viewHost).toContain("effectiveView === 'workshop' ? 'flex overflow-hidden' : ''")
     expect(layout).toContain("listChatHistorySessions(5, 0, workspacePath, 'chat')")
+    expect(layout).toContain('<WorkflowNewChatGuide relayMode={relayMode} />')
+    expect(layout).toContain('return <GoalStarterGuide />')
     expect(tabs).toContain("displayName={isPersistentChat ? workflowName")
     expect(tabs).toContain('canClose={!isPersistentChat')
     expect(chatArea).not.toContain('a message typed there starts a conversation in a NEW Chat tab')

@@ -24,6 +24,12 @@ describe('WorkWorkspaceToolbar', () => {
     expect(source).toContain("llm: 'identity'")
     expect(source).toContain("bots: 'mcp'")
     expect(source).toContain("email: 'mcp'")
+    // Preserve the Terminal wiring guard without the retired Ops-group layout.
+    expect(source).toMatch(/<WorkWorkspaceToolbar[^>]*showShell=\{showShell\}/)
+    const pane = readFileSync('src/products/work/WorkWorkspacePane.tsx', 'utf8')
+    expect(pane).toContain("view === 'shell' && showShell")
+    expect(pane).toContain('<CodeShellPanel projectId={projectId} />')
+    expect(source).toContain('<WorkNewChatGuide product={product}')
   })
 
 
