@@ -8300,7 +8300,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Create a cancellable context for agent execution using background context
 		// This prevents the agent from being canceled when the HTTP request ends
-		agentCtx, cancelTurn := context.WithCancelCause(context.Background())
+		agentCtx, cancelTurn := context.WithCancelCause(streamCtx)
 		agentCancel = func() { cancelTurn(context.Canceled) }
 		stopIdleWatch := api.watchTurnInactivity(agentCtx, sessionID, queryID, time.Now(), nil, func(reason error) bool { cancelTurn(reason); return true })
 		defer stopIdleWatch()
@@ -8655,6 +8655,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				turnStatus = trackedExecutionStatusFailed
 				api.updateSessionStatus(sessionID, "error")
 				api.emitIdleTurnFailure(sessionID, queryID)
+			} else if api.eventStore != nil && api.eventStore.TurnInProgress(sessionID) {
+				// Prefer the SDK's own terminal event. If cancellation released
+				// the consumer first, record an interrupted end so the UI settles.
+				api.emitInterruptedTurnEnd(sessionID, "turn_context_canceled")
 			}
 			discardAbandonedSyntheticStream(sessionID, textChan)
 		}
@@ -8976,7 +8980,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if errors.Is(context.Cause(agentCtx), errTurnInactive) {
 				turnStatus = trackedExecutionStatusFailed
 			} else if !api.isSessionMarkedStopped(sessionID) {
-				api.updateSessionStatus(sessionID, "completed")
+				api.updateSessionStatus(sessionID, "canceled")
 			}
 			tracer.EndTrace(traceID, map[string]interface{}{"status": turnStatus})
 			return
