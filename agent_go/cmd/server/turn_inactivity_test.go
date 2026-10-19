@@ -155,3 +155,113 @@ func TestCanceledTextDrainReleasesCallerForFinalHistoryCapture(t *testing.T) {
 		t.Fatal("cancellation stranded final history capture")
 	}
 }
+
+func TestLiveInputInheritsActualActivityInsteadOfHumanAdmission(t *testing.T) {
+	api := &StreamingAPI{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	origin := time.Now().Add(-5 * time.Minute)
+	lastOutput := origin.Add(time.Minute)
+	stop := api.watchTurnInactivity(ctx, "chat", "root", origin, nil, func(error) bool { return false })
+	defer stop()
+	api.turnInactivityMu.Lock()
+	for _, state := range api.turnInactivity["chat"] {
+		state.lastOutputAt = lastOutput
+		state.quietMinute = 4
+		state.tools["in-flight"] = idleTool{name: "shell", open: true}
+	}
+	api.turnInactivityMu.Unlock()
+	admitted := time.Now()
+	stopInput := api.watchTurnInactivityMode(ctx, "chat", "steer", admitted, nil, func(error) bool { return false }, true)
+	defer stopInput()
+	api.turnInactivityMu.Lock()
+	defer api.turnInactivityMu.Unlock()
+	found := false
+	for _, state := range api.turnInactivity["chat"] {
+		if state.executionID != "steer" {
+			continue
+		}
+		found = true
+		if !state.startedAt.Equal(admitted) || !state.turnStartedAt.Equal(origin) || !state.lastOutputAt.Equal(lastOutput) || state.quietMinute != 4 || len(state.openToolNames()) != 1 {
+			t.Fatalf("live input lost shared progress or its generation fence: %+v", state)
+		}
+	}
+	if !found {
+		t.Fatal("live input watcher was not registered")
+	}
+}
+
+func TestActivityMetadataUsesTheInactivityClock(t *testing.T) {
+	store := events.NewEventStore(100)
+	api := &StreamingAPI{eventStore: store}
+	origin := time.Now().Add(-3 * time.Minute).UTC()
+	lastOutput := origin.Add(time.Minute)
+	state := &turnInactivityState{sessionID: "activity-clock", executionID: "root", startedAt: origin, turnStartedAt: origin, lastOutputAt: lastOutput, quietMinute: 2}
+	api.emitTurnActivityState(state)
+	all := store.GetAllEventsRaw("activity-clock")
+	if len(all) != 1 || all[0].Type != "turn_phase" {
+		t.Fatalf("expected one backwards-compatible phase event: %+v", all)
+	}
+	payload, ok := all[0].Data.Data.(*unifiedevents.GenericEventData)
+	if !ok || payload.Data["turn_started_at"] != origin.Format(time.RFC3339Nano) || payload.Data["last_activity_at"] != lastOutput.Format(time.RFC3339Nano) || payload.Data["phase"] != "quiet" {
+		t.Fatalf("wrong activity metadata: %+v", payload)
+	}
+	state.observe(all[0], time.Now())
+	if !state.lastOutputAt.Equal(lastOutput) {
+		t.Fatal("publishing the clock reset its own inactivity")
+	}
+}
+
+func TestFreshQueryDoesNotInheritAnExpiredOrIneligibleWatcher(t *testing.T) {
+	oldInterval := turnInactivityCheckInterval
+	turnInactivityCheckInterval = 10 * time.Millisecond
+	defer func() { turnInactivityCheckInterval = oldInterval }()
+	for _, idle := range []time.Duration{11 * time.Minute, 9 * time.Minute} {
+		api := &StreamingAPI{}
+		ctx, cancel := context.WithCancel(context.Background())
+		old := api.watchTurnInactivity(ctx, "chat", "old-root", time.Now().Add(-idle), func() bool { return false }, func(error) bool { return false })
+		admitted := time.Now()
+		ended := make(chan bool, 1)
+		fresh := api.watchTurnInactivity(ctx, "chat", "fresh-root", admitted, nil, func(error) bool { ended <- true; return true })
+		select {
+		case <-ended:
+			t.Fatal("fresh query inherited the old watcher's deadline")
+		case <-time.After(30 * time.Millisecond):
+		}
+		api.turnInactivityMu.Lock()
+		for _, state := range api.turnInactivity["chat"] {
+			if state.executionID == "fresh-root" && (!state.turnStartedAt.Equal(admitted) || !state.lastOutputAt.Equal(admitted)) {
+				t.Errorf("fresh clock did not start at acceptance: %+v", state)
+			}
+		}
+		api.turnInactivityMu.Unlock()
+		fresh()
+		old()
+		cancel()
+	}
+}
+
+func TestSteeredRootOutputRefreshesBothWatcherDeadlines(t *testing.T) {
+	api := &StreamingAPI{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	rootStart := time.Now().Add(-9*time.Minute - 59*time.Second)
+	root := api.watchTurnInactivity(ctx, "chat", "root", rootStart, nil, func(error) bool { return false })
+	defer root()
+	steer := api.watchTurnInactivityMode(ctx, "chat", "steer", time.Now(), nil, func(error) bool { return false }, true)
+	defer steer()
+	progress := time.Now()
+	event := idleEvent("streaming_chunk", progress, &unifiedevents.StreamingChunkEvent{Source: "transcript", Content: "working after the steer"})
+	event.ExecutionID, event.TerminalOwnerID = "root", "root"
+	api.observeTurnInactivity("chat", event)
+	api.turnInactivityMu.Lock()
+	defer api.turnInactivityMu.Unlock()
+	if len(api.turnInactivity["chat"]) != 2 {
+		t.Fatal("expected both watchers")
+	}
+	for _, state := range api.turnInactivity["chat"] {
+		if !state.lastOutputAt.Equal(progress) || !state.lastOutputAt.Add(turnInactiveAfter).Equal(progress.Add(10*time.Minute)) {
+			t.Errorf("root output failed to reset %s's deadline: %v", state.executionID, state.lastOutputAt)
+		}
+	}
+}

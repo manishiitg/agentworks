@@ -5,9 +5,6 @@ import { WORKING_ACCESSIBLE_LABEL, WORKING_GLYPH_FRAMES, WORKING_GLYPH_INTERVAL_
 // Tip selection and catalog loading are needed only while a turn is Working.
 const WorkingTip = lazy(() => import('./WorkingTip'))
 
-// How long the agent must be quiet before the Working line says so.
-const QUIET_NOTE_AFTER_MS = 90_000
-
 function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
   useEffect(() => {
@@ -33,7 +30,7 @@ function WorkingGlyph({ reduced }: { reduced: boolean }) {
 }
 
 // One shared "the agent is working" line. Real server status wins; otherwise a friendly word that changes every few
-// seconds, with the seconds since the server started the turn when it told us. Display only: it never decides anything.
+// seconds, with time since the server last observed agent activity. Display only: it never decides anything.
 // Screen readers get one stable "Working…" label; the changing text is hidden from them so they are not spammed.
 export function WorkingStatus({ realStatus, startedAt, lastOutputAt, phase, className }: { realStatus?: string; startedAt?: number; lastOutputAt?: number; phase?: { phase: string; text: string; since: number }; className?: string }) {
   const reduced = usePrefersReducedMotion()
@@ -55,24 +52,22 @@ export function WorkingStatus({ realStatus, startedAt, lastOutputAt, phase, clas
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
   }, [startedAt, lastOutputAt, phase?.since])
-  // The server's phase: until the agent has really started the line says what is happening instead of a playful word,
-  // and each phase counts from its own start. "Running" (or no phase known) keeps the playful word.
+  // Only server state decides quiet/waiting. The clock uses the same last
+  // output/tool time as server inactivity handling, never the phase start.
   const notYetRunning = phase !== undefined && phase.phase !== 'running' && phase.text !== ''
   const { text } = notYetRunning ? { text: phase.text } : resolveWorkingLabel(realStatus, WORKING_WORDS[reduced ? 0 : word.index])
-  const clockFrom = phase !== undefined ? phase.since : startedAt
-  const elapsed = phase?.phase === 'waiting_for_you' ? '' : clockFrom !== undefined && now >= clockFrom ? ` (${formatElapsed(now - clockFrom)})` : ''
-  // Honest about silence: once the agent has produced nothing for a minute and a half, say so (the server's times).
-  const quiet = phase === undefined && !notYetRunning && lastOutputAt !== undefined && now - lastOutputAt >= QUIET_NOTE_AFTER_MS ? ` \u00b7 no new output for ${formatElapsed(now - lastOutputAt)}` : ''
+  const elapsed = phase?.phase === 'waiting_for_you' || phase?.phase === 'quiet' || lastOutputAt === undefined || now < lastOutputAt
+    ? '' : ` · ${formatElapsed(now - lastOutputAt)} since update`
+  const durationTitle = startedAt !== undefined && now >= startedAt ? `Turn duration: ${formatElapsed(now - startedAt)}` : undefined
   return (
     <span className={`inline-flex min-w-0 max-w-full flex-col ${className ?? ''}`} data-testid="working-status">
       <span className="sr-only" role="status" aria-live="polite">{WORKING_ACCESSIBLE_LABEL}</span>
-      <span aria-hidden="true" className="truncate">
+      <span aria-hidden="true" className="truncate" title={durationTitle}>
         <span className="text-[hsl(var(--working-accent))]">
           <WorkingGlyph reduced={reduced} />{' '}
           <span data-testid="working-word">{text}</span>
         </span>
         {elapsed ? <span className="text-muted-foreground">{elapsed}</span> : null}
-        {quiet ? <span className="text-muted-foreground" data-testid="working-quiet">{quiet}</span> : null}
       </span>
       {tipsAllowed ? <Suspense fallback={null}><WorkingTip turnKey={startedAt} /></Suspense> : null}
     </span>

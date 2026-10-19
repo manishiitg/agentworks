@@ -152,6 +152,17 @@ func (es *EventStore) turnPhaseOn() bool {
 	return es.turnPhaseEnabled
 }
 
+// TurnPhaseSnapshot lets server-owned activity metadata retain the current
+// phase without announcing a new lifecycle state or restarting its clock.
+func (es *EventStore) TurnPhaseSnapshot(sessionID string) (phase, text string, since time.Time) {
+	turnPhasesMu.Lock()
+	defer turnPhasesMu.Unlock()
+	if state := turnPhases[sessionID]; state != nil {
+		return state.phase, turnPhaseText(state), state.updated
+	}
+	return "", "", time.Time{}
+}
+
 func (es *EventStore) trackTurnPhase(sessionID string, event Event) {
 	if sessionID == "" || event.Type == turnPhaseEventType || !es.turnPhaseOn() {
 		return
