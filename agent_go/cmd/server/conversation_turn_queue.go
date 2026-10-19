@@ -745,7 +745,9 @@ type PendingQueuedMessage struct {
 	// Refreshing: the chat is being updated (new definition, model or settings) before this message can go in, so the person
 	// sees that, and Steer now does not apply: steering into the outdated process is what the update replaces. Remove stays, so a long
 	// update can still be withdrawn.
-	Refreshing bool `json:"refreshing,omitempty"`
+	Refreshing  bool   `json:"refreshing,omitempty"`
+	QueueReason string `json:"queue_reason"`
+	CanSteer    bool   `json:"can_steer"`
 }
 
 // markRefreshingQueuedMessages flags a chat's waiting messages when its runtime is waiting to be replaced.
@@ -775,7 +777,7 @@ func (api *StreamingAPI) pendingQueuedMessages(ctx context.Context, userID, sess
 		return nil
 	}
 	messages := pendingQueuedMessagesFromTurns(turns, userID, sessionID)
-	api.markRefreshingQueuedMessages(sessionID, messages)
+	api.projectQueuedMessageDelivery(sessionID, turns, messages)
 	return messages
 }
 

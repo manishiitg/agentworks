@@ -95,6 +95,8 @@ export interface PendingQueuedMessage {
   queue_position?: number
   /** The chat is being updated (new version or settings) before this message can go in. */
   refreshing?: boolean
+  queue_reason?: 'starting' | 'running' | 'waiting' | 'refreshing'
+  can_steer?: boolean
 }
 
 export interface TerminalEventsResponse {

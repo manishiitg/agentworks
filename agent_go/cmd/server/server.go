@@ -1538,6 +1538,10 @@ func (api *StreamingAPI) queueOccupiedConversationTurn(w http.ResponseWriter, r 
 }
 
 func (api *StreamingAPI) queueConversationTurnResponse(w http.ResponseWriter, r *http.Request, userID, sessionID string, req QueryRequest) bool {
+	if isQueuedMessageSteer(r.Context()) {
+		rejectUnavailableQueuedSteer(w)
+		return true
+	}
 	turn, position, err := api.enqueueConversationTurn(r.Context(), userID, sessionID, req)
 	if err != nil {
 		http.Error(w, "Cannot durably queue conversation turn: "+err.Error(), http.StatusServiceUnavailable)
@@ -4284,6 +4288,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		defer finishSubmission()
 	}
+	if isQueuedMessageSteer(r.Context()) {
+		if _, canSteer := api.queuedMessageDeliveryState(sessionID, req); !canSteer {
+			rejectUnavailableQueuedSteer(w)
+			return
+		}
+	}
 	if req.RestartCodingCLI {
 		// The product chat's runtime changed while a turn was running (PLAT-676): this message waits
 		// for that turn, then the CLI is relaunched for it. Closing it on arrival killed the running
@@ -4372,6 +4382,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		costobserver.SetRetainedInputSource(sessionID, req.TriggeredBy, req.TriggeredByLabel)
 	}
 	if retainedWorkflowCompatible && api.tryDeliverQueryAsLiveInput(w, r, sessionID, req.Query, queryID, requestReceivedAt) {
+		return
+	}
+	if isQueuedMessageSteer(r.Context()) {
+		// No compatible live target accepted delivery. Keep the original queue
+		// item instead of silently starting a turn or inserting a second item.
+		rejectUnavailableQueuedSteer(w)
 		return
 	}
 
@@ -11375,6 +11391,14 @@ func copyInternalResponse(w http.ResponseWriter, recorded *internalResponseCaptu
 // deliverQueryAsLiveInputNow performs the delivery synchronously; see
 // tryDeliverQueryAsLiveInput for the response-time bound around it.
 func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *http.Request, sessionID, message, queryID string, receivedAt ...time.Time) bool {
+	if isQueuedMessageSteer(r.Context()) {
+		// The asynchronous fast-response path can outlive the route's earlier
+		// eligibility check. Refuse before attempting any provider delivery.
+		if _, canSteer := api.queuedMessageDeliveryState(sessionID, QueryRequest{}); !canSteer {
+			rejectUnavailableQueuedSteer(w)
+			return true
+		}
+	}
 	requestReceivedAt := time.Now()
 	if len(receivedAt) > 0 && !receivedAt[0].IsZero() {
 		requestReceivedAt = receivedAt[0]

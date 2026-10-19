@@ -13,6 +13,75 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// This is presentation and dispatch eligibility, never an authorization grant.
+// handleQuery still revalidates the stored principal, project and provider.
+func (api *StreamingAPI) queuedMessageDeliveryState(sessionID string, req QueryRequest) (string, bool) {
+	api.conversationTurnQueueMu.Lock()
+	refreshing := api.conversationTurnQueueRuntimeChange[sessionID]
+	api.conversationTurnQueueMu.Unlock()
+	if refreshing || req.RestartCodingCLI || sessionSecretsChanged(sessionID) || api.retainedCLIProviderDiffers(sessionID, queuedRequestProvider(req)) {
+		return "refreshing", false
+	}
+	if api.externalBuilderOwnsSession(sessionID) {
+		return "waiting", false
+	}
+	api.runningAgentsMux.RLock()
+	agent := api.runningAgents[sessionID]
+	api.runningAgentsMux.RUnlock()
+	occupied := api.conversationTurnOccupied(sessionID)
+	if agent == nil {
+		if occupied {
+			return "starting", false
+		}
+		return "waiting", false
+	}
+	if agentSupportsLiveInputDelivery(agent) && occupied && !api.liveSteerTransportReady(sessionID, agent) {
+		return "starting", false
+	}
+	if !occupied {
+		return "waiting", false
+	}
+	return "running", !req.DisableLiveInputDelivery && agentSupportsLiveInputDelivery(agent) && api.canSteerSession(sessionID)
+}
+
+func queuedRequestProvider(req QueryRequest) string {
+	if req.LLMConfig != nil && req.LLMConfig.Primary.Provider != "" {
+		return req.LLMConfig.Primary.Provider
+	}
+	return req.Provider
+}
+
+func (api *StreamingAPI) projectQueuedMessageDelivery(sessionID string, turns []queuedConversationTurn, messages []PendingQueuedMessage) {
+	byID := make(map[string]queuedConversationTurn, len(turns))
+	for _, turn := range turns {
+		byID[turn.ID] = turn
+	}
+	for i := range messages {
+		message := &messages[i]
+		turn, ok := byID[message.MessageID]
+		if !ok {
+			continue
+		}
+		message.QueueReason, message.CanSteer = api.queuedMessageDeliveryState(sessionID, turn.Request)
+		message.Refreshing = message.QueueReason == "refreshing"
+		if message.Steering || message.DeliveryError != "" {
+			message.CanSteer = false
+		}
+	}
+}
+
+type queuedMessageSteerKey struct{}
+
+func isQueuedMessageSteer(ctx context.Context) bool {
+	value, _ := ctx.Value(queuedMessageSteerKey{}).(bool)
+	return value
+}
+
+func rejectUnavailableQueuedSteer(w http.ResponseWriter) {
+	w.Header().Set("X-Queued-Steer-Unavailable", "true")
+	http.Error(w, "Steer is no longer available; the message remains queued", http.StatusConflict)
+}
+
 func validChatDeliveryMode(mode string) bool {
 	return mode == "" || mode == "steer" || mode == "queue"
 }
@@ -36,7 +105,7 @@ func (api *StreamingAPI) handleQueuedConversationMessages(w http.ResponseWriter,
 	if messages == nil {
 		messages = []PendingQueuedMessage{}
 	}
-	api.markRefreshingQueuedMessages(sessionID, messages)
+	api.projectQueuedMessageDelivery(sessionID, turns, messages)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"messages": messages})
 }
@@ -63,6 +132,9 @@ func (api *StreamingAPI) changeQueuedConversationMessage(ctx context.Context, us
 		if steer {
 			if turn.DeliveryError != "" {
 				return turn, http.StatusConflict, fmt.Errorf("Delivery is unconfirmed. Check the chat before resending")
+			}
+			if _, canSteer := api.queuedMessageDeliveryState(sessionID, turn.Request); !canSteer {
+				return turn, http.StatusConflict, fmt.Errorf("Steer is not available; the message remains queued")
 			}
 			now := time.Now().UTC()
 			turns[i].StartedAt = &now
@@ -170,6 +242,12 @@ func (api *StreamingAPI) handleRetryQueuedConversationMessage(w http.ResponseWri
 // handleQuery again. Its authorization and runtime checks remain authoritative;
 // a runtime change may still need a new turn instead of live input.
 func (api *StreamingAPI) deliverQueuedMessageAsSteer(turn queuedConversationTurn) {
+	// The target can finish or change between the HTTP claim and this goroutine.
+	// No delivery has been attempted: release the claim without an ambiguous error.
+	if _, canSteer := api.queuedMessageDeliveryState(turn.SessionID, turn.Request); !canSteer {
+		api.restoreQueuedSteer(turn)
+		return
+	}
 	req := turn.Request
 	req.DeliveryMode = "steer"
 	reqMap, err := queryRequestToMap(req)
@@ -177,6 +255,7 @@ func (api *StreamingAPI) deliverQueuedMessageAsSteer(turn queuedConversationTurn
 		var ctx context.Context
 		ctx, err = api.queuedConversationTurnContext(turn, reqMap)
 		if err == nil {
+			ctx = context.WithValue(ctx, queuedMessageSteerKey{}, true)
 			body, marshalErr := json.Marshal(req)
 			err = marshalErr
 			if err == nil {
@@ -186,6 +265,10 @@ func (api *StreamingAPI) deliverQueuedMessageAsSteer(turn queuedConversationTurn
 					request.Header.Set("X-Session-ID", turn.SessionID)
 					recorded := &internalResponseCapture{header: http.Header{}}
 					api.handleQuery(recorded, request)
+					if recorded.header.Get("X-Queued-Steer-Unavailable") == "true" {
+						api.restoreQueuedSteer(turn)
+						return
+					}
 					status := recorded.status
 					if status == 0 {
 						status = http.StatusOK
@@ -223,6 +306,27 @@ func (api *StreamingAPI) deliverQueuedMessageAsSteer(turn queuedConversationTurn
 		}
 		lock.Unlock()
 		logTurnQueue("steer of queued message %s failed: %v", turn.ID, err)
+	}
+	api.kickConversationTurnQueue(turn.SessionID)
+}
+
+func (api *StreamingAPI) restoreQueuedSteer(turn queuedConversationTurn) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	lock := productConversationRegistryMutex(conversationTurnQueuePath(turn.UserID))
+	lock.Lock()
+	turns, err := api.readConversationTurnQueue(ctx, turn.UserID)
+	if err == nil {
+		for i := range turns {
+			if turns[i].ID == turn.ID && turns[i].UserID == turn.UserID && turns[i].SessionID == turn.SessionID && turns[i].Steering {
+				turns[i].StartedAt, turns[i].Steering = nil, false
+			}
+		}
+		err = api.writeConversationTurnQueue(ctx, turn.UserID, turns)
+	}
+	lock.Unlock()
+	if err != nil {
+		logTurnQueue("cannot release unavailable steer %s: %v", turn.ID, err)
 	}
 	api.kickConversationTurnQueue(turn.SessionID)
 }
