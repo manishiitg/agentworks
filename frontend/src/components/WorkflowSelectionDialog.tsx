@@ -64,7 +64,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
   }, [isOpen])
 
   const userID = useAuthStore(state => state.user?.id)
-  const [referenceResult, setReferenceResult] = useState<{ userID?: string; items: WorkflowItem[] } | null>(null)
+  const [referenceResult, setReferenceResult] = useState<{ userID?: string; items: WorkflowItem[]; pending: number } | null>(null)
   const [loadError, setLoadError] = useState(false)
   // Fetch fresh permission-filtered workflows and user-scoped Crew projects
   // for every opening. Never reuse stale entries after an account change,
@@ -74,19 +74,27 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
     setReferenceResult(null)
     setLoadError(false)
     if (!isOpen) return
-    void Promise.all([
-      workflowManifestApi.listWorkflowManifests(),
-      loadProductProjects(WORK_PROJECTS_ROOT, WORK_PROFILE_ID, { includeOwnSharedProjects: true }),
-    ]).then(([response, crews]) => {
-      if (cancelled) return
-      const workflows: WorkflowItem[] = (response.workflows || []).map(workflow => ({
+    let workflows: WorkflowItem[] = []
+    let crewProjects: WorkflowItem[] = []
+    let pending = 2
+    const finish = () => {
+      pending -= 1
+      if (!cancelled) setReferenceResult({ userID, items: [...workflows, ...crewProjects], pending })
+    }
+    const failed = () => { if (!cancelled) setLoadError(true) }
+    // Each fresh, server-authorized list can be used immediately. A slow
+    // discovery service must not hold the other product's results hostage.
+    void workflowManifestApi.listWorkflowManifests().then(response => {
+      workflows = (response.workflows || []).map(workflow => ({
         presetId: `workflow:${workflow.manifest.id || workflow.workspace_path}`,
         label: workflow.manifest.label,
         workspacePath: workflow.workspace_path,
         kind: 'workflow',
         icon: workflow.manifest.icon,
       }))
-      const crewProjects: WorkflowItem[] = crews.map(crew => {
+    }).catch(failed).finally(finish)
+    void loadProductProjects(WORK_PROJECTS_ROOT, WORK_PROFILE_ID, { includeOwnSharedProjects: true }).then(crews => {
+      crewProjects = crews.map(crew => {
         const identityName = crew.identity?.name?.trim() || crew.title
         return {
           presetId: `crew:${crew.id}`,
@@ -97,8 +105,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
           icon: crew.identity?.icon,
         }
       })
-      setReferenceResult({ userID, items: [...workflows, ...crewProjects] })
-    }).catch(() => { if (!cancelled) setLoadError(true) })
+    }).catch(failed).finally(finish)
     return () => { cancelled = true }
   }, [isOpen, userID])
   const allReferences = useMemo(() => {
@@ -171,7 +178,8 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
 
   // Nothing matches the typed reference (e.g. a ticket number like #1764):
   // close instead of holding the composer's Enter behind an empty picker.
-  const nothingMatches = isOpen && !loadError && !!referenceResult && !!localQuery.trim() && filteredWorkflows.length === 0
+  const loadingReferences = !referenceResult || referenceResult.pending > 0
+  const nothingMatches = isOpen && !loadError && !loadingReferences && !!localQuery.trim() && filteredWorkflows.length === 0
   useEffect(() => {
     if (nothingMatches) onCloseRef.current()
   }, [nothingMatches])
@@ -224,7 +232,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
       <div ref={listRef} className="overflow-y-auto max-h-64">
         {filteredWorkflows.length === 0 ? (
           <div className="px-3 py-4 text-center text-muted-foreground text-sm">
-            {loadError ? 'Unable to load accessible references. Close and reopen to retry.' : !referenceResult ? 'Loading accessible references…' : localQuery ? 'No references found' : 'No accessible workflows or Crews available'}
+            {loadingReferences ? 'Loading accessible references…' : loadError ? 'Unable to load accessible references. Close and reopen to retry.' : localQuery ? 'No references found' : 'No accessible workflows or Crews available'}
           </div>
         ) : (
           filteredWorkflows.map((workflow, index) => (
@@ -250,6 +258,11 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
           ))
         )}
       </div>
+      {filteredWorkflows.length > 0 && (loadingReferences || loadError) && (
+        <div className="border-t border-border px-3 py-1.5 text-xs text-muted-foreground" role="status">
+          {loadingReferences ? 'Loading more references…' : 'Some references could not be loaded. Reopen to retry.'}
+        </div>
+      )}
 
       {/* Footer */}
       <div className="px-3 py-2 border-t border-border bg-secondary text-xs text-muted-foreground">
