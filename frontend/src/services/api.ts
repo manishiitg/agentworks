@@ -1845,11 +1845,6 @@ export const agentApi = {
     await api.post(`/api/human-feedback/gmail/connections/${encodeURIComponent(id)}/selection`, { workspace_path: workspacePath, selected })
   },
 
-  createGmailConnection: async (req: GmailConnectionRequest): Promise<GmailConnection> => {
-    const apiResponse = await api.post('/api/human-feedback/gmail/connections', req)
-    return apiResponse.data
-  },
-
   updateGmailConnection: async (id: string, req: GmailConnectionRequest): Promise<GmailConnection> => {
     const apiResponse = await api.patch(`/api/human-feedback/gmail/connections/${encodeURIComponent(id)}`, req)
     return apiResponse.data
@@ -1870,15 +1865,6 @@ export const agentApi = {
     const apiResponse = await api.post(
       `/api/human-feedback/gmail/connections/${encodeURIComponent(id)}/test`,
       to ? { to } : {},
-    )
-    return apiResponse.data
-  },
-
-  // Start browser sign-in for one connection. Returns the Google URL to open;
-  // the server receives the redirect and stores the credential itself.
-  startGmailConnectionAuth: async (id: string): Promise<{ auth_url: string; redirect_uri: string }> => {
-    const apiResponse = await api.post(
-      `/api/human-feedback/gmail/connections/${encodeURIComponent(id)}/auth/start`,
     )
     return apiResponse.data
   },

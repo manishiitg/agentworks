@@ -408,9 +408,12 @@ func createGmailConnectionHandler(api *StreamingAPI) http.HandlerFunc {
 			http.Error(w, scopeErr.Error(), http.StatusForbidden)
 			return
 		}
-		// A shared account is created by an admin; a Code's own by its owner.
-		if scope.Workspace == "" && !currentUserIsAdmin(r) {
+		if !currentUserIsAdmin(r) {
 			writeWorkflowPermissionDenied(w, "admin")
+			return
+		}
+		if scope.Workspace != "" {
+			http.Error(w, "Manage personal accounts in My Vault, then choose Use here in the product.", http.StatusForbidden)
 			return
 		}
 		if !gmailCredentialPathsAllowed(w, r, scope.Workspace != "", req) {

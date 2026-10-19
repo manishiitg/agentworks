@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 
 const requests = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(async () => ({ data: {} })) }))
-vi.mock('../../services/api', () => ({ default: requests }))
+vi.mock('../../services/api', () => ({ default: requests, getApiBaseUrl: () => 'https://app.example.com' }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { is_admin: false } }) }))
 vi.mock('../../products/work/McpAppsSection', () => ({ McpAppsSection: () => null }))
 import SlackAccountsPanel from './SlackAccountsPanel'
@@ -22,7 +22,7 @@ it('shows one own Slack account and only the server-authorized actions', async (
   try {
     await act(async () => { root.render(<SlackAccountsPanel workspacePath="Workflow/orders" />) })
     expect(host.textContent).toContain('send as you')
-    expect(host.textContent).toContain('Your Slack is connected')
+    expect(host.textContent).toContain('Connected')
     expect(host.textContent).not.toContain('Sign out of Slack')
     expect(host.textContent).not.toContain('Connect my Slack')
     const use = [...host.querySelectorAll('button')].find(button => button.textContent === 'Use here')!

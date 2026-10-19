@@ -20,6 +20,7 @@ vi.mock('../../../hooks/useCanWriteWorkflow', () => ({
 vi.mock('../../../stores/useWorkflowManifestStore', () => ({
   useWorkflowManifestStore: (selector: (state: unknown) => unknown) => selector({ workflows: [], refreshWorkflows: vi.fn(), updateWorkflow: vi.fn() }),
 }))
+vi.mock('../../integrations/PersonalAccountsPanel', () => ({ default: () => <div>Saved account picker</div> }))
 vi.mock('../AskAIButton', () => ({ AskAIButton: () => null }))
 vi.mock('./GmailSetupGuide', () => ({ GmailSetupGuide: () => null }))
 vi.mock('../../../api/googleApp', () => ({ googleAppApi: { status: vi.fn(async () => ({ configured: false })), clients: vi.fn(async () => [{ name: 'test-client' }]), connectWithClient: vi.fn(), registerClient: vi.fn(), reconnect: vi.fn() } }))
@@ -79,18 +80,12 @@ describe('Gmail management permissions with either OAuth source', () => {
     await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks()
   })
 
-  it('allows workflow editors to connect personal accounts while company accounts stay admin-managed', async () => {
+  it('shows the same saved-account picker while company delivery stays admin-managed', async () => {
     await render()
-    expect(host.querySelector('[data-testid="google-account-list"]')).not.toBeNull()
-    expect(button('Change access').disabled).toBe(true)
-    expect(button('Connect Google account').disabled).toBe(false)
+    expect(host.textContent).toContain('Saved account picker')
+    expect(host.querySelector('[data-testid="google-account-connect"]')).toBeNull()
     expect(button('Save').disabled).toBe(true)
-    expect((host.querySelector('[aria-label="Google sign-in app"]') as HTMLSelectElement).disabled).toBe(false)
-    expect(host.textContent).toContain('Company accounts are managed by an administrator.')
     expect(host.textContent).toContain('Workflow email notifications')
-    expect(host.textContent).not.toContain('Enable Gmail')
-    await act(async () => button('Connect Google account').click())
-    expect(agentApi.createGmailOAuthClient).not.toHaveBeenCalled()
   })
 
   it('permits removal of a server-identified own account without other shared management', async () => {
@@ -106,28 +101,12 @@ describe('Gmail management permissions with either OAuth source', () => {
     expect(agentApi.deleteGmailOAuthClient).not.toHaveBeenCalled()
   })
 
-  it('allows an admin to remove an unused client and open the JSON upload', async () => {
+  it('allows an admin to remove an unused company client', async () => {
     access.user.is_admin = true
     await render(); await openMenu()
     await act(async () => button('Remove').click())
     expect(agentApi.deleteGmailConnection).toHaveBeenCalledWith('gmail_002')
     expect(agentApi.deleteGmailOAuthClient).toHaveBeenCalledWith('test-client')
-    const select = host.querySelector<HTMLSelectElement>('[aria-label="Google sign-in app"]')!
-    await act(async () => { select.value = 'upload'; select.dispatchEvent(new Event('change', { bubbles: true })) })
-    expect((host.querySelector('[aria-label="Google Cloud client file"]') as HTMLInputElement).disabled).toBe(false)
-  })
-
-  it('lets Code owners manage private accounts while delivery remains admin-only', async () => {
-    await render('Chats/Code/projects/app-1')
-    expect(button('Change access').disabled).toBe(false)
-    expect(button('Connect Google account').disabled).toBe(false)
-    expect(button('Send test email').disabled).toBe(true)
-    await render('_users/alice/Chats/Code/projects/app-1')
-    expect(button('Change access').disabled).toBe(false)
-    access.canWrite = false
-    await render('_users/bob/Chats/Code/projects/app-1')
-    expect(button('Change access').disabled).toBe(true)
-    expect(button('Ask the Builder to connect').disabled).toBe(true)
   })
 
   it('shows company management from the server and respects Builder access', async () => {

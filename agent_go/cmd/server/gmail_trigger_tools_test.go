@@ -469,7 +469,7 @@ func TestGmailBuilderConnectPreservesPrivateCodeScopeAndPlatformCallback(t *test
 	id := assertGmailBuilderConsent(t, out, gmailOAuthCallbackPath)
 	svc := services.GetGmailService()
 	conn, _ := svc.GetConnection(id)
-	if !conn.IsPrivate() || conn.ScopeWorkspace != root || conn.OwnerID != "owner" {
+	if !conn.Personal || len(conn.Workspaces) != 1 || conn.Workspaces[0] != root || conn.OwnerID != "owner" {
 		t.Fatalf("private scope lost: %+v", conn)
 	}
 	if _, err := api.gmailTriggerToolRequest(ctx, "human", root, map[string]interface{}{"action": "connect", "connection_id": "mail"}); err == nil {

@@ -6,8 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const { status, connect, reconnect, clients, registerClient, connectWithClient } = vi.hoisted(() => ({ status: vi.fn(), connect: vi.fn(), reconnect: vi.fn(), clients: vi.fn(), registerClient: vi.fn(), connectWithClient: vi.fn() }))
 vi.mock('../../api/googleApp', () => ({ googleAppApi: { status, connect, reconnect, clients, registerClient, connectWithClient } }))
 
-const { listSaved, listAdded, selectAccount, deleteAccount } = vi.hoisted(() => ({ listSaved: vi.fn(), listAdded: vi.fn(), selectAccount: vi.fn(), deleteAccount: vi.fn() }))
-vi.mock('../../services/api', () => ({ agentApi: { listSavedGoogleAccounts: listSaved, listGmailConnections: listAdded, selectGoogleAccount: selectAccount, deleteGmailConnection: deleteAccount } }))
 vi.mock('../../components/workflow/bots/GmailSetupGuide' , () => ({ GmailSetupGuide: () => null }))
 
 import { GoogleAccountConnect } from './GoogleAccountConnect'
@@ -16,7 +14,7 @@ import type { GmailConnection } from '../../services/api-types'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanups: (() => void)[] = []
-beforeEach(() => { clients.mockResolvedValue([]); listSaved.mockResolvedValue({ connections: [] }); listAdded.mockResolvedValue({ connections: [] }) })
+beforeEach(() => { clients.mockResolvedValue([]) })
 afterEach(() => { cleanups.splice(0).forEach(fn => fn()); vi.clearAllMocks(); vi.restoreAllMocks(); document.body.innerHTML = '' })
 
 const render = async (props: Partial<React.ComponentProps<typeof GoogleAccountConnect>> = {}) => {
@@ -24,33 +22,19 @@ const render = async (props: Partial<React.ComponentProps<typeof GoogleAccountCo
   document.body.append(host)
   const root = createRoot(host)
   cleanups.push(() => act(() => root.unmount()))
-  await act(async () => { root.render(<GoogleAccountConnect workspacePath="Chats/Code/projects/p1" {...props} />) })
+  await act(async () => { root.render(<GoogleAccountConnect {...props} />) })
   await act(async () => { await Promise.resolve() })
   return host
 }
 
 describe('GoogleAccountConnect', () => {
-  it('adds an existing personal account without another sign-in', async () => {
-    status.mockResolvedValue({ configured: true, redirect_uri: '' })
-    listSaved.mockResolvedValue({ connections: [{ id: 'personal', display_name: 'My account', email: 'me@example.com', personal: true }] })
-    const changed = vi.fn()
-    const host = await render({ workspacePath: 'Workflow/orders', onChanged: changed })
-    const select = host.querySelector<HTMLSelectElement>('[aria-label="Saved Google account"]')!
-    await act(async () => { select.value = 'personal'; select.dispatchEvent(new Event('change', { bubbles: true })) })
-    await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'Add to this item')!.click())
-    expect(selectAccount).toHaveBeenCalledWith('personal', 'Workflow/orders', true)
-    expect(changed).toHaveBeenCalledOnce()
-    expect(connect).not.toHaveBeenCalled()
-    expect(host.textContent).toContain('Anyone who can run or change this item can use this Google account through it.')
-  })
-
   it('opens access changes and lets the person collapse and reopen without losing edits', async () => {
     status.mockResolvedValue({ configured: true, redirect_uri: '' })
     const host = await render()
     const toggle = host.querySelector<HTMLButtonElement>('button[aria-controls]')!
     await act(async () => toggle.click())
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
-    await act(async () => changeGoogleAccountAccess({ id: 'existing', email: 'me@example.com', allow_read_access: true } as GmailConnection, 'Chats/Code/projects/p1'))
+    await act(async () => changeGoogleAccountAccess({ id: 'existing', email: 'me@example.com', allow_read_access: true } as GmailConnection, ''))
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
     await act(async () => (host.querySelector('[aria-label="Add Docs access"]') as HTMLButtonElement).click())
     await act(async () => toggle.click())
@@ -68,7 +52,7 @@ describe('GoogleAccountConnect', () => {
     status.mockResolvedValue({ configured: true, redirect_uri: '' })
     const host = await render()
     const account = { id: 'existing', email: 'me@example.com', allow_read_access: true, services: [{ service: 'drive', write: true }] } as GmailConnection
-    await act(async () => changeGoogleAccountAccess(account, 'Chats/Code/projects/p1'))
+    await act(async () => changeGoogleAccountAccess(account, ''))
     const drive = host.querySelector('[data-testid="google-access-drive"]')!
     const docs = host.querySelector('[data-testid="google-access-docs"]')!
     expect(drive.textContent).toContain('Current: Read and edit')
@@ -106,31 +90,16 @@ describe('GoogleAccountConnect', () => {
     reconnect.mockResolvedValue({ id: 'legacy', auth_url: 'https://accounts.google.com/auth' })
     const open = vi.spyOn(window, 'open').mockImplementation(() => null)
     try {
-      const host = await render({ workspacePath: 'Workflow/support', privateAccount: false })
+      const host = await render({})
       const account = { id: 'legacy', email: 'me@example.com', allow_read_access: false, allow_agent_write_access: false, services: [{ service: 'docs', write: true }] } as GmailConnection
       await act(async () => changeGoogleAccountAccess(account, 'Workflow/other'))
       expect(host.textContent).not.toContain('Change access for')
-      await act(async () => changeGoogleAccountAccess(account, 'Workflow/support'))
+      await act(async () => changeGoogleAccountAccess(account, ''))
       expect((host.querySelector('[aria-label="Gmail access"]') as HTMLSelectElement).value).toBe('off')
       await act(async () => ([...host.querySelectorAll('button')].find(b => b.textContent === 'Sign in again with Google') as HTMLButtonElement).click())
-      expect(reconnect).toHaveBeenCalledExactlyOnceWith('legacy', { workspace_path: 'Workflow/support', services: [{ service: 'docs', write: true }], allow_read_access: false, allow_agent_write_access: false })
+      expect(reconnect).toHaveBeenCalledExactlyOnceWith('legacy', { workspace_path: '', services: [{ service: 'docs', write: true }], allow_read_access: false, allow_agent_write_access: false })
       expect(connect).not.toHaveBeenCalled()
     } finally { open.mockRestore() }
-  })
-
-  it('explains that Run people ask the Builder to add an account', async () => {
-    status.mockResolvedValue({ configured: true, redirect_uri: '' })
-    const host = await render({ workspacePath: 'Workflow/support', privateAccount: false, readOnly: true })
-    expect(host.textContent).toContain("Only this item's Builder can add a Google account")
-    expect([...host.querySelectorAll('select')].every(select => select.disabled)).toBe(true)
-    expect([...host.querySelectorAll<HTMLButtonElement>('button[aria-label$=" access"]')].every(button => button.disabled)).toBe(true)
-    const locked = [...host.querySelectorAll('button')].find(b => b.textContent === 'Ask the Builder to connect') as HTMLButtonElement
-    expect(locked.disabled).toBe(true)
-    await act(async () => locked.click())
-    await act(async () => changeGoogleAccountAccess({ id: 'shared', email: 'me@example.com' } as GmailConnection, 'Workflow/support'))
-    expect(host.textContent).not.toContain('Change access for')
-    expect(connect).not.toHaveBeenCalled()
-    expect(reconnect).not.toHaveBeenCalled()
   })
 
   it('offers the new permission form and JSON upload without a company app', async () => {
@@ -145,8 +114,8 @@ describe('GoogleAccountConnect', () => {
     status.mockResolvedValue({ configured: false })
     reconnect.mockResolvedValue({ id: 'old', auth_url: 'https://accounts.google.com/auth' })
     vi.spyOn(window, 'open').mockImplementation(() => null)
-    const host = await render({ workspacePath: 'Workflow/local', privateAccount: false })
-    await act(async () => changeGoogleAccountAccess({ id: 'old', email: 'me@example.com', allow_read_access: false, services: [{ service: 'docs', write: true }] } as GmailConnection, 'Workflow/local'))
+    const host = await render({})
+    await act(async () => changeGoogleAccountAccess({ id: 'old', email: 'me@example.com', allow_read_access: false, services: [{ service: 'docs', write: true }] } as GmailConnection, ''))
     expect(host.querySelector('[aria-label="Google sign-in app"]')).toBeNull()
     await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'Sign in again with Google')!.click())
     expect(reconnect).toHaveBeenCalledWith('old', expect.objectContaining({ allow_read_access: false, services: [{ service: 'docs', write: true }] }))
@@ -164,7 +133,7 @@ describe('GoogleAccountConnect', () => {
     expect([...select.options].map(o => o.value)).toEqual(['company', 'client:local-app', 'upload'])
     await act(async () => { select.value = 'client:local-app'; select.dispatchEvent(new Event('change', { bubbles: true })) })
     await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'Connect Google account')!.click())
-    expect(connectWithClient).toHaveBeenCalledWith('local-app', expect.objectContaining({ workspace_path: 'Chats/Code/projects/p1', allow_read_access: true }))
+    expect(connectWithClient).toHaveBeenCalledWith('local-app', expect.objectContaining({ workspace_path: '', allow_read_access: true }))
     expect(registerClient).not.toHaveBeenCalled()
     expect(connect).not.toHaveBeenCalled()
   })
@@ -174,7 +143,7 @@ describe('GoogleAccountConnect', () => {
     registerClient.mockResolvedValue({ name: 'my-local-app' })
     connectWithClient.mockResolvedValue({ id: 'new', auth_url: 'https://accounts.google.com/auth' })
     vi.spyOn(window, 'open').mockImplementation(() => null)
-    const host = await render({ privateAccount: false, workspacePath: 'Workflow/local' })
+    const host = await render({})
     const name = host.querySelector<HTMLInputElement>('[aria-label="Google app name"]')!
     const file = host.querySelector<HTMLInputElement>('[aria-label="Google Cloud client file"]')!
     const json = { web: { client_id: 'test-id', client_secret: 'test-secret' } }
@@ -185,7 +154,7 @@ describe('GoogleAccountConnect', () => {
     })
     await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'Connect Google account')!.click())
     expect(registerClient).toHaveBeenCalledWith('my-local-app', json)
-    expect(connectWithClient).toHaveBeenCalledWith('my-local-app', expect.objectContaining({ workspace_path: 'Workflow/local' }))
+    expect(connectWithClient).toHaveBeenCalledWith('my-local-app', expect.objectContaining({ workspace_path: '' }))
     expect(host.querySelector('[aria-label="Google Cloud client file"]')).toBeNull()
   })
 
@@ -194,7 +163,7 @@ describe('GoogleAccountConnect', () => {
     clients.mockResolvedValue([])
     const host = await render()
     expect(host.textContent).toContain('Could not check all Google sign-in apps')
-    await act(async () => changeGoogleAccountAccess({ id: 'old', email: 'me@example.com', allow_read_access: true } as GmailConnection, 'Chats/Code/projects/p1'))
+    await act(async () => changeGoogleAccountAccess({ id: 'old', email: 'me@example.com', allow_read_access: true } as GmailConnection, ''))
     expect([...host.querySelectorAll('button')].find(b => b.textContent === 'Sign in again with Google')!.disabled).toBe(false)
   })
 
@@ -208,7 +177,7 @@ describe('GoogleAccountConnect', () => {
     await act(async () => { ([...host.querySelectorAll('button')].find(b => b.textContent?.includes('Connect Google account')) as HTMLButtonElement).click() })
     await act(async () => { await Promise.resolve() })
     expect(connect).toHaveBeenCalledWith({
-      workspace_path: 'Chats/Code/projects/p1',
+      workspace_path: '',
       services: [{ service: 'drive', write: false }, { service: 'calendar', write: false }],
       allow_read_access: true,
       allow_agent_write_access: false,

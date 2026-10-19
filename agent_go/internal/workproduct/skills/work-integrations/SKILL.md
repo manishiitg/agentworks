@@ -8,6 +8,21 @@ description: Manage {{product}} secrets, browser access, models, and administrat
 Inspect current state before changing it, and distinguish account-level setup
 from selection for this project. MCP setup has its own `work-mcp` skill.
 
+## Personal Google and Slack accounts
+
+Manage saved accounts in **My Vault → Your connected accounts**. In this
+project’s **Connections**, choose **Use here** or **Remove here** for a saved
+account. It is one login reused across products, separate from shared vaults.
+Use `manage_google_account` or `manage_slack_account` to inspect and manage
+these same accounts from chat; connect returns the real sign-in link. Never
+create a second MCP connection for an account already saved there. Only its
+owner signs in again. Existing Builder and runtime permissions still apply;
+Google access follows its saved grants, and only the Slack account’s owner can
+read or search it. Other people using this project can use its selected Slack
+to send as that owner. Removing here leaves other items connected; disconnect
+in My Vault removes the saved account everywhere. Company Google accounts and
+Slack bots keep their administrator setup.
+
 ## Secrets
 
 - Call `list_secrets` before creating, replacing, or deleting a secret.
