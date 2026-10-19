@@ -158,10 +158,16 @@ func TestChromeExtensionWorkflowAccessAndRevocation(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"alice","can_create":true,"products":[]},{"id":"bob","can_create":true,"products":[]},{"id":"charlie","can_create":true,"products":["agentworks"]},{"id":"code-only","can_create":true,"products":["code"]}]}`)
 	manifest := `{"version":"1","id":"browser-workflow","label":"Browser workflow","access":{"owners":["alice","charlie","code-only"],"readers":["bob"]},"capabilities":{"browser_mode":"auto"}}`
-	workspaceServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]string{"content": manifest}})
-	}))
-	defer workspaceServer.Close()
+	// Honor writes from read-time manifest migrations. Returning the original
+	// manifest for every GET/PUT recursively reruns migration during changelog
+	// authorization, instead of exercising the workspace's actual behavior.
+	workspaceServer, documents := newFakeWorkspaceServer(t)
+	setManifest := func(content string) {
+		documents.mu.Lock()
+		documents.files["Workflow/browser-workflow/workflow.json"] = content
+		documents.mu.Unlock()
+	}
+	setManifest(manifest)
 	t.Setenv("WORKSPACE_API_URL", workspaceServer.URL)
 	previous := browserrelay.Default
 	browserrelay.Default = browserrelay.New()
@@ -214,12 +220,12 @@ func TestChromeExtensionWorkflowAccessAndRevocation(t *testing.T) {
 	if browserrelay.Default.Lookup("charlie", workflow.Scope) != nil {
 		t.Fatal("one owner's socket appeared in another owner's binding")
 	}
-	manifest = `{"version":"1","id":"browser-workflow","label":"Browser workflow","access":{"owners":["charlie"],"readers":["alice"]},"capabilities":{"browser_mode":"auto"}}`
+	setManifest(`{"version":"1","id":"browser-workflow","label":"Browser workflow","access":{"owners":["charlie"],"readers":["alice"]},"capabilities":{"browser_mode":"auto"}}`)
 	socket.WriteJSON(map[string]string{"type": "ping"})
 	if err := socket.ReadJSON(&reply); err == nil {
 		t.Fatal("revoked workflow owner kept browser authority")
 	}
-	manifest = `{"version":"1","id":"browser-workflow","label":"Browser workflow","kind":"relay","access":{"owners":["charlie"]},"capabilities":{"browser_mode":"auto"}}`
+	setManifest(`{"version":"1","id":"browser-workflow","label":"Browser workflow","kind":"relay","access":{"owners":["charlie"]},"capabilities":{"browser_mode":"auto"}}`)
 	if w := call("charlie", path); w.Code != 403 {
 		t.Fatal("Relay manifest admitted as a workflow")
 	}
