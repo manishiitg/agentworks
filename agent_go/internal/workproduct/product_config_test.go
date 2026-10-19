@@ -182,6 +182,8 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 		"brain_update":         false,
 		"brain_skills":         false,
 		"brain_access":         false,
+		// The Crew's tabs are its agents (PLAT-861-262).
+		"open_project_chat": false, "list_project_chats": false, "ask_project_chat": false, "set_my_agent_identity": false,
 	}
 	for _, name := range manifest.Profile.ToolPolicy.Enabled {
 		if _, expected := wantEnabled[name]; !expected {
@@ -424,7 +426,7 @@ func TestWorkPromptIncludesConfiguredIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render Crew prompt: %v", err)
 	}
-	for _, required := range []string{"## Project agent identity", "changes behavior, never permissions", "Name: Nova", "Role: Engineering partner"} {
+	for _, required := range []string{"## Project agent identity", "it never changes permissions", "Name: Nova", "Role: Engineering partner"} {
 		if !strings.Contains(rendered, required) {
 			t.Fatalf("rendered Crew prompt is missing %q", required)
 		}
