@@ -303,10 +303,11 @@ func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessio
 		turns, err := api.readConversationTurnQueue(ctx, owner)
 		if err != nil {
 			lock.Unlock()
-			logTurnQueue("cannot read queue for owner %s in session %s: %v", owner, sessionID, err)
+			api.noteConversationQueueReadState(sessionID, owner, err)
 			readErr = errors.Join(readErr, err)
 			continue // One caller's unreadable document must not block others.
 		}
+		api.noteConversationQueueReadState(sessionID, owner, nil)
 		var head queuedConversationTurn
 		for _, turn := range turns {
 			if turn.UserID == owner && turn.SessionID == sessionID && turn.StartedAt == nil && turn.DeliveryError == "" {
@@ -336,6 +337,7 @@ func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessio
 	defer lock.Unlock()
 	turns, err := api.readConversationTurnQueue(ctx, oldest.UserID)
 	if err != nil {
+		api.noteConversationQueueReadState(sessionID, oldest.UserID, err)
 		return queuedConversationTurn{}, false, err
 	}
 	for i := range turns {
@@ -343,6 +345,7 @@ func (api *StreamingAPI) claimOldestConversationTurn(ctx context.Context, sessio
 			now := time.Now().UTC()
 			turns[i].StartedAt = &now
 			if err := api.writeConversationTurnQueue(ctx, oldest.UserID, turns); err != nil {
+				logTurnQueue("cannot persist queue claim for session %s: %v", sessionID, err)
 				return queuedConversationTurn{}, false, err
 			}
 			return turns[i], true, nil
@@ -531,7 +534,6 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 		pending := len(api.conversationTurnQueueOwners[sessionID]) > 0
 		api.conversationTurnQueueMu.Unlock()
 		if err != nil {
-			logTurnQueue("cannot claim oldest turn for %s: %v", sessionID, err)
 			api.retryUnreadableConversationQueue(sessionID)
 		} else if pending {
 			// Admission or an explicit owner action changed a head while
@@ -541,6 +543,52 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 		return
 	}
 	go api.executeQueuedConversationTurn(turn)
+}
+
+type conversationQueueRetryState struct {
+	Attempts    int
+	OwnerErrors map[string]string
+}
+
+func (api *StreamingAPI) noteConversationQueueReadState(sessionID, owner string, err error) {
+	api.conversationTurnQueueMu.Lock()
+	if api.conversationTurnQueueRetries == nil {
+		api.conversationTurnQueueRetries = make(map[string]*conversationQueueRetryState)
+	}
+	state := api.conversationTurnQueueRetries[sessionID]
+	if state == nil {
+		state = &conversationQueueRetryState{OwnerErrors: map[string]string{}}
+		api.conversationTurnQueueRetries[sessionID] = state
+	}
+	previous := state.OwnerErrors[owner]
+	current := ""
+	if err != nil {
+		current = err.Error()
+		state.OwnerErrors[owner] = current
+	} else {
+		delete(state.OwnerErrors, owner)
+	}
+	if len(state.OwnerErrors) == 0 {
+		delete(api.conversationTurnQueueRetries, sessionID)
+	}
+	api.conversationTurnQueueMu.Unlock()
+	if current != previous {
+		if err != nil {
+			logTurnQueue("cannot read queue for owner %s in session %s: %v", owner, sessionID, err)
+		} else {
+			logTurnQueue("queue readable again for owner %s in session %s", owner, sessionID)
+		}
+	}
+}
+
+func conversationQueueRetryDelay(attempt int) time.Duration {
+	if attempt == 0 {
+		return 5 * time.Second
+	}
+	if attempt == 1 {
+		return 30 * time.Second
+	}
+	return 5 * time.Minute
 }
 
 // Reuse the one-watcher-per-session guard. A failed queue read keeps its
@@ -555,8 +603,20 @@ func (api *StreamingAPI) retryUnreadableConversationQueue(sessionID string) {
 		return
 	}
 	api.conversationTurnQueueWatching[sessionID] = true
+	if api.conversationTurnQueueRetries == nil {
+		api.conversationTurnQueueRetries = make(map[string]*conversationQueueRetryState)
+	}
+	state := api.conversationTurnQueueRetries[sessionID]
+	if state == nil {
+		state = &conversationQueueRetryState{OwnerErrors: map[string]string{}}
+		api.conversationTurnQueueRetries[sessionID] = state
+	}
+	delay := conversationQueueRetryDelay(state.Attempts)
+	if state.Attempts < 2 {
+		state.Attempts++
+	}
 	api.conversationTurnQueueMu.Unlock()
-	time.AfterFunc(5*time.Second, func() {
+	time.AfterFunc(delay, func() {
 		api.conversationTurnQueueMu.Lock()
 		delete(api.conversationTurnQueueWatching, sessionID)
 		api.conversationTurnQueueMu.Unlock()

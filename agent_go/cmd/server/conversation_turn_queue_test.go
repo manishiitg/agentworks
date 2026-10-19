@@ -494,3 +494,26 @@ func TestRetainedSendRechecksIdleBacklogAtDeliveryBoundary(t *testing.T) {
 		})
 	}
 }
+
+func TestUnreadableQueueBackoffCapsAndResetsOnlyAfterRecovery(t *testing.T) {
+	for attempt, want := range []time.Duration{5 * time.Second, 30 * time.Second, 5 * time.Minute, 5 * time.Minute} {
+		if got := conversationQueueRetryDelay(attempt); got != want {
+			t.Fatalf("attempt %d delay %s, want %s", attempt, got, want)
+		}
+	}
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	api.noteConversationQueueReadState("s", "alice", fmt.Errorf("corrupt"))
+	api.conversationTurnQueueRetries["s"].Attempts = 2
+	api.noteConversationQueueReadState("s", "bob", nil)
+	if api.conversationTurnQueueRetries["s"].Attempts != 2 {
+		t.Fatal("another readable owner reset the corrupt owner's backoff")
+	}
+	api.noteConversationQueueReadState("s", "alice", fmt.Errorf("corrupt"))
+	if api.conversationTurnQueueRetries["s"].Attempts != 2 {
+		t.Fatal("same error reset the retry state")
+	}
+	api.noteConversationQueueReadState("s", "alice", nil)
+	if api.conversationTurnQueueRetries["s"] != nil {
+		t.Fatal("recovered queue retained retry state")
+	}
+}
