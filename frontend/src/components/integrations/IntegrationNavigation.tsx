@@ -32,11 +32,11 @@ export function IntegrationNavigation({ options, value, onChange, overview, onOv
   const choose = (next: string) => {
     if (options.some(option => option.value === next)) onChange(next === 'connected' && canEdit ? 'available' : next)
   }
-  return <nav aria-label="Connection actions" className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
-    {overview ? <p className="text-xs text-muted-foreground">Apps and resources available to this project.</p> : <button type="button" onClick={onOverview} className="inline-flex min-w-0 items-center gap-1.5 rounded py-1 text-xs text-muted-foreground hover:text-foreground">
+  return <nav aria-label="Connection actions" className={`mt-2 flex min-w-0 flex-wrap items-center gap-2 ${overview ? 'justify-end' : 'justify-between'}`}>
+    {!overview && <button type="button" onClick={onOverview} className="inline-flex min-w-0 items-center gap-1.5 rounded py-1 text-xs text-muted-foreground hover:text-foreground">
       <ArrowLeft className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Connections<span aria-hidden="true">/</span><span className="truncate text-foreground">{value === 'available' ? 'Add MCP' : selected?.label}</span>
     </button>}
-    {!!options.length && <Menu.Root modal={false}>
+    {overview && !!options.length && <Menu.Root modal={false}>
       <Menu.Trigger asChild><button type="button" className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <Plus className="h-3.5 w-3.5" aria-hidden="true" />{canEdit ? 'Add connection' : 'View connections'}
       </button></Menu.Trigger>
