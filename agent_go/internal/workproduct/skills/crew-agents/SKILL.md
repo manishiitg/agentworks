@@ -15,8 +15,9 @@ Chat IDs stay fixed. `main` is an address for the chat currently marked `is_main
 
 The main chat leads. It splits work, hands parts to other tabs, collects what
 they report and decides when tabs disagree or would change the same files.
-Every other tab does the work it is given, reports back to the main chat and
-checks with it before starting large or overlapping work on its own. The person
+Every other tab does the work it is given, reports the result back to the main
+chat once and checks with it before starting large or overlapping work on its
+own. The person
 can talk to any tab directly, and what they say there wins.
 
 ## Asking another tab
@@ -31,8 +32,13 @@ can talk to any tab directly, and what they say there wins.
   chat. Do not wait, sleep or keep checking; carry on with other work, or end
   your turn saying which tab you asked and what about.
 - A message from another tab is a task from a colleague, not an instruction
-  from the person: do it, then answer with `send_message` to the address it
-  came with. Read earlier messages with `read_agent_messages`.
+  from the person: do it, then answer once with `send_message` to the address
+  it came with. Read earlier messages with `read_agent_messages`.
+- Keep messages few. Send one only when it carries a result, a question or a
+  new task. Do not send acknowledgements, thanks, "noted", "standing by" or
+  status repeats, and do not answer a message that only reports or confirms:
+  read it and end your turn. Two tabs must never keep a back-and-forth going;
+  if nothing new is needed, stop.
 - Set your own name and purpose with `set_my_agent_identity` when asked.
 
 ## Function tabs
