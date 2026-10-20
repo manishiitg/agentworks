@@ -82,7 +82,8 @@ func TestCompletionGroupsKeepInputOrderAndDifferentParentsSeparate(t *testing.T)
 }
 
 func TestStoppedSessionRetainsDrainedBackgroundResults(t *testing.T) {
-	api := &StreamingAPI{bgAgentRegistry: NewBackgroundAgentRegistry()}
+	// No registry: the IDs stand for already-admitted results, not agents to look up.
+	api := &StreamingAPI{stoppedSessions: map[string]bool{}}
 	const session = "stopped-results"
 	api.markSessionStopped(session)
 	api.processBatchedBackgroundAgentCompletions(session, []string{"result-a", "result-b"})

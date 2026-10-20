@@ -240,7 +240,8 @@ func TestFixedMainAndPhysicalChatWakeupsStayPinned(t *testing.T) {
 		return internalSessionTurnResult{}, nil
 	}
 	for _, check := range []struct{ key, want string }{{"alpha", original.SessionID}, {target.ConversationKey, target.SessionID}, {"session:" + original.SessionID, original.SessionID}} {
-		endpoint.ChatKey = check.key
+		// Each address carries its own receiving chat's session.
+		endpoint.ChatKey, endpoint.Session = check.key, check.want
 		conversation := agentConversation{ID: "wakeup-pointer-test", Endpoints: [2]agentMessageEndpoint{endpoint, endpoint}}
 		if _, err := env.api.deliverAgentMessage(ctx, conversation, agentMessage{From: 0, Text: "wake up", Wakeup: true}); err != nil {
 			t.Fatal(err)

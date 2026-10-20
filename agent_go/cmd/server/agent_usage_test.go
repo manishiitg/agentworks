@@ -61,7 +61,7 @@ func TestAgentUsageAuthenticatedLifecycle(t *testing.T) {
 	}
 	token := mcpOAuthTokenForGrant(grant)
 	if err = saveAgentMessageStore(context.Background(), agentMessageStore{
-		Agents: []namedMessageAgent{{ID: "own-agent", UserID: "owner", Name: "reviewer", Connections: []string{token.ID}, Attachment: &namedAgentAttachment{ID: "lease", Provider: "codex", SessionID: "private-native-id", ConnectionID: token.ID}}},
+		Agents: []namedMessageAgent{{ID: "own-agent", UserID: "owner", Name: "reviewer", CreatedAt: time.Now(), Connections: []string{token.ID}, Attachment: &namedAgentAttachment{ID: "lease", Provider: "codex", SessionID: "private-native-id", ConnectionID: token.ID}}},
 		Shares: []agentShare{{ID: "share", OwnerUserID: "owner", AgentID: "own-agent", SubjectUserID: "other", Capability: "chat", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}},
 	}); err != nil {
 		t.Fatal(err)
