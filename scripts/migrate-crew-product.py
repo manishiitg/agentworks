@@ -52,6 +52,8 @@ class Conversion:
         self.original = self.registry["projects"]
         self.paths, self.owners, self.ids, self.links, self.moves = {}, collections.defaultdict(list), {}, [], []
         self.files = {}
+        self.state_moves = []
+        self.schedule_state_keys = 0
         self.skipped_history_metadata = 0
         records = {}
         for record in self.original.values():
@@ -135,7 +137,7 @@ class Conversion:
                     item = item or value.get("code") is True
                 if key == "code_reviewer":
                     key = "crew_reviewer"
-                if key.startswith("code/") and field in ("entries", "previous", "agents"):
+                if key.startswith("code/") and field in ("entries", "previous", "agents", "schedule_states"):
                     key = "work/" + key[5:]
                 if key == "code" and field in ("create_products", "product_defaults", "can_create_products"):
                     if "work" in value:
@@ -144,6 +146,8 @@ class Conversion:
                 # Map private-store attachment keys and history index keys;
                 # StoreRoot/BindingRoot values stay pinned to their old namespace.
                 key = self.path(key)
+                if field == "target" and key == "name" and isinstance(item, str):
+                    item = self.path(item)
                 converted = self.transform(item, key)
                 if key in out:
                     prior = out[key]
@@ -177,7 +181,7 @@ class Conversion:
             self.files[path] = raw
 
     def collect(self):
-        candidates = {self.docs / "config" / name for name in ("users.json", "provider-account-settings.json", "slack-targets.json", "slack-config.json")}
+        candidates = {self.docs / "config" / name for name in ("users.json", "provider-account-settings.json", "slack-targets.json", "slack-config.json", "scheduler.json")}
         for pattern in ("Crew/*/product.json", "Crew/*/workflow.json", "Workflow/*/workflow.json",
                         "_users/*/chat_history/**/*.json", "Crew/*/builder/conversation/**/*.json", "_users/*/preferences/workspace-state.json"):
             candidates.update(self.docs.glob(pattern))
@@ -200,9 +204,40 @@ class Conversion:
                 self.skipped_history_metadata += 1
                 continue
             try:
-                self.plan(path, self.transform(value))
+                if path.name == "product-schedules.json":
+                    owner = path.parent.parent.name
+                    for key, row in value.items():
+                        parts = key.split("/")
+                        if parts[0] != "code" or len(parts) not in (2, 3):
+                            continue
+                        self.schedule_state_keys += 1
+                        prefix = "product-project:" if len(parts) == 3 else "product:"
+                        before = prefix + ":".join(parts)
+                        after = prefix + "work:" + ":".join(parts[1:])
+                        old_file = self.docs / "_system/condition_callers" / (hashlib.sha256((owner+"/"+before).encode()).hexdigest()+".json")
+                        new_file = old_file.with_name(hashlib.sha256((owner+"/"+after).encode()).hexdigest()+".json")
+                        if old_file.is_symlink():
+                            raise ValueError("Watcher ledger must be a regular file")
+                        if old_file.is_file():
+                            if new_file.exists():
+                                raise ValueError("Both Watcher state identities exist")
+                            self.state_moves.append((old_file, new_file))
+                        source = (row.get("watcher") or {}).get("source", {})
+                        project = source.get("project_id")
+                        if source.get("profile_id") == "code" and project:
+                            folder = self.docs / "_users" / owner / "watchers/code" / hashlib.sha256(project.encode()).hexdigest()
+                            destination = folder.parent.parent / "work" / folder.name
+                            if folder.exists():
+                                if folder.is_symlink() or destination.exists():
+                                    raise ValueError("Watcher source location needs repair")
+                                self.state_moves.append((folder, destination))
+                    self.plan(path, self.transform(value, "schedule_states"))
+                else:
+                    self.plan(path, self.transform(value))
             except ValueError as error:
                 raise ValueError(str(error) + " in " + str(path)) from None
+
+        self.state_moves = list(dict.fromkeys(self.state_moves))
 
     def databases(self, apply=False, backup=None):
         counts = collections.Counter()
@@ -260,15 +295,21 @@ class Conversion:
             for file in self.files:
                 label = "docs/" + str(file.relative_to(self.docs)) if file.is_relative_to(self.docs) else "state/" + str(file.relative_to(self.state))
                 archive.add(file, arcname=label)
+            for source, _ in self.state_moves:
+                archive.add(source, arcname="docs/" + str(source.relative_to(self.docs)))
             for source, _ in self.moves:
                 archive.add(self.docs / source, arcname="docs/" + source)
         (backup / "links.json").write_text(json.dumps(self.links, indent=2) + "\n")
+        (backup / "state-moves.json").write_text(json.dumps([[str(a.relative_to(self.docs)), str(b.relative_to(self.docs))] for a,b in self.state_moves], indent=2) + "\n")
         self.databases(True, backup)
         for file, raw in self.files.items():
             file.write_text(raw)
         for source, destination in self.moves:
             (self.docs / destination).parent.mkdir(parents=True, exist_ok=True)
             (self.docs / source).rename(self.docs / destination)
+        for source, destination in self.state_moves:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            source.rename(destination)
         for alias, _ in self.links:
             (self.docs / alias).unlink()
         old_audit, audit = self.docs / "config/code-admin-audit", self.docs / "config/crew-admin-audit"
@@ -294,6 +335,8 @@ def main():
     conversion.collect()
     report = {"projects": len(conversion.original), "converted_code_projects": sum(x["product"] == "code" for x in conversion.original.values()),
               "metadata_files": len(conversion.files), "folder_moves": len(conversion.moves), "old_links": len(conversion.links),
+              "watcher_state_moves": len(conversion.state_moves),
+              "converted_schedule_state_keys": conversion.schedule_state_keys,
               "skipped_history_metadata": conversion.skipped_history_metadata,
               **conversion.databases()}
     if args.apply:
