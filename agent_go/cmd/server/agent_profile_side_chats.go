@@ -23,8 +23,8 @@ type AgentProfileSideChat struct {
 	ConnectionID    string `json:"connection_id,omitempty"`
 	// Position is where the person put this tab in the strip (1 is first); 0 means not placed yet.
 	Position int `json:"position,omitempty"`
-	// Pinned keeps the tab on the strip; the rest are in the Agents menu.
-	Pinned bool `json:"pinned,omitempty"`
+	// Pinned keeps the tab on the strip; the rest are in the Agents menu. Every tab starts pinned.
+	Pinned bool `json:"pinned"`
 }
 
 // handleListAgentProfileSideChats lists the caller's open side tabs of one project: GET /api/agent-profiles/{id}/side-chats
@@ -146,7 +146,7 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 		}
 		id := strings.TrimPrefix(record.ConversationKey, projectID+codeChatSideMarker)
 		name := firstNonEmptyTrimmed(identities[record.ConversationKey].Name, titles[record.SessionID], "Chat "+id)
-		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: identities[record.ConversationKey].Position, Pinned: identities[record.ConversationKey].Pinned}
+		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: identities[record.ConversationKey].Position, Pinned: !identities[record.ConversationKey].Unpinned}
 		if agentID := publicationAgentID(record.ConversationKey); agentID != "" {
 			if p, e := readPublishedAgent(contextWithoutPublication(r.Context()), agentProfileRuntimeWorkspace(userID, slot.binding.WorkspacePath), agentID); e == nil && p != nil {
 				row.AgentID, row.Provider, row.ModelID, row.ConnectionID = p.AgentID, p.Provider, p.ModelID, p.ConnectionID

@@ -95,8 +95,9 @@ type ProductAgentIdentity struct {
 	UpdatedAt string `json:"updated_at,omitempty"`
 	// Position orders the person's side tabs in the strip (1 is first); 0 means not placed yet.
 	Position int `json:"position,omitempty"`
-	// Pinned keeps this side tab on the strip; unpinned tabs stay in the Agents menu (owner, 2026-10-20).
-	Pinned bool `json:"pinned,omitempty"`
+	// Unpinned takes this side tab off the strip into the Agents menu; every tab starts pinned (owner, 2026-10-20), so
+	// the saved bit is the opposite one and no tab needs a migration.
+	Unpinned bool `json:"unpinned,omitempty"`
 	// Engine, ModelID and ReasoningEffort are the model the person chose for this one chat on the Crew's Models page
 	// (owner, 2026-10-19: chosen by hand only). Empty Engine means the chat follows the Crew's own model.
 	Engine          string `json:"engine,omitempty"`
@@ -272,10 +273,10 @@ func (store productConversationRegistryStore) setSideChatPinned(ctx context.Cont
 		return fmt.Errorf("that tab is not open in this project")
 	}
 	identity := document.Agents[entryKey]
-	if identity.Pinned == pinned {
+	if identity.Unpinned == !pinned {
 		return nil
 	}
-	identity.Pinned = pinned
+	identity.Unpinned = !pinned
 	document.Agents[entryKey] = identity
 	document.Version = productConversationRegistryVersion
 	return store.writeDocument(ctx, path, document)

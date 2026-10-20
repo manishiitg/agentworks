@@ -282,15 +282,15 @@ describe('CreateWorkProjectDialog', () => {
 
 describe('Crew native tab dragging', () => {
   it('uses the sidebar server order and counts agents without counting schedule or bot activity views', async () => {
-    const make = (id: string, position = 0, activity = false) => ({ tabId: id, sessionId: `session-${id}`, name: id, createdAt: id === 'z' ? 1 : 900, config: {}, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: id === 'main', agentProfileConversationKey: id === 'main' ? 'crew:chat:root-main' : `crew:chat:${id}`, agentProfileTabPosition: position, ...(activity ? { isViewOnly: true, isScheduledRun: id === 'schedule', isBotRun: id === 'bot' } : {}) } } as ChatTab)
+    const make = (id: string, position = 0, activity = false) => ({ tabId: id, sessionId: `session-${id}`, name: id, createdAt: id === 'z' ? 1 : 900, config: {}, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: id === 'main', agentProfileConversationKey: id === 'main' ? 'crew:chat:root-main' : `crew:chat:${id}`, agentProfileTabPosition: position, ...(id === 'z' ? { agentProfileTabPinned: false } : {}), ...(activity ? { isViewOnly: true, isScheduledRun: id === 'schedule', isBotRun: id === 'bot' } : {}) } } as ChatTab)
     useChatStore.setState({ chatTabs: { z: make('z'), bot: make('bot', 0, true), main: make('main'), a: make('a'), schedule: make('schedule', 0, true), b: make('b', 1) }, activeTabId: 'b' })
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host)
     try {
       await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats={false} />))
       const ids = (selector: string, attribute: string) => [...host.querySelectorAll(selector)].map(node => node.getAttribute(attribute))
-      // Only the main chat and the tab the person is in are on the strip until they pin more (owner, 2026-10-20).
-      expect(ids('[data-chat-tab-id]', 'data-chat-tab-id')).toEqual(['main', 'b'])
+      // Every tab starts pinned; the person unpins the ones they want in the menu only (owner, 2026-10-20).
+      expect(ids('[data-chat-tab-id]', 'data-chat-tab-id')).toEqual(['main', 'b', 'a', 'bot', 'schedule'])
       const menu = host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!
       expect(menu.textContent).toBe('Agents · 4')
       await act(async () => menu.click())
@@ -301,7 +301,7 @@ describe('Crew native tab dragging', () => {
   })
 
   it.each(['a', 'b'])('keeps a drag source and drop target working while %s is selected', async active => {
-    const make = (id: string, position: number) => ({ tabId: id, sessionId: `session-${id}`, name: id, createdAt: position, config: {}, metadata: { agentProfileId: 'work', agentProfileTabPinned: id !== 'main', agentProfileProjectId: 'crew', agentProfileIsMainChat: id === 'main', agentProfileConversationKey: id === 'main' ? 'crew' : `crew:chat:${id}`, agentProfileTabPosition: position } } as ChatTab)
+    const make = (id: string, position: number) => ({ tabId: id, sessionId: `session-${id}`, name: id, createdAt: position, config: {}, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: id === 'main', agentProfileConversationKey: id === 'main' ? 'crew' : `crew:chat:${id}`, agentProfileTabPosition: position } } as ChatTab)
     useChatStore.setState({ chatTabs: { main: make('main', 0), a: make('a', 1), b: make('b', 2) }, activeTabId: active })
     const list = vi.spyOn(agentApi, 'listAgentProfileSideChats').mockResolvedValue([])
     const order = vi.spyOn(agentApi, 'orderAgentProfileSideChats').mockResolvedValue([{ conversation_key: 'crew:chat:b', session_id: 'session-b', name: 'b', position: 1 }, { conversation_key: 'crew:chat:a', session_id: 'session-a', name: 'a', position: 2 }])

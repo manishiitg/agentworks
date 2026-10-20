@@ -594,7 +594,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   // The strip shows the main chat and the tabs the person pinned, as many as they pin (owner, 2026-10-20); the rest are
   // in the Agents menu. The tab the person is in is always on the strip (in the last place when it is not pinned), so it
   // can be seen and dragged.
-  const onStrip = (tab: ChatTab) => tab.tabId === canonicalTabId || tab.metadata?.agentProfileTabPinned === true
+  const onStrip = (tab: ChatTab) => tab.tabId === canonicalTabId || tab.metadata?.agentProfileTabPinned !== false
   const activeTab = tabs.find(tab => tab.tabId === activeTabId)
   const visibleTabs = activeTab && !onStrip(activeTab) ? [...tabs.filter(onStrip), activeTab] : tabs.filter(onStrip)
   const [moreOpen, setMoreOpen] = useState(false)
@@ -644,7 +644,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     const state = useChatStore.getState()
     for (const chat of listed) {
       const tab = Object.values(state.chatTabs).find(item => item.metadata?.agentProfileConversationKey === chat.conversation_key)
-      if (tab && ((tab.metadata?.agentProfileTabPosition || 0) !== (chat.position || 0) || !!tab.metadata?.agentProfileTabPinned !== !!chat.pinned)) state.setTabMetadata(tab.tabId, { agentProfileTabPosition: chat.position || 0, agentProfileTabPinned: !!chat.pinned })
+      if (tab && ((tab.metadata?.agentProfileTabPosition || 0) !== (chat.position || 0) || (tab.metadata?.agentProfileTabPinned !== false) !== (chat.pinned !== false))) state.setTabMetadata(tab.tabId, { agentProfileTabPosition: chat.position || 0, agentProfileTabPinned: chat.pinned !== false })
     }
   }
   const moveSideChat = async (fromKey: string, toKey: string, attempt: { key: string; tabId: string; attemptId: string; dropped: boolean } = { key: fromKey, tabId: sideChats.find(tab => tab.metadata?.agentProfileConversationKey === fromKey)?.tabId || '', attemptId: crypto.randomUUID(), dropped: true }) => {
@@ -745,7 +745,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
               state.setTabMetadata(existing.tabId, { agentProfileEngine: chat.provider, agentProfileModelID: chat.model_id, agentProfileConnectionID: chat.connection_id, agentProfileChatProvider: chat.provider, agentProfileChatConnectionID: chat.connection_id })
             }
             if (existing.name !== chat.name) state.renameTab(existing.tabId, chat.name)
-            if ((existing.metadata?.agentProfileTabPosition || 0) !== (chat.position || 0) || !!existing.metadata?.agentProfileTabPinned !== !!chat.pinned) state.setTabMetadata(existing.tabId, { agentProfileTabPosition: chat.position || 0, agentProfileTabPinned: !!chat.pinned })
+            if ((existing.metadata?.agentProfileTabPosition || 0) !== (chat.position || 0) || (existing.metadata?.agentProfileTabPinned !== false) !== (chat.pinned !== false)) state.setTabMetadata(existing.tabId, { agentProfileTabPosition: chat.position || 0, agentProfileTabPinned: chat.pinned !== false })
             continue
           }
           if (tabs.filter(tab => isWorkSideChatTab(tab, projectId)).length >= WORK_SIDE_CHAT_LIMIT) return
@@ -757,7 +757,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
             agentProfileConversationKey: chat.conversation_key,
             agentProfileConversationId: chat.conversation_id,
             agentProfileTabPosition: chat.position || 0,
-            agentProfileTabPinned: !!chat.pinned,
+            agentProfileTabPinned: chat.pinned !== false,
             ...(chat.agent_id ? { agentProfileEngine: chat.provider, agentProfileModelID: chat.model_id, agentProfileConnectionID: chat.connection_id, agentProfileChatProvider: chat.provider, agentProfileChatConnectionID: chat.connection_id } : {}),
             agentProfileMCPSelectionInitialized: true,
           }, chat.session_id)
@@ -888,7 +888,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
                   >
                     {tab.tabId === activeTabId && <Check aria-hidden="true" className="mr-1 inline h-3 w-3" />}{label}{!isAgentTab(tab) && <span className="ml-2 text-[10px] text-muted-foreground">Activity</span>}
                   </button>
-                  {key && <button type="button" aria-pressed={tab.metadata?.agentProfileTabPinned === true} aria-label={tab.metadata?.agentProfileTabPinned === true ? `Unpin ${label}` : `Pin ${label} to the tab bar`} title={tab.metadata?.agentProfileTabPinned === true ? 'Pinned to the tab bar. Click to unpin' : 'Pin to the tab bar'} className={`rounded p-1 hover:bg-muted ${tab.metadata?.agentProfileTabPinned === true ? 'text-foreground' : 'text-muted-foreground/60'}`} onClick={() => { void pinSideChat(key, tab.metadata?.agentProfileTabPinned !== true) }}>{tab.metadata?.agentProfileTabPinned === true ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}</button>}
+                  {key && <button type="button" aria-pressed={tab.metadata?.agentProfileTabPinned !== false} aria-label={tab.metadata?.agentProfileTabPinned !== false ? `Unpin ${label}` : `Pin ${label} to the tab bar`} title={tab.metadata?.agentProfileTabPinned !== false ? 'Pinned to the tab bar. Click to unpin' : 'Pin to the tab bar'} className={`rounded p-1 hover:bg-muted ${tab.metadata?.agentProfileTabPinned !== false ? 'text-foreground' : 'text-muted-foreground/60'}`} onClick={() => { void pinSideChat(key, tab.metadata?.agentProfileTabPinned === false) }}>{tab.metadata?.agentProfileTabPinned !== false ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}</button>}
                   {tab.tabId !== canonicalTabId && (
                     <button
                       type="button"
