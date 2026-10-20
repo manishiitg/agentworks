@@ -267,7 +267,9 @@ func buildFolderTree(folder string, maxDepth int, files map[string]string) *virt
 	return &virtualtools.WorkspaceFolderItem{
 		FilePath: folder,
 		Type:     "folder",
-		Children: convertFolderChildren(rootNode, 1, maxDepth),
+		// The workspace server counts depth by separators below the folder: "<id>" is 0 and "<id>/product.json" is 1,
+		// so max_depth=1 includes each child's direct files (workspace/handlers/documents.go).
+		Children: convertFolderChildren(rootNode, 0, maxDepth),
 	}
 }
 
