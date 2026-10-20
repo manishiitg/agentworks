@@ -51,7 +51,7 @@ an upload, the person gives the app a unique name and uploads the original file
 in the UI; never ask them to paste client secrets into chat. A company app needs
 no per-account upload. Reusing a saved named app needs no second upload. Existing
 accounts retain their connection ID and OAuth client when changing access.
-Code accounts remain private to their owner; shared accounts remain admin-managed.
+Personal accounts keep their owner; shared accounts remain admin-managed. Explicitly selected accounts follow the current project access.
 
 ### Always check current state first, from chat
 
@@ -152,7 +152,7 @@ A provider login or billing email is not a Gmail connection or the signed-in Age
 ### Personal accounts and item selection
 
 A personal Google connection belongs to the person who signs in. They can add it
-explicitly to each workflow, Crew, Code project or Flow they build, including a
+explicitly to each workflow, Crew or Flow they build, including a
 workflow they edit. Use `manage_google_account`: `list_saved` finds their accounts,
 `connect` returns a Google sign-in link and adds the new account here, and `attach`
 adds a saved account. Tell them: anyone who can run or change this item can use

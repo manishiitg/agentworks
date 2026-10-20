@@ -9,10 +9,10 @@ Connections are private to the authenticated person, even in a shared {{product}
 <!-- product:mcp-gateway -->Shared MCPs belong in Vault and require group permissions on every tool call.<!-- /product -->
 
 - **See what is connected.** Call `manage_my_mcp_servers` with `list`:
-  `this_code_has` names the connections and whether each is `connected`;
+  `this_project_has` names the connections and whether each is `connected`;
   `catalog` is what can be added; `you_can_connect` says whether this person
   may. <!-- product:mcp-gateway -->`vault` lists shared connections permitted by their groups, automatically
-  available in this Code without select/deselect.<!-- /product --> First call `search_tools(query="<provider or task>")` to find registered tools. Use the exact runtime `server_name` returned by that search to narrow subsequent searches, then `get_api_spec(tool_name="<returned-name>")` for a schema. Connection selection IDs from the connection list are not runtime server names.
+  available in this Crew without select/deselect.<!-- /product --> First call `search_tools(query="<provider or task>")` to find registered tools. Use the exact runtime `server_name` returned by that search to narrow subsequent searches, then `get_api_spec(tool_name="<returned-name>")` for a schema. Connection selection IDs from the connection list are not runtime server names.
 - **Server names.** Connected servers appear as `u<id>__<name>`, for example
   `u3f2a...__googlegmail`. Use that exact name in tool calls. When you talk to
   the person, say "your Gmail connection" and never show the `u<id>__` id.

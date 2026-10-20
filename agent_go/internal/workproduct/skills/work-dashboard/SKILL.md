@@ -8,23 +8,7 @@ description: Create or update a {{product}} project's visual Dashboard for tasks
 Use this skill when the user asks for a dashboard, board, tracker, visual home,
 or another project view intended to organize or manage information visually.
 
-<!-- product:code -->
-## Create it with the dashboard tools
 
-When the user asks you to create a dashboard, build it with the platform's dashboard tools, not only as a loose HTML
-file, so it can be checked and published. Do not leave a standalone `.html` file in the project root and call it done.
-
-1. Discover once: `search_tools` with `group="dashboard"` (ask for the whole group; do not page one tool at a time), then
-   `get_api_spec` for `create_dashboard`, `validate_dashboard`, `preview_dashboard` and `publish_dashboard`.
-2. Write the request body to a file first, so shell quoting cannot break it:
-   `{"dashboard_id":"<slug>","title":"<title>","files":{"index.html":"<the whole page>"}}`.
-3. Create the draft: `curl --fail-with-body -sS --json @body.json -H "$MCP_AUTH" "$MCP_CUSTOM/create_dashboard"`. The
-   reply carries the dashboard id and its revision.
-4. Check it with `validate_dashboard` (the dashboard id and revision), fix what it reports, try `preview_dashboard`, then
-   `publish_dashboard` with the revision it asks for (see each tool's spec for its arguments).
-5. Tell the user what exists and what state it is in. If a step fails, show its error text and say it is still a draft;
-   never say it is published unless `publish_dashboard` succeeded. `list_dashboards` shows what already exists.
-<!-- /product -->
 
 ## Contract
 
@@ -178,8 +162,8 @@ on the server; interactive motion does not require that renderer.
   `window.report.ready`, with a loading state, a visible error, and a Refresh
   button that passes `{ refresh: true }`. Prefer `query` when the data is
   already in the project database. The script contract:
-  - Supported in Goals/Workflow, <!-- product:relays -->Flows, <!-- /product -->Crew<!-- product:code --> and Code<!-- /product --> project roots. Crew
-    people it is shared with follow the existing project access rules.<!-- product:code --> Code scripts are owner-only.<!-- /product -->
+  - Supported in Goals/Workflow, <!-- product:relays -->Flows, <!-- /product -->Crew project roots. Crew
+    people it is shared with follow the existing project access rules.
     Scripts use the project's selected MCP tools and secrets (`$SECRET_*`) under
     the authenticated viewer's live MCP<!-- product:mcp-gateway -->/Vault<!-- /product --> permissions. Viewing a project does
     not grant access to its credentials. Published static copies cannot run scripts.
@@ -287,7 +271,7 @@ revisions, read it and create a new managed dashboard from its source.
 External MCP clients use `get_api_spec` then `call_tool`. Request explicit
 `dashboards:read` plus existing product authoring consent for drafts/publication:
 `builder:chat` for workflows,<!-- product:relays --> `relays:write` or Builder consent for Flows,<!-- /product -->
-`crews:write` for Crews, <!-- product:code -->and `code:run` for owned Code projects.<!-- /product --> Workflow<!-- product:relays -->/Flow<!-- /product -->
+`crews:write` for Crews. Workflow<!-- product:relays -->/Flow<!-- /product -->
 consent retains its companion read/run scopes and Builder enablement. Current
 account/product and project owner/editor roles, ID bounds and folder caps still
 apply. Read-only and retired dashboard-write grants gain no authoring rights;

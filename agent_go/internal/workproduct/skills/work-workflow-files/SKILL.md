@@ -53,11 +53,7 @@ do not add a separate publish password or login to this internal URL. Publicly
 hosted static Dashboards remain a separate publish flow with their own visibility
 controls.
 
-<!-- product:code -->
-In a Code project the Dashboard is already in the project's Dashboard tab: tell the user to open it there instead of
-pasting the long link. Give the link only when asked, and say it opens only for the project owner (it needs sign-in, and
-a Code project is private); never call it shareable. Do not decode, quote or explain the `path` part of the URL.
-<!-- /product -->
+
 
 Call `get_file_link` with the path relative to the active {{product}} project. The
 server verifies that the target exists, rejects private or escaping paths,
@@ -70,8 +66,7 @@ include the warning; do not call it a shareable link. A URL based on `localhost`
 `127.0.0.1`, or `::1` cannot be opened by another user or device. The deployment
 must have a reachable `PUBLIC_URL` before the link can be shared.
 
-Crew dashboard links follow current Crew access, including legacy links after
-server-side root resolution.<!-- product:code --> Code starts Only me; its saved Share audience controls access.<!-- /product --> Links contain
+Crew dashboard links follow current Crew access. Links contain
 no credentials and grant no access. Each viewer's live permissions govern
 script-backed data; do not promise that sharing a URL grants data-source access.
 
@@ -135,7 +130,7 @@ target as `#crew:<name>` or `#workflow:<name>`; tags are project references,
 not message destinations or new authority. Call only targets accessible to the
 current user. A callable target does not automatically grant file access.
 
-<!-- product:code -->Code can declare functions privately and expose them through Share. Call an explicitly published Code function with `target="workspace:code:<id>"` or `target="code:<id>"`; current owner, co-owner or Run access is required. Legacy implicit `#code:` peer bindings stay unavailable. Use `ask_project_chat` for another authorized chat of the same Code.<!-- /product -->
+
 
 Messages use an inbox and explicit optional replies. A structured Crew call has
 its own isolated conversation and output folder; a typed workflow function runs

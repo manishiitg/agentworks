@@ -1,6 +1,6 @@
 ---
 name: "webhook-triggers"
-description: "Inbound route webhooks: authentication, payload mappings, testing and how a step reads its trigger input, including Crew and Code function calls."
+description: "Inbound route webhooks: authentication, payload mappings, testing and how a step reads its trigger input, including Crew function calls."
 external: false
 ---
 ## Inbound workflow webhook triggers

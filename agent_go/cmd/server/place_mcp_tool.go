@@ -132,6 +132,6 @@ func (api *StreamingAPI) placeMCPToolList(ctx context.Context, person, root stri
 	if vaultErr != nil {
 		vaultError = vaultErr.Error()
 	}
-	data, _ := json.Marshal(map[string]interface{}{"this_code_has": have, "catalog": catalog, "vault": vault.Servers, "vault_groups": vault.Groups, "vault_secrets": vault.Secrets, "vault_error": vaultError, "you_can_connect": placeMCPCanAttach(ctx, person, root)})
+	data, _ := json.Marshal(map[string]interface{}{"this_project_has": have, "catalog": catalog, "vault": vault.Servers, "vault_groups": vault.Groups, "vault_secrets": vault.Secrets, "vault_error": vaultError, "you_can_connect": placeMCPCanAttach(ctx, person, root)})
 	return string(data), nil
 }

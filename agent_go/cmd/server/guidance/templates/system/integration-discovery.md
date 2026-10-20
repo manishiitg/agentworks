@@ -57,7 +57,7 @@ a required server to make validation pass.
 
 ### Multiple accounts
 
-Connection setup is the same for Crew, Code and workflows<!-- product:relays -->, and Flows<!-- /product -->. For another
+Connection setup is the same for Crew and workflows<!-- product:relays -->, and Flows<!-- /product -->. For another
 account of a catalog provider, use `install_mcp_server(name=<provider>,
 catalog=<provider>, label=<account label>)`. Each labelled install creates a new
 connection and returns its exact name plus its own sign-in step. Inspect the

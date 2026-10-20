@@ -32,16 +32,23 @@ func (r *placeMCPToolRegistrar) RegisterCustomToolWithTimeout(name, description 
 // the owner's login as the Code's own connection, and a provider that needs
 // their own OAuth app is sent to the MCP tab (no secret in chat). Only the
 // Code's owner connects, and nothing reaches another Code.
-func TestManageMyMCPServersActsOnThisCodeOnly(t *testing.T) {
+func TestManageMyMCPServersActsOnThisCrewOnly(t *testing.T) {
 	withMCPConnectionsRoot(t)
+	withProjectOwnerRegistry(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]}]}`)
+	for _, folder := range []string{"c0de", "other"} {
+		if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: folder, ProjectID: folder, OwnerID: "owner", Shared: true, Private: true, AudienceConfigured: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	t.Setenv("AUTH_SECRET", "test-auth-secret-with-enough-entropy")
 	catalogPath := filepath.Join(t.TempDir(), "mcp.json")
 	if err := os.WriteFile(catalogPath, []byte(`{"mcpServers":{"AcmeMail":{"url":"https://mcp.acme.example/mcp","protocol":"http","oauth":{"auth_url":"https://auth.acme.example/oauth/authorize","token_url":"https://auth.acme.example/oauth/token"}}}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	api := &StreamingAPI{mcpConfigPath: catalogPath, logger: loggerv2.NewNoop()}
-	codeRoot := "_users/owner/Chats/Code/projects/c0de"
-	otherCode := "_users/owner/Chats/Code/projects/other"
+	codeRoot := "Crew/c0de"
+	otherCode := "Crew/other"
 	reg := &placeMCPToolRegistrar{}
 	if err := api.registerPlaceMCPTool(reg, "owner", codeRoot, "https://agents.example.com/api/oauth/callback"); err != nil {
 		t.Fatal(err)
@@ -54,7 +61,7 @@ func TestManageMyMCPServersActsOnThisCodeOnly(t *testing.T) {
 		}
 		return out
 	}
-	if out := call(map[string]interface{}{"action": "list"}); !strings.Contains(out, `"catalog":"AcmeMail"`) || !strings.Contains(out, `"this_code_has":[]`) || !strings.Contains(out, `"you_can_connect":true`) {
+	if out := call(map[string]interface{}{"action": "list"}); !strings.Contains(out, `"catalog":"AcmeMail"`) || !strings.Contains(out, `"this_project_has":[]`) || !strings.Contains(out, `"you_can_connect":true`) {
 		t.Fatalf("list = %s", out)
 	}
 	out := call(map[string]interface{}{"action": "connect", "catalog": "AcmeMail"})
@@ -70,7 +77,7 @@ func TestManageMyMCPServersActsOnThisCodeOnly(t *testing.T) {
 	if servers, _ := listPlaceMCPServers("owner"); len(servers) != 1 {
 		t.Fatalf("connection missing from the person's private store: %v", servers)
 	}
-	if out := call(map[string]interface{}{"action": "list"}); !strings.Contains(out, `"this_code_has":[{"name":"acmemail"`) {
+	if out := call(map[string]interface{}{"action": "list"}); !strings.Contains(out, `"this_project_has":[{"name":"acmemail"`) {
 		t.Fatalf("list after connect = %s", out)
 	}
 	call(map[string]interface{}{"action": "remove", "name": "acmemail"})

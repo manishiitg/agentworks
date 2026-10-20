@@ -9,9 +9,9 @@ external_scopes: ["crews:write"]
 
 Crew combines private project and coding work with reusable agents. Start with
 `workspace action=list` and keep the returned `workspace_id`; `get`, `create`,
-`update`, `ask` and chat actions work across both former Code and Crew origins.
+`update`, `ask` and chat actions use that same Crew.
 New projects start **Only me**. Share changes the same hosted project's audience;
-it does not copy or convert it. Old Crew/Code tool names and IDs remain supported.
+Use the current action families returned by discovery. Project and chat identities stay stable.
 A Crew can have standing instructions (`purpose`), skills, typed **functions**,
 schedules, a dashboard and project files. Memory is optional; existing projects
 keep their setting. Every Crew runs on the server; an optional laptop connection adds local command and local-to-Crew copy tools without changing server features.
@@ -51,12 +51,14 @@ start the owner's chat; inspect results before retrying a mutation. Use
 `crew_execution action=history` for the last 100 owner-only audit records: connection,
 operation, timing and outcome, with commands, values and payloads withheld.
 
-- `crew` action=create takes `name`, `role`, `purpose` (the Crew's standing instructions; what it is
-  for and how it works) and optionally `icon`, `selected_skills`, `files` (path -> text content),
-  `functions`, `schedules`. action=update edits one you own section by section (omitted parts stay):
-  `skills` {set, add, remove}, `functions` {upsert, delete}, `schedules` {add, update, remove},
-  `files`, `remove_files`. The reply is a compact summary; pass `return_spec: true` for the whole Crew.
-  action=export and action=import move a Crew between accounts or servers as a portable spec.
+- `workspace action=create` takes `name` and optional `spec` with `role`,
+  `purpose` (standing instructions), `icon`, `selected_skills`, `files`,
+  `functions` and `schedules`. New Crews start Only me.
+- `workspace action=update` takes `workspace_id` and `changes` for sections to
+  edit: `skills` {set, add, remove}, `functions` {upsert, delete},
+  `schedules` {add, update, remove}, `files` and `remove_files`. Omitted sections
+  stay as they are. `action=export` returns a portable spec; `action=import`
+  creates a Crew from `spec`.
 - Only owners edit. Needs `crews:write`.
 
 ## Custom commands
@@ -94,7 +96,7 @@ type, properties, required, items, enum).
 
 - Builders change the Crew; people with Run access use its shared chat, dashboard and published functions under the current server checks. Share never grants Builder tools or access to Builder conversations.
 - For a conversation, use `workspace action=ask` with the discovered workspace ID and optional `chat_id`. Keep the returned chat and submission receipt; read progress and replies with `workspace action=read_chat`, `chat_id`, `after` and `wait_seconds` (up to 25). Ask without a chat ID opens or uses the caller's own conversation. A started turn is not a finished answer; inspect its returned status.
-- Legacy `ask_crew`/message tools remain available through discovery; their returned inbox receipts belong to those operations, not to `workspace` chat replies. Ask is always open to people the Crew is shared with. Inside a Crew, `schedule_message_wakeup` can set one timed wakeup in its own conversation; it does not fire while the scheduler is paused.
+- Ask is available to people the Crew is shared with. Inside a Crew, `schedule_message_wakeup` can set one timed wakeup in its own conversation; it does not fire while the scheduler is paused.
 - Named function tabs keep earlier calls' conversation; `execution: "fresh"` starts without it.
   Put lasting instructions and shared knowledge in `MEMORY.md` or the Crew's files,
   and say how to use them in `purpose` and function `instructions`.
@@ -113,7 +115,7 @@ People using the shared Crew on the website see chat and its dashboard. File-too
   `request_id` to detect concurrent edits and retry safely. Other users
   cannot modify the Crew's memory or skills, even with a write-capable
   connection; their writable area remains `shared/<their id>/`.
-  To select a newly authored skill, use `settings` or `crew action=update`
+  To select a newly authored skill, use `settings` or `workspace action=update`
   with `skills` after writing it. This does not edit server-wide or built-in skills.
 
 ## File lifecycle, packages and references
@@ -168,7 +170,7 @@ connection's Crew bounds apply. These calls execute directly without a model tur
 
 ## Checking your work
 
-Call `crew` action=get for the Crew's functions, call a function with `wait_seconds` and read
+Call `workspace` action=get for the Crew's functions, call a function with `wait_seconds` and read
 `status`, then check the result against the schema. A function that finishes without a valid result
 is a failed call: read its `answer` and `files`, fix the instructions, and call again with a fresh
 `submission_id`.
