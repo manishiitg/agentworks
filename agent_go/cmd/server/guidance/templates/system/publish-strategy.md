@@ -325,11 +325,9 @@ inline the two views into the single nav page and encrypt just that one file.
 
 **Store the password as a named secret — never in plaintext.** For workflow publish, put it in
 the workflow's secret store (e.g. `PUBLISH_PASSWORD`) and read it as `$SECRET_PUBLISH_PASSWORD`,
-so the **auto-republish (Pulse)** step can re-encrypt without the user. For org publish, use a
-user/global secret with the same named-secret convention. For workflow publish, record only
+so the **auto-republish (Pulse)** step can re-encrypt without the user. Record only
 `visibility: "private"` and the `secret_name` in `workflow.json.publish` / `publish/status.json`.
-For org publish, record those same non-secret fields in `pulse/publish.json` /
-`pulse/publish/status.json`. **Never the password itself.**
+**Never the password itself.**
 
 **Honest limit:** a client-side gate is good *casual* privacy (keeps it out of public/search
 view, needs the password to read) but not strong security — a weak password on the encrypted
@@ -369,17 +367,8 @@ true` with the destination + top-level `url`, and (2) write `publish/status.json
 `state: "published"`, the `url`, and `last_source_hash` (see the two sections below). Never
 write these into the `/tmp` staging dir.
 
-For **org-level publish**, come back and persist state under `pulse/` instead:
-
-- update `pulse/publish.json` with `enabled=true`, destinations, targets, visibility, and
-  the top-level URL,
-- write `pulse/publish/status.json` with `state: "published"`, the URL,
-  `last_source_hash`, destination results, and updated time,
-- never write org publish state into a workflow's `workflow.json`.
-
-For workflow publish, read the destination's `provider`, `method`, and `site` from
-`workflow.json.publish`. For org publish, read the same destination fields from
-`pulse/publish.json`. Then deploy:
+Read the destination's `provider`, `method`, and `site` from `workflow.json.publish`.
+Then deploy:
 
 1. **Provider CLI** (`method: cli`) — the default, and the host's own CLI **handles its own
    auth**. Almost every major static host ships a CLI, most installable with `npm i -g`.
@@ -450,21 +439,17 @@ named secret; never hardcode a token.
 Follow the same set-up-then-prove flow as backup:
 
 1. **Configure** (`action: "configure"`) — if the destination isn't set yet, add it to
-   the right config: `workflow.json.publish` for workflow publish, or `pulse/publish.json`
-   for org publish (enabled, mode, targets, destination provider/method/site, visibility,
+   `workflow.json.publish` (enabled, mode, targets, destination provider/method/site, visibility,
    and secret name only). For a CLI host, **proactively suggest the one-time CLI install** (exact command from
    the table) and confirm the CLI is installed and **logged in** (`<cli> login`) — the CLI
    handles auth, so you don't store tokens. If critical details are missing, ask in this chat
-   and write the right status (`publish/status.json` for workflow, or
-   `pulse/publish/status.json` for org) with state `configured_not_verified`. Do not publish yet.
+   and write `publish/status.json` with state `configured_not_verified`. Do not publish yet.
 
    **Edit workflow.json safely.** For workflow publish, change ONLY the `publish` block and preserve every other
    field. The `targets` value must be a JSON array (of strings like `"report"`/`"pulse"`, or
    objects). After writing, re-read it with a JSON parser
    (`python3 -c "import json; json.load(open('workflow.json'))"`) to confirm it still parses —
    a malformed workflow.json drops the workflow's config and can hide the workflow from the UI.
-   For org publish, write valid JSON in `pulse/publish.json` and do not touch workflow
-   manifests.
 2. **Verify** — on the first real publish, deploy, fetch the returned URL to confirm it loads,
    and only then mark `published`. Record the URL in both the destination and the top-level
    `url`.
@@ -474,8 +459,7 @@ Follow the same set-up-then-prove flow as backup:
 
 ## Always write publish status
 
-For workflow publish, before you finish — even on failure — write `publish/status.json`.
-For org publish, write the same shape to `pulse/publish/status.json`:
+Before you finish — even on failure — write `publish/status.json`:
 
 ```json
 {
@@ -493,16 +477,13 @@ For org publish, write the same shape to `pulse/publish/status.json`:
 }
 ```
 
-Do not write operational publish status into workflow/org config files. Use
-`publish/status.json` for workflow publish and `pulse/publish/status.json` for org publish.
+Do not write operational publish status into `workflow.json`. Use `publish/status.json`.
 If a destination is missing credentials or setup, mark it `failed` and continue with any
 others.
 
 **Get `last_source_hash` right or the dot lies.** The backend computes the source hash itself
 (a sha256 over `db/db.sqlite` and `reports/`) and reports it as
-`current_source_hash` in the workflow publish status. For org publish, hash
-`pulse/goals.html` and `pulse/org-pulse.html` deterministically and record that hash in the
-`pulse/publish/status.json` status file. Set `last_source_hash` to the current source hash you just
+`current_source_hash` in the workflow publish status. Set `last_source_hash` to the current source hash you just
 published. If you write any other string, a successful publish immediately reads as
 **`stale`** (amber) and Pulse will keep re-publishing. If you genuinely can't obtain it,
 leave `last_source_hash` empty — the dot stays green `published`, only change-detection is
