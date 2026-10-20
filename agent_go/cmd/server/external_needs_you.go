@@ -125,9 +125,7 @@ func (api *StreamingAPI) externalNeedsYou(w http.ResponseWriter, r *http.Request
 			if d.input.Context != "" {
 				item["context"] = d.input.Context
 			}
-			if d.input.Recommendation != nil {
-				item["pulse_recommends"] = d.input.Recommendation
-			}
+
 			items = append(items, item)
 		}
 		for _, failure := range collected.failures {

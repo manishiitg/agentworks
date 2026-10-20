@@ -36,7 +36,7 @@ type goalLeadFailedRun struct {
 func goalLeadFailedRuns(entries []ScheduleRunEntry, since time.Time) []goalLeadFailedRun {
 	out := []goalLeadFailedRun{}
 	for _, entry := range entries {
-		if isPulseScheduleID(entry.ScheduleID) || !isFailedWorkflowRunStatus(entry.Status) {
+		if entry.ScheduleID == manualWorkflowPulseScheduleID || !isFailedWorkflowRunStatus(entry.Status) {
 			continue
 		}
 		finished := entry.StartedAt

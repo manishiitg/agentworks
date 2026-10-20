@@ -525,6 +525,7 @@ type WorkflowSchedule struct {
 	Messages []string              `json:"messages,omitempty"` // Predefined message queue for workshop schedules (sent one-by-one)
 	// DirectMessagesReason records why a schedule-local conversation is preferable
 	// to a canonical route despite its weaker step-level lifecycle.
+	WorkshopMode         string            `json:"workshop_mode,omitempty"` // Scheduled session mode: workshop or run.
 	DirectMessagesReason string            `json:"direct_messages_reason,omitempty"`
 	Query                string            `json:"query,omitempty"`           // Message to execute (multi-agent mode)
 	ResumePrevious       *bool             `json:"resume_previous,omitempty"` // Coding-agent CLI only: resume the latest prior thread (same provider) instead of a fresh session each run. nil = default (fresh session); explicit true opts in.
