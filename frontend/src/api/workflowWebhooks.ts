@@ -15,7 +15,7 @@ export interface WorkflowAPITrigger {
   payload_mappings?: WebhookPayloadMappings
   secret?: string
   /** '' = external webhook, 'function' = callable function, 'internal' = one bound caller. */
-  kind?: '' | 'internal' | 'function' | 'gmail'
+  kind?: '' | 'internal' | 'function'
   caller?: { type: string; id: string; profile_id?: string }
   function?: WorkflowFunctionSpec
 }

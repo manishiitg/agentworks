@@ -155,6 +155,10 @@ func (api *StreamingAPI) agentEmailInboxResult(ctx context.Context, args map[str
 		after = int64(v)
 	case int64:
 		after = v
+	case int:
+		after = int64(v)
+	case json.Number:
+		after, _ = v.Int64()
 	case string:
 		after, _ = strconv.ParseInt(v, 10, 64)
 	}

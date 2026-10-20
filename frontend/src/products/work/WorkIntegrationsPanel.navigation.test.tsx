@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 const state = vi.hoisted(() => ({ allowed_products: null as string[] | null, target: (_value: string) => {}, ask: vi.fn(), save: vi.fn() }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (selector: (s: unknown) => unknown) => selector({ user: { allowed_products: state.allowed_products } }) }))
 vi.mock('../../hooks/useWorkspaceViewTarget', () => ({ useWorkspaceViewTarget: (_view: string, apply: (target: string) => void) => { state.target = apply } }))
-vi.mock('../../components/workflow/bots/gmailAskAI', () => ({ useGmailInboundUIEnabled: () => false, getGoogleAppsAskAIMessage: () => 'Google help' }))
+vi.mock('../../components/workflow/bots/gmailAskAI', () => ({ getGoogleAppsAskAIMessage: () => 'Google help' }))
 vi.mock('../../components/workflow/WorkspaceViewHeader', () => ({ WorkspaceViewHeader: ({ title, below, tabs, actions }: any) => <header><h2>{title}</h2>{below}{tabs && <div aria-label={tabs.ariaLabel}>{tabs.options.map((tab: any) => <button key={tab.value} onClick={() => tabs.onChange(tab.value)}>{tab.label}</button>)}</div>}{actions}</header> }))
 vi.mock('../../components/workflow/WorkspaceViewActions', () => ({ WorkspaceViewActions: () => null }))
 vi.mock('../../components/integrations/ConnectedProjectAccounts', () => ({ ConnectedProjectAccounts: () => null }))

@@ -27,7 +27,6 @@ vi.mock('../../../api/googleApp', () => ({ googleAppApi: { status: vi.fn(async (
 vi.mock('../../../services/api', () => ({
   agentApi: {
 
-    getGmailInboundRoute: vi.fn(async () => ({ configured: false, route: null, deliveries: [] })),
     listSavedGoogleAccounts: vi.fn(async () => ({ connections: [] })),
     getBotConfig: vi.fn(async () => ({ allowed_emails: [] })),
     getGmailFeedbackConfig: vi.fn(async () => ({

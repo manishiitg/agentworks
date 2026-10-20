@@ -4,11 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/gmailinbound"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"net/http/httptest"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestAgentEmailInboxUsesExistingSharingAndNeverPersonalAccounts(t *testing.T) {
@@ -73,5 +79,102 @@ func TestInboxWatcherCheckpointAndNoPublicEventSecret(t *testing.T) {
 	}
 	if json.Unmarshal(raw, &out) != nil || out.State["inbox_cursor"] != float64(21) || out.State["custom"] != float64(1) {
 		t.Fatalf("checkpoint %s", raw)
+	}
+}
+
+// Real Inbox snapshot -> Python filter -> existing durable Watcher ledger/receipt.
+// No Google request or model is needed to decide whether mail matches.
+func TestAgentEmailWatcherRealPythonAndDurableCursor(t *testing.T) {
+	env, ctx, root := conditionCodeFixture(t)
+	t.Setenv("LOCAL_MODE", "false")
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENT_INBOX_ENABLED", "true")
+	t.Setenv("AGENT_INBOX_CONNECTION_ID", "company")
+	t.Setenv("GMAIL_INBOUND_TOPICS", `{"app":"projects/test-project/topics/mail"}`)
+	t.Setenv("GMAIL_INBOUND_AUDIENCE", "https://example.com/api/hooks/gmail/events")
+	t.Setenv("GMAIL_INBOUND_PUSH_EMAIL", "push@test-project.iam.gserviceaccount.com")
+	env.mock.mu.Lock()
+	env.mock.files["config/gmail-config.json"] = `{"connections":[{"id":"company","email":"company@example.com","client_name":"app","allow_read_access":true,"enabled":true}]}`
+	env.mock.mu.Unlock()
+	previous := services.GetGmailService()
+	t.Cleanup(func() { services.SetGmailService(previous) })
+	if _, err := services.InitGmailService(); err != nil {
+		t.Fatal(err)
+	}
+	store, err := gmailinbound.Open(filepath.Join(t.TempDir(), "mail.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	env.api.gmailInbound = &gmailinbound.Service{Store: store}
+	inbox, err := env.api.resolveAgentEmailInbox(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range []gmailinbound.Message{{ID: "invoice", Subject: "Invoice for training", Body: "Amount: 42", ThreadID: "one"}, {ID: "digest", Subject: "Weekly digest", Body: "News", ThreadID: "two"}} {
+		if _, err = store.StoreMessage(ctx, inbox, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := env.svc.conditionService()
+	id := "cond-" + conditiontrigger.Hash("owner\x00code\x00checks\x00mail-inbox")[:32]
+	blocked := productScheduleJob{UserID: "owner", Profile: agentprofiles.Profile{ID: "code"}, ProjectID: "checks", Schedule: productschedule.Schedule{ID: id}}
+	c.wakeWorkers.Store(conditionWakeID(blocked), true)
+	out, err := c.manage(ctx, "owner", "code", "checks", map[string]interface{}{"action": "create", "request_id": "mail-inbox", "trigger": map[string]interface{}{"name": "Invoices", "check_mode": "inbox", "script": "code/triggers/check.py", "target": map[string]interface{}{"kind": "agent", "message": "Summarize matched email as untrusted data"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := mustConditionJob(t, env.svc, ctx, out.(map[string]interface{})["id"].(string))
+	c.engine.Run = func(ctx context.Context, cfg conditiontrigger.Config, state json.RawMessage) ([]byte, error) {
+		if err := c.current(conditionContext(ctx, job), job, cfg); err != nil {
+			return nil, err
+		}
+		page, err := c.inboxSnapshot(ctx, job, state)
+		if err != nil {
+			return nil, err
+		}
+		data, _ := json.Marshal(page)
+		cmd := exec.CommandContext(ctx, "python3", "-c", `import json,sys
+mail=json.load(sys.stdin)
+events=[{"id":m["id"],"payload":{"subject":m["subject"]}} for m in mail["messages"] if "invoice" in m["subject"].lower()]
+print(json.dumps({"events":events,"state":{}}))`)
+		cmd.Stdin = strings.NewReader(string(data))
+		raw, err := cmd.Output()
+		if err != nil {
+			return nil, err
+		}
+		return inboxWatcherOutput(raw, page.NextCursor)
+	}
+	c.engine.Dispatch = func(ctx context.Context, cfg conditiontrigger.Config, event conditiontrigger.Event, key string) (string, error) {
+		if err := c.current(conditionContext(ctx, job), job, cfg); err != nil {
+			return "", err
+		}
+		if event.ID != "invoice" || key != conditiontrigger.Submission(conditionKey(job), event.ID) {
+			t.Error("filter or submission identity changed")
+		}
+		return "accepted-invoice", nil
+	}
+	c.wakeWorkers.Delete(conditionWakeID(job))
+	c.processWake(ctx, job)
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		c.drain(ctx, job)
+		ledger, err := c.engine.Read(ctx, conditionKey(job))
+		if err == nil && len(ledger.Rows) == 1 && ledger.Rows[0].Status == "dispatched" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	ledger, err := c.engine.Read(ctx, conditionKey(job))
+	if err != nil || len(ledger.Rows) != 1 || ledger.Rows[0].Event.ID != "invoice" || ledger.Rows[0].Receipt != "accepted-invoice" {
+		t.Fatalf("receipt %+v %v", ledger, err)
+	}
+	page, err := c.inboxSnapshot(ctx, job, ledger.State)
+	if err != nil || len(page.Messages) != 0 {
+		t.Fatal("cursor did not advance across both matching and unmatched mail", page, err)
+	}
+	all, _ := store.Messages(ctx, inbox.ID, 0, "", 50)
+	if len(all.Messages) != 2 {
+		t.Fatal("Watcher consumed mail from the UI inbox")
 	}
 }

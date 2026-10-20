@@ -33,7 +33,7 @@ describe('Sign-in apps card (admin)', () => {
       await act(async () => (Array.from(host.querySelectorAll('button')).find(b => b.textContent?.includes('Google'))!).click())
       expect(host.textContent).toContain(REDIRECT)
 
-      const file = new File([JSON.stringify({ web: { client_id: '1.apps.googleusercontent.com', client_secret: 'GOCSPX-test', redirect_uris: ['https://other.example.com/cb'] } })], 'client_secret_1.json', { type: 'application/json' })
+      const file = new File([JSON.stringify({ web: { client_id: '1.apps.googleusercontent.com', client_secret: 'GOCSPX-test', project_id: 'example-project', redirect_uris: ['https://other.example.com/cb'] } })], 'client_secret_1.json', { type: 'application/json' })
       const input = host.querySelector('input[type="file"]') as HTMLInputElement
       Object.defineProperty(input, 'files', { value: [file] })
       await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })) })
@@ -43,7 +43,7 @@ describe('Sign-in apps card (admin)', () => {
 
       await act(async () => (Array.from(host.querySelectorAll('button')).find(b => b.textContent?.includes('Save app'))!).click())
       await flush()
-      expect(api.save).toHaveBeenCalledWith('google', '1.apps.googleusercontent.com', 'GOCSPX-test')
+      expect(api.save).toHaveBeenCalledWith('google', '1.apps.googleusercontent.com', 'GOCSPX-test', 'example-project')
     } finally { await act(async () => root.unmount()); host.remove() }
   })
   it('stays one line once every provider is set up, and shows the steps only to replace', async () => {

@@ -9,7 +9,7 @@ import { TooltipProvider } from '../ui/tooltip'
 import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
 
 vi.mock('../../api/workflowWebhooks', () => ({ workflowWebhooksApi: { list: vi.fn(), save: vi.fn(), delete: vi.fn() }, apiTriggerURL: (path: string) => `https://agent.example${path}` }))
-vi.mock('../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: { getGmailInboundRoute: vi.fn().mockResolvedValue({ configured: true, route: null, deliveries: [] }) } }))
+vi.mock('../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: {} }))
 vi.mock('../../hooks/useCanWriteWorkflow', () => ({ useCanWriteWorkflow: vi.fn(() => true) }))
 vi.mock('../../stores/useWorkflowManifestStore', () => ({ useWorkflowManifestStore: { getState: () => ({ refreshWorkflows: vi.fn().mockResolvedValue(undefined) }) } }))
 vi.mock('../../stores/useWorkflowStore', () => ({ useWorkflowStore: { getState: () => ({ openWorkspaceView: vi.fn() }) } }))

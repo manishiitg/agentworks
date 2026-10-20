@@ -106,7 +106,7 @@ servers, and available secrets.
 
 - Gmail uses saved Google accounts in **My Vault → Your connected accounts**,
   selected with **Use here** in this project’s **Connections → Google apps**;
-  it is not an MCP server. Incoming email is a Gmail trigger with a unique receiving address. Check `list_gmail_connections`
+  it is not an MCP server. Company incoming email is stored in this agent’s dedicated Inbox and optional normal Python Watchers start work. Personal Gmail connects through gog without platform watching. Check `list_gmail_connections`
   before searching the MCP catalog or claiming Gmail is unavailable.
 - Before calling `google_workspace_cli`, use `list_skills` to check whether the
   upstream `gog` skills are installed. If they are missing, call
