@@ -6,7 +6,7 @@ window.__APP_RUNTIME_CONFIG__ = {
   cdpEnabled: false,
   defaultProductSurface: "video-studio",
   gatewayUrl: "https://app.example.com",
-  enabledProductSurfaces: ["agentworks", "video-studio", "work", "code", "mcp-gateway", "knowledgebase"],
+  enabledProductSurfaces: ["agentworks", "video-studio", "work", "mcp-gateway", "knowledgebase"],
   // Neutral placeholder. The real branding, URL and colors live in the private deployments repo
   // (products/<server>/runtime-config.js and brand/) and are shipped with each deploy.
   appName: "Video Studio",

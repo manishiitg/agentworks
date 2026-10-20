@@ -210,9 +210,9 @@ configure_local_product_profile() {
                 export VAULT_AUDIT_PROVIDER=sqlite
                 ;;
         esac
-        local default_surfaces='["agentworks", "relays", "work", "code", "mcp-gateway", "knowledgebase", "bullpen"]'
+        local default_surfaces='["agentworks", "relays", "work", "mcp-gateway", "knowledgebase", "bullpen"]'
         if [ -n "${AGENTWORKS_GATEWAY_BINARY:-}" ]; then
-            default_surfaces='["agentworks", "relays", "work", "code", "mcp-gateway", "knowledgebase", "bullpen", "llm-gateway"]'
+            default_surfaces='["agentworks", "relays", "work", "mcp-gateway", "knowledgebase", "bullpen", "llm-gateway"]'
         fi
         # Runtime JS needs JSON; backend product policy needs the same list as CSV.
         local resolved_surfaces
