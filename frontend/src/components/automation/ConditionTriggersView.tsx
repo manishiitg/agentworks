@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
 import { WebhookEndpoint } from '../scheduler/scheduleRuns/WebhookEndpoint'
+import { describeCron } from '../scheduler/scheduleRuns/cron'
+import { Zap } from 'lucide-react'
+import { AutomationIntro, AutomationListBox, AutomationRow, EmptyAutomations, relativeTime } from './AutomationKit'
 import { conditionTriggersApi, type ConditionTrigger, type ConditionHistory, type WatcherCaller } from '../../api/conditionTriggers'
 import type { ProductTriggerScope } from '../../api/productWebhooks'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
@@ -33,6 +36,7 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [openId, setOpenId] = useState<string | null>(null)
   const refresh = useCallback(async () => {
     try { const result = await conditionTriggersApi.list(scope.projectId, scope.profileId); setTriggers(result.triggers); setCallers(result.callers ?? []); setSavedChats(result.chats ?? []); setError(''); setLoaded(true) }
     catch (e) { setError(messageOf(e)) }
@@ -68,15 +72,14 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
     catch (e) { setError(messageOf(e)) }
   }
   return <div className="h-full min-w-0 overflow-y-auto p-4" data-testid="condition-triggers">
-    <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-      <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">Check a condition with Python when an event arrives or on a schedule, then call {targetHint}. Choose One time to stop after the first accepted action. Checks with no matches use no AI.</p>
-      {canManage && <button className={buttonClass} onClick={() => void ask(setupMessage)}>Add in chat</button>}
-    </div>
+    <div className="mb-4"><AutomationIntro icon={Zap} tone="emerald" title="Watchers" action={canManage ? <button className={buttonClass} onClick={() => void ask(setupMessage)}>Add in chat</button> : undefined}>
+      A watcher keeps an eye on something (a repo, a sheet, an inbox) and starts work only when what you care about happens. Checks that find nothing cost nothing.
+    </AutomationIntro></div>
     {error && <p role="alert" className="mb-3 rounded border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
-    {loaded && triggers.length === 0 && <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">No watchers yet. Add one in chat to monitor a source and start work when it matches.</p>}
+    {loaded && triggers.length === 0 && <EmptyAutomations>No watchers yet. Add one in chat: tell it what to watch and what to do when it happens.</EmptyAutomations>}
     {callers.length > 0 && <details className="mb-4 rounded border border-border p-3 text-xs"><summary className="cursor-pointer">Watchers calling this product</summary><ul className="mt-2 space-y-2">{callers.map(caller => <li key={`${caller.owner_id}:${caller.id}`} className="break-all">{caller.name} · {caller.owner_id} · {targetLabel(caller.target)} · {caller.enabled ? 'Enabled' : 'Paused'}{caller.last_dispatch_at ? ` · Last dispatch ${new Date(caller.last_dispatch_at).toLocaleString()}` : caller.last_status ? ` · ${caller.last_status}` : ''}</li>)}</ul></details>}
-    <div className="space-y-3">{triggers.map(t => <section key={t.id} className="min-w-0 space-y-2 rounded-lg border border-border p-3">
-      <div className="flex items-center justify-between gap-2"><h3 className="truncate text-sm font-medium">{t.name}</h3><span className="text-xs text-muted-foreground">{t.completed_at ? 'Completed' : t.once_status === 'failed' || t.once_status === 'needs_reconciliation' || t.last_status === 'error' ? 'Needs attention' : t.enabled ? 'Enabled' : 'Paused'}</span></div>
+    {triggers.length > 0 && <AutomationListBox>{triggers.map(t => { const attention = t.once_status === 'failed' || t.once_status === 'needs_reconciliation' || t.last_status === 'error'; return <AutomationRow key={t.id} icon={Zap} tone="emerald" open={openId === t.id} onToggle={() => setOpenId(openId === t.id ? null : t.id)} title={t.name} summary={`${t.check_mode === 'event' ? 'When an event arrives' : t.check_mode === 'both' ? 'On events, with a backup check' : t.cron_expression ? describeCron(t.cron_expression) : 'On a schedule'} · starts ${targetLabel(t.target, sideChats)}`} meta={t.last_run_at ? `Checked ${relativeTime(t.last_run_at)}` : 'Not checked yet'} status={t.completed_at ? 'done' : attention ? 'failing' : t.enabled ? 'on' : 'paused'} statusLabel={t.completed_at ? 'Done' : attention ? 'Needs attention' : t.enabled ? 'On' : 'Paused'}>
+
       <p className="break-all text-xs text-muted-foreground">{t.script} · {t.check_mode === 'event' ? 'When an event arrives' : t.check_mode === 'both' ? 'Events + backup schedule' : 'On a schedule'}{t.cron_expression ? ` · ${t.cron_expression} · ${t.timezone}` : ''}</p>
       {t.event_path && <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Event connection</summary>
         <p className="mt-2">Events wake the saved check. It reads the source to find matches.</p>
@@ -124,6 +127,6 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
           {history[t.id]!.events.map(e => <details key={e.event.id} className="mt-2 rounded border border-border p-2"><summary className="cursor-pointer break-all">{e.event.id} · {e.status.replaceAll('_', ' ')}</summary><pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all">{JSON.stringify(e.event.payload, null, 2)}</pre>{e.receipt && <p className="mt-1 break-all">Receipt: {e.receipt}</p>}{e.error && <p className="mt-1 text-destructive">{e.error}</p>}</details>)}
         </details>
       </div>}
-    </section>)}</div>
+    </AutomationRow> })}</AutomationListBox>}
   </div>
 }

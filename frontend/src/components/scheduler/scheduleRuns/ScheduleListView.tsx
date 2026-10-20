@@ -1,4 +1,6 @@
 import React from 'react'
+import { CalendarClock } from 'lucide-react'
+import { IconTile, StatusPill } from '../../automation/AutomationKit'
 import { WebhookEndpoint } from './WebhookEndpoint'
 import { describeCron } from './cron'
 import {
@@ -73,9 +75,10 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
         const quiet = statusWord === 'Paused' || !job.enabled
 
         return (
-          <section key={job.id} className={`min-w-0 space-y-2 rounded-lg border border-border p-3 ${quiet ? 'opacity-70' : ''}`}>
+          <section key={job.id} className={`min-w-0 space-y-2 rounded-xl border border-border p-3 ${quiet ? 'opacity-70' : ''}`}>
             <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
+              <IconTile icon={CalendarClock} tone="violet" />
+              <div className="min-w-0 flex-1">
                 {showWorkflowIdentityInScheduleRows && (
                   <p className="truncate text-xs text-muted-foreground" title={workflowDisplayLabel}>
                     {workflowDisplayLabel} · {job.kind === 'gmail' ? 'Gmail' : job.schedule_type === 'webhook' ? 'Webhook' : 'Schedule'}
@@ -84,7 +87,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
                 <h3 className="truncate text-sm font-medium" title={job.name}>{localizedJobName}</h3>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <span className="text-xs text-muted-foreground">{statusWord}</span>
+                {statusWord && <StatusPill status={statusWord === 'Paused' || !job.enabled ? 'paused' : /fail|missed|error/i.test(statusWord) ? 'failing' : isRunningJob ? 'on' : 'on'} label={statusWord} />}
                 <ScheduleRowActions
                   job={job}
                   isRunning={isRunningJob}

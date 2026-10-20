@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import axios from 'axios'
 import { crewFunctionsApi, type CrewFunction, type CrewFunctionCall, type CrewFunctionSchema } from '../../api/crewFunctions'
 import { productWebhooksApi, type ProductAPITrigger, type ProductTriggerScope } from '../../api/productWebhooks'
+import { Braces } from 'lucide-react'
+import { AutomationIntro, AutomationListBox, AutomationRow, EmptyAutomations, relativeTime } from './AutomationKit'
 
 const buttonClass = 'rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50'
 
@@ -43,17 +45,6 @@ function FieldTable({ label, schema }: { label: string; schema?: CrewFunctionSch
   </div>
 }
 
-function relativeTime(value?: string): string {
-  if (!value) return ''
-  const at = new Date(value).getTime()
-  if (Number.isNaN(at)) return ''
-  const minutes = Math.round((Date.now() - at) / 60000)
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  return `${Math.round(hours / 24)}d ago`
-}
 
 export default function CrewFunctionsView({ scope, refreshToken = 0, onCounts, onEdit }: {
   // The same view serves Crew and Code projects; name the product the person
@@ -120,37 +111,33 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, onCounts, o
 
   return <div className="h-full min-w-0 w-full max-w-none overflow-x-hidden overflow-y-auto bg-background">
     <div className="space-y-4 p-4">
-      <p className="text-xs leading-relaxed text-muted-foreground">Other Crews, workflows and agents can ask this {scope.profileId === 'code' ? 'project' : 'Crew'} to do these. Each one works in its own tab here and keeps its history; one set to <span className="font-medium text-foreground">Fresh</span> starts a clean chat for every call. Ask the chat to add or change one.</p>
+      <AutomationIntro icon={Braces} tone="sky" title="Functions" action={onEdit ? <button type="button" className={buttonClass} onClick={() => void onEdit('I want to add a function to this Crew. Ask me what it should do, then set it up.')}>Add in chat</button> : undefined}>
+        Jobs other Crews, workflows and agents can ask this {scope.profileId === 'code' ? 'project' : 'Crew'} to do. Each one works in its own tab here and keeps its history; one set to Fresh starts clean every time.
+      </AutomationIntro>
       {error && <p role="alert" className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
-      {functions.length > 6 && <input type="search" value={filter} onChange={event => setFilter(event.target.value)} placeholder={`Search ${functions.length} functions`} aria-label="Search functions" className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs" />}
-      {visibleFunctions.length > 0 && <ul className="min-w-0 divide-y divide-border overflow-hidden rounded-lg border border-border">
+      {functions.length > 6 && <input type="search" value={filter} onChange={event => setFilter(event.target.value)} placeholder={`Search ${functions.length} functions`} aria-label="Search functions" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm" />}
+      {visibleFunctions.length > 0 && <AutomationListBox>
         {visibleFunctions.map(fn => {
           const open = openFunction === fn.name
           const last = lastCall.get(fn.name)
           const fresh = (fn.execution || '').toLowerCase() === 'fresh'
-          return <li key={fn.name} data-testid={`crew-function-${fn.name}`} className="min-w-0">
-            <button type="button" aria-expanded={open} onClick={() => setOpenFunction(open ? null : fn.name)} className="flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left hover:bg-muted/40">
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-mono text-xs font-medium">{fn.name}</span>
-                {fn.description && <span className="block truncate text-[11px] text-muted-foreground">{fn.description}</span>}
-              </span>
-              <span className="shrink-0 text-[10px] text-muted-foreground">{last ? `${STATUS_LABEL[last.status] ?? last.status} · ${relativeTime(last.finished_at || last.started_at)}` : 'Not called yet'}</span>
-              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${fresh ? 'bg-sky-500/10 text-sky-600' : 'bg-muted text-muted-foreground'}`} title={fresh ? 'A new chat for every call' : `Runs in its own tab${fn.agent ? ` "${fn.agent}"` : ''}, keeping its history`}>{fresh ? 'Fresh' : 'Own tab'}</span>
-            </button>
-            {open && <div className="space-y-3 border-t border-border bg-muted/20 px-3 py-3 text-xs">
-              {fn.description && <p className="whitespace-pre-wrap text-muted-foreground">{fn.description}</p>}
-              <FieldTable label="Asks for" schema={fn.input_schema} />
-              <FieldTable label="Gives back" schema={fn.result_schema} />
-              <p className="text-[11px] text-muted-foreground">{fresh ? 'A new chat for every call.' : `Runs in its own tab${fn.agent ? ` "${fn.agent}"` : ''}; calls take turns there.`}{fn.updated_at ? ` · Changed ${formatTime(fn.updated_at)}` : ''}</p>
-              {!fn.implicit && <div className="flex flex-wrap gap-1.5">
-                {onEdit && <button type="button" disabled={busy} className={buttonClass} onClick={() => void onEdit(`I want to update the Crew function "${fn.name}". Show me its current definition and ask me what to change.`)}>Edit in chat</button>}
-                <button type="button" disabled={busy} className={buttonClass} onClick={() => void remove(fn.name)}>Remove</button>
-              </div>}
+          const status = last?.status === 'failed' ? 'failing' : last?.status === 'running' || last?.status === 'queued' ? 'on' : 'idle'
+          return <AutomationRow key={fn.name} testId={`crew-function-${fn.name}`} icon={Braces} tone="sky" open={open} onToggle={() => setOpenFunction(open ? null : fn.name)}
+            title={<span className="font-mono">{fn.name}</span>} summary={fn.description}
+            meta={last ? `${STATUS_LABEL[last.status] ?? last.status} · ${relativeTime(last.finished_at || last.started_at)}` : 'Not called yet'}
+            status={status} statusLabel={last?.status === 'failed' ? 'Last call failed' : last?.status === 'running' || last?.status === 'queued' ? 'Running' : fresh ? 'Fresh' : 'Own tab'}>
+            {fn.description && <p className="whitespace-pre-wrap text-muted-foreground">{fn.description}</p>}
+            <FieldTable label="Asks for" schema={fn.input_schema} />
+            <FieldTable label="Gives back" schema={fn.result_schema} />
+            <p className="text-[11px] text-muted-foreground">{fresh ? 'A new chat for every call.' : `Runs in its own tab${fn.agent ? ` "${fn.agent}"` : ''}; calls take turns there.`}{fn.updated_at ? ` · Changed ${formatTime(fn.updated_at)}` : ''}</p>
+            {!fn.implicit && <div className="flex flex-wrap gap-1.5">
+              {onEdit && <button type="button" disabled={busy} className={buttonClass} onClick={() => void onEdit(`I want to update the Crew function "${fn.name}". Show me its current definition and ask me what to change.`)}>Edit in chat</button>}
+              <button type="button" disabled={busy} className={buttonClass} onClick={() => void remove(fn.name)}>Remove</button>
             </div>}
-          </li>
+          </AutomationRow>
         })}
-      </ul>}
-      {loaded && functions.length === 0 && <p className="rounded-lg border border-dashed border-border p-5 text-center text-sm text-muted-foreground">No functions yet. Ask the chat to add one.</p>}
+      </AutomationListBox>}
+      {loaded && functions.length === 0 && <EmptyAutomations>No functions yet. Ask the chat to add one.</EmptyAutomations>}
       {loaded && functions.length > 0 && visibleFunctions.length === 0 && <p className="text-center text-xs text-muted-foreground">No function matches “{filter}”.</p>}
 
       <section className="space-y-2" data-testid="crew-function-callers">
