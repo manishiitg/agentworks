@@ -4,9 +4,8 @@ Use `type: "scripted"` for deterministic work implemented by a saved script.
 `ScriptedPlanStep` is the canonical Go shape; `agent` is the conversational
 step. Builder tools, predefined routes, orphan definitions and the canvas use
 these same names. The saved-plan reader accepts the retired `regular` spelling
-and subsequent saves write `scripted`. Legacy execution-mode compatibility is
-preserved, including old agentic records that still require their earlier
-contract migrations.
+and subsequent saves write `scripted`. The saved step type determines execution;
+there is no separate execution-mode override.
 
 ## Deployment migration
 

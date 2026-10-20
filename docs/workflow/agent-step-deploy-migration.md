@@ -20,10 +20,9 @@ manifest stamp and contract-history entry. A canonical 1.0.47 workflow is a
 no-op. Historical directories and Relay manifests are excluded. On failure,
 keep the server stopped, reconcile the named plan, and rerun forward.
 
-Use the same drained window for
-`scripts/migrate_scripted_step_types.py`. If retired `human_input` nodes exist,
-apply their reviewed, source-hash-guarded recipes **first**, before either naming
-migration; see [human input retirement](human-input-step-retirement.md).
+Use the same drained window for `scripts/migrate_scripted_step_types.py` when
+normalizing remaining `regular` step names. If a retired `human_input` node is
+found, ask Builder to replace it first; see [human input retirement](human-input-step-retirement.md).
 Repeat dry-runs after applying and verify zero changes before starting the new
 process. Server inventories, paths and activation instructions belong in the
 private deployment runbook.

@@ -2,7 +2,7 @@
 
 The five workflow step types are `agent`, `scripted`, `routing`, `branch` and
 `crew`. The dedicated `human_input` type, its authoring tools, executor and canvas
-node are removed. A remaining saved record fails with a migration error.
+node are removed. A remaining saved record stops with an instruction to ask Builder to replace it.
 
 Human interaction remains available:
 
@@ -20,37 +20,16 @@ Human interaction remains available:
 - Use `create_human_input_request` for a durable decision that can wait, and
   `branch` with `route_source: "human"` for a planned fixed choice.
 
-## Saved-plan migration
+## Updating a saved plan
 
-This needs a data migration before starting the new build. Removing a question
-node can change route targets, output-file dependencies and variable references.
-There is deliberately no automatic replacement that guesses answers, approves
-work or inserts a new agent for every old question. Review the complete affected
-plan and its consumers first. Keep credentials in the existing secret facilities.
+Ask Builder to replace the retired question step with one of the supported
+interactions above before running again. Review its routes, output dependencies
+and variable references together; removing a question must not guess an answer
+or approve work. Keep existing variable values and use Vault for credentials.
 
-Prepare one recipe JSON for every affected live plan, at the same relative path
-under a recipe root. It contains the original plan's byte `source_sha256`, the
-reviewed replacement `plan`, an optional replacement `step_config` array or object with `steps` (guarded by `step_config_sha256`) and
-optional `variables_add` definitions with only `name` and `description`.
-The migration preserves existing variable values and groups; new definitions
-start empty. Recipes must never carry secrets.
+Check the affected routes, declared inputs, artifact consumers, script arguments
+and schedule/function entry points after editing. Historical runs and saved
+versions retain their original records.
 
-```sh
-python3 scripts/migrate_human_input_steps.py /path/to/workspace-docs \
-  --recipes /path/to/reviewed-recipes
-# Drain executions and every plan writer before applying:
-python3 scripts/migrate_human_input_steps.py /path/to/workspace-docs \
-  --recipes /path/to/reviewed-recipes --apply --server-drained
-```
-
-The job validates all candidates before writing, refuses changed source plans,
-symlinks and dangling next-step references, backs up replaced files and uses atomic
-file replacement. A second successful run makes no changes. Historical runs,
-published releases, saved versions and backups retain their original records.
-Historical log events remain displayable. This deployment migration does not
-stamp or bypass unrelated workflow contract upgrades.
-
-After migration, check every affected route, declared input, artifact consumer,
-script argument and schedule/function entry point before resuming executions.
 See [human feedback](human_feedback_system.md) and
 [communication protocols](../communication-protocols.md) for the runtime tools.

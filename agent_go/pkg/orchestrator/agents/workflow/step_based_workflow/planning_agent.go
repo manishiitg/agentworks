@@ -894,7 +894,7 @@ func parseStepFromJSON(stepData json.RawMessage, index int, label string) (PlanS
 	}
 
 	if stepWithType.Type == "human_input" {
-		return nil, fmt.Errorf("%s %d (id %q): human_input steps are retired; follow docs/workflow/human-input-step-retirement.md and migrate the saved plan with scripts/migrate_human_input_steps.py before loading it", label, index, stepWithType.ID)
+		return nil, fmt.Errorf("%s %d (id %q): human_input steps are retired; ask Builder to replace this step with a supported human interaction before running again. See docs/workflow/human-input-step-retirement.md", label, index, stepWithType.ID)
 	}
 
 	switch stepWithType.Type {
