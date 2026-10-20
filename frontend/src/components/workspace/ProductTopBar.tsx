@@ -2,7 +2,6 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSPrope
 import { createPortal } from 'react-dom'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
-import { RuntimeBrandLogo } from '../branding/RuntimeBrandLogo'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { useWorkspaceReturnStore } from '../../stores/useWorkspaceReturnStore'
 import { ProductNavigationContext, CompactProductNavigationContext, useCompactProductNavigation, useProductSettingsMenu, useProductSetupTiles } from './productNavigationContexts'
@@ -10,7 +9,7 @@ export { useProductNavigationSidebar, useCompactProductNavigation } from './prod
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
-import { isLocalProductInstallation, visibleProductSurfaceIDs } from '../../products/productSurfaceConfig'
+import { visibleProductSurfaceIDs } from '../../products/productSurfaceConfig'
 
 const WorkspaceChatsSidebar = lazy(() => import('./WorkspaceChatsSidebar'))
 const DEFAULT_SIDEBAR_WIDTH = 260
@@ -63,8 +62,8 @@ export function ProductTopBar({ children, sidebar = true }: { children: ReactNod
     className="inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-md px-1 text-muted-foreground hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
     {open ? <PanelLeftClose className="h-4 w-4" aria-hidden="true" /> : <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />}
   </button>
-  // On the local app the workflow picker beside it already names what is open; a second logo only confuses.
-  const leading = <div className="flex shrink-0 items-center gap-2">{toggle}{!isLocalProductInstallation() && <RuntimeBrandLogo variant="sidebar-header" className="max-w-[10rem]" />}</div>
+  // Branding stays in the open sidebar; the collapsed toolbar needs only its toggle.
+  const leading = <div className="flex shrink-0 items-center gap-2">{toggle}</div>
   const controls = <nav aria-label="Product navigation" data-product-navigation="topbar" data-terminal-focus-chrome="header" data-tour-products={visibleProductSurfaceIDs(allowedProducts).join(' ')}
     className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5">
     {children}

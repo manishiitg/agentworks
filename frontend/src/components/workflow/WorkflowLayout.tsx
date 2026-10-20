@@ -1,4 +1,4 @@
-import { ensureWorkflowComposerTab } from '../../utils/workflowSessionRestore'
+import { ensureWorkflowBuilderTab } from '../../utils/ensureWorkflowBuilderTab'
 import { useWorkspaceReturn } from '../../hooks/useWorkspaceReturn'
 import { useWorkflowFilesViewSync } from './hooks/useWorkflowFilesViewSync'
 import { currentWorkflowBuilderBinding, publishWorkflowBuilderBinding, useWorkflowBuilderBindings, workflowBuilderMutation } from '../../hooks/useWorkflowBuilderBindings'
@@ -500,37 +500,6 @@ function isLiveWorkflowSessionForPreset(session: ActiveSessionInfo, presetId: st
   )
 }
 
-/**
- * The persistent Chat always exists for a workflow. Resolve the current one
- * or create the first-time empty Chat. Creating activates it, so callers that
- * already chose another read-only run can preserve that selection.
- */
-async function ensureWorkflowBuilderTab(presetId: string, options?: { keepSelection?: boolean }): Promise<string> {
-  const store = useChatStore.getState()
-  const previousActiveTabId = store.activeTabId
-  const identity = captureChatIdentity()
-  const preset = useGlobalPresetStore.getState().workflowPresets.find(item => item.id === presetId)
-  let binding = currentWorkflowBuilderBinding(presetId)
-  if (!binding && preset?.selectedFolder?.filepath) {
-    const response = await agentApi.getWorkflowBuilderSessions([{
-      preset_query_id: presetId, workspace_path: preset.selectedFolder.filepath,
-    }])
-    if (!isChatIdentityCurrent(identity)) throw new Error('Chat identity changed')
-    binding = response.bindings[presetId]
-    if (binding) publishWorkflowBuilderBinding(binding, identity)
-  }
-  if (!binding) throw new Error('Current Builder unavailable')
-  const tabId = binding.session_id ? (await resolveWorkflowTabForSession({
-    getTabs: () => useChatStore.getState().chatTabs,
-    presetQueryId: presetId, sessionId: binding.session_id,
-    name: 'Automation Builder',
-    metadata: { mode: 'workflow', phaseId: 'workflow-builder', phaseName: 'Automation Builder', presetQueryId: presetId, isWorkflowDraft: false },
-    createChatTab: store.createChatTab, updateTabSessionId: store.updateTabSessionId,
-  })).tabId : await ensureWorkflowComposerTab(presetId)
-  if (options?.keepSelection && previousActiveTabId && previousActiveTabId !== tabId) activateTab(previousActiveTabId)
-  return tabId
-}
-
 // restoreWorkflowStateFromEvents has no timeout of its own (it awaits
 // agentApi.getRecentSessionEvents / hydrateTabEvents directly), so every
 // caller that increments restoringWorkflowSessions via
@@ -924,9 +893,19 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
       ? tabId : null
   })()
 
-  const [contractUpgrade, setContractUpgrade] = useState<WorkflowContractUpgradeStatus | null>(null)
-  const [missingSecrets, setMissingSecrets] = useState<string[]>([])
-  const [startingContractUpgrade, setStartingContractUpgrade] = useState(false)
+  const [workflowStatus, setWorkflowStatus] = useState<{
+    workspacePath: string
+    contractUpgrade: WorkflowContractUpgradeStatus | null
+    missingSecrets: string[]
+  } | null>(null)
+  const currentWorkflowStatus = workflowStatus?.workspacePath === workspacePath ? workflowStatus : null
+  const contractUpgrade = currentWorkflowStatus?.contractUpgrade ?? null
+  const missingSecrets = currentWorkflowStatus?.missingSecrets ?? []
+  const [startingContractUpgradePath, setStartingContractUpgradePath] = useState<string | null>(null)
+  const startingContractUpgrade = !!workspacePath && startingContractUpgradePath === workspacePath
+  const contractUpgradeWorkspaceRef = useRef(workspacePath)
+  contractUpgradeWorkspaceRef.current = workspacePath
+  const contractUpgradeRequestRef = useRef(0)
   const [contractUpgradeChat, setContractUpgradeChat] = useState<{ workspacePath: string; tabId: string } | null>(null)
   useEffect(() => {
     const onChatRequest = (event: Event) => {
@@ -948,22 +927,22 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   const canStartContractUpgrade = activeWorkflowAccess !== 'read'
 
   const refreshContractUpgrade = useCallback(async () => {
+    const requestId = ++contractUpgradeRequestRef.current
     if (!workspacePath) {
-      setContractUpgrade(null)
-      setMissingSecrets([])
+      setWorkflowStatus(null)
       return
     }
     try {
       const response = await workflowManifestApi.getWorkflowManifest(workspacePath)
+      if (contractUpgradeWorkspaceRef.current !== workspacePath || contractUpgradeRequestRef.current !== requestId) return
       const status = response.contract_upgrade ?? null
-      setContractUpgrade(status)
-      setMissingSecrets(response.missing_secrets ?? [])
+      setWorkflowStatus({ workspacePath, contractUpgrade: status, missingSecrets: response.missing_secrets ?? [] })
       window.dispatchEvent(new CustomEvent(WORKFLOW_CONTRACT_UPGRADE_STATUS_EVENT, {
         detail: { workspacePath, status },
       }))
     } catch {
-      setContractUpgrade(null)
-      setMissingSecrets([])
+      if (contractUpgradeWorkspaceRef.current !== workspacePath || contractUpgradeRequestRef.current !== requestId) return
+      setWorkflowStatus(null)
     }
   }, [workspacePath])
 
@@ -982,17 +961,17 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
 
   const startManualContractUpgrade = useCallback(async () => {
     if (!workspacePath || startingContractUpgrade || contractUpgradeTab) return
-    setStartingContractUpgrade(true)
+    setStartingContractUpgradePath(workspacePath)
     try {
       const result = await sendWorkspacePaneMessageToChat({
         workspacePath,
         message: MANUAL_CONTRACT_UPGRADE_MESSAGE,
       })
-      setContractUpgradeChat({ workspacePath, tabId: result.tabId })
+      if (contractUpgradeWorkspaceRef.current === workspacePath) setContractUpgradeChat({ workspacePath, tabId: result.tabId })
     } catch (cause) {
       useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not start the workflow update.', 'error')
     } finally {
-      setStartingContractUpgrade(false)
+      setStartingContractUpgradePath(current => current === workspacePath ? null : current)
     }
   }, [contractUpgradeTab, startingContractUpgrade, workspacePath])
 
@@ -1894,7 +1873,9 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
         if (selectedTab?.metadata?.presetQueryId === activePresetId && selectedTab.metadata.isViewOnly) {
           setShowChatArea(true)
         } else if (serverBuilder) {
-          activateTab(await ensureWorkflowBuilderTab(activePresetId))
+          const tabId = await ensureWorkflowBuilderTab(activePresetId)
+          if (cancelled || useGlobalPresetStore.getState().activePresetIds.workflow !== activePresetId) return
+          activateTab(tabId)
           setShowChatArea(true)
         }
 
@@ -1907,7 +1888,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
         // Ensure every workflow has its one persistent Chat. Runs after every
         // early return above while preserving any explicit read-only selection.
         if (!cancelled) {
-          void ensureWorkflowBuilderTab(activePresetId, { keepSelection: true }).catch(error => logger.warn('WorkflowLayout', 'Builder discovery unavailable', error))
+          void ensureWorkflowBuilderTab(activePresetId).catch(error => logger.warn('WorkflowLayout', 'Builder discovery unavailable', error))
           resolvedWorkflowConversationKeyRef.current = reconnectKey
           setResolvedWorkflowConversationKey(reconnectKey)
         }
@@ -2123,7 +2104,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
         } else {
           void createFreshWorkflowBuilderTab(activePresetId)
         }
-        void ensureWorkflowBuilderTab(activePresetId, { keepSelection: true }).catch(error => logger.warn('WorkflowLayout', 'Builder discovery unavailable', error))
+        void ensureWorkflowBuilderTab(activePresetId).catch(error => logger.warn('WorkflowLayout', 'Builder discovery unavailable', error))
 
         const selectedTarget = targetTab ? useChatStore.getState().chatTabs[targetTab.tabId] : undefined
         const targetViewMode = normalizeEventViewMode(selectedTarget?.viewMode || chatStore.eventViewModePreference)

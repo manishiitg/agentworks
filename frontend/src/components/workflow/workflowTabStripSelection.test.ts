@@ -16,6 +16,31 @@ function tab(tabId: string, overrides: Partial<ChatTab> = {}): ChatTab {
 }
 
 describe('selectWorkflowTabsForStrip', () => {
+  it('does not keep the previous workflow title or running tab after a switch', () => {
+    const previous = tab('previous', {
+      isStreaming: true,
+      metadata: { mode: 'workflow', presetQueryId: 'previous-workflow', phaseId: 'workflow-builder' },
+    })
+    const current = tab('current', {
+      metadata: { mode: 'workflow', presetQueryId: 'current-workflow', phaseId: 'workflow-builder' },
+    })
+    const previousRun = tab('previous-run', {
+      metadata: { mode: 'workflow', presetQueryId: 'previous-workflow', isViewOnly: true },
+    })
+    expect(selectWorkflowTabsForStrip([previous, current, previousRun], 'previous', 'current-workflow', {}))
+      .toEqual([current])
+    expect(selectWorkflowTabsForStrip([previous], 'previous', 'current-workflow', {}))
+      .toEqual([])
+  })
+
+  it('retains an unbound active run while its workflow metadata resolves', () => {
+    const restoringRun = tab('restoring-run', {
+      metadata: { mode: 'workflow', isViewOnly: true, isScheduledRun: true },
+    })
+    expect(selectWorkflowTabsForStrip([restoringRun], 'restoring-run', 'current-workflow', {}))
+      .toEqual([restoringRun])
+  })
+
   it('keeps an opened schedule visible after Chat receives focus', () => {
     const chat = tab('chat', {
       name: 'Automation Builder',

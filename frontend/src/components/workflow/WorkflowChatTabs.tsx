@@ -65,10 +65,8 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
     })
   }, [chatTabs])
 
-  // Filter to workflow tabs for the active preset, but always keep the active
-  // workflow tab visible. Scheduled-run restores can briefly lack a preset match
-  // while the tab is being created/switched, and hiding the active tab makes the
-  // restore look like it failed.
+  // Scheduled-run restores can briefly lack a preset binding. Include that
+  // active tab as a candidate; the strip rejects bindings to another workflow.
   const activeWorkflowTabs = useMemo(() => {
     const allTabs = Object.values(chatTabs)
     const matched = allTabs.filter(tab =>

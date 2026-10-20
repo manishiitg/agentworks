@@ -62,6 +62,7 @@ it('closes only chats, keeps top controls accessible, and restores the preferenc
   expect(host.querySelector('[data-product-navigation-slot] [data-navigation-toggle]')).toBeNull()
   const toolbar = host.querySelector('[data-terminal-focus-chrome="toolbar"]')!
   expect(toolbar.firstElementChild?.hasAttribute('data-product-navigation-leading-slot')).toBe(true)
+  expect(toolbar.querySelector('[data-runtime-brand]')).toBeNull()
   const first = roots.shift()!; await act(async () => first.unmount())
   const restored = await render()
   expect(restored.querySelector('[data-navigation-toggle]')?.getAttribute('aria-expanded')).toBe('false')

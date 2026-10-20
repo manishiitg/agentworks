@@ -13,7 +13,13 @@ export function selectWorkflowTabsForStrip(
   activePresetId: string | null,
   tabEvents: Record<string, PollingEvent[]>,
 ): ChatTab[] {
-  const interactive = candidates
+  // Selection changes before chat restoration completes. The still-active tab
+  // may belong to the previous workflow; never let it name the new workspace.
+  // Retain unbound tabs for scheduled-run restoration while metadata resolves.
+  const scopedCandidates = activePresetId
+    ? candidates.filter(tab => !tab.metadata?.presetQueryId || tab.metadata.presetQueryId === activePresetId)
+    : candidates
+  const interactive = scopedCandidates
     .filter(tab => tab.metadata?.isViewOnly !== true && tab.metadata?.phaseId === 'workflow-builder')
     .sort((a, b) => {
       // The active Chat always wins, blank or not. New chat leaves the active
@@ -27,7 +33,7 @@ export function selectWorkflowTabsForStrip(
       if (aBlank !== bBlank) return aBlank ? 1 : -1
       return (b.lastAccessedAt ?? b.createdAt) - (a.lastAccessedAt ?? a.createdAt)
     })[0]
-  const runTabs = candidates
+  const runTabs = scopedCandidates
     .filter(tab => tab.metadata?.isViewOnly === true)
     .sort((a, b) => a.createdAt - b.createdAt)
 
