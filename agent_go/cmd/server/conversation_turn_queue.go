@@ -654,6 +654,7 @@ func (api *StreamingAPI) watchOccupiedConversationTurnQueue(sessionID, occupant 
 			}
 			if by := api.conversationTurnOccupiedBy(sessionID); by != "" {
 				api.endIdleTurnForRuntimeChange(sessionID, by, &idleChecks)
+				api.autoSteerQueuedConversationTurn(sessionID)
 				continue
 			}
 			break
@@ -1040,4 +1041,57 @@ func pendingQueuedMessagesFromTurns(turns []queuedConversationTurn, userID, sess
 		})
 	}
 	return pending
+}
+
+// autoSteerQueuedConversationTurn hands a person's queued chat message to the running agent as soon as it can take live
+// input. Such a message was queued only because the agent was starting or restarting when it was sent (after a deploy
+// it relaunches); without this it waited for the whole reply even though "Steer now" would have worked. Only the oldest
+// waiting message moves, so order is kept; a message the person chose to queue, or any non-person turn, stays queued.
+func (api *StreamingAPI) autoSteerQueuedConversationTurn(sessionID string) {
+	api.conversationTurnQueueMu.Lock()
+	owners := make([]string, 0, len(api.conversationTurnQueueOwners[sessionID]))
+	for owner := range api.conversationTurnQueueOwners[sessionID] {
+		owners = append(owners, owner)
+	}
+	api.conversationTurnQueueMu.Unlock()
+	for _, owner := range owners {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		turns, err := api.readConversationTurnQueue(ctx, owner)
+		cancel()
+		if err != nil {
+			continue
+		}
+		var head *queuedConversationTurn
+		for i := range turns {
+			turn := &turns[i]
+			if turn.UserID != owner || turn.SessionID != sessionID || turn.StartedAt != nil {
+				continue
+			}
+			if head == nil || turn.CreatedAt.Before(head.CreatedAt) {
+				head = turn
+			}
+		}
+		if head == nil || !autoSteerablePersonTurn(*head) {
+			continue
+		}
+		if _, canSteer := api.queuedMessageDeliveryState(sessionID, head.Request); !canSteer {
+			continue
+		}
+		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+		claimed, status, err := api.changeQueuedConversationMessage(ctx, owner, sessionID, head.ID, true)
+		cancel()
+		if err != nil || status != http.StatusOK {
+			continue
+		}
+		logTurnQueue("handing queued message %s to the running agent in session %s (it was queued while the agent started)", claimed.ID, sessionID)
+		go api.deliverQueuedMessageAsSteer(claimed)
+	}
+}
+
+func autoSteerablePersonTurn(turn queuedConversationTurn) bool {
+	req := turn.Request
+	trigger := strings.ToLower(strings.TrimSpace(req.TriggeredBy))
+	return sanitizeClientMessageID(turn.SubmissionID) != "" && turn.DeliveryError == "" && !turn.Steering &&
+		req.DeliveryMode != "queue" && !req.DisableLiveInputDelivery && !req.IsAutoNotification && !req.PulseLifecycleTurn &&
+		strings.TrimSpace(req.BotPlatform) == "" && (trigger == "" || trigger == "manual" || trigger == "interactive")
 }
