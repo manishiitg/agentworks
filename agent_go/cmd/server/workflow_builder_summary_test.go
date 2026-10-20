@@ -62,6 +62,10 @@ func TestWorkflowBuilderSummaryKeepsOneOwnChatAndHistory(t *testing.T) {
 	chatPolicyRoles.Store("live-pulse-no-prefix", chatPolicyRoleSnapshot{Origin: "pulse"})
 	t.Cleanup(func() { chatPolicyRoles.Delete("live-pulse-no-prefix") })
 	assertCurrent("alice", "current", "live")
+	summary, err := api.currentWorkflowBuilderSummary(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "alice"}), "wf", "Workflow/demo")
+	if err != nil || summary.ActivityUpdatedAt != now.Format(time.RFC3339Nano) {
+		t.Fatalf("live Builder activity timestamp = %+v, %v", summary, err)
+	}
 	if _, exists := workspace.files[workflowBuilderBindingPath("alice", "wf")]; exists {
 		t.Fatal("discovery created a pointer")
 	}
@@ -118,6 +122,10 @@ func TestWorkflowBuilderSummaryKeepsOneOwnChatAndHistory(t *testing.T) {
 	write("external-run-saved", "alice", "run", 2*time.Hour)
 	write("pulse-marker", "alice", "workshop", time.Hour)
 	assertCurrent("alice", "current-saved", "workspace")
+	summary, err = api.currentWorkflowBuilderSummary(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "alice"}), "wf", "Workflow/demo")
+	if err != nil || summary.ActivityUpdatedAt != now.Format(time.RFC3339Nano) {
+		t.Fatalf("saved Builder activity timestamp = %+v, %v", summary, err)
+	}
 	assertCurrent("bob", "bob-saved", "workspace")
 	indexPath := filepath.Join(docs, "Workflow/demo/builder/conversation", chatHistoryIndexFileName)
 	unchanged := time.Date(2026, 10, 19, 1, 0, 0, 0, time.UTC)

@@ -49,6 +49,7 @@ type workflowBuilderSessionResponse struct {
 	WorkspacePath      string                            `json:"workspace_path,omitempty"`
 	WorkflowName       string                            `json:"workflow_name,omitempty"`
 	UpdatedAt          string                            `json:"updated_at,omitempty"`
+	ActivityUpdatedAt  string                            `json:"activity_updated_at,omitempty"`
 	ConversationPath   string                            `json:"conversation_path,omitempty"`
 	Events             []json.RawMessage                 `json:"events"`
 	Total              int                               `json:"total"`

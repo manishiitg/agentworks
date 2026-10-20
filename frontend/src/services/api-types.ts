@@ -2034,6 +2034,7 @@ export interface WorkflowBuilderSessionResponse {
   workspace_path?: string;
   workflow_name?: string;
   updated_at?: string;
+  activity_updated_at?: string;
   conversation_path?: string;
   events: PollingEvent[];
   total?: number;

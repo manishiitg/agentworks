@@ -42,6 +42,8 @@ export type SidebarChat = {
   surface: ProductSurface
   group: 'Running' | 'Open' | 'Recent'
   time: number
+  // Server activity/history time; opening a tab must not count as new work.
+  activityTime?: number
   tabId?: string
   activity?: ActiveSessionInfo
   history?: ChatHistorySession
@@ -232,6 +234,8 @@ export function sidebarChats({
         botPlatformLabel(session.bot_platform, session.session_id) || existing.originLabel
       existing.activity = session
       existing.waiting = runtimeNeedsUserInput(session)
+      const activityTime = Date.parse(session.last_activity || session.created_at || '') || 0
+      if (activityTime) existing.activityTime = Math.max(existing.activityTime || 0, activityTime)
       if (session.created_at)
         existing.runTime = Date.parse(session.created_at) || undefined
       continue
@@ -269,6 +273,7 @@ export function sidebarChats({
       originLabel: botPlatformLabel(session.bot_platform, session.session_id),
       group: 'Running',
       time: Date.parse(session.last_activity || session.created_at) || 0,
+      activityTime: Date.parse(session.last_activity || session.created_at) || 0,
       activity: session,
       waiting: runtimeNeedsUserInput(session),
     }
@@ -277,6 +282,8 @@ export function sidebarChats({
   for (const session of recent) {
     const existing = rows.get(session.session_id)
     if (existing) {
+      const activityTime = Date.parse(session.updated_at || session.created_at || '') || 0
+      if (activityTime) existing.activityTime = Math.max(existing.activityTime || 0, activityTime)
       if (session.created_at)
         existing.runTime = Date.parse(session.created_at) || existing.runTime
       continue
@@ -311,6 +318,7 @@ export function sidebarChats({
       originLabel: botPlatformLabel(session.bot_platform, session.session_id),
       group: 'Recent',
       time: Date.parse(session.updated_at || session.created_at || '') || 0,
+      activityTime: Date.parse(session.updated_at || session.created_at || '') || 0,
       scheduled: /^schedule-|^sched_/.test(session.session_id),
       runTime: Date.parse(session.created_at || '') || undefined,
       history: { ...session, workspace_path: workspace },
@@ -391,6 +399,11 @@ export function sidebarChats({
         const role = binding?.sessions?.[id]
         if (!binding || !role || role.kind === 'history') { rows.delete(id); continue }
         row.builder = role?.is_builder === true
+        if (id === current) {
+          // updated_at belongs to the Builder pointer and may be "now" on
+          // discovery. Only actual conversation activity may affect recency.
+          row.activityTime = Math.max(row.activityTime || 0, Date.parse(binding.activity_updated_at || '') || 0)
+        }
         row.workflowSessionKind = role.kind
         if (row.builder && row.group === 'Recent') row.group = 'Open'
       }
@@ -399,11 +412,12 @@ export function sidebarChats({
         id: current, title: preset.label || 'Builder', builder: true, workflowSessionKind: 'builder',
         surface: preset.workflowKind === 'relay' ? 'relays' : 'agentworks', workflowId: preset.id,
         workspace: preset.selectedFolder?.filepath, workspaceTitle: preset.label,
-        group: 'Open', time: Date.parse(binding.updated_at || '') || 0, waiting: false,
+        group: 'Open', time: Date.parse(binding.activity_updated_at || '') || 0,
+        activityTime: Date.parse(binding.activity_updated_at || '') || 0, waiting: false,
         activity: {
           session_id: current, observer_id: '', agent_mode: 'workflow_phase', status: binding.status,
           preset_query_id: preset.id, workspace_path: preset.selectedFolder?.filepath,
-          created_at: '', last_activity: binding.updated_at || '',
+          created_at: '', last_activity: binding.activity_updated_at || '',
         },
       }
       if (accepts(row)) rows.set(current, row)
@@ -419,7 +433,7 @@ export function sidebarChats({
 export function sidebarWorkspaceGroups(rows: SidebarChat[]) {
   const groups = new Map<
     string,
-    { id: string; title: string; surface: ProductSurface; chats: SidebarChat[] }
+    { id: string; title: string; surface: ProductSurface; chats: SidebarChat[]; running: boolean; latestActivity: number }
   >()
   for (const row of rows) {
     if (row.group === 'Recent') continue
@@ -431,10 +445,14 @@ export function sidebarWorkspaceGroups(rows: SidebarChat[]) {
         title: row.workspaceTitle || row.workspace?.split('/').filter(Boolean).pop() || row.title,
         surface: row.surface,
         chats: [],
+        running: false,
+        latestActivity: 0,
       }
       groups.set(id, group)
     }
     group.chats.push(row)
+    group.running ||= row.group === 'Running' && !row.waiting
+    group.latestActivity = Math.max(group.latestActivity, row.activityTime ?? row.createdTime ?? row.time)
   }
   for (const group of groups.values())
     group.chats.sort(
@@ -445,6 +463,7 @@ export function sidebarWorkspaceGroups(rows: SidebarChat[]) {
         a.id.localeCompare(b.id)
     )
   return [...groups.values()].sort(
-    (a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id)
+    (a, b) => Number(b.running) - Number(a.running) || b.latestActivity - a.latestActivity ||
+      a.title.localeCompare(b.title) || a.id.localeCompare(b.id)
   )
 }

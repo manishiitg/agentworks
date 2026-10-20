@@ -61,7 +61,7 @@ export default function SidebarStepInspections({ row, workspace, scope, visible,
       if (isChatIdentityCurrent(identity)) useChatStore.getState().addToast('Could not open this step. Open its chat and try Inspect.', 'error')
     } finally { setOpening(null) }
   }
-  if (!enabled || (query.isError && !receipts) || (!steps.length && (receipts || !query.hasNextPage))) return null
+  if (!enabled || (query.isError && !receipts) || !steps.length) return null
   return <div aria-label={`Steps in ${row.title}`} className="mb-1 ml-5 border-l border-border/60 pl-1">
     {steps.slice(0, limit).map(({target, status}) => {
       const key = inspectionKey(target)
@@ -77,7 +77,6 @@ export default function SidebarStepInspections({ row, workspace, scope, visible,
         {working || opening === key ? <Loader2 aria-label={working ? 'Step running' : 'Opening step'} className="h-3 w-3 shrink-0 animate-spin text-primary" /> : status === 'completed' ? <Check aria-label="Step completed" className="h-3 w-3 shrink-0" /> : status === 'failed' ? <CircleAlert aria-label="Step failed" className="h-3 w-3 shrink-0 text-amber-500" /> : null}
       </button>
     })}
-    {!receipts && query.hasNextPage && steps.length <= limit && <button type="button" disabled={query.isFetchingNextPage} className="rounded px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground" onClick={() => void query.fetchNextPage()}>Earlier steps</button>}
     {steps.length > limit && <button type="button" className="rounded px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground" onClick={() => setLimit(value => value + 8)}>Show {steps.length - limit} more steps</button>}
   </div>
 }

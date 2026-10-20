@@ -150,7 +150,12 @@ func (api *StreamingAPI) resolveWorkflowBuilderBinding(ctx context.Context, pres
 		PhaseID: "workflow-builder", Status: "completed", PresetQueryID: presetID, WorkspacePath: workspace,
 		WorkflowName: workflowNameFromWorkspacePath(workspace), UpdatedAt: binding.UpdatedAt,
 		Events: []json.RawMessage{}, LastProcessedIndex: -1, Sessions: roles}
-	_, knownConversation := roles[binding.SessionID]
+	role, knownConversation := roles[binding.SessionID]
+	// Pointer creation/lookup is not conversation activity. Expose the saved
+	// transcript or live session timestamp separately for sidebar recency.
+	if !role.updated.IsZero() {
+		response.ActivityUpdatedAt = role.updated.UTC().Format(time.RFC3339Nano)
+	}
 	if binding.SessionID != "" {
 		roles[binding.SessionID] = workflowSidebarSession{IsBuilder: true, Kind: "builder"}
 	}

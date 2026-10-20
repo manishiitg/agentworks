@@ -284,6 +284,76 @@ it('renders server main role and saved tab positions, never creation or activity
   tabs.first.metadata!.agentProfileTabPosition = 2
   expect(order()).toEqual(['main', 'second', 'first', 'a', 'z'])
 })
+
+it('puts running projects first and uses latest server activity within each group', () => {
+  const project = (id: string, title: string) => tab(id, { createdAt: Date.parse('2026-10-20T12:00:00Z'), metadata: {
+    agentProfileId: 'work', agentProfileProjectId: id, agentProfileProjectTitle: title,
+  } })
+  const tabs = {
+    runningOld: project('running-old', 'Alpha'), runningNew: project('running-new', 'Zulu'),
+    idleNew: project('idle-new', 'Beta'), idleOld: project('idle-old', 'Charlie'),
+  }
+  const active = [
+    activity('running-old', { last_activity: '2026-10-20T09:00:00Z' }),
+    activity('running-new', { last_activity: '2026-10-20T10:00:00Z' }),
+  ]
+  const input = { tabs, active, recent: [
+    { session_id: 'idle-new', updated_at: '2026-10-20T11:00:00Z' },
+    { session_id: 'idle-old', updated_at: '2026-10-20T08:00:00Z' },
+  ], presets: [], allowed: ['work' as const] }
+  const order = () => sidebarWorkspaceGroups(sidebarChats(input)).map(group => group.id)
+  expect(order()).toEqual(['work:running-new', 'work:running-old', 'work:idle-new', 'work:idle-old'])
+
+  // Merely opening an older chat must not make it look newly active, even
+  // when its local tab was restored after all of the server timestamps.
+  tabs.idleOld.lastAccessedAt = Date.parse('2026-10-20T13:00:00Z')
+  expect(order()).toEqual(['work:running-new', 'work:running-old', 'work:idle-new', 'work:idle-old'])
+
+  active[1].last_activity = '2026-10-20T08:30:00Z'
+  expect(order().slice(0, 2)).toEqual(['work:running-old', 'work:running-new'])
+  active[0].status = 'completed'
+  expect(order()).toEqual(['work:running-new', 'work:idle-new', 'work:running-old', 'work:idle-old'])
+})
+
+it('uses activity in any child chat to rank its project while preserving saved chat order', () => {
+  const rows = sidebarChats({ tabs: {
+    main: tab('main', { metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: true } }),
+    side: tab('side', { metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileTabPosition: 1 } }),
+    other: tab('other', { metadata: { agentProfileId: 'code', agentProfileProjectId: 'other' } }),
+  }, active: [
+    activity('side', { last_activity: '2026-10-20T10:00:00Z' }),
+    activity('other', { last_activity: '2026-10-20T09:00:00Z' }),
+  ], recent: [], presets: [], allowed: ['work', 'code'] })
+  const groups = sidebarWorkspaceGroups(rows)
+  expect(groups.map(group => group.id)).toEqual(['work:crew', 'code:other'])
+  expect(groups[0].chats.map(row => row.id)).toEqual(['main', 'side'])
+})
+
+it('does not rank a Builder lookup or a restored tab as fresh conversation activity', () => {
+  const presets = [
+    { id: 'credit', label: 'Credit Card', selectedFolder: { filepath: 'Workflow/credit' } },
+    { id: 'trading', label: 'Trading', selectedFolder: { filepath: 'Workflow/trading' } },
+    { id: 'unknown', label: 'Unknown', selectedFolder: { filepath: 'Workflow/unknown' } },
+  ] as never
+  const builder = (id: string, activity?: string) => ({ success: true, session_id: id, status: 'completed',
+    updated_at: '2026-10-20T12:00:00Z', activity_updated_at: activity,
+    sessions: { [id]: { is_builder: true, kind: 'builder' } },
+  }) as WorkflowBuilderSessionResponse
+  const input = { tabs: {
+    credit: tab('credit-chat', { createdAt: Date.parse('2026-10-20T13:00:00Z'), metadata: { presetQueryId: 'credit' } }),
+  }, active: [], recent: [], presets, allowed: ['agentworks' as const], builders: {
+    credit: builder('credit-chat', '2026-10-18T09:00:00Z'),
+    trading: builder('trading-chat', '2026-10-20T10:00:00Z'),
+    unknown: builder('unknown-chat'),
+  } }
+  expect(sidebarWorkspaceGroups(sidebarChats(input)).map(group => group.id)).toEqual(['agentworks:trading', 'agentworks:credit', 'agentworks:unknown'])
+
+  // Older backends have no activity_updated_at. Their generated lookup time
+  // must not make an old chat appear newer than known real activity either.
+  input.builders.credit = builder('credit-chat')
+  expect(sidebarWorkspaceGroups(sidebarChats(input))[0].id).toBe('agentworks:trading')
+})
+
 it('includes authorized Slack and WhatsApp activity under their real workspaces with source labels', () => {
   const rows = sidebarChats({ tabs: {}, active: [
     activity('bot-slack-thread', { bot_platform: 'slack', workspace_path: '_users/owner/Crew/ca', preset_query_id: 'ca' }),
