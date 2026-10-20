@@ -56,7 +56,9 @@ func matchingRules(s *store.MemoryStore, id auth.Identity, t store.ToolSnapshot)
 				continue
 			}
 			for _, rule := range p.Rules {
-				if rule.PublicName == t.PublicName && rule.Fingerprint == t.Fingerprint && t.ApprovedFingerprint == t.Fingerprint {
+				// A rule follows its tool by name across definition changes (every discovered version is active, owner
+				// 2026-10-20), so a vendor update never silently drops or strands a group's allows, denies or conditions.
+				if rule.PublicName == t.PublicName && t.ApprovedFingerprint == t.Fingerprint {
 					rules = append(rules, rule)
 				}
 			}

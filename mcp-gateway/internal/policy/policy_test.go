@@ -66,12 +66,16 @@ func TestPublishedPackageOverridesBroadGrantAndChecksArguments(t *testing.T) {
 			t.Fatalf("argument bypass: %v", args)
 		}
 	}
+	// A changed definition keeps the package: same member allowed, same conditions enforced, same outsider refused.
 	changed := s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "p__t", Fingerprint: "v2"})
-	if _, ok := s.ApproveTool("w", changed.PublicName, changed.Fingerprint, changed.Version); !ok {
-		t.Fatal("approve changed tool")
+	if _, err := Authorize(s, alice, "p__t"); err != nil {
+		t.Fatalf("package lost on a definition change: %v", err)
 	}
-	if _, err := Authorize(s, alice, "p__t"); !errors.Is(err, ErrNoGrant) {
-		t.Fatalf("old package survived schema change: %v", err)
+	if err := AuthorizeArguments(s, alice, changed, map[string]any{"project": "two"}); !errors.Is(err, ErrArgumentsDenied) {
+		t.Fatalf("condition dropped on a definition change: %v", err)
+	}
+	if _, err := Authorize(s, bob, "p__t"); !errors.Is(err, ErrNoGrant) {
+		t.Fatalf("outsider reached the changed tool: %v", err)
 	}
 	if _, ok := s.RevokePackage("w", "pkg"); !ok {
 		t.Fatal("revoke package")
