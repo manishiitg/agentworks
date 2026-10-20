@@ -6074,11 +6074,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				log.Printf("[PI_CLI_CONFLICT] Cleared %d conflicting Pi CLI session(s) before starting chat session %s in %s", closed, sessionID, chatWorkingDir)
 			}
 		}
-		if req.ExternalBuilderOperationID != "" {
-			req.DecryptedSecrets = nil
-			noGlobalSecrets := []string{}
-			req.SelectedGlobalSecrets = &noGlobalSecrets
-		}
 		recordSessionSecretScope(sessionID, req.secretsWorkspacePath)
 		codingAgentSecretEnvironment := make(map[string]string)
 		for _, name := range []string{"FUNCTION_CALL_ID", "FUNCTION_OUTPUT_DIR", "FUNCTION_RESULT_FILE"} {
@@ -6094,10 +6089,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		for _, secret := range api.mergeGlobalSecretsFor(context.Background(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets) {
 			codingAgentSecretEnvironment["SECRET_"+secret.Name] = secret.Value
 		}
-		if req.ExternalBuilderOperationID != "" || crewAskOnly {
+		if crewAskOnly {
 			// A guest's free-text ask reads only and gets no secrets in its environment (856-59).
 			for name := range codingAgentSecretEnvironment {
-				if strings.HasPrefix(name, "SECRET_") || req.ExternalBuilderOperationID != "" {
+				if strings.HasPrefix(name, "SECRET_") {
 					delete(codingAgentSecretEnvironment, name)
 				}
 			}
@@ -6350,9 +6345,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		// Apply the external Builder boundary last, including after a Code
-		// profile has considered any personal server overrides.
-		selectedServers = externalBuilderMCPServers(req, selectedServers)
 		// A fixed access builder never mounts personal, attached or ambient MCP
 		// servers, even if an old conversation saved a broader selection.
 		// A guest's free-text ask mounts no MCP server: guests act only through the functions the owner exposes (856-59).
@@ -6408,9 +6400,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// See conditional_grants.go for the registry. The result is reused across
 		// every folder guard and system prompt site below.
 		resolvedGrants := resolveConditionalGrants(req)
-		if req.ExternalBuilderOperationID != "" {
-			resolvedGrants = ResolvedGrants{}
-		}
 		// When skill-creator is selected, ensure it's installed (auto-fetch from GitHub
 		// if missing). This is the one piece of grant-specific logic that doesn't fit
 		// the registry — it's an install-on-demand side effect unique to skill-creator.
@@ -6438,9 +6427,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Extract #workflow read-only folders early — needed both inside isChatMode block
 		// (for folder guard setup) and in the workflow_phase block (for shell isolator).
 		_, workflowReadOnlyFolders := collectSplitFolderGuardFolders(req.Query, req.authorizedWorkflowContextReadPaths)
-		if req.ExternalBuilderOperationID != "" {
-			workflowReadOnlyFolders = nil
-		}
 
 		if isChatMode && llmAgent.GetUnderlyingAgent() != nil {
 			// Handle browser access: when enabled, add agent-browser skill
@@ -6497,7 +6483,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			for _, s := range chatAgentSecrets {
 				chatAgentSecretEnv["SECRET_"+s.Name] = s.Value
 			}
-			if req.ExternalBuilderOperationID != "" || crewAskOnly {
+			if crewAskOnly {
 				chatAgentSecretEnv = map[string]string{}
 			}
 			workspaceRegistry := virtualtools.CreateWorkspaceToolRegistry(virtualtools.WorkspaceToolRegistryConfig{
@@ -6531,9 +6517,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// Merge @context file paths into additional folder-guard write access.
 			// workflowReadOnlyFolders was computed above.
 			fileContextWriteFolders := extractFileContextWriteFolders(req.Query)
-			if req.ExternalBuilderOperationID != "" {
-				fileContextWriteFolders = nil
-			}
 			if len(fileContextWriteFolders) > 0 {
 				log.Printf("[FILE CONTEXT] Extracted write folder-guard paths from @context: %v", fileContextWriteFolders)
 			}
@@ -6550,9 +6533,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// workflow_layout.json must go through typed plan-mod tools that serialize
 			// full structs, not raw writes.
 			var fileContextBlockedWriteFolders []string
-			if req.ExternalBuilderOperationID != "" {
-				fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, workflowPhaseFolder+"/workflow.json")
-			}
 			if execution, ok := api.botExecutionForSession(sessionID); ok && execution.Request.PresetQueryID != "" {
 				fileContextBlockedWriteFolders = append(fileContextBlockedWriteFolders, workflowPhaseFolder+"/runs/iteration-0/")
 			}
@@ -6836,10 +6816,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				readPaths = append(readPaths, extraFolders...)
 				readPaths = append(readPaths, workflowReadOnlyFolders...)
 				writePaths := workflowPhaseWriteFolders(effectiveWorkflowPhaseFolderForWrites, extraFolders...)
-				if req.ExternalBuilderOperationID != "" && !currentUserIsReadOnly {
-					readPaths, writePaths = externalBuilderFolderPaths(workflowPhaseFolder)
-					workspaceExecutors = wrapExecutorsWithFolderGuard(workspaceExecutors, "EXTERNAL BUILDER", "EXTERNAL BUILDER", folderGuardContextWorkflow, nil, fileContextBlockedWriteFolders, writePaths)
-				}
 				workspace.SetSessionFolderGuard(sessionID,
 					readPaths,
 					writePaths,
@@ -6866,13 +6842,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					todo_creation_human.ConfigureManagedWorkflowDBSession(sessionID, workflowPhaseFolder, !currentUserIsReadOnly)
 				}
 				protectOtherWorkflowBuilderChats(sessionID, workflowPhaseFolder, currentUserID)
-				if hostDownloads := externalBuilderHostDownloads(req, sessionID); hostDownloads != "" {
+				if hostDownloads := common.GrantSessionCDPHostDownloadsReadWrite(sessionID, hostDownloadsBrowserMode(req)); hostDownloads != "" {
 					log.Printf("[WORKFLOW PHASE FOLDER GUARD] Added read-write CDP host Downloads: %s", hostDownloads)
 				}
-				if req.ExternalBuilderOperationID == "" {
-					todo_creation_human.RefreshWorkflowFolderAccessSession(sessionID, workflowPhaseFolder)
-					configureWorkflowPhaseCLIShellGuard(sessionID, workflowPhaseFolder, currentUserID, req.ExternalBuilderOperationID != "", currentUserIsReadOnly)
-				}
+				todo_creation_human.RefreshWorkflowFolderAccessSession(sessionID, workflowPhaseFolder)
+				configureWorkflowPhaseCLIShellGuard(sessionID, workflowPhaseFolder, currentUserID, currentUserIsReadOnly)
 				log.Printf("[WORKFLOW PHASE FOLDER GUARD] Applied workflow folder restriction (workflow writes: %v, chats read-only: %s, read-only: %v, blocked-write: %v)", writePaths, perUserChatsWrite, workflowReadOnlyFolders, fileContextBlockedWriteFolders)
 			}
 
@@ -7239,7 +7213,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				logfWithContext(queryLogCtx, "[SKILL TOOLS] Registered multi-agent skill tools")
 			}
-			if isWorkflowBuilderPhase && req.ExternalBuilderOperationID == "" {
+			if isWorkflowBuilderPhase {
 				if err := api.registerAccessibleWorkflowListTool(llmAgent, currentUserID, nil); err != nil {
 					logfWithContext(queryLogCtx, "[WORKFLOW DISCOVERY] Failed to register accessible workflow listing: %v", err)
 					sendError(fmt.Sprintf("Failed to register workflow discovery tools: %v", err), true)
@@ -7247,7 +7221,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 				logfWithContext(queryLogCtx, "[WORKFLOW DISCOVERY] Registered list_accessible_workflows for Builder")
 			}
-			if isWorkflowPhase && req.ExternalBuilderOperationID == "" {
+			if isWorkflowPhase {
 				if err := api.registerWorkflowLLMDiscoveryTools(llmAgent); err != nil {
 					logfWithContext(queryLogCtx, "[LLM TOOLS] Failed to register workflow LLM discovery tools: %v", err)
 					sendError(fmt.Sprintf("Failed to register workflow LLM discovery tools: %v", err), true)
@@ -7597,7 +7571,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						sendError(fmt.Sprintf("Failed to configure coding-agent working directory: %v", err), true)
 						return
 					}
-					configureWorkflowPhaseCLIShellGuard(sessionID, phaseWorkspacePath, currentUserID, req.ExternalBuilderOperationID != "", currentUserIsReadOnly)
+					configureWorkflowPhaseCLIShellGuard(sessionID, phaseWorkspacePath, currentUserID, currentUserIsReadOnly)
 					if isGoalLeadSessionID(sessionID) {
 						configurePulseShellGuard(sessionID, phaseWorkspacePath)
 					}
@@ -7611,13 +7585,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					} else {
 						todo_creation_human.ConfigureManagedWorkflowDBSession(sessionID, phaseWorkspacePath, !currentUserIsReadOnly)
 					}
-					if hostDownloads := externalBuilderHostDownloads(req, sessionID); hostDownloads != "" {
+					if hostDownloads := common.GrantSessionCDPHostDownloadsReadWrite(sessionID, hostDownloadsBrowserMode(req)); hostDownloads != "" {
 						log.Printf("[WORKFLOW_PHASE] Added read-write CDP host Downloads: %s", hostDownloads)
 					}
-					if req.ExternalBuilderOperationID == "" {
-						todo_creation_human.RefreshWorkflowFolderAccessSession(sessionID, phaseWorkspacePath)
-						configureWorkflowPhaseCLIShellGuard(sessionID, phaseWorkspacePath, currentUserID, req.ExternalBuilderOperationID != "", currentUserIsReadOnly)
-					}
+					todo_creation_human.RefreshWorkflowFolderAccessSession(sessionID, phaseWorkspacePath)
+					configureWorkflowPhaseCLIShellGuard(sessionID, phaseWorkspacePath, currentUserID, currentUserIsReadOnly)
 					if len(workflowReadOnlyFolders) > 0 {
 						log.Printf("[WORKFLOW_PHASE] Added read-only access for #workflow references: %v", workflowReadOnlyFolders)
 					}

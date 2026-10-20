@@ -1,86 +1,60 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
-	"reflect"
+	"maps"
 	"slices"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
-	"github.com/manishiitg/mcpagent/mcpclient"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 )
 
-func TestExternalBuilderConnectedServersAndBridgeToolGate(t *testing.T) {
-	req := QueryRequest{ExternalBuilderOperationID: "op"}
-	servers := externalBuilderMCPServers(req, []string{"gmail", "slack"})
-	if len(servers) != 1 || servers[0] != mcpclient.NoServers {
-		t.Fatalf("connected servers reached Builder model: %v", servers)
-	}
-	claims := &UserClaims{ExternalBuilderOperationID: "op"}
-	gate := newProductToolGate(nil)
-	gate.DenyWhere(func(name string) bool { return externalBuilderToolDenied(claims, name) })
-	for _, name := range []string{"gmail_send", "slack_post", "execute_shell_command", "review_step_code"} {
-		if gate.Admit(name) || gate.Allows(name) {
-			t.Fatalf("connected or indirect tool admitted: %s", name)
-		}
-	}
-	if !gate.Admit("update_step") || !gate.Admit("read_file") {
-		t.Fatal("managed Builder tools were removed")
-	}
-	_, bridge := externalBuilderTransport(claims)
-	tools, _, _ := createReportHumanInputTools()
-	for _, tool := range tools {
-		name := tool.Function.Name
-		if name == "answer_human_input_request" {
-			if gate.Admit(name) || slices.Contains(bridge, name) {
-				t.Fatal("MCP Builder can answer a decision that needs the person; use needs_you")
-			}
-			continue
-		}
-		if !gate.Admit(name) || !slices.Contains(bridge, name) || !agentworksproduct.ChatAllowsTool("builder", name) {
-			t.Fatalf("decision tool missing from Builder registration or direct bridge: %s", name)
-		}
-	}
-	if got := externalBuilderMCPServers(QueryRequest{}, []string{"gmail"}); len(got) != 1 || got[0] != "gmail" {
-		t.Fatalf("ordinary browser servers changed: %v", got)
-	}
-}
-
-func TestExternalBuilderPolicyIsOperationScopedAndNeverNative(t *testing.T) {
-	req := QueryRequest{AgentMode: "workflow_phase", PhaseID: "workflow-builder", SelectedFolder: "Workflow/test", ExternalBuilderOperationID: "op-1"}
-	p := resolveWorkflowChatPolicy("shared-browser-chat", req, nil, false)
-	if p.Origin != "external_builder" || p.Mode != "builder" || !p.allows("plan_authoring") {
-		t.Fatalf("missing external builder policy: %+v", p)
-	}
-	for _, cap := range []string{"user_management", "mcp_management", "secret_management", "bot_management"} {
-		if p.allows(cap) {
-			t.Fatalf("external policy granted %s", cap)
-		}
-	}
-	if (&StreamingAPI{}).workflowChatNativeAgentTools(context.Background(), req, "shared-browser-chat", false) {
-		t.Fatal("external turn admitted native tools")
-	}
-	// The operation id is not part of the chat's role (PLAT-548): a new MCP Builder operation on the same chat keeps
-	// the same role and native process instead of restarting it and showing "Conversation restored".
-	req.ExternalBuilderOperationID = "op-2"
-	other := resolveWorkflowChatPolicy("shared-browser-chat", req, nil, false)
-	if p.sessionKey() != other.sessionKey() {
-		t.Fatal("a new external Builder operation changed the chat's role")
-	}
-	if chatPolicyRoleRequiresReconnect(true, p.sessionKey(), other.sessionKey(), true, nil) {
-		t.Fatal("a new external Builder operation restarted the native process")
-	}
+// The owner (or an editor) over MCP is the same Builder as on the website:
+// same capabilities and tools. Only the token's Brain scope narrows it.
+func TestExternalBuilderHasWebsiteBuilderTools(t *testing.T) {
+	req := QueryRequest{AgentMode: "workflow_phase", PhaseID: "workflow-builder", SelectedFolder: "Workflow/test", ExternalBuilderOperationID: "op"}
+	external := resolveWorkflowChatPolicy("chat", req, nil, false)
 	req.ExternalBuilderOperationID = ""
-	web := resolveWorkflowChatPolicy("shared-browser-chat", req, nil, false)
-	if web.Origin != "interactive" || web.sessionKey() == p.sessionKey() {
-		t.Fatal("browser turn inherited MCP authority")
+	web := resolveWorkflowChatPolicy("chat", req, nil, false)
+	if external.Mode != "builder" || !maps.Equal(external.Capabilities, web.Capabilities) {
+		t.Fatalf("MCP Builder capabilities differ from the website: %v vs %v", external.Capabilities, web.Capabilities)
 	}
-	req.ExternalBuilderOperationID = "op-1"
+
+	builderTools := agentworksproduct.ChatTools("builder")
+	website := newAgentWorksChatToolGate("builder")
+	for _, kb := range []bool{false, true} {
+		claims := &UserClaims{ExternalBuilderOperationID: "op", AccessToken: &accesstokens.Token{}}
+		if kb {
+			claims.AccessToken.Scopes = []string{"knowledgebase:read"}
+		}
+		gate := newAgentWorksChatToolGate("builder")
+		gate.DenyWhere(func(name string) bool { return externalBuilderToolDenied(claims, name) })
+		code, bridge := externalWorkflowTransport(claims, false, gate)
+		if code {
+			t.Fatal("token-backed MCP Builder must use the direct bridge")
+		}
+		for _, name := range builderTools {
+			if !website.Allows(name) {
+				continue
+			}
+			want := kb || !slices.Contains(knowledgebase.ToolNames(), knowledgebase.CanonicalToolName(name))
+			if slices.Contains(bridge, name) != want || accessTokenRunToolDenied(claims, name) == want {
+				t.Fatalf("Builder tool %s: on bridge=%v, want %v (brain scope %v)", name, slices.Contains(bridge, name), want, kb)
+			}
+		}
+	}
+
+	// The same token without a Builder operation is a Run caller and keeps the Run denylist.
+	run := &UserClaims{AccessToken: &accesstokens.Token{}}
+	if !accessTokenRunToolDenied(run, "execute_shell_command") {
+		t.Fatal("Run token gained the shell")
+	}
+	req.ExternalBuilderOperationID = "op"
 	req.PinRunMode = true
-	run := resolveWorkflowChatPolicy("shared-browser-chat", req, nil, readOnlyForRequest(WorkflowAccessOwner, req))
-	if run.Mode != "run" || run.allows("plan_authoring") {
-		t.Fatal("external provenance overrode Run pin")
+	if p := resolveWorkflowChatPolicy("chat", req, nil, readOnlyForRequest(WorkflowAccessOwner, req)); p.Mode != "run" {
+		t.Fatal("Builder operation overrode a Run pin")
 	}
 }
 
@@ -103,65 +77,5 @@ func TestExternalBuilderProvenanceCannotComeFromJSON(t *testing.T) {
 	}
 	if _, ok := decoded["ExternalBuilderOperationID"]; ok {
 		t.Fatal("internal authority serialized to caller")
-	}
-}
-
-func TestExternalBuilderFoldersExcludeAmbientGrants(t *testing.T) {
-	req := QueryRequest{ExternalBuilderOperationID: "op", SelectedFolder: "Workflow/test", WorkflowContextPaths: []string{"Workflow/other"}, authorizedWorkflowContextReadPaths: []string{"Workflow/other"}}
-	if err := admitWorkflowBuilderContextPaths(context.Background(), &req); err != nil {
-		t.Fatal(err)
-	}
-	if len(req.WorkflowContextPaths) != 0 || len(req.authorizedWorkflowContextReadPaths) != 0 {
-		t.Fatal("external turn inherited context roots")
-	}
-	read, write := externalBuilderFolderPaths(req.SelectedFolder)
-	want := []string{"Workflow/test/"}
-	if !reflect.DeepEqual(read, want) || !reflect.DeepEqual(write, want) {
-		t.Fatalf("unexpected roots: %v %v", read, write)
-	}
-	for _, folder := range []string{"", "Workflow", "/tmp", "Workflow/../../private"} {
-		read, write = externalBuilderFolderPaths(folder)
-		if len(read) != 0 || len(write) != 0 {
-			t.Fatalf("invalid root admitted: %q", folder)
-		}
-	}
-	if externalBuilderHostDownloads(req, "test") != "" {
-		t.Fatal("external turn received host downloads")
-	}
-}
-
-func TestExternalBuilderFilePatchGuardProtectsManifestAndOtherRoots(t *testing.T) {
-	called := false
-	executors := map[string]func(context.Context, map[string]interface{}) (string, error){
-		"diff_patch_workspace_file": func(context.Context, map[string]interface{}) (string, error) { called = true; return "ok", nil },
-	}
-	_, write := externalBuilderFolderPaths("Workflow/test")
-	guarded := wrapExecutorsWithFolderGuard(executors, "test", "test", folderGuardContextWorkflow, nil, []string{"Workflow/test/workflow.json", "Workflow/test/planning/"}, write)
-	for _, file := range []string{"Workflow/test/workflow.json", "Workflow/test/planning/plan.json", "Workflow/other/code.js", "Workflow/test/../other/code.js", "Downloads/out.txt", "_users/alice/chat_history/private.json"} {
-		called = false
-		_, err := guarded["diff_patch_workspace_file"](context.Background(), map[string]interface{}{"filepath": file, "patch": "change"})
-		if err == nil || called {
-			t.Fatalf("unsafe file edit reached executor: %s", file)
-		}
-	}
-	if _, err := guarded["diff_patch_workspace_file"](context.Background(), map[string]interface{}{"filepath": "Workflow/test/code/app.py", "patch": "change"}); err != nil || !called {
-		t.Fatal("workflow code edit rejected", err)
-	}
-}
-
-func TestExternalBuilderPhaseRegistrarOmitsToolsOutsideCapability(t *testing.T) {
-	base := &chatPolicyTestDefinition{}
-	registrar := externalBuilderRegistrar(base, &UserClaims{ExternalBuilderOperationID: "operation"})
-	run := func(context.Context, map[string]interface{}) (string, error) { return "", nil }
-	for _, name := range []string{"read_file", "execute_shell_command", "set_workflow_secret", "set_workflow_access"} {
-		if err := registrar.RegisterCustomTool(name, "", nil, run, "test"); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if len(base.tools) != 1 {
-		t.Fatalf("unexpected registered tools: %+v", base.tools)
-	}
-	if _, ok := base.tools["read_file"]; !ok {
-		t.Fatal("allowed tool missing")
 	}
 }

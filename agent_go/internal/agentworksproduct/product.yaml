@@ -130,7 +130,8 @@ chat_policy:
     # changes), so a Run chat can tell which of its tools are connected.
     run: [workspace_ui, bot_management, workflow_suggestions, mcp_inspection]
   origins:
-    external_builder: [plan_authoring]
+    # The owner (or an editor) over MCP is the same Builder as on the website.
+    external_builder: *builder_capabilities
     interactive: *builder_capabilities
     # Unattended execution and post-run Pulse share the same authority.
     # Neither stage admits connection/user/bot management or live workspace UI.

@@ -11,8 +11,13 @@ import (
 // The resolved workflow mode and registration gate remain authoritative;
 // tool execution still uses the authenticated session's normal permission checks.
 func externalWorkflowTransport(claims *UserClaims, workflowRun bool, gate *productToolGate) (codeExecution bool, directBridge []string) {
-	if claims == nil || claims.ExternalBuilderOperationID != "" || claims.AccessToken == nil || !workflowRun {
-		return externalBuilderTransport(claims)
+	if claims != nil && claims.ExternalBuilderOperationID != "" {
+		// Same Builder tool surface as the website, projected onto the bridge
+		// because a token-backed session has no usable shell transport.
+		return externalProjectTransport(claims, gate)
+	}
+	if claims == nil || claims.AccessToken == nil || !workflowRun {
+		return true, nil
 	}
 	for _, name := range agentworksproduct.RunTools() {
 		if !accessTokenRunToolDenied(claims, name) && gate.Allows(name) {

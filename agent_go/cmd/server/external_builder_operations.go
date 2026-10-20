@@ -13,12 +13,11 @@ import (
 
 	"github.com/google/uuid"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
-	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
 // External authoring is always available; connection consent and current roles authorize each operation.
 func externalBuilderDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("builder_chat", "Ask the configured Builder model to edit a selected workflow in your existing workflow chat (the owner's main chat). Requires builder:chat and current write access. Use a unique submission_id; retries with the same payload return the same operation. Pass wait_seconds to get the answer (or a pending question) in the same call; otherwise poll builder action=status. This release edits plans/code through managed tools; native shell, account administration and connected account tools are unavailable.", true, true, map[string]any{
+	add("builder_chat", "Ask the configured Builder model to edit a selected workflow in your existing workflow chat (the owner's main chat). Requires builder:chat and current write access. Use a unique submission_id; retries with the same payload return the same operation. Pass wait_seconds to get the answer (or a pending question) in the same call; otherwise poll builder action=status. It has the same tools as the website Builder.", true, true, map[string]any{
 		"message": map[string]any{"type": "string", "minLength": 1, "maxLength": 32000}, "submission_id": map[string]any{"type": "string", "minLength": 1, "maxLength": 128}, "session_id": externalString("Optional existing chat belonging to you in this workflow; omit to continue the main/latest chat."), "wait_seconds": externalBuilderWaitSchema}, "message", "submission_id")
 	add("builder_file_history", "List your audited Builder file edits for one workflow-relative path, including revisions and restore IDs. Previous credentials from the same account remain recoverable.", false, true,
 		map[string]any{"path": externalString("Workflow-relative source file path, such as code/task.py.")}, "path")
@@ -210,14 +209,6 @@ func validateBuilderGrant(ctx context.Context, claims *UserClaims, workflow, wor
 	return live, nil
 }
 
-// The manifest's connected servers are a browser Builder choice, not authority
-// delegated to an external MCP client. Apply this after manifest selection.
-func externalBuilderMCPServers(req QueryRequest, selected []string) []string {
-	if req.ExternalBuilderOperationID != "" {
-		return []string{mcpclient.NoServers}
-	}
-	return selected
-}
 func (api *StreamingAPI) validateExternalBuilderTurn(ctx context.Context, id, session, workspace string) (*UserClaims, error) {
 	op, err := readExternalBuilder(ctx, id)
 	if err != nil {
@@ -595,44 +586,18 @@ func (api *StreamingAPI) runQueuedExternalBuilder(ctx context.Context, turn queu
 	return outcome, err
 }
 
-// Managed authoring has no shell. Keep one tool list for both permission checks
-// and the direct coding-agent bridge so registered tools stay callable.
-var externalBuilderManagedTools = []string{
-	// The person answers through needs_you. An MCP-driven Builder must not
-	// turn its own proposal into the person's answer.
-	"create_human_input_request", "get_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request", "withdraw_human_input_request",
-	"list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "export_dashboard_motion", "publish_dashboard", "restore_dashboard", "get_dashboard_link", "get_dashboard_share", "share_dashboard",
-	"read_file", "write_file", "list_files", "search_files",
-	// Native migration tools retain the Builder's access, prerequisite and
-	// version-order checks; external Builders have no shell transport.
-	"migrate_agent_code_items", "migrate_agent_steps", "migrate_goal_agents", "migrate_workflow_skills", "migrate_declared_execution_mode", "strip_declared_execution_mode", "set_workflow_contract_version", "add_step", "manage_group", "manage_step_route", "change_step_type", "maintain_plan", "create_plan", "delete_plan_steps", "get_step_prompts", "update_step", "update_step_config", "update_validation_schema", "update_variable", "validate_plan_change", "get_plan_prompt_health", "get_contract_upgrades", "get_llm_config", "get_workflow_command_guidance", "human_feedback", "get_file_link", "get_report_link",
-}
-
 var externalBuilderKnowledgeTools = knowledgebase.ToolNames()
 
+// The owner or an editor over MCP gets the website Builder's tools. Only the
+// connection's own token scope for Brain narrows it.
 func externalBuilderToolDenied(claims *UserClaims, name string) bool {
 	if claims == nil || claims.ExternalBuilderOperationID == "" {
 		return false
 	}
-	name = knowledgebase.CanonicalToolName(name)
-	if slices.Contains(externalBuilderKnowledgeTools, name) {
+	if slices.Contains(externalBuilderKnowledgeTools, knowledgebase.CanonicalToolName(name)) {
 		return claims.AccessToken == nil || !claims.AccessToken.Allows("knowledgebase:read")
 	}
-	return !slices.Contains(externalBuilderManagedTools, name)
-}
-
-// API models receive managed tools directly. Coding CLIs receive the same
-// tools through their direct MCP bridge, without needing an HTTP shell call.
-func externalBuilderTransport(claims *UserClaims) (codeExecution bool, directBridge []string) {
-	if claims == nil || claims.ExternalBuilderOperationID == "" {
-		return true, nil
-	}
-	for _, name := range append(slices.Clone(externalBuilderManagedTools), externalBuilderKnowledgeTools...) {
-		if !externalBuilderToolDenied(claims, name) {
-			directBridge = append(directBridge, name)
-		}
-	}
-	return false, directBridge
+	return false
 }
 
 func externalBuilderQuery(op externalBuilderOperation) QueryRequest {

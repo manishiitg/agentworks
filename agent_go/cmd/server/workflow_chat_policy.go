@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path"
 	"sort"
 	"strings"
 	"sync"
@@ -15,7 +14,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
 type workflowChatPolicy struct {
@@ -318,30 +316,9 @@ func isRetiredGeneralChat(req *QueryRequest, profile *resolvedAgentProfile, sess
 		!isScheduledSessionIdentity(sessionID, req.TriggeredBy)
 }
 
-// External Builder intentionally has no cross-workflow context or filesystem
-// grants. Its visible transcript stays in the same workflow's own builder tree.
+// An MCP Builder turn admits linked workflow context exactly like the website.
 func admitWorkflowBuilderContextPaths(ctx context.Context, req *QueryRequest) error {
-	if req.ExternalBuilderOperationID == "" {
-		return admitTurnContextPaths(ctx, req)
-	}
-	req.WorkflowContextPaths = nil
-	req.authorizedWorkflowContextReadPaths = nil
-	return nil
-}
-
-func externalBuilderFolderPaths(workspace string) (read, write []string) {
-	root := path.Clean(strings.TrimSpace(workspace))
-	if !strings.HasPrefix(root, "Workflow/") || root == "Workflow/" {
-		return nil, nil
-	}
-	return []string{root + "/"}, []string{root + "/"}
-}
-
-func externalBuilderHostDownloads(req QueryRequest, session string) string {
-	if req.ExternalBuilderOperationID != "" {
-		return ""
-	}
-	return common.GrantSessionCDPHostDownloadsReadWrite(session, hostDownloadsBrowserMode(req))
+	return admitTurnContextPaths(ctx, req)
 }
 
 // Phase tools are registered through the same source of truth as browser
