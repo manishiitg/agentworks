@@ -65,9 +65,9 @@ export function sidebarChatDisplayTitle(row: SidebarChat, workspaceTitle?: strin
   const raw = title.replace(/ · Scheduled run$/i, '').replace(row.scheduled ? /\s*\((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|Daily|Weekdays|Weekends|Every)\b[^)]*\)$/i : /$^/, '')
   if (row.workflowSessionKind === 'run' && !row.scheduled && !row.originLabel &&
     (raw === workspaceTitle || /^(?:Automation Builder|Builder(?: \d+)?|Main chat|Chat(?: \d+)?)$/i.test(raw)))
-    return 'Run chat'
+    return 'Run'
   if (row.builder && (title === workspaceTitle || /^(?:Automation Builder|Builder(?: \d+)?|Main chat|Chat)$/i.test(title)))
-    return number ? `Chat ${number}` : 'Chat'
+    return number ? `Builder ${number}` : 'Builder'
   if (workspaceTitle && raw === workspaceTitle)
     return row.scheduled ? 'Scheduled run' : number ? `Chat ${number}` : row.originLabel ? `${row.originLabel} chat` : 'Chat'
   return raw

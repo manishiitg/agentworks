@@ -383,7 +383,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     const details = [
       duplicateWorkspaceName ? PRODUCT_SURFACE_LABELS[row.surface] : '',
       row.waiting ? 'Needs you' : '',
-      repeatedRun ? date : '',
+      repeatedRun || (runChat && !scheduled) ? date : '',
     ]
       .filter(Boolean)
       .join(' · ')

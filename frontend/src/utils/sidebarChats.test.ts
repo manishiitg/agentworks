@@ -126,7 +126,7 @@ it('uses readable display labels while preserving custom titles and original ses
   expect(row.title).toContain('workspace_path=')
   expect(sidebarChatDisplayTitle({ ...row, title: 'Pulse' })).toBe('Automatic review')
   expect(sidebarChatDisplayTitle({ ...row, title: 'Morning review (Mon-Fri 8 AM)' })).toBe('Morning review')
-  expect(sidebarChatDisplayTitle({ ...row, scheduled: false, builder: true, title: 'Trading' }, 'Trading', 2)).toBe('Chat 2')
+  expect(sidebarChatDisplayTitle({ ...row, scheduled: false, builder: true, title: 'Trading' }, 'Trading', 2)).toBe('Builder 2')
   expect(sidebarChatDisplayTitle({ ...row, scheduled: false, builder: true, title: 'Quarterly planning' }, 'Trading')).toBe('Quarterly planning')
   expect(sidebarChatDisplayTitle({ ...row, title: 'Workflow review before a run' })).toBe('Workflow review before a run')
 })

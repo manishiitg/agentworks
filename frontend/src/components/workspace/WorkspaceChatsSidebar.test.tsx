@@ -150,8 +150,8 @@ it('labels remembered Goal Run chats from server kind while keeping one unnumber
     { session_id: 'pat-two', created_at: '2026-10-19T16:00:00Z' },
   ] })
   await render(async host => {
-    expect(host.querySelectorAll('[aria-label="Chat · Goals"]')).toHaveLength(1)
-    const runs = [...host.querySelectorAll<HTMLButtonElement>('button')].filter(button => button.getAttribute('aria-label')?.startsWith('Run chat · Goals · Run'))
+    expect(host.querySelectorAll('[aria-label="Builder · Goals"]')).toHaveLength(1)
+    const runs = [...host.querySelectorAll<HTMLButtonElement>('button')].filter(button => button.getAttribute('aria-label')?.startsWith('Run · Goals · Run'))
     expect(runs).toHaveLength(2)
     expect(runs[0].textContent).not.toBe(runs[1].textContent)
     expect(runs.every(button => !button.getAttribute('aria-label')?.includes('1970'))).toBe(true)
