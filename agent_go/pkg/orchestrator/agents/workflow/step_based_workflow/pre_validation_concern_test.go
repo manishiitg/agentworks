@@ -18,9 +18,8 @@ import (
 )
 
 // newPreValidationConcernTestOrchestrator wires a REAL workspace-docs HTTP
-// server (for SavePreValidationLog's file write) AND WORKSPACE_DOCS_PATH (for
-// the run_concerns sqlite store) at the SAME root, so a test can
-// verify both real artifacts SavePreValidationLog produces.
+// server and WORKSPACE_DOCS_PATH at the same root to verify the retained
+// attempt logs produced by SavePreValidationLog.
 func newPreValidationConcernTestOrchestrator(t *testing.T) (*StepBasedWorkflowOrchestrator, string) {
 	t.Helper()
 
@@ -61,105 +60,6 @@ func targetingAuditFailure(field, message string) *WorkspaceVerificationResult {
 			TotalChecks: 1, FailedChecks: 1,
 			Errors: []ValidationError{{File: "targeting_audit.json", Path: field, Message: message}},
 		},
-	}
-}
-
-// Prevalidation is durable run evidence, not a Go-created Pulse observation.
-// Technical Review reads the retained log and decides whether it is a real
-// workflow issue; this avoids turning every malformed retry into repair debt.
-func TestSavePreValidationLogKeepsFailureOutOfPulseRegister(t *testing.T) {
-	hcpo, _ := newPreValidationConcernTestOrchestrator(t)
-	ctx := context.Background()
-	stepID := "execute-targeting-audit"
-	logPath := hcpo.GetWorkspacePath() + "/runs/" + hcpo.selectedRunFolder
-
-	SavePreValidationLog(ctx, hcpo.BaseOrchestrator, logPath, stepID, stepID,
-		targetingAuditFailure("$.our_follower_count", "unknown key our_follower_count"), nil,
-		hcpo.GetWorkspacePath(), hcpo.selectedRunFolder, hcpo.currentGroupName)
-
-	concerns := activeRunConcerns(t, hcpo.GetWorkspacePath())
-	if len(concerns) != 0 {
-		t.Fatalf("prevalidation evidence must not create a raw Pulse concern: %+v", concerns)
-	}
-}
-
-// TestSavePreValidationLogConcernRecursAcrossRuns proves the concern survives
-// past the run that raised it and its own log-file overwrite -- the same
-// field failing on a LATER run (a fresh pre_validation.json, a fresh
-// pre-run-folder) still accumulates onto the SAME db row instead of starting
-// over, which is exactly the cross-run chronic-defect signal a per-run JSON
-// file structurally cannot provide.
-func TestSavePreValidationLogRepeatedFailuresStayOutOfPulseRegister(t *testing.T) {
-	hcpo, _ := newPreValidationConcernTestOrchestrator(t)
-	ctx := context.Background()
-	stepID := "execute-targeting-audit"
-
-	for _, run := range []string{"iteration-0/default", "iteration-0/default-2"} {
-		hcpo.selectedRunFolder = run
-		logPath := hcpo.GetWorkspacePath() + "/runs/" + run
-		SavePreValidationLog(ctx, hcpo.BaseOrchestrator, logPath, stepID, stepID,
-			targetingAuditFailure("$.validated_targeting.follower_max", "Expected number, got <nil>"), nil,
-			hcpo.GetWorkspacePath(), hcpo.selectedRunFolder, hcpo.currentGroupName)
-	}
-
-	concerns := activeRunConcerns(t, hcpo.GetWorkspacePath())
-	if len(concerns) != 0 {
-		t.Fatalf("repeated prevalidation evidence must remain in retained logs, not raw Pulse concerns: %+v", concerns)
-	}
-}
-
-func TestSavePreValidationLogDoesNotCreateCollapsedPulseConcern(t *testing.T) {
-	hcpo, _ := newPreValidationConcernTestOrchestrator(t)
-	ctx := context.Background()
-	stepID := "execute-find-opportunities"
-	logPath := hcpo.GetWorkspacePath() + "/runs/" + hcpo.selectedRunFolder
-
-	failure := &WorkspaceVerificationResult{
-		OverallPass: false,
-		Summary: ValidationSummary{
-			TotalChecks:  3,
-			FailedChecks: 3,
-			Errors: []ValidationError{
-				{File: "opportunities.json", Path: "$.action_targets", Message: "must exist"},
-				{File: "opportunities.json", Path: "$.coverage_report", Message: "must be an object"},
-				{File: "opportunities.json", Path: "$.targets", Message: "must be an array"},
-			},
-		},
-	}
-	SavePreValidationLog(ctx, hcpo.BaseOrchestrator, logPath, stepID, stepID,
-		failure, nil, hcpo.GetWorkspacePath(), hcpo.selectedRunFolder, hcpo.currentGroupName)
-
-	concerns := activeRunConcerns(t, hcpo.GetWorkspacePath())
-	if len(concerns) != 0 {
-		t.Fatalf("failed checks must remain retained evidence until Technical Review classifies them: %+v", concerns)
-	}
-
-	// A repair retry in the same run updates the one bug's latest evidence but
-	// does not manufacture another recurrence.
-	SavePreValidationLog(ctx, hcpo.BaseOrchestrator, logPath, stepID, stepID,
-		targetingAuditFailure("$.new_field", "still missing"), nil,
-		hcpo.GetWorkspacePath(), hcpo.selectedRunFolder, hcpo.currentGroupName)
-	concerns = activeRunConcerns(t, hcpo.GetWorkspacePath())
-	if len(concerns) != 0 {
-		t.Fatalf("same-run retry must not create Pulse register noise: %+v", concerns)
-	}
-}
-
-// TestSavePreValidationLogPassNoConcern proves the common case (a step passes
-// on its first attempt) files nothing -- no concern noise for healthy steps.
-func TestSavePreValidationLogPassNoConcern(t *testing.T) {
-	hcpo, _ := newPreValidationConcernTestOrchestrator(t)
-	ctx := context.Background()
-	stepID := "clean-step"
-	logPath := hcpo.GetWorkspacePath() + "/runs/" + hcpo.selectedRunFolder
-
-	SavePreValidationLog(ctx, hcpo.BaseOrchestrator, logPath, stepID, stepID,
-		&WorkspaceVerificationResult{OverallPass: true, Summary: ValidationSummary{TotalChecks: 1, PassedChecks: 1}}, nil,
-		hcpo.GetWorkspacePath(), hcpo.selectedRunFolder, hcpo.currentGroupName)
-
-	concerns := activeRunConcerns(t, hcpo.GetWorkspacePath())
-	if len(concerns) != 0 {
-		t.Fatalf("expected no concerns for a passing result, got %+v", concerns)
 	}
 }
 

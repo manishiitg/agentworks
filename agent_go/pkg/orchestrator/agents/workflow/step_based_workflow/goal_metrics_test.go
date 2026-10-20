@@ -5,23 +5,31 @@ import (
 	"testing"
 )
 
+func goalMetricsWorkspace(t *testing.T) string {
+	t.Helper()
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	return "Workflow/testing"
+}
+
+func goalMetricValue(value float64) *float64 { return &value }
+
 func testGoalMetric() GoalMetric {
 	return GoalMetric{ID: "followers", CriterionID: "audience", Name: "Followers", Role: "primary", Unit: "followers", Direction: "increase", Definition: "Observed total followers", Source: "daily_metrics.follower_count", Window: "instant", CollectionFrequency: "daily", FreshnessHours: 48}
 }
 func TestGoalMetricsSetupPreservesHistoryAndRejectsSemanticChanges(t *testing.T) {
 	ctx := context.Background()
-	ws := concernsWorkspace(t)
+	ws := goalMetricsWorkspace(t)
 	m := testGoalMetric()
 	if err := ConfigureGoalMetrics(ctx, ws, []GoalMetric{m}); err != nil {
 		t.Fatal(err)
 	}
-	o := GoalObservation{CriterionID: m.CriterionID, Metric: m.ID, Unit: m.Unit, RunID: "run-1", ObservedAt: "2026-09-11T00:00:00Z", Value: pulseImpactFloat(290), Evidence: []string{"daily_metrics:2026-09-11"}}
+	o := GoalObservation{CriterionID: m.CriterionID, Metric: m.ID, Unit: m.Unit, RunID: "run-1", ObservedAt: "2026-09-11T00:00:00Z", Value: goalMetricValue(290), Evidence: []string{"daily_metrics:2026-09-11"}}
 	for i := 0; i < 2; i++ {
 		if _, err := RecordGoalObservations(ctx, ws, []GoalObservation{o}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	m.Target = pulseImpactFloat(1000)
+	m.Target = goalMetricValue(1000)
 	if err := ConfigureGoalMetrics(ctx, ws, []GoalMetric{m}); err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +44,7 @@ func TestGoalMetricsSetupPreservesHistoryAndRejectsSemanticChanges(t *testing.T)
 	if len(ledger.Metrics) != 1 || ledger.Metrics[0].Unit != "followers" || len(ledger.Observations) != 1 {
 		t.Fatalf("history/config lost: %+v", ledger)
 	}
-	o.Value = pulseImpactFloat(999)
+	o.Value = goalMetricValue(999)
 	if _, err = RecordGoalObservations(ctx, ws, []GoalObservation{o}); err == nil {
 		t.Fatal("accepted conflicting historical value")
 	}
@@ -44,7 +52,7 @@ func TestGoalMetricsSetupPreservesHistoryAndRejectsSemanticChanges(t *testing.T)
 
 func TestMultiplePrimaryRelationshipsAndHistory(t *testing.T) {
 	ctx := context.Background()
-	ws := concernsWorkspace(t)
+	ws := goalMetricsWorkspace(t)
 	voice := testGoalMetric()
 	voice.ID = "voice"
 	voice.GoalID = "performance"
@@ -68,7 +76,7 @@ func TestMultiplePrimaryRelationshipsAndHistory(t *testing.T) {
 			t.Fatal("legacy links not resolved")
 		}
 	}
-	observation := GoalObservation{CriterionID: diagnostic.CriterionID, Metric: diagnostic.ID, Unit: diagnostic.Unit, RunID: "run-1", Value: pulseImpactFloat(20), ObservedAt: "2026-09-12T00:00:00Z", Evidence: []string{"source"}}
+	observation := GoalObservation{CriterionID: diagnostic.CriterionID, Metric: diagnostic.ID, Unit: diagnostic.Unit, RunID: "run-1", Value: goalMetricValue(20), ObservedAt: "2026-09-12T00:00:00Z", Evidence: []string{"source"}}
 	if _, err := RecordGoalObservations(ctx, ws, []GoalObservation{observation}); err != nil {
 		t.Fatal(err)
 	}
