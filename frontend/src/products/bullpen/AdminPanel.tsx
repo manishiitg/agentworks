@@ -44,7 +44,7 @@ export function AdminPanel() {
         <p className="font-semibold">{person.username} <span className="text-xs font-normal text-muted-foreground">{({ admin: 'Admin', creator: 'Creator', editor: 'Editor', viewer: 'Member' } as Record<string, string>)[person.role] || person.role}{person.disabled && ' · disabled'} · {(person.agents ?? []).length} agent{(person.agents ?? []).length === 1 ? '' : 's'}</span></p>
         {(person.agents ?? []).length > 0 && <ul className="mt-3 divide-y divide-border">
           {(person.agents ?? []).map(agent => <li key={agent.agent_id} className="py-2 text-sm">
-            <span className="break-all"><strong>{agent.agent_name}</strong>{agent.published && <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs">Published to network</span>} · {agent.presence || 'Status unavailable'}{agent.provider && ' · ' + agent.provider}</span>
+            <span className="break-all"><strong>{agent.label || agent.agent_name}</strong>{agent.label && agent.label !== agent.agent_name && <span className="ml-2 font-mono text-xs">{agent.agent_name}</span>}{agent.published && <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs">Published to network</span>} · {agent.presence || 'Status unavailable'}{agent.provider && ' · ' + agent.provider}</span>
             <span className="block text-xs text-muted-foreground">{agent.purpose || 'No purpose set.'} Created {when(agent.created_at)}</span>
           </li>)}
         </ul>}

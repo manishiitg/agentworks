@@ -34,6 +34,7 @@ type namedMessageAgent struct {
 	ID               string                `json:"agent_id"`
 	UserID           string                `json:"user_id"`
 	Name             string                `json:"name"`
+	Label            string                `json:"label,omitempty"`
 	Connections      []string              `json:"allowed_connection_ids"`
 	CreatedAt        time.Time             `json:"created_at"`
 	LastOnlineAt     time.Time             `json:"last_online_at,omitempty"`
@@ -172,6 +173,7 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 				}
 				return ""
 			}()}
+			item["label"] = agentLabel(a)
 			addAgentPresence(item, a)
 			if agentUpdateNeeded(a) {
 				item["update_needed"] = true
@@ -183,8 +185,70 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 		hydrateOwnerUsage(ctx, userID, items, s.Agents)
 	}
 	items = append(items, s.sharedAgentItems(userID, now)...)
+	projectAgentLabels(items)
 	sort.Slice(items, func(i, j int) bool { return items[i]["agent_name"].(string) < items[j]["agent_name"].(string) })
 	return map[string]interface{}{"agents": items}
+}
+
+func cleanAgentLabel(label string) string {
+	label = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return ' '
+		}
+		return r
+	}, label)
+	r := []rune(strings.Join(strings.Fields(label), " "))
+	if len(r) > 160 {
+		r = r[:160]
+	}
+	return string(r)
+}
+
+func agentLabel(a namedMessageAgent) string {
+	if label := cleanAgentLabel(a.Label); label != "" {
+		return label
+	}
+	return a.Name
+}
+
+// Project labels only over the caller's authorized directory. A title never
+// becomes an address. Show its address when labels collide or resemble another
+// address, including punctuation/case variants and an optional agent: prefix.
+func projectAgentLabels(items []map[string]interface{}) {
+	key := func(s string) string {
+		s = strings.TrimPrefix(strings.ToLower(s), "agent:")
+		return strings.Map(func(r rune) rune {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				return r
+			}
+			return -1
+		}, s)
+	}
+	labels, addresses := map[string]int{}, map[string][]string{}
+	for _, item := range items {
+		name, _ := item["agent_name"].(string)
+		label, _ := item["label"].(string)
+		if label == "" {
+			label = name
+			item["label"] = label
+		}
+		labels[key(label)]++
+		addresses[key(name)] = append(addresses[key(name)], name)
+		if _, short, ok := strings.Cut(name, "/"); ok {
+			addresses[key(short)] = append(addresses[key(short)], name)
+		}
+	}
+	for _, item := range items {
+		name := item["agent_name"].(string)
+		label := item["label"].(string)
+		clash := labels[key(label)] > 1
+		for _, other := range addresses[key(label)] {
+			clash = clash || other != name
+		}
+		if clash && label != name {
+			item["label"] = label + " (" + name + ")"
+		}
+	}
 }
 
 func (api *StreamingAPI) externalMessageCaller(ctx context.Context, claims *UserClaims, args map[string]any) (triggerLinkCaller, error) {

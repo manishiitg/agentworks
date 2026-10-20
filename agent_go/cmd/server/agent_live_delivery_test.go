@@ -208,6 +208,31 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	if len(replies) != 1 || replies[0].(map[string]any)["inbox_id"] != receipt["inbox_id"] {
 		t.Fatal("reply split the conversation")
 	}
+	// A chat rename updates presentation on the same lease. Free text that
+	// resembles another address is disambiguated; it never becomes a target.
+	lease := agentworksclient.AgentAttachment{AgentName: "reviewer", ID: meta["attachment_id"].(string)}
+	if err := stranger.UpdateAgentLabel(ctx, lease, "Impersonation"); err == nil {
+		t.Fatal("another connection changed this chat's label")
+	}
+	oldLease := lease
+	oldLease.ID = "old-attachment"
+	if err := receiver.UpdateAgentLabel(ctx, oldLease, "Stale"); err == nil {
+		t.Fatal("a stale lease changed the label")
+	}
+	if err := receiver.UpdateAgentLabel(ctx, lease, "Sender"); err != nil {
+		t.Fatal(err)
+	}
+	directory := call(receiver, map[string]any{"action": "list_agents", "agent_name": "reviewer"})
+	foundLabel := false
+	for _, raw := range directory["agents"].([]any) {
+		a := raw.(map[string]any)
+		if a["agent_name"] == "reviewer" {
+			foundLabel = a["label"] == "Sender (reviewer)" && a["target"] == "agent:reviewer" && a["online"] == true
+		}
+	}
+	if !foundLabel {
+		t.Fatal("rename changed the identity or hid its real address", directory)
+	}
 	// A simplified person NAME attach cannot displace a live chat, including
 	// when the other computer is absent from the local bridge journal.
 	if _, err := receiver.AttachAgent(context.Background(), agentworksclient.AgentAttachmentOptions{RejectLiveMove: true, AgentName: "reviewer", Provider: "claude", SessionID: "another-computer-session"}); err == nil || !strings.Contains(err.Error(), "detach it there first") {
@@ -280,6 +305,20 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("revoked stream stayed open after write")
+	}
+}
+
+func TestAgentLabelCollisionsKeepAddresses(t *testing.T) {
+	items := []map[string]interface{}{
+		{"agent_name": "one", "label": "Shared work"},
+		{"agent_name": "person/two", "label": "Shared work"},
+		{"agent_name": "three", "label": "agent: TWO"},
+	}
+	projectAgentLabels(items)
+	for i, want := range []string{"Shared work (one)", "Shared work (person/two)", "agent: TWO (three)"} {
+		if items[i]["label"] != want {
+			t.Fatalf("%v", items)
+		}
 	}
 }
 

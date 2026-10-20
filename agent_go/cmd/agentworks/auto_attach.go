@@ -19,6 +19,7 @@ import (
 // the person made themselves. It is dropped by detach, by /agentworks auto off, and
 // whenever the server closed the lease.
 type autoAttachRecord struct {
+	LabelName  string `json:"label_name,omitempty"`
 	Name       string `json:"name"`
 	SessionID  string `json:"session_id,omitempty"`
 	Purpose    string `json:"purpose,omitempty"`
@@ -103,7 +104,7 @@ func autoAttachRead(root, key string) autoAttachFolder {
 }
 
 // rememberAutoAttach records an attachment the person just made.
-func rememberAutoAttach(root, provider, cwd string, a agentworksclient.AgentAttachment, configPath string) {
+func rememberAutoAttach(root, provider, cwd string, a agentworksclient.AgentAttachment, configPath, labelName string) {
 	if a.AgentName == "" || configPath == "" {
 		return
 	}
@@ -112,9 +113,11 @@ func rememberAutoAttach(root, provider, cwd string, a agentworksclient.AgentAtta
 		for _, r := range f.Records {
 			if r.Name != a.AgentName {
 				kept = append(kept, r)
+			} else if labelName == "" {
+				labelName = r.LabelName
 			}
 		}
-		f.Records = append(kept, autoAttachRecord{Name: a.AgentName, SessionID: a.SessionID, Purpose: a.Purpose, ConfigPath: configPath})
+		f.Records = append(kept, autoAttachRecord{Name: a.AgentName, SessionID: a.SessionID, Purpose: a.Purpose, ConfigPath: configPath, LabelName: labelName})
 		if len(f.Records) > 5 {
 			f.Records = f.Records[len(f.Records)-5:]
 		}
@@ -212,6 +215,7 @@ func autoAttachOnStart(ctx context.Context, root string, o *options, req agentwo
 		return ""
 	}
 	req.Action, req.AgentName, req.Purpose, req.ConfigPath = "attach", record.Name, record.Purpose, record.ConfigPath
+	req.LabelName = record.LabelName
 	req.Setup, req.ReuseIdentity = true, false
 	req.NativeRemote = discoverNativeRemote(req.Provider, req.SessionID, req.HostKey)
 	if err = ensureLocalBridge(ctx, root, o); err != nil {

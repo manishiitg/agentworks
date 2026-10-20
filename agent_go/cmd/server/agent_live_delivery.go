@@ -50,7 +50,7 @@ func (api *StreamingAPI) handleAgentAttachment(w http.ResponseWriter, r *http.Re
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	var args map[string]any
-	if json.NewDecoder(r.Body).Decode(&args) != nil || !slices.Contains([]string{"attach", "detach", "validate", "connection"}, externalArg(args, "action")) {
+	if json.NewDecoder(r.Body).Decode(&args) != nil || !slices.Contains([]string{"attach", "detach", "validate", "connection", "label"}, externalArg(args, "action")) {
 		externalError(w, 400, "invalid_arguments", "Choose attach or detach for this exact native session.")
 		return
 	}
@@ -208,8 +208,15 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		if purpose != "" {
 			a.Purpose = purpose
 		}
+		a.Label = cleanAgentLabel(externalArg(args, "label"))
 		a.EverAttached = true
 		a.Attachment = &namedAgentAttachment{DeliveryContract: 2, ID: "attach-" + uuid.NewString(), Provider: provider, SessionID: session, ConnectionID: claims.AccessToken.ID, ClientBuild: cleanClientBuild(externalArg(args, "client_build"))}
+	case "label":
+		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") || a.Attachment.ConnectionID != claims.AccessToken.ID {
+			externalError(w, 409, "attachment_changed", "The exact attachment is no longer current.")
+			return
+		}
+		a.Label = cleanAgentLabel(externalArg(args, "label"))
 	case "detach":
 		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") {
 			externalError(w, 409, "attachment_changed", "The exact attachment is no longer current.")
@@ -280,7 +287,10 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		externalCommunicationError(w, 400, "attachment_refused", err)
 		return
 	}
-	out := map[string]any{"agent_id": a.ID, "agent_name": a.Name, "purpose": a.Purpose, "status": externalArg(args, "action") + "ed"}
+	out := map[string]any{"agent_id": a.ID, "agent_name": a.Name, "label": agentLabel(*a), "purpose": a.Purpose, "status": externalArg(args, "action") + "ed"}
+	if externalArg(args, "action") == "label" {
+		log.Printf("[AGENT-LABEL] agent=%s attachment=%s status=updated", a.ID, a.Attachment.ID)
+	}
 	if externalArg(args, "action") == "ack" {
 		out["delivery"] = ackDelivery
 		out["message_id"] = externalArg(args, "message_id")

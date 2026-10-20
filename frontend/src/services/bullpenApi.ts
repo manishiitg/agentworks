@@ -5,6 +5,7 @@ export interface BullpenAgent {
   usage_unavailable?: boolean
   agent_id: string
   agent_name: string
+  label?: string
   target: string
   purpose?: string
   provider?: string
@@ -43,6 +44,7 @@ export interface BullpenNotice {
 export interface BullpenAdminAgent {
   agent_id: string
   agent_name: string
+  label?: string
   purpose?: string
   provider?: string
   online: boolean

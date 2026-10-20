@@ -371,7 +371,7 @@ func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[
 				continue
 			}
 			owner := shareOwnerLabel(sh.OwnerUserID)
-			item := map[string]interface{}{"agent_name": owner + "/" + a.Name, "target": "agent:" + owner + "/" + a.Name, "owner": owner, "shared": true, "capability": sh.Capability, "scope": map[bool]string{true: "everyone", false: "person"}[sh.serverScope()], "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "delivery_mode": agentDeliveryMode(a)}
+			item := map[string]interface{}{"agent_name": owner + "/" + a.Name, "target": "agent:" + owner + "/" + a.Name, "owner": owner, "shared": true, "capability": sh.Capability, "scope": map[bool]string{true: "everyone", false: "person"}[sh.serverScope()], "label": agentLabel(a), "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "delivery_mode": agentDeliveryMode(a)}
 			addAgentPresence(item, a)
 			if !sh.serverScope() {
 				item["expires_at"] = sh.ExpiresAt
@@ -495,7 +495,9 @@ func (api *StreamingAPI) handleBullpenShares(w http.ResponseWriter, r *http.Requ
 		return shares[i]["created_at"].(time.Time).After(shares[j]["created_at"].(time.Time))
 	})
 	w.Header().Set("Cache-Control", "no-store")
-	externalJSON(w, map[string]interface{}{"shares": shares, "blocks": blocks, "shared_with_me": s.sharedAgentItems(claims.UserID, now), "incoming": s.incomingShareActivity(claims.UserID, label)})
+	sharedAgents := s.sharedAgentItems(claims.UserID, now)
+	projectAgentLabels(sharedAgents)
+	externalJSON(w, map[string]interface{}{"shares": shares, "blocks": blocks, "shared_with_me": sharedAgents, "incoming": s.incomingShareActivity(claims.UserID, label)})
 }
 
 func (api *StreamingAPI) createShare(ctx context.Context, owner, agentName, subject string, ttl time.Duration) (map[string]interface{}, int, string, string) {

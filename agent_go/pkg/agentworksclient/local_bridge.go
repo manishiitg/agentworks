@@ -48,15 +48,17 @@ type LocalBridgeRequest struct {
 	NativeRemote     string `json:"native_remote,omitempty"`
 	ConfigPath       string `json:"config_path,omitempty"`
 	AgentName        string `json:"agent_name,omitempty"`
-	Purpose          string `json:"purpose,omitempty"`
-	MessageID        string `json:"message_id,omitempty"`
-	Delivery         string `json:"delivery,omitempty"`
-	Transport        string `json:"transport,omitempty"`
-	Message          string `json:"message,omitempty"`
-	SubmissionID     string `json:"submission_id,omitempty"`
-	Target           string `json:"target,omitempty"`
-	InboxID          string `json:"inbox_id,omitempty"`
-	Cursor           int    `json:"after,omitempty"`
+	// LabelName is the literal NAME supplied at attach, before identity reuse.
+	LabelName    string `json:"label_name,omitempty"`
+	Purpose      string `json:"purpose,omitempty"`
+	MessageID    string `json:"message_id,omitempty"`
+	Delivery     string `json:"delivery,omitempty"`
+	Transport    string `json:"transport,omitempty"`
+	Message      string `json:"message,omitempty"`
+	SubmissionID string `json:"submission_id,omitempty"`
+	Target       string `json:"target,omitempty"`
+	InboxID      string `json:"inbox_id,omitempty"`
+	Cursor       int    `json:"after,omitempty"`
 	// FileName and FileBase64 send a file with a message (send, reply); FileID asks get_file for one.
 	FileName   string `json:"file_name,omitempty"`
 	FileBase64 string `json:"file_base64,omitempty"`
@@ -152,6 +154,7 @@ type localOffer struct {
 }
 
 type localSession struct {
+	LabelName       string `json:"label_name,omitempty"`
 	lateNotice      string // set when an attach finished after its command had given up; said once on the next prompt
 	museWatch       *museWatchState
 	OfflineExplicit bool `json:"offline_explicit,omitempty"`
@@ -210,6 +213,7 @@ var ErrNativeOfferUnconfirmed = errors.New("native offer has no admission receip
 var ErrNativeOfferRejected = errors.New("native offer failed before delivery")
 
 type LocalBridgeOptions struct {
+	ChatLabel   func(AgentAttachment, string) string
 	UsageNow    func() time.Time
 	UsageRead   func(context.Context, AgentAttachment, string, int64) (agentusage.Native, error)
 	HostAlive   func(provider, hostKey string) bool
@@ -642,7 +646,10 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 		defer b.workers.Done()
 		backoff := time.Second
 		for streamCtx.Err() == nil {
-			err := s.client.StreamAgentMessages(streamCtx, s.Attachment, func(m AgentLiveMessage) error {
+			b.mu.Lock()
+			attachment := s.Attachment
+			b.mu.Unlock()
+			err := s.client.StreamAgentMessages(streamCtx, attachment, func(m AgentLiveMessage) error {
 				b.mu.Lock()
 				defer b.mu.Unlock()
 				if b.closed || streamCtx.Err() != nil {
@@ -710,6 +717,12 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 				log.Printf("[BRIDGE-STREAM] connected network=%s agent=%s attachment=%s", s.Network, s.Attachment.AgentName, s.Attachment.ID)
 				_ = b.save()
 				b.wake()
+				// Title lookup must not hold up reconnect or the first message.
+				b.workers.Add(1)
+				go func() {
+					defer b.workers.Done()
+					b.refreshChatLabel(streamCtx, s)
+				}()
 			})
 			b.mu.Lock()
 			s.streamOnline = false
@@ -994,6 +1007,13 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 	}
 	if in.Action == "attach" {
+		if s != nil && s.Attachment.AgentName == in.AgentName {
+			if in.LabelName != "" {
+				s.LabelName = in.LabelName
+				_ = b.save()
+			}
+			b.unlocked(func() { b.refreshChatLabel(callCtx, s) })
+		}
 		// A lease the server closed cannot be repaired in place: the chat's plain attach under its own name starts a fresh
 		// one through the normal path below (a name another live chat holds is still refused there and by the server).
 		closedSameName := s != nil && s.ServerClosed && (in.AgentName == "" || in.AgentName == s.Attachment.AgentName)
@@ -1107,6 +1127,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				break
 			}
 		}
+		if in.LabelName == "" && previous != nil {
+			in.LabelName = previous.LabelName
+		}
 		if connectionPath != "" {
 			if _, e := localConfiguredClient(connectionPath); e != nil {
 				connectionPath = "" // the saved connection file is missing or unreadable: make a fresh one from the login
@@ -1162,7 +1185,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			if err != nil {
 				return fail(err)
 			}
-			options := AgentAttachmentOptions{RejectLiveMove: true, AgentName: in.AgentName, Purpose: in.Purpose, Provider: in.Provider, SessionID: in.SessionID, ClientBuild: b.options.ClientBuild}
+			label := in.AgentName
+			if b.options.ChatLabel != nil {
+				label = b.options.ChatLabel(AgentAttachment{AgentName: in.AgentName, Provider: in.Provider, SessionID: in.SessionID}, in.LabelName)
+			}
+			options := AgentAttachmentOptions{RejectLiveMove: true, AgentName: in.AgentName, Label: label, Purpose: in.Purpose, Provider: in.Provider, SessionID: in.SessionID, ClientBuild: b.options.ClientBuild}
 			a, err := client.AttachAgent(callCtx, options)
 			var apiErr *APIError
 			if err != nil && !res.newConnection && errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403 || apiErr.Status == 400 && apiErr.Code == "invalid_grant") {
@@ -1235,6 +1262,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		var err error
 		next := &localSession{Also: in.Also, OwnCLI: in.OwnAttach && !in.Also, SetupPending: in.Setup && !in.Also, AccountSenders: true, Attachment: a, HostKey: in.HostKey, NativeRemote: in.NativeRemote, ConfigPath: connectionPath, ParentConfigPath: in.ConfigPath, Offers: map[string]localOffer{}, client: client}
+		next.LabelName = in.LabelName
 		if previous != nil && previous.Attachment.AgentID == a.AgentID {
 			next.Offers = previous.Offers
 			next.SeenThrough = previous.SeenThrough
@@ -2182,6 +2210,7 @@ func (b *localBridge) housekeeping(ctx context.Context) {
 		case <-tick.C:
 		}
 		probed := b.probeHosts()
+		var labels []*localSession
 		b.mu.Lock()
 		for _, s := range b.sessions {
 			compactLocalOffers(s, false)
@@ -2195,11 +2224,50 @@ func (b *localBridge) housekeeping(ctx context.Context) {
 			}
 			if s.streamOnline && !s.ServerClosed {
 				b.startNative(s)
+				labels = append(labels, s)
 			}
 		}
 		_ = b.save()
 		b.wake()
 		b.mu.Unlock()
+		for _, s := range labels {
+			b.refreshChatLabel(ctx, s)
+		}
+	}
+}
+
+// Metadata reads and HTTP run outside the global bridge lock. A label update
+// never attaches, moves an address, creates a receipt or restores a closed chat.
+func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
+	if b.options.ChatLabel == nil {
+		return
+	}
+	b.mu.Lock()
+	a, explicitName, client := s.Attachment, s.LabelName, s.client
+	active := !b.closed && !s.Offline && !s.ServerClosed && client != nil
+	b.mu.Unlock()
+	if !active || ctx.Err() != nil {
+		return
+	}
+	label := b.options.ChatLabel(a, explicitName)
+	if label == a.Label {
+		return
+	}
+	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := client.UpdateAgentLabel(callCtx, a, label); err != nil {
+		log.Printf("[BRIDGE-LABEL] agent=%s attachment=%s status=failed", a.AgentName, a.ID)
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, current := range b.sessions {
+		if current == s && current.Attachment.ID == a.ID && !current.Offline && !current.ServerClosed {
+			current.Attachment.Label = label
+			_ = b.save()
+			log.Printf("[BRIDGE-LABEL] agent=%s attachment=%s status=updated", a.AgentName, a.ID)
+			break
+		}
 	}
 }
 
@@ -2214,6 +2282,7 @@ func (b *localBridge) setupContext(ctx context.Context, s *localSession) string 
 	var roster struct {
 		Agents []struct {
 			Name     string `json:"agent_name"`
+			Label    string `json:"label"`
 			Purpose  string `json:"purpose"`
 			Provider string `json:"provider"`
 			Online   bool   `json:"online"`
@@ -2248,7 +2317,7 @@ func (b *localBridge) setupContext(ctx context.Context, s *localSession) string 
 			if a.Online {
 				state = "online"
 			}
-			line, _ := json.Marshal(map[string]string{"agent_name": clean(a.Name), "provider": clean(a.Provider), "presence": state, "purpose": clean(a.Purpose)})
+			line, _ := json.Marshal(map[string]string{"agent_name": clean(a.Name), "label": clean(a.Label), "provider": clean(a.Provider), "presence": state, "purpose": clean(a.Purpose)})
 			text.Write(line)
 			text.WriteByte('\n')
 		}

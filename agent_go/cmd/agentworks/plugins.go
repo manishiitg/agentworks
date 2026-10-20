@@ -204,7 +204,7 @@ func pluginCommand(o *options) *cobra.Command {
 				return pluginBlock(o, err.Error())
 			}
 			if words[1] == "attach" && out.Attached && !out.Offline {
-				rememberAutoAttach(root, req.Provider, input.Cwd, out.Attachment, req.ConfigPath)
+				rememberAutoAttach(root, req.Provider, input.Cwd, out.Attachment, req.ConfigPath, req.LabelName)
 			}
 			if words[1] == "detach" && !out.Attached {
 				forgetDetachedAutoAttach(root, req.Provider, input.Cwd, detachedName, req.SessionID)
@@ -798,7 +798,7 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 			root = configured
 		}
-		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Version: cliVersion, ClientBuild: cliBuild, Notify: notifyAgentWaiting, Ping: notifyPing, HostAlive: cursorAwareHostAlive, UsageRead: readAttachedUsage(root), AutoUpdate: autoUpdateHelperCallback})
+		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Version: cliVersion, ClientBuild: cliBuild, Notify: notifyAgentWaiting, Ping: notifyPing, HostAlive: cursorAwareHostAlive, UsageRead: readAttachedUsage(root), ChatLabel: attachedChatLabel, AutoUpdate: autoUpdateHelperCallback})
 	}}
 	serve.Flags().StringVar(&piRootOverride, "pi-root", "", "Pi SDK configured root")
 	_ = serve.Flags().MarkHidden("pi-root")

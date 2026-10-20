@@ -18,6 +18,7 @@ type AgentAttachment struct {
 	ID        string `json:"attachment_id"`
 	AgentID   string `json:"agent_id"`
 	AgentName string `json:"agent_name"`
+	Label     string `json:"label"`
 	Purpose   string `json:"purpose"`
 	Provider  string `json:"provider"`
 	SessionID string `json:"native_session_id"`
@@ -51,6 +52,7 @@ type AgentLiveMessage struct {
 type AgentAttachmentOptions struct {
 	RejectLiveMove bool   `json:"reject_live_move,omitempty"`
 	AgentName      string `json:"agent_name"`
+	Label          string `json:"label"`
 	Purpose        string `json:"purpose"`
 	Provider       string `json:"provider"`
 	SessionID      string `json:"native_session_id"`
@@ -73,6 +75,14 @@ func (c *Client) AttachAgent(ctx context.Context, opts AgentAttachmentOptions) (
 		return a, errors.New("invalid attachment response")
 	}
 	return a, nil
+}
+
+// UpdateAgentLabel changes only presentation, using the same exact lease.
+func (c *Client) UpdateAgentLabel(ctx context.Context, a AgentAttachment, label string) error {
+	_, err := c.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{
+		"action": "label", "agent_name": a.AgentName, "attachment_id": a.ID, "label": label,
+	}, true)
+	return err
 }
 
 // streamIdleLimit is how long a live stream may stay silent before it is dropped and reopened; tests shorten it.

@@ -244,7 +244,7 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 			return cursorBlock(o, "AgentWorks command was not completed. Check the local bridge and attachment.")
 		}
 		if req.Action == "attach" && cursorAttached(out, req.SessionID, "") {
-			rememberAutoAttach(root, "cursor", cursorFolder(input), out.Attachment, req.ConfigPath)
+			rememberAutoAttach(root, "cursor", cursorFolder(input), out.Attachment, req.ConfigPath, req.LabelName)
 		}
 		if req.Action == "detach" {
 			forgetDetachedAutoAttach(root, "cursor", cursorFolder(input), detachedName, req.SessionID)

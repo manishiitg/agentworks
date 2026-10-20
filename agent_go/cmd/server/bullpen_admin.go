@@ -282,10 +282,10 @@ func (api *StreamingAPI) bullpenAdminRead(ctx context.Context, action string, ar
 			if a.UserID != u.ID {
 				continue
 			}
-			if query != "" && strings.Contains(strings.ToLower(a.Name), query) {
+			if query != "" && strings.Contains(strings.ToLower(a.Name+" "+a.Label), query) {
 				match = true
 			}
-			item := map[string]interface{}{"agent_id": a.ID, "agent_name": a.Name, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "created_at": a.CreatedAt, "attached": a.Attachment != nil, "published": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0}
+			item := map[string]interface{}{"agent_id": a.ID, "agent_name": a.Name, "label": agentLabel(a), "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "created_at": a.CreatedAt, "attached": a.Attachment != nil, "published": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0}
 			addAgentPresence(item, a)
 			if a.Attachment != nil {
 				item["provider"] = a.Attachment.Provider
@@ -296,6 +296,7 @@ func (api *StreamingAPI) bullpenAdminRead(ctx context.Context, action string, ar
 			}
 			agents = append(agents, item)
 		}
+		projectAgentLabels(agents)
 		if !match {
 			continue
 		}

@@ -34,6 +34,7 @@ const personCommandHelp = "AgentWorks: /agentworks share publishes this chat's a
 // Reuse the exact session's saved identity and parent login, even when the
 // default CLI login has changed. The person's attach refreshes the process fence.
 func prepareAttachment(ctx context.Context, root string, o *options, req *agentworksclient.LocalBridgeRequest, cwd string) error {
+	req.LabelName = req.AgentName
 	req.ReuseIdentity = req.AgentName == ""
 	req.Setup = true
 	if err := ensureLocalBridge(ctx, root, o); err != nil {
@@ -86,6 +87,7 @@ func prepareAttachment(ctx context.Context, root string, o *options, req *agentw
 // takeReconnect points a bare attach at an earlier agent and words the one line
 // that tells the person, naming the login when it is not the current default.
 func (o *options) takeReconnect(req *agentworksclient.LocalBridgeRequest, r autoAttachRecord) {
+	req.LabelName = r.LabelName
 	req.AgentName, req.Purpose, req.ConfigPath, req.ReuseIdentity = r.Name, r.Purpose, r.ConfigPath, false
 	login := ""
 	if def, err := o.path(); err == nil {
@@ -181,6 +183,7 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 	var data struct {
 		Agents []struct {
 			Name      string `json:"agent_name"`
+			Label     string `json:"label"`
 			ID        string `json:"agent_id"`
 			Provider  string `json:"provider"`
 			Purpose   string `json:"purpose"`
@@ -246,7 +249,7 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 		if a.Published {
 			shared = " | published to the network"
 		}
-		fmt.Fprintf(&b, "agent:%s | %s | %s | %s%s | %s%s\n", clean(a.Name), clean(a.Provider), presence, route, detail, clean(a.Purpose), shared)
+		fmt.Fprintf(&b, "%s | agent:%s | %s | %s | %s%s | %s%s\n", clean(a.Label), clean(a.Name), clean(a.Provider), presence, route, detail, clean(a.Purpose), shared)
 	}
 	if len(data.Agents) == 0 {
 		b.WriteString("No registered agents.\n")

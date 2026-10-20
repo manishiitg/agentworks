@@ -22,8 +22,8 @@ func TestAutoAttachNeverGuessesBetweenAgents(t *testing.T) {
 	folder := t.TempDir()
 	req := agentworksclient.LocalBridgeRequest{Provider: "claude", SessionID: "s", HostKey: "h"}
 	a := agentworksclient.AgentAttachment{AgentName: "one"}
-	rememberAutoAttach(root, "claude", folder, a, "/login.json")
-	rememberAutoAttach(root, "claude", folder, agentworksclient.AgentAttachment{AgentName: "two"}, "/login.json")
+	rememberAutoAttach(root, "claude", folder, a, "/login.json", "")
+	rememberAutoAttach(root, "claude", folder, agentworksclient.AgentAttachment{AgentName: "two"}, "/login.json", "")
 	if line := autoAttachOnStart(context.Background(), root, &options{}, req, folder); !strings.Contains(line, "/agentworks attach") || strings.Contains(line, "reconnected") {
 		t.Fatalf("several earlier agents must only produce the attach hint: %q", line)
 	}
@@ -36,7 +36,7 @@ func TestAutoAttachNeverGuessesBetweenAgents(t *testing.T) {
 	if line := autoAttachOnStart(context.Background(), root, &options{}, req, folder); line != "" {
 		t.Fatalf("a detached folder has nothing to reconnect: %q", line)
 	}
-	rememberAutoAttach(root, "claude", folder, a, "/login.json")
+	rememberAutoAttach(root, "claude", folder, a, "/login.json", "")
 	t.Setenv("AGENTWORKS_AUTO_ATTACH", "0")
 	if line := autoAttachOnStart(context.Background(), root, &options{}, req, folder); line != "" {
 		t.Fatalf("the kill switch must disable it: %q", line)
@@ -107,7 +107,7 @@ func TestBareAttachTakesMostRecentFreeAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"a", "b", "c"} { // c is the most recent
-		rememberAutoAttach(dir, "claude", folder, agentworksclient.AgentAttachment{AgentName: name}, login)
+		rememberAutoAttach(dir, "claude", folder, agentworksclient.AgentAttachment{AgentName: name}, login, "")
 	}
 	req := agentworksclient.LocalBridgeRequest{Provider: "claude", SessionID: "new", HostKey: "h"}
 	free := freeAutoAttachRecords(context.Background(), dir, req, folder)
