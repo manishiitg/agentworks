@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Bot, ChevronDown, ChevronRight } from 'lucide-react'
+import { Bot } from 'lucide-react'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
 import { PulseIcon } from './workflow/pulseIcon'
 import { ShowFullContentButton, useChatArtifactText, type ChatArtifactRef } from './ChatArtifactExpander'
@@ -49,18 +49,6 @@ export function AgentInboxMessage({ message, timestamp, artifact = null }: { mes
             to full content rather than treating an unknown body as complete. */}
         {artifact && message.bodyTruncated !== false && !full.text && <ShowFullContentButton ref_={artifact} loading={full.loading} error={full.error}
           label="Load full message" onLoad={() => { void full.load().then(() => setExpanded(true)) }} />}
-        <details className="group mt-2 text-xs text-muted-foreground">
-          <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
-            <ChevronRight className="h-3 w-3 group-open:hidden" aria-hidden="true" />
-            <ChevronDown className="hidden h-3 w-3 group-open:block" aria-hidden="true" />
-            Details for developers
-          </summary>
-          <dl className="mt-2 grid gap-1">
-            <dt className="font-medium">Reply address</dt><dd className="select-text break-all font-mono">{message.inboxID}</dd>
-            <dt className="mt-1 font-medium">Message ID</dt><dd className="select-text break-all font-mono">{message.messageID}</dd>
-          </dl>
-          <p className="mt-2 whitespace-pre-wrap break-words leading-5">{message.instructions}</p>
-        </details>
       </div>
     </article>
   )

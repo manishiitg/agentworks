@@ -42,15 +42,10 @@ it('shows the saved incoming message before delivery instructions, with separate
     expect(messageBody.textContent).not.toContain(inboxID)
     expect(messageBody.textContent).not.toContain('send_message')
     expect(messageBody.textContent).not.toContain('Final evidence marker.')
-    const details = card.querySelector('details')!
-    expect(details.open).toBe(false)
-    expect(details.textContent).toContain('Details for developers')
-    expect(details.textContent).toContain(inboxID)
-    expect(details.textContent).toContain(messageID)
-    expect(details.textContent).toContain('Your final chat answer is NOT forwarded.')
+    // No developer details on the card (owner, 2026-10-20): the reply address stays in the agent's own prompt.
+    expect(card.querySelector('details')).toBeNull()
     await act(async () => { card.querySelector('button')!.click() })
     expect(messageBody.textContent).toBe(body)
-    expect(details.open).toBe(false)
     expect(host.querySelectorAll('[data-testid="agent-inbox-message"]')).toHaveLength(1)
     expect(host.textContent).toContain('[Agent message from Reports Builder chat. Conversation/reply address:')
     // Classification uses server fields even when the visible prompt has no envelope.
@@ -90,7 +85,7 @@ it('keeps a delivered artifact summary as an agent card and loads its complete b
     })
     expect(card.querySelector('header + div > div')?.textContent).toBe(body)
     expect(card.textContent).not.toContain('Internal delivery instructions')
-    expect(card.querySelector('details')?.open).toBe(false)
+    expect(card.querySelector('details')).toBeNull()
     expect(card.querySelector('[data-testid="chat-artifact-show-full"]')).toBeNull()
     // An oversized envelope can contain a complete body: no artifact fetch or
     // load affordance is needed, even when that body literally ends in an ellipsis.
