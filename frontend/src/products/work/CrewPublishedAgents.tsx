@@ -58,7 +58,7 @@ export function CrewPublishedAgents({ profileId, projectId }: { profileId: strin
       <button type="button" className="min-w-0 flex-1 rounded px-2 py-1 text-left hover:bg-muted" disabled={busy} onClick={() => void choose(agent)}>{agent.name || 'Untitled agent'}</button>
       <button type="button" className="shrink-0 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted" disabled={busy} onClick={() => void history(agent)} aria-label={`Download a copy of the chat for ${agent.name || 'Untitled agent'}`}>Download copy</button>
     </div>)}
-    {!busy && !error && !agents.length && <p className="text-muted-foreground">Nothing brought in yet. You can bring in a chat you started on your computer and keep working on it inside this Crew.</p>}
+    {!busy && !error && !agents.length && <p className="text-xs text-muted-foreground">Nothing brought in yet. You can bring in a chat you started on your computer and keep working on it inside this Crew.</p>}
     <details className="text-xs text-muted-foreground"><summary className="w-fit cursor-pointer rounded underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">How to bring one in</summary>
       <p className="mt-2 max-w-prose leading-relaxed">On your computer, open the AgentWorks app, choose <strong>Publish to Crew</strong> and pick this Crew. You see what will be shared before anything is sent. Then come back here and open it. Developers can also run <code>agentworks publish</code> from the coding chat.</p>
     </details>
