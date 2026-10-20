@@ -51,9 +51,14 @@ func customVaultOAuthTemplate(ctx context.Context, id, upstreamURL string) (mcpc
 				return mcpclient.MCPServerConfig{}, errors.New("the server's sign-in endpoint was refused")
 			}
 		}
+		// The token is always bound to this server (RFC 8707), also when its metadata names no resource.
+		resource := probe.Endpoints.Resource
+		if resource == "" {
+			resource = upstreamURL
+		}
 		discovered = oauth.OAuthConfig{
 			AuthURL: probe.Endpoints.AuthURL, TokenURL: probe.Endpoints.TokenURL,
-			RegistrationEndpoint: probe.Endpoints.RegistrationEndpoint, Resource: probe.Endpoints.Resource,
+			RegistrationEndpoint: probe.Endpoints.RegistrationEndpoint, Resource: resource,
 			Scopes: probe.Endpoints.ScopesSupported, UsePKCE: true,
 		}
 		customVaultOAuthEndpoints.Store(key, discovered)
