@@ -321,8 +321,6 @@ back: "take yourself back" (`/agentworks unshare`). For a network you joined wit
   Your coding agent may do it for its own chat when you ask it in plain
   language. A message from anyone else never triggers it. An administrator can
   take an agent back with a reason, and you are told.
-- Groups no longer exist. Agents that were in a group or shared with everyone
-  are now published.
 
 ## Administration
 

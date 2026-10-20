@@ -3910,7 +3910,7 @@ func requestLogPath(r *http.Request) string {
 //     `isWorkflowPhase` / workflowPhase* checks scattered below, not via
 //     separate code paths.
 //
-// (A third, deprecated agent_mode="workflow" headless-run path is handled
+// (The direct plan-execution agent_mode="workflow" path is handled
 // separately right after the workflow_phase block.)
 func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	requestReceivedAt := time.Now()
@@ -4690,11 +4690,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// check here — the scattered checks are already the main source of
 	// confusion in this 3k-line function.
 	//
-	// This runs BEFORE the deprecated agent_mode=="workflow" orchestrator branch
+	// This runs BEFORE the direct agent_mode=="workflow" execution branch
 	// to intercept and redirect.
 	//
 	// req.AgentMode is one of: "workflow_phase" (Workflow Builder chat, this
-	// branch), the deprecated "workflow" (see below), or "multi-agent" — the
+	// branch), "workflow" (direct plan execution, see below), or "multi-agent" — the
 	// generic direct-chat mode (model + skills + tools + workspace context)
 	// that the base agentworks surface uses by default and that other product
 	// surfaces (Video Studio, SparkQuill) opt into explicitly for plain chat.
@@ -4868,7 +4868,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Handle workflow mode - use workflow orchestrator.
-	// Deprecated: agent_mode "workflow" is the headless run-without-chat path.
+	// agent_mode "workflow" is the headless direct plan-execution path.
 	// Direct plan execution is used by webhooks and workflow-run tools.
 	// Interactive authoring uses the separate workflow_phase Builder path.
 	if req.AgentMode == "workflow" {
