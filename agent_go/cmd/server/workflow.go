@@ -368,6 +368,7 @@ func writeFileToWorkspace(ctx context.Context, filePath, content string) error {
 	if refusal := publishedWriteRefusal(ctx, filePath); refusal != "" {
 		return fmt.Errorf("%s", refusal)
 	}
+	content = keepWorkflowCreator(ctx, filePath, content)
 	if handled, e := stageTeamWrite(ctx, filePath, content); handled {
 		return e
 	}
@@ -4851,4 +4852,33 @@ func deleteWorkspaceFolderWithCleanup(ctx context.Context, folderPath string) (b
 	}
 	_ = json.Unmarshal(body, &result)
 	return result.Data.CleanupPending, nil
+}
+
+// keepWorkflowCreator keeps a Goal's stored created_by on every write of its workflow.json. created_by names whose
+// Vault the Goal's selected secrets come from (projectSecretsOwner), so no editor, Builder turn or file tool may change
+// it after creation.
+func keepWorkflowCreator(ctx context.Context, filePath, content string) string {
+	parts := strings.Split(strings.Trim(filepath.ToSlash(strings.TrimSpace(filePath)), "/"), "/")
+	if len(parts) != 3 || parts[0] != "Workflow" || parts[2] != "workflow.json" {
+		return content
+	}
+	stored, found, err := readFileFromWorkspace(ctx, filePath)
+	if err != nil || !found {
+		return content
+	}
+	var before, after map[string]json.RawMessage
+	if json.Unmarshal([]byte(stored), &before) != nil || json.Unmarshal([]byte(content), &after) != nil {
+		return content
+	}
+	creator, ok := before["created_by"]
+	if !ok || string(creator) == `""` || string(after["created_by"]) == string(creator) {
+		return content
+	}
+	after["created_by"] = creator
+	encoded, err := json.MarshalIndent(after, "", "  ")
+	if err != nil {
+		return content
+	}
+	log.Printf("[WORKFLOW_MANIFEST] Kept the stored created_by of %s on write", filePath)
+	return string(encoded)
 }
