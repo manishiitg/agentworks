@@ -1088,7 +1088,7 @@ func TestUpdateScheduleClearsMessagesOnlyWhenExplicitlySet(t *testing.T) {
 
 	t.Run("omitting messages leaves existing messages untouched", func(t *testing.T) {
 		callbacks, currentMessages := setup(t)
-		if _, err := callbacks.UpdateSchedule(context.Background(), "run-schedule", "", "", "", nil, false, nil, false, nil, "", nil, false, nil, "", nil, nil, nil); err != nil {
+		if _, err := callbacks.UpdateSchedule(context.Background(), "run-schedule", "", "", "", nil, false, nil, false, nil, "", nil, false, nil, "", nil, nil); err != nil {
 			t.Fatalf("UpdateSchedule() error = %v", err)
 		}
 		if got := currentMessages(); len(got) != 1 {
@@ -1105,7 +1105,7 @@ func TestUpdateScheduleClearsMessagesOnlyWhenExplicitlySet(t *testing.T) {
 	// indistinguishable from "omitted".
 	t.Run("explicit empty array clears messages (nil-slice parsing shape)", func(t *testing.T) {
 		callbacks, currentMessages := setup(t)
-		if _, err := callbacks.UpdateSchedule(context.Background(), "run-schedule", "", "", "", nil, false, nil, false, nil, "", nil, true, nil, "", nil, nil, nil); err != nil {
+		if _, err := callbacks.UpdateSchedule(context.Background(), "run-schedule", "", "", "", nil, false, nil, false, nil, "", nil, true, nil, "", nil, nil); err != nil {
 			t.Fatalf("UpdateSchedule() error = %v", err)
 		}
 		if got := currentMessages(); len(got) != 0 {
@@ -1119,7 +1119,7 @@ func TestUpdateScheduleClearsMessagesOnlyWhenExplicitlySet(t *testing.T) {
 	// UpdateSchedule must trust either way.
 	t.Run("explicit empty array clears messages (non-nil empty-slice parsing shape)", func(t *testing.T) {
 		callbacks, currentMessages := setup(t)
-		if _, err := callbacks.UpdateSchedule(context.Background(), "run-schedule", "", "", "", nil, false, nil, false, nil, "", []string{}, true, nil, "", nil, nil, nil); err != nil {
+		if _, err := callbacks.UpdateSchedule(context.Background(), "run-schedule", "", "", "", nil, false, nil, false, nil, "", []string{}, true, nil, "", nil, nil); err != nil {
 			t.Fatalf("UpdateSchedule() error = %v", err)
 		}
 		if got := currentMessages(); len(got) != 0 {
@@ -1129,7 +1129,7 @@ func TestUpdateScheduleClearsMessagesOnlyWhenExplicitlySet(t *testing.T) {
 
 	t.Run("explicit null clears messages", func(t *testing.T) {
 		callbacks, currentMessages := setup(t)
-		if _, err := callbacks.UpdateSchedule(context.Background(), "run-schedule", "", "", "", nil, false, nil, false, nil, "", nil, true, nil, "", nil, nil, nil); err != nil {
+		if _, err := callbacks.UpdateSchedule(context.Background(), "run-schedule", "", "", "", nil, false, nil, false, nil, "", nil, true, nil, "", nil, nil); err != nil {
 			t.Fatalf("UpdateSchedule() error = %v", err)
 		}
 		if got := currentMessages(); len(got) != 0 {
