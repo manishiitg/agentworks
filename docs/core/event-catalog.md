@@ -266,7 +266,6 @@ Producers:
 - `mcpagent/agent/parallel_tool_execution.go`
 - `mcpagent/agent/conversation.go`
 - `mcp-agent-builder-go/agent_go/cmd/schema-gen/main.go`
-- `mcp-agent-builder-go/agent_go/cmd/testing/context-cancellation-test.go`
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/context_aware_bridge.go`
 Consumers:
 - `mcp-agent-builder-go/frontend/src/stores/useChatStore.ts`
