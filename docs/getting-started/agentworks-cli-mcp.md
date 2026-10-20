@@ -785,7 +785,7 @@ The CLI uses the same saved login as AgentBridge. The first run opens browser si
 `--foreground` keeps the terminal open, and `--background` skips that choice. The current folder is not shared automatically.
 AgentBridge keeps its existing chat attachments; `start` does not attach a chat for you.
 
-In **Crew → Settings → Laptop access**, choose your connected computer, browse its folders and add the ones this Crew needs.
+Open **Crew → Connections → Local laptop** (the same page as **Settings → Laptop access**) and choose your connected computer, browse its folders and add the ones this Crew needs.
 Each folder has **Read** or **Read & write** access. Read lets the agent read and copy files into Crew, with no arbitrary local
 commands. Read & write also enables local commands. Changes apply to the next operation without restarting the CLI.
 Permissions belong to this Crew and this computer; another Crew does not inherit them. Sharing a Crew does not share your laptop.

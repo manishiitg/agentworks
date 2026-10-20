@@ -56,6 +56,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     {allowed('mcp') && <Group title="Connections">
       <WorkspaceConnectionRows onOpen={openConnection} workMode enabledPanels={enabledPanels} details={{ 'mcp:connected': status.mcps === undefined ? undefined : status.mcps ? String(status.mcps) : 'None' }} />
       {projectId && <Row icon={Laptop} detail={status.computerChats === undefined ? undefined : status.computerChats ? String(status.computerChats) : 'None'} onClick={() => openConnection('agents')}>Chats from your computer</Row>}
+      {allowed('identity') && <Row icon={Laptop} onClick={() => { setWorkspaceViewTarget('identity', 'location'); onOpen('identity') }}>Local laptop</Row>}
       <WorkspaceAgentBridgeRows />
     </Group>}
     <Group title="Ops" collapsed>

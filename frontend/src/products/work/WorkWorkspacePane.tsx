@@ -84,7 +84,8 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
     ...(canConnect ? projectChannelSections(bots, bots).map(item => ({ id: `mcp:${item.id}`, label: item.label, group: 'Use & share' })) : []),
     ...(canConnect ? projectConnectionSections({ allowedProducts, workMode: true, enabledPanels, onOpen: () => {} }).map(item => ({ id: item.id, label: item.label, group: 'Connections' })) : []),
     ...(canConnect ? [{ id: 'mcp:agents', label: 'Chats from your computer', group: 'Connections' }] : []),
-    ...admitted.filter(item => !['dashboard', 'browser', 'schedules', 'mcp'].includes(item.id)).map(item => ({ id: item.id, label: item.label, group: 'Ops', sections: workPanelSections(item.id, isCode).filter(section => item.id !== 'memory' || !enabledPanels || enabledPanels.has(section.id)) })),
+    ...(canConnect && has('identity') ? [{ id: 'identity:location', label: 'Local laptop', group: 'Connections' }] : []),
+    ...admitted.filter(item => !['dashboard', 'browser', 'schedules', 'mcp'].includes(item.id)).map(item => ({ id: item.id, label: item.label, group: 'Ops', sections: workPanelSections(item.id, isCode).filter(section => (item.id !== 'identity' || section.id !== 'location') && (item.id !== 'memory' || !enabledPanels || enabledPanels.has(section.id))) })),
   ], (key, section) => {
     const [id, destination] = key.split(':')
     const target = destination ?? section
