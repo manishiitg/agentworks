@@ -38,7 +38,7 @@ it('restores the server queue and keeps a failed remove visible until the server
     await flush()
     expect(host.textContent).toContain('Review the settings page.')
     expect(host.querySelector('[title="Sends automatically when the current turn finishes"]')).toBeTruthy()
-    expect(host.textContent).not.toContain('Steer now')
+    expect(host.textContent).toContain('Steer now')
     fixture.remove.mockRejectedValueOnce(new Error('network unavailable'))
     const remove = () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Remove')!
     await act(async () => remove().click())
