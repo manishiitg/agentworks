@@ -459,13 +459,20 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 		}
 		person = owner
 	}
-	// Authorized Vault connections are defaults for every product, even when
-	// the project selects no MCPs. Cache discovery once; live calls still
-	// recheck the actor's current grants and argument rules at the gateway.
+	// A product that picks Vault connections gets only those (MCPs come from Vault, owner 2026-10-20); one that picks
+	// none keeps every authorized Vault connection as its default. Cache discovery once; live calls still recheck the
+	// actor's current grants and argument rules at the gateway.
 	rows, inventoryErr := vaultServersFor(ctx, person)
 	ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{person, rows, inventoryErr})
 	names = append([]string(nil), names...)
-	if inventoryErr == nil {
+	picksVault := false
+	for _, name := range names {
+		if strings.HasPrefix(strings.TrimSpace(name), "vault_") {
+			picksVault = true
+			break
+		}
+	}
+	if inventoryErr == nil && !picksVault {
 		for _, row := range rows {
 			names = append(names, vaultServerName(row.ID))
 		}

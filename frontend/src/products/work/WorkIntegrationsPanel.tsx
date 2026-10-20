@@ -77,7 +77,7 @@ export function WorkMCPTabBody({ tabId, projectId, workspacePath, onAsk, onSelec
 
   return (
     <div className="flex flex-col gap-3">
-      {vault ? <ProjectVaultPanel selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} disabled={!canEdit} /> : <ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun="Crew" canEdit={canEdit} onAsk={onAsk}
+      {vault ? <ProjectVaultPanel selectedSecrets={selectedSecrets} onSelectedSecretsChange={onSelectedSecretsChange} selectedServers={selectedServers} onSelectedServersChange={setSelected} disabled={!canEdit} /> : <ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun="Crew" canEdit={canEdit} onAsk={onAsk}
         selectedServers={selectedServers} onSelectedServersChange={setSelected} />}
     </div>
   )

@@ -421,6 +421,8 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
                       }}
                     />}
                   vault={<ProjectVaultPanel disabled={!canWriteWorkflow} selectedSecrets={capabilities.selected_global_secret_names ?? []}
+                    selectedServers={capabilities.selected_servers}
+                    onSelectedServersChange={async selected_servers => { const next = { ...latest.current.capabilities, selected_servers }; await persist(next, true); setCapabilities(next) }}
                     onSelectedSecretsChange={async selected_global_secret_names => { const next = { ...latest.current.capabilities, selected_global_secret_names }; await persist(next, true); setCapabilities(next) }} />}
                 />}
                 {!relayMode && activeMcpTab === 'brain' && workspacePath && (
