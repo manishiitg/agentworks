@@ -342,6 +342,12 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 		}) {
 			out["update_notice"] = cliUpdateNotice
 		}
+		// The same one list as inside the app (PLAT-861-297): Crews, Goals and Relays this person owns or that are
+		// shared with them, with their functions, next to their AgentBridge agents.
+		if directory, err := listAgentDirectory(r.Context(), claims); err == nil {
+			out["agents"] = directory["agents"]
+			out["how_to_call"] = "Crew: call_crew_function(crew_id, function) or ask_crew(crew_id). Goal: call_workflow_function(workflow_id, function). Relay: run_relay(workflow_id). Connected agent: messages action=send target=agent:<name>."
+		}
 		externalJSON(w, out)
 	case "state":
 		api.externalAgentMessageState(w, r, args)
@@ -422,7 +428,7 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 }
 
 func externalAgentMessageDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("messages", "AgentBridge messages use an inbox for normal MCP sign-ins from apps without a terminal, or the live CLI bridge for attached coding chats. Register an agent_name, list_agents, send, read, reply with send in the same inbox_id, or ack your incoming messages. Inbox names receive nothing pushed into the app: check when the person asks or at the start of a conversation. The CLI gives live delivery if you can install it. The server shows the route and whether the recipient has acknowledged it. Existing account, connection, sharing, size and rate checks apply. Normal final chat replies are not forwarded. No attachment or selection of another chat is available here. Read/send product conversations through their existing access. Read results use non-destructive cursors; wait_seconds is at most 25. State inspects only owned product delivery metadata. CLI bridge receipt arguments remain compatible.", false, false, map[string]any{
+	add("messages", "AgentBridge messages use an inbox for normal MCP sign-ins from apps without a terminal, or the live CLI bridge for attached coding chats. Register an agent_name; list_agents lists every agent you can use (Crews, Goals and Relays you own or that are shared with you, with their functions and ids, and your AgentBridge agents); send, read, reply with send in the same inbox_id, or ack your incoming messages. Inbox names receive nothing pushed into the app: check when the person asks or at the start of a conversation. The CLI gives live delivery if you can install it. The server shows the route and whether the recipient has acknowledged it. Existing account, connection, sharing, size and rate checks apply. Normal final chat replies are not forwarded. No attachment or selection of another chat is available here. Read/send product conversations through their existing access. Read results use non-destructive cursors; wait_seconds is at most 25. State inspects only owned product delivery metadata. CLI bridge receipt arguments remain compatible.", false, false, map[string]any{
 		"usage_timezone":         map[string]any{"type": "string", "description": "Optional IANA timezone for owner-only native hourly-reading daily totals (default UTC)."},
 		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "send", "read", "state", "ack", "update_purpose", "ping_person", "get_file"}},
 		"purpose":                externalString("What this attached agent works on; 1 to 512 characters."),

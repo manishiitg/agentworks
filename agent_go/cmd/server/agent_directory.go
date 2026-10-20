@@ -16,6 +16,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 		return map[string]interface{}{"agents": []map[string]interface{}{}}, nil
 	}
 	agents := []map[string]interface{}{}
+	// The same rows on the website and over MCP: the person's live access decides, not connection scopes.
 	crews, err := listAccessibleWorkspaceProjects(ctx, claims, "")
 	if err != nil {
 		return nil, err
@@ -39,7 +40,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			kind = "code"
 		}
 		row := map[string]interface{}{
-			"kind": kind, "id": "workspace:" + profileID + ":" + id, "name": name, "owner": crew["owner"],
+			"kind": kind, "id": "workspace:" + profileID + ":" + id, "crew_id": id, "name": name, "owner": crew["owner"],
 			"your_access": crew["access"], "description": crew["description"], "functions": agentDirectoryFunctions(functions),
 			"reach": "call_function(target=<id>, function=<name>) for a function; send_message(target=<id>) to ask it",
 		}
@@ -65,7 +66,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			access = "editor"
 		}
 		agents = append(agents, map[string]interface{}{
-			"kind": kind, "id": "workflow:" + manifest.ID, "name": firstNonEmptyTrimmed(manifest.Label, workflow.WorkspacePath),
+			"kind": kind, "id": "workflow:" + manifest.ID, "workflow_id": manifest.ID, "name": firstNonEmptyTrimmed(manifest.Label, workflow.WorkspacePath),
 			"your_access": access, "description": strings.TrimSpace(manifest.Description), "functions": agentDirectoryFunctions(workflowFunctions(manifest)),
 			"reach": "call_function(target=<id>, function=<name>)",
 		})
