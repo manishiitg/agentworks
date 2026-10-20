@@ -639,7 +639,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeGenericAgent(
 			Description:   response.InstructionsToSubAgent,
 			ContextOutput: FlexibleContextOutput(fmt.Sprintf("%s-result.json", todoIDPart)),
 		},
-		HasLoop: false,
 		// Generic agents do not contribute learnings and skip pre-validation, but
 		// they still inherit execution-mode settings from the parent step.
 		AgentConfigs: func() *AgentConfigs {

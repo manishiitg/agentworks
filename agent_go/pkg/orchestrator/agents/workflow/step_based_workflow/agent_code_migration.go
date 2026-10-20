@@ -395,7 +395,6 @@ func convertLegacyCodeSequence(
 				ContextOutput:       FlexibleContextOutput(strings.Join(item.OutputFiles, ", ")),
 				ValidationSchema:    validation,
 			},
-			HasLoop: false,
 		}
 		raw, err := json.Marshal(regular)
 		if err != nil {

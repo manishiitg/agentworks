@@ -522,13 +522,9 @@ type ScriptedPlanStep struct {
 	CommonStepFields
 	// ScriptOnly executes the saved main.py without agent generation or repair.
 	// Flow script nodes use this on the existing scripted step executor.
-	ScriptOnly      bool          `json:"script_only,omitempty"`
-	NextStepID      string        `json:"next_step_id,omitempty"`     // Optional explicit successor; empty preserves sequential execution
-	HasLoop         bool          `json:"has_loop"`                   // DEPRECATED: loop feature removed, kept for JSON backward compatibility
-	LoopCondition   string        `json:"loop_condition,omitempty"`   // DEPRECATED: loop feature removed
-	MaxIterations   int           `json:"max_iterations,omitempty"`   // DEPRECATED: loop feature removed
-	LoopDescription string        `json:"loop_description,omitempty"` // DEPRECATED: loop feature removed
-	AgentConfigs    *AgentConfigs `json:"-"`                          // runtime: per-agent configuration (LLM, max turns, toggles) - not stored in plan.json
+	ScriptOnly   bool          `json:"script_only,omitempty"`
+	NextStepID   string        `json:"next_step_id,omitempty"` // Optional explicit successor; empty preserves sequential execution
+	AgentConfigs *AgentConfigs `json:"-"`                      // runtime: per-agent configuration (LLM, max turns, toggles) - not stored in plan.json
 }
 
 // Implement PlanStepInterface for ScriptedPlanStep
@@ -1036,10 +1032,6 @@ type PartialPlanStep struct {
 	ClearDescription    bool                  `json:"clear_description,omitempty"`    // Optional: Clear legacy descriptions that are no longer valid for routing steps
 	ContextDependencies []string              `json:"context_dependencies,omitempty"` // Optional: Updated context dependencies
 	ContextOutput       FlexibleContextOutput `json:"context_output,omitempty"`       // Optional: Updated context output
-	HasLoop             *bool                 `json:"has_loop,omitempty"`             // DEPRECATED: loop feature removed, kept for JSON backward compatibility
-	LoopCondition       string                `json:"loop_condition,omitempty"`       // DEPRECATED: loop feature removed
-	MaxIterations       *int                  `json:"max_iterations,omitempty"`       // DEPRECATED: loop feature removed
-	LoopDescription     string                `json:"loop_description,omitempty"`     // DEPRECATED: loop feature removed
 	// Todo task step fields
 	PredefinedRoutes []PlanOrchestrationRoute `json:"predefined_routes,omitempty"` // Optional: Updated predefined routes for agent steps
 	// Routing fields

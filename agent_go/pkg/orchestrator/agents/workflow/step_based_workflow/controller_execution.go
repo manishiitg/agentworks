@@ -1687,14 +1687,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 			default:
 			}
 
-			// Set loop template vars to empty (loop feature removed)
-			templateVars["HasLoop"] = "false"
-			templateVars["LoopCondition"] = ""
-			templateVars["LoopDescription"] = ""
-			templateVars["CurrentIteration"] = ""
-			templateVars["MaxIterations"] = ""
-			templateVars["PreviousIterationOutput"] = ""
-
 			// Signal whether this workflow has agent-browser or CDP available. Downstream prompt builders use this to gate
 			// the browser-specific main.py authoring rules + DOM probe so non-browser workflows
 			// don't pay the prompt tax. Note: empty browserMode means "auto-detect", NOT "no

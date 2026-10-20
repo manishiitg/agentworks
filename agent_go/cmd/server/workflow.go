@@ -1999,12 +1999,6 @@ type PlanStepUpdate struct {
 	ContextDependencies *[]string                                  `json:"context_dependencies,omitempty"`
 	ContextOutput       *todo_creation_human.FlexibleContextOutput `json:"context_output,omitempty"`
 
-	// Scripted step fields
-	HasLoop         *bool   `json:"has_loop,omitempty"`
-	LoopCondition   *string `json:"loop_condition,omitempty"`
-	MaxIterations   *int    `json:"max_iterations,omitempty"`
-	LoopDescription *string `json:"loop_description,omitempty"`
-
 	// Agent and routing step fields
 	NextStepID *string `json:"next_step_id,omitempty"`
 
@@ -2374,18 +2368,6 @@ func updateStepInPlan(plan *todo_creation_human.PlanningResponse, stepID string,
 	case *todo_creation_human.ScriptedPlanStep:
 		updated := *s // Copy the step
 		applyCommonFields(&updated.CommonStepFields, updates)
-		if updates.HasLoop != nil {
-			updated.HasLoop = *updates.HasLoop
-		}
-		if updates.LoopCondition != nil {
-			updated.LoopCondition = *updates.LoopCondition
-		}
-		if updates.MaxIterations != nil {
-			updated.MaxIterations = *updates.MaxIterations
-		}
-		if updates.LoopDescription != nil {
-			updated.LoopDescription = *updates.LoopDescription
-		}
 		updatedStep = &updated
 
 	case *todo_creation_human.AgentPlanStep:
