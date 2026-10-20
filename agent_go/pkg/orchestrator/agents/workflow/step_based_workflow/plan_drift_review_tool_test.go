@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsemodules"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
@@ -48,22 +47,10 @@ func TestValidateStepDriftChecksRejectsPlaceholderEvidence(t *testing.T) {
 func TestValidateStepDriftChecksAcceptsRealEvidence(t *testing.T) {
 	err := validateStepDriftChecks([]StepDriftCheck{
 		{CheckID: "report_query_compatibility", Status: "pass", Evidence: "all 3 report queries ran cleanly against the current schema"},
-		{CheckID: "step_description_accuracy", Status: "fail", Evidence: "description says it reads leads; step only reads campaigns", FindingID: "PUL-1234ABCD"},
+		{CheckID: "step_description_accuracy", Status: "fail", Evidence: "description says it reads leads; step only reads campaigns"},
 	})
 	if err != nil {
 		t.Fatalf("expected valid checks to pass, got: %v", err)
-	}
-}
-
-func TestValidateStepDriftChecksRejectsFailWithoutFindingID(t *testing.T) {
-	err := validateStepDriftChecks([]StepDriftCheck{
-		{CheckID: "step_description_accuracy", Status: "fail", Evidence: "description says it reads leads; step only reads campaigns"},
-	})
-	if err == nil {
-		t.Fatal("expected an error for a fail-status check with no finding_id")
-	}
-	if !strings.Contains(err.Error(), "finding_id is required") {
-		t.Fatalf("error %q does not mention the finding_id requirement", err.Error())
 	}
 }
 
@@ -105,123 +92,14 @@ func newPlanDriftReviewTestExecutorForWorkspace(workspacePath string, files map[
 // agreed corrective contract's atomicity requirement: record_pulse_finding
 // must have already run and persisted before record_plan_drift_review will
 // mark that check reviewed.
-func TestRecordPlanDriftReviewExecutorRequiresRealFindingForFailStatus(t *testing.T) {
-	ctx := context.Background()
-	ws := concernsWorkspace(t)
-	finding := structuredFinding(pulsemodules.PlanDriftReviewID, "PLANDRIFT-TEST-1", "step-a's report query no longer resolves")
-	finding.StepID = "step-a"
-	recordTestReviewFinding(t, ws, "pulse-1", finding)
-	findings, err := LoadPulseFindingLifecycles(ctx, ws, "", -1)
-	if err != nil {
-		t.Fatalf("load findings: %v", err)
-	}
-	if len(findings) != 1 {
-		t.Fatalf("expected 1 finding, got %d", len(findings))
-	}
-	realID := findings[0].IssueID
-
-	files := map[string]string{"planning/step_config.json": `{"steps":[{"id":"step-a"}]}`}
-	executor := newPlanDriftReviewTestExecutorForWorkspace(ws, files)
-
-	if _, err := executor(ctx, map[string]interface{}{
-		"step_id": "step-a",
-		"checks": []interface{}{
-			map[string]interface{}{"check_id": "report_query_compatibility", "status": "fail", "evidence": "the query against emails now errors: no such column", "finding_id": "PUL-FABRICATED"},
-		},
-	}); err == nil || !strings.Contains(err.Error(), "does not match any active Pulse finding") {
-		t.Fatalf("expected rejection for a fabricated finding_id, got: %v", err)
-	}
-
-	if _, err := executor(ctx, map[string]interface{}{
-		"step_id": "step-a",
-		"checks": []interface{}{
-			map[string]interface{}{"check_id": "report_query_compatibility", "status": "fail", "evidence": "the query against emails now errors: no such column", "finding_id": realID},
-		},
-	}); err != nil {
-		t.Fatalf("expected acceptance for a real finding_id %q, got: %v", realID, err)
-	}
-	var out StepConfigFile
-	if err := json.Unmarshal([]byte(files[ws+"/planning/step_config.json"]), &out); err != nil {
-		t.Fatalf("decode updated step config: %v", err)
-	}
-	if len(out.Steps) != 1 || out.Steps[0].AgentConfigs == nil || out.Steps[0].AgentConfigs.DriftReview == nil {
-		t.Fatalf("missing persisted drift review: %+v", out.Steps)
-	}
-	if !out.Steps[0].AgentConfigs.DriftReview.NeedsReview {
-		t.Fatal("an unresolved failed drift check must remain due so later reviewers cannot run against a stale plan")
-	}
-}
 
 // A finding_id that exists but is already resolved must be rejected — a
 // closed-out finding does not prove anything is currently being tracked, so
 // referencing one is exactly as fraudulent as referencing an unrelated one.
-func TestRecordPlanDriftReviewExecutorRejectsResolvedFinding(t *testing.T) {
-	ctx := context.Background()
-	ws := concernsWorkspace(t)
-	finding := structuredFinding(pulsemodules.PlanDriftReviewID, "PLANDRIFT-RESOLVED-1", "step-a's report query no longer resolves")
-	finding.StepID = "step-a"
-	recordTestReviewFinding(t, ws, "pulse-1", finding)
-	findings, err := LoadPulseFindingLifecycles(ctx, ws, "", -1)
-	if err != nil {
-		t.Fatalf("load findings: %v", err)
-	}
-	if len(findings) != 1 {
-		t.Fatalf("expected 1 finding, got %d", len(findings))
-	}
-	realID := findings[0].IssueID
-	fingerprint := findings[0].Fingerprint
-
-	db, err := openRunConcernsDB(ctx, ws, false)
-	if err != nil || db == nil {
-		t.Fatalf("open db: %v", err)
-	}
-	if _, err := db.ExecContext(ctx, `UPDATE run_concerns SET status=? WHERE fingerprint=?`, ConcernStatusResolved, fingerprint); err != nil {
-		db.Close()
-		t.Fatalf("mark resolved: %v", err)
-	}
-	db.Close()
-
-	files := map[string]string{"planning/step_config.json": `{"steps":[{"id":"step-a"}]}`}
-	executor := newPlanDriftReviewTestExecutorForWorkspace(ws, files)
-	if _, err := executor(ctx, map[string]interface{}{
-		"step_id": "step-a",
-		"checks": []interface{}{
-			map[string]interface{}{"check_id": "report_query_compatibility", "status": "fail", "evidence": "the query against emails now errors: no such column", "finding_id": realID},
-		},
-	}); err == nil || !strings.Contains(err.Error(), "does not match any active Pulse finding") {
-		t.Fatalf("expected rejection for a resolved finding_id, got: %v", err)
-	}
-}
 
 // A finding_id that exists and is active, but was filed against a DIFFERENT
 // step, must be rejected — a real active finding does not prove it belongs
 // to THIS step's drift failure.
-func TestRecordPlanDriftReviewExecutorRejectsFindingForDifferentStep(t *testing.T) {
-	ctx := context.Background()
-	ws := concernsWorkspace(t)
-	finding := structuredFinding(pulsemodules.PlanDriftReviewID, "PLANDRIFT-OTHERSTEP-1", "step-b's own unrelated issue")
-	finding.StepID = "step-b"
-	recordTestReviewFinding(t, ws, "pulse-1", finding)
-	findings, err := LoadPulseFindingLifecycles(ctx, ws, "", -1)
-	if err != nil {
-		t.Fatalf("load findings: %v", err)
-	}
-	if len(findings) != 1 {
-		t.Fatalf("expected 1 finding, got %d", len(findings))
-	}
-	realIDForOtherStep := findings[0].IssueID
-
-	files := map[string]string{"planning/step_config.json": `{"steps":[{"id":"step-a"}]}`}
-	executor := newPlanDriftReviewTestExecutorForWorkspace(ws, files)
-	if _, err := executor(ctx, map[string]interface{}{
-		"step_id": "step-a",
-		"checks": []interface{}{
-			map[string]interface{}{"check_id": "report_query_compatibility", "status": "fail", "evidence": "the query against emails now errors: no such column", "finding_id": realIDForOtherStep},
-		},
-	}); err == nil || !strings.Contains(err.Error(), "does not match any active Pulse finding") {
-		t.Fatalf("expected rejection for a finding filed against a different step, got: %v", err)
-	}
-}
 
 func TestRecordPlanDriftReviewExecutorWritesNewRecord(t *testing.T) {
 	ctx := context.Background()

@@ -4,7 +4,7 @@ Use an experiment when a meaningful choice is uncertain, not as a compulsory
 step for every improvement. Test a coherent change, which may remove or combine
 work; define the metric and direction, comparable baseline, relevant sample or
 outcome window, and rollback condition. Ask Builder to implement within existing
-permissions. Save the hypothesis and `check_at` on the existing Goal Work item.
+permissions. Save the hypothesis and `check_at` on the Pulse conversation.
 
 When due, compare like with like and check alternative explanations:
 - Worked: useful movement beyond normal variation without harming constraints.

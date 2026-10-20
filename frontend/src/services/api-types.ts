@@ -551,7 +551,6 @@ export interface ReportHumanInput {
   /** Answered decisions only: the Builder chat message that applies it (Needs you "Apply in chat"). */
   apply_message?: string
   /** The Pulse's recommended answer (PLAT-697), kept apart from the owner's answer. */
-  recommendation?: PulseRecommendation
   withdrawal?: {
     reason: string
     evidence: string[]
@@ -562,31 +561,9 @@ export interface ReportHumanInput {
 }
 
 /** The Pulse's recommendation on one decision; also that decision's log entry (PLAT-697). */
-export interface PulseRecommendation {
-  input_id: string
-  option_id?: string
-  option_title?: string
-  answer?: string
-  why: string
-  evidence?: string
-  confidence: 'low' | 'medium' | 'high' | string
-  blocks?: string
-  safe_default_by?: string
-  recommended_by: string
-  recommended_at: string
-  /** '' while waiting; accepted, changed or dismissed once the owner responds. */
-  owner_response?: 'accepted' | 'changed' | 'dismissed' | ''
-  owner_answer?: string
-  responded_at?: string
-  outcome?: string
-  outcome_at?: string
-}
 
-export interface PulseDecisionLogEntry extends PulseRecommendation {
-  question: string
-  decision_status: string
-  recommended: string
-}
+
+
 
 /** One line of the Pulse conversation shown in the Pulse tab (PLAT-697 phase 4). */
 export interface GoalLeadMessage {
@@ -609,32 +586,12 @@ export interface GoalLeadConversation {
 }
 
 /** A focus area's lifecycle: proposed by the Pulse, confirmed by the owner, tracked, closed. */
-export interface PulseFocusArea {
-  id: string
-  text: string
-  status: 'proposed' | 'active' | 'done' | 'expired' | 'dropped'
-  end_date?: string
-  check?: string
-  why?: string
-  proposed_by?: 'goal_lead' | 'owner' | string
-  progress?: 'moving' | 'stuck' | 'done' | string
-  progress_note?: string
-  tracked_at?: string
-  closed_at?: string
-  lesson?: string
-}
+
 
 export interface GoalLeadResponse {
-  success: boolean
-  memory: string
-  memory_path: string
-  memory_error?: string
-  decision_log: PulseDecisionLogEntry[]
-  decision_log_error?: string
-  answer_mode?: 'recommend' | 'act'
-  conversation?: GoalLeadConversation
-  focus_areas?: PulseFocusArea[]
-  error?: string
+ success: boolean
+ conversation?: GoalLeadConversation
+ error?: string
 }
 
 export interface ReportHumanInputsResponse {
@@ -651,89 +608,24 @@ export interface ReportHumanInputResponse {
   apply_message?: string
 }
 
-export interface PulseModuleState {
-  workspace_path: string
-  module: string
-  last_pulse_run_id?: string
-  last_checked_at?: string
-  last_ran_at?: string
-  last_decision?: string
-  last_reason?: string
-  last_gate_decision?: string
-  last_result?: string
-  last_result_reason?: string
-  next_check_at?: string
-  next_check_after_run_id?: string
-  cooldown_runs?: number
-  evidence?: string[]
-  updated_at?: string
-}
 
-export interface PulsePlanDriftDueItem {
-  step_id: string
-  step_type?: string
-  reason: string
-}
 
-export interface PulseRunMode {
-  workspace_path: string
-  pulse_run_id: string
-  mode: 'backlog_drain' | 'discovery' | 'strategy' | 'observe' | string
-  reason: string
-  recorded_at: string
-}
 
-export interface PulseReviewFocus {
-  workspace_path: string
-  module: string
-  focus_key: string
-  last_pulse_run_id?: string
-  last_reviewed_at?: string
-  last_verdict?: string
-  last_selection_reason?: string
-  route_scope?: string
-  next_check_at?: string
-  next_check_reason?: string
-  updated_at: string
-  review_count?: number
-  route_review_count?: number
-  deferred_focuses?: string[]
-  issue_ids?: string[]
-  evidence?: string[]
-}
 
-export interface PulseLoopClosureFinding {
-  kind: 'answer_not_applied' | 'decision_waiting_on_user' | 'concern_keeps_recurring' | string
-  severity: 'high' | 'medium' | string
-  subject: string
-  detail: string
-  evidence: string
-  age_days: number
-  id?: string
-}
 
-export interface PulseShadowSignalObservation {
-  workspace_path: string
-  pulse_run_id: string
-  detector: string
-  detector_version: string
-  observed_at: string
-  coverage_status: 'verified' | 'partial' | 'not_instrumented' | 'unavailable' | string
-  coverage_reason?: string
-  signals: PulseLoopClosureFinding[]
-  recorded_at: string
-}
+
+
+
+
+
+
 
 export interface PulseOverviewResponse {
-  success: boolean
-  impact?: PulseImpactLedger | null
-  next_pulse?: PulseNextRun | null
-  goal_status?: PulseGoalStatus | null
-  last_change?: PulseGoalWorkItem | null
-  outward_actions?: PulseOutwardActions
-  has_soul?: boolean
-  run_setup?: WorkflowRunSetup | null
-  error?: string
+ success: boolean
+ outward_actions?: PulseOutwardActions
+ has_soul?: boolean
+ run_setup?: WorkflowRunSetup
+ error?: string
 }
 
 /** What runs for a workflow whoever manages it (shown on the Pulse tab when Pulse is off). */
@@ -746,160 +638,25 @@ export interface WorkflowRunSetup {
 export type PulseOutwardActions = 'ask' | 'allow'
 
 /** One code-computed silence alarm (PLAT-697): no run or no goal reading for days. */
-export interface PulseGoalAlarm {
-  /** Current facts use measurement/no-run kinds; stored historical checks retain their original text. */
-  kind: string
-  days?: number
-  message: string
-}
+
 
 /** The Pulse's goal status: code facts plus the latest daily goal check verdict. */
-export interface PulseGoalStatus {
-  facts: {
-    status: 'no_goal' | 'ok' | 'at_risk' | 'not_measured'
-    summary: string
-    has_goal: boolean
-    key_metric?: string
-    key_value?: number
-    last_measured_at?: string
-    /** Source-backed DB facts, independently of execution-folder attribution. */
-    measurements?: {
-      metric: Pick<GoalMetric, 'id' | 'name' | 'role' | 'unit' | 'window' | 'freshness_hours'> & Partial<Pick<GoalMetric, 'criterion_id' | 'definition' | 'source' | 'route' | 'environment' | 'dimensions'>>
-      state: 'missing' | 'unavailable' | 'measured' | 'stale'
-      freshness_hours: number
-      latest?: Pick<PulseGoalObservation, 'metric' | 'run_id' | 'observed_at' | 'value' | 'status' | 'window_start' | 'window_end' | 'evidence'>
-      previous?: Pick<PulseGoalObservation, 'metric' | 'run_id' | 'observed_at' | 'value' | 'status' | 'window_start' | 'window_end' | 'evidence'>
-      change_from_previous?: number
-      comparison: string
-      history: Pick<PulseGoalObservation, 'metric' | 'run_id' | 'observed_at' | 'value' | 'status' | 'window_start' | 'window_end' | 'evidence'>[]
-    }[]
-    last_run_measured_at?: string
-    days_since_run_measured: number
-    last_run_at?: string
-    days_since_run: number
-    /** Recorded execution evidence; goal contribution is judged by Pulse/Builder. */
-    recent_runs?: {
-      run_id: string
-      finished_at: string
-      status: string
-      routes?: string[]
-      goal_measured: boolean
-    }[]
-    alarms: PulseGoalAlarm[]
-    schedules_paused: boolean
-    pause_already_reported?: boolean
-  }
-  /** The workflow has a goal, so its Pulse conversation owns QA and architecture (PLAT-697): no separate review panels. */
-  goal_lead?: boolean
-  /** Only enabled Pulse workflows receive this targeted migration check. */
-  measurement_upgrade?: { required: boolean; reasons: string[] }
-  latest_check?: {
-    checked_at: string
-    status: 'on_track' | 'at_risk' | 'off_track' | 'not_measured'
-    key_number?: string
-    summary: string
-    action_taken?: string
-    decision_id?: string
-    /** When Pulse chose to check next, and why. */
-    next_check_at?: string
-    next_check_reason?: string
-  } | null
-}
+
 
 /** Work Pulse did (or plans) to move the user's goals, and constraint challenges. */
-export interface PulseGoalWorkItem {
-  id: string
-  kind: 'goal_work' | 'constraint_challenge'
-  title: string
-  detail?: string
-  status: 'idea' | 'in_progress' | 'needs_user' | 'done' | 'dropped'
-  action_taken?: string
-  links: string[]
-  metric?: string
-  expected_direction?: string
-  check_at?: string
-  effect?: '' | 'worked' | 'no_effect' | 'unclear'
-  effect_note?: string
-  decision_id?: string
-  constraint_text?: string
-  constraint_class?: '' | 'boundary' | 'choice' | 'unconfirmed'
-  created_at: string
-  updated_at: string
-}
+
 
 /** The workflow's own Pulse schedule. Normal schedules only back up, publish
  * and notify; the full Pulse runs here and, in self mode, picks its own next time. */
-export interface PulseNextRun {
-  next_at?: string
-  reason?: string
-  last_started_at?: string
-}
 
-export interface PulseInterventionSource {
-  source_type: 'attempt' | 'experiment' | 'finding' | 'review' | string
-  source_id: string
-}
 
-export interface PulseIntervention {
-  effects?: Array<{ metric: string; expected_direction: 'increase' | 'decrease' | 'maintain' }>
-  intervention_id: string
-  pulse_run_id?: string
-  title: string
-  criterion_id: string
-  impact_type: 'direct_goal' | 'reliability' | 'measurement' | 'presentation_maintenance' | string
-  metric: string
-  expected_direction: 'increase' | 'decrease' | 'maintain' | string
-  scope?: string[]
-  provenance?: string
-  baseline_window?: string
-  checkpoint?: string
-  minimum_evidence_runs: number
-  status: string
-  kind?: 'fix_bundle' | 'strategy_experiment' | string
-  guardrails?: string[]
-  rollback_condition?: string
-  interference_domains?: string[]
-  human_input_id?: string
-  terminal_outcome?: string
-  created_at?: string
-  updated_at?: string
-  sources?: PulseInterventionSource[]
-}
 
-export interface PulseGoalObservation {
-  observation_id: string
-  criterion_id: string
-  metric: string
-  run_id: string
-  route?: string
-  environment?: string
-  value?: number
-  status?: string
-  unit?: string
-  observed_at: string
-  window_start?: string
-  window_end?: string
-  evidence?: string[]
-  recorded_at?: string
-}
 
-export interface PulseImpactAssessment {
-  metric?: string
-  assessment_id: string
-  intervention_id: string
-  verdict: 'improved' | 'unchanged' | 'regressed' | 'inconclusive' | 'confounded' | string
-  before_window: string
-  after_window: string
-  before_value?: number
-  after_value?: number
-  absolute_change?: number
-  relative_change?: number
-  confidence: string
-  confounders?: string[]
-  evidence?: string[]
-  next_checkpoint?: string
-  assessed_at: string
-}
+
+
+
+
+
 
 export interface GoalMetric {
   goal_id?: string
@@ -924,243 +681,43 @@ export interface GoalMetric {
   target_date?: string
 }
 
-export interface PulseImpactLedger {
-  metrics?: GoalMetric[]
-  interventions: PulseIntervention[]
-  observations: PulseGoalObservation[]
-  assessments: PulseImpactAssessment[]
-}
 
-export interface PulseImpactResponse {
-  success: boolean
-  impact: PulseImpactLedger
-  error?: string
-}
 
-export interface PulseContextRecord {
-  context_id: string
-  section: string
-  context_text: string
-  example_note?: string
-  path: string
-  created_at: string
-}
 
-export interface PulseContextResponse {
-  success: boolean
-  records: PulseContextRecord[]
-  total: number
-  error?: string
-}
 
-export interface PulseFindingVerification {
-  check: string
-  verdict: 'passed' | 'failed' | 'inconclusive' | string
-  expected?: string
-  observed?: string
-  evidence?: string[]
-  verified_at?: string
-}
 
-export interface PulseFixFindingRef {
-  finding_id: string
-  disposition?: string
-  summary?: string
-}
 
-export interface PulseFixAttempt {
-  attempt_id: string
-  module: string
-  pulse_run_id: string
-  summary: string
-  status: string
-  intended_files: string[]
-  changed_files: string[]
-  before_refs: string[]
-  after_refs: string[]
-  started_at: string
-  completed_at?: string
-  findings?: PulseFixFindingRef[]
-}
 
-export interface PulseFindingEvent {
-  finding_id?: string
-  event_type: string
-  summary: string
-  pulse_run_id?: string
-  attempt_id?: string
-  metadata?: Record<string, unknown>
-  recorded_at: string
-}
 
-export interface PulseFindingReproduction {
-  safe: boolean
-  setup?: string
-  action?: string
-  expected?: string
-  observed?: string
-  limitations?: string
-}
 
-export interface PulseFindingDetails {
-  finding_id?: string
-  target_key?: string
-  issue_kind?: 'harness_issue' | 'workflow_bug' | 'external_dependency' | 'evidence_gap' | string
-  recommended_route?: 'decision_required' | 'evidence_wait' | 'fixer_handoff' | 'none' | string
-  next_check?: string
-  classification?: string
-  severity?: string
-  summary?: string
-  impact?: string
-  workaround?: string
-  evidence?: string[]
-  reproduction: PulseFindingReproduction
-  platform?: {
-    issue_key: string
-    affected_workflows: string[]
-    seen_count: number
-    first_seen_at?: string
-    last_seen_at?: string
-  }
-}
 
-export interface PulseIssue {
-  id: string
-  title: string
-  description?: string
-  status: 'backlog' | 'in_progress' | 'in_review' | 'needs_input' | 'blocked' | 'done' | 'canceled' | 'external' | string
-  priority: 'urgent' | 'high' | 'medium' | 'low' | 'none' | string
-  module?: string
-  created_at?: string
-  updated_at?: string
-  seen_count: number
-}
 
-export interface PulseFindingLifecycle {
-  /** Compact user-facing issue. Remaining fields are lifecycle internals. */
-  issue?: PulseIssue
-  /**
-   * `observation` is workflow evidence awaiting reviewer classification;
-   * `issue` has been accepted into Pulse's repair lifecycle.
-   */
-  kind?: 'issue' | 'observation'
-  finding_id?: string
-  module?: string
-  step_id: string
-  phase: string
-  group_name?: string
-  text: string
-  status: string
-  first_seen_run?: string
-  first_seen_at?: string
-  last_seen_run?: string
-  last_seen_at?: string
-  seen_count: number
-  resolution_note?: string
-  external_owner?: string
-  reason_code?: string
-  reopen_condition?: string
-  details?: PulseFindingDetails
-  fix_attempts: PulseFixAttempt[]
-  verifications: PulseFindingVerification[]
-  events: PulseFindingEvent[]
-}
 
-export interface PulseFindingsResponse {
-  success: boolean
-  total?: number
-  findings: PulseFindingLifecycle[]
-  error?: string
-}
 
-export interface PulseReviewRecord {
-  id: number
-  module: string
-  review_run_id: string
-  pulse_run_id?: string
-  verdict?: string
-  status?: string
-  finding_count: number
-  verification_count: number
-  recorded_at: string
-  metrics?: PulseAgentMetricRecord
-}
 
-export interface PulseAgentMetricRecord {
-  id: number
-  execution_id: string
-  agent_session_id?: string
-  pulse_run_id?: string
-  review_run_id?: string
-  module: string
-  role: 'reviewer' | 'fixer'
-  status: string
-  queued_at?: string
-  started_at?: string
-  completed_at?: string
-  queue_duration_ms: number
-  duration_ms: number
-  llm_call_count: number
-  prompt_tokens: number
-  completion_tokens: number
-  reasoning_tokens: number
-  cache_read_tokens: number
-  cache_write_tokens: number
-  total_cost_usd: number
-  models?: Record<string, {
-    prompt_tokens: number
-    completion_tokens: number
-    reasoning_tokens: number
-    cache_read_tokens: number
-    cache_write_tokens: number
-    total_cost_usd: number
-    call_count: number
-  }>
-  usage_status: 'captured' | 'unavailable'
-  usage_error?: string
-  recorded_at: string
-}
 
-export interface PulseReviewsResponse {
-  success: boolean
-  total?: number
-  reviews: PulseReviewRecord[]
-  coverage?: PulseReviewFocus[]
-  audits?: PulseReviewAudit[]
-  reports?: PulseReviewReport[]
-  error?: string
-}
 
-export interface PulseReviewAudit {
-  workspace_path: string
-  module: string
-  pulse_run_id: string
-  result: string
-  reason: string
-  recorded_at: string
-  evidence?: string[]
-  changed_files?: string[]
-  verification?: string[]
-  before_refs?: string[]
-  after_refs?: string[]
-}
 
-export interface PulseReviewReport {
-  source?: 'review_note'
-  content?: string
-  result?: string
-  module: string
-  pulse_run_id: string
-  path: string
-  updated_at: string
-}
 
-export interface PulseAgentMetricsResponse {
-  success: boolean
-  total?: number
-  metrics: PulseAgentMetricRecord[]
-  error?: string
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // Slack Feedback Configuration types
 
@@ -2786,45 +2343,13 @@ export interface ExecutionLogsResponse {
   success: boolean;
   steps: Record<string, StepExecutionLogs>; // key is step ID or name (e.g. "step-1")
   token_usage?: TokenUsageFile;
-  pulse_reviews?: PulseReviewRunLog[];
 }
 
-export interface PulseReviewTranscriptEvent {
-  timestamp: string;
-  type: 'user_message' | 'assistant_message' | 'tool_call' | string;
-  role?: string;
-  text?: string;
-  tool_call?: Record<string, unknown>;
-}
 
-export interface PulseBackgroundAgentLog {
-  agent_id: string;
-  name: string;
-  kind?: string;
-  parent_execution_id?: string;
-  status: string;
-  result?: string;
-  error?: string;
-  duration?: string;
-  started_at?: string;
-  completed_at?: string;
-  transcript_path?: string;
-  transcript_status?: string;
-  provider?: string;
-  model_id?: string;
-  events?: PulseReviewTranscriptEvent[];
-}
 
-export interface PulseReviewRunLog {
-  run_id: string;
-  session_id: string;
-  schedule_id?: string;
-  trigger_source?: string;
-  status?: string;
-  started_at: string;
-  completed_at?: string;
-  agents: PulseBackgroundAgentLog[];
-}
+
+
+
 
 
 // Batch execution event types
@@ -2900,12 +2425,7 @@ export interface WorkflowReviewDataResponse {
 // commits that forget the regen step.
 // ---------------------------------------------------------------------------
 
-import type {
-  ReportPlanDocumentSection,
-  ReportPlanDocumentSectionLayout,
-  ReportPlanDocumentWidget,
-  ReportPlanDocumentWidgetLayout,
-} from '../generated/report-plan'
+import type { ReportPlanDocumentSection, ReportPlanDocumentSectionLayout, ReportPlanDocumentWidget, ReportPlanDocumentWidgetLayout } from '../generated/report-plan'
 
 // Enum aliases — the codegen embeds the same literal unions inline on each
 // consuming field, so these are independently useful where callsites need
@@ -3882,17 +3402,10 @@ export interface WorkflowFolderAccessRequest {
 export interface WorkflowPulseConfig {
   outward_actions?: PulseOutwardActions
   enabled?: boolean
-  advisor_specialization?: WorkflowAdvisorSpecialization
 }
 
 
-export interface WorkflowAdvisorSpecialization {
-  version: number
-  strategy_auditor: string
-  goal_advisor: string
-  approved_input_id?: string
-  updated_at?: string
-}
+
 
 export interface WorkflowCapabilities {
   selected_servers: string[]
@@ -4023,7 +3536,6 @@ export interface UpdateWorkflowManifestRequest {
   run_retention_count?: number
   pulse_enabled?: boolean
   pulse_outward_actions?: PulseOutwardActions
-  pulse_focus_areas?: string[]
   /** After-run options for runs started from a chat (PLAT-697 phase 0). */
   after_manual_run?: ScheduleAfterRun
   run_notification_instructions?: string
@@ -4119,15 +3631,7 @@ export interface NotificationRouteSummary {
   sections?: OrgDashboardNotificationSection[]
 }
 
-export interface PulseReviewSummary {
-  module: string
-  label?: string
-  status: 'clean' | 'issues_found' | 'fixed' | 'incomplete' | 'failed' | 'skipped'
-  summary: string
-  issues_found: number
-  fixes_applied: number
-  verification: 'verified' | 'monitoring' | 'unverified' | 'not_applicable'
-}
+
 
 export interface OrgDashboardRouteNotifications {
   routing_step_id?: string
@@ -4146,7 +3650,6 @@ export interface OrgDashboardNotification {
   status: 'completed' | 'failed' | 'blocked' | 'waiting_for_user' | 'waiting_for_platform' | 'monitoring' | 'informational' | 'no_run'
   route?: string
   message: string
-  reviews?: PulseReviewSummary[]
   routes?: NotificationRouteSummary[]
   fields?: OrgDashboardNotificationField[]
   sections?: OrgDashboardNotificationSection[]

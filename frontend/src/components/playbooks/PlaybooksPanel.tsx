@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, ArrowLeft, BookMarked, CheckCircle2, ChevronDown, ChevronRight, CircleDot, FolderTree, Layers3, Loader2, PackageCheck, Search, Settings2, Wrench } from 'lucide-react'
+import { ArrowLeft, BookMarked, CheckCircle2, ChevronDown, ChevronRight, CircleDot, FolderTree, Layers3, Loader2, PackageCheck, Search, Settings2, Wrench } from 'lucide-react'
 import { isNewerPlaybookVersion, playbookBrowseCategory, playbookBrowsePath, PLAYBOOK_CATALOG, PLAYBOOK_CATEGORIES, type PlaybookCatalogItem } from './playbookCatalog'
 import { playbooksApi } from '../../api/playbooks'
 import type { InstalledPlaybook } from '../../services/api-types'
@@ -134,7 +134,6 @@ export default function PlaybooksPanel({ workspacePath }: PlaybooksPanelProps) {
     const setupInputs = selected.setupInputs || []
     const requiredCapabilities = selected.requiredCapabilities || []
     const recommendedTools = selected.recommendedTools || []
-    const pulseFocus = (selected.pulseFocus || []).filter(focus => focus.module === 'strategic_review')
     const outputs = selected.outputs || []
     const agentSlots = selected.agentSlots || []
     const handoffs = selected.handoffs || []
@@ -209,23 +208,6 @@ export default function PlaybooksPanel({ workspacePath }: PlaybooksPanelProps) {
               <div className="flex items-center gap-2 text-sm font-semibold text-foreground"><PackageCheck className="h-4 w-4 text-primary" /> What you’ll get</div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {outputs.map(output => <div key={output} className="flex items-start gap-2 text-xs leading-5 text-foreground/90"><CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" /><span>{output}</span></div>)}
-              </div>
-            </section>
-          )}
-          {pulseFocus.length > 0 && (
-            <section className="mt-4 rounded-lg border border-border p-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-foreground"><Activity className="h-4 w-4 text-primary" /> Strategic review focus</div>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">A goal-specific lens for Strategic Review. Technical and Architecture Review choose scope from current evidence and structural risk.</p>
-              <div className="mt-3 grid gap-2">
-                {pulseFocus.map(focus => (
-                  <div key={focus.module} className="rounded-md bg-muted/30 px-3 py-2">
-                    <div className="text-xs font-medium text-foreground">{focus.label}</div>
-                    <ul className="mt-1 space-y-1 text-xs leading-5 text-foreground/90">
-                      {focus.focus_areas.map(area => <li key={area}>• {area}</li>)}
-                    </ul>
-                    {focus.review_when.length > 0 && <p className="mt-2 text-[11px] leading-5 text-muted-foreground"><span className="font-medium text-foreground/80">Review when:</span> {focus.review_when.join('; ')}</p>}
-                  </div>
-                ))}
               </div>
             </section>
           )}

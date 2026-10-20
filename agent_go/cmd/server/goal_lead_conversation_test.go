@@ -38,7 +38,6 @@ func TestGoalLeadCheckContinuesItsConversation(t *testing.T) {
 	var sessions []string
 	var requests []map[string]interface{}
 	previousRunner, previousNow := goalLeadTurnRunner, goalLeadNow
-	saveReport := true
 	goalLeadTurnRunner = func(ctx context.Context, reqMap map[string]interface{}, sessionID, _ string) (internalSessionTurnResult, error) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -47,15 +46,7 @@ func TestGoalLeadCheckContinuesItsConversation(t *testing.T) {
 		if strings.HasPrefix(fmt.Sprint(reqMap["query"]), "the Builder chat (manish): ") {
 			return internalSessionTurnResult{FinalResponse: "I recommend running the growth route today: it has not run for 11 days. Posting more often is the owner's call."}, nil
 		}
-		if !saveReport {
-			// A concurrent Builder save has no bound Pulse cycle and must not count.
-			_, _ = recordPulseGoalCheckFromToolArgs(context.Background(), map[string]interface{}{"workspace_path": ws, "status": "not_measured", "summary": "Builder saved another observation."})
-		}
-		if saveReport {
-			if _, err := recordPulseGoalCheckFromToolArgs(ctx, map[string]interface{}{"workspace_path": ws, "status": "not_measured", "summary": "Outcome readings are missing. Measure replies before changing the approach.", "next_check_in_hours": float64(1), "next_check_reason": "An earlier question"}); err != nil {
-				return internalSessionTurnResult{}, err
-			}
-		}
+
 		return internalSessionTurnResult{FinalResponse: "Goal check saved."}, nil
 	}
 	day := time.Date(2026, 10, 7, 9, 0, 0, 0, time.UTC)
@@ -83,21 +74,6 @@ func TestGoalLeadCheckContinuesItsConversation(t *testing.T) {
 		t.Fatalf("day 2 must resume the conversation: %v", requests[1])
 	}
 	mu.Unlock()
-	stored, _, err := latestPulseGoalCheck(ctx, ws)
-	if err != nil || stored == nil {
-		t.Fatalf("goal check missing: %+v %v", stored, err)
-	}
-	if gap := parseStoredTime(stored.NextCheckAt).Sub(parseStoredTime(stored.CheckedAt)); gap != pulseCheckMinGap {
-		t.Fatalf("check bounds lost: %s", gap)
-	}
-	// A successful provider exit without a newly saved check is incomplete;
-	// neither the previous report nor a final chat sentence can complete it.
-	saveReport = false
-	result := env.api.scheduler.runGoalLeadPassStep(ctx, sctx, pulseLifecycleStep{label: "goal-check", goalLead: true, query: "Save this week's report"})
-	if result.outcome == pulseLifecycleStepCompleted || result.err == nil || !strings.Contains(result.err.Error(), "without saving") {
-		t.Fatalf("old report completed a new cycle: %+v", result)
-	}
-
 	// OFF rejects all entry kinds before the runner and preserves the conversation.
 	manifest.Pulse.Enabled = false
 	raw, _ = json.Marshal(manifest)
@@ -113,10 +89,8 @@ func TestGoalLeadCheckContinuesItsConversation(t *testing.T) {
 	if len(sessions) != before {
 		t.Fatal("OFF reached the provider")
 	}
-	if next, _ := nextPulseCheckAt(ctx, ws, manifest, stored, time.Time{}); !next.IsZero() {
-		t.Fatalf("OFF kept a check: %s", next)
-	}
-	if run, err := env.api.scheduler.TriggerGoalCheck(ws); err == nil || run != "" {
+
+	if run, err := env.api.scheduler.TriggerPulseNow(ws); err == nil || run != "" {
 		t.Fatalf("OFF queued a schedule: %s %v", run, err)
 	}
 	// A saved inbox address cannot acknowledge messages to the disabled Pulse.

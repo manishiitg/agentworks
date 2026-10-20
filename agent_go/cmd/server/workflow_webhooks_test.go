@@ -28,7 +28,7 @@ func webhookTestSchedule(t *testing.T, mode string) WorkflowSchedule {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return WorkflowSchedule{ID: id, Name: "Issue", ScheduleType: "webhook", Enabled: true, Timezone: "UTC", Webhook: &WorkflowWebhookConfig{AuthMode: mode, EncryptedSecret: encrypted}, GroupNames: []string{"default"}, RouteSelections: map[string]string{"route": "issue"}, Mode: "workshop", WorkshopMode: "run", PulseMode: "basic", PulseModeReason: "Run finalization"}
+	return WorkflowSchedule{ID: id, Name: "Issue", ScheduleType: "webhook", Enabled: true, Timezone: "UTC", Webhook: &WorkflowWebhookConfig{AuthMode: mode, EncryptedSecret: encrypted}, GroupNames: []string{"default"}, RouteSelections: map[string]string{"route": "issue"}, Mode: "workshop", WorkshopMode: "run"}
 }
 
 func webhookTestRequest(s WorkflowSchedule, body string) *http.Request {

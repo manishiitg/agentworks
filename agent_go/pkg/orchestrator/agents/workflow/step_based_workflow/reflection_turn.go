@@ -13,7 +13,7 @@ import (
 // belong. The point of the list is to show a step that a home for its
 // measurement already exists.
 func LoadWorkflowDBTableNames(ctx context.Context, workspacePath string) ([]string, error) {
-	db, err := openRunConcernsDB(ctx, workspacePath, false)
+	db, err := openWorkflowEvidenceDB(ctx, workspacePath, false)
 	if err != nil || db == nil {
 		return nil, err
 	}

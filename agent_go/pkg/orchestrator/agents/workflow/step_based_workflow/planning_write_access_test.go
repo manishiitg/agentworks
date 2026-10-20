@@ -185,36 +185,6 @@ func TestParsePlanDependencySurfaceReviewsRequiresIssueForUnresolvedSurface(t *t
 	}
 }
 
-func TestPulseChangeReferencesPreserveAttemptFindingAndHumanDecision(t *testing.T) {
-	ctx := context.Background()
-	workspacePath := concernsWorkspace(t)
-	db, err := openRunConcernsDB(ctx, workspacePath, true)
-	if err != nil {
-		t.Fatalf("open concerns db: %v", err)
-	}
-	defer db.Close()
-	if err := ensurePulseFindingLifecycleSchema(ctx, db); err != nil {
-		t.Fatalf("ensure lifecycle schema: %v", err)
-	}
-	if _, err := db.ExecContext(ctx, `INSERT INTO pulse_fix_attempts
-		(attempt_id,module,pulse_run_id,started_at) VALUES ('fix-1','technical_review','pulse-1','2026-08-28T00:00:00Z')`); err != nil {
-		t.Fatalf("insert attempt: %v", err)
-	}
-	if _, err := db.ExecContext(ctx, `INSERT INTO pulse_fix_attempt_findings
-		(attempt_id,fingerprint,finding_id) VALUES ('fix-1','fp-1','PUL-1234ABCD')`); err != nil {
-		t.Fatalf("insert finding: %v", err)
-	}
-	if _, err := db.ExecContext(ctx, `INSERT INTO pulse_finding_events
-		(fingerprint,pulse_run_id,event_type,metadata_json,recorded_at)
-		VALUES ('fp-1','pulse-old','awaiting_user','{"human_input_id":"technical-decision-1"}','2026-08-27T00:00:00Z')`); err != nil {
-		t.Fatalf("insert decision event: %v", err)
-	}
-	issues, attemptID, humanInputID := pulseChangeReferences(ctx, workspacePath, "pulse-1")
-	if len(issues) != 1 || issues[0] != "PUL-1234ABCD" || attemptID != "fix-1" || humanInputID != "technical-decision-1" {
-		t.Fatalf("references = issues=%v attempt=%q human_input=%q", issues, attemptID, humanInputID)
-	}
-}
-
 func TestManagedRetentionManifestWriteIsScoped(t *testing.T) {
 	hcpo, dir := newPreValidationConcernTestOrchestrator(t)
 	const sessionID = "retention-config-write"

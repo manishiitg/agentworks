@@ -637,18 +637,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) finalizeRunMetadata(ctx context.Conte
 	}); err != nil {
 		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to finalize run metadata %s: %v", runFolder, err))
 	}
-	// Pulse after-run facts (PLAT-697): code only, never fails the run.
 	if !hcpo.isRelayExecution() {
-		factsCtx := ctx
-		if factsCtx == nil || factsCtx.Err() != nil {
-			factsCtx = context.Background()
-		}
-		if canonical := workflowrun.CanonicalStatus(status); canonical != "" {
-			status = string(canonical)
-		}
-		if err := RecordGoalRunFacts(factsCtx, hcpo.GetWorkspacePath(), runFolder, status, startedAt, completedAt); err != nil {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Could not record goal facts for run %s: %v", runFolder, err))
-		}
 		// After-run options for a run started from a chat (PLAT-697 phase 0).
 		// The server decides; scheduled runs are handled by the scheduler.
 		if hook := AfterWorkflowRunHook; hook != nil {

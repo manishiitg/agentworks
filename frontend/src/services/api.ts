@@ -44,111 +44,7 @@ import { apiTimingPathFor, recordApiTiming, sanitizeApiBody } from '../utils/api
 import { retryUncertainChatSubmission } from './uncertainSubmissionRetry'
 import { retryTurnRunningSubmission } from './turnRunningRetry'
 import { configureChatDeliveryTelemetryTransport } from '../utils/chatDeliveryTelemetry'
-import type {
-  PresetLLMConfig,
-  AgentQueryRequest,
-  AgentQueryResponse,
-  AgentProfileChatRequest,
-  AgentProfileConversationRequest,
-  AgentProfileConversationResponse,
-  AgentProfileSideChat,
-  AgentProfileChatModel,
-  AgentProfileEffectiveChatModel,
-  SharedProjectFileEntry,
-  SharedProjectSummary,
-  CodeAdminWorkspace,
-  CodeAdminChat,
-  CodeAdminAuditEntry,
-  GetEventsResponse,
-  PollingEvent,
-  TerminalEventsResponse,
-  MCPServerConfig,
-  ChatHistoryConversation,
-  ChatHistorySession,
-  ChatHistoryCleanupResult,
-  WorkflowStatusResponse,
-  WorkflowConstantsResponse,
-  WorkflowSelectedOptions,
-  GetActiveSessionsResponse,
-  HeaderSummaryResponse,
-  ReconnectSessionResponse,
-  SessionStatusResponse,
-  SessionExecutionTreeResponse,
-  SessionBackgroundWorkResponse,
-  LLMGuidanceResponse,
-  LLMGuidanceRequest,
-  HumanFeedbackResponse,
-  PendingHumanFeedbackResponse,
-  RunFoldersResponse,
-  RunFolderInfo,
-  RunMetadataModels,
-  CreateRunFolderResponse,
-  VariableGroupsResponse,
-  VariablesManifest,
-  SlackConfigRequest,
-  SlackConfigResponse,
-  SlackConnection,
-  SlackConnectionRequest,
-  SlackConnectionsResponse,
-  SlackUsableBot,
-  SlackUsableBotsResponse,
-  SlackTargetSettings,
-  SlackPlatformBotSettings,
-  SlackBotChannelsResponse,
-  ProjectSlackSelectionResponse,
-  SlackTestResponse,
-  SlackTestReplyResponse,
-  GmailConfigRequest,
-  GmailConfigResponse,
-  GmailConnection,
-  GmailConnectionRequest,
-  GmailConnectionsResponse,
-  GmailOAuthClient,
-  GmailOAuthClientsResponse,
-  GmailAuthStatus,
-  GmailTestResponse,
-  ExecutionLogsResponse,
-  WorkflowReviewDataResponse,
-  WorkflowCostsResponse,
-  WorkspaceStateResponse,
-  CapabilitiesResponse,
-  ListWorkflowManifestsResponse,
-  GetWorkflowManifestResponse,
-  CreateWorkflowManifestRequest,
-  UpdateWorkflowManifestRequest,
-  DuplicateWorkflowManifestRequest,
-  MigrateWorkflowsResponse,
-  RunningWorkflowInfo,
-  UpdateRunningWorkflowRequest,
-  CostSummary,
-  CostOverview,
-  NotificationPreference,
-  WorkflowBuilderSessionResponse,
-  ListTerminalsResponse,
-  TerminalSnapshot,
-  StartRestoredTerminalRequest,
-  StartRestoredTerminalResponse,
-  WorkflowCapabilities,
-  WorkflowBackupInfoResponse,
-  WorkflowNotificationInfoResponse,
-  WorkflowPublishSecretResponse,
-  ReportHumanInputResponse,
-  GoalLeadResponse,
-  PulseFocusArea,
-  ReportHumanInputsResponse,
-  PulseOverviewResponse,
-  PulseFindingsResponse,
-  PulseReviewsResponse,
-  PulseAgentMetricsResponse,
-  PulseImpactResponse,
-  PulseContextResponse,
-  OrgDashboardNotification,
-  WhatsAppRoute,
-  WhatsAppStatus,
-  WorkFolderGrant,
-  WorkFolderListResponse,
-  WorkFolderAddRequest,
-} from './api-types'
+import type { PresetLLMConfig, AgentQueryRequest, AgentQueryResponse, AgentProfileChatRequest, AgentProfileConversationRequest, AgentProfileConversationResponse, AgentProfileSideChat, AgentProfileChatModel, AgentProfileEffectiveChatModel, SharedProjectFileEntry, SharedProjectSummary, CodeAdminWorkspace, CodeAdminChat, CodeAdminAuditEntry, GetEventsResponse, PollingEvent, TerminalEventsResponse, MCPServerConfig, ChatHistoryConversation, ChatHistorySession, ChatHistoryCleanupResult, WorkflowStatusResponse, WorkflowConstantsResponse, WorkflowSelectedOptions, GetActiveSessionsResponse, HeaderSummaryResponse, ReconnectSessionResponse, SessionStatusResponse, SessionExecutionTreeResponse, SessionBackgroundWorkResponse, LLMGuidanceResponse, LLMGuidanceRequest, HumanFeedbackResponse, PendingHumanFeedbackResponse, RunFoldersResponse, RunFolderInfo, RunMetadataModels, CreateRunFolderResponse, VariableGroupsResponse, VariablesManifest, SlackConfigRequest, SlackConfigResponse, SlackConnection, SlackConnectionRequest, SlackConnectionsResponse, SlackUsableBot, SlackUsableBotsResponse, SlackTargetSettings, SlackPlatformBotSettings, SlackBotChannelsResponse, ProjectSlackSelectionResponse, SlackTestResponse, SlackTestReplyResponse, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailConnectionRequest, GmailConnectionsResponse, GmailOAuthClient, GmailOAuthClientsResponse, GmailAuthStatus, GmailTestResponse, ExecutionLogsResponse, WorkflowCostsResponse, WorkspaceStateResponse, CapabilitiesResponse, ListWorkflowManifestsResponse, GetWorkflowManifestResponse, CreateWorkflowManifestRequest, UpdateWorkflowManifestRequest, DuplicateWorkflowManifestRequest, MigrateWorkflowsResponse, RunningWorkflowInfo, UpdateRunningWorkflowRequest, CostSummary, CostOverview, NotificationPreference, WorkflowBuilderSessionResponse, ListTerminalsResponse, TerminalSnapshot, StartRestoredTerminalRequest, StartRestoredTerminalResponse, WorkflowCapabilities, WorkflowBackupInfoResponse, WorkflowNotificationInfoResponse, WorkflowPublishSecretResponse, ReportHumanInputResponse, GoalLeadResponse, ReportHumanInputsResponse, PulseOverviewResponse, OrgDashboardNotification, WhatsAppRoute, WhatsAppStatus, WorkFolderGrant, WorkFolderListResponse, WorkFolderAddRequest } from './api-types'
 import type { PlanStep, AgentConfigs } from '../utils/stepConfigMatching'
 
 // Re-export types for other components to use
@@ -2162,6 +2058,11 @@ export const agentApi = {
 		return response.data as ReportHumanInputsResponse
 	},
 
+  getGoalLead: async (workspacePath: string) => {
+ const response=await api.get("/api/workflow/goal-lead",{params:{workspace_path:workspacePath}})
+ return response.data as GoalLeadResponse
+ },
+
   getPulseOverview: async (workspacePath: string) => {
     const response = await api.get('/api/workflow/pulse-overview', {
       params: { workspace_path: workspacePath },
@@ -2169,82 +2070,15 @@ export const agentApi = {
     return response.data as PulseOverviewResponse
   },
 
-  getPulseFindings: async (workspacePath: string, module?: string) => {
-    const response = await api.get('/api/workflow/pulse-findings', {
-      params: {
-        workspace_path: workspacePath,
-        ...(module ? { module } : {}),
-      },
-    })
-    return response.data as PulseFindingsResponse
-  },
-
-  getPulseReviews: async (workspacePath: string, module?: string) => {
-    const response = await api.get('/api/workflow/pulse-reviews', {
-      params: {
-        workspace_path: workspacePath,
-        ...(module ? { module } : {}),
-      },
-    })
-    return response.data as PulseReviewsResponse
-  },
-
-  getPulseAgentMetrics: async (
-    workspacePath: string,
-    filters: { pulseRunId?: string; module?: string; role?: 'reviewer' | 'fixer' } = {},
-  ) => {
-    const response = await api.get('/api/workflow/pulse-agent-metrics', {
-      params: {
-        workspace_path: workspacePath,
-        ...(filters.pulseRunId ? { pulse_run_id: filters.pulseRunId } : {}),
-        ...(filters.module ? { module: filters.module } : {}),
-        ...(filters.role ? { role: filters.role } : {}),
-      },
-    })
-    return response.data as PulseAgentMetricsResponse
-  },
-
-  getPulseImpact: async (workspacePath: string) => {
-    const response = await api.get('/api/workflow/pulse-impact', {
-      params: { workspace_path: workspacePath },
-    })
-    return response.data as PulseImpactResponse
-  },
 
   // The Pulse's goal memory and decision log (PLAT-697).
-  getGoalLead: async (workspacePath: string) => {
-    const response = await api.get('/api/workflow/goal-lead', {
-      params: { workspace_path: workspacePath },
-    })
-    return response.data as GoalLeadResponse
-  },
 
-  saveGoalMemory: async (workspacePath: string, content: string) => {
-    const response = await api.put('/api/workflow/goal-memory', { workspace_path: workspacePath, content })
-    return response.data as { success: boolean; error?: string }
-  },
 
   /** The owner's message to the workflow's Pulse; the reply appears in the conversation. */
-  sendGoalLeadMessage: async (workspacePath: string, message: string) => {
-    const response = await api.post('/api/workflow/goal-lead/message', { workspace_path: workspacePath, message })
-    return response.data as { success: boolean; error?: string }
-  },
+
 
   /** Confirm, reject, add, extend or close a focus area. */
-  updateGoalLeadFocusArea: async (
-    workspacePath: string,
-    body: { action: 'confirm' | 'reject' | 'add' | 'extend' | 'close'; id?: string; text?: string; end_date?: string; check?: string; status?: string; lesson?: string },
-  ) => {
-    const response = await api.post('/api/workflow/goal-lead/focus-areas', { workspace_path: workspacePath, ...body })
-    return response.data as { success: boolean; error?: string; focus_areas?: PulseFocusArea[] }
-  },
 
-  getPulseContext: async (workspacePath: string) => {
-    const response = await api.get('/api/workflow/pulse-context', {
-      params: { workspace_path: workspacePath },
-    })
-    return response.data as PulseContextResponse
-  },
 
   answerReportHumanInput: async (
     workspacePath: string,

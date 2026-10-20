@@ -125,7 +125,7 @@ func planChangeOriginFromContext(ctx context.Context, workspacePath string) Plan
 }
 
 func pulseRunExistsForChange(ctx context.Context, workspacePath, sessionID string) bool {
-	db, err := openRunConcernsDB(ctx, workspacePath, false)
+	db, err := openWorkflowEvidenceDB(ctx, workspacePath, false)
 	if err != nil || db == nil {
 		return false
 	}
@@ -139,7 +139,7 @@ func pulseChangeReferences(ctx context.Context, workspacePath, pulseRunID string
 	if strings.TrimSpace(pulseRunID) == "" {
 		return nil, "", ""
 	}
-	db, err := openRunConcernsDB(ctx, workspacePath, false)
+	db, err := openWorkflowEvidenceDB(ctx, workspacePath, false)
 	if err != nil || db == nil {
 		return nil, "", ""
 	}
@@ -257,7 +257,7 @@ func parsePlanDependencySurfaceReviews(raw interface{}) (map[string]PlanDependen
 				issueIDs = append(issueIDs, asString(rawIssueID))
 			}
 		}
-		issueIDs = normalizedLifecycleStrings(issueIDs)
+		issueIDs = normalizedEvidenceStrings(issueIDs)
 		if (disposition == "blocked" || disposition == "broken") && len(issueIDs) == 0 {
 			return nil, fmt.Errorf("surface_reviews.%s.issue_ids requires at least one durable Pulse issue for %s", surface, disposition)
 		}

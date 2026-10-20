@@ -169,7 +169,7 @@ func refuseUnattendedCrewWork(ctx context.Context) error {
 		return nil
 	}
 	if isScheduledSession(strings.TrimSpace(sessionID)) {
-		return fmt.Errorf("ask_platform_crew is not available in a scheduled run's own turns; hand Crew work to Goal Work (record_pulse_goal_work)")
+		return fmt.Errorf("ask_platform_crew is not available in a scheduled run's own turns; ask Builder or Pulse to coordinate Crew work")
 	}
 	return nil
 }

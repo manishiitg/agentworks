@@ -108,7 +108,7 @@ a different SQL result schema. Do not unwrap a direct payload a second time,
 and do not interpret HTTP/tool errors as zero query rows.
 
 ```bash
-response="$(curl --fail-with-body -sS --json "$payload" -H "$MCP_AUTH" "$MCP_CUSTOM/get_pulse_state")"
+response="$(curl --fail-with-body -sS --json "$payload" -H "$MCP_AUTH" "$MCP_CUSTOM/query_workflow_db")"
 jq -e '.success == true' >/dev/null <<<"$response"
 result="$(jq -r '.result' <<<"$response")"
 jq '.' <<<"$result"

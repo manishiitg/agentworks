@@ -13,7 +13,6 @@ export type PlaybookCatalogItem = {
   setupInputs?: PlaybookSetupInput[]
   requiredCapabilities?: string[]
   recommendedTools?: PlaybookRecommendedTool[]
-  pulseFocus?: PlaybookPulseFocus[]
   outputs?: string[]
   agentSlots?: PlaybookAgentSlot[]
   handoffs?: PlaybookHandoff[]
@@ -44,12 +43,7 @@ export type PlaybookRecommendedTool = {
   optional: boolean
 }
 
-export type PlaybookPulseFocus = {
-  module: 'strategic_review'
-  label: string
-  focus_areas: string[]
-  review_when: string[]
-}
+
 
 // Read-only catalog projection of the first-party playbook manifests. The API
 // slice will replace this projection when installation records are introduced.

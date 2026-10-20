@@ -86,7 +86,7 @@ func TestExternalPulseStatusUsesCurrentScreenWhileOff(t *testing.T) {
 		t.Fatal(err)
 	}
 	conversation, _ := page["conversation"].(map[string]any)
-	if page["goal_status"] == nil || page["workflow_id"] != "invoices" || page["records"] != nil || conversation["busy"] != false || conversation["has_goal"] != false || page["next_pulse"] != nil {
+	if page["goal_status"] != nil || page["workflow_id"] != "invoices" || page["records"] != nil || conversation["busy"] != false || conversation["has_goal"] != false || page["next_pulse"] != nil {
 		t.Fatalf("not the inactive current Pulse view: %s", w.Body)
 	}
 	_, db, err := openPulseStoreDB(t.Context(), "Workflow/invoices", false)

@@ -8,11 +8,8 @@ import (
 	"fmt"
 	"maps"
 	"math"
-	"sort"
 	"strings"
 	"time"
-
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/goalcheck"
 )
 
 // Definitions are configured once by the builder. Measurements reuse the
@@ -47,7 +44,7 @@ const goalMetricsSchema = `CREATE TABLE IF NOT EXISTS workflow_goal_metrics (
  metric_id TEXT PRIMARY KEY, definition_json TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1
 )`
 
-func loadGoalMetrics(ctx context.Context, db pulseFindingLifecycleDB) ([]GoalMetric, error) {
+func loadGoalMetrics(ctx context.Context, db workflowEvidenceDB) ([]GoalMetric, error) {
 	metrics := []GoalMetric{}
 	if _, err := db.ExecContext(ctx, goalMetricsSchema); err != nil {
 		return nil, err
@@ -119,7 +116,7 @@ func ConfigureGoalMetrics(ctx context.Context, workspacePath string, metrics []G
 	if err := validateGoalMetricRelationships(metrics); err != nil {
 		return err
 	}
-	db, err := openRunConcernsDB(ctx, workspacePath, true)
+	db, err := openWorkflowEvidenceDB(ctx, workspacePath, true)
 	if err != nil {
 		return err
 	}
@@ -160,8 +157,8 @@ func ConfigureGoalMetrics(ctx context.Context, workspacePath string, metrics []G
 
 // RecordGoalObservations is callable by ordinary producing steps, without
 // claiming a Pulse review run. Source run identity and evidence remain required.
-func RecordGoalObservations(ctx context.Context, workspacePath string, observations []PulseGoalObservation) (*PulseImpactLedger, error) {
-	ledger, err := LoadPulseImpactLedger(ctx, workspacePath, 1)
+func RecordGoalObservations(ctx context.Context, workspacePath string, observations []GoalObservation) (*GoalMeasurementLedger, error) {
+	ledger, err := LoadGoalMeasurements(ctx, workspacePath, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +177,7 @@ func RecordGoalObservations(ctx context.Context, workspacePath string, observati
 		if o.CriterionID != m.CriterionID || o.Unit != m.Unit || o.Route != m.Route || o.Environment != m.Environment {
 			return nil, fmt.Errorf("observation %q must match its criterion, unit, route and environment", o.Metric)
 		}
-		if len(normalizedLifecycleStrings(o.Evidence)) == 0 {
+		if len(normalizedEvidenceStrings(o.Evidence)) == 0 {
 			return nil, fmt.Errorf("observation %q requires source evidence", o.Metric)
 		}
 		if o.Value != nil && o.Status != "" && o.Status != "ok" {
@@ -196,12 +193,12 @@ func RecordGoalObservations(ctx context.Context, workspacePath string, observati
 			return nil, err
 		}
 	}
-	db, err := openRunConcernsDB(ctx, workspacePath, true)
+	db, err := openWorkflowEvidenceDB(ctx, workspacePath, true)
 	if err != nil {
 		return nil, err
 	}
 	defer db.Close()
-	if err = ensurePulseImpactSchema(ctx, db); err != nil {
+	if err = ensureGoalMeasurementSchema(ctx, db); err != nil {
 		return nil, err
 	}
 	tx, err := db.BeginTx(ctx, nil)
@@ -221,13 +218,13 @@ func RecordGoalObservations(ctx context.Context, workspacePath string, observati
 		}
 		if err == nil {
 			sameValue := (!value.Valid && o.Value == nil) || (value.Valid && o.Value != nil && value.Float64 == *o.Value)
-			if !sameValue || stamp != o.ObservedAt || unit != o.Unit || status != o.Status || evidence != pulseImpactJSON(o.Evidence) || windowStart != o.WindowStart || windowEnd != o.WindowEnd {
+			if !sameValue || stamp != o.ObservedAt || unit != o.Unit || status != o.Status || evidence != goalEvidenceJSON(o.Evidence) || windowStart != o.WindowStart || windowEnd != o.WindowEnd {
 				return nil, fmt.Errorf("conflicting observation for metric %q and run %q; history is immutable", o.Metric, o.RunID)
 			}
 			continue
 		}
-		id := "obs-" + pulseImpactID(o.CriterionID, o.Metric, o.RunID, o.Route, o.Environment)
-		_, err = tx.ExecContext(ctx, `INSERT INTO pulse_goal_observations(observation_id,criterion_id,metric,run_id,route,environment,value,status,unit,observed_at,window_start,window_end,evidence_json,recorded_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, o.CriterionID, o.Metric, o.RunID, o.Route, o.Environment, nullableFloat(o.Value), o.Status, o.Unit, o.ObservedAt, o.WindowStart, o.WindowEnd, pulseImpactJSON(o.Evidence), time.Now().UTC().Format(time.RFC3339Nano))
+		id := "obs-" + goalObservationID(o.CriterionID, o.Metric, o.RunID, o.Route, o.Environment)
+		_, err = tx.ExecContext(ctx, `INSERT INTO pulse_goal_observations(observation_id,criterion_id,metric,run_id,route,environment,value,status,unit,observed_at,window_start,window_end,evidence_json,recorded_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, o.CriterionID, o.Metric, o.RunID, o.Route, o.Environment, nullableFloat(o.Value), o.Status, o.Unit, o.ObservedAt, o.WindowStart, o.WindowEnd, goalEvidenceJSON(o.Evidence), time.Now().UTC().Format(time.RFC3339Nano))
 		if err != nil {
 			return nil, err
 		}
@@ -235,43 +232,15 @@ func RecordGoalObservations(ctx context.Context, workspacePath string, observati
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
-	return LoadPulseImpactLedger(ctx, workspacePath, 200)
+	return LoadGoalMeasurements(ctx, workspacePath, 200)
 }
 
 // GoalMetricSnapshot supplies notification writers the same facts as the UI.
-type GoalMetricSnapshot struct {
-	Metric             GoalMetric `json:"metric"`
-	State              string     `json:"state"`
-	Value              *float64   `json:"value,omitempty"`
-	Change             *float64   `json:"change_from_previous,omitempty"`
-	ObservedAt         string     `json:"observed_at,omitempty"`
-	PreviousValue      *float64   `json:"previous_value,omitempty"`
-	PreviousObservedAt string     `json:"previous_observed_at,omitempty"`
-	Comparison         string     `json:"comparison"`
-}
 
 // GoalCheckInput matches DB rows to immutable metric meaning before deriving facts.
 // Folder names never decide whether a measurement exists.
-func GoalCheckInput(ledger *PulseImpactLedger, now time.Time) goalcheck.Input {
-	in := goalcheck.Input{Now: now}
-	definitions := map[string]GoalMetric{}
-	for _, m := range ledger.Metrics {
-		definitions[m.ID] = m
-		in.Metrics = append(in.Metrics, goalcheck.Metric{ID: m.ID, Name: m.Name, Role: m.Role, Route: m.Route, Unit: m.Unit, Window: m.Window, FreshnessHours: m.FreshnessHours, CriterionID: m.CriterionID, Definition: m.Definition, Source: m.Source, Environment: m.Environment, Dimensions: m.Dimensions})
-	}
-	for _, o := range ledger.Observations {
-		m, ok := definitions[o.Metric]
-		if !ok || o.CriterionID != m.CriterionID || o.Unit != m.Unit || o.Route != m.Route || o.Environment != m.Environment {
-			continue
-		}
-		observed, _ := time.Parse(time.RFC3339Nano, o.ObservedAt)
-		recorded, _ := time.Parse(time.RFC3339Nano, o.RecordedAt)
-		in.Observations = append(in.Observations, goalcheck.Observation{ID: o.ObservationID, Metric: o.Metric, RunID: o.RunID, Value: o.Value, Status: o.Status, ObservedAt: observed, RecordedAt: recorded, WindowStart: o.WindowStart, WindowEnd: o.WindowEnd, Evidence: o.Evidence})
-	}
-	return in
-}
 
-func validateObservationWindow(o PulseGoalObservation) error {
+func validateObservationWindow(o GoalObservation) error {
 	observed, err := time.Parse(time.RFC3339Nano, o.ObservedAt)
 	if err != nil {
 		return fmt.Errorf("observed_at must be RFC3339")
@@ -288,42 +257,6 @@ func validateObservationWindow(o PulseGoalObservation) error {
 		return fmt.Errorf("window_start and window_end must both be RFC3339, start before end, and end no later than observed_at")
 	}
 	return nil
-}
-
-func GoalMetricSnapshots(ledger *PulseImpactLedger, now time.Time) []GoalMetricSnapshot {
-	result := []GoalMetricSnapshot{}
-	in := GoalCheckInput(ledger, now)
-	for i, fact := range goalcheck.Measurements(in.Metrics, in.Observations, now, goalcheck.DefaultSilenceDays*24) {
-		m := ledger.Metrics[i]
-		snapshot := GoalMetricSnapshot{Metric: m, State: "Measurement setup needed", Comparison: fact.Comparison}
-		if fact.Latest != nil {
-			snapshot.ObservedAt = fact.Latest.ObservedAt.UTC().Format(time.RFC3339Nano)
-		}
-		switch fact.State {
-		case "unavailable":
-			snapshot.State = "Measurement unavailable"
-		case "measured", "stale":
-			snapshot.Value = fact.Latest.Value
-			snapshot.Change = fact.Change
-			snapshot.State = "Baseline collecting"
-			if fact.Change != nil {
-				snapshot.State = "Tracking progress"
-			}
-			if fact.Previous != nil && goalcheck.Numeric(*fact.Previous) {
-				snapshot.PreviousValue = fact.Previous.Value
-				snapshot.PreviousObservedAt = fact.Previous.ObservedAt.UTC().Format(time.RFC3339Nano)
-			}
-			if m.Target != nil && ((m.Direction == "increase" && *snapshot.Value >= *m.Target) || (m.Direction == "decrease" && *snapshot.Value <= *m.Target) || (m.Direction == "maintain" && *snapshot.Value == *m.Target)) {
-				snapshot.State = "Target met"
-			}
-			if fact.State == "stale" {
-				snapshot.State = "Measurement stale"
-			}
-		}
-		result = append(result, snapshot)
-	}
-	sort.SliceStable(result, func(i, j int) bool { return result[i].Metric.Role == "primary" && result[j].Metric.Role != "primary" })
-	return result
 }
 
 // Legacy workflows had one primary and a flat supporting list. Resolve that

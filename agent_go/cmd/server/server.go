@@ -2929,11 +2929,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/report-human-inputs/{input_id}/dismiss", requireReportHumanInputAccess(true, api.handleDismissReportHumanInput)).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/report-human-inputs/{input_id}/consume", requireReportHumanInputAccess(true, api.handleConsumeReportHumanInput)).Methods("POST", "OPTIONS")
 	// The Pulse's goal memory, edited by the owner in the Pulse tab (PLAT-697).
-	apiRouter.HandleFunc("/workflow/goal-memory", requireReportHumanInputAccess(true, api.handlePutGoalMemory)).Methods("PUT", "OPTIONS")
 	// The Pulse conversation and focus areas in the Pulse tab (PLAT-697 phase 4).
 	apiRouter.HandleFunc("/workflow/team", api.handleWorkflowTeam).Methods("GET", "PUT")
 	apiRouter.HandleFunc("/workflow/goal-lead/message", requireReportHumanInputAccess(true, api.handlePostGoalLeadMessage)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/workflow/goal-lead/focus-areas", requireReportHumanInputAccess(true, api.handleGoalLeadFocusArea)).Methods("POST", "OPTIONS")
 
 	// Workflow running-session API (decoupled from chat session storage).
 	apiRouter.HandleFunc("/workflow/running", api.handleListRunningWorkflows).Methods("GET")
@@ -12795,10 +12793,8 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			}
 			return sb.String(), nil
 		},
-		CreateSchedule: func(ctx context.Context, workspacePath, name, cronExpr, timezone string, groupNames []string, routeSelections map[string]string, mode string, messages []string, directMessagesReason string, workshopMode string, resumePrevious *bool, pulseReviewOnly bool, policy todo_creation_human.ScheduleRuntimePolicy) (string, error) {
-			if pulseReviewOnly {
-				return "", fmt.Errorf("Pulse is workflow-wide. Use update_workflow_config(pulse_enabled=true), with no separate review schedule")
-			}
+		CreateSchedule: func(ctx context.Context, workspacePath, name, cronExpr, timezone string, groupNames []string, routeSelections map[string]string, mode string, messages []string, directMessagesReason string, workshopMode string, resumePrevious *bool, policy todo_creation_human.ScheduleRuntimePolicy) (string, error) {
+
 			mode = scheduleModeOrDefault(mode)
 			if mode == "multi-agent" {
 				return "", fmt.Errorf("workflow schedules must use workflow mode")
@@ -12819,11 +12815,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			if manifest.Kind == "relay" {
 				return "", fmt.Errorf("Flows support API function triggers only")
 			}
-			// PLAT-115: a PulseReviewOnly schedule never runs the workflow, so it
-			// has no group to validate — the same reason the manual "Run Pulse
-			// now" trigger's synthetic schedule (manualWorkflowPulseScheduleID)
-			// carries no GroupNames either.
-			if manifest.Kind != "relay" && !pulseReviewOnly {
+			if manifest.Kind != "relay" {
 				groupNames, err = validateScheduleGroupNamesForWorkspace(ctx, workspacePath, groupNames)
 				if err != nil {
 					return "", err
@@ -12967,7 +12959,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			}
 			return result, nil
 		},
-		UpdateSchedule: func(ctx context.Context, jobID, name, cronExpr, timezone string, groupNames []string, setGroupNames bool, routeSelections map[string]string, setRouteSelections bool, enabled *bool, mode string, messages []string, setMessages bool, directMessagesReason *string, workshopMode string, resumePrevious *bool, pulseReviewOnly *bool, policy *todo_creation_human.ScheduleRuntimePolicy) (string, error) {
+		UpdateSchedule: func(ctx context.Context, jobID, name, cronExpr, timezone string, groupNames []string, setGroupNames bool, routeSelections map[string]string, setRouteSelections bool, enabled *bool, mode string, messages []string, setMessages bool, directMessagesReason *string, workshopMode string, resumePrevious *bool, policy *todo_creation_human.ScheduleRuntimePolicy) (string, error) {
 			if cronExpr != "" {
 				if err := ValidateCronExpression(cronExpr); err != nil {
 					return "", fmt.Errorf("invalid cron expression %q: %w", cronExpr, err)
@@ -13044,9 +13036,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 			if resumePrevious != nil {
 				sched.ResumePrevious = resumePrevious
 			}
-			if pulseReviewOnly != nil {
-				return "", fmt.Errorf("Pulse is workflow-wide. Use update_workflow_config(pulse_enabled=true), with no separate review schedule")
-			}
+
 			if policy != nil {
 				if policy.SetExecutionMode {
 					sched.ExecutionMode = strings.TrimSpace(policy.ExecutionMode)
@@ -13086,9 +13076,7 @@ func (api *StreamingAPI) buildSchedulerCallbacks() *todo_creation_human.Schedule
 				}
 				applyScheduleAfterRunPolicy(sched, *policy, false)
 			}
-			// PLAT-115: a PulseReviewOnly schedule carries no GroupNames — same
-			// reason CreateSchedule skips the group-name requirement for it.
-			if manifest.Kind != "relay" && !sched.PulseReviewOnly {
+			if manifest.Kind != "relay" {
 				validGroupNames, err := validateScheduleGroupNamesForWorkspace(ctx, workspacePath, sched.GroupNames)
 				if err != nil {
 					return "", err

@@ -14,7 +14,7 @@ func (s *SchedulerService) runSinglePulseCycle(ctx context.Context, sctx *Schedu
 	if pulseRunID == "" {
 		pulseRunID = s.newScheduleSessionID(sctx)
 	}
-	step := pulseLifecycleGoalCheckStep(ctx, sctx.WorkspacePath, pulseRunID, notificationInstructionsFromCapabilities(sctx.Capabilities))
+	step := pulseLifecycleCheckStep(ctx, sctx.WorkspacePath, pulseRunID, notificationInstructionsFromCapabilities(sctx.Capabilities))
 	step.goalLead = true
 	result := s.runGoalLeadPassStep(ctx, sctx, step)
 	if result.outcome == pulseLifecycleStepInterrupted || errors.Is(result.err, context.Canceled) {
@@ -23,6 +23,6 @@ func (s *SchedulerService) runSinglePulseCycle(ctx context.Context, sctx *Schedu
 	if result.outcome != pulseLifecycleStepCompleted {
 		return pulseLifecyclePartial
 	}
-	s.sessionLogf(sctx, runSessionID, "[PULSE] goal check saved and turn completed")
+	s.sessionLogf(sctx, runSessionID, "[PULSE] turn completed")
 	return pulseLifecycleCompleted
 }

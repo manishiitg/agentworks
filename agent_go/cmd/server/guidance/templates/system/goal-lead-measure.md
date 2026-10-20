@@ -30,7 +30,7 @@ definitions alone do not establish that measurement works.
    change of method (dashboard vs public profile) is a new baseline, not a
    change in the goal. Actual period boundaries must be compatible; a
    partial day is not a full-day baseline. Gaps and unavailable outcomes stay
-   explicit. `get_pulse_state(view="goal_status")` offers per-metric history and freshness;
+   explicit. `get_goal_metrics` offers measurement history;
    `get_goal_metrics` exposes the complete definitions and bounded history.
    Code differences are arithmetic evidence, not an automatic progress verdict.
 4. **Sanity check against the source.** When a reading looks off, check the

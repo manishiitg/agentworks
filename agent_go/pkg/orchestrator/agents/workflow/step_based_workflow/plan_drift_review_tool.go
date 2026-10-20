@@ -54,12 +54,7 @@ func validateStepDriftChecks(checks []StepDriftCheck) error {
 				i, c.Evidence, minPlanDriftCheckEvidenceLength,
 			)
 		}
-		if c.Status == stepDriftCheckStatusFail && strings.TrimSpace(c.FindingID) == "" {
-			return fmt.Errorf(
-				"checks[%d].finding_id is required when status is \"fail\" — call record_pulse_finding first and pass its issue_id here, so a failed check can never be recorded as reviewed without a corresponding repair item already existing",
-				i,
-			)
-		}
+
 	}
 	return nil
 }
@@ -69,10 +64,6 @@ func validateStepDriftChecks(checks []StepDriftCheck) error {
 // that has been closed out no longer represents unresolved repair work, so
 // referencing one is exactly as fraudulent as referencing an unrelated
 // finding — it does not prove anything is currently being tracked.
-var pulseFindingInactiveStatuses = map[string]bool{
-	"resolved": true,
-	"rejected": true,
-}
 
 // verifyStepDriftCheckFindingsExist confirms every fail-status check's
 // finding_id resolves to a real Pulse finding that is (a) currently active
@@ -82,41 +73,6 @@ var pulseFindingInactiveStatuses = map[string]bool{
 // conditions together are what "belongs to this exact drift failure" means:
 // a fabricated id, a resolved id, or a real-but-unrelated-step's id are all
 // rejected the same way.
-func verifyStepDriftCheckFindingsExist(ctx context.Context, workspacePath, stepID string, checks []StepDriftCheck) error {
-	var wantIDs []string
-	for _, c := range checks {
-		if c.Status == stepDriftCheckStatusFail {
-			wantIDs = append(wantIDs, strings.TrimSpace(strings.ToUpper(c.FindingID)))
-		}
-	}
-	if len(wantIDs) == 0 {
-		return nil
-	}
-	findings, err := LoadPulseFindingLifecycles(ctx, workspacePath, "", -1)
-	if err != nil {
-		return fmt.Errorf("failed to verify finding_id references against the Pulse backlog: %w", err)
-	}
-	activeForStep := make(map[string]bool, len(findings))
-	for _, f := range findings {
-		id := strings.TrimSpace(strings.ToUpper(f.IssueID))
-		if id == "" || f.StepID != stepID {
-			continue
-		}
-		if pulseFindingInactiveStatuses[strings.ToLower(strings.TrimSpace(f.Status))] {
-			continue
-		}
-		activeForStep[id] = true
-	}
-	for _, id := range wantIDs {
-		if !activeForStep[id] {
-			return fmt.Errorf(
-				"finding_id %q does not match any active Pulse finding filed against step %q — it must be a real, currently-tracked (not resolved/rejected) finding for this exact step, not a fabricated id, a closed-out finding, or one filed against a different step. Call record_pulse_finding first, then pass its real issue_id here",
-				id, stepID,
-			)
-		}
-	}
-	return nil
-}
 
 func getRecordPlanDriftReviewSchema() string {
 	return `{
@@ -144,10 +100,7 @@ func getRecordPlanDriftReviewSchema() string {
 							"type": "string",
 							"description": "What was actually compared and what was found — specific, not a bare verdict. E.g. 'compared description sentence 2 (\"reads leads table\") against the step's actual tool config, which only reads campaigns; description is stale' — not 'reviewed, looks fine'."
 						},
-						"finding_id": {
-							"type": "string",
-							"description": "Required when status is \"fail\": the durable issue_id (e.g. \"PUL-xxxxxxxx\") returned by record_pulse_finding for this exact failure. Call record_pulse_finding BEFORE this tool for every failing check, then pass its real issue_id here — a fabricated or missing id is rejected. This is what keeps a failed check from being marked reviewed with no corresponding repair item in the backlog."
-						}
+
 					},
 					"required": ["check_id", "status", "evidence"]
 				},
@@ -187,9 +140,6 @@ func createRecordPlanDriftReviewExecutor(workspacePath string, logger loggerv2.L
 			return "", fmt.Errorf("checks must be an array of {check_id, status, evidence}: %w", err)
 		}
 		if err := validateStepDriftChecks(checks); err != nil {
-			return "", err
-		}
-		if err := verifyStepDriftCheckFindingsExist(ctx, workspacePath, stepID, checks); err != nil {
 			return "", err
 		}
 

@@ -27,33 +27,10 @@ import { useWorkflowStore } from '../../../stores/useWorkflowStore'
 import { useWorkflowManifestStore } from '../../../stores/useWorkflowManifestStore'
 import { useWorkspaceStore } from '../../../stores/useWorkspaceStore'
 import { agentApi, workspaceApi } from '../../../services/api'
-import type {
-  ExecutionOptions,
-  PulseImpactLedger,
-  PulseNextRun,
-  PulseGoalWorkItem,
-  PulseGoalStatus,
-  PulseOutwardActions,
-  VariablesManifest,
-  WorkflowRunSetup,
-} from '../../../services/api-types'
+import type { ExecutionOptions, PulseOutwardActions, VariablesManifest, WorkflowRunSetup } from '../../../services/api-types'
 import { assertNeverView, getWorkspaceView, isInspectorView, type InspectorViewId, type WorkspaceViewId, type WorkspaceViewKind } from '../workspaceViews'
-import {
-  WorkspaceViewDataContext,
-  useWorkspaceViewData,
-  type FlowShell,
-  type PulseData,
-  type WorkflowImageExportFormat,
-  type WorkspaceViewData,
-} from './workspaceViewData'
-import {
-  WORKFLOW_REPORT_EXPORT_EVENT,
-  WorkflowCanvasInner,
-  usePreviewDevice,
-  type WorkflowCanvasProps,
-  type WorkflowCanvasRef,
-} from './WorkflowCanvas'
-
+import { WorkspaceViewDataContext, useWorkspaceViewData, type FlowShell, type PulseData, type WorkflowImageExportFormat, type WorkspaceViewData } from './workspaceViewData'
+import { WORKFLOW_REPORT_EXPORT_EVENT, WorkflowCanvasInner, usePreviewDevice, type WorkflowCanvasProps, type WorkflowCanvasRef } from './WorkflowCanvas'
 
 // Every inspector view is lazy: only the one the user opens is fetched, so the
 // eager bundle carries the flow canvas and nothing else from this list. The
@@ -75,7 +52,6 @@ const WorkflowPublishView = lazy(() => import('../WorkflowPublishView'))
 const WorkflowNotificationView = lazy(() => import('../WorkflowNotificationView'))
 const WorkflowAccessView = lazy(() => import('../WorkflowAccessView'))
 const FileWorkspacePane = lazy(() => import('../../FileWorkspacePane').then(module => ({ default: module.FileWorkspacePane })))
-
 
 const noop = () => {}
 const dispatchReportExport = () => window.dispatchEvent(new CustomEvent(WORKFLOW_REPORT_EXPORT_EVENT))
@@ -201,24 +177,9 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
             monitorSaving={pulse.monitorSaving}
             onToggleMonitor={pulse.toggleMonitor}
             hasSoul={pulse.hasSoul}
-
-
-
-
-
-
-            nextRun={pulse.nextRun}
-            lastChange={pulse.lastChange}
-            impact={pulse.impact}
-
-            goalStatus={pulse.goalStatus}
             outwardActions={pulse.outwardActions}
             outwardSaving={pulse.outwardSaving}
             onChangeOutward={pulse.setOutward}
-
-
-
-
 
             statusError={pulse.statusError}
             statusLoading={pulse.statusLoading}
@@ -340,10 +301,6 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
   const { monitorSaving, toggleMonitor } = usePulseToggle(
     workspacePath, monitorOn, updateWorkflowManifest, useChatStore.getState().addToast,
   )
-  const [pulseNextRun, setPulseNextRun] = useState<PulseNextRun | null>(null)
-  const [pulseImpact, setPulseImpact] = useState<PulseImpactLedger | null>(null)
-  const [lastChange, setLastChange] = useState<PulseGoalWorkItem | null>(null)
-  const [pulseGoalStatus, setPulseGoalStatus] = useState<PulseGoalStatus | null>(null)
   const [pulseOutward, setPulseOutwardState] = useState<PulseOutwardActions>('ask')
   const [pulseOutwardSaving, setPulseOutwardSaving] = useState(false)
   const [pulseHasSoul, setPulseHasSoul] = useState(false)
@@ -365,8 +322,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
 
   const refreshPulseOverview = useCallback(async (showLoading = true) => {
     if (!workspacePath) {
-      setPulseImpact(null)
-      setLastChange(null)
+
       setPulseStatusError(null)
       return
     }
@@ -377,10 +333,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
       if (!resp.success) {
         throw new Error(resp.error || 'Failed to load Pulse status')
       }
-      setPulseNextRun(resp.next_pulse || null)
-      setPulseImpact(resp.impact ?? null)
-      setLastChange(resp.last_change ?? null)
-      setPulseGoalStatus(resp.goal_status ?? null)
+
       setPulseOutwardState(resp.outward_actions ?? 'ask')
       setPulseHasSoul(!!resp.has_soul)
       setPulseRunSetup(resp.run_setup ?? null)
@@ -405,38 +358,15 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
     useWorkflowStore.getState().openWorkspaceView('human-actions')
   }, [openHumanActionsOnMount, kind])
 
-  // The module state is a ~250KB payload: poll slowly, never while the tab is
-  // hidden, and never start a poll while the previous one is still in flight
-  // (on a slow link a fixed 5s interval piled requests up and starved chat).
-  const pulsePollInFlightRef = useRef(false)
   useEffect(() => {
-    if (workflowWorkspaceView !== 'pulse') return
-    const poll = async (showLoading: boolean) => {
-      if (pulsePollInFlightRef.current) return
-      if (!showLoading && document.hidden) return
-      pulsePollInFlightRef.current = true
-      try {
-        await refreshPulseOverview(showLoading)
-      } finally {
-        pulsePollInFlightRef.current = false
-      }
-    }
-    void poll(true)
-    const timer = window.setInterval(() => { void poll(false) }, 30_000)
-    const onVisible = () => { if (!document.hidden) void poll(false) }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      window.clearInterval(timer)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
+    if (workflowWorkspaceView === 'pulse') void refreshPulseOverview()
   }, [workflowWorkspaceView, refreshPulseOverview])
 
   const pulse = useMemo<PulseData>(() => ({ monitorOn, monitorSaving, toggleMonitor,
-    nextRun: pulseNextRun, impact: pulseImpact, lastChange, goalStatus: pulseGoalStatus,
     outwardActions: pulseOutward, outwardSaving: pulseOutwardSaving, setOutward: setPulseOutward,
     statusError: pulseStatusError, statusLoading: pulseStatusLoading, refresh: refreshPulseOverview,
     hasSoul: pulseHasSoul, runSetup: pulseRunSetup,
-  }), [monitorOn, monitorSaving, toggleMonitor, pulseNextRun, pulseImpact, lastChange, pulseGoalStatus,
+  }), [monitorOn, monitorSaving, toggleMonitor,
     pulseOutward, pulseOutwardSaving, setPulseOutward, pulseStatusError, pulseStatusLoading,
     refreshPulseOverview, pulseHasSoul, pulseRunSetup])
 

@@ -53,9 +53,7 @@ func decisionApplyInstructions(input ReportHumanInput) string {
 	if proof := strings.TrimSpace(contract.PostRunProof); proof != "" {
 		fmt.Fprintf(&b, "- Proof that needs a later run: %q. Say plainly what remains to be proven; do not claim it.\n", proof)
 	}
-	if issueID := strings.TrimSpace(contract.IssueID); issueID != "" {
-		fmt.Fprintf(&b, "- Linked issue %q: read it with get_pulse_state(view=\"backlog\", detail=\"full\") before changing anything. Keep it open until the change is applied, then record what was done and close it.\n", issueID)
-	}
+
 	b.WriteString(`- Approved or a smaller option chosen: make the change with the normal typed Builder tools, re-read the changed artifact to confirm it landed, then call mark_human_input_consumed with outcome_summary stating what changed and outcome_evidence identifying the saved result you checked. Approval, a queued task or a start receipt is not completion evidence.
 - Rejected: call mark_human_input_consumed with outcome_summary that the user declined and nothing changed, and outcome_evidence identifying the explicit saved rejection.
 - Deferred, or anything you cannot apply safely right now: change nothing, leave it answered, and tell me in one or two sentences why.

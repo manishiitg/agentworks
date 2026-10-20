@@ -306,16 +306,7 @@ type StepDriftCheck struct {
 	CheckID  string `json:"check_id"` // stable id, e.g. "report_query_compatibility", "kb_access_mode"
 	Status   string `json:"status"`   // "pass" | "fail" | "fixed"
 	Evidence string `json:"evidence"` // what was compared and what was found — required, not optional
-	// FindingID is the durable Pulse issue_id (e.g. "PUL-xxxxxxxx") this check's
-	// failure was filed as, via record_pulse_finding. Required when Status is
-	// "fail" — record_plan_drift_review rejects a fail-status check with no
-	// finding_id, so a failed check can never be persisted as "reviewed"
-	// without a corresponding repair item already existing. This closes the
-	// window where the review call succeeds, the finding call never happens
-	// (crash, turn ends, tool error), and the failure silently disappears from
-	// both the drift record (marked reviewed) and the Pulse backlog (no
-	// finding filed).
-	FindingID string `json:"finding_id,omitempty"`
+
 }
 
 // WorkflowDriftReviewStepID is the reserved step_config.json ID that carries

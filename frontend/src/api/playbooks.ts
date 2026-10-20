@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { getApiBaseUrl, getAuthToken } from '../services/api'
 import type { InstalledPlaybook } from '../services/api-types'
-import type { PlaybookAgentSlot, PlaybookCatalogItem, PlaybookChangelogEntry, PlaybookHandoff, PlaybookPulseFocus, PlaybookRecommendedTool, PlaybookSetupInput } from '../components/playbooks/playbookCatalog'
+import type { PlaybookAgentSlot, PlaybookCatalogItem, PlaybookChangelogEntry, PlaybookHandoff, PlaybookRecommendedTool, PlaybookSetupInput } from '../components/playbooks/playbookCatalog'
 
 type ServerPlaybook = {
   id: string
@@ -16,7 +16,6 @@ type ServerPlaybook = {
   setup_inputs?: PlaybookSetupInput[]
   required_capabilities?: string[]
   recommended_tools?: PlaybookRecommendedTool[]
-  pulse_focus?: Array<PlaybookPulseFocus | (Omit<PlaybookPulseFocus, 'module'> & { module: 'technical_review' | 'architecture_review' })>
   outputs?: string[]
   agent_slots?: PlaybookAgentSlot[]
   handoffs?: PlaybookHandoff[]
@@ -45,7 +44,6 @@ const normalize = (item: ServerPlaybook): PlaybookCatalogItem => ({
   setupInputs: item.setup_inputs || [],
   requiredCapabilities: item.required_capabilities || [],
   recommendedTools: item.recommended_tools || [],
-  pulseFocus: (item.pulse_focus || []).filter((focus): focus is PlaybookPulseFocus => focus.module === 'strategic_review'),
   outputs: item.outputs || [],
   agentSlots: item.agent_slots || [],
   handoffs: item.handoffs || [],

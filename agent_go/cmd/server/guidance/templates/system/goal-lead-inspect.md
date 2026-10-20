@@ -24,7 +24,7 @@ failed. You find and diagnose; the Builder chat fixes (`ask_builder`).
 4. If recording is part of this step's contract, verify its source-backed DB
    reading. Other goal-advancing work may be measured by a different step;
    its own missing reading does not prove it failed.
-5. Its `CONCERNS:` lines (in `get_pulse_state(view="step_concerns")`).
+5. Its `CONCERNS:` lines in saved run summaries.
 
 **Debug a failure.** Read the step's log and the error first. Compare with the
 last run where the step worked: what changed between them, the inputs, the

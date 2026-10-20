@@ -3,7 +3,6 @@ package step_based_workflow
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,13 +22,11 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/contractupgrade"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/llmguard"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents"
 	orchestrator_events "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pulsemodules"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulepolicy"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowkb"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
@@ -127,37 +124,6 @@ func stringSliceArgument(args map[string]interface{}, key string) ([]string, boo
 // ValidatePulseReviewIdentity rejects a review identity that cannot name a
 // saved review. It is exported because the review read is served by the shared
 // get_pulse_state tool in the server tool pool, not by a workshop-local tool.
-func ValidatePulseReviewIdentity(reviewRunID, module string) error {
-	reviewRunID = strings.TrimSpace(reviewRunID)
-	module = strings.TrimSpace(module)
-	separator := strings.IndexByte(reviewRunID, '_')
-	if separator <= 0 {
-		return fmt.Errorf("review_run_id %q must start with a UTC date-time and an underscore, e.g. 2026-08-01T00-00-00.000Z_<suffix>; use the id exactly as reported by the reviewer completion notification", reviewRunID)
-	}
-	if _, err := time.Parse("2006-01-02T15-04-05.000Z", reviewRunID[:separator]); err != nil {
-		return fmt.Errorf("review_run_id %q must start with YYYY-MM-DDTHH-MM-SS.mmmZ: %w", reviewRunID, err)
-	}
-	for _, r := range reviewRunID {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.') {
-			return fmt.Errorf("review_run_id contains unsupported path characters")
-		}
-	}
-	// Derived from the canonical registry — see pkg/pulsemodules. Only current
-	// perspectives are accepted: evidence packs never get independent receipt
-	// identities. Omitting a current module here silently breaks its persistence.
-	valid := false
-	for _, accepted := range pulsemodules.AcceptedForReviewReceipts() {
-		if accepted == module {
-			valid = true
-			break
-		}
-	}
-	if !valid {
-		return fmt.Errorf("module %q is not a valid Pulse review module. Must be one of: %s",
-			module, strings.Join(pulsemodules.AcceptedForReviewReceipts(), ", "))
-	}
-	return nil
-}
 
 func isMissingOrEmptyWorkspaceError(err error) bool {
 	if err == nil {
@@ -1278,19 +1244,8 @@ func GetToolsForWorkshopMode(mode string) []string {
 	// workshop mode. Run mode can inspect outcomes, but should not mutate the
 	// dynamic Pulse worklist/result state.
 	pulseState := []string{
-		"get_pulse_state",
-		"record_pulse_finding",
-		"merge_pulse_issues",
-		"resolve_run_concern",
 		"mark_changelog_artifact_reviewed",
-		"record_pulse_fast_request",
-		"record_pulse_goal_work",
-		"record_pulse_goal_check",
-		"record_pulse_recommendation",
-		"record_pulse_decision_outcome",
-		"record_pulse_goal_memory",
 		// Pulse goal focus tools.
-		"record_pulse_focus_area",
 		"search_platform",
 		"ask_platform_crew",
 		"read_crew_calls",
@@ -4356,21 +4311,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 			sb.WriteString(fmt.Sprintf("- run_retention_count: %d%s\n", runRetentionCount, runRetentionNote))
 
-			// --- Owner-approved advisor specialization ---
-			sb.WriteString("\n### Advisor Specialization\n")
-			if content, err := ctrl.ReadWorkspaceFile(ctx, "workflow.json"); err == nil {
-				specialization, parseErr := readWorkflowAdvisorSpecialization(content)
-				if parseErr == nil && specialization != nil {
-					sb.WriteString(fmt.Sprintf("- version: %d\n- approved decision: %s\n", specialization.Version, specialization.ApprovedInputID))
-					sb.WriteString("- Strategy Auditor:\n  " + strings.ReplaceAll(strings.TrimSpace(specialization.StrategyAuditor), "\n", "\n  ") + "\n")
-					sb.WriteString("- Goal Advisor:\n  " + strings.ReplaceAll(strings.TrimSpace(specialization.GoalAdvisor), "\n", "\n  ") + "\n")
-				} else {
-					sb.WriteString("No workflow-specific advisor specialization is active.\n")
-				}
-			} else {
-				sb.WriteString("Could not read workflow.json.\n")
-			}
-
 			// Preset-level defaults
 			sb.WriteString("\n**Preset Defaults**:\n")
 			writeLLMDefault := func(label string, llm *AgentLLMConfig) {
@@ -4632,10 +4572,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					"type":        "array",
 					"items":       map[string]interface{}{"type": "string"},
 					"description": "Workflow-level optional workspace/custom tools (stored in execution_defaults, applies to EVERY step unless a step sets its own enabled_custom_tools). Execution agents already receive workspace_advanced. Human tools are not baseline: name send_email, send_slack_message or create_human_input_request when steps need them. Add only capabilities nearly every step needs. Legacy human_tools:* grants nothing. Prefer per-step tuning otherwise. Pass an empty array to clear the workflow-level additions.",
-				},
-				"advisor_specialization_approval_input_id": map[string]interface{}{
-					"type":        "string",
-					"description": "Activate the exact Strategy Auditor and Goal Advisor specialization text in an answered report_human_inputs decision whose id starts advisor-specialization- and whose selected option is activate. The two texts are resolved from the approved decision and written atomically to workflow.json; arbitrary replacement text is not accepted here.",
 				},
 			},
 		},
@@ -5862,23 +5798,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				logger.Info(fmt.Sprintf("Updated workflow execution_defaults: %v", summary))
 			}
 
-			// --- Owner-approved advisor specialization ---
-			if raw, ok := args["advisor_specialization_approval_input_id"]; ok && raw != nil {
-				inputID, _ := raw.(string)
-				inputID = strings.TrimSpace(inputID)
-				if inputID == "" {
-					return "Error: advisor_specialization_approval_input_id must be a non-empty advisor-specialization-* decision id.", nil
-				}
-				activated, _, err := iwm.activateApprovedAdvisorSpecialization(ctx, inputID)
-				if err != nil {
-					return fmt.Sprintf("Error: could not activate advisor specialization: %v", err), nil
-				}
-				// A retry of an already-active approval is an idempotent successful
-				// operation, not a generic "no changes" error.
-				anyChanged = true
-				sb.WriteString(fmt.Sprintf("\n### Advisor specialization (version %d)\n- Approved decision: %s\n- Strategy Auditor and Goal Advisor now receive their separate workflow-specific lenses; the canonical reviewer contracts still take precedence.\n", activated.Version, activated.ApprovedInputID))
-			}
-
 			if raw, provided := args["knowledgebase_sources"]; provided {
 				if raw == nil {
 					return "", fmt.Errorf("knowledgebase_sources must be an array; use [] to detach all")
@@ -5970,7 +5889,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			}
 
 			if !anyChanged {
-				return "No changes applied. Provide at least one of: knowledgebase_sources, kb_write_grants, add_servers, remove_servers, add_tools, remove_tools, add_skills, remove_skills, add_secrets, remove_secrets, run_notification_instructions, pulse_notification_instructions, run_notification_channels, pulse_notification_channels, slack_webhook_secret_name, browser_mode, cdp_ports, run_retention_count, advisor_specialization_approval_input_id.", nil
+				return "No changes applied. Provide at least one of: knowledgebase_sources, kb_write_grants, add_servers, remove_servers, add_tools, remove_tools, add_skills, remove_skills, add_secrets, remove_secrets, run_notification_instructions, pulse_notification_instructions, run_notification_channels, pulse_notification_channels, slack_webhook_secret_name, browser_mode, cdp_ports, run_retention_count.", nil
 			}
 
 			// Persist config changes to workflow.json manifest (file-backed)
@@ -6287,7 +6206,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if iwm.schedulerWorkspacePath == "" {
 				return "No workspace path associated with this workflow session.", nil
 			}
-			pulseReviewOnly := false
 			name, _ := args["name"].(string)
 			cronExpr, _ := args["cron_expression"].(string)
 			timezone, _ := args["timezone"].(string)
@@ -6340,12 +6258,10 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if err := validateWorkshopScheduleTimezone(timezone); err != nil {
 				return err.Error(), nil
 			}
-			if !pulseReviewOnly && len(groupNames) == 0 {
+			if len(groupNames) == 0 {
 				return "group_names is required. Read variables/variables.json and provide at least one explicit group_name, e.g. ['group-1'].", nil
 			}
-			if pulseReviewOnly && (len(groupNames) > 0 || len(routeSelections) > 0 || len(messages) > 0) {
-				return "pulse_review_only does not run the workflow — it must not set group_names, route_selections, or messages.", nil
-			}
+
 			policy := ScheduleRuntimePolicy{}
 
 			policy.AfterRun, policy.SetAfterRun = scheduleAfterRunArgument(args)
@@ -6363,7 +6279,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			if value, ok := args["after_delay_minutes"].(float64); ok {
 				policy.AfterDelayMinutes = int(value)
 			}
-			return iwm.schedulerFuncs.CreateSchedule(ctx, iwm.schedulerWorkspacePath, name, cronExpr, timezone, groupNames, routeSelections, mode, messages, directMessagesReason, workshopMode, resumePrevious, pulseReviewOnly, policy)
+			return iwm.schedulerFuncs.CreateSchedule(ctx, iwm.schedulerWorkspacePath, name, cronExpr, timezone, groupNames, routeSelections, mode, messages, directMessagesReason, workshopMode, resumePrevious, policy)
 		},
 		"workflow",
 	); err != nil {
@@ -6683,7 +6599,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					resumePrevious = &b
 				}
 			}
-			var pulseReviewOnly *bool // Retired compatibility argument; always nil.
 			var policy *ScheduleRuntimePolicy
 			if _, ok1 := args["execution_mode"]; ok1 {
 				policy = &ScheduleRuntimePolicy{}
@@ -6745,7 +6660,7 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 					policy.AfterDelayMinutes = int(value)
 				}
 			}
-			return iwm.schedulerFuncs.UpdateSchedule(ctx, jobID, name, cronExpr, timezone, groupNames, setGroupNames, routeSelections, setRouteSelections, enabled, mode, messages, setMessages, directMessagesReason, workshopMode, resumePrevious, pulseReviewOnly, policy)
+			return iwm.schedulerFuncs.UpdateSchedule(ctx, jobID, name, cronExpr, timezone, groupNames, setGroupNames, routeSelections, setRouteSelections, enabled, mode, messages, setMessages, directMessagesReason, workshopMode, resumePrevious, policy)
 		},
 		"workflow",
 	); err != nil {
@@ -8330,199 +8245,6 @@ func (iwm *InteractiveWorkshopManager) runReviewStepCodeAgent(ctx context.Contex
 		return "", fmt.Errorf("review_step_code agent failed: %w", err)
 	}
 	return result, nil
-}
-
-func normalizeGoalAdvisorWorkspacePath(workspacePath string) (string, error) {
-	cleaned := strings.Trim(filepath.ToSlash(strings.TrimSpace(workspacePath)), "/")
-	if cleaned == "" {
-		return "", fmt.Errorf("workspace path is required")
-	}
-	if filepath.IsAbs(workspacePath) || strings.Contains(cleaned, "\x00") {
-		return "", fmt.Errorf("invalid workspace path %q", workspacePath)
-	}
-	for _, part := range strings.Split(cleaned, "/") {
-		if part == "" || part == "." || part == ".." {
-			return "", fmt.Errorf("invalid workspace path %q", workspacePath)
-		}
-	}
-	return cleaned, nil
-}
-
-type workflowAdvisorSpecialization struct {
-	Version         int    `json:"version"`
-	StrategyAuditor string `json:"strategy_auditor"`
-	GoalAdvisor     string `json:"goal_advisor"`
-	ApprovedInputID string `json:"approved_input_id,omitempty"`
-	UpdatedAt       string `json:"updated_at,omitempty"`
-}
-
-func parseAdvisorSpecializationDecisionContext(value string) (string, string, error) {
-	const strategyMarker = "Strategy Auditor specialization:"
-	const goalMarker = "Goal Advisor specialization:"
-	strategyAt := strings.Index(value, strategyMarker)
-	goalAt := strings.Index(value, goalMarker)
-	if strategyAt < 0 || goalAt < 0 || goalAt <= strategyAt+len(strategyMarker) {
-		return "", "", fmt.Errorf("decision context must contain Strategy Auditor specialization followed by Goal Advisor specialization")
-	}
-	strategy := strings.TrimSpace(value[strategyAt+len(strategyMarker) : goalAt])
-	goal := strings.TrimSpace(value[goalAt+len(goalMarker):])
-	if strategy == "" || goal == "" {
-		return "", "", fmt.Errorf("both advisor specialization texts must be non-empty")
-	}
-	return strategy, goal, nil
-}
-
-func readWorkflowAdvisorSpecialization(content string) (*workflowAdvisorSpecialization, error) {
-	var manifest struct {
-		Pulse struct {
-			AdvisorSpecialization *workflowAdvisorSpecialization `json:"advisor_specialization"`
-		} `json:"pulse"`
-	}
-	if err := json.Unmarshal([]byte(content), &manifest); err != nil {
-		return nil, err
-	}
-	return manifest.Pulse.AdvisorSpecialization, nil
-}
-
-func applyAdvisorSpecializationToManifest(content, inputID, strategy, goal, updatedAt string) (string, *workflowAdvisorSpecialization, bool, error) {
-	current, err := readWorkflowAdvisorSpecialization(content)
-	if err != nil {
-		return "", nil, false, fmt.Errorf("parse workflow.json: %w", err)
-	}
-	strategy = strings.TrimSpace(strategy)
-	goal = strings.TrimSpace(goal)
-	alreadyActive := current != nil && current.ApprovedInputID == inputID &&
-		strings.TrimSpace(current.StrategyAuditor) == strategy && strings.TrimSpace(current.GoalAdvisor) == goal
-	if alreadyActive {
-		return content, current, true, nil
-	}
-
-	var manifest map[string]interface{}
-	if err := json.Unmarshal([]byte(content), &manifest); err != nil {
-		return "", nil, false, fmt.Errorf("parse workflow.json: %w", err)
-	}
-	version := 1
-	if current != nil && current.Version >= 1 {
-		version = current.Version + 1
-	}
-	activated := &workflowAdvisorSpecialization{
-		Version:         version,
-		StrategyAuditor: strategy,
-		GoalAdvisor:     goal,
-		ApprovedInputID: inputID,
-		UpdatedAt:       updatedAt,
-	}
-	pulse, _ := manifest["pulse"].(map[string]interface{})
-	if pulse == nil {
-		pulse = make(map[string]interface{})
-	}
-	pulse["advisor_specialization"] = activated
-	manifest["pulse"] = pulse
-	manifest["updated_at"] = updatedAt
-	out, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return "", nil, false, err
-	}
-	return string(out), activated, false, nil
-}
-
-func (iwm *InteractiveWorkshopManager) activateApprovedAdvisorSpecialization(ctx context.Context, inputID string) (*workflowAdvisorSpecialization, bool, error) {
-	inputID = strings.TrimSpace(inputID)
-	if !strings.HasPrefix(inputID, "advisor-specialization-") {
-		return nil, false, fmt.Errorf("input id must start with advisor-specialization-")
-	}
-	normalized, err := normalizeGoalAdvisorWorkspacePath(iwm.controller.GetWorkspacePath())
-	if err != nil {
-		return nil, false, err
-	}
-	dbPath := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(normalized), "db", "db.sqlite")
-	db, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		return nil, false, err
-	}
-	defer db.Close()
-	if _, err := db.ExecContext(ctx, "PRAGMA busy_timeout = 5000"); err != nil {
-		return nil, false, err
-	}
-
-	var source, status, selected, decisionContext string
-	err = db.QueryRowContext(ctx, `SELECT source, status, selected_option_id, context
-		FROM report_human_inputs WHERE id=? AND workspace_path=?`, inputID, normalized).
-		Scan(&source, &status, &selected, &decisionContext)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, false, fmt.Errorf("approved decision %q was not found", inputID)
-		}
-		return nil, false, err
-	}
-	if strings.TrimSpace(source) != "pulse" {
-		return nil, false, fmt.Errorf("decision %q must have source pulse", inputID)
-	}
-	if status != "answered" && status != "consumed" {
-		return nil, false, fmt.Errorf("decision %q must be answered before activation; current status=%q", inputID, status)
-	}
-	if strings.ToLower(strings.TrimSpace(selected)) != "activate" {
-		return nil, false, fmt.Errorf("decision %q selected %q, not activate", inputID, selected)
-	}
-	strategy, goal, err := parseAdvisorSpecializationDecisionContext(decisionContext)
-	if err != nil {
-		return nil, false, err
-	}
-
-	content, err := iwm.controller.ReadWorkspaceFile(ctx, "workflow.json")
-	if err != nil {
-		return nil, false, err
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	updatedContent, activated, alreadyActive, err := applyAdvisorSpecializationToManifest(content, inputID, strategy, goal, now)
-	if err != nil {
-		return nil, false, err
-	}
-	if !alreadyActive {
-		if err := iwm.controller.writeManagedWorkflowManifest(ctx, updatedContent); err != nil {
-			return nil, false, err
-		}
-		oldState := "absent"
-		if previous, _ := readWorkflowAdvisorSpecialization(content); previous != nil {
-			oldState = "present"
-		}
-		LogCanonicalArtifactChange(
-			ctx,
-			normalized,
-			"update_workflow_config",
-			"Activated an owner-approved Strategy Auditor and Goal Advisor specialization.",
-			[]PlanFieldChange{{
-				Field:    "workflow.json.pulse.advisor_specialization",
-				OldValue: oldState,
-				NewValue: "changed",
-			}},
-			func(ctx context.Context, path string) (string, error) {
-				return iwm.controller.ReadWorkspaceFile(ctx, path)
-			},
-			func(ctx context.Context, path, value string) error {
-				return iwm.controller.WriteWorkspaceFile(ctx, path, value)
-			},
-			iwm.controller.GetLogger(),
-			"workflow.json",
-			content,
-			updatedContent,
-		)
-	}
-
-	if status == "answered" {
-		result, err := db.ExecContext(ctx, `UPDATE report_human_inputs
-			SET status='consumed', consumed_by='advisor_specialization',
-			    outcome_summary=?, consumed_at=?, updated_at=?
-			WHERE id=? AND workspace_path=? AND status='answered'`,
-			fmt.Sprintf("Activated advisor specialization version %d in workflow.json", activated.Version), now, now, inputID, normalized)
-		if err != nil {
-			return nil, false, fmt.Errorf("specialization was written but decision consumption failed: %w", err)
-		}
-		if rows, _ := result.RowsAffected(); rows != 1 {
-			return nil, false, fmt.Errorf("specialization was written but decision consumption did not update exactly one row")
-		}
-	}
-	return activated, alreadyActive, nil
 }
 
 func (iwm *InteractiveWorkshopManager) createUnattendedWorkshopAgentConfig(agentName string, maxTurns int, llmConfig *orchestrator.LLMConfig, agentKind string) *agents.OrchestratorAgentConfig {

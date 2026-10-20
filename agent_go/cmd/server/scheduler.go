@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/robfig/cron/v3"
 	"os"
 	"path/filepath"
 	"slices"
@@ -24,7 +25,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
-	"github.com/robfig/cron/v3"
 )
 
 const scheduledBackgroundNoPollingInstruction = "After launching background workflow or step work, do not babysit it with sleep/list_executions/query_step polling loops. Use at most one immediate query_step if you need to confirm the execution_id/status, then stop; [AUTO-NOTIFICATION] messages will resume the conversation when background work completes."
@@ -62,12 +62,8 @@ type ScheduleContext struct {
 
 	// AfterRunBackup and AfterRunPublish select the after-run housekeeping
 	// turn's actions (after_run.go): only those with something to do.
-	AfterRunBackup  bool
-	AfterRunPublish bool
-	// PulseGoalCheck marks the daily goal check (pulse_goal_check.go): one
-	// short goal turn, no Gate, reviewers or finalizer. It shares the full
-	// Pulse's schedule ID, so it never runs beside a Pulse pass.
-	PulseGoalCheck         bool
+	AfterRunBackup         bool
+	AfterRunPublish        bool
 	PulseEvidenceRunFolder string
 	PulseEvidenceRunStatus string
 	CalendarItem           *CalendarScheduleItem
@@ -362,7 +358,7 @@ func (s *SchedulerService) Start(ctx context.Context) error {
 			sctx := buildScheduleContext(wf.WorkspacePath, wf.Manifest, sched)
 			if err := s.LoadSchedule(sctx); err != nil {
 				scheduleLogf("[SCHEDULER] Failed to load schedule %s (%s): %v", sched.ID, sched.Name, err)
-			} else if sched.Enabled && !sched.PulseReviewOnly {
+			} else if sched.Enabled {
 				loaded++
 			}
 		}
@@ -517,7 +513,7 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 				// check is Pulse's one self-timed turn and does Goal Work when
 				// useful. A failed run still wakes it.
 				// Then the daily goal check (PLAT-697).
-				s.launchDueGoalChecks(context.Background())
+				s.launchDuePulseChecks(context.Background())
 				// Plan Drift is checked inside the same Pulse goal-work turn;
 				// ordinary workflow runs never dispatch an AI reviewer.
 			}()
@@ -569,13 +565,6 @@ func (s *SchedulerService) discoverWorkflows(ctx context.Context) []discoveredWo
 	}
 
 	for _, item := range discovered {
-		// Retire old programs for every manifest, including Pulse OFF and
-		// workflows without schedules. Keep scheduler admission unchanged below.
-		if retired, err := retirePulseProjectionTriggers(ctx, item.WorkspacePath); err != nil {
-			scheduleLogf("[PULSE] Could not retire old projection triggers in %s: %v", item.WorkspacePath, err)
-		} else if retired > 0 {
-			scheduleLogf("[PULSE] Retired %d projection triggers in %s; saved history unchanged", retired, item.WorkspacePath)
-		}
 		if len(item.Manifest.Schedules) > 0 {
 			results = append(results, discoveredWorkflow{
 				WorkspacePath: item.WorkspacePath,
@@ -615,11 +604,7 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 		notifications.PulseSummarySlackWebhookSecretNames = nil
 		sctx.Capabilities.Notifications = &notifications
 	}
-	if sched.PulseReviewOnly {
-		// Retained settings conversion maps legacy Pulse-only schedules to this same goal check.
-		sctx.PulseOnly = true
-		sctx.ForcePulseReview = true
-	}
+
 	return sctx
 }
 
@@ -746,13 +731,6 @@ func (s *SchedulerService) LoadSchedule(sctx *ScheduleContext) error {
 	}
 	// Flows retain the shared function-delivery ledger, but register no timers.
 	if sctx.WorkflowKind == "relay" && !sched.IsFunctionTrigger() {
-		s.scheduleFingerprints[runtimeKey] = scheduleConfigFingerprint(sctx)
-		return nil
-	}
-	// Legacy manifests may still contain a dedicated Pulse cron. It now serves
-	// only as a backwards-compatible enablement signal; recurring Pulse is
-	// triggered by completion of a normal scheduled run instead.
-	if sched.PulseReviewOnly {
 		s.scheduleFingerprints[runtimeKey] = scheduleConfigFingerprint(sctx)
 		return nil
 	}
@@ -1524,18 +1502,12 @@ func (s *SchedulerService) triggerPulseOnly(workspacePath, triggerSource string)
 	return s.triggerPulseRun(workspacePath, triggerSource)
 }
 
-// TriggerGoalCheck starts the daily goal check (PLAT-697). It does not move
-// the full Pulse schedule.
-func (s *SchedulerService) TriggerGoalCheck(workspacePath string) (string, error) {
-	return s.triggerPulseRunKind(workspacePath, "cron", true)
-}
-
-// triggerPulseRun starts a full Pulse, or a fix run when fixReason is set.
+// triggerPulseRun starts the workflow's continuing Pulse.
 func (s *SchedulerService) triggerPulseRun(workspacePath, triggerSource string) (string, error) {
-	return s.triggerPulseRunKind(workspacePath, triggerSource, false)
+	return s.triggerPulseRunKind(workspacePath, triggerSource)
 }
 
-func (s *SchedulerService) triggerPulseRunKind(workspacePath, triggerSource string, goalCheck bool) (string, error) {
+func (s *SchedulerService) triggerPulseRunKind(workspacePath, triggerSource string) (string, error) {
 	ctx := context.Background()
 	workspacePath = filepath.Clean(strings.TrimSpace(workspacePath))
 	if workspacePath == "." || workspacePath == "" {
@@ -1563,15 +1535,10 @@ func (s *SchedulerService) triggerPulseRunKind(workspacePath, triggerSource stri
 		Mode:           "workshop",
 		WorkshopMode:   "workshop",
 	}
-	if goalCheck {
-		sched.Name = "Daily goal check"
-		sched.Description = "Pulse's daily goal check: is the goal measured, moving, and its work running"
-	}
 	sctx := buildScheduleContext(workspacePath, manifest, sched)
 	sctx.TriggerSource = triggerSource
 	sctx.ForcePulseReview = true
 	sctx.PulseOnly = true
-	sctx.PulseGoalCheck = goalCheck
 	sctx.PulseEvidenceRunFolder, sctx.PulseEvidenceRunStatus = latestRetainedPulseEvidence(ctx, workspacePath)
 	startTime := time.Now().UTC()
 
@@ -1618,9 +1585,6 @@ func (s *SchedulerService) triggerPulseRunKind(workspacePath, triggerSource stri
 	}
 	// One Pulse clock: every manual or scheduled cycle records its start.
 	// The existing Pulse timestamp also bounds its evidence window.
-	if err := recordGoalCheckRunStarted(ctx, workspacePath, runID, startTime); err != nil {
-		s.logf(sctx, "[PULSE] could not record cycle start: %v", err)
-	}
 	if err := markPulseStarted(ctx, workspacePath, runID, startTime); err != nil {
 		s.logf(sctx, "[PULSE] could not record evidence window: %v", err)
 	}
@@ -2569,9 +2533,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 		// A cron/manual Pulse that starts before the tick loop dispatches a
 		// pending fast request already satisfies the request. Coalescing here
 		// prevents a second review of the same evidence one minute later.
-		if err := markFastPulseRequestDelivered(ctx, sctx.WorkspacePath, runID); err != nil {
-			s.logf(sctx, "[PULSE] failed to consume pending fast request: %v", err)
-		}
+
 	}
 
 	// AI Plan Drift review belongs to Pulse. Execution performs its quick

@@ -1553,12 +1553,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 		//
 		// Best-effort: a step that cannot read its own history should still run.
 		templateVars["PriorValidationFailures"] = ""
-		if priorFailures, priorErr := LoadPriorPreValidationFailures(ctx, hcpo.GetWorkspacePath(), step.GetID(), 10); priorErr != nil {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Could not load prior validation failures for step %s: %v", step.GetID(), priorErr))
-		} else if rendered := FormatPriorPreValidationFailures(priorFailures); rendered != "" {
-			templateVars["PriorValidationFailures"] = rendered
-			hcpo.GetLogger().Info(fmt.Sprintf("🔁 Step %s carries %d unresolved validation failure(s) into this run", step.GetID(), len(priorFailures)))
-		}
 
 		// Inner loop: Automatic retry logic
 		var validationResponse *ValidationResponse

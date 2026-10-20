@@ -1,17 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  Loader2,
-  AlertCircle,
-  FileText,
-  Route as RouteIcon,
-  ArrowLeft,
-  Braces,
-} from 'lucide-react'
+import { Loader2, AlertCircle, FileText, Route as RouteIcon, ArrowLeft, Braces } from 'lucide-react'
 import type { RunFolderInfo, StepExecutionLogs } from '../../services/api-types'
 import { agentApi } from '../../services/api'
 import InspectorShell from './InspectorShell'
 import { AskAIButton } from './AskAIButton'
-import { PulseReviewsPanel } from './executionLogs/LogPrimitives'
 import { LogsHeader } from './executionLogs/LogsHeader'
 import { StepContent } from './executionLogs/StepContent'
 import { StepList } from './executionLogs/StepList'
@@ -265,7 +257,7 @@ const ExecutionLogsPopup: React.FC<ExecutionLogsPopupProps> = ({
               )}
 
               {/* Message when no step logs found */}
-              {logs && Object.keys(logs.steps).length === 0 && (logs.pulse_reviews?.length || 0) === 0 && (
+              {logs && Object.keys(logs.steps).length === 0 && (
                 <div className="flex flex-col items-center justify-center py-8 text-muted-foreground border border-dashed border-border rounded-lg">
                   <FileText className="w-10 h-10 mb-2 opacity-50" />
                   <p className="text-sm">No step execution logs found for <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{selectedRunFolder}</span>.</p>
@@ -279,8 +271,6 @@ const ExecutionLogsPopup: React.FC<ExecutionLogsPopupProps> = ({
                   </div>
                 </div>
               )}
-
-              {!focusedStepId && <PulseReviewsPanel reviews={logs?.pulse_reviews || []} />}
 
               {!focusedStepId && sortedStepEntries.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5 pb-1">

@@ -189,23 +189,6 @@ func TestValidateManifestCDPPorts(t *testing.T) {
 	}
 }
 
-func TestValidateManifestAdvisorSpecialization(t *testing.T) {
-	manifest := NewWorkflowManifest("Specialized advisors")
-	manifest.Pulse = &WorkflowPulseConfig{AdvisorSpecialization: &WorkflowAdvisorSpecialization{
-		Version:         1,
-		StrategyAuditor: "Inspect acquisition concentration within the current strategy.",
-		GoalAdvisor:     "Explore credible channels outside the current strategy.",
-	}}
-	if err := ValidateManifest(manifest); err != nil {
-		t.Fatalf("valid advisor specialization rejected: %v", err)
-	}
-
-	manifest.Pulse.AdvisorSpecialization.GoalAdvisor = ""
-	if err := ValidateManifest(manifest); err == nil || !strings.Contains(err.Error(), "goal_advisor") {
-		t.Fatalf("missing Goal Advisor specialization should be rejected, got %v", err)
-	}
-}
-
 func TestValidateManifestRejectsEquivalentMCPServerAliases(t *testing.T) {
 	manifest := NewWorkflowManifest("Duplicate MCP aliases")
 	manifest.Capabilities.SelectedServers = []string{"google_sheets", "google-sheets"}
@@ -222,9 +205,9 @@ func TestValidateManifestRejectsEquivalentMCPServerAliases(t *testing.T) {
 func TestValidateManifestRejectsScheduleDependencyCycle(t *testing.T) {
 	manifest := NewWorkflowManifest("Dependency cycle")
 	manifest.Schedules = []WorkflowSchedule{
-		{ID: "collect", Mode: "multi-agent", PulseMode: "basic", PulseModeReason: "Routine dependency fixture", ScheduleType: "cron", CronExpression: "0 16 * * 1-5", AfterScheduleIDs: []string{"publish"}},
-		{ID: "review", Mode: "multi-agent", PulseMode: "basic", PulseModeReason: "Routine dependency fixture", ScheduleType: "cron", CronExpression: "5 16 * * 1-5", AfterScheduleIDs: []string{"collect"}},
-		{ID: "publish", Mode: "multi-agent", PulseMode: "basic", PulseModeReason: "Routine dependency fixture", ScheduleType: "cron", CronExpression: "10 16 * * 1-5", AfterScheduleIDs: []string{"review"}},
+		{ID: "collect", Mode: "multi-agent", ScheduleType: "cron", CronExpression: "0 16 * * 1-5", AfterScheduleIDs: []string{"publish"}},
+		{ID: "review", Mode: "multi-agent", ScheduleType: "cron", CronExpression: "5 16 * * 1-5", AfterScheduleIDs: []string{"collect"}},
+		{ID: "publish", Mode: "multi-agent", ScheduleType: "cron", CronExpression: "10 16 * * 1-5", AfterScheduleIDs: []string{"review"}},
 	}
 	err := ValidateManifest(manifest)
 	if err == nil || !strings.Contains(err.Error(), "dependency cycle") {
@@ -235,10 +218,10 @@ func TestValidateManifestRejectsScheduleDependencyCycle(t *testing.T) {
 func TestValidateManifestAcceptsTypedDependencyAndCollisionPolicies(t *testing.T) {
 	manifest := NewWorkflowManifest("Dependent schedules")
 	manifest.Schedules = []WorkflowSchedule{
-		{ID: "close", Mode: "multi-agent", PulseMode: "basic", PulseModeReason: "Routine dependency fixture", ScheduleType: "cron", CronExpression: "55 15 * * 1-5", CollisionPolicy: "queue_latest"},
-		{ID: "snapshot", Mode: "multi-agent", PulseMode: "basic", PulseModeReason: "Routine dependency fixture", ScheduleType: "cron", CronExpression: "0 16 * * 1-5", CollisionPolicy: "queue_latest"},
+		{ID: "close", Mode: "multi-agent", ScheduleType: "cron", CronExpression: "55 15 * * 1-5", CollisionPolicy: "queue_latest"},
+		{ID: "snapshot", Mode: "multi-agent", ScheduleType: "cron", CronExpression: "0 16 * * 1-5", CollisionPolicy: "queue_latest"},
 		{
-			ID: "pulse", Mode: "multi-agent", PulseMode: "basic", PulseModeReason: "Routine dependency fixture", ScheduleType: "cron", CronExpression: "10 16 * * 1-5",
+			ID: "pulse", Mode: "multi-agent", ScheduleType: "cron", CronExpression: "10 16 * * 1-5",
 			AfterScheduleIDs: []string{"close", "snapshot"}, AfterTerminalStatus: "completed", AfterDelayMinutes: 10,
 			DependencyDeadline: "17:30", CollisionPolicy: "coalesce", MaxStartDelayMinutes: 80,
 		},
@@ -256,8 +239,8 @@ func TestValidateManifestAcceptsTypedDependencyAndCollisionPolicies(t *testing.T
 func TestValidateManifestRejectsInvalidDependencyLists(t *testing.T) {
 	manifest := NewWorkflowManifest("Invalid dependency policy")
 	manifest.Schedules = []WorkflowSchedule{
-		{ID: "collect", Mode: "multi-agent", PulseMode: "basic", PulseModeReason: "Routine dependency fixture", ScheduleType: "cron", CronExpression: "0 9 * * *"},
-		{ID: "publish", Mode: "multi-agent", PulseMode: "basic", PulseModeReason: "Routine dependency fixture", ScheduleType: "cron", CronExpression: "30 9 * * *", AfterScheduleIDs: []string{""}},
+		{ID: "collect", Mode: "multi-agent", ScheduleType: "cron", CronExpression: "0 9 * * *"},
+		{ID: "publish", Mode: "multi-agent", ScheduleType: "cron", CronExpression: "30 9 * * *", AfterScheduleIDs: []string{""}},
 	}
 	if err := ValidateManifest(manifest); err == nil || !strings.Contains(err.Error(), "cannot be empty") {
 		t.Fatalf("empty dependency ID should be rejected, got %v", err)
@@ -461,27 +444,6 @@ func TestReadWorkflowManifestDoesNotRewriteCrewRuntimeManifest(t *testing.T) {
 				t.Fatalf("Crew runtime manifest was rewritten:\n%s", persistedJSON)
 			}
 		})
-	}
-}
-
-func TestSetWorkflowPulseEnabledRemovesDedicatedSchedule(t *testing.T) {
-	manifest := &WorkflowManifest{
-		Pulse: &WorkflowPulseConfig{AdvisorSpecialization: &WorkflowAdvisorSpecialization{Version: 1}},
-		Schedules: []WorkflowSchedule{
-			{ID: "normal", Enabled: true},
-			{ID: "legacy-pulse", Enabled: true, PulseReviewOnly: true},
-		},
-	}
-	setWorkflowPulseEnabled(manifest, true)
-	if !manifest.Pulse.Enabled || manifest.Pulse.AdvisorSpecialization == nil {
-		t.Fatalf("Pulse update lost config: %+v", manifest.Pulse)
-	}
-	if len(manifest.Schedules) != 1 || manifest.Schedules[0].ID != "normal" {
-		t.Fatalf("Pulse update retained obsolete schedule: %+v", manifest.Schedules)
-	}
-	setWorkflowPulseEnabled(manifest, false)
-	if manifest.Pulse.Enabled {
-		t.Fatal("Pulse update did not disable post-run review")
 	}
 }
 

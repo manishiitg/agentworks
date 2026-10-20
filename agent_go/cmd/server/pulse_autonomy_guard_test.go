@@ -64,12 +64,12 @@ func TestPulsePermissionsIsEnforcedAtToolDispatch(t *testing.T) {
 	if err != nil || !common.OutwardHeld(ctx) {
 		t.Fatalf("outward=ask must reach the tool as held, err=%v", err)
 	}
-	for _, tool := range []string{"send_message", "ask_builder", "schedule_message_wakeup", "create_human_input_request", "record_pulse_goal_work", "record_goal_observations", "send_email", "delete_schedule", "execute_shell_command", "brain_access", "new_future_write_tool"} {
+	for _, tool := range []string{"send_message", "ask_builder", "schedule_message_wakeup", "create_human_input_request", "record_goal_observations", "send_email", "delete_schedule", "execute_shell_command", "brain_access", "new_future_write_tool"} {
 		if _, err := inTurn(`{"pulse":{"enabled":false}}`, tool); err == nil || !strings.Contains(err.Error(), "Pulse is off") {
 			t.Fatalf("OFF tool %s escaped: %v", tool, err)
 		}
 	}
-	if _, err := inTurn(`{"pulse":{"enabled":false}}`, "record_pulse_goal_check"); err == nil {
+	if _, err := inTurn(`{"pulse":{"enabled":false}}`, "record_goal_observations"); err == nil {
 		t.Fatal("OFF retained report activity")
 	}
 	// Outside a Goal Work turn the same session's tools are not held.

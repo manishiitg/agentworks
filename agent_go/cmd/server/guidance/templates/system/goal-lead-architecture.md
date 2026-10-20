@@ -27,5 +27,5 @@ Builder implements within existing permissions. Removing redundant implementatio
 rules is ordinary simplification within the authorized task. A new goal, plan
 replacement, deleting steps or schedules, or retiring the workflow stays an
 owner decision, prepared once with the proposed scope. Never change these automatically. Put the next outcome
-or approach question and its date on the existing Goal Work item; judge the
+or approach question and its date on the Pulse conversation; judge the
 result from later evidence, not from the fact your proposal was accepted.

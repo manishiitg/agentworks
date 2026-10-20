@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react'
 import type { UsePlanDataReturn } from '../hooks/usePlanData'
 import type { UseWorkspaceStateReturn } from '../hooks/useWorkspaceState'
 import type { WorkflowExecutionStatus } from '../hooks/useWorkflowExecution'
-import type { VariablesManifest, PulseNextRun, PulseGoalWorkItem, PulseGoalStatus, PulseOutwardActions, PulseImpactLedger, WorkflowRunSetup } from '../../../services/api-types'
+import type { VariablesManifest, PulseOutwardActions, WorkflowRunSetup } from '../../../services/api-types'
 
 export type WorkflowImageExportFormat = 'svg' | 'png' | 'jpeg'
 
@@ -13,10 +13,6 @@ export interface PulseData {
   monitorOn: boolean
   monitorSaving: boolean
   toggleMonitor: () => void
-  nextRun: PulseNextRun | null
-  impact: PulseImpactLedger | null
-  lastChange: PulseGoalWorkItem | null
-  goalStatus: PulseGoalStatus | null
   outwardActions: PulseOutwardActions
   outwardSaving: boolean
   setOutward: (next: PulseOutwardActions) => void

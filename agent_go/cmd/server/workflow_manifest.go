@@ -243,70 +243,8 @@ type InstalledPlaybook struct {
 }
 
 type WorkflowPulseConfig struct {
-	// Enabled lets Pulse pursue improvements. OFF starts no Pulse activity.
-	// Normal schedules own their separate after-run housekeeping.
-	Enabled bool `json:"enabled"`
-	// FocusAreas are the user's current priorities for Goal Work, e.g. "find
-	// more audience strategies like SaaS Builder". Goal Work starts there each
-	// pass; they direct attention, they do not limit what it may consider.
-	FocusAreas []string `json:"focus_areas,omitempty"`
-	// FocusAreaDetails is each focus area's lifecycle (PLAT-697 phase 4,
-	// goal_lead_focus_areas.go): Pulse proposals the owner confirms, end
-	// dates, their own checks, daily tracking and closing lessons. FocusAreas
-	// stays the active list.
-	FocusAreaDetails []PulseFocusArea `json:"focus_area_details,omitempty"`
-	// OutwardActions is ask (default) or allow within existing limits.
-	OutwardActions        string                         `json:"outward_actions"`
-	AdvisorSpecialization *WorkflowAdvisorSpecialization `json:"advisor_specialization,omitempty"`
-}
-
-const (
-	maxPulseFocusAreas      = 10
-	maxPulseFocusAreaLength = 300
-)
-
-// normalizePulseFocusAreas trims, drops blanks and duplicates, and enforces the
-// small limits that keep them a priority list rather than a second prompt.
-func normalizePulseFocusAreas(values []string) ([]string, error) {
-	out := []string{}
-	seen := map[string]bool{}
-	for _, raw := range values {
-		value := strings.Join(strings.Fields(raw), " ")
-		if value == "" || seen[strings.ToLower(value)] {
-			continue
-		}
-		if len(value) > maxPulseFocusAreaLength {
-			return nil, fmt.Errorf("pulse.focus_areas entries must be at most %d characters", maxPulseFocusAreaLength)
-		}
-		seen[strings.ToLower(value)] = true
-		out = append(out, value)
-	}
-	if len(out) > maxPulseFocusAreas {
-		return nil, fmt.Errorf("pulse.focus_areas allows at most %d entries", maxPulseFocusAreas)
-	}
-	return out, nil
-}
-
-type WorkflowAdvisorSpecialization struct {
-	Version         int    `json:"version"`
-	StrategyAuditor string `json:"strategy_auditor"`
-	GoalAdvisor     string `json:"goal_advisor"`
-	ApprovedInputID string `json:"approved_input_id,omitempty"`
-	UpdatedAt       string `json:"updated_at,omitempty"`
-}
-
-// HasEnabledPulseReviewSchedule recognizes the retired dedicated-schedule
-// representation long enough to migrate existing workflow manifests.
-func (m *WorkflowManifest) HasEnabledPulseReviewSchedule() bool {
-	if m == nil {
-		return false
-	}
-	for _, schedule := range m.Schedules {
-		if schedule.Enabled && schedule.PulseReviewOnly {
-			return true
-		}
-	}
-	return false
+	Enabled        bool   `json:"enabled"`
+	OutwardActions string `json:"outward_actions"`
 }
 
 // PulseEnabled uses only the canonical workflow toggle. Saved legacy signals
@@ -587,27 +525,11 @@ type WorkflowSchedule struct {
 	Messages []string              `json:"messages,omitempty"` // Predefined message queue for workshop schedules (sent one-by-one)
 	// DirectMessagesReason records why a schedule-local conversation is preferable
 	// to a canonical route despite its weaker step-level lifecycle.
-	DirectMessagesReason string `json:"direct_messages_reason,omitempty"`
-	WorkshopMode         string `json:"workshop_mode,omitempty"`   // Writable scheduled work uses Workshop; read-only access is pinned to Run. Legacy values remain parseable.
-	Query                string `json:"query,omitempty"`           // Message to execute (multi-agent mode)
-	ResumePrevious       *bool  `json:"resume_previous,omitempty"` // Coding-agent CLI only: resume the latest prior thread (same provider) instead of a fresh session each run. nil = default (fresh session); explicit true opts in.
-	// PulseReviewOnly is a legacy compatibility field. On read, an enabled
-	// legacy entry enables workflow-level pulse.enabled; migration removes the
-	// obsolete schedule. The scheduler never registers it as an independent cron.
-	PulseReviewOnly bool `json:"pulse_review_only,omitempty"`
-	// AfterRun is what runs after this schedule's run: backup, publish and
-	// notify (PLAT-697 phase 0, after_run.go). It replaces pulse_mode.
-	AfterRun *ScheduleAfterRun `json:"after_run,omitempty"`
-	// PulseMode is the legacy post-run choice, read for one release when
-	// after_run is absent ("off" none; "basic", and the retired "full", all
-	// three) and kept in step with after_run for older servers.
-	PulseMode       string `json:"pulse_mode,omitempty"`
-	PulseModeReason string `json:"pulse_mode_reason,omitempty"`
-	// ExecutionMode is a typed, runtime-enforced operating mode for a scheduled
-	// invocation. It is deliberately separate from Messages: safety must not
-	// depend on an agent interpreting prose or on the wall clock happening to be
-	// inside the expected cron window. Empty means the normal workflow mode.
-	ExecutionMode string `json:"execution_mode,omitempty"`
+	DirectMessagesReason string            `json:"direct_messages_reason,omitempty"`
+	Query                string            `json:"query,omitempty"`           // Message to execute (multi-agent mode)
+	ResumePrevious       *bool             `json:"resume_previous,omitempty"` // Coding-agent CLI only: resume the latest prior thread (same provider) instead of a fresh session each run. nil = default (fresh session); explicit true opts in.
+	AfterRun             *ScheduleAfterRun `json:"after_run,omitempty"`
+	ExecutionMode        string            `json:"execution_mode,omitempty"`
 	// CollisionPolicy controls what happens when the workflow is already owned
 	// by another scheduled/execution run. Empty/"skip" preserves the default;
 	// "queue_latest" durably retains the newest occurrence for a later retry.
@@ -698,7 +620,7 @@ func validateScheduleRuntimePolicy(schedule WorkflowSchedule) error {
 		if !schedule.ParallelRiskAcknowledged {
 			return fmt.Errorf("parallel_risk_acknowledged=true is required when concurrency_mode=parallel")
 		}
-		if schedule.ScheduleType == "webhook" || schedule.PulseReviewOnly {
+		if schedule.ScheduleType == "webhook" {
 			return fmt.Errorf("concurrency_mode=parallel is only supported for producing cron/calendar schedules")
 		}
 	default:
@@ -738,7 +660,7 @@ func validateScheduleRuntimePolicy(schedule WorkflowSchedule) error {
 }
 
 func scheduleAllowsParallel(schedule WorkflowSchedule) bool {
-	return strings.TrimSpace(schedule.ConcurrencyMode) == "parallel" && schedule.ParallelRiskAcknowledged && schedule.ScheduleType != "webhook" && !schedule.PulseReviewOnly
+	return strings.TrimSpace(schedule.ConcurrencyMode) == "parallel" && schedule.ParallelRiskAcknowledged && schedule.ScheduleType != "webhook"
 }
 
 func effectiveScheduleConcurrencyMode(schedule WorkflowSchedule) string {
@@ -918,22 +840,9 @@ func ValidateManifest(m *WorkflowManifest) error {
 		}
 		seenWorkflowContexts[path] = struct{}{}
 	}
-	if m.Pulse != nil && m.Pulse.AdvisorSpecialization != nil {
-		specialization := m.Pulse.AdvisorSpecialization
-		if specialization.Version < 1 {
-			return fmt.Errorf("pulse.advisor_specialization.version must be >= 1")
-		}
-		if strings.TrimSpace(specialization.StrategyAuditor) == "" {
-			return fmt.Errorf("pulse.advisor_specialization.strategy_auditor is required")
-		}
-		if strings.TrimSpace(specialization.GoalAdvisor) == "" {
-			return fmt.Errorf("pulse.advisor_specialization.goal_advisor is required")
-		}
-	}
+
 	if m.Pulse != nil {
-		if _, err := normalizePulseFocusAreas(m.Pulse.FocusAreas); err != nil {
-			return err
-		}
+
 		if _, err := normalizePulseOutwardActions(m.Pulse.OutwardActions); err != nil {
 			return err
 		}
@@ -1019,9 +928,7 @@ func ValidateManifest(m *WorkflowManifest) error {
 			return fmt.Errorf("schedules[%d].calendar_items is required for calendar schedules", i)
 		}
 		// group_names required for workflow/workshop modes, not for multi-agent
-		// or a PulseReviewOnly schedule (PLAT-115) — the latter never runs the
-		// workflow, so it has no group to run.
-		if m.Kind != "relay" && sched.Mode != "multi-agent" && !sched.PulseReviewOnly && len(normalizeScheduleGroupNames(sched.GroupNames)) == 0 {
+		if m.Kind != "relay" && sched.Mode != "multi-agent" && len(normalizeScheduleGroupNames(sched.GroupNames)) == 0 {
 			return fmt.Errorf("schedules[%d].group_names is required", i)
 		}
 		if err := validateScheduleRuntimePolicy(sched); err != nil {

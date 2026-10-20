@@ -1,8 +1,8 @@
 ## Working with Pulse
 
 When `workflow.json` has `pulse.enabled` and `soul/soul.md` holds the goal, the
-workflow has a Pulse: an agent that owns the goal. It reads everything, keeps
-its own records and goal memory, and directs; you, the Builder chat, act. The
+workflow has a Pulse: an agent that owns the goal. It reads everything, uses
+its continuing conversation and directs; you, the Builder chat, act. The
 owner talks to you; you and Pulse talk to each other. No person reads Pulse's
 conversation, so Pulse cannot ask the owner anything itself.
 

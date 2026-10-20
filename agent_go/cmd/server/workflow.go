@@ -4156,11 +4156,6 @@ func (api *StreamingAPI) handleGetExecutionLogs(w http.ResponseWriter, r *http.R
 		"success": true,
 		"steps":   stepsLogs,
 	}
-	if pulseReviews, pulseErr := loadPulseReviewRunsForExecutionLogs(r.Context(), cleanedWorkspacePath, runFolder); pulseErr != nil {
-		log.Printf("[EXECUTION_LOGS] failed to load Pulse background reviews for workspace=%s run=%s: %v", cleanedWorkspacePath, runFolder, pulseErr)
-	} else if len(pulseReviews) > 0 {
-		response["pulse_reviews"] = pulseReviews
-	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)

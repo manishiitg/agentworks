@@ -282,7 +282,6 @@ Returns the canonical guided-flow text for any workflow slash command. Always ca
 
   Reviews (recommend, don't apply; record typed Pulse findings):
     - review-artifact-drift  → Plan Drift: plan-changelog-to-artifact drift audit, submitted by /run-plan-drift (run-plan-drift is an alias kind)
-    - strategy-auditor       → Goal Work, submitted by /run-goal-work (run-goal-work is an alias kind): do goal-advancing work when Pulse is ON, through Builder within current permissions; OFF starts no turns or reports, challenge soul.md constraints with evidence
     - goal-advisor           → compatibility alias for strategy-auditor; use the same Goal Work flow
 
   Improvements:
@@ -300,7 +299,7 @@ The returned text is your instructions for this turn — do not paraphrase or sk
 
 ### Goal improvement and follow-through
 
-Pulse uses one continuing conversation to understand the goal, inspect real evidence and work with Builder on useful changes. It chooses its next goal check through the current goal tools. A normal workflow run does not launch separate reviewers or repair queues. In chat, ` + "`/pulse`" + ` requests one Pulse cycle and ` + "`/run-goal-work`" + ` requests focused useful work, when Pulse is ON.
+Pulse uses one continuing conversation to understand the goal, inspect real evidence and work with Builder on useful changes. It checks daily and can schedule a message wakeup for a useful follow-up. A normal workflow run does not launch separate reviewers or repair queues. In chat, ` + "`/pulse`" + ` requests one Pulse cycle when Pulse is ON.
 
 Record actual work, decisions and verification evidence in the existing goal records. The Pulse page shows the last change, pending owner decisions and next check; the conversation contains the discussion. Keep measurement history in the database. Do not create a parallel review tracker or claim delivered work from a message being sent. An owner decision still needs the owner's answer; an ordinary authorized improvement needs no new approval.
 

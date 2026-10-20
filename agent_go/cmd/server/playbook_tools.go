@@ -20,7 +20,6 @@ type playbookSearchResult struct {
 	RequiredCapabilities []string                 `json:"required_capabilities"`
 	Outputs              []string                 `json:"outputs"`
 	RecommendedTools     []map[string]interface{} `json:"recommended_tools,omitempty"`
-	PulseFocus           []map[string]interface{} `json:"pulse_focus,omitempty"`
 	AgentSlots           []playbookAgentSlot      `json:"agent_slots,omitempty"`
 	Handoffs             []playbookHandoff        `json:"handoffs,omitempty"`
 	SetupChecks          []string                 `json:"setup_checks,omitempty"`
@@ -88,22 +87,7 @@ func searchPlaybooks(items []playbookCatalogItem, installed []InstalledPlaybook,
 				}
 			}
 		}
-		for _, focus := range item.PulseFocus {
-			for _, key := range []string{"module", "label"} {
-				if value, _ := focus[key].(string); value != "" {
-					searchable = append(searchable, value)
-				}
-			}
-			for _, key := range []string{"focus_areas", "review_when"} {
-				if values, ok := focus[key].([]interface{}); ok {
-					for _, raw := range values {
-						if value, ok := raw.(string); ok {
-							searchable = append(searchable, value)
-						}
-					}
-				}
-			}
-		}
+
 		corpus := strings.ToLower(strings.Join(searchable, " "))
 		score := 0
 		if strings.Contains(strings.ToLower(item.Title), query) || strings.Contains(strings.ToLower(item.ID), query) {
@@ -129,7 +113,7 @@ func searchPlaybooks(items []playbookCatalogItem, installed []InstalledPlaybook,
 		results = append(results, playbookSearchResult{
 			ID: item.ID, Title: item.Title, Category: item.Category, Description: item.Description,
 			Version: item.Version, Changelog: item.Changelog, SetupAreas: setupAreas, RequiredCapabilities: item.RequiredCapabilities,
-			Outputs: item.Outputs, RecommendedTools: item.RecommendedTools, PulseFocus: item.PulseFocus,
+			Outputs: item.Outputs, RecommendedTools: item.RecommendedTools,
 			AgentSlots: item.AgentSlots, Handoffs: item.Handoffs, SetupChecks: item.SetupChecks, Installed: isInstalled,
 			InstalledStatus: installedItem.Status, InstalledVersion: installedItem.Version,
 			UpdateAvailable: isInstalled && isNewerPlaybookVersion(item.Version, installedItem.Version),

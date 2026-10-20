@@ -135,8 +135,8 @@ func TestRelayManifestKindValidation(t *testing.T) {
 		t.Fatalf("Relay rejected Gmail notifications: %v", err)
 	}
 	for _, timer := range []WorkflowSchedule{
-		{ID: "timer", ScheduleType: "cron", CronExpression: "0 * * * *", GroupNames: []string{"prod"}, PulseMode: "off"},
-		{ID: "calendar", ScheduleType: "calendar", CalendarItems: []CalendarScheduleItem{{Date: "2030-01-01", Time: "12:00"}}, GroupNames: []string{"prod"}, PulseMode: "off"},
+		{ID: "timer", ScheduleType: "cron", CronExpression: "0 * * * *", GroupNames: []string{"prod"}},
+		{ID: "calendar", ScheduleType: "calendar", CalendarItems: []CalendarScheduleItem{{Date: "2030-01-01", Time: "12:00"}}, GroupNames: []string{"prod"}},
 	} {
 		manifest.Schedules = []WorkflowSchedule{timer}
 		if err := ValidateManifest(manifest); err == nil || !strings.Contains(err.Error(), "API function triggers only") {

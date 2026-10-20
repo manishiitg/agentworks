@@ -14,7 +14,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
-	step_based_workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
 type workflowCostsResponse struct {
@@ -215,15 +214,6 @@ func timingDate(value string) string {
 
 func loadWorkflowActivityTiming(ctx context.Context, workspacePath string) workflowActivityTimingSummary {
 	summary := newWorkflowActivityTimingSummary()
-	if metrics, err := step_based_workflow.LoadPulseAgentMetrics(ctx, workspacePath, "", "", "", -1); err == nil {
-		for _, metric := range metrics {
-			date := timingDate(metric.StartedAt)
-			if date == "" {
-				date = timingDate(metric.CompletedAt)
-			}
-			addWorkflowActivityTiming(&summary, date, "pulse", metric.ExecutionID, metric.DurationMS, 0, 0)
-		}
-	}
 
 	workspaceRoot := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath))
 	loadWorkflowTimingFiles(&summary, filepath.Join(workspaceRoot, "runs"), "workflow_execution", "step:")

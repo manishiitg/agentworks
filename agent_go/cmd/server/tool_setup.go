@@ -351,15 +351,6 @@ func createCustomTools(workflowMode bool, sessionInfo ...string) ([]llmtypes.Too
 		allExecutors[builderAskTool.Function.Name] = builderAskExecute
 		toolCategories[builderAskTool.Function.Name] = "workflow"
 
-		pulseTools, pulseExecutors, pulseCategories := createPulseTools()
-		allTools = append(allTools, pulseTools...)
-		for name, executor := range pulseExecutors {
-			allExecutors[name] = executor
-		}
-		for name, category := range pulseCategories {
-			toolCategories[name] = category
-		}
-
 	}
 
 	// Note: Todo tools (create_todo, complete_todo, etc.) have been removed.

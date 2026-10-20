@@ -11,18 +11,8 @@ import (
 // (update_settings pulse); talking to Pulse is builder_pulse_chat.
 
 func externalPulseManageDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_pulse", "Work with a workflow's Pulse (the agent that owns its goal) the way the Pulse tab does. status: the current Pulse screen's goal status, last check, last change, next check and conversation. Reading status never starts a Pulse turn. run_now: start a Pulse pass now. goal_check_now: run the daily goal check now. focus_area: confirm, reject, add, extend or close a focus area. goal_memory: replace the goal memory text. Turn Pulse on, set outward actions with update_settings (pulse); talk to Pulse with builder_pulse_chat. Changes need owner or editor access; running needs run access.", true, true, map[string]any{
-		"action": map[string]any{"type": "string", "enum": []any{"status", "run_now", "goal_check_now", "focus_area", "goal_memory"}},
-		"focus": map[string]any{"type": "object", "additionalProperties": false, "description": "For focus_area.", "properties": map[string]any{
-			"action":   map[string]any{"type": "string", "enum": []any{"confirm", "reject", "add", "extend", "close"}},
-			"id":       externalString("Focus area id from status (not for add)."),
-			"text":     externalString("The focus, for add."),
-			"end_date": externalString("YYYY-MM-DD, for add or extend."),
-			"check":    externalString("How progress is checked, for add."),
-			"status":   externalString("Outcome, for close."),
-			"lesson":   externalString("What was learned, for close."),
-		}, "required": []any{"action"}},
-		"content": map[string]any{"type": "string", "maxLength": 20000, "description": "For goal_memory: the full new goal memory."},
+	add("manage_pulse", "Read Pulse settings and its conversation (status), or start a Pulse turn (run_now). Turn Pulse on/off and set Outward with update_settings; talk with builder_pulse_chat. OFF starts no Pulse activity.", true, true, map[string]any{
+		"action": map[string]any{"type": "string", "enum": []any{"status", "run_now"}},
 	}, "action")
 }
 
@@ -35,7 +25,7 @@ func (api *StreamingAPI) externalPulseManageCall(w http.ResponseWriter, r *http.
 	}
 	if t := claims.AccessToken; t != nil {
 		allowed := t.Allows("workflows:read") || t.Allows("runs:execute")
-		if action == "run_now" || action == "goal_check_now" {
+		if action == "run_now" {
 			allowed = t.Allows("runs:execute")
 		}
 		if !allowed {
@@ -55,34 +45,14 @@ func (api *StreamingAPI) externalPulseManageCall(w http.ResponseWriter, r *http.
 		page["workflow_id"] = workflow.Manifest.ID
 		page["conversation"] = api.savedGoalLeadConversationView(r.Context(), path)
 		externalJSON(w, page)
-	case "run_now", "goal_check_now":
+	case "run_now":
 		if api.scheduler == nil {
 			externalError(w, 503, "scheduler_unavailable", "The scheduler is not running on this server.")
 			return
 		}
 		handler, route := triggerWorkflowPulseHandler(api.scheduler), "/api/scheduler/workflows/pulse-run"
-		if action == "goal_check_now" {
-			handler, route = triggerWorkflowGoalCheckHandler(api.scheduler), "/api/scheduler/workflows/goal-check-run"
-		}
+
 		respond(scheduleHandler(r, requireWorkflowWriteAccess(handler), http.MethodPost, route, nil, nil, map[string]any{"workspace_path": path}))
-	case "focus_area":
-		focus, _ := args["focus"].(map[string]any)
-		if focus == nil {
-			externalError(w, 400, "invalid_arguments", "focus is required for focus_area.")
-			return
-		}
-		body := map[string]any{"workspace_path": path}
-		for key, value := range focus {
-			body[key] = value
-		}
-		respond(scheduleHandler(r, requireReportHumanInputAccess(true, api.handleGoalLeadFocusArea), http.MethodPost, "/api/workflow/goal-lead/focus-areas", nil, nil, body))
-	case "goal_memory":
-		content, ok := args["content"].(string)
-		if !ok {
-			externalError(w, 400, "invalid_arguments", "content is required for goal_memory.")
-			return
-		}
-		respond(scheduleHandler(r, requireReportHumanInputAccess(true, api.handlePutGoalMemory), http.MethodPut, "/api/workflow/goal-memory", nil, nil, map[string]any{"workspace_path": path, "content": content}))
 	default:
 		externalError(w, 400, "invalid_arguments", "Unknown action.")
 	}

@@ -150,10 +150,6 @@ chat_policy:
 pulse:
   # Pulse's own skill pack ("pulse"), loaded with read_skill(name="pulse").
   skills:
-    - goal-lead-check
-    - goal-lead-work
-    - goal-lead-memory
-    - goal-lead-tickets
     - goal-lead-inspect
     - goal-lead-measure
     - goal-lead-funnel
@@ -171,7 +167,6 @@ pulse:
     - pulse/
     - memory/
   tools:
-    - get_pulse_state
     - get_goal_metrics
     - query_workflow_db
     - query_workflow_costs
@@ -201,15 +196,6 @@ pulse:
     - list_accessible_workflows
     - get_contract_upgrades
     - execute_shell_command
-    - record_pulse_goal_check
-    - record_pulse_goal_memory
-    - record_pulse_recommendation
-    - record_pulse_decision_outcome
-    - record_pulse_focus_area
-    - record_pulse_goal_work
-    - record_pulse_finding
-    - merge_pulse_issues
-    - resolve_run_concern
     - record_goal_observations
     - ask_builder
     - send_message
@@ -373,7 +359,6 @@ chat:
       - generate_text_llm
       - get_function_call
       - get_goal_metrics
-      - get_pulse_state
       - image_edit
       - image_gen
       - list_accessible_workflows
@@ -385,7 +370,6 @@ chat:
       - manage_crew_attachment
       - manage_condition_triggers
       - manage_crew_trigger
-      - merge_pulse_issues
       - mutate_workflow_db
       - query_workflow_costs
       - query_workflow_db
@@ -393,18 +377,9 @@ chat:
       - read_crew_calls
       - read_image
       - record_goal_observations
-      - record_pulse_decision_outcome
-      - record_pulse_fast_request
-      - record_pulse_finding
-      - record_pulse_focus_area
-      - record_pulse_goal_check
-      - record_pulse_goal_memory
-      - record_pulse_goal_work
-      - record_pulse_recommendation
       - reply_function_call
       - report_function_progress
       - request_clarification
-      - resolve_run_concern
       - scan_workflow_script_db_usage
       - schedule_message_wakeup
       - search_platform
@@ -430,7 +405,6 @@ chat:
       - read_image
       - list_llm_capabilities
       - get_goal_metrics
-      - get_pulse_state
       - query_workflow_db
       - query_workflow_costs
       - read_crew_calls
@@ -510,7 +484,6 @@ chat:
       - read_image
       - list_llm_capabilities
       - get_goal_metrics
-      - get_pulse_state
       - query_workflow_db
       - query_workflow_costs
       - read_crew_calls

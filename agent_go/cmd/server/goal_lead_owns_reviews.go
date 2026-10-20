@@ -6,8 +6,6 @@ import (
 	"log"
 	"strings"
 	"time"
-
-	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
 // Failed runs: the facts the conversation reads and the wake-up.
@@ -61,45 +59,10 @@ func goalLeadFailedRuns(entries []ScheduleRunEntry, since time.Time) []goalLeadF
 // goalLeadRunHealth is what Technical Review read after runs, for the
 // conversation's goal check: failed runs, steps' CONCERNS: lines, open
 // workflow issues and whether each schedule's runs ran the workflow.
-func goalLeadRunHealth(ctx context.Context, workspacePath string, since time.Time) map[string]interface{} {
-	failed := []goalLeadFailedRun{}
-	if entries, err := ReadScheduleRuns(ctx, workspacePath); err == nil {
-		failed = goalLeadFailedRuns(entries, since)
-	}
-	if len(failed) > goalLeadRunHealthMaxItems {
-		failed = failed[:goalLeadRunHealthMaxItems]
-	}
-	concerns := collectStepConcerns(workspacePath, since)
-	shownConcerns := concerns.Concerns
-	if len(shownConcerns) > goalLeadRunHealthMaxItems {
-		shownConcerns = shownConcerns[:goalLeadRunHealthMaxItems]
-	}
-	openIssues := 0
-	if issues, err := stepworkflow.ListPulseActionableWorkflowIssues(ctx, workspacePath); err == nil {
-		openIssues = len(issues)
-	}
-	return map[string]interface{}{
-		"since":               formatStoredTime(since.UTC()),
-		"failed_runs":         failed,
-		"step_concerns":       shownConcerns,
-		"step_concern_count":  concerns.Total,
-		"open_issue_count":    openIssues,
-		"schedule_run_health": scheduleRunHealthForView(ctx, workspacePath),
-	}
-}
 
 // goalLeadRunHealthSince: since the last goal check, at most a week back.
-func goalLeadRunHealthSince(ctx context.Context, workspacePath string, now time.Time) time.Time {
-	since := now.Add(-goalLeadRunHealthWindow)
-	if latest, _, err := latestPulseGoalCheck(ctx, workspacePath); err == nil && latest != nil {
-		if checked := parseStoredTime(latest.CheckedAt); checked.After(since) {
-			since = checked
-		}
-	}
-	return since
-}
 
-const goalLeadRunHealthNote = "Read failed runs, step concerns and relevant goal evidence. For a failure that threatens the goal, ask Builder for one coherent repair and verified results under the current permissions. Reuse existing Goal Work and pending decisions; a failure does not create a separate reviewer or repair session."
+const goalLeadRunHealthNote = "Read failed runs, step concerns and relevant goal evidence. For a failure that threatens the goal, ask Builder for one coherent repair and verified results under the current permissions. Reuse ongoing work and pending decisions; a failure does not create a separate reviewer or repair session."
 
 // claimGoalLeadRunFailures returns the failed runs of the last day that the
 // conversation has not been woken for, and marks them noticed.
@@ -175,7 +138,7 @@ func goalLeadRunFailureBody(runs []goalLeadFailedRun) string {
 		b.WriteString("\n")
 	}
 	b.WriteString(`
-Inspect relevant run evidence (the run folder and get_pulse_state(view="step_concerns")) and decide whether the failure threatens the goal. Use the standing Pulse improvement and evidence rules, with the same current permissions as other ON turns. If repair is justified, use ask_builder with the run, step, symptom and diagnosis to pursue one coherent repair and its verification now, reusing pending work. Builder may repair and verify within existing authorization; outward actions still follow the workflow's ask-or-allow setting and explicit owner constraints. Record actual progress, pending verification and blockers in the existing Goal Work, check and memory records. Otherwise explain why the failure can wait for the next goal check.`)
+Inspect the relevant run evidence with your ordinary tools and decide whether the failure threatens the goal. Ask Builder for a useful repair and actual verification within current permissions, reusing ongoing work. Outward actions follow the workflow's ask-or-allow setting. Keep the actual outcome, blockers and follow-up in this conversation; do not claim that delivery means work finished.`)
 	return b.String()
 }
 

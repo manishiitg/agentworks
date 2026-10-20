@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"path"
 	"strings"
-
-	step_based_workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
 
 // =====================================================================
@@ -92,26 +90,6 @@ func AppendContextRule(ctx context.Context, workspacePath, section, ruleText str
 
 // CaptureContext appends the user rule to the runtime context file and records
 // a typed authoritative receipt in the workflow database.
-func CaptureContext(ctx context.Context, workspacePath, section, ruleText string, exampleNote string) (*step_based_workflow.PulseContextRecord, error) {
-	if strings.TrimSpace(ruleText) == "" {
-		return nil, fmt.Errorf("capture_context requires context text")
-	}
-	section = strings.TrimSpace(section)
-	if section == "" {
-		section = "General"
-	}
-
-	if err := AppendContextRule(ctx, workspacePath, section, ruleText); err != nil {
-		return nil, fmt.Errorf("append context: %w", err)
-	}
-	record, err := step_based_workflow.RecordPulseContextRecord(
-		ctx, workspacePath, section, ruleText, exampleNote, "knowledgebase/context/context.md",
-	)
-	if err != nil {
-		return nil, fmt.Errorf("record context receipt: %w", err)
-	}
-	return record, nil
-}
 
 type CaptureContextInput struct {
 	Section     string `json:"section,omitempty"`
@@ -127,14 +105,19 @@ type CaptureContextOutput struct {
 }
 
 func CaptureContextTool(ctx context.Context, workspacePath string, input CaptureContextInput) (*CaptureContextOutput, error) {
-	record, err := CaptureContext(ctx, workspacePath, input.Section, input.ContextText, input.ExampleNote)
-	if err != nil {
+	section := strings.TrimSpace(input.Section)
+	if section == "" {
+		section = "General"
+	}
+	if strings.TrimSpace(input.ContextText) == "" {
+		return nil, fmt.Errorf("capture_context requires context text")
+	}
+	if err := AppendContextRule(ctx, workspacePath, section, input.ContextText); err != nil {
 		return nil, err
 	}
 	return &CaptureContextOutput{
-		DecisionID:     record.ContextID,
 		Status:         "captured",
-		Section:        record.Section,
-		AppliedChanges: []string{record.Path},
+		Section:        section,
+		AppliedChanges: []string{"knowledgebase/context/context.md"},
 	}, nil
 }

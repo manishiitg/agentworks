@@ -1,15 +1,9 @@
-import { PulseMetricOutcomes } from "./PulseMetricOutcomes"
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, ChevronDown, ChevronRight, Clock3, Loader2, MessageSquareText, RefreshCw, Send, Sparkles, X } from 'lucide-react'
 import { agentApi } from '../../services/api'
-import type { PulseImpactLedger, ReportHumanInput } from '../../services/api-types'
+import type { ReportHumanInput } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
-import {
-  parseReportHumanInputContext,
-  reportHumanInputHistory,
-  reportHumanInputImpact,
-  reportHumanInputStatusLabel,
-} from '../../utils/reportHumanInputFormatting'
+import { parseReportHumanInputContext, reportHumanInputHistory, reportHumanInputStatusLabel } from '../../utils/reportHumanInputFormatting'
 import { type HumanInputChatTarget, delegateReportHumanInputActionToChat, openReportHumanInputAnswerInChat, openReportHumanInputQuestionInChat, sendReportHumanInputAnswerToChat } from '../../utils/reportHumanInputChat'
 import { useContainerSizeTier } from './reportWidgets/tableHelpers'
 import { PlainMarkdown } from '../ui/PlainMarkdown'
@@ -117,7 +111,6 @@ interface ReportHumanInputPanelProps {
 	historyMode?: 'collapsed' | 'expanded'
 	historyLimit?: number
 	providedInputs?: ReportHumanInput[]
-	providedImpact?: PulseImpactLedger
 	providedLoading?: boolean
 	providedError?: string | null
 	onRequestRefresh?: () => void
@@ -134,7 +127,6 @@ export function ReportHumanInputPanel({
 	historyMode = 'collapsed',
 	historyLimit = 4,
 	providedInputs,
-	providedImpact,
 	providedLoading,
 	providedError,
 	onRequestRefresh,
@@ -324,8 +316,6 @@ export function ReportHumanInputPanel({
       {history.map(input => {
         const expanded = expandedHistoryIds[input.id] ?? historyMode === 'expanded'
         const answer = selectedOptionTitle(input)
-        const impact = reportHumanInputImpact(input, providedImpact)
-        const assessment = impact?.latestAssessment
         return (
           <div key={input.id} className="min-w-0 rounded-md bg-background/50 text-xs">
             <button
@@ -382,34 +372,6 @@ export function ReportHumanInputPanel({
                       <span>{input.outcome_summary}</span>
                     </div>
                     {input.consumed_at && <div className="mt-1 text-[11px] text-emerald-200/70">Completed {inputTime(input.consumed_at)}</div>}
-                  </div>
-                )}
-                {impact && (
-                  <div className="rounded-md border border-violet-400/20 bg-violet-400/[0.06] px-2 py-1.5 text-violet-100">
-                    <div className="font-medium">Impact tracking</div>
-                    {impact.intervention.effects?.length ? <PulseMetricOutcomes item={impact.intervention} assessments={providedImpact?.assessments || []} /> : assessment ? (
-                      <>
-                        <div className="mt-0.5">
-                          {assessment.verdict === 'improved' ? 'Improved' : assessment.verdict === 'regressed' ? 'Regressed' : assessment.verdict === 'unchanged' ? 'No clear change' : assessment.verdict === 'confounded' ? 'Could not isolate the effect' : 'Not enough evidence yet'}
-                          {typeof assessment.before_value === 'number' && typeof assessment.after_value === 'number'
-                            ? ` · ${assessment.before_value} → ${assessment.after_value}`
-                            : ''}
-                        </div>
-                        <div className="mt-1 text-[11px] text-violet-200/70">
-                          {(assessment.metric || impact.intervention.metric).replaceAll('_', ' ')} · {assessment.confidence || 'unknown'} confidence · measured {inputTime(assessment.assessed_at)}
-                        </div>
-                        {assessment.next_checkpoint && <div className="mt-1 text-[11px] text-violet-200/70">Next check: {assessment.next_checkpoint}</div>}
-                      </>
-                    ) : (
-                      <>
-                        <div className="mt-0.5">Waiting for comparable run evidence.</div>
-                        <div className="mt-1 text-[11px] text-violet-200/70">
-                          Measuring {impact.intervention.metric.replaceAll('_', ' ')}
-                          {impact.intervention.checkpoint ? ` · next check: ${impact.intervention.checkpoint}` : ''}
-                          {impact.intervention.minimum_evidence_runs > 0 ? ` · ${impact.intervention.minimum_evidence_runs} run${impact.intervention.minimum_evidence_runs === 1 ? '' : 's'} required` : ''}
-                        </div>
-                      </>
-                    )}
                   </div>
                 )}
                 {!answer && !input.note && !input.outcome_summary && !input.withdrawal && <div>No saved answer details.</div>}

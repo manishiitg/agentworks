@@ -38,29 +38,6 @@ func readPulseDesignSpec(t *testing.T) string {
 	return ""
 }
 
-func TestSpecializeAdvisorsRequiresApprovalAndBoundedActivation(t *testing.T) {
-	rendered, err := renderFromRegistry("specialize-advisors", tmplData{Focus: "social acquisition"}, referenceKinds)
-	if err != nil {
-		t.Fatalf("render specialize-advisors: %v", err)
-	}
-	for _, want := range []string{
-		"Strategy Auditor specialization",
-		"Goal Advisor specialization",
-		"advisor-specialization-<UTC timestamp>",
-		"advisor_specialization_approval_input_id",
-		"`workflow.json` directly",
-		"social acquisition",
-		"DELTA-ONLY CONTRACT",
-		"If the matching base contract already asks for it, remove it",
-		"references/strategy-auditor.md",
-		"references/goal-advisor.md",
-	} {
-		if !strings.Contains(rendered, want) {
-			t.Fatalf("specialize-advisors guidance missing %q:\n%s", want, rendered)
-		}
-	}
-}
-
 func TestWorkflowGuideSmallBusinessAudience(t *testing.T) {
 	rendered, err := renderFromRegistry("workflow-guide", tmplData{}, referenceKinds)
 	if err != nil {
@@ -749,49 +726,6 @@ func TestNoTemplateNamesARemovedPulseTool(t *testing.T) {
 // template and fails any slash spelling or tool-call form of a name that is
 // not a command. Plain `references/<name>.md` load paths are legitimate and
 // intentionally not matched.
-func TestNoTemplateInvokesARemovedCommand(t *testing.T) {
-	removed := []string{
-		"`/improve-report`",
-		"`/improve-knowledge`",
-		"`/improve-learnings`",
-		"`/improve-database`",
-		"`/ops-review`",
-		"`/specialize-advisors`",
-		`kind="improve-report"`,
-		`kind="improve-knowledge"`,
-		`kind="improve-learnings"`,
-		`kind="improve-database"`,
-		`kind="ops-review"`,
-		`kind="specialize-advisors"`,
-	}
-	visited := 0
-	err := fs.WalkDir(templatesFS, "templates", func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".md") {
-			return nil
-		}
-		body, readErr := templatesFS.ReadFile(path)
-		if readErr != nil {
-			return readErr
-		}
-		visited++
-		for _, name := range removed {
-			if strings.Contains(string(body), name) {
-				t.Errorf("%s still invokes removed command %q; it has no menu entry and no tool kind",
-					path, name)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("walk embedded templates: %v", err)
-	}
-	if visited == 0 {
-		t.Fatal("no templates were walked; the embed pattern or path changed")
-	}
-}
 
 // read_skill deliberately accepts one file per call so large references cannot
 // be combined into a result that the coding CLI truncates. Keep generated

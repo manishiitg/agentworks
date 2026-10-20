@@ -34,22 +34,19 @@ var goalWorkTurns = struct {
 }{bySession: map[string]*goalWorkTurnHold{}}
 
 type goalWorkTurnHold struct {
-	perms      stepworkflow.GoalWorkPermissions
-	checkRunID string
+	perms stepworkflow.GoalWorkPermissions
 }
 
 // beginGoalWorkTurn holds sessionID's tools to perms until the returned
 // release runs. A later begin for the same session replaces the hold; an
 // earlier release then leaves the newer hold in place.
-func beginGoalWorkTurn(sessionID string, perms stepworkflow.GoalWorkPermissions, checkRunIDs ...string) (release func()) {
+func beginGoalWorkTurn(sessionID string, perms stepworkflow.GoalWorkPermissions) (release func()) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return func() {}
 	}
 	hold := &goalWorkTurnHold{perms: perms}
-	if len(checkRunIDs) > 0 {
-		hold.checkRunID = checkRunIDs[0]
-	}
+
 	goalWorkTurns.Lock()
 	goalWorkTurns.bySession[sessionID] = hold
 	goalWorkTurns.Unlock()
@@ -105,13 +102,4 @@ func goalWorkToolRefusal(tool string, perms stepworkflow.GoalWorkPermissions) er
 		}
 	}
 	return nil
-}
-
-func pulseCheckRunIDForSession(sessionID string) string {
-	goalWorkTurns.Lock()
-	defer goalWorkTurns.Unlock()
-	if hold := goalWorkTurns.bySession[sessionID]; hold != nil {
-		return hold.checkRunID
-	}
-	return ""
 }

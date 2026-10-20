@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	step_based_workflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
 	mcpexecutor "github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -81,8 +80,7 @@ type ReportHumanInput struct {
 	ApplyMessage string `json:"apply_message,omitempty"`
 	// Recommendation is the Pulse's recommended answer (PLAT-697 phase
 	// 3), kept apart from the owner's answer; list responses only.
-	Recommendation *PulseRecommendation        `json:"recommendation,omitempty"`
-	Withdrawal     *ReportHumanInputWithdrawal `json:"withdrawal,omitempty"`
+	Withdrawal *ReportHumanInputWithdrawal `json:"withdrawal,omitempty"`
 }
 
 type ReportHumanInputCreateRequest struct {
@@ -268,7 +266,6 @@ func ensureReportHumanInputSchema(ctx context.Context, db *sql.DB) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_report_human_input_events_lookup
 			ON report_human_input_events(workspace_path, input_id, id)`,
-		pulseRecommendationsSchema,
 	}
 	for _, stmt := range stmts {
 		if _, err := db.ExecContext(ctx, stmt); err != nil {
@@ -602,18 +599,7 @@ func listReportHumanInputsBounded(ctx context.Context, workspacePath, status, so
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	if len(inputs) > 0 {
-		recs, err := pulseRecommendationsByInput(ctx, db, normalized)
-		if err != nil {
-			return nil, err
-		}
-		for i := range inputs {
-			if rec := recs[inputs[i].ID]; rec != nil {
-				rec.OptionTitle = reportHumanInputOptionTitle(inputs[i].Options, rec.OptionID)
-				inputs[i].Recommendation = rec
-			}
-		}
-	}
+
 	return inputs, nil
 }
 
@@ -700,17 +686,7 @@ func answerReportHumanInput(ctx context.Context, workspacePath, inputID string, 
 	} else if affected == 0 {
 		return nil, fmt.Errorf("input_id %q was consumed, dismissed, claimed, or withdrawn by another writer before this answer could be saved", inputID)
 	}
-	if err := step_based_workflow.SyncPulseImprovementDecisionTx(ctx, tx, input.ID, selected, false, "", now); err != nil {
-		return nil, err
-	}
-	// The owner accepted or changed the Pulse's recommendation (PLAT-697).
-	ownerAnswer := selected
-	if ownerAnswer == "" {
-		ownerAnswer = note
-	}
-	if err := recordPulseOwnerResponseTx(ctx, tx, normalized, input.ID, "", ownerAnswer, now); err != nil {
-		return nil, err
-	}
+
 	// The current row already owns the answer. The append-only audit trail keeps
 	// provenance, not a second permanent copy of potentially sensitive free text.
 	details, _ := json.Marshal(map[string]interface{}{
@@ -727,12 +703,7 @@ func answerReportHumanInput(ctx context.Context, workspacePath, inputID string, 
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	answered, err := getReportHumanInputByID(ctx, db, normalized, input.ID)
-	if err == nil {
-		// Goal memory: the owner's answer, copied in by code (PLAT-697).
-		afterOwnerAnswer(ctx, db, answered)
-	}
-	return answered, err
+	return getReportHumanInputByID(ctx, db, normalized, input.ID)
 }
 
 func dismissReportHumanInput(ctx context.Context, workspacePath, inputID string, req ReportHumanInputAnswerRequest) (*ReportHumanInput, error) {
@@ -785,9 +756,7 @@ func dismissReportHumanInput(ctx context.Context, workspacePath, inputID string,
 	} else if affected == 0 {
 		return nil, fmt.Errorf("input_id %q was consumed, claimed, or withdrawn by another writer before it could be dismissed", inputID)
 	}
-	if err := recordPulseOwnerResponseTx(ctx, tx, normalized, input.ID, "dismissed", "", now); err != nil {
-		return nil, err
-	}
+
 	// A dismissal is not an answer. Keep its explanation in the existing
 	// lifecycle event without overwriting a previous answer's note.
 	details, _ := json.Marshal(map[string]string{"reason": strings.TrimSpace(req.Note)})
@@ -873,9 +842,7 @@ func consumeReportHumanInput(ctx context.Context, workspacePath, inputID string,
 	} else if affected == 0 {
 		return nil, fmt.Errorf("input_id %q was not in 'answered' or 'claimed' state when this consumption was applied (concurrent writer): current status=%q", inputID, input.Status)
 	}
-	if err := step_based_workflow.SyncPulseImprovementDecisionTx(ctx, tx, input.ID, input.SelectedOptionID, true, outcome, now); err != nil {
-		return nil, err
-	}
+
 	if err := writeReportHumanInputEvent(ctx, tx, normalized, reportHumanInputEvent{
 		InputID: input.ID, EventType: "consumed", Status: "consumed", ActorID: req.ConsumedBy,
 		ActorKind: req.ConsumedByKind, Channel: req.ConsumedVia, SessionID: req.SessionID,

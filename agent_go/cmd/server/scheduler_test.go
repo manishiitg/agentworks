@@ -837,23 +837,6 @@ func TestLoadScheduleDoesNotRememberInvalidCronFingerprint(t *testing.T) {
 	}
 }
 
-func TestLoadScheduleDoesNotRegisterLegacyPulseCron(t *testing.T) {
-	svc := NewSchedulerService(nil)
-	sctx := &ScheduleContext{
-		WorkspacePath: "Workflow/test",
-		Schedule: WorkflowSchedule{
-			ID: "legacy-pulse", Enabled: true, PulseReviewOnly: true,
-			CronExpression: "0 9 * * *", Timezone: "UTC",
-		},
-	}
-	if err := svc.LoadSchedule(sctx); err != nil {
-		t.Fatalf("LoadSchedule() error = %v", err)
-	}
-	if len(svc.jobs) != 0 {
-		t.Fatalf("legacy Pulse cron registered %d jobs, want 0", len(svc.jobs))
-	}
-}
-
 func TestRemoveJobDropsInactiveRuntimeState(t *testing.T) {
 	svc := NewSchedulerService(nil)
 	runtimeKey := workflowScheduleRuntimeKey("Workflow/demo", "daily")
@@ -1054,8 +1037,7 @@ func TestUpdateScheduleClearsMessagesOnlyWhenExplicitlySet(t *testing.T) {
 			Label:         "Social Media",
 			Schedules: []WorkflowSchedule{
 				{
-					ID:        "run-schedule",
-					PulseMode: "basic", PulseModeReason: "Routine scheduled processing",
+					ID:             "run-schedule",
 					Name:           "Daily publish",
 					CronExpression: "0 9 * * *",
 					Timezone:       "Asia/Kolkata",

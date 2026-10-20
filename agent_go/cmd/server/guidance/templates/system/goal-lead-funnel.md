@@ -16,4 +16,4 @@ Use it when the goal is measured but not moving fast enough.
    most likely to move it. Small samples: say so, and propose a test (the
    experiment skill) instead of a conclusion.
 
-Changes go to the Builder chat; the finding goes to goal memory.
+Changes go to the Builder chat; the finding goes to the Pulse conversation.

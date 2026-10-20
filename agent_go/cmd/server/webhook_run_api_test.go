@@ -160,19 +160,6 @@ func TestWebhookFileTokenScopeAndExpiry(t *testing.T) {
 	}
 }
 
-func TestWebhookNeverRunsPulse(t *testing.T) {
-	svc := &SchedulerService{}
-	for _, mode := range []string{"basic", "full", "off"} {
-		sctx := &ScheduleContext{Schedule: WorkflowSchedule{ScheduleType: "webhook", PulseMode: mode}, ForcePulseReview: true}
-		if effectiveSchedulePulseMode(sctx, NewWorkflowManifest("test")) != schedulePulseModeOff {
-			t.Fatal("webhook enabled Pulse")
-		}
-		if got := svc.runPulseLifecycle(context.Background(), sctx, mode, "completed", "iteration-1-hook", "", "", ""); got != pulseLifecycleNotRun {
-			t.Fatalf("Pulse ran: %s", got)
-		}
-	}
-}
-
 func TestWebhookCompletionHasNoBackupDirective(t *testing.T) {
 	snap := BackgroundAgentSnapshot{Status: BGAgentCompleted, Kind: "workflow_run_tool", Metadata: map[string]string{"trigger_source": "webhook"}}
 	if workflowRunCompletionDirective(snap) != "" {

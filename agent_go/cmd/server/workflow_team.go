@@ -851,7 +851,7 @@ func teamScheduleAuthority(t *WorkflowTeam, actor string, s WorkflowSchedule) er
 	if member == nil || !member.ManageSchedules || !member.Run {
 		return fmt.Errorf("schedule management and route run permissions are required")
 	}
-	if len(s.RouteSelections) == 0 || s.PulseReviewOnly || len(s.Messages) > 0 {
+	if len(s.RouteSelections) == 0 || len(s.Messages) > 0 {
 		return fmt.Errorf("Contributors may manage only schedules with explicit assigned routes and no arbitrary messages")
 	}
 	for step, route := range s.RouteSelections {

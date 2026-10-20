@@ -247,10 +247,10 @@ func planDependencyCoverageProblems(entry PlanChangelogEntry) []string {
 		default:
 			problems = append(problems, surface+": disposition is invalid")
 		}
-		if len(normalizedLifecycleStrings(review.Evidence)) == 0 {
+		if len(normalizedEvidenceStrings(review.Evidence)) == 0 {
 			problems = append(problems, surface+": evidence is missing")
 		}
-		if (review.Disposition == "blocked" || review.Disposition == "broken") && len(normalizedLifecycleStrings(review.IssueIDs)) == 0 {
+		if (review.Disposition == "blocked" || review.Disposition == "broken") && len(normalizedEvidenceStrings(review.IssueIDs)) == 0 {
 			problems = append(problems, surface+": blocked/broken disposition lacks a durable Pulse issue")
 		}
 	}

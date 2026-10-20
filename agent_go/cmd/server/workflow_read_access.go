@@ -221,11 +221,6 @@ func registerWorkflowReadRoutes(apiRouter *mux.Router, api *StreamingAPI) {
 		apiRouter.HandleFunc(route, requireWorkflowReadAccess(handler)).Methods("GET", "OPTIONS")
 	}
 	read("/workflow/pulse-overview", api.handleGetPulseOverview)
-	read("/workflow/pulse-findings", api.handleGetPulseFindings)
-	read("/workflow/pulse-reviews", api.handleGetPulseReviews)
-	read("/workflow/pulse-agent-metrics", api.handleGetPulseAgentMetrics)
-	read("/workflow/pulse-impact", api.handleGetPulseImpact)
-	read("/workflow/pulse-context", api.handleGetPulseContext)
 	read("/workflow/goal-lead", api.handleGetGoalLead)
 	read("/workspace/state", api.handleLoadWorkspaceState)
 	read("/workflow/run-folders", api.handleGetRunFolders)

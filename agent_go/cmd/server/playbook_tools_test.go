@@ -7,26 +7,6 @@ import (
 	"testing"
 )
 
-func TestSearchPlaybooksFindsIntentAndReportsInstalledStatus(t *testing.T) {
-	items, err := loadPlaybookCatalog()
-	if err != nil {
-		t.Fatal(err)
-	}
-	matches := searchPlaybooks(items, []InstalledPlaybook{{ID: "browser-performance-validation", Version: "0.2.0", Status: "draft"}}, "browser performance budgets", 3)
-	if len(matches) == 0 || matches[0].ID != "browser-performance-validation" {
-		t.Fatalf("matches = %+v", matches)
-	}
-	if !matches[0].Installed || matches[0].InstalledStatus != "draft" || matches[0].InstalledVersion != "0.2.0" || !matches[0].UpdateAvailable || len(matches[0].Changelog) == 0 || len(matches[0].Outputs) == 0 || len(matches[0].SetupAreas) == 0 || len(matches[0].PulseFocus) != 1 {
-		t.Fatalf("incomplete result = %+v", matches[0])
-	}
-	if module, _ := matches[0].PulseFocus[0]["module"].(string); module != pulseModuleStrategicReview {
-		t.Fatalf("expected strategic-only playbook focus, got %#v", matches[0].PulseFocus)
-	}
-	if matches[0].Availability != "installed_in_this_workflow" || matches[0].RequiredAction != "read_installed_skill_before_setup" {
-		t.Fatalf("installed availability = %+v", matches[0])
-	}
-}
-
 func TestSearchPlaybooksReturnsWebsiteGrowthTeamProposal(t *testing.T) {
 	items, err := loadPlaybookCatalog()
 	if err != nil {

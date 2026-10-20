@@ -79,7 +79,7 @@ func buildWorkflowGoalSetupStatus(ctx context.Context, workspacePath string, man
 	}
 
 	metricsDone := false
-	if ledger, err := step.LoadPulseImpactLedger(ctx, workspacePath, 1); err == nil && ledger != nil {
+	if ledger, err := step.LoadGoalMeasurements(ctx, workspacePath, 1); err == nil && ledger != nil {
 		metricsDone = len(ledger.Metrics) > 0
 	}
 

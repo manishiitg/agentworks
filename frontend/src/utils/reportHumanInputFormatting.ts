@@ -1,7 +1,4 @@
 import type {
-  PulseImpactAssessment,
-  PulseImpactLedger,
-  PulseIntervention,
   ReportHumanInput,
 } from '../services/api-types'
 
@@ -33,27 +30,12 @@ export function reportHumanInputHistory(inputs: ReportHumanInput[], limit = 4): 
     .slice(0, limit)
 }
 
-export type ReportHumanInputImpact = {
-  intervention: PulseIntervention
-  latestAssessment?: PulseImpactAssessment
-}
+
 
 // Decisions and impact share one durable join key. Keep this projection in the
 // UI instead of copying impact state onto report_human_inputs, which would
 // create two lifecycle authorities that can disagree.
-export function reportHumanInputImpact(
-  input: ReportHumanInput,
-  ledger?: PulseImpactLedger,
-): ReportHumanInputImpact | null {
-  if (!ledger) return null
-  const intervention = ledger.interventions.find(item => item.human_input_id === input.id)
-  if (!intervention) return null
-  return {
-    intervention,
-    // The API returns immutable assessment history newest first.
-    latestAssessment: ledger.assessments.find(item => item.intervention_id === intervention.intervention_id),
-  }
-}
+
 
 const CONTEXT_MARKER_PATTERN = /(?:^|\s)(Proposal|Strategy Auditor specialization|Goal Advisor specialization|Exact intended edits(?: if approved)?|Rationale|Expected impact|Risk|Evidence):\s*/gi
 

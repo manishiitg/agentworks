@@ -19,24 +19,6 @@ func recordTestReviewFinding(t *testing.T, ctx context.Context, workspacePath, p
 	recordTestReviewFindingWithEvidence(t, ctx, workspacePath, pulseRunID, module, concern, []string{"runs/iteration-0/result.json"})
 }
 
-func recordTestReviewFindingWithEvidence(t *testing.T, ctx context.Context, workspacePath, pulseRunID, module, concern string, evidence []string) {
-	t.Helper()
-	if _, err := step_based_workflow.RecordPulseReviewFinding(ctx, workspacePath, pulseRunID, pulseRunID, step_based_workflow.PulseReviewFindingInput{
-		Concern: concern,
-		Module:  module,
-		PulseFindingDetails: step_based_workflow.PulseFindingDetails{
-			IssueKind:      step_based_workflow.IssueKindWorkflow,
-			Classification: "correctness_bug",
-			Severity:       "medium",
-			Summary:        concern,
-			Impact:         "test impact",
-			Evidence:       evidence,
-		},
-	}); err != nil {
-		t.Fatalf("record review finding %q: %v", concern, err)
-	}
-}
-
 // seedLegacyStepObservation inserts a historical step-raised row. No live
 // writer creates these any more, but databases retained from before
 // 2026-08-29 still hold them and readers must keep treating them as

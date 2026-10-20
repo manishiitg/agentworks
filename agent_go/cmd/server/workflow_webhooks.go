@@ -199,7 +199,7 @@ func validateWebhookSchedule(s WorkflowSchedule) error {
 			return errors.New("webhook auth_mode must be bearer or github")
 		}
 	}
-	if s.CronExpression != "" || len(s.CalendarItems) > 0 || len(s.TriggerPayload) > 0 || len(s.Messages) > 0 || s.Query != "" || s.PulseReviewOnly || s.ShouldResumePrevious() {
+	if s.CronExpression != "" || len(s.CalendarItems) > 0 || len(s.TriggerPayload) > 0 || len(s.Messages) > 0 || s.Query != "" || s.ShouldResumePrevious() {
 		return errors.New("API triggers accept delivery input only; clock settings, request overrides, messages, and session resume are not supported")
 	}
 	if (s.CollisionPolicy != "" && s.CollisionPolicy != "skip") || len(scheduleDependencyIDs(s)) > 0 {
@@ -674,7 +674,7 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 	} else {
 		caller = nil
 	}
-	sched := WorkflowSchedule{ID: id, Name: strings.TrimSpace(req.Name), ScheduleType: "webhook", Timezone: "UTC", Enabled: req.Enabled, RouteSelections: req.RouteSelections, GroupNames: groups, Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "skip", Webhook: cfg, Kind: normalizeTriggerKind(effectiveKind), Caller: caller, PulseModeReason: "Webhook deliveries skip Pulse, backup and publish."}
+	sched := WorkflowSchedule{ID: id, Name: strings.TrimSpace(req.Name), ScheduleType: "webhook", Timezone: "UTC", Enabled: req.Enabled, RouteSelections: req.RouteSelections, GroupNames: groups, Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "skip", Webhook: cfg, Kind: normalizeTriggerKind(effectiveKind), Caller: caller}
 	if function {
 		sched.Function = spec
 	}

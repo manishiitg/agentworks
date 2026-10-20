@@ -260,7 +260,6 @@ type UpdateWorkflowManifestRequest struct {
 	WorkflowContextPaths *[]string                                    `json:"workflow_context_paths,omitempty"`
 	PulseEnabled         *bool                                        `json:"pulse_enabled,omitempty"`
 	PulseOutwardActions  *string                                      `json:"pulse_outward_actions,omitempty"`
-	PulseFocusAreas      *[]string                                    `json:"pulse_focus_areas,omitempty"`
 	// AfterManualRun sets the after-run options for runs started from a chat
 	// (PLAT-697 phase 0). Schedules carry their own after_run.
 	AfterManualRun *ScheduleAfterRun `json:"after_manual_run,omitempty"`
@@ -330,16 +329,7 @@ func setWorkflowPulseEnabled(manifest *WorkflowManifest, enabled bool) {
 		manifest.Pulse = &WorkflowPulseConfig{}
 	}
 	manifest.Pulse.Enabled = enabled
-	// The old model stored Pulse as an independent recurring schedule. Once the
-	// explicit flag is saved, remove those obsolete cron entries so only normal
-	// scheduled runs can trigger recurring Pulse.
-	schedules := manifest.Schedules[:0]
-	for _, schedule := range manifest.Schedules {
-		if !schedule.PulseReviewOnly {
-			schedules = append(schedules, schedule)
-		}
-	}
-	manifest.Schedules = schedules
+
 }
 
 func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *http.Request) {
@@ -523,17 +513,7 @@ func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *
 		}
 		manifest.Pulse.OutwardActions = value
 	}
-	if req.PulseFocusAreas != nil {
-		areas, areasErr := normalizePulseFocusAreas(*req.PulseFocusAreas)
-		if areasErr != nil {
-			http.Error(w, areasErr.Error(), http.StatusBadRequest)
-			return
-		}
-		if manifest.Pulse == nil {
-			manifest.Pulse = &WorkflowPulseConfig{}
-		}
-		manifest.Pulse.FocusAreas = areas
-	}
+
 	if req.RunNotificationInstructions != nil || req.PulseNotificationInstructions != nil ||
 		req.RunNotificationChannels != nil || req.PulseNotificationChannels != nil ||
 		req.RunNotificationRecipients != nil || req.PulseNotificationRecipients != nil ||

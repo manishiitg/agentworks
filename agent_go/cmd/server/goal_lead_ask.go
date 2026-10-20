@@ -157,31 +157,6 @@ func (api *StreamingAPI) goalLeadAskCaller(ctx context.Context, workspacePath, s
 
 // createGoalLeadChatKindTools are the phase 4 Pulse writes: focus areas and
 // QA requests (executors in createPulseTools).
-func createGoalLeadChatKindTools() []llmtypes.Tool {
-	return []llmtypes.Tool{
-		{Type: "function", Function: &llmtypes.FunctionDefinition{
-			Name:        "record_pulse_focus_area",
-			Description: "The Pulse's focus areas (what matters now, between soul.md and goal memory). action=propose: a new focus from evidence or the owner's words, with text, end_date (YYYY-MM-DD, at most 90 days), check (how it is judged, e.g. \"drafts waiting 3 -> 0\") and why; at most three open at once; it waits for the owner's one-click confirm and is not active before that. action=track: daily, progress moving, stuck (note = the one clear ask) or done. action=close: status done, expired (say why; propose extend, change or drop) or dropped, with a one-line lesson that also goes to goal memory. Focus areas change what you attend to, never what you may do.",
-			Parameters: llmtypes.NewParameters(map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"workspace_path": map[string]interface{}{"type": "string"},
-					"action":         map[string]interface{}{"type": "string", "enum": []string{"propose", "track", "close"}},
-					"focus_id":       map[string]interface{}{"type": "string", "description": "track/close: the focus area's id (FA-...)."},
-					"text":           map[string]interface{}{"type": "string", "description": "propose: the focus in plain words."},
-					"end_date":       map[string]interface{}{"type": "string", "description": "propose: YYYY-MM-DD."},
-					"check":          map[string]interface{}{"type": "string", "description": "propose: how this focus is judged."},
-					"why":            map[string]interface{}{"type": "string", "description": "propose: the evidence or the owner's words."},
-					"progress":       map[string]interface{}{"type": "string", "enum": []string{"moving", "stuck", "done"}},
-					"note":           map[string]interface{}{"type": "string", "description": "track: one plain line; for stuck, the one clear ask."},
-					"status":         map[string]interface{}{"type": "string", "enum": []string{"done", "expired", "dropped"}},
-					"lesson":         map[string]interface{}{"type": "string", "description": "close: one line on what it taught."},
-				},
-				"required": []string{"workspace_path", "action"},
-			}),
-		}},
-	}
-}
 
 // sessionIsBotConversation reports a Slack (or other bot) conversation, or a
 // chat started from one.

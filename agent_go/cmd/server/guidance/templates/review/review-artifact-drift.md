@@ -4,7 +4,7 @@ Do this in the current Builder or Pulse conversation. There is no separate revie
 
 Read the goal, current plan, step configuration and relevant plan-change history. Identify changed steps, downstream consumers and references left by deleted steps. Use existing Builder tools for authorized repairs and verify actual results. Pulse asks Builder for repairs within their shared permissions; do not create a separate repair agent. Preserve route ownership, the outward-action setting and the unreadable-input guard.
 
-Record per-step evidence with `record_plan_drift_review`: pass for a demonstrated match, fixed after a verified repair, fail for an unresolved mismatch. A failed check needs a real `record_pulse_finding` issue for that exact step; reuse an existing root issue. Use the live tool schema for change identifiers and workflow deletion checks. There is no worklist claim or reviewer-result tool.
+Record per-step evidence with `record_plan_drift_review`: pass for a demonstrated match, fixed after a verified repair, fail for an unresolved mismatch. Record the mismatch and follow up with Builder in the normal conversation. Use the live tool schema for change identifiers and workflow deletion checks. There is no worklist claim or reviewer-result tool.
 
 Resolve the placeholder `<script-dir>` from `workflow.json.code_layout_version`: `code/<step-id>` for version 1, or `learnings/<step-id>` for a legacy workflow. Do not infer the version from folders or migrate code implicitly.
 

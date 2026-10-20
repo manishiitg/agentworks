@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { PulseImpactLedger, ReportHumanInput } from '../services/api-types'
-import {
-  parseReportHumanInputContext,
-  reportHumanInputHistory,
-  reportHumanInputImpact,
-  reportHumanInputStatusLabel,
-} from './reportHumanInputFormatting'
+import type { ReportHumanInput } from '../services/api-types'
+import { parseReportHumanInputContext, reportHumanInputHistory, reportHumanInputStatusLabel } from './reportHumanInputFormatting'
 
 function input(status: ReportHumanInput['status'], id = status): ReportHumanInput {
   return {
@@ -84,48 +79,5 @@ describe('report human input context formatting', () => {
     expect(reportHumanInputStatusLabel(input('withdrawn'))).toBe('Withdrawn')
   })
 
-  it('joins an applied decision to its newest durable impact assessment', () => {
-    const ledger: PulseImpactLedger = {
-      interventions: [{
-        intervention_id: 'intervention-1',
-        title: 'Flatten execution pipeline',
-        criterion_id: 'reliable-completion',
-        impact_type: 'reliability',
-        metric: 'successful_run_rate',
-        expected_direction: 'increase',
-        minimum_evidence_runs: 2,
-        status: 'measuring',
-        human_input_id: 'decision-1',
-      }],
-      observations: [],
-      assessments: [
-        {
-          assessment_id: 'new',
-          intervention_id: 'intervention-1',
-          verdict: 'improved',
-          before_window: 'previous 3 runs',
-          after_window: 'next 3 runs',
-          before_value: 0.33,
-          after_value: 1,
-          confidence: 'medium',
-          assessed_at: '2026-08-20T09:00:00Z',
-        },
-        {
-          assessment_id: 'old',
-          intervention_id: 'intervention-1',
-          verdict: 'inconclusive',
-          before_window: 'previous 3 runs',
-          after_window: 'first run',
-          confidence: 'low',
-          assessed_at: '2026-08-19T09:00:00Z',
-        },
-      ],
-    }
 
-    expect(reportHumanInputImpact(input('consumed', 'decision-1'), ledger)).toEqual({
-      intervention: ledger.interventions[0],
-      latestAssessment: ledger.assessments[0],
-    })
-    expect(reportHumanInputImpact(input('consumed', 'another-decision'), ledger)).toBeNull()
-  })
 })
