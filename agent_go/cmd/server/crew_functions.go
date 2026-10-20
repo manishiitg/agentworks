@@ -358,35 +358,6 @@ func crewFunctionNames(functions []crewFunction) []string {
 	return names
 }
 
-// crewFunctionToolName is the generated tool name for one function, e.g.
-// "flow_tester__run_login_flow" (tool-name charset, at most 64 chars).
-func crewFunctionToolName(targetLabel, function string) string {
-	var b strings.Builder
-	lastUnderscore := true
-	for _, r := range strings.ToLower(targetLabel) {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			b.WriteRune(r)
-			lastUnderscore = false
-		} else if !lastUnderscore {
-			b.WriteByte('_')
-			lastUnderscore = true
-		}
-	}
-	prefix := strings.Trim(b.String(), "_")
-	if prefix == "" {
-		prefix = "target"
-	}
-	name := prefix + "__" + function
-	if len(name) > 64 {
-		keep := 64 - len(function) - 2
-		if keep < 1 {
-			return name[:64]
-		}
-		name = strings.TrimRight(prefix[:keep], "_") + "__" + function
-	}
-	return name
-}
-
 // targetStampID is the ID a trigger caller stamp carries for this target.
 func (t triggerTarget) stampID() string {
 	if t.Kind == triggerCallerCrew {
@@ -1638,7 +1609,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		if err := writeCrewFunctions(ctx, target, functions); err != nil {
 			return "", err
 		}
-		return jsonOut(map[string]interface{}{"target": target.describe(), "function": name, "updated": updated, "tool_name_for_callers": crewFunctionToolName(target.Label, name)})
+		return jsonOut(map[string]interface{}{"target": target.describe(), "function": name, "updated": updated})
 	}); err != nil {
 		return err
 	}
@@ -2018,58 +1989,5 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		return err
 	}
 
-	// Generated tools: one per function of every Crew/workflow tagged or
-	// attached to this chat.
-	if options.ExecutionScope != "" {
-		return nil
-	}
-	ctx := withClaims(context.Background())
-	caller, err := resolveCaller(ctx)
-	if err != nil {
-		return nil
-	}
-	paths := append([]string(nil), parentReq.WorkflowContextPaths...)
-	if caller.Stamp.Type == triggerCallerCrew {
-		if attached, attachedErr := readWorkWorkflowReferences(ctx, caller.Path); attachedErr == nil {
-			paths = append(paths, attached...)
-		}
-	}
-	seen := map[string]bool{}
-	for _, raw := range paths {
-		target, err := resolveFunctionTarget(ctx, claims, caller, raw)
-		if err != nil || caller.isTarget(target) {
-			continue
-		}
-		functions, err := callableFunctions(ctx, target)
-		if err != nil {
-			continue
-		}
-		for _, fn := range functions {
-			toolName := crewFunctionToolName(target.Label, fn.Name)
-			if seen[toolName] {
-				continue
-			}
-			seen[toolName] = true
-			params := fn.InputSchema
-			if len(params) == 0 {
-				params = map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}
-			}
-			description := fmt.Sprintf("Function %q of %s %q: %s Returns at once with status=running and a call_id; its final answer and file result, validated when a schema is declared, arrives later as an [AUTO-NOTIFICATION] in this chat. Do not call again for the same work.", fn.Name, target.Kind, target.Label, fn.Description)
-			if declare != nil {
-				declare(toolName)
-			}
-			fnTarget, fnName := target, fn.Name
-			if err := register(toolName, description, params, func(ctx context.Context, args map[string]interface{}) (string, error) {
-				ctx = withClaims(ctx)
-				caller, err := resolveCaller(ctx)
-				if err != nil {
-					return "", err
-				}
-				return callFunction(ctx, caller, fnTarget, fnName, args, "", true, triggerTargetDefaultTimeout, 0)
-			}); err != nil {
-				return err
-			}
-		}
-	}
 	return nil
 }

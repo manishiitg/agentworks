@@ -59,16 +59,6 @@ func TestCrewFunctionSchemaValidation(t *testing.T) {
 	}
 }
 
-func TestCrewFunctionToolName(t *testing.T) {
-	if got := crewFunctionToolName("Sample Flow Tester", "run_login_flow"); got != "sample_flow_tester__run_login_flow" {
-		t.Fatalf("tool name = %q", got)
-	}
-	long := crewFunctionToolName(strings.Repeat("very long crew name ", 6), "run_login_flow")
-	if len(long) > 64 || !strings.HasSuffix(long, "__run_login_flow") {
-		t.Fatalf("long tool name = %q", long)
-	}
-}
-
 type crewFunctionEnv struct {
 	triggerLinkEnv
 	alpha map[string]recordedTool
@@ -385,8 +375,8 @@ var loginFlowArgs = map[string]interface{}{
 }
 
 // Self-calls, cycles and deep chains are refused; mid-run questions are for
-// Crew targets only; generated tools appear for tagged Crews.
-func TestCrewFunctionGuardsAndGeneratedTools(t *testing.T) {
+// Crew targets only.
+func TestCrewFunctionGuards(t *testing.T) {
 	env := newCrewFunctionEnv(t)
 	ctx := context.Background()
 	if _, err := env.alpha["define_function"].exec(ctx, loginFlowArgs); err != nil {
@@ -434,23 +424,6 @@ func TestCrewFunctionGuardsAndGeneratedTools(t *testing.T) {
 	if _, err := env.beta["ask_function_update"].exec(ctx, map[string]interface{}{"call_id": "fn-wf", "question": "status?"}); err == nil || !strings.Contains(err.Error(), "only the caller") {
 		t.Fatalf("non-caller update: err = %v", err)
 	}
-
-	tagged := env.functionTools(t, linkAlphaPath, "sess-caller-2", []string{linkBetaPath})
-	generated, ok := tagged["beta__run_login_flow"]
-	if !ok {
-		t.Fatalf("generated tool missing: %v", crewFunctionToolKeys(tagged))
-	}
-	if _, err := generated.exec(ctx, map[string]interface{}{"env": "prod"}); err == nil || !strings.Contains(err.Error(), "$.build: required") {
-		t.Fatalf("generated tool validation: err = %v", err)
-	}
-}
-
-func crewFunctionToolKeys(tools map[string]recordedTool) []string {
-	out := make([]string, 0, len(tools))
-	for name := range tools {
-		out = append(out, name)
-	}
-	return out
 }
 
 // The Automation panel's Functions tab lists declared functions plus the

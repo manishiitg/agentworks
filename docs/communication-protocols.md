@@ -78,7 +78,7 @@ Claude Code, Codex, Muse and scripts can register an account-owned address with
 `messages action=register agent_name=reviewer`. Names are case-insensitive ASCII
 letters/digits/dots/underscores/hyphens, start with a letter or digit, and are at
 most 64 characters. `messages action=list_agents` lists this account's directory.
-Internal Crew and workflow chat agents use `list_message_agents` and can initiate
+Internal Crew and workflow chat agents use `list_agents` and can initiate
 a conversation with `send_message(target="agent:reviewer", message=...)`.
 External senders use `target="agent:reviewer"`; optionally pass their registered
 `agent_name` to identify the sending address. Existing project access still applies

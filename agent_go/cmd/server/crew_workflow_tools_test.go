@@ -139,8 +139,8 @@ func TestListWorkflowTriggersAttachedOnly(t *testing.T) {
 			t.Fatalf("internal trigger exposed endpoint material: %+v", trigger)
 		}
 	}
-	if _, err := tool.exec(context.Background(), map[string]interface{}{"workspace_path": "Workflow/other"}); err == nil || !strings.Contains(err.Error(), "not attached") {
-		t.Fatalf("unattached list err = %v, want attachment failure", err)
+	if _, err := tool.exec(context.Background(), map[string]interface{}{"workspace_path": "Workflow/other"}); err == nil || !strings.Contains(err.Error(), `workflow "Workflow/other"`) {
+		t.Fatalf("missing workflow list err = %v", err)
 	}
 }
 
@@ -153,7 +153,7 @@ func TestRunWorkflowTriggerRejectsBeforeStart(t *testing.T) {
 		args map[string]interface{}
 		want string
 	}{
-		{"unattached", map[string]interface{}{"workspace_path": "Workflow/other", "trigger_id": "trig-crew-on"}, "not attached"},
+		{"missing workflow", map[string]interface{}{"workspace_path": "Workflow/other", "trigger_id": "trig-crew-on"}, `workflow "Workflow/other"`},
 		{"unknown trigger", map[string]interface{}{"workspace_path": "Workflow/test", "trigger_id": "missing"}, "trigger not found"},
 		{"foreign binding", map[string]interface{}{"workspace_path": "Workflow/test", "trigger_id": "trig-other"}, "no longer names this caller"},
 		{"disabled binding", map[string]interface{}{"workspace_path": "Workflow/test", "trigger_id": "trig-crew-off"}, "disabled"},

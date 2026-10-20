@@ -1257,8 +1257,13 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		name, description string
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
-	}{"list_message_agents", "List the agents of your account you can message: your own local coding chats (Claude Code, Codex, Cursor, Muse, Pi) that are connected through AgentBridge, and other registered agents. Send a first message with send_message(target=agent:<name>); read the answer with read_agent_messages(inbox_id). A connected local chat gets the message live, an offline or polling agent finds it stored; either way a stored receipt does not prove the message was read or the work finished. Your messages to a local agent are offers: it answers with information and does not change files because you asked.", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
-		out, err := listNamedMessageAgents(internalBotRequestContext(ctx, userID), userID)
+	}{"list_agents", "List every agent you can use, in one list: Crews, Goals and Relays you own or that are shared with you (with their functions), and your agents connected through AgentBridge (local Claude Code, Codex, Cursor, Muse, Pi). Nothing has to be linked first. Use an agent's id: call_function(target=<id>, function=<name>) runs one of its functions; send_message(target=<id>) asks it; read the answer with read_agent_messages(inbox_id)", map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
+		ctx = internalBotRequestContext(ctx, userID)
+		claims := GetUserFromContext(ctx)
+		if claims == nil {
+			claims = &UserClaims{UserID: userID}
+		}
+		out, err := listAgentDirectory(ctx, claims)
 		if err != nil {
 			return "", err
 		}

@@ -162,8 +162,10 @@ configured function triggers. Discover the current schema before calling.
   explicit replies with `read_agent_messages(inbox_id)` and decide whether to
   follow up. Include every value the recipient needs. Workflow Run chats can
   run permitted work and record suggestions, but cannot edit the workflow.
-- **Discover** — `list_functions(target)` shows what a target offers. Generated
-  tools named `<crew>__<function>` appear for tagged or attached targets.
+- **Discover** — `list_agents` lists every agent you own or that is shared with
+  you (Crews, Goals, Relays, and agents connected through AgentBridge such as
+  local Claude Code) with their functions and ids. Nothing has to be attached
+  first. `list_functions(target)` shows one target's input and result schemas.
 - **Call** — `call_function(target, function, args)` validates `args`, runs the
   function in its own execution (a busy Crew refuses rather than queueing),
   and returns at once with `status: running` and a `call_id` (functions are

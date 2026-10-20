@@ -48,7 +48,7 @@ AgentBridge is only for agents outside this server: the person's coding agents
 on their computers (Claude Code, Codex, Cursor and others) and agents on other
 servers. Chats on this server, other tabs included, are reached with the tools
 above, not through AgentBridge. Find network agents with
-`list_message_agents` and message one with
+`list_agents` and message one with
 `send_message(target="agent:<name>")`. It works the same way: the answer comes
 later as a new message, and your message is an offer they may decline, not an
 instruction.

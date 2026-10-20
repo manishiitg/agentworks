@@ -103,9 +103,9 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 		return err
 	}
 
-	if err := register("list_workflow_triggers", "List the triggers of one workflow attached to this Crew, with their IDs, names, enabled state, and kind. Pass an exact workspace_path from list_attached_workflows; the workflow must already be attached. Never reveals trigger secrets.", map[string]interface{}{
+	if err := register("list_workflow_triggers", "List the triggers of one workflow you own or edit, with their IDs, names, enabled state, and kind. Pass its id from list_agents (workflow:<id>) or its workspace_path; Never reveals trigger secrets.", map[string]interface{}{
 		"type": "object", "required": []string{"workspace_path"}, "properties": map[string]interface{}{
-			"workspace_path": map[string]interface{}{"type": "string", "description": "Exact attached workflow workspace_path from list_attached_workflows."},
+			"workspace_path": map[string]interface{}{"type": "string", "description": "The workflow's id from list_agents (workflow:<id>) or its workspace_path."},
 		},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = withClaims(ctx)
@@ -127,9 +127,9 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 		return err
 	}
 
-	if err := register("run_workflow_trigger", "Run one attached workflow through a secretless internal trigger binding scoped to this exact Crew. Omit trigger_id to reuse or create the binding; the read-only workflow attachment authorizes this narrow binding creation without granting general workflow write access. Payloads must be JSON within 1 MiB. Returns the run ID; poll it with get_workflow_trigger_run. Reuse delivery_id when retrying the same delivery.", map[string]interface{}{
+	if err := register("run_workflow_trigger", "Run one workflow you own or edit through a secretless internal trigger binding scoped to this exact Crew. Omit trigger_id to reuse or create the binding. Payloads must be JSON within 1 MiB. Returns the run ID; poll it with get_workflow_trigger_run. Reuse delivery_id when retrying the same delivery.", map[string]interface{}{
 		"type": "object", "required": []string{"workspace_path"}, "properties": map[string]interface{}{
-			"workspace_path": map[string]interface{}{"type": "string", "description": "Exact attached workflow workspace_path from list_attached_workflows."},
+			"workspace_path": map[string]interface{}{"type": "string", "description": "The workflow's id from list_agents (workflow:<id>) or its workspace_path."},
 			"trigger_id":     map[string]interface{}{"type": "string", "description": "Internal trigger ID bound to this Crew; omit to reuse or create it."},
 			"payload":        map[string]interface{}{"type": "object", "description": "JSON delivery payload within 1 MiB."},
 			"delivery_id":    map[string]interface{}{"type": "string", "description": "Stable idempotency key; omit for a new delivery."},
@@ -194,9 +194,9 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 		return err
 	}
 
-	return register("get_workflow_trigger_run", "Poll one workflow run started by run_workflow_trigger. Returns its status, terminal flag, step outputs, progress, and signed artifact links. The binding and read-only attachment must still exist and the binding must still name this Crew.", map[string]interface{}{
+	return register("get_workflow_trigger_run", "Poll one workflow run started by run_workflow_trigger. Returns its status, terminal flag, step outputs, progress, and signed artifact links. The binding must still exist and name this Crew, and you must still own or edit the workflow.", map[string]interface{}{
 		"type": "object", "required": []string{"workspace_path", "trigger_id", "run_id"}, "properties": map[string]interface{}{
-			"workspace_path": map[string]interface{}{"type": "string", "description": "Exact attached workflow workspace_path from list_attached_workflows."},
+			"workspace_path": map[string]interface{}{"type": "string", "description": "The workflow's id from list_agents (workflow:<id>) or its workspace_path."},
 			"trigger_id":     map[string]interface{}{"type": "string", "description": "Internal trigger ID from run_workflow_trigger."},
 			"run_id":         map[string]interface{}{"type": "string", "description": "Run ID from run_workflow_trigger."},
 		},
@@ -243,31 +243,28 @@ func crewWorkflowRunCaller(ctx context.Context, crewWorkspacePath string) (trigg
 	return triggerCaller{Type: triggerCallerCrew, ID: strings.TrimSpace(manifest.ID), ProfileID: normalizeInternalProfileID(manifest.Product)}, nil
 }
 
-// crewAttachedWorkflowManifest resolves an attached workflow target: the path
-// must be attached to the Crew, the user must still have access, and the
-// manifest must still exist. Detached, revoked, or deleted workflows fail
-// fast before any trigger runs.
-func crewAttachedWorkflowManifest(ctx context.Context, crewWorkspacePath, target string) (*WorkflowManifest, error) {
+// crewAttachedWorkflowManifest resolves the workflow a Crew runs as a whole: any workflow the person owns or edits,
+// by workspace_path or by its list_agents id (workflow:<id>). No attachment is needed (PLAT-861-297); running the
+// whole workflow through an internal trigger is the workflow's own plumbing, so it stays with its owner and editors,
+// while anyone it is shared with calls its functions with call_function. The manifest must still exist.
+func crewAttachedWorkflowManifest(ctx context.Context, _ string, target string) (*WorkflowManifest, error) {
 	path := strings.TrimSuffix(strings.TrimSpace(target), "/")
-	if path == "" {
-		return nil, fmt.Errorf("workspace_path is required")
-	}
-	refs, err := readWorkWorkflowReferences(ctx, crewWorkspacePath)
-	if err != nil {
-		return nil, fmt.Errorf("Crew references are unavailable")
-	}
-	found := false
-	for _, ref := range refs {
-		if strings.TrimSuffix(strings.TrimSpace(ref), "/") == path {
-			found = true
-			break
+	if id, ok := strings.CutPrefix(path, "workflow:"); ok {
+		path = ""
+		if discovered, err := DiscoverWorkflowManifests(ctx); err == nil {
+			for _, workflow := range discovered {
+				if workflow.Manifest != nil && strings.TrimSpace(workflow.Manifest.ID) == strings.TrimSpace(id) {
+					path = strings.TrimSuffix(strings.TrimSpace(workflow.WorkspacePath), "/")
+					break
+				}
+			}
 		}
 	}
-	if !found {
-		return nil, fmt.Errorf("workflow %q is not attached to this Crew; attach it with attach_workflow_reference first", path)
+	if path == "" {
+		return nil, fmt.Errorf("workspace_path is required: pass the workflow's id from list_agents")
 	}
-	if _, err := authorizeWorkflowContextPaths(ctx, []string{path}); err != nil {
-		return nil, fmt.Errorf("workflow %q is unavailable or access denied", path)
+	if level, _ := workflowAccessForWorkspacePath(ctx, GetUserFromContext(ctx), path); level != WorkflowAccessOwner && level != WorkflowAccessWrite {
+		return nil, fmt.Errorf("workflow %q runs as a whole only for its owner and editors; call one of its functions instead (list_agents)", path)
 	}
 	manifest, exists, err := ReadWorkflowManifest(ctx, path)
 	if err != nil || !exists || manifest == nil {
@@ -278,7 +275,7 @@ func crewAttachedWorkflowManifest(ctx context.Context, crewWorkspacePath, target
 
 // crewWorkflowTriggerBinding reuses this Crew's internal binding on the
 // workflow or creates one with the same full-workflow defaults Builder uses.
-// The already-authorized read-only attachment is the grant for this one narrow
+// The person's owner/editor access to the workflow is the grant for this one narrow
 // mutation: a secretless internal trigger callable only by this exact Crew.
 // It does not grant general workflow write or trigger-management access.
 func crewWorkflowTriggerBinding(ctx context.Context, api *StreamingAPI, workspacePath string, manifest *WorkflowManifest, crew triggerCaller) (string, error) {

@@ -123,7 +123,7 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 		if e := env.api.registerAgentMessagingTools(reg, "owner", "sender-session", QueryRequest{}, resolve, nil); e != nil {
 			t.Fatal(e)
 		}
-		if _, e := reg.tools["list_message_agents"].exec(context.Background(), map[string]interface{}{}); e != nil {
+		if _, e := reg.tools["list_agents"].exec(context.Background(), map[string]interface{}{}); e != nil {
 			t.Fatal(e)
 		}
 		if _, e := reg.tools["send_message"].exec(context.Background(), map[string]interface{}{"target": "agent:reviewer", "message": "Internal first contact"}); e != nil {

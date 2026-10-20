@@ -214,7 +214,7 @@ pulse:
     - ask_builder
     - send_message
     - read_agent_messages
-    - list_message_agents
+    - list_agents
     - schedule_message_wakeup
     - get_function_call
 
@@ -381,7 +381,7 @@ chat:
       - list_accessible_workflows
       - list_functions
       - list_llm_capabilities
-      - list_message_agents
+      - list_agents
       - list_provider_models
       - list_published_llms
       - manage_crew_attachment
@@ -456,7 +456,7 @@ chat:
       - preview_step_runtime
       - send_message
       - read_agent_messages
-      - list_message_agents
+      - list_agents
       - schedule_message_wakeup
       - submit_workflow_suggestion
       - get_ui_state

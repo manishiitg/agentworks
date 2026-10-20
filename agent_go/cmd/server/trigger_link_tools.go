@@ -164,24 +164,27 @@ func resolveTriggerTarget(ctx context.Context, claims *UserClaims, raw string) (
 			if !matches(workflow.Manifest.ID, workflow.Manifest.Label, workflowPath, path.Base(workflowPath)) {
 				continue
 			}
-			if workflow.MyAccess != WorkflowAccessOwner && workflow.MyAccess != WorkflowAccessWrite {
-				return triggerTarget{}, fmt.Errorf("you only have read access to workflow %q; its owner or an editor must connect it", firstNonEmptyTrimmed(workflow.Manifest.Label, workflowPath))
-			}
+			// A shared workflow's functions and routes are its Run entry points: anyone it is shared with may call
+			// them (PLAT-861-297). Changing the workflow still needs its owner or an editor.
 			found = append(found, triggerTarget{Kind: triggerCallerWorkflow, Path: workflowPath, Label: firstNonEmptyTrimmed(workflow.Manifest.Label, workflowPath), Manifest: workflow.Manifest})
 		}
 	}
 	switch len(found) {
 	case 0:
-		return triggerTarget{}, fmt.Errorf("no Crew or workflow you can edit matches %q; call list_accessible_workflows to find its exact workspace_path", query)
+		return triggerTarget{}, fmt.Errorf("no Crew or workflow you can use matches %q; call list_agents and pass its id", query)
 	case 1:
 		return found[0], nil
 	default:
 		names := make([]string, 0, len(found))
 		for _, item := range found {
-			names = append(names, item.Kind+" "+item.Label+" ("+item.Path+")")
+			id := "workspace:" + item.CrewProfile + ":" + item.CrewID
+			if item.Kind == triggerCallerWorkflow && item.Manifest != nil {
+				id = "workflow:" + item.Manifest.ID
+			}
+			names = append(names, item.Kind+" "+item.Label+" (id "+id+")")
 		}
 		sort.Strings(names)
-		return triggerTarget{}, fmt.Errorf("%q matches more than one target: %s; pass the exact workspace_path", query, strings.Join(names, "; "))
+		return triggerTarget{}, fmt.Errorf("%q matches more than one agent: %s; pass its id from list_agents", query, strings.Join(names, "; "))
 	}
 }
 
