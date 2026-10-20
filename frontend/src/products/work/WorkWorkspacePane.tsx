@@ -422,7 +422,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
             onAsk={async message => { await ask(message) }}
             iconOnly
           />} />}
-          {view === 'history' && <PreviousChatHistoryPanel
+          {view === 'history' && <div className="flex h-full min-h-0 flex-col"><PreviousChatHistoryPanel
               workspacePath={workspacePath}
               activeSessionId={canonicalSessionId || activeSessionId}
               title="Chat history"
@@ -437,7 +437,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
               showAll
               actionLabel="Open"
               onSelectSession={openHistoryChat}
-            />}
+            /></div>}
           {view === 'schedules' && <AutomationHubPanel
             entityType="product"
             workspacePath={workspacePath}
