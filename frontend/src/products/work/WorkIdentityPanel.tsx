@@ -465,7 +465,7 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
             refreshLabel={`Refresh ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'view'}`}
           />
         )}
-        tabs={modelsOnly ? undefined : { value: activeTab, onChange: (value: string) => setTab(value as WorkIdentityTab), options: visibleTabs, ariaLabel: 'Identity' }}
+        /* No sub-tabs: Settings, Models and Laptop access are separate items in the side list (owner, 2026-10-20). */
       />
       <div key={`${activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
         {activeTab === 'general' && !product.hasIdentity && <CodeGeneralPanel

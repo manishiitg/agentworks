@@ -348,9 +348,8 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
           below={section === 'mcp' && !sharing && !(activeMcpTab === 'apps' && pluginTab === 'skills') ? <IntegrationNavigation options={navigationOptions} value={activeConnection} onChange={selectConnection} overview={overview} onOverview={() => selectConnection('overview')} canEdit={canWriteWorkflow} /> : undefined}
           tabs={section === 'mcp'
             ? (!sharing && !overview && activeMcpTab === 'apps' && (pluginTab === 'connected' || pluginTab === 'available') ? { value: pluginTab, onChange: selectConnection, options: serverTabs, ariaLabel: 'MCP servers' } : undefined)
-            : section === 'identity'
-              ? { value: activeIdentityTab, onChange: (value: string) => setIdentityTab(value as IdentityTab), options: identityTabs, ariaLabel: 'Identity' }
-              : undefined}
+            // Settings, Models and Upgrades are separate items in the side list, so Settings has no sub-tabs (owner, 2026-10-20).
+            : undefined}
         />
       )}
 

@@ -1,4 +1,4 @@
-import { BookOpen, Cloud, DollarSign, Files, FileText, Globe, Hand, LayoutDashboard, MessageSquareText, Route, Settings, BellRing, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowUpCircle, BookOpen, Cloud, Cpu, DollarSign, Files, FileText, Globe, Hand, LayoutDashboard, MessageSquareText, Route, Settings, BellRing, ShieldCheck, Sparkles } from 'lucide-react'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
@@ -56,7 +56,9 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
       {!relayMode && !pulseOn && decisionsRow}
       <Row icon={DollarSign} onClick={() => open('costs')}>Costs and usage</Row>
       <Row icon={FileText} onClick={() => open('execution-logs')}>Run logs</Row>
-      <Row icon={Settings} onClick={() => open('identity')}>Settings</Row>
+      <Row icon={Cpu} onClick={() => open('identity', 'llm')}>Models</Row>
+      {!relayMode && <Row icon={ArrowUpCircle} onClick={() => open('identity', 'upgrades')}>Upgrades</Row>}
+      <Row icon={Settings} onClick={() => open('identity', 'general')}>Settings</Row>
       {multiUser && <Row icon={ShieldCheck} onClick={() => open('access')}>Team</Row>}
       {!relayMode && <>
         <Row icon={BookOpen} onClick={() => open('playbooks')}>Workflow playbooks</Row>

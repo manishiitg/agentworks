@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BookOpen, DollarSign, Files, Hand, Laptop, LayoutDashboard, MessageSquareText, Route, Settings, Terminal, Database } from 'lucide-react'
+import { BookOpen, Cpu, DollarSign, HardDrive, Files, Hand, Laptop, LayoutDashboard, MessageSquareText, Route, Settings, Terminal, Database } from 'lucide-react'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
 import { WorkspaceAgentBridgeRows } from '../../components/workspace/WorkspaceAgentBridgeRows'
 import { WorkspaceAutomationRows, WorkspaceChannelRows, WorkspaceConnectionRows } from '../../components/workspace/WorkspaceProjectNavigation'
@@ -9,6 +9,7 @@ import { ShareDashboardButton } from '../../components/workflow/ShareDashboardBu
 import { selectReportDocument, useReportDocuments } from '../../components/workflow/reportDocuments'
 import { reportDocumentLabel } from '../../components/workflow/reportDocumentLabels'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
+import { isWorkIdentityTabEnabled } from './workViewGating'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { agentApi } from '../../services/api'
 import type { ProductPanel } from '../productPanels'
@@ -38,6 +39,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const count = suggestions?.path === workspacePath ? suggestions.count : null
   const { documents, defaultPath } = useReportDocuments(allowed('dashboard') ? workspacePath : '')
   const openConnection = (section: string) => { setWorkspaceViewTarget('mcp', section); onOpen('mcp') }
+  const openIdentity = (section: 'general' | 'models' | 'location') => { setWorkspaceViewTarget('identity', section); onOpen('identity') }
   const openAutomation = (section: string) => { setWorkspaceViewTarget('workshop', section); onOpen('schedules') }
   const bots = !enabledPanels || enabledPanels.has('bots')
   const status = useProjectStatus({ kind: 'crew', workspacePath, profileId, projectId })
@@ -57,6 +59,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       <WorkspaceConnectionRows onOpen={openConnection} workMode enabledPanels={enabledPanels} details={{ 'mcp:connected': status.mcps === undefined ? undefined : status.mcps ? String(status.mcps) : 'None' }} />
       {projectId && <Row icon={Laptop} detail={status.computerChats === undefined ? undefined : status.computerChats ? String(status.computerChats) : 'None'} onClick={() => openConnection('agents')}>Chats from your computer</Row>}
       {allowed('identity') && <Row icon={Laptop} onClick={() => { setWorkspaceViewTarget('identity', 'location'); onOpen('identity') }}>Local laptop</Row>}
+      {allowed('identity') && <Row icon={HardDrive} onClick={() => openIdentity('location')}>Laptop access</Row>}
       <WorkspaceAgentBridgeRows />
     </Group>}
     <Group title="Ops" collapsed>
@@ -68,7 +71,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       {allowed('history') && <Row icon={MessageSquareText} onClick={() => onOpen('history')}>Chat history</Row>}
       {showSuggestions && <Row icon={Hand} attention={Boolean(count)} detail={count ? `${count} waiting` : undefined} onClick={() => onOpen('suggestions')}>Suggestions</Row>}
       {allowed('costs') && <Row icon={DollarSign} onClick={() => onOpen('costs')}>Costs and usage</Row>}
-      {allowed('identity') && <Row icon={Settings} onClick={() => onOpen('identity')}>Settings</Row>}
+      {allowed('identity') && isWorkIdentityTabEnabled('models', enabledPanels) && <Row icon={Cpu} onClick={() => openIdentity('models')}>Models</Row>}
+      {allowed('identity') && <Row icon={Settings} onClick={() => openIdentity('general')}>Settings</Row>}
     </Group>
   </WorkspaceContextCard>
 }
