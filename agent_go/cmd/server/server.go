@@ -6173,7 +6173,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		claims := GetUserFromContext(r.Context())
 		workflowRun := isWorkflowPhase && workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder && currentUserIsReadOnly && !relayChat
 		projectTokenChat := resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && claims != nil && claims.AccessToken != nil
-		if (workflowRun || projectTokenChat) && claims != nil && claims.AccessToken != nil {
+		if (workflowRun || projectTokenChat && currentUserIsReadOnly) && claims != nil && claims.AccessToken != nil {
 			// Apply the existing token denylist to registration and the core CLI
 			// bridge as well as execution, so an unusable shell is not advertised.
 			toolGate.DenyWhere(func(name string) bool { return accessTokenRunToolDenied(claims, name) })
@@ -7055,7 +7055,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						log.Printf("[CUSTOM TOOLS] Skipping human tool %s because the product chat surface does not admit it in %s mode", toolName, chatMode)
 						continue
 					}
-					if isWorkflowPhase && (accessTokenRunToolDenied(GetUserFromContext(r.Context()), toolName) || externalBuilderToolDenied(GetUserFromContext(r.Context()), toolName)) {
+					if isWorkflowPhase && (currentUserIsReadOnly && accessTokenRunToolDenied(GetUserFromContext(r.Context()), toolName) || externalBuilderToolDenied(GetUserFromContext(r.Context()), toolName)) {
 						log.Printf("[CUSTOM TOOLS] Skipping external-token-denied tool %s in session %s", toolName, sessionID)
 						continue
 					}

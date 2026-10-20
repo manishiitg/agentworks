@@ -567,17 +567,8 @@ func TestLocalFullAccessTokenIssuance(t *testing.T) {
 	if !issued.AccessToken.AllWorkflows || !issued.AccessToken.AllCrews || issued.AccessToken.KnowledgebaseFolders != nil || issued.AccessToken.KnowledgebaseIdentityID != "" {
 		t.Fatal("full token must follow the local account's live access")
 	}
-	reader := request(claims, `{"local_read_only":true,"scopes":["knowledgebase:write","crews:write"],"expires_in_days":7}`)
-	var readToken struct {
-		AccessToken accesstokens.Token `json:"access_token"`
-	}
-	if reader.Code != 201 || json.Unmarshal(reader.Body.Bytes(), &readToken) != nil {
-		t.Fatalf("local read preset: %d %s", reader.Code, reader.Body)
-	}
-	if readToken.AccessToken.NonExpiring || !readToken.AccessToken.ExpiresAt.After(time.Now().Add(6*24*time.Hour)) || readToken.AccessToken.Allows("knowledgebase:write") || readToken.AccessToken.Allows("crews:write") || !readToken.AccessToken.Allows("knowledgebase:read") {
-		t.Fatalf("read preset broadened or lost expiry: %+v", readToken.AccessToken)
-	}
-	for _, body := range []string{`{"local_full_access":true,"expires_in_days":-1}`, `{"local_read_only":true,"expires_in_days":91}`, `{"local_full_access":true,"local_read_only":true}`} {
+	// MCP acts with the person's role; a local app has no reduced token.
+	for _, body := range []string{`{"local_full_access":true,"expires_in_days":-1}`, `{"local_full_access":true,"expires_in_days":91}`, `{"local_read_only":true}`} {
 		if response := request(claims, body); response.Code != 400 {
 			t.Fatalf("invalid local preset accepted: %s %d", body, response.Code)
 		}

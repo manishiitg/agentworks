@@ -1037,6 +1037,9 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 		if access != WorkflowAccessOwner && access != WorkflowAccessWrite && (builder || access != WorkflowAccessRead) {
 			return session, fmt.Errorf("workflow unavailable or access denied")
 		}
+		// A sender acts with their own role: owners and editors are the Builder,
+		// only people who can just use the workflow get Run (owner, 2026-10-20).
+		builder = access == WorkflowAccessOwner || access == WorkflowAccessWrite
 		if session == "" {
 			session = "wfmsg-" + strings.TrimPrefix(c.ID, "inbox-")
 		}

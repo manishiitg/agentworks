@@ -179,7 +179,6 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			Name                    string               `json:"name"`
 			FileGuard               *wf.FolderGuard      `json:"file_guard"`
 			LocalFullAccess         bool                 `json:"local_full_access"`
-			LocalReadOnly           bool                 `json:"local_read_only"`
 			Scopes                  []string             `json:"scopes"`
 			WorkflowIDs             []string             `json:"workflow_ids"`
 			AllWorkflows            bool                 `json:"all_workflows"`
@@ -199,30 +198,17 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			externalError(w, 400, "invalid_arguments", "Expected one JSON object.")
 			return
 		}
-		localPreset := req.LocalFullAccess || req.LocalReadOnly
-		if req.LocalFullAccess && req.LocalReadOnly {
-			externalError(w, 400, "invalid_arguments", "Choose full access or read-only access.")
-			return
-		}
+		localPreset := req.LocalFullAccess
 		if localPreset {
 			if IsMultiUserMode() || c.UserID != GetDefaultUserID() {
 				externalError(w, 403, "forbidden", "Full local tokens are available only to the local single-user account.")
 				return
 			}
-			// Derive permissions from the current account and enabled products;
-			// a client cannot choose a different identity or broaden folder grants.
+			// An MCP connection acts with its person's role; on a local app that
+			// is the owner. Permissions come from the current account and enabled
+			// products; a client cannot choose a different identity.
 			req.Name = "agentworks-local"
 			req.Scopes = mcpOAuthScopesFor(c, mcpOAuthScopes)
-			if req.LocalReadOnly {
-				req.Name = "agentworks-local-reader"
-				readScopes := []string{}
-				for _, scope := range req.Scopes {
-					if strings.HasSuffix(scope, ":read") || scope == "code:review" {
-						readScopes = append(readScopes, scope)
-					}
-				}
-				req.Scopes = readScopes
-			}
 			req.AllWorkflows, req.AllCrews = true, true
 			req.WorkflowIDs, req.CrewIDs = nil, nil
 			req.KnowledgebaseFolders, req.KnowledgebaseIdentityID = nil, ""

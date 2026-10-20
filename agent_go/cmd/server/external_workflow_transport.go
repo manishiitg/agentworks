@@ -27,9 +27,9 @@ func externalWorkflowTransport(claims *UserClaims, workflowRun bool, gate *produ
 	return false, directBridge
 }
 
-// A token-backed Crew chat has the same unavailable shell as a workflow Run
-// chat. Project only its existing product allowlist onto the native bridge;
-// registration, Run restrictions and execution-time checks remain in force.
+// A token-backed chat has no usable shell transport. Project the gate's tools
+// onto the native bridge; the gate already carries the Run restrictions when
+// the caller's role is Run, and execution-time checks remain in force.
 func externalProjectTransport(claims *UserClaims, gate *productToolGate) (codeExecution bool, directBridge []string) {
 	if claims == nil || claims.AccessToken == nil || !gate.enforcing() {
 		return true, nil
@@ -41,7 +41,7 @@ func externalProjectTransport(claims *UserClaims, gate *productToolGate) (codeEx
 	}
 	gate.mu.Unlock()
 	for _, name := range names {
-		if gate.Allows(name) && !accessTokenRunToolDenied(claims, name) {
+		if gate.Allows(name) {
 			directBridge = append(directBridge, name)
 		}
 	}

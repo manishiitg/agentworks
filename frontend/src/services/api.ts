@@ -3064,7 +3064,6 @@ export interface PersonalAccessToken {
 }
 export interface CreateAccessTokenInput {
   local_full_access?: boolean
-  local_read_only?: boolean
   crew_ids?: string[]
   all_crews?: boolean
   name: string

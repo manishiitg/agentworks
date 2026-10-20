@@ -31,13 +31,13 @@ describe('local MCP access tokens', () => {
     expect(authApi.revokeAccessToken).toHaveBeenCalledWith('test-token')
     expect(host.querySelector('[aria-label="New access token"]')).toBeNull()
   })
-  it('requests read-only access with an expiry', async () => {
+  it('offers no reduced access, only an expiry', async () => {
     const host = await mount()
-    const access = host.querySelector<HTMLSelectElement>('[aria-label="Local token access"]')!
+    expect(host.querySelector('[aria-label="Local token access"]')).toBeNull()
     const expiry = host.querySelector<HTMLSelectElement>('[aria-label="Local token expiry"]')!
-    await act(async () => { access.value = 'read'; access.dispatchEvent(new Event('change', { bubbles: true })); expiry.value = '7'; expiry.dispatchEvent(new Event('change', { bubbles: true })) })
+    await act(async () => { expiry.value = '7'; expiry.dispatchEvent(new Event('change', { bubbles: true })) })
     await act(async () => button(host, 'Create access token').click())
-    expect(authApi.createAccessToken).toHaveBeenCalledWith(expect.objectContaining({ local_full_access: false, local_read_only: true, expires_in_days: 7 }))
+    expect(authApi.createAccessToken).toHaveBeenCalledWith(expect.objectContaining({ local_full_access: true, expires_in_days: 7 }))
   })
   it('handles failed issuance', async () => {
     const host = await mount()

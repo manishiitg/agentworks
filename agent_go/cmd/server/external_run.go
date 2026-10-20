@@ -91,19 +91,22 @@ func (api *StreamingAPI) externalRunSessionSetup(w http.ResponseWriter, r *http.
 	return sessionID, persisted, true
 }
 
-// externalRunProxy adapts one run-mode tool call to the existing chat
-// runtime: it synthesizes a pinned Run-mode session (or continues the
-// caller's own) and sends a single instruction turn invoking the tool.
+// externalRunProxy adapts one run tool call to the existing chat runtime: it
+// synthesizes a session (or continues the caller's own) and sends a single
+// instruction turn invoking the tool. The turn has the caller's role: Run only
+// for someone who cannot edit the workflow.
 func (api *StreamingAPI) externalRunProxy(w http.ResponseWriter, r *http.Request, name string, args map[string]any, workflow DiscoveredWorkflow) {
 	sessionID, persisted, ok := api.externalRunSessionSetup(w, r, args, workflow)
 	if !ok {
 		return
 	}
+	access := workflowAccessForManifest(GetUserFromContext(r.Context()), workflow.Manifest)
+	runOnly := access != WorkflowAccessOwner && access != WorkflowAccessWrite
 	query := QueryRequest{
 		Query: externalRunInstruction(name, args), AgentMode: "workflow_phase", PhaseID: "workflow-builder",
 		PresetQueryID: workflow.Manifest.ID, SelectedFolder: workflow.WorkspacePath,
-		PinRunMode: true, TriggeredBy: "external", SessionTitle: "External run: " + name,
-		ExecutionOptions: &ExecutionOptions{WorkshopMode: "run"},
+		PinRunMode: runOnly, TriggeredBy: "external", SessionTitle: "External run: " + name,
+		ExecutionOptions: &ExecutionOptions{WorkshopMode: map[bool]string{true: "run", false: "workshop"}[runOnly]},
 	}
 	if persisted {
 		query.RestoredConversationSessionID = sessionID

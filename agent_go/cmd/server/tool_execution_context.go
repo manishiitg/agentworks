@@ -43,7 +43,9 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 		if !builderProductSelection(bound).AllowsTool(tool) {
 			return nil, fmt.Errorf("%s belongs to a product unavailable in this installation or to this account", tool)
 		}
-		if accessTokenRunToolDenied(bound, tool) || externalBuilderToolDenied(bound, tool) {
+		// An MCP connection acts with its person's role: the Run denylist applies
+		// only to a Run turn, never to an owner's or editor's Builder turn.
+		if readOnly && accessTokenRunToolDenied(bound, tool) || externalBuilderToolDenied(bound, tool) {
 			return nil, fmt.Errorf("%s is unavailable to external access tokens", tool)
 		}
 		callerSession := executor.SessionIDFromContext(ctx)
