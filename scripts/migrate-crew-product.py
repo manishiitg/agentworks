@@ -218,6 +218,7 @@ class Conversion:
             candidates.update(self.docs.glob(pattern))
         for source, _ in self.moves:
             candidates.update((self.docs / source).glob("*.json"))
+            candidates.update((self.docs / source).glob("builder/conversation/**/*.json"))
         for parent in ("mcp", "personal-mcp", "code-session-pins", "crew-publications"):
             base = self.state / parent
             if parent == "crew-publications":
