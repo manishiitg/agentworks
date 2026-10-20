@@ -471,9 +471,7 @@ export default function MyVaultsPage() {
   const owned = (vaults ?? []).filter(vault => vault.role === 'owner').length
   return (
     <section aria-label="My vaults" className="flex h-full min-h-0 flex-col bg-background">
-      <WorkspacePageHeader page="vaults" title="My vaults" icon={Vault}>
-        {sharedVaultsEnabled && <SettingsCount>{owned} of {maxOwned} owned</SettingsCount>}
-      </WorkspacePageHeader>
+      <WorkspacePageHeader page="vaults" title="My vaults" icon={Vault} />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl space-y-4 p-4 text-xs sm:p-6">
           {isAdmin && <McpAppsSection />}
@@ -502,6 +500,7 @@ export default function MyVaultsPage() {
           {vaults === null && <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading your vaults…</div>}
           {vaults?.length === 0 && !creating && <SettingsEmpty>You have no vaults yet. Create one to share apps and secrets with other people.</SettingsEmpty>}
           {vaults?.map(vault => <VaultCard key={vault.group.ID} vault={vault} onChanged={() => void refresh()} />)}
+          {vaults !== null && <p className="text-muted-foreground">You own {owned} of {maxOwned} vaults.</p>}
           </>}
         </div>
       </div>

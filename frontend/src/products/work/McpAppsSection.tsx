@@ -164,8 +164,8 @@ export function McpAppsSection() {
                 <input ref={fileInput} type="file" accept="application/json,.json" className="hidden" aria-label="Upload the client JSON" onChange={event => { void loadClientFile(event.target.files?.[0]); event.target.value = '' }} />
                 {app.key === 'google' && <Button variant="outline" size="sm" onClick={() => fileInput.current?.click()}><Upload className="mr-1 h-3.5 w-3.5" />Upload client_secret.json</Button>}
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <Input value={clientId} onChange={event => setClientId(event.target.value)} placeholder="Client ID" aria-label={`${app.label} client ID`} />
-                  <Input type="password" autoComplete="off" value={clientSecret} onChange={event => setClientSecret(event.target.value)} placeholder="Client secret" aria-label={`${app.label} client secret`} />
+                  <Input name={`${app.key}-oauth-app-id`} autoComplete="off" data-1p-ignore data-lpignore="true" value={clientId} onChange={event => setClientId(event.target.value)} placeholder="Client ID" aria-label={`${app.label} client ID`} />
+                  <Input name={`${app.key}-oauth-app-secret`} type="password" autoComplete="new-password" data-1p-ignore data-lpignore="true" value={clientSecret} onChange={event => setClientSecret(event.target.value)} placeholder="Client secret" aria-label={`${app.label} client secret`} />
                 </div>
                 {notice && <p className="text-xs text-amber-600">{notice}</p>}
                 <div className="flex justify-end gap-2">
