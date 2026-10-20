@@ -198,6 +198,14 @@ function HtmlReportFrameComponent({
     // anything to sidestep. No frame-height mutation happens before the
     // measurement, so nothing inside the report ever sees an artificial
     // viewport change.
+    if (doc.documentElement.getAttribute('data-report-fit') === 'viewport') {
+      const viewport = frame.closest<HTMLElement>('[data-report-viewport]')
+      const bounds = viewport?.getBoundingClientRect()
+      const top = Math.max(frame.getBoundingClientRect().top, bounds?.top ?? 0)
+      const bottom = Math.min(window.innerHeight, bounds?.bottom ?? window.innerHeight)
+      if (bottom > top) frame.style.height = `${Math.floor(bottom - top)}px`
+      return
+    }
     const scrollY = doc.defaultView?.scrollY ?? 0
     let maxBottom = 0
     for (const child of Array.from(doc.body.children)) {
@@ -257,6 +265,8 @@ function HtmlReportFrameComponent({
         const ro = new ResizeObserver(() => resize())
         if (doc.documentElement) ro.observe(doc.documentElement)
         if (doc.body) ro.observe(doc.body)
+        const viewport = frame.closest('[data-report-viewport]')
+        if (viewport) ro.observe(viewport)
         observerRef.current = ro
       } catch {
         /* ResizeObserver unavailable — height stays at last measure */

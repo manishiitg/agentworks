@@ -96,7 +96,7 @@ func defaultDashboardHTML(info defaultDashboardInfo) string {
 		description = "    <p class=\"lead\">" + html.EscapeString(defaultDashboardText(info.Description, 600)) + "</p>\n"
 	}
 	body := `<!doctype html>
-<html lang="en" data-mode="dark">
+<html lang="en" data-mode="dark" data-report-fit="viewport">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -107,7 +107,7 @@ func defaultDashboardHTML(info defaultDashboardInfo) string {
   * { box-sizing: border-box; }
   html, body { overflow-x: hidden; }
   body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
-  .layout { display:flex; min-height:600px; align-items:stretch; }
+  .layout { display:flex; min-height:100vh; align-items:stretch; }
   .chat { flex:0 0 clamp(440px, 42vw, 680px); display:flex; flex-direction:column; min-height:600px; padding:16px; background:var(--card); border-right:1px solid var(--line); }
   .chat h2 { font-size:16px; font-weight:600; margin:0 0 2px; }
   .meta { color:var(--muted); font-size:12px; margin:0 0 10px; }

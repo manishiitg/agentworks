@@ -302,6 +302,7 @@ function ReportViewComponent({ workspacePath, onClose, focusTier, documentPath, 
         <div
           tabIndex={0}
           aria-label="Dashboard content"
+          data-report-viewport
           className={`min-h-0 flex-1 overflow-y-auto overscroll-y-contain ${!loading && !error && !report && !defaultRelayDashboard ? 'flex flex-col' : ''}`}
         >
           <div className={`${shellClass} ${!loading && !error && !report && !defaultRelayDashboard ? 'flex flex-1 items-center justify-center' : ''}`}>

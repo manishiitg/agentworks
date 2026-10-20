@@ -108,7 +108,11 @@ Set the look once for the whole dashboard in its own CSS: define `--report-backg
 function form follow them, and the per-panel attributes above override them. Set `--report-mode: light` (or `dark`) on `:root`, or `data-report-chat-theme="light"` on a
 panel, to make the chat light or dark whatever the app's own mode is. Add
 `data-report-chat-fit="viewport"` to a panel to keep it inside the visible window so its
-composer never sits below the fold.
+composer never sits below the fold. To have the entire Dashboard fill its available
+pane rather than size to its content, set `data-report-fit="viewport"` on its
+`<html>` element and use normal CSS (for example `height: 100vh`) inside it.
+Omit that attribute for scrolling content. The designer chooses which behavior
+fits the page; no panel position or layout is prescribed.
 
 Crew includes projects formerly called Code. Both use these same widgets and
 the signed-in person’s existing project conversation; Run access stays in Run

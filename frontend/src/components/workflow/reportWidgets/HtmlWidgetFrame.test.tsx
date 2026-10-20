@@ -69,3 +69,23 @@ describe('report tab selection on refresh', () => {
     expect(click).not.toHaveBeenCalled()
   })
 })
+
+it('fills the host pane only when the dashboard author requests viewport fit', async () => {
+  const host = document.createElement('div')
+  host.setAttribute('data-report-viewport', '')
+  document.body.append(host)
+  vi.spyOn(host, 'getBoundingClientRect').mockReturnValue({ top: 20, bottom: 720 } as DOMRect)
+  const root = createRoot(host)
+  cleanups.push(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks() })
+  await act(async () => root.render(<HtmlReportFrame html="<p>Dashboard</p>" title="Fit report" autoHeight />))
+  const frame = host.querySelector('iframe')!
+  vi.spyOn(frame, 'getBoundingClientRect').mockReturnValue({ top: 20 } as DOMRect)
+  frame.contentDocument!.documentElement.setAttribute('data-report-fit', 'viewport')
+  await act(async () => frame.dispatchEvent(new Event('load')))
+  expect(frame.style.height).toBe(`${Math.floor(Math.min(window.innerHeight, 720) - 20)}px`)
+  frame.contentDocument!.documentElement.removeAttribute('data-report-fit')
+  frame.contentDocument!.body.innerHTML = '<section>Authored short page</section>'
+  vi.spyOn(frame.contentDocument!.body.firstElementChild!, 'getBoundingClientRect').mockReturnValue({ bottom: 240 } as DOMRect)
+  await act(async () => window.dispatchEvent(new Event('resize')))
+  expect(frame.style.height).toBe('240px')
+})
