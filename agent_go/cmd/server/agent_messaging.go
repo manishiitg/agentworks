@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 )
@@ -326,9 +325,7 @@ func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) err
 	if e.External {
 		return nil
 	}
-	if e.Profile == codeproduct.ProfileID && e.Session == "" {
-		return fmt.Errorf("Code messages require an authorized chat of your own Code")
-	}
+
 	return nil
 }
 
@@ -1049,12 +1046,6 @@ func (api *StreamingAPI) deliverAgentMessage(ctx context.Context, c agentConvers
 			query.RestoredConversationSessionID = session
 		}
 		reqMap, err = queryRequestToMap(query)
-		if err != nil {
-			return session, err
-		}
-	} else if dest.Profile == codeproduct.ProfileID {
-		var err error
-		reqMap, session, err = api.codeChatTurnRequest(ctx, dest.UserID, endpointTarget(dest), text, source.Label)
 		if err != nil {
 			return session, err
 		}

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"sort"
@@ -111,24 +110,10 @@ func costOverviewRoot(workflowID string) (id, kind, name, ownerID string) {
 	if folder, shared := workspaceref.MustParse(path).SharedProject(); shared {
 		root := workspaceref.SharedProjectPath(folder)
 		owner, _ := crewProjectOwnerID(root)
-		if product, _, ok := projectProductForPath(root); ok && product.ProfileID == "code" {
-			return root, costOverviewKindProduct, "Code · " + folder, owner
-		}
+
 		return root, costOverviewKindCrew, folder, owner
 	}
-	if i := strings.Index(path, crewProjectsSegment); i >= 0 && (i == 0 || path[i-1] == '/') {
-		project, _, _ := strings.Cut(path[i+len(crewProjectsSegment):], "/")
-		if project != "" {
-			root := path[:i+len(crewProjectsSegment)] + project
-			// Spend recorded before the Crew moved folds into the same row as the spend after it.
-			if moved := crewPathAliases.lookupFolder(context.Background(), project); moved != "" {
-				owner, _ := crewProjectOwnerID(moved)
-				return moved, costOverviewKindCrew, project, owner
-			}
-			owner, _ := crewProjectOwnerID(root)
-			return root, costOverviewKindCrew, project, owner
-		}
-	}
+
 	// Product project usage can be recorded against its physical workspace,
 	// e.g. _users/<owner>/Chats/Video Studio/projects/<project>. Do not fold
 	// these into the admin-only "other" bucket: their owner should see them.
@@ -161,7 +146,7 @@ func costOverviewProductVisibleTo(id, userID string, admin, codeReviewer bool) b
 
 // costOverviewIsCode reports whether a product row is a Code workspace.
 func costOverviewIsCode(root string) bool {
-	return isCodeProjectPath(root)
+	return isProjectWorkspacePath(root)
 }
 
 func mergeWorkflowAggregate(target *costledger.WorkflowAggregate, source *costledger.WorkflowAggregate) {

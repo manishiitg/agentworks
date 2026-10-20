@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -53,12 +52,7 @@ const gmailGrantMismatchNote = "granted_scopes reflects the last SUCCESSFUL conn
 // Code's own private accounts (as its owner, whose chats alone register these
 // tools there), or the shared accounts everywhere else.
 func gmailToolScope(workspacePath string) services.GmailUseScope {
-	root := common.CodeProjectRoot("", workspacePath)
-	if root == "" {
-		return services.GmailUseScope{Workspace: canonicalCrewWorkspaceRoot(workspacePath)}
-	}
-	owner, _ := crewProjectOwnerID(root)
-	return services.GmailUseScope{Workspace: root, CodeWorkspace: root, UserID: owner}
+	return services.GmailUseScope{Workspace: canonicalCrewWorkspaceRoot(workspacePath)}
 }
 
 func (api *StreamingAPI) registerGmailConnectionManagementTools(registrar definitionToolRegistrar, sessionID, workspacePath string) error {

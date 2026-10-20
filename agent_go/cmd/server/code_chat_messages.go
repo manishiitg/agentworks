@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 )
 
 // Chats of one Code or Crew explicitly send messages to sibling chats. Every
@@ -37,7 +37,7 @@ type codeChat struct {
 
 type codeChatProject struct {
 	OwnerID   string
-	ProfileID string // codeproduct.ProfileID or crewProfileID
+	ProfileID string // workproduct.ProfileID or crewProfileID
 	ProjectID string
 	Workspace string
 	Binding   productConversationBinding
@@ -57,7 +57,7 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 	}
 	raw, exists, err := readFileFromWorkspace(ctx, strings.TrimSuffix(strings.TrimSpace(workspacePath), "/")+"/product.json")
 	var manifest productProjectManifest
-	if err != nil || !exists || json.Unmarshal([]byte(raw), &manifest) != nil || (manifest.Product != codeproduct.ProfileID && manifest.Product != crewProfileID) || strings.TrimSpace(manifest.ID) == "" {
+	if err != nil || !exists || json.Unmarshal([]byte(raw), &manifest) != nil || manifest.Product != crewProfileID || strings.TrimSpace(manifest.ID) == "" {
 		return denied, unavailable
 	}
 	profile, err := api.agentProfiles.Resolve(manifest.Product, 0, userID)
@@ -171,7 +171,7 @@ func (api *StreamingAPI) codeChatTurnRequest(ctx context.Context, userID string,
 	if api == nil || api.agentProfiles == nil || target.Chat == nil {
 		return nil, "", unavailable
 	}
-	profile, err := api.agentProfiles.Resolve(codeproduct.ProfileID, 0, userID)
+	profile, err := api.agentProfiles.Resolve(workproduct.ProfileID, 0, userID)
 	if err != nil {
 		return nil, "", unavailable
 	}

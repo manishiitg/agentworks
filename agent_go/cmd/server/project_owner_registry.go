@@ -41,7 +41,7 @@ const (
 
 // projectOwnerRecord is one project's server-controlled identity.
 type projectOwnerRecord struct {
-	Product string `json:"product"` // "work" or "code"
+	Product string `json:"product"` // "work"
 	Folder  string `json:"folder"`  // <slug>-<id8>, the project's folder name (kept when a Crew moves)
 	OwnerID string `json:"owner_id"`
 	// CanonicalRoot is server-owned routing metadata. Empty keeps the legacy
@@ -60,6 +60,9 @@ type projectOwnerRecord struct {
 	// Private is the owner's restriction of a Crew to themselves; a Crew is shared with every user of the Crew product
 	// otherwise (crewSharedWithOthers).
 	Private bool `json:"private,omitempty"`
+	// AdminInspection preserves the existing audited review grant during conversion.
+	// It is server-owned and cannot be enabled by an editable project manifest.
+	AdminInspection bool `json:"admin_inspection,omitempty"`
 	// AudienceConfigured distinguishes an explicit new audience from legacy Code
 	// records whose zero-value Private field was never an access grant.
 	AudienceConfigured bool `json:"audience_configured,omitempty"`
@@ -215,9 +218,7 @@ func (r *projectOwnerRegistry) Register(rec projectOwnerRecord) error {
 		}
 		current, exists := projects[key]
 		if !exists {
-			if rec.Product == "code" && !rec.AudienceConfigured {
-				rec.Private, rec.AudienceConfigured = true, true
-			}
+
 			if rec.CreatedAt == "" {
 				rec.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 			}
@@ -237,9 +238,7 @@ func (r *projectOwnerRegistry) Register(rec projectOwnerRecord) error {
 			}
 			current.CanonicalRoot, changed = rec.CanonicalRoot, true
 		}
-		if current.Product == "code" && !current.AudienceConfigured {
-			current.Private, current.AudienceConfigured, changed = true, true, true
-		}
+
 		if current.ProjectID == "" && rec.ProjectID != "" {
 			current.ProjectID, changed = rec.ProjectID, true
 		}

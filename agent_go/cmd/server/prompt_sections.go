@@ -4,7 +4,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/nativeshell"
 )
@@ -154,7 +154,7 @@ var promptSections = []promptSection{
 		// Code only: a private coding workspace whose agent can install and run things on a server
 		// shared with other people's projects.
 		Name:    "code-host-safety",
-		Applies: func(c promptContext) bool { return c.ProfileID == codeproduct.ProfileID },
+		Applies: func(c promptContext) bool { return c.ProfileID == workproduct.ProfileID },
 		Build:   func(promptContext) string { return codeHostSafetyInstructions },
 	},
 	{

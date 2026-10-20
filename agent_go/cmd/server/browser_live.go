@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"log"
 	"net/http"
 	"net/url"
@@ -19,7 +18,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // Browser discovery is scoped to both the signed-in session owner and workflow.
@@ -80,24 +78,7 @@ func (api *StreamingAPI) liveBrowserSessions(r *http.Request) []map[string]strin
 // crewBrowserAccess follows Crew Run mode: the owner has full access and any
 // other signed-in user with the Crew product has read (view-only) access.
 func (api *StreamingAPI) crewBrowserAccess(claims *UserClaims, workspace string) WorkflowAccessLevel {
-	if claims != nil && strings.TrimSpace(claims.UserID) != "" && isCodeProjectPath(workspace) {
-		// A Code's live browser belongs to its owner. Sharing a Code is a removed
-		// legacy (code_shares.go answers 410); the branch below only serves old
-		// share records, view-only.
-		if crewProjectOwnedByCallerStrict(claims.UserID, workspace) {
-			return WorkflowAccessOwner
-		}
-		owner, ok := crewProjectOwnerID(workspace)
-		product, project, found := projectProductForPath(workspace)
-		if !ok || !found || product.ProfileID != codeproduct.ProfileID {
-			return WorkflowAccessNone
-		}
-		root := workspaceref.PhysicalPathOf(owner, product.ProjectsRoot, project)
-		if !codeLinkReadAllowed(context.Background(), claims, owner, root) {
-			return WorkflowAccessNone
-		}
-		return WorkflowAccessRead
-	}
+
 	if claims == nil || strings.TrimSpace(claims.UserID) == "" || !isCrewProjectPath(workspace) {
 		return WorkflowAccessNone
 	}

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 )
 
@@ -101,7 +100,7 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			if workflowAccessForManifest(claims, manifest) == WorkflowAccessNone {
 				return fmt.Errorf("message participant no longer has workflow access")
 			}
-		} else if e.Kind == triggerCallerCrew && e.Profile != codeproduct.ProfileID {
+		} else if e.Kind == triggerCallerCrew {
 			if api.productSchedules == nil || api.productSchedules.registry == nil {
 				return fmt.Errorf("Crew runtime unavailable")
 			}

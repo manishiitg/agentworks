@@ -1181,7 +1181,7 @@ func sideChatLock(userID, profileID, key string) *sync.Mutex {
 }
 
 // limitsSideChats is true for the profiles whose projects have tabs: Code projects and Crews.
-func limitsSideChats(profileID string) bool { return profileID == "code" || profileID == "work" }
+func limitsSideChats(profileID string) bool { return profileID == crewProfileID || profileID == "work" }
 
 // guardNewSideChat takes the project's side-chat lock and refuses a NEW side chat past the cap;
 // the caller holds the lock until the chat exists, so two requests cannot both pass the check.

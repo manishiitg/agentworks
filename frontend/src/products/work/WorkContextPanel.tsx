@@ -18,7 +18,7 @@ import type { WorkWorkspaceView } from './WorkWorkspacePane'
 export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels }: {
   workspacePath: string
   projectId?: string
-  profileId?: 'work' | 'code'
+  profileId?: 'work'
   panels: ProductPanel<WorkWorkspaceView>[]
   onOpen: (view: WorkWorkspaceView) => void
   enabledPanels?: Set<string>

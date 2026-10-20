@@ -21,7 +21,7 @@ func TestTokenLimitToolsAdminSetsReviewerReadsOthersRefused(t *testing.T) {
 	api, mock := newCodeAdminFixture(t, true)
 	withMemoryUserDirectory(t, `{"users":[
 		{"id":"boss","username":"boss","admin":true,"can_create":true},
-		{"id":"rev","username":"rev","role":"viewer","code_reviewer":true},
+		{"id":"rev","username":"rev","role":"viewer","crew_reviewer":true},
 		{"id":"tl-alice","username":"tl-alice","email":"alice@example.com","can_create":true}]}`)
 	ledger, err := costledger.NewSQLiteLedger(filepath.Join(t.TempDir(), "costs.sqlite"))
 	if err != nil {
@@ -72,7 +72,7 @@ func TestTokenLimitToolsAdminSetsReviewerReadsOthersRefused(t *testing.T) {
 	}
 
 	// A reviewer reads (only global: tokens count) but cannot write.
-	reviewer := codeReviewToken("rev", "code:review")
+	reviewer := codeReviewToken("rev", "crews:review")
 	w = codeReviewCall(api, reviewer, "get_token_usage", map[string]any{})
 	var response struct {
 		People []tokenLimitPersonUsage `json:"people"`
@@ -94,15 +94,15 @@ func TestTokenLimitToolsAdminSetsReviewerReadsOthersRefused(t *testing.T) {
 		t.Fatalf("range usage = %d %s", w.Code, w.Body.String())
 	}
 	for name, claims := range map[string]*UserClaims{
-		"reviewer with users:manage": codeReviewToken("rev", "users:manage", "code:review"),
-		"member with users:manage":   codeReviewToken("tl-alice", "users:manage", "code:review"),
-		"admin without users:manage": codeReviewToken("boss", "code:review"),
+		"reviewer with users:manage": codeReviewToken("rev", "users:manage", "crews:review"),
+		"member with users:manage":   codeReviewToken("tl-alice", "users:manage", "crews:review"),
+		"admin without users:manage": codeReviewToken("boss", "crews:review"),
 	} {
 		if w = codeReviewCall(api, claims, "set_token_limits", map[string]any{"user_id": "tl-alice", "daily": 1}); w.Code != http.StatusForbidden {
 			t.Fatalf("%s set limits: %d %s", name, w.Code, w.Body.String())
 		}
 	}
-	member := codeReviewToken("tl-alice", "users:manage", "code:review")
+	member := codeReviewToken("tl-alice", "users:manage", "crews:review")
 	if w = codeReviewCall(api, member, "get_token_usage", map[string]any{}); w.Code != http.StatusForbidden {
 		t.Fatalf("member read usage: %d %s", w.Code, w.Body.String())
 	}
@@ -135,7 +135,7 @@ func TestAllowedModelsPersonOverrideDecidesTheTurnModel(t *testing.T) {
 	api, mock := newCodeAdminFixture(t, true)
 	withMemoryUserDirectory(t, `{"users":[
 		{"id":"boss","username":"boss","admin":true,"can_create":true},
-		{"id":"rev","username":"rev","role":"viewer","code_reviewer":true},
+		{"id":"rev","username":"rev","role":"viewer","crew_reviewer":true},
 		{"id":"am-alice","username":"am-alice","email":"am-alice@example.com","can_create":true},
 		{"id":"am-bob","username":"am-bob","can_create":true}]}`)
 	ids := providerModelIDs("codex-cli")
@@ -173,7 +173,7 @@ func TestAllowedModelsPersonOverrideDecidesTheTurnModel(t *testing.T) {
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"account_allowed_models":{"codex-cli":["`+only+`"]}`) || !strings.Contains(w.Body.String(), `"allowed_models":{"codex-cli":{"models":["`+only+`"],"source":"account"}}`) {
 		t.Fatalf("usage models = %d %s", w.Code, w.Body.String())
 	}
-	if w = codeReviewCall(api, codeReviewToken("rev", "users:manage", "code:review"), "set_allowed_models", map[string]any{"account": "codex-cli", "models": nil}); w.Code != http.StatusForbidden {
+	if w = codeReviewCall(api, codeReviewToken("rev", "users:manage", "crews:review"), "set_allowed_models", map[string]any{"account": "codex-cli", "models": nil}); w.Code != http.StatusForbidden {
 		t.Fatalf("reviewer set models = %d %s", w.Code, w.Body.String())
 	}
 	mock.mu.Lock()

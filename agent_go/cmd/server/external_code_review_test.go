@@ -17,7 +17,7 @@ const codeReviewDirectory = `{"users":[
 	{"id":"owner","username":"owner","can_create":true},
 	{"id":"other","username":"other","can_create":true},
 	{"id":"boss","username":"boss","admin":true,"can_create":true},
-	{"id":"rev","username":"rev","role":"viewer","code_reviewer":true}]}`
+	{"id":"rev","username":"rev","role":"viewer","crew_reviewer":true}]}`
 
 func codeReviewCall(api *StreamingAPI, claims *UserClaims, name string, args map[string]any) *httptest.ResponseRecorder {
 	body, _ := json.Marshal(map[string]any{"name": name, "arguments": args})
@@ -39,18 +39,18 @@ func TestCodeReviewToolsFollowTheAccountOnEveryCall(t *testing.T) {
 	withMemoryUserDirectory(t, codeReviewDirectory)
 	project := map[string]any{"owner_id": "owner", "project_id": "c0de0001-0000"}
 
-	reviewer := codeReviewToken("rev", "code:review")
-	if w := codeReviewCall(api, reviewer, "list_code_workspaces", map[string]any{}); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"owner_id":"owner"`) {
+	reviewer := codeReviewToken("rev", "crews:review")
+	if w := codeReviewCall(api, reviewer, "list_review_workspaces", map[string]any{}); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"owner_id":"owner"`) {
 		t.Fatalf("reviewer token listing = %d %s", w.Code, w.Body.String())
 	}
-	if w := codeReviewCall(api, reviewer, "read_code_file", map[string]any{"owner_id": "owner", "project_id": "c0de0001-0000", "path": "code/main.go"}); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "package main") {
+	if w := codeReviewCall(api, reviewer, "read_review_file", map[string]any{"owner_id": "owner", "project_id": "c0de0001-0000", "path": "code/main.go"}); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "package main") {
 		t.Fatalf("reviewer token file = %d %s", w.Code, w.Body.String())
 	}
 	// The Code's HOME (git and CLI logins) stays hidden over MCP too.
-	if w := codeReviewCall(api, reviewer, "read_code_file", map[string]any{"owner_id": "owner", "project_id": "c0de0001-0000", "path": ".sandbox-cache/home/.git-credentials"}); w.Code != http.StatusNotFound || strings.Contains(w.Body.String(), "token@") {
+	if w := codeReviewCall(api, reviewer, "read_review_file", map[string]any{"owner_id": "owner", "project_id": "c0de0001-0000", "path": ".sandbox-cache/home/.git-credentials"}); w.Code != http.StatusNotFound || strings.Contains(w.Body.String(), "token@") {
 		t.Fatalf("reviewer token read credentials = %d %s", w.Code, w.Body.String())
 	}
-	if w := codeReviewCall(api, reviewer, "list_code_chats", project); w.Code != http.StatusOK {
+	if w := codeReviewCall(api, reviewer, "list_review_chats", project); w.Code != http.StatusOK {
 		t.Fatalf("reviewer token chats = %d %s", w.Code, w.Body.String())
 	}
 	mock.mu.Lock()
@@ -63,31 +63,31 @@ func TestCodeReviewToolsFollowTheAccountOnEveryCall(t *testing.T) {
 	}
 
 	// Removing the flag ends the existing token's access at once.
-	withMemoryUserDirectory(t, strings.Replace(codeReviewDirectory, `"code_reviewer":true`, `"code_reviewer":false`, 1))
-	if w := codeReviewCall(api, reviewer, "list_code_workspaces", map[string]any{}); w.Code != http.StatusForbidden {
+	withMemoryUserDirectory(t, strings.Replace(codeReviewDirectory, `"crew_reviewer":true`, `"crew_reviewer":false`, 1))
+	if w := codeReviewCall(api, reviewer, "list_review_workspaces", map[string]any{}); w.Code != http.StatusForbidden {
 		t.Fatalf("revoked reviewer's token still works: %d %s", w.Code, w.Body.String())
 	}
 	withMemoryUserDirectory(t, codeReviewDirectory)
 
 	// The scope string alone is nothing; nor is a reviewer's token without it.
 	for name, claims := range map[string]*UserClaims{
-		"member with code:review":  codeReviewToken("other", "code:review"),
-		"owner with code:review":   codeReviewToken("owner", "code:review"),
+		"member with crews:review": codeReviewToken("other", "crews:review"),
+		"owner with crews:review":  codeReviewToken("owner", "crews:review"),
 		"reviewer without scope":   codeReviewToken("rev", "workflows:read"),
 		"bot route":                {UserID: "bot", Username: "bot", Provider: "bot_route", BotRouteProfileID: "code"},
 		"member without any token": {UserID: "other", Username: "other"},
 	} {
-		w := codeReviewCall(api, claims, "list_code_workspaces", map[string]any{})
+		w := codeReviewCall(api, claims, "list_review_workspaces", map[string]any{})
 		if w.Code != http.StatusForbidden {
 			t.Fatalf("%s reached Code review: %d %s", name, w.Code, w.Body.String())
 		}
 		tools := httptest.NewRecorder()
 		api.handleExternalTools(tools, adminRequest(http.MethodGet, "/api/external/tools", "", claims, nil))
-		if strings.Contains(tools.Body.String(), "list_code_workspaces") {
+		if strings.Contains(tools.Body.String(), "list_review_workspaces") {
 			t.Fatalf("%s sees the Code review tools", name)
 		}
 	}
-	if w := codeReviewCall(api, codeReviewToken("boss", "code:review"), "get_code_audit", map[string]any{}); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "tok-rev") {
+	if w := codeReviewCall(api, codeReviewToken("boss", "crews:review"), "get_review_audit", map[string]any{}); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "tok-rev") {
 		t.Fatalf("admin audit read = %d %s", w.Code, w.Body.String())
 	}
 }
@@ -113,11 +113,11 @@ func TestCodeReviewToolsAreReadOnly(t *testing.T) {
 	}
 }
 
-// code:review needs no workflow or Crew bound; only admins and reviewers can
+// crews:review needs no workflow or Crew bound; only admins and reviewers can
 // mint it, and only they see or grant it over OAuth.
 func TestCodeReviewScopeIsForReviewersOnly(t *testing.T) {
 	now := time.Now()
-	if err := accesstokens.Validate(accesstokens.Token{Name: "review", UserID: "rev", Scopes: []string{"code:review"}, ExpiresAt: now.Add(24 * time.Hour)}, now); err != nil {
+	if err := accesstokens.Validate(accesstokens.Token{Name: "review", UserID: "rev", Scopes: []string{"crews:review"}, ExpiresAt: now.Add(24 * time.Hour)}, now); err != nil {
 		t.Fatalf("a review-only token was refused: %v", err)
 	}
 	t.Setenv("MULTI_USER_MODE", "true")
@@ -125,47 +125,47 @@ func TestCodeReviewScopeIsForReviewersOnly(t *testing.T) {
 	api := tokenTestSetup(t)
 	mint := func(user string) int {
 		w := httptest.NewRecorder()
-		api.handleAccessTokens(w, adminRequest(http.MethodPost, "/api/auth/access-tokens", `{"name":"review","scopes":["code:review"],"expires_in_days":7}`, &UserClaims{UserID: user, Username: user}, nil))
+		api.handleAccessTokens(w, adminRequest(http.MethodPost, "/api/auth/access-tokens", `{"name":"review","scopes":["crews:review"],"expires_in_days":7}`, &UserClaims{UserID: user, Username: user}, nil))
 		return w.Code
 	}
 	if code := mint("other"); code != http.StatusForbidden {
-		t.Fatalf("a member minted code:review: %d", code)
+		t.Fatalf("a member minted crews:review: %d", code)
 	}
 	if code := mint("rev"); code != http.StatusCreated {
-		t.Fatalf("a reviewer could not mint code:review: %d", code)
+		t.Fatalf("a reviewer could not mint crews:review: %d", code)
 	}
-	all := []string{"workflows:read", "code:review"}
+	all := []string{"workflows:read", "crews:review"}
 	if got := mcpOAuthScopesFor(&UserClaims{UserID: "other", Username: "other"}, all); len(got) != 1 || got[0] != "workflows:read" {
-		t.Fatalf("a member was offered code:review over OAuth: %v", got)
+		t.Fatalf("a member was offered crews:review over OAuth: %v", got)
 	}
 	if got := mcpOAuthScopesFor(&UserClaims{UserID: "rev", Username: "rev"}, all); len(got) != 2 {
-		t.Fatalf("a reviewer lost code:review over OAuth: %v", got)
+		t.Fatalf("a reviewer lost crews:review over OAuth: %v", got)
 	}
 }
 
 // Only an admin sets the reviewer flag: a reviewer cannot grant it, not even
 // to themself.
-func TestOnlyAnAdminMakesCodeReviewers(t *testing.T) {
+func TestOnlyAnAdminMakesCrewReviewers(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, codeReviewDirectory)
 	api := &StreamingAPI{}
 	for _, caller := range []string{"rev", "other"} {
 		for _, target := range []string{"rev", "other"} {
 			w := httptest.NewRecorder()
-			requireAdmin(api.handleAdminUpdateUser)(w, adminRequest(http.MethodPut, "/api/admin/users/"+target, `{"code_reviewer":true}`, &UserClaims{UserID: caller, Username: caller}, map[string]string{"id": target}))
+			requireAdmin(api.handleAdminUpdateUser)(w, adminRequest(http.MethodPut, "/api/admin/users/"+target, `{"crew_reviewer":true}`, &UserClaims{UserID: caller, Username: caller}, map[string]string{"id": target}))
 			if w.Code != http.StatusForbidden {
-				t.Fatalf("%s set code_reviewer on %s: %d", caller, target, w.Code)
+				t.Fatalf("%s set crew_reviewer on %s: %d", caller, target, w.Code)
 			}
 		}
 	}
 	w := httptest.NewRecorder()
-	requireAdmin(api.handleAdminUpdateUser)(w, adminRequest(http.MethodPut, "/api/admin/users/other", `{"code_reviewer":true}`, &UserClaims{UserID: "boss", Username: "boss"}, map[string]string{"id": "other"}))
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"code_reviewer":true`) {
+	requireAdmin(api.handleAdminUpdateUser)(w, adminRequest(http.MethodPut, "/api/admin/users/other", `{"crew_reviewer":true}`, &UserClaims{UserID: "boss", Username: "boss"}, map[string]string{"id": "other"}))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"crew_reviewer":true`) {
 		t.Fatalf("admin could not make a reviewer: %d %s", w.Code, w.Body.String())
 	}
 }
 
-// get_code_costs is every Code's cost split by person, and nothing else:
+// get_review_costs is every Code's cost split by person, and nothing else:
 // other products and workflows are neither listed nor in the totals.
 func TestCodeReviewCostsAreCodeOnly(t *testing.T) {
 	api, mock := newCodeAdminFixture(t, true)
@@ -187,14 +187,14 @@ func TestCodeReviewCostsAreCodeOnly(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	w := codeReviewCall(api, codeReviewToken("rev", "code:review"), "get_code_costs", map[string]any{"from": "2026-09-01", "to": "2026-09-30"})
+	w := codeReviewCall(api, codeReviewToken("rev", "crews:review"), "get_review_costs", map[string]any{"from": "2026-09-01", "to": "2026-09-30"})
 	var got struct {
 		Total      costledger.Aggregate `json:"total"`
 		Workspaces []costOverviewItem   `json:"workspaces"`
 		ByUser     []costOverviewUser   `json:"by_user"`
 	}
 	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &got) != nil {
-		t.Fatalf("get_code_costs = %d %s", w.Code, w.Body.String())
+		t.Fatalf("get_review_costs = %d %s", w.Code, w.Body.String())
 	}
 	if len(got.Workspaces) != 1 || got.Workspaces[0].ID != "_users/owner/Chats/Code/projects/c0de0001-0000" || got.Total.TotalCostUSD != 5 || len(got.ByUser) != 2 {
 		t.Fatalf("Code costs = %+v", got)

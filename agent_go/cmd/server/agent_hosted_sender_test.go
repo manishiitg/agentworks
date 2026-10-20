@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 )
 
@@ -14,8 +14,8 @@ import (
 func TestHostedAgentMessageUsesCanonicalChatKey(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
-	for _, profile := range codeproduct.BuiltinAgentProfiles() {
-		profile.Product = codeproduct.ProfileID
+	for _, profile := range workproduct.BuiltinAgentProfiles() {
+		profile.Product = workproduct.ProfileID
 		if err := env.svc.registry.RegisterProfile(profile); err != nil {
 			t.Fatal(err)
 		}
@@ -23,7 +23,7 @@ func TestHostedAgentMessageUsesCanonicalChatKey(t *testing.T) {
 	const root = "_users/owner/Chats/Code/projects/example"
 	const key = "example:chat:abcdef12"
 	const session = "product-11111111-2222-4333-8444-555555555555"
-	record := ProductConversationRecord{ProfileID: codeproduct.ProfileID, ConversationKey: key, SessionID: session, WorkspacePath: root, ResourceID: "example"}
+	record := ProductConversationRecord{ProfileID: workproduct.ProfileID, ConversationKey: key, SessionID: session, WorkspacePath: root, ResourceID: "example"}
 	registry, _ := json.Marshal(productConversationRegistryDocument{Version: 1, Entries: map[string]ProductConversationRecord{"code/" + key: record}})
 	initial, _ := json.Marshal(agentMessageStore{Agents: []namedMessageAgent{{ID: "agent-receiver", UserID: "owner", Name: "receiver", EverAttached: true, Attachment: &namedAgentAttachment{ID: "lease", DeliveryContract: 2}}}})
 	env.mock.mu.Lock()

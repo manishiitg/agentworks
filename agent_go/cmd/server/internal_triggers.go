@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"strings"
 )
 
@@ -145,22 +144,7 @@ func (s *ProductScheduleService) crewProjectExists(ctx context.Context, userID, 
 	}
 	// A calling Code has no schedules, so it is verified the way a Code turn
 	// is: it must be the caller's own.
-	if strings.EqualFold(strings.TrimSpace(profileID), codeproduct.ProfileID) {
-		// The binding is saved in the target Crew owner's namespace, which
-		// need not be the authenticated Code caller's namespace.
-		if claims := GetUserFromContext(ctx); claims != nil && strings.TrimSpace(claims.UserID) != "" {
-			userID = claims.UserID
-		}
-		if s.registry == nil {
-			return false
-		}
-		profile, err := s.registry.Resolve(profileID, 0, userID)
-		if err != nil {
-			return false
-		}
-		_, err = resolveCrewProjectBinding(ctx, userID, profile, projectID, "")
-		return err == nil
-	}
+
 	// Crews are shared server-wide, so a caller Crew may belong to any owner.
 	_, _, _, _, err := s.projectManifestAnyOwner(ctx, userID, profileID, projectID)
 	return err == nil

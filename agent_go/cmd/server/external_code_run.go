@@ -11,11 +11,10 @@ import (
 	"net/http"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 )
 
 // Running your own Code over the external API and MCP (owner decision 2026-10-10: test Code features, folder guards and
@@ -23,65 +22,12 @@ import (
 // chats (tabs), ask a chat a question (a turn in that chat, like ask_crew) and read the project's state. They need the
 // code:run scope, which is never in a default set, and they work on the caller's OWN Code only. Laptop tools are excluded; these turns run on the server. Every ask is logged.
 
-var externalCodeRunTools = map[string]bool{
-	"list_my_code_projects": true,
-	"list_my_code_chats":    true,
-	"ask_my_code":           true,
-	"read_my_code_chat":     true,
-	"get_my_code_state":     true,
-	"open_my_code_chat":     true,
-	"close_my_code_chat":    true,
-	"stop_my_code_chat":     true,
-	"rename_my_code_chat":   true,
-}
-
-func isExternalCodeRunTool(name string) bool { return externalCodeRunTools[name] }
-
-// externalCodeRunAllowed is the catalog and call gate: a token needs code:run, and the account must have Code.
-func externalCodeRunAllowed(c *UserClaims) bool {
-	if c == nil || !userAllowedProduct(c, codeproduct.ProfileID) {
-		return false
-	}
-	return c.AccessToken == nil || c.AccessToken.Allows("code:run")
-}
-
-func externalCodeRunDefinitions(add func(name, description string, write, scoped bool, props map[string]any, required ...string)) {
-	externalWatcherDefinitions(add)
-	const suffix = " Your own Code projects only. Requires code:run."
-	project := map[string]any{"project_id": externalString("Code project ID from code action=projects.")}
-	add("list_my_code_projects", "List your own Code projects: id, title, last update."+suffix, false, false, nil)
-	add("list_my_code_chats", "List the agents (tabs) of one of your Code projects: the main chat and its named side tabs, each with its name, id and whether it is working now. Talk to the agent <name> with code action=ask chat_id=<name>."+suffix, false, false, project, "project_id")
-	add("ask_my_code", "Send an explicit conversational message into one of your own Code chats. Starts a turn in that tab like typing there (a closed session is resumed). With no chat_id it goes to your own tab, named after you or your app and opened the first time; it never goes to the main tab unless you name it. Returns a delivery receipt and next_after; pass wait_seconds (max 25) to get that turn's answer in the same call, else read it with code action=read after=next_after."+suffix, true, false, map[string]any{
-		"project_id":    externalString("Code project ID from code action=projects."),
-		"message":       externalString("Message to send."),
-		"chat_id":       externalString("The tab (agent) to talk to: its name or id from code action=chats. Leave it out to use your own tab, named after you or your app; it is opened the first time."),
-		"inbox_id":      externalString("Inbox from a previous send to this Code chat."),
-		"submission_id": externalString("Unique message submission ID; reuse after uncertain delivery."),
-		"wait_seconds":  externalInteger(0, externalCrewMaxWaitSeconds),
-	}, "project_id", "message")
-	add("read_my_code_chat", "Read the latest of one of your own Code chats (tabs) as plain text: what you asked, what the agent answered and which tools it used (names only). Pass after (the next_after of a previous read or ask) to get only what is new, and wait_seconds (max 25) to wait until the chat has finished its turn."+suffix, false, false, map[string]any{
-		"project_id":   project["project_id"],
-		"chat_id":      externalString("The tab (agent) to read: its name or id from code action=chats. Leave it out for your own tab."),
-		"after":        externalInteger(0, 1<<30),
-		"limit":        externalInteger(1, 100),
-		"wait_seconds": externalInteger(0, externalCrewMaxWaitSeconds),
-	}, "project_id")
-	chatArg := map[string]any{"project_id": project["project_id"], "chat_id": externalString("A side chat id from code action=chats.")}
-	add("open_my_code_chat", "Open a new side chat (tab) in one of your Code projects (up to "+strconv.Itoa(externalCrewMaxSideChats)+"), as the + in the app does; give it a name saying what the agent is for (required, unique in a project); talk in it with code action=ask chat_id=<the id returned>. Chats in one project can message each other with the agent's list_project_chats and ask_project_chat tools."+suffix, true, false, map[string]any{"project_id": project["project_id"], "name": externalString("A short tab name saying what the agent is for.")}, "project_id", "name")
-	add("rename_my_code_chat", "Rename one of your Code project's side chats (tab). The main chat keeps its project name."+suffix, true, false, map[string]any{"project_id": project["project_id"], "chat_id": externalString("A side chat id from code action=chats."), "name": externalString("The new tab name.")}, "project_id", "chat_id", "name")
-	add("close_my_code_chat", "Close one of your Code project's side chats (tab). The main chat cannot be closed, and a chat that is still working must be stopped first."+suffix, true, false, chatArg, "project_id", "chat_id")
-	add("stop_my_code_chat", "Stop the turn running in one of your Code project's tabs (name or id; with none, your own tab)."+suffix, true, false, map[string]any{"project_id": project["project_id"], "chat_id": externalString("A chat id from code action=chats; default main.")}, "project_id")
-	add("get_my_code_state", "What the server knows about one of your Code projects right now: its mode, folder (the guard's read and write paths), the account slot commands run as, and each chat's working and Local flags. Read-only."+suffix, false, false, project, "project_id")
-}
-
-// externalCodeRunOwnProject resolves a project that is the caller's own Code. A project that is not theirs, does not
-// exist or is not Code is one not-found.
 func (api *StreamingAPI) externalCodeRunOwnProject(ctx context.Context, userID, projectID string) (productConversationBinding, string, bool) {
 	projectID = strings.TrimSpace(projectID)
 	if api == nil || api.agentProfiles == nil || projectID == "" || strings.ContainsAny(projectID, ":/") {
 		return productConversationBinding{}, "", false
 	}
-	profile, err := api.agentProfiles.Resolve(codeproduct.ProfileID, 0, userID)
+	profile, err := api.agentProfiles.Resolve(workproduct.ProfileID, 0, userID)
 	if err != nil {
 		return productConversationBinding{}, "", false
 	}
@@ -91,7 +37,7 @@ func (api *StreamingAPI) externalCodeRunOwnProject(ctx context.Context, userID, 
 	}
 	raw, exists, err := readFileFromWorkspace(ctx, strings.TrimSuffix(strings.TrimSpace(binding.WorkspacePath), "/")+"/product.json")
 	var manifest productProjectManifest
-	if err != nil || !exists || json.Unmarshal([]byte(raw), &manifest) != nil || manifest.Product != codeproduct.ProfileID || manifest.ID != projectID {
+	if err != nil || !exists || json.Unmarshal([]byte(raw), &manifest) != nil || manifest.Product != workproduct.ProfileID || manifest.ID != projectID {
 		return productConversationBinding{}, "", false
 	}
 	return binding, projectID, true
@@ -99,7 +45,7 @@ func (api *StreamingAPI) externalCodeRunOwnProject(ctx context.Context, userID, 
 
 // externalCodeRunChats lists a project's chats: the main chat first, then the side chats, newest first.
 func (api *StreamingAPI) externalCodeRunChats(ctx context.Context, userID, projectID string, binding productConversationBinding, profileIDs ...string) ([]codeChat, error) {
-	profileID := codeproduct.ProfileID
+	profileID := workproduct.ProfileID
 	if len(profileIDs) > 0 {
 		profileID = profileIDs[0]
 	}
@@ -139,220 +85,6 @@ func (api *StreamingAPI) externalCodeRunChats(ctx context.Context, userID, proje
 		return chats[i].UpdatedAt > chats[j].UpdatedAt
 	})
 	return chats, nil
-}
-
-func (api *StreamingAPI) externalCodeRunCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any) {
-	ctx := r.Context()
-	claims := GetUserFromContext(ctx)
-	if !externalCodeRunAllowed(claims) {
-		externalError(w, http.StatusForbidden, "insufficient_scope", "Running your Code needs code:run and an account with the Code product.")
-		return
-	}
-	str := func(key string) string {
-		value, _ := args[key].(string)
-		return strings.TrimSpace(value)
-	}
-	if name == "list_my_code_projects" {
-		profile, err := api.agentProfiles.Resolve(codeproduct.ProfileID, 0, claims.UserID)
-		if err != nil {
-			externalError(w, http.StatusServiceUnavailable, "unavailable", "Code is unavailable on this server.")
-			return
-		}
-		projects := []map[string]any{}
-		for _, summary := range listProjectsForOwner(ctx, claims, profile, claims.UserID, false) {
-			if summary.OwnerID != claims.UserID {
-				continue
-			}
-			projects = append(projects, map[string]any{"project_id": summary.ID, "title": summary.Title, "updated_at": summary.UpdatedAt})
-		}
-		externalJSON(w, map[string]any{"projects": projects})
-		return
-	}
-	binding, projectID, ok := api.externalCodeRunOwnProject(ctx, claims.UserID, str("project_id"))
-	if !ok {
-		externalError(w, http.StatusNotFound, "not_found", "No Code project of yours with that project_id; see code action=projects.")
-		return
-	}
-	chats, err := api.externalCodeRunChats(ctx, claims.UserID, projectID, binding)
-	if err != nil {
-		externalError(w, http.StatusBadGateway, "workspace_unavailable", "Cannot read the project's chats.")
-		return
-	}
-	root := agentProfileRuntimeWorkspace(claims.UserID, binding.WorkspacePath)
-	describe := func() []map[string]any {
-		out := make([]map[string]any, 0, len(chats))
-		for _, chat := range chats {
-			item := map[string]any{"chat_id": chat.ID, "name": chat.Name, "is_main": chat.IsMain, "working": api.conversationTurnOccupied(chat.SessionID)}
-			if chat.Purpose != "" {
-				item["purpose"] = chat.Purpose
-			}
-			out = append(out, item)
-		}
-		return out
-	}
-	switch name {
-	case "list_my_code_chats":
-		externalJSON(w, map[string]any{"project_id": projectID, "chats": describe()})
-	case "get_my_code_state":
-		guard := api.codeShellFolderGuard(ctx, claims.UserID, root)
-		externalJSON(w, map[string]any{
-			"project_id": projectID, "folder": root, "slot": slotHeldBy(claims.UserID),
-			"folder_guard": map[string]any{"read_paths": guard.ReadPaths, "write_paths": guard.WritePaths, "blocked_write_paths": guard.BlockedWritePaths, "strict_allowlist": guard.StrictAllowlist},
-			"chats":        describe(),
-		})
-	case "open_my_code_chat":
-		chatName, nameErr := externalChatName(args)
-		if nameErr != nil {
-			externalError(w, http.StatusBadRequest, "invalid_name", nameErr.Error())
-			return
-		}
-		id, status, message := api.externalCodeRunOpenTab(r, claims, binding, projectID, chats, chatName)
-		if id == "" {
-			externalError(w, status, "too_many_chats", message)
-			return
-		}
-		externalJSON(w, map[string]any{"project_id": projectID, "chat_id": id, "name": chatName, "next": "Talk in it with code action=ask chat_id=" + id + "."})
-	case "rename_my_code_chat":
-		chatName, nameErr := externalChatName(args)
-		target := findCodeChat(chats, str("chat_id"))
-		if target != nil && target.IsMain {
-			target = nil
-		}
-		if target != nil && chatName != "" && codeChatNameTaken(chats, chatName, target.ID) {
-			externalError(w, http.StatusConflict, "name_taken", "Another tab in this project is already called "+chatName+"; pick another name.")
-			return
-		}
-		if target == nil || nameErr != nil || chatName == "" {
-			externalError(w, http.StatusNotFound, "chat_not_found", "Pass a side tab (its name or chat_id from code action=chats) and a new name up to 120 characters.")
-			return
-		}
-		_ = RenameChatHistorySession(claims.UserID, target.SessionID, binding.WorkspacePath, chatName)
-		if err := setCodeTabName(ctx, claims.UserID, target.Key, chatName); err != nil {
-			externalError(w, http.StatusBadGateway, "rename_failed", "The chat could not be renamed.")
-			return
-		}
-		externalJSON(w, map[string]any{"project_id": projectID, "chat_id": target.ID, "name": chatName})
-	case "close_my_code_chat", "stop_my_code_chat":
-		chatID := str("chat_id")
-		if name == "stop_my_code_chat" && chatID == "" {
-			chatID = externalCallerTabName(ctx, claims)
-		}
-		chat := findCodeChat(chats, chatID)
-		if chat == nil || (name == "close_my_code_chat" && chat.IsMain) {
-			externalError(w, http.StatusNotFound, "chat_not_found", "Pass the tab (its name or chat_id from code action=chats); to close it must be a side tab.")
-			return
-		}
-		if name == "close_my_code_chat" {
-			status, body := scheduleHandler(r, api.handleCloseAgentProfileSideChat, http.MethodPost, "/api/agent-profiles/code/conversation/close", map[string]string{"id": codeproduct.ProfileID}, nil, AgentProfileConversationRequest{ConversationKey: chat.Key})
-			externalScheduleRespond(w, status, body)
-			return
-		}
-		if !api.sessionStartedBy(chat.SessionID, claims.UserID) {
-			externalError(w, http.StatusConflict, "not_running", "Nothing is running in that chat.")
-			return
-		}
-		stop := func(w2 http.ResponseWriter, r2 *http.Request) {
-			r2.Header.Set("X-Session-ID", chat.SessionID)
-			api.handleStopSession(w2, r2)
-		}
-		status, body := scheduleHandler(r, stop, http.MethodPost, "/api/session/stop", nil, nil, map[string]any{})
-		externalScheduleRespond(w, status, body)
-	case "ask_my_code":
-		message := str("message")
-		if message == "" {
-			externalError(w, http.StatusBadRequest, "invalid_arguments", "message is required.")
-			return
-		}
-		if len([]rune(message)) > codeChatMessageMaxRune {
-			externalError(w, http.StatusBadRequest, "invalid_arguments", "message is too long; put the detail in a file in the project and point to it.")
-			return
-		}
-		var chat *codeChat
-		if str("chat_id") != "" {
-			chat = findCodeChat(chats, str("chat_id"))
-		} else {
-			// No tab named: the caller's own tab, named after it, opened the first time (never the main tab).
-			own := externalCallerTabName(ctx, claims)
-			if chat = findCodeChat(chats, own); chat == nil {
-				id, status, message := api.externalCodeRunOpenTab(r, claims, binding, projectID, chats, own)
-				if id == "" {
-					externalError(w, status, "too_many_chats", message)
-					return
-				}
-				if again, e := api.externalCodeRunChats(ctx, claims.UserID, projectID, binding); e == nil {
-					chats = again
-					chat = findCodeChat(chats, id)
-				}
-			}
-		}
-		if chat == nil {
-			externalError(w, http.StatusNotFound, "chat_not_found", "No tab with that name or id in this project; see code action=chats.")
-			return
-		}
-		target := triggerTarget{Kind: triggerCallerCrew, Path: binding.WorkspacePath, Label: "Code " + projectID + " · " + chat.Name, CrewID: projectID, CrewProfile: codeproduct.ProfileID, CrewOwner: claims.UserID}
-		target.Chat = chat
-		log.Printf("[CODE_RUN] %s sends to Code %s chat %s via an external connection", claims.UserID, projectID, chat.ID)
-		wait := externalCrewWait(args)
-		_, cursor, _ := codeChatTranscript(ctx, claims.UserID, chat.SessionID, binding.WorkspacePath, 0, 0)
-		if wait <= 0 {
-			rec := &externalMCPRecorder{header: http.Header{}}
-			api.externalSendMessage(rec, r, args, target)
-			externalCodeRunRespond(w, rec, map[string]any{"next_after": cursor, "next": "Read the answer with code action=read chat_id=" + chat.ID + " after=" + strconv.Itoa(cursor) + " wait_seconds=25."})
-			return
-		}
-		rec := &externalMCPRecorder{header: http.Header{}}
-		api.externalSendMessage(rec, r, args, target)
-		var receipt map[string]any
-		if rec.status >= 300 || json.Unmarshal(rec.body.Bytes(), &receipt) != nil {
-			externalCodeRunRespond(w, rec, nil)
-			return
-		}
-		messageID, _ := receipt["message_id"].(string)
-		items, turnDone := api.waitForCodeTurn(ctx, claims.UserID, chat.SessionID, binding.WorkspacePath, projectID, chat.ID, cursor, messageID, wait)
-		receipt["next_after"] = cursor
-		if len(items) > 0 {
-			receipt["next_after"] = items[len(items)-1].Seq
-			receipt["messages"] = items
-		}
-		receipt["working"] = !turnDone
-		if turnDone {
-			receipt["status"] = "answered"
-		} else {
-			receipt["status"] = "running"
-			receipt["next"] = "Still working. Read it with code action=read chat_id=" + chat.ID + " after=" + strconv.Itoa(cursor) + " wait_seconds=25."
-		}
-		externalJSON(w, receipt)
-	case "read_my_code_chat":
-		chat := findCodeChat(chats, firstNonEmptyTrimmed(str("chat_id"), externalCallerTabName(ctx, claims)))
-		if chat == nil {
-			externalError(w, http.StatusNotFound, "chat_not_found", "No tab with that name or id in this project; see code action=chats. Your own tab is opened the first time you ask.")
-			return
-		}
-		after, limit := 0, 40
-		if v, ok := args["after"].(float64); ok && v > 0 {
-			after = int(v)
-		}
-		if v, ok := args["limit"].(float64); ok && v >= 1 {
-			limit = min(int(v), 100)
-		}
-		wait := externalCrewWait(args)
-		deadline := time.Now().Add(wait)
-		for {
-			items, last, err := codeChatTranscript(ctx, claims.UserID, chat.SessionID, binding.WorkspacePath, after, limit)
-			working := api.conversationTurnOccupied(chat.SessionID)
-			if err != nil {
-				externalError(w, http.StatusBadGateway, "workspace_unavailable", "Cannot read that chat right now.")
-				return
-			}
-			if wait <= 0 || time.Now().After(deadline) || (!working && len(items) > 0) || ctx.Err() != nil {
-				externalJSON(w, map[string]any{"project_id": projectID, "chat_id": chat.ID, "messages": items, "next_after": last, "working": working})
-				return
-			}
-			time.Sleep(700 * time.Millisecond)
-		}
-	default:
-		externalError(w, http.StatusNotFound, "unknown_tool", "Tool is not exposed by this API.")
-	}
 }
 
 // externalCodeRunRespond writes a recorded send's answer, adding fields to a successful JSON receipt.
@@ -549,7 +281,7 @@ func externalCallerTabName(ctx context.Context, claims *UserClaims) string {
 // externalCodeRunOpenTab opens a new side tab, optionally named, as the + in the app does. It returns the tab id, or an
 // HTTP status and plain message when it cannot.
 func (api *StreamingAPI) externalCodeRunOpenTab(r *http.Request, claims *UserClaims, binding productConversationBinding, projectID string, chats []codeChat, chatName string, profileIDs ...string) (string, int, string) {
-	profileID := codeproduct.ProfileID
+	profileID := workproduct.ProfileID
 	if len(profileIDs) > 0 {
 		profileID = profileIDs[0]
 	}
@@ -586,10 +318,14 @@ func (api *StreamingAPI) externalCodeRunOpenTab(r *http.Request, claims *UserCla
 
 // setCodeTabName gives a Code tab its name as an agent identity, which is what the tab list and name lookups use.
 func setCodeTabName(ctx context.Context, userID, conversationKey, name string, profileIDs ...string) error {
-	profileID := codeproduct.ProfileID
+	profileID := workproduct.ProfileID
 	if len(profileIDs) > 0 {
 		profileID = profileIDs[0]
 	}
 	_, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, userID, profileID, conversationKey, &name, nil, "tab name")
 	return err
+}
+
+func externalCodeRunAllowed(c *UserClaims) bool {
+	return c != nil && userAllowedProduct(c, crewProfileID) && (c.AccessToken == nil || c.AccessToken.Allows("crews:write"))
 }

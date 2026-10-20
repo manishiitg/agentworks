@@ -84,19 +84,7 @@ func (api *StreamingAPI) homeInventory(ctx context.Context) ([]homeWork, error) 
 			}
 		}
 		// Code-origin projects keep their existing audience rules; scoped external tokens have no Code scope.
-		if homeProductAllowed(claims, "code") && claims.AccessToken == nil {
-			if profile, err := api.agentProfiles.Resolve("code", 0, claims.UserID); err == nil {
-				rows := listProjectsForOwner(ctx, claims, profile, claims.UserID, false)
-				if projectSharingEnabled() {
-					for _, ownerID := range crewProjectOwnerCandidates(claims.UserID) {
-						rows = append(rows, listSharedProjectsForOwner(ctx, claims, profile, ownerID)...)
-					}
-				}
-				for _, row := range rows {
-					out = append(out, homeWork{Surface: "code", ID: row.ID, Label: row.Title, WorkspacePath: row.WorkspacePath, UpdatedAt: row.UpdatedAt})
-				}
-			}
-		}
+
 	}
 	sort.SliceStable(out, func(i, j int) bool { return strings.ToLower(out[i].Label) < strings.ToLower(out[j].Label) })
 	return out, nil
@@ -159,8 +147,6 @@ func (api *StreamingAPI) collectHome(r *http.Request) (homeResponse, error) {
 			kind = "relay"
 		case "work":
 			kind = "crew"
-		case "code":
-			kind = "code"
 		}
 		places = append(places, needsYouPlace{Kind: kind, ID: item.ID, Label: item.Label, path: item.WorkspacePath})
 	}
@@ -178,7 +164,7 @@ func (api *StreamingAPI) collectHome(r *http.Request) (homeResponse, error) {
 			kind = "apply_decision"
 		}
 		view := "human-actions"
-		if place != nil && (place.Surface == "work" || place.Surface == "code") {
+		if place != nil && (place.Surface == "work") {
 			view = "suggestions"
 		}
 		result.Attention = append(result.Attention, homeAttention{ID: decision.input.ID, Kind: kind, Title: decision.input.Question, Work: place, View: view, UpdatedAt: decision.input.UpdatedAt})

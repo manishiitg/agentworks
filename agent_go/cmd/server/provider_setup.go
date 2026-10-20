@@ -1062,7 +1062,7 @@ func (api *StreamingAPI) serverAccountAvailableToCaller(ctx context.Context, cal
 	if err != nil {
 		return false
 	}
-	for _, product := range []string{productWorkflows, productCrews, productCode} {
+	for _, product := range []string{productWorkflows, productCrews} {
 		if availability.AvailableTo.admits(caller, product) {
 			return true
 		}

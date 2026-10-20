@@ -143,7 +143,7 @@ func TestCodeProjectContextIsOwnReadOnlyAndCodeTurnsOnly(t *testing.T) {
 	defer host.Close()
 	t.Setenv("WORKSPACE_API_URL", host.URL)
 	alice := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "alice", Username: "alice"})
-	codeTurn := context.WithValue(alice, codeContextAllowedKey{}, true)
+	codeTurn := alice
 
 	if got, _, err := authorizeWorkflowContextPathsWithReadRoots(alice, []string{"Chats/Code/projects/api"}); err == nil || got != nil {
 		t.Fatalf("a Code project must not be attached outside a Code turn: %v %v", got, err)

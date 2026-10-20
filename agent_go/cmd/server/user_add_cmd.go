@@ -27,7 +27,7 @@ func init() {
 	addUserCmd.Flags().String("email", "", "The person's email address (their sign-in)")
 	addUserCmd.Flags().String("username", "", "Username (defaults to the email address)")
 	addUserCmd.Flags().String("role", "editor", "admin, creator, editor or viewer")
-	addUserCmd.Flags().String("products", "code", "Comma-separated products the account may use")
+	addUserCmd.Flags().String("products", "work", "Comma-separated products the account may use")
 }
 
 // addDirectoryUser appends a new account to dir, or returns the existing one for that email.

@@ -13,14 +13,14 @@ vi.mock('../../services/api', () => ({ agentApi: {
 
 import { WorkTemplateSetup } from './WorkTemplateSetup'
 import { crewTemplates } from './crewTemplates'
-import { CODE_PRODUCT } from './projectProduct'
+import { CREW_PRODUCT } from './projectProduct'
 import { installWorkSessionTemplate, parseSessionManifest, removeWorkSessionTemplate, type WorkSession } from './workSessions'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 it('retries a failed removal and displays the server template state for a Code-origin Crew without manifest writes', async () => {
   const template = crewTemplates.find(item => item.id === 'finance-analyst')!
-  const initial = parseSessionManifest(JSON.stringify({ schema_version: 1, product: 'code', id: 'demo', title: 'Crew', session_id: 'code:project:demo', templates: [{ id: template.id, version: template.version }] }), 'Crew/demo', undefined, CODE_PRODUCT)!
+  const initial = parseSessionManifest(JSON.stringify({ schema_version: 1, product: 'code', id: 'demo', title: 'Crew', session_id: 'code:project:demo', templates: [{ id: template.id, version: template.version }] }), 'Crew/demo', undefined, CREW_PRODUCT)!
   getPlannerFileContent.mockResolvedValue({ data: { content: template.files[template.setupPath] } })
   let current = initial
   function ChatRows() {

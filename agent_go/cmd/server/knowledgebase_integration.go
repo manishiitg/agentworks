@@ -67,7 +67,7 @@ func knowledgeHash(v any) string {
 func knowledgeProjectLoad(ctx context.Context, userID, workspace string, requireOwner bool) (*knowledgeProject, error) {
 	kind, root := common.ClassifySessionWorkspace(userID, workspace)
 	if kind == common.SessionWorkspaceUnknown {
-		return nil, fmt.Errorf("an owned workflow, Crew or Code workspace is required")
+		return nil, fmt.Errorf("an owned workflow, Crew or Crew workspace is required")
 	}
 	if kind == common.SessionWorkspaceCrewProject {
 		owner := userID
@@ -142,7 +142,7 @@ func knowledgeProjectLoad(ctx context.Context, userID, workspace string, require
 		p.Audience = append([]string{}, p.Owners...)
 		// A Code project is private to its owner, so its owner is its whole audience; a shared Crew reaches every user
 		// of the Crew product, a Crew shared with named people only those.
-		if !isCodeProjectPath(root) {
+		if !isProjectWorkspacePath(root) {
 			directory, err := loadUserDirectory()
 			if err != nil || directory == nil {
 				return nil, fmt.Errorf("Crew audience is unavailable")
@@ -171,9 +171,7 @@ func knowledgeProjectLoad(ctx context.Context, userID, workspace string, require
 func knowledgeProjectConnectionCheck(ctx context.Context, project *knowledgeProject) error {
 	if claims := GetUserFromContext(ctx); claims != nil {
 		product := "work"
-		if isCodeProjectPath(project.Workspace) {
-			product = "code"
-		}
+
 		if project.Kind == string(common.SessionWorkspaceWorkflow) {
 			product = "agentworks"
 			var kind string
@@ -195,8 +193,8 @@ func knowledgeProjectConnectionCheck(ctx context.Context, project *knowledgeProj
 		if project.Kind != string(common.SessionWorkspaceWorkflow) {
 			allowed = token.Allows("crews:read") && token.Allows("crews:write") && token.AllowsCrew(project.ID)
 		}
-		// A Code project is private and has no connection scope: it is set up in the app or its own Code chat.
-		if isCodeProjectPath(project.Workspace) {
+		// A Code project is private and has no connection scope: it is set up in the app or its own Crew chat.
+		if isProjectWorkspacePath(project.Workspace) {
 			allowed = false
 		}
 		if !allowed {

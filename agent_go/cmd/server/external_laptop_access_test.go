@@ -26,10 +26,10 @@ func TestMCPLaptopSettingsUseOwnerGrantsWithoutCommandAccess(t *testing.T) {
 	f := newMCPLaptopFixture(t)
 	api := f.api
 	const root = "Crew/dashboard-team"
-	owner := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:write", "code:run"}, AllCrews: true}}
+	owner := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:write"}, AllCrews: true}}
 	call := func(c *UserClaims, action string, extra map[string]any) *httptest.ResponseRecorder {
 		t.Helper()
-		args := map[string]any{"action": action, "workspace_id": "code:dashboard-team"}
+		args := map[string]any{"action": action, "workspace_id": "work:dashboard-team"}
 		for k, v := range extra {
 			args[k] = v
 		}
@@ -156,7 +156,7 @@ func TestMCPLaptopCommandAndBinaryCopyUseSavedFolderAccess(t *testing.T) {
 	}
 	call := func(name string, args map[string]any, status int) []byte {
 		t.Helper()
-		args["workspace_id"] = "code:dashboard-team"
+		args["workspace_id"] = "work:dashboard-team"
 		data, _ := json.Marshal(map[string]any{"name": name, "arguments": args})
 		r, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/external/v1/call", bytes.NewReader(data))
 		r.Header.Set("Authorization", "Bearer "+personToken)
@@ -200,18 +200,18 @@ func newMCPLaptopFixture(t *testing.T) *externalToolsFixture {
 	t.Helper()
 	tokenTestSetup(t)
 	f := newExternalToolsFixture(t)
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work","code"]},{"id":"other","username":"other","can_create":true,"products":["work","code"]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]},{"id":"other","username":"other","can_create":true,"products":["work"]}]}`)
 	const root = "Crew/dashboard-team"
-	f.write(t, root+"/product.json", `{"schema_version":1,"product":"code","id":"dashboard-team","title":"Laptop test","session_id":"fixture-main-session"}`)
+	f.write(t, root+"/product.json", `{"schema_version":1,"product":"work","id":"dashboard-team","title":"Laptop test","session_id":"fixture-main-session"}`)
 	f.write(t, root+"/workflow.json", `{"schema_version":1,"id":"dashboard-team","capabilities":{}}`)
 	registry := withProjectOwnerRegistry(t)
-	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: "dashboard-team", ProjectID: "dashboard-team", OwnerID: "owner", CanonicalRoot: root}); err != nil {
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "dashboard-team", ProjectID: "dashboard-team", OwnerID: "owner", CanonicalRoot: root}); err != nil {
 		t.Fatal(err)
 	}
 	f.api.agentProfiles = agentprofiles.NewRegistry()
-	profile := routeTestProfile("code", true, "")
-	profile.Product = "code"
-	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, Root: "Chats", ProjectsRoot: "Chats/Code/projects"}
+	profile := routeTestProfile("work", true, "")
+	profile.Product = "work"
+	profile.Runtime.Workspace = agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, Root: "Chats", ProjectsRoot: "Crew"}
 	profile.Runtime.Conversation = agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject}
 	if err := f.api.agentProfiles.RegisterProfile(profile); err != nil {
 		t.Fatal(err)

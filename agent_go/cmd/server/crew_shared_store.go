@@ -83,6 +83,10 @@ func listSharedCrewEntries(ctx context.Context, store productProjectStore) ([]sh
 // user's own tree and, for a Crew, the Crew/ shared root filtered by manifest owner. exists is false only when
 // neither holds anything. The paths are as the workspace lists them (full workspace paths).
 func listProjectManifestPaths(ctx context.Context, store productProjectStore, userID string, profile agentprofiles.Profile) (paths []string, exists bool, err error) {
+	if isProjectProfileID(profile.ID) {
+		paths, err := listSharedCrewManifestPaths(ctx, store, userID, profile.ID)
+		return paths, len(paths) > 0, err
+	}
 	projectsRoot, err := cleanAgentProfileWorkspace(profile.Runtime.Workspace.ProjectsRoot, userID)
 	if err != nil {
 		return nil, false, err

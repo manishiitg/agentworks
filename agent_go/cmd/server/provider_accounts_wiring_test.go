@@ -13,7 +13,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
@@ -91,15 +91,15 @@ func TestProviderAccountsSharedAccountAndCodeTurnsAreFull(t *testing.T) {
 	env.mock.files[codeRoot+"/workflow.json"] = `{"capabilities":{}}`
 	env.mock.mu.Unlock()
 	registry := agentprofiles.NewRegistry()
-	for _, profile := range codeproduct.BuiltinAgentProfiles() {
-		profile.Product = codeproduct.ProfileID
+	for _, profile := range workproduct.BuiltinAgentProfiles() {
+		profile.Product = workproduct.ProfileID
 		if err := registry.RegisterProfile(profile); err != nil {
 			t.Fatal(err)
 		}
 	}
 	env.api.agentProfiles = registry
 	codeTurn := func() string {
-		req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: codeproduct.ProfileID, AgentProfileConversationKey: "site", SelectedFolder: "Chats/Code/projects/site", AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Site"}}
+		req := QueryRequest{AgentMode: "multi-agent", AgentProfileID: workproduct.ProfileID, AgentProfileConversationKey: "site", SelectedFolder: "Chats/Code/projects/site", AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Site"}}
 		resolved, err := env.api.resolveAgentProfileForQuery(context.Background(), &req, "alice", "code-session")
 		if err != nil {
 			t.Fatalf("resolve Code turn: %v", err)
@@ -159,8 +159,8 @@ func TestProviderAccountsCostSplitMasksHiddenWork(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
 	withMemoryUserDirectory(t, `{"users":[
         {"id":"admin","username":"admin","admin":true,"can_create":true},
-        {"id":"alice","username":"alice","can_create":true,"code_reviewer":true},
-        {"id":"bob","username":"bob","can_create":true,"code_reviewer":true},
+        {"id":"alice","username":"alice","can_create":true,"crew_reviewer":true},
+        {"id":"bob","username":"bob","can_create":true,"crew_reviewer":true},
         {"id":"carol","username":"carol","can_create":true}]}`)
 	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Alice Claude", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "users": []string{"bob"}}})
 	ledger, err := costledger.NewSQLiteLedger(filepath.Join(t.TempDir(), "costs.sqlite"))

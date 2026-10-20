@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
@@ -65,9 +64,6 @@ func ClassifySessionWorkspace(userID, workspacePath string) (SessionWorkspaceKin
 	if project, ok := ref.SharedProject(); ok {
 		return SessionWorkspaceCrewProject, workspaceref.SharedProjectPath(project)
 	}
-	if root, project, ok := ref.Project(); ok {
-		return SessionWorkspaceCrewProject, root + "/" + project
-	}
 	return SessionWorkspaceUnknown, ""
 }
 
@@ -83,133 +79,16 @@ func SessionUserIDFromContext(ctx context.Context) string {
 	return ""
 }
 
-// CodeProjectRoot returns the physical root of the Code workspace path lies
-// in (_users/<owner>/Chats/Code/projects/<project>), or "" when path is not
-// inside a Code. Only the physical form names an owner, so a logical
-// Chats/Code/... path resolves under userID.
-func CodeProjectRoot(userID, path string) string {
-	codeRootResolverMu.RLock()
-	resolve := codeRootResolver
-	codeRootResolverMu.RUnlock()
-	if resolve != nil {
-		if root := resolve(userID, path); root != "" {
-			return root
-		}
-	}
-	ref, ok := workspaceref.Parse(path)
-	if !ok {
-		return ""
-	}
-	root, project, isProject := ref.Project()
-	if !isProject || root != workspaceref.CodeProjectsRoot {
-		return ""
-	}
-	projectRef := ref.WithLogical(root + "/" + project)
-	if !ref.HasOwner() && strings.TrimSpace(userID) == "" {
-		return ""
-	}
-	return projectRef.PhysicalKeepOwner(userID)
-}
-
-var codeRootResolverMu sync.RWMutex
-var codeRootResolver func(userID, path string) string
-
-// SetCodeProjectRootResolver installs the server's trusted origin/location
-// resolver. Packages below the server retain the legacy path parser otherwise.
-func SetCodeProjectRootResolver(resolve func(userID, path string) string) {
-	codeRootResolverMu.Lock()
-	defer codeRootResolverMu.Unlock()
-	codeRootResolver = resolve
-}
-
-// codeSessionRoots marks the sessions that run in a Code workspace (session
-// -> the Code's physical root). It is separate from the shell config, which
-// delegation and restarts clear, so a Code session is never mistaken for an
-// ordinary one; children inherit the mark from their parent.
-var codeSessionRoots sync.Map
-
-// MarkCodeSession records that sessionID works in the Code at root.
-func MarkCodeSession(sessionID, root string) {
-	sessionID, root = strings.TrimSpace(sessionID), strings.Trim(strings.TrimSpace(root), "/")
-	if sessionID != "" && root != "" {
-		codeSessionRoots.Store(sessionID, root)
-	}
-}
-
-// InheritCodeSession marks child with parent's Code, if parent has one.
-func InheritCodeSession(parentSessionID, childSessionID string) {
-	if root := CodeSessionRoot(parentSessionID); root != "" {
-		MarkCodeSession(childSessionID, root)
-	}
-}
-
-// CodeSessionRoot is the Code a session was marked with, or "".
-func CodeSessionRoot(sessionID string) string {
-	if value, ok := codeSessionRoots.Load(strings.TrimSpace(sessionID)); ok {
-		return value.(string)
-	}
-	return ""
-}
-
-// GmailScopeFromContext is the Code workspace (if any) and user of the
-// session a tool runs in, for Google account scoping. It fails closed: a
-// call with no session, or a session the server holds no configuration for,
-// gets an error rather than the shared accounts.
-func GmailScopeFromContext(ctx context.Context) (codeWorkspace, userID string, err error) {
-	userID = SessionUserIDFromContext(ctx)
-	if userID != "" {
-		userID = workspaceref.SanitizeUserID(userID)
-	}
-	sessionID, _ := ctx.Value(ChatSessionIDKey).(string)
-	if strings.TrimSpace(sessionID) == "" {
-		return "", userID, fmt.Errorf("this tool call carries no session, so its Google account scope is unknown")
-	}
-	if root := CodeSessionRoot(sessionID); root != "" {
-		return root, userID, nil
-	}
-	var known []string
-	if cfg := GetSessionShellConfig(sessionID); cfg != nil {
-		known = append(known, cfg.WorkingDir, cfg.WorkflowPath)
-		known = append(known, cfg.WritePaths...)
-	}
-	// Workflow agents may carry their guard in the request context instead.
-	for _, key := range []ContextKey{FolderGuardAllowedWriteFolderKey, FolderGuardWritePathsKey} {
-		if paths, ok := ctx.Value(key).([]string); ok {
-			known = append(known, paths...)
-		}
-	}
-	anyKnown := false
-	for _, candidate := range known {
-		if strings.TrimSpace(candidate) == "" {
-			continue
-		}
-		anyKnown = true
-		if root := CodeProjectRoot(userID, candidate); root != "" {
-			return root, userID, nil
-		}
-	}
-	if !anyKnown {
-		return "", userID, fmt.Errorf("session %s has no workspace configuration, so its Google account scope is unknown", sessionID)
-	}
-	return "", userID, nil
-}
-
 // GoogleWorkspaceFromContext names the target configured by the server. Attached
 // folders and tool arguments never choose which account a run can use.
 func GoogleWorkspaceFromContext(ctx context.Context) (string, error) {
 	sessionID, _ := ctx.Value(ChatSessionIDKey).(string)
 	user := SessionUserIDFromContext(ctx)
-	if root := CodeSessionRoot(sessionID); root != "" {
-		return root, nil
-	}
 	cfg := GetSessionShellConfig(sessionID)
 	if cfg == nil {
 		return "", fmt.Errorf("Open this item's chat to use its Google accounts.")
 	}
 	for _, candidate := range []string{cfg.WorkflowPath, cfg.WorkingDir} {
-		if root := CodeProjectRoot(user, candidate); root != "" {
-			return root, nil
-		}
 		kind, root := ClassifySessionWorkspace(user, candidate)
 		if kind == SessionWorkspaceWorkflow {
 			return root, nil

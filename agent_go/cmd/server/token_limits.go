@@ -519,7 +519,7 @@ func botRouteTokenOwner(ctx context.Context, principal, workspacePath string) st
 	owner := ""
 	switch {
 	case path == "":
-	case isCodeProjectPath(path):
+	case isProjectWorkspacePath(path):
 		// An explicit owner's path is kept; a logical one is placed under the resource owner.
 		root := workspaceref.PhysicalPath(resourceOwner, path)
 		if ref, ok := workspaceref.Parse(path); ok && ref.HasOwner() {

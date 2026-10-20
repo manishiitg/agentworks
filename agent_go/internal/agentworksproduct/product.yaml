@@ -586,25 +586,15 @@ chat:
       - export_crew
       - import_crew
       # Vault management: active administrators only, with vault:manage consent.
-      # Code review (code:review; admins and Code reviewers; read-only, audited).
-      - list_code_workspaces
-      - get_code_costs
-      - list_code_files
-      - read_code_file
-      - list_code_chats
-      - read_code_chat
-      - get_code_audit
-      # Run your own Code (code:run; never a default scope; own projects only; asks are logged).
-      - list_my_code_projects
-      - list_my_code_chats
-      - ask_my_code
-      - read_my_code_chat
-      - get_my_code_state
-      - open_my_code_chat
-      - close_my_code_chat
-      - stop_my_code_chat
-      - rename_my_code_chat
-      # Shared-account token limits and allowed models (get: code:review or users:manage; set: users:manage, admins; audited).
+      # Code review (crews:review; admins and Code reviewers; read-only, audited).
+      - list_review_workspaces
+      - get_review_costs
+      - list_review_files
+      - read_review_file
+      - list_review_chats
+      - read_review_chat
+      - get_review_audit
+      # Shared-account token limits and allowed models (get: crews:review or users:manage; set: users:manage, admins; audited).
       - get_token_usage
       - set_token_limits
       - set_allowed_models

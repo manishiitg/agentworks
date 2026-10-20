@@ -12,20 +12,19 @@ import (
 // storage/routing identities, never a second set of workspace permissions.
 func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add("workspace", "Your private and shared Crews. list/get inspect current access; create starts Only me. ask and chat actions use your own conversations; update/export/import use existing Builder authority. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
-		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "create", "update", "export", "import", "ask", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move"}},
-		"workspace_id": externalString("Stable work:<id> or code:<id> from workspace action=list; an unambiguous old ID also works."),
-		"profile_id":   externalString("Creation origin: work or code. Omit to use a product you can create in."),
+		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "costs", "create", "update", "export", "import", "ask", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move"}},
+		"workspace_id": externalString("Crew workspace ID from workspace action=list."),
 		"name":         externalString("Project or new chat name."), "message": externalString("Message for ask."),
 		"session_id":   externalString("An earlier chat session from action=chats, for read/delete."),
 		"agent_id":     externalString("Stable published agent ID from agents or an import receipt, for open_agent."),
-		"operation_id": externalString("Storage operation for storage_status/storage_backup/storage_move. Storage operations need administrator/users:manage access. storage_move moves ready projects to Crew with verified backups and old-path links; omit workspace_id for all ready projects. Explicitly select a registered project with unreadable files to move it with a partial backup; skipped entries are reported."),
+		"operation_id": externalString("Storage operation for storage_status/storage_backup/storage_move. Storage operations need administrator/users:manage access. storage_move moves ready projects to Crew with verified backups; omit workspace_id for all ready projects. Explicitly select a registered project with unreadable files to move it with a partial backup; skipped entries are reported."),
 		"kind":         externalString("read_saved_chat: raw (default) or summary. Builders can read an agent's private imported chat with its current website access."),
 		"offset":       externalInteger(0, 1<<30), "limit": externalInteger(0, 65536),
-		"conversation_key": externalString("Your exact Local conversation key. Publishing never guesses another chat."),
+		"conversation_key": externalString("Your exact conversation key from this Crew."),
 		"chat_id":          externalString("A chat name/id you can access; omit to use your caller conversation."),
 		"query":            externalString("Optional list filter."), "submission_id": externalString("Stable submission ID for a retry of the same ask."),
 		"wait_seconds": externalInteger(0, 25), "after": externalInteger(0, 1<<30),
-		"changes": map[string]any{"type": "object"}, "spec": map[string]any{"type": "object", "description": "Creation/import settings: name, icon, role, purpose, mode (dev/cowork on code origin), llm_config, selected_skills, templates, files, functions and schedules."},
+		"changes": map[string]any{"type": "object"}, "spec": map[string]any{"type": "object", "description": "Creation/import settings: name, icon, role, purpose, mode (dev/cowork), llm_config, selected_skills, templates, files, functions and schedules."},
 	}, "action")
 }
 
@@ -36,10 +35,10 @@ func externalWorkspaceAllowed(claims *UserClaims) bool {
 	if crewStorageAllowed(claims) {
 		return true
 	}
-	if token := claims.AccessToken; token != nil && (token.BoundAgentID != "" || token.BoundAgentName != "" || !(token.Allows("crews:read") || token.Allows("crews:run") || token.Allows("crews:write") || token.Allows("code:run"))) {
+	if token := claims.AccessToken; token != nil && (token.BoundAgentID != "" || token.BoundAgentName != "" || !(token.Allows("crews:read") || token.Allows("crews:run") || token.Allows("crews:write"))) {
 		return false
 	}
-	return workspaceOriginAllowed(claims, "work") || workspaceOriginAllowed(claims, "code")
+	return workspaceOriginAllowed(claims, crewProfileID)
 }
 
 func (api *StreamingAPI) resolveExternalWorkspace(ctx context.Context, claims *UserClaims, raw string) (crewProjectBinding, productProjectManifest, bool) {
@@ -116,10 +115,7 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		if name := strings.TrimSpace(externalArg(args, "name")); name != "" {
 			spec.Name = name
 		}
-		origin := externalArg(args, "profile_id")
-		if origin == "" && spec.Mode == "cowork" {
-			origin = "code"
-		}
+		origin := crewProfileID
 		if origin == "" {
 			for _, product := range projectProducts {
 				if workspaceOriginAllowed(claims, product.ProfileID) && userAccessForClaims(claims).CanCreateIn(product.ProfileID) {
@@ -224,15 +220,13 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		}
 	}
 	memberArgs["crew_id"] = manifest.ID
-	if manifest.Product == "code" {
-		memberArgs["crew_id"] = "code:" + manifest.ID
-	}
+
 	if action == "ask" || action == "read_chat" && externalArg(args, "session_id") == "" {
 		api.externalWorkspaceConversation(w, r, action, args, binding, manifest)
 		return
 	}
 
-	member := map[string]string{"ask": "ask_crew", "update": "update_crew", "export": "export_crew", "import": "import_crew"}[action]
+	member := map[string]string{"costs": "get_crew_costs", "ask": "ask_crew", "update": "update_crew", "export": "export_crew", "import": "import_crew"}[action]
 	if chatAction := map[string]string{"chats": "list", "read_chat": "read", "open_chat": "side_open", "rename_chat": "side_rename", "close_chat": "side_close", "new_chat": "new", "delete_chat": "delete", "stop": "stop"}[action]; chatAction != "" {
 		memberArgs["action"] = chatAction
 		member = "manage_crew_chats"
@@ -287,15 +281,7 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 				if navigation {
 					root := binding.Binding.WorkspacePath
 					item["workspace_path"] = canonicalChatHistoryWorkspacePath(claims.UserID, root)
-					if identity, known := projectIdentityOf(root); known {
-						if record, registered := defaultProjectOwners().Lookup(identity.Product, identity.Folder); registered && record.ProjectID == doc.ID && projectStorageRoot(record) == root {
-							aliases := []string{}
-							for _, alias := range record.Aliases {
-								aliases = append(aliases, canonicalChatHistoryWorkspacePath(claims.UserID, alias))
-							}
-							item["aliases"] = aliases
-						}
-					}
+
 				}
 				items = append(items, item)
 			}
@@ -326,14 +312,12 @@ func (api *StreamingAPI) handleWorkspaces(w http.ResponseWriter, r *http.Request
 }
 
 func workspaceExternalID(profileID, id string) string {
-	if profileID == "code" {
-		return "code:" + id
-	}
+
 	return id
 }
 
 func workspaceTokenProjectID(id string) string {
-	return strings.TrimPrefix(strings.TrimPrefix(id, "work:"), "code:")
+	return strings.TrimPrefix(id, "work:")
 }
 
 func workspaceCreateTokenAllowed(claims *UserClaims, origin string) bool {
@@ -341,9 +325,7 @@ func workspaceCreateTokenAllowed(claims *UserClaims, origin string) bool {
 		return false
 	}
 	if token := claims.AccessToken; token != nil {
-		if origin == "code" {
-			return token.Allows("code:run") && len(token.CrewIDs) == 0 && token.BoundAgentID == "" && token.BoundAgentName == ""
-		}
+
 		return token.AllCrews && token.Allows("crews:write") && token.BoundAgentID == "" && token.BoundAgentName == ""
 	}
 	return true

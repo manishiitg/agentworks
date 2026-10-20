@@ -2,7 +2,7 @@ import type { ProductSurface } from '../products/productSurfaceConfig'
 
 export type ProductRoute = { surface: ProductSurface; id?: string; view?: string; folder?: string; overview?: boolean }
 export const PRODUCT_PATHS: Record<ProductSurface, string> = {
-  agentworks: '/goals', relays: '/relays', work: '/crew', code: '/code',
+  agentworks: '/goals', relays: '/relays', work: '/crew',
   knowledgebase: '/brain', 'mcp-gateway': '/vault', 'llm-gateway': '/llm-gateway', bullpen: '/agentbridge',
   'video-studio': '/video-studio', sparkquill: '/sparkquill',
 }
@@ -52,7 +52,7 @@ export function parseProductRoute(value: string): ProductRoute | null | undefine
   if (parts.length > 1) {
     if (surface === 'bullpen' && parts.length === 2 && parts[1] === 'connect') view = 'setup'
     else {
-      const project = surface === 'work' || surface === 'code' || surface === 'video-studio'
+      const project = surface === 'work' || surface === 'video-studio'
       if (!overview && parts[0] !== 'agentworks' && surface !== 'relays' && !project) return undefined
       const offset = project ? 2 : 1
       if (project && parts[1] !== 'projects') return undefined
@@ -71,12 +71,12 @@ export function productRoutePath(route: ProductRoute): string {
   let path = route.surface === 'agentworks' && (route.id || route.overview) ? '/workflows' : PRODUCT_PATHS[route.surface]
   const params = new URLSearchParams()
   if (route.id) {
-    if (['work', 'code', 'video-studio'].includes(route.surface)) path += '/projects'
+    if (['work', 'video-studio'].includes(route.surface)) path += '/projects'
     path += '/' + encodeURIComponent(route.id)
   }
   if (route.surface === 'bullpen' && route.view === 'setup') path += '/connect'
   else if (route.id && (route.view === 'dashboard' || route.view === 'report')) path += '/dashboard'
-  else if (route.view && !(route.surface === 'code' && route.view === 'files')) params.set('view', route.view)
+  else if (route.view) params.set('view', route.view)
   if (route.folder) params.set('folder', route.folder)
   return path + (params.size ? '?' + params.toString() : '')
 }
@@ -110,5 +110,5 @@ export function isLegacyAppPath(value: string): boolean {
 
 export function routeView<T extends string>(surface: ProductSurface, id: string | null | undefined, normalize: (value: unknown) => T | null, defaultView?: T): T | null {
   const route = currentProductRoute()
-  return route?.surface === surface && (!['work', 'code', 'video-studio'].includes(surface) || (route.id ?? 'main') === (id ?? 'main')) ? normalize(route.view) ?? defaultView ?? null : null
+  return route?.surface === surface && (!['work', 'video-studio'].includes(surface) || (route.id ?? 'main') === (id ?? 'main')) ? normalize(route.view) ?? defaultView ?? null : null
 }

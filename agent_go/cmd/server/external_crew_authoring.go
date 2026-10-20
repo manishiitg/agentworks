@@ -368,12 +368,7 @@ func (api *StreamingAPI) externalCrewAuthoringCall(w http.ResponseWriter, r *htt
 	ctx := r.Context()
 	claims := GetUserFromContext(ctx)
 	if externalCrewWriteTools[name] {
-		if strings.HasPrefix(externalArg(args, "crew_id"), "code:") {
-			if !userAllowedProduct(claims, "code") || !userAccessForClaims(claims).CanEdit || userAccessForClaims(claims).Disabled {
-				externalError(w, 403, "forbidden", "Only an authorized Builder can change this project.")
-				return
-			}
-		} else if status, message := externalCrewAuthorGate(claims); status != 0 {
+		if status, message := externalCrewAuthorGate(claims); status != 0 {
 			externalError(w, status, "forbidden", message)
 			return
 		}
@@ -505,8 +500,8 @@ func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *Us
 	if err != nil {
 		return "", err
 	}
-	if profileID != "code" && spec.Mode != "" && spec.Mode != "dev" {
-		return "", fmt.Errorf("Cowork and Local need the existing personal workspace option")
+	if spec.Mode != "" && spec.Mode != "dev" && spec.Mode != "cowork" {
+		return "", fmt.Errorf("Choose Dev or Cowork for this Crew")
 	}
 	incoming := map[string]string{}
 	for _, template := range templates {

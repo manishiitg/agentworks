@@ -1,10 +1,10 @@
-export const PRODUCT_SURFACES = ['agentworks', 'relays', 'video-studio', 'sparkquill', 'work', 'code', 'mcp-gateway', 'llm-gateway', 'knowledgebase', 'bullpen'] as const
+export const PRODUCT_SURFACES = ['agentworks', 'relays', 'video-studio', 'sparkquill', 'work', 'mcp-gateway', 'llm-gateway', 'knowledgebase', 'bullpen'] as const
 
 export type ProductSurface = (typeof PRODUCT_SURFACES)[number]
 
 export const PRODUCT_SURFACE_LABELS: Record<ProductSurface, string> = {
   agentworks: 'Goals', relays: 'Flows', 'video-studio': 'Video Studio',
-  sparkquill: 'SparkQuill', work: 'Crew', code: 'Crew', 'mcp-gateway': 'Vault', 'llm-gateway': 'LLM Gateway', knowledgebase: 'Brain', bullpen: 'AgentBridge',
+  sparkquill: 'SparkQuill', work: 'Crew', 'mcp-gateway': 'Vault', 'llm-gateway': 'LLM Gateway', knowledgebase: 'Brain', bullpen: 'AgentBridge',
 }
 
 type ProductRuntimeConfig = {
@@ -119,6 +119,5 @@ export function visibleProductSurfaceIDs(allowedProducts?: string[] | null): Pro
 
 /** One Crew entry over the permitted legacy origins; never use this for access checks. */
 export function navigationProductSurfaceIDs(allowedProducts?: string[] | null): ProductSurface[] {
-  const origins = visibleProductSurfaceIDs(allowedProducts)
-  return origins.includes('code') ? origins.filter(surface => surface !== 'work') : origins
+  return visibleProductSurfaceIDs(allowedProducts)
 }

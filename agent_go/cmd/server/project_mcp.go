@@ -43,7 +43,7 @@ func projectMCPAudienceForPath(path string) (projectMCPAudience, bool) {
 		return audience, false
 	}
 	switch parts[0] {
-	case "work", "code", "workflow", "relay":
+	case "work", "workflow", "relay":
 	default:
 		return audience, false
 	}
@@ -91,7 +91,7 @@ func projectMCPToolAllowed(kind, name string) bool {
 		"get_agent_context", "list_guidance_topics", "get_guidance_topic", "get_skill":
 		return true
 	}
-	if kind == "work" || kind == "code" {
+	if kind == "work" {
 		switch name {
 		case "workspace", "list_crews", "get_crew", "list_crew_files", "search_crew_files", "read_crew_file",
 			"list_crew_functions", "call_crew_function", "get_crew_function_call", "list_crew_function_calls", "reply_crew_function_call":
@@ -113,7 +113,7 @@ func projectMCPToolAllowed(kind, name string) bool {
 
 func (a projectMCPAudience) scopes() []string {
 	scopes := []string{"dashboards:read"}
-	if a.Kind == "work" || a.Kind == "code" {
+	if a.Kind == "work" {
 		scopes = append(scopes, "crews:read")
 		if a.Access == "use" {
 			scopes = append(scopes, "crews:run")
@@ -134,7 +134,7 @@ func (a projectMCPAudience) token(token accesstokens.Token) accesstokens.Token {
 	token.AllWorkflows, token.AllCrews = false, false
 	token.WorkflowIDs, token.CrewIDs = nil, nil
 	token.ProjectKind, token.ProjectID, token.ProjectAccess = a.Kind, a.ID, a.Access
-	if a.Kind == "work" || a.Kind == "code" {
+	if a.Kind == "work" {
 		token.CrewIDs = []string{a.ID}
 	} else {
 		token.WorkflowIDs = []string{a.ID}
@@ -146,7 +146,7 @@ func (api *StreamingAPI) projectMCPTarget(ctx context.Context, claims *UserClaim
 	if claims == nil || userAccessForClaims(claims).Disabled {
 		return dashboardTarget{}, dashboardFailure(403, "Project access is unavailable.")
 	}
-	if a.Kind == "work" || a.Kind == "code" {
+	if a.Kind == "work" {
 		binding, _, ok := api.resolveExternalWorkspace(ctx, claims, a.Kind+":"+a.ID)
 		if ok {
 			return api.dashboardTarget(ctx, claims, binding.Binding.WorkspacePath)
@@ -228,7 +228,7 @@ func projectMCPChallenge(w http.ResponseWriter, r *http.Request) {
 // identity fail closed rather than silently retargeting a saved connection.
 func projectMCPCreationIdentity(ctx context.Context, a projectMCPAudience, target dashboardTarget) (string, error) {
 	var owner, created string
-	if a.Kind == "work" || a.Kind == "code" {
+	if a.Kind == "work" {
 		manifest, err := readCrewProjectManifests(ctx, a.Kind, target.Root)
 		if err != nil || manifest.ID != a.ID {
 			return "", dashboardFailure(403, "Project identity is unavailable.")
@@ -289,7 +289,7 @@ func (api *StreamingAPI) handleProjectMCP(w http.ResponseWriter, r *http.Request
 	token := claims.AccessToken
 	grant := mcpOAuthGrant{FamilyID: strings.TrimPrefix(token.ID, "oauth-"), UserID: claims.UserID, Resource: "https://audit.invalid" + r.URL.Path}
 	if token.ProjectKind != a.Kind || token.ProjectID != a.ID || token.ProjectAccess != a.Access || token.AllCrews || token.AllWorkflows ||
-		((a.Kind == "work" || a.Kind == "code") && (!slices.Equal(token.CrewIDs, []string{a.ID}) || len(token.WorkflowIDs) != 0)) ||
+		((a.Kind == "work") && (!slices.Equal(token.CrewIDs, []string{a.ID}) || len(token.WorkflowIDs) != 0)) ||
 		((a.Kind == "workflow" || a.Kind == "relay") && (!slices.Equal(token.WorkflowIDs, []string{a.ID}) || len(token.CrewIDs) != 0)) {
 		projectMCPAudit(grant, "resource_mismatch", "handler_audience")
 		externalError(w, 403, "forbidden", "Approve this project's MCP connection first.")

@@ -58,20 +58,12 @@ func crewProjectOwnerID(workspacePath string) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	if project, shared := ref.SharedProject(); shared {
-		owner := crewOwners.owner(context.Background(), workspaceref.SharedProjectPath(project))
-		return owner, owner != ""
-	}
-	if !ref.HasOwner() || ref.Logical() == "" {
+	project, shared := ref.SharedProject()
+	if !shared {
 		return "", false
 	}
-	if project, _, isCrew := ref.AnyCrewProject(); isCrew {
-		if moved := crewPathAliases.lookup(context.Background(), legacyCrewRoot(ref.Owner(), project)); moved != "" {
-			owner := crewOwners.owner(context.Background(), moved)
-			return owner, owner != ""
-		}
-	}
-	return ref.Owner(), true
+	owner := crewOwners.owner(context.Background(), workspaceref.SharedProjectPath(project))
+	return owner, owner != ""
 }
 
 // canonicalCrewWorkspaceRoot normalizes a crew workspace root for exact

@@ -30,7 +30,7 @@ var ErrInvalid = errors.New("access token is invalid, expired, or revoked")
 const MaxLocalPresets = 32
 
 var ErrLocalPresetLimit = errors.New("maximum 32 active local access tokens; revoke an unused local token before creating another")
-var Scopes = []string{"llm:use", "dashboards:read", "workflows:read", "files:read", "runs:execute", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "code:review", "code:run", "vault:read", "vault:manage", "users:manage", "knowledgebase:read", "knowledgebase:write", "devices:connect"}
+var Scopes = []string{"llm:use", "dashboards:read", "workflows:read", "files:read", "runs:execute", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "crews:review", "vault:read", "vault:manage", "users:manage", "knowledgebase:read", "knowledgebase:write", "devices:connect"}
 
 // workflowScopes is the complete workflow permission set; FullBuilderAccess
 // means all of these, independent of any Crew permissions.
@@ -174,8 +174,8 @@ func Validate(t Token, now time.Time) error {
 	if t.Allows("devices:connect") && len(t.Scopes) != 1 {
 		return errors.New("devices:connect must be approved separately from other permissions")
 	}
-	if t.FileGuard != nil && !t.BuilderAccess() && !t.RelayBuilderAccess() && !t.Allows("crews:read") && !t.Allows("crews:write") && !(t.Allows("dashboards:read") && t.Allows("code:run")) {
-		return errors.New("file guards require Crew access or existing workflow, Flow or Code authoring consent")
+	if t.FileGuard != nil && !t.BuilderAccess() && !t.RelayBuilderAccess() && !t.Allows("crews:read") && !t.Allows("crews:write") {
+		return errors.New("file guards require Crew access or existing workflow or Flow authoring consent")
 	}
 	if err := t.FileGuard.Validate(); err != nil {
 		return err
@@ -225,7 +225,7 @@ func Validate(t Token, now time.Time) error {
 			hasWorkflowScope, hasCrewScope = true, true
 		case strings.HasPrefix(s, "crews:"):
 			hasCrewScope = true
-		case s == "llm:use" || s == "code:review" || s == "code:run" || s == "vault:read" || s == "vault:manage" || s == "users:manage" || s == "devices:connect":
+		case s == "llm:use" || s == "crews:review" || s == "vault:read" || s == "vault:manage" || s == "users:manage" || s == "devices:connect":
 			// Bounded by the account (admin or Code reviewer), not by IDs.
 		case strings.HasPrefix(s, "knowledgebase:"):
 			// Bounded by current domain grants and optional folder caps.

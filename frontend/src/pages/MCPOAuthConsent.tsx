@@ -20,7 +20,7 @@ const scopeDescriptions: Record<string, string> = {
   'knowledgebase:read': 'Read shared Brain folders your identity can access',
   'knowledgebase:write': 'Save shared knowledge within your folder grants',
   'code:run': 'Send messages into your own Code projects and read the replies, so the agent runs commands in your project\'s sandbox. Includes editing dashboards in your own projects within your current role',
-  'code:review': 'Review every Code workspace: cost, chats and files. Every view is recorded in the audit log',
+  'crews:review': 'Review every Code workspace: cost, chats and files. Every view is recorded in the audit log',
   'users:manage': 'See everyone\'s token use on the shared accounts and set their daily and weekly limits, as an administrator. Every change is recorded in the audit log',
 }
 
@@ -36,7 +36,7 @@ const scopeGroups: { summary: string; scopes: string[] }[] = [
   { summary: 'Edit Flows and workflows, as far as your role allows', scopes: ['builder:chat', 'relays:write'] },
   { summary: 'Use shared Brain within your folder grants', scopes: ['knowledgebase:read', 'knowledgebase:write'] },
   { summary: 'Run your own Code: send it messages and read the replies (it runs commands in your project)', scopes: ['code:run'] },
-  { summary: 'Review Code workspaces (logged)', scopes: ['code:review'] },
+  { summary: 'Review Code workspaces (logged)', scopes: ['crews:review'] },
   { summary: 'Set people\'s shared-account token limits (administrator, logged)', scopes: ['users:manage'] },
 ]
 

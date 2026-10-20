@@ -120,9 +120,6 @@ func TestMovedProjectDiscoveryUsesOnlyRegisteredRoot(t *testing.T) {
 			if err := os.RemoveAll(filepath.Join(f.Docs, current)); err != nil {
 				t.Fatal(err)
 			}
-			if err := removeDeletedProjectLinks(current); err != nil {
-				t.Fatal(err)
-			}
 			if _, err := os.Lstat(filepath.Join(f.Docs, old)); !os.IsNotExist(err) {
 				t.Fatalf("old link remains after deletion: %v", err)
 			}

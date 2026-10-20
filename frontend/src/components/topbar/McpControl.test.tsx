@@ -36,7 +36,7 @@ async function render(state: unknown) {
 describe('MCP connect control in the top bar', () => {
   it.each([
     ['an admin', { id: 'a', username: 'Owner', is_admin: true }],
-    ['a Code reviewer', { id: 'r', username: 'Rev', is_code_reviewer: true }],
+    ['a Code reviewer', { id: 'r', username: 'Rev', is_crew_reviewer: true }],
     ['an ordinary member', { id: 'm', username: 'Member' }],
   ])('shows for %s and opens the MCP page', async (_name, user) => {
     const { host, cleanup } = await render({ user, isMultiUserMode: true })

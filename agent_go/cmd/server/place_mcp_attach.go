@@ -15,7 +15,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	workshop "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
@@ -84,7 +83,7 @@ func placeMCPAttachmentsPath() (string, error) {
 	return filepath.Join(root, placeMCPAttachmentsFile), nil
 }
 
-// cleanAttachRoot normalizes a workflow, Crew or Code root. It returns "" for
+// cleanAttachRoot normalizes a workflow or Crew root. It returns "" for
 // any path that is not one.
 func cleanAttachRoot(raw string) string {
 	root := strings.Trim(strings.TrimSpace(raw), "/")
@@ -97,51 +96,24 @@ func cleanAttachRoot(raw string) string {
 			return ""
 		}
 	}
-	if ref := workspaceref.MustParse(root); ref.HasOwner() {
-		// Only a project root itself: _users/<owner>/Chats/(Work|Code)/projects/<id>.
-		projectRoot, project, ok := ref.Project()
-		if ok && ref.Logical() == projectRoot+"/"+project && ref.PhysicalKeepOwner("") == root {
-			// A Crew that has moved is its Crew/<folder> root (PLAT-442 step 4): connections attached under the old
-			// root are the same Crew's.
-			if projectRoot == workspaceref.CrewProjectsRoot || projectRoot == workspaceref.CodeProjectsRoot {
-				if moved := crewPathAliases.lookup(context.Background(), root); moved != "" {
-					return moved
-				}
-			}
-			return root
-		}
-		return ""
-	}
+
 	switch {
 	case len(segments) == 2 && segments[0] == "Workflow" && !strings.HasPrefix(segments[1], "."):
 		return root
 	case len(segments) == 2 && segments[0] == crewSharedRootName:
-		if moved := crewPathAliases.lookup(context.Background(), root); moved != "" {
-			return moved
-		}
+
 		return root
 	}
 	return ""
 }
 
-// isCodePlaceRoot reports whether a cleaned place root is a Code.
-func isCodePlaceRoot(root string) bool {
-	ref := workspaceref.MustParse(root)
-	return isCodeProjectPath(root) && (ref.HasOwner() || ref.IsShared())
-}
-
-// placeRootOf returns the workflow, Crew or Code root a path lies in (a run
+// placeRootOf returns the workflow or Crew root a path lies in (a run
 // folder or file inside it included), or "".
 func placeRootOf(raw string) string {
 	segments := strings.Split(strings.Trim(strings.TrimSpace(raw), "/"), "/")
 	switch {
 	case len(segments) >= 2 && (segments[0] == "Workflow" || segments[0] == crewSharedRootName):
 		return cleanAttachRoot(strings.Join(segments[:2], "/"))
-	}
-	if ref := workspaceref.MustParse(raw); ref.HasOwner() {
-		if projectRoot, project, ok := ref.Project(); ok {
-			return cleanAttachRoot(ref.WithLogical(projectRoot + "/" + project).PhysicalKeepOwner(""))
-		}
 	}
 	return ""
 }
@@ -150,12 +122,8 @@ func placeRootOf(raw string) string {
 // root: a caller's own Crew or Code arrives in its logical form
 // (Chats/Work/projects/<id>, Chats/Code/projects/<id>), which is their
 // _users tree.
-func attachRootForCaller(userID, raw string) string {
-	raw = strings.Trim(strings.TrimSpace(raw), "/")
-	if ref := workspaceref.MustParse(raw); !ref.HasOwner() && ref.IsProject() && ref.Logical() == raw {
-		raw = ref.Physical(userID)
-	}
-	return cleanAttachRoot(raw)
+func attachRootForCaller(_ string, raw string) string {
+	return cleanAttachRoot(strings.Trim(strings.TrimSpace(raw), "/"))
 }
 
 func readPlaceMCPAttachmentsLocked() (map[string][]placeMCPAttachment, error) {
@@ -167,26 +135,7 @@ func readPlaceMCPAttachmentsLocked() (map[string][]placeMCPAttachment, error) {
 	if err := readPlaceMCPJSON(file, &all); err != nil {
 		return nil, err
 	}
-	// Entries recorded under a migrated Crew's old root belong to its Crew/<folder> root (merged in memory; the
-	// next write stores them under the new key).
-	for key, list := range all {
-		for i := range list {
-			if list[i].Scope == "user" {
-				continue
-			}
-			if list[i].StoreRoot == "" {
-				list[i].StoreRoot = key
-			}
-			if cleanAttachRoot(list[i].StoreRoot) == "" || cleanAttachRoot(list[i].StoreRoot) != cleanAttachRoot(key) {
-				return nil, fmt.Errorf("connection store does not match its project")
-			}
-		}
-		all[key] = list
-		if folded := cleanAttachRoot(key); folded != "" && folded != key {
-			all[folded] = append(all[folded], list...)
-			delete(all, key)
-		}
-	}
+
 	return all, nil
 }
 
@@ -231,16 +180,12 @@ func placeMCPCanAttach(ctx context.Context, userID, root string) bool {
 		level, _ := workflowAccessForWorkspacePath(ctx, claims, root)
 		return level == WorkflowAccessOwner || level == WorkflowAccessWrite
 	}
-	if isCodePlaceRoot(root) {
-		// A Code lives in its owner's tree; only the owner connects there.
-		return projectStorageOwner(root) == sanitizeUserIDForPath(userID)
-	}
 	ref, ok := resolveCrewPath(ctx, userID, root)
 	return ok && crewAccessFor(claims, ref) == crewAccessOwner
 }
 
 // placeMCPUsableBy reports whether a session may use root's connections. A connection added to a workflow,
-// Relay, Crew or Code belongs to that place and is used by everyone with access to it (DECISIONS 2026-10-04):
+// Relay or Crew belongs to that place and is used by everyone with access to it (DECISIONS 2026-10-04):
 // a person needs access to the place, and a session with no person (a run, step or schedule of the place,
 // whose place comes from server-set session data) uses them as the place's own.
 func placeMCPUsableBy(ctx context.Context, person, root string) bool {
@@ -259,9 +204,6 @@ func placeMCPUsableBy(ctx context.Context, person, root string) bool {
 	if strings.HasPrefix(root, "Workflow/") {
 		level, _ := workflowAccessForWorkspacePath(ctx, claims, root)
 		return level != WorkflowAccessNone
-	}
-	if isCodePlaceRoot(root) {
-		return projectStorageOwner(root) == sanitizeUserIDForPath(person)
 	}
 	ref, ok := resolveCrewPath(ctx, person, root)
 	return ok && crewAccessFor(claims, ref) != crewAccessNone

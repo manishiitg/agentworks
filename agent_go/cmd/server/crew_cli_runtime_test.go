@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -97,7 +96,7 @@ func TestCrewChatModesSeparatePromptSkillsAndSessionIdentity(t *testing.T) {
 	if slices.Contains(base.Skills, "crew-run") || slices.Contains(base.Skills, "crew-builder") {
 		t.Fatal("mode mutated the registered base definition")
 	}
-	code := &resolvedAgentProfile{Definition: codeproduct.BuiltinAgentProfile(), Prompt: "Code prompt"}
+	code := &resolvedAgentProfile{Definition: workproduct.BuiltinAgentProfile(), Prompt: "Code prompt"}
 	req := QueryRequest{SelectedSkills: []string{"code-mcp"}}
 	before := agentProfileSessionKey(code)
 	if err := applyCrewChatMode(code, &req, true); err != nil || !strings.Contains(code.Prompt, "Crew Run") || before == agentProfileSessionKey(code) || code.Definition.Runtime.AgentTools.Mode != "mcp_only" || !slices.Contains(req.SelectedSkills, "crew-run") {

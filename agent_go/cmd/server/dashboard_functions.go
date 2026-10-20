@@ -39,11 +39,9 @@ func (api *StreamingAPI) dashboardFunctionDispatch(w http.ResponseWriter, r *htt
 	req = req.WithContext(context.WithValue(ctx, UserContextKey, claims))
 	rec := httptest.NewRecorder()
 	switch resolved.Target.Kind {
-	case "crew", "code":
+	case "crew":
 		origin := crewProfileID
-		if resolved.Target.Kind == "code" {
-			origin = "code"
-		}
+
 		args["crew_id"] = workspaceExternalID(origin, resolved.Target.ID)
 		api.externalCrewCall(rec, req, crewTool, args)
 	case "workflow":

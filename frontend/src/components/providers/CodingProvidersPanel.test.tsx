@@ -8,7 +8,7 @@ vi.mock('../../services/llm-config-api', () => ({
   llmConfigService: { getProviderManifest: vi.fn(), getProviderModels: vi.fn(), startProviderSetup: vi.fn(), cancelProviderSetup: vi.fn(), getProviderConnections: vi.fn(), getProviderAccountCosts: vi.fn(async () => ({ providers: [] })), getProductDefaults: vi.fn(async () => ({})), setProductDefaults: vi.fn() },
   providerApiErrorText: (_error: unknown, fallback: string) => fallback,
 }))
-const auth = vi.hoisted(() => ({ state: { isMultiUserMode: false, isMultiUserModeChecked: true, user: null as { is_admin?: boolean; is_code_reviewer?: boolean } | null } }))
+const auth = vi.hoisted(() => ({ state: { isMultiUserMode: false, isMultiUserModeChecked: true, user: null as { is_admin?: boolean; is_crew_reviewer?: boolean } | null } }))
 vi.mock('../../stores/useAuthStore', () => ({
   useAuthStore: (selector: (state: typeof auth.state) => unknown) => selector(auth.state),
 }))
@@ -65,7 +65,7 @@ afterEach(() => {
 
 describe('CodingProvidersPanel', () => {
   it.each(['member', 'reviewer', 'admin', 'unknown'] as const)('gates review navigation and account costs for %s', async role => {
-    auth.state = { isMultiUserMode: role !== 'unknown', isMultiUserModeChecked: role !== 'unknown', user: { is_admin: role === 'admin', is_code_reviewer: role === 'reviewer' } }
+    auth.state = { isMultiUserMode: role !== 'unknown', isMultiUserModeChecked: role !== 'unknown', user: { is_admin: role === 'admin', is_crew_reviewer: role === 'reviewer' } }
     vi.mocked(llmConfigService.getProviderManifest).mockResolvedValue({ providers: [provider({})], provider_order: ['codex-cli'], integration_kinds: {} })
     const host = document.createElement('div')
     document.body.append(host)

@@ -166,22 +166,16 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
         {activeTab === 'agents' && canEdit && <CrewPublishedAgents key={`${product.profileId}:${projectId}`} profileId={product.profileId} projectId={projectId} />}
         {overview && <ConnectedProjectAccounts workspacePath={workspacePath} options={navigationOptions} onOpen={selectConnection} />}
         {activeTab === 'apps' && <ProjectPluginsPanel tab={activePluginTab}
-          connections={(!enabledPanels || enabledPanels.has('mcp')) ? (view => product.profileId === 'code' ? (<ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun={product.noun} canEdit={canEdit} onAsk={onAsk} selectedServers={selectedServers} onSelectedServersChange={async servers => {
+          connections={(!enabledPanels || enabledPanels.has('mcp')) ? (view => (<ProjectMcpPanel view={view} chatSessionId={chatSessionId} workspacePath={workspacePath} placeNoun={product.noun} canEdit={canEdit} onAsk={onAsk} selectedServers={selectedServers} onSelectedServersChange={async servers => {
               await onSelectedServersChange(servers)
               const store = useChatStore.getState()
               for (const chat of Object.values(store.chatTabs)) {
-                if (chat.metadata?.agentProfileId === 'code' && chat.metadata?.agentProfileProjectId === projectId) {
+                if (chat.metadata?.agentProfileId === 'work' && chat.metadata?.agentProfileProjectId === projectId) {
                   store.setTabConfig(chat.tabId, { selectedServers: servers.length ? servers : ['NO_SERVERS'] })
                   store.setTabMetadata(chat.tabId, { agentProfileRuntimeDirty: true, agentProfileMCPSelectionInitialized: true })
                 }
               }
-            }} />) : (<WorkMCPTabBody canEdit={canEdit} view={view}
-          tabId={tabId}
-          projectId={projectId}
-          workspacePath={workspacePath}
-          onAsk={onAsk}
-          onSelectedServersChange={onSelectedServersChange}
-        />)) : undefined}
+            }} />)) : undefined}
           secrets={(!enabledPanels || enabledPanels.has('secrets')) ? <ProjectSecretsPanel placeNoun={product.noun}
             selectedSecrets={selectedSecrets} workspacePath={workspacePath} onSecretChange={names => onSelectedSecretsChange?.(names)}
             selectedGlobalSecrets={selectedGlobalSecrets} onGlobalSecretChange={onSelectedGlobalSecretsChange ? names => onSelectedGlobalSecretsChange(names ?? []) : undefined} /> : undefined}

@@ -15,9 +15,8 @@ import { openWorkflowPresetPage, pickWorkflowActiveSession, workflowSessionBotPl
 import { runtimeHasBackgroundAgents, runtimeNeedsUserInput, sessionRuntimeStatus } from '../utils/runtimeActivity'
 import { hasIdleAliveCodingAgent, isVisibleActivitySession, nonWorkflowActivityTitle } from '../utils/activitySessions'
 import { isLocalActivityFallbackTab } from '../utils/activityFallback'
-import { isCodeProductSession, isWorkProductSession, openGlobalActivitySession, openGlobalTab, workProjectIdForTab } from '../utils/globalProductNavigation'
+import { isWorkProductSession, openGlobalActivitySession, openGlobalTab, workProjectIdForTab } from '../utils/globalProductNavigation'
 import type { WorkSession } from '../products/work/workSessions'
-import { CODE_PRODUCT } from '../products/work/projectProduct'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { usePanelSwitcherStore } from '../stores/usePanelSwitcherStore'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -81,7 +80,7 @@ interface ActiveWorkItem {
 
 interface CrewChatItem {
   /** A Crew, or a Code workspace (same project surface, its own product). */
-  type: 'crew' | 'code'
+  type: 'crew'
   id: string
   label: string
   subtitle: string
@@ -130,7 +129,7 @@ const isWorkflowSession = (session: ActiveSessionInfo): boolean => {
 }
 
 const activeSessionLabel = (session: ActiveSessionInfo): string => {
-  if (isWorkProductSession(session) || isCodeProductSession(session)) {
+  if (isWorkProductSession(session)) {
     return session.current_execution_name ||
       session.title ||
       session.workspace_path?.split('/').filter(Boolean).pop() ||
@@ -181,7 +180,7 @@ const workflowSessionMatchesPreset = (
 
 const itemTypeRank = (item: QuickSwitcherItem): number => {
   if (item.type === 'active') return 0
-  if (item.type === 'crew' || item.type === 'code') return 1
+  if (item.type === 'crew' || item.type === 'crew') return 1
   if (item.type === 'chat') return 1
   if (item.type === 'workflow') return 2
   return 3
@@ -231,7 +230,7 @@ const activeSessionSearchText = (session?: ActiveSessionInfo): string =>
   session ? `${session.current_execution_name || ''} ${session.session_id}` : ''
 
 function QuickNavigationIcon({ item }: { item: QuickNavigationItem }) {
-  const surface = item.surface ?? (item.scope === 'workflows' ? 'agentworks' : item.scope === 'relays' ? 'relays' : item.scope === 'crew' ? 'work' : item.scope === 'code' ? 'code' : undefined)
+  const surface = item.surface ?? (item.scope === 'workflows' ? 'agentworks' : item.scope === 'relays' ? 'relays' : item.scope === 'crew' ? 'work' : undefined)
   if (item.action === 'create' || item.scope === 'create') return <Plus className="h-4 w-4 shrink-0" aria-hidden="true" />
   if (surface) return <ProductSurfaceIcon surface={surface} />
   const Icon = item.scope === 'panels' ? PanelRight : item.scope === 'products' ? LayoutGrid : item.scope === 'chats' ? MessageSquare
@@ -270,7 +269,6 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   // Every Crew the user can use (owned and shared), so the switcher lists them
   // all, not only Crews with an open tab or running work. Loaded per opening.
   const [crewDirectory, setCrewDirectory] = useState<WorkSession[]>([])
-  const [codeDirectory, setCodeDirectory] = useState<WorkSession[]>([])
   // Code workspaces are listed only where this deployment offers Code and
   // the account may open it.
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
@@ -278,10 +276,6 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
   const navigationItems = useMemo(() => quickNavigationItems(user, productSurface, isMultiUserMode), [user, productSurface, isMultiUserMode])
   const footerItems = navigationItems.filter(item => item.type === 'menu' && item.action !== 'create')
-  const codeAvailable = useMemo(
-    () => isEnabledProductSurface('code') && intersectAllowedProductSurfaces(['code'], allowedProducts).includes('code'),
-    [allowedProducts],
-  )
   useEffect(() => {
     if (!isOpen) return
     let cancelled = false
@@ -292,19 +286,11 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       .then(module => module.loadWorkSessionsIncludingShared())
       .then(crews => { if (!cancelled) setCrewDirectory(crews) })
       .catch(() => { if (!cancelled) setCrewDirectory([]) })
-    if (codeAvailable) {
-      void sessions
-        .then(module => module.loadWorkSessionsIncludingShared(CODE_PRODUCT))
-        .then(codes => { if (!cancelled) setCodeDirectory(codes) })
-        .catch(() => { if (!cancelled) setCodeDirectory([]) })
-    } else {
-      setCodeDirectory([])
-    }
     // All accessible workflows, even if the workflow view was never opened.
     const presets = useGlobalPresetStore.getState()
     if (!presets.workflowPresetsLoaded) void presets.refreshPresets()
     return () => { cancelled = true }
-  }, [isOpen, codeAvailable])
+  }, [isOpen])
 
   // Reset state on open.
   useEffect(() => {
@@ -341,17 +327,13 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     const crewTabs = Object.fromEntries(
       Object.entries(chatTabs).filter(([, tab]) => tab.metadata?.agentProfileId === 'work'),
     )
-    const codeTabs = codeAvailable
-      ? Object.fromEntries(Object.entries(chatTabs).filter(([, tab]) => tab.metadata?.agentProfileId === 'code'))
-      : EMPTY_CHAT_TABS
-    const crewSessionIds = new Set([...Object.values(crewTabs), ...Object.values(codeTabs)].map(tab => tab.sessionId).filter(Boolean))
+    const crewSessionIds = new Set(Object.values(crewTabs).map(tab => tab.sessionId).filter(Boolean))
     const sharedSessions = activeSessions.filter(session =>
       agentWorksSessions.some(candidate => candidate.session_id === session.session_id) ||
       crewSessionIds.has(session.session_id) ||
-      isWorkProductSession(session) ||
-      (codeAvailable && isCodeProductSession(session)),
+      isWorkProductSession(session),
     )
-    const allTabs = { ...agentWorksTabs, ...crewTabs, ...codeTabs }
+    const allTabs = { ...agentWorksTabs, ...crewTabs }
     const activeSessionsByID = new Map<string, ActiveSessionInfo>()
     for (const session of sharedSessions.filter(isVisibleActivitySession)) {
       activeSessionsByID.set(session.session_id, session)
@@ -405,38 +387,6 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         }
       })
 
-    const codeItems: CrewChatItem[] = Object.values(codeTabs)
-      .filter(tab => !tab.metadata?.isScheduledRun && !tab.metadata?.isBotRun && !tab.metadata?.isViewOnly)
-      .map(tab => {
-        const activeSession = tab.sessionId ? visibleActiveSessions.find(session => session.session_id === tab.sessionId) : undefined
-        return {
-          type: 'code' as const,
-          id: `code:${tab.tabId}`,
-          label: tab.metadata?.agentProfileProjectTitle || tab.name || 'Code',
-          // A side chat (PLAT-571) is named after itself so two chats of one project differ.
-          subtitle: `Code${isWorkSideChatTab(tab) ? ` · ${tab.name}` : ''}${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`,
-          searchText: activeSessionSearchText(activeSession),
-          isActive: productSurface === 'code' && tab.tabId === activeTabId,
-          lastAccessedAt: tab.lastAccessedAt || tab.createdAt || 0,
-          tabId: tab.tabId,
-          activeSession,
-          hasLocalActivity: tabHasRunningWork(tab),
-        }
-      })
-    const openCodeProjects = new Set(Object.values(codeTabs).map(tab => workProjectIdForTab(tab)).filter(Boolean))
-    const directoryCodeItems: CrewChatItem[] = codeDirectory
-      .filter(code => !openCodeProjects.has(code.id))
-      .map(code => ({
-        type: 'code' as const,
-        id: `code-project:${code.id}`,
-        label: code.title,
-        subtitle: `Code · ${code.shared ? `shared by ${code.shared.ownerUsername || code.shared.ownerId}` : 'yours'}`,
-        isActive: productSurface === 'code' && useProductSurfaceStore.getState().selectedCodeProjectId === code.id,
-        lastAccessedAt: 0,
-        projectId: code.id,
-        hasLocalActivity: false,
-      }))
-
     const openCrewProjects = new Set(Object.values(crewTabs).map(tab => workProjectIdForTab(tab)).filter(Boolean))
     const directoryCrewItems: CrewChatItem[] = crewDirectory
       .filter(crew => !openCrewProjects.has(crew.id))
@@ -484,27 +434,26 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         }
       })
 
-    const listedTabIds = new Set([...chatItems, ...crewItems, ...codeItems].map(item => item.tabId))
+    const listedTabIds = new Set([...chatItems, ...crewItems].map(item => item.tabId))
     const activeItems: ActiveWorkItem[] = visibleActiveSessions
       .map(session => {
         const tab = findTabForSession(allTabs, session.session_id)
-        const code = isCodeProductSession(session)
-        const crew = !code && isWorkProductSession(session)
-        const workflow = !crew && !code && isWorkflowSession(session)
+        const crew = isWorkProductSession(session)
+        const workflow = !crew && isWorkflowSession(session)
         const status = activeSessionStatusLabel(session)
         const current = session.current_execution_name ? ` · ${session.current_execution_name}` : ''
         const origin = sessionOriginLabel(session)
         const coveredByTab = !!tab && listedTabIds.has(tab.tabId)
-        const coveredByAutomation = !crew && !code && workflow &&
+        const coveredByAutomation = !crew && workflow &&
           workflowItems.some(item => workflowSessionMatchesPreset(session, item.preset, agentWorksTabs))
         return {
           type: 'active' as const,
           id: `active:${session.session_id}`,
           label: titleWithoutOrigin(activeSessionLabel(session), origin),
-          subtitle: `${code ? 'Active Code work' : crew ? 'Active Crew work' : workflow ? 'Active automation' : 'Active chat'} · ${origin} · ${status}${current}`,
+          subtitle: `${crew ? 'Active Crew work' : workflow ? 'Active automation' : 'Active chat'} · ${origin} · ${status}${current}`,
           searchText: session.session_id,
           activeScopeOnly: coveredByTab || coveredByAutomation,
-          isActive: !!tab && tab.tabId === activeTabId && productSurface === (code ? 'code' : crew ? 'work' : 'agentworks'),
+          isActive: !!tab && tab.tabId === activeTabId && productSurface === (crew ? 'work' : 'agentworks'),
           lastAccessedAt: tab?.lastAccessedAt || tab?.createdAt || Date.parse(session.last_activity || session.created_at || '') || 0,
           session,
           tabId: tab?.tabId,
@@ -521,7 +470,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       return a.label.localeCompare(b.label)
     })
 
-    const projectItems = [...activeItems, ...crewItems, ...codeItems, ...chatItems, ...workflowItems, ...directoryCrewItems, ...directoryCodeItems].sort((a, b) => {
+    const projectItems = [...activeItems, ...crewItems,  ...chatItems, ...workflowItems, ...directoryCrewItems].sort((a, b) => {
       const activityOrder = compareItemActivity(a, b)
       if (activityOrder) return activityOrder
       if (a.type !== b.type) return itemTypeRank(a) - itemTypeRank(b)
@@ -530,20 +479,18 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     const visibleProducts = new Set(visibleProductSurfaceIDs(user?.allowed_products))
     return [...projectItems.filter(item => {
       if (item.type === 'crew') return visibleProducts.has('work')
-      if (item.type === 'code') return visibleProducts.has('code')
       if (item.type === 'workflow') return visibleProducts.has(item.preset.workflowKind === 'relay' ? 'relays' : 'agentworks')
       if (item.type === 'active') {
         if (isWorkProductSession(item.session)) return visibleProducts.has('work')
-        if (isCodeProductSession(item.session)) return visibleProducts.has('code')
       }
       return visibleProducts.has('agentworks') || visibleProducts.has('relays')
     }), ...navigationItems.filter(item => item.scope), ...navigationItems.filter(item => !item.scope), ...panelItems]
-  }, [isOpen, isWorkflowMode, isChatMode, productSurface, activePresetId, chatTabs, activeSessions, activeTabId, workflowPresets, recentPresetOrder, recentPresetAccessedAt, crewDirectory, codeDirectory, codeAvailable, navigationItems, panelItems, user?.allowed_products])
+  }, [isOpen, isWorkflowMode, isChatMode, productSurface, activePresetId, chatTabs, activeSessions, activeTabId, workflowPresets, recentPresetOrder, recentPresetAccessedAt, crewDirectory, navigationItems, panelItems, user?.allowed_products])
 
   // Filter and sort
   const filteredItems = useMemo<QuickSwitcherItem[]>(() => {
     const rawQuery = query.toLowerCase().trim()
-    const scopeMatch = rawQuery.match(/^@(active|workflows?|relays?|chats?|tabs|crew|code|products?|menus?|panels?|create)\s*/)
+    const scopeMatch = rawQuery.match(/^@(active|workflows?|relays?|chats?|tabs|crew|products?|menus?|panels?|create)\s*/)
     const scope = scopeMatch?.[1] || scopeFilter
     const q = scopeMatch ? rawQuery.slice(scopeMatch[0].length).trim() : rawQuery
     const scoped = scope
@@ -558,10 +505,9 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           if (scope === 'product' || scope === 'products') return item.type === 'product'
           if (scope === 'panel' || scope === 'panels') return item.type === 'panel'
           if (scope === 'menu' || scope === 'menus') return item.type === 'menu' || item.type === 'panel'
-          if (scope === 'crew') return creates('work') || creates('code') || item.type === 'crew' || item.type === 'code' || (item.type === 'active' && !item.activeScopeOnly && (isWorkProductSession(item.session) || isCodeProductSession(item.session)))
-          if (scope === 'code') return creates('code') || item.type === 'code' || (item.type === 'active' && !item.activeScopeOnly && isCodeProductSession(item.session))
+          if (scope === 'crew') return creates('work') || creates('work') || item.type === 'crew' || (item.type === 'active' && !item.activeScopeOnly && (isWorkProductSession(item.session) || isWorkProductSession(item.session)))
           if (scope === 'chat' || scope === 'chats') return item.type === 'chat'
-          return item.type === 'chat' || item.type === 'workflow' || item.type === 'crew' || item.type === 'code'
+          return item.type === 'chat' || item.type === 'workflow' || item.type === 'crew'
         })
       : allItems.filter(item => item.type !== 'active' || !item.activeScopeOnly)
 
@@ -676,15 +622,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       return
     }
 
-    if (item.type === 'code' && !item.tabId && item.projectId) {
-      const surfaces = useProductSurfaceStore.getState()
-      surfaces.setSelectedCodeProjectId(item.projectId)
-      openProductWorkspace('code')
-      onClose()
-      return
-    }
-
-    if ((item.type === 'chat' || item.type === 'crew' || item.type === 'code') && item.tabId) {
+    if ((item.type === 'chat' || item.type === 'crew') && item.tabId) {
       console.log(`%c[QuickSwitcher] Switching to chat tab: ${item.label} (${item.tabId})`, 'color: #FF9800; font-weight: bold')
       openGlobalTab(item.tabId)
       onClose()
@@ -785,7 +723,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                   ? item.action === 'providers' ? Cpu : item.action === 'users' ? Users : item.action === 'mcp' ? Plug : item.action === 'schedules' ? CalendarClock : Activity
                 : item.type === 'crew'
                   ? Users
-                : item.type === 'code'
+                : item.type === 'crew'
                   ? Code2
                 : item.type === 'active'
                   ? Activity

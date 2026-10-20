@@ -17,7 +17,7 @@ func TestLaptopSettingsOwnerAndOfflineDowngrade(t *testing.T) {
 	api := f.api
 	const root = "Crew/dashboard-team"
 	request := func(method, owner, body string) *http.Request {
-		return mux.SetURLVars(profileRouteRequest(method, "/laptop", []byte(body), owner), map[string]string{"id": "code", "project_id": "dashboard-team"})
+		return mux.SetURLVars(profileRouteRequest(method, "/laptop", []byte(body), owner), map[string]string{"id": "work", "project_id": "dashboard-team"})
 	}
 	for _, user := range []string{"owner", "other"} {
 		response := httptest.NewRecorder()

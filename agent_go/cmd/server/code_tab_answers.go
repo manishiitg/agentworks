@@ -5,7 +5,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 )
 
 // A Code tab that was handed work by another tab (ask_project_chat, or the task of open_project_chat) answers in its own
@@ -18,7 +18,7 @@ const tabFinalAnswerPrefix = "final-"
 // tabFinalAnswerText is the message to send back, or "" when nothing should be: only between two tabs of Code, not for an
 // answer relayed already, and not when the tab replied itself after the message it was asked.
 func tabFinalAnswerText(c agentConversation, m agentMessage, source, dest agentMessageEndpoint, final string) string {
-	if dest.Profile != codeproduct.ProfileID || source.Profile != codeproduct.ProfileID || dest.Session == "" || source.Session == "" || dest.Session == source.Session {
+	if dest.Profile != workproduct.ProfileID || source.Profile != workproduct.ProfileID || dest.Session == "" || source.Session == "" || dest.Session == source.Session {
 		return ""
 	}
 	if strings.HasPrefix(m.Submission, tabFinalAnswerPrefix) || m.Kind != "" {
@@ -54,7 +54,7 @@ func (api *StreamingAPI) relayTabFinalAnswer(ctx context.Context, delivered agen
 		}
 	}
 	// The tab is called by its current name, not the one it had when the conversation started.
-	if identities, e := defaultProductConversationRegistryStore().agentIdentities(ctx, dest.UserID, codeproduct.ProfileID, dest.ID); e == nil {
+	if identities, e := defaultProductConversationRegistryStore().agentIdentities(ctx, dest.UserID, workproduct.ProfileID, dest.ID); e == nil {
 		if identity, ok := identities[dest.ChatKey]; ok && strings.TrimSpace(identity.Name) != "" {
 			dest.Label = strings.TrimSpace(identity.Name)
 		}

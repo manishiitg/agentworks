@@ -10,7 +10,7 @@ import { useAuthStore } from '../stores/useAuthStore'
 export default function McpConnectPage() {
   const user = useAuthStore(state => state.user)
   const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
-  const codeReview = user?.is_code_reviewer === true || (user?.is_admin === true && isMultiUserMode)
+  const codeReview = user?.is_crew_reviewer === true || (user?.is_admin === true && isMultiUserMode)
   return (
     <section aria-label="Connect an AI agent" className="flex h-full min-h-0 flex-col bg-background">
       <WorkspacePageHeader page="mcp" title="Connect AI tools" icon={Plug} />

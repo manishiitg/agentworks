@@ -9,23 +9,16 @@ import (
 
 func stubCrewLookups(t *testing.T, owners map[string]string, aliases map[string]string) {
 	t.Helper()
-	prevOwners, prevAliases := crewOwners.read, crewPathAliases.read
+	prevOwners := crewOwners.read
 	crewOwners.read = func(_ context.Context, root string) string { return owners[root] }
-	crewPathAliases.read = func(context.Context) map[string]string { return aliases }
 	crewOwners.mu.Lock()
 	crewOwners.entries = map[string]crewOwnerEntry{}
 	crewOwners.mu.Unlock()
-	crewPathAliases.mu.Lock()
-	crewPathAliases.aliases = nil
-	crewPathAliases.mu.Unlock()
 	t.Cleanup(func() {
-		crewOwners.read, crewPathAliases.read = prevOwners, prevAliases
+		crewOwners.read = prevOwners
 		crewOwners.mu.Lock()
 		crewOwners.entries = map[string]crewOwnerEntry{}
 		crewOwners.mu.Unlock()
-		crewPathAliases.mu.Lock()
-		crewPathAliases.aliases = nil
-		crewPathAliases.mu.Unlock()
 	})
 }
 

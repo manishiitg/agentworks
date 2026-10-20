@@ -10,13 +10,12 @@ export function workWorkspacePanels({
   showShell = false,
   enabledPanels,
 }: {
-  profileId?: 'work' | 'code'
+  profileId?: 'work'
   cowork?: boolean
   readOnly?: boolean
   showShell?: boolean
   enabledPanels?: Set<string>
 } = {}) {
-  const code = profileId === 'code'
   const pick = (ids: string[]) =>
     ids
       .map((id) => WORK_PANELS.views.find((item) => item.id === id))
@@ -26,20 +25,10 @@ export function workWorkspacePanels({
         ...pick(['dashboard', 'browser', 'schedules', 'memory']),
         ...WORK_PANELS.ops.filter((item) => item.id === 'costs'),
       ]
-    : code
-      ? [
-          ...WORK_PANELS.views.filter((item) => item.id !== 'browser'),
-          ...WORK_PANELS.ops.filter((item) => item.id === 'costs'),
-        ]
-      : WORK_PANELS.views
+    : WORK_PANELS.views
   const ops = cowork
     ? WORK_PANELS.ops.filter((item) => item.id === 'files' || item.id === 'history')
-    : code
-      ? [
-          ...WORK_PANELS.ops.filter((item) => item.id === 'files' || item.id === 'history' || item.id === 'shell' || item.id === 'database'),
-          ...pick(['browser']),
-        ]
-      : WORK_PANELS.ops
+    : WORK_PANELS.ops
   return {
     views: views
       .filter((item) =>

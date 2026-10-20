@@ -22,7 +22,7 @@ func scheduleUsesCrewChatDelivery(job productScheduleJob) bool {
 		return false
 	}
 	switch job.Profile.ID {
-	case "work", "crew", "code":
+	case "work", "crew":
 		return true
 	default:
 		return false

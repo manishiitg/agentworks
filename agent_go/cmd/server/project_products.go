@@ -3,12 +3,11 @@ package server
 import (
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // projectProduct is a product whose conversations live in per-project
-// folders under the owner's tree: Crew (profile work) and Code. Both are built
+// folders under the owner's tree: Crew (profile work). Both are built
 // from the same shared features, so owner-side project behavior (workspace
 // resolution, sandbox, keyed chat, files, tools) applies to either.
 //
@@ -30,8 +29,7 @@ type projectProduct struct {
 const crewProfileID = "work"
 
 var projectProducts = []projectProduct{
-	{ProfileID: crewProfileID, ProjectsRoot: workspaceref.CrewProjectsRoot, FallbackName: "Crew", RunAudience: true},
-	{ProfileID: codeproduct.ProfileID, ProjectsRoot: codeproduct.ProjectsRoot, FallbackName: "Code", RunAudience: true},
+	{ProfileID: crewProfileID, ProjectsRoot: workspaceref.SharedCrewRoot, FallbackName: "Crew", RunAudience: true},
 }
 
 // isProjectProfileID reports whether profileID is a project product.
@@ -64,15 +62,6 @@ func projectProductForPath(workspacePath string) (projectProduct, string, bool) 
 		product, _ := projectProductForProfile(crewProfileID)
 		return product, project, true
 	}
-	root, project, ok := ref.Project()
-	if !ok {
-		return projectProduct{}, "", false
-	}
-	for _, product := range projectProducts {
-		if product.ProjectsRoot == root {
-			return product, project, true
-		}
-	}
 	return projectProduct{}, "", false
 }
 
@@ -84,10 +73,6 @@ func isProjectWorkspacePath(workspacePath string) bool {
 }
 
 // isCodeProjectPath reports whether workspacePath is inside a Code project.
-func isCodeProjectPath(workspacePath string) bool {
-	product, _, ok := projectProductForPath(workspacePath)
-	return ok && product.ProfileID == codeproduct.ProfileID
-}
 
 // projectProductName is the display name its product.yaml gives the project
 // product that owns workspacePath (profile.name: "Crew", "Code"). It falls

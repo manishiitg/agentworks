@@ -11,9 +11,7 @@ import (
 // accounts or the permission checks those accounts already enforce.
 func (api *StreamingAPI) workspaceShareAccounts(ctx context.Context, target dashboardTarget) []runShareAccount {
 	origin := crewProfileID
-	if target.Kind == "code" {
-		origin = "code"
-	}
+
 	manifest, err := readCrewProjectManifests(ctx, origin, target.Root)
 	if err != nil {
 		return nil

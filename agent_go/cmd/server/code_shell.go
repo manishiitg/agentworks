@@ -18,13 +18,13 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsauth"
 )
 
-// A Code workspace's plain shell (docs/design/code_product.md, "Terminal").
+// A Crew workspace's plain shell (docs/design/code_product.md, "Terminal").
 //
 // The workspace service starts the shell in the same sandbox as the shell
 // tool (POST /api/shell/interactive/start: Landlock, private /tmp, its own
@@ -95,11 +95,11 @@ func codeShellTab(r *http.Request) (int, bool) {
 // user's attached folders, the coding agent's own files write-protected, and
 // the Code's own browser.
 func (api *StreamingAPI) codeShellFolderGuard(ctx context.Context, userID, root string) *workspace.FolderGuardConfig {
-	sandbox := codeproduct.BuiltinAgentProfile().Runtime.Sandbox
+	sandbox := workproduct.BuiltinAgentProfile().Runtime.Sandbox
 	if api != nil && api.agentProfiles != nil {
 		product, _, ok := projectProductForPath(root)
 		if !ok {
-			product.ProfileID = codeproduct.ProfileID
+			product.ProfileID = workproduct.ProfileID
 		}
 		if profile, err := api.agentProfiles.Resolve(product.ProfileID, 0, userID); err == nil {
 			sandbox = profile.Runtime.Sandbox
@@ -136,41 +136,38 @@ func (api *StreamingAPI) codeShellTargetFull(r *http.Request) (userID, shellID, 
 	claims := GetUserFromContext(r.Context())
 	tab, validTab := codeShellTab(r)
 	if !validTab {
-		return "", "", "", "", "", http.StatusBadRequest, fmt.Sprintf("a Code has at most %d terminals (tab 1 to %d)", codeShellMaxTabs, codeShellMaxTabs)
+		return "", "", "", "", "", http.StatusBadRequest, fmt.Sprintf("a Crew has at most %d terminals (tab 1 to %d)", codeShellMaxTabs, codeShellMaxTabs)
 	}
 	projectID = strings.TrimSpace(mux.Vars(r)["project_id"])
 	if claims == nil || strings.TrimSpace(claims.UserID) == "" || projectID == "" || api == nil || api.agentProfiles == nil {
-		return "", "", "", "", "", http.StatusNotFound, "Code workspace not found"
+		return "", "", "", "", "", http.StatusNotFound, "Crew workspace not found"
 	}
 	profileID := strings.TrimSpace(mux.Vars(r)["id"])
 	if profileID == "" {
-		profileID = codeproduct.ProfileID
+		profileID = workproduct.ProfileID
 	}
 	if !isProjectProfileID(profileID) {
 		return "", "", "", "", "", http.StatusNotFound, "Project not found"
 	}
 	profile, err := api.agentProfiles.Resolve(profileID, 0, claims.UserID)
 	if err != nil || !userAllowedProduct(claims, profile.Product) {
-		return "", "", "", "", "", http.StatusNotFound, "Code workspace not found"
+		return "", "", "", "", "", http.StatusNotFound, "Crew workspace not found"
 	}
 	project, err := resolveCrewProjectBinding(r.Context(), claims.UserID, profile, projectID, "")
 	if err != nil {
-		return "", "", "", "", "", http.StatusNotFound, "Code workspace not found"
+		return "", "", "", "", "", http.StatusNotFound, "Crew workspace not found"
 	}
 	if !project.OwnedByCaller || !userAccessForClaims(claims).CanEdit {
 		return "", "", "", "", "", http.StatusForbidden, "Only a project Builder can use its terminal"
 	}
-	if mode := codeProjectMode(r.Context(), project.Binding.WorkspacePath); profileID == "code" && mode == "cowork" {
+	if mode := codeProjectMode(r.Context(), project.Binding.WorkspacePath); profileID == crewProfileID && mode == "cowork" {
 		return "", "", "", "", "", http.StatusForbidden, "The terminal is available in Dev Crews. Choose a Dev Crew to use the server terminal."
 	}
 	// The authorized binding can still name the pre-move location. Send the
 	// trusted canonical root to both the shell and its guard; the workspace
 	// correctly refuses a symlink from a private user tree into Crew/.
 	root = canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(project.OwnerID, project.Binding.WorkspacePath))
-	shellProjectID := projectID
-	if profileID != "code" {
-		shellProjectID = profileID + ":" + projectID
-	}
+	shellProjectID := crewProfileID + ":" + projectID
 	return claims.UserID, codeShellID(project.OwnerID, shellProjectID, claims.UserID, tab), root, project.OwnerID, projectID, 0, ""
 }
 
@@ -601,5 +598,5 @@ func projectTerminalBuilder(ctx context.Context, userID, root string) bool {
 		return false
 	}
 	mode := codeProjectMode(ctx, root)
-	return product.ProfileID != "code" || mode != "cowork"
+	return product.ProfileID != crewProfileID || mode != "cowork"
 }

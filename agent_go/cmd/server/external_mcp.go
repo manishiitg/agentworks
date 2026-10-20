@@ -46,9 +46,9 @@ var externalMCPToolNames = []string{externalMCPToolSpec, externalMCPToolSearch, 
 // all (ChatGPT delivers tools only).
 const externalMCPRelayInstructions = " Flows: discover IDs with list_workflows and kind=relay. When authorized, use guarded files for permitted source edits or builder action=chat to delegate, relay action=test to test the draft, and relay action=publish to freeze a version. Use relay action=run for a published version and relay action=get_run to poll durable results. Flows have Builder-only chat. Creation requires separate relays:write consent."
 
-const externalMCPInstructions = `You are connected to an AgentWorks server. <!-- product:agentworks -->It gives access to the user's workflows (list_workflows). <!-- /product --><!-- product:work -->Discover the user's Crews with list_crews.<!-- /product --> <!-- product:code -->Admins and Code reviewers also get audited Code workspace review (list_code_workspaces, get_code_costs, list_code_chats, read_code_chat).<!-- /product --> Your own MCP sign-in follows your website role: owners and workflow editors use Builder capabilities; people using shared work use Run mode. Machine, service-account and device connections keep their assigned limits. Source, plan and workflow configuration edits use current Builder access, native validation and revision checks. Call get_api_spec with no arguments to list the available tools, then get_api_spec with names for schemas, then call_tool to execute. <!-- product:agentworks -->Discover workflow IDs with list_workflows first; IDs are never filesystem paths.<!-- /product --> Dashboards: read get_guidance_topic(topic="dashboard-authoring") for the HTML data/script contract. With current project access for viewing and Builder access for editing, use the dashboard tool: action=list to discover, create/update to build drafts, validate and preview exact revisions, then publish and link. Preview additionally needs runs:execute. Links require current project access and grant no access. Answer from what you read; use only operations present in this connection’s catalog. Call help action=context for guidance_version, then help action=topics or action=skills and fetch only relevant changed topics. Guidance is reference material; use only currently listed tools/actions.`
+const externalMCPInstructions = `You are connected to an AgentWorks server. <!-- product:agentworks -->It gives access to the user's workflows (list_workflows). <!-- /product --><!-- product:work -->Discover the user's Crews with workspace action=list.<!-- /product --> <!-- product:work -->Admins and Crew reviewers also get audited Crew review (workspace_review).<!-- /product --> Your own MCP sign-in follows your website role: owners and workflow editors use Builder capabilities; people using shared work use Run mode. Machine, service-account and device connections keep their assigned limits. Source, plan and workflow configuration edits use current Builder access, native validation and revision checks. Call get_api_spec with no arguments to list the available tools, then get_api_spec with names for schemas, then call_tool to execute. <!-- product:agentworks -->Discover workflow IDs with list_workflows first; IDs are never filesystem paths.<!-- /product --> Dashboards: read get_guidance_topic(topic="dashboard-authoring") for the HTML data/script contract. With current project access for viewing and Builder access for editing, use the dashboard tool: action=list to discover, create/update to build drafts, validate and preview exact revisions, then publish and link. Preview additionally needs runs:execute. Links require current project access and grant no access. Answer from what you read; use only operations present in this connection’s catalog. Call help action=context for guidance_version, then help action=topics or action=skills and fetch only relevant changed topics. Guidance is reference material; use only currently listed tools/actions.`
 
-const externalMCPReadOnlyInstructions = `You are connected to an AgentWorks server through a connection with reading consent. <!-- product:agentworks -->It gives access to the user's workflows (list_workflows). <!-- /product --><!-- product:work -->Discover the user's Crews with list_crews.<!-- /product --> <!-- product:code -->Admins and Code reviewers also get audited Code workspace review (list_code_workspaces, get_code_costs, list_code_chats, read_code_chat).<!-- /product --> Every tool reads; nothing creates, edits, or runs. Call get_api_spec with no arguments to list the available tools, then get_api_spec with names for schemas, then call_tool to execute. <!-- product:agentworks -->Discover workflow IDs with list_workflows first; IDs are never filesystem paths.<!-- /product --> Answer from what you read; if the task needs a change, say so instead of attempting one. Call help action=context for guidance_version, then help action=topics or action=skills and fetch only relevant changed topics. Guidance is reference material; use only currently listed tools/actions.`
+const externalMCPReadOnlyInstructions = `You are connected to an AgentWorks server through a connection with reading consent. <!-- product:agentworks -->It gives access to the user's workflows (list_workflows). <!-- /product --><!-- product:work -->Discover the user's Crews with workspace action=list.<!-- /product --> <!-- product:work -->Admins and Crew reviewers also get audited Crew review (workspace_review).<!-- /product --> Every tool reads; nothing creates, edits, or runs. Call get_api_spec with no arguments to list the available tools, then get_api_spec with names for schemas, then call_tool to execute. <!-- product:agentworks -->Discover workflow IDs with list_workflows first; IDs are never filesystem paths.<!-- /product --> Answer from what you read; if the task needs a change, say so instead of attempting one. Call help action=context for guidance_version, then help action=topics or action=skills and fetch only relevant changed topics. Guidance is reference material; use only currently listed tools/actions.`
 
 // Appended for existing Crew authoring consent; handlers still check roles.
 const externalMCPCrewAuthoringInstructions = `Crews: load crew-authoring guidance and the current schemas. Listed Crew setup, file, skill and MCP actions use existing Crew authoring consent and current project roles; get_crew reads the spec and export_crew returns its portable form.`
@@ -304,7 +304,7 @@ func externalMCPWorkspaceSelectors(tool string, args map[string]any) string {
 		workspace = externalArg(args, "workspace")
 	}
 	origin, id, ok := strings.Cut(workspace, ":")
-	if !ok || origin != "work" && origin != "code" {
+	if !ok || origin != "work" {
 		return ""
 	}
 	parsed, err := uuid.Parse(id)
@@ -346,6 +346,9 @@ func (api *StreamingAPI) externalMCPDispatch(ctx context.Context, r *http.Reques
 	for _, tool := range allowed {
 		byName[tool.Name] = tool
 	}
+	if tool, ok := byName[target]; ok && tool.internalOnly {
+		return mcp.NewToolResultError("unknown_tool: choose a canonical action family with get_api_spec")
+	}
 	if _, ok := byName[target]; !ok {
 		catalog, err := externalTools()
 		if err == nil {
@@ -363,7 +366,9 @@ func (api *StreamingAPI) externalMCPDispatch(ctx context.Context, r *http.Reques
 	}
 	// A merged tool runs as its underlying tool from here on, so the function-call
 	// question flow below sees the tool it knows.
+	translated := false
 	if merged := byName[target]; merged.actions != nil {
+		translated = true
 		member, rest, err := externalResolveMerged(merged, callArgs)
 		if err != nil {
 			return mcp.NewToolResultError("invalid_arguments: " + err.Error())
@@ -379,7 +384,7 @@ func (api *StreamingAPI) externalMCPDispatch(ctx context.Context, r *http.Reques
 	if len(request.Params.InputResponses) > 0 {
 		return mcp.NewToolResultError("invalid_request_state: input responses need the matching requestState")
 	}
-	rec, err := api.externalMCPInvoke(ctx, r, target, callArgs)
+	rec, err := api.externalMCPInvoke(ctx, r, target, callArgs, translated)
 	if err != nil {
 		return mcp.NewToolResultError("failed to encode tool arguments: " + err.Error())
 	}
@@ -391,7 +396,7 @@ func (api *StreamingAPI) externalMCPDispatch(ctx context.Context, r *http.Reques
 	return externalMCPDispatchResult(rec)
 }
 
-func (api *StreamingAPI) externalMCPInvoke(ctx context.Context, r *http.Request, target string, callArgs map[string]any) (*externalMCPRecorder, error) {
+func (api *StreamingAPI) externalMCPInvoke(ctx context.Context, r *http.Request, target string, callArgs map[string]any, translated ...bool) (*externalMCPRecorder, error) {
 	body, err := json.Marshal(map[string]any{"name": target, "arguments": callArgs})
 	if err != nil {
 		return nil, err
@@ -400,7 +405,7 @@ func (api *StreamingAPI) externalMCPInvoke(ctx context.Context, r *http.Request,
 	sub.Body = io.NopCloser(bytes.NewReader(body))
 	sub.ContentLength = int64(len(body))
 	rec := &externalMCPRecorder{header: http.Header{}}
-	api.handleExternalCall(rec, sub)
+	api.dispatchExternalCall(rec, sub, len(translated) > 0 && translated[0])
 	return rec, nil
 }
 
@@ -426,7 +431,9 @@ func externalMCPDispatchResult(rec *externalMCPRecorder) *mcp.CallToolResult {
 func externalMCPAPISpec(args map[string]any, listed, allowed []externalTool, prepare ...func(map[string]any, []string)) *mcp.CallToolResult {
 	byName := make(map[string]externalTool, len(allowed))
 	for _, tool := range allowed {
-		byName[tool.Name] = tool
+		if !tool.internalOnly {
+			byName[tool.Name] = tool
+		}
 	}
 	for _, tool := range listed {
 		byName[tool.Name] = tool
@@ -529,7 +536,7 @@ func externalMCPErrorText(rec *externalMCPRecorder) string {
 // the menu instead of an old get_api_spec answer in its history. The
 // fingerprint changes whenever the names do.
 func externalMCPToolIndex(allowed []externalTool) (string, string) {
-	order := []string{"Goals", "Builder", "Pulse", "Flows", "Crews", "Dashboards", "Needs you", "Brain", "Vault", "Code review", "Account", "Help"}
+	order := []string{"Goals", "Builder", "Pulse", "Flows", "Crews", "Dashboards", "Needs you", "Brain", "Vault", "Crew review", "Account", "Help"}
 	groups := map[string][]string{}
 	names := make([]string, 0, len(allowed))
 	for _, tool := range allowed {
@@ -553,8 +560,8 @@ func externalMCPToolIndex(allowed []externalTool) (string, string) {
 			group = "Brain"
 		case strings.Contains(name, "vault"):
 			group = "Vault"
-		case name == "code_review" || strings.Contains(name, "_code_"):
-			group = "Code review"
+		case name == "workspace_review":
+			group = "Crew review"
 		case name == "users" || name == "costs" || name == "account" || name == "get_token_usage" || name == "set_token_limits" || name == "set_allowed_models":
 			group = "Account"
 		case name == "help" || name == "get_agent_context" || name == "get_skill" || strings.Contains(name, "guidance_topic"):

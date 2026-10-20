@@ -52,7 +52,7 @@ func (api *StreamingAPI) slackTriggerRoute(ctx context.Context, connectionID, ch
 	conn, found := slackAppConnection(connectionID)
 	if slackOwnBot(conn, found) {
 		entry, ok := conn.ChannelRoutes[channelID]
-		if !conn.Enabled || !ok || entry.Trigger == nil || entry.Default().Empty() || entry.Default().IsCode() {
+		if !conn.Enabled || !ok || entry.Trigger == nil || entry.Default().Empty() {
 			return ChannelRoute{}, false, true
 		}
 		route, err := api.slackDestinationRoute(ctx, entry.WorkspacePath, entry.ProfileID)
@@ -167,9 +167,7 @@ func slackNamedTargetStored(ctx context.Context, registry *services.SlackTargets
 // slackTargetExists reports whether a target's workflow or Crew still exists. Codes are always kept: their manifest is
 // not read here. A read error counts as existing so a storage hiccup never empties the picker.
 func slackTargetExists(ctx context.Context, ref services.SlackTargetRef) bool {
-	if ref.IsCode() {
-		return true
-	}
+
 	if strings.TrimSpace(ref.ProfileID) != "" {
 		_, found, err := readProjectRuntimeManifest(ctx, ref.ProfileID, ref.WorkspacePath)
 		return err != nil || found
@@ -251,9 +249,7 @@ func (api *StreamingAPI) slackChannelTargets(ctx context.Context, connectionID, 
 		refs := slackOwnBotTargets(conn)
 		var kept []services.SlackTargetRef
 		for _, ref := range refs {
-			if !ref.IsCode() {
-				kept = append(kept, ref)
-			}
+			kept = append(kept, ref)
 		}
 		set.Targets = slackNamedTargets(ctx, registry, kept)
 		if entry, ok := conn.ChannelRoutes[channelID]; ok && !entry.Default().Empty() {
@@ -264,7 +260,7 @@ func (api *StreamingAPI) slackChannelTargets(ctx context.Context, connectionID, 
 	set.Platform = true
 	if legacy, ok := api.slackLegacyPlatformRoute(ctx, channelID); ok {
 		ref := services.SlackTargetRefFromRoute(*legacy)
-		if !ref.IsCode() && registry.PlatformOptIn(ref, true) {
+		if registry.PlatformOptIn(ref, true) {
 			target := slackNamedTarget(ctx, registry, ref)
 			target.Legacy = true
 			set.Targets = append(set.Targets, target)
@@ -273,7 +269,7 @@ func (api *StreamingAPI) slackChannelTargets(ctx context.Context, connectionID, 
 	}
 	entry := registry.Channels[channelID]
 	for _, ref := range entry.Targets {
-		if ref.Empty() || ref.IsCode() || set.Find(ref) >= 0 || !registry.PlatformOptIn(ref, api.slackLegacyPlatformTarget(ctx, ref)) {
+		if ref.Empty() || set.Find(ref) >= 0 || !registry.PlatformOptIn(ref, api.slackLegacyPlatformTarget(ctx, ref)) {
 			continue
 		}
 		set.Targets = append(set.Targets, slackNamedTarget(ctx, registry, ref))
@@ -337,9 +333,7 @@ func (api *StreamingAPI) slackTargetRoute(ctx context.Context, connectionID, cha
 		return nil, fmt.Errorf("no target")
 	}
 	channelID = services.NormalizeSlackChannelID(channelID)
-	if channelID != "" && ref.IsCode() {
-		return nil, fmt.Errorf("Code answers only 1:1 DMs")
-	}
+
 	conn, found := slackAppConnection(connectionID)
 	if slackOwnBot(conn, found) {
 		if !conn.Enabled {
@@ -389,10 +383,7 @@ func (api *StreamingAPI) slackCanReach(ctx context.Context, accountID string, ro
 	if accountID == "" || services.IsRevokedSlackRoute(route) {
 		return false
 	}
-	if services.SlackTargetRefFromRoute(route).IsCode() {
-		owner := services.RouteWorkspaceUserID(route, "")
-		return owner != "" && owner == sanitizeUserIDForPath(accountID)
-	}
+
 	allowed, err := api.checkWhatsAppWorkflowAccess(ctx, accountID, route)
 	return err == nil && allowed
 }

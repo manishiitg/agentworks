@@ -1115,47 +1115,24 @@ func resolveProductProjectBinding(ctx context.Context, userID string, profile ag
 // (duplicate id, incomplete manifest, unreadable): only the former may fall through to another location.
 var errProjectNotFound = errors.New("project not found")
 
-func resolveProductProjectBindingWithStore(
-	ctx context.Context,
-	userID string,
-	profile agentprofiles.Profile,
-	projectID string,
-	store productProjectStore,
-) (productConversationBinding, error) {
-	// A project product may own several AgentWorks-style chat tabs. The stable
-	// project id remains the authorization/resource boundary; a suffix gives
-	// each chat its own native CLI session and durable conversation entry.
+func resolveProductProjectBindingWithStore(ctx context.Context, userID string, profile agentprofiles.Profile, projectID string, store productProjectStore) (productConversationBinding, error) {
 	conversationKey := strings.TrimSpace(projectID)
-	resourceProjectID := conversationKey
-	if base, _, found := strings.Cut(conversationKey, ":"); found {
-		resourceProjectID = strings.TrimSpace(base)
-		if resourceProjectID == "" {
-			return productConversationBinding{}, fmt.Errorf("project conversation key has no project id")
-		}
+	resourceProjectID, _, _ := strings.Cut(conversationKey, ":")
+	if resourceProjectID == "" {
+		return productConversationBinding{}, fmt.Errorf("project conversation key has no project id")
+	}
+	if isProjectProfileID(profile.ID) {
+		owner := sanitizeUserIDForPath(userID)
+		return resolveProductProjectBindingInRoot(ctx, profile, workspaceref.SharedCrewRoot, conversationKey, resourceProjectID, store, func(folder string) bool {
+			record, found := defaultProjectOwners().sharedRootRecord(folder)
+			return found && record.Product == profile.ID && record.OwnerID == owner
+		})
 	}
 	projectsRoot, err := cleanAgentProfileWorkspace(profile.Runtime.Workspace.ProjectsRoot, userID)
 	if err != nil {
-		return productConversationBinding{}, fmt.Errorf("invalid product projects root: %w", err)
+		return productConversationBinding{}, err
 	}
-	runtimeRoot := agentProfileRuntimeWorkspace(userID, projectsRoot)
-	binding, err := resolveProductProjectBindingInRoot(ctx, profile, runtimeRoot, conversationKey, resourceProjectID, store, nil)
-	if err == nil || !errors.Is(err, errProjectNotFound) || !isProjectProfileID(profile.ID) {
-		return binding, err
-	}
-	// A Crew that has moved to the shared root (PLAT-442 step 4) is found there by its manifest owner: the
-	// caller's own, whichever way the move happened. Reading it never depends on the creation flag.
-	owner := sanitizeUserIDForPath(userID)
-	shared, sharedErr := resolveProductProjectBindingInRoot(ctx, profile, workspaceref.SharedCrewRoot, conversationKey, resourceProjectID, store, func(folder string) bool {
-		record, found := defaultProjectOwners().sharedRootRecord(folder)
-		return found && record.Product == profile.ID && record.OwnerID == owner && projectStorageRoot(record) == workspaceref.SharedProjectPath(folder)
-	})
-	if sharedErr == nil {
-		return shared, nil
-	}
-	if !errors.Is(sharedErr, errProjectNotFound) {
-		return productConversationBinding{}, sharedErr
-	}
-	return productConversationBinding{}, err
+	return resolveProductProjectBindingInRoot(ctx, profile, agentProfileRuntimeWorkspace(userID, projectsRoot), conversationKey, resourceProjectID, store, nil)
 }
 
 // resolveProductProjectBindingInRoot finds one project in runtimeRoot by its manifest. ownerOK, when set, must accept

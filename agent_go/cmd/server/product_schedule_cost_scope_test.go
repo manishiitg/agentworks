@@ -9,7 +9,7 @@ import (
 
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
@@ -26,7 +26,7 @@ func TestProductScheduleTurnRecordsScheduleCostScope(t *testing.T) {
 	defer ledger.Close()
 
 	job := productScheduleJob{
-		Profile:   agentprofiles.Profile{ID: codeproduct.ProfileID},
+		Profile:   agentprofiles.Profile{ID: workproduct.ProfileID},
 		ProjectID: "orbit",
 		Schedule:  productschedule.Schedule{ID: "heartbeat", Name: "Orbit 30-min heartbeat", Isolated: true},
 	}

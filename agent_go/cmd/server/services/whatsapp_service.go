@@ -1626,79 +1626,7 @@ func (w *WhatsAppService) discoverDestinationCandidates(ctx context.Context, own
 		})
 	}
 
-	// Crew and Code projects are user-owned product conversations, not
-	// workflows. Scan the same user-scoped workspace API and build profile
-	// routes so selecting one enters its canonical persistent project chat
-	// (for a Code: the sender's own chat, 1:1 only).
 	seenCrewIDs := map[string]bool{}
-	// Only the pairing user's own tree is scanned, so a Code is offered to its
-	// owner only (WhatsApp stays private per person).
-	for _, projects := range []struct{ root, product string }{{"Chats/Work/projects", "work"}, {"Chats/Code/projects", "code"}} {
-		crewList, crewErr := wsClient.ListWorkspaceFiles(ctx, workspace.ListWorkspaceFilesParams{Folder: projects.root, MaxDepth: &maxDepth})
-		if crewErr != nil {
-			log.Printf("[WHATSAPP] Failed to list Crew projects for user %s: %v", owner.UserID, crewErr)
-		} else {
-			var crewResp whatsappDocumentListResponse
-			if err := json.Unmarshal(crewList.Raw, &crewResp); err != nil {
-				log.Printf("[WHATSAPP] Failed to parse Crew project list for user %s: %v", owner.UserID, err)
-			} else {
-				var crewManifestPaths []string
-				walkDocs = func(docs []whatsappDocument) {
-					for _, doc := range docs {
-						if strings.HasSuffix(doc.FilePath, "/product.json") {
-							crewManifestPaths = append(crewManifestPaths, doc.FilePath)
-						}
-						if len(doc.Children) > 0 {
-							walkDocs(doc.Children)
-						}
-					}
-				}
-				walkDocs(crewResp.Data)
-				sort.Strings(crewManifestPaths)
-				seenCrewPaths := make(map[string]bool, len(crewManifestPaths))
-				for _, manifestPath := range crewManifestPaths {
-					manifestPath = filepath.ToSlash(strings.TrimSpace(manifestPath))
-					if manifestPath == "" || seenCrewPaths[manifestPath] {
-						continue
-					}
-					seenCrewPaths[manifestPath] = true
-					content, err := wsClient.ReadWorkspaceFile(ctx, workspace.ReadWorkspaceFileParams{Filepath: manifestPath})
-					if err != nil {
-						log.Printf("[WHATSAPP] Failed to read Crew manifest %s: %v", manifestPath, err)
-						continue
-					}
-					var manifest whatsappCrewManifest
-					if err := json.Unmarshal([]byte(content.Content), &manifest); err != nil || !strings.EqualFold(strings.TrimSpace(manifest.Product), projects.product) {
-						continue
-					}
-					id := strings.TrimSpace(manifest.ID)
-					if id == "" || seenCrewIDs[strings.ToLower(id)] {
-						continue
-					}
-					label := strings.TrimSpace(manifest.Title)
-					if label == "" {
-						label = strings.TrimSpace(manifest.Identity.Name)
-					}
-					if label == "" {
-						continue
-					}
-					seenCrewIDs[strings.ToLower(id)] = true
-					candidates = append(candidates, whatsappDestinationCandidate{
-						Kind:            "crew",
-						ID:              id,
-						Label:           label,
-						WorkspacePath:   strings.TrimSuffix(manifestPath, "/product.json"),
-						Slug:            slugifyWhatsAppWorkflow(label),
-						WorkshopMode:    "run",
-						ProfileID:       projects.product,
-						ConversationKey: id,
-						ProfileLabel:    label,
-					})
-				}
-			}
-		}
-	}
-
 	// Crews of the paired user that moved to the shared root (PLAT-442 step 4).
 	for _, crew := range listOwnSharedCrews(ctx, owner.UserID) {
 		id, title := strings.TrimSpace(crew.ID), strings.TrimSpace(crew.Title)
@@ -1868,8 +1796,6 @@ func (c whatsappDestinationCandidate) kindLabel() string {
 	switch {
 	case c.Kind != "crew":
 		return "Workflow"
-	case strings.EqualFold(strings.TrimSpace(c.ProfileID), "code"):
-		return "Code"
 	}
 	return "Crew"
 }

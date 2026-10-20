@@ -104,7 +104,7 @@ describe('server workspace return', () => {
     const { workspaceStateApi } = await import('../services/workspaceState')
     const { useWorkspaceReturnStore } = await import('../stores/useWorkspaceReturnStore')
     useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null })
-    vi.mocked(workspaceStateApi.get).mockResolvedValueOnce({ version: 1, revision: 0, last: null, recent: [], destination: existing ? { surface: 'code', id: 'existing', workspace_path: 'Code/existing' } : { surface: 'code' }, first_visit: !existing })
+    vi.mocked(workspaceStateApi.get).mockResolvedValueOnce({ version: 1, revision: 0, last: null, recent: [], destination: existing ? { surface: 'work', id: 'existing', workspace_path: 'Code/existing' } : { surface: 'work' }, first_visit: !existing })
     window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['code'] }
     mocks.resolve.mockResolvedValue(vi.fn())
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
@@ -148,7 +148,7 @@ describe('server workspace return', () => {
     const { workspaceStateApi } = await import('../services/workspaceState')
     const { useWorkspaceReturnStore } = await import('../stores/useWorkspaceReturnStore')
     useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null })
-    vi.mocked(workspaceStateApi.get).mockResolvedValueOnce({ version: 1, revision: 3, last: null, recent: [], destination: {surface:'code'}, note: 'Your last workspace is no longer available.' })
+    vi.mocked(workspaceStateApi.get).mockResolvedValueOnce({ version: 1, revision: 3, last: null, recent: [], destination: {surface:'work'}, note: 'Your last workspace is no longer available.' })
     window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['code'] }
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {

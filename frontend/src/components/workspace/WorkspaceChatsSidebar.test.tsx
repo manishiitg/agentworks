@@ -52,7 +52,7 @@ vi.mock('../../stores/useProductSurfaceStore', () => ({
   useProductSurfaceStore: Object.assign((select: any) => select({ productSurface: mocks.product }), {
     getState: () => ({
       productSurface: mocks.product,
-      setSelectedCodeProjectId: mocks.selectCode,
+      setSelectedWorkProjectId: mocks.selectCode,
       setSelectedWorkProjectId: mocks.selectWork,
     }),
   }),
@@ -74,7 +74,7 @@ vi.mock('../../utils/globalProductNavigation', () => ({
 }))
 vi.mock('../../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: mocks.openProduct }))
 vi.mock('../../products/work/workSessions', () => ({ loadWorkSessionsIncludingShared: async () => [] }))
-vi.mock('../../products/work/projectProduct', () => ({ CODE_PRODUCT: { profileId: 'code' } }))
+vi.mock('../../products/work/projectProduct', () => ({ CREW_PRODUCT: { profileId: 'code' } }))
 vi.mock('../../products/productSurfaceConfig', () => ({
   enabledProductSurfaces: () => ['code', 'work', 'agentworks'],
   intersectAllowedProductSurfaces: (surfaces: string[], allowed: string[] | null) =>

@@ -39,7 +39,6 @@ const products: Array<{
   { id: 'video-studio', label: 'Video Studio', description: 'Projects and video production', icon: VideoStudioMark },
   { id: 'sparkquill', label: 'SparkQuill', description: 'Family learning with Quill', icon: SparkQuillMark },
   { id: 'work', label: 'Crew', description: 'Private or shared projects with agents, functions, files and tools', icon: WorkMark },
-  { id: 'code', label: 'Crew', description: 'Private or shared projects with agents, functions, files and tools', icon: WorkMark },
   { id: 'mcp-gateway', label: 'Vault', description: 'Share secrets and MCP tools with the right users and projects. Check access and inspect call logs.', icon: VaultMark },
   { id: 'llm-gateway', label: 'LLM Gateway', description: 'Give users one endpoint for AI models, with model access, request logs and costs tracked per person.', icon: Network },
   { id: 'knowledgebase', label: 'Brain', description: 'Keep shared knowledge and skills in one place so your agents and team can reuse them.', icon: BrainMark },
@@ -65,7 +64,7 @@ export function ProductSurfaceSwitcher({ className, standalone = false, menuOnly
     ? products.filter(product => product.id === 'mcp-gateway')
     : products.filter(product => visibleProductIDs.includes(product.id) && (product.id !== 'mcp-gateway' || gatewayUrl !== null)),
   [visibleProductIDs, gatewayUrl, standalone])
-  const currentProduct = visibleProducts.find((product) => product.id === (standalone ? 'mcp-gateway' : productSurface) || !standalone && (productSurface === 'work' || productSurface === 'code') && (product.id === 'work' || product.id === 'code')) ?? visibleProducts[0] ?? products[0]
+  const currentProduct = visibleProducts.find((product) => product.id === (standalone ? 'mcp-gateway' : productSurface)) ?? visibleProducts[0] ?? products[0]
   const CurrentIcon = currentProduct.icon
 
   useEffect(() => {

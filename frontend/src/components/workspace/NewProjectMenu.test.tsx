@@ -25,7 +25,7 @@ beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
   window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'relays', 'work', 'code', 'video-studio'], localServerProducts: true }
   useAuthStore.setState({ user: { id: 'alice', allowed_products: null, can_create: true } as never, isMultiUserMode: true })
-  useProductSurfaceStore.setState({ productSurface: 'code' })
+  useProductSurfaceStore.setState({ productSurface: 'work' })
   useWorkspaceConnectionStore.setState({ activeWorkspaceId: 'local' })
   useCommandDialogStore.getState().closeAll()
   openProduct.mockClear()

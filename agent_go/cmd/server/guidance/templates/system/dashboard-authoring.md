@@ -43,7 +43,7 @@ external operations use the authorized `workspace` returned by discovery.
 External connections need `dashboards:read` for discovery, source reads and links.
 Drafts and publication use existing product authoring consent: `builder:chat` for
 workflows,<!-- product:relays --> `relays:write` or Builder consent for Flows,<!-- /product --> `crews:write` for Crews,
-<!-- product:code -->and `code:run` for owned Code projects.<!-- /product --> Workflow<!-- product:relays -->/Flow<!-- /product --> authoring retains its
+ Workflow<!-- product:relays -->/Flow<!-- /product --> authoring retains its
 companion read/run scopes and Builder enablement. Current account and project
 owner permissions (and workflow editor permissions), product access, connection bounds and folder grants apply.
 Preview additionally requires `runs:execute` and project edit access because live

@@ -16,12 +16,7 @@ const normalizedPath = (value?: string | null): string => (value || '')
 export function isWorkProductSession(session: Pick<ActiveSessionInfo, 'session_id' | 'workspace_path'>): boolean {
   if (session.session_id.startsWith('work:project:')) return true
   const workspace = normalizedPath(session.workspace_path)
-  return /^Crew\/[^/]+(?:\/|$)/i.test(workspace) || /(?:^|\/)Chats\/Work\/projects\/[^/]+(?:\/|$)/i.test(workspace)
-}
-
-export function isCodeProductSession(session: Pick<ActiveSessionInfo, 'session_id' | 'workspace_path'>): boolean {
-  if (session.session_id.startsWith('code:project:')) return true
-  return /(?:^|\/)Chats\/Code\/projects\/[^/]+(?:\/|$)/i.test(normalizedPath(session.workspace_path))
+  return /^Crew\/[^/]+(?:\/|$)/i.test(workspace)
 }
 
 export function workProjectIdForTab(tab?: Pick<ChatTab, 'metadata'> | null): string | null {
@@ -40,7 +35,7 @@ export function workProjectIdForSession(
   if (fromTab) return fromTab
   const preset = session.preset_query_id?.trim()
   if (preset) return preset
-  for (const prefix of ['work:project:', 'code:project:']) {
+  for (const prefix of ['work:project:']) {
     if (session.session_id.startsWith(prefix)) return session.session_id.slice(prefix.length).split(':')[0]?.trim() || null
   }
   return null
@@ -50,10 +45,7 @@ export function openGlobalTab(tabId: string): boolean {
   const tab = useChatStore.getState().chatTabs[tabId]
   if (!tab) return false
   const surfaces = useProductSurfaceStore.getState()
-  if (tab.metadata?.agentProfileId === 'code') {
-    surfaces.setSelectedCodeProjectId(workProjectIdForTab(tab))
-    surfaces.setProductSurface('code')
-  } else if (tab.metadata?.agentProfileId === 'work') {
+  if (tab.metadata?.agentProfileId === 'work') {
     surfaces.setSelectedWorkProjectId(workProjectIdForTab(tab))
     surfaces.setProductSurface('work')
   } else if (tab.metadata?.agentProfileId === 'caplayer') {
@@ -112,13 +104,6 @@ async function openGlobalActivitySessionInner(
   const tab = Object.values(chatStore.chatTabs).find(candidate => candidate.sessionId === session.session_id)
   if (tab?.metadata?.agentProfileId === 'knowledgebase' || /(?:^|\/)Chats\/Knowledgebase(?:\/|$)/i.test(normalizedPath(session.workspace_path))) {
     useProductSurfaceStore.getState().setProductSurface('knowledgebase')
-    if (tab) activateTab(tab.tabId)
-    return
-  }
-  if (tab?.metadata?.agentProfileId === 'code' || isCodeProductSession(session)) {
-    const surfaces = useProductSurfaceStore.getState()
-    surfaces.setSelectedCodeProjectId(workProjectIdForSession(session, tab))
-    surfaces.setProductSurface('code')
     if (tab) activateTab(tab.tabId)
     return
   }

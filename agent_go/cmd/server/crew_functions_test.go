@@ -11,7 +11,7 @@ import (
 
 	"github.com/gorilla/mux"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
@@ -489,7 +489,7 @@ func TestRecentCallsHidePrivateCodePeerCallsFromOthers(t *testing.T) {
 	crewFunctionCalls.Lock()
 	saved := crewFunctionCalls.m
 	crewFunctionCalls.m = map[string]*crewFunctionCall{
-		"fn-peer": {ID: "fn-peer", UserID: "bob", TargetKind: triggerCallerCrew, TargetID: "code-y", TargetProfileID: codeproduct.ProfileID, Function: "run", Status: "done", Result: map[string]interface{}{"secret": "from bob's MCP"}},
+		"fn-peer": {ID: "fn-peer", UserID: "bob", TargetKind: triggerCallerCrew, TargetID: "code-y", TargetProfileID: workproduct.ProfileID, Function: "run", Status: "done", Result: map[string]interface{}{"secret": "from bob's MCP"}},
 		"fn-crew": {ID: "fn-crew", UserID: "bob", TargetKind: triggerCallerCrew, TargetID: "crew-z", TargetProfileID: "work", Function: "run", Status: "done"},
 	}
 	crewFunctionCalls.Unlock()
@@ -517,7 +517,7 @@ func TestCrewCallConversationRouting(t *testing.T) {
 	if !projectCallConversation(workflow) {
 		t.Fatal("a workflow caller must use project ownership")
 	}
-	codeTarget := &productWebhookMatch{Profile: agentprofiles.Profile{ID: codeproduct.ProfileID}, Trigger: productWebhookTrigger{Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "x", ProfileID: codeproduct.ProfileID}}}
+	codeTarget := &productWebhookMatch{Profile: agentprofiles.Profile{ID: workproduct.ProfileID}, Trigger: productWebhookTrigger{Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "x", ProfileID: workproduct.ProfileID}}}
 	if !projectCallConversation(codeTarget) {
 		t.Fatal("Code peer calls must use project ownership")
 	}

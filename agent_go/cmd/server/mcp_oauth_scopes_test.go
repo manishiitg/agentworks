@@ -60,7 +60,7 @@ func TestAdminDefaultScopesAreEveryScopeTheAccountMayHave(t *testing.T) {
 		t.Errorf("legacy request gained permissions: %v", legacyGranted)
 	}
 	memberDefault := mcpOAuthScopesFor(member, slices.Clone(mcpOAuthDefaultScopes))
-	for _, scope := range []string{"builder:chat", "users:manage", "code:review"} {
+	for _, scope := range []string{"builder:chat", "users:manage", "crews:review"} {
 		if slices.Contains(memberDefault, scope) {
 			t.Errorf("an ordinary account on the default scopes was given %s: %v", scope, memberDefault)
 		}
@@ -100,7 +100,7 @@ func TestPersonSignInCarriesTheFullScopeSetLive(t *testing.T) {
 			t.Errorf("a person's sign-in stored with one scope lacks %s: %v", want, person.Scopes)
 		}
 	}
-	for _, never := range []string{"users:manage", "vault:manage", "code:review", "llm:use", "devices:connect"} {
+	for _, never := range []string{"users:manage", "vault:manage", "crews:review", "llm:use", "devices:connect"} {
 		if slices.Contains(person.Scopes, never) {
 			t.Errorf("an ordinary member's sign-in was given %s: %v", never, person.Scopes)
 		}

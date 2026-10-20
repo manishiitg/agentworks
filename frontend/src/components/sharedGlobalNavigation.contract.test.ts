@@ -13,7 +13,7 @@ describe('shared AgentWorks and Crew global navigation shell', () => {
     expect(surfaceSwitch).toBeGreaterThan(0)
     expect(switcher).toBeLessThan(surfaceSwitch)
     expect(source).not.toContain("surface !== 'agentworks' && surface !== 'work'")
-    expect(source).not.toContain("productSurface !== 'code' && productSurface !== 'relays'")
+    expect(source).not.toContain("productSurface !== 'work' && productSurface !== 'relays'")
   })
 
   it('keeps the global activity monitor visible in Crew reduced mode', () => {

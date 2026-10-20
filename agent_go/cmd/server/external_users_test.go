@@ -53,7 +53,7 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 	router.GET("/api/documents", workspacehandlers.ListDocuments)
 	router.GET("/api/documents/*filepath", workspacehandlers.GetDocument)
 	router.PUT("/api/documents/*filepath", workspacehandlers.UpdateDocument)
-	router.POST("/api/audit/code-admin/append", workspacehandlers.AppendCodeAdminAudit)
+	router.POST("/api/audit/crew-admin/append", workspacehandlers.AppendCodeAdminAudit)
 	workspace := httptest.NewServer(router)
 	defer workspace.Close()
 	t.Setenv("WORKSPACE_API_URL", workspace.URL)
@@ -87,7 +87,7 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 	if !strings.Contains(listed, `"sign_in_method":"sso"`) || !strings.Contains(listed, `"sign_in_method":"password"`) || strings.Contains(listed, `"sign_in_method":"oidc"`) || !strings.Contains(listed, `"create_products":null`) {
 		t.Fatal("safe account metadata incomplete", listed)
 	}
-	for _, claims := range []*UserClaims{codeReviewToken("member", "users:manage"), codeReviewToken("boss", "code:review")} {
+	for _, claims := range []*UserClaims{codeReviewToken("member", "users:manage"), codeReviewToken("boss", "crews:review")} {
 		for _, action := range []string{"list", "get", "update"} {
 			args := map[string]any{"action": action}
 			if action != "list" {

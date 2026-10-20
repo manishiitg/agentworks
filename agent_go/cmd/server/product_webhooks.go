@@ -20,7 +20,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
@@ -267,9 +266,7 @@ func (s *ProductScheduleService) listProductWebhooks(w http.ResponseWriter, r *h
 	responses := make([]productWebhookResponse, 0, len(manifest.Triggers))
 	for _, trigger := range manifest.Triggers {
 		// Code has no function bindings; any old hidden one stays out of the list.
-		if strings.EqualFold(profileID, codeproduct.ProfileID) && trigger.IsInternal() && !trigger.WorkspaceFunction {
-			continue
-		}
+
 		responses = append(responses, productWebhookDTO(trigger))
 	}
 
@@ -319,9 +316,7 @@ func (s *ProductScheduleService) saveProductWebhookConfig(ctx context.Context, u
 	}
 	// The public Automation writer only creates Code webhooks. Code has no
 	// function bindings: other workflows and Crews cannot call a Code.
-	if strings.EqualFold(profile.ID, "code") && strings.TrimSpace(req.Kind) != "" && !req.WorkspaceFunction {
-		return productWebhookResponse{}, false, fmt.Errorf("a Code takes webhook triggers only; other workflows and Crews cannot call a Code")
-	}
+
 	index := -1
 	for i := range manifest.Triggers {
 		if manifest.Triggers[i].ID == id {
@@ -353,9 +348,7 @@ func (s *ProductScheduleService) saveProductWebhookConfig(ctx context.Context, u
 		trigger.Kind = normalizeTriggerKind(req.Kind)
 	}
 	// A kept kind counts too: a Code trigger is never internal.
-	if strings.EqualFold(profile.ID, "code") && trigger.IsInternal() && !trigger.WorkspaceFunction {
-		return productWebhookResponse{}, false, fmt.Errorf("a Code takes webhook triggers only; other workflows and Crews cannot call a Code")
-	}
+
 	if trigger.IsInternal() {
 		trigger.RunDestination = runDestinationIsolated
 	}
@@ -897,9 +890,7 @@ func (s *ProductScheduleService) findInternalProductTrigger(ctx context.Context,
 	if err != nil {
 		return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, nil, err
 	}
-	if profile.ID == codeproduct.ProfileID && !trigger.WorkspaceFunction {
-		return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, nil, ErrInternalTriggerNotFound
-	}
+
 	return profile, binding, manifest, trigger, nil
 }
 

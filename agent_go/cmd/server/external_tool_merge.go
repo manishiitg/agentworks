@@ -26,12 +26,12 @@ var externalToolMerges = []externalToolMerge{
 	{"share", "Share a Crew, Goal or Flow. get inspects the current audience; set is owner-only and keeps the existing product authoring consent. " + runShareAccessDescription, [][2]string{
 		{"get", "get_dashboard_share"}, {"set", "share_dashboard"},
 	}},
-	{"dashboard", "Live dashboards of workflows, Flows, Crews and owned Code projects: find them, read and edit drafts, check and publish revisions, and get links.", [][2]string{
+	{"dashboard", "Live dashboards of workflows, Flows and Crews: find them, read and edit drafts, check and publish revisions, and get links.", [][2]string{
 		{"list", "list_dashboards"}, {"get", "get_dashboard"}, {"link", "get_dashboard_link"},
 		{"create", "create_dashboard"}, {"update", "update_dashboard"}, {"validate", "validate_dashboard"},
 		{"export_motion", "export_dashboard_motion"}, {"preview", "preview_dashboard"}, {"publish", "publish_dashboard"}, {"restore", "restore_dashboard"},
 	}},
-	{"settings", "Read and change the setup of a workflow, Flow or Crew; inspect saved secret sources for these and your own Code projects: models, MCP servers, skills, secrets, personal Google/Slack accounts, Pulse, browser mode, notifications and after-run steps.", [][2]string{
+	{"settings", "Read and change the setup of a workflow, Flow or Crew; inspect saved secret sources for these projects: models, MCP servers, skills, secrets, personal Google/Slack accounts, Pulse, browser mode, notifications and after-run steps.", [][2]string{
 		{"get", "get_settings"}, {"update", "update_settings"}, {"secret_sources", "get_secret_sources"},
 		{"google_account", "workflow_google_account"}, {"slack_account", "workflow_slack_account"}, {"slack_bot", "workflow_slack_bot"},
 	}},
@@ -46,10 +46,6 @@ var externalToolMerges = []externalToolMerge{
 	}},
 	{"workflow", "Find workflows and Flows you can use, read one workflow's manifest and access, or its plan.", [][2]string{
 		{"list", "list_workflows"}, {"get", "get_workflow"}, {"plan", "get_plan"},
-	}},
-	{"crew", "Crews you can use: list, read, create, edit, export and import. Ask a Crew with ask_crew.", [][2]string{
-		{"list", "list_crews"}, {"get", "get_crew"}, {"costs", "get_crew_costs"}, {"create", "create_crew"}, {"update", "update_crew"},
-		{"export", "export_crew"}, {"import", "import_crew"},
 	}},
 	{"files", "Browse, search, read and write project files, with revision checks, for a workflow or Flow (workflow_id), or a Crew you own (crew_id; read for anyone with access, write for its owner, text or binary). action=code lists a step's saved code.", [][2]string{
 		{"list", "list_files|list_crew_files"}, {"search", "search_files|search_crew_files"}, {"read", "read_file|read_crew_file"},
@@ -75,13 +71,9 @@ var externalToolMerges = []externalToolMerge{
 		{"create", "create_relay"}, {"update", "update_relay"}, {"test", "test_relay"}, {"publish", "publish_relay"},
 		{"run", "run_relay"}, {"get_run", "get_relay_run"}, {"runs", "list_relay_runs"}, {"releases", "get_relay_releases"},
 	}},
-	{"code_review", "Read-only, audited review of every Code workspace for admins and Code reviewers: workspaces, costs, files, chats and the audit log.", [][2]string{
-		{"workspaces", "list_code_workspaces"}, {"costs", "get_code_costs"}, {"files", "list_code_files"}, {"file", "read_code_file"},
-		{"chats", "list_code_chats"}, {"chat", "read_code_chat"}, {"audit", "get_code_audit"},
-	}},
-	{"code", "Run your own Code from here (needs code:run): list your projects and their chats, ask a chat something and read the reply (commands, files and folder guards run in the real sandbox), and read a project's state (folder guard, slot, chats).", [][2]string{
-		{"projects", "list_my_code_projects"}, {"chats", "list_my_code_chats"}, {"ask", "ask_my_code"}, {"read", "read_my_code_chat"}, {"state", "get_my_code_state"},
-		{"open_chat", "open_my_code_chat"}, {"rename_chat", "rename_my_code_chat"}, {"close_chat", "close_my_code_chat"}, {"stop", "stop_my_code_chat"},
+	{"workspace_review", "Audited inspection of Crew projects for administrators and Crew reviewers: projects, costs, files, chats and the audit log.", [][2]string{
+		{"workspaces", "list_review_workspaces"}, {"costs", "get_review_costs"}, {"files", "list_review_files"}, {"file", "read_review_file"},
+		{"chats", "list_review_chats"}, {"chat", "read_review_chat"}, {"audit", "get_review_audit"},
 	}},
 }
 
@@ -92,6 +84,9 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 	index := make(map[string]int, len(catalog))
 	for i, tool := range catalog {
 		index[tool.Name] = i
+		if projectServiceTool(tool.Name) {
+			catalog[i].hidden, catalog[i].internalOnly = true, true
+		}
 	}
 	for name := range externalHiddenAliases {
 		if i, ok := index[name]; ok {
@@ -131,7 +126,7 @@ func mergeExternalTools(catalog []externalTool) ([]externalTool, error) {
 			continue
 		}
 		if merge.name == "functions" || merge.name == "files" || merge.name == "share" || merge.name == "settings" || merge.name == "dashboard" {
-			props["workspace_id"] = externalString("Stable work:<id> or code:<id> from workspace action=list.")
+			props["workspace_id"] = externalString("Stable work:<id> from workspace action=list.")
 		}
 		if merge.name == "functions" {
 			props = externalFunctionProperties(props, order)
@@ -403,4 +398,18 @@ func externalMergeProperty(props map[string]any, key string, value any) {
 		}
 	}
 	props[key] = map[string]any{"anyOf": []any{existing, value}}
+}
+
+// Project service definitions retain their native authorization and validators,
+// but only canonical action families are public entry points.
+func projectServiceTool(name string) bool {
+	switch name {
+	case "get_dashboard_share", "share_dashboard", "manage_crew_chats",
+		"ask_crew", "list_crews", "get_crew", "get_crew_costs", "create_crew", "update_crew", "export_crew", "import_crew",
+		"list_crew_files", "search_crew_files", "read_crew_file", "write_crew_file", "suggest_crew_change",
+		"list_crew_functions", "call_crew_function", "get_crew_function_call", "reply_crew_function_call", "list_crew_function_calls",
+		"list_review_workspaces", "get_review_costs", "list_review_files", "read_review_file", "list_review_chats", "read_review_chat", "get_review_audit":
+		return true
+	}
+	return false
 }

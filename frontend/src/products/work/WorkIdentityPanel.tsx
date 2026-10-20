@@ -20,7 +20,7 @@ import type { ProductIdentityPatch } from '../../platform/chat/productProjects'
 import api, { workFolderApi } from '../../services/api'
 import type { PresetLLMConfig, WorkFolderGrant } from '../../services/api-types'
 import { loadWorkSessions } from './workSessions'
-import { CODE_PRODUCT, useProjectProduct } from './projectProduct'
+import { useProjectProduct } from './projectProduct'
 import { isWorkIdentityTabEnabled } from './workViewGating'
 import { WorkModelsPanel } from './WorkModelsPanel'
 import { ProjectInstructionsCard } from './ProjectInstructionsCard'
@@ -66,7 +66,7 @@ function ModeRow({ sessionId }: { sessionId: string }) {
     <ConfirmationDialog
       isOpen={explain}
       onClose={() => setExplain(false)}
-      onConfirm={() => { setExplain(false); window.dispatchEvent(new CustomEvent('agentworks:new-code-project')) }}
+      onConfirm={() => { setExplain(false); window.dispatchEvent(new CustomEvent('agentworks:new-crew-project')) }}
       title="Switching mode is not available yet"
       message="A project keeps the mode it was created in. To work in another mode, create a new project and choose the mode there."
       confirmText="Create a new project"
@@ -77,70 +77,6 @@ function ModeRow({ sessionId }: { sessionId: string }) {
   </SettingsCard>
 }
 
-function CodeGeneralPanel({ sessionId, projectTitle, projectIdentity, onUpdateIdentity, onDeleteRequest }: {
-  sessionId: string
-  projectTitle: string
-  projectIdentity?: ProductIdentity
-  onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>
-  onDeleteRequest: () => void
-}) {
-  const current = projectIdentity?.name ?? ''
-  const [nameDraft, setNameDraft] = useState(current)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  useEffect(() => { setNameDraft(current); setError(null) }, [current])
-  const dirty = nameDraft.trim() !== current
-  const save = async () => {
-    if (!dirty || saving) return
-    setSaving(true)
-    setError(null)
-    try {
-      await onUpdateIdentity({ name: nameDraft.trim() })
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to save.')
-    } finally {
-      setSaving(false)
-    }
-  }
-  return (
-    <div className="space-y-4">
-      <ModeRow sessionId={sessionId} />
-      {error && <StatusBanner tone="error">{error}</StatusBanner>}
-      <SettingsCard
-        icon={<Tag aria-hidden="true" className="h-4 w-4 text-primary" />}
-        title="Name"
-      >
-        <div>
-          <Label className="mb-2 block">Workspace name</Label>
-          <Input value={nameDraft} onChange={event => setNameDraft(event.target.value)} disabled={saving} placeholder={projectTitle} maxLength={60} />
-        </div>
-        <div className="flex justify-end">
-          <Button onClick={() => void save()} disabled={!dirty || saving}>
-            {saving ? <><Loader2 className="h-4 w-4 animate-spin" />Saving…</> : 'Save'}
-          </Button>
-        </div>
-      </SettingsCard>
-      <SettingsCard
-        icon={<Lock aria-hidden="true" className="h-4 w-4 text-primary" />}
-        title="Access"
-        description="Private to you. Files, chats, credentials and runtime cannot be shared with other users. Admins and Code reviewers on this server can view it, and every view is logged."
-      >
-        {null}
-      </SettingsCard>
-      <SettingsCard
-        icon={<Trash2 aria-hidden="true" className="h-4 w-4 text-primary" />}
-        title="Delete workspace"
-        description="Removes the workspace folder and everything in it. This cannot be undone."
-      >
-        <div>
-          <Button variant="destructive" onClick={onDeleteRequest} disabled={saving}>
-            <Trash2 className="h-4 w-4" /> Delete workspace
-          </Button>
-        </div>
-      </SettingsCard>
-    </div>
-  )
-}
 
 function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, projectTemplates, onInstallTemplate, onUpdateIdentity, onDeleteRequest }: {
   projectTitle: string
@@ -282,7 +218,7 @@ function WorkFoldersBody({ workspacePath, workflowContextPaths, onWorkflowContex
   // A Code project can also attach the person's other Code and Cowork projects (their files, read-only). Not Local ones (their
   // files are on a computer), and not for a Crew, which others can open.
   const product = useProjectProduct()
-  const [codeReferences, setCodeReferences] = useState<Array<{ path: string; label: string }>>([])
+
 
   useEffect(() => {
     let cancelled = false
@@ -313,15 +249,7 @@ function WorkFoldersBody({ workspacePath, workflowContextPaths, onWorkflowContex
     return () => { cancelled = true }
   }, [])
 
-  useEffect(() => {
-    if (product.profileId !== 'code') return
-    let cancelled = false
-    void loadWorkSessions(CODE_PRODUCT).then(sessions => {
-      if (cancelled) return
-      setCodeReferences(sessions.map(session => ({ path: session.workspacePath, label: session.title })))
-    }).catch(() => { if (!cancelled) setCodeReferences([]) })
-    return () => { cancelled = true }
-  }, [product.profileId])
+
 
   const refresh = async () => {
     setLoading(true)
@@ -357,7 +285,6 @@ function WorkFoldersBody({ workspacePath, workflowContextPaths, onWorkflowContex
         additionalReferences={crewReferences}
         additionalLabel="Crew"
         showAdditionalGroup
-        extraGroups={product.profileId === 'code' ? [{ label: 'Code projects', description: 'Your other private projects, so this one can look at their files. Projects on your own computer cannot be linked here.', placeholder: 'Attach a project…', references: codeReferences }] : []}
         hideAdd
       />
       <SettingsCard
@@ -468,13 +395,7 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
         /* No sub-tabs: Settings, Models and Laptop access are separate items in the side list (owner, 2026-10-20). */
       />
       <div key={`${activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
-        {activeTab === 'general' && !product.hasIdentity && <CodeGeneralPanel
-          sessionId={sessionId}
-          projectTitle={projectTitle}
-          projectIdentity={projectIdentity}
-          onUpdateIdentity={onUpdateIdentity}
-          onDeleteRequest={onDeleteRequest}
-        />}
+
         {activeTab === 'general' && product.hasIdentity && <WorkGeneralPanel
           projectTitle={projectTitle}
           projectPurpose={projectDescription}
@@ -484,7 +405,7 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
         />}
-        {activeTab === 'general' && product.profileId === 'code' && <ModeRow sessionId={sessionId} />}
+        {activeTab === 'general' &&  <ModeRow sessionId={sessionId} />}
         {activeTab === 'general' && !shared && projectId && <WorkspaceMemorySetting projectId={projectId} />}
         {activeTab === 'general' && !shared && <div className="mt-4"><ProjectInstructionsCard workspacePath={workspacePath} /></div>}
         {activeTab === 'location' && <Suspense fallback={<p className="text-sm text-muted-foreground">Loading connection settings…</p>}><CodeLocalFilesSettings sessionId={sessionId} workspaceName={projectIdentity?.name?.trim() || projectTitle} /></Suspense>}

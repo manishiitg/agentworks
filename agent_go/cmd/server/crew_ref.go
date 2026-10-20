@@ -2,15 +2,12 @@ package server
 
 import (
 	"context"
-	"log"
 	"path"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsalias"
 )
 
 // Crew paths: one parser, one resolver, one access rule.
@@ -64,29 +61,13 @@ func parseCrewPath(callerID, raw string) (crewPathRef, bool) {
 	segments := strings.Split(clean, "/")
 	rest := func(from int) string { return strings.Join(segments[from:], "/") }
 	validID := func(id string) bool { return id != "" && !strings.HasPrefix(id, ".") }
-	ownedRef := workspaceref.MustParse(clean)
-	ownedRoot, ownedProject, ownedOK := ownedRef.Project()
-	ownedOK = ownedOK && ownedRef.HasOwner() && (ownedRoot == workspaceref.CrewProjectsRoot || ownedRoot == workspaceref.CodeProjectsRoot) && validID(ownedProject)
 	switch {
 	case segments[0] == crewSharedRootName:
 		if len(segments) < 2 || !validID(segments[1]) {
 			return crewPathRef{}, false
 		}
 		return crewPathRef{Root: crewSharedRootName + "/" + segments[1], Rest: rest(2), Shared: true}, true
-	case len(segments) >= 4 && segments[0] == "Chats" && segments[1] == "Work" && segments[2] == "projects" && validID(segments[3]):
-		if strings.TrimSpace(callerID) == "" {
-			return crewPathRef{}, false
-		}
-		owner := sanitizeUserIDForPath(callerID)
-		return crewPathRef{Root: legacyCrewRoot(owner, segments[3]), Rest: rest(4), OwnerID: owner}, true
-	case len(segments) >= 4 && segments[0] == "Chats" && segments[1] == "Code" && segments[2] == "projects" && validID(segments[3]):
-		if strings.TrimSpace(callerID) == "" {
-			return crewPathRef{}, false
-		}
-		return crewPathRef{Root: workspaceref.PhysicalPathOf(sanitizeUserIDForPath(callerID), workspaceref.CodeProjectsRoot, segments[3]), Rest: rest(4), OwnerID: sanitizeUserIDForPath(callerID)}, true
-	case ownedOK:
-		below := strings.Trim(strings.TrimPrefix(ownedRef.Logical(), ownedRoot+"/"+ownedProject), "/")
-		return crewPathRef{Root: workspaceref.PhysicalPathOf(ownedRef.Owner(), ownedRoot, ownedProject), Rest: below, OwnerID: ownedRef.Owner()}, true
+
 	}
 	return crewPathRef{}, false
 }
@@ -102,11 +83,6 @@ func resolveCrewPath(ctx context.Context, callerID, raw string) (crewPathRef, bo
 	ref, ok := parseCrewPath(callerID, raw)
 	if !ok {
 		return crewPathRef{}, false
-	}
-	if moved := crewPathAliases.lookup(ctx, ref.Root); moved != "" {
-		warnCrewAliasUsed(ref.Root, moved)
-		ref.Root, ref.Shared = moved, projectRootIsShared(moved)
-		ref.OwnerID = ""
 	}
 	if ref.Shared && ref.OwnerID == "" {
 		ref.OwnerID = crewOwners.owner(ctx, ref.Root)
@@ -199,102 +175,6 @@ func readCrewManifestOwner(_ context.Context, root string) string {
 	return resolveProjectOwner(context.Background(), root)
 }
 
-// crewPathAliases maps a migrated legacy crew root to its Crew/<id> root, from the server-controlled owner registry
-// (the Crew move records an old path as an alias of the Crew it moved); until a Crew is moved nothing maps.
-var crewPathAliases = &crewAliasCache{}
-
-type crewAliasCache struct {
-	mu      sync.Mutex
-	loaded  time.Time
-	aliases map[string]string
-	// read is replaced in tests.
-	read func(ctx context.Context) map[string]string
-}
-
-func (c *crewAliasCache) lookup(ctx context.Context, legacyRoot string) string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.aliases == nil || time.Since(c.loaded) > crewOwnerCacheTTL {
-		read := c.read
-		if read == nil {
-			read = readCrewPathAliases
-		}
-		c.aliases, c.loaded = read(ctx), time.Now()
-	}
-	return c.aliases[legacyRoot]
-}
-
-func readCrewPathAliases(_ context.Context) map[string]string {
-	return crewAliasesFromRegistry(defaultProjectOwners())
-}
-
-// crewAliasesFromRegistry maps the old physical root of every migrated Crew to its Crew/<folder> root. The aliases
-// are the server-controlled registry's (PLAT-449): a user or agent turn cannot add one, so no one can make an old path
-// resolve to someone else's Crew.
-func crewAliasesFromRegistry(registry *projectOwnerRegistry) map[string]string {
-	aliases := map[string]string{}
-	all, err := registry.All()
-	if err != nil {
-		log.Printf("[OWNER_REGISTRY] cannot read the project registry for crew aliases (%v); old crew paths do not resolve", err)
-		return aliases
-	}
-	for _, rec := range all {
-		if !isProjectProfileID(rec.Product) {
-			continue
-		}
-		for _, alias := range rec.Aliases {
-			ref, ok := parseCrewPath("", alias)
-			if !ok || ref.Rest != "" || ref.Root == projectStorageRoot(rec) {
-				continue
-			}
-			aliases[ref.Root] = projectStorageRoot(rec)
-		}
-	}
-	return aliases
-}
-
-// lookupFolder returns the Crew/<folder> root of a migrated crew by the folder name it kept, whoever owned it
-// ("" when no migrated crew has that folder). A migrated crew keeps its folder name, and folder names are
-// unique (<slug>-<id8>), so a stored reference that does not say who owned the crew ("Chats/Work/projects/<f>"
-// in a chat history file) still maps to exactly one crew.
-func (c *crewAliasCache) lookupFolder(ctx context.Context, folder string, origin ...string) string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.aliases == nil || time.Since(c.loaded) > crewOwnerCacheTTL {
-		read := c.read
-		if read == nil {
-			read = readCrewPathAliases
-		}
-		c.aliases, c.loaded = read(ctx), time.Now()
-	}
-	profileID := crewProfileID
-	if len(origin) > 0 {
-		profileID = origin[0]
-	}
-	var result string
-	for alias, moved := range c.aliases {
-		id, ok := projectIdentityOf(alias)
-		if ok && id.Product == profileID && id.Folder == folder {
-			if result != "" && result != moved {
-				return ""
-			}
-			result = moved
-		}
-	}
-	return result
-}
-
-var crewAliasWarned sync.Map
-
-// warnCrewAliasUsed logs, once per old path per process, that a stored or typed reference to a migrated crew's
-// old location was followed to its new one. Old spellings keep working indefinitely; the log is how a stale
-// reference is found and rewritten at the source.
-func warnCrewAliasUsed(legacyRoot, moved string) {
-	if _, seen := crewAliasWarned.LoadOrStore(legacyRoot, true); !seen {
-		log.Printf("[CREW_ALIAS] old crew path %q resolved to %q (migrated crew; the old spelling keeps working)", legacyRoot, moved)
-	}
-}
-
 // sharedCrewIdentity is the Crew/<id>[/rest] path a crew path names once any alias is followed, for crews that
 // live at the shared root; ok is false for any other path (including a crew still in its owner's tree).
 func sharedCrewIdentity(callerID, raw string) (string, bool) {
@@ -323,64 +203,8 @@ func crewTurnWorkspace(ctx context.Context, callerID, selected, bindingRoot stri
 	return ref.Path()
 }
 
-// followCrewAlias returns raw with an old spelling of a migrated crew replaced by its Crew/<id> path; any other
-// path, and a crew that has not moved, comes back unchanged. This is the one function every reader of a stored or
-// typed crew path that cannot carry a crewPathRef uses.
-func followCrewAlias(callerID, raw string) string {
-	original, ok := parseCrewPath(callerID, raw)
-	if !ok {
-		return raw
-	}
-	moved := crewPathAliases.lookup(context.Background(), original.Root)
-	if moved == "" || moved == original.Root {
-		return raw
-	}
-	warnCrewAliasUsed(original.Root, moved)
-	original.Root = moved
-	return original.Path()
-}
-
-// foldCrewRootForStoredReference maps a stored crew root (a workflow's attached Crew, a place connection's root) to
-// the Crew's current root: an old physical path follows the exact alias of its owner's folder; a logical path, which
-// names no owner, follows the folder name (unique, and kept by the move). Anything else, and a Crew that has not
-// moved, comes back unchanged.
+// Canonical references are stored directly. Retired filesystem locations
+// are accepted only by the one-off migration tool, never by live routing.
 func foldCrewRootForStoredReference(root string) string {
-	ref := workspaceref.MustParse(root)
-	if ref.HasOwner() {
-		return followCrewAlias("", root)
-	}
-	return foldCrewScopePath(root)
-}
-
-func init() {
-	// A Crew attached to a workflow keeps resolving after the Crew moves (PLAT-442 step 4).
-	workflowtypes.SetCrewRootFold(foldCrewRootForStoredReference)
-}
-
-// crewAliasForWorkspaceIO is the resolver of the workspace transport (pkg/wsalias): a path argument that names an old
-// spelling of a migrated Crew is rewritten to the Crew's Crew/<folder> path before the request leaves the server, so a
-// typed, stored or browser-held old path reads the Crew's files and never creates a folder at the old place.
-func crewAliasForWorkspaceIO(userID, p string) (string, bool) {
-	if !strings.Contains(p, "Work/projects/") && !strings.Contains(p, "Code/projects/") && !strings.HasPrefix(strings.TrimLeft(p, "/"), "Crew/") {
-		return "", false
-	}
-	clean := workspaceProxyCleanPath(p)
-	if strings.TrimSpace(userID) == "" {
-		userID = GetDefaultUserID()
-	}
-	ref, ok := parseCrewPath(userID, clean)
-	if !ok {
-		return "", false
-	}
-	moved := crewPathAliases.lookup(context.Background(), ref.Root)
-	if moved == "" {
-		return "", false
-	}
-	warnCrewAliasUsed(ref.Root, moved)
-	ref.Root = moved
-	return ref.Path(), true
-}
-
-func init() {
-	wsalias.SetResolver(crewAliasForWorkspaceIO)
+	return strings.Trim(strings.ReplaceAll(strings.TrimSpace(root), "\\", "/"), "/")
 }

@@ -799,6 +799,7 @@ func (o *options) callWithArguments(cmd *cobra.Command, name string, arguments m
 	if err != nil {
 		return err
 	}
+	name, arguments = crewCommandCall(name, arguments)
 	result, err := client.Call(cmd.Context(), name, arguments)
 	if err != nil {
 		return err
@@ -835,4 +836,69 @@ func loginsCommand(o *options) *cobra.Command {
 		}
 		return loadErr
 	}}
+}
+
+// Crew command arguments adapt to the same public families as MCP.
+func crewCommandCall(name string, args map[string]any) (string, map[string]any) {
+	family, action := "", ""
+	switch name {
+	case "list_crews":
+		family, action = "workspace", "list"
+	case "get_crew":
+		family, action = "workspace", "get"
+	case "ask_crew":
+		family, action = "workspace", "ask"
+	case "create_crew":
+		family, action = "workspace", "create"
+	case "update_crew":
+		family, action = "workspace", "update"
+	case "export_crew":
+		family, action = "workspace", "export"
+	case "import_crew":
+		family, action = "workspace", "import"
+	case "list_crew_files":
+		family, action = "files", "list"
+	case "search_crew_files":
+		family, action = "files", "search"
+	case "read_crew_file":
+		family, action = "files", "read"
+	case "write_crew_file":
+		family, action = "files", "write"
+	case "list_crew_functions":
+		family, action = "functions", "list"
+	case "call_crew_function":
+		family, action = "functions", "call"
+	case "get_crew_function_call":
+		family, action = "functions", "status"
+	case "suggest_crew_change":
+		family, action = "suggest_change", "suggest"
+	default:
+		return name, args
+	}
+	out := map[string]any{}
+	for k, v := range args {
+		out[k] = v
+	}
+	out["action"] = action
+	if family == "workspace" {
+		if id, ok := out["crew_id"]; ok {
+			out["workspace_id"] = id
+			delete(out, "crew_id")
+		}
+		if action == "create" || action == "import" || action == "update" {
+			settings := map[string]any{}
+			for k, v := range out {
+				if k != "workspace_id" && k != "action" {
+					settings[k] = v
+					delete(out, k)
+				}
+			}
+			key := "spec"
+			if action == "update" {
+				key = "changes"
+			}
+			out[key] = settings
+		}
+	}
+	return family, out
 }

@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 
 vi.mock('../stores/useProductSurfaceStore', async () => {
   const { createStore } = await import('zustand/vanilla')
-  return { useProductSurfaceStore: createStore(() => ({ productSurface: 'code', selectedCodeProjectId: 'removed' })) }
+  return { useProductSurfaceStore: createStore(() => ({ productSurface: 'code', selectedWorkProjectId: 'removed' })) }
 })
 vi.mock('../stores/useAppStore', () => ({ useAppStore: { getState: () => ({ showWorkflowsOverview: false }), subscribe: () => () => {} } }))
 vi.mock('../stores/useGlobalPresetStore', () => ({ useGlobalPresetStore: { subscribe: () => () => {} } }))
@@ -19,7 +19,7 @@ it('does not rewrite a fresh deep link to the default view before the surface ap
   window.history.replaceState({}, '', '/code/projects/example?view=shell')
   // The surface has not applied the linked view yet; it still projects Files.
   let projectedView = 'files'
-  const unregister = registerProductUrlView('code', () => ({ id: 'example', view: projectedView }))
+  const unregister = registerProductUrlView('work', () => ({ id: 'example', view: projectedView }))
   const stop = observeProductHistory()
   try {
     vi.runAllTimers()
@@ -35,17 +35,17 @@ it('does not rewrite a fresh deep link to the default view before the surface ap
 it('replaces a removed project with its inventory fallback and still pushes a deliberate project choice', () => {
   vi.useFakeTimers()
   window.history.replaceState({}, '', '/code/projects/removed')
-  const unregister = registerProductUrlView('code', () => ({ view: 'files' }))
+  const unregister = registerProductUrlView('work', () => ({ view: 'files' }))
   const stop = observeProductHistory()
   const push = vi.spyOn(window.history, 'pushState')
   const replace = vi.spyOn(window.history, 'replaceState')
   try {
-    replaceProductSelection(() => useProductSurfaceStore.setState({ selectedCodeProjectId: 'available' }))
+    replaceProductSelection(() => useProductSurfaceStore.setState({ selectedWorkProjectId: 'available' }))
     vi.runAllTimers()
     expect(window.location.pathname).toBe('/code/projects/available')
     expect(replace).toHaveBeenCalledOnce()
     expect(push).not.toHaveBeenCalled()
-    useProductSurfaceStore.setState({ selectedCodeProjectId: 'chosen' })
+    useProductSurfaceStore.setState({ selectedWorkProjectId: 'chosen' })
     vi.runAllTimers()
     expect(window.location.pathname).toBe('/code/projects/chosen')
     expect(push).toHaveBeenCalledOnce()

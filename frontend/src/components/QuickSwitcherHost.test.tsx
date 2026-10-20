@@ -33,7 +33,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 it('closes before the first chunk arrives, then focuses the real search input and handles Escape', async () => {
   window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['code'], gatewayUrl: 'http://localhost:99999' } as never
   useAuthStore.setState({ user: { id: 'viewer', is_admin: true, allowed_products: ['code'] } as never })
-  useProductSurfaceStore.setState({ productSurface: 'code' })
+  useProductSurfaceStore.setState({ productSurface: 'work' })
   useGlobalPresetStore.setState({ workflowPresetsLoaded: true, workflowPresets: [] })
   useChatStore.setState({ chatTabs: {}, activeTabId: null, activeSessionsCache: [], getActiveSessions: vi.fn(async () => []) })
   const closed = vi.fn()

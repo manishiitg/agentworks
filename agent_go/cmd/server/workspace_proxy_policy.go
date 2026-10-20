@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
@@ -72,7 +72,7 @@ func (p workspaceProxyPolicy) deniesPath(key, raw string) bool {
 // workspaceProxyServerOwnedFiles are written only by the server, never by a
 // browser -- not even an admin's: legacy Code sharing data and the admin
 // audit log, which must not be editable by the admins it records.
-var workspaceProxyServerOwnedFiles = []string{codeSharesFilePath(), "config/code-admin-audit"}
+var workspaceProxyServerOwnedFiles = []string{"config/crew-admin-audit"}
 
 // serverOwnedWrite reports whether a write to clean would change a
 // server-owned file: the file itself, anything inside it, or config/ as a
@@ -103,7 +103,7 @@ func (p workspaceProxyPolicy) denies(key, raw string) string {
 		deleteTarget = strings.TrimSuffix(deleteTarget, "/files")
 	}
 	if p.delete && write && codeFilesDeletionProtected(deleteTarget) {
-		return "the Code workspace root and project metadata cannot be deleted from Files; use Delete Code to remove the workspace"
+		return "the Crew project root and project metadata cannot be deleted from Files; use Delete Crew to remove the workspace"
 	}
 	if write && serverOwnedWrite(clean) {
 		return "this file is written only by the server"
@@ -198,7 +198,7 @@ func (p workspaceProxyPolicy) denies(key, raw string) string {
 // running-session and credential cleanup. This also covers deleting a parent
 // folder or clearing its contents through /folders/<path>/files.
 func codeFilesDeletionProtected(clean string) bool {
-	if product, _, known := projectProductForPath(clean); known && product.ProfileID == "code" {
+	if product, _, known := projectProductForPath(clean); known && product.ProfileID == crewProfileID {
 		if ref, ok := parseCrewPath(GetDefaultUserID(), clean); ok {
 			return ref.Rest == "" || ref.Rest == "product.json" || ref.Rest == "workflow.json"
 		}
@@ -206,7 +206,7 @@ func codeFilesDeletionProtected(clean string) bool {
 	if ref := workspaceref.MustParse(clean); ref.HasOwner() && ref.Logical() != "" {
 		clean = ref.Logical()
 	}
-	root := codeproduct.ProjectsRoot
+	root := workproduct.ProjectsRoot
 	if clean == root || (clean != "" && strings.HasPrefix(root, clean+"/")) {
 		return true
 	}

@@ -30,7 +30,7 @@ describe('product surface deployment configuration', () => {
     expect(deploymentDefaultProductSurface()).toBe('agentworks')
     expect(gatewayBaseUrl()).toBeNull()
     expect(hasGatewaySSO()).toBe(false)
-    for (const product of ['code', 'relays', 'knowledgebase', 'mcp-gateway', 'llm-gateway'] as const) expect(isEnabledProductSurface(product)).toBe(false)
+    for (const product of ['work', 'relays', 'knowledgebase', 'mcp-gateway', 'llm-gateway'] as const) expect(isEnabledProductSurface(product)).toBe(false)
   })
 
   it('uses local defaults and cannot opt into server products in a local build', () => {

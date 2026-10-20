@@ -26,7 +26,7 @@ vi.mock('./McpAppsSection', () => ({ McpAppsSection: () => null }))
 vi.mock('./codeLocalFiles', () => ({ useCodeFilesPreference: () => ({ location: 'server' }) }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (value: unknown) => unknown) => select({ chatTabs: {} }) }))
 import { WorkIntegrationsPanel } from './WorkIntegrationsPanel'
-import { CREW_PRODUCT, CODE_PRODUCT, ProjectProductProvider } from './projectProduct'
+import { CREW_PRODUCT, ProjectProductProvider } from './projectProduct'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const cleanup: (() => void)[] = []
@@ -44,7 +44,7 @@ async function mount(product = CREW_PRODUCT, enabledPanels?: Set<string>, canEdi
   return host
 }
 
-it.each([CREW_PRODUCT, CODE_PRODUCT])('opens current connections for origin $profileId and preserves deep links to Secrets and Skills', async product => {
+it.each([CREW_PRODUCT])('opens current connections for origin $profileId and preserves deep links to Secrets and Skills', async product => {
   const host = await mount(product)
   expect(host.querySelector('[data-content="mcp"]')?.textContent).toBe('connected MCP content')
   expect(host.querySelector('[aria-label="Integration sections"]')).toBeNull()
@@ -78,7 +78,7 @@ it('keeps MCP and Skills hidden for a secrets-only project and rejects their tar
   for (const target of ['mcp', 'skills', 'vault', 'brain']) expect(host.querySelector(`[data-content="${target}"]`)).toBeNull()
 })
 
-it.each([CREW_PRODUCT, CODE_PRODUCT])('uses one Slack page for origin $profileId', async product => {
+it.each([CREW_PRODUCT])('uses one Slack page for origin $profileId', async product => {
  const host = await mount(product)
  await act(async () => state.target('slack'))
  expect(host.querySelector('[data-content="slack"]')?.textContent).toContain('Act in Slack')
@@ -90,7 +90,7 @@ it.each([CREW_PRODUCT, CODE_PRODUCT])('uses one Slack page for origin $profileId
 })
 
 it('does not expose disabled bot channels through Use & share or direct targets', async () => {
-  const host = await mount(CODE_PRODUCT, new Set(['secrets']))
+  const host = await mount(CREW_PRODUCT, new Set(['secrets']))
   expect(host.textContent).not.toContain('Slack')
   expect(host.textContent).not.toContain('WhatsApp')
   for (const target of ['slack', 'whatsapp']) await act(async () => state.target(target))

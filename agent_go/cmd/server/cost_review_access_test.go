@@ -14,9 +14,9 @@ func TestGlobalCostsRequireReviewPermission(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
 	withMemoryUserDirectory(t, `{"users":[
 		{"id":"admin","username":"admin","admin":true},
-		{"id":"reviewer","username":"reviewer","code_reviewer":true},
+		{"id":"reviewer","username":"reviewer","crew_reviewer":true},
 		{"id":"member","username":"member","can_create":true},
-		{"id":"disabled","username":"disabled","code_reviewer":true,"disabled":true}]}`)
+		{"id":"disabled","username":"disabled","crew_reviewer":true,"disabled":true}]}`)
 	for name, handler := range map[string]func(http.ResponseWriter, *http.Request){
 		"overview":    env.api.handleCostOverview,
 		"accounts":    env.api.handleProviderAccountCosts,

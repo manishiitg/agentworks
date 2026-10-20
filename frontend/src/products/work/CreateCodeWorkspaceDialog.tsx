@@ -10,7 +10,7 @@ export const CODE_MODE_CHOICES: Array<{ mode: ProductMode; title: string; text: 
 ]
 
 // Creation needs only a name; identity details and templates are optional later.
-export function CreateCodeWorkspaceDialog({ onClose, onCreate, submitting, error, profileId = 'code', initialMode = 'dev', noun = 'Crew' }: {
+export function CreateCodeWorkspaceDialog({ onClose, onCreate, submitting, error, profileId = 'work', initialMode = 'dev', noun = 'Crew' }: {
   onClose: () => void
   onCreate: (title: string, runsOn?: RunsOnSelection, mode?: ProductMode) => void | Promise<void>
   noun?: string
@@ -26,7 +26,7 @@ export function CreateCodeWorkspaceDialog({ onClose, onCreate, submitting, error
     event.preventDefault()
     const trimmed = title.trim()
     if (!trimmed || submitting) return
-    void onCreate(trimmed, runsOn, profileId === 'code' ? mode : undefined)
+    void onCreate(trimmed, runsOn, profileId === 'work' ? mode : undefined)
   }
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/65 p-3 backdrop-blur-sm" role="presentation">
@@ -40,7 +40,7 @@ export function CreateCodeWorkspaceDialog({ onClose, onCreate, submitting, error
             <X className="h-4 w-4" />
           </button>
         </div>
-        {profileId === 'code' && <div role="radiogroup" aria-label="Mode" className="mt-4 grid gap-2">
+        {profileId === 'work' && <div role="radiogroup" aria-label="Mode" className="mt-4 grid gap-2">
           {CODE_MODE_CHOICES.map(choice => <label key={choice.mode} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${mode === choice.mode ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}>
             <input type="radio" name="code-mode" className="mt-1" checked={mode === choice.mode} onChange={() => setMode(choice.mode)} disabled={submitting} />
             <choice.icon aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />

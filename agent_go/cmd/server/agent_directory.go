@@ -3,8 +3,6 @@ package server
 import (
 	"context"
 	"strings"
-
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 )
 
 // listAgentDirectory is the one list of agents a person can use (PLAT-861-297, owner 2026-10-20: "all should be a
@@ -36,9 +34,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 		target := triggerTarget{Kind: triggerCallerCrew, Path: crewPath, Label: name, CrewID: id, CrewProfile: profileID, CrewOwner: owner}
 		functions, _ := readCrewFunctions(ctx, target)
 		kind := "crew"
-		if strings.EqualFold(profileID, codeproduct.ProfileID) {
-			kind = "code"
-		}
+
 		row := map[string]interface{}{
 			"kind": kind, "id": "workspace:" + profileID + ":" + id, "crew_id": id, "name": name, "owner": crew["owner"],
 			"your_access": crew["access"], "description": crew["description"], "functions": agentDirectoryFunctions(functions),

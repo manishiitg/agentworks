@@ -280,8 +280,8 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			externalError(w, 403, "forbidden", "vault:read requires a Vault manager or Vault reader.")
 			return
 		}
-		if t.Allows("code:review") && !currentUserCanReviewCode(r) {
-			externalError(w, 403, "forbidden", "code:review is for admins and Code reviewers.")
+		if t.Allows("crews:review") && !currentUserCanReviewCode(r) {
+			externalError(w, 403, "forbidden", "crews:review is for admins and Code reviewers.")
 			return
 		}
 		if t.Allows("users:manage") && !currentUserIsAdmin(r) {
@@ -383,7 +383,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if c.AccessToken != nil && c.AccessToken.BoundAgentID != "" {
 		return tool.Name == "messages" && namedAgentOperationAllowed(c, false)
 	}
-	if isExternalCrewTool(tool.Name) && !productEnabled("work") && (!productEnabled("code") || !sharedWorkspaceMember(tool.Name)) || isExternalCodeReviewTool(tool.Name) && !productEnabled("code") {
+	if (isExternalCrewTool(tool.Name) || isExternalCodeReviewTool(tool.Name)) && !productEnabled(crewProfileID) {
 		return false
 	}
 	if tool.Name == "manage_laptop_access" || tool.Name == "execute_local_shell_command" || tool.Name == "copy_local_file_to_crew" {
@@ -443,16 +443,14 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return level == vaultManage || (level == vaultRead && vaultToolHasReads(tool.Name))
 	}
 	// Code review tools exist only for admins and Code reviewers, and a token
-	// also needs code:review; both are re-checked on every call.
+	// also needs crews:review; both are re-checked on every call.
 	if isExternalCodeReviewTool(tool.Name) {
-		return claimsCanReviewCode(c) && (c.AccessToken == nil || c.AccessToken.Allows("code:review"))
+		return claimsCanReviewCode(c) && (c.AccessToken == nil || c.AccessToken.Allows("crews:review"))
 	}
 	if tool.Name == "manage_condition_triggers" {
 		return externalWatchersAllowed(c)
 	}
-	if isExternalCodeRunTool(tool.Name) {
-		return externalCodeRunAllowed(c)
-	}
+
 	if isExternalTokenLimitTool(tool.Name) {
 		return externalTokenLimitAllowed(c, tool.Name)
 	}

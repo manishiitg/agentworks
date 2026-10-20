@@ -78,11 +78,11 @@ type UserRecord struct {
 	// an editor or viewer in none. Present (even empty): exactly these, for a creator or an editor; a viewer never
 	// creates and an admin always may.
 	CreateProducts *[]string `json:"create_products,omitempty"`
-	// CodeReviewer is a permission on top of the role: the account may review
-	// every Code workspace's cost, chats and files, read-only, with each view
+	// CrewReviewer is a permission on top of the role: the account may review
+	// every Crew project's cost, chats and files, read-only, with each view
 	// audited (code_admin.go), and read that audit log. It grants no write
 	// anywhere and is not admin.
-	CodeReviewer bool `json:"code_reviewer,omitempty"`
+	CrewReviewer bool `json:"crew_reviewer,omitempty"`
 	// VaultReader may read Vault (connections, tools, groups, access, audit
 	// and SQL queries) without being an admin, and changes nothing. Needs the
 	// Vault product. Vault managers are admins with Vault.
@@ -409,8 +409,8 @@ type UserAccess struct {
 	CanCreate bool
 	CanEdit   bool
 	Disabled  bool
-	// CodeReviewer: see UserRecord.CodeReviewer.
-	CodeReviewer bool
+	// CrewReviewer: see UserRecord.CrewReviewer.
+	CrewReviewer bool
 	// VaultReader: see UserRecord.VaultReader.
 	VaultReader bool
 	// Products the identity may open when ProductsRestricted; ignored
@@ -422,7 +422,7 @@ type UserAccess struct {
 }
 
 // CanCreateIn reports whether the account may create in a product ("agentworks" for workflows, "relays", "work" for
-// Crews, "code", ...). It is the one create check: the role says whether the account creates at all, CreateProducts
+// Crews, ...). It is the one create check: the role says whether the account creates at all, CreateProducts
 // narrows (or, for an editor, grants) it per product (PLAT-767).
 func (acc UserAccess) CanCreateIn(product string) bool {
 	if acc.Disabled {
@@ -517,7 +517,7 @@ func accessForRecord(rec *UserRecord) UserAccess {
 	case UserRoleEditor:
 		canEdit = true
 	}
-	acc := UserAccess{Known: true, Admin: admin, CanCreate: canCreate, CanEdit: canEdit, Disabled: rec.Disabled, CodeReviewer: rec.CodeReviewer, VaultReader: rec.VaultReader}
+	acc := UserAccess{Known: true, Admin: admin, CanCreate: canCreate, CanEdit: canEdit, Disabled: rec.Disabled, CrewReviewer: rec.CrewReviewer, VaultReader: rec.VaultReader}
 	if rec.CreateProducts != nil {
 		acc.CreateProducts = append([]string{}, (*rec.CreateProducts)...)
 	}
@@ -568,13 +568,13 @@ func currentUserIsAdmin(r *http.Request) bool {
 
 // currentUserCanReviewCode gates Code inspection (code_admin.go) and the
 // Code rows of the cost overview: admins, and enabled accounts an admin
-// marked as Code reviewers.
+// marked as Crew reviewers.
 func currentUserCanReviewCode(r *http.Request) bool {
 	if currentUserIsAdmin(r) {
 		return true
 	}
 	acc := userAccessForClaims(GetUserFromContext(r.Context()))
-	return acc.Known && acc.CodeReviewer && !acc.Disabled
+	return acc.Known && acc.CrewReviewer && !acc.Disabled
 }
 
 func requireAdmin(next http.HandlerFunc) http.HandlerFunc {
@@ -765,7 +765,7 @@ type userAdminView struct {
 	Products    []string `json:"products"`
 	// CreateProducts is the per-product create list; null follows the role (PLAT-767).
 	CreateProducts *[]string `json:"create_products"`
-	CodeReviewer   bool      `json:"code_reviewer"`
+	CrewReviewer   bool      `json:"crew_reviewer"`
 	VaultReader    bool      `json:"vault_reader"`
 	Disabled       bool      `json:"disabled"`
 	// Invited: added by email, no password, not signed in with SSO yet.
@@ -793,7 +793,7 @@ func viewOf(rec UserRecord) userAdminView {
 		ID: rec.ID, Username: rec.Username, Email: rec.Email, Provider: provider,
 		HasPassword: rec.PasswordHash != "", Admin: acc.Admin, CanCreate: acc.CanCreate, CanEdit: acc.CanEdit,
 		Role:     roleForRecord(&rec),
-		Products: products, CreateProducts: rec.CreateProducts, CodeReviewer: rec.CodeReviewer, VaultReader: rec.VaultReader, Disabled: rec.Disabled, CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt,
+		Products: products, CreateProducts: rec.CreateProducts, CrewReviewer: rec.CrewReviewer, VaultReader: rec.VaultReader, Disabled: rec.Disabled, CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt,
 		Invited:              rec.PasswordHash == "" && rec.SSO == nil && rec.Email != "",
 		TokenLimits:          rec.TokenLimits.normalized(),
 		AccountTokenLimits:   normalizedAccountTokenLimits(rec.AccountTokenLimits),
@@ -895,7 +895,7 @@ type userWriteRequest struct {
 	// default (JSON null cannot be told apart from absent).
 	CreateProducts      *[]string `json:"create_products"`
 	ClearCreateProducts bool      `json:"clear_create_products"`
-	CodeReviewer        *bool     `json:"code_reviewer"`
+	CrewReviewer        *bool     `json:"crew_reviewer"`
 	VaultReader         *bool     `json:"vault_reader"`
 	Disabled            *bool     `json:"disabled"`
 	// TokenLimits replaces both limits when present; zero is unlimited.
@@ -1066,8 +1066,8 @@ func (api *StreamingAPI) handleAdminUpdateUser(w http.ResponseWriter, r *http.Re
 		}
 		rec.CreateProducts = &create
 	}
-	if req.CodeReviewer != nil {
-		rec.CodeReviewer = *req.CodeReviewer
+	if req.CrewReviewer != nil {
+		rec.CrewReviewer = *req.CrewReviewer
 	}
 	if req.VaultReader != nil {
 		rec.VaultReader = *req.VaultReader
@@ -1117,7 +1117,7 @@ func (api *StreamingAPI) handleAdminUpdateUser(w http.ResponseWriter, r *http.Re
 	// Saving sorts the backing slice; the earlier pointer may now identify
 	// another account. Resolve the target again for the response and log.
 	rec = dir.byID(id)
-	log.Printf("[USERS] %s updated user %s (role=%s products=%v code_reviewer=%v vault_reader=%v disabled=%v token_limits=%+v account_token_limits=%s account_allowed_models=%s)", callerID, rec.Username, roleForRecord(rec), rec.Products, rec.CodeReviewer, rec.VaultReader, rec.Disabled, rec.TokenLimits.normalized(), accountTokenLimitsSummary(rec.AccountTokenLimits), accountAllowedModelsSummary(rec.AccountAllowedModels))
+	log.Printf("[USERS] %s updated user %s (role=%s products=%v crew_reviewer=%v vault_reader=%v disabled=%v token_limits=%+v account_token_limits=%s account_allowed_models=%s)", callerID, rec.Username, roleForRecord(rec), rec.Products, rec.CrewReviewer, rec.VaultReader, rec.Disabled, rec.TokenLimits.normalized(), accountTokenLimitsSummary(rec.AccountTokenLimits), accountAllowedModelsSummary(rec.AccountAllowedModels))
 	writeUsersJSON(w, http.StatusOK, viewOf(*rec))
 }
 
@@ -1227,7 +1227,7 @@ func (api *StreamingAPI) handleChangeOwnPassword(w http.ResponseWriter, r *http.
 // disables each product's "New ..." from it.
 func canCreateInProducts(acc UserAccess) map[string]bool {
 	out := map[string]bool{}
-	for _, product := range append(knownProductIDs(), "agentworks", "relays", "work", "code", "video-studio", "sparkquill") {
+	for _, product := range append(knownProductIDs(), "agentworks", "relays", "work", "video-studio", "sparkquill") {
 		out[product] = acc.CanCreateIn(product)
 	}
 	return out
@@ -1255,7 +1255,7 @@ func registeredProductIDs() []string {
 	if os.Getenv("CAPLAYER_SERVICE_URL") != "" && productEnabled("mcp-gateway") {
 		out = append(out, "mcp-gateway")
 	}
-	for _, id := range []string{"video-studio", "sparkquill", "work", "code", "knowledgebase", "bullpen", "llm-gateway"} {
+	for _, id := range []string{"video-studio", "sparkquill", "work", "knowledgebase", "bullpen", "llm-gateway"} {
 		if productEnabled(id) {
 			out = append(out, id)
 		}

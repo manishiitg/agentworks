@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
@@ -31,7 +31,7 @@ func codeProjectMode(ctx context.Context, workspacePath string) string {
 // applyCoworkProfile turns this turn's copy of the Code profile into the Cowork one: its own system prompt (same platform mechanics),
 // the Cowork skills, and without the coding and terminal features.
 func applyCoworkProfile(profile *agentprofiles.Profile) {
-	if profile == nil || profile.ID != codeproduct.ProfileID {
+	if profile == nil || profile.ID != workproduct.ProfileID {
 		return
 	}
 	drop := map[string]bool{"coding": true, "terminal": true}
@@ -49,6 +49,6 @@ func applyCoworkProfile(profile *agentprofiles.Profile) {
 		}
 	}
 	profile.Features = bindings
-	profile.SystemPromptTemplate = codeproduct.CoworkPrompt(profile.SystemPromptTemplate)
-	profile.Skills = appendUniqueStrings(append([]string(nil), profile.Skills...), codeproduct.CoworkSkills...)
+	profile.SystemPromptTemplate = workproduct.CoworkPrompt(profile.SystemPromptTemplate)
+	profile.Skills = appendUniqueStrings(append([]string(nil), profile.Skills...), workproduct.CoworkSkills...)
 }

@@ -112,7 +112,7 @@ func TestWorkUIOnlyRegistersForInteractiveWorkChat(t *testing.T) {
 }
 
 func TestWorkUISecretsUsesConnectionsSection(t *testing.T) {
-	for _, contract := range []uiContract{workUIControlContract, codeUIControlContract} {
+	for _, contract := range []uiContract{workUIControlContract} {
 		if err := validateUIActionForContract(contract, "mcp", "open", "secrets"); err != nil {
 			t.Fatalf("%s Connections Secrets refused: %v", contract.Product, err)
 		}

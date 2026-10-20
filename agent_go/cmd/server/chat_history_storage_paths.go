@@ -24,7 +24,7 @@ func chatHistoryStoragePath(input string) string {
 	if !strings.HasPrefix(input, "_users/") && !strings.HasPrefix(input, "Crew/") {
 		return input
 	}
-	return followCrewAlias("", input)
+	return input
 }
 
 func chatHistoryLocalStoragePath(input string) string {
@@ -48,7 +48,7 @@ func ownCanonicalProjectRestorePath(user, cleaned string) (string, bool) {
 		return "", false
 	}
 	root := workspaceref.SharedProjectPath(rec.Folder)
-	if projectStorageRoot(rec) != root && !registryListHas(rec.Aliases, root) {
+	if projectStorageRoot(rec) != root {
 		return "", false
 	}
 	rest := strings.TrimPrefix(cleaned, root+"/")

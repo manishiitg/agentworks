@@ -19,7 +19,7 @@ func (api *StreamingAPI) externalMCPElicitation(r *http.Request, allowed map[str
 	return agentworksclient.FunctionElicitationHost{
 		Available: func(tool string) bool { _, ok := allowed[tool]; return ok },
 		Call: func(ctx context.Context, tool string, args map[string]any) (json.RawMessage, *mcp.CallToolResult) {
-			rec, err := api.externalMCPInvoke(ctx, r, tool, args)
+			rec, err := api.externalMCPInvoke(ctx, r, tool, args, true)
 			if err != nil {
 				return nil, mcp.NewToolResultError("failed to encode tool arguments: " + err.Error())
 			}

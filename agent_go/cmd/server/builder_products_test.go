@@ -10,7 +10,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/guidance"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
@@ -52,7 +51,7 @@ func TestBuilderProductsCanonicalPromptsAndSkills(t *testing.T) {
 			t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", tc.mode)
 			t.Setenv("AGENTWORKS_LOCAL_SERVER_PRODUCTS", tc.opt)
 			selection := builderProductSelection(nil)
-			for _, p := range []agentprofiles.Profile{workproduct.BuiltinAgentProfile(), codeproduct.BuiltinAgentProfile()} {
+			for _, p := range []agentprofiles.Profile{workproduct.BuiltinAgentProfile(), workproduct.BuiltinAgentProfile()} {
 				if !selection.Has(p.ID) {
 					continue
 				}
@@ -123,7 +122,7 @@ func TestBuilderProductsGateCachedAndExternalTools(t *testing.T) {
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "")
 	blocked := append(knowledgebase.ToolNames(), caplayerproduct.ExternalTools()...)
 	blocked = append(blocked, "brain_schedule", "brain_secrets", "read_knowledgebase", "run_relay", "test_relay", "publish_relay")
-	blocked = append(blocked, "create_code_workspace", "ask_my_code", "list_my_code_projects", "list_code_workspaces")
+	blocked = append(blocked, "create_code_workspace", "ask_my_code", "list_my_code_projects", "list_review_workspaces")
 	gate := newProductToolGate(nil)
 	claims := &UserClaims{UserID: "default"}
 	resolve := (&StreamingAPI{}).bindToolExecutionContext(context.WithValue(context.Background(), UserContextKey, claims), "product-selection-test", QueryRequest{}, false)
@@ -161,7 +160,7 @@ func TestBuilderProductsExplicitServerSurfaceSelection(t *testing.T) {
 		}
 	}
 	text := (productpolicy.Selection{}).Text(externalMCPInstructions)
-	if strings.Contains(text, "list_crews") || strings.Contains(text, "list_workflows") || strings.Contains(text, "<!-- product:") || !strings.Contains(text, "list_code_workspaces") {
+	if strings.Contains(text, "list_crews") || strings.Contains(text, "list_workflows") || strings.Contains(text, "<!-- product:") || !strings.Contains(text, "list_review_workspaces") {
 		t.Fatal(text)
 	}
 	js := runtimeFrontendConfigJS(1, "")

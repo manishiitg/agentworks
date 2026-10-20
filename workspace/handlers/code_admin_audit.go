@@ -27,8 +27,8 @@ type appendCodeAdminAuditRequest struct {
 	Entry string `json:"entry"`
 }
 
-// AppendCodeAdminAudit is POST /api/audit/code-admin/append. It appends one
-// JSON object as a line to config/code-admin-audit/<month>.jsonl.
+// AppendCodeAdminAudit is POST /api/audit/crew-admin/append. It appends one
+// JSON object as a line to config/crew-admin-audit/<month>.jsonl.
 func AppendCodeAdminAudit(c *gin.Context) {
 	var req appendCodeAdminAuditRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -51,7 +51,7 @@ func AppendCodeAdminAudit(c *gin.Context) {
 func appendCodeAdminAuditLine(docsDir, month, entry string) error {
 	codeAdminAuditMu.Lock()
 	defer codeAdminAuditMu.Unlock()
-	dir := filepath.Join(docsDir, "config", "code-admin-audit")
+	dir := filepath.Join(docsDir, "config", "crew-admin-audit")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}

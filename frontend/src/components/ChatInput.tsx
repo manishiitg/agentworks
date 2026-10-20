@@ -3153,7 +3153,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             )}
 <ChatComposerControls>
               <div className={nativeTerminalTools ? 'hidden' : 'flex min-w-0 items-center gap-1.5'}>
-                {agentProfileId === 'code' && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} />}
+                {agentProfileId === 'work' && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} />}
                 {chatInputStatusLine && (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -3550,7 +3550,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   </Tooltip>
                 )}
                 {attachmentEl}
-                {(agentProfileId === 'work' || agentProfileId === 'code') && agentProfileProjectId && activeTab?.metadata?.isViewOnly !== true && activeTab?.metadata?.agentProfileChatModelLabel && !activeTab.metadata.agentProfileConversationKey?.startsWith(`${agentProfileProjectId}:chat:agent-`) && (
+                {(agentProfileId === 'work') && agentProfileProjectId && activeTab?.metadata?.isViewOnly !== true && activeTab?.metadata?.agentProfileChatModelLabel && !activeTab.metadata.agentProfileConversationKey?.startsWith(`${agentProfileProjectId}:chat:agent-`) && (
                   activeTab.metadata.agentProfileCanOpenModels ? <button type="button" className="max-w-40 truncate rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground" title={`${activeTab.metadata.agentProfileChatModelOverride ? 'Own model' : 'Same as Crew'} · ${activeTab.metadata.agentProfileChatModelLabel} — open Models`} onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-chat-models', { detail: { projectId: agentProfileProjectId, conversationKey: activeTab?.metadata?.agentProfileConversationKey } }))}>
                     {activeTab.metadata.agentProfileChatModelLabel}
                   </button> : <span className="max-w-40 truncate px-1 text-[11px] text-muted-foreground" title={activeTab.metadata.agentProfileChatModelLabel}>{activeTab.metadata.agentProfileChatModelLabel}</span>

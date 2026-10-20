@@ -86,7 +86,7 @@ func (api *StreamingAPI) externalBrowserConnectionsCall(w http.ResponseWriter, r
 			externalError(w, 404, "not_found", "Code project unavailable.")
 			return
 		}
-		root, profile = binding.WorkspacePath, "code"
+		root, profile = binding.WorkspacePath, crewProfileID
 	}
 	if _, err := api.projectExtensionAccess(r, root, profile); err != nil {
 		externalError(w, 403, "forbidden", "This project cannot use your personal browser. Choose a project you build.")

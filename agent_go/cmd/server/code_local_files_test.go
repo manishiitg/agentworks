@@ -5,13 +5,13 @@ import (
 	"testing"
 )
 
-func TestLaptopConnectionIsAdditiveForBothCrewOrigins(t *testing.T) {
+func TestLaptopConnectionKeepsCrewOnServer(t *testing.T) {
 	target := &laptopConnectionTarget{DeviceID: "offline-laptop", ResourceID: "project"}
 	api := &StreamingAPI{}
 	if err := api.validateLaptopConnection(&UserClaims{UserID: "owner"}, target); err != nil {
 		t.Fatal(err)
 	}
-	for _, origin := range []string{"work", "code"} {
+	for _, origin := range []string{"work"} {
 		profile := routeTestProfile(origin, true, "")
 		conversation := ProductConversationRecord{SessionID: "same-chat", WorkspacePath: "Crew/example"}
 		req, err := queryRequestForAgentProfileChat(profile, AgentProfileChatRequest{Message: "hello", LaptopConnection: target}, conversation)

@@ -22,7 +22,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 			"workflow_id":  externalString("Workflow or Flow ID from list_workflows or the dashboard list. Pass one of workflow_id, crew_id or workspace."),
 			"crew_id":      externalString("Crew ID from list_crews or the dashboard list."),
 			"workspace":    externalString("Project root from the dashboard list; needed only for an owned Code project."),
-			"workspace_id": externalString("Stable work:<id> or code:<id> from workspace list/get. Pass exactly one project selector."),
+			"workspace_id": externalString("Stable work:<id> from workspace list/get. Pass exactly one project selector."),
 		}
 		required := []string{}
 		if action == "list" {
@@ -95,8 +95,8 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		"workflow_id":  externalString("Goal/workflow ID from workflow action=list. Also accepts an existing Flow ID for compatibility. Pass exactly one project selector."),
 		"flow_id":      externalString("Flow ID from workflow action=list or relay. Pass exactly one of workflow_id, flow_id, crew_id or workspace."),
 		"crew_id":      externalString("Crew ID from list_crews or the dashboard list."),
-		"workspace":    externalString("Existing project root or stable work:<id>/code:<id> from workspace list/get."),
-		"workspace_id": externalString("Stable work:<id> or code:<id> from workspace list/get. Pass exactly one project selector."),
+		"workspace":    externalString("Existing project root or stable work:<id> from workspace list/get."),
+		"workspace_id": externalString("Stable work:<id> from workspace list/get. Pass exactly one project selector."),
 	}
 	add("get_dashboard_share", "Read who a Crew, Goal or Flow is shared with: everyone, chosen people (emails) or private. Anyone with access to the product may inspect sharing. "+runShareAccessDescription, false, false, shareProps)
 	shareSet := map[string]any{}
@@ -145,7 +145,7 @@ func (api *StreamingAPI) externalDashboardCall(w http.ResponseWriter, r *http.Re
 				payload["workspace"] = workspace
 			}
 		}
-		if strings.HasPrefix(workspace, "work:") || strings.HasPrefix(workspace, "code:") {
+		if strings.HasPrefix(workspace, "work:") {
 			binding, _, ok := api.resolveExternalWorkspace(r.Context(), GetUserFromContext(r.Context()), workspace)
 			if !ok {
 				if name == "share_dashboard" {
@@ -268,17 +268,7 @@ func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http
 		}
 	}
 	// Codes are private and enumerated only under this caller's own tree.
-	if userAllowedProduct(claims, "code") && api.agentProfiles != nil {
-		profile, err := api.agentProfiles.Resolve("code", 0, claims.UserID)
-		if err == nil {
-			paths, _, err := listProjectManifestPaths(r.Context(), defaultProductProjectStore(), claims.UserID, profile)
-			if err == nil {
-				for _, p := range paths {
-					roots = append(roots, strings.TrimSuffix(p, "/product.json"))
-				}
-			}
-		}
-	}
+
 	rows := []map[string]any{}
 	resources := []dashboardQuestionDiscovery{}
 	seen := map[string]bool{}
@@ -295,7 +285,7 @@ func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http
 			continue
 		}
 		// "Shared with me": someone else's project that its owner shared with this caller.
-		sharedWithMe := target.Kind != "code" && !api.dashboardShareOwner(r.Context(), claims, target)
+		sharedWithMe := !api.dashboardShareOwner(r.Context(), claims, target)
 		if sharedOnly && !sharedWithMe {
 			continue
 		}

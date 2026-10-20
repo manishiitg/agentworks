@@ -33,7 +33,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/cliupdate"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/inspector"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
@@ -2208,21 +2207,6 @@ func runServer(cmd *cobra.Command, args []string) {
 			log.Fatalf("Failed to register Work agent profile runtime: %v", err)
 		}
 	}
-	if productEnabled(codeproduct.ProfileID) {
-		if err := codeproduct.RegisterProductSkills(); err != nil {
-			log.Printf("[SKILLS] Code skills: some were not registered; the server keeps running: %v", err)
-		}
-		for _, profile := range codeproduct.BuiltinAgentProfiles() {
-			profile.Product = codeproduct.ProfileID
-			applyInstallationProductDefault(&profile)
-			if err := profileRegistry.RegisterProfile(profile); err != nil {
-				log.Fatalf("Failed to register Code agent profile: %v", err)
-			}
-		}
-		if err := codeproduct.RegisterAgentProfileRuntime(profileRegistry, getWorkspaceAPIURL()); err != nil {
-			log.Fatalf("Failed to register Code agent profile runtime: %v", err)
-		}
-	}
 
 	// Fail fast when product.yaml's run-mode external_tools disagree with the
 	// implemented external catalog, instead of 500ing the first CLI/MCP call.
@@ -2554,7 +2538,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/agent-profiles/{id}/own-shared-projects", api.handleListOwnSharedProjects).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/project-sharing", api.handleGetProjectSharing).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/sharing", api.handlePutProjectSharing).Methods("PUT", "OPTIONS")
-	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shares", api.handleGetCodeShares).Methods("GET", "OPTIONS")
 	// Admin inspection of Code (read-only, audited; admin checked in-handler).
 	apiRouter.HandleFunc("/admin/code/workspaces", api.handleAdminListCodeWorkspaces).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/files", api.handleAdminCodeFiles).Methods("GET", "OPTIONS")
@@ -2563,7 +2546,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/chats/{session_id}", api.handleAdminCodeChat).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/code/audit", api.handleAdminCodeAudit).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/admin/code/workspaces/{owner}/{project_id}/mcp", api.handleAdminCodeMCP).Methods("GET", "OPTIONS")
-	apiRouter.HandleFunc("/agent-profiles/code/projects/{project_id}/shares", api.handlePutCodeShares).Methods("PUT")
 	// A Code workspace's plain shell: sandboxed, one per person with editor access.
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/shell/stream", api.handleCodeShellStream).Methods("GET")
 	codeShellReaperOnce.Do(func() { go codeShellReaper() })
@@ -6297,23 +6279,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		selectedServers = runtimeMCPServers(selectedServers)
 		// A Code chat: pin its person before anything connects. The Code's own
 		// connections join below, exactly as a Crew's do.
-		if resolvedProfile != nil && strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) {
-			codeRoot := agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
-			// A channel-route turn acts for arbitrary channel members: a
-			// Code (DM-only) never pins one to a person.
-			if claims := GetUserFromContext(r.Context()); claims != nil && claims.Provider == "bot_route" {
-				sendError("Code chats are direct messages only.", true)
-				return
-			}
-			if pinErr := pinCodeSession(sessionID, currentUserID, codeRoot); pinErr != nil {
-				if errors.Is(pinErr, errCodeSessionPinnedToAnother) {
-					sendError("This Code chat belongs to another person. Open your own chat of this Code.", true)
-				} else {
-					sendError(fmt.Sprintf("Could not start this Code chat: %v", pinErr), true)
-				}
-				return
-			}
-		}
+
 		// A workflow's, Crew's or Code's own connections (docs/design/
 		// personal_mcp_attach.md) join its selected servers like any other:
 		// one mechanism for all three.
@@ -6703,27 +6669,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						workspace.SetSessionWorkingDir(sessionID, brainFolderName)
 						common.SetSessionShellEnv(sessionID, brainEnv)
 					}
-					if strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) {
-						// The chat's person is pinned once; personal MCP servers
-						// and secrets follow the pin, never the mutable session
-						// owner, and a turn from anyone else is refused.
-						if pinErr := pinCodeSession(sessionID, currentUserID, profileBindingRoot); pinErr != nil {
-							if errors.Is(pinErr, errCodeSessionPinnedToAnother) {
-								sendError("This Code chat belongs to another person. Open your own chat of this Code.", true)
-							} else {
-								sendError(fmt.Sprintf("Could not start this Code chat: %v", pinErr), true)
-							}
-							return
-						}
-						// Google accounts and other Code-private resources key off
-						// this mark, which survives shell-config clears.
-						common.MarkCodeSession(sessionID, profileBindingRoot)
-						// workflow.json (MCP selection, sharing-relevant settings)
-						// and product.json change only through the role-checked
-						// API and tools, never a file write from a chat.
-						guardBlocked = append(guardBlocked,
-							filepath.Join(profileRoot, "workflow.json"), filepath.Join(profileRoot, "product.json"))
-					}
+
 					guardRead := append(append(append([]string{profileWrite}, chatHistoryGrants...), profileReadOnly...), crewRefWrite...)
 					if brainGrant != "" {
 						guardRead = append(guardRead, brainGrant)
@@ -7134,13 +7080,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			// A Code chat's agent connects the person's own MCP servers.
-			if resolvedProfile != nil && strings.EqualFold(resolvedProfile.Definition.ID, codeproduct.ProfileID) {
-				codeRoot := agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)
-				if err := api.registerPlaceMCPTool(llmAgent, currentUserID, codeRoot, deriveOAuthRedirectURI(r)); err != nil {
-					sendError(fmt.Sprintf("Failed to register personal MCP tool: %v", err), true)
-					return
-				}
-			}
+
 			if err := api.registerAgentProfileWorkflowTools(
 				context.WithoutCancel(streamCtx),
 				llmAgent,
@@ -10483,12 +10423,6 @@ func (api *StreamingAPI) seedCodingAgentRuntimeFromRestoredConversation(sessionI
 	if api == nil || underlyingAgent == nil || runtime == nil {
 		return false
 	}
-	var storageResumeAllowed bool
-	runtime, storageResumeAllowed = projectStorageResumeRuntime(underlyingAgent, runtime)
-	if !storageResumeAllowed {
-		log.Printf("[CHAT_HISTORY] Native resume skipped for session %s: saved runtime does not match the relocated project; using saved application history", sessionID)
-		return false
-	}
 	if !workflowCLIResumeAllowed(underlyingAgent, runtime) {
 		log.Printf("[CHAT_HISTORY] Native resume skipped for session %s: CLI runtime directory changed; using saved application history", sessionID)
 		return false
@@ -13215,9 +13149,7 @@ func skillSelectionHintForContext(ctx context.Context, productID, skillNames str
 }
 
 func skillSelectionHint(productID, skillNames string) string {
-	if strings.EqualFold(strings.TrimSpace(productID), codeproduct.ProfileID) {
-		return fmt.Sprintf("%s can be loaded immediately with read_skill. To attach it automatically on future turns in this workspace, call update_project_skill_selection(action=\"select\", skill=\"<folder-name>\"); the selection is saved in workflow.json and shown in Setup > Skills.", skillNames)
-	}
+
 	if strings.EqualFold(strings.TrimSpace(productID), "work") {
 		return fmt.Sprintf("%s can be loaded immediately with read_skill. To attach it automatically on future Crew turns, call update_project_skill_selection(action=\"select\", skill=\"<folder-name>\"); Crew persists that selection in workflow.json and also shows it in Setup > Skills.", skillNames)
 	}

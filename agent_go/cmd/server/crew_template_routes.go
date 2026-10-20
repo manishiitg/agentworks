@@ -35,8 +35,6 @@ func (api *StreamingAPI) handleAgentProfileProjectTemplate(w http.ResponseWriter
 		return
 	}
 	selector := id
-	if profileID == "code" {
-		selector = "code:" + id
-	}
+
 	api.externalCrewProjectCall(w, r, map[string]any{"action": request.Action, "template_id": request.TemplateID}, selector)
 }

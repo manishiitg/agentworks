@@ -12,18 +12,18 @@ vi.mock('../products/work/WorkSurface', () => ({
 vi.mock('./productWorkspaceNavigation', () => ({ openProductWorkspace: vi.fn() }))
 vi.mock('./workflowNavigation', () => ({ selectWorkflowPreset: vi.fn() }))
 vi.mock('../stores/useProductSurfaceStore', () => ({
-  useProductSurfaceStore: { getState: () => ({ setSelectedCodeProjectId: vi.fn(), setSelectedWorkProjectId: vi.fn(), setLastVideoProjectId: vi.fn() }) },
+  useProductSurfaceStore: { getState: () => ({ setSelectedWorkProjectId: vi.fn(), setLastVideoProjectId: vi.fn() }) },
 }))
 
 import { resolveProductRoute } from './resolveProductRoute'
 
 describe('resolveProductRoute view fallback', () => {
   it('opens the project with the default view for an unknown view name', async () => {
-    const activate = await resolveProductRoute({ surface: 'code', id: 'example', view: 'pulse' }, new AbortController().signal)
+    const activate = await resolveProductRoute({ surface: 'work', id: 'example', view: 'pulse' }, new AbortController().signal)
     expect(typeof activate).toBe('function')
   })
   it('still resolves a known view', async () => {
-    const activate = await resolveProductRoute({ surface: 'code', id: 'example', view: 'shell' }, new AbortController().signal)
+    const activate = await resolveProductRoute({ surface: 'work', id: 'example', view: 'shell' }, new AbortController().signal)
     expect(typeof activate).toBe('function')
   })
 })

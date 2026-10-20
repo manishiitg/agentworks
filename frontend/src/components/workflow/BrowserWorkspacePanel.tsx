@@ -177,7 +177,7 @@ export function BrowserWorkspacePanel({
             onBrowserModeChange={onBrowserModeChange}
             browserChoice={choice}
             onBrowserChoiceChange={next => { void changeChoice(next) }}
-            allowAutomatic={profileId !== 'code'}
+            allowAutomatic={profileId !== 'work'}
             extensionAvailable={extensionAvailable}
             extensionConnected={connection.status.account_connected}
             extensionContent={<ChromeExtensionConnection connection={connection} />}

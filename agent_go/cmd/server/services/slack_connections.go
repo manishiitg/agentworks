@@ -232,15 +232,13 @@ func normalizeSlackConnectionRoutes(c SlackConnection) map[string]SlackConnectio
 		route.WorkspacePath = strings.TrimSpace(route.WorkspacePath)
 		route.ProfileID = strings.TrimSpace(route.ProfileID)
 		route.AddedBy = strings.TrimSpace(route.AddedBy)
-		if route.Default().IsCode() {
-			route.WorkspacePath, route.ProfileID = "", ""
-		}
+
 		var extra []SlackTargetRef
 		for _, target := range route.Targets {
 			target.WorkspacePath = strings.TrimSpace(target.WorkspacePath)
 			target.ProfileID = strings.TrimSpace(target.ProfileID)
 			target.AddedBy = strings.TrimSpace(target.AddedBy)
-			if target.Empty() || target.IsCode() || target.Same(route.Default()) {
+			if target.Empty() || target.Same(route.Default()) {
 				continue
 			}
 			extra = append(extra, target)

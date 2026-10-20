@@ -1,49 +1,24 @@
 package server
 
 import (
-	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 func init() {
 	services.SetConnectionWorkspaceResolver(foldCrewRootForStoredReference)
 	chathistory.SetWorkflowStateRootResolver(projectBindingRoot)
-	common.SetCodeProjectRootResolver(func(userID, path string) string {
-		ref, ok := resolveCrewPath(context.Background(), userID, path)
-		if !ok {
-			return ""
-		}
-		product, _, known := projectProductForPath(ref.Root)
-		if !known || product.ProfileID != "code" {
-			return ""
-		}
-		return ref.Root
-	})
+
 }
 
 // The existing owner registry also owns storage routing. Origins, owners and
 // resource/session IDs survive a folder move; editable manifests are settings.
 func projectStorageRoot(rec projectOwnerRecord) string {
-	if rec.CanonicalRoot != "" {
-		return rec.CanonicalRoot
-	}
-	if rec.Shared {
-		return workspaceref.SharedProjectPath(rec.Folder)
-	}
-	product, ok := projectProductForProfile(rec.Product)
-	if !ok {
-		return ""
-	}
-	return workspaceref.PhysicalPathOf(rec.OwnerID, product.ProjectsRoot, rec.Folder)
+	return workspaceref.SharedProjectPath(rec.Folder)
 }
 
 // Discovery and project-ID resolution use only the registered location. An old
@@ -58,25 +33,20 @@ func projectDiscoveryRootIsCurrent(root string) bool {
 }
 
 func validateProjectStorageRecord(rec projectOwnerRecord) error {
-	if !isProjectProfileID(rec.Product) {
-		return fmt.Errorf("unknown project origin")
+	if rec.Product != crewProfileID || rec.Folder == "" || strings.ContainsAny(rec.Folder, "/\\") || strings.HasPrefix(rec.Folder, ".") {
+		return fmt.Errorf("invalid Crew identity")
 	}
-	product, _ := projectProductForProfile(rec.Product)
-	legacy := workspaceref.PhysicalPathOf(rec.OwnerID, product.ProjectsRoot, rec.Folder)
-	shared := workspaceref.SharedProjectPath(rec.Folder)
-	if rec.CanonicalRoot != "" && rec.CanonicalRoot != legacy && rec.CanonicalRoot != shared {
-		return fmt.Errorf("project location does not match its registered identity")
+	if rec.CanonicalRoot != "" && rec.CanonicalRoot != projectStorageRoot(rec) {
+		return fmt.Errorf("invalid Crew location")
 	}
-	for _, alias := range rec.Aliases {
-		if alias != legacy && alias != shared {
-			return fmt.Errorf("project alias does not match its registered identity")
+	// BindingRoot is an opaque, server-owned private-state namespace. It never
+	// becomes a file route. Validate its owner/folder before using it as a key.
+	if rec.BindingRoot != "" && rec.BindingRoot != projectStorageRoot(rec) {
+		ref, ok := workspaceref.Parse(rec.BindingRoot)
+		_, folder, project := ref.ProjectRoot()
+		if !ok || !project || ref.Owner() != rec.OwnerID || folder != rec.Folder {
+			return fmt.Errorf("invalid private state identity")
 		}
-	}
-	if rec.BindingRoot != "" && rec.BindingRoot != legacy && rec.BindingRoot != shared {
-		return fmt.Errorf("private state location does not match its registered identity")
-	}
-	if rec.BindingRoot != "" && rec.BindingRoot != projectStorageRoot(rec) && !registryListHas(rec.Aliases, rec.BindingRoot) {
-		return fmt.Errorf("private state identity has no registered project alias")
 	}
 	return nil
 }
@@ -87,7 +57,7 @@ func projectBindingRoot(root string) string {
 	root = canonicalCrewWorkspaceRoot(root)
 	if id, ok := projectIdentityOf(root); ok {
 		if rec, exists := defaultProjectOwners().Lookup(id.Product, id.Folder); exists && rec.BindingRoot != "" && validateProjectStorageRecord(rec) == nil &&
-			(root == projectStorageRoot(rec) || registryListHas(rec.Aliases, root)) {
+			root == projectStorageRoot(rec) {
 			return rec.BindingRoot
 		}
 	}
@@ -95,8 +65,8 @@ func projectBindingRoot(root string) string {
 }
 
 // compareAndSetStorageLocation is internal migration machinery, not a public
-// settings writer. It preserves audience and origin and pins private state keys
-// exactly once. The caller separately moves the folder and leaves old-path links.
+// settings writer. It preserves audience and pins private state keys exactly once.
+// The one-off migration separately moves folders and removes old-path links.
 func (r *projectOwnerRegistry) compareAndSetStorageLocation(product, folder, expected, next string) error {
 	err := r.modify(func(projects map[string]projectOwnerRecord) (bool, error) {
 		key := projectOwnerKey(product, folder)
@@ -104,7 +74,7 @@ func (r *projectOwnerRegistry) compareAndSetStorageLocation(product, folder, exp
 		if !exists || userAccessHash(rec) != expected {
 			return false, fmt.Errorf("project changed since the storage snapshot")
 		}
-		before := projectStorageRoot(rec)
+		before := crewStorageSourceRoot(rec)
 		if before == next {
 			return false, nil
 		}
@@ -112,11 +82,7 @@ func (r *projectOwnerRegistry) compareAndSetStorageLocation(product, folder, exp
 			rec.BindingRoot = before
 		}
 		rec.CanonicalRoot, rec.Shared = next, projectRootIsShared(next)
-		for _, alias := range []string{before, next} {
-			if !registryListHas(rec.Aliases, alias) {
-				rec.Aliases = append(rec.Aliases, alias)
-			}
-		}
+
 		if err := validateProjectStorageRecord(rec); err != nil {
 			return false, err
 		}
@@ -127,9 +93,6 @@ func (r *projectOwnerRegistry) compareAndSetStorageLocation(product, folder, exp
 		return true, nil
 	})
 	if err == nil {
-		crewPathAliases.mu.Lock()
-		crewPathAliases.aliases = nil
-		crewPathAliases.mu.Unlock()
 		crewOwners.mu.Lock()
 		crewOwners.entries = map[string]crewOwnerEntry{}
 		crewOwners.mu.Unlock()
@@ -143,7 +106,7 @@ func checkProjectStorageClaim(records map[string]projectOwnerRecord, key string,
 		if key == otherKey {
 			continue
 		}
-		if root == projectStorageRoot(other) || registryListHas(other.Aliases, root) {
+		if root == projectStorageRoot(other) {
 			return fmt.Errorf("project location is already registered")
 		}
 		for _, alias := range rec.Aliases {
@@ -165,7 +128,7 @@ func (r *projectOwnerRegistry) sharedRootRecord(folder string) (projectOwnerReco
 	// change-aware read cache; listing projects never scans/copies it per row.
 	for _, product := range projectProducts {
 		rec, exists := r.Lookup(product.ProfileID, folder)
-		if exists && (projectStorageRoot(rec) == root || registryListHas(rec.Aliases, root)) {
+		if exists && projectStorageRoot(rec) == root {
 			found, n = rec, n+1
 		}
 	}
@@ -188,53 +151,12 @@ func projectStorageOwner(root string) string {
 	return owner
 }
 
-// Remove only registered old links to a project that has just been deleted.
-func removeDeletedProjectLinks(root string) error {
+// Project review remains distinct from ordinary sharing and private chat access.
+func crewAdminInspectionAllowed(root string) bool {
 	id, ok := projectIdentityOf(root)
 	if !ok {
-		return nil
+		return false
 	}
-	rec, found := defaultProjectOwners().Lookup(id.Product, id.Folder)
-	if !found || projectStorageRoot(rec) != root {
-		return nil
-	}
-	docsPath := fsutil.WorkspaceDocsRoot()
-	docs, err := os.OpenRoot(docsPath)
-	if err != nil {
-		return err
-	}
-	defer docs.Close()
-	product, _ := projectProductForProfile(rec.Product)
-	for _, alias := range rec.Aliases {
-		old, ok := projectIdentityOf(alias)
-		if !ok || old.Shared || old.Product != rec.Product || old.Folder != rec.Folder || old.PathOwner != rec.OwnerID || alias == root {
-			continue
-		}
-		parent, err := openProjectDir(docs, rec.OwnerID, product.ProjectsRoot)
-		if os.IsNotExist(err) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		info, err := parent.Lstat(rec.Folder)
-		if err == nil && info.Mode()&os.ModeSymlink != 0 {
-			target, linkErr := parent.Readlink(rec.Folder)
-			if linkErr == nil {
-				if !filepath.IsAbs(target) {
-					target = filepath.Join(docsPath, filepath.Dir(alias), target)
-				}
-				if filepath.Clean(target) == filepath.Join(docsPath, root) {
-					err = parent.Remove(rec.Folder)
-				}
-			} else {
-				err = linkErr
-			}
-		}
-		parent.Close()
-		if err != nil && !os.IsNotExist(err) {
-			return err
-		}
-	}
-	return nil
+	rec, ok := defaultProjectOwners().Lookup(id.Product, id.Folder)
+	return ok && rec.AdminInspection
 }

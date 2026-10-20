@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 )
@@ -141,7 +141,7 @@ func TestHostedSenderOfAnotherPersonIsRefusedForAttachedAgent(t *testing.T) {
 	for _, peer := range []agentMessageEndpoint{
 		{Kind: triggerCallerCrew, UserID: "u2", ID: "crew-1"},
 		{Kind: triggerCallerWorkflow, UserID: "u2", ID: "wf-1"},
-		{Kind: triggerCallerCrew, Profile: codeproduct.ProfileID, UserID: "u2", ID: "code-1"},
+		{Kind: triggerCallerCrew, Profile: workproduct.ProfileID, UserID: "u2", ID: "code-1"},
 	} {
 		if err := api.externalAuthorizeMessagePeer(context.Background(), claims, peer, false); err == nil {
 			t.Errorf("%s chat of another person was accepted", peer.Kind)

@@ -25,7 +25,7 @@ type SchedulerConfig struct {
 }
 
 // schedulerPauseProducts are the products whose timed runs a pause can hold.
-var schedulerPauseProducts = []string{"agentworks", "relays", "work", "code"}
+var schedulerPauseProducts = []string{"agentworks", "relays", "work"}
 
 func normalizePausedProducts(in []string) []string {
 	seen := map[string]bool{}

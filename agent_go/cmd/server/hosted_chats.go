@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 )
 
 // Chats inside AgentWorks that a person's own agents can find and message
@@ -28,7 +28,7 @@ type hostedChat struct {
 	Why       string // owner, editor
 }
 
-var hostedKindLabel = map[string]string{"crew": "Crew", "goal": "Goal", "code": "Code"}
+var hostedKindLabel = map[string]string{"crew": "Crew", "goal": "Goal"}
 
 // hostedSlug is a short, readable piece of a product title, safe inside a name.
 func hostedSlug(title string) string {
@@ -120,7 +120,7 @@ func (api *StreamingAPI) hostedChatsFor(ctx context.Context, claims *UserClaims)
 // ownCodeChats lists the main chat and side chats of the person's own Code projects.
 func ownCodeChats(ctx context.Context, userID string) []hostedChat {
 	store := defaultProductProjectStore()
-	paths, exists, err := listProjectManifestPaths(ctx, store, userID, codeproduct.BuiltinAgentProfile())
+	paths, exists, err := listProjectManifestPaths(ctx, store, userID, workproduct.BuiltinAgentProfile())
 	if err != nil || !exists {
 		return nil
 	}
@@ -137,11 +137,11 @@ func ownCodeChats(ctx context.Context, userID string) []hostedChat {
 			continue
 		}
 		var manifest productProjectManifest
-		if json.Unmarshal([]byte(raw), &manifest) != nil || manifest.Product != codeproduct.ProfileID || strings.TrimSpace(manifest.ID) == "" {
+		if json.Unmarshal([]byte(raw), &manifest) != nil || manifest.Product != workproduct.ProfileID || strings.TrimSpace(manifest.ID) == "" {
 			continue
 		}
 		title := firstNonEmptyTrimmed(manifest.Title, manifest.ID)
-		chats, chatErr := defaultProductConversationRegistryStore().projectChats(ctx, userID, codeproduct.ProfileID, manifest.ID)
+		chats, chatErr := defaultProductConversationRegistryStore().projectChats(ctx, userID, workproduct.ProfileID, manifest.ID)
 		if chatErr != nil {
 			continue
 		}
@@ -151,7 +151,7 @@ func ownCodeChats(ctx context.Context, userID string) []hostedChat {
 				chat = strings.TrimPrefix(record.ConversationKey, manifest.ID+codeChatSideMarker)
 				name = "Chat " + chat
 			}
-			out = append(out, hostedChat{Kind: "code", ProductID: manifest.ID, Title: title, Chat: chat, ChatName: name, Why: "owner"})
+			out = append(out, hostedChat{Kind: "crew", ProductID: manifest.ID, Title: title, Chat: chat, ChatName: name, Why: "owner"})
 		}
 	}
 	return out

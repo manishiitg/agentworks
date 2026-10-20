@@ -16,7 +16,6 @@ import (
 
 	workshop "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
@@ -44,7 +43,7 @@ func dashboardAuthoringAllowed(claims *UserClaims, target *dashboardTarget) bool
 		return false
 	}
 	if target != nil {
-		product := map[string]string{"workflow": "agentworks", "relay": "relays", "crew": "work", "code": "code"}[target.Kind]
+		product := map[string]string{"workflow": "agentworks", "relay": "relays", "crew": "work"}[target.Kind]
 		if product == "" || !userAllowedProduct(claims, product) {
 			return false
 		}
@@ -66,8 +65,6 @@ func dashboardAuthoringAllowed(claims *UserClaims, target *dashboardTarget) bool
 		return (token.BuilderAccess() || token.RelayBuilderAccess()) && token.AllowsWorkflow(target.ID)
 	case "crew":
 		return token.Allows("crews:write") && token.AllowsCrew(target.ID)
-	case "code":
-		return externalCodeRunAllowed(claims)
 	}
 	return false
 }
@@ -120,25 +117,10 @@ func (api *StreamingAPI) dashboardTarget(ctx context.Context, claims *UserClaims
 			return target, dashboardFailure(404, "project unavailable")
 		}
 		kind := "crew"
-		if product.ProfileID == "code" {
-			kind = "code"
-		}
+
 		return dashboardTarget{Root: crew.Root, Kind: kind, ID: id, Title: title, Edit: crewAccessFor(claims, crew) == crewAccessOwner && userAccessForClaims(claims).CanEdit}, nil
 	}
-	if ref := workspaceref.MustParse(clean); ref.Logical() != "" {
-		root, project, ok := ref.ProjectRoot()
-		if ok && root == workspaceref.CodeProjectsRoot {
-			owner := ref.Owner()
-			if owner == "" {
-				owner = sanitizeUserIDForPath(claims.UserID)
-			}
-			physical := workspaceref.PhysicalPathOf(owner, ref.Logical())
-			if claims.AccessToken != nil && claims.AccessToken.ProjectKind != "" && !workspaceDashboardTokenAllows(claims, "code", project) || codeRoleFor(ctx, claims.UserID, owner, project) != codeRoleOwner || resolveProjectOwner(ctx, physical) != owner {
-				return target, dashboardFailure(404, "project unavailable")
-			}
-			return dashboardTarget{Root: physical, Kind: "code", ID: project, Title: project, Edit: userAccessForClaims(claims).CanEdit}, nil
-		}
-	}
+
 	if !isReportRunWorkflowRoot(clean) {
 		return target, dashboardFailure(400, "Workflow, Flow, Crew or owned Code root required")
 	}
@@ -309,7 +291,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		dashboardError(w, err)
 		return
 	}
-	if args.Action == "list" && !target.Edit && (target.Kind == "crew" || target.Kind == "code") && claims.AccessToken == nil && claims.Scope == "" && claims.Provider != "bot_route" {
+	if args.Action == "list" && !target.Edit && (target.Kind == "crew") && claims.AccessToken == nil && claims.Scope == "" && claims.Provider != "bot_route" {
 		if _, _, err := api.ensureDefaultDashboard(r.Context(), claims, target); err != nil {
 			dashboardError(w, err)
 			return
@@ -430,7 +412,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		// one. Only its Builder with existing authoring consent creates it;
 		// Run requests, bounded file connections, Local projects and published
 		// laptop source never acquire writes through catalog discovery.
-		if len(result.Dashboards) == 0 && includeDraft && req.Guard == nil && (target.Kind == "crew" || target.Kind == "code" || target.Kind == "workflow") {
+		if len(result.Dashboards) == 0 && includeDraft && req.Guard == nil && (target.Kind == "crew" || target.Kind == "workflow") {
 			publication, err := readPublishedProject(r.Context(), target.Root)
 			if err != nil {
 				dashboardError(w, err)
@@ -559,7 +541,7 @@ func workspaceDashboardTokenAllows(claims *UserClaims, profileID, id string) boo
 	if t.ProjectKind != "" {
 		return t.ProjectKind == profileID && t.AllowsCrew(id) && t.Allows("crews:read")
 	}
-	if profileID == "code" {
+	if profileID == crewProfileID {
 		return externalCodeRunAllowed(claims) && (len(t.CrewIDs) == 0 || t.AllowsCrew(id))
 	}
 	return t.AllowsCrew(id)

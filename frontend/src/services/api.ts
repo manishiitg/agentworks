@@ -1259,42 +1259,42 @@ export const agentApi = {
 
   // Admin inspection of Code (read-only; every call is audited server-side).
   adminListCodeWorkspaces: async (): Promise<{ workspaces: CodeAdminWorkspace[] }> => {
-    const response = await api.get('/api/admin/code/workspaces')
+    const response = await api.get('/api/admin/crew/workspaces')
     return response.data
   },
 
   adminListCodeFiles: async (ownerId: string, projectId: string): Promise<{ files: SharedProjectFileEntry[]; truncated?: boolean }> => {
-    const response = await api.get(`/api/admin/code/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/files`)
+    const response = await api.get(`/api/admin/crew/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/files`)
     return response.data
   },
 
   adminGetCodeFile: async (ownerId: string, projectId: string, path: string): Promise<{ path: string; content: string; binary?: boolean; truncated?: boolean }> => {
-    const response = await api.get(`/api/admin/code/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/file`, { params: { path } })
+    const response = await api.get(`/api/admin/crew/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/file`, { params: { path } })
     return response.data
   },
 
   adminListCodeChats: async (ownerId: string, projectId: string): Promise<{ chats: CodeAdminChat[] }> => {
-    const response = await api.get(`/api/admin/code/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/chats`)
+    const response = await api.get(`/api/admin/crew/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/chats`)
     return response.data
   },
 
   adminGetCodeChat: async (ownerId: string, projectId: string, sessionId: string, userId: string): Promise<{ conversation_history?: Array<{ Role?: string; role?: string; Parts?: Array<Record<string, unknown>>; parts?: Array<Record<string, unknown>> }> }> => {
-    const response = await api.get(`/api/admin/code/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/chats/${encodeURIComponent(sessionId)}`, { params: { user: userId } })
+    const response = await api.get(`/api/admin/crew/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/chats/${encodeURIComponent(sessionId)}`, { params: { user: userId } })
     return response.data
   },
 
   adminListCodeMCP: async (ownerId: string, projectId: string): Promise<{ servers: Array<{ user_id: string; username?: string; name: string; url: string; transport: string; oauth: boolean; connected: boolean }> }> => {
-    const response = await api.get(`/api/admin/code/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/mcp`)
+    const response = await api.get(`/api/admin/crew/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/mcp`)
     return response.data
   },
 
   adminCodeAudit: async (month?: string): Promise<{ month: string; entries: CodeAdminAuditEntry[] }> => {
-    const response = await api.get('/api/admin/code/audit', { params: month ? { month } : undefined })
+    const response = await api.get('/api/admin/crew/audit', { params: month ? { month } : undefined })
     return response.data
   },
 
   /** Minimal app navigation from the current canonical project inventory. */
-  listWorkspaceNavigation: async (): Promise<{ workspaces: Array<{ workspace_id: string; id: string; profile_id: 'work' | 'code'; name: string; workspace_path: string; aliases?: string[] }> }> => {
+  listWorkspaceNavigation: async (): Promise<{ workspaces: Array<{ workspace_id: string; id: string; profile_id: 'work'; name: string; workspace_path: string; aliases?: string[] }> }> => {
     const response = await api.post('/api/workspaces', { action: 'list', detail: 'navigation' })
     const result = response.data
     if (!Array.isArray(result.workspaces) || result.workspaces.some((item: { workspace_id?: string; id?: string; profile_id?: string; workspace_path?: string }) =>
@@ -2721,7 +2721,7 @@ export interface AuthUser {
   // one role per account. The booleans stay for older servers.
   is_admin?: boolean
   /** Reviews every Code workspace's cost, chats and files (read-only, audited). */
-  is_code_reviewer?: boolean
+  is_crew_reviewer?: boolean
   /** Reads Vault (setup, access, audit, SQL queries) without being an admin; changes nothing. */
   is_vault_reader?: boolean
   can_create?: boolean
@@ -2747,7 +2747,7 @@ export interface AdminUser {
   /** Products this account may create in; null follows the role (creators: all, editors and viewers: none). */
   create_products?: string[] | null
   /** A permission on top of the role: reviews every Code, read-only and audited. */
-  code_reviewer?: boolean
+  crew_reviewer?: boolean
   /** A permission on top of the role: reads Vault, changes nothing. */
   vault_reader?: boolean
   disabled: boolean
@@ -2814,7 +2814,7 @@ export interface AdminUserWrite {
   create_products?: string[]
   /** Returns create permissions to the role's default. */
   clear_create_products?: boolean
-  code_reviewer?: boolean
+  crew_reviewer?: boolean
   vault_reader?: boolean
   disabled?: boolean
   /** Replaces both limits; 0 is unlimited. */

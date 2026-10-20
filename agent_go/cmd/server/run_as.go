@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/coding-agent-loop/workspace/slots"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -78,7 +78,7 @@ func turnCLIWorkingDir(profileID string, workflowPhase bool, folder, user, sessi
 	switch {
 	case workflowPhase:
 		cliDir, err = workflowCLIWorkingDir(folder, user, session, provider, workflowMode)
-	case profileID == crewProfileID || profileID == codeproduct.ProfileID && (readOnly || len(isolateCode) > 0 && isolateCode[0]):
+	case profileID == crewProfileID:
 		cliDir, err = crewCLIWorkingDir(folder, user, session, provider, readOnly)
 	default:
 		cliDir = sharedDir
@@ -118,7 +118,7 @@ func decideTurnRunAs(ctx context.Context, in turnRunAsInput, deps runAsDeps) llm
 		// A Crew or Code: the owner comes from the server's registry (path fallback), never from who is asking and
 		// never from the manifest.
 		switch {
-		case strings.EqualFold(in.ProfileID, codeproduct.ProfileID), strings.EqualFold(in.ProfileID, crewProfileID):
+		case strings.EqualFold(in.ProfileID, crewProfileID):
 			projectRoot, project, _ := ref.Project()
 			physical := workspaceref.PhysicalPath(ref.Owner(), projectRoot, project)
 			if !ref.HasOwner() {
@@ -137,7 +137,7 @@ func decideTurnRunAs(ctx context.Context, in turnRunAsInput, deps runAsDeps) llm
 
 // errProjectOwnerMismatch is the launch refusal for a private Code whose server-controlled owner is not the person
 // the request admitted (PLAT-449).
-var errProjectOwnerMismatch = errors.New("this Code workspace is registered to a different owner than you; it cannot be started")
+var errProjectOwnerMismatch = errors.New("this Crew workspace is registered to a different owner than you; it cannot be started")
 
 // checkProjectLaunchOwner refuses to start a private Code CLI when the owner the platform resolves for the project
 // (the registry, else the path; never the manifest) is not the caller whose own tree admitted it. It runs BEFORE
@@ -145,7 +145,7 @@ var errProjectOwnerMismatch = errors.New("this Code workspace is registered to a
 // alone unless explicitly shared. Current access to the exact registered root permits a
 // shared caller; a copied or planted project still fails.
 func checkProjectLaunchOwner(ctx context.Context, in turnRunAsInput, deps runAsDeps) error {
-	if in.WorkflowPhase || !strings.EqualFold(in.ProfileID, codeproduct.ProfileID) {
+	if in.WorkflowPhase || !strings.EqualFold(in.ProfileID, workproduct.ProfileID) {
 		return nil
 	}
 	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(in.WorkingFolder)))
@@ -172,27 +172,7 @@ func checkProjectLaunchOwner(ctx context.Context, in turnRunAsInput, deps runAsD
 		}
 		return nil
 	}
-	projectRoot, project, isProject := ref.Project()
-	if !isProject {
-		return nil
-	}
-	physical := workspaceref.PhysicalPath(in.CallerID, projectRoot, project)
-	if ref.HasOwner() {
-		physical = workspaceref.PhysicalPath(ref.Owner(), projectRoot, project)
-	}
-	owner := deps.projectOwner(ctx, physical)
-	if owner != "" && owner != sanitizeUserIDForPath(in.CallerID) {
-		// Sharing changes who may use the project, never its authoritative
-		// owner or launch identity. A copied project in another tree still fails.
-		ref, ok := resolveCrewPath(ctx, in.CallerID, physical)
-		if ok && sanitizeUserIDForPath(workspaceref.MustParse(physical).Owner()) == owner && ref.Rest == "" && ref.OwnerID == owner && canonicalCrewWorkspaceRoot(ref.Root) == canonicalCrewWorkspaceRoot(physical) &&
-			crewAccessFor(currentProjectCallerClaims(ctx, in.CallerID), ref) != crewAccessNone {
-			return nil
-		}
-		log.Printf("[OWNER_MISMATCH] Code launch refused: %s resolves to owner %q but the caller is %q", physical, owner, in.CallerID)
-		return errProjectOwnerMismatch
-	}
-	return nil
+	return errProjectOwnerMismatch
 }
 
 // declareTurnRunAs decides a turn's identity, declares it to the provider for the CLI's folder, and returns it

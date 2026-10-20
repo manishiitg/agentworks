@@ -160,9 +160,9 @@ func TestWorkspaceProxyProtectsServerOwnedFilesFromAdmins(t *testing.T) {
 	for _, write := range []struct{ method, target, body string }{
 		{http.MethodPut, "/api/wp/api/documents/config/code-shares.json", `{"content":"{}"}`},
 		{http.MethodDelete, "/api/wp/api/documents/config/code-shares.json", ``},
-		{http.MethodPut, "/api/wp/api/documents/config/code-admin-audit/2026-09.jsonl", `{"content":""}`},
+		{http.MethodPut, "/api/wp/api/documents/config/crew-admin-audit/2026-09.jsonl", `{"content":""}`},
 		{http.MethodDelete, "/api/wp/api/folders/config", ``},
-		{http.MethodPost, "/api/wp/api/audit/code-admin/append", `{"month":"2026-09","entry":"{}"}`},
+		{http.MethodPost, "/api/wp/api/audit/crew-admin/append", `{"month":"2026-09","entry":"{}"}`},
 	} {
 		if status := call(write.method, write.target, write.body); status != http.StatusForbidden {
 			t.Fatalf("admin %s %s = %d, want 403", write.method, write.target, status)

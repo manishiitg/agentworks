@@ -13,22 +13,22 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/wsauth"
 )
 
-// Admin inspection of Code workspaces (docs/design/code_product.md, "Admin
+// Admin inspection of Crew projects (docs/design/code_product.md, "Admin
 // inspection"). A product opts in with admin_inspection in its product.yaml;
 // Code does, Crew and personal chats do not, so chatHistoryVisibleTo stays
 // owner-only for them.
 //
-// Admins, and accounts an admin marked as Code reviewers
-// (UserRecord.CodeReviewer), read everyone's Code chats and files,
+// Admins, and accounts an admin marked as Crew reviewers
+// (UserRecord.CrewReviewer), read everyone's Crew chats and files,
 // read-only: these endpoints only read, and nothing here resumes a session or
 // writes a file. Every call is appended to an audit log, which both can read.
 
-// codeAdminHiddenTopSegments are never shown to an admin: the Code's HOME
+// codeAdminHiddenTopSegments are never shown to an admin: the Crew's HOME
 // (git and CLI logins) and dependency trees.
 var codeAdminHiddenTopSegments = map[string]bool{".sandbox-cache": true, "node_modules": true, ".git": true}
 
@@ -55,7 +55,7 @@ type codeAdminAuditEntry struct {
 
 // codeAdminAuditPath keeps one file per month so the log is never trimmed.
 func codeAdminAuditPath(t time.Time) string {
-	return "config/code-admin-audit/" + t.UTC().Format("2006-01") + ".jsonl"
+	return "config/crew-admin-audit/" + t.UTC().Format("2006-01") + ".jsonl"
 }
 
 // codeAdminAuditAppend adds one line to a month's log through the workspace
@@ -63,7 +63,7 @@ func codeAdminAuditPath(t time.Time) string {
 // browsers cannot write config/ even as admins). Tests replace it.
 var codeAdminAuditAppend = func(ctx context.Context, month, entry string) error {
 	body, _ := json.Marshal(map[string]string{"month": month, "entry": entry})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(getWorkspaceAPIURL(), "/")+"/api/audit/code-admin/append", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(getWorkspaceAPIURL(), "/")+"/api/audit/crew-admin/append", bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -102,7 +102,7 @@ func recordCodeAdminView(ctx context.Context, claims *UserClaims, action, ownerI
 	if err := codeAdminAuditAppend(ctx, now.Format("2006-01"), string(raw)); err != nil {
 		return err
 	}
-	log.Printf("[CODE_ADMIN] %s by %s owner=%s project=%s target=%s", action, entry.AdminID, ownerID, projectID, target)
+	log.Printf("[CREW_ADMIN] %s by %s owner=%s project=%s target=%s", action, entry.AdminID, ownerID, projectID, target)
 	return nil
 }
 
@@ -121,17 +121,17 @@ func readCodeAdminAudit(ctx context.Context, month time.Time) ([]codeAdminAuditE
 	return entries, nil
 }
 
-// codeAdminProfile returns the Code profile when this caller is an admin or a
-// Code reviewer and the product has admin inspection on.
+// codeAdminProfile returns the Crew profile when this caller is an admin or a
+// Crew reviewer and the product has admin inspection on.
 func (api *StreamingAPI) codeAdminProfile(w http.ResponseWriter, r *http.Request) (agentprofiles.Profile, *UserClaims, bool) {
 	claims := GetUserFromContext(r.Context())
 	if claims == nil || !currentUserCanReviewCode(r) || api == nil || api.agentProfiles == nil {
-		writeWorkflowPermissionDenied(w, "admin or Code reviewer")
+		writeWorkflowPermissionDenied(w, "admin or Crew reviewer")
 		return agentprofiles.Profile{}, nil, false
 	}
-	profile, err := api.agentProfiles.Resolve(codeproduct.ProfileID, 0, claims.UserID)
+	profile, err := api.agentProfiles.Resolve(workproduct.ProfileID, 0, claims.UserID)
 	if err != nil || !profile.AdminInspection {
-		writeAgentProfileError(w, http.StatusNotFound, "admin inspection is not enabled for Code")
+		writeAgentProfileError(w, http.StatusNotFound, "admin inspection is not enabled for Crew")
 		return agentprofiles.Profile{}, nil, false
 	}
 	return profile, claims, true
@@ -147,7 +147,7 @@ type codeAdminWorkspace struct {
 	Shares        []struct{} `json:"shares"`
 }
 
-// GET /api/admin/code/workspaces — every user's Code workspaces.
+// GET /api/admin/crew/workspaces — every user's Crew projects.
 func (api *StreamingAPI) handleAdminListCodeWorkspaces(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -165,6 +165,9 @@ func (api *StreamingAPI) handleAdminListCodeWorkspaces(w http.ResponseWriter, r 
 	rows := []codeAdminWorkspace{}
 	for _, ownerID := range owners {
 		for _, row := range listProjectsForOwner(r.Context(), claims, profile, ownerID, false) {
+			if !crewAdminInspectionAllowed(row.WorkspacePath) {
+				continue
+			}
 			rows = append(rows, codeAdminWorkspace{
 				OwnerID: ownerID, OwnerUsername: crewOwnerDisplayName(ownerID), ID: row.ID, Title: row.Title,
 				WorkspacePath: row.WorkspacePath, UpdatedAt: row.UpdatedAt,
@@ -181,7 +184,7 @@ func (api *StreamingAPI) handleAdminListCodeWorkspaces(w http.ResponseWriter, r 
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"workspaces": rows})
 }
 
-// codeAdminProject resolves {owner}/{project_id} to that owner's Code root.
+// codeAdminProject resolves {owner}/{project_id} to that owner's Crew root.
 func (api *StreamingAPI) codeAdminProject(w http.ResponseWriter, r *http.Request) (agentprofiles.Profile, *UserClaims, string, string, string, bool) {
 	profile, claims, ok := api.codeAdminProfile(w, r)
 	if !ok {
@@ -191,18 +194,23 @@ func (api *StreamingAPI) codeAdminProject(w http.ResponseWriter, r *http.Request
 	ownerID := sanitizeUserIDForPath(strings.TrimSpace(vars["owner"]))
 	projectID := strings.TrimSpace(vars["project_id"])
 	if ownerID == "" || projectID == "" {
-		writeAgentProfileError(w, http.StatusNotFound, "Code workspace not found")
+		writeAgentProfileError(w, http.StatusNotFound, "Crew project not found")
 		return profile, nil, "", "", "", false
 	}
 	binding, err := resolveProductProjectBindingWithStore(r.Context(), ownerID, profile, projectID, defaultProductProjectStore())
 	if err != nil {
-		writeAgentProfileError(w, http.StatusNotFound, "Code workspace not found")
+		writeAgentProfileError(w, http.StatusNotFound, "Crew project not found")
 		return profile, nil, "", "", "", false
 	}
-	return profile, claims, ownerID, projectID, agentProfileRuntimeWorkspace(ownerID, binding.WorkspacePath), true
+	root := agentProfileRuntimeWorkspace(ownerID, binding.WorkspacePath)
+	if !crewAdminInspectionAllowed(root) {
+		writeAgentProfileError(w, http.StatusNotFound, "Crew project not found")
+		return profile, nil, "", "", "", false
+	}
+	return profile, claims, ownerID, projectID, root, true
 }
 
-// GET /api/admin/code/workspaces/{owner}/{project_id}/files
+// GET /api/admin/crew/workspaces/{owner}/{project_id}/files
 func (api *StreamingAPI) handleAdminCodeFiles(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -248,7 +256,7 @@ func codeAdminHidden(rel string) bool {
 	return codeAdminHiddenTopSegments[top]
 }
 
-// GET /api/admin/code/workspaces/{owner}/{project_id}/file?path=<rel>
+// GET /api/admin/crew/workspaces/{owner}/{project_id}/file?path=<rel>
 func (api *StreamingAPI) handleAdminCodeFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -291,12 +299,12 @@ type codeAdminChat struct {
 	MessageCount int    `json:"message_count"`
 }
 
-// Code chats belong to the owner; retired sharing records grant no access.
+// Crew chats belong to the owner; retired sharing records grant no access.
 func codeChatParticipants(ctx context.Context, ownerID, projectID string) []string {
 	return []string{ownerID}
 }
 
-// GET /api/admin/code/workspaces/{owner}/{project_id}/chats — the owner's and
+// GET /api/admin/crew/workspaces/{owner}/{project_id}/chats — the owner's and
 // Code's chats. Inspection stays audited and read-only.
 func (api *StreamingAPI) handleAdminCodeChats(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
@@ -328,7 +336,7 @@ func (api *StreamingAPI) handleAdminCodeChats(w http.ResponseWriter, r *http.Req
 	writeAgentProfileJSON(w, http.StatusOK, map[string]interface{}{"chats": chats})
 }
 
-// GET /api/admin/code/workspaces/{owner}/{project_id}/chats/{session_id}?user=<id>
+// GET /api/admin/crew/workspaces/{owner}/{project_id}/chats/{session_id}?user=<id>
 // — one chat, read-only: messages, tool calls and their terminal output.
 func (api *StreamingAPI) handleAdminCodeChat(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
@@ -356,7 +364,7 @@ func (api *StreamingAPI) handleAdminCodeChat(w http.ResponseWriter, r *http.Requ
 	}
 	// The legacy conversation reader falls back to this user's global history.
 	// Bind the requested session to this Code before calling it: knowing the
-	// ID of a personal Work chat must not widen a Code reviewer's access.
+	// ID of a personal Work chat must not widen a Crew reviewer's access.
 	sessions, err := ListChatHistorySessionsByKind(userID, "", 0, 0, root)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusServiceUnavailable, "cannot list project chats")
@@ -386,7 +394,7 @@ func (api *StreamingAPI) handleAdminCodeChat(w http.ResponseWriter, r *http.Requ
 	_, _ = w.Write(data)
 }
 
-// GET /api/admin/code/audit?month=YYYY-MM — the admin view log. Reading it
+// GET /api/admin/crew/audit?month=YYYY-MM — the admin view log. Reading it
 // is itself recorded.
 func (api *StreamingAPI) handleAdminCodeAudit(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
@@ -431,7 +439,7 @@ type codeAdminPersonalServer struct {
 	Connected bool   `json:"connected"`
 }
 
-// GET /api/admin/code/workspaces/{owner}/{project_id}/mcp — this Code's MCP
+// GET /api/admin/crew/workspaces/{owner}/{project_id}/mcp — this Code's MCP
 // connections (docs/design/personal_mcp_attach.md).
 func (api *StreamingAPI) handleAdminCodeMCP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {

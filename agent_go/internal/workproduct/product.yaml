@@ -60,6 +60,7 @@ profile:
   # profile's own prompt.file in favor of the dynamic multi-agent
   # delegation prompt. Crew's prompt (plain coding work, no workflow
   # vocabulary) must actually reach the model.
+  admin_inspection: true
   scope: project
   tools:
     - id: work.create-project
@@ -184,7 +185,7 @@ profile:
       # New projects are created below this per-user root, exactly like the
       # AgentWorks folder lifecycle with workflow.json as the shared runtime manifest.
       mode: project
-      projects_root: Chats/Work/projects
+      projects_root: Crew
       placement:
         execute_shell_command:
           - Put newly created application and source-code files under code/ by default.

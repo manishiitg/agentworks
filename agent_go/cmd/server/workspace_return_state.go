@@ -106,7 +106,7 @@ func validWorkspaceDestination(d *workspaceDestination) bool {
 	if d == nil {
 		return true
 	}
-	known := map[string]bool{"agentworks": true, "relays": true, "work": true, "code": true, "mcp-gateway": true, "llm-gateway": true, "knowledgebase": true, "bullpen": true, "video-studio": true, "sparkquill": true}
+	known := map[string]bool{"agentworks": true, "relays": true, "work": true, "mcp-gateway": true, "llm-gateway": true, "knowledgebase": true, "bullpen": true, "video-studio": true, "sparkquill": true}
 	if !known[d.Surface] || (d.ID != "" && (!workspaceReturnID.MatchString(d.ID) || d.ID == "." || d.ID == "..")) || (d.View != "" && !workspaceReturnView.MatchString(d.View)) || (d.SessionID != "" && !workspaceReturnID.MatchString(d.SessionID)) {
 		return false
 	}
@@ -208,7 +208,7 @@ func (api *StreamingAPI) validateWorkspaceReturn(r *http.Request, d *workspaceDe
 			}
 		}
 		conversationKey := ""
-		if copy.Surface == "work" || copy.Surface == "code" {
+		if copy.Surface == "work" {
 			registryPath := productConversationRegistryPath(claims.UserID)
 			mutex := productConversationRegistryMutex(registryPath)
 			mutex.Lock()
@@ -297,7 +297,7 @@ func (api *StreamingAPI) handleWorkspaceReturnState(w http.ResponseWriter, r *ht
 		// with its live resolver; never scan inventory or reopen transcripts.
 		var work []homeWork
 		if incoming.Last.ID != "" {
-			kind := map[string]string{"work": "work", "code": "code", "agentworks": "workflow", "relays": "relay"}[incoming.Last.Surface]
+			kind := map[string]string{"work": "work", "agentworks": "workflow", "relays": "relay"}[incoming.Last.Surface]
 			target, err := api.projectMCPTarget(r.Context(), claims, projectMCPAudience{Kind: kind, ID: incoming.Last.ID, Access: "view"})
 			if err != nil || kind == "" {
 				causeStatus := wf.StatusCode(err)
@@ -394,7 +394,7 @@ func (api *StreamingAPI) handleWorkspaceReturnState(w http.ResponseWriter, r *ht
 				state.Destination = &workspaceDestination{Surface: work[0].Surface, ID: work[0].ID, WorkspacePath: work[0].WorkspacePath}
 			} else {
 				preferred := strings.TrimSpace(os.Getenv("AGENTWORKS_DEFAULT_PRODUCT_SURFACE"))
-				for _, surface := range append([]string{preferred}, "agentworks", "work", "code", "relays", "knowledgebase", "mcp-gateway", "llm-gateway", "bullpen", "video-studio", "sparkquill") {
+				for _, surface := range append([]string{preferred}, "agentworks", "work", "relays", "knowledgebase", "mcp-gateway", "llm-gateway", "bullpen", "video-studio", "sparkquill") {
 					if surface != "" && homeProductAllowed(claims, surface) {
 						state.Destination = &workspaceDestination{Surface: surface}
 						break

@@ -14,7 +14,7 @@ func TestCodeAdminAuditIsAppendOnly(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	data, err := os.ReadFile(filepath.Join(docs, "config/code-admin-audit/2026-09.jsonl"))
+	data, err := os.ReadFile(filepath.Join(docs, "config/crew-admin-audit/2026-09.jsonl"))
 	if err != nil || string(data) != "{\"action\":\"a\"}\n{\"action\":\"b\"}\n" {
 		t.Fatalf("log = %q %v", data, err)
 	}
@@ -23,7 +23,7 @@ func TestCodeAdminAuditIsAppendOnly(t *testing.T) {
 	if err := os.WriteFile(other, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(other, filepath.Join(docs, "config/code-admin-audit/2026-10.jsonl")); err != nil {
+	if err := os.Symlink(other, filepath.Join(docs, "config/crew-admin-audit/2026-10.jsonl")); err != nil {
 		t.Fatal(err)
 	}
 	if err := appendCodeAdminAuditLine(docs, "2026-10", `{"action":"c"}`); err == nil {

@@ -21,9 +21,13 @@ import (
 func newCodeAdminFixture(t *testing.T, adminInspection bool) (*StreamingAPI, *mockWorkspaceAPI) {
 	t.Helper()
 	t.Setenv("MULTI_USER_MODE", "true")
+	withProjectOwnerRegistry(t)
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "app-c0de0001", ProjectID: "c0de0001-0000", OwnerID: "owner", Shared: true, Private: true, AudienceConfigured: true, AdminInspection: adminInspection}); err != nil {
+		t.Fatal(err)
+	}
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"other","username":"other","can_create":true},{"id":"boss","username":"boss","admin":true,"can_create":true}]}`)
 	mock := &mockWorkspaceAPI{files: map[string]string{
-		codePrivacyOwnerRoot + "/product.json":                         `{"schema_version":1,"product":"code","id":"c0de0001-0000","title":"App","session_id":"code:project:c0de0001-0000"}`,
+		codePrivacyOwnerRoot + "/product.json":                         `{"schema_version":1,"product":"work","id":"c0de0001-0000","title":"App","session_id":"code:project:c0de0001-0000"}`,
 		codePrivacyOwnerRoot + "/workflow.json":                        `{"schema_version":1,"id":"c0de0001-0000","label":"App","capabilities":{}}`,
 		codePrivacyOwnerRoot + "/code/main.go":                         "package main",
 		codePrivacyOwnerRoot + "/.sandbox-cache/home/.git-credentials": "https://token@github.com",
@@ -35,17 +39,17 @@ func newCodeAdminFixture(t *testing.T, adminInspection bool) (*StreamingAPI, *mo
 	codeAdminAuditAppend = func(_ context.Context, month, entry string) error {
 		mock.mu.Lock()
 		defer mock.mu.Unlock()
-		mock.files["config/code-admin-audit/"+month+".jsonl"] += entry + "\n"
+		mock.files["config/crew-admin-audit/"+month+".jsonl"] += entry + "\n"
 		return nil
 	}
 	t.Cleanup(func() { codeAdminAuditAppend = previousAppend })
 	registry := agentprofiles.NewRegistry()
 	profile := agentprofiles.Profile{
-		ID: "code", Name: "Code", Version: 1, SystemPromptTemplate: "hi", BuiltIn: true, Product: "code", AdminInspection: adminInspection,
+		ID: "work", Name: "Crew", Version: 3, SystemPromptTemplate: "hi", BuiltIn: true, Product: "work", AdminInspection: adminInspection,
 		Runtime: agentprofiles.RuntimePolicy{
 			Transport:    "auto",
 			Conversation: agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject},
-			Workspace:    agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, Root: "Chats", ProjectsRoot: "Chats/Code/projects"},
+			Workspace:    agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, Root: "Chats", ProjectsRoot: "Crew"},
 		},
 	}
 	if err := registry.RegisterProfile(profile); err != nil {
@@ -67,7 +71,7 @@ func TestCodeAdminInspectionIsReadOnlyAndAudited(t *testing.T) {
 
 	// Not an admin: refused everywhere, and nothing is logged.
 	for _, caller := range []string{"other", "owner"} {
-		if rec := adminGet(api, (*StreamingAPI).handleAdminListCodeWorkspaces, caller, "/api/admin/code/workspaces", nil); rec.Code != http.StatusForbidden {
+		if rec := adminGet(api, (*StreamingAPI).handleAdminListCodeWorkspaces, caller, "/api/admin/crew/workspaces", nil); rec.Code != http.StatusForbidden {
 			t.Fatalf("%s listed every Code: %d", caller, rec.Code)
 		}
 		if rec := adminGet(api, (*StreamingAPI).handleAdminCodeFiles, caller, "/x", project); rec.Code != http.StatusForbidden {
@@ -75,7 +79,7 @@ func TestCodeAdminInspectionIsReadOnlyAndAudited(t *testing.T) {
 		}
 	}
 
-	rec := adminGet(api, (*StreamingAPI).handleAdminListCodeWorkspaces, "boss", "/api/admin/code/workspaces", nil)
+	rec := adminGet(api, (*StreamingAPI).handleAdminListCodeWorkspaces, "boss", "/api/admin/crew/workspaces", nil)
 	var listed struct {
 		Workspaces []codeAdminWorkspace `json:"workspaces"`
 	}
@@ -109,7 +113,7 @@ func TestCodeAdminInspectionIsReadOnlyAndAudited(t *testing.T) {
 	if strings.Contains(log, `"admin_id":"other"`) {
 		t.Fatal("a refused request was logged as a view")
 	}
-	rec = adminGet(api, (*StreamingAPI).handleAdminCodeAudit, "boss", "/api/admin/code/audit", nil)
+	rec = adminGet(api, (*StreamingAPI).handleAdminCodeAudit, "boss", "/api/admin/crew/audit", nil)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "read_file") {
 		t.Fatalf("audit read = %d %s", rec.Code, rec.Body.String())
 	}
@@ -117,7 +121,7 @@ func TestCodeAdminInspectionIsReadOnlyAndAudited(t *testing.T) {
 
 func TestCodeAdminInspectionNeedsTheProductSetting(t *testing.T) {
 	api, _ := newCodeAdminFixture(t, false)
-	if rec := adminGet(api, (*StreamingAPI).handleAdminListCodeWorkspaces, "boss", "/api/admin/code/workspaces", nil); rec.Code != http.StatusNotFound {
+	if rec := adminGet(api, (*StreamingAPI).handleAdminListCodeWorkspaces, "boss", "/api/admin/crew/workspaces", nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("inspection without admin_inspection = %d", rec.Code)
 	}
 	// Crew and personal chat history stay owner-only even for admins.
@@ -129,13 +133,13 @@ func TestCodeAdminInspectionNeedsTheProductSetting(t *testing.T) {
 // A Code reviewer is not an admin but reviews every Code like one: read-only,
 // every view audited as a reviewer, and the audit log readable. A disabled
 // reviewer, or a plain member, gets nothing.
-func TestCodeReviewerInspectsEveryCodeAudited(t *testing.T) {
+func TestCrewReviewerInspectsEveryCodeAudited(t *testing.T) {
 	api, mock := newCodeAdminFixture(t, true)
 	withMemoryUserDirectory(t, `{"users":[
 		{"id":"owner","username":"owner","can_create":true},
 		{"id":"other","username":"other","can_create":true},
-		{"id":"rev","username":"rev","role":"viewer","code_reviewer":true},
-		{"id":"gone","username":"gone","role":"viewer","code_reviewer":true,"disabled":true}]}`)
+		{"id":"rev","username":"rev","role":"viewer","crew_reviewer":true},
+		{"id":"gone","username":"gone","role":"viewer","crew_reviewer":true,"disabled":true}]}`)
 	project := map[string]string{"owner": "owner", "project_id": "c0de0001-0000"}
 
 	for _, caller := range []string{"other", "gone"} {
@@ -148,14 +152,14 @@ func TestCodeReviewerInspectsEveryCodeAudited(t *testing.T) {
 			}
 		}
 
-		if rec := adminGet(api, (*StreamingAPI).handleAdminListCodeWorkspaces, caller, "/api/admin/code/workspaces", nil); rec.Code != http.StatusForbidden {
+		if rec := adminGet(api, (*StreamingAPI).handleAdminListCodeWorkspaces, caller, "/api/admin/crew/workspaces", nil); rec.Code != http.StatusForbidden {
 			t.Fatalf("%s listed every Code: %d", caller, rec.Code)
 		}
-		if rec := adminGet(api, (*StreamingAPI).handleAdminCodeAudit, caller, "/api/admin/code/audit", nil); rec.Code != http.StatusForbidden {
+		if rec := adminGet(api, (*StreamingAPI).handleAdminCodeAudit, caller, "/api/admin/crew/audit", nil); rec.Code != http.StatusForbidden {
 			t.Fatalf("%s read the audit log: %d", caller, rec.Code)
 		}
 	}
-	if rec := adminGet(api, (*StreamingAPI).handleAdminListCodeWorkspaces, "rev", "/api/admin/code/workspaces", nil); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"owner_id":"owner"`) {
+	if rec := adminGet(api, (*StreamingAPI).handleAdminListCodeWorkspaces, "rev", "/api/admin/crew/workspaces", nil); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"owner_id":"owner"`) {
 		t.Fatalf("reviewer listing = %d %s", rec.Code, rec.Body.String())
 	}
 	if rec := adminGet(api, (*StreamingAPI).handleAdminCodeFile, "rev", "/x?path=code/main.go", project); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "package main") {
@@ -164,7 +168,7 @@ func TestCodeReviewerInspectsEveryCodeAudited(t *testing.T) {
 	if rec := adminGet(api, (*StreamingAPI).handleAdminCodeFile, "rev", "/x?path=.sandbox-cache/home/.git-credentials", project); rec.Code != http.StatusNotFound {
 		t.Fatalf("reviewer read the Code's credentials: %d", rec.Code)
 	}
-	if rec := adminGet(api, (*StreamingAPI).handleAdminCodeAudit, "rev", "/api/admin/code/audit", nil); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"role":"reviewer"`) {
+	if rec := adminGet(api, (*StreamingAPI).handleAdminCodeAudit, "rev", "/api/admin/crew/audit", nil); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"role":"reviewer"`) {
 		t.Fatalf("reviewer audit read = %d %s", rec.Code, rec.Body.String())
 	}
 	mock.mu.Lock()
@@ -176,7 +180,7 @@ func TestCodeReviewerInspectsEveryCodeAudited(t *testing.T) {
 }
 
 // A Code reviewer sees every Code's cost row, and no other product's.
-func TestCodeReviewerSeesEveryCodesCost(t *testing.T) {
+func TestCrewReviewerSeesEveryCodesCost(t *testing.T) {
 	bobCode := "_users/bob/Chats/Code/projects/app-1"
 	bobVideo := "_users/bob/Chats/Video Studio/projects/launch"
 	if !costOverviewProductVisibleTo(bobCode, "rev", false, true) {
@@ -222,7 +226,7 @@ func TestCodeInspectionListsConnections(t *testing.T) {
 
 func TestCodeConversationReviewBindsProjectAndAuditsReads(t *testing.T) {
 	api, mock := newCodeAdminFixture(t, true)
-	directory := withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"rev","username":"rev","code_reviewer":true}]}`)
+	directory := withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"rev","username":"rev","crew_reviewer":true}]}`)
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	write := func(relative, data string) {

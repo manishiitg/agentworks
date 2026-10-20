@@ -45,8 +45,7 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 	}
 	add("get_settings", "Read a workflow's, Flow's or Crew's settings: models per role, MCP servers and tools, skills, secrets (names and whether a value is stored; never values), browser mode, notifications (workflows and Flows), plus a version for update_settings.", false, false, target())
 	sourceTarget := target()
-	sourceTarget["code_id"] = externalString("Your own Code project ID from code action=projects. For secret_sources only; pass exactly one product.")
-	add("get_secret_sources", "Explain this product's saved secret choices by name: its own copy, the company Vault copy and which takes priority. Values, token validity and account identities are not checked. Does not change selections or stored copies. Pass workflow_id, crew_id or your own code_id.", false, false, sourceTarget)
+	add("get_secret_sources", "Explain this product's saved secret choices by name: its own copy, the company Vault copy and which takes priority. Values, token validity and account identities are not checked. Does not change selections or stored copies. Pass workflow_id or crew_id.", false, false, sourceTarget)
 	props := target()
 	for key, value := range map[string]any{
 		"expected_version": externalString("Version from settings action=get; the update is refused if the settings changed since."),

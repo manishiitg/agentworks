@@ -47,9 +47,6 @@ func canManagePersonalConnection(r *http.Request, owner string) bool {
 // Both permission checks and revocation use the same physical item identity.
 func personalConnectionItemRoot(user, workspace string) string {
 	workspace = canonicalCrewWorkspaceRoot(workspace)
-	if root := common.CodeProjectRoot(user, workspace); root != "" {
-		return root
-	}
 	kind, root := common.ClassifySessionWorkspace(user, workspace)
 	if kind == common.SessionWorkspaceCrewProject {
 		ref := workspaceref.MustParse(workspace)
@@ -91,9 +88,6 @@ func personalConnectionItemScope(r *http.Request, workspace string, write bool, 
 			if err != nil || !found || json.Unmarshal([]byte(raw), &metadata) != nil || metadata.ID == "" || !token.Allows("crews:write") || !token.AllowsCrew(metadata.ID) || token.FileGuard != nil {
 				return scope, fmt.Errorf("Reconnect MCP with Builder access to this item, then add your %s account in %s.", provider, section)
 			}
-		}
-		if root := common.CodeProjectRoot(user, workspace); root != "" {
-			workspace, scope.CodeWorkspace = root, root
 		}
 	} else {
 		kind, root := common.ClassifySessionWorkspace(user, workspace)

@@ -347,10 +347,10 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
   const creatableFor = (u: AdminUser, role: Role) => products.filter((p) => CREATABLE_PRODUCTS.includes(p) && (u.products.includes(p) || (role === 'creator' && u.products.length === 0)))
   const createListFor = (u: AdminUser, role: Role) => u.create_products ?? (role === 'creator' ? creatableFor(u, role) : [])
 
-  // Turning Code review on also opens the Code product (the inspector lives
+  // Turning Crew review on also opens the Crew product (the inspector lives
   // there) for an account whose products are a restricted list.
   const codeReviewerPatch = (u: AdminUser, role: Role, next: boolean): AdminUserWrite => {
-    const patch: AdminUserWrite = { code_reviewer: next }
+    const patch: AdminUserWrite = { crew_reviewer: next }
     const restricted = role === 'viewer' || role === 'editor' || u.products.length > 0
     if (next && role !== 'admin' && restricted && products.includes('code') && !u.products.includes('code')) {
       patch.products = [...u.products, 'code']
@@ -453,15 +453,15 @@ const UsersAdminPanel: React.FC<UsersAdminPanelProps> = ({ vaultOnly = false }) 
                           {!vaultOnly && role !== 'admin' && (
                             <label
                               className="mt-1.5 flex items-center gap-1.5 text-xs"
-                              title="Sees every Code workspace's cost, chats and files without changing them. Every view is recorded in the audit log."
+                              title="Sees every Crew project's cost, chats and files without changing them. Every view is recorded in the audit log."
                             >
                               <Checkbox
                                 disabled={busy}
-                                checked={u.code_reviewer === true}
-                                onCheckedChange={() => { void run(u.id, () => authApi.updateAdminUser(u.id, codeReviewerPatch(u, role, u.code_reviewer !== true))) }}
-                                aria-label={`Code reviewer for ${u.username}`}
+                                checked={u.crew_reviewer === true}
+                                onCheckedChange={() => { void run(u.id, () => authApi.updateAdminUser(u.id, codeReviewerPatch(u, role, u.crew_reviewer !== true))) }}
+                                aria-label={`Crew reviewer for ${u.username}`}
                               />
-                              Code reviewer
+                              Crew reviewer
                             </label>
                           )}
                           {!vaultOnly && role !== 'admin' && products.includes('mcp-gateway') && (

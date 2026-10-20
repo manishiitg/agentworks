@@ -117,7 +117,7 @@ describe('workflow navigation coordinator', () => {
     useChatStore.setState({ chatTabs: { [tab.tabId]: tab } })
     const pending = navigation.beginWorkflowNavigation('workflow-a')
     navigation.selectWorkflowPreset('workflow-a')
-    openProductWorkspace('code')
+    openProductWorkspace('work')
     // Product switches preserve the workflow for a later return, so checking
     // only the active preset cannot detect that this old lookup lost ownership.
     expect(useGlobalPresetStore.getState().activePresetIds.workflow).toBe('workflow-a')

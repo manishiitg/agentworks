@@ -4,7 +4,7 @@ import { workWorkspacePanels } from '../../products/work/workWorkspacePanels'
 import { workflowContextViews } from '../workflow/workspaceViews'
 
 it.each(['work', 'code', 'agentworks', 'relays'] as const)('preserves every admitted %s panel when grouping the menu', product => {
-  const work = workWorkspacePanels({ profileId: product === 'code' ? 'code' : 'work', showShell: true })
+  const work = workWorkspacePanels({ profileId: product === 'work' ? 'work' : 'work', showShell: true })
   const panels = product === 'work' || product === 'code'
     ? [...work.views, ...work.ops, ...work.setup]
     : workflowContextViews(product === 'relays', false)

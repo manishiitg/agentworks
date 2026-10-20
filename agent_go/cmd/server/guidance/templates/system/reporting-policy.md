@@ -258,7 +258,7 @@ run stored. Anyone who can open the workflow — owner or read-only — can
 trigger it. The workspace selects MCP servers/tools, secrets (`$SECRET_*`) and
 variables (`$VAR_*`); the authenticated viewer's live MCP<!-- product:mcp-gateway -->/Vault<!-- /product --> permissions
 still govern access. Viewing a workspace does not grant credentials.
-The same runner supports Workflow/Goals, <!-- product:relays -->Flows, <!-- /product -->Crew<!-- product:code --> and owner-only Code<!-- /product -->
+The same runner supports Workflow/Goals, <!-- product:relays -->Flows, <!-- /product -->Crew
 project roots. Published static copies cannot run scripts.
 
 The script contract:

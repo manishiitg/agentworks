@@ -24,9 +24,7 @@ type conditionRouteCaller struct {
 func (c *conditionService) resolveTarget(ctx context.Context, job productScheduleJob, name string) (triggerTarget, error) {
 	// Use current visible products, including shared workflows in Run mode.
 	query := strings.TrimPrefix(strings.TrimSpace(name), "#")
-	if strings.HasPrefix(strings.ToLower(query), "code:") || isCodeProjectPath(query) {
-		return triggerTarget{}, errCodeHasNoFunctions
-	}
+
 	workflows, err := DiscoverWorkflowManifests(ctx)
 	if err != nil {
 		return triggerTarget{}, err

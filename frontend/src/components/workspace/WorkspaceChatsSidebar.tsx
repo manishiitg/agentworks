@@ -99,7 +99,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   )
   useLiveRefetch(() => setDirectoryTick(value => value + 1), {
     kinds: ['sessions'], fallbackMs: 60000, safetyMs: 60000, minIntervalMs: 30000,
-    enabled: allowed.includes('work') || allowed.includes('code'),
+    enabled: allowed.includes('work'),
   })
   useEffect(() => {
     let disposed = false
@@ -145,7 +145,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   useEffect(() => {
     let disposed = false
     const identity = captureChatIdentity()
-    if (!allowed.includes('work') && !allowed.includes('code')) {
+    if (!allowed.includes('work')) {
       setDirectory({ scope, projects: [], authoritative: true })
       return
     }
@@ -173,7 +173,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     const identity = captureChatIdentity()
     const entities = [
       ...(allowed.includes('agentworks') || allowed.includes('relays') ? ['workflow'] : []),
-      ...(allowed.includes('work') || allowed.includes('code') ? ['product'] : []),
+      ...(allowed.includes('work') ? ['product'] : []),
     ]
     void Promise.allSettled(
       entities.map((entity_type) => schedulerApi.listJobs({ entity_type, limit: 1000 }))
@@ -309,8 +309,8 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       if (row.history && row.surface !== 'agentworks' && row.surface !== 'relays') {
         const state = useProductSurfaceStore.getState()
         if (row.surface === 'work' && row.projectId) state.setSelectedWorkProjectId(row.projectId)
-        else if (row.surface === 'code' && row.projectId)
-          state.setSelectedCodeProjectId(row.projectId)
+        else if (row.surface === 'work' && row.projectId)
+          state.setSelectedWorkProjectId(row.projectId)
         else if (row.surface === 'video-studio' && row.projectId)
           state.setLastVideoProjectId(row.projectId)
         useSidebarHistoryStore.setState({

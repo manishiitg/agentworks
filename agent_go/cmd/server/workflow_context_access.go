@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"log"
 	"strings"
 )
@@ -53,35 +51,9 @@ func contextReferenceReadRoot(userID, folder string) (string, bool) {
 	switch {
 	case len(parts) == 2 && parts[0] == "Workflow" && parts[1] != "" && parts[1] != "." && parts[1] != "..":
 		return folder, true
-	case isCrewContextShape(parts) && strings.TrimSpace(userID) != "":
-		// A Crew is addressed by Crew/<project> (shared root), by its physical _users/<owner>/Chats/Work/projects/
-		// <project> path (anyone's), or by the caller's own Chats/Work/projects/<project>. The folder-guard root is
-		// where the Crew lives now: a reference stored before the Crew moved keeps working through the alias
-		// resolver (PLAT-442 step 4).
-		ref, ok := resolveCrewPath(context.Background(), userID, folder)
-		if !ok || ref.Rest != "" {
-			return "", false
-		}
-		return ref.Root, true
-	case isCodeContextShape(parts) && strings.TrimSpace(userID) != "":
-		// The caller's own Code project (logical Chats/Code/projects/<project>) in their own tree.
-		return agentProfileRuntimeWorkspace(userID, folder), true
 	default:
 		return "", false
 	}
-}
-
-// codeContextAllowedKey marks a context whose turn is a Code turn: only there may a Code project be attached as read-only context.
-type codeContextAllowedKey struct{}
-
-// isCodeContextShape reports whether parts spell a Code project root: Chats/Code/projects/<project> (only the caller's own; a Code is
-// private, so there is no other-owner spelling).
-func isCodeContextShape(parts []string) bool {
-	if len(parts) != 4 || parts[0] != "Chats" || parts[1] != "Code" || parts[2] != "projects" {
-		return false
-	}
-	name := parts[3]
-	return name != "" && name != "." && name != ".." && !strings.HasPrefix(name, ".")
 }
 
 // isCrewContextShape reports whether parts spell a Crew project root in one of the three accepted spellings
@@ -90,13 +62,7 @@ func isCrewContextShape(parts []string) bool {
 	valid := func(name string) bool {
 		return name != "" && name != "." && name != ".." && !strings.HasPrefix(name, ".")
 	}
-	switch {
-	case len(parts) == 2 && parts[0] == crewSharedRootName:
-		return valid(parts[1])
-	case len(parts) == 4 && parts[0] == "Chats" && parts[1] == "Work" && parts[2] == "projects":
-		return valid(parts[3])
-	}
-	return isOtherOwnerCrewPath(parts)
+	return len(parts) == 2 && parts[0] == crewSharedRootName && valid(parts[1])
 }
 
 // authorizeWorkflowContextPathsWithReadRoots keeps the durable/user-visible
@@ -180,30 +146,6 @@ func authorizeContextPathsWithReadRoots(ctx context.Context, paths []string, ski
 				logContextDenial(claims, folder, "crew product.json is not a Work crew")
 				return nil, nil, denied
 			}
-		case projectPath && project.ProfileID == "code":
-			// One of the person's own Code projects, as read-only context for another of their Code projects. Never for a Crew
-			// (a Crew is shareable: its readers would see a private project's files).
-			if allowed, _ := ctx.Value(codeContextAllowedKey{}).(bool); !allowed || claims == nil || strings.TrimSpace(claims.UserID) == "" {
-				logContextDenial(claims, folder, "a Code project can be attached only to a Code project")
-				return nil, nil, denied
-			}
-			if projectStorageOwner(readRoot) != sanitizeUserIDForPath(claims.UserID) {
-				return nil, nil, denied
-			}
-			rawManifest, exists, err := readFileFromWorkspace(ctx, readRoot+"/product.json")
-			if skipMissing && err == nil && !exists {
-				log.Printf("[WORKFLOW_CONTEXT] Skipping attached Code project %s: it no longer exists", folder)
-				continue
-			}
-			if err != nil || !exists {
-				logContextDenial(claims, folder, "code project has no product.json")
-				return nil, nil, denied
-			}
-			var manifest productProjectManifest
-			if json.Unmarshal([]byte(rawManifest), &manifest) != nil || !strings.EqualFold(strings.TrimSpace(manifest.Product), codeproduct.ProfileID) || strings.TrimSpace(manifest.ID) == "" {
-				logContextDenial(claims, folder, "product.json is not a Code project")
-				return nil, nil, denied
-			}
 		default:
 			logContextDenial(claims, folder, "unsupported attachment path")
 			return nil, nil, denied
@@ -230,24 +172,12 @@ func mergeDurableWorkflowContextPaths(ctx context.Context, selectedFolder string
 	return appendUniqueStrings(manifest.WorkflowContextPaths, transient...)
 }
 
-// isOtherOwnerCrewPath reports whether parts spell a physical Crew project
-// path _users/<owner>/Chats/Work/projects/<project>.
-func isOtherOwnerCrewPath(parts []string) bool {
-	joined := strings.Join(parts, "/")
-	ref := workspaceref.MustParse(joined)
-	root, _, ok := ref.ProjectRoot()
-	return ok && root == workspaceref.CrewProjectsRoot && ref.HasOwner() && ref.String() == joined
-}
-
 // admitTurnContextPaths merges a turn's saved workflow links with its
 // one-message # references and authorizes them, recording the allowed paths
 // and their read roots on req. handleQuery and the bot dry run share it.
 func admitTurnContextPaths(ctx context.Context, req *QueryRequest) error {
 	req.WorkflowContextPaths = mergeDurableWorkflowContextPaths(ctx, req.SelectedFolder, req.WorkflowContextPaths)
 	authCtx := workflowContextAuthorizationContext(ctx)
-	if strings.TrimSpace(req.AgentProfileID) == codeproduct.ProfileID {
-		authCtx = context.WithValue(authCtx, codeContextAllowedKey{}, true)
-	}
 	contextPaths, contextReadPaths, err := authorizeContextPathsWithReadRoots(authCtx, req.WorkflowContextPaths, true)
 	if err != nil {
 		return err

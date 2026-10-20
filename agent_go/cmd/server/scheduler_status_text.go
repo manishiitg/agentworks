@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"strings"
 )
 
 // Plain status text for the Schedules list, written for people who are not
@@ -27,9 +26,7 @@ func schedulePauseProduct(job ScheduledJobResponse) string {
 }
 
 func pauseProductForProfile(profile string) string {
-	if strings.EqualFold(strings.TrimSpace(profile), "code") {
-		return "code"
-	}
+
 	return "work"
 }
 

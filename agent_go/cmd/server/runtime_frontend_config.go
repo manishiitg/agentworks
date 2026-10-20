@@ -42,12 +42,12 @@ func runtimeFrontendConfigJS(actualPort int, workspaceURL string) string {
 		if local && !localOptIn {
 			surfaces = []string{"agentworks", "work", "bullpen"}
 		} else if localOptIn {
-			surfaces = []string{"agentworks", "relays", "work", "code", "mcp-gateway", "knowledgebase", "bullpen"}
+			surfaces = []string{"agentworks", "relays", "work", "mcp-gateway", "knowledgebase", "bullpen"}
 			if strings.TrimSpace(os.Getenv("AGENTWORKS_GATEWAY_BINARY")) != "" {
 				surfaces = append(surfaces, "llm-gateway")
 			}
 		} else {
-			surfaces = []string{"agentworks", "relays", "work", "code", "mcp-gateway", "knowledgebase"}
+			surfaces = []string{"agentworks", "relays", "work", "mcp-gateway", "knowledgebase"}
 			if productEnabled("bullpen") {
 				surfaces = append(surfaces, "bullpen")
 			}

@@ -32,7 +32,7 @@ func crewFunctionSubmissionExpired(index crewFunctionSubmissionIndex, now time.T
 // callerChat scopes the ID to one chat when chats of a Code call each other.
 func crewFunctionSubmissionPath(userID string, caller triggerCaller, submissionID, callerPath, callerChat string) string {
 	parts := []string{userID, caller.Type, caller.ID, caller.ProfileID, submissionID}
-	if caller.ProfileID == "code" {
+	if caller.ProfileID == crewProfileID {
 		parts = append(parts, canonicalCrewWorkspaceRoot(callerPath))
 	}
 	if callerChat != "" {
@@ -44,7 +44,7 @@ func crewFunctionSubmissionPath(userID string, caller triggerCaller, submissionI
 
 func crewFunctionSubmissionFingerprint(target triggerTarget, function, argsKey string) string {
 	parts := []string{target.Kind, target.stampID(), function, argsKey}
-	if target.CrewProfile == "code" {
+	if target.CrewProfile == crewProfileID {
 		parts = append(parts, target.CrewProfile, target.Path)
 	}
 	if target.Chat != nil {
@@ -71,10 +71,10 @@ func inMemoryCrewFunctionSubmissionLocked(userID string, caller triggerCaller, c
 		if call.UserID != userID || call.CallerChat != callerChat || crewFunctionKey(call.CallerKind, call.CallerProfileID, call.CallerID) != crewFunctionKey(caller.Type, caller.ProfileID, caller.ID) || call.SubmissionID != submissionID {
 			continue
 		}
-		if caller.ProfileID == "code" && canonicalCrewWorkspaceRoot(call.CallerPath) != canonicalCrewWorkspaceRoot(callerPath) {
+		if caller.ProfileID == crewProfileID && canonicalCrewWorkspaceRoot(call.CallerPath) != canonicalCrewWorkspaceRoot(callerPath) {
 			continue
 		}
-		if call.TargetKind != target.Kind || call.TargetID != target.stampID() || (target.CrewProfile == "code" && call.TargetPath != target.Path) || call.TargetChat != crewFunctionTargetChat(target) || call.Function != function || call.ArgumentsKey != crewFunctionArgumentsFingerprint(argsKey) {
+		if call.TargetKind != target.Kind || call.TargetID != target.stampID() || (target.CrewProfile == crewProfileID && call.TargetPath != target.Path) || call.TargetChat != crewFunctionTargetChat(target) || call.Function != function || call.ArgumentsKey != crewFunctionArgumentsFingerprint(argsKey) {
 			return nil, true, fmt.Errorf("submission_id already belongs to a different function call")
 		}
 		return call, true, nil
@@ -102,7 +102,7 @@ func lookupCrewFunctionSubmission(ctx context.Context, userID string, caller tri
 		return nil, true, fmt.Errorf("submission_id already belongs to a different function call")
 	}
 	call := lookupCrewFunctionCall(index.CallID)
-	if call == nil || call.UserID != userID || call.CallerChat != callerChat || crewFunctionKey(call.CallerKind, call.CallerProfileID, call.CallerID) != crewFunctionKey(caller.Type, caller.ProfileID, caller.ID) || (caller.ProfileID == "code" && canonicalCrewWorkspaceRoot(call.CallerPath) != canonicalCrewWorkspaceRoot(callerPath)) || call.SubmissionID != submissionID ||
+	if call == nil || call.UserID != userID || call.CallerChat != callerChat || crewFunctionKey(call.CallerKind, call.CallerProfileID, call.CallerID) != crewFunctionKey(caller.Type, caller.ProfileID, caller.ID) || (caller.ProfileID == crewProfileID && canonicalCrewWorkspaceRoot(call.CallerPath) != canonicalCrewWorkspaceRoot(callerPath)) || call.SubmissionID != submissionID ||
 		call.TargetKind != target.Kind || call.TargetID != target.stampID() || call.TargetChat != crewFunctionTargetChat(target) || call.Function != function || call.ArgumentsKey != crewFunctionArgumentsFingerprint(argsKey) {
 		return nil, true, fmt.Errorf("submission_id belongs to an uncertain call; inspect before retrying")
 	}

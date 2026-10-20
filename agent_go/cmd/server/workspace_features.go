@@ -94,7 +94,7 @@ func (api *StreamingAPI) workspaceEffectivePanels(ctx context.Context, userID, p
 	if applyWorkspaceMemoryFeature(ctx, &profile, root) != nil {
 		return nil
 	}
-	if profileID == "code" {
+	if profileID == crewProfileID {
 		switch codeProjectMode(ctx, root) {
 		case "cowork":
 			applyCoworkProfile(&profile)

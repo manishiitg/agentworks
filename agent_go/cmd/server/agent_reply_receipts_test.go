@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -194,8 +194,8 @@ func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 	// A messaging-only child can answer the exact hosted chat that opened its
 	// inbox, without gaining product tools. Exercise submission AND queued
 	// delivery through the real HTTP server/helper; replace only the model.
-	for _, profile := range codeproduct.BuiltinAgentProfiles() {
-		profile.Product = codeproduct.ProfileID
+	for _, profile := range workproduct.BuiltinAgentProfiles() {
+		profile.Product = workproduct.ProfileID
 		if e := env.svc.registry.RegisterProfile(profile); e != nil {
 			t.Fatal(e)
 		}
@@ -203,10 +203,10 @@ func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 	const hostedRoot = "Crew/example"
 	const hostedKey = "example:chat:abcdef12"
 	const hostedSession = "product-33333333-2222-4333-8444-555555555555"
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: codeproduct.ProfileID, Folder: "example", OwnerID: "owner", ProjectID: "example", Shared: true}); err != nil {
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: workproduct.ProfileID, Folder: "example", OwnerID: "owner", ProjectID: "example", Shared: true}); err != nil {
 		t.Fatal(err)
 	}
-	record := ProductConversationRecord{ConversationID: "conversation-44444444-2222-4333-8444-555555555555", ProfileID: codeproduct.ProfileID, ConversationKey: hostedKey, SessionID: hostedSession, WorkspacePath: hostedRoot, ResourceID: "example"}
+	record := ProductConversationRecord{ConversationID: "conversation-44444444-2222-4333-8444-555555555555", ProfileID: workproduct.ProfileID, ConversationKey: hostedKey, SessionID: hostedSession, WorkspacePath: hostedRoot, ResourceID: "example"}
 	registry, _ := json.Marshal(productConversationRegistryDocument{Version: 1, Entries: map[string]ProductConversationRecord{"code/" + hostedKey: record}})
 	env.mock.mu.Lock()
 	env.mock.files[hostedRoot+"/product.json"] = `{"schema_version":1,"product":"code","id":"example","owner_id":"owner","title":"Example","session_id":"project-main"}`

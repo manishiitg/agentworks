@@ -4,13 +4,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 )
 
 // A tab's final answer goes back to the tab that asked, once, and only when the tab sent nothing back itself.
 func TestTabFinalAnswerIsRelayedOnceAndOnlyWhenNoReplyWasSent(t *testing.T) {
-	asker := agentMessageEndpoint{Profile: codeproduct.ProfileID, Session: "s-asker", Label: "main"}
-	tab := agentMessageEndpoint{Profile: codeproduct.ProfileID, Session: "s-tab", Label: "tests"}
+	asker := agentMessageEndpoint{Profile: workproduct.ProfileID, Session: "s-asker", Label: "main"}
+	tab := agentMessageEndpoint{Profile: workproduct.ProfileID, Session: "s-tab", Label: "tests"}
 	asked := agentMessage{ID: "msg-1", Sequence: 1, From: 0}
 	conversation := agentConversation{Messages: []agentMessage{asked}}
 	if text := tabFinalAnswerText(conversation, asked, asker, tab, "TESTS-DONE"); !strings.Contains(text, "TESTS-DONE") || !strings.Contains(text, "msg-1") {

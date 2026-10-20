@@ -12,7 +12,7 @@ import { setProjectMode } from './codeLocalFiles'
 import { usePanelSwitcherStore } from '../../stores/usePanelSwitcherStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
-import { CODE_PRODUCT, CREW_PRODUCT, ProjectProductProvider } from './projectProduct'
+import { CREW_PRODUCT, ProjectProductProvider } from './projectProduct'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
@@ -21,7 +21,7 @@ let host: HTMLDivElement
 beforeEach(() => { vi.spyOn(agentApi, 'listReportHumanInputs').mockResolvedValue({ success: true, inputs: [] }); host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host) })
 afterEach(() => { act(() => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
-const render = (product: typeof CODE_PRODUCT, props: { view?: WorkWorkspaceView; showShell?: boolean; readOnly?: boolean; showActivityMonitor?: boolean; sessionId?: string; enabledPanels?: Set<string> }) => act(() => {
+const render = (product: typeof CREW_PRODUCT, props: { view?: WorkWorkspaceView; showShell?: boolean; readOnly?: boolean; showActivityMonitor?: boolean; sessionId?: string; enabledPanels?: Set<string> }) => act(() => {
   root.render(
     <ProjectProductProvider value={product}>
       <WorkWorkspaceToolbar workspacePath="p" view="files" onViewChange={() => undefined} {...props} />
@@ -32,10 +32,10 @@ const hasTerminal = () => Array.from(host.querySelectorAll('button,[role="button
   || host.innerHTML.includes('Terminal')
 
 it('keeps Terminal in the owner Code menu, without duplicate toolbar buttons', () => {
-  render(CODE_PRODUCT, { showShell: true })
+  render(CREW_PRODUCT, { showShell: true })
   expect(usePanelSwitcherStore.getState().entries.code?.panels.some(item => item.id === 'shell')).toBe(true)
   expect(hasTerminal()).toBe(false)
-  render(CODE_PRODUCT, { showShell: false })
+  render(CREW_PRODUCT, { showShell: false })
   expect(usePanelSwitcherStore.getState().entries.code?.panels.some(item => item.id === 'shell')).toBe(false)
 })
 

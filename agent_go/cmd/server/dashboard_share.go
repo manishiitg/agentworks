@@ -111,7 +111,7 @@ func workflowRunEveryone(claims *UserClaims, m *WorkflowManifest, product string
 // dashboardShareOwner reports whether the caller owns the project behind the dashboard (sharing is the owner's act).
 func (api *StreamingAPI) dashboardShareOwner(ctx context.Context, claims *UserClaims, target dashboardTarget) bool {
 	switch target.Kind {
-	case "crew", "code":
+	case "crew":
 		crew, ok := resolveCrewPath(ctx, claims.UserID, target.Root)
 		return ok && crewAccessFor(claims, crew) == crewAccessOwner
 	case "workflow", "relay":
@@ -124,7 +124,7 @@ func (api *StreamingAPI) dashboardShareOwner(ctx context.Context, claims *UserCl
 func (api *StreamingAPI) readRunShare(ctx context.Context, claims *UserClaims, target dashboardTarget) (runShareState, error) {
 	state := runShareState{Mode: runSharePrivate}
 	switch target.Kind {
-	case "crew", "code":
+	case "crew":
 		if crewSharedWithOthers(target.Root) {
 			state.Mode = runShareEveryone
 		} else if id, ok := projectIdentityOf(target.Root); ok && isProjectProfileID(id.Product) {
@@ -150,7 +150,7 @@ func (api *StreamingAPI) readRunShare(ctx context.Context, claims *UserClaims, t
 	default:
 		return state, dashboardFailure(404, "sharing is not available for this kind of project")
 	}
-	if (target.Kind == "crew" || target.Kind == "code") && api.dashboardShareOwner(ctx, claims, target) {
+	if (target.Kind == "crew") && api.dashboardShareOwner(ctx, claims, target) {
 		state.Accounts = api.workspaceShareAccounts(ctx, target)
 	}
 	return state, nil
@@ -209,7 +209,7 @@ func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, 
 
 func (api *StreamingAPI) applyRunShareChange(ctx context.Context, claims *UserClaims, target dashboardTarget, mode string, emails []string) (runShareState, error) {
 	switch target.Kind {
-	case "crew", "code":
+	case "crew":
 		crew, ok := resolveCrewPath(ctx, claims.UserID, target.Root)
 		if !ok {
 			return runShareState{}, dashboardFailure(404, "project unavailable")

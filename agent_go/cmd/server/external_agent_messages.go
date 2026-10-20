@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 )
 
 // An inbox is an address, not an access grant. Recheck both the authenticated
@@ -122,7 +122,7 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 		claims = view
 	}
 	token = claims.AccessToken
-	if peer.Profile == codeproduct.ProfileID {
+	if peer.Profile == workproduct.ProfileID {
 		if peer.UserID != claims.UserID || !externalCodeRunAllowed(claims) {
 			return denied
 		}

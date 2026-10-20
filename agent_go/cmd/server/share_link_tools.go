@@ -102,11 +102,7 @@ func (api *StreamingAPI) registerWorkShareLinkTool(reg definitionToolRegistrar, 
 		return registerProjectShareLinkTools(reg, userID, cleanWorkspace, noun, only,
 			"Recipients must sign in to AgentWorks and have access to this "+noun+" (the owner, or anyone with "+name+" access), and they get read-only access to that file or folder.", "")
 	}
-	if isCodeProjectPath(cleanWorkspace) {
-		return registerProjectShareLinkTools(reg, userID, cleanWorkspace, noun, "",
-			"Only you (the owner of this "+noun+") can open it after signing in; it is private to you.",
-			"Only you (the owner of this "+noun+") can open this dashboard after signing in.")
-	}
+
 	return registerProjectShareLinkTools(reg, userID, cleanWorkspace, noun, "",
 		"Recipients must sign in to AgentWorks and have access to this "+noun+" (the owner, or anyone with "+name+" access), and they get read-only access to that file or folder only.",
 		"Recipients must sign in and have current "+name+" access. Dashboard scripts use the viewer's permissions for selected data sources.")

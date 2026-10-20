@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
 )
 
@@ -258,7 +258,7 @@ func TestSectionNamesAreUniqueAndNonEmpty(t *testing.T) {
 // The shared-server rules are for the Code product only: not Crew, workflows or other products.
 func TestHostSafetyRulesApplyToCodeOnly(t *testing.T) {
 	section := sectionByName(t, "code-host-safety")
-	if !section.Applies(promptContext{ProfileID: codeproduct.ProfileID, HasProfile: true}) {
+	if !section.Applies(promptContext{ProfileID: workproduct.ProfileID, HasProfile: true}) {
 		t.Fatal("the Code product did not get the shared-server rules")
 	}
 	for _, profile := range []string{"work", "video-studio", "workflow", ""} {

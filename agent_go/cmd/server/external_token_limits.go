@@ -22,7 +22,7 @@ import (
 //
 //   - get_token_usage reads every active person's server-account tokens
 //     against their limits. It is review data: admins and Code reviewers with
-//     code:review (the Code review gate), or admins with users:manage.
+//     crews:review (the Code review gate), or admins with users:manage.
 //   - set_token_limits changes a person's limits. It is an admin write, so it
 //     needs users:manage (admins only; never granted to anyone else) and an
 //     active admin account, re-checked on every call. It writes through the
@@ -40,7 +40,7 @@ import (
 // an admin write exactly like set_token_limits.
 //
 // Every call, reads included, goes into the Code review audit log with the
-// token that made it (get_code_audit shows it). Only id, username, email,
+// token that made it (get_review_audit shows it). Only id, username, email,
 // limits, models and usage leave the server.
 
 var externalTokenLimitTools = map[string]bool{
@@ -77,7 +77,7 @@ func externalTokenLimitAllowed(c *UserClaims, name string) bool {
 	if isTokenLimitWrite(name) {
 		return adminWrite
 	}
-	return adminWrite || (claimsCanReviewCode(c) && allows("code:review"))
+	return adminWrite || (claimsCanReviewCode(c) && allows("crews:review"))
 }
 
 func externalTokenLimitCallAllowed(r *http.Request, name string) bool {
@@ -90,7 +90,7 @@ func externalTokenLimitCallAllowed(r *http.Request, name string) bool {
 	if isTokenLimitWrite(name) {
 		return adminWrite
 	}
-	return adminWrite || (currentUserCanReviewCode(r) && allows("code:review"))
+	return adminWrite || (currentUserCanReviewCode(r) && allows("crews:review"))
 }
 
 func externalTokenLimitDefinitions(add func(name, description string, write, scoped bool, props map[string]any, required ...string)) {
@@ -106,7 +106,7 @@ func externalTokenLimitDefinitions(add func(name, description string, write, sco
 	account := func(what string) map[string]any {
 		return map[string]any{"type": "string", "enum": stringsToAny(supportedLLMProviders), "description": what}
 	}
-	add("get_token_usage", "Shared server-account token usage per person against their admin-set limits: usage toward limits today and this week (UTC; weeks start Monday); cache reads count at 10%, fresh input/cache writes/output in full; daily_cache_read_tokens and weekly_cache_read_tokens show raw cache reads, daily_limit/weekly_limit (0 = unlimited), state ok|warning (80%)|over, and reset times. The top-level figures are the person's overall cap across all shared accounts; accounts has each shared account (by provider) with its own use, effective limits, the account default (default_limits) and the person's override. account_defaults lists every account's default. Only tokens spent on the server's shared accounts count; a person's own accounts never do. Slack channel bot turns count to the owner of the workflow, Crew or Code they answer for (daily_via_bot/weekly_via_bot is that part). Without user_id/email it lists every active person; account limits accounts to one shared account. Models: account_allowed_models is each shared account's own model list (null = all models); each person's allowed_models has, per shared account that limits their models, models (their effective list; null = all models) and source (account = the account's list, person = their own override); an account not listed there allows them every model. Pass from/to (YYYY-MM-DD, UTC, inclusive) for each person's shared-account token totals over that range instead. Read-only; every call is recorded in the Code review audit log. Requires code:review and an admin or Code reviewer account, or users:manage and an admin account.", false, false, who(map[string]any{"from": date, "to": date, "account": account("Only this shared account (provider, e.g. codex-cli).")}))
+	add("get_token_usage", "Shared server-account token usage per person against their admin-set limits: usage toward limits today and this week (UTC; weeks start Monday); cache reads count at 10%, fresh input/cache writes/output in full; daily_cache_read_tokens and weekly_cache_read_tokens show raw cache reads, daily_limit/weekly_limit (0 = unlimited), state ok|warning (80%)|over, and reset times. The top-level figures are the person's overall cap across all shared accounts; accounts has each shared account (by provider) with its own use, effective limits, the account default (default_limits) and the person's override. account_defaults lists every account's default. Only tokens spent on the server's shared accounts count; a person's own accounts never do. Slack channel bot turns count to the owner of the workflow, Crew or Code they answer for (daily_via_bot/weekly_via_bot is that part). Without user_id/email it lists every active person; account limits accounts to one shared account. Models: account_allowed_models is each shared account's own model list (null = all models); each person's allowed_models has, per shared account that limits their models, models (their effective list; null = all models) and source (account = the account's list, person = their own override); an account not listed there allows them every model. Pass from/to (YYYY-MM-DD, UTC, inclusive) for each person's shared-account token totals over that range instead. Read-only; every call is recorded in the Code review audit log. Requires crews:review and an admin or Code reviewer account, or users:manage and an admin account.", false, false, who(map[string]any{"from": date, "to": date, "account": account("Only this shared account (provider, e.g. codex-cli).")}))
 	add("set_token_limits", "Set daily and/or weekly token limits on the shared server accounts. Without account: a person's overall cap across all shared accounts. With account (provider, e.g. codex-cli) and a person: that person's override of the account's default (a field set replaces that field of the default; 0 or null falls back to it; -1 is unlimited for this person even when the account has a default). With account and no person: the account's default per-person limit for everyone. With account, model and no person: that one model's default per-person limit on the account, counted on top of the account's (a person at it is moved to another allowed model, else refused; 0 or null removes the model's limit). Integers; 0 or null is unlimited; an omitted field stays as it is. Identify a person by user_id or email. Returns the new limits and current usage. Recorded in the Code review audit log. Requires users:manage and an admin account.", true, false, who(map[string]any{"daily": limit("Daily (UTC day)"), "weekly": limit("Weekly (Monday-start UTC week)"), "account": account("The shared account (provider) whose limit to set; omit for the overall cap."), "model": externalString("With account and no person: set the limit of this one model (a model ID from the provider's list) instead of the account's.")}))
 	add("set_allowed_models", "Set which models may run on a shared server account (provider, e.g. codex-cli). With account and no person: the account's list for everyone (models null or [] = all models). With account and a person (user_id or email): that person's override (a list replaces the account's list for them; null or [] clears it back to the account's; [\"*\"] or all_models true = every model for this person). A turn whose model is not allowed runs on the first allowed one; it never fails. Model ids are checked against the provider's model catalog when the server has one. Returns the new lists. Recorded in the Code review audit log. Requires users:manage and an admin account.", true, false, who(map[string]any{
 		"account":    account("The shared account (provider) whose models to set."),
@@ -245,7 +245,7 @@ func tokenLimitTarget(dir *userDirectory, args map[string]any) (*UserRecord, int
 
 func (api *StreamingAPI) externalTokenLimitCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any) {
 	if !externalTokenLimitCallAllowed(r, name) {
-		msg := "Token usage needs code:review and an admin or Code reviewer account, or users:manage and an admin account."
+		msg := "Token usage needs crews:review and an admin or Code reviewer account, or users:manage and an admin account."
 		if name == "set_token_limits" {
 			msg = "Setting token limits needs users:manage and an admin account."
 		}

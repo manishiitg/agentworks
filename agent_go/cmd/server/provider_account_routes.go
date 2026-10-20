@@ -178,7 +178,7 @@ func (api *StreamingAPI) listProviderAccountViews(ctx context.Context, userID st
 		usable := availability.AvailableTo.admits(userID, run.Product)
 		if anyProduct {
 			usable = false
-			for _, product := range []string{productWorkflows, productCrews, productCode} {
+			for _, product := range []string{productWorkflows, productCrews} {
 				usable = usable || availability.AvailableTo.admits(userID, product)
 			}
 		}

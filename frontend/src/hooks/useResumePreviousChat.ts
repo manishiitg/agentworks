@@ -188,7 +188,7 @@ export function useResumePreviousChat() {
     // A Code project's history Open must not repoint the main chat at an old (for example closed) side chat: it
     // comes back as a side chat of its own, like a new tab (PLAT-827). From a side chat it still resumes in place.
     const codeProjectId = targetTab.metadata?.agentProfileProjectId
-    if (profileId === 'code' && codeProjectId && conversationKey === codeProjectId && !createResumedTab) {
+    if (profileId === 'work' && codeProjectId && conversationKey === codeProjectId && !createResumedTab) {
       const open = Object.values(chatStore.chatTabs).filter(tab => isWorkSideChatTab(tab, codeProjectId)).length
       if (open >= WORK_SIDE_CHAT_LIMIT) {
         useChatStore.getState().addToast(`This project already has ${open} side chats open. Close one first, then open this chat.`, 'error')

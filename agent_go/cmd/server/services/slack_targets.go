@@ -59,9 +59,6 @@ func (r SlackTargetRef) Key() string {
 }
 
 // IsCode reports a Code project target. Codes answer 1:1 DMs only.
-func (r SlackTargetRef) IsCode() bool {
-	return strings.EqualFold(strings.TrimSpace(r.ProfileID), "code")
-}
 
 // SlackTargetRefFromRoute names a route's destination.
 func SlackTargetRefFromRoute(route ChannelRoute) SlackTargetRef {

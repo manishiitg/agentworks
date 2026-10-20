@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
@@ -130,13 +129,7 @@ func (api *StreamingAPI) externalCrewsVisible(ctx context.Context, claims *UserC
 // connection may use it. Unknown and out-of-bound Crews are one not-found.
 func (api *StreamingAPI) externalCrewResolve(ctx context.Context, claims *UserClaims, crewID string) (crewProjectBinding, productProjectManifest, map[string]interface{}, bool) {
 	crewID = strings.TrimSpace(crewID)
-	if strings.HasPrefix(crewID, "code:") {
-		binding, manifest, ok := api.resolveExternalWorkspace(ctx, claims, crewID)
-		if !ok {
-			return crewProjectBinding{}, productProjectManifest{}, nil, false
-		}
-		return binding, manifest, map[string]interface{}{"id": manifest.ID, "name": manifest.displayTitle(), "workspace_path": binding.Binding.WorkspacePath}, true
-	}
+
 	if !productEnabled("work") || crewID == "" || api == nil || api.agentProfiles == nil {
 		return crewProjectBinding{}, productProjectManifest{}, nil, false
 	}
@@ -239,7 +232,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		// get_workflow_function_call, under workflow access. Without the kind
 		// check a Crew-only token read the user's workflow results (PLAT-366).
 		mine := call.UserID == claims.UserID && call.CallerKind == triggerCallerUser
-		isCrew := call.TargetKind == triggerCallerCrew && (call.TargetProfileID != codeproduct.ProfileID || call.IsolatedExecution && call.TargetChat == "")
+		isCrew := call.TargetKind == triggerCallerCrew && call.TargetChat == ""
 		targetID := workspaceExternalID(call.TargetProfileID, call.TargetID)
 		call.mu.Unlock()
 		if !isCrew || (claims.AccessToken != nil && !claims.AccessToken.AllowsCrew(workspaceTokenProjectID(targetID))) {
@@ -434,7 +427,7 @@ func externalCrewFunctionCalls(crewID, userID string, owner bool, limit int) []m
 	rows := []row{}
 	for _, call := range calls {
 		call.mu.Lock()
-		if call.TargetKind != triggerCallerCrew || workspaceExternalID(call.TargetProfileID, call.TargetID) != strings.TrimSpace(crewID) || call.TargetProfileID == codeproduct.ProfileID && (!call.IsolatedExecution || call.TargetChat != "") {
+		if call.TargetKind != triggerCallerCrew || workspaceExternalID(call.TargetProfileID, call.TargetID) != strings.TrimSpace(crewID) || call.TargetChat != "" {
 			call.mu.Unlock()
 			continue
 		}

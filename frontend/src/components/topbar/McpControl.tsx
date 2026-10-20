@@ -9,7 +9,7 @@ import { useLLMStore } from '../../stores/useLLMStore'
 /**
  * McpControl - top-bar icon that opens the "Connect an AI agent (MCP)" full
  * page: how a local or hosted AI agent connects to this server, and (for
- * admins and Code reviewers) the code:review tools. Shown to every signed-in
+ * admins and Code reviewers) the crews:review tools. Shown to every signed-in
  * person; the tools an agent gets follow the person's role.
  */
 export default function McpControl() {

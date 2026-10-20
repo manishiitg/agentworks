@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"net/http"
 	"strings"
 )
 
@@ -29,8 +28,6 @@ func (r codeRole) workflowAccess() WorkflowAccessLevel {
 	return WorkflowAccessNone
 }
 
-func codeSharesFilePath() string { return "config/code-shares.json" }
-
 // Every normal Code surface uses this check; account administrators and
 // reviewers use separately audited, read-only inspection endpoints.
 func codeRoleFor(ctx context.Context, callerID, ownerID, projectID string) codeRole {
@@ -43,13 +40,13 @@ func codeRoleFor(ctx context.Context, callerID, ownerID, projectID string) codeR
 		return codeRoleNone
 	}
 	for _, record := range records {
-		if record.Product != "code" || record.OwnerID != sanitizeUserIDForPath(ownerID) ||
+		if record.Product != crewProfileID || record.OwnerID != sanitizeUserIDForPath(ownerID) ||
 			(record.ProjectID != strings.TrimSpace(projectID) && record.Folder != strings.TrimSpace(projectID)) {
 			continue
 		}
 		root := projectStorageRoot(record)
 
-		if !userAllowedProduct(currentProjectCallerClaims(ctx, callerID), "code") {
+		if !userAllowedProduct(currentProjectCallerClaims(ctx, callerID), crewProfileID) {
 			return codeRoleNone
 		}
 		if crewIsCoOwner(root, callerID) {
@@ -60,18 +57,4 @@ func codeRoleFor(ctx context.Context, callerID, ownerID, projectID string) codeR
 		}
 	}
 	return codeRoleNone
-}
-
-// Compatibility tombstones: old clients cannot recreate a share or discover
-// the owner of an arbitrary project through these endpoints.
-func (api *StreamingAPI) handleGetCodeShares(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	writeAgentProfileError(w, http.StatusGone, "Use Share on this project's dashboard or share action=set over MCP. This legacy sharing endpoint is retired.")
-}
-
-func (api *StreamingAPI) handlePutCodeShares(w http.ResponseWriter, r *http.Request) {
-	api.handleGetCodeShares(w, r)
 }

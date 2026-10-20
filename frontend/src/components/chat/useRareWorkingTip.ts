@@ -38,7 +38,7 @@ export function useRareWorkingTip(working: boolean, turnKey?: string | number): 
     const timer = window.setTimeout(async () => {
       try {
         const response = await api.get<{ tip: { id: string; text: string } | null }>('/api/product-tips/next', {
-          params: { surface, code_tabs: surface === 'code' ? activeCodeProjectTabs() : 1, used: usedFeatures().join(','), turn },
+          params: { surface, code_tabs: surface === 'work' ? activeCodeProjectTabs() : 1, used: usedFeatures().join(','), turn },
           skipSessionContext: true, timeout: 5000, signal: controller.signal,
         })
         if (!stopped) setTip(response.data.tip?.text ?? null)

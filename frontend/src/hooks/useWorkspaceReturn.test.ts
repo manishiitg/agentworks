@@ -14,7 +14,7 @@ describe('per-user workspace writer', () => {
   it('does not send a pending previous-account workspace as the new person', async () => {
     vi.useFakeTimers()
     useWorkspaceReturnStore.setState({ ready: true, account: 'alice', record, firstVisit: false, restore: null })
-    queueWorkspaceState({ surface: 'code', id: 'private-alice' })
+    queueWorkspaceState({ surface: 'work', id: 'private-alice' })
     useWorkspaceReturnStore.setState({ account: 'bob', record })
     await flushWorkspaceState()
     expect(mocks.save).not.toHaveBeenCalled()
@@ -24,9 +24,9 @@ describe('per-user workspace writer', () => {
     let complete: (value: unknown) => void = () => {}
     mocks.save.mockReturnValueOnce(new Promise(resolve => { complete = resolve }))
     useWorkspaceReturnStore.setState({ ready: true, account: 'alice', record, firstVisit: false, restore: null })
-    queueWorkspaceState({ surface: 'code', id: 'first' })
+    queueWorkspaceState({ surface: 'work', id: 'first' })
     const first = flushWorkspaceState()
-    queueWorkspaceState({ surface: 'code', id: 'second' })
+    queueWorkspaceState({ surface: 'work', id: 'second' })
     await flushWorkspaceState()
     expect(mocks.save).toHaveBeenCalledTimes(1)
     mocks.user.id = 'bob'
@@ -43,7 +43,7 @@ it('drops a pending snapshot when the connected server changes', async () => {
   vi.useFakeTimers()
   const previous = mocks.workspace
   useWorkspaceReturnStore.setState({ ready: true, account: 'alice', workspace: previous, record, firstVisit: false, restore: null })
-  queueWorkspaceState({ surface: 'code', id: 'same-id-on-old-server' })
+  queueWorkspaceState({ surface: 'work', id: 'same-id-on-old-server' })
   mocks.workspace = 'different-server'
   await flushWorkspaceState()
   expect(mocks.save).not.toHaveBeenCalled()

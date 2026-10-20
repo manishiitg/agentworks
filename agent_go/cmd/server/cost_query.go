@@ -151,7 +151,7 @@ func externalCostsAllowed(c *UserClaims) bool {
 	if c.AccessToken != nil && c.AccessToken.BoundAgentID != "" {
 		return false
 	}
-	for _, scope := range []string{"workflows:read", "crews:read", "code:run", "code:review", "knowledgebase:read", "vault:read", "dashboards:read", "llm:use", "users:manage"} {
+	for _, scope := range []string{"workflows:read", "crews:read", "crews:review", "knowledgebase:read", "vault:read", "dashboards:read", "llm:use", "users:manage"} {
 		if costsScope(c, scope) {
 			return true
 		}
@@ -178,13 +178,6 @@ func (api *StreamingAPI) costsProductVisible(ctx context.Context, c *UserClaims,
 		product, scope = "relays", "workflows:read"
 	case "crew":
 		product, scope = "work", "crews:read"
-	case "code":
-		// Personal usage survives deletion of the person's private project;
-		// a recorded caller on someone else's project does not grant access.
-		if e.ActorID == c.UserID && p.OwnerID != "" && sanitizeUserIDForPath(p.OwnerID) == sanitizeUserIDForPath(c.UserID) && (costsScope(c, "code:run") || costsScope(c, "llm:use")) {
-			return true
-		}
-		product, scope = "code", "code:run"
 	case "vault":
 		return productpolicy.Enabled("mcp-gateway") && userAllowedProduct(c, "mcp-gateway") && (costsScope(c, "vault:read") || costsScope(c, "vault:manage")) && (vaultClaimsLevel(c) == vaultRead || vaultClaimsLevel(c) == vaultManage)
 	case "brain":
@@ -196,7 +189,7 @@ func (api *StreamingAPI) costsProductVisible(ctx context.Context, c *UserClaims,
 	if !productpolicy.Enabled(product) || !userAllowedProduct(c, product) {
 		return false
 	}
-	if p.Kind == "code" && claimsIsAdmin(c) && costsScope(c, "code:review") {
+	if p.Kind == "crew" && claimsIsAdmin(c) && costsScope(c, "crews:review") {
 		return true
 	}
 	if !costsScope(c, scope) || p.Root == "" {
@@ -275,7 +268,7 @@ func (api *StreamingAPI) queryCosts(ctx context.Context, c *UserClaims, q costsQ
 		p, mapped := binding, false
 		if e.ProductID != "" {
 			p = costProductBinding{e.ProductKind, e.ProductID, e.ProductName, "", e.ProductOwnerID}
-			if binding.Kind == p.Kind && binding.ID == p.ID && (p.Kind != "code" || p.OwnerID == "" || binding.OwnerID == p.OwnerID) {
+			if binding.Kind == p.Kind && binding.ID == p.ID && (p.Kind != "crew" || p.OwnerID == "" || binding.OwnerID == p.OwnerID) {
 				p.Root = binding.Root
 			}
 		} else {
@@ -283,7 +276,7 @@ func (api *StreamingAPI) queryCosts(ctx context.Context, c *UserClaims, q costsQ
 		}
 		pk := costsKey(p.Kind, p.ID, p.OwnerID, e.WorkflowID)
 		// Personal/unmapped events require their own actor-specific decision.
-		if p.ID == "" || p.Kind == "code" {
+		if p.ID == "" || p.Kind == "crew" {
 			pk = costsKey(pk, firstNonEmptyTrimmed(e.ActorID, e.UserID), e.ActorID)
 		}
 		allowed, checked := permissions[pk]

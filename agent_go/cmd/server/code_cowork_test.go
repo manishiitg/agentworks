@@ -4,14 +4,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
 // A Code project in Cowork mode gets its own prompt and skills and loses the coding and terminal features; the shared profile is not touched.
 func TestCoworkProfileHasItsOwnPromptSkillsAndNoTerminal(t *testing.T) {
 	profile := agentprofiles.Profile{
-		ID:                   codeproduct.ProfileID,
+		ID:                   workproduct.ProfileID,
 		SystemPromptTemplate: "# Assistant\n\nYou are a helpful, capable assistant working in a person's private workspace.\n\n## The workspace\nbody",
 		Features:             []agentprofiles.FeatureBinding{{ID: "coding"}, {ID: "terminal"}, {ID: "dashboard"}},
 		ResolvedFeatures:     []agentprofiles.ResolvedFeature{{ID: "coding"}, {ID: "terminal"}, {ID: "dashboard"}},
@@ -27,7 +27,7 @@ func TestCoworkProfileHasItsOwnPromptSkillsAndNoTerminal(t *testing.T) {
 			t.Fatalf("only the dashboard feature should remain, got %v", list)
 		}
 	}
-	for _, skill := range append([]string{"code-mcp"}, codeproduct.CoworkSkills...) {
+	for _, skill := range append([]string{"code-mcp"}, workproduct.CoworkSkills...) {
 		found := false
 		for _, have := range profile.Skills {
 			found = found || have == skill

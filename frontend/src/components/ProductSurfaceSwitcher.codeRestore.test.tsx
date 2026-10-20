@@ -34,7 +34,7 @@ function CodeChatMount() {
 function Navigation({ delayedGoalRestore }: { delayedGoalRestore: boolean }) {
   const product = useProductSurfaceStore(state => state.productSurface)
   return <><ProductTopBar sidebar><ProductSurfaceSwitcher /></ProductTopBar>
-    <h1>{product}</h1>{product === 'code' && <CodeChatMount />}{product === 'agentworks' && delayedGoalRestore && <WorkflowModeHandler onPresetSelected={selectWorkflowPreset} children={null} />}</>
+    <h1>{product}</h1>{product === 'work' && <CodeChatMount />}{product === 'agentworks' && delayedGoalRestore && <WorkflowModeHandler onPresetSelected={selectWorkflowPreset} children={null} />}</>
 }
 
 it.each([false, true])('keeps Code selected from the Goals sidebar (delayed old restore: %s)', async delayedGoalRestore => {

@@ -132,9 +132,7 @@ func TestRefSitesPlaceAttachRoots(t *testing.T) {
 	if got := attachRootForCaller(refUser, reftest.OtherUser(refUser, codeLogic)); got != reftest.OtherUser(refUser, codeLogic) {
 		t.Fatalf("another user's root stays theirs: %q", got)
 	}
-	if !isCodePlaceRoot(phys) || isCodePlaceRoot(workspaceref.MustParse(crewLogic).Physical(refUser)) || isCodePlaceRoot(codeLogic) {
-		t.Fatal("isCodePlaceRoot")
-	}
+
 	for _, bad := range []string{
 		phys + "/src", "_users/" + refUser + "/Chats/Other/projects/x", "_users/" + refUser, codeLogic,
 	} {
@@ -163,10 +161,7 @@ func TestRefSitesCrewRootsAndRefs(t *testing.T) {
 		externalIsCrewRoot("/docs/"+phys) {
 		t.Fatal("externalIsCrewRoot")
 	}
-	if !isOtherOwnerCrewPath(splitPath(other)) || isOtherOwnerCrewPath(splitPath(crewLogic)) || isOtherOwnerCrewPath(splitPath(phys+"/db")) ||
-		isOtherOwnerCrewPath(splitPath("_users/x/../y/Chats/Work/projects/c")) {
-		t.Fatal("isOtherOwnerCrewPath")
-	}
+
 	reftest.BothSpellings(t, refUser, crewDeeper, func(t *testing.T, spelling string) {
 		ref, ok := parseCrewPath(refUser, spelling)
 		if !ok || ref.OwnerID != refUser || ref.Root != phys || ref.Rest != "db/x.json" {

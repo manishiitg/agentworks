@@ -38,7 +38,7 @@ import { workProjectActivity, workSideChatDisplayName } from './workProjectPrese
 import { CreateCodeWorkspaceDialog } from './CreateCodeWorkspaceDialog'
 import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
-import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, removeWorkSessionTemplate, loadCombinedWorkSessions, isWorkSessionRun, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
+import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, removeWorkSessionTemplate, loadWorkSessionsIncludingShared, isWorkSessionRun, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
 import { useSharedCrewHasDashboard } from './useSharedCrewDashboard'
 import { loadWorkspaceLandingView } from '../../components/workflow/workspaceLandingView'
@@ -107,12 +107,12 @@ export function normalizeWorkWorkspaceView(saved: unknown): WorkWorkspaceView | 
   return WORKSPACE_VIEW_IDS.has(saved as WorkWorkspaceView) ? saved as WorkWorkspaceView : null
 }
 
-function readWorkWorkspaceView(projectId: string | undefined, product: 'work' | 'code'): WorkWorkspaceView | null {
+function readWorkWorkspaceView(projectId: string | undefined, product: 'work'): WorkWorkspaceView | null {
   return readWorkspaceViewPreference(product, projectId, normalizeWorkWorkspaceView, () =>
     normalizeWorkWorkspaceView(window.localStorage.getItem(`${WORK_VIEW_PREFERENCE_KEY}:${projectId}`)))
 }
 
-function writeWorkWorkspaceView(projectId: string | undefined, product: 'work' | 'code', view: WorkWorkspaceView) {
+function writeWorkWorkspaceView(projectId: string | undefined, product: 'work', view: WorkWorkspaceView) {
   writeWorkspaceViewPreference(product, projectId, view)
 }
 
@@ -179,7 +179,7 @@ async function restoreWorkRuntimeSelection(tabId: string, sessionId: string, wor
 // Crew and Code remember their selected project separately.
 function selectedProjectIdFor(product: ProjectProductConfig): string | null {
   const state = useProductSurfaceStore.getState()
-  return product.profileId === 'code' ? state.selectedCodeProjectId : state.selectedWorkProjectId
+  return state.selectedWorkProjectId
 }
 
 // Reuse the last list when switching products; each user, workspace, and
@@ -193,8 +193,8 @@ function useWorkSessions(product: ProjectProductConfig) {
   const cacheKey = `${product.profileId}:${activeWorkspaceId}:${userId}`
   const cached = useRef(workSessionLists.get(cacheKey) ?? null)
   const [sessions, setSessions] = useState<WorkSession[]>(() => cached.current ?? [])
-  const selectedId = useProductSurfaceStore(state => product.profileId === 'code' ? state.selectedCodeProjectId : state.selectedWorkProjectId)
-  const setSelectedId = useProductSurfaceStore(state => product.profileId === 'code' ? state.setSelectedCodeProjectId : state.setSelectedWorkProjectId)
+  const selectedId = useProductSurfaceStore(state => state.selectedWorkProjectId)
+  const setSelectedId = useProductSurfaceStore(state => state.setSelectedWorkProjectId)
   const [loading, setLoading] = useState(cached.current === null)
   const [error, setError] = useState<string | null>(null)
   const mutationRevision = useRef(0)
@@ -209,7 +209,7 @@ function useWorkSessions(product: ProjectProductConfig) {
   }, [cacheKey])
 
   const refresh = useCallback(async () => {
-    const listed = await loadCombinedWorkSessions(product, allowedProducts)
+    const listed = await loadWorkSessionsIncludingShared(product)
     updateSessions(listed, true)
     const current = selectedProjectIdFor(product)
     replaceProductSelection(() => setSelectedId(current && listed.some(item => item.product === product.profileId && item.id === current) ? current : (currentProductRoute()?.surface === product.profileId && !currentProductRoute()?.id ? null : listed.find(item => item.product === product.profileId)?.id ?? null)))
@@ -219,7 +219,7 @@ function useWorkSessions(product: ProjectProductConfig) {
   useEffect(() => {
     let cancelled = false
     const revisionAtStart = mutationRevision.current
-    void loadCombinedWorkSessions(product, allowedProducts)
+    void loadWorkSessionsIncludingShared(product)
       .then((listed) => {
         if (cancelled || mutationRevision.current !== revisionAtStart) return
         updateSessions(listed, true)
@@ -791,7 +791,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   useEffect(() => {
     if (!allowSideChats) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || useProductSurfaceStore.getState().productSurface !== 'code') return
+      if (event.defaultPrevented || useProductSurfaceStore.getState().productSurface !== 'work') return
       if (event.target instanceof Element && event.target.closest('.xterm')) return
       const action = workChatTabShortcut(event)
       if (!action) return
@@ -838,7 +838,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         displayName={tab.tabId === canonicalTabId ? projectName : isWorkSideChatTab(tab, projectId) ? workSideChatDisplayName(tab.name) : tab.name}
         workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined}
         titleOverride={tab.tabId === canonicalTabId ? projectName : isWorkSideChatTab(tab, projectId) ? workSideChatDisplayName(tab.name) : undefined}
-        productSurface={tab.tabId === canonicalTabId ? (tab.metadata?.agentProfileId === 'code' ? 'code' : 'work') : undefined}
+        productSurface={tab.tabId === canonicalTabId ? 'work' : undefined}
         onTabClick={selectTab}
         onCloseTab={closeProjectTab}
         closeStopsSession={isWorkSideChatTab(tab, projectId)}
@@ -1381,7 +1381,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     // The captured link view is spent once applied (and is keyed to its
     // project), so switching projects never reapplies an old ?view.
     if (initialRouteView.current?.id === selected?.id) initialRouteView.current = null
-    setWorkspaceView(isWorkSessionRun(selected) ? 'dashboard' : savedView ?? (product.profileId === 'code' && selected && productMode(selected) === 'cowork' ? 'dashboard' : product.defaultView))
+    setWorkspaceView(isWorkSessionRun(selected) ? 'dashboard' : savedView ?? (selected && productMode(selected) === 'cowork' ? 'dashboard' : product.defaultView))
     const nextRatio = readWorkSplitRatio(selected?.id)
     splitRatioRef.current = nextRatio
     setSplitRatioState(nextRatio)
@@ -1409,7 +1409,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     // Code is files-first: it never lands on the dashboard on its own.
     if (!product.hasIdentity || !landingProjectId || !landingWorkspacePath || landingIsShared || routeSuppliedView || readWorkWorkspaceView(landingProjectId, product.profileId)) return
     let cancelled = false
-    void (product.profileId === 'work' ? Promise.resolve('context' as const) : loadWorkspaceLandingView(landingWorkspacePath, { dashboardAllowed })).then(view => {
+    void Promise.resolve('context' as const).then(view => {
       if (cancelled || selectedProjectIdFor(product) !== landingProjectId || readWorkWorkspaceView(landingProjectId, product.profileId)) return
       setWorkspaceView(view)
     })
@@ -1509,11 +1509,10 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     setCreateMode('dev')
     setCreateOpen(true)
   }, [canCreateProjects, refuseCreate])
-  useProductCreateRequest(product.profileId === 'code' ? 'code' : 'work', openCreateProject)
+  useProductCreateRequest('work', openCreateProject)
 
   // "Switch mode" in a project's settings sends people here: a project keeps the mode it was created in, so they make a new one.
   useEffect(() => {
-    if (product.profileId !== 'code') return
     const open = (event: Event) => {
       if (!canCreateProjects) {
         refuseCreate()
@@ -1524,8 +1523,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       setCreateMode(mode ?? 'dev')
       setCreateOpen(true)
     }
-    window.addEventListener('agentworks:new-code-project', open)
-    return () => window.removeEventListener('agentworks:new-code-project', open)
+    window.addEventListener('agentworks:new-crew-project', open)
+    return () => window.removeEventListener('agentworks:new-crew-project', open)
   }, [canCreateProjects, product.profileId, refuseCreate])
 
   const deleteProject = useCallback(async () => {
@@ -1552,8 +1551,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       onSelect={session => {
         if (session.product === product.profileId) { select(session.id); return }
         const navigation = useProductSurfaceStore.getState()
-        if (session.product === 'code') navigation.setSelectedCodeProjectId(session.id)
-        else navigation.setSelectedWorkProjectId(session.id)
+        navigation.setSelectedWorkProjectId(session.id)
         navigation.setProductSurface(session.product)
       }}
       onNewProject={openCreateProject}
@@ -1575,7 +1573,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         productControl={topBarControl}
         reduced
         activityMonitorInWorkspace={Boolean(selected) && !showProviders && !showSchedulesOverview && !adminPage}
-        walkthroughSurface={product.profileId === 'code' ? (selected ? 'code' : 'empty-code') : (selected ? 'crew' : 'empty-crew')}
+        walkthroughSurface={selected ? 'crew' : 'empty-crew'}
         walkthroughReady={!sessionsLoading && !creating && !error}
         // Both products have their own tour; only active dialogs pause it.
         walkthroughPaused={createOpen || deleteCandidate !== null}
@@ -1622,24 +1620,17 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                 <span className="text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Opening {product.noun}…</span>
               ) : (
                 <ProductIntro
-                  tour={product.hasIdentity ? 'crew-empty-state' : 'code-empty-state'}
+                  tour="crew-empty-state"
                   product={product.noun}
-                  icon={<span className="font-mono text-3xl font-semibold text-gray-600 dark:text-gray-200">{product.hasIdentity ? '<>' : '</>'}</span>}
-                  title={sessions.length ? `Choose a ${product.itemNoun}` : product.hasIdentity ? 'Your AI workspace for any project' : 'A private workspace to code in'}
-                  description={sessions.length ? 'Open an existing workspace from the project menu, or create another.' : product.hasIdentity
-                    ? 'Create a persistent crew member for everyday questions, research, coding, and ongoing work. It can use your project files, browser, terminal, MCP servers, and connected tools.'
-                    : 'Files, an editor and a terminal on the team server, with a coding agent beside them. Your workspaces stay private to you.'}
-                  features={product.hasIdentity ? [
+                  icon={<span className="font-mono text-3xl font-semibold text-gray-600 dark:text-gray-200">{'<>'}</span>}
+                  title={sessions.length ? `Choose a ${product.itemNoun}` : 'Your AI workspace for any project'}
+                  description={sessions.length ? 'Open an existing workspace from the project menu, or create another.' : 'Create a persistent crew member for everyday questions, research, coding, and ongoing work. It can use your project files, browser, terminal, MCP servers, and connected tools.'}
+                  features={[
                     { title: 'Chat and create', description: 'Ask questions, research, write, analyze, and keep the context together.' },
                     { title: 'Code and operate', description: 'Work with files, code, the browser, terminal, skills, and MCP tools.' },
                     { title: 'Run automatically', description: 'Continue work with schedules, triggers, background tasks, and bots.' },
-                  ] : [
-                    { title: 'Files and a terminal', description: 'Your own project folder, an editor, and a terminal sandboxed to this workspace.' },
-                    { title: 'A coding agent beside you', description: 'Ask it to write, run and fix code here. It can call the Crews and workflows you can use.' },
-                    { title: 'Private to you', description: 'Files, chats and credentials belong to your account. Sharing a link does not give another person access.' },
                   ]}
-                  footer={product.hasIdentity ? undefined : `Admins and ${product.noun} reviewers on this server can read your ${product.noun} workspaces' chats, files and costs. They can view, not change, and every view is logged.`}
-                  createTour={product.hasIdentity ? 'crew-create' : 'code-create'}
+                  createTour="crew-create"
                   createLabel={`Create ${sessions.length ? 'another' : 'your first'} ${product.itemNoun}`}
                   onCreate={openCreateProject}
                 />
@@ -1694,13 +1685,13 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         <ChatArea
                           tabId={tabId}
                           compact
-                          landingContent={workspaceView === 'dashboard' && panelOpen ? <></> : <WorkNewChatGuide product={product} cowork={product.profileId === 'code' && selectedMode === 'cowork'} sharedBy={isWorkSessionRun(selected) && selected.shared ? (selected.shared.ownerUsername || selected.shared.ownerId) : undefined} />}
-                          composerPlaceholder={product.profileId === 'code' ? 'What would you like to work on? (@ files, # references)' : 'Ask this Crew to help with your work…'}
+                          landingContent={workspaceView === 'dashboard' && panelOpen ? <></> : <WorkNewChatGuide product={product} cowork={selectedMode === 'cowork'} sharedBy={isWorkSessionRun(selected) && selected.shared ? (selected.shared.ownerUsername || selected.shared.ownerId) : undefined} />}
+                          composerPlaceholder={'Ask this Crew to help with your work…'}
                           showProductSteerAction
                           showProductTerminalControl
                           // Code only, and only its owner: New chat replaces this project's conversation in the same
                           // tab (the server rotates the project's session), never a second, parallel chat.
-                          showNewChatAction={product.profileId === 'code' && !isWorkSessionRun(selected) && tabId === canonicalTabId}
+                          showNewChatAction={!isWorkSessionRun(selected) && tabId === canonicalTabId}
                         />
                       </div>
                   ) : (

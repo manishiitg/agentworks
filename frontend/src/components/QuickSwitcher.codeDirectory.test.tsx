@@ -12,7 +12,7 @@ vi.hoisted(() => {
 })
 
 vi.mock('../products/work/workSessions', () => ({
-  loadWorkSessionsIncludingShared: vi.fn(async (product?: { profileId?: string }) => product?.profileId === 'code'
+  loadWorkSessionsIncludingShared: vi.fn(async (product?: { profileId?: string }) => product?.profileId === 'work'
     ? [
         { id: 'code-own', title: 'billing-api' },
       ]
@@ -55,7 +55,7 @@ it('lists Code workspaces next to Crews and opens one on the Code surface', asyn
   expect(host.textContent).not.toContain('shared by')
   const row = [...host.querySelectorAll('.cursor-pointer')].find(div => div.textContent?.includes('billing-api'))
   await act(async () => { row!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
-  expect(useProductSurfaceStore.getState().selectedCodeProjectId).toBe('code-own')
+  expect(useProductSurfaceStore.getState().selectedWorkProjectId).toBe('code-own')
   expect(useProductSurfaceStore.getState().productSurface).toBe('code')
   expect(onClose).toHaveBeenCalled()
 })

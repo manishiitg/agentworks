@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"log"
 	"path/filepath"
@@ -271,7 +271,7 @@ func agentProfileRuntimeWorkspace(userID, workspacePath string) string {
 // logical form alone resolves outside any user tree and finds nothing — which
 // made restored Crews start a fresh native session (server A 2026-09-24).
 func productConversationRuntimeWorkspace(userID, selectedFolder string) string {
-	selectedFolder = followCrewAlias(userID, selectedFolder)
+	selectedFolder = selectedFolder
 	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(selectedFolder)))
 	if ref.IsEmpty() && !ref.IsUsersRoot() {
 		return ""
@@ -441,36 +441,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	crewOwned := true
 	crewRoot := ""
 	folderForClean := selectedFolder
-	if strings.EqualFold(strings.TrimSpace(profile.ID), codeproduct.ProfileID) {
-		// Sharing admits Builder or Run access without changing the main owner's
-		// personal workspace. Non-owner launches use the linked Crew runtime.
-
-		conversationKey := strings.TrimSpace(req.AgentProfileConversationKey)
-		if conversationKey == "" {
-			return nil, fmt.Errorf("agent_profile_conversation_key is required for Code")
-		}
-		project, bindErr := resolveCrewProjectBinding(ctx, userID, profile, conversationKey, selectedFolder)
-		if bindErr != nil {
-			return nil, fmt.Errorf("resolve Code workspace: %w", bindErr)
-		}
-		crewOwned = project.OwnedByCaller
-		crewRoot = project.Binding.WorkspacePath
-		// Native tools may load project-local provider configuration. Non-owner
-		// Builders retain all role-checked bridge tools in an isolated runtime.
-		strictOwner := crewProjectOwnedByCallerStrict(userID, crewRoot)
-		if !strictOwner {
-			profile.Runtime.AgentTools.Mode = "mcp_only"
-		}
-		if strictOwner && project.Binding.ProjectNativeAgentTools && profile.ToolPolicy.IsAllowlist() {
-			profile.Runtime.AgentTools.Mode = "full"
-		}
-		if !crewOwned {
-			if canonicalCrewWorkspaceRoot(selectedFolder) != canonicalCrewWorkspaceRoot(crewRoot) {
-				return nil, fmt.Errorf("Code conversation does not match the selected session")
-			}
-			folderForClean = crewRoot
-		}
-	} else if strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
+	if strings.EqualFold(strings.TrimSpace(profile.ID), crewProfileID) {
 		conversationKey := strings.TrimSpace(req.AgentProfileConversationKey)
 		if conversationKey == "" {
 			return nil, fmt.Errorf("agent_profile_conversation_key is required for Work")
@@ -487,8 +458,11 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		// readers keep AgentWorks-only tools. Hybrid needs an allowlist tool
 		// policy (agentprofiles validation); the switch is on by default, so a
 		// profile without one keeps AgentWorks-only tools instead of failing.
-		if crewOwned && crew.Binding.ProjectNativeAgentTools && profile.ToolPolicy.IsAllowlist() {
+		if crewProjectOwnedByCallerStrict(userID, crewRoot) && crew.Binding.ProjectNativeAgentTools && profile.ToolPolicy.IsAllowlist() {
 			profile.Runtime.AgentTools.Mode = "full"
+		}
+		if !crewProjectOwnedByCallerStrict(userID, crewRoot) {
+			profile.Runtime.AgentTools.Mode = "mcp_only"
 		}
 		if !crewOwned {
 			// The client may still send the old spelling of a migrated crew (PLAT-442 step 4): same crew when
@@ -582,14 +556,14 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	if err := applyWorkspaceMemoryFeature(ctx, &profile, workspacePath); err != nil {
 		return nil, err
 	}
-	if profile.ID == codeproduct.ProfileID && codeProjectMode(ctx, workspacePath) == "cowork" {
+	if profile.ID == workproduct.ProfileID && codeProjectMode(ctx, workspacePath) == "cowork" {
 		applyCoworkProfile(&profile)
 	}
 	rendered, err := agentprofiles.RenderPrompt(profile, promptContext)
 	if err != nil {
 		return nil, err
 	}
-	if profile.ID == codeproduct.ProfileID {
+	if profile.ID == workproduct.ProfileID {
 		noun := "Code"
 		if codeProjectMode(ctx, workspacePath) == "cowork" {
 			noun = "Cowork project"
@@ -813,7 +787,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 			rendered += "\n\nPrivate Builder handoff summary:\n" + publicationHistorySummary(publication)
 		}
 	}
-	return &resolvedAgentProfile{IsolateCodeCLI: profile.ID == "code" && !crewProjectOwnedByCallerStrict(userID, agentProfileRuntimeWorkspace(userID, workspacePath)), Definition: profile, Publication: publication, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions,
+	return &resolvedAgentProfile{Definition: profile, Publication: publication, Prompt: rendered, APIKeys: resolvedKeys, SelectedServers: selectedServers, IdentityKey: identityKey, KnowledgeKey: knowledgeKey, ProjectInstructions: projectInstructions,
 		ChatConnections: connections, ChatSecrets: api.chatSecretNames(ctx, userID, req)}, nil
 }
 
@@ -985,13 +959,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		if err := registrar.RegisterCustomTool(tool.Name, tool.Description, tool.Parameters, tool.Execute, category); err != nil {
 			return fmt.Errorf("register profile tool %q: %w", tool.Name, err)
 		}
-		if binding.ID == "code.create-project" {
-			// Saved native calls keep the same authenticated implementation.
-			gate.Declare("create_code_workspace")
-			if err := registrar.RegisterCustomTool("create_code_workspace", tool.Description, tool.Parameters, tool.Execute, category); err != nil {
-				return fmt.Errorf("register legacy Crew creation tool: %w", err)
-			}
-		}
+
 	}
 	activeWorkProject := isProjectProfileID(resolved.Definition.ID) && isActiveWorkProjectWorkspace(userID, workspacePath)
 	if activeWorkProject && !readOnly && len(req) > 0 {
@@ -1034,16 +1002,12 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		}
 	}
 	// The chats (tabs) of one Code or Crew message each other as equal agents (PLAT-648, PLAT-861-262).
-	if !readOnly && activeWorkProject && (resolved.Definition.ID == codeproduct.ProfileID || resolved.Definition.ID == crewProfileID) {
+	if !readOnly && activeWorkProject && resolved.Definition.ID == crewProfileID {
 		if err := api.registerCodeChatTools(registrar, gate, userID, sessionID, workspacePath); err != nil {
 			return err
 		}
 	}
-	if !readOnly && activeWorkProject && resolved.Definition.ID == codeproduct.ProfileID {
-		if err := api.registerCodeCrewTools(registrar, gate, userID, sessionID, workspacePath); err != nil {
-			return err
-		}
-	}
+
 	// The existing Ask read tool also resolves captured published dashboard
 	// source. Ordinary native Crew chats retain their other tools and policy.
 	if activeWorkProject && isProjectProfileID(resolved.Definition.ID) {

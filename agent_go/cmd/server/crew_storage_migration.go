@@ -22,6 +22,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // One administrator operation previews, backs up and moves existing projects.
@@ -289,7 +290,7 @@ func (api *StreamingAPI) crewStoragePreview(s *crewStorageSnapshot) {
 		if !isProjectProfileID(rec.Product) {
 			continue
 		}
-		source := projectStorageRoot(rec)
+		source := crewStorageSourceRoot(rec)
 		row := crewStorageProject{Key: key, WorkspaceID: rec.Product + ":" + rec.ProjectID, Name: rec.Folder, Owner: rec.OwnerID, Origin: rec.Product, Source: source, Destination: "Crew/" + rec.Folder, RecordHash: crewStorageHash(rec), State: "ready"}
 		row.OwnerName = crewOwnerDisplayName(rec.OwnerID)
 		known[source] = true
@@ -498,7 +499,7 @@ func (api *StreamingAPI) crewStorageBackup(s *crewStorageSnapshot, selected stri
 func crewStorageMoveProject(s *crewStorageSnapshot, row *crewStorageProject) error {
 	registry := defaultProjectOwners()
 	rec, exists := registry.Lookup(row.Origin, s.Records[row.Key].Folder)
-	if !exists || validateProjectStorageRecord(rec) != nil || rec.OwnerID != row.Owner || rec.Product+":"+rec.ProjectID != row.WorkspaceID || projectStorageRoot(rec) != row.Source || row.Destination != "Crew/"+rec.Folder {
+	if !exists || validateProjectStorageRecord(rec) != nil || rec.OwnerID != row.Owner || rec.Product+":"+rec.ProjectID != row.WorkspaceID || crewStorageSourceRoot(rec) != row.Source || row.Destination != "Crew/"+rec.Folder {
 		return fmt.Errorf("the project location changed; start a fresh preview")
 	}
 	docs := fsutil.WorkspaceDocsRoot()
@@ -514,18 +515,10 @@ func crewStorageMoveProject(s *crewStorageSnapshot, row *crewStorageProject) err
 	if err := os.MkdirAll(filepath.Dir(destination), 0711); err != nil {
 		return err
 	}
-	link, err := filepath.Rel(filepath.Dir(source), destination)
-	if err != nil {
-		return err
-	}
 	if err := os.Rename(source, destination); err != nil {
 		return fmt.Errorf("the project folder could not be moved: %w", err)
 	}
-	// Create the compatibility link even if the registry write fails, so its
-	// previous path still reaches the moved files. Report failures as they are.
-	registryErr := registry.compareAndSetStorageLocation(rec.Product, rec.Folder, userAccessHash(rec), row.Destination)
-	linkErr := os.Symlink(link, source)
-	return errors.Join(registryErr, linkErr)
+	return registry.compareAndSetStorageLocation(rec.Product, rec.Folder, userAccessHash(rec), row.Destination)
 }
 
 func (api *StreamingAPI) crewStorageMove(s *crewStorageSnapshot, selected string) {
@@ -759,4 +752,19 @@ func crewStorageAdmitBackup(id string, read func(string) (*crewStorageSnapshot, 
 		return nil, fmt.Errorf("preview is incomplete")
 	}
 	return s, nil
+}
+
+// Legacy source selection is confined to the administrator migration.
+func crewStorageSourceRoot(rec projectOwnerRecord) string {
+	if rec.CanonicalRoot != "" {
+		return rec.CanonicalRoot
+	}
+	if rec.Shared {
+		return "Crew/" + rec.Folder
+	}
+	root := "Chats/Work/projects"
+	if rec.Product == "code" {
+		root = "Chats/Code/projects"
+	}
+	return workspaceref.PhysicalPathOf(rec.OwnerID, root, rec.Folder)
 }

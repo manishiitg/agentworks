@@ -19,9 +19,8 @@ export type SidebarProject = {
   id: string
   workspaceId?: string
   workspacePath: string
-  aliases?: string[]
   title: string
-  surface: 'work' | 'code'
+  surface: 'work'
 }
 const normalizedWorkspace = (path = '') =>
   path
@@ -89,16 +88,15 @@ export function sidebarScope(
     workflowId: workflowPreset.id,
   }
   const project =
-    sessionId.match(/^(work|code):project:([^:]+)/) ||
-    path.match(/Chats\/(Work|Code)\/projects\/([^/]+)/i)
+    sessionId.match(/^(work):project:([^:]+)/)
   if (project)
     return {
-      surface: project[1].toLowerCase() === 'work' ? 'work' : 'code',
+      surface: 'work',
       projectId: project[2],
     }
   const crew = normalizedWorkspace(path).match(/^Crew\/([^/]+)(?:\/|$)/i)
   if (crew) return { surface: 'work', projectId: crew[1] }
-  if (profile === 'work' || profile === 'code') return { surface: profile }
+  if (profile === 'work') return { surface: profile }
   const aliases: Record<string, ProductSurface> = {
     knowledgebase: 'knowledgebase',
     caplayer: 'mcp-gateway',
@@ -151,7 +149,7 @@ export function sidebarChats({
       !['agentworks', 'relays'].includes(row.surface) ||
       (!!row.workflowId && allowedWorkflowIds.includes(row.workflowId)))
   const collect = (row: SidebarChat) => accepts(row) ||
-    (projectInventoryKnown && (row.surface === 'work' || row.surface === 'code') && !!row.projectId)
+    (projectInventoryKnown && (row.surface === 'work') && !!row.projectId)
   for (const tab of Object.values(tabs)) {
     const meta = tab.metadata
     const scope = sidebarScope(
@@ -330,9 +328,9 @@ export function sidebarChats({
   // Names never identify a project. Failed/loading discovery is not revocation.
   if (projectInventoryKnown) {
     for (const [id, row] of rows) {
-      if (row.surface !== 'work' && row.surface !== 'code') continue
+      if (row.surface !== 'work') continue
       const matchingPath = row.workspace ? projects.filter(project =>
-        [project.workspacePath, ...(project.aliases || [])].some(path => normalizedWorkspace(path) === normalizedWorkspace(row.workspace))) : []
+        normalizedWorkspace(project.workspacePath) === normalizedWorkspace(row.workspace)) : []
       const candidates = matchingPath.length > 0 ? matchingPath : projects.filter(project => project.surface === row.surface && project.id === row.projectId)
       const project = candidates.length === 1 ? candidates[0] : undefined
       if (!project) {
@@ -456,7 +454,7 @@ export function sidebarWorkspaceGroups(rows: SidebarChat[]) {
   }
   for (const group of groups.values())
     group.chats.sort(
-      (a, b) => group.surface === 'work' || group.surface === 'code'
+      (a, b) => group.surface === 'work'
         ? compareWorkChatOrder(a.chatOrder || { conversationKey: a.id }, b.chatOrder || { conversationKey: b.id })
         : Number(!!b.builder) - Number(!!a.builder) ||
         (a.createdTime || 0) - (b.createdTime || 0) ||

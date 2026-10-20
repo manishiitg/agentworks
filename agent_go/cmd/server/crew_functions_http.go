@@ -2,7 +2,7 @@ package server
 
 import (
 	"encoding/json"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"net/http"
 	"sort"
 	"strings"
@@ -67,7 +67,7 @@ func recentCrewFunctionCalls(targetID, requesterID string) []crewFunctionCallVie
 			call.mu.Unlock()
 			continue
 		}
-		if call.TargetProfileID == codeproduct.ProfileID && call.UserID != strings.TrimSpace(requesterID) {
+		if call.TargetProfileID == workproduct.ProfileID && call.UserID != strings.TrimSpace(requesterID) {
 			call.mu.Unlock()
 			continue
 		}

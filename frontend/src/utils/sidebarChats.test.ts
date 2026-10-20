@@ -13,9 +13,9 @@ it('groups registered project aliases by server identity, drops absent projects 
     other: tab('other', { metadata: { agentProfileId: 'work', agentProfileProjectId: 'other-id', agentProfileWorkspace: 'Crew/other' } }),
     ghost: tab('ghost', { metadata: { agentProfileId: 'work', agentProfileProjectId: 'deleted-test', agentProfileWorkspace: 'Crew/deleted-test' } }),
   }
-  const rows = sidebarChats({ tabs, active: [], recent: [], presets: [], allowed: ['code', 'work'], projectInventoryKnown: true,
+  const rows = sidebarChats({ tabs, active: [], recent: [], presets: [], allowed: ['work', 'work'], projectInventoryKnown: true,
     projects: [
-      { id: 'private-id', workspaceId: 'code:private-id', surface: 'code', title: 'Private Crew', workspacePath: canonical, aliases: [legacy] },
+      { id: 'private-id', workspaceId: 'code:private-id', surface: 'work', title: 'Private Crew', workspacePath: canonical, aliases: [legacy] },
       { id: 'other-id', workspaceId: 'work:other-id', surface: 'work', title: 'Private Crew', workspacePath: 'Crew/other' },
     ],
   })
@@ -33,7 +33,7 @@ it('does not treat inventory failure as revocation or canonical aliases as a pro
   expect(sidebarChats({ ...base, projectInventoryKnown: false, projects: [] })).toHaveLength(1)
   expect(sidebarChats({ ...base, projectInventoryKnown: true, projects: [] })).toHaveLength(0)
   expect(sidebarChats({ ...base, projectInventoryKnown: true, projects: [
-    { id: 'project', workspaceId: 'code:project', surface: 'code', title: 'Private', workspacePath: 'Crew/project' },
+    { id: 'project', workspaceId: 'code:project', surface: 'work', title: 'Private', workspacePath: 'Crew/project' },
   ] })).toHaveLength(0)
 })
 const tab = (id: string, patch: Partial<ChatTab> = {}) =>
@@ -136,7 +136,7 @@ it('deduplicates running/open/recent and lets authoritative completion stop a st
     active: [activity('one', { status: 'completed' }), activity('code:project:two')],
     recent: [{ session_id: 'one' }, { session_id: 'code:project:two' }],
     presets: [],
-    allowed: ['code'],
+    allowed: ['work'],
   })
   expect(rows).toHaveLength(2)
   expect(rows[0].id).toBe('code:project:two')
@@ -158,14 +158,14 @@ it('uses runtime workspace metadata and the directory’s real project ID for re
     ],
     projects: [
       {
-        surface: 'code',
+        surface: 'work',
         id: 'real-project-id',
         title: 'Code',
         workspacePath: 'Chats/Code/projects/code-slug',
       },
     ],
     presets: [],
-    allowed: ['code', 'mcp-gateway'],
+    allowed: ['work', 'mcp-gateway'],
   })
   expect(rows.find((row) => row.id === 'old-uuid')?.projectId).toBe('real-project-id')
   expect(rows.find((row) => row.id === 'vault-old')?.surface).toBe('mcp-gateway')
@@ -179,7 +179,7 @@ it('filters disabled products and internal child activity without hiding other a
     ],
     recent: [],
     presets: [],
-    allowed: ['code'],
+    allowed: ['work'],
   })
   expect(rows.map((row) => row.id)).toEqual(['one'])
 })
@@ -227,12 +227,12 @@ it('keeps multiple running tabs nested under their workspace and separates produ
       two: tab('two', { name: 'Analysis', isStreaming: true }),
       crew: tab('crew', { metadata: { agentProfileId: 'work', agentProfileProjectId: 'project', agentProfileProjectTitle: 'Company CA' } }),
     },
-    active: [], recent: [], presets: [], allowed: ['code', 'work'],
+    active: [], recent: [], presets: [], allowed: ['work', 'work'],
   })
   const groups = sidebarWorkspaceGroups(rows)
   expect(groups).toHaveLength(2)
-  expect(groups.find((group) => group.surface === 'code')?.chats.map((row) => row.id)).toEqual(['one', 'two'])
-  expect(groups.find((group) => group.surface === 'code')?.chats.every((row) => row.group === 'Running')).toBe(true)
+  expect(groups.find((group) => group.surface === 'work')?.chats.map((row) => row.id)).toEqual(['one', 'two'])
+  expect(groups.find((group) => group.surface === 'work')?.chats.every((row) => row.group === 'Running')).toBe(true)
   expect(groups.find((group) => group.surface === 'work')?.title).toBe('Company CA')
 })
 it('uses the saved scheduled run time instead of the restored tab creation time', () => {
@@ -241,7 +241,7 @@ it('uses the saved scheduled run time instead of the restored tab creation time'
     tabs: { run: tab('schedule-run', { createdAt: Date.parse('2026-10-15T16:00:00Z'), metadata: { agentProfileId: 'code', isScheduledRun: true, scheduledJobName: 'Daily report' } }) },
     active: [],
     recent: [{ session_id: 'schedule-run', created_at: createdAt }],
-    presets: [], allowed: ['code'],
+    presets: [], allowed: ['work'],
   })
   expect(rows).toHaveLength(1)
   expect(rows[0].title).toBe('Daily report')
@@ -323,7 +323,7 @@ it('uses activity in any child chat to rank its project while preserving saved c
   }, active: [
     activity('side', { last_activity: '2026-10-20T10:00:00Z' }),
     activity('other', { last_activity: '2026-10-20T09:00:00Z' }),
-  ], recent: [], presets: [], allowed: ['work', 'code'] })
+  ], recent: [], presets: [], allowed: ['work', 'work'] })
   const groups = sidebarWorkspaceGroups(rows)
   expect(groups.map(group => group.id)).toEqual(['work:crew', 'code:other'])
   expect(groups[0].chats.map(row => row.id)).toEqual(['main', 'side'])

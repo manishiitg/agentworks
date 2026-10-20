@@ -22,13 +22,13 @@ const mcpOAuthRegisterPath = "/api/oauth/mcp/register"
 const mcpOAuthConsentPath = "/api/oauth/mcp/consent"
 const mcpOAuthConnectionsPath = "/api/oauth/mcp/connections"
 
-// code:review is inert for anyone but an admin or Code reviewer, and
+// crews:review is inert for anyone but an admin or Code reviewer, and
 // users:manage for anyone but an admin: the tools re-check the account on
 // every call, and consent never offers them to anyone else.
-var mcpOAuthDefaultScopes = []string{"workflows:read", "files:read", "runs:execute", "crews:read", "crews:run", "crews:write", "code:review", "vault:read", "vault:manage", "users:manage"}
+var mcpOAuthDefaultScopes = []string{"workflows:read", "files:read", "runs:execute", "crews:read", "crews:run", "crews:write", "crews:review", "vault:read", "vault:manage", "users:manage"}
 
 // Builder is supported only when explicitly requested, never by default.
-var mcpOAuthScopes = append(slices.Clone(mcpOAuthDefaultScopes), "code:run", "builder:chat", "relays:write", "knowledgebase:read", "knowledgebase:write", "dashboards:read")
+var mcpOAuthScopes = append(slices.Clone(mcpOAuthDefaultScopes), "builder:chat", "relays:write", "knowledgebase:read", "knowledgebase:write", "dashboards:read")
 
 // The resource identifier is fixed by server configuration, never Host or
 // X-Forwarded-Host from an unauthenticated request.
@@ -165,7 +165,7 @@ func mcpOAuthPersonScopes(user *UserClaims) []string {
 	return mcpOAuthScopesFor(user, slices.Clone(mcpOAuthScopes))
 }
 
-// mcpOAuthScopesFor is what this user may actually consent to: code:review
+// mcpOAuthScopesFor is what this user may actually consent to: crews:review
 // only for an admin or Code reviewer. Everyone else neither sees nor grants it
 // (the tools re-check the account on every call regardless).
 func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
@@ -186,12 +186,10 @@ func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
 			return user == nil || !vaultAdminActive(user.UserID)
 		case "vault:read":
 			return user == nil || vaultPersonLevel(user.UserID) == vaultNone
-		case "code:run":
-			return user == nil || !userAllowedProduct(user, "code")
 		case "crews:read", "crews:run", "crews:write":
 			// Every Crew tool is refused to an account without the Crew product, so a token should not carry these.
 			return user != nil && !userAllowedProduct(user, "work")
-		case "code:review":
+		case "crews:review":
 			return !canReview
 		case "users:manage":
 			return !claimsIsAdmin(user)

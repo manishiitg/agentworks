@@ -28,7 +28,7 @@ func crewSharedWithOthers(root string) bool {
 		return false
 	}
 	rec, found := defaultProjectOwners().Lookup(id.Product, id.Folder)
-	if id.Product == "code" && (!found || !rec.AudienceConfigured) {
+	if !found {
 		return false
 	}
 	return !found || !rec.Private
@@ -52,7 +52,7 @@ func crewSharedWith(root, userID string) bool {
 		return false
 	}
 	rec, found := defaultProjectOwners().Lookup(id.Product, id.Folder)
-	if !found || (id.Product == "code" && !rec.AudienceConfigured) {
+	if !found {
 		return false
 	}
 	return containsID(rec.RunPeople, userID)

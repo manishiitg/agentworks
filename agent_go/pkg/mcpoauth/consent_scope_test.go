@@ -38,7 +38,7 @@ func TestConsentIssuesOnlyScopesAllowedForTheHuman(t *testing.T) {
 	hash := sha256.Sum256([]byte(verifier))
 	requestID, err := st.SaveRequest(context.Background(), AuthRequest{
 		ClientID: client.ID, RedirectURI: redirect, Resource: "https://gateway.example/mcp",
-		State: "state", Scopes: []string{"files:read", "code:review"},
+		State: "state", Scopes: []string{"files:read", "crews:review"},
 		Challenge: base64.RawURLEncoding.EncodeToString(hash[:]), ExpiresUnix: time.Now().Add(time.Minute).Unix(),
 	})
 	if err != nil {

@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
 
@@ -258,13 +257,13 @@ func (api *StreamingAPI) connectTriggerTarget(ctx context.Context, userID string
 			return "", false, err
 		}
 		for _, trigger := range triggers {
-			if trigger.IsInternal() && trigger.Enabled && (target.CrewProfile != codeproduct.ProfileID || trigger.WorkspaceFunction) && trigger.Caller.matchesAnyPresented(caller.Stamp) {
+			if trigger.IsInternal() && trigger.Enabled && trigger.Caller.matchesAnyPresented(caller.Stamp) {
 				return trigger.ID, false, nil
 			}
 		}
 		stamp := caller.Stamp
 		response, _, err := api.productSchedules.saveProductWebhookConfig(ctx, target.ownerOr(userID), productWebhookRequest{
-			WorkspaceFunction: target.CrewProfile == codeproduct.ProfileID,
+			WorkspaceFunction: true,
 			ProfileID:         target.CrewProfile, ProjectID: target.CrewID,
 			Name: "Called by " + caller.Label, Message: crewTargetMessage(caller),
 			Enabled: true, RunDestination: runDestinationIsolated, Kind: triggerKindInternal, Caller: &stamp,
@@ -535,11 +534,7 @@ func crewTriggerLinkCaller(workspacePath string) func(context.Context) (triggerL
 		if err != nil {
 			return triggerLinkCaller{}, err
 		}
-		if strings.EqualFold(stamp.ProfileID, codeproduct.ProfileID) {
-			// The target sees the call, but a private Code's title is not
-			// disclosed just because it asked a Crew or workflow for help.
-			return triggerLinkCaller{Stamp: stamp, Label: "private Code workspace", Path: workspacePath}, nil
-		}
+
 		label := path.Base(strings.TrimSuffix(strings.TrimSpace(workspacePath), "/"))
 		if raw, exists, readErr := readFileFromWorkspace(ctx, strings.TrimSuffix(strings.TrimSpace(workspacePath), "/")+"/product.json"); readErr == nil && exists {
 			var manifest productProjectManifest

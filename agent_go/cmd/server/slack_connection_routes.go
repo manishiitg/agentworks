@@ -154,7 +154,7 @@ func physicalProductSlackScope(ctx context.Context, profileID, workspacePath str
 	}
 	userID := productWorkspaceUserID(ctx)
 	// A Crew that moved to the shared root is addressed there, whichever spelling the browser still sends.
-	return followCrewAlias(userID, productConversationRuntimeWorkspace(userID, workspacePath))
+	return productConversationRuntimeWorkspace(userID, workspacePath)
 }
 
 func requireSlackConnectionCreateAccess(r *http.Request, api *StreamingAPI, workspacePath, profileID string) error {
@@ -239,7 +239,7 @@ func requireProductSlackScopeOwner(ctx context.Context, api *StreamingAPI, profi
 	// A connection saved before scopes were made physical still holds the
 	// logical path, which names the caller's own crew; resolve it so its owner
 	// is not locked out of the bot (and can re-save it to repair the scope).
-	workspacePath = followCrewAlias(userID, productConversationRuntimeWorkspace(userID, workspacePath))
+	workspacePath = productConversationRuntimeWorkspace(userID, workspacePath)
 	profile, err := api.agentProfiles.Resolve(profileID, 0, userID)
 	if err != nil {
 		return fmt.Errorf("agent profile %q is unavailable: %w", profileID, err)

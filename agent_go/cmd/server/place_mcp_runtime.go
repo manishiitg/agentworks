@@ -79,14 +79,9 @@ func (api *StreamingAPI) resolveMCPServer(ctx context.Context, sessionID, server
 func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, server, tool string) (*executor.ResolvedMCPServer, bool, error) {
 	pin, pinned, err := codeSessionPinFor(sessionID)
 	if err != nil {
-		return nil, true, fmt.Errorf("MCP scope unavailable for this Code chat")
+		return nil, true, fmt.Errorf("MCP scope unavailable for this Crew chat")
 	}
 	if !pinned {
-		// Marked as Code in memory but never pinned: refuse rather than
-		// fall through to the platform catalog.
-		if common.CodeSessionRoot(sessionID) != "" {
-			return nil, true, fmt.Errorf("MCP scope unavailable for this Code chat")
-		}
 		return nil, false, nil
 	}
 	server = strings.TrimSpace(server)
@@ -120,7 +115,7 @@ func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, se
 	}
 	manifest, found, err := ReadWorkflowManifest(ctx, pin.CodeRoot)
 	if err != nil || !found {
-		return nil, true, fmt.Errorf("MCP scope unavailable for this Code chat")
+		return nil, true, fmt.Errorf("MCP scope unavailable for this Crew chat")
 	}
 	// The Code's own connection under its plain name, unless a global server
 	// the Code selected has that name (then the plain name is the global one).

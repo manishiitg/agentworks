@@ -2,11 +2,9 @@ package server
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // wireBotManager installs every server hook on a bot manager: session start
@@ -57,24 +55,7 @@ func botCrewOwner(workspacePath string) string {
 // foldCrewScopePath maps any spelling of a migrated crew to its Crew/<f> path, keeping anything below it; every
 // other path is returned unchanged.
 func foldCrewScopePath(workspacePath string) string {
-	trimmed := strings.TrimSpace(workspacePath)
-	if trimmed == "" {
-		return workspacePath
-	}
-	ref := workspaceref.MustParse(filepath.ToSlash(trimmed))
-	if ref.IsShared() || ref.HasOwner() {
-		return followCrewAlias("", workspacePath)
-	}
-	product, folder, ok := projectProductForPath(workspacePath)
-	if !ok {
-		return workspacePath
-	}
-	moved := crewPathAliases.lookupFolder(context.Background(), folder, product.ProfileID)
-	if moved == "" {
-		return workspacePath
-	}
-	rest := strings.TrimPrefix(ref.Logical(), product.ProjectsRoot+"/"+folder)
-	return moved + rest
+	return strings.Trim(strings.TrimSpace(workspacePath), "/")
 }
 
 // ownSharedCrewListings lists the Crews at the shared root the user owns, for the WhatsApp destination list.

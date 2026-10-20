@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"io"
 	"net/http"
 	"strings"
@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
@@ -352,7 +351,7 @@ func workFolderClaims(w http.ResponseWriter, r *http.Request) *UserClaims {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return nil
 	}
-	if !userAllowedProduct(claims, crewProfileID) && !userAllowedProduct(claims, codeproduct.ProfileID) {
+	if !userAllowedProduct(claims, crewProfileID) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil
 	}

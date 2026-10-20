@@ -27,7 +27,7 @@ func externalUsersDefinition(add func(string, string, bool, bool, map[string]any
 		"products": products, "create_products": products,
 		"clear_create_products": map[string]any{"type": "boolean"},
 		"disabled":              map[string]any{"type": "boolean"},
-		"code_reviewer":         map[string]any{"type": "boolean", "description": "May inspect Code through the existing audited review access."},
+		"crew_reviewer":         map[string]any{"type": "boolean", "description": "May inspect Code through the existing audited review access."},
 		"vault_reader":          map[string]any{"type": "boolean", "description": "May inspect Vault through its existing access rules."},
 		"confirm":               externalString("Repeat user_id to confirm a change to administrator access."),
 		"request_id":            map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "description": "Stable update retry ID; reuse only with identical arguments within 7 days. After expiration it is a new update."},
@@ -44,7 +44,7 @@ type externalUserView struct {
 	Products       []string  `json:"products"`
 	CreateProducts *[]string `json:"create_products"`
 	Disabled       bool      `json:"disabled"`
-	CodeReviewer   bool      `json:"code_reviewer"`
+	CrewReviewer   bool      `json:"crew_reviewer"`
 	VaultReader    bool      `json:"vault_reader"`
 }
 
@@ -61,7 +61,7 @@ func externalSignInMethod(v userAdminView) string {
 }
 
 func externalUserOf(v userAdminView) externalUserView {
-	return externalUserView{v.ID, v.Username, v.Email, externalSignInMethod(v), v.Role, v.Products, v.CreateProducts, v.Disabled, v.CodeReviewer, v.VaultReader}
+	return externalUserView{v.ID, v.Username, v.Email, externalSignInMethod(v), v.Role, v.Products, v.CreateProducts, v.Disabled, v.CrewReviewer, v.VaultReader}
 }
 
 func userAccessHash(value any) string {
@@ -133,7 +133,7 @@ func (api *StreamingAPI) externalUsersCall(w http.ResponseWriter, r *http.Reques
 	}
 	payload := map[string]any{}
 	fields := []string{}
-	for _, field := range []string{"role", "products", "create_products", "clear_create_products", "disabled", "code_reviewer", "vault_reader"} {
+	for _, field := range []string{"role", "products", "create_products", "clear_create_products", "disabled", "crew_reviewer", "vault_reader"} {
 		if value, exists := args[field]; exists {
 			payload[field] = value
 			fields = append(fields, field)

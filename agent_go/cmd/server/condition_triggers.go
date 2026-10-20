@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
@@ -81,14 +81,14 @@ func (c *conditionService) authorize(ctx context.Context, job productScheduleJob
 	if job.WatcherSource != nil {
 		return c.authorizeProductSource(ctx, job, cfg)
 	}
-	if c.s.api == nil || job.Profile.ID != codeproduct.ProfileID || job.ProjectID == "" {
+	if c.s.api == nil || job.Profile.ID != workproduct.ProfileID || job.ProjectID == "" {
 		return errors.New("watchers are currently available in Code")
 	}
 	claims := &UserClaims{UserID: job.UserID}
-	if userAccessForClaims(claims).Disabled || !userAllowedProduct(claims, codeproduct.ProfileID) {
+	if userAccessForClaims(claims).Disabled || !userAllowedProduct(claims, workproduct.ProfileID) {
 		return conditiontrigger.PermanentError{Err: errors.New("watcher owner no longer has Code access")}
 	}
-	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: job.ProjectID, ProfileID: codeproduct.ProfileID}, Path: job.WorkspacePath}
+	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: job.ProjectID, ProfileID: workproduct.ProfileID}, Path: job.WorkspacePath}
 	if err := authorizeOwnedCodeCaller(ctx, job.UserID, job.UserID, caller); err != nil {
 		return err
 	}
@@ -426,7 +426,7 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 		_ = RenameChatHistorySession(job.UserID, conversation.SessionID, job.WorkspacePath, newWatcherChatName(job.Schedule.Name, ev.ID))
 	}
 	chat := codeChat{Key: chatKey, ID: chatID, Name: "Code agent", SessionID: conversation.SessionID}
-	target := codeChatTarget(codeChatProject{OwnerID: job.UserID, ProfileID: codeproduct.ProfileID, ProjectID: job.ProjectID}, chat, job.WorkspacePath)
+	target := codeChatTarget(codeChatProject{OwnerID: job.UserID, ProfileID: workproduct.ProfileID, ProjectID: job.ProjectID}, chat, job.WorkspacePath)
 	payload, _ := json.Marshal(ev.Payload)
 	if len(payload) > 8*1024 {
 		return "", conditiontrigger.PermanentError{Err: errors.New("agent event payload exceeds 8 KiB")}

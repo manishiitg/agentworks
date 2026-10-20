@@ -14,11 +14,9 @@ import (
 
 	"github.com/google/uuid"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	storeEvents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // Crew functions (PLAT-841): a Crew or workflow declares typed functions in
@@ -381,11 +379,7 @@ func crewFunctionKey(kind, profileID, id string) string {
 
 func crewFunctionScopedKey(kind, profileID, id, workspacePath string) string {
 	key := crewFunctionKey(kind, profileID, id)
-	if profileID == codeproduct.ProfileID {
-		if ownerID, ok := crewProjectOwnerID(workspacePath); ok {
-			return key + ":" + ownerID
-		}
-	}
+
 	return key
 }
 
@@ -748,9 +742,7 @@ func (c *crewFunctionCall) recordPath() string {
 	if c.IsolatedExecution {
 		return "_system/function_call_records/" + c.ID + ".json"
 	}
-	if c.TargetProfileID == codeproduct.ProfileID {
-		return workspaceref.PhysicalPath(c.UserID, "chat_history", "code-peer-calls", c.ID+".json")
-	}
+
 	return strings.TrimSuffix(c.TargetPath, "/") + "/functions/calls/" + c.ID + ".json"
 }
 
@@ -1007,9 +999,7 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	call.ExecutionScope, _ = ctx.Value(structuredFunctionExecutionScopeKey{}).(string)
 	call.Publication = fn.publication
 	fromPath := caller.Path
-	if caller.Stamp.ProfileID == codeproduct.ProfileID {
-		fromPath = ""
-	}
+
 	body := map[string]interface{}{
 		"task":    crewFunctionTaskText(call, fn, args),
 		"from":    map[string]interface{}{"kind": caller.Stamp.Type, "name": caller.Label, "workspace_path": fromPath},
@@ -1752,46 +1742,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		// A published Code function is served by its own isolated target turn,
 		// including calls made by a different person. Legacy chat peer calls
 		// keep their original participant checks below.
-		if call.IsolatedExecution && call.TargetChat == "" && call.TargetProfileID == codeproduct.ProfileID &&
-			crewFunctionKey(call.TargetKind, call.TargetProfileID, call.TargetID) == crewFunctionKey(caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID) &&
-			canonicalCrewWorkspaceRoot(call.TargetPath) == canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(userID, caller.Path)) && crewProjectOwnedByCaller(userID, call.TargetPath) {
-			return call, caller, nil
-		}
-		if call.TargetProfileID == codeproduct.ProfileID && call.UserID != userID {
-			return nil, caller, fmt.Errorf("function call %s belongs to another caller", id)
-		}
-		if call.TargetProfileID == codeproduct.ProfileID && call.TargetChat != "" {
-			ownerID, ok := crewProjectOwnerID(call.TargetPath)
-			source := triggerLinkCaller{Stamp: triggerCaller{Type: call.CallerKind, ProfileID: call.CallerProfileID, ID: call.CallerID}, Path: call.CallerPath}
-			if !ok || authorizeOwnedCodeCaller(ctx, userID, ownerID, source) != nil ||
-				authorizeOwnedCodeCaller(ctx, userID, ownerID, caller) != nil {
-				return nil, caller, fmt.Errorf("private Code access denied")
-			}
-		}
-		if caller.Stamp.ProfileID == codeproduct.ProfileID {
-			ownerID, ok := crewProjectOwnerID(caller.Path)
-			if !ok && isCodeProjectPath(caller.Path) {
-				ownerID, ok = sanitizeUserIDForPath(userID), true
-			}
-			if !ok || !codeRoleFor(ctx, userID, ownerID, caller.Stamp.ID).atLeast(codeRoleEditor) {
-				return nil, caller, fmt.Errorf("private Code access denied")
-			}
-			// Calls belong to their actual owner and source workspace.
-			if call.CallerProfileID == codeproduct.ProfileID && call.UserID != userID {
-				return nil, caller, fmt.Errorf("function call %s belongs to another caller", id)
-			}
-			isCodeSource := crewFunctionKey(call.CallerKind, call.CallerProfileID, call.CallerID) == crewFunctionKey(caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID)
-			if isCodeSource && canonicalCrewWorkspaceRoot(call.CallerPath) != canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(userID, caller.Path)) {
-				return nil, caller, fmt.Errorf("private Code access denied")
-			}
-			if call.TargetChat != "" {
-				// A call between two chats of this same Code (PLAT-648).
-				if call.CallerID != call.TargetID || call.CallerID != caller.Stamp.ID ||
-					canonicalCrewWorkspaceRoot(call.TargetPath) != canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(userID, caller.Path)) {
-					return nil, caller, fmt.Errorf("private Code access denied")
-				}
-			}
-		}
+
 		return call, caller, nil
 	}
 	// A call between two chats of one Code belongs to exactly those two chats:
@@ -1810,9 +1761,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		if call.TargetChatSession != "" && call.TargetChatSession != sessionID {
 			return false
 		}
-		if call.TargetProfileID == codeproduct.ProfileID && canonicalCrewWorkspaceRoot(call.TargetPath) != canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(userID, caller.Path)) {
-			return false
-		}
+
 		return crewFunctionKey(call.TargetKind, call.TargetProfileID, call.TargetID) == crewFunctionKey(caller.Stamp.Type, caller.Stamp.ProfileID, caller.Stamp.ID)
 	}
 	callIDSchema := map[string]interface{}{"type": "string", "description": "call_id from call_function, or from the [Function call ...] task you received."}

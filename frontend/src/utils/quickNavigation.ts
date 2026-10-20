@@ -8,7 +8,7 @@ import { useLLMStore } from '../stores/useLLMStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { openProductWorkspace } from './productWorkspaceNavigation'
 
-export type QuickNavigationScope = 'active' | 'workflows' | 'relays' | 'crew' | 'code' | 'chats' | 'products' | 'panels' | 'create'
+export type QuickNavigationScope = 'active' | 'workflows' | 'relays' | 'crew' | 'chats' | 'products' | 'panels' | 'create'
 export type NavigationAction = 'active' | 'browse' | 'activity' | 'schedules' | 'providers' | 'users' | 'mcp' | 'vault-audit' | 'vault-connect' | 'create'
 export type QuickNavigationItem = {
   type: 'product' | 'menu'
@@ -29,7 +29,7 @@ export type QuickNavigationItem = {
 
 const CREATION_LABELS: Record<ProductCreateSurface, string> = {
   agentworks: 'Create new workflow', relays: 'Create new Flow', work: 'Create new Crew',
-  code: 'Create new Crew', 'video-studio': 'Create new video project',
+  'video-studio': 'Create new video project',
 }
 
 // Keep this beside the shared creation commands so a product consolidation has
@@ -37,11 +37,10 @@ const CREATION_LABELS: Record<ProductCreateSurface, string> = {
 const PROJECT_CREATION_DESCRIPTIONS: Partial<Record<ProductCreateSurface, string>> = {
   agentworks: 'Work toward a measurable goal.',
   work: 'A specialist for repeat work.',
-  code: 'Work with an AI agent on a project.',
   relays: 'Run repeatable steps automatically.',
 }
 
-const GLOBAL_PAGE_SURFACES: ProductSurface[] = ['agentworks', 'relays', 'work', 'code', 'mcp-gateway', 'bullpen']
+const GLOBAL_PAGE_SURFACES: ProductSurface[] = ['agentworks', 'relays', 'work', 'mcp-gateway', 'bullpen']
 
 /** The same deployment/account product list and role gates as the sidebar. */
 export function quickNavigationItems(
@@ -53,8 +52,8 @@ export function quickNavigationItems(
   const common = { lastAccessedAt: 0, hasLocalActivity: false as const }
   const items: QuickNavigationItem[] = navigationProductSurfaceIDs(user?.allowed_products).map(surface => ({
     ...common, type: 'product', id: `product:${surface}`, label: PRODUCT_SURFACE_LABELS[surface],
-    ...((surface === 'work' || surface === 'code') ? { searchText: 'Code Crew workspace' } : {}),
-    subtitle: surface === 'knowledgebase' ? 'Product · shared knowledge for your agents' : 'Product · open workspace', isActive: surface === current || (surface === 'code' || surface === 'work') && (current === 'code' || current === 'work'), surface,
+    ...((surface === 'work') ? { searchText: 'Code Crew workspace' } : {}),
+    subtitle: surface === 'knowledgebase' ? 'Product · shared knowledge for your agents' : 'Product · open workspace', isActive: surface === current, surface,
   }))
   const menu = (action: NavigationAction, label: string, description: string) => {
     items.push({ ...common, type: 'menu', id: `menu:${action}`, label, subtitle: `Menu · ${description}`, isActive: false, action })
@@ -65,12 +64,12 @@ export function quickNavigationItems(
   browse('active', 'Running work')
   if (products.includes('agentworks')) { browse('workflows', 'All workflows'); browse('chats', 'All chats') }
   if (products.includes('relays')) browse('relays', 'All Flows')
-  if (products.includes('work') || products.includes('code')) browse('crew', 'All Crews')
+  if (products.includes('work')) browse('crew', 'All Crews')
   if (products.length) browse('products', 'All products')
   if (products.includes(current)) browse('panels', 'All panels and tabs')
   const creatableOrigins = products.filter((surface): surface is ProductCreateSurface => surface in CREATION_LABELS)
     .filter(surface => hasProductCreateAccess(user, isMultiUserMode, surface))
-  const creationSurfaces = creatableOrigins.includes('code') ? creatableOrigins.filter(surface => surface !== 'work') : creatableOrigins
+  const creationSurfaces = creatableOrigins
   if (creationSurfaces.length) browse('create', 'Create new…')
   for (const surface of creationSurfaces) {
     items.push({ ...common, type: 'menu', id: `create:${surface}`, label: CREATION_LABELS[surface],

@@ -9,7 +9,7 @@ import { SparkQuillMark } from '../products/sparkquill/SparkQuillMark'
 import { PRODUCT_SURFACE_LABELS, type ProductSurface } from '../products/productSurfaceConfig'
 
 const icons: Record<ProductSurface, ComponentType<{ className?: string; title?: string }>> = {
-  agentworks: RunloopMark, relays: Waypoints, work: WorkMark, code: WorkMark,
+  agentworks: RunloopMark, relays: Waypoints, work: WorkMark,
   'mcp-gateway': VaultMark, 'video-studio': VideoStudioMark, sparkquill: SparkQuillMark,
   knowledgebase: BrainMark, bullpen: MessagesSquare, 'llm-gateway': Network,
 }

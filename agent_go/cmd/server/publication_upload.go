@@ -752,8 +752,6 @@ func publicationOriginTokenAllowed(claims *UserClaims, profile, id string) bool 
 	if claims.AccessToken == nil {
 		return true
 	}
-	if profile == "code" {
-		return externalCodeRunAllowed(claims)
-	}
+
 	return claims.AccessToken.Allows("crews:write") && (id == "" && claims.AccessToken.AllCrews || id != "" && claims.AccessToken.AllowsCrew(id))
 }

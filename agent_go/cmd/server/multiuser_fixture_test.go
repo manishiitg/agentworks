@@ -219,9 +219,6 @@ func (f *multiUserFixture) WithSharing(on bool) {
 
 // resetCrewLocationCaches drops the cached crew aliases and owners.
 func resetCrewLocationCaches() {
-	crewPathAliases.mu.Lock()
-	crewPathAliases.aliases = nil
-	crewPathAliases.mu.Unlock()
 	crewOwners.mu.Lock()
 	crewOwners.entries = map[string]crewOwnerEntry{}
 	crewOwners.mu.Unlock()

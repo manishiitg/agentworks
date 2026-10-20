@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { CODE_PRODUCT } from './projectProduct'
+import { CREW_PRODUCT } from './projectProduct'
 
 const updatePlannerFile = vi.hoisted(() => vi.fn().mockResolvedValue({}))
 const getPlannerFileContent = vi.hoisted(() => vi.fn())
@@ -115,7 +115,7 @@ describe('createWorkSession', () => {
   it('forwards model, mode, identity and a selected template to server creation', async () => {
     updatePlannerFile.mockClear()
     createPlannerFolder.mockClear()
-    const session = await createWorkSession('Finance desk', 'Review records.', '📊', 'finance-analyst', CODE_PRODUCT, { provider: 'codex-cli', modelId: 'gpt-6-luna', connectionId: 'company-account' }, 'cowork')
+    const session = await createWorkSession('Finance desk', 'Review records.', '📊', 'finance-analyst', CREW_PRODUCT, { provider: 'codex-cli', modelId: 'gpt-6-luna', connectionId: 'company-account' }, 'cowork')
     expect(createServerProject).toHaveBeenLastCalledWith('code', expect.objectContaining({ name: 'Finance desk', purpose: 'Review records.', icon: '📊', mode: 'cowork', templates: [{ id: 'finance-analyst', version: 1 }], selected_skills: ['finance-analyst'], llm_config: expect.objectContaining({ builder_llm: expect.objectContaining({ provider: 'codex-cli', model_id: 'gpt-6-luna', connection_id: 'company-account' }) }) }))
     expect(session.workspacePath).toBe('Crew/server-project')
     expect(session.product).toBe('code')

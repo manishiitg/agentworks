@@ -66,9 +66,8 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   const representedSessionIds = useChatStore(useShallow(state => Object.values(state.chatTabs)
     .filter(tab => tab.metadata?.agentProfileWorkspace === workspacePath && tab.metadata?.agentProfileBuilder !== true)
     .map(tab => tab.sessionId).filter((id): id is string => Boolean(id))))
-  const isCode = product.profileId === 'code'
   const projectMode = useProjectMode(sessionId)
-  const isCowork = isCode && projectMode === 'cowork'
+  const isCowork = projectMode === 'cowork'
   const incomingEmail = useAgentInboxEnabled()
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const inventory = workWorkspacePanels({ profileId: product.profileId, cowork: isCowork, readOnly: Boolean(readOnly), showShell, enabledPanels })
@@ -76,7 +75,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   const has = (id: string) => admitted.some(item => item.id === id)
   const canConnect = has('mcp')
   const bots = !enabledPanels || enabledPanels.has('bots')
-  useRegisterPanelSwitcher(isCode ? 'code' : 'work', [
+  useRegisterPanelSwitcher('work', [
     ...(!readOnly ? [{ id: 'context', label: 'Project menu' }] : []),
     ...admitted.filter(item => ['dashboard', 'browser'].includes(item.id)).map(item => ({ id: item.id, label: item.label, group: 'Use & share' })),
     ...(has('dashboard') && !readOnly ? [{ id: 'mcp:share', label: 'Share', group: 'Use & share' }] : []),
@@ -85,7 +84,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
     ...(canConnect ? projectConnectionSections({ allowedProducts, workMode: true, enabledPanels, onOpen: () => {} }).map(item => ({ id: item.id, label: item.label, group: 'Connections' })) : []),
     ...(canConnect ? [{ id: 'mcp:agents', label: 'Chats from your computer', group: 'Connections' }] : []),
     ...(canConnect && has('identity') ? [{ id: 'identity:location', label: 'Local laptop', group: 'Connections' }] : []),
-    ...admitted.filter(item => !['dashboard', 'browser', 'schedules', 'mcp'].includes(item.id)).map(item => ({ id: item.id, label: item.label, group: 'Ops', sections: workPanelSections(item.id, isCode).filter(section => (item.id !== 'identity' || section.id !== 'location') && (item.id !== 'memory' || !enabledPanels || enabledPanels.has(section.id))) })),
+    ...admitted.filter(item => !['dashboard', 'browser', 'schedules', 'mcp'].includes(item.id)).map(item => ({ id: item.id, label: item.label, group: 'Ops', sections: workPanelSections(item.id, false).filter(section => (item.id !== 'identity' || section.id !== 'location') && (item.id !== 'memory' || !enabledPanels || enabledPanels.has(section.id))) })),
   ], (key, section) => {
     const [id, destination] = key.split(':')
     const target = destination ?? section
@@ -229,7 +228,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const canEditConnections = !shared && projectAccess?.key === accessKey && projectAccess.canBuild
   const product = useProjectProduct()
   const noun = product.noun
-  const ask = useCallback((message: string) => product.profileId === 'code'
+  const ask = useCallback((message: string) => product.profileId === 'work'
     ? sendWorkspacePaneMessageToChat({ tabId, message })
     : sendWorkProjectPaneMessage(projectId, message, product.profileId), [product.profileId, projectId, tabId])
   const serverFiles = <FileWorkspacePane workspacePath={workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault title="Workspace" hideAddToChat hideRootActions editable testId="work-files-panel" />
@@ -242,7 +241,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const openHistoryChat = useResumePreviousChat()
   const activeSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   const contextMode = useProjectMode(activeSessionId || '')
-  const contextPanels = workWorkspacePanels({ profileId: product.profileId, cowork: product.profileId === 'code' && contextMode === 'cowork', readOnly: Boolean(readOnly), showShell, enabledPanels })
+  const contextPanels = workWorkspacePanels({ profileId: product.profileId, cowork: product.profileId === 'work' && contextMode === 'cowork', readOnly: Boolean(readOnly), showShell, enabledPanels })
   // The dashboard's only link to the chat beside it: a stable callback, so
   // nothing on the chat side re-renders or re-runs the dashboard.
   const sendDashboardMessage = useCallback(async (message: string) => ({
@@ -309,7 +308,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   }
 
   return (
-    <WorkspacePanelGuideContext.Provider value={product.profileId === 'code' ? 'code' : 'crew'}>
+    <WorkspacePanelGuideContext.Provider value={'crew'}>
     <div className="flex h-full min-h-0 flex-col bg-background">
       <div className="min-h-0 flex-1 overflow-hidden">
         {view==='context' && <WorkContextPanel workspacePath={workspacePath} projectId={projectId} profileId={product.profileId} panels={[...contextPanels.views,...contextPanels.ops,...contextPanels.setup]} onOpen={onViewChange} enabledPanels={enabledPanels}/>}
@@ -317,7 +316,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           projectId={projectId}
           crewRoot={workspacePath}
           request={sharedFileRequest}
-        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{product.profileId === 'code' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>)}
+        /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{product.profileId === 'work' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>)}
         {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><CodeShellPanel projectId={projectId} /></div></div></Suspense>}
         {view === 'identity' && <WorkIdentityPanel
 
@@ -389,7 +388,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
             workspacePath={workspacePath}
             dashboardConversation
             emptyDescription={readOnly ? "No dashboard is available right now. Check again, or ask the project owner for help." : 'Live data, forms, agent actions and visual stories. Describe what your team needs in chat.'}
-            emptyAction={!readOnly && <DashboardCreateDraftButton target={product.profileId === 'code' ? { tabId } : { profileId: product.profileId, conversationKey: projectId }} />}
+            emptyAction={!readOnly && <DashboardCreateDraftButton target={product.profileId === 'work' ? { tabId } : { profileId: product.profileId, conversationKey: projectId }} />}
             sendChatMessage={sendDashboardMessage}
             headerAction={<AskAIButton
               workspacePath={workspacePath}
@@ -444,7 +443,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
             workspacePath={workspacePath}
             // A Code's schedules and triggers are its owner's: they run as the
             // owner, so someone the Code is shared with only sees them.
-            canManage={!(product.profileId === 'code' && shared)}
+            canManage={!(product.profileId === 'work' && shared)}
             scopeNoun="project"
             productTriggerScope={enabledPanels?.has('triggers') === false ? undefined : { profileId: product.profileId, projectId }}
             workflowScope={{ workflowId: projectId, workspacePath, label: projectTitle }}

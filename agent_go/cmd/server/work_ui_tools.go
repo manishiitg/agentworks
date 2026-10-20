@@ -3,7 +3,7 @@ package server
 import (
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 )
 
 var workUIControlContract = uiContract{
@@ -28,26 +28,10 @@ var workUIControlContract = uiContract{
 
 // codeUIControlContract is Crew's project contract without the views Code
 // does not have: identity, schedules, triggers and the automation section.
-var codeUIControlContract = func() uiContract {
-	contract := workUIControlContract
-	contract.Product = codeproduct.ProfileID
-	contract.Views = nil
-	for _, view := range workUIControlContract.Views {
-		switch view.ID {
-		// Code has no identity, schedules or automation.
-		case "identity", "schedules", "workshop":
-			continue
-		}
-		contract.Views = append(contract.Views, view)
-	}
-	return contract
-}()
 
 // projectUIControlContract returns the UI contract for a project workspace.
 func projectUIControlContract(workspace string) uiContract {
-	if isCodeProjectPath(workspace) {
-		return codeUIControlContract
-	}
+
 	return workUIControlContract
 }
 
@@ -57,7 +41,7 @@ func projectUIControlContract(workspace string) uiContract {
 // the browser polling an empty broker scope. The workspace remains
 // server-derived and owner-scoped; no path from the request body is trusted.
 func restoredWorkUIScope(userID, session string, active *ActiveSessionInfo) string {
-	if active == nil || !(strings.HasPrefix(session, "work:project:") || strings.HasPrefix(session, codeproduct.ProfileID+":project:")) ||
+	if active == nil || !(strings.HasPrefix(session, "work:project:") || strings.HasPrefix(session, workproduct.ProfileID+":project:")) ||
 		strings.TrimSpace(active.BotPlatform) != "" || strings.TrimSpace(active.ParentSessionID) != "" ||
 		strings.TrimSpace(active.SessionKind) != "" || active.IsSyntheticTurn {
 		return ""

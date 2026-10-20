@@ -58,7 +58,7 @@ func readWorkspaceBrowserSettings(ctx context.Context, workspace string) (worksp
 	settings.Mode = effectiveWorkspaceBrowserMode(settings.Mode)
 	// Code uses an explicit browser choice. Old automatic settings become the
 	// workspace browser rather than probing a local Chrome port.
-	if isCodeProjectPath(workspace) && settings.Mode == "auto" {
+	if isProjectWorkspacePath(workspace) && settings.Mode == "auto" {
 		settings.Mode = "headless"
 	}
 	if settings.Mode == "" {
@@ -202,7 +202,7 @@ func (api *StreamingAPI) handleWorkspaceBrowser(w http.ResponseWriter, r *http.R
 				return
 			}
 			settings = workspaceBrowserSettings{Mode: req.Mode, Port: req.Port}
-			if isCodeProjectPath(workspace) && settings.Mode == "auto" {
+			if isProjectWorkspacePath(workspace) && settings.Mode == "auto" {
 				settings.Mode = "headless"
 			}
 			if workflow {

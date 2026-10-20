@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
@@ -19,7 +18,7 @@ func TestComposedProductPromptFixtures(t *testing.T) {
 		profile  agentprofiles.Profile
 		readonly bool
 	}{
-		{"Code", codeproduct.BuiltinAgentProfile(), false},
+		{"Code", workproduct.BuiltinAgentProfile(), false},
 		{"CrewBuilder", workproduct.BuiltinAgentProfile(), false},
 		{"CrewRun", workproduct.BuiltinAgentProfile(), true},
 	} {

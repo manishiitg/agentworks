@@ -26,7 +26,7 @@ export function openProductWorkspace(surface: ProductSurface) {
     }
     app.setModeCategory('workflow')
     app.setAgentMode('workflow')
-  } else if (surface === 'code' || surface === 'work' || surface === 'knowledgebase') {
+  } else if (surface === 'work' || surface === 'knowledgebase') {
     // Set both mode projections before mounting the product chat. Waiting for
     // its mount effect lets the legacy workflow handler restore Goals first.
     app.setModeCategory('multi-agent')

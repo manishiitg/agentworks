@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/clisecurity"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
@@ -31,7 +31,7 @@ func TestCodePreparedSystemPrompt(t *testing.T) {
 	cliHostOS = "darwin"
 	t.Cleanup(func() { cliHostOS = origOS })
 	t.Setenv("MULTI_USER_MODE", "false")
-	if err := codeproduct.RegisterProductSkills(); err != nil {
+	if err := workproduct.RegisterProductSkills(); err != nil {
 		t.Fatal(err)
 	}
 	const codeRoot = "_users/alice/Chats/Code/projects/site"
@@ -39,13 +39,13 @@ func TestCodePreparedSystemPrompt(t *testing.T) {
 	env.mock.files[codeRoot+"/workflow.json"] = `{"capabilities":{}}`
 	env.mock.files["Chats/Code/projects/site/skills/code-reviewer/SKILL.md"] = "---\nname: code-reviewer\ndescription: Review Site changes and report concrete issues\n---\nRead relevant files and check requested behavior before reporting findings.\n"
 	registry := agentprofiles.NewRegistry()
-	for _, profile := range codeproduct.BuiltinAgentProfiles() {
-		profile.Product = codeproduct.ProfileID
+	for _, profile := range workproduct.BuiltinAgentProfiles() {
+		profile.Product = workproduct.ProfileID
 		if err := registry.RegisterProfile(profile); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := codeproduct.RegisterAgentProfileRuntime(registry, getWorkspaceAPIURL()); err != nil {
+	if err := workproduct.RegisterAgentProfileRuntime(registry, getWorkspaceAPIURL()); err != nil {
 		t.Fatal(err)
 	}
 	env.api.agentProfiles = registry
@@ -78,7 +78,7 @@ func TestCodePreparedSystemPrompt(t *testing.T) {
 		}{mcpagent.ReadAgentSystemPrompt(ctx, agent), agent.Definition(), string(mcpagent.ReadAgentRuntimeInfo(agent).Provider)}
 		return true
 	}
-	req := QueryRequest{Query: "Inspect the Site project", AgentMode: "multi-agent", AgentProfileID: codeproduct.ProfileID, AgentProfileConversationKey: "site", SelectedFolder: "Chats/Code/projects/site", AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Site"}}
+	req := QueryRequest{Query: "Inspect the Site project", AgentMode: "multi-agent", AgentProfileID: workproduct.ProfileID, AgentProfileConversationKey: "site", SelectedFolder: "Chats/Code/projects/site", AgentProfileContext: agentprofiles.PromptContext{ProjectTitle: "Site"}}
 	w := httptest.NewRecorder()
 	httpReq := sharedSecretsRequest(http.MethodPost, "/api/query", "alice", req)
 	httpReq.Header.Set("X-Session-ID", "code:site")

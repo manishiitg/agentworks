@@ -5,8 +5,7 @@ import type { LLMProvider, PresetLLMConfig, SharedProjectSummary } from '../../s
 import { slugifyTitle } from '../../utils/plannerFiles'
 import { loadAgentProfileProviderOptions } from '../../utils/agentProfileCapabilities'
 import { llmConfigService } from '../../services/llm-config-api'
-import { CREW_PRODUCT, CODE_PRODUCT, projectProductConfig, type ProjectProductConfig, type ProjectProductId } from './projectProduct'
-import { visibleProductSurfaceIDs } from '../productSurfaceConfig'
+import { CREW_PRODUCT, projectProductConfig, type ProjectProductConfig, type ProjectProductId } from './projectProduct'
 import { getCrewTemplate, type CrewTemplateId } from './crewTemplates'
 
 export type WorkSession = ProductProject<ProjectProductId>
@@ -50,24 +49,7 @@ export function parseSessionManifest(content: string, workspacePath: string, las
 
 export async function loadWorkSessions(product: ProjectProductConfig = CREW_PRODUCT): Promise<WorkSession[]> {
   const sessions = await loadProductProjects(product.projectsRoot, product.profileId, { runtimeManifestName: 'workflow.json', includeOwnSharedProjects: product.listsSharedProjects })
-  return Promise.all(sessions.map(async original => {
-    let session = original
-    if (!session.runtimeConfigInitialized || !session.selectionConfigInitialized) {
-      session = await updateProductProjectSelections(session, {
-        ...(!session.selectionConfigInitialized ? { selectedServers: [], selectedSkills: [] } : {}),
-      }, `Initialize ${projectProductConfig(session.product).noun} project runtime ${session.title}`, 'workflow.json')
-    }
-    if (!original.secretSelectionInitialized) {
-      try {
-        const stored = await secretsApi.listWorkflowSecrets(session.workspacePath)
-        session = await updateProductProjectSelections(session, { selectedSecrets: stored.map(secret => secret.name) }, `Initialize ${projectProductConfig(session.product).noun} project secret attachments ${session.title}`, 'workflow.json')
-      } catch {
-        // Keep the project usable during a transient secret-store failure. The
-        // server performs the same migration before the next agent turn.
-      }
-    }
-    return session
-  }))
+  return sessions
 }
 
 export async function createWorkSession(title: string, description: string, icon?: string, templateId?: CrewTemplateId, product: ProjectProductConfig = CREW_PRODUCT, runsOn?: WorkLLMSelection, mode?: ProductMode): Promise<WorkSession> {
@@ -224,15 +206,4 @@ export async function updateWorkSessionIdentity(session: WorkSession, patch: Pro
 
 export function isWorkSessionRun(session: WorkSession | null | undefined): boolean {
   return Boolean(session?.shared && !session.shared.canBuild)
-}
-
-// Both legacy entry links open the same list, preserving origin permissions.
-export async function loadCombinedWorkSessions(primary: ProjectProductConfig, allowedProducts?: string[] | null): Promise<WorkSession[]> {
-  const visible = visibleProductSurfaceIDs(allowedProducts)
-  const other = primary.profileId === 'work' ? CODE_PRODUCT : CREW_PRODUCT
-  const [own, rest] = await Promise.all([
-    loadWorkSessionsIncludingShared(primary),
-    visible.includes(other.profileId) ? loadWorkSessionsIncludingShared(other).catch(() => [] as WorkSession[]) : Promise.resolve([]),
-  ])
-  return [...own, ...rest]
 }

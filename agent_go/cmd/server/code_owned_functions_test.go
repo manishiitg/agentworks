@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
@@ -26,9 +26,9 @@ func privateCodeWorkflowTools(t *testing.T, env crewFunctionEnv, actor string) m
 // sibling chat).
 func TestCodePublishedFunctionsKeepLegacyPeersRemoved(t *testing.T) {
 	env := newCrewFunctionEnv(t)
-	profile := agentprofiles.Profile{ID: codeproduct.ProfileID, Name: "Code", Version: 1, BuiltIn: true, Product: "code", SystemPromptTemplate: "hi",
+	profile := agentprofiles.Profile{ID: workproduct.ProfileID, Name: "Code", Version: 1, BuiltIn: true, Product: "code", SystemPromptTemplate: "hi",
 		Runtime: agentprofiles.RuntimePolicy{Conversation: agentprofiles.ConversationPolicy{Mode: agentprofiles.ConversationModeKeyed, KeyType: agentprofiles.ConversationKeyTypeProject},
-			Workspace: agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, Root: "Chats", ProjectsRoot: codeproduct.ProjectsRoot}},
+			Workspace: agentprofiles.WorkspacePolicy{Mode: agentprofiles.WorkspaceModeProject, Root: "Chats", ProjectsRoot: workproduct.ProjectsRoot}},
 		Features: []agentprofiles.FeatureBinding{{ID: "triggers", Options: map[string]string{"mode": "message_only"}}}}
 	if err := env.svc.registry.RegisterProfile(profile); err != nil {
 		t.Fatal(err)

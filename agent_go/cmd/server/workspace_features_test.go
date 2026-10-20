@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
@@ -146,7 +146,7 @@ func TestNewCrewMemoryDefaultsPreserveExistingProjects(t *testing.T) {
 		}
 	}
 	// Exercise the real Code factory registration, including saved native calls.
-	if err := codeproduct.RegisterAgentProfileRuntime(f.API.agentProfiles, "http://127.0.0.1:0"); err != nil {
+	if err := workproduct.RegisterAgentProfileRuntime(f.API.agentProfiles, "http://127.0.0.1:0"); err != nil {
 		t.Fatal(err)
 	}
 	profile := f.Code

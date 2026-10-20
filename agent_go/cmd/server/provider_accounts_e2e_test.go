@@ -19,7 +19,6 @@ import (
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/mcpagent/llm"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
@@ -531,8 +530,8 @@ func TestProviderAccountsCostSplitVisibility(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
 	withMemoryUserDirectory(t, `{"users":[
         {"id":"admin","username":"admin","admin":true,"can_create":true},
-        {"id":"alice","username":"alice","can_create":true,"code_reviewer":true},
-        {"id":"bob","username":"bob","can_create":true,"code_reviewer":true},
+        {"id":"alice","username":"alice","can_create":true,"crew_reviewer":true},
+        {"id":"bob","username":"bob","can_create":true,"crew_reviewer":true},
         {"id":"carol","username":"carol","can_create":true}]}`)
 	setDirectoryAdmin(t, "alice", true) // workflow shares are admin-only (PLAT-715)
 	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "claude-code", "display_name": "Alice Claude", "auth_method": "cli_login", "sharing": map[string]interface{}{"mode": "shared", "workflows": []string{"wf-w"}}})
@@ -699,7 +698,7 @@ func TestProviderAccountsProductDefaults(t *testing.T) {
 	}
 	// The real Code and Crew profiles still register with a default engine
 	// they did not list.
-	for _, builtin := range append(codeproduct.BuiltinAgentProfiles(), workproduct.BuiltinAgentProfiles()...) {
+	for _, builtin := range append(workproduct.BuiltinAgentProfiles(), workproduct.BuiltinAgentProfiles()...) {
 		builtin.Product = builtin.ID
 		value := productDefault{Provider: "muse-cli", Model: "muse-1"}
 		applyProductDefaultToProfile(&builtin, value, true)

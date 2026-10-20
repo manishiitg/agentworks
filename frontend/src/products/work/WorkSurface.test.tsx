@@ -40,9 +40,9 @@ describe('fresh deep links keep their view', () => {
 
   it('resolves Code shell and costs links instead of Files', () => {
     window.history.pushState(null, '', '/code/projects/example?view=shell')
-    expect(routeView('code', 'example', normalizeWorkWorkspaceView, 'files')).toBe('shell')
+    expect(routeView('work', 'example', normalizeWorkWorkspaceView, 'files')).toBe('shell')
     window.history.pushState(null, '', '/code/projects/example?view=costs')
-    expect(routeView('code', 'example', normalizeWorkWorkspaceView, 'files')).toBe('costs')
+    expect(routeView('work', 'example', normalizeWorkWorkspaceView, 'files')).toBe('costs')
   })
 })
 

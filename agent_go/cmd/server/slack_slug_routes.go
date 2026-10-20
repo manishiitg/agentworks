@@ -144,10 +144,10 @@ func (api *StreamingAPI) slackTargetSettings(ctx context.Context, ref services.S
 		PlatformName:      conn.DisplayName,
 		ProductAllowed:    registry.ProductAllowed(ref),
 		CanManage:         canManage,
-		DMOnly:            ref.IsCode(),
+		DMOnly:            false,
 		Channels:          []SlackTargetChannel{},
 	}
-	if !canManage || ref.IsCode() || !available {
+	if !canManage || !available {
 		return out
 	}
 	channels := map[string]bool{}
@@ -338,10 +338,7 @@ func addSlackTargetChannelHandler(api *StreamingAPI) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return
 		}
-		if ref.IsCode() {
-			http.Error(w, "Code answers only 1:1 Slack DMs, not channels", http.StatusBadRequest)
-			return
-		}
+
 		if _, _, available := slackPlatformBot(); !available {
 			http.Error(w, "this server has no AgentWorks bot; add the channel through one of your own Slack bots", http.StatusBadRequest)
 			return
@@ -477,7 +474,7 @@ func slackPlatformBotSettingsHandler(api *StreamingAPI) http.HandlerFunc {
 			for _, product := range body.Products {
 				product = strings.ToLower(strings.TrimSpace(product))
 				switch product {
-				case "workflows", "crew", "code":
+				case "workflows", "crew":
 					products = append(products, product)
 				case "":
 				default:

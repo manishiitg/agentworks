@@ -92,7 +92,7 @@ func (api *StreamingAPI) resolveDashboardQuestionResource(ctx context.Context, c
 		return out, dashboardFailure(404, "dashboard unavailable")
 	}
 	out.Target = target
-	product := map[string]string{"crew": "work", "workflow": "agentworks", "relay": "relays", "code": "code"}[target.Kind]
+	product := map[string]string{"crew": "work", "workflow": "agentworks", "relay": "relays"}[target.Kind]
 	if product == "" || !userAllowedProduct(claims, product) {
 		return out, dashboardFailure(404, "dashboard unavailable")
 	}
@@ -112,7 +112,7 @@ func (api *StreamingAPI) resolveDashboardQuestionResource(ctx context.Context, c
 	out.Snapshot = result.Snapshot
 	owner := false
 	switch target.Kind {
-	case "crew", "code":
+	case "crew":
 		crew, ok := resolveCrewPath(ctx, claims.UserID, target.Root)
 		if !ok {
 			return out, dashboardFailure(404, "dashboard unavailable")
@@ -133,8 +133,6 @@ func (api *StreamingAPI) resolveDashboardQuestionResource(ctx context.Context, c
 			askScope = token.Allows("crews:run")
 		case "workflow", "relay":
 			askScope = token.Allows("runs:execute")
-		case "code":
-			askScope = externalCodeRunAllowed(claims)
 		}
 	}
 	out.Capability = dashboardQuestionCapabilities(dashboardQuestionPolicy{Authenticated: true, Active: !userAccessForClaims(claims).Disabled, Product: true, View: true, Published: true, AskScope: askScope, Owner: owner})

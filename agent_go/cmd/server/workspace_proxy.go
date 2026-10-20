@@ -283,9 +283,7 @@ func workspaceProxyCleanPath(raw string) string {
 func workspaceProxyPathIsOtherUser(raw, own string) bool {
 	clean := workspaceProxyCleanPath(raw)
 	// An old spelling of a MOVED Crew is judged as the Crew it names (the transport translates it on its way out).
-	if folded := followCrewAlias(own, clean); folded != clean {
-		clean = folded
-	}
+
 	ref := workspaceref.MustParse(clean)
 	if ref.IsUsersRoot() {
 		return true
@@ -337,7 +335,7 @@ var workspaceProxyServerOnlyRoutes = map[string]bool{"api/skills/cli/install": t
 // workspaceProxyRefusedRoutes are workspace routes only the agent server may
 // call; a browser never reaches them, not even an admin's.
 var workspaceProxyRefusedRoutes = map[string]bool{
-	"api/audit/code-admin/append": true,
+	"api/audit/crew-admin/append": true,
 	"api/skills/cli/install":      true,
 	"api/skills/project/delete":   true,
 	"api/skills/workspace/list":   true,
@@ -641,11 +639,7 @@ func workspaceProxyBodyVerdict(r *http.Request, policy workspaceProxyPolicy) (st
 					spooled.close()
 					return http.StatusForbidden, "multipart form path", nil
 				}
-				if canonical, ok := crewAliasForWorkspaceIO(policy.own, string(value)); ok && canonical != string(value) {
-					log.Printf("[WORKSPACE UPLOAD] user_id=%s field=%s folder=%q canonical=%q", policy.own, part.FormName(), string(value), canonical)
-					value = []byte(canonical)
-					changed = true
-				}
+
 				if _, err := destination.Write(value); err != nil {
 					spooled.close()
 					return http.StatusBadRequest, "request body could not be prepared", nil

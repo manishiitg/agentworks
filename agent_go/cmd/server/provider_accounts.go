@@ -37,7 +37,6 @@ const providerAccountSettingsPath = "config/provider-account-settings.json"
 const (
 	productWorkflows = "agentworks"
 	productCrews     = "work"
-	productCode      = "code"
 )
 
 var providerAccountSettingsMu sync.Mutex
@@ -117,7 +116,7 @@ func normalizePolicyProduct(raw string) (string, bool) {
 	if product == "" {
 		return "", false
 	}
-	if product == productWorkflows || product == productCrews || product == productCode {
+	if product == productWorkflows || product == productCrews {
 		return product, true
 	}
 	for _, known := range knownProductIDs() {
@@ -143,8 +142,6 @@ func productDisplayName(product string) string {
 		return "Workflows"
 	case productCrews:
 		return "Crews"
-	case productCode:
-		return "Code"
 	case "relays":
 		return "Flows"
 	}
@@ -604,11 +601,7 @@ func (api *StreamingAPI) describeProviderAccountRun(ctx context.Context, scope p
 			run.Label = "Crew " + filepath.Base(ref.Root)
 			return run
 		}
-		if isCodeProjectPath(path) {
-			run.Product = productCode
-			run.Label = "this Code"
-			return run
-		}
+
 		if root := livefeed.WorkflowRoot(path); strings.HasPrefix(root, "Workflow/") {
 			run.Product = productWorkflows
 			run.WorkflowPath = root

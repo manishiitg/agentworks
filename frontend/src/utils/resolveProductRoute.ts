@@ -29,7 +29,7 @@ export async function resolveProductRoute(route: ProductRoute, signal: AbortSign
       useModeStore.getState().completeInitialSetup()
       if (view) useWorkflowStore.getState().openWorkspaceView(view)
     }
-  } else if (route.id && (route.surface === 'work' || route.surface === 'code')) {
+  } else if (route.id && (route.surface === 'work')) {
     const [{ loadProductProjects }, { projectProductConfig }, { loadSharedWorkSessions }] = await Promise.all([
       import('../platform/chat/productProjects'), import('../products/work/projectProduct'), import('../products/work/workSessions'),
     ])
@@ -47,8 +47,7 @@ export async function resolveProductRoute(route: ProductRoute, signal: AbortSign
     if (route.view && (!view || (item.shared && !SHARED_CREW_WORKSPACE_PANELS.has(view)))) route = { ...route, view: undefined }
     activateResource = () => {
       const state = useProductSurfaceStore.getState()
-      if (route.surface === 'code') state.setSelectedCodeProjectId(route.id!)
-      else state.setSelectedWorkProjectId(route.id!)
+      state.setSelectedWorkProjectId(route.id!)
     }
   } else if (route.id && route.surface === 'video-studio') {
     const { loadVideoProjects } = await import('../products/video-studio/videoStudioData')
@@ -65,7 +64,6 @@ export async function resolveProductRoute(route: ProductRoute, signal: AbortSign
     if (!route.id) {
       const state = useProductSurfaceStore.getState()
       if (route.surface === 'work') state.setSelectedWorkProjectId(null)
-      if (route.surface === 'code') state.setSelectedCodeProjectId(null)
       if (route.surface === 'video-studio') state.setLastVideoProjectId(null)
       if (route.surface === 'agentworks' || route.surface === 'relays') {
         useGlobalPresetStore.getState().clearActivePreset('workflow')

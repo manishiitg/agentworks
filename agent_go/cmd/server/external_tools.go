@@ -20,7 +20,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
-	"github.com/santhosh-tekuri/jsonschema/v6"
+	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 type externalTool struct {
@@ -32,7 +32,8 @@ type externalTool struct {
 	plan        bool
 	validator   *jsonschema.Schema
 	// hidden: an alias of a merged tool's action, callable but not listed.
-	hidden bool
+	hidden       bool
+	internalOnly bool
 	// actions maps a merged tool's action to the member tool it runs.
 	actions     map[string]string
 	actionOrder []string
@@ -230,14 +231,14 @@ func externalTools() ([]externalTool, error) {
 		add("import_crew", "Create a Crew you own from a spec produced by export_crew. Schedules arrive disabled unless enable_schedules is true. Requires crews:write on a connection covering all your Crews.", false, false, map[string]any{"spec": importSpec, "enable_schedules": map[string]any{"type": "boolean"}}, "spec")
 		// Vault management reuses the administrator builder and UI handlers.
 		externalVaultDefinitions(add)
-		// Code review (code:review; admins and Code reviewers only).
+		// Code review (crews:review; admins and Code reviewers only).
 		externalCodeReviewDefinitions(add)
 		// Run your own Code (code:run; never a default scope).
-		externalCodeRunDefinitions(add)
+		externalWatcherDefinitions(add)
 		externalAgentEmailDefinitions(add)
 		externalWorkspaceDefinitions(add)
 		externalLaptopAccessDefinition(add)
-		// Shared-account token limits (get: code:review or users:manage; set: users:manage, admins).
+		// Shared-account token limits (get: crews:review or users:manage; set: users:manage, admins).
 		externalTokenLimitDefinitions(add)
 		externalUsersDefinition(add)
 		externalSignInAppsDefinition(add)
@@ -502,6 +503,10 @@ func (rec *externalCallRecorder) Flush() {
 }
 
 func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Request) {
+	api.dispatchExternalCall(w, r, false)
+}
+
+func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Request, translated bool) {
 	rec := &externalCallRecorder{ResponseWriter: w}
 	w = rec
 	var logTool, logAction string
@@ -581,7 +586,7 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 			break
 		}
 	}
-	if tool == nil {
+	if tool == nil || tool.internalOnly && !translated {
 		externalError(w, 404, "unknown_tool", "Tool is not exposed by this API.")
 		return
 	}
@@ -751,24 +756,7 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if isExternalSettingsTool(tool.Name) {
-		if codeID := externalArg(call.Arguments, "code_id"); codeID != "" {
-			if tool.Name != "get_secret_sources" || externalArg(call.Arguments, "crew_id") != "" || externalArg(call.Arguments, "workflow_id") != "" {
-				externalError(w, 400, "invalid_arguments", "Choose exactly one product for secret_sources.")
-				return
-			}
-			claims := GetUserFromContext(r.Context())
-			if !externalCodeRunAllowed(claims) {
-				externalError(w, 403, "insufficient_scope", "This connection cannot inspect your Code projects. Open the project's Settings in the app.")
-				return
-			}
-			binding, _, ok := api.externalCodeRunOwnProject(r.Context(), claims.UserID, codeID)
-			if !ok {
-				externalError(w, 404, "not_found", "Code project not found. Choose one of your own projects.")
-				return
-			}
-			externalJSON(w, api.secretSources(r.Context(), claims.UserID, binding.WorkspacePath))
-			return
-		}
+
 		hasCrew, hasWorkflow := externalArg(call.Arguments, "crew_id") != "", externalArg(call.Arguments, "workflow_id") != ""
 		if hasCrew == hasWorkflow {
 			externalError(w, 400, "invalid_arguments", "Pass exactly one of workflow_id or crew_id.")
@@ -797,10 +785,6 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if tool.Name == "manage_condition_triggers" {
 		api.externalWatcherCall(w, r, call.Arguments)
-		return
-	}
-	if isExternalCodeRunTool(tool.Name) {
-		api.externalCodeRunCall(w, r, tool.Name, call.Arguments)
 		return
 	}
 	if isExternalTokenLimitTool(tool.Name) {

@@ -9,7 +9,6 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/knowledgebaseproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/relayproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/sparkquillproduct"
@@ -24,7 +23,6 @@ func productWorkingTips() (map[string][]agentprofiles.WorkingTip, error) {
 	loaders := map[string]func() (agentprofiles.ProductManifest, error){
 		"agentworks":    agentworksproduct.AgentWorksManifest,
 		"relays":        relayproduct.Manifest,
-		"code":          codeproduct.CodeManifest,
 		"work":          workproduct.WorkManifest,
 		"video-studio":  videoproduct.VideoStudioManifest,
 		"sparkquill":    sparkquillproduct.SparkQuillManifest,

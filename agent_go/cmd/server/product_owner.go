@@ -34,7 +34,7 @@ import (
 // backfill stamp the victim's manifest with the attacker's id).
 
 // productOwnerProducts are the product ids whose product.json carries owner_id.
-var productOwnerProducts = map[string]bool{"work": true, "code": true}
+var productOwnerProducts = map[string]bool{"work": true}
 
 // productOwnerFromPath is the owner a project's physical path names ("" for a logical or shared-root path).
 func productOwnerFromPath(root string) string {
@@ -54,7 +54,7 @@ type projectIdentity struct {
 	Shared    bool
 }
 
-// projectIdentityOf parses a project root in any physical spelling (per-user Crew/Code, or Crew/<folder>).
+// projectIdentityOf recognizes the canonical Crew root.
 func projectIdentityOf(root string) (projectIdentity, bool) {
 	ref, ok := workspaceref.Parse(filepath.ToSlash(strings.TrimSpace(root)))
 	if !ok {
@@ -66,20 +66,7 @@ func projectIdentityOf(root string) (projectIdentity, bool) {
 		}
 		return projectIdentity{Product: "work", Folder: folder, Shared: true}, true
 	}
-	projectRoot, folder, isProject := ref.Project()
-	if !isProject {
-		return projectIdentity{}, false
-	}
-	id := projectIdentity{Folder: folder, PathOwner: ref.Owner()}
-	switch projectRoot {
-	case workspaceref.CrewProjectsRoot:
-		id.Product = "work"
-	case workspaceref.CodeProjectsRoot:
-		id.Product = "code"
-	default:
-		return projectIdentity{}, false
-	}
-	return id, true
+	return projectIdentity{}, false
 }
 
 // resolveProjectOwner returns the owner of the Crew or Code at root: the registry's, else the path's. It never reads
@@ -317,9 +304,7 @@ func ensureProjectOwnerID(ctx context.Context, root, callerID string) {
 	}
 	defer docs.Close()
 	projectsRoot := workspaceref.CrewProjectsRoot
-	if id.Product == "code" {
-		projectsRoot = workspaceref.CodeProjectsRoot
-	}
+
 	if _, err := stampProjectManifestSafely(docs, owner, projectsRoot, id.Folder); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		logUnsafeProjectPath(owner+"/"+projectsRoot+"/"+id.Folder, err)
 	}
@@ -400,115 +385,13 @@ func scanProductOwners(docsDir string) productOwnerMigrationReport {
 		return report
 	}
 	defer docs.Close()
-	users, err := listProjectDirNames(docs, workspaceref.UsersDir)
+	_, err = listProjectDirNames(docs, workspaceref.UsersDir)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		report.Failures = append(report.Failures, err.Error())
 		return report
 	}
 	report.AudienceBaselineReady = true
-	registry := defaultProjectOwners()
-	_, baselineErr := os.Stat(filepath.Join(registry.dir, "audience-baseline-v1"))
-	preserveLegacyAudience := registry.dir != "" && errors.Is(baselineErr, os.ErrNotExist)
-	for _, user := range users {
-		if sanitizeUserIDForPath(user) != user {
-			continue
-		}
-		for _, projectsRoot := range workspaceref.ProjectRoots {
-			product := "work"
-			if projectsRoot == workspaceref.CodeProjectsRoot {
-				product = "code"
-			}
-			folders, err := listProjectNamesUnder(docs, user, projectsRoot)
-			if err != nil {
-				if errors.Is(err, errUnsafeProjectPath) {
-					report.Unsafe++
-					logUnsafeProjectPath(user+"/"+projectsRoot, err)
-				} else if !errors.Is(err, os.ErrNotExist) {
-					report.Failures = append(report.Failures, err.Error())
-				}
-				continue
-			}
-			for _, folder := range folders {
-				report.Scanned++
-				where := user + "/" + projectsRoot + "/" + folder
-				project, err := openProjectDir(docs, user, projectsRoot, folder)
-				if err != nil {
-					if errors.Is(err, errUnsafeProjectPath) {
-						report.Unsafe++
-						logUnsafeProjectPath(where, err)
-					} else {
-						report.Skipped++
-					}
-					continue
-				}
-				raw, perm, err := readProjectManifest(project)
-				if err != nil {
-					_ = project.Close()
-					if errors.Is(err, errUnsafeProjectPath) {
-						report.Unsafe++
-						logUnsafeProjectPath(where+"/product.json", err)
-					} else {
-						report.Skipped++
-					}
-					continue
-				}
-				existing, manifestProduct, ok := productManifestOwnerID(raw)
-				if !ok || manifestProduct != product {
-					_ = project.Close()
-					report.Skipped++
-					continue
-				}
-				var manifestID struct {
-					ID string `json:"id"`
-				}
-				_ = json.Unmarshal([]byte(raw), &manifestID)
-				id := projectIdentity{Product: product, Folder: folder, PathOwner: user}
-				if registered, conflict := registeredOwnerConflict(id, user); conflict {
-					report.Conflicts++
-					log.Printf("[OWNER_MISMATCH] %s: the folder is registered to %q; this copy in %q's tree is not registered", where, registered, user)
-					_ = project.Close()
-					continue
-				} else if registered != "" {
-					if product == "code" {
-						if err := registry.Register(projectOwnerRecord{Product: product, Folder: folder, OwnerID: user, ProjectID: strings.TrimSpace(manifestID.ID), Private: !(product == "work" && preserveLegacyAudience), AudienceConfigured: true}); err != nil {
-							report.Failures = append(report.Failures, err.Error())
-						}
-					}
-					report.Registry++
-				} else if err := registry.Register(projectOwnerRecord{Product: product, Folder: folder, OwnerID: user, ProjectID: strings.TrimSpace(manifestID.ID), Private: !(product == "work" && preserveLegacyAudience), AudienceConfigured: true}); err != nil {
-					report.Failures = append(report.Failures, fmt.Sprintf("%s: %v", where, err))
-					_ = project.Close()
-					continue
-				} else {
-					report.Registered++
-				}
-				if existing != "" {
-					report.Current++
-					if existing != user {
-						report.Mismatched++
-						log.Printf("[OWNER_MISMATCH] %s: manifest owner_id %q differs from the owner %q; the manifest is information only and is ignored", where, existing, user)
-					}
-					_ = project.Close()
-					continue
-				}
-				stamped, changed, err := stampProductOwner(raw, user)
-				if err != nil || !changed {
-					report.Skipped++
-					if err != nil {
-						report.Failures = append(report.Failures, fmt.Sprintf("%s: %v", where, err))
-					}
-					_ = project.Close()
-					continue
-				}
-				if err := writeProjectManifest(project, stamped, perm); err != nil {
-					report.Failures = append(report.Failures, fmt.Sprintf("%s: %v", where, err))
-				} else {
-					report.Stamped++
-				}
-				_ = project.Close()
-			}
-		}
-	}
+
 	return report
 }
 

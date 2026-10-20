@@ -1,20 +1,17 @@
-// Crew and Code are two product definitions over the same project surface
-// (agent_go/internal/workproduct and internal/codeproduct). The surface and
-// its panels read what differs from this config instead of forking.
 import { createContext, useContext } from 'react'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 
-export type ProjectProductId = 'work' | 'code'
+export type ProjectProductId = 'work'
 
 export type ProjectProductConfig = {
   /** Agent profile id and product surface id. */
   profileId: ProjectProductId
   profileVersion: number
-  /** Logical projects root below the owner's tree. */
+  /** Canonical project root. */
   projectsRoot: string
   sessionPrefix: string
   slugFallback: string
-  /** Product name in UI copy: "Crew" or "Code". */
+  /** Product name in UI copy. */
   noun: string
   /** Name of one project in UI copy. */
   itemNoun: string
@@ -35,15 +32,12 @@ export type ProjectProductConfig = {
   defaultView: WorkWorkspaceView
   /** localStorage key namespace for per-project UI preferences. */
   preferenceNamespace: string
-  /** Explicit canonical key/legacy origin when Crew and Code consolidate. IDs and labels alone never imply a migration. */
-  shortcutPreferenceProduct?: ProjectProductId
-  shortcutPreferenceLegacyProduct?: ProjectProductId
 }
 
 export const CREW_PRODUCT: ProjectProductConfig = {
   profileId: 'work',
   profileVersion: 3,
-  projectsRoot: 'Chats/Work/projects',
+  projectsRoot: 'Crew',
   sessionPrefix: 'work:project',
   slugFallback: 'workspace',
   noun: 'Crew',
@@ -58,43 +52,21 @@ export const CREW_PRODUCT: ProjectProductConfig = {
   preferenceNamespace: 'work',
 }
 
-export const CODE_PRODUCT: ProjectProductConfig = {
-  profileId: 'code',
-  profileVersion: 1,
-  projectsRoot: 'Chats/Code/projects',
-  sessionPrefix: 'code:project',
-  slugFallback: 'code',
-  noun: 'Crew',
-  itemNoun: 'Crew',
-  hasIdentity: true,
-  hasTemplates: true,
-  hasTerminal: true,
-  listsSharedProjects: true,
-  // Native agent tools are always on in a Code (owner decision 2026-09-29):
-  // no switch, and the server ignores a stored "off".
-  hasNativeAgentToolsSetting: false,
-  defaultView: 'files',
-  preferenceNamespace: 'code',
-}
-
-export const PROJECT_PRODUCT_IDS: readonly ProjectProductId[] = ['work', 'code']
+export const PROJECT_PRODUCT_IDS: readonly ProjectProductId[] = ['work']
 
 export function isProjectProductId(value: unknown): value is ProjectProductId {
-  return value === 'work' || value === 'code'
+  return value === 'work'
 }
 
 export function projectProductConfig(profileId: ProjectProductId): ProjectProductConfig {
-  return profileId === 'code' ? CODE_PRODUCT : CREW_PRODUCT
+  return CREW_PRODUCT
 }
 
 /** The project product of a workspace path, logical or under _users/<owner>/. */
 export function projectProductForPath(path: string | undefined): ProjectProductConfig | null {
-  const clean = (path || '').replace(/^\/+/, '').replace(/^_users\/[^/]+\//, '')
+  const clean = (path || '').replace(/^\/+/, '')
   // A Crew at the shared root (Crew/<folder>) is a Crew project like one in its owner's tree.
   if (/^Crew\/[^/.][^/]*(\/|$)/.test(clean)) return CREW_PRODUCT
-  for (const product of [CREW_PRODUCT, CODE_PRODUCT]) {
-    if (clean.startsWith(`${product.projectsRoot}/`) && clean.length > product.projectsRoot.length + 1) return product
-  }
   return null
 }
 

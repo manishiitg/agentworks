@@ -204,7 +204,7 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 		rev    string
 	}{
 		{"reader", []string{"dashboards:read", "code:run"}, []string{"invoices"}, codeRoot, "code-view", codeRev},
-		{"owner", []string{"dashboards:read", "code:review"}, []string{"invoices"}, codeRoot, "code-view", codeRev},
+		{"owner", []string{"dashboards:read", "crews:review"}, []string{"invoices"}, codeRoot, "code-view", codeRev},
 		{"owner", []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "relays:write"}, []string{"invoices"}, codeRoot, "code-view", codeRev},
 		{"reader", []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "relays:write"}, []string{"invoices"}, "Workflow/invoices", "relay-view", relayRev},
 		{"owner", []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "relays:write"}, []string{"other"}, "Workflow/invoices", "relay-view", relayRev},

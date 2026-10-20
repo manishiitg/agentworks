@@ -2,7 +2,6 @@ import { ServerProductSurface } from './components/ServerProductSurface'
 import LlmModalHost from './components/topbar/LlmModalHost'
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // Code is a second product definition over the same project surface.
-import { CODE_PRODUCT } from './products/work/projectProduct'
 import { useShallow } from "zustand/react/shallow";
 import { useEffect, useCallback, useRef, useState, lazy, Suspense } from "react";
 import { ThemeProvider } from "./contexts/ThemeContext.tsx";
@@ -799,8 +798,6 @@ function AppWorkspace() {
           <Suspense fallback={<ProductSurfaceFallback label="Brain" />}><KnowledgebaseSurface /></Suspense>
         ) : productSurface === 'work' ? (
           <Suspense fallback={<ProductSurfaceFallback label="Crew" />}><WorkSurface key="work" /></Suspense>
-        ) : productSurface === 'code' ? (
-          <Suspense fallback={<ProductSurfaceFallback label="Code" />}><WorkSurface key="code" product={CODE_PRODUCT} /></Suspense>
         ) : productSurface === 'llm-gateway' ? (
           <ServerProductSurface product="llm-gateway" label="LLM Gateway" />
         ) : productSurface === 'mcp-gateway' ? (

@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/mcpagent/oauth"
 	"golang.org/x/oauth2"
 )
@@ -68,15 +67,6 @@ func TestCodeSessionsResolveOnlyTheirCodesConnections(t *testing.T) {
 	}
 	if _, _, err := api.resolveCodeMCPServer(ctx, "alice-chat", inX, "ask"); err == nil || !strings.Contains(err.Error(), "not available") {
 		t.Fatalf("a removed connection resolved: %v", err)
-	}
-
-	common.MarkCodeSession("lost-pin", codeX)
-	t.Cleanup(func() { common.ClearSessionShellConfig("lost-pin") })
-	if _, isCode, err := api.resolveCodeMCPServer(ctx, "lost-pin", "linear", "list"); !isCode || err == nil {
-		t.Fatalf("a Code session without a pin fell through: %v %v", isCode, err)
-	}
-	if _, isCode, err := api.resolveCodeMCPServer(ctx, "crew-chat", "linear", "list"); isCode || err != nil {
-		t.Fatalf("a non-Code session was claimed: %v %v", isCode, err)
 	}
 
 	// The turn gets the Code's connections as ordinary servers with complete

@@ -112,7 +112,7 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, onCounts, o
   return <div className="h-full min-w-0 w-full max-w-none overflow-x-hidden overflow-y-auto bg-background">
     <div className="space-y-4 p-4">
       <AutomationIntro icon={Braces} tone="sky" title="Functions" action={onEdit ? <button type="button" className={buttonClass} onClick={() => void onEdit('I want to add a function to this Crew. Ask me what it should do, then set it up.')}>Add in chat</button> : undefined}>
-        Jobs other Crews, workflows and agents can ask this {scope.profileId === 'code' ? 'project' : 'Crew'} to do. Each one works in its own tab here and keeps its history; one set to Fresh starts clean every time.
+        Jobs other Crews, workflows and agents can ask this Crew to do. Each one works in its own tab here and keeps its history; one set to Fresh starts clean every time.
       </AutomationIntro>
       {error && <p role="alert" className="rounded-md border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
       {functions.length > 6 && <input type="search" value={filter} onChange={event => setFilter(event.target.value)} placeholder={`Search ${functions.length} functions`} aria-label="Search functions" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm" />}
@@ -142,7 +142,7 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, onCounts, o
 
       <section className="space-y-2" data-testid="crew-function-callers">
         <h3 className="text-sm font-medium">Callers</h3>
-        {callers.length === 0 && <p className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">Nothing has called this {scope.profileId === 'code' ? 'Code project' : 'Crew'} yet.</p>}
+        {callers.length === 0 && <p className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">Nothing has called this Crew yet.</p>}
         {callers.map(caller => <div key={caller.id} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-border p-2 text-xs">
           <span className="min-w-0 truncate">{caller.name}<span className="text-muted-foreground"> · {CALLER_KIND[caller.caller?.type ?? ''] ?? 'Caller'}{caller.enabled ? '' : ' · disabled'}</span></span>
           <button type="button" disabled={busy} className={buttonClass} title="Remove this caller's binding; its next call creates a new one" onClick={() => void disconnect(caller.id)}>Disconnect</button>

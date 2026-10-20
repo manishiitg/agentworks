@@ -1273,7 +1273,7 @@ func isProductRuntimeManifestWorkspace(workspacePath string) bool {
 	if _, _, crew := workspaceref.MustParse(workspacePath).AnyCrewProject(); crew {
 		return true
 	}
-	return isCodeProjectPath(workspacePath)
+	return isProjectWorkspacePath(workspacePath)
 }
 
 func workflowLabelFromWorkspacePath(workspacePath string) string {

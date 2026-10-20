@@ -28,7 +28,7 @@ type codeSessionPin struct {
 	CreatedAt string `json:"created_at"`
 }
 
-var errCodeSessionPinnedToAnother = errors.New("this Code chat belongs to another person")
+var errCodeSessionPinnedToAnother = errors.New("this Crew chat belongs to another person")
 
 // cleanCodeRoot keeps a Code's full physical path (_users/<owner>/...): unlike
 // normalizeConversationWorkspace it never drops the owner, so two people's
@@ -77,7 +77,7 @@ func pinCodeSession(sessionID, person, codeRoot string) error {
 	person = sanitizeUserIDForPath(strings.TrimSpace(person))
 	codeRoot = cleanCodeRoot(codeRoot)
 	if strings.TrimSpace(sessionID) == "" || person == "" || codeRoot == "" {
-		return fmt.Errorf("a Code chat needs a session, a person and a Code")
+		return fmt.Errorf("a Crew chat needs a session, a person and a Crew")
 	}
 	path, err := codeSessionPinPath(sessionID)
 	if err != nil {
@@ -121,20 +121,20 @@ func inheritCodeSessionPin(parentSessionID, childSessionID string) error {
 }
 
 // codeSessionTurnRefusal is why a request may not add a turn to sessionID,
-// or "" when it may: a pinned Code chat accepts turns only from its own
+// or "" when it may: a pinned Crew chat accepts turns only from its own
 // person, and never from a channel-route (bot_route) principal, which acts
 // for arbitrary channel members. Every entry that adds a turn to an existing
 // session checks it (handleQuery before live-input delivery, /live-input).
 func codeSessionTurnRefusal(sessionID string, claims *UserClaims) string {
 	pin, pinned, err := codeSessionPinFor(sessionID)
 	if err != nil {
-		return "This Code chat is unavailable."
+		return "This Crew chat is unavailable."
 	}
 	if !pinned {
 		return ""
 	}
 	if claims == nil || claims.Provider == "bot_route" || sanitizeUserIDForPath(strings.TrimSpace(claims.UserID)) != pin.Person {
-		return "This Code chat belongs to another person. Open your own chat of this Code."
+		return "This Crew chat belongs to another person. Open your own chat of this Code."
 	}
 	return ""
 }

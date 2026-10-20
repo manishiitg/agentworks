@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -336,10 +335,7 @@ func putSlackConnectionChannelRouteHandler(api *StreamingAPI) http.HandlerFunc {
 			return
 		}
 		// A Code talks 1:1 only (Slack DMs, WhatsApp); it never gets a channel.
-		if strings.EqualFold(profileID, codeproduct.ProfileID) || isCodeProjectPath(workspacePath) {
-			http.Error(w, "Code workspaces answer only 1:1 Slack DMs and WhatsApp, not Slack channels", http.StatusBadRequest)
-			return
-		}
+
 		if err := requireSlackRouteDestinationWriter(r.Context(), api, workspacePath, profileID); err != nil {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return
@@ -696,7 +692,7 @@ func listSlackBotChannelsHandler(api *StreamingAPI) http.HandlerFunc {
 			allowed, def := []services.SlackTargetRef{}, services.SlackTargetRef{}
 			if found {
 				allowed, def = entry.Allowed(), entry.Default()
-			} else if !own.IsCode() {
+			} else {
 				allowed, def = []services.SlackTargetRef{own}, own
 			}
 			for _, target := range allowed {
