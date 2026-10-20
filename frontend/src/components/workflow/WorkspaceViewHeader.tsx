@@ -77,6 +77,18 @@ function isRefreshAction(node: ReactNode): boolean {
   return Children.toArray(node.props.children).some(isRefreshAction)
 }
 
+/** The panels refresh themselves now (owner, 2026-10-20), so the header's own Refresh icons are dropped. */
+function isPlainRefresh(node: ReactNode): boolean {
+  return isValidElement<{ label?: string; icon?: unknown }>(node) && node.type === WorkspaceViewIconButton && node.props.icon == null && /^refresh/i.test(node.props.label ?? '')
+}
+
+function withoutRefresh(actions: ReactNode): ReactNode {
+  if (isValidElement<WorkspaceViewActionsProps>(actions) && actions.type === WorkspaceViewActions) return cloneElement(actions, { hideRefresh: true })
+  if (isPlainRefresh(actions)) return null
+  if (isValidElement<{ children?: ReactNode }>(actions) && actions.type === Fragment) return <>{Children.toArray(actions.props.children).filter(child => !isPlainRefresh(child))}</>
+  return actions
+}
+
 function withAsk(walkthrough: ReactNode, ask: PanelGuideAsk | undefined): ReactNode {
   if (!ask || !isValidElement<{ ask?: PanelGuideAsk }>(walkthrough)) return walkthrough
   return cloneElement(walkthrough, { ask })
@@ -118,7 +130,7 @@ export function WorkspaceViewHeader({
   showWalkthrough = true,
   context,
   subtitle,
-  actions,
+  actions: rawActions,
   below,
   tabs,
   sticky = false,
@@ -126,6 +138,7 @@ export function WorkspaceViewHeader({
   className = '',
   tabActions,
 }: WorkspaceViewHeaderProps) {
+  const actions = withoutRefresh(rawActions)
   const hasSubtitle = typeof subtitle === 'string' ? subtitle.trim().length > 0 : Boolean(subtitle)
   const tabExtra = tabs ? tabActions?.[tabs.value] : undefined
   const guideTopic = helpTopic ?? (typeof title === 'string' ? title : '')

@@ -10,6 +10,8 @@ export interface WorkspaceViewActionsProps {
   /** Ask AI routing override (Crew panes route to the project chat). */
   onAsk?: (message: string) => void | Promise<void>
   walkthrough?: ReactNode
+  /** The panel refreshes itself, so the header shows no Refresh icon (owner, 2026-10-20). */
+  hideRefresh?: boolean
 }
 
 /**
@@ -24,11 +26,12 @@ export function WorkspaceViewActions({
   refreshing = false,
   refreshLabel = 'Refresh view',
   walkthrough,
+  hideRefresh = false,
 }: WorkspaceViewActionsProps) {
   return (
     <div className="flex shrink-0 items-center gap-2">
       {walkthrough}
-      <WorkspaceViewIconButton label={refreshLabel} onClick={onRefresh} disabled={refreshing} spinning={refreshing} />
+      {!hideRefresh && <WorkspaceViewIconButton label={refreshLabel} onClick={onRefresh} disabled={refreshing} spinning={refreshing} />}
     </div>
   )
 }
