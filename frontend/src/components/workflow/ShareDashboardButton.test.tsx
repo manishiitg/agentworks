@@ -30,7 +30,7 @@ it('does not expose sharing controls when the server refuses sharing, including 
   const root = createRoot(host)
   post.mockResolvedValue({ data: { mode: 'private', can_share: false } })
   try {
-    await act(async () => root.render(<ShareDashboardButton workspacePath="Workflow/reader" inline label="Manage people & access" />))
+    await act(async () => root.render(<ShareDashboardButton workspacePath="Workflow/reader" variant="row" label="Manage people & access" />))
     expect(host.querySelector('button')).toBeNull()
     expect(host.querySelector('[role="dialog"]')).toBeNull()
   } finally {

@@ -97,7 +97,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
     { id: 'context', label: 'Project menu' },
     ...(!relayMode && pulseEnabled ? [{ id: 'pulse', label: 'Pulse' }] : []),
     { id: 'report', label: 'Dashboard', group: 'Use & share' },
-    { id: 'context:share', label: 'Share', group: 'Use & share' },
+    { id: 'mcp:share', label: 'Share', group: 'Use & share' },
     ...(!relayMode ? [{ id: 'browser', label: 'Browser', group: 'Use & share' }] : []),
     ...projectAutomationSections({ relay: relayMode, incomingEmail }).map(item => ({ id: `workshop:${item.id}`, label: item.label, group: 'Use & share' })),
     ...projectChannelSections(true, !relayMode).map(item => ({ id: `mcp:${item.id}`, label: item.label, group: 'Use & share' })),

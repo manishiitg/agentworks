@@ -79,7 +79,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   useRegisterPanelSwitcher(isCode ? 'code' : 'work', [
     ...(!readOnly ? [{ id: 'context', label: 'Project menu' }] : []),
     ...admitted.filter(item => ['dashboard', 'browser'].includes(item.id)).map(item => ({ id: item.id, label: item.label, group: 'Use & share' })),
-    ...(has('dashboard') && !readOnly ? [{ id: 'context:share', label: 'Share', group: 'Use & share' }] : []),
+    ...(has('dashboard') && !readOnly ? [{ id: 'mcp:share', label: 'Share', group: 'Use & share' }] : []),
     ...(has('schedules') ? projectAutomationSections({ incomingEmail, triggers: enabledPanels?.has('triggers') !== false }).map(item => ({ id: `schedules:${item.id}`, label: item.label, group: 'Use & share' })) : []),
     ...(canConnect ? projectChannelSections(bots, bots).map(item => ({ id: `mcp:${item.id}`, label: item.label, group: 'Use & share' })) : []),
     ...(canConnect ? projectConnectionSections({ allowedProducts, workMode: true, enabledPanels, onOpen: () => {} }).map(item => ({ id: item.id, label: item.label, group: 'Connections' })) : []),

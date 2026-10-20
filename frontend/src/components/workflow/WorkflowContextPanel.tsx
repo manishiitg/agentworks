@@ -32,7 +32,7 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
     <Group title="Use & share">
       <Row icon={LayoutDashboard} onClick={() => { selectReportDocument(workspacePath, defaultPath); open('report') }}>Dashboard</Row>
       {documents.filter(document => document.path !== defaultPath).map(document => <Row key={document.path} icon={LayoutDashboard} hint={document.path} onClick={() => { selectReportDocument(workspacePath, document.path); open('report') }}>{reportDocumentLabel(document, documents)}</Row>)}
-      <ShareDashboardButton workspacePath={workspacePath} inline />
+      <ShareDashboardButton workspacePath={workspacePath} variant="row" onOpen={() => openConnection('share')} />
       {!relayMode && <WorkspaceBrowserRow workspacePath={workspacePath} profileId="workflow" onClick={() => open('browser')} />}
       <WorkspaceAutomationRows relay={relayMode} onOpen={section => open('workshop', section)} />
       <WorkspaceChannelRows onOpen={openConnection} slack={true} whatsapp={!relayMode} />

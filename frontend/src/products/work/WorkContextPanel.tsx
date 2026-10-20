@@ -43,7 +43,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       {allowed('dashboard') && <>
         <Row icon={LayoutDashboard} onClick={() => { selectReportDocument(workspacePath, defaultPath); onOpen('dashboard') }}>Dashboard</Row>
         {documents.filter(document => document.path !== defaultPath).map(document => <Row key={document.path} icon={LayoutDashboard} hint={document.path} onClick={() => { selectReportDocument(workspacePath, document.path); onOpen('dashboard') }}>{reportDocumentLabel(document, documents)}</Row>)}
-        <ShareDashboardButton workspacePath={workspacePath} inline />
+        {allowed('mcp') && <ShareDashboardButton workspacePath={workspacePath} variant="row" onOpen={() => openConnection('share')} />}
       </>}
       {allowed('browser') && <WorkspaceBrowserRow workspacePath={workspacePath} profileId={profileId} onClick={() => onOpen('browser')} />}
       {allowed('schedules') && <WorkspaceAutomationRows onOpen={openAutomation} triggers={enabledPanels?.has('triggers') !== false} />}

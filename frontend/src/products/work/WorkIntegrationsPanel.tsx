@@ -2,6 +2,7 @@ import { ProjectSecretsPanel } from '../../components/integrations/ProjectSecret
 import { useState } from 'react'
 import { Laptop, Server, Users } from 'lucide-react'
 import { ProductSlackPanel } from '../../components/integrations/ProductSlackPanel'
+import { ShareDashboardButton } from '../../components/workflow/ShareDashboardButton'
 import { projectChannelLabel, type ProjectChannel } from '../../components/integrations/projectChannels'
 import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
 import WorkflowEmailPanel from '../../components/workflow/WorkflowEmailPanel'
@@ -122,7 +123,7 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
   const navigationOptions = [...integrationNavigationOptions(visibleTabs, pluginTabs), ...(canEdit ? [{ value: 'agents', label: 'Chats from your computer', icon: Laptop }] : [])]
   const selectConnection = (target: string) => {
     if (target === 'agents' && canEdit) { setSharing(false); setOverview(false); setTab('agents'); return }
-    if (target === 'cli' || (target === 'slack' && visibleTabs.some(option => option.value === 'slack')) || (target === 'whatsapp' && visibleTabs.some(option => option.value === 'whatsapp'))) { setSharing(true); setShareChannel(target as ProjectChannel); return }
+    if (target === 'share' || target === 'cli' || (target === 'slack' && visibleTabs.some(option => option.value === 'slack')) || (target === 'whatsapp' && visibleTabs.some(option => option.value === 'whatsapp'))) { setSharing(true); setShareChannel(target as ProjectChannel); return }
     if (target === 'overview' || target === 'apps') { setSharing(false); setOverview(true); setTab('apps'); return }
     if (!visibleTabs.some(option => option.value === target) && !pluginTabs.some(option => option.value === target)) return
     setSharing(false); setOverview(false)
@@ -158,7 +159,7 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
       />
       <div data-ui-view-section={sharing ? shareChannel : activeConnection} key={`${sharing ? shareChannel : activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
         {sharing ? <>
-          {shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <>{shareChannel === 'slack' ? <ProductSlackPanel workspacePath={workspacePath} noun="Crew" /> : <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" scopeNoun="project" onAsk={onAsk} target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }} />}</>}
+          {shareChannel === 'share' ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" /> : shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <>{shareChannel === 'slack' ? <ProductSlackPanel workspacePath={workspacePath} noun="Crew" /> : <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" scopeNoun="project" onAsk={onAsk} target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }} />}</>}
         </> : <>
         {overview && canEdit && <button type="button" onClick={() => selectConnection('agents')} className="mb-4 flex w-full items-center gap-2 rounded-md border border-border p-3 text-left text-sm hover:bg-muted/40"><Laptop className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />Chats from your computer</button>}
         {activeTab === 'agents' && canEdit && <CrewPublishedAgents key={`${product.profileId}:${projectId}`} profileId={product.profileId} projectId={projectId} />}

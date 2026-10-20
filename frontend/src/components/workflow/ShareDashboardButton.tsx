@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Users } from 'lucide-react'
-import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import api from '../../services/api'
 import { WorkspaceContextRow as Row } from '../workspace/WorkspaceContextCard'
 
@@ -29,7 +28,9 @@ const OPTIONS: { mode: ShareState['mode']; label: string; hint: string }[] = [
 
 /** Share this dashboard (and so its Crew, workflow or Relay). The server decides who may share and what a share gives;
  * the screen only sends the choice and shows the answer. Hidden unless the server says this person can share. */
-export function ShareDashboardButton({ workspacePath, label = 'Share', inline = false }: { workspacePath: string; label?: string; inline?: boolean }) {
+/** variant 'button' is the floating Share button on a dashboard (options in a popup); 'row' is the side-list entry that
+ * shows the current choice and calls onOpen; 'panel' is the options themselves, drawn full width in the workspace. */
+export function ShareDashboardButton({ workspacePath, label = 'Share', variant = 'button', onOpen }: { workspacePath: string; label?: string; variant?: 'button' | 'row' | 'panel'; onOpen?: () => void }) {
   const [state, setState] = useState<ShareState | null>(null)
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<ShareState['mode']>('private')
@@ -77,8 +78,10 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', inline = 
   }, [workspacePath])
 
   useEffect(() => { void load() }, [load])
-  useWorkspaceViewTarget('context', target => { if (target === 'share') { void loadOwners(); setOpen(true) } }, inline && state?.can_share === true)
-  if (!state?.can_share) return null
+  const isPanel = variant === 'panel'
+  useEffect(() => { if (isPanel) { void loadOwners(); setOpen(true) } }, [isPanel, loadOwners])
+  if (!state?.can_share) return isPanel && state ? <p className="text-sm text-muted-foreground">Only the owner can change who this is shared with.</p> : null
+  if (variant === 'row') return <Row icon={Users} detail={OPTIONS.find(option => option.mode === state.mode)?.label} onClick={() => onOpen?.()}>{label}</Row>
 
   const save = async () => {
     setBusy(true)
@@ -102,17 +105,7 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', inline = 
     }
   }
 
-  return (
-    <div className="relative">
-      {inline
-        ? <Row icon={Users} detail={OPTIONS.find(option => option.mode === state.mode)?.label} onClick={() => { if (!open) void loadOwners(); setOpen(v => !v) }}>{label}</Row>
-        : <button type="button" onClick={() => { if (!open) void loadOwners(); setOpen(v => !v) }} aria-label={label} title={label} aria-expanded={open}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background/95 px-2 text-xs text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground">
-          <Users className="h-3.5 w-3.5" /> {label}
-        </button>}
-      {open && inline && <div aria-hidden="true" className="fixed inset-0 z-40 bg-black/40" onClick={() => setOpen(false)} />}
-      {open && (
-        <div role="dialog" aria-label="Share" className={`${inline ? 'fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto' : 'absolute right-0 z-50 mt-1 w-72'} space-y-2 rounded-md border border-border bg-background p-3 text-sm shadow-lg`}>
+  const content = <>
           <p className="text-xs text-muted-foreground">People you share with open its dashboard, can ask it, use its functions and read its files (not secrets).</p>
           {state.accounts && state.accounts.length > 0 && <div className="space-y-1 border-b border-border pb-2" aria-label="Selected accounts">
             <p className="text-xs font-medium">Accounts this project uses</p>
@@ -155,11 +148,18 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', inline = 
           )}
           {message && <p className="text-xs text-muted-foreground" role="status">{message}</p>}
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setOpen(false)} className="rounded-md px-2 py-1 text-xs hover:bg-muted">Close</button>
+            {!isPanel && <button type="button" onClick={() => setOpen(false)} className="rounded-md px-2 py-1 text-xs hover:bg-muted">Close</button>}
             <button type="button" disabled={busy} onClick={() => void save()} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">{busy ? 'Saving…' : 'Save'}</button>
           </div>
-        </div>
-      )}
+  </>
+  if (isPanel) return <div className="max-w-xl space-y-3 text-sm">{content}</div>
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => { if (!open) void loadOwners(); setOpen(v => !v) }} aria-label={label} title={label} aria-expanded={open}
+        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background/95 px-2 text-xs text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground">
+        <Users className="h-3.5 w-3.5" /> {label}
+      </button>
+      {open && <div role="dialog" aria-label="Share" className="absolute right-0 z-50 mt-1 w-72 space-y-2 rounded-md border border-border bg-background p-3 text-sm shadow-lg">{content}</div>}
     </div>
   )
 }
