@@ -3937,7 +3937,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		req.ExternalBuilderOperationID = claims.ExternalBuilderOperationID
 	}
 	if req.ExternalBuilderOperationID != "" {
-		claims, err := api.validateExternalBuilderTurn(r.Context(), req.ExternalBuilderOperationID, r.Header.Get("X-Session-ID"), req.SelectedFolder)
+		claims, err := api.externalBuilderRunClaims(r.Context(), req.ExternalBuilderOperationID, r.Header.Get("X-Session-ID"), req.SelectedFolder)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return

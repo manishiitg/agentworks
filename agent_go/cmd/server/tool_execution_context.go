@@ -119,7 +119,7 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 			// Resolve the persisted grant for every tool, including delegated tools.
 			// The operation is bound to the durable parent, never the child ID.
 			validationCtx := context.WithValue(ctx, UserContextKey, &copy)
-			fresh, err := api.validateExternalBuilderTurn(validationCtx, copy.ExternalBuilderOperationID, authoritySession, req.SelectedFolder)
+			fresh, err := api.externalBuilderRunClaims(validationCtx, copy.ExternalBuilderOperationID, authoritySession, req.SelectedFolder)
 			if err != nil {
 				return nil, err
 			}

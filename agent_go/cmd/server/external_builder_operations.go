@@ -226,6 +226,28 @@ func (api *StreamingAPI) validateExternalBuilderTurn(ctx context.Context, id, se
 	return live, nil
 }
 
+// externalBuilderRunClaims is validateExternalBuilderTurn for tool calls. A
+// step or workflow run that a Builder operation started outlives the
+// operation, so it keeps acting as the person while their grant still allows
+// Builder on that workflow (job search browser calls failed 2026-10-20).
+func (api *StreamingAPI) externalBuilderRunClaims(ctx context.Context, id, session, workspace string) (*UserClaims, error) {
+	live, err := api.validateExternalBuilderTurn(ctx, id, session, workspace)
+	if err == nil {
+		return live, nil
+	}
+	op, readErr := readExternalBuilder(ctx, id)
+	claims := GetUserFromContext(ctx)
+	if readErr != nil || claims == nil || claims.AccessToken == nil || op.UserID != claims.UserID || op.GrantID != claims.AccessToken.ID || op.Workspace != workspace {
+		return nil, err
+	}
+	live, err = validateBuilderGrant(ctx, claims, op.WorkflowID, op.Workspace)
+	if err != nil {
+		return nil, err
+	}
+	live.ExternalBuilderOperationID = id
+	return live, nil
+}
+
 func (api *StreamingAPI) externalBuilderOperationCall(w http.ResponseWriter, r *http.Request, name string, args map[string]interface{}, workflow DiscoveredWorkflow) {
 	claims, err := validateBuilderGrant(r.Context(), GetUserFromContext(r.Context()), workflow.Manifest.ID, workflow.WorkspacePath)
 	if err != nil {
