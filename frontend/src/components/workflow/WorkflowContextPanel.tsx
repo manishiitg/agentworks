@@ -4,6 +4,7 @@ import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../workspace/WorkspaceContextCard'
+import { WorkspaceAgentBridgeRows } from '../workspace/WorkspaceAgentBridgeRows'
 import { WorkspaceAutomationRows, WorkspaceChannelRows, WorkspaceConnectionRows } from '../workspace/WorkspaceProjectNavigation'
 import { useProjectStatus } from '../workspace/useProjectStatus'
 import { WorkspaceBrowserRow } from '../workspace/WorkspaceBrowserRow'
@@ -41,6 +42,7 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
     </Group>
     <Group title="Connections">
       <WorkspaceConnectionRows onOpen={openConnection} relayMode={relayMode} details={{ 'mcp:connected': status.mcps === undefined ? undefined : status.mcps ? String(status.mcps) : 'None' }} />
+      <WorkspaceAgentBridgeRows />
     </Group>
     <Group title="Ops" collapsed>
       {!relayMode && !pulseOn && <Row icon={PulseIcon} onClick={() => open('pulse')}>Turn Pulse on</Row>}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BookOpen, DollarSign, Files, Hand, Laptop, LayoutDashboard, MessageSquareText, Route, Settings, Terminal, Database } from 'lucide-react'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
+import { WorkspaceAgentBridgeRows } from '../../components/workspace/WorkspaceAgentBridgeRows'
 import { WorkspaceAutomationRows, WorkspaceChannelRows, WorkspaceConnectionRows } from '../../components/workspace/WorkspaceProjectNavigation'
 import { useProjectStatus } from '../../components/workspace/useProjectStatus'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
@@ -55,6 +56,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     {allowed('mcp') && <Group title="Connections">
       <WorkspaceConnectionRows onOpen={openConnection} workMode enabledPanels={enabledPanels} details={{ 'mcp:connected': status.mcps === undefined ? undefined : status.mcps ? String(status.mcps) : 'None' }} />
       {projectId && <Row icon={Laptop} detail={status.computerChats === undefined ? undefined : status.computerChats ? String(status.computerChats) : 'None'} onClick={() => openConnection('agents')}>Chats from your computer</Row>}
+      <WorkspaceAgentBridgeRows />
     </Group>}
     <Group title="Ops" collapsed>
       {allowed('plan') && <Row icon={Route} onClick={() => onOpen('plan')}>Plan</Row>}
