@@ -40,7 +40,7 @@ Function progress is reported only by the receiving execution, whose final
 message or checked result file completes the call; external callers use
 `functions action=status` and `reply` for their own pending questions. Account-wide Google grant
 changes require a current administrator and all-Crew consent; Google sign-in
-and incoming sender approval retain their human app flows. Every call requires Crew ownership,
+and company receiving setup retain their human consent flows. Every call requires Crew ownership,
 existing `crews:write` consent and a current editable account. Shell commands
 run inside the Crew sandbox with the connection's file guard, default timeout
 25 seconds. Browser, database and connected integration operations require unrestricted Crew file

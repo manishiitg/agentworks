@@ -513,9 +513,7 @@ except Exception:
   sleep 5
 done
 
-# The personal inbox schema must be ready before this release can start.
-# Migration failure restores the original data, so cleanup restarts the old
-# release. After success it must never restart old code over the new schema.
+# Back up and retire personal Gmail intake before starting company inbox code.
 MIGRATION_STOPPED_AGENT=1
 systemctl --user stop "$PRODUCT-agent"
 python3 "$BUILD_DIR/migrations/agent-email-inboxes.py" \

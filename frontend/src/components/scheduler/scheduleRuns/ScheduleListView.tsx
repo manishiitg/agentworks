@@ -61,7 +61,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
     <div className="space-y-3 p-4" data-testid="schedule-list">
       {filteredJobs.map((job, _index, jobsList) => {
         const preset = presetMap.get(job.preset_query_id ?? '')
-        const cronDesc = job.kind === 'gmail' ? 'Gmail trigger · on email' : job.schedule_type === 'webhook' ? 'API trigger · on request' : describeCron(job.cron_expression)
+        const cronDesc = job.schedule_type === 'webhook' ? 'API trigger · on request' : describeCron(job.cron_expression)
         const localizedJobName = getLocalizedJobName(job)
         const workflowDisplayLabel = preset?.label || job.workflow_label || job.name
         const executionScope = getScheduleExecutionScope(job)
@@ -81,7 +81,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
               <div className="min-w-0 flex-1">
                 {showWorkflowIdentityInScheduleRows && (
                   <p className="truncate text-xs text-muted-foreground" title={workflowDisplayLabel}>
-                    {workflowDisplayLabel} · {job.kind === 'gmail' ? 'Gmail' : job.schedule_type === 'webhook' ? 'Webhook' : 'Schedule'}
+                    {workflowDisplayLabel} · {job.schedule_type === 'webhook' ? 'Webhook' : 'Schedule'}
                   </p>
                 )}
                 <h3 className="truncate text-sm font-medium" title={job.name}>{localizedJobName}</h3>
@@ -136,7 +136,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel }) => 
               </ol>
             )}
 
-            {job.schedule_type === 'webhook' && <WebhookEndpoint id={job.id} name={job.name} email={job.kind === 'gmail'} />}
+            {job.schedule_type === 'webhook' && <WebhookEndpoint id={job.id} name={job.name} />}
 
             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
               <span title={formatExactDateTime(job.last_run_at)}>

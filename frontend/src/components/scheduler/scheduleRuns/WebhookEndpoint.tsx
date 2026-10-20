@@ -3,13 +3,12 @@ import { Copy } from 'lucide-react'
 import { apiTriggerURL } from '../../../api/workflowWebhooks'
 import { copyToClipboard } from '../../../utils/textUtils'
 
-export function WebhookEndpoint({ id, name, email, path }: { id: string; name: string; email?: boolean; path?: string }) {
+export function WebhookEndpoint({ id, name, path }: { id: string; name: string; path?: string }) {
   const url = apiTriggerURL(path ?? `/api/hooks/workflow/${encodeURIComponent(id)}`)
   const [copyStatus, setCopyStatus] = useState('')
   const copy = async () => {
     setCopyStatus(await copyToClipboard(url) ? 'URL copied' : 'Copy failed — select the value to copy it.')
   }
-  if (email) return <p className="mt-2 text-xs text-muted-foreground">Personal inbox · Managed by its owner in Incoming email</p>
   return (
     <div className="mt-2 space-y-1">
       <div className="flex items-start gap-2 rounded border border-border bg-background p-2">
