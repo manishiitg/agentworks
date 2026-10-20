@@ -29,7 +29,16 @@ export function useProjectStatus({ kind, workspacePath, profileId, projectId, en
         conditionTriggersApi.list(projectId, profileId).then(result => (result.triggers || []).length),
         (async () => ((kind === 'crew' ? await productWebhooksApi.list(scope) : await workflowWebhooksApi.list(workspacePath)).triggers || []).length)(),
         kind === 'crew' ? crewFunctionsApi.list(scope).then(result => (result.functions || []).length) : Promise.reject(new Error('not listed')),
-        slackBotsApi.list(workspacePath).then(result => (result.allow_bots === false ? '' : result.bots.find(bot => bot.id === result.selected_id)?.name || 'Not set up')),
+        Promise.allSettled([
+          slackBotsApi.list(workspacePath),
+          api.get<{ accounts: { selected: boolean; connected: boolean }[] }>('/api/integrations/slack/accounts', { params: { workspace_path: workspacePath } }),
+        ]).then(([bots, accounts]) => {
+          const bot = bots.status === 'fulfilled' && bots.value.allow_bots !== false ? bots.value.bots.find(item => item.id === bots.value.selected_id)?.name : undefined
+          const list = accounts.status === 'fulfilled' ? accounts.value.data.accounts || [] : []
+          const used = list.some(item => item.selected && item.connected)
+          if (bot || used) return [bot, used ? 'You' : ''].filter(Boolean).join(' + ')
+          return list.some(item => item.connected) ? 'Not used here' : 'Not set up'
+        }),
         agentApi.getWhatsAppStatus().then(result => (result.connected ? 'Connected' : result.paired ? 'Not connected' : 'Not set up')),
         agentApi.getGmailInboundRoute(workspacePath).then(result => result.inbox?.address || 'Not set up'),
         placeMcpApi.list(workspacePath).then(servers => servers.length),
