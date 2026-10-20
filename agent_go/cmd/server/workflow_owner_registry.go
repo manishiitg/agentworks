@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // A Goal's owner for its selected Vault secrets is SERVER-CONTROLLED, like a Crew's (project_owner_registry.go):
@@ -18,7 +19,7 @@ import (
 // area (<state root>/ownership/workflows.json: workflow folder "Workflow/<name>" -> creator; keyed by folder, since the
 // manifest ID is in the same user-writable file), out of reach of the workspace proxy
 // and of any CLI's folder guard. It is written when a workflow is created, copied or created as a Relay, and filled
-// once for existing workflows from their current created_by (backfillWorkflowOwners, at startup, after a backup).
+// once for the workflows that existed before it, from their current created_by (backfillWorkflowOwners, one time).
 // An entry is never overwritten with another owner.
 
 const workflowOwnerRegistryFile = "workflows.json"
@@ -110,10 +111,17 @@ func registerWorkflowOwner(workspacePath, owner string) {
 	}
 }
 
-// backfillWorkflowOwners registers every existing workflow that has no entry yet from its current created_by. It runs
-// at startup; once a workflow is registered its file can no longer change the answer.
+// backfillWorkflowOwners registers, ONCE, every workflow that existed before this record, from its current created_by.
+// A done-marker next to the record stops it from running again: a folder that appears later (a Builder shell, a copy
+// that bypassed the routes) must not get an owner from its own file at the next restart. A workflow with no entry
+// falls back to the caller and gets one the next time it goes through a create or copy route.
 func backfillWorkflowOwners(ctx context.Context) {
-	if workflowOwnersPath() == "" {
+	path := workflowOwnersPath()
+	if path == "" {
+		return
+	}
+	marker := path + ".backfilled"
+	if _, err := os.Stat(marker); err == nil {
 		return
 	}
 	discovered, err := DiscoverWorkflowManifests(ctx)
@@ -131,7 +139,11 @@ func backfillWorkflowOwners(ctx context.Context) {
 			added++
 		}
 	}
-	if added > 0 {
-		log.Printf("[WORKFLOW_OWNERS] backfilled %d workflow owner(s)", added)
+	if err := os.MkdirAll(filepath.Dir(marker), 0o700); err == nil {
+		err = writeRegistryFileAtomically(marker, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"))
+		if err != nil {
+			log.Printf("[WORKFLOW_OWNERS] cannot write %s: %v", marker, err)
+		}
 	}
+	log.Printf("[WORKFLOW_OWNERS] one-time backfill registered %d workflow owner(s)", added)
 }
