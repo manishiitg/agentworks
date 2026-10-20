@@ -17,7 +17,6 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 const trigger = { id: 'trigger-1', name: 'Issues', enabled: true, auth_mode: 'github' as const, path: '/api/hooks/workflow/trigger-1', route_selections: { router: 'issues' }, group_names: ['prod'] }
 const cleanups: (() => void)[] = []
 beforeEach(() => {
-  // Automatic incoming Gmail is a server-deployment surface (PLAT-500); the panel renders only when local_mode is false.
   useCapabilitiesStore.setState({ capabilities: { providers: [], streaming: true, sse: true, agent_modes: [], tracing: { enabled: false, provider: 'noop' }, workspace: {}, servers: [], local_mode: false } })
   vi.mocked(useCanWriteWorkflow).mockReturnValue(true)
   vi.mocked(workflowWebhooksApi.list).mockResolvedValue({ triggers: [trigger], groups: ['prod'], routes: [{ step_id: 'router', step_title: 'Choose work', route_id: 'issues', route_name: 'Process issues' }] })
@@ -29,6 +28,8 @@ async function mount(props: MountProps = {}) {
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   await act(async () => root.render(<TooltipProvider><WorkflowAPITriggersView workspacePath="Workflow/test" {...props} /></TooltipProvider>))
+  const row = host.querySelector<HTMLButtonElement>('li > button[aria-expanded="false"]')
+  if (row) await act(async () => row.click())
   cleanups.push(() => { act(() => root.unmount()); host.remove() })
   return host
 }
@@ -51,7 +52,7 @@ it('shows endpoint, saved route, authentication and group', async () => {
   expect(host.textContent).toContain('Choose work → Process issues')
   expect(host.textContent).toContain('GitHub signature')
   expect(host.textContent).toContain('Groups: prod')
-  expect(host.textContent).toContain('up to 4 concurrent deliveries')
+  expect(host.textContent).toContain('up to 4 deliveries at once')
 })
 it('shows payload mappings configured by the builder', async () => {
   vi.mocked(workflowWebhooksApi.list).mockResolvedValue({
@@ -92,7 +93,7 @@ it('lets a reader inspect but not change triggers', async () => {
 })
 it('directs creation and configuration to the builder chat without a manual form', async () => {
   const host = await mount()
-  expect(host.textContent).toContain('by asking Builder')
+  expect(host.textContent).toContain('Ask the Builder to add one')
   expect(host.textContent).not.toContain('Add API trigger')
   expect(host.querySelector('form')).toBeNull()
   expect([...host.querySelectorAll('button')].some(node => node.textContent === 'Edit')).toBe(false)
