@@ -8,6 +8,7 @@ vi.mock('../../services/api', () => ({ agentApi: { listReportHumanInputs: async 
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: any) => select({ user: { allowed_products: ['work'] } }) }))
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
 vi.mock('../../components/workflow/ShareDashboardButton', () => ({ ShareDashboardButton: () => <button>Share</button> }))
+vi.mock('../../components/workspace/WorkspaceBrowserRow', () => ({ WorkspaceBrowserRow: ({ onClick }: { onClick: () => void }) => <button onClick={onClick}>Browser</button> }))
 vi.mock('../../components/workflow/reportDocuments', () => ({ useReportDocuments: () => ({ documents: [], defaultPath: 'db/reports/index.html' }), selectReportDocument: vi.fn() }))
 import { WorkContextPanel } from './WorkContextPanel'
 import { workWorkspacePanels } from './workWorkspacePanels'

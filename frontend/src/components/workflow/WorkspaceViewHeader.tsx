@@ -112,7 +112,6 @@ function insertWalkthrough(actions: ReactNode, walkthrough: ReactNode): ReactNod
 }
 
 export function WorkspaceViewHeader({
-  icon,
   title,
   hideHeader = false,
   helpTopic,
@@ -132,24 +131,14 @@ export function WorkspaceViewHeader({
   const guideTopic = helpTopic ?? (typeof title === 'string' ? title : '')
   const walkthrough = !hideHeader && showWalkthrough && guideTopic ? <WorkspacePanelGuideButton key="walkthrough" topic={guideTopic} /> : null
   if (hideHeader && !actions && !tabExtra && !below && !tabs) return null
-  const renderIcon = () => {
-    if (!icon) return null
-    if (isValidElement(icon)) return icon
-    const Glyph = icon
-    return (
-      <span className="flex h-9 w-9 items-center justify-center rounded-md border border-primary/25 bg-primary/10 text-primary">
-        <Glyph className="h-4 w-4" />
-      </span>
-    )
-  }
   const body = (
     <>
       {(!hideHeader || actions || tabExtra) && <div className={`flex ${hasSubtitle ? 'items-start' : 'items-center'} ${hideHeader ? 'justify-end' : 'justify-between'} gap-3`}>
         {!hideHeader && <div className={`flex min-w-0 flex-1 ${hasSubtitle ? 'items-start' : 'items-center'} gap-2`}>
-          {icon && <div className="shrink-0">{renderIcon()}</div>}
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className={`truncate ${hasSubtitle ? 'text-sm' : 'text-lg'} font-semibold text-foreground`}>{title}</h2>
+              {/* The side menu already names the panel; the title stays for screen readers only. */}
+              <h2 className="sr-only">{title}</h2>
               {context}
             </div>
             {hasSubtitle && <p className="mt-0.5 truncate text-xs text-muted-foreground">{subtitle}</p>}

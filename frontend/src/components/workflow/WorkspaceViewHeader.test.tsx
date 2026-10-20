@@ -9,10 +9,9 @@ import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 import { TooltipProvider } from '../ui/tooltip'
 
 describe('WorkspaceViewHeader', () => {
-  it('lays out icon, title, context, subtitle, actions, and below in order', () => {
+  it('lays out title (screen readers only), context, subtitle, actions, and below in order', () => {
     const html = renderToStaticMarkup(
       <WorkspaceViewHeader
-        icon={<span data-testid="icon" />}
         title="Costs"
         context={<span data-testid="context" />}
         subtitle="Where the money goes"
@@ -20,7 +19,7 @@ describe('WorkspaceViewHeader', () => {
         below={<div data-testid="below" />}
       />,
     )
-    const order = ['data-testid="icon"', '>Costs<', 'data-testid="context"', 'Where the money goes', 'data-testid="ask-ai"', 'Walkthrough: Costs', 'data-testid="refresh"', 'data-testid="below"']
+    const order = ['>Costs<', 'data-testid="context"', 'Where the money goes', 'data-testid="ask-ai"', 'Walkthrough: Costs', 'data-testid="refresh"', 'data-testid="below"']
       .map(token => html.indexOf(token))
     for (const index of order) expect(index).toBeGreaterThanOrEqual(0)
     expect([...order].sort((a, b) => a - b)).toEqual(order)
@@ -79,10 +78,10 @@ describe('WorkspaceViewHeader', () => {
     expect(walkthrough).toBeLessThan(refresh)
   })
 
-  it('renders an icon reference in the standard h-9 tile', () => {
+  it('keeps the title for screen readers only and draws no icon tile', () => {
     const html = renderToStaticMarkup(<WorkspaceViewHeader icon={Activity} title="Pulse" />)
-    expect(html).toContain('h-9 w-9')
-    expect(html).toContain('border-primary/25')
+    expect(html).toContain('sr-only')
+    expect(html).not.toContain('h-9 w-9')
   })
 
   it('renders sticky and bare variants', () => {

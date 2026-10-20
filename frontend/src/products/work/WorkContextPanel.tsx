@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { BookOpen, DollarSign, Files, Hand, Laptop, LayoutDashboard, MessageSquareText, Monitor, Route, Settings, Terminal, Database } from 'lucide-react'
+import { BookOpen, DollarSign, Files, Hand, Laptop, LayoutDashboard, MessageSquareText, Route, Settings, Terminal, Database } from 'lucide-react'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
 import { WorkspaceAutomationRows, WorkspaceChannelRows, WorkspaceConnectionRows } from '../../components/workspace/WorkspaceProjectNavigation'
+import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
 import { ShareDashboardButton } from '../../components/workflow/ShareDashboardButton'
 import { selectReportDocument, useReportDocuments } from '../../components/workflow/reportDocuments'
 import { reportDocumentLabel } from '../../components/workflow/reportDocumentLabels'
@@ -44,7 +45,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
         {documents.filter(document => document.path !== defaultPath).map(document => <Row key={document.path} icon={LayoutDashboard} hint={document.path} onClick={() => { selectReportDocument(workspacePath, document.path); onOpen('dashboard') }}>{reportDocumentLabel(document, documents)}</Row>)}
         <ShareDashboardButton workspacePath={workspacePath} inline />
       </>}
-      {allowed('browser') && <Row icon={Monitor} onClick={() => onOpen('browser')}>Browser</Row>}
+      {allowed('browser') && <WorkspaceBrowserRow workspacePath={workspacePath} profileId={profileId} onClick={() => onOpen('browser')} />}
       {allowed('schedules') && <WorkspaceAutomationRows onOpen={openAutomation} triggers={enabledPanels?.has('triggers') !== false} />}
       {allowed('mcp') && <WorkspaceChannelRows onOpen={openConnection} slack={bots} whatsapp={bots} />}
     </Group>

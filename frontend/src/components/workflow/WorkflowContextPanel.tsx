@@ -1,10 +1,11 @@
-import { BookOpen, Cloud, DollarSign, Files, FileText, Globe, Hand, LayoutDashboard, MessageSquareText, Monitor, Route, Settings, BellRing, ShieldCheck, Sparkles } from 'lucide-react'
+import { BookOpen, Cloud, DollarSign, Files, FileText, Globe, Hand, LayoutDashboard, MessageSquareText, Route, Settings, BellRing, ShieldCheck, Sparkles } from 'lucide-react'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../workspace/WorkspaceContextCard'
 import { WorkspaceAutomationRows, WorkspaceChannelRows, WorkspaceConnectionRows } from '../workspace/WorkspaceProjectNavigation'
+import { WorkspaceBrowserRow } from '../workspace/WorkspaceBrowserRow'
 import { ShareDashboardButton } from './ShareDashboardButton'
 import { selectReportDocument, useReportDocuments } from './reportDocuments'
 import { reportDocumentLabel } from './reportDocumentLabels'
@@ -32,7 +33,7 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
       <Row icon={LayoutDashboard} onClick={() => { selectReportDocument(workspacePath, defaultPath); open('report') }}>Dashboard</Row>
       {documents.filter(document => document.path !== defaultPath).map(document => <Row key={document.path} icon={LayoutDashboard} hint={document.path} onClick={() => { selectReportDocument(workspacePath, document.path); open('report') }}>{reportDocumentLabel(document, documents)}</Row>)}
       <ShareDashboardButton workspacePath={workspacePath} inline />
-      {!relayMode && <Row icon={Monitor} onClick={() => open('browser')}>Browser</Row>}
+      {!relayMode && <WorkspaceBrowserRow workspacePath={workspacePath} profileId="workflow" onClick={() => open('browser')} />}
       <WorkspaceAutomationRows relay={relayMode} onOpen={section => open('workshop', section)} />
       <WorkspaceChannelRows onOpen={openConnection} slack={true} whatsapp={!relayMode} />
     </Group>
