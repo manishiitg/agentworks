@@ -38,10 +38,10 @@ describe('fresh deep links keep their view', () => {
     expect(isWorkWorkspaceViewEnabled('costs', new Set(['files']))).toBe(false)
   })
 
-  it('resolves Code shell and costs links instead of Files', () => {
-    window.history.pushState(null, '', '/code/projects/example?view=shell')
+  it('resolves Crew shell and costs links instead of Files', () => {
+    window.history.pushState(null, '', '/crew/projects/example?view=shell')
     expect(routeView('work', 'example', normalizeWorkWorkspaceView, 'files')).toBe('shell')
-    window.history.pushState(null, '', '/code/projects/example?view=costs')
+    window.history.pushState(null, '', '/crew/projects/example?view=costs')
     expect(routeView('work', 'example', normalizeWorkWorkspaceView, 'files')).toBe('costs')
   })
 })
