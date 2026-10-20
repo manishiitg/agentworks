@@ -28,6 +28,8 @@ interface WorkflowSelectionDialogProps {
   includePulse?: boolean
 }
 
+let lastReferences: { userID?: string; workflows: WorkflowItem[]; crews: WorkflowItem[] } | null = null
+
 export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = ({
   isOpen,
   onClose,
@@ -69,20 +71,23 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
 
   const [referenceResult, setReferenceResult] = useState<{ userID?: string; items: WorkflowItem[]; pending: number } | null>(null)
   const [loadError, setLoadError] = useState(false)
-  // Fetch fresh permission-filtered workflows and user-scoped Crew projects
-  // for every opening. Never reuse stale entries after an account change,
-  // access revocation, or failed authorization check.
+  // Show this account's last lists at once, so typing after # finds a project without waiting, and fetch fresh
+  // permission-filtered lists on every opening; each fresh list replaces its cached half as it arrives. The cache
+  // is per account and lives only in this page.
   useEffect(() => {
     let cancelled = false
-    setReferenceResult(null)
+    const cached = lastReferences?.userID === userID ? lastReferences : null
+    setReferenceResult(cached ? { userID, items: [...cached.workflows, ...cached.crews], pending: 2 } : null)
     setLoadError(false)
     if (!isOpen) return
-    let workflows: WorkflowItem[] = []
-    let crewProjects: WorkflowItem[] = []
+    let workflows: WorkflowItem[] = cached?.workflows ?? []
+    let crewProjects: WorkflowItem[] = cached?.crews ?? []
     let pending = 2
     const finish = () => {
       pending -= 1
-      if (!cancelled) setReferenceResult({ userID, items: [...workflows, ...crewProjects], pending })
+      if (cancelled) return
+      lastReferences = { userID, workflows, crews: crewProjects }
+      setReferenceResult({ userID, items: [...workflows, ...crewProjects], pending })
     }
     const failed = () => { if (!cancelled) setLoadError(true) }
     // Each fresh, server-authorized list can be used immediately. A slow
@@ -95,7 +100,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
         kind: 'workflow',
         icon: workflow.manifest.icon,
       }))
-    }).catch(failed).finally(finish)
+    }).catch(() => { workflows = []; failed() }).finally(finish)
     void loadProductProjects(WORK_PROJECTS_ROOT, WORK_PROFILE_ID, { includeOwnSharedProjects: true }).then(crews => {
       crewProjects = crews.map(crew => {
         const identityName = crew.identity?.name?.trim() || crew.title
@@ -108,7 +113,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
           icon: crew.identity?.icon,
         }
       })
-    }).catch(failed).finally(finish)
+    }).catch(() => { crewProjects = []; failed() }).finally(finish)
     return () => { cancelled = true }
   }, [isOpen, userID])
   const allReferences = useMemo(() => {
