@@ -100,7 +100,8 @@ POSITIONAL_ARGS=()
 print_usage() {
     printf '%s\n' 'Usage: ./run_server_with_logging.sh [options]'
     printf '%s\n' ''
-    printf '%s\n' 'Default (no composition flags): agent + workspace + frontend (workflows, Crew).'
+    printf '%s\n' 'Default (no composition flags): agent + workspace + frontend, with all core products.'
+    printf '%s\n' 'Local Vault audit storage defaults to SQLite; VAULT_AUDIT_PROVIDER=off disables collection.'
     printf '%s\n' ''
     printf '%s\n' 'Options:'
     printf '%s\n' '  --with-workspace              Start the local workspace service.'
@@ -193,12 +194,22 @@ for arg in "$@"; do
 done
 
 # Resolve the profile before frontend-only/test early exits, then pin it again
-# after .env loading. Source builds include the server assets only when opted in.
+# after .env loading. Source builds enable all core products unless opted out.
 configure_local_product_profile() {
     export AGENTWORKS_DEPLOYMENT_MODE=local
     if [ "$LOCAL_SERVER_PRODUCTS" = true ]; then
         export AGENTWORKS_LOCAL_SERVER_PRODUCTS=1
         export VITE_DEPLOYMENT_MODE=local-full
+        # Older local .env files selected ClickHouse, which Vault no longer
+        # supports. Resolve it to local SQLite again after .env loading. Keep
+        # an explicit off setting and let Vault reject other invalid values.
+        case "${VAULT_AUDIT_PROVIDER:-}" in
+            "") export VAULT_AUDIT_PROVIDER=sqlite ;;
+            clickhouse)
+                echo "ℹ️  Local Vault audit: replacing legacy clickhouse setting with sqlite." >&2
+                export VAULT_AUDIT_PROVIDER=sqlite
+                ;;
+        esac
         local default_surfaces='["agentworks", "relays", "work", "code", "mcp-gateway", "knowledgebase", "bullpen"]'
         if [ -n "${AGENTWORKS_GATEWAY_BINARY:-}" ]; then
             default_surfaces='["agentworks", "relays", "work", "code", "mcp-gateway", "knowledgebase", "bullpen", "llm-gateway"]'
@@ -1227,7 +1238,7 @@ fi
 # Explicit flags win over inherited and .env installation settings.
 configure_local_product_profile
 
-# The opted-in source stack uses the same private platform-mode Vault service
+# The full source stack uses the same private platform-mode Vault service
 # and persisted configuration as previous local runs.
 if [ "$LOCAL_SERVER_PRODUCTS" = true ]; then
     LOCAL_VAULT=true

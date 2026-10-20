@@ -72,7 +72,7 @@ printf '%s' "$AGENTWORKS_PRODUCT_LLM_GATEWAY_SERVICE_TOKEN_FILE"
 }
 
 // Exercise the launcher's actual profile helper without starting any service.
-// The installed private product is visible only under the explicit local opt-in.
+// The installed private product is visible in the full local profile only.
 func TestRunServerPrivateProductSurfaceDefaults(t *testing.T) {
 	script, err := os.ReadFile("run_server_with_logging.sh")
 	if err != nil {
@@ -88,9 +88,9 @@ func TestRunServerPrivateProductSurfaceDefaults(t *testing.T) {
 		name, optIn, binary, configured string
 		wantLLM                         bool
 	}{
-		{"ordinary local", "false", "/composed-host", "", false},
-		{"public opt-in", "true", "", "", false},
-		{"private opt-in", "true", "/composed-host", "", true},
+		{"minimal opt-out", "false", "/composed-host", "", false},
+		{"public default", "true", "", "", false},
+		{"private default", "true", "/composed-host", "", true},
 		{"explicit exclusion", "true", "/composed-host", `["agentworks", "work"]`, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -98,6 +98,7 @@ func TestRunServerPrivateProductSurfaceDefaults(t *testing.T) {
 LOCAL_SERVER_PRODUCTS="$1"
 AGENTWORKS_GATEWAY_BINARY="$2"
 AGENTWORKS_ENABLED_PRODUCT_SURFACES="$3"
+VAULT_AUDIT_PROVIDER=""
 configure_local_product_profile
 printf '%s\n' "$ENABLED_PRODUCT_SURFACES_JSON"
 `
@@ -118,6 +119,48 @@ printf '%s\n' "$ENABLED_PRODUCT_SURFACES_JSON"
 			}
 			if tc.optIn == "true" && tc.configured != "" && strings.TrimSpace(string(output)) != tc.configured {
 				t.Fatalf("explicit surface configuration changed: %s", output)
+			}
+		})
+	}
+}
+
+// Reapply the real local profile after simulating .env loading, including
+// legacy audit configuration that previously prevented Vault from starting.
+func TestRunServerLocalAuditDefaultsAfterEnvLoading(t *testing.T) {
+	script, err := os.ReadFile("run_server_with_logging.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(script)
+	start := strings.Index(text, "configure_local_product_profile() {")
+	end := strings.Index(text, "\nconfigure_local_product_profile\n")
+	if start < 0 || end <= start {
+		t.Fatal("local product profile helper missing")
+	}
+	for _, tc := range []struct{ configured, want string }{
+		{"", "sqlite"},
+		{"clickhouse", "sqlite"},
+		{"sqlite", "sqlite"},
+		{"off", "off"},
+		{"typo", "typo"},
+	} {
+		t.Run("provider="+tc.configured, func(t *testing.T) {
+			body := text[start:end] + `
+LOCAL_SERVER_PRODUCTS=true
+AGENTWORKS_GATEWAY_BINARY=""
+AGENTWORKS_ENABLED_PRODUCT_SURFACES=""
+VAULT_AUDIT_PROVIDER=""
+configure_local_product_profile
+VAULT_AUDIT_PROVIDER="$1"
+configure_local_product_profile
+printf '%s' "$VAULT_AUDIT_PROVIDER"
+`
+			output, err := exec.Command("bash", "-c", body, "audit-test", tc.configured).Output()
+			if err != nil {
+				t.Fatalf("profile failed: %v", err)
+			}
+			if string(output) != tc.want {
+				t.Fatalf("audit provider = %q, want %q", output, tc.want)
 			}
 		})
 	}
