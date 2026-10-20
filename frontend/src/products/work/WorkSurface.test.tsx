@@ -289,7 +289,8 @@ describe('Crew native tab dragging', () => {
     try {
       await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats={false} />))
       const ids = (selector: string, attribute: string) => [...host.querySelectorAll(selector)].map(node => node.getAttribute(attribute))
-      expect(ids('[data-chat-tab-id]', 'data-chat-tab-id')).toEqual(['main', 'b', 'a', 'bot', 'schedule'])
+      // Only the main chat and the tab the person is in are on the strip until they pin more (owner, 2026-10-20).
+      expect(ids('[data-chat-tab-id]', 'data-chat-tab-id')).toEqual(['main', 'b'])
       const menu = host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!
       expect(menu.textContent).toBe('Agents · 4')
       await act(async () => menu.click())
@@ -300,7 +301,7 @@ describe('Crew native tab dragging', () => {
   })
 
   it.each(['a', 'b'])('keeps a drag source and drop target working while %s is selected', async active => {
-    const make = (id: string, position: number) => ({ tabId: id, sessionId: `session-${id}`, name: id, createdAt: position, config: {}, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: id === 'main', agentProfileConversationKey: id === 'main' ? 'crew' : `crew:chat:${id}`, agentProfileTabPosition: position } } as ChatTab)
+    const make = (id: string, position: number) => ({ tabId: id, sessionId: `session-${id}`, name: id, createdAt: position, config: {}, metadata: { agentProfileId: 'work', agentProfileTabPinned: id !== 'main', agentProfileProjectId: 'crew', agentProfileIsMainChat: id === 'main', agentProfileConversationKey: id === 'main' ? 'crew' : `crew:chat:${id}`, agentProfileTabPosition: position } } as ChatTab)
     useChatStore.setState({ chatTabs: { main: make('main', 0), a: make('a', 1), b: make('b', 2) }, activeTabId: active })
     const list = vi.spyOn(agentApi, 'listAgentProfileSideChats').mockResolvedValue([])
     const order = vi.spyOn(agentApi, 'orderAgentProfileSideChats').mockResolvedValue([{ conversation_key: 'crew:chat:b', session_id: 'session-b', name: 'b', position: 1 }, { conversation_key: 'crew:chat:a', session_id: 'session-a', name: 'a', position: 2 }])
@@ -323,7 +324,8 @@ describe('Crew native tab dragging', () => {
       expect(menu.textContent).toContain('Agents · 3')
       await act(async () => menu.click())
       expect(host.querySelector('[aria-label="Agents"]')?.textContent).toContain('a')
-      expect(host.querySelector('[aria-label="Move a earlier"]')).not.toBeNull()
+      expect(host.querySelector('[aria-label="Unpin a"]')).not.toBeNull()
+      expect(host.querySelector('[aria-label="Move a earlier"]')).toBeNull()
       expect(host.querySelector('[aria-label="Close a"]')).not.toBeNull()
     } finally { await act(async () => root.unmount()); host.remove(); list.mockRestore(); order.mockRestore() }
   })

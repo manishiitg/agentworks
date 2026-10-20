@@ -284,6 +284,8 @@ export interface AgentProfileSideChat {
   name: string
   /** Where the person put this tab in the strip (1 is first); absent until they reorder. */
   position?: number
+  /** The person pinned this tab: it stays on the strip; unpinned tabs are in the Agents menu. */
+  pinned?: boolean
 }
 
 export interface AgentProfileConversationResponse {

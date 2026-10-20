@@ -1340,6 +1340,12 @@ export const agentApi = {
     return response.data
   },
 
+  /** Saves whether a side tab stays on the strip; answers with the project's tabs. */
+  pinAgentProfileSideChat: async (profileId: string, projectId: string, conversationKey: string, pinned: boolean): Promise<AgentProfileSideChat[]> => {
+    const response = await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats/pin`, { project_id: projectId, conversation_key: conversationKey, pinned })
+    return response.data
+  },
+
   /** Forgets a closed Code side chat (tab) on the server; its history is kept. */
   closeAgentProfileSideChat: async (profileId: string, conversationKey: string): Promise<void> => {
     await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/conversation/close`, { conversation_key: conversationKey })

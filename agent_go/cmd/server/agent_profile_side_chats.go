@@ -23,6 +23,8 @@ type AgentProfileSideChat struct {
 	ConnectionID    string `json:"connection_id,omitempty"`
 	// Position is where the person put this tab in the strip (1 is first); 0 means not placed yet.
 	Position int `json:"position,omitempty"`
+	// Pinned keeps the tab on the strip; the rest are in the Agents menu.
+	Pinned bool `json:"pinned,omitempty"`
 }
 
 // handleListAgentProfileSideChats lists the caller's open side tabs of one project: GET /api/agent-profiles/{id}/side-chats
@@ -87,6 +89,43 @@ func (api *StreamingAPI) handleOrderAgentProfileSideChats(w http.ResponseWriter,
 	writeAgentProfileJSON(w, http.StatusOK, out)
 }
 
+// handlePinAgentProfileSideChat saves whether a side tab stays on the strip: POST
+// /api/agent-profiles/{id}/side-chats/pin {"project_id": …, "conversation_key": …, "pinned": true}. It answers with the list.
+func (api *StreamingAPI) handlePinAgentProfileSideChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	var input struct {
+		ProjectID       string `json:"project_id"`
+		ConversationKey string `json:"conversation_key"`
+		Pinned          bool   `json:"pinned"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxAgentProfileRequestBytes)).Decode(&input); err != nil || strings.TrimSpace(input.ConversationKey) == "" {
+		writeAgentProfileError(w, http.StatusBadRequest, "send the project, the tab and whether it is pinned")
+		return
+	}
+	projectID := strings.TrimSpace(input.ProjectID)
+	userID, slot, ok := api.agentProfileConversationSlot(w, r, projectID)
+	if !ok {
+		return
+	}
+	if !limitsSideChats(slot.profile.ID) {
+		writeAgentProfileError(w, http.StatusBadRequest, "this product has no tabs to pin")
+		return
+	}
+	if err := defaultProductConversationRegistryStore().setSideChatPinned(r.Context(), userID, slot.profile.ID, projectID, input.ConversationKey, input.Pinned); err != nil {
+		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	out, err := api.sideChatsFor(r, userID, slot, projectID)
+	if err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeAgentProfileJSON(w, http.StatusOK, out)
+}
+
 // sideChatsFor lists the caller's open side tabs of one project in the order the person arranged them; tabs they
 // have not placed follow, oldest key first.
 func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profileAndBinding, projectID string) ([]AgentProfileSideChat, error) {
@@ -107,7 +146,7 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 		}
 		id := strings.TrimPrefix(record.ConversationKey, projectID+codeChatSideMarker)
 		name := firstNonEmptyTrimmed(identities[record.ConversationKey].Name, titles[record.SessionID], "Chat "+id)
-		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: identities[record.ConversationKey].Position}
+		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: identities[record.ConversationKey].Position, Pinned: identities[record.ConversationKey].Pinned}
 		if agentID := publicationAgentID(record.ConversationKey); agentID != "" {
 			if p, e := readPublishedAgent(contextWithoutPublication(r.Context()), agentProfileRuntimeWorkspace(userID, slot.binding.WorkspacePath), agentID); e == nil && p != nil {
 				row.AgentID, row.Provider, row.ModelID, row.ConnectionID = p.AgentID, p.Provider, p.ModelID, p.ConnectionID

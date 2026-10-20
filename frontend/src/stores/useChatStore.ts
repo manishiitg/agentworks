@@ -482,6 +482,8 @@ export interface ChatTab {
     agentProfileIsMainChat?: boolean
     // Where the person put this side tab in the strip, as the server saved it (1 is first; 0/absent = not placed).
     agentProfileTabPosition?: number
+    // The person pinned this side tab, as the server saved it: it stays on the strip.
+    agentProfileTabPinned?: boolean
     // Server-issued logical conversation identity. This remains stable even
     // if a future runtime migration rotates the underlying agent session.
     agentProfileConversationId?: string

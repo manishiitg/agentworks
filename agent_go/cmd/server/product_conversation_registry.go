@@ -95,6 +95,8 @@ type ProductAgentIdentity struct {
 	UpdatedAt string `json:"updated_at,omitempty"`
 	// Position orders the person's side tabs in the strip (1 is first); 0 means not placed yet.
 	Position int `json:"position,omitempty"`
+	// Pinned keeps this side tab on the strip; unpinned tabs stay in the Agents menu (owner, 2026-10-20).
+	Pinned bool `json:"pinned,omitempty"`
 	// Engine, ModelID and ReasoningEffort are the model the person chose for this one chat on the Crew's Models page
 	// (owner, 2026-10-19: chosen by hand only). Empty Engine means the chat follows the Crew's own model.
 	Engine          string `json:"engine,omitempty"`
@@ -247,6 +249,34 @@ func (store productConversationRegistryStore) setSideChatOrder(ctx context.Conte
 		identity.Position = positions[entryKey]
 		document.Agents[entryKey] = identity
 	}
+	document.Version = productConversationRegistryVersion
+	return store.writeDocument(ctx, path, document)
+}
+
+// setSideChatPinned saves whether one side tab stays on the strip.
+func (store productConversationRegistryStore) setSideChatPinned(ctx context.Context, userID, profileID, projectID, conversationKey string, pinned bool) error {
+	path := productConversationRegistryPath(userID)
+	mutex := productConversationRegistryMutex(path)
+	mutex.Lock()
+	defer mutex.Unlock()
+	document, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return err
+	}
+	if document.Agents == nil {
+		document.Agents = map[string]ProductAgentIdentity{}
+	}
+	entryKey := productConversationRegistryEntryKey(profileID, strings.TrimSpace(conversationKey))
+	prefix := productConversationRegistryEntryKey(profileID, strings.TrimSpace(projectID)) + codeChatSideMarker
+	if _, ok := document.Entries[entryKey]; !ok || !strings.HasPrefix(entryKey, prefix) {
+		return fmt.Errorf("that tab is not open in this project")
+	}
+	identity := document.Agents[entryKey]
+	if identity.Pinned == pinned {
+		return nil
+	}
+	identity.Pinned = pinned
+	document.Agents[entryKey] = identity
 	document.Version = productConversationRegistryVersion
 	return store.writeDocument(ctx, path, document)
 }
