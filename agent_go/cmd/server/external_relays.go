@@ -145,6 +145,7 @@ func (api *StreamingAPI) externalCreateRelay(w http.ResponseWriter, r *http.Requ
 		externalError(w, 503, "workspace_unavailable", err.Error())
 		return
 	}
+	registerWorkflowOwner(workspace, manifest.CreatedBy)
 	if err = WriteWorkflowManifest(r.Context(), workspace, manifest); err != nil {
 		externalError(w, 503, "workspace_unavailable", err.Error())
 		return

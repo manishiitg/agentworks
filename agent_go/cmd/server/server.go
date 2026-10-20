@@ -3293,6 +3293,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Keep the service's own tokens out of the tmux server that hosts the CLIs (PLAT-663).
 	startTmuxServerEnvCheck()
 
+	// Register the owner of every workflow that has none yet (whose Vault its selected secrets come from).
+	go backfillWorkflowOwners(context.Background())
+
 	// Start server in a goroutine
 	go func() {
 		if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {

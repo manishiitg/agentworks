@@ -217,6 +217,7 @@ func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *
 	}
 
 	// Write manifest
+	registerWorkflowOwner(req.WorkspacePath, manifest.CreatedBy)
 	if err := WriteWorkflowManifest(r.Context(), req.WorkspacePath, manifest); err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, ErrInvalidWorkflowManifest) {
@@ -901,6 +902,7 @@ func (api *StreamingAPI) handleDuplicateWorkflowManifest(w http.ResponseWriter, 
 	}
 
 	// Write new manifest
+	registerWorkflowOwner(req.TargetWorkspacePath, newManifest.CreatedBy)
 	if err := WriteWorkflowManifest(r.Context(), req.TargetWorkspacePath, &newManifest); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to write target manifest: %v", err), http.StatusInternalServerError)
 		return
