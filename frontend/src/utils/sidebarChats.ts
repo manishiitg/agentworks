@@ -379,6 +379,10 @@ export function sidebarChats({
       row.runTime = Math.floor(Number(match[2]) / 1e6)
   }
   if (builders !== undefined) {
+    // Saved tabs outlive deleted workflows; without a workflow they have no Builder to show.
+    if (presets.length > 0)
+      for (const [id, row] of rows)
+        if (row.workflowId && !presets.some(preset => preset.id === row.workflowId)) rows.delete(id)
     for (const preset of presets) {
       const binding = builders[preset.id]
       const current = binding?.session_id

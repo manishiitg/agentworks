@@ -102,6 +102,24 @@ it('uses the same one-Builder rule for Flows while leaving named Crew chats alon
   expect(rows.find(row => row.id === 'current')?.workflowId).toBe('flow')
 })
 
+it('drops saved Builder tabs of a deleted workflow instead of grouping them as "Automation Builder"', () => {
+  const preset = { id: 'live', label: 'Live', selectedFolder: { filepath: 'Workflow/live' } } as never
+  const meta = (presetQueryId: string) => ({ mode: 'workflow' as const, phaseId: 'workflow-builder', presetQueryId })
+  const input = {
+    tabs: {
+      current: tab('current', { name: 'Automation Builder', metadata: meta('live') }),
+      gone: tab('gone', { name: 'Automation Builder', metadata: meta('deleted') }),
+    },
+    active: [], recent: [], presets: [preset], allowed: ['agentworks' as const],
+    builders: { live: { success: true, events: [], source: 'live', session_id: 'current', status: 'completed', sessions: {
+      current: { is_builder: true, kind: 'builder' },
+    } } as WorkflowBuilderSessionResponse },
+  }
+  expect(sidebarChats(input).map(row => row.id)).toEqual(['current'])
+  // Before the workflow list loads, nothing is treated as deleted.
+  expect(sidebarChats({ ...input, presets: [], builders: {} }).map(row => row.id).sort()).toEqual(['current', 'gone'])
+})
+
 it('uses readable display labels while preserving custom titles and original session data', () => {
   const row = { id: 'schedule-cron--workflow_123', title: 'WORKFLOW REVIEW BEFORE A RUN. workspace_path="Workflow/trading", pulse_run_id="one"', surface: 'agentworks', group: 'Open', time: 1, waiting: false, scheduled: true } as SidebarChat
   expect(sidebarChatDisplayTitle(row, 'Trading')).toBe('Scheduled review')
