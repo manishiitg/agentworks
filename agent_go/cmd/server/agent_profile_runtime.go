@@ -823,7 +823,7 @@ func (api *StreamingAPI) chatSecretNames(ctx context.Context, userID string, req
 		return nil
 	}
 	var names []string
-	for _, secret := range api.mergeGlobalSecretsFor(ctx, userID, req.DecryptedSecrets, req.SelectedGlobalSecrets) {
+	for _, secret := range api.mergeGlobalSecretsFor(ctx, api.projectSecretsOwner(userID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets) {
 		names = append(names, secret.Name)
 	}
 	return names

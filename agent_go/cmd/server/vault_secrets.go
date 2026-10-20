@@ -302,3 +302,13 @@ func validateVaultSecretSelection(ctx context.Context, userID string, scoped []s
 	}
 	return nil
 }
+
+// projectSecretsOwner is the person whose Vault a project's selected secrets come from: the Crew's owner, for everyone
+// who uses it (owner-lent, owner 2026-10-20: "if user is sharing with someone .. a crew.. and he know its personal
+// mcps.. it upto the user"). Outside a Crew it is the caller.
+func (api *StreamingAPI) projectSecretsOwner(userID, workspacePath string) string {
+	if owner, ok := crewProjectOwnerID(workspacePath); ok && strings.TrimSpace(owner) != "" {
+		return owner
+	}
+	return userID
+}

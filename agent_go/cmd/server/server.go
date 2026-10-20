@@ -5128,7 +5128,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Merge global secrets with user-supplied secrets, then set on orchestrator
-		allSecrets := api.mergeGlobalSecretsFor(context.Background(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets)
+		allSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets)
 		if len(allSecrets) > 0 {
 			entries := make([]orchestrator.SecretEntry, len(allSecrets))
 			for i, s := range allSecrets {
@@ -6077,7 +6077,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				codingAgentSecretEnvironment[name] = value
 			}
 		}
-		for _, secret := range api.mergeGlobalSecretsFor(context.Background(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets) {
+		for _, secret := range api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets) {
 			codingAgentSecretEnvironment["SECRET_"+secret.Name] = secret.Value
 		}
 		if crewAskOnly {
@@ -6469,7 +6469,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// req.DecryptedSecrets is loaded from the workflow manifest above
 			// (workflow_phase), so it picks up secrets attached in earlier turns;
 			// multi-agent chat without loaded secrets yields an empty map (no-op).
-			chatAgentSecrets := api.mergeGlobalSecretsFor(context.Background(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets)
+			chatAgentSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets)
 			chatAgentSecretEnv := make(map[string]string, len(chatAgentSecrets))
 			for _, s := range chatAgentSecrets {
 				chatAgentSecretEnv["SECRET_"+s.Name] = s.Value
@@ -7799,7 +7799,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 				if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {
 					// Secrets
-					phaseSecrets := api.mergeGlobalSecretsFor(context.Background(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets)
+					phaseSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets)
 					if len(phaseSecrets) > 0 {
 						entries := make([]orchestrator.SecretEntry, len(phaseSecrets))
 						for i, s := range phaseSecrets {
@@ -7938,7 +7938,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Secret values stay in the tool environment; only their names belong in
 		// the immutable identity. Assemble that section before finalization.
-		identitySecrets := api.mergeGlobalSecretsFor(context.Background(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets)
+		identitySecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets)
 		if len(identitySecrets) > 0 && req.PhaseID == "" {
 			if underlyingAgent := llmAgent.GetUnderlyingAgent(); underlyingAgent != nil {
 				_ = llmAgent.AddInstructions(buildSecretNamesPrompt(identitySecrets))
@@ -8312,7 +8312,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// diverge (e.g. a request with PhaseID set but a non-workflow_phase mode).
 		// Keep that in mind before relying on either one in this block.
 		isWorkflowPhase := req.PhaseID != ""
-		allChatSecrets := api.mergeGlobalSecretsFor(context.Background(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets)
+		allChatSecrets := api.mergeGlobalSecretsFor(context.Background(), api.projectSecretsOwner(currentUserID, req.SelectedFolder), req.DecryptedSecrets, req.SelectedGlobalSecrets)
 		if len(allChatSecrets) > 0 && !isWorkflowPhase {
 			// Inject secret values as environment variables for shell execution (SECRET_ prefix)
 			if workspaceEnv == nil {
