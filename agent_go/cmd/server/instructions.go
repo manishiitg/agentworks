@@ -107,13 +107,6 @@ func GetWorkWorkspaceMap(workspacePath, chatHistoryPath string) string {
 	return text
 }
 
-// GetWorkflowPhaseWorkspaceMap returns workflow-phase-specific workspace instructions.
-// Unlike chat mode, workflow-phase work should treat the active workflow folder as the
-// primary writable root and avoid surfacing internal per-user Chats paths.
-func GetWorkflowPhaseWorkspaceMap(docsRoot, workflowFolder string) string {
-	return getWorkflowPhaseWorkspaceMapForMode(docsRoot, workflowFolder, "workshop")
-}
-
 func getWorkflowPhaseWorkspaceMapForMode(docsRoot, workflowFolder, mode string) string {
 	if strings.TrimSpace(workflowFolder) == "" {
 		return GetWorkspaceMap(docsRoot, "")

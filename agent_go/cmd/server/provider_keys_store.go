@@ -159,55 +159,6 @@ func LoadProviderKeys(ctx context.Context) (*StoredProviderKeys, error) {
 	return &keys, nil
 }
 
-// ProviderKeysToAPIKeysMap converts stored keys to the map format used in reqMap["llm_config"]["api_keys"].
-func ProviderKeysToAPIKeysMap(keys *StoredProviderKeys) map[string]interface{} {
-	m := map[string]interface{}{}
-	if keys.OpenRouter != "" {
-		m["openrouter"] = keys.OpenRouter
-	}
-	if keys.OpenAI != "" {
-		m["openai"] = keys.OpenAI
-	}
-	if keys.Anthropic != "" {
-		m["anthropic"] = keys.Anthropic
-	}
-	if keys.ZAI != "" {
-		m["z-ai"] = keys.ZAI
-	}
-	if keys.Kimi != "" {
-		m["kimi"] = keys.Kimi
-	}
-	if keys.Vertex != "" {
-		m["vertex"] = keys.Vertex
-	}
-	if keys.CodexCLI != "" {
-		m["codex_cli"] = keys.CodexCLI
-	}
-	if keys.CursorCLI != "" {
-		m["cursor_cli"] = keys.CursorCLI
-	}
-	if keys.PiCLI != "" {
-		m["pi_cli"] = keys.PiCLI
-	}
-	if keys.MiniMax != "" {
-		m["minimax"] = keys.MiniMax
-	}
-	if len(keys.PiProviderKeys) > 0 {
-		clean := map[string]string{}
-		for provider, key := range keys.PiProviderKeys {
-			provider = strings.ToLower(strings.TrimSpace(provider))
-			if provider == "" || strings.TrimSpace(key) == "" {
-				continue
-			}
-			clean[provider] = strings.TrimSpace(key)
-		}
-		if len(clean) > 0 {
-			m["pi_provider_keys"] = clean
-		}
-	}
-	return m
-}
-
 // LoadProviderKeysAsLLMKeys loads workspace-encrypted keys and converts to *llm.ProviderAPIKeys.
 // Returns an empty (non-nil) struct if keys don't exist or decryption fails.
 func LoadProviderKeysAsLLMKeys(ctx context.Context) *llm.ProviderAPIKeys {

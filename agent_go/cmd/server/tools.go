@@ -589,50 +589,6 @@ const (
 	connectionAvailable = "available"
 )
 
-// loadOverlayServerNames returns the set of server names present in the user
-// config overlay. Overlay membership is the definition of "connected": the
-// base catalog is what we offer, the overlay is what the user took. OAuth
-// callbacks already write there on success, so this was already true for OAuth
-// servers before it was made explicit. Callers that iterate many servers must
-// read this once and pass the result into connectionState rather than
-// re-reading the file per server.
-//
-//nolint:unused // its caller was dropped in the Vault checkpoint; kept for its owner (PLAT-466 only unblocks the cmd/server lint gate)
-func (api *StreamingAPI) loadOverlayServerNames() map[string]bool {
-	names := make(map[string]bool)
-	overlay, err := mcpclient.LoadConfig(api.getUserConfigPath(), api.logger)
-	if err != nil {
-		// A missing overlay is the normal first-run state, not an error worth
-		// failing the request over — it simply means nothing is connected yet.
-		api.logger.Debug(fmt.Sprintf("No user config overlay readable: %v", err))
-		return names
-	}
-	for name := range overlay.MCPServers {
-		names[name] = true
-	}
-	return names
-}
-
-// connectionState answers "is this server connected to the platform?" —
-// distinct from Status, which answers "is it working?".
-func connectionState(name string, cfg mcpclient.MCPServerConfig, overlay map[string]bool, userID string) string {
-	_ = userID
-	if !overlay[name] && !(cfg.OAuth != nil && strings.TrimSpace(cfg.OAuth.TokenFile) != "" && hasOAuthTokenFile(cfg)) {
-		return connectionAvailable
-	}
-	if cfg.OAuth == nil {
-		return connectionConnected // no credential needed
-	}
-	tokenFile := cfg.OAuth.TokenFile
-	if strings.TrimSpace(tokenFile) == "" {
-		tokenFile = getUserTokenFilePath(platformMCPTokenUserID, name)
-	}
-	if _, err := os.Stat(expandPath(tokenFile)); err != nil {
-		return connectionAvailable
-	}
-	return connectionConnected
-}
-
 // initializeToolCache initializes the tool cache on server startup using existing mcpcache service
 func (api *StreamingAPI) initializeToolCache() {
 	api.logger.Info("🚀 Initializing tool cache on server startup using existing mcpcache service...")

@@ -210,16 +210,6 @@ func (api *StreamingAPI) appendStructuredAssistantReply(userID, sessionID, works
 	return true
 }
 
-func messageContentText(message llmtypes.MessageContent) string {
-	texts := make([]string, 0, len(message.Parts))
-	for _, part := range message.Parts {
-		if text, ok := part.(llmtypes.TextContent); ok && strings.TrimSpace(text.Text) != "" {
-			texts = append(texts, text.Text)
-		}
-	}
-	return strings.Join(texts, "\n")
-}
-
 func chatHistoryEventsContain(events []storeevents.Event, id string) bool {
 	for _, e := range events {
 		if e.ID == id {
