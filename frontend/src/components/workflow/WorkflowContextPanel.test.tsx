@@ -10,6 +10,7 @@ vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: any) => sel
 vi.mock('./hooks/usePendingDecisionCount', () => ({ usePendingDecisionState: () => ({ loaded: true, count: 2 }) }))
 vi.mock('./ShareDashboardButton', () => ({ ShareDashboardButton: () => <button>Share</button> }))
 vi.mock('../workspace/WorkspaceBrowserRow', () => ({ WorkspaceBrowserRow: ({ onClick }: { onClick: () => void }) => <button onClick={onClick}>Browser</button> }))
+vi.mock('../workspace/useProjectStatus', () => ({ useProjectStatus: () => ({}) }))
 vi.mock('./reportDocuments', () => ({ useReportDocuments: () => ({ documents: [], defaultPath: 'db/reports/index.html' }), selectReportDocument: vi.fn() }))
 import { WorkflowContextPanel } from './WorkflowContextPanel'
 import { RelayContextPanel } from './RelayContextPanel'

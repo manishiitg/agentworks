@@ -5,6 +5,7 @@ import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../workspace/WorkspaceContextCard'
 import { WorkspaceAutomationRows, WorkspaceChannelRows, WorkspaceConnectionRows } from '../workspace/WorkspaceProjectNavigation'
+import { useProjectStatus } from '../workspace/useProjectStatus'
 import { WorkspaceBrowserRow } from '../workspace/WorkspaceBrowserRow'
 import { ShareDashboardButton } from './ShareDashboardButton'
 import { selectReportDocument, useReportDocuments } from './reportDocuments'
@@ -20,6 +21,7 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
   const { documents, defaultPath } = useReportDocuments(workspacePath || '')
   const decisions = usePendingDecisionState(relayMode ? null : workspacePath)
   const manifest = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest)
+  const status = useProjectStatus({ kind: 'goal', workspacePath: workspacePath || '', profileId: relayMode ? 'relays' : 'agentworks', projectId: manifest?.id ?? workspacePath ?? '', enabled: canWrite })
   if (!workspacePath || !canWrite) return null
   const openConnection = (section: string) => open('mcp', section)
   const pulseOn = manifest?.pulse?.enabled === true
@@ -34,8 +36,8 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
       {documents.filter(document => document.path !== defaultPath).map(document => <Row key={document.path} icon={LayoutDashboard} hint={document.path} onClick={() => { selectReportDocument(workspacePath, document.path); open('report') }}>{reportDocumentLabel(document, documents)}</Row>)}
       <ShareDashboardButton workspacePath={workspacePath} variant="row" onOpen={() => openConnection('share')} />
       {!relayMode && <WorkspaceBrowserRow workspacePath={workspacePath} profileId="workflow" onClick={() => open('browser')} />}
-      <WorkspaceAutomationRows relay={relayMode} onOpen={section => open('workshop', section)} />
-      <WorkspaceChannelRows onOpen={openConnection} slack={true} whatsapp={!relayMode} />
+      <WorkspaceAutomationRows relay={relayMode} onOpen={section => open('workshop', section)} counts={status} />
+      <WorkspaceChannelRows onOpen={openConnection} slack={true} whatsapp={!relayMode} slackStatus={status.slack} onOpenEmail={relayMode ? undefined : () => open('workshop', 'email')} />
     </Group>
     <Group title="Connections">
       <WorkspaceConnectionRows onOpen={openConnection} relayMode={relayMode} />

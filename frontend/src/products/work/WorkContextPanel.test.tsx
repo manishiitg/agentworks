@@ -9,6 +9,7 @@ vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: any) => sel
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
 vi.mock('../../components/workflow/ShareDashboardButton', () => ({ ShareDashboardButton: () => <button>Share</button> }))
 vi.mock('../../components/workspace/WorkspaceBrowserRow', () => ({ WorkspaceBrowserRow: ({ onClick }: { onClick: () => void }) => <button onClick={onClick}>Browser</button> }))
+vi.mock('../../components/workspace/useProjectStatus', () => ({ useProjectStatus: () => ({}) }))
 vi.mock('../../components/workflow/reportDocuments', () => ({ useReportDocuments: () => ({ documents: [], defaultPath: 'db/reports/index.html' }), selectReportDocument: vi.fn() }))
 import { WorkContextPanel } from './WorkContextPanel'
 import { workWorkspacePanels } from './workWorkspacePanels'

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { BookOpen, DollarSign, Files, Hand, Laptop, LayoutDashboard, MessageSquareText, Route, Settings, Terminal, Database } from 'lucide-react'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
 import { WorkspaceAutomationRows, WorkspaceChannelRows, WorkspaceConnectionRows } from '../../components/workspace/WorkspaceProjectNavigation'
+import { useProjectStatus } from '../../components/workspace/useProjectStatus'
 import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
 import { ShareDashboardButton } from '../../components/workflow/ShareDashboardButton'
 import { selectReportDocument, useReportDocuments } from '../../components/workflow/reportDocuments'
@@ -38,6 +39,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const openConnection = (section: string) => { setWorkspaceViewTarget('mcp', section); onOpen('mcp') }
   const openAutomation = (section: string) => { setWorkspaceViewTarget('workshop', section); onOpen('schedules') }
   const bots = !enabledPanels || enabledPanels.has('bots')
+  const status = useProjectStatus({ kind: 'crew', workspacePath, profileId, projectId })
+  const webhooks = enabledPanels?.has('triggers') !== false
   return <WorkspaceContextCard>
     <Group title="Use & share">
       {allowed('dashboard') && <>
@@ -46,8 +49,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
         {allowed('mcp') && <ShareDashboardButton workspacePath={workspacePath} variant="row" onOpen={() => openConnection('share')} />}
       </>}
       {allowed('browser') && <WorkspaceBrowserRow workspacePath={workspacePath} profileId={profileId} onClick={() => onOpen('browser')} />}
-      {allowed('schedules') && <WorkspaceAutomationRows onOpen={openAutomation} triggers={enabledPanels?.has('triggers') !== false} />}
-      {allowed('mcp') && <WorkspaceChannelRows onOpen={openConnection} slack={bots} whatsapp={bots} />}
+      {allowed('schedules') && <WorkspaceAutomationRows onOpen={openAutomation} triggers={webhooks} counts={status} />}
+      {allowed('mcp') && <WorkspaceChannelRows onOpen={openConnection} slack={bots} whatsapp={bots} slackStatus={status.slack} onOpenEmail={allowed('schedules') && webhooks ? () => openAutomation('email') : undefined} />}
     </Group>
     {allowed('mcp') && <Group title="Connections">
       <WorkspaceConnectionRows onOpen={openConnection} workMode enabledPanels={enabledPanels} />

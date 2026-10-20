@@ -1,8 +1,9 @@
-import { AppWindow, Braces, CalendarClock, Mail, MessageCircle, Slack, Webhook, Zap } from 'lucide-react'
+import { Braces, CalendarClock, Mail, MessageCircle, Plug, Slack, Webhook, Zap } from 'lucide-react'
 import { useGmailInboundUIEnabled } from '../workflow/bots/gmailAskAI'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { workspaceIntegrationShortcuts } from './workspaceIntegrationShortcuts'
 import { WorkspaceContextRow as Row } from './WorkspaceContextCard'
+import type { ProjectStatus } from './useProjectStatus'
 
 
 export function projectConnectionSections(options: Parameters<typeof workspaceIntegrationShortcuts>[0]) {
@@ -14,7 +15,7 @@ export function projectChannelSections(slack: boolean, whatsapp: boolean) {
   return [
     ...(slack ? [{ id: 'slack', label: 'Slack', icon: Slack }] : []),
     ...(whatsapp ? [{ id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle }] : []),
-    { id: 'cli', label: 'MCP access', icon: AppWindow },
+    { id: 'cli', label: 'MCP access', icon: Plug },
   ]
 }
 
@@ -32,19 +33,26 @@ export function projectAutomationSections({ relay = false, triggers = true, inco
   ]
 }
 
-export function WorkspaceAutomationRows({ onOpen, relay = false, triggers = true }: { onOpen: (section: string) => void; relay?: boolean; triggers?: boolean }) {
-  const incomingEmail = useGmailInboundUIEnabled()
+const countText = (value?: number) => (value === undefined ? undefined : value ? String(value) : 'None')
+
+export function WorkspaceAutomationRows({ onOpen, relay = false, triggers = true, counts }: { onOpen: (section: string) => void; relay?: boolean; triggers?: boolean; counts?: ProjectStatus }) {
+  const byId: Record<string, number | undefined> = { schedules: counts?.schedules, conditions: counts?.conditions, triggers: counts?.triggers, functions: counts?.functions }
   return <div className="mt-2">
     <h3 className="px-1 py-1 text-[10px] text-muted-foreground">Automations</h3>
-    {projectAutomationSections({ relay, triggers, incomingEmail }).map(item =>
-      <Row key={item.id} icon={item.icon} onClick={() => onOpen(item.id)}>{item.label}</Row>)}
+    {projectAutomationSections({ relay, triggers }).map(item =>
+      <Row key={item.id} icon={item.icon} detail={countText(byId[item.id])} onClick={() => onOpen(item.id)}>{item.label}</Row>)}
   </div>
 }
 
-export function WorkspaceChannelRows({ onOpen, slack, whatsapp }: { onOpen: (section: string) => void; slack: boolean; whatsapp: boolean }) {
+/** Incoming email is a way to reach the project, so it sits with the other channels. */
+export function WorkspaceChannelRows({ onOpen, slack, whatsapp, slackStatus, onOpenEmail }: { onOpen: (section: string) => void; slack: boolean; whatsapp: boolean; slackStatus?: string; onOpenEmail?: () => void }) {
+  const incomingEmail = useGmailInboundUIEnabled()
   return <div className="mt-2">
     <h3 className="px-1 py-1 text-[10px] text-muted-foreground">Channels</h3>
-    {projectChannelSections(slack, whatsapp).map(item => <Row key={item.id} icon={item.icon} onClick={() => onOpen(item.id)}>{item.label}</Row>)}
+    {projectChannelSections(slack, whatsapp).flatMap(item => [
+      <Row key={item.id} icon={item.icon} detail={item.id === 'slack' ? slackStatus : undefined} onClick={() => onOpen(item.id)}>{item.label}</Row>,
+      ...(item.id === (whatsapp ? 'whatsapp' : slack ? 'slack' : '') && onOpenEmail && incomingEmail ? [<Row key="email" icon={Mail} onClick={onOpenEmail}>Incoming email</Row>] : []),
+    ])}
   </div>
 }
 
