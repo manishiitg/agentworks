@@ -45,9 +45,12 @@ export function useProjectStatus({ kind, workspacePath, profileId, projectId, en
       if (!alive) return
       setStatus({ schedules: count(schedules), conditions: count(conditions), triggers: count(triggers), functions: count(functions), slackBot: text(slackBot), slackAccount: text(slackAccount), whatsapp: text(whatsapp), email: text(email), mcps: count(mcps), computerChats: count(computerChats) })
     }
+    // Once when the panel opens and again when the person comes back to the tab. A 30 s poll of these ten reads
+    // per open panel (full schedule list, every Crew's agents) was a large share of a small server's CPU.
     void load()
-    const timer = window.setInterval(() => { if (!document.hidden) void load() }, 30_000)
-    return () => { alive = false; window.clearInterval(timer) }
+    const onFocus = () => { if (!document.hidden) void load() }
+    window.addEventListener('focus', onFocus)
+    return () => { alive = false; window.removeEventListener('focus', onFocus) }
   }, [kind, workspacePath, profileId, projectId, enabled,inboxEnabled])
   return status
 }

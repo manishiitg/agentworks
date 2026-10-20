@@ -1087,8 +1087,11 @@ type productProjectStore struct {
 
 func defaultProductProjectStore() productProjectStore {
 	return productProjectStore{
+		// Discovery needs only <root>/<project>/product.json (depth 1). Depth 3 returned four levels of every
+		// Crew's files (.tmp, .calls, skills, code) several times per message, which kept the server's CPU busy
+		// and made chats and terminals slow to open.
 		listPaths: func(ctx context.Context, root string) ([]string, bool, error) {
-			listing, exists, err := listWorkspaceFolder(ctx, root, 3)
+			listing, exists, err := listWorkspaceFolder(ctx, root, 1)
 			if err != nil || !exists {
 				return nil, exists, err
 			}

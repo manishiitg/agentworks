@@ -117,10 +117,13 @@ func (api *StreamingAPI) makeCrewFromCodeProject(ctx context.Context, userID, se
 	if r := []rune(title); len(r) > 60 {
 		title = string(r[:60])
 	}
-	paths, _, err := store.listPaths(ctx, root)
+	// The project's own files, three levels deep (the discovery store lists only manifests).
+	listing, _, err := listWorkspaceFolder(ctx, root, 3)
 	if err != nil {
 		return nil, fmt.Errorf("could not read the project's files: %w", err)
 	}
+	paths := []string{}
+	collectWorkspaceFilePaths(listing, &paths)
 	sort.Strings(paths)
 	files, skipped, total := map[string]string{}, []string{}, 0
 	for _, full := range paths {
