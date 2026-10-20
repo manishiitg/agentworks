@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
@@ -226,4 +227,14 @@ func chatHistoryEventsContain(events []storeevents.Event, id string) bool {
 		}
 	}
 	return false
+}
+
+// Promoted live inputs and each session's last sidecar reply, for closing a promoted input that the previous response
+// already answered (emitRetainedMainTurnStreamCompletion).
+var retainedPromotedExecutions, retainedLastSidecarFinal sync.Map
+
+// retainedReplyAlreadyGiven reports whether final is the previous reply (or part of it), whitespace-normalized.
+func retainedReplyAlreadyGiven(previous, final string) bool {
+	previous, final = strings.Join(strings.Fields(previous), " "), strings.Join(strings.Fields(final), " ")
+	return previous != "" && final != "" && strings.Contains(previous, final)
 }

@@ -9955,6 +9955,18 @@ func (api *StreamingAPI) emitRetainedMainTurnStreamCompletion(sessionID string, 
 	if strings.TrimSpace(status) == "" {
 		status = "completed"
 	}
+	// A promoted input (typed while the CLI was answering) whose "reply" is the reply just saved was answered by that
+	// response: close its turn without a second copy (a Cursor chat showed one answer three times, 2026-10-20).
+	answeredByPrevious := false
+	if _, promoted := retainedPromotedExecutions.LoadAndDelete(executionID); promoted && status == "completed" {
+		if previous, ok := retainedLastSidecarFinal.Load(sessionID); ok && retainedReplyAlreadyGiven(previous.(string), finalResult) {
+			log.Printf("[RETAINED_TURN] Promoted input answered by the previous response; not saving its reply again session=%s execution=%s", sessionID, executionID)
+			finalResult, answeredByPrevious = "", true
+		}
+	}
+	if strings.TrimSpace(finalResult) != "" && status == "completed" {
+		retainedLastSidecarFinal.Store(sessionID, finalResult)
+	}
 	completion := unifiedevents.NewUnifiedCompletionEvent(
 		"coding_agent",
 		"retained",
@@ -9970,7 +9982,9 @@ func (api *StreamingAPI) emitRetainedMainTurnStreamCompletion(sessionID string, 
 	completion.Metadata["tmux_session"] = snapshot.TmuxSession
 	completion.Metadata["execution_kind"] = "main_agent"
 	completion.Metadata["scope"] = "main_agent"
-	if finalResult == "" {
+	if answeredByPrevious {
+		completion.Metadata[mcpagent.AnsweredByPreviousResponseMetadataKey] = true
+	} else if finalResult == "" {
 		completion.Metadata["final_response_missing"] = true
 		log.Printf("[RETAINED_TURN] Sidecar had no final assistant response session=%s terminal=%s provider=%s", sessionID, snapshot.TerminalID, provider)
 	}
@@ -10221,6 +10235,7 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 		delete(api.retainedMainTurnCanonicalIDs, executionID)
 		if len(pending) > 0 && !strings.EqualFold(strings.TrimSpace(snapshot.State), "failed") {
 			promotedExecutionID = strings.TrimSpace(pending[0])
+			retainedPromotedExecutions.Store(promotedExecutionID, true)
 			api.retainedMainTurnPendingExecutionIDs[sessionID] = append([]string(nil), pending[1:]...)
 			api.retainedMainTurnExecutionIDs[sessionID] = promotedExecutionID
 			// The provider accepted this input while the previous response was
