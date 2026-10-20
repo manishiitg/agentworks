@@ -148,9 +148,10 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       data-tab-active={isActive ? 'true' : undefined}
       className={`group flex min-w-0 cursor-pointer items-center gap-1.5 px-2 font-medium outline-none transition-colors ${productSurface ? 'rounded-lg py-1.5 text-sm' : 'rounded-t-md py-1 text-xs'} ${
         productSurface
-          ? isActive ? 'text-foreground hover:bg-muted' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+          ? isActive ? 'bg-muted text-foreground shadow-[inset_0_-2px_0_hsl(var(--primary))]' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+          // The open tab: filled, bold and underlined in the accent colour, so it stands out in a long tab bar.
           : isActive
-          ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100'
+          ? 'bg-muted font-semibold text-foreground shadow-[inset_0_-2px_0_hsl(var(--primary))]'
           : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100'
       }`}
     >
