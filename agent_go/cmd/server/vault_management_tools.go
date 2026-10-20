@@ -36,7 +36,7 @@ func vaultManagementDefinitions() []agentprofiles.ToolSpec {
 			"values":    map[string]any{"type": "object", "maxProperties": 20, "additionalProperties": map[string]any{"type": "string", "minLength": 1, "maxLength": 65536}, "description": "For set_value: NAME: value pairs the person gave you. Stored on the server; never repeat a value back."},
 			"overwrite": map[string]any{"type": "boolean", "description": "For set_value: replace existing names. For share: replace a Vault secret of the same name with the project's value. Default false: existing names are skipped (set_value) or refused (share)."},
 			"group_id":  externalString("Existing Vault group ID."), "name": externalString("Exact existing secret name (for share: the project's secret name)."), "allowed": map[string]any{"type": "boolean"},
-			"source_workflow_id": externalString("For share: the source workflow or Flow ID."), "source_crew_id": externalString("For share: the source Crew ID."),
+			"source_workflow_id": externalString("For share: the source workflow or Flow ID."), "source_crew_id": externalString("For share: the source Crew ID."), "source_workspace_path": externalString("For share: a project folder holding the secret, for a project whose secrets stayed under the folder it used before it moved."),
 			"vault_name": externalString("For share: name in Vault; defaults to name. Existing names are never overwritten."),
 			"group_ids":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "minItems": 1, "maxItems": 100, "description": "For share: Vault group IDs from manage_vault_groups list."},
 			"confirm":    externalString("For delete: repeat the secret name."),
