@@ -102,9 +102,7 @@ This plan validates a single-user loopback alpha. Team internet testing still ne
 The broad-suite failures and browser gap mean this is not a clean full-product test pass. This was the merge recommendation at that historical revision; it is not a statement of the current PR status.
 
 
-## Shared UI review pass — 2026-09-30
-
-See [the complete UI review](../docs/reviews/caplayer-ui-review-2026-09-30.md) for findings, fixes, reference components and remaining boundaries. This pass verified the shared Chat tab, right workspace toolbar, default composer, transcript, model selection, all section navigation, People subtabs, pane resizing/collapse, and a phone breakpoint. The standalone build, 86 focused frontend tests and gateway Go tests passed. Browser checks used the real local gateway for navigation/PII/endpoint probing and a separate explicitly labelled model fixture for chat rendering; no live provider or external connector result is claimed by this pass.
+## Shared UI checks
 
 ### Shared product account regression
 

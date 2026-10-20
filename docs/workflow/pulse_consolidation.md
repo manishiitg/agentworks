@@ -442,7 +442,7 @@ no Go.
 
 ## Phase 4 — Publish folded into the Pulse loop (2026-06-24)
 
-Publish (the public-URL twin of Backup — see `docs/workflow/publish_design.md`) is now a
+Publish (the public-URL twin of Backup — see the [publishing guide](../../agent_go/cmd/server/guidance/templates/system/publish-strategy.md)) is now a
 step of the Pulse pass, so a workflow's public dashboard stays current automatically:
 
 ```
