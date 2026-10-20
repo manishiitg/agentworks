@@ -704,6 +704,8 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       const key = workSideChatKey(projectId, globalThis.crypto.randomUUID().slice(0, 8))
       // The server names the new tab's agent and its chat title from this name.
       const conversation = await agentApi.resolveAgentProfileConversation(profileId, { conversation_key: key, name })
+      // The server now holds this chat; show its row at once rather than after the next list.
+      setListed(current => [...(current || []).filter(chat => chat.conversation_key !== conversation.conversation_key), { conversation_key: conversation.conversation_key, conversation_id: conversation.conversation_id, session_id: conversation.session_id, name, pinned: true }])
       setNewTabName(null)
       const chatStore = useChatStore.getState()
       const tabId = await chatStore.createChatTab(name, {
