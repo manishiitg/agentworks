@@ -56,8 +56,7 @@ func contextReferenceReadRoot(userID, folder string) (string, bool) {
 	}
 }
 
-// isCrewContextShape reports whether parts spell a Crew project root in one of the three accepted spellings
-// (and nothing below it): Crew/<project>, Chats/Work/projects/<project>, _users/<owner>/Chats/Work/projects/<project>.
+// isCrewContextShape accepts only a canonical Crew project root, with no subpath.
 func isCrewContextShape(parts []string) bool {
 	valid := func(name string) bool {
 		return name != "" && name != "." && name != ".." && !strings.HasPrefix(name, ".")
@@ -66,9 +65,7 @@ func isCrewContextShape(parts []string) bool {
 }
 
 // authorizeWorkflowContextPathsWithReadRoots keeps the durable/user-visible
-// reference canonical while separately resolving the folder-guard root. Crew
-// projects live below _users/<id>/..., but their public project identity is the
-// stable Chats/Work/projects/<project> path used by the picker and workflow.json.
+// reference canonical while separately resolving the folder-guard root.
 func authorizeWorkflowContextPathsWithReadRoots(ctx context.Context, paths []string) ([]string, []string, error) {
 	return authorizeContextPathsWithReadRoots(ctx, paths, false)
 }
@@ -105,6 +102,12 @@ func authorizeContextPathsWithReadRoots(ctx context.Context, paths []string, ski
 		}
 		readRoot, validShape := contextReferenceReadRoot(userID, folder)
 		if !validShape {
+			if skipMissing {
+				// A saved reference may outlive its registered project or path.
+				// Omit it without reading or resolving a retired location.
+				log.Printf("[WORKFLOW_CONTEXT] Skipping attached project %s: it is no longer a registered workflow or Crew path", folder)
+				continue
+			}
 			logContextDenial(claims, folder, "not a workflow or crew path")
 			return nil, nil, denied
 		}

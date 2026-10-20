@@ -9,32 +9,48 @@ import (
 	"testing"
 )
 
-// A deleted crew or workflow left in a crew's saved attachments is skipped for
-// the turn instead of failing it (server A 2026-09-27: deleting new-project made
-// every call into the SDE crew answer 403). Existing attachments still load;
-// the strict check used by attach/secrets still refuses a missing path.
+// Saved unavailable references are omitted without restoring retired routes.
+// New attachments and malformed current manifests remain strict.
 func TestTurnSkipsAttachmentsThatNoLongerExist(t *testing.T) {
-	t.Setenv("MULTI_USER_MODE", "true")
-	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","role":"creator","products":["work","agentworks"]}]}`)
-	workspace := &mockWorkspaceAPI{files: map[string]string{
-		"_users/alice/Chats/Work/projects/live/product.json": `{"schema_version":1,"product":"work","id":"live","title":"Live"}`,
-		"_users/alice/Chats/Work/projects/gone/.keep":        "",
-	}}
-	host := httptest.NewServer(workspace)
-	defer host.Close()
-	t.Setenv("WORKSPACE_API_URL", host.URL)
-	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "alice", Username: "alice"})
-
-	req := &QueryRequest{WorkflowContextPaths: []string{"Chats/Work/projects/gone", "Chats/Work/projects/live", "Workflow/missing"}}
+	f, _ := newExternalCrewCommandFixture(t)
+	ctx := context.WithValue(context.Background(), UserContextKey, crewWriter("owner"))
+	stale := []string{"Chats/Work/projects/deleted", "_users/owner/Chats/Code/projects/deleted", "Crew/missing", "Workflow/missing"}
+	req := &QueryRequest{WorkflowContextPaths: append(stale, externalCommandCrewRoot)}
 	if err := admitTurnContextPaths(ctx, req); err != nil {
-		t.Fatalf("a missing attachment failed the turn: %v", err)
+		t.Fatalf("a stale attachment failed the turn: %v", err)
 	}
-	if !reflect.DeepEqual(req.WorkflowContextPaths, []string{"Chats/Work/projects/live"}) {
-		t.Fatalf("kept attachments = %v", req.WorkflowContextPaths)
+	if !reflect.DeepEqual(req.WorkflowContextPaths, []string{externalCommandCrewRoot}) || !reflect.DeepEqual(req.authorizedWorkflowContextReadPaths, []string{externalCommandCrewRoot}) || req.omittedWorkflowContextCount != len(stale) {
+		t.Fatalf("turn context=%v reads=%v omitted=%d", req.WorkflowContextPaths, req.authorizedWorkflowContextReadPaths, req.omittedWorkflowContextCount)
 	}
-	if _, _, err := authorizeWorkflowContextPathsWithReadRoots(ctx, []string{"Chats/Work/projects/gone"}); err == nil {
-		t.Fatal("the strict check must still refuse a missing crew")
+	for _, path := range stale {
+		if _, _, err := authorizeWorkflowContextPathsWithReadRoots(ctx, []string{path}); err == nil {
+			t.Fatalf("strict attachment accepted %q", path)
+		}
 	}
+	f.write(t, externalCommandCrewRoot+"/product.json", "{malformed")
+	if _, _, err := authorizeContextPathsWithReadRoots(ctx, []string{externalCommandCrewRoot}, true); err == nil {
+		t.Fatal("malformed current manifest was accepted")
+	}
+}
+
+func TestExternalCrewDetachesSavedUnavailableReferences(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	stale := []string{"Chats/Work/projects/deleted", "_users/owner/Chats/Code/projects/deleted", "Crew/missing"}
+	raw, _ := json.Marshal(map[string]any{"id": "team", "workflow_context_paths": append(stale, "Workflow/keep"), "custom": "preserved"})
+	f.write(t, externalCommandCrewRoot+"/workflow.json", string(raw))
+	// This removes only an exact saved entry in the caller's owned Crew.
+	crewCapabilityHTTP(t, f, crewWriter("other"), "crew_references", map[string]any{"action": "detach", "workspace_path": stale[0]}, 403)
+	for _, path := range stale {
+		crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_references", map[string]any{"action": "detach", "workspace_path": path}, 200)
+	}
+	var saved struct {
+		Paths  []string `json:"workflow_context_paths"`
+		Custom string   `json:"custom"`
+	}
+	if err := json.Unmarshal([]byte(f.read(t, externalCommandCrewRoot+"/workflow.json")), &saved); err != nil || !reflect.DeepEqual(saved.Paths, []string{"Workflow/keep"}) || saved.Custom != "preserved" {
+		t.Fatalf("saved paths=%v custom=%q err=%v", saved.Paths, saved.Custom, err)
+	}
+	crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_references", map[string]any{"action": "detach", "workspace_path": stale[0]}, 400)
 }
 
 // Deleting a crew removes it from the owner's crews and workflows (logical or

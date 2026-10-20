@@ -5,6 +5,12 @@ Pass --docs and --state for one deployment. Without --apply, report the planned
 changes. Applying first saves the exact metadata, databases and link inventory
 under the private state directory. Chat text, secrets and native IDs are not
 rewritten. Retire this tool after the last deployment has converted.
+
+Cutover order: prepare the new Crew-only release and preview while live. Stop
+the old agent service, run --apply (which backs up first), then activate/start
+the new release. Never restart the old binary on converted data or delete live
+work/ schedule state; either can re-fire schedules. Drop code from the server's
+AGENT_PRODUCTS and enabledProductSurfaces overlay before starting the new release.
 """
 
 import argparse

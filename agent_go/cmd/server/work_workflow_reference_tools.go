@@ -409,7 +409,9 @@ func (api *StreamingAPI) registerWorkWorkflowReferenceTools(registrar definition
 		path = strings.TrimSuffix(strings.TrimSpace(path), "/")
 		removedReadRoot, validReference := contextReferenceReadRoot(userID, path)
 		if !validReference {
-			return "", fmt.Errorf("project reference is unavailable")
+			// Removal needs the exact saved value, not access to its target.
+			// It never resolves a retired path or grants a new read root.
+			removedReadRoot = path
 		}
 		paths, err := updateWorkWorkflowReferences(ctx, workspacePath, func(existing []string) ([]string, error) {
 			kept := make([]string, 0, len(existing))
@@ -429,7 +431,7 @@ func (api *StreamingAPI) registerWorkWorkflowReferenceTools(registrar definition
 		if err != nil {
 			return "", err
 		}
-		updateWorkSessionWorkflowGuard(sessionID, nil, removedReadRoot)
+		updateWorkSessionWorkflowGuard(sessionID, nil, path, removedReadRoot)
 		api.emitAgentProfileEvent(sessionID, map[string]interface{}{"type": "work_workflow_references_updated", "workflow_context_paths": paths})
 		return "Project reference detached. Access is revoked now.", nil
 	})
