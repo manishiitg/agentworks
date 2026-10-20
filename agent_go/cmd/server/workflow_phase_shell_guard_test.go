@@ -10,15 +10,12 @@ import (
 func TestWorkflowPhaseCLISetupPreservesAuthenticatedShellGuard(t *testing.T) {
 	const workflow = "Workflow/conqa2test"
 	for _, tc := range []struct {
-		name            string
-		readOnly        bool
-		externalBuilder bool
-		wantWrite       bool
+		name      string
+		readOnly  bool
+		wantWrite bool
 	}{
-		{name: "Slack Run turn", readOnly: true},
-		{name: "Run turn with external operation", readOnly: true, externalBuilder: true},
+		{name: "Run turn", readOnly: true},
 		{name: "Builder turn", wantWrite: true},
-		{name: "external Builder operation", externalBuilder: true, wantWrite: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sessionID := "phase-cli-guard-" + tc.name
@@ -28,7 +25,7 @@ func TestWorkflowPhaseCLISetupPreservesAuthenticatedShellGuard(t *testing.T) {
 				writes = append(writes, workflow)
 			}
 			common.SetSessionFolderGuard(sessionID, []string{workflow, "Downloads"}, writes)
-			configureWorkflowPhaseCLIShellGuard(sessionID, workflow, "owner", tc.externalBuilder, tc.readOnly)
+			configureWorkflowPhaseCLIShellGuard(sessionID, workflow, "owner", tc.readOnly)
 			guard := common.GetSessionShellConfig(sessionID)
 			if got := slices.Contains(guard.WritePaths, workflow) || slices.Contains(guard.WritePaths, workflow+"/"); got != tc.wantWrite {
 				t.Fatalf("workflow write grant = %v, want %v: %+v", got, tc.wantWrite, guard)
