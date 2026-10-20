@@ -184,9 +184,11 @@ func isCrewReaderTurn(req QueryRequest, callerID string) bool {
 // taken from the selected folder's explicit segment when it names one,
 // and finally every known owner is scanned. A project ID present under
 // two owners is ambiguous and fails closed.
+var errCrewProjectUnavailable = errors.New("This Crew is unavailable. Ask its owner to share it with you, or open another Crew.")
+
 func resolveCrewProjectBinding(ctx context.Context, callerID string, profile agentprofiles.Profile, projectID, selectedFolder string) (crewProjectBinding, error) {
 	denied := func() (crewProjectBinding, error) {
-		return crewProjectBinding{}, fmt.Errorf("crew project %q is unavailable", strings.TrimSpace(projectID))
+		return crewProjectBinding{}, errCrewProjectUnavailable
 	}
 	if strings.TrimSpace(projectID) == "" {
 		return denied()
@@ -292,7 +294,7 @@ func scanCrewProjectOwners(ctx context.Context, callerID string, profile agentpr
 		matchOwner, matchBinding, matched = rootOwner, binding, true
 	}
 	if !matched {
-		return "", productConversationBinding{}, fmt.Errorf("crew project %q is unavailable", strings.TrimSpace(projectID))
+		return "", productConversationBinding{}, errCrewProjectUnavailable
 	}
 	return matchOwner, matchBinding, nil
 }

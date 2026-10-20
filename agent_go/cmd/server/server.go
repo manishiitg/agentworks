@@ -4076,6 +4076,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	resolvedProfile, access, admitErr := api.admitQueryTarget(r.Context(), &req, currentUserID, sessionID)
 	if admitErr != nil {
+		if errors.Is(admitErr, errCrewProjectUnavailable) {
+			externalError(w, http.StatusForbidden, "project_unavailable", errCrewProjectUnavailable.Error())
+			return
+		}
 		status := http.StatusForbidden
 		if admitErr.invalidProfile {
 			status = http.StatusBadRequest

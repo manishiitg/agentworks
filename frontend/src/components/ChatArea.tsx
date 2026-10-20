@@ -3264,6 +3264,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       if (isConfirmedUndeliveredSubmission(error)) acceptReceipt()
       console.log('[WF_DEBUG] ERROR: Submit exception', { error })
       logger.error('ChatArea', 'Failed to submit query:', error)
+      options?.onRejected?.(submissionFailure(error))
       chatStore.patchTabEvents(tabSessionId, events => withoutOptimisticUserMessage(events, optimisticUserEventID))
       // turn_running exhaustion (the interceptor retried for minutes): the
       // previous reply never finished, and the message provably never sent.

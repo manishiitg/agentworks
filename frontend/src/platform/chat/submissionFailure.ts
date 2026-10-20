@@ -56,8 +56,13 @@ export function submissionFailure(error: unknown): SubmissionFailure {
 
   return {
     message: responseMessage || fallbackMessage,
-    code: firstText(data?.code, data?.error_code, machineErrorCode(data?.error), nestedError?.code),
+    code: firstText(data?.code, data?.error_code, machineErrorCode(data?.error), nestedError?.code, response?.status === 403 ? 'access_denied' : undefined),
     provider: firstText(data?.provider, nestedError?.provider),
     technicalDetails,
   }
+}
+
+/** The server refused this target; retrying the same message cannot restore access. */
+export function isAccessRefusal(failure: SubmissionFailure): boolean {
+  return failure.code === 'access_denied' || failure.code === 'project_unavailable'
 }

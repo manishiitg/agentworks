@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { normalizeProductChatFailure } from './productChatFailure'
-import { submissionFailure } from './submissionFailure'
+import { isAccessRefusal, submissionFailure } from './submissionFailure'
 
 describe('submissionFailure', () => {
   it('shows the Pulse refusal as the card message rather than only in technical details', () => {
@@ -64,4 +64,14 @@ describe('submissionFailure', () => {
     expect(failure.code).toBeUndefined()
     expect(failure.technicalDetails).toBe('Request failed with status code 422\ninitialize product code folder: folder already exists')
   })
+})
+
+it('shows a revoked project refusal once, without retrying or restoring a duplicate draft', () => {
+  const message = 'This Crew is unavailable. Ask its owner to share it with you, or open another Crew.'
+  for (const data of [{ error: { code: 'project_unavailable', message } }, message]) {
+    const failure = submissionFailure({ response: { status: 403, data } })
+    expect(isAccessRefusal(failure)).toBe(true)
+    expect(normalizeProductChatFailure(failure.message, failure)).toMatchObject({ message, retryable: false })
+  }
+  expect(isAccessRefusal(submissionFailure(new Error('Network Error')))).toBe(false)
 })

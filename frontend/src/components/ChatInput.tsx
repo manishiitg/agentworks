@@ -49,6 +49,7 @@ import { sendQueuedChatMessage } from '../utils/chatQueueController'
 import { captureChatDraft, updateOwnedChatDraft } from '../utils/chatDraftOwnership'
 import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
 import type { ChatSubmissionOptions } from '../utils/chatSubmissionTarget'
+import { isAccessRefusal } from '../platform/chat/submissionFailure'
 import { liveTerminalControlKey } from '../utils/liveTerminalKeys'
 import { recordChatSubmissionTelemetry } from '../utils/chatDeliveryTelemetry'
 import { chatUsesStructuredTransport, shouldRouteChatInputToLiveTransport, shouldShowLiveTerminalControl } from '../utils/liveInputSubmission'
@@ -2114,11 +2115,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         clearInputState()
         const clearedDraft = captureChatDraft(submittedTabId)
         let accepted: boolean | void
+        let restoreRefusedDraft = true
         try {
           accepted = await onSubmit(query, {
             sourceTabId: submittedTabId,
             deliveryMode,
             submissionId,
+            onRejected: failure => { restoreRefusedDraft = !isAccessRefusal(failure) },
           })
         } catch (error) {
           console.error('[ChatInput] Live message submission failed', error)
@@ -2128,7 +2131,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           // Do not overwrite text the user began typing while delivery was in
           // flight, and do not restore a draft into a tab they navigated away
           // from. Otherwise put the original text/attachments back for retry.
-          if (updateOwnedChatDraft(clearedDraft, submittedDraft) && composerMountedRef.current) {
+          if (restoreRefusedDraft && updateOwnedChatDraft(clearedDraft, submittedDraft) && composerMountedRef.current) {
             latestInputTextRef.current = submittedDraft.inputText
             setLocalInputText(submittedDraft.inputText)
           }

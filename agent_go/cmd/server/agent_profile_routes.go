@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -570,13 +571,13 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	productInteractions.Note(r.Context(), GetUserIDFromContext(r.Context()), profile.Product)
 	conversation, err := api.resolveAgentProfileConversation(r, profile, input.ConversationKey, "")
 	if err != nil {
-		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
+		writeAgentProfileQueryError(w, err)
 		return
 	}
 	input.interactive = true
 	query, err := prepareProductConversationTurn(r.Context(), productWorkspaceUserID(r.Context()), profile, input, conversation)
 	if err != nil {
-		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
+		writeAgentProfileQueryError(w, err)
 		return
 	}
 	if input.KnowledgebaseFolderPath != nil {
@@ -1033,6 +1034,14 @@ func validateAgentProfileHandler() http.HandlerFunc {
 			"profile": profile,
 		})
 	}
+}
+
+func writeAgentProfileQueryError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errCrewProjectUnavailable) {
+		externalError(w, http.StatusForbidden, "project_unavailable", errCrewProjectUnavailable.Error())
+		return
+	}
+	writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
 }
 
 func writeAgentProfileError(w http.ResponseWriter, status int, message string) {

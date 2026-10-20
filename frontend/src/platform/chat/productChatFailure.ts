@@ -5,6 +5,8 @@ export type ProductChatFailureCode =
   | 'provider_unavailable'
   | 'configuration_error'
   | 'pulse_unavailable'
+  | 'access_denied'
+  | 'project_unavailable'
   | 'cancelled'
   | 'internal_error'
 
@@ -104,6 +106,15 @@ export function normalizeProductChatFailure(rawError: string, hints: FailureHint
   const resetLabel = museResetLabelFrom(evidence)
   const actionUrl = museUpgradeUrlFrom(evidence)
   const providerLabel = provider || 'The AI provider'
+
+  if (normalizedCode === 'access_denied' || normalizedCode === 'project_unavailable') {
+    return {
+      code: normalizedCode,
+      title: 'This project is unavailable',
+      message: raw,
+      retryable: false,
+    }
+  }
 
   // This is a server refusal with a plain next step, not a provider failure.
   if (normalizedCode === 'pulse_unavailable') {

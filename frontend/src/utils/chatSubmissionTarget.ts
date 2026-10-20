@@ -9,6 +9,7 @@ export interface ChatSubmissionOptions {
   submittedAtPerformanceMS?: number
   submittedAtClientTime?: string
   optimisticUserEventId?: string
+  onRejected?: (failure: { message: string; code?: string }) => void
   queuedDelivery?: boolean
   builderHandoff?: { tabId?: string; sessionId?: string }
 }
