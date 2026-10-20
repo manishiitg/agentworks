@@ -97,7 +97,7 @@ Functions with declared output schemas write their result file; other functions
 return their final text and any produced files. See [agent messaging and function
 contracts](../design/agent_messaging.md) for lifecycle and output rules.
 
-## Legacy CLI for existing installations
+## CLI for existing installations
 
 Existing scripts and stdio-only MCP clients can continue using the CLI. New
 AI agent connections should use HTTP MCP as shown above. The installer downloads the
@@ -143,38 +143,17 @@ tools read the shared filesystem or use the read-only shared-assets endpoint
 when the agent and workspace run on separate volumes. Keep the workspace
 service on the internal network; expose only the authenticated AgentWorks server.
 
-## Test locally with the testing workflow
+## Verify sign-in and access
 
-From the repository root, run:
+The current HTTP checks use isolated fixtures:
 
-```sh
-python3 scripts/test-agentworks-external-local.py
-```
+- CLI browser login, refresh, logout and named-account isolation: `agent_go/cmd/agentworks/main_test.go`.
+- Browser-approved combined CLI sign-in with laptop MCP access: `agent_go/cmd/server/external_laptop_access_test.go`.
+- Website and MCP account-management permission checks: `agent_go/cmd/server/external_users_test.go`.
 
-This builds the agent server, workspace service, and CLI into a fresh directory
-under `.local/workflow-tests/`. It copies only the design inputs from
-`workspace-docs/Workflow/testing`, sanitizes its manifest, and starts separate
-services on loopback ports with fresh test credentials. It does not use the
-running development services or their workspace.
+Run these focused packages in CI. The former standalone probe used retired CLI token-pasting and tool contracts and has been removed.
 
-The probe exercises app-generated PAT login, workflow/tool discovery, document
-read/search, plan and guidance reads, and narrow-token permission checks. It
-also creates a WAV asset larger than 2 MiB, gets its share link, downloads it
-through the CLI, and verifies an authenticated byte-range request through the
-browser file endpoint. It then connects the actual stdio MCP bridge, verifies
-plan/context reads, and asserts the probe left no changelog entries. It revokes
-the token and checks that both the CLI and the existing MCP connection are
-denied, and asserts every mutation path answers `unknown_tool`. Run/log
-inspection uses explicitly synthetic artifacts.
-
-Each run prints the artifact directory and writes `receipt.json`, including
-source-file hashes and results. It stops its own services and verifies the
-original workflow inputs stayed unchanged. This test makes no model calls,
-does not execute the copied workflow, and does not test a live Builder model
-conversation. See [local workflow isolation](isolated-workflow-testing.md) for
-the procedure for live agent testing.
-
-## Connect the legacy CLI
+## Sign in with the CLI
 
 Run the installer from `/api/downloads/cli/install-agentworks.sh`, or sign in
 with an installed binary:
@@ -220,6 +199,8 @@ Configuration is stored in the OS user-config directory under
 file. `AGENTWORKS_SERVER` selects the server for automation. Sign in through your browser to save a renewable connection.
 HTTPS is required except on loopback development addresses.
 Redirects are refused to avoid forwarding credentials to another location.
+
+For a machine without a browser, use `agentworks login --no-browser` and approve the displayed link in any browser.
 
 ## Connect a local AI app
 

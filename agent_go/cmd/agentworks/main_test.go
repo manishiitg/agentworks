@@ -694,6 +694,7 @@ func cliTestServer(handler http.Handler) *httptest.Server {
 
 func TestNamedLoginsAreSeparateAndNeverOverwriteAnother(t *testing.T) {
 	home := t.TempDir()
+	t.Setenv("APPDATA", home)
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", home)
 	tool := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"tools":[]}`)) })
