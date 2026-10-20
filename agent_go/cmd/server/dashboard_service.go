@@ -425,11 +425,11 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if args.Action == "list" {
-		// A new private Crew needs the same starting dashboard as a shared
+		// A new private Crew or Goal needs the same starting dashboard as a shared
 		// one. Only its Builder with existing authoring consent creates it;
 		// Run requests, bounded file connections, Local projects and published
 		// laptop source never acquire writes through catalog discovery.
-		if len(result.Dashboards) == 0 && includeDraft && req.Guard == nil && (target.Kind == "crew" || target.Kind == "code") {
+		if len(result.Dashboards) == 0 && includeDraft && req.Guard == nil && (target.Kind == "crew" || target.Kind == "code" || target.Kind == "workflow") {
 			publication, err := readPublishedProject(r.Context(), target.Root)
 			if err != nil {
 				dashboardError(w, err)

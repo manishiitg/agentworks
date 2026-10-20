@@ -99,3 +99,33 @@ func TestCrewBuilderCatalogCreatesDefaultDashboard(t *testing.T) {
 		})
 	}
 }
+
+// A private Goal opens with the same standard dashboard as a Crew. Opening it
+// never shares the Goal or overwrites a dashboard the Builder already authored.
+func TestGoalBuilderCatalogCreatesDefaultDashboard(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","can_create":true,"products":["agentworks"]}]}`)
+	manifest, _ := json.Marshal(WorkflowManifest{ID: "invoices", Label: "Invoices", CreatedBy: "owner", Access: &WorkflowAccess{Owners: []string{"owner"}}})
+	f.write(t, "Workflow/invoices/workflow.json", string(manifest))
+	list := func() {
+		t.Helper()
+		w := httptest.NewRecorder()
+		f.api.handleDashboards(w, adminRequest(http.MethodPost, "/api/dashboards", `{"workspace":"Workflow/invoices","action":"list"}`, &UserClaims{UserID: "owner", Username: "owner"}, nil))
+		externalTestBody(t, w, http.StatusOK)
+	}
+	list()
+	stored, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: "Workflow/invoices", Action: "get", ID: defaultDashboardID, IncludeDraft: true})
+	if err != nil || stored.Dashboard == nil || stored.Dashboard.Published == "" || stored.Snapshot == nil || !strings.Contains(stored.Snapshot.Files["index.html"], "data-report-chat-panel") {
+		t.Fatalf("Goal has no usable default: %+v %v", stored, err)
+	}
+	revision := stored.Dashboard.Revision
+	list()
+	again, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: "Workflow/invoices", Action: "get", ID: defaultDashboardID, IncludeDraft: true})
+	if err != nil || again.Dashboard.Revision != revision {
+		t.Fatalf("catalog rewrote default: %+v %v", again, err)
+	}
+	goal, found, err := ReadWorkflowManifest(context.Background(), "Workflow/invoices")
+	if err != nil || !found || goal.Access == nil || goal.Access.RunEveryone || len(goal.Access.Readers) != 0 {
+		t.Fatalf("opening the dashboard changed sharing: %+v %v", goal, err)
+	}
+}
