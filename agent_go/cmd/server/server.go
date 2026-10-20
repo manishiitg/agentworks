@@ -11244,7 +11244,7 @@ func (api *StreamingAPI) agentProfileAllowsRetainedLiveInput(userID, sessionID, 
 	api.conversationMux.RUnlock()
 	if launchKnown {
 		if launched != currentProfileKey {
-			log.Printf("[CHAT_HISTORY] Retained live input disabled for product session %s: the launched agent profile differs from the current one", sessionID)
+			log.Printf("[CHAT_HISTORY] Retained live input disabled for product session %s: the launched agent profile differs from the current one (changed: %s)", sessionID, agentProfileKeyChange(launched, currentProfileKey))
 		}
 		return launched == currentProfileKey
 	}

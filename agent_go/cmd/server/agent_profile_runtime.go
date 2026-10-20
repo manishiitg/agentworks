@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
@@ -105,7 +106,15 @@ func agentProfileSessionKey(profile *resolvedAgentProfile) string {
 	if profile == nil {
 		return ""
 	}
-	servers := append([]string(nil), profile.SelectedServers...)
+	// "No servers" has two spellings: a fresh request carries none and the query path then fills in NO_SERVERS, so a
+	// replayed queued message carried the filled-in one. Both mean the same selection; spelling must not change the
+	// key, or a queued message looked like a changed Crew and was held back from the running CLI (2026-10-20).
+	servers := []string{}
+	for _, name := range profile.SelectedServers {
+		if name = strings.TrimSpace(name); name != "" && name != "NO_SERVERS" {
+			servers = append(servers, name)
+		}
+	}
 	sort.Strings(servers)
 	connections := append([]string(nil), profile.ChatConnections...)
 	sort.Strings(connections)
@@ -127,7 +136,43 @@ func agentProfileSessionKey(profile *resolvedAgentProfile) string {
 		return fmt.Sprintf("%s@%d", profile.Definition.ID, profile.Definition.Version)
 	}
 	sum := sha256.Sum256(payload)
-	return "profile-sha256:" + hex.EncodeToString(sum[:])
+	key := "profile-sha256:" + hex.EncodeToString(sum[:])
+	// Remember a short hash per part, so a changed key can be logged by what changed (agentProfileKeyChange).
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(payload, &fields) == nil {
+		parts := make(map[string]string, len(fields))
+		for name, raw := range fields {
+			partSum := sha256.Sum256(raw)
+			parts[name] = hex.EncodeToString(partSum[:6])
+		}
+		agentProfileKeyParts.Store(key, parts)
+	}
+	return key
+}
+
+var agentProfileKeyParts sync.Map // profile key -> part name -> short hash
+
+// agentProfileKeyChange names the parts that differ between two profile keys ("unknown" when one was not seen).
+func agentProfileKeyChange(launched, current string) string {
+	a, okA := agentProfileKeyParts.Load(launched)
+	b, okB := agentProfileKeyParts.Load(current)
+	if !okA || !okB {
+		return "unknown"
+	}
+	before, after := a.(map[string]string), b.(map[string]string)
+	changed := []string{}
+	for name, value := range after {
+		if before[name] != value {
+			changed = append(changed, name)
+		}
+	}
+	for name := range before {
+		if _, ok := after[name]; !ok {
+			changed = append(changed, name)
+		}
+	}
+	sort.Strings(changed)
+	return strings.Join(changed, ",")
 }
 
 // cleanAgentProfileWorkspace validates the client-supplied selected_folder for
