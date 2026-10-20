@@ -19,8 +19,8 @@ export const mcpAppsApi = {
     const response = await api.get('/api/admin/mcp-apps')
     return { apps: response.data.apps || [], redirectUri: response.data.redirect_uri || '' }
   },
-  save: async (key: string, clientId: string, clientSecret: string): Promise<void> => {
-    await api.put(`/api/admin/mcp-apps/${encodeURIComponent(key)}`, { client_id: clientId, client_secret: clientSecret })
+  save: async (key: string, clientId: string, clientSecret: string, projectId?: string): Promise<void> => {
+    await api.put(`/api/admin/mcp-apps/${encodeURIComponent(key)}`, { client_id: clientId, client_secret: clientSecret, project_id: projectId })
   },
   remove: async (key: string): Promise<void> => {
     await api.delete(`/api/admin/mcp-apps/${encodeURIComponent(key)}`)

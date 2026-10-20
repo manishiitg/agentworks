@@ -121,7 +121,7 @@ func externalCrewExecutionDefinition(add func(string, string, bool, bool, map[st
 	if err != nil {
 		return err
 	}
-	return externalCrewNativeDefinition(add, "crew_integrations", "Run this Crew's shared Slack and Google integration tools directly. action=list returns the enabled native names, descriptions and exact argument schemas; otherwise action is that tool name and arguments matches its schema. Requires current editable Crew ownership, crews:write and unrestricted Crew file consent. Existing bot route, Google read/write grants and account roles apply. Shared Google account grant changes additionally require a current administrator and consent covering all Crews. Human Google authorization, infrastructure review and incoming-email sender approval remain in their existing website flows.", tools)
+	return externalCrewNativeDefinition(add, "crew_integrations", "Run this Crew's shared Slack and Google integration tools directly. action=list returns the enabled native names, descriptions and exact argument schemas; otherwise action is that tool name and arguments matches its schema. Requires current editable Crew ownership, crews:write and unrestricted Crew file consent. Existing bot route, Google read/write grants and account roles apply. Shared Google account grant changes additionally require a current administrator and consent covering all Crews. Human Google authorization and infrastructure review remain in their website flows.", tools)
 }
 
 func externalCrewNativeDefinition(add func(string, string, bool, bool, map[string]any, ...string), group, description string, tools []llmtypes.Tool) error {
@@ -253,7 +253,7 @@ func (api *StreamingAPI) externalCrewExecutionCall(w http.ResponseWriter, r *htt
 		return
 	}
 	root := agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath)
-	if group == "crew_integrations" && (action == "setup_gmail_inbound" || action == "manage_gmail_trigger" && externalArg(params, "action") == "connect") {
+	if group == "crew_integrations" && action == "setup_gmail_inbound" {
 		if !currentUserIsAdmin(r) || claims.AccessToken != nil && !claims.AccessToken.AllCrews {
 			externalError(w, 403, "forbidden", "Shared Google account management requires an administrator and consent covering all Crews.")
 			return

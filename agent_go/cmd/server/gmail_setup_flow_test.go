@@ -21,7 +21,7 @@ import (
 
 func gmailSetupFixture(t *testing.T) (*StreamingAPI, context.Context) {
 	t.Helper()
-	api, _, _ := gmailTriggerFixture(t)
+	api, _, _ := gmailConnectionFixture(t)
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("GMAIL_INBOUND_TOPICS", "")
 	t.Setenv("GMAIL_INBOUND_AUDIENCE", "")
@@ -314,7 +314,10 @@ func TestGmailSetupPrivateConfigSurvivesRestartAndRejectsEnvironmentConflicts(t 
 	}
 }
 
-func TestGmailSetupActivatesExistingServiceWithoutRestartButIngressStillRequiresOIDC(t *testing.T) {
+func TestGmailSetupDoesNotEnableCompanyInboxesAndIngressRequiresOIDC(t *testing.T) {
+	t.Setenv("LOCAL_MODE", "false")
+	t.Setenv("AGENT_INBOX_ENABLED", "")
+	t.Setenv("AGENT_INBOX_CONNECTION_ID", "")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("GMAIL_INBOUND_TOPICS", "")
 	t.Setenv("GMAIL_INBOUND_AUDIENCE", "")
@@ -331,7 +334,7 @@ func TestGmailSetupActivatesExistingServiceWithoutRestartButIngressStillRequires
 		router.ServeHTTP(w, httptest.NewRequest("POST", gmailInboundEventPath, strings.NewReader(`{}`)))
 		return w
 	}
-	if request().Code != 503 {
+	if request().Code != 401 {
 		t.Fatal("accepted ingress before setup")
 	}
 	p, err := gmailsetup.NewPlan("app-project", "123456-abcdef.apps.googleusercontent.com", "sample-project", "https://app.example.com/api/hooks/gmail/events", "", "")
@@ -341,8 +344,8 @@ func TestGmailSetupActivatesExistingServiceWithoutRestartButIngressStillRequires
 	if err = saveGmailSetupConfig(p); err != nil {
 		t.Fatal(err)
 	}
-	if !api.gmailInbound.Enabled(context.Background()) {
-		t.Fatal("saved setup requires a restart")
+	if api.gmailInbound.Enabled(context.Background()) {
+		t.Fatal("Cloud provisioning alone must not enable agent inboxes")
 	}
 	if request().Code != 401 {
 		t.Fatal("activated ingress accepted an unsigned event")

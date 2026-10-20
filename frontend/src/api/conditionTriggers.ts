@@ -6,7 +6,7 @@ export interface ConditionTrigger {
   id: string
   name: string
   enabled: boolean
-  check_mode?: 'schedule' | 'event' | 'both'
+  check_mode?: 'schedule' | 'event' | 'both' | 'inbox'
   event_auth_mode?: 'bearer' | 'github'
   event_secret_name?: string
   event_path?: string

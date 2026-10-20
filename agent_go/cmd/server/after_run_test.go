@@ -25,7 +25,7 @@ func (c *afterRunSummaryConnector) SendUserNotification(_ context.Context, _, _ 
 // Exercise the scheduler's real internal delivery path after the agent tool is
 // removed. The connector is local and records delivery without contacting anyone.
 func TestAfterRunSummaryDeliveryIsIndependentOfAgentTool(t *testing.T) {
-	api, ctx, _ := gmailTriggerFixture(t)
+	api, ctx, _ := gmailConnectionFixture(t)
 	connector := &afterRunSummaryConnector{received: make(chan *services.NotificationDestination, 1)}
 	manager := services.GetNotificationManager()
 	manager.RegisterConnector(connector)

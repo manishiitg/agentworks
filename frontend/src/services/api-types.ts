@@ -2403,6 +2403,7 @@ export interface CapabilitiesResponse {
   workspace: Record<string, never>;
   servers: string[];
   local_mode?: boolean;
+  agent_inboxes?: boolean;
   runtime_debug?: boolean;
   display_time_zone?: string;
   terminal_live_attach?: boolean;
@@ -3604,7 +3605,6 @@ export interface ScheduleAfterRun {
 
 export interface ScheduledJob {
   kind?: string
-  gmail?: { connection_id: string; inbox_id: string; reply: boolean; filters?: GmailInboundFilters; rules?: GmailInboundRule[] }
   after_run?: ScheduleAfterRun
   /** Legacy, read for one release; kept in step with after_run. */
 
@@ -4200,51 +4200,6 @@ export interface WorkFolderAddRequest {
   alias: string
   access: 'read_only' | 'read_write'
   reason?: string
-}
-
-/** Server-owned email routing; separate from agent Gmail write permissions. */
-export interface GmailInboundFilters {
-  sender_allowlist?: string[]
-  subject_contains?: string[]
-  body_contains?: string[]
-  subject_contains_any?: string[]
-  body_contains_any?: string[]
-  has_attachments?: boolean
-  new_threads_only?: boolean
-}
-
-export interface GmailInboundRule {
-  id: string
-  name: string
-  enabled?: boolean
-  filters?: GmailInboundFilters
-  instruction?: string
-  route_selections?: Record<string, string> | null
-  group_names?: string[]
-  step_id?: string
-}
-
-export interface GmailInboundState {
-  inbox?: { id: string; address: string; connection_id: string } | null
-  target_name?: string
-  receiving_account?: string
-  sender_consent?: { required: boolean; approved: boolean; config_hash: string; senders: string[]; blocked_reason?: string }
-  setup?: {
-    oauth_clients: string[]
-    can_connect_account: boolean
-    provisioning?: {
-      available: boolean
-      can_prepare: boolean
-      oauth_clients: { name: string; client_id?: string; project_id?: string }[]
-      job?: { id: string; stage: string; error?: string; review_url?: string; expires_at: string; plan: { client_name: string; project_id: string; delivery_project_id: string; push_endpoint: string; topic: string; subscription: string; push_service_account: string } }
-    }
-    admin_setup?: { push_endpoint: string; required_access: string; explanation: string; environment_variables: string[]; steps: string[]; empty_client_list: string; local_setup: string; documentation_url: string }
-  }
-  configured: boolean
-  route: { id: string; name?: string; address: string; connection_id: string; enabled: boolean; reply: boolean; workflow_trigger?: boolean; route_selections?: Record<string, string>; group_names?: string[]; step_id?: string; filters?: GmailInboundFilters; rules?: GmailInboundRule[] } | null
-  watch_ready?: boolean
-  error?: string
-  deliveries: { id: string; status: string; session_id: string; error?: string; rule_id?: string; rule_name?: string }[]
 }
 
 /** Compact product navigation receipts, without runtime diagnostic data. */

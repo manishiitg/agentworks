@@ -218,7 +218,7 @@ func (c *conditionService) processWake(ctx context.Context, job productScheduleJ
 			}
 		}
 		fresh, err := c.s.Job(conditionContext(ctx, job), job.UserID, job.ID())
-		if err != nil || fresh.Schedule.Condition == nil || !fresh.Schedule.Condition.WakesOnEvents() {
+		if err != nil || fresh.Schedule.Condition == nil || !fresh.Schedule.Condition.WakesOnChanges() {
 			return
 		}
 		if err := c.current(conditionContext(ctx, fresh), fresh, *fresh.Schedule.Condition); err != nil {
@@ -248,10 +248,25 @@ func (c *conditionService) processWake(ctx context.Context, job productScheduleJ
 			}
 			return
 		}
+		moreInbox := false
+		if fresh.Schedule.Condition.CheckMode == "inbox" {
+			ledger, readErr := c.engine.Read(conditionContext(ctx, fresh), conditionKey(fresh))
+			if readErr != nil {
+				return
+			}
+			page, readErr := c.inboxSnapshot(ctx, fresh, ledger.State)
+			if readErr != nil {
+				return
+			}
+			moreInbox = len(page.Messages) > 0
+		}
 		m.Lock()
 		latest, found, err := c.readWake(ctx, id)
 		if err == nil && found {
 			latest.Checked = wake.Received
+			if moreInbox && latest.Received == latest.Checked {
+				latest.Received++
+			}
 			err = c.saveWake(ctx, id, latest)
 		}
 		m.Unlock()

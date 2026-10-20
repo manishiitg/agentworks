@@ -7,9 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"mime"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -250,58 +247,6 @@ func (c GmailInboundClient) Attachment(ctx context.Context, messageID string, a 
 	return decodeInboundAttachment(r.Data)
 }
 
-// Reply sends only the authorized originator, using a raw message with an
-// Auto-Submitted marker. It never copies CC or trusts an incoming Reply-To.
-func (c GmailInboundClient) Reply(ctx context.Context, d gmailinbound.Delivery, from string) error {
-	svc := GetGmailService()
-	if svc == nil {
-		return fmt.Errorf("Gmail unavailable")
-	}
-	allowed, _ := svc.filterRecipients([]string{d.Message.From})
-	if len(allowed) == 0 {
-		return fmt.Errorf("email recipient is blocked")
-	}
-	for _, v := range []string{from, d.Message.From, d.Route.Address, d.Message.RFCMessageID} {
-		if strings.ContainsAny(v, "\r\n") {
-			return fmt.Errorf("invalid email header")
-		}
-	}
-	if strings.TrimSpace(d.Message.RFCMessageID) == "" {
-		return fmt.Errorf("incoming email has no Message-ID")
-	}
-	raw := inboundReplyMIME(d, from)
-	f, e := os.CreateTemp("", "agentworks-email-reply-*")
-	if e != nil {
-		return e
-	}
-	path := f.Name()
-	defer os.Remove(path)
-	_, e = io.WriteString(f, raw)
-	closeErr := f.Close()
-	if e != nil {
-		return e
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	_, e = c.run(ctx, false, "gmail", "send", "--raw-file", path, "--thread-id", d.Message.ThreadID)
-	return e
-}
-
 func decodeInboundAttachment(s string) ([]byte, error) {
 	return base64.RawURLEncoding.DecodeString(strings.TrimRight(s, "="))
-}
-func inboundReplyMIME(d gmailinbound.Delivery, from string) string {
-	subject := strings.ReplaceAll(strings.ReplaceAll(d.Message.Subject, "\r", " "), "\n", " ")
-	if !strings.HasPrefix(strings.ToLower(subject), "re:") {
-		subject = "Re: " + subject
-	}
-	encoded := base64.StdEncoding.EncodeToString([]byte(d.Response))
-	var body strings.Builder
-	for len(encoded) > 76 {
-		body.WriteString(encoded[:76] + "\r\n")
-		encoded = encoded[76:]
-	}
-	body.WriteString(encoded + "\r\n")
-	return "From: " + from + "\r\nTo: " + d.Message.From + "\r\nReply-To: " + d.Route.Address + "\r\nSubject: " + mime.QEncoding.Encode("UTF-8", subject) + "\r\nIn-Reply-To: " + d.Message.RFCMessageID + "\r\nReferences: " + d.Message.RFCMessageID + "\r\nAuto-Submitted: auto-replied\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n" + body.String()
 }

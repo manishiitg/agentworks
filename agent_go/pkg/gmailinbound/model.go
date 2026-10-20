@@ -1,5 +1,5 @@
-// Package gmailinbound receives mailbox wakeups, persists work, and dispatches
-// email conversations. No watcher process is retained for an idle mailbox.
+// Package gmailinbound receives company mailbox events and stores agent inbox mail.
+// Receiving email never executes an agent.
 package gmailinbound
 
 import (
@@ -11,28 +11,6 @@ import (
 	"strconv"
 	"strings"
 )
-
-type Route struct {
-	InboxID         string            `json:"inbox_id"`
-	Rules           []Rule            `json:"rules,omitempty"`
-	SelectedRuleID  string            `json:"-"` // Selected durably at admission, never supplied by email.
-	Filters         *Filters          `json:"filters,omitempty"`
-	Name            string            `json:"name,omitempty"`
-	WorkflowTrigger bool              `json:"workflow_trigger,omitempty"`
-	RouteSelections map[string]string `json:"route_selections,omitempty"`
-	GroupNames      []string          `json:"group_names,omitempty"`
-	StepID          string            `json:"step_id,omitempty"`
-	ID              string            `json:"id"`
-	OwnerID         string            `json:"owner_id"`
-	ConnectionID    string            `json:"connection_id"`
-	Address         string            `json:"address"`
-	WorkspacePath   string            `json:"workspace_path"`
-	ProfileID       string            `json:"profile_id,omitempty"`
-	ProjectID       string            `json:"project_id"`
-	Enabled         bool              `json:"enabled"`
-	EnabledAt       int64             `json:"enabled_at"`
-	Reply           bool              `json:"reply"`
-}
 
 type Mailbox struct {
 	ConnectionID string
@@ -53,6 +31,7 @@ type Attachment struct {
 }
 type Message struct {
 	ID            string       `json:"id"`
+	Labels        []string     `json:"labels"`
 	ReceivedAt    int64        `json:"received_at"`
 	ThreadID      string       `json:"thread_id"`
 	IsReply       bool         `json:"is_reply,omitempty"`
@@ -65,16 +44,6 @@ type Message struct {
 	Automatic     bool         `json:"automatic"`
 	Blocked       bool         `json:"blocked,omitempty"` // Spam, trash, bounces and automatic replies.
 	Attachments   []Attachment `json:"attachments,omitempty"`
-}
-type Delivery struct {
-	ID        string
-	RuleID    string
-	RuleName  string
-	Route     Route
-	Message   Message
-	SessionID string
-	Response  string
-	Status    string
 }
 
 // RawMessage is the lossless gog gmail raw (format=full) wire contract.
@@ -117,7 +86,7 @@ func (r RawMessage) Parse(account string) (Message, error) {
 	if err != nil {
 		return Message{}, fmt.Errorf("invalid sender")
 	}
-	m := Message{ID: r.ID, ThreadID: r.ThreadID, From: strings.ToLower(from.Address), Subject: r.Payload.header("Subject"), RFCMessageID: r.Payload.header("Message-ID")}
+	m := Message{Labels: r.LabelIDs, ID: r.ID, ThreadID: r.ThreadID, From: strings.ToLower(from.Address), Subject: r.Payload.header("Subject"), RFCMessageID: r.Payload.header("Message-ID")}
 	m.IsReply = strings.TrimSpace(r.Payload.header("In-Reply-To")) != "" || strings.TrimSpace(r.Payload.header("References")) != ""
 	m.ReceivedAt, _ = strconv.ParseInt(r.InternalDate, 10, 64)
 	if subject, e := new(mime.WordDecoder).DecodeHeader(m.Subject); e == nil {

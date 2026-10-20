@@ -67,13 +67,15 @@ type Config struct {
 
 var secretName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+func (c Config) WakesOnChanges() bool { return c.WakesOnEvents() || c.CheckMode == "inbox" }
+
 func (c Config) WakesOnEvents() bool { return c.CheckMode == "event" || c.CheckMode == "both" }
 
 func (c Config) Validate() error {
 	switch c.CheckMode {
-	case "", "schedule", "event", "both":
+	case "", "schedule", "event", "both", "inbox":
 	default:
-		return errors.New("check_mode must be schedule, event or both")
+		return errors.New("check_mode must be schedule, event, both or inbox")
 	}
 	if c.EventAuthMode != "" && c.EventAuthMode != "bearer" && c.EventAuthMode != "github" {
 		return errors.New("event_auth_mode must be bearer or github")

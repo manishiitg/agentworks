@@ -1,4 +1,3 @@
-import type { GmailInboundFilters } from '../services/api-types'
 import axios from 'axios'
 import { getApiBaseUrl, getAuthToken } from '../services/api'
 import type { ListScheduledJobRunsResponse } from '../services/api-types'
@@ -13,7 +12,6 @@ export interface ProductAPITrigger {
   secret?: string
   run_destination: 'crew_chat' | 'isolated'
   kind?: string
-  gmail?: { connection_id: string; inbox_id: string; reply: boolean; filters?: GmailInboundFilters }
   caller?: { type: string; id: string; profile_id?: string }
 }
 

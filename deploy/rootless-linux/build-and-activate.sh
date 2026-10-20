@@ -116,7 +116,7 @@ python3 "$REPO_ROOT/deploy/common/prune-releases.py" "$REMOTE_APP" --apply --onl
 mkdir -p "$BUILD_DIR/bin" "$BUILD_DIR/frontend" "$BUILD_DIR/configs"
 touch "$BUILD_DIR/.deploying"
 mkdir -p "$BUILD_DIR/migrations"
-install -m 0755 "$REPO_ROOT/scripts/migrations/gmail-personal-inbox.py" "$BUILD_DIR/migrations/gmail-personal-inbox.py"
+install -m 0755 "$REPO_ROOT/scripts/migrations/agent-email-inboxes.py" "$BUILD_DIR/migrations/agent-email-inboxes.py"
 cleanup_build() {
   if declare -F vault_recover >/dev/null; then vault_recover; fi
   if [[ "$MIGRATION_STOPPED_AGENT" == 1 ]]; then
@@ -518,7 +518,7 @@ done
 # release. After success it must never restart old code over the new schema.
 MIGRATION_STOPPED_AGENT=1
 systemctl --user stop "$PRODUCT-agent"
-python3 "$BUILD_DIR/migrations/gmail-personal-inbox.py" \
+python3 "$BUILD_DIR/migrations/agent-email-inboxes.py" \
   "$REMOTE_APP/state/gmail-inbound/email.db" --workspace-root "$REMOTE_APP/data/docs"
 MIGRATION_STOPPED_AGENT=0
 ln -sfn "$BUILD_DIR" "$REMOTE_APP/current"

@@ -1,3 +1,4 @@
+import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
 import { useEffect, useState } from 'react'
 import { schedulerApi } from '../../api/scheduler'
 import { productWebhooksApi } from '../../api/productWebhooks'
@@ -17,6 +18,7 @@ const text = (result: PromiseSettledResult<string>) => (result.status === 'fulfi
 
 /** Crews and Code projects pass their product and project; Goals and Relays pass their workspace and project id. */
 export function useProjectStatus({ kind, workspacePath, profileId, projectId, enabled = true }: { kind: 'crew' | 'goal'; workspacePath: string; profileId: string; projectId: string; enabled?: boolean }): ProjectStatus {
+  const inboxEnabled=useCapabilitiesStore(state=>state.capabilities?.agent_inboxes===true)
   const [status, setStatus] = useState<ProjectStatus>({})
   useEffect(() => {
     setStatus({})
@@ -36,7 +38,7 @@ export function useProjectStatus({ kind, workspacePath, profileId, projectId, en
           return list.some(item => item.connected) ? 'Not used here' : 'Not set up'
         }),
         agentApi.getWhatsAppStatus().then(result => (result.connected ? 'Connected' : result.paired ? 'Not connected' : 'Not set up')),
-        agentApi.getGmailInboundRoute(workspacePath).then(result => result.inbox?.address || 'Not set up'),
+        inboxEnabled ? agentApi.getAgentInbox(workspacePath).then(result => result.inbox.address) : Promise.resolve(''),
         placeMcpApi.list(workspacePath).then(servers => servers.length),
         kind === 'crew' ? api.post<{ agents: unknown[] }>('/api/workspaces', { action: 'agents', workspace_id: `${profileId}:${projectId}` }).then(({ data }) => (data.agents || []).length) : Promise.reject(new Error('not listed')),
       ])
@@ -46,6 +48,6 @@ export function useProjectStatus({ kind, workspacePath, profileId, projectId, en
     void load()
     const timer = window.setInterval(() => { if (!document.hidden) void load() }, 30_000)
     return () => { alive = false; window.clearInterval(timer) }
-  }, [kind, workspacePath, profileId, projectId, enabled])
+  }, [kind, workspacePath, profileId, projectId, enabled,inboxEnabled])
   return status
 }

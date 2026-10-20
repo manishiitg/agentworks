@@ -29,6 +29,7 @@ export function McpAppsSection() {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [projectId,setProjectId]=useState<string | undefined>()
   const [clientId, setClientId] = useState('')
   const [clientSecret, setClientSecret] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
@@ -50,7 +51,7 @@ export function McpAppsSection() {
   const openGroup = (key: string) => {
     setOpen(current => (current === key ? null : key))
     setReplacing(null)
-    setClientId(''); setClientSecret(''); setNotice(null); setError(null)
+    setProjectId(undefined); setClientId(''); setClientSecret(''); setNotice(null); setError(null)
   }
 
   const loadClientFile = async (file: File | undefined) => {
@@ -61,7 +62,7 @@ export function McpAppsSection() {
       setError('That file is not a Google OAuth client file (client_secret_….json).')
       return
     }
-    setClientId(parsed.clientId)
+    setProjectId(parsed.projectId); setClientId(parsed.clientId)
     setClientSecret(parsed.clientSecret)
     if (redirectUri && parsed.redirectUris.length > 0 && !parsed.redirectUris.includes(redirectUri)) {
       setNotice(`This client does not list ${redirectUri} as a redirect URI, so sign-in will fail until you add it in Google Cloud.`)
@@ -71,7 +72,7 @@ export function McpAppsSection() {
   const save = async (key: string) => {
     setBusy(key); setError(null)
     try {
-      await mcpAppsApi.save(key, clientId.trim(), clientSecret.trim())
+      await mcpAppsApi.save(key, clientId.trim(), clientSecret.trim(), projectId)
       setClientId(''); setClientSecret(''); setOpen(null); setReplacing(null)
       await refresh()
     } catch (cause) {

@@ -19,7 +19,7 @@ func externalWorkflowAccountDefinitions(add func(string, string, bool, bool, map
 	}
 	for _, provider := range []string{"google", "slack"} {
 		tool := reg["manage_"+provider+"_account"]
-		add("workflow_"+provider+"_account", "Manage your saved "+provider+" account for this workflow or Flow, using the same account operations as Settings and My Vault. Pass account with the native action from its schema. Google also supports get_inbox, select_inbox and rotate_inbox for the caller’s personal Gmail receiving address; these reuse saved accounts and require separate owner approval on each incoming trigger. Builder access and existing account permissions apply; you can add only your own account. Removing it here leaves other items connected; disconnect removes the saved connection everywhere. Sign-in links still require the person to finish in their browser. "+tool.description, true, true, map[string]any{
+		add("workflow_"+provider+"_account", "Manage your saved "+provider+" account for this workflow or Flow, using the same account operations as Settings and My Vault. Pass account with the native action from its schema. Builder access and existing account permissions apply; you can add only your own account. Removing it here leaves other items connected; disconnect removes the saved connection everywhere. Sign-in links still require the person to finish in their browser. "+tool.description, true, true, map[string]any{
 			"account": tool.schema,
 		}, "account")
 	}

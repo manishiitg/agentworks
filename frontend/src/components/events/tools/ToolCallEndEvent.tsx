@@ -1,5 +1,4 @@
 import React from 'react'
-import { GmailSenderApprovalFromTool } from '../../workflow/bots/GmailSenderApprovalFromTool'
 import type { ToolCallEndEvent } from '../../../generated/events'
 import { MarkdownRenderer } from '../../ui/MarkdownRenderer'
 import { CsvRenderer } from '../../ui/CsvRenderer'
@@ -74,7 +73,6 @@ function isCodeExecutionTool(name: string): boolean {
 }
 
 export const ToolCallEndEventDisplay: React.FC<ToolCallEndEventProps> = ({ event }) => <>
-  <GmailSenderApprovalFromTool toolName={event.tool_name} result={event.result} />
   <ToolCallEndContent event={event} />
 </>
 

@@ -25,7 +25,7 @@ export default function ProductAPITriggersView({ scope, workspacePath, onViewRun
   const refresh = useCallback(async () => {
     // Caller bindings (kind=internal) are listed under Functions → Callers;
     // this view is external webhooks only.
-    try { setTriggers((await productWebhooksApi.list({ profileId, projectId })).triggers.filter(trigger => trigger.kind !== 'internal' && trigger.kind !== 'gmail')) }
+    try { setTriggers((await productWebhooksApi.list({ profileId, projectId })).triggers.filter(trigger => trigger.kind !== 'internal')) }
     catch (cause) { setError(errorMessage(cause)) }
   }, [profileId, projectId])
 

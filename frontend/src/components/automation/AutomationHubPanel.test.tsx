@@ -43,8 +43,7 @@ vi.mock('../workflow/AskAIButton', () => ({
   },
 }))
 
-vi.mock('../workflow/bots/gmailAskAI', () => ({ useGmailInboundUIEnabled: () => true }))
-vi.mock('../workflow/bots/GmailInboundPanel', () => ({ gmailInboundSetupMessage: 'Configure incoming email', GmailInboundPanel: (props: { workspacePath: string; onAsk?: (message:string) => void }) => <button data-testid="incoming-email" onClick={() => props.onAsk?.('email help')}>{props.workspacePath}</button> }))
+vi.mock('../integrations/AgentInboxPanel', () => ({ useAgentInboxEnabled:()=>true, agentInboxAskMessage: 'Configure inbox Watcher', AgentInboxPanel: (props: { workspacePath: string; onAsk?: (message:string) => void }) => <button data-testid="incoming-email" onClick={() => props.onAsk?.('email help')}>{props.workspacePath}</button> }))
 import { AutomationHubPanel } from './AutomationHubPanel'
 
 const { chatProps } = vi.hoisted(() => ({ chatProps: { current: null as null | Record<string, unknown> } }))
@@ -113,7 +112,7 @@ describe('AutomationHubPanel', () => {
       expect(panel?.className).toContain('flex-1')
       expect(panel?.className).toContain('min-w-0')
       const tabs = Array.from(host.querySelectorAll<HTMLButtonElement>('[aria-label="Automation center"] [role="tab"]'))
-      expect(tabs.map(tab => tab.textContent)).toEqual(['Schedules', 'Webhooks', 'Incoming email', 'Watchers', 'Functions', 'Bots', 'Chats'])
+      expect(tabs.map(tab => tab.textContent)).toEqual(['Schedules', 'Webhooks', 'Inbox', 'Watchers', 'Functions', 'Bots', 'Chats'])
       expect(host.querySelector('[data-testid="schedules"]')?.getAttribute('data-hide-header')).toBe('true')
 
       await act(async () => { tabs.find(tab => tab.textContent === 'Chats')!.click(); await Promise.resolve() })

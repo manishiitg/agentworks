@@ -4,129 +4,168 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
-	"fmt"
-	"log"
+	_ "modernc.org/sqlite"
 	"os"
 	"path/filepath"
 	"time"
-
-	_ "modernc.org/sqlite"
 )
 
 type Store struct{ db *sql.DB }
-
-// Temporary failures must retain the mailbox cursor for retry, rather than
-// looking like an owner rejection which intentionally does not keep content.
-var ErrAdmissionRetry = errors.New("retry incoming email admission")
+type Inbox struct {
+	ID            string `json:"id"`
+	ProfileID     string `json:"profile_id"`
+	ProjectID     string `json:"project_id"`
+	WorkspacePath string `json:"workspace_path"`
+	OwnerID       string `json:"-"`
+	Address       string `json:"address"`
+	CreatedAt     int64  `json:"created_at"`
+}
+type Item struct {
+	Sequence int64 `json:"sequence"`
+	Message
+}
+type Page struct {
+	Messages   []Item `json:"messages"`
+	NextCursor int64  `json:"next_cursor"`
+	HasMore    bool   `json:"has_more"`
+}
 
 func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
-	f, e := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
-	if e != nil {
-		return nil, e
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, err
 	}
 	_ = f.Close()
-	db, e := sql.Open("sqlite", path)
-	if e != nil {
-		return nil, e
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	s := &Store{db: db}
-	_, e = db.Exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;
-CREATE TABLE IF NOT EXISTS mailboxes(connection TEXT PRIMARY KEY,email TEXT NOT NULL,cursor TEXT NOT NULL DEFAULT '',generation INTEGER NOT NULL DEFAULT 1,processed INTEGER NOT NULL DEFAULT 0,renew_at INTEGER NOT NULL DEFAULT 0,next_sync INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT '',started_at INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS routes(id TEXT PRIMARY KEY,owner TEXT NOT NULL,workspace TEXT NOT NULL,connection TEXT NOT NULL,address TEXT NOT NULL,data TEXT NOT NULL,enabled INTEGER NOT NULL,UNIQUE(owner,workspace));
-CREATE TABLE IF NOT EXISTS inboxes(id TEXT PRIMARY KEY,owner TEXT NOT NULL UNIQUE,connection TEXT NOT NULL,address TEXT NOT NULL UNIQUE);
-CREATE TABLE IF NOT EXISTS sender_consents(route TEXT PRIMARY KEY,owner TEXT NOT NULL,config_hash TEXT NOT NULL,approved_at INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS deliveries(id TEXT PRIMARY KEY,route TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'staged',session TEXT NOT NULL DEFAULT '',response TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,received_at INTEGER NOT NULL,rule_id TEXT NOT NULL DEFAULT '',rule_name TEXT NOT NULL DEFAULT '');
-CREATE INDEX IF NOT EXISTS delivery_pending ON deliveries(status,created_at);
-CREATE INDEX IF NOT EXISTS delivery_thread ON deliveries(route,json_extract(message,'$.thread_id'));
-UPDATE deliveries SET status='uncertain',error='Server stopped during execution; inspect the saved app thread before retrying' WHERE status IN ('running','sending');`)
-	if e != nil {
-		_ = db.Close()
-		return nil, e
+	_, err = db.Exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;
+ CREATE TABLE IF NOT EXISTS agent_inboxes(id TEXT PRIMARY KEY,profile TEXT NOT NULL,project TEXT NOT NULL,workspace TEXT NOT NULL,owner TEXT NOT NULL,address TEXT NOT NULL UNIQUE,created_at INTEGER NOT NULL,UNIQUE(profile,project));
+ CREATE TABLE IF NOT EXISTS inbox_messages(sequence INTEGER PRIMARY KEY AUTOINCREMENT,inbox TEXT NOT NULL,message_id TEXT NOT NULL,thread TEXT NOT NULL,data TEXT NOT NULL,received_at INTEGER NOT NULL,UNIQUE(inbox,message_id));
+ CREATE INDEX IF NOT EXISTS inbox_thread ON inbox_messages(inbox,thread,sequence);
+ CREATE TABLE IF NOT EXISTS mailboxes(connection TEXT PRIMARY KEY,email TEXT NOT NULL,cursor TEXT NOT NULL DEFAULT '',generation INTEGER NOT NULL DEFAULT 1,processed INTEGER NOT NULL DEFAULT 0,renew_at INTEGER NOT NULL DEFAULT 0,next_sync INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT '',started_at INTEGER NOT NULL);`)
+	if err != nil {
+		db.Close()
+		return nil, err
 	}
-	return s, nil
+	return &Store{db: db}, nil
 }
 func (s *Store) Close() error { return s.db.Close() }
-
-func (s *Store) SaveRoute(ctx context.Context, r Route, email string) error {
-	filters, err := NormalizeFilters(r.Filters)
+func (s *Store) EnsureInbox(ctx context.Context, i Inbox) (Inbox, error) {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO agent_inboxes(id,profile,project,workspace,owner,address,created_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET workspace=excluded.workspace,owner=excluded.owner,address=excluded.address`, i.ID, i.ProfileID, i.ProjectID, i.WorkspacePath, i.OwnerID, i.Address, time.Now().Unix())
 	if err != nil {
-		return err
+		return i, err
 	}
-	r.Filters = filters
-	r.Rules, err = NormalizeRules(r.Rules, r.WorkflowTrigger)
-	if err != nil {
-		return err
-	}
-	r.SelectedRuleID = ""
-	tx, e := s.db.BeginTx(ctx, nil)
-	if e != nil {
-		return e
-	}
-	defer tx.Rollback()
-	// Any authority-bearing edit invalidates consent atomically. Restoring an
-	// earlier policy later cannot revive a revoked approval.
-	if _, e = tx.ExecContext(ctx, `DELETE FROM sender_consents WHERE route=? AND (owner<>? OR config_hash<>?)`, r.ID, r.OwnerID, SenderPolicyHash(r)); e != nil {
-		return e
-	}
-	b, e := json.Marshal(r)
-	if e != nil {
-		return e
-	}
-	_, e = tx.ExecContext(ctx, `INSERT INTO routes(id,owner,workspace,connection,address,data,enabled) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET connection=excluded.connection,address=excluded.address,data=excluded.data,enabled=excluded.enabled`, r.ID, r.OwnerID, r.WorkspacePath, r.ConnectionID, r.Address, string(b), r.Enabled)
-	if e != nil {
-		return e
-	}
-	_, e = tx.ExecContext(ctx, `INSERT INTO mailboxes(connection,email,started_at) VALUES(?,?,?) ON CONFLICT(connection) DO UPDATE SET email=excluded.email,generation=generation+1,next_sync=0`, r.ConnectionID, email, time.Now().Unix())
-	if e != nil {
-		return e
-	}
-	if !r.Enabled {
-		if _, e = tx.ExecContext(ctx, `UPDATE deliveries SET status='rejected',error='Email route disabled' WHERE route=? AND status IN ('staged','pending','reply')`, r.ID); e != nil {
-			return e
-		}
-	}
-	return tx.Commit()
+	err = s.db.QueryRowContext(ctx, `SELECT created_at FROM agent_inboxes WHERE id=?`, i.ID).Scan(&i.CreatedAt)
+	return i, err
 }
-func (s *Store) Routes(ctx context.Context) ([]Route, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT data FROM routes ORDER BY address`)
-	if e != nil {
-		return nil, e
+func (s *Store) Inboxes(ctx context.Context) ([]Inbox, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id,profile,project,workspace,owner,address,created_at FROM agent_inboxes`)
+	if err != nil {
+		return nil, err
 	}
 	defer rows.Close()
-	out := []Route{}
+	out := []Inbox{}
 	for rows.Next() {
-		var b string
-		if e = rows.Scan(&b); e != nil {
-			return nil, e
+		var i Inbox
+		if err = rows.Scan(&i.ID, &i.ProfileID, &i.ProjectID, &i.WorkspacePath, &i.OwnerID, &i.Address, &i.CreatedAt); err != nil {
+			return nil, err
 		}
-		var r Route
-		if e = json.Unmarshal([]byte(b), &r); e != nil {
-			return nil, e
-		}
-		out = append(out, r)
+		out = append(out, i)
 	}
 	return out, rows.Err()
 }
+func (s *Store) StoreMessage(ctx context.Context, i Inbox, m Message) (bool, error) {
+	b, err := json.Marshal(m)
+	if err != nil {
+		return false, err
+	}
+	result, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO inbox_messages(inbox,message_id,thread,data,received_at) VALUES(?,?,?,?,?)`, i.ID, m.ID, m.ThreadID, string(b), m.ReceivedAt)
+	if err != nil {
+		return false, err
+	}
+	n, err := result.RowsAffected()
+	return n > 0, err
+}
+
+// Each Watcher has its own cursor. Reading one inbox never consumes another caller's mail.
+func (s *Store) Messages(ctx context.Context, inbox string, after int64, thread string, limit int) (Page, error) {
+	if limit < 1 || limit > 100 {
+		limit = 50
+	}
+	if after < 0 {
+		after = 0
+	}
+	p := Page{Messages: []Item{}, NextCursor: after}
+	rows, err := s.db.QueryContext(ctx, `SELECT sequence,data FROM inbox_messages WHERE inbox=? AND sequence>? AND (?='' OR thread=?) ORDER BY sequence LIMIT ?`, inbox, after, thread, thread, limit+1)
+	if err != nil {
+		return p, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var i Item
+		var raw string
+		if err = rows.Scan(&i.Sequence, &raw); err != nil {
+			return p, err
+		}
+		if len(p.Messages) == limit {
+			p.HasMore = true
+			break
+		}
+		if err = json.Unmarshal([]byte(raw), &i.Message); err != nil {
+			return p, err
+		}
+		for n := range i.Attachments {
+			i.Attachments[n].Data = ""
+		}
+		p.Messages = append(p.Messages, i)
+		p.NextCursor = i.Sequence
+	}
+	return p, rows.Err()
+}
+func (s *Store) Message(ctx context.Context, inbox, id string) (Message, error) {
+	var raw string
+	var m Message
+	err := s.db.QueryRowContext(ctx, `SELECT data FROM inbox_messages WHERE inbox=? AND message_id=?`, inbox, id).Scan(&raw)
+	if err == nil {
+		err = json.Unmarshal([]byte(raw), &m)
+	}
+	return m, err
+}
+func (s *Store) SetMailbox(ctx context.Context, id, email string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, `DELETE FROM mailboxes WHERE connection<>? OR email<>?`, id, email); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO mailboxes(connection,email,started_at) VALUES(?,?,?) ON CONFLICT(connection) DO NOTHING`, id, email, time.Now().Unix()); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
 func (s *Store) Wake(ctx context.Context, email string) error {
-	_, e := s.db.ExecContext(ctx, `UPDATE mailboxes SET generation=generation+1,next_sync=MIN(next_sync,?) WHERE email=?`, time.Now().Unix(), email)
-	return e
+	_, err := s.db.ExecContext(ctx, `UPDATE mailboxes SET generation=generation+1,next_sync=0 WHERE email=?`, email)
+	return err
 }
 func (s *Store) Mailboxes(ctx context.Context) ([]Mailbox, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT connection,email,cursor,generation,renew_at,error,started_at,processed FROM mailboxes WHERE next_sync<=? AND connection IN (SELECT connection FROM routes WHERE enabled=1) ORDER BY next_sync LIMIT 100`, time.Now().Unix())
-	if e != nil {
-		return nil, e
+	rows, err := s.db.QueryContext(ctx, `SELECT connection,email,cursor,generation,renew_at,error,started_at,processed FROM mailboxes WHERE next_sync<=? ORDER BY next_sync`, time.Now().Unix())
+	if err != nil {
+		return nil, err
 	}
 	defer rows.Close()
 	out := []Mailbox{}
 	for rows.Next() {
 		var m Mailbox
-		if e = rows.Scan(&m.ConnectionID, &m.Email, &m.Cursor, &m.Generation, &m.RenewAt, &m.LastError, &m.Since, &m.Processed); e != nil {
-			return nil, e
+		if err = rows.Scan(&m.ConnectionID, &m.Email, &m.Cursor, &m.Generation, &m.RenewAt, &m.LastError, &m.Since, &m.Processed); err != nil {
+			return nil, err
 		}
 		out = append(out, m)
 	}
@@ -134,232 +173,48 @@ func (s *Store) Mailboxes(ctx context.Context) ([]Mailbox, error) {
 }
 func (s *Store) MailboxStatus(ctx context.Context, id string) (Mailbox, error) {
 	var m Mailbox
-	e := s.db.QueryRowContext(ctx, `SELECT connection,email,cursor,generation,renew_at,error,started_at,processed FROM mailboxes WHERE connection=?`, id).Scan(&m.ConnectionID, &m.Email, &m.Cursor, &m.Generation, &m.RenewAt, &m.LastError, &m.Since, &m.Processed)
-	return m, e
+	err := s.db.QueryRowContext(ctx, `SELECT connection,email,cursor,generation,renew_at,error,started_at,processed FROM mailboxes WHERE connection=?`, id).Scan(&m.ConnectionID, &m.Email, &m.Cursor, &m.Generation, &m.RenewAt, &m.LastError, &m.Since, &m.Processed)
+	return m, err
 }
-func (s *Store) Watch(ctx context.Context, id, cursor string, renewAt int64) error {
-	// A renewal must never replace an unprocessed cursor with the current
-	// history position. Only a brand-new mailbox starts at registration.
-	_, e := s.db.ExecContext(ctx, `UPDATE mailboxes SET cursor=CASE WHEN cursor='' THEN ? ELSE cursor END,renew_at=?,error='' WHERE connection=?`, cursor, renewAt, id)
-	return e
+func (s *Store) Watch(ctx context.Context, id, cursor string, renew int64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE mailboxes SET cursor=CASE WHEN cursor='' THEN ? ELSE cursor END,renew_at=?,error='' WHERE connection=?`, cursor, renew, id)
+	return err
 }
 func (s *Store) Synced(ctx context.Context, m Mailbox, cursor string) error {
-	tx, e := s.db.BeginTx(ctx, nil)
-	if e != nil {
-		return e
-	}
-	defer tx.Rollback()
-	_, e = tx.ExecContext(ctx, `UPDATE mailboxes SET cursor=?,started_at=?,processed=?,next_sync=CASE WHEN generation=? THEN ? ELSE 0 END,error='' WHERE connection=?`, cursor, m.Since, m.Generation, m.Generation, time.Now().Add(5*time.Minute).Unix(), m.ConnectionID)
-	if e != nil {
-		return e
-	}
-	// Recovery lists can arrive newest-first. Publish the whole sync batch
-	// together, then dispatch by Gmail's receipt time to preserve conversation order.
-	_, e = tx.ExecContext(ctx, `UPDATE deliveries SET status='pending' WHERE status='staged' AND route IN(SELECT id FROM routes WHERE connection=?)`, m.ConnectionID)
-	if e != nil {
-		return e
-	}
-	return tx.Commit()
+	_, err := s.db.ExecContext(ctx, `UPDATE mailboxes SET cursor=?,started_at=?,processed=?,next_sync=CASE WHEN generation=? THEN ? ELSE 0 END,error='' WHERE connection=?`, cursor, m.Since, m.Generation, m.Generation, time.Now().Add(5*time.Minute).Unix(), m.ConnectionID)
+	return err
 }
-func (s *Store) SyncError(ctx context.Context, id string, err error) error {
-	_, e := s.db.ExecContext(ctx, `UPDATE mailboxes SET error=?,next_sync=? WHERE connection=?`, err.Error(), time.Now().Add(time.Minute).Unix(), id)
-	return e
-}
-func (s *Store) Enqueue(ctx context.Context, r Route, m Message) error {
-	return s.EnqueueAuthorized(ctx, r, m, nil)
+func (s *Store) SyncError(ctx context.Context, id string, e error) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE mailboxes SET error=?,next_sync=? WHERE connection=?`, e.Error(), time.Now().Add(time.Minute).Unix(), id)
+	return err
 }
 
-// Select and reserve the first matching authorized rule atomically. Redelivery
-// keeps its original rule; a later configuration change never replays an email.
-func (s *Store) EnqueueAuthorized(ctx context.Context, r Route, m Message, authorize func(context.Context, Route, Message) error) error {
-	candidates := []Route{r}
-	if len(r.Rules) > 0 {
-		candidates = nil
-		for _, rule := range r.Rules {
-			if rule.IsEnabled() {
-				candidate := r
-				candidate.SelectedRuleID = rule.ID
-				candidates = append(candidates, candidate)
-			}
-		}
-	}
-	if authorize != nil {
-		permitted := candidates[:0]
-		for _, candidate := range candidates {
-			if !candidate.AcceptsMessageKind(m) {
-				continue
-			}
-			err := authorize(ctx, candidate, m)
-			if errors.Is(err, ErrAdmissionRetry) {
-				return err
-			}
-			if err == nil {
-				permitted = append(permitted, candidate)
-			}
-		}
-		candidates = permitted
-		if len(candidates) == 0 {
-			return nil
-		}
-	}
-	tx, e := s.db.BeginTx(ctx, nil)
-	if e != nil {
-		return e
-	}
-	defer tx.Rollback()
-	var exists bool
-	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM deliveries WHERE id=?)`, r.ID+":"+m.ID).Scan(&exists); e != nil {
-		return e
-	}
-	if exists {
-		return tx.Commit()
-	}
-	reason := "No enabled email rule matched"
-	selectedID, selectedName := "", ""
-	for _, candidate := range candidates {
-		mismatch := candidate.FilterMismatch(m)
-		if required, allRules := candidate.NewThreadScope(); mismatch == "" && required {
-			var accepted bool
-			if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM deliveries WHERE route=? AND json_extract(message,'$.thread_id')=? AND status!='filtered' AND (? OR rule_id=?))`, r.ID, m.ThreadID, allRules, candidate.SelectedRuleID).Scan(&accepted); e != nil {
-				return e
-			}
-			if accepted {
-				mismatch = "New threads only: this thread has already been accepted"
-			}
-		}
-		if mismatch == "" {
-			reason = ""
-			selectedID = candidate.SelectedRuleID
-			if rule, _ := candidate.SelectedRule(); rule != nil {
-				selectedName = rule.Name
-			}
-			break
-		}
-		if len(r.Rules) == 0 {
-			reason = mismatch
-		}
-	}
-	if reason == "" {
-		var count int
-		if e := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM deliveries WHERE status IN ('staged','pending','running','reply','sending')`).Scan(&count); e != nil {
-			return e
-		}
-		if count >= 10000 {
-			return fmt.Errorf("email delivery queue is full")
-		}
-	}
-	b, e := json.Marshal(m)
-	if e != nil {
-		return e
-	}
-	receivedAt := m.ReceivedAt
-	if receivedAt == 0 {
-		receivedAt = time.Now().UnixMilli()
-	}
-	status := "staged"
-	if reason != "" {
-		status = "filtered"
-	}
-	_, e = tx.ExecContext(ctx, `INSERT OR IGNORE INTO deliveries(id,route,message,status,error,created_at,received_at,rule_id,rule_name) VALUES(?,?,?,?,?,?,?,?,?)`, r.ID+":"+m.ID, r.ID, string(b), status, reason, time.Now().Unix(), receivedAt, selectedID, selectedName)
-	if e != nil {
-		return e
-	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	log.Printf("[GMAIL-INBOUND] admission=%s route=%s message=%s rule=%s", status, r.ID, m.ID, selectedID)
-	return nil
-}
-
-// Recheck changed filters before execution. A queued message may be the first
-// accepted message in its thread; do not count that message or later messages.
-func (s *Store) FilterReason(ctx context.Context, d Delivery) (string, error) {
-	if reason := d.Route.FilterMismatch(d.Message); reason != "" {
-		return reason, nil
-	}
-	required, allRules := d.Route.NewThreadScope()
-	if !required {
-		return "", nil
-	}
-	var earlier bool
-	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM deliveries a JOIN deliveries d ON d.id=? WHERE a.route=d.route AND json_extract(a.message,'$.thread_id')=json_extract(d.message,'$.thread_id') AND a.status!='filtered' AND (? OR a.rule_id=d.rule_id) AND (a.received_at<d.received_at OR (a.received_at=d.received_at AND a.rowid<d.rowid)))`, d.ID, allRules).Scan(&earlier)
-	if earlier {
-		return "New threads only: this thread has already been accepted", err
-	}
-	return "", err
-}
-
-// Keep compact IDs for durable deduplication, while releasing message bodies
-// and final responses after 30 days. App conversation retention is separate.
-func (s *Store) PruneContent(ctx context.Context) error {
-	_, e := s.db.ExecContext(ctx, `UPDATE deliveries SET message=json_set(message,'$.body','','$.attachments',json('[]')),response='' WHERE status NOT IN ('staged','pending','running','reply','sending') AND created_at<? AND (response!='' OR json_extract(message,'$.body')!='' OR json_array_length(message,'$.attachments')>0)`, time.Now().Add(-30*24*time.Hour).Unix())
-	return e
-}
-func (s *Store) Claim(ctx context.Context) (Delivery, bool, error) {
-	tx, e := s.db.BeginTx(ctx, nil)
-	if e != nil {
-		return Delivery{}, false, e
-	}
-	defer tx.Rollback()
-	var d Delivery
-	var mb, rb string
-	// Replies and subsequent turns in one email conversation stay ordered.
-	e = tx.QueryRowContext(ctx, `SELECT d.id,r.data,d.message,d.session,d.response,d.status,d.rule_id,d.rule_name FROM deliveries d JOIN routes r ON r.id=d.route WHERE d.status IN ('pending','reply') AND NOT EXISTS(SELECT 1 FROM deliveries a WHERE a.status IN ('running','sending') AND a.route=d.route AND json_extract(a.message,'$.thread_id')=json_extract(d.message,'$.thread_id')) ORDER BY d.received_at,d.rowid LIMIT 1`).Scan(&d.ID, &rb, &mb, &d.SessionID, &d.Response, &d.Status, &d.RuleID, &d.RuleName)
-	if errors.Is(e, sql.ErrNoRows) {
-		return d, false, nil
-	}
-	if e != nil {
-		return d, false, e
-	}
-	if e = json.Unmarshal([]byte(rb), &d.Route); e != nil {
-		return d, false, e
-	}
-	if e = json.Unmarshal([]byte(mb), &d.Message); e != nil {
-		return d, false, e
-	}
-	d.Route.SelectedRuleID = d.RuleID
-	status := "running"
-	if d.Status == "reply" {
-		status = "sending"
-	}
-	_, e = tx.ExecContext(ctx, `UPDATE deliveries SET status=? WHERE id=?`, status, d.ID)
-	if e != nil {
-		return d, false, e
-	}
-	e = tx.Commit()
-	return d, e == nil, e
-}
-func (s *Store) Finish(ctx context.Context, d Delivery, status string, err error) error {
-	msg := ""
+// The screen opens on recent mail; Watchers and MCP use the forward cursor above.
+func (s *Store) RecentMessages(ctx context.Context, inbox string, before int64) (Page, error) {
+	p := Page{Messages: []Item{}}
+	rows, err := s.db.QueryContext(ctx, `SELECT sequence,data FROM inbox_messages WHERE inbox=? AND (?=0 OR sequence<?) ORDER BY sequence DESC LIMIT 51`, inbox, before, before)
 	if err != nil {
-		msg = err.Error()
-	}
-	_, e := s.db.ExecContext(ctx, `UPDATE deliveries SET status=?,session=?,response=?,error=? WHERE id=?`, status, d.SessionID, d.Response, msg, d.ID)
-	return e
-}
-
-type DeliveryStatus struct {
-	RuleID    string `json:"rule_id,omitempty"`
-	RuleName  string `json:"rule_name,omitempty"`
-	ID        string `json:"id"`
-	Status    string `json:"status"`
-	SessionID string `json:"session_id"`
-	Error     string `json:"error,omitempty"`
-}
-
-func (s *Store) History(ctx context.Context, routeID string) ([]DeliveryStatus, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT id,status,session,error,rule_id,rule_name FROM deliveries WHERE route=? ORDER BY rowid DESC LIMIT 30`, routeID)
-	if e != nil {
-		return nil, e
+		return p, err
 	}
 	defer rows.Close()
-	out := []DeliveryStatus{}
 	for rows.Next() {
-		var d DeliveryStatus
-		if e = rows.Scan(&d.ID, &d.Status, &d.SessionID, &d.Error, &d.RuleID, &d.RuleName); e != nil {
-			return nil, e
+		var i Item
+		var raw string
+		if err = rows.Scan(&i.Sequence, &raw); err != nil {
+			return p, err
 		}
-		out = append(out, d)
+		if len(p.Messages) == 50 {
+			p.HasMore = true
+			break
+		}
+		if err = json.Unmarshal([]byte(raw), &i.Message); err != nil {
+			return p, err
+		}
+		for n := range i.Attachments {
+			i.Attachments[n].Data = ""
+		}
+		p.Messages = append(p.Messages, i)
+		p.NextCursor = i.Sequence
 	}
-	return out, rows.Err()
+	return p, rows.Err()
 }

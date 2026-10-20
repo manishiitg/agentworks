@@ -21,13 +21,13 @@ import { useChatStore } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { isWorkIntegrationTabEnabled } from './workViewGating'
 import { isProjectProductId, useProjectProduct } from './projectProduct'
-import { getGoogleAppsAskAIMessage, useGmailInboundUIEnabled } from '../../components/workflow/bots/gmailAskAI'
+import { getGoogleAppsAskAIMessage } from '../../components/workflow/bots/gmailAskAI'
 import { CrewPublishedAgents } from './CrewPublishedAgents'
 import { ConnectedProjectAccounts } from '../../components/integrations/ConnectedProjectAccounts'
 
 export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'secrets' | 'skills' | 'slack' | 'whatsapp' | 'gmail' | 'cli' | 'agents'
 
-function integrationTabAskAIMessage(noun: string, incomingGmail: boolean): Record<WorkIntegrationTab, string> {
+function integrationTabAskAIMessage(noun: string): Record<WorkIntegrationTab, string> {
   return {
     agents: 'Explain how to publish an agent from my computer into this project and reopen its private chat. Do not publish or change permissions without asking.',
     apps: `Help me with this ${noun} project's connected apps. Explain what's connected and ask what I want to add or change.`,
@@ -37,7 +37,7 @@ function integrationTabAskAIMessage(noun: string, incomingGmail: boolean): Recor
     skills: `Help me with this ${noun} project's skills. Explain what's available and ask what I want to add or change.`,
     slack: `Help me choose the Slack account this ${noun} uses to read or send messages. Explain current account permissions before changing the selection. Use manage_slack_account for Act in Slack and manage_slack_bot to choose an existing Vault bot on this same Slack page. Credentials are managed only in My Vault. Never request tokens in chat.`,
     whatsapp: `Help me with this ${noun} project's WhatsApp bot. Explain what's connected and ask what I want to change.`,
-    gmail: getGoogleAppsAskAIMessage(`${noun} project`, incomingGmail),
+    gmail: getGoogleAppsAskAIMessage(`${noun} project`),
     cli: 'Help me connect an AI agent to this installation through MCP. Explain the HTTP MCP URL and browser sign-in, and ask which AI app I use.',
   }
 }
@@ -102,7 +102,6 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
 }) {
   // The Connect tab points at this installation's API origin. Hosted apps need
   // a public origin; local agents can connect directly to a loopback MCP URL.
-  const incomingGmail = useGmailInboundUIEnabled()
   const product = useProjectProduct()
   const chatSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
   const isAdmin = useAuthStore(state => state.user?.is_admin === true)
@@ -148,7 +147,7 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
         actions={(
           <WorkspaceViewActions
             workspacePath={workspacePath}
-            message={sharing ? 'Help me share this project with people or make it available through its existing channels. Explain current access before changing sharing, routes or permissions.' : integrationTabAskAIMessage(product.noun, incomingGmail)[activeTab === 'apps' && activePluginTab === 'secrets' ? activePluginTab : activeTab]}
+            message={sharing ? 'Help me share this project with people or make it available through its existing channels. Explain current access before changing sharing, routes or permissions.' : integrationTabAskAIMessage(product.noun)[activeTab === 'apps' && activePluginTab === 'secrets' ? activePluginTab : activeTab]}
             onAsk={onAsk}
             onRefresh={() => setTabNonce(nonce => nonce + 1)}
             refreshLabel={sharing ? 'Refresh sharing and channels' : overview ? 'Refresh connections' : `Refresh ${connectionLabel}`}
@@ -195,7 +194,7 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
           workflowContextPaths={workflowContextPaths}
           onWorkflowContextPathsChange={onWorkflowContextPathsChange}
           onAsk={onAsk}
-          askMessage={integrationTabAskAIMessage(product.noun, incomingGmail).folders}
+          askMessage={integrationTabAskAIMessage(product.noun).folders}
         />}
         {activeTab === 'gmail' && (
           <>

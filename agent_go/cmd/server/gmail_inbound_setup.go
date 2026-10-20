@@ -21,20 +21,10 @@ func gmailInboundAdminSetup(config gmailInboundConfig) map[string]interface{} {
 		}
 	}
 	return map[string]interface{}{
-		"required_access":       "App administrator access and Google Cloud project setup permissions. Builder can prepare automatic provisioning; Google consent is completed in your browser. Server environment access is needed only for manual setup.",
-		"explanation":           "Google sign-in connects an account. Automatic incoming email also needs Google Pub/Sub, which delivers mailbox change events to this server. Saved filters do not enable delivery.",
-		"push_endpoint":         endpoint,
-		"automatic_setup":       "Ask Builder to use setup_gmail_inbound(action=prepare). Review its plan and complete Google Cloud consent yourself. The server provisions resources and activates its private configuration without gcloud, environment edits or a restart. Cloud project permissions and a public HTTPS endpoint are still required.",
-		"environment_variables": []string{"GMAIL_INBOUND_TOPICS", "GMAIL_INBOUND_AUDIENCE", "GMAIL_INBOUND_PUSH_EMAIL"},
-		"steps": []string{
-			"Use the Google Cloud project that owns the existing OAuth client; enable the Gmail and Pub/Sub APIs.",
-			"Create a Pub/Sub topic and grant gmail-api-push@system.gserviceaccount.com the Pub/Sub Publisher role on that topic.",
-			"Create an authenticated push subscription to push_endpoint, with the same URL as its audience. Select a push service account and grant the Pub/Sub service agent permission to create tokens for it. Keep the default wrapped JSON payload.",
-			"Set GMAIL_INBOUND_TOPICS to a JSON map of this app's exact OAuth client name to the full projects/PROJECT_ID/topics/TOPIC name. Set GMAIL_INBOUND_AUDIENCE to push_endpoint and GMAIL_INBOUND_PUSH_EMAIL to the push service account email. Restart the backend service.",
-			"Verify configured=true and a nonempty setup.oauth_clients list, then ask Builder to connect the mailbox with Gmail read consent and configure its trigger. Verify watch_ready=true before sending a test email.",
-		},
-		"empty_client_list": "An empty oauth_clients list means no registered OAuth client is mapped to an inbound topic; it does not by itself mean Google sign-in is missing.",
-		"local_setup":       "Local development also needs a public HTTPS tunnel to this backend. Use the tunnel's Gmail event URL for both push endpoint and audience; localhost cannot receive Google's push requests.",
+		"push_endpoint":     endpoint,
+		"explanation":       "Agent inboxes use one company receiving mailbox. Personal Gmail connections use gog only.",
+		"automatic_setup":   "An administrator uses My Vault → Company agent inboxes, or manage_agent_email: connect the company mailbox, prepare and review Google receiving setup, then enable all inboxes.",
+		"required_access":   "App administrator and Google Cloud project setup permissions. OAuth JSON identifies the app; connect the company mailbox once with read access.",
 		"documentation_url": "https://developers.google.com/workspace/gmail/api/guides/push",
 	}
 }

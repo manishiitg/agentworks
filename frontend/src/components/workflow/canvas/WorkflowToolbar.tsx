@@ -1,4 +1,4 @@
-import { useGmailInboundUIEnabled } from '../bots/gmailAskAI'
+import { useAgentInboxEnabled } from '../../integrations/AgentInboxPanel'
 import { projectAutomationSections, projectChannelSections, projectConnectionSections } from '../../workspace/WorkspaceProjectNavigation'
 import { useWorkflowManifestStore } from '../../../stores/useWorkflowManifestStore'
 import { useCanWriteWorkflow } from '../../../hooks/useCanWriteWorkflow'
@@ -89,7 +89,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   // No explicit view means the pane is on whichever canvas view was last open.
   const activeWorkspaceView: WorkspaceViewId = workflowWorkspaceView ?? lastCanvasView
   const isMultiUser = useAuthStore(state => state.isMultiUserMode)
-  const incomingEmail = useGmailInboundUIEnabled()
+  const incomingEmail = useAgentInboxEnabled()
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const canWrite = useCanWriteWorkflow(workspacePath)
   const pulseEnabled = useWorkflowManifestStore(state => state.workflows.find(item => item.workspace_path === workspacePath)?.manifest?.pulse?.enabled === true)

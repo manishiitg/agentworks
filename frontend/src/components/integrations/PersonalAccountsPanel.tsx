@@ -3,7 +3,6 @@ import api, { getApiBaseUrl } from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
 import type { GmailConnection } from '../../services/api-types'
 import { useAppStore } from '../../stores/useAppStore'
-import { useGmailInboundUIEnabled } from '../workflow/bots/gmailAskAI'
 import { Button } from '../ui/Button'
 import ConnectionIcon from '../connectors/ConnectionIcon'
 import { GoogleAccountConnect } from '../../products/work/GoogleAccountConnect'
@@ -12,17 +11,10 @@ import { changeGoogleAccountAccess, googleAccessSummary, googleAccessLevels, goo
 type Provider = 'google' | 'slack'
 interface Account {
   id: string; owner: string; label: string; mine: boolean; selected: boolean; connected: boolean
-  can_use_inbox?: boolean; can_add: boolean; can_manage: boolean; can_reconnect: boolean; can_detach: boolean
+  can_add: boolean; can_manage: boolean; can_reconnect: boolean; can_detach: boolean
   google?: GmailConnection
 }
-interface PersonalInbox {
-  can_manage?: boolean
-  inbox: { id: string; address: string; connection_id: string } | null
-  receiving_account?: string
-  bindings: { name: string; enabled: boolean; approved: boolean; current_address: boolean }[]
-  notice: string
-}
-interface Accounts { incoming_email?: PersonalInbox; accounts: Account[]; can_connect: boolean; notice: string; sign_in_ready?: boolean }
+interface Accounts { accounts: Account[]; can_connect: boolean; notice: string; sign_in_ready?: boolean }
 const errorText = (cause: unknown) => {
   const data = (cause as { response?: { data?: { error?: string } | string } })?.response?.data
   return typeof data === 'string' ? data : data?.error || 'Could not update your accounts. Please try again.'
@@ -44,7 +36,6 @@ function ProviderAccounts({ provider, workspacePath, onChanged }: { provider: Pr
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
-  const incomingEnabled = useGmailInboundUIEnabled()
   const central = !workspacePath
   const endpoint = `/api/integrations/${provider}/accounts`
   const label = provider === 'google' ? 'Google' : 'Slack'
@@ -75,7 +66,6 @@ function ProviderAccounts({ provider, workspacePath, onChanged }: { provider: Pr
     } catch (cause) { setError(errorText(cause)) }
     finally { setBusy(false) }
   }
-  const inbox = data?.incoming_email
   return <div aria-label={`${label} accounts`} className="space-y-3 rounded-lg border border-border p-4">
     <div className="flex items-center gap-2"><ConnectionIcon icon={provider} name={label} size="sm" /><h3 className="text-sm font-medium">{label}</h3></div>
     {workspacePath && data?.notice && <p className="text-xs text-muted-foreground">{data.notice}</p>}
@@ -90,24 +80,10 @@ function ProviderAccounts({ provider, workspacePath, onChanged }: { provider: Pr
         {!central && account.can_add && !account.selected && <Button size="xs" variant="outline" disabled={busy} onClick={() => void act('attach', account)}>Use here</Button>}
         {!central && account.can_detach && <Button size="xs" variant="outline" disabled={busy} onClick={() => void act('detach', account)}>Remove here</Button>}
         {central && account.can_reconnect && <Button size="xs" variant="outline" disabled={busy} onClick={() => provider === 'google' && account.google ? changeGoogleAccountAccess(account.google, '') : void act('reconnect', account)}>{provider === 'google' ? 'Change access' : 'Reconnect'}</Button>}
-        {central && incomingEnabled && provider === 'google' && account.can_use_inbox && account.connected && account.google?.allow_read_access && <Button size="xs" variant="outline" disabled={busy || inbox?.inbox?.connection_id === account.id} onClick={() => void act('select_inbox', account)}>{inbox?.inbox?.connection_id === account.id ? 'Your inbox' : 'Use for incoming email'}</Button>}
         {central && account.can_manage && <Button size="xs" variant="ghost" disabled={busy} onClick={() => void act('disconnect', account)}>Disconnect everywhere</Button>}
       </div>
       {account.google && <><p className="mt-2 text-xs text-muted-foreground">{googleAccessSummary(account.google)}</p><GooglePermissions account={account.google} /></>}
     </div>)}
-    {central && incomingEnabled && provider === 'google' && inbox && <section aria-label="Your incoming email" className="space-y-2 rounded-md border border-border p-3">
-      <h4 className="text-sm font-medium">Your incoming email</h4>
-      {inbox.inbox ? <>
-        <p className="break-all font-mono text-xs select-all">{inbox.inbox.address}</p>
-        <p className="text-xs text-muted-foreground">Delivered to {inbox.receiving_account}. This address delivers to your existing Gmail mailbox.</p>
-        <p className="text-xs text-muted-foreground">Anyone who emails this address can start the triggers you enable and approve, using your tools, accounts and files. Enabled replies may share results. Keep this address private.</p>
-        <div className="flex gap-2"><Button variant="outline" size="xs" onClick={() => { void navigator.clipboard.writeText(inbox.inbox!.address).then(() => setMessage('Email address copied.'), () => setError('Could not copy. Select and copy the address.')) }}>Copy address</Button><Button variant="outline" size="xs" disabled={busy || inbox.can_manage === false} onClick={() => void act('rotate_inbox')}>New address</Button></div>
-        <p className="text-xs text-muted-foreground">New address stops mail to the old address from starting work. Ask Builder to reconnect and approve each trigger afterward.</p>
-        <ul className="space-y-1 text-xs">{inbox.bindings.map((binding,index) => <li key={index}>{binding.name} · {!binding.current_address ? 'Reconnect to your new address' : !binding.enabled ? 'Paused' : binding.approved ? 'Enabled' : 'Needs your approval'}</li>)}</ul>
-        {!inbox.bindings.length && <p className="text-xs text-muted-foreground">No triggers yet. Open a product’s Builder and ask it to use your inbox.</p>}
-      </> : <p className="text-xs text-muted-foreground">Choose Use for incoming email on a connected Gmail account with read access. Then ask each product’s Builder what email should start there.</p>}
-      <p className="text-xs text-muted-foreground">Choose what reaches this address in Gmail. Each trigger you enable runs independently.</p>
-    </section>}
     {central && provider === 'google' && data && (data.can_connect || data.accounts.some(account => account.can_reconnect)) && <GoogleAccountConnect canConnect={data.can_connect} onChanged={() => { void refresh(); onChanged?.() }} />}
     {central && provider === 'slack' && data?.can_connect && !data.accounts.some(account => account.mine) && <Button variant="outline" size="sm" disabled={busy || data.sign_in_ready === false} onClick={() => void act('connect')}>Connect Slack account</Button>}
     {central && data?.sign_in_ready === false && <p className="text-xs text-muted-foreground">An administrator needs to open My Vault → Sign-in apps → Slack and save this server’s Slack app before you connect your account.</p>}

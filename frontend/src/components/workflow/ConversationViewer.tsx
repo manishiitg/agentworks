@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useEffect } from 'react'
-import { GmailSenderApprovalFromTool } from './bots/GmailSenderApprovalFromTool'
 import {
   Bot,
   User,
@@ -570,7 +569,6 @@ export const ConversationToolCallDisplay: React.FC<{
 
 // Tool response display component
 export const ConversationToolResponseDisplay: React.FC<React.ComponentProps<typeof ConversationToolResponseContent>> = props => <>
-  <GmailSenderApprovalFromTool toolName={props.toolName} result={props.content} />
   <ConversationToolResponseContent {...props} />
 </>
 

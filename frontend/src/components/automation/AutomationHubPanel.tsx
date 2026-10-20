@@ -10,8 +10,7 @@ import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { getWorkspaceAskAIMessage } from '../workflow/workspaceAskAI'
 import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
 import { WorkspaceViewActions } from '../workflow/WorkspaceViewActions'
-import { GmailInboundPanel, gmailInboundSetupMessage } from '../workflow/bots/GmailInboundPanel'
-import { useGmailInboundUIEnabled } from '../workflow/bots/gmailAskAI'
+import { AgentInboxPanel, agentInboxAskMessage, useAgentInboxEnabled } from '../integrations/AgentInboxPanel'
 import { WorkspaceViewIconButton } from '../workflow/WorkspaceViewIconButton'
 
 const WorkflowScheduleRunsPanel = lazy(() => import('../scheduler/WorkflowScheduleRunsPanel'))
@@ -48,7 +47,7 @@ type AutomationHubPanelProps = {
 const SECTION_DEFS = [
   { id: 'schedules', label: 'Schedules', icon: CalendarClock },
   { id: 'triggers', label: 'Webhooks', icon: Webhook },
-  { id: 'email', label: 'Incoming email', icon: Mail },
+  { id: 'email', label: 'Inbox', icon: Mail },
   { id: 'conditions', label: 'Watchers', icon: Zap },
   { id: 'functions', label: 'Functions', icon: Braces },
   { id: 'bots', label: 'Bots', icon: Bot },
@@ -87,7 +86,7 @@ const WORKFLOW_SECTION_MESSAGES: Record<AutomationHubSection, string> = {
   functions: getWorkspaceAskAIMessage('webhooks'),
   chats: getWorkspaceAskAIMessage('workshop'),
   bots: getWorkspaceAskAIMessage('workshop'),
-  email: gmailInboundSetupMessage,
+  email: agentInboxAskMessage,
   conditions: 'Explain the saved watchers, what each checks and which work it starts.',
 }
 
@@ -109,7 +108,7 @@ export function AutomationHubPanel({
   // Workflow hubs default every Ask AI message to the workflow Builder chat.
   // Product (Crew) hubs must pass explicit messages: a workspacePath-routed
   // message would land in the wrong chat.
-  const incomingEnabled = useGmailInboundUIEnabled()
+  const incomingEnabled = useAgentInboxEnabled()
   const isWorkflow = entityType === 'workflow'
   const [schedulesRefreshToken, setSchedulesRefreshToken] = useState(0)
   const [schedulesStatus, setSchedulesStatus] = useState<ScheduleStatusSnapshot | null>(null)
@@ -121,7 +120,7 @@ export function AutomationHubPanel({
   const [functionsCounts, setFunctionsCounts] = useState<{ functions: number; running: number } | null>(null)
   const workspaceViewTarget = useWorkflowStore(state => state.workspaceViewTarget)
   const availableSections = useMemo(() => new Set<AutomationHubSection>([
-    ...(!relayMode && incomingEnabled && (isWorkflow || productTriggerScope?.profileId === 'code' || productTriggerScope?.profileId === 'work') ? ['email' as const] : []),
+    ...(incomingEnabled && (isWorkflow || productTriggerScope?.profileId === 'code' || productTriggerScope?.profileId === 'work') ? ['email' as const] : []),
     ...(chatContent ? ['chats' as const] : []),
     ...(!relayMode ? ['schedules' as const] : []),
     ...((isWorkflow || productTriggerScope?.profileId === 'code' || productTriggerScope?.profileId === 'work') ? ['conditions' as const] : []),
@@ -163,7 +162,7 @@ export function AutomationHubPanel({
   // standard pair (Ask AI left, refresh right). The bots tab has no
   // refreshable list, so it keeps Ask AI alone.
   const refreshAction = section === 'email'
-    ? { label: 'Refresh incoming email settings', run: () => setEmailRefreshToken(token => token + 1), spinning: false }
+    ? { label: 'Refresh inbox', run: () => setEmailRefreshToken(token => token + 1), spinning: false }
     : section === 'conditions'
     ? { label: 'Refresh watchers', run: () => setTriggersRefreshToken(token => token + 1), spinning: false }
     : section === 'schedules'
@@ -238,7 +237,7 @@ export function AutomationHubPanel({
           refreshToken={triggersRefreshToken}
           onCounts={setTriggersCounts}
         />}
-        {section === 'email' && <div className="h-full overflow-y-auto p-4"><GmailInboundPanel workspacePath={workspacePath} embedded refreshToken={emailRefreshToken} onAsk={askEmail} /></div>}
+        {section === 'email' && <div className="h-full overflow-y-auto p-4"><AgentInboxPanel workspacePath={workspacePath} refreshToken={emailRefreshToken} onAsk={askEmail} /></div>}
         {section === 'conditions' && <ConditionTriggersView scope={productTriggerScope ?? { profileId: relayMode ? 'relays' : 'agentworks', projectId: workflowScope?.workflowId ?? workspacePath }} refreshToken={triggersRefreshToken} onAsk={onAskAI ?? (message => sendWorkspacePaneMessageToChat({ message, workspacePath }).then(() => undefined))} canManage={canManage} />}
         {section === 'triggers' && entityType === 'workflow' && relayMode && <WorkflowFunctionsView
           workspacePath={workspacePath}

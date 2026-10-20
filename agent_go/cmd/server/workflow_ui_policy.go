@@ -27,6 +27,9 @@ func workflowUICallerAllowed(phase, session string, req QueryRequest, active *Ac
 }
 
 func (api *StreamingAPI) registerWorkflowUIForCaller(registrar definitionToolRegistrar, phase, session, workspace string, req QueryRequest, readOnly bool) error {
+	if err := api.registerAgentInboxReadTool(registrar, workspace); err != nil {
+		return err
+	}
 	active, _ := api.getActiveSession(session)
 	if phase == workflowtypes.WorkflowStatusWorkflowBuilder && req.AgentProfileID == "" {
 		policy := resolveWorkflowChatPolicy(session, req, active, readOnly)

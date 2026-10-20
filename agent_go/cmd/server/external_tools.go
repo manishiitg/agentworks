@@ -234,6 +234,7 @@ func externalTools() ([]externalTool, error) {
 		externalCodeReviewDefinitions(add)
 		// Run your own Code (code:run; never a default scope).
 		externalCodeRunDefinitions(add)
+		externalAgentEmailDefinitions(add)
 		externalWorkspaceDefinitions(add)
 		// Shared-account token limits (get: code:review or users:manage; set: users:manage, admins).
 		externalTokenLimitDefinitions(add)
@@ -781,6 +782,10 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if isExternalCodeReviewTool(tool.Name) {
 		api.externalCodeReviewCall(w, r, tool.Name, call.Arguments)
+		return
+	}
+	if tool.Name == "agent_inbox" || tool.Name == "manage_agent_email" {
+		api.externalAgentEmailCall(w, r, tool.Name, call.Arguments)
 		return
 	}
 	if tool.Name == "manage_condition_triggers" {

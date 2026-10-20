@@ -70,6 +70,7 @@ var mcpAppFocusKeys = map[string]bool{"google": true, "slack": true}
 
 // mcpApp is what an admin stores for one provider.
 type mcpApp struct {
+	ProjectID    string `json:"project_id,omitempty"`
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
 	UpdatedAt    string `json:"updated_at,omitempty"`
@@ -272,6 +273,7 @@ func (api *StreamingAPI) handlePutMCPApp(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var body struct {
+		ProjectID    string `json:"project_id,omitempty"`
 		ClientID     string `json:"client_id"`
 		ClientSecret string `json:"client_secret"`
 	}
@@ -279,7 +281,7 @@ func (api *StreamingAPI) handlePutMCPApp(w http.ResponseWriter, r *http.Request)
 		writeAgentProfileError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	app := mcpApp{ClientID: strings.TrimSpace(body.ClientID), ClientSecret: strings.TrimSpace(body.ClientSecret),
+	app := mcpApp{ProjectID: strings.TrimSpace(body.ProjectID), ClientID: strings.TrimSpace(body.ClientID), ClientSecret: strings.TrimSpace(body.ClientSecret),
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339), UpdatedBy: sanitizeUserIDForPath(strings.TrimSpace(GetUserIDFromContext(r.Context())))}
 	if app.ClientID == "" || len(app.ClientID) > 300 || strings.ContainsAny(app.ClientID, " \r\n\t") {
 		writeAgentProfileError(w, http.StatusBadRequest, "enter the app's client ID")

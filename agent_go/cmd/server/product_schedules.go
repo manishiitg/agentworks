@@ -894,7 +894,7 @@ func (s *ProductScheduleService) tick(ctx context.Context, now time.Time) {
 			}
 			if job.Schedule.Condition != nil && job.Effective().Enabled {
 				go s.conditionService().drain(context.Background(), job)
-				if job.Schedule.Condition.WakesOnEvents() {
+				if job.Schedule.Condition.WakesOnChanges() {
 					go s.conditionService().processWake(context.Background(), job)
 				}
 			}

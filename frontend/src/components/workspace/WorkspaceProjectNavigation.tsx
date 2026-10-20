@@ -1,5 +1,5 @@
 import { Braces, CalendarClock, Mail, MessageCircle, Plug, Slack, Webhook, Zap } from 'lucide-react'
-import { useGmailInboundUIEnabled } from '../workflow/bots/gmailAskAI'
+import { useAgentInboxEnabled } from '../integrations/AgentInboxPanel'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { workspaceIntegrationShortcuts } from './workspaceIntegrationShortcuts'
 import { WorkspaceContextRow as Row } from './WorkspaceContextCard'
@@ -29,7 +29,7 @@ export const PROJECT_AUTOMATIONS = [
 export function projectAutomationSections({ relay = false, triggers = true, incomingEmail = false }: { relay?: boolean; triggers?: boolean; incomingEmail?: boolean } = {}) {
   return [
     ...PROJECT_AUTOMATIONS.filter(item => (!relay || item.id === 'triggers' || item.id === 'conditions') && (triggers || item.id === 'schedules')),
-    ...(!relay && triggers && incomingEmail ? [{ id: 'email', label: 'Incoming email', icon: Mail }] : []),
+    ...(incomingEmail ? [{ id: 'email', label: 'Inbox', icon: Mail }] : []),
   ]
 }
 
@@ -43,16 +43,16 @@ export function WorkspaceAutomationRows({ onOpen, relay = false, triggers = true
   </div>
 }
 
-/** Incoming email is a way to reach the project, so it sits with the other channels. */
+/** Inbox is a way to reach the project, so it sits with the other channels. */
 export function WorkspaceChannelRows({ onOpen, slack, whatsapp, slackBot = true, slackAccountStatus, slackBotStatus, whatsappStatus, emailStatus, onOpenEmail }: { onOpen: (section: string) => void; slack: boolean; whatsapp: boolean; slackBot?: boolean; slackAccountStatus?: string; slackBotStatus?: string; whatsappStatus?: string; emailStatus?: string; onOpenEmail?: () => void }) {
-  const incomingEmail = useGmailInboundUIEnabled()
+  const incomingEmail = useAgentInboxEnabled()
   return <div role="group" aria-label="Channels" className="mt-1 space-y-1 border-t border-border/60 pt-2">
     {projectChannelSections(slack, whatsapp).flatMap(item => [
       ...(item.id === 'slack' ? [
         <Row key="slack-account" icon={item.icon} detail={slackAccountStatus} onClick={() => onOpen('slack')}>Slack as me</Row>,
         ...(slackBot ? [<Row key="slack-bot" icon={item.icon} detail={slackBotStatus} onClick={() => onOpen('slack')}>Slack bot</Row>] : []),
       ] : [<Row key={item.id} icon={item.icon} detail={item.id === 'whatsapp' ? whatsappStatus : undefined} onClick={() => onOpen(item.id)}>{item.label}</Row>]),
-      ...(item.id === (whatsapp ? 'whatsapp' : slack ? 'slack' : '') && onOpenEmail && incomingEmail ? [<Row key="email" icon={Mail} detail={emailStatus} onClick={onOpenEmail}>Incoming email</Row>] : []),
+      ...(item.id === (whatsapp ? 'whatsapp' : slack ? 'slack' : '') && onOpenEmail && incomingEmail ? [<Row key="email" icon={Mail} detail={emailStatus} onClick={onOpenEmail}>Inbox</Row>] : []),
     ])}
   </div>
 }

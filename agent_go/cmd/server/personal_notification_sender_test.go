@@ -12,7 +12,7 @@ import (
 )
 
 func TestPersonalNotificationSenderSave(t *testing.T) {
-	api, ctx, _ := gmailTriggerFixture(t)
+	api, ctx, _ := gmailConnectionFixture(t)
 	svc := services.GetGmailService()
 	cfg := svc.GetConfig()
 	cfg.ManuallyDisabled = true
@@ -59,7 +59,7 @@ func TestPersonalNotificationSenderSave(t *testing.T) {
 // The HTTP query path calls this same admission boundary before binding any
 // notification destination. Knowing an item's path and sender ID grants no access.
 func TestPersonalNotificationRejectsUnauthorizedItem(t *testing.T) {
-	api, _, workspace := gmailTriggerFixture(t)
+	api, _, workspace := gmailConnectionFixture(t)
 	manifest := NewWorkflowManifest("Private item")
 	manifest.CreatedBy = "owner"
 	manifest.Access = &WorkflowAccess{Owners: []string{"owner"}}

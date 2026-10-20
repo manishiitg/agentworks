@@ -1,3 +1,4 @@
+import { CompanyAgentEmail } from './integrations/CompanyAgentEmail'
 import { VaultSlackBots } from './integrations/VaultSlackBots'
 import SlackAdminPanel from './admin/SlackAdminPanel'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -475,6 +476,7 @@ export default function MyVaultsPage() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl space-y-4 p-4 text-xs sm:p-6">
           {isAdmin && <McpAppsSection />}
+          {isAdmin && <CompanyAgentEmail />}
           <PersonalAccountsPanel />
           <VaultSlackBots />
           {isAdmin && <details aria-label="Company Slack bot" className="rounded-lg border border-border p-4"><summary className="cursor-pointer text-sm font-semibold">Company Slack bot (admin)</summary><div className="mt-3"><SlackAdminPanel /></div></details>}

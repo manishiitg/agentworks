@@ -53,7 +53,7 @@ func TestRelayRunnerHasNoNotificationDefinitionOrExecutor(t *testing.T) {
 }
 
 func TestWorkflowNotificationScopeUsesSavedKind(t *testing.T) {
-	_, _, workspace := gmailTriggerFixture(t)
+	_, _, workspace := gmailConnectionFixture(t)
 	if !workflowNotificationsForPath("Workflow/mail") {
 		t.Fatal("legacy workflow lost notifications")
 	}

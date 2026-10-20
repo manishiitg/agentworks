@@ -162,7 +162,7 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
         })}
       </AutomationListBox>}
       {options.triggers.filter(trigger => !trigger.kind).length === 0 && <EmptyAutomations>No webhooks yet. Ask the Builder to create one.</EmptyAutomations>}
-      {options.triggers.some(trigger => trigger.kind && trigger.kind !== 'gmail') && <p className="text-xs text-muted-foreground">Functions (typed calls from Crews, workflows and MCP/CLI) are under Automation → Functions.</p>}
+      {options.triggers.some(trigger => trigger.kind) && <p className="text-xs text-muted-foreground">Functions (typed calls from Crews, workflows and MCP/CLI) are under Automation → Functions.</p>}
       {copied && <p role="status" className="text-xs text-muted-foreground">{copied}</p>}
       {options.route_error && <p className="text-xs text-muted-foreground">{options.route_error}</p>}
       <details className="rounded-lg border border-border px-3 py-2.5 text-xs text-muted-foreground">

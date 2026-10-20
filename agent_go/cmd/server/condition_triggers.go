@@ -70,6 +70,11 @@ func conditionContext(ctx context.Context, job productScheduleJob) context.Conte
 // Source adapters are explicit. Additional product surfaces can reuse Engine;
 // merely writing a condition field never grants an unsupported product access.
 func (c *conditionService) authorize(ctx context.Context, job productScheduleJob, cfg conditiontrigger.Config) error {
+	if cfg.CheckMode == "inbox" {
+		if _, err := c.inboxSnapshot(ctx, job, nil); err != nil {
+			return err
+		}
+	}
 	if job.WatcherSource != nil {
 		return c.authorizeProductSource(ctx, job, cfg)
 	}
@@ -277,6 +282,10 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 			scheduleLogf("[CONDITION] scratch cleanup failed")
 		}
 	}()
+	inboxCursor, err := c.writeInboxSnapshot(ctx, job, cfg, state, runRoot)
+	if err != nil {
+		return nil, err
+	}
 	snapshot := path.Join(runRoot, "check.py")
 	if err := c.s.writeFile(ctx, snapshot, source); err != nil {
 		return nil, err
@@ -295,6 +304,9 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 	command := `env -i PATH="$PATH" LANG="${LANG:-C.UTF-8}"`
 	for _, name := range cfg.Secrets {
 		command += ` SECRET_` + name + `="$SECRET_` + name + `"`
+	}
+	if cfg.CheckMode == "inbox" {
+		command += " AGENT_INBOX_FILE=inbox.json"
 	}
 	command += " python3 -I -c " + conditionShellQuote(conditionPythonWrapper) + " check.py"
 	result, err := client.ExecuteShellCommand(ctx, workspace.ExecuteShellCommandParams{Command: command, WorkingDirectory: runRoot, Timeout: &timeout})
@@ -322,6 +334,9 @@ func (c *conditionService) runScript(ctx context.Context, cfg conditiontrigger.C
 		if strings.HasPrefix(n, "SECRET_") && len(value) >= 4 && strings.Contains(result.Stdout, value) {
 			return nil, errors.New("watcher output contains a selected credential; remove it from events and state")
 		}
+	}
+	if cfg.CheckMode == "inbox" {
+		return inboxWatcherOutput([]byte(result.Stdout), inboxCursor)
 	}
 	return []byte(result.Stdout), nil
 }

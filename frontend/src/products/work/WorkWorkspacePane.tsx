@@ -1,4 +1,4 @@
-import { useGmailInboundUIEnabled } from '../../components/workflow/bots/gmailAskAI'
+import { useAgentInboxEnabled } from '../../components/integrations/AgentInboxPanel'
 import { projectAutomationSections, projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
 import { workWorkspacePanels } from './workWorkspacePanels'
 import { WorkContextPanel } from './WorkContextPanel'
@@ -69,7 +69,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
   const isCode = product.profileId === 'code'
   const projectMode = useProjectMode(sessionId)
   const isCowork = isCode && projectMode === 'cowork'
-  const incomingEmail = useGmailInboundUIEnabled()
+  const incomingEmail = useAgentInboxEnabled()
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const inventory = workWorkspacePanels({ profileId: product.profileId, cowork: isCowork, readOnly: Boolean(readOnly), showShell, enabledPanels })
   const admitted = [...inventory.views, ...inventory.ops, ...inventory.setup]

@@ -23,6 +23,10 @@ func gmailSetupConfigPath() (string, error) {
 // Explicit environment settings and setup's private file can coexist, but
 // neither can silently replace the other's receiving identity or client topic.
 func mergeGmailInboundConfig(a, b gmailInboundConfig) (gmailInboundConfig, error) {
+	if b.ConnectionID != "" {
+		a.ConnectionID = b.ConnectionID
+		a.Enabled = b.Enabled
+	}
 	if len(b.Topics) == 0 {
 		return a, nil
 	}
@@ -56,11 +60,13 @@ func loadGmailSetupConfig(c gmailInboundConfig) (gmailInboundConfig, error) {
 		return c, fmt.Errorf("cannot read private Gmail setup configuration")
 	}
 	var saved gmailInboundConfig
-	if json.Unmarshal(raw, &saved) != nil || len(saved.Topics) == 0 {
+	if json.Unmarshal(raw, &saved) != nil {
 		return c, fmt.Errorf("invalid private Gmail setup configuration")
 	}
-	if err = validateGmailInboundConfig(saved); err != nil {
-		return c, err
+	if len(saved.Topics) > 0 {
+		if err = validateGmailInboundConfig(saved); err != nil {
+			return c, err
+		}
 	}
 	return mergeGmailInboundConfig(c, saved)
 }
@@ -79,6 +85,10 @@ func saveGmailSetupConfig(p gmailsetup.Plan) error {
 	if err = validateGmailInboundConfig(c); err != nil {
 		return err
 	}
+	return writeGmailSetupConfig(c)
+}
+
+func writeGmailSetupConfig(c gmailInboundConfig) error {
 	path, err := gmailSetupConfigPath()
 	if err != nil {
 		return err

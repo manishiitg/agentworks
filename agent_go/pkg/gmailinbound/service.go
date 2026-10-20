@@ -25,34 +25,19 @@ var ErrHistoryExpired = errors.New("Gmail history cursor expired")
 var ErrMessageGone = errors.New("Gmail message no longer exists")
 
 type Service struct {
-	Enabled   func(context.Context) bool
-	Store     *Store
-	Client    func(context.Context, Mailbox) (Client, error)
-	Authorize func(context.Context, Route, Message) error
-	Dispatch  func(context.Context, *Delivery) error
-	Reply     func(context.Context, Delivery) error
-	Verify    func(context.Context, string) error
-	mu        sync.Mutex
-	busy      map[string]bool
-	wg        sync.WaitGroup
+	Enabled func(context.Context) bool
+	Store   *Store
+	Client  func(context.Context, Mailbox) (Client, error)
+	Inboxes func(context.Context) ([]Inbox, error)
+	Stored  func(context.Context, Inbox) error
+	Verify  func(context.Context, string) error
+	mu      sync.Mutex
+	busy    map[string]bool
+	wg      sync.WaitGroup
 }
 
 func (s *Service) Start(ctx context.Context) {
 	s.busy = map[string]bool{}
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		ticker := time.NewTicker(24 * time.Hour)
-		defer ticker.Stop()
-		for {
-			_ = s.Store.PruneContent(ctx)
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			}
-		}
-	}()
 	for i := 0; i < 4; i++ {
 		s.wg.Add(1)
 		go func() {
@@ -69,22 +54,7 @@ func (s *Service) Start(ctx context.Context) {
 			}
 		}()
 	}
-	for i := 0; i < 2; i++ {
-		s.wg.Add(1)
-		go func() {
-			defer s.wg.Done()
-			ticker := time.NewTicker(time.Second)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					s.deliverNext(ctx)
-				}
-			}
-		}()
-	}
+
 }
 func (s *Service) Wait() { s.wg.Wait() }
 func (s *Service) syncNext(ctx context.Context) {
@@ -149,7 +119,7 @@ func (s *Service) syncMailbox(ctx context.Context, m Mailbox) error {
 	if e != nil {
 		return e
 	}
-	routes, e := s.Store.Routes(ctx)
+	inboxes, e := s.Inboxes(ctx)
 	if e != nil {
 		return e
 	}
@@ -170,19 +140,13 @@ func (s *Service) syncMailbox(ctx context.Context, m Mailbox) error {
 		if e != nil {
 			continue
 		}
-		if message.Blocked || !message.Authenticated {
-			continue
-		}
-		for _, r := range routes {
-			if !r.Enabled || r.ConnectionID != m.ConnectionID {
-				continue
-			}
-			if r.EnabledAt > 0 && message.ReceivedAt < r.EnabledAt {
+		for _, inbox := range inboxes {
+			if message.ReceivedAt < inbox.CreatedAt*1000 {
 				continue
 			}
 			matched := false
 			for _, to := range message.Recipients {
-				if strings.EqualFold(to, r.Address) {
+				if strings.EqualFold(to, inbox.Address) {
 					matched = true
 					break
 				}
@@ -190,18 +154,18 @@ func (s *Service) syncMailbox(ctx context.Context, m Mailbox) error {
 			if !matched {
 				continue
 			}
-			authorize := s.Authorize
-			if authorize != nil {
-				authorize = func(ctx context.Context, route Route, msg Message) error {
-					err := s.Authorize(ctx, route, msg)
-					if err != nil {
-						log.Printf("[GMAIL-INBOUND] admission=blocked route=%s message=%s reason=%s", route.ID, msg.ID, err.Error())
-					}
+			fresh, err := s.Store.StoreMessage(ctx, inbox, message)
+			if err != nil {
+				return err
+			}
+			// Retry waking even for a duplicate after a failed wake; the Watcher's own ledger deduplicates.
+			if s.Stored != nil {
+				if err = s.Stored(ctx, inbox); err != nil {
 					return err
 				}
 			}
-			if e = s.Store.EnqueueAuthorized(ctx, r, message, authorize); e != nil {
-				return e
+			if fresh {
+				log.Printf("[AGENT-INBOX] stored inbox=%s message=%s thread=%s", inbox.ID, message.ID, message.ThreadID)
 			}
 		}
 	}
@@ -210,52 +174,6 @@ func (s *Service) syncMailbox(ctx context.Context, m Mailbox) error {
 	}
 	m.Since = syncStarted
 	return s.Store.Synced(ctx, m, cursor)
-}
-func (s *Service) deliverNext(ctx context.Context) {
-	if s.Enabled != nil && !s.Enabled(ctx) {
-		return
-	}
-	d, ok, e := s.Store.Claim(ctx)
-	if e != nil || !ok {
-		return
-	}
-	if !d.Route.Enabled {
-		_ = s.Store.Finish(ctx, d, "rejected", fmt.Errorf("email route was disabled"))
-		return
-	}
-	if e = s.Authorize(ctx, d.Route, d.Message); e != nil {
-		_ = s.Store.Finish(ctx, d, "rejected", e)
-		return
-	}
-	if d.Status == "reply" {
-		e = s.Reply(ctx, d)
-		status := "complete"
-		if e != nil {
-			status = "reply_failed"
-		}
-		_ = s.Store.Finish(context.WithoutCancel(ctx), d, status, e)
-		return
-	}
-	reason, e := s.Store.FilterReason(ctx, d)
-	if e != nil {
-		_ = s.Store.Finish(ctx, d, "failed", e)
-		return
-	}
-	if reason != "" {
-		_ = s.Store.Finish(ctx, d, "filtered", errors.New(reason))
-		return
-	}
-	e = s.Dispatch(ctx, &d)
-	status := "complete"
-	if e != nil {
-		status = "failed"
-	} else if d.Route.Reply && strings.TrimSpace(d.Response) != "" {
-		status = "reply"
-	}
-	if ctx.Err() != nil {
-		status = "uncertain"
-	}
-	_ = s.Store.Finish(context.WithoutCancel(ctx), d, status, e)
 }
 
 // Receive authenticates before accepting any payload. A successful response

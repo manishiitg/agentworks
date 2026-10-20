@@ -62,7 +62,7 @@ func (m *gmailSetupManager) stop() {
 
 func gmailSetupAdmin(ctx context.Context) bool {
 	claims := GetUserFromContext(ctx)
-	if claims == nil || claims.UserID == "" || (claims.Provider == "bot_route" || claims.Provider == "bot_owner" || claims.Provider == slackDMProvider) || claims.ExecutionPrincipal != nil || claims.AccessToken != nil || claims.Scope != "" || claims.BotRouteGrant != "" || claims.ExternalBuilderOperationID != "" {
+	if claims == nil || claims.UserID == "" || (claims.Provider == "bot_route" || claims.Provider == "bot_owner" || claims.Provider == slackDMProvider) || claims.ExecutionPrincipal != nil || (claims.AccessToken != nil && !externalUsersAllowed(claims)) || claims.Scope != "" || claims.BotRouteGrant != "" || claims.ExternalBuilderOperationID != "" {
 		return false
 	}
 	r := httptest.NewRequest("GET", "/", nil).WithContext(ctx)
@@ -80,14 +80,18 @@ func gmailSetupClients() []services.GmailOAuthClient {
 			}
 		}
 		clients = filtered
-		clients = append(clients, services.GmailOAuthClient{Name: services.PlatformGoogleClientName, ClientID: id})
+		project := ""
+		if app, err := readMCPApp("google"); err == nil && app != nil {
+			project = app.ProjectID
+		}
+		clients = append(clients, services.GmailOAuthClient{Name: services.PlatformGoogleClientName, ClientID: id, ProjectID: project})
 	}
 	sort.Slice(clients, func(i, j int) bool { return clients[i].Name < clients[j].Name })
 	return clients
 }
 
 func (api *StreamingAPI) gmailSetupStatus(ctx context.Context) map[string]any {
-	admin := gmailSetupAdmin(ctx)
+	admin := !IsLocalMode() && gmailSetupAdmin(ctx)
 	result := map[string]any{"available": api.gmailInbound != nil, "can_prepare": admin, "oauth_clients": []services.GmailOAuthClient{}}
 	if !admin {
 		return result
@@ -109,7 +113,7 @@ func (api *StreamingAPI) gmailSetupStatus(ctx context.Context) map[string]any {
 }
 
 func (api *StreamingAPI) registerGmailSetupTool(reg definitionToolRegistrar, session string) error {
-	return reg.RegisterCustomTool("setup_gmail_inbound", "Prepare this deployment's one-time automatic Gmail setup, or inspect its progress. Only an interactive app administrator can use it; ordinary Gmail connections never provision cloud resources. Read get_gmail_trigger first. action=prepare takes a registered client_name (automatically selected if exactly one) and that OAuth client's Google Cloud project_id (use registered metadata when available; ask for the project ID if unknown, never guess). Return the reviewed plan and review_url. The administrator must OPEN the review URL themselves, review its Cloud and server changes and sign in/consent with Google project setup permissions. Never follow the URL or complete consent through agent tools. After that human step the server creates/verifies APIs, topic, narrow IAM grants, authenticated push subscription and private server configuration, activating intake without environment edits or a restart. No Cloud credentials/refresh tokens enter chat or gog. action=status reports progress; configured intake is separate from real mailbox delivery. Local needs an existing public HTTPS tunnel configured in PUBLIC_URL. Do not create a schedule or launch gog watchers as a substitute.", map[string]any{
+	return reg.RegisterCustomTool("setup_gmail_inbound", "Prepare this deployment's one-time automatic Gmail setup, or inspect its progress. Only an interactive app administrator can use it; ordinary Gmail connections never provision cloud resources. Read manage_agent_email(action=status) first. action=prepare takes a registered client_name (automatically selected if exactly one) and that OAuth client's Google Cloud project_id (use registered metadata when available; ask for the project ID if unknown, never guess). Return the reviewed plan and review_url. The administrator must OPEN the review URL themselves, review its Cloud and server changes and sign in/consent with Google project setup permissions. Never follow the URL or complete consent through agent tools. After that human step the server creates/verifies APIs, topic, narrow IAM grants, authenticated push subscription and private server configuration, activating intake without environment edits or a restart. No Cloud credentials/refresh tokens enter chat or gog. action=status reports progress; configured intake is separate from real mailbox delivery. Agent inboxes are unavailable on local deployments. Do not create a schedule or launch gog watchers as a substitute.", map[string]any{
 		"type": "object", "additionalProperties": false, "required": []string{"action"}, "properties": map[string]any{
 			"action":      map[string]any{"type": "string", "enum": []string{"prepare", "status"}},
 			"client_name": map[string]any{"type": "string"}, "project_id": map[string]any{"type": "string"},
@@ -148,7 +152,7 @@ func (api *StreamingAPI) registerGmailSetupTool(reg definitionToolRegistrar, ses
 }
 
 func (api *StreamingAPI) prepareGmailSetup(ctx context.Context, client, project string) (*gmailSetupJob, error) {
-	if !gmailSetupAdmin(ctx) {
+	if IsLocalMode() || !gmailSetupAdmin(ctx) {
 		return nil, fmt.Errorf("administrator access is required")
 	}
 	if api.gmailInbound == nil {
