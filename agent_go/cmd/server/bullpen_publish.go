@@ -4,62 +4,12 @@ import (
 	"context"
 	"net/http"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // An agent is either connected (reachable only by its own person and that
 // person's agents) or published to the network (every signed-in person on this
 // server can find and message it). Publishing is one server-scope share; there
 // are no groups.
-
-// agentGroup and groupMember are the retired group records, read once by
-// migrateGroupsToPublished and then dropped from the store.
-type agentGroup struct {
-	ID      string        `json:"group_id"`
-	Members []groupMember `json:"members"`
-}
-
-type groupMember struct {
-	AgentID string `json:"agent_id"`
-	UserID  string `json:"user_id"`
-}
-
-func (s agentMessageStore) registeredAgent(agentID, userID string) bool {
-	for _, a := range s.Agents {
-		if a.ID == agentID && a.UserID == userID {
-			return true
-		}
-	}
-	return false
-}
-
-// migrateGroupsToPublished turns every member of an old group into a published
-// agent and drops the groups. Undelivered mail sent inside a group is
-// suppressed and the group conversations stop passing the share check, so they
-// end with a plain "isn't published any more" notice; stored text is kept.
-func (api *StreamingAPI) migrateGroupsToPublished(ctx context.Context) {
-	agentMessageMu.Lock()
-	defer agentMessageMu.Unlock()
-	s, err := readAgentMessageStore(ctx)
-	if err != nil || len(s.Groups) == 0 {
-		return
-	}
-	now := time.Now().UTC()
-	for _, g := range s.Groups {
-		for _, m := range g.Members {
-			if !s.registeredAgent(m.AgentID, m.UserID) || len(s.serverSharesOf(m.AgentID, now)) > 0 {
-				continue
-			}
-			sh := agentShare{ID: "share-" + uuid.NewString(), OwnerUserID: m.UserID, AgentID: m.AgentID, SubjectUserID: shareScopeServer, Capability: shareCapabilityChat, CreatedAt: now, ExpiresAt: now.Add(serverShareLifetime), RevocationVersion: 1}
-			s.Shares = append(s.Shares, sh)
-			s.auditShare("group_published", m.UserID, m.UserID, shareScopeServer, sh.ID, m.AgentID)
-		}
-		s.suppressShare("group:" + g.ID)
-	}
-	s.Groups = nil
-	_ = saveAgentMessageStore(ctx, s)
-}
 
 // oldHelperReply adds the fields a helper older than the network model prints.
 func oldHelperReply(out map[string]interface{}, oldHelper bool, state string) map[string]interface{} {

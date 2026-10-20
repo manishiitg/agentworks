@@ -95,7 +95,6 @@ type agentMessageStore struct {
 	ShareAudit        []agentShareAudit          `json:"share_audit,omitempty"`
 	AdminAudit        []bullpenAdminAudit        `json:"admin_audit,omitempty"`
 	Notices           []agentOwnerNotice         `json:"owner_notices,omitempty"`
-	Groups            []agentGroup               `json:"groups,omitempty"` // read once by the groups-to-published migration, then cleared
 }
 
 type expiredAgentConversation struct {
@@ -736,7 +735,6 @@ func (api *StreamingAPI) expectDeliveredAgentMessage(ctx context.Context, sessio
 	return api.eventStore.ExpectAgentMessageSender(sessionID, query, metadata)
 }
 func (api *StreamingAPI) recoverAgentMessages() {
-	api.migrateGroupsToPublished(context.Background())
 	agentMessageMu.Lock()
 	s, err := readAgentMessageStore(context.Background())
 	if err == nil {

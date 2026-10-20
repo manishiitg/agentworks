@@ -287,23 +287,5 @@ restored:
 	if out, _, code, _ := env.api.publishAction(ctx, "alice", "share", "helper", true); code != "" || out["state"] != "joined" || out["name"] != "network" {
 		t.Fatalf("an old helper must still be told the agent joined: %v %s", out, code)
 	}
-	// The retired groups: a member becomes published, a ghost member is dropped, and the groups are gone.
-	agentMessageMu.Lock()
-	s, _ := readAgentMessageStore(ctx)
-	var scoutID string
-	for _, a := range s.Agents {
-		if a.Name == "scout" {
-			scoutID = a.ID
-		}
-	}
-	s.Groups = append(s.Groups, agentGroup{ID: "group-old", Members: []groupMember{{AgentID: scoutID, UserID: "bob"}, {AgentID: "agent-gone", UserID: "bob"}}})
-	_ = saveAgentMessageStore(ctx, s)
-	agentMessageMu.Unlock()
-	env.api.migrateGroupsToPublished(ctx)
-	if s, _ = readAgentMessageSnapshot(ctx); len(s.Groups) != 0 || len(s.serverSharesOf(scoutID, time.Now().UTC())) != 1 {
-		t.Fatalf("a group member must become published and the groups must go: groups=%d", len(s.Groups))
-	}
-	if _, err = try(carol, map[string]any{"action": "send", "agent_name": "snoop", "target": "agent:bob/scout", "message": "hello migrated agent", "submission_id": "migrated"}); err != nil {
-		t.Fatalf("a migrated agent could not be messaged: %v", err)
-	}
+
 }
