@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -31,7 +30,6 @@ type OrgDashboardNotification struct {
 	Status        string                       `json:"status"`
 	Route         string                       `json:"route,omitempty"`
 	Message       string                       `json:"message"`
-	Reviews       []PulseReviewSummary         `json:"reviews,omitempty"`
 	Fields        []NotificationSummaryField   `json:"fields,omitempty"`
 	Sections      []NotificationSummarySection `json:"sections,omitempty"`
 	Routes        []NotificationRouteSummary   `json:"routes,omitempty"`
@@ -108,14 +106,6 @@ func (c *OrgDashboardConnector) SendUserNotification(ctx context.Context, messag
 	if err != nil {
 		return "", err
 	}
-	reviews := summary.Reviews
-	if reviews == nil {
-		reviews = []PulseReviewSummary{}
-	}
-	reviewsJSON, err := json.Marshal(reviews)
-	if err != nil {
-		return "", err
-	}
 	// Keep message complete for existing reports that read only that column.
 	// New views use the lead plus typed route entries without duplicate prose.
 	summaryText := ""
@@ -137,9 +127,9 @@ func (c *OrgDashboardConnector) SendUserNotification(ctx context.Context, messag
 	}
 	if _, err := db.ExecContext(ctx, `
 		INSERT INTO org_dashboard_notifications
-		(id, notification_kind, title, status, message, fields_json, sections_json, route_summaries_json, reviews_json, summary_text, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, kind, strings.TrimSpace(summary.Title), normalizedSummaryStatus(summary.Status), strings.TrimSpace(message), string(fieldsJSON), string(sectionsJSON), string(routesJSON), string(reviewsJSON), summaryText, now,
+		(id, notification_kind, title, status, message, fields_json, sections_json, route_summaries_json, summary_text, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, kind, strings.TrimSpace(summary.Title), normalizedSummaryStatus(summary.Status), strings.TrimSpace(message), string(fieldsJSON), string(sectionsJSON), string(routesJSON), summaryText, now,
 	); err != nil {
 		return "", fmt.Errorf("persist org dashboard notification for %s: %w", workspacePath, err)
 	}
@@ -236,7 +226,6 @@ func ensureOrgDashboardSchema(ctx context.Context, db *sql.DB) error {
 	}
 	for _, column := range []struct{ name, ddl string }{
 		{"route_summaries_json", `ALTER TABLE org_dashboard_notifications ADD COLUMN route_summaries_json TEXT NOT NULL DEFAULT '[]'`},
-		{"reviews_json", `ALTER TABLE org_dashboard_notifications ADD COLUMN reviews_json TEXT NOT NULL DEFAULT '[]'`},
 		{"summary_text", `ALTER TABLE org_dashboard_notifications ADD COLUMN summary_text TEXT NOT NULL DEFAULT ''`},
 	} {
 		var exists int
@@ -255,118 +244,6 @@ func ensureOrgDashboardSchema(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-// UpsertPulseResultActivity projects the durable reviewer results for one Pulse
-// run into the existing Activity stream. The reviewer result remains the source
-// of truth; this row is only a read model for the UI. Rewriting the same run
-// updates one item rather than creating a second agent-authored summary.
-func UpsertPulseResultActivity(ctx context.Context, rawWorkspacePath, pulseRunID string, reviews []PulseReviewSummary, recordedAt string) error {
-	workspacePath, dbPath, err := orgDashboardDBPath(rawWorkspacePath)
-	if err != nil {
-		return err
-	}
-	defer livefeed.PublishWorkflow(livefeed.Notifications, workspacePath)
-	pulseRunID = strings.TrimSpace(pulseRunID)
-	if pulseRunID == "" {
-		return fmt.Errorf("pulse result activity requires pulse_run_id")
-	}
-	if len(reviews) == 0 {
-		return nil
-	}
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
-		return fmt.Errorf("create workflow database folder: %w", err)
-	}
-
-	status := "completed"
-	changed, issues, fixes := 0, 0, 0
-	var message strings.Builder
-	for _, review := range reviews {
-		issues += review.IssuesFound
-		fixes += review.FixesApplied
-		if review.Status == "fixed" {
-			changed++
-		}
-		switch review.Status {
-		case "failed":
-			status = "failed"
-		case "incomplete":
-			if status != "failed" {
-				status = "blocked"
-			}
-		case "fixed":
-			if status == "completed" {
-				status = "monitoring"
-			}
-		}
-		if message.Len() > 0 {
-			message.WriteString("\n")
-		}
-		fmt.Fprintf(&message, "%s — %s", review.Label, review.Summary)
-	}
-	title := fmt.Sprintf("Pulse reviewed %d area", len(reviews))
-	if len(reviews) != 1 {
-		title += "s"
-	}
-	if changed > 0 {
-		title = fmt.Sprintf("Pulse improved %d area", changed)
-		if changed != 1 {
-			title += "s"
-		}
-	}
-	fields := []NotificationSummaryField{
-		{Label: "Reviews", Value: fmt.Sprintf("%d recorded", len(reviews))},
-		{Label: "Issues found", Value: fmt.Sprintf("%d", issues)},
-		{Label: "Fixes applied", Value: fmt.Sprintf("%d", fixes)},
-	}
-	reviewsJSON, _ := json.Marshal(reviews)
-	fieldsJSON, _ := json.Marshal(fields)
-	id, err := PulseResultActivityID(workspacePath, pulseRunID)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(recordedAt) == "" {
-		recordedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	}
-
-	db, err := openOrgDashboardDB(ctx, dbPath)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-	if err := ensureOrgDashboardSchema(ctx, db); err != nil {
-		return err
-	}
-	_, err = db.ExecContext(ctx, `INSERT INTO org_dashboard_notifications
-		(id, notification_kind, title, status, message, fields_json, sections_json, route_summaries_json, reviews_json, summary_text, created_at)
-		VALUES (?, 'pulse_summary', ?, ?, ?, ?, '[]', '[]', ?, '', ?)
-		ON CONFLICT(id) DO UPDATE SET
-			title=excluded.title, status=excluded.status, message=excluded.message,
-			fields_json=excluded.fields_json, reviews_json=excluded.reviews_json,
-			created_at=excluded.created_at`,
-		id, title, status, message.String(), string(fieldsJSON), string(reviewsJSON), recordedAt)
-	if err != nil {
-		return fmt.Errorf("project Pulse results into Activity for %s: %w", workspacePath, err)
-	}
-	return nil
-}
-
-// PulseResultActivityID returns the stable Activity row ID for a Pulse run.
-// Notification-history readers use it to omit the current Pulse projection
-// while comparing the new result with earlier externally eligible updates.
-func PulseResultActivityID(rawWorkspacePath, pulseRunID string) (string, error) {
-	workspacePath, _, err := orgDashboardDBPath(rawWorkspacePath)
-	if err != nil {
-		return "", err
-	}
-	pulseRunID = strings.TrimSpace(pulseRunID)
-	if pulseRunID == "" {
-		return "", fmt.Errorf("pulse result activity requires pulse_run_id")
-	}
-	hash := sha256.Sum256([]byte(workspacePath + "\x00" + pulseRunID))
-	return fmt.Sprintf("pulse-result-%x", hash[:12]), nil
-}
-
-// ListOrgDashboardNotifications returns the newest durable notification of
-// each supported kind plus a bounded recent history for one workflow.
 func ListOrgDashboardNotifications(ctx context.Context, rawWorkspacePath string, recentLimit int) (OrgDashboardWorkflowNotifications, error) {
 	workspacePath, dbPath, err := orgDashboardDBPath(rawWorkspacePath)
 	if err != nil {
@@ -393,7 +270,7 @@ func ListOrgDashboardNotifications(ctx context.Context, rawWorkspacePath string,
 	// Read the bounded retained store, rather than deriving per-route latest
 	// from the caller's recent limit (which could contain only a busy route).
 	rows, err := db.QueryContext(ctx, `
-		SELECT id, notification_kind, title, status, message, fields_json, sections_json, route_summaries_json, reviews_json, summary_text, created_at
+		SELECT id, notification_kind, title, status, message, fields_json, sections_json, route_summaries_json, summary_text, created_at
 		FROM org_dashboard_notifications
 		ORDER BY created_at DESC, id DESC`)
 	if err != nil {
@@ -403,9 +280,9 @@ func ListOrgDashboardNotifications(ctx context.Context, rawWorkspacePath string,
 	byRoute := map[[3]string]int{}
 	for rows.Next() {
 		var item OrgDashboardNotification
-		var fieldsJSON, sectionsJSON, routesJSON, reviewsJSON, summaryText string
+		var fieldsJSON, sectionsJSON, routesJSON, summaryText string
 		item.WorkspacePath = workspacePath
-		if err := rows.Scan(&item.ID, &item.Kind, &item.Title, &item.Status, &item.Message, &fieldsJSON, &sectionsJSON, &routesJSON, &reviewsJSON, &summaryText, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Kind, &item.Title, &item.Status, &item.Message, &fieldsJSON, &sectionsJSON, &routesJSON, &summaryText, &item.CreatedAt); err != nil {
 			return result, err
 		}
 		_ = json.Unmarshal([]byte(fieldsJSON), &item.Fields)
@@ -415,9 +292,7 @@ func ListOrgDashboardNotifications(ctx context.Context, rawWorkspacePath string,
 		if err := json.Unmarshal([]byte(routesJSON), &item.Routes); err != nil {
 			return result, fmt.Errorf("read route summaries for notification %s: %w", item.ID, err)
 		}
-		if err := json.Unmarshal([]byte(reviewsJSON), &item.Reviews); err != nil {
-			return result, fmt.Errorf("read Pulse reviews for notification %s: %w", item.ID, err)
-		}
+
 		if len(item.Routes) > 0 && summaryText != "" {
 			item.Message = summaryText
 		}

@@ -211,10 +211,6 @@ func CreateHumanTools() []llmtypes.Tool {
 						"type": "integer", "minimum": 1, "maximum": 20, "default": 5,
 						"description": "Maximum prior summaries to return.",
 					},
-					"exclude_pulse_run_id": map[string]interface{}{
-						"type":        "string",
-						"description": "For a Pulse finalizer, pass the current pulse_run_id so the just-projected current Activity item is excluded from prior history.",
-					},
 				},
 				"required": []string{"notification_kind"},
 			}),
@@ -397,21 +393,13 @@ func handleGetNotificationHistory(ctx context.Context, args map[string]interface
 	if limit < 1 || limit > 20 {
 		return "", fmt.Errorf("limit must be between 1 and 20")
 	}
-	excludeID := ""
-	if pulseRunID, _ := args["exclude_pulse_run_id"].(string); strings.TrimSpace(pulseRunID) != "" {
-		var err error
-		excludeID, err = services.PulseResultActivityID(dest.WorkspacePath, pulseRunID)
-		if err != nil {
-			return "", err
-		}
-	}
 	history, err := services.ListOrgDashboardNotifications(ctx, dest.WorkspacePath, 50)
 	if err != nil {
 		return "", err
 	}
 	items := make([]services.OrgDashboardNotification, 0, limit)
 	for _, item := range history.Recent {
-		if item.Kind != kind || item.ID == excludeID {
+		if item.Kind != kind {
 			continue
 		}
 		items = append(items, item)
@@ -899,10 +887,6 @@ func notificationSummaryFromArgs(
 	if err != nil {
 		return nil, err
 	}
-	reviews, err := pulseReviewsFromArg(args["pulse_reviews"])
-	if err != nil {
-		return nil, err
-	}
 	if len(routes) > 0 && strings.TrimSpace(route) != "" {
 		return nil, fmt.Errorf("use summary_routes or legacy summary_route, not both")
 	}
@@ -912,7 +896,6 @@ func notificationSummaryFromArgs(
 		Title:    strings.TrimSpace(title),
 		Status:   status,
 		Route:    strings.TrimSpace(route),
-		Reviews:  reviews,
 		Fields:   fields,
 		Sections: sections,
 		Routes:   routes,

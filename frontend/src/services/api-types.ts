@@ -3704,3 +3704,21 @@ export interface WorkspaceStepInspectionsResponse {
   items: WorkspaceStepInspection[]
   next_cursor: string | null
 }
+
+
+export interface GoalObservation {
+  observation_id: string
+  criterion_id: string
+  metric: string
+  run_id: string
+  route?: string
+  environment?: string
+  value?: number
+  status?: string
+  unit?: string
+  observed_at: string
+  window_start?: string
+  window_end?: string
+  evidence?: string[]
+  recorded_at?: string
+}

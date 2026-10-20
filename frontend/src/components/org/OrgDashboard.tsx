@@ -43,10 +43,7 @@ const Pill: React.FC<{ status: SummaryStatus; label?: string }> = ({ status, lab
   return <span className={`${PILL_BASE} ${config.className}`}><config.Icon className="h-3 w-3" />{label || config.label}</span>
 }
 
-const REVIEW_STATUS_LABEL = {
-  clean: 'Clean', issues_found: 'Issues found', fixed: 'Fixed', incomplete: 'Incomplete',
-  failed: 'Failed', skipped: 'Skipped',
-} as const
+
 
 function relativeTime(iso: string): string {
   const then = new Date(iso).getTime()
@@ -106,14 +103,6 @@ const SummaryDetail: React.FC<{ title: string; summary: OrgDashboardNotification
     {summary ? <div className="space-y-4">
       {summary.title && <h4 className="text-sm font-semibold text-foreground">{summary.title}</h4>}
       <p className="text-sm leading-6 text-foreground/90">{summary.message}</p>
-      {!!summary.reviews?.length && <section aria-label="Pulse reviews" className="overflow-hidden rounded-md border border-border bg-background/50">
-        <div className="flex items-center justify-between border-b border-border px-3 py-2.5"><h5 className="text-xs font-medium text-foreground">Reviews</h5><span className="text-xs text-muted-foreground">{summary.reviews.length}</span></div>
-        <div className="divide-y divide-border">{summary.reviews.map((review, index) => <div key={`${review.module}:${index}`} className="px-3 py-3">
-          <div className="flex flex-wrap items-center gap-2"><span className="text-xs font-semibold text-foreground">{review.label || review.module.replaceAll('_', ' ')}</span><span className={`${PILL_BASE} border-border bg-muted/70 text-muted-foreground`}>{REVIEW_STATUS_LABEL[review.status]}</span>{review.verification !== 'not_applicable' && <span className="text-[10px] text-muted-foreground">{review.verification.replaceAll('_', ' ')}</span>}</div>
-          <p className="mt-1.5 text-xs leading-5 text-foreground/85">{review.summary}</p>
-          {(review.issues_found > 0 || review.fixes_applied > 0) && <div className="mt-1.5 flex gap-3 font-runloop-mono text-[10px] text-muted-foreground"><span>{review.issues_found} issue{review.issues_found === 1 ? '' : 's'}</span><span>{review.fixes_applied} fix{review.fixes_applied === 1 ? '' : 'es'}</span></div>}
-        </div>)}</div>
-      </section>}
       {!!summary.fields?.length && <div className="grid gap-2 sm:grid-cols-2">{summary.fields.map((field, index) => <div key={`${field.label}:${index}`} className="rounded-md border border-border bg-background/70 px-3 py-2"><div className="font-runloop-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{field.label}</div><div className="mt-1 text-sm text-foreground">{field.value}</div></div>)}</div>}
       {!!summary.sections?.length && <details aria-label="Evidence and metric details" className="group overflow-hidden rounded-md border border-border bg-background/50">
         <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary">

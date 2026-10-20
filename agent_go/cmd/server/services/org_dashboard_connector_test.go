@@ -18,10 +18,6 @@ func TestOrgDashboardConnectorPersistsClassifiedSummary(t *testing.T) {
 			Title:  "Pulse complete",
 			Status: "waiting_for_user",
 			Route:  "publish-reddit",
-			Reviews: []PulseReviewSummary{{
-				Module: "technical_review", Label: "Technical review", Status: "fixed",
-				Summary: "Repaired the balance calculation.", IssuesFound: 1, FixesApplied: 1, Verification: "monitoring",
-			}},
 			Fields: []NotificationSummaryField{{Label: "Fixed", Value: "2"}},
 		}},
 	}
@@ -45,9 +41,7 @@ func TestOrgDashboardConnectorPersistsClassifiedSummary(t *testing.T) {
 	if len(got.PulseSummary.Fields) != 1 || got.PulseSummary.Fields[0].Value != "2" {
 		t.Fatalf("unexpected fields: %#v", got.PulseSummary.Fields)
 	}
-	if len(got.PulseSummary.Reviews) != 1 || got.PulseSummary.Reviews[0].Module != "technical_review" || got.PulseSummary.Reviews[0].FixesApplied != 1 {
-		t.Fatalf("unexpected reviews: %#v", got.PulseSummary.Reviews)
-	}
+
 }
 
 func TestOrgDashboardConnectorIgnoresGeneralNotification(t *testing.T) {

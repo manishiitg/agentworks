@@ -1,6 +1,6 @@
 import type {
   GoalMetric,
-  PulseGoalObservation,
+  GoalObservation,
 } from "../../../services/api-types";
 import {
   goalMetricGroups,
@@ -12,7 +12,7 @@ import type { ReportDataApi } from "./reportEmbedContext";
 
 export interface ReportGoalMetrics {
   metrics: GoalMetric[];
-  observations: PulseGoalObservation[];
+  observations: GoalObservation[];
   progress: Array<
     ReturnType<typeof goalMetricProgress> & { metric: GoalMetric }
   >;
@@ -76,7 +76,7 @@ export async function getReportGoalMetrics(
     .sort(
       (a, b) => Number(b.role === "primary") - Number(a.role === "primary"),
     );
-  const observations: PulseGoalObservation[] = tables.some(
+  const observations: GoalObservation[] = tables.some(
     (t) => t.name === "pulse_goal_observations",
   )
     ? (
@@ -100,7 +100,7 @@ export async function getReportGoalMetrics(
                 ...row,
                 value: row.value == null ? undefined : row.value,
                 evidence,
-              } as unknown as PulseGoalObservation;
+              } as unknown as GoalObservation;
             });
           }),
         )

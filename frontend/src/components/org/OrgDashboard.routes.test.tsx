@@ -47,7 +47,6 @@ describe('Activity route summaries', () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
     const pulse: OrgDashboardNotification = { id: 'pulse-digest', workspace_path: 'Workflow/demo', kind: 'pulse_summary',
       status: 'monitoring', title: 'Pulse · healthy', message: 'No active issues; watch the next cost run.', created_at: '2026-09-05T00:00:00Z',
-      reviews: [{ module: 'technical_review', label: 'Technical review', status: 'fixed', summary: 'Repaired the cost calculation.', issues_found: 1, fixes_applied: 1, verification: 'monitoring' }],
       fields: [{ label: 'Verdict', value: 'Healthy' }], sections: [
         { heading: 'Measure AWS cost', body: 'Account finalized daily AWS cost: 55.8621009693 USD · observed at a raw collection timestamp.' },
         { heading: 'Infrastructure health', body: 'Supporting evidence and provenance.' },
@@ -64,7 +63,6 @@ describe('Activity route summaries', () => {
       const pulseButton = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Pulse'))!
       await act(async () => pulseButton.click())
       const evidence = container.querySelector<HTMLDetailsElement>('[aria-label="Evidence and metric details"]')!
-      expect(container.querySelector('[aria-label="Pulse reviews"]')?.textContent).toContain('Repaired the cost calculation.')
       expect(evidence.open).toBe(false)
       expect(evidence.querySelector('summary')?.textContent).toContain('2 sections')
       evidence.open = true

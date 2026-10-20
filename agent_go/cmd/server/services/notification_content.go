@@ -28,23 +28,9 @@ type NotificationSummary struct {
 	Title    string                       `json:"title,omitempty"`
 	Status   string                       `json:"status,omitempty"`
 	Route    string                       `json:"route,omitempty"`
-	Reviews  []PulseReviewSummary         `json:"reviews,omitempty"`
 	Fields   []NotificationSummaryField   `json:"fields,omitempty"`
 	Sections []NotificationSummarySection `json:"sections,omitempty"`
 	Routes   []NotificationRouteSummary   `json:"routes,omitempty"`
-}
-
-// PulseReviewSummary is the typed result of one Pulse review module. Keeping
-// this separate from presentation fields lets Activity answer which reviews
-// ran and what each one did without parsing notification prose.
-type PulseReviewSummary struct {
-	Module       string `json:"module"`
-	Label        string `json:"label,omitempty"`
-	Status       string `json:"status"`
-	Summary      string `json:"summary"`
-	IssuesFound  int    `json:"issues_found"`
-	FixesApplied int    `json:"fixes_applied"`
-	Verification string `json:"verification"`
 }
 
 // NotificationRouteSummary describes only the evidence for one major route.
