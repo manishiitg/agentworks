@@ -41,7 +41,7 @@ func TestRelayMigrationHistoryNeverClaimsSkippedMigrationsWereApplied(t *testing
 					t.Errorf("Relay history claims inapplicable migration %q", item.Label)
 				}
 			}
-			shared := workflowVersionUpgradePlan(&WorkflowManifest{Kind: "relay", Version: workflowContractNestedAgentArtifactsVersion})
+			shared := eligibleWorkflowVersionUpgrades(&WorkflowManifest{Kind: "relay"}, fullWorkflowVersionUpgradePlan(&WorkflowManifest{Version: workflowContractInitialVersion}))
 			if len(pending)+len(applied) != len(shared) {
 				t.Fatalf("history lost shared migrations: pending=%d applied=%d shared=%d", len(pending), len(applied), len(shared))
 			}
