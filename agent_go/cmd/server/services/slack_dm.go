@@ -214,22 +214,3 @@ func (s *SlackService) handleSlackDirectMessage(ev *slackevents.MessageEvent) {
 	msg.Text = s.appendSlackFileContext(ctx, msg.Text, ev.Message, ev.Channel, msg.UserEmail, msg.PresetWorkflow)
 	s.messageHandler(msg)
 }
-
-// DryRunDirectMessage builds the message a 1:1 DM from senderSlackID would
-// produce on this app, running the same proof as a real DM. Nothing is posted.
-func (s *SlackService) DryRunDirectMessage(ctx context.Context, senderSlackID, channelID, text string) (BotIncomingMessage, string) {
-	// A top-level DM: the conversation is the DM channel itself.
-	channelID = strings.ToUpper(strings.TrimSpace(channelID))
-	messageTS := fmt.Sprintf("dryrun.%d", time.Now().UnixNano())
-	msg, refusal, ignore, pick := s.directMessage(ctx, senderSlackID, channelID, channelID, messageTS, text, false)
-	if ignore {
-		return msg, "ignored: the sender is a bot or a deleted account"
-	}
-	if refusal == "" {
-		refusal = pick.reply
-	}
-	if refusal == "" && len(pick.choices) > 0 {
-		refusal = dryRunPickReply(slackChannelPick{choices: pick.choices})
-	}
-	return msg, refusal
-}

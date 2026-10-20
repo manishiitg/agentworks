@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/url"
 	"strings"
@@ -9,20 +8,19 @@ import (
 
 // Slack and WhatsApp for a workflow, Flow or Crew over MCP, through the Slack
 // tab's own handlers and their owner check. Seeing the setup, routing
-// channels (each new route is tested with the app's dry run), and choosing
+// channels, and choosing
 // which existing bot answers. Connecting a new Slack bot (a token or the app
 // install) and pairing WhatsApp (a QR code scanned with the phone) stay in the
 // app: whatsapp_link only says where (owner decision 2026-10-09: a paired
 // phone acts as its owner, so pairing stays behind a browser sign-in).
 
 func externalMessagingDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_messaging", "Slack and WhatsApp for a workflow, Flow or Crew. status: the Slack bot it uses, the channels routed to it and the bots you may choose. set_target: name, description and slug shown in Slack's \"who should answer\" picker (pass only what you want to change; an empty value goes back to the product's). add_channel / remove_channel: route a Slack channel (exact ID like C0123ABCD) to it; a new route is tested with the app's dry run (nothing is posted). test_channel: run that dry run again. use_bot: answer through one of the listed bots (connection_id, or \"shared\" for the shared bot). whatsapp_link: where to pair your WhatsApp in the app (scan the QR code with your phone; pairing is never done over MCP). Connecting a new Slack bot also stays in the app. Changes need the owner.", true, false, map[string]any{
+	add("manage_messaging", "Slack and WhatsApp for a workflow, Flow or Crew. status: the Slack bot it uses, the channels routed to it and the bots you may choose. set_target: name, description and slug shown in Slack's \"who should answer\" picker (pass only what you want to change; an empty value goes back to the product's). add_channel / remove_channel: route a Slack channel (exact ID like C0123ABCD) to it. use_bot: answer through one of the listed bots (connection_id, or \"shared\" for the shared bot). whatsapp_link: where to pair your WhatsApp in the app (scan the QR code with your phone; pairing is never done over MCP). Connecting a new Slack bot also stays in the app. Changes need the owner.", true, false, map[string]any{
 		"workflow_id":   externalString("Workflow or Flow ID from list_workflows. Pass this or crew_id."),
 		"crew_id":       externalString("Crew ID from list_crews. Pass this or workflow_id."),
-		"action":        map[string]any{"type": "string", "enum": []any{"status", "set_target", "add_channel", "remove_channel", "test_channel", "use_bot", "whatsapp_link"}},
+		"action":        map[string]any{"type": "string", "enum": []any{"status", "set_target", "add_channel", "remove_channel", "use_bot", "whatsapp_link"}},
 		"channel_id":    externalString("Exact Slack channel ID, e.g. C0123ABCD."),
 		"connection_id": externalString("For use_bot: a bot id from status, or \"shared\"."),
-		"text":          map[string]any{"type": "string", "maxLength": 500, "description": "Optional message text for the dry run."},
 		"name":          map[string]any{"type": "string", "maxLength": 60, "description": "For set_target: the name shown in Slack's \"who should answer\" picker. Empty goes back to the product's name."},
 		"description":   map[string]any{"type": "string", "maxLength": 75, "description": "For set_target: one short line shown under the name in the picker. Empty goes back to the product's description."},
 		"slug":          map[string]any{"type": "string", "maxLength": 40, "description": "For set_target: the word people type to pick this target (lowercase letters, digits, hyphens)."},
@@ -46,10 +44,6 @@ func (api *StreamingAPI) externalMessagingCall(w http.ResponseWriter, r *http.Re
 			return false
 		}
 		return true
-	}
-	dryRun := func() (int, []byte) {
-		return scheduleHandler(r, slackTargetDryRunHandler(api), http.MethodPost, "/api/human-feedback/slack/targets/dry-run", nil, nil,
-			map[string]any{"workspace_path": target.path, "profile_id": target.profile, "channel_id": channel, "text": externalArg(args, "text")})
 	}
 	switch action {
 	case "status":
@@ -98,23 +92,12 @@ func (api *StreamingAPI) externalMessagingCall(w http.ResponseWriter, r *http.Re
 			respond(status, body)
 			return
 		}
-		out := map[string]any{"routed": channel}
-		if testStatus, testBody := dryRun(); testStatus == http.StatusOK && json.Valid(testBody) {
-			out["dry_run"] = json.RawMessage(testBody)
-		} else {
-			out["dry_run_error"] = strings.TrimSpace(string(testBody))
-		}
-		externalJSON(w, out)
+		externalJSON(w, map[string]any{"routed": channel})
 	case "remove_channel":
 		if !needChannel() {
 			return
 		}
 		respond(scheduleHandler(r, removeSlackTargetChannelHandler(api), http.MethodDelete, "/api/human-feedback/slack/targets/channels/"+url.PathEscape(channel), map[string]string{"channel": channel}, scope, nil))
-	case "test_channel":
-		if !needChannel() {
-			return
-		}
-		respond(dryRun())
 	case "use_bot":
 		id := strings.TrimSpace(externalArg(args, "connection_id"))
 		if id == "shared" {

@@ -34,7 +34,6 @@ export function SlackSlugsSection({ destination, noun, readOnly, dmOnly = false,
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [channel, setChannel] = useState('')
-  const [tests, setTests] = useState<Record<string, string>>({})
   const [shownName, setShownName] = useState<string | null>(null)
   const [shownDescription, setShownDescription] = useState<string | null>(null)
 
@@ -51,18 +50,6 @@ export function SlackSlugsSection({ destination, noun, readOnly, dmOnly = false,
       setBusy(null)
     }
   }
-  const test = async (channelId: string) => {
-    setTests(prev => ({ ...prev, [channelId]: 'Testing…' }))
-    try {
-      const outcome = await agentApi.dryRunSlackTarget(channelId, destination)
-      setTests(prev => ({ ...prev, [channelId]: outcome.admitted
-        ? `Answers: ${outcome.destination || 'ok'}`
-        : `Would not answer: ${outcome.replies?.[0] || outcome.reason || 'unknown'}` }))
-    } catch (err) {
-      setTests(prev => ({ ...prev, [channelId]: slackErrorText(err, 'Test failed') }))
-    }
-  }
-
   const canManage = settings.can_manage && !readOnly
   const title = canManage ? undefined : `Only the ${noun}'s owner can change this`
   const botName = settings.platform_name || 'the platform bot'
@@ -136,7 +123,6 @@ export function SlackSlugsSection({ destination, noun, readOnly, dmOnly = false,
                   </span>
                 ))}
               </span>
-              <Button type="button" variant="ghost" size="xs" onClick={() => void test(card.channel_id)} disabled={!canManage}>Test</Button>
               <Button
                 type="button"
                 variant="ghost"
@@ -148,7 +134,6 @@ export function SlackSlugsSection({ destination, noun, readOnly, dmOnly = false,
               >
                 {busy === `remove:${card.channel_id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
               </Button>
-              {tests[card.channel_id] && <span className="basis-full text-[11px] text-muted-foreground">{tests[card.channel_id]}</span>}
             </div>
           ))}
           <div className="flex flex-wrap items-center gap-2">

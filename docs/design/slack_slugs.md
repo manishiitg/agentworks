@@ -76,7 +76,7 @@ The same model, scoped to the bot: its slugs are the targets its owner attached 
 - Each target's Slack tab: a **Use the AgentWorks bot** switch (with its slug, editable), its channels, or an own bot.
 - Channel cards show the allowed targets and the default.
 - Admin: the platform bot's tokens, enable switch and which products may use it.
-- The dry run takes a slug and a channel or DM, so "Save & test" proves the route.
+- Send a real mention or DM to verify the selected target and thread routing.
 
 ## Fixed along the way
 

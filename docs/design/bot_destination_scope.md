@@ -53,22 +53,7 @@ in the shared bot's routes and refused a crew's own bot.
 
 ## Verification
 
-A dry run feeds a synthetic mention through the real inbound path (route
-resolution, turn building, revalidation, access) and stops before the model.
-It backs the end-to-end tests (`bot_dry_run_test.go`: own crew bot, legacy
-logical crew bot after migration, shared bot to a crew channel, workflow bot,
-unrouted channel) and the Slack tab's Save & test. It covers Slack only;
-WhatsApp keeps its own per-user routing and has no dry run yet.
-
-`dryRunSlackMention` (`bot_dry_run.go`) runs the app's `mentionMessage` (shared
-with the app-mention handler), a bot manager copied from the production one
-(`RunDryRun`; the wiring lives in `wireBotManager` for startup and tests), and
-the query boundary (`revalidateExecutionPrincipal` plus `admitQueryTarget`,
-shared with `handleQuery`). It skips only `bindSlackInvocation`, which
-allocates a workflow trigger's run folder. A refusal carries the reply the
-user would get. Save & test calls it through
-`POST /api/human-feedback/slack/connections/{id}/dry-run` after the token
-checks pass (`frontend/.../bots/slackDryRun.ts`).
+Verify a route with a real Slack mention or direct message and inspect the resulting chat and server logs. Connection tests check the Slack app credentials; receiving a real message proves the full route.
 
 ## Tolerant comparisons
 

@@ -97,7 +97,6 @@ import type {
   SlackBotChannelsResponse,
   ProjectSlackSelectionResponse,
   SlackTestResponse,
-  SlackDryRunResponse,
   SlackTestReplyResponse,
   GmailConfigRequest,
   GmailConfigResponse,
@@ -1702,13 +1701,6 @@ export const agentApi = {
     return apiResponse.data
   },
 
-  // Runs a mention of the app in a channel through the real inbound path
-  // and stops before the model: nothing is posted, no turn starts.
-  dryRunSlackConnection: async (id: string, channelId: string, text?: string, slug?: string): Promise<SlackDryRunResponse> => {
-    const apiResponse = await api.post(`/api/human-feedback/slack/connections/${id}/dry-run`, { channel_id: channelId, text, slug })
-    return apiResponse.data
-  },
-
   // Slack slugs (PLAT-668): a target's slug and "Use the AgentWorks bot".
   getSlackTargetSettings: async (destination: { workspace_path: string; profile_id?: string }): Promise<SlackTargetSettings> => {
     const apiResponse = await api.get('/api/human-feedback/slack/targets/settings', { params: destination, timeout: 15000 })
@@ -1727,13 +1719,6 @@ export const agentApi = {
 
   removeSlackTargetChannel: async (channelId: string, destination: { workspace_path: string; profile_id?: string }): Promise<SlackTargetSettings> => {
     const apiResponse = await api.delete(`/api/human-feedback/slack/targets/channels/${encodeURIComponent(channelId)}`, { params: destination })
-    return apiResponse.data
-  },
-
-  // A mention of the AgentWorks bot in a channel starting with this target's
-  // slug, through the real inbound path; nothing is posted.
-  dryRunSlackTarget: async (channelId: string, destination: { workspace_path: string; profile_id?: string }): Promise<SlackDryRunResponse> => {
-    const apiResponse = await api.post('/api/human-feedback/slack/targets/dry-run', { ...destination, channel_id: channelId })
     return apiResponse.data
   },
 

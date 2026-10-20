@@ -188,22 +188,6 @@ func (s *SlackService) deliverChannelPick(ctx context.Context, msg BotIncomingMe
 	return !pick.handled
 }
 
-// dryRunPickReply is what a dry run reports for a pick that answers instead
-// of a turn.
-func dryRunPickReply(pick slackChannelPick) string {
-	if pick.reply != "" {
-		return pick.reply
-	}
-	if len(pick.choices) > 0 {
-		names := make([]string, 0, len(pick.choices))
-		for _, choice := range pick.choices {
-			names = append(names, choice.Slug)
-		}
-		return slackPickPrompt(pick.choices, pick.slug) + " [buttons: " + strings.Join(names, ", ") + "]"
-	}
-	return ""
-}
-
 // handleSlackPick handles a target button: it rechecks that the target is
 // still allowed here (and, in a DM, that the person can reach it), binds the
 // thread, and runs the waiting message. Only the asker's click counts.

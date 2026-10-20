@@ -2777,11 +2777,6 @@ func (m *BotConversationManager) runSession(active *activeBotSession, queryReq m
 	if m.startSession != nil {
 		go func() {
 			err := m.startSession(sessionCtx, queryReq, sessionID, userID, func(event *events.AgentEvent) {})
-			if errors.Is(err, ErrBotDryRunAdmitted) {
-				// A dry run stops at admission: no failure message.
-				cancel()
-				return
-			}
 			if err != nil && sessionCtx.Err() == nil {
 				log.Printf("[BOT_MANAGER] Session error: %v", err)
 				connector.SendThreadMessage(ctx, active.ThreadID, botSessionFailureMessage(err))

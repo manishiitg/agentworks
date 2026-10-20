@@ -1417,17 +1417,6 @@ export interface SlackTestResponse {
   test_id?: string  // Unique ID for polling test replies
 }
 
-// What a mention of a Slack app would do, without posting or running
-// (POST /connections/{id}/dry-run).
-export interface SlackDryRunResponse {
-  admitted: boolean
-  /** How an admitted turn runs: channels always "run"; a 1:1 DM in its sender's own mode. */
-  mode?: 'full' | 'run'
-  reason?: string
-  replies?: string[]
-  destination?: string
-}
-
 export interface SlackTestReplyResponse {
   test_id: string
   reply: string

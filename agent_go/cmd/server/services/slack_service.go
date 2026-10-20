@@ -2529,8 +2529,7 @@ func (s *SlackService) handleAppMentionEvent(ev *slackevents.AppMentionEvent, ra
 // mentionMessage builds the bot message for a Slack mention, with the target
 // this app picks for it (slug, thread binding or the channel's default)
 // attached. The pick says when the bot answers instead of a turn (a blocked
-// sender, the button prompt, a list). The app-mention handler and the bot dry
-// run (DryRunMention) share it.
+// sender, the button prompt, a list). The app-mention handler uses it.
 func (s *SlackService) mentionMessage(ctx context.Context, userID, userEmail, channelID, threadTS, messageTS, text string, isThreadReply bool) (BotIncomingMessage, slackChannelPick) {
 	pick := s.pickChannelRoute(ctx, userEmail, channelID, threadTS, text, true)
 	text, presetRoute := pick.text, pick.route
@@ -2549,20 +2548,6 @@ func (s *SlackService) mentionMessage(ctx context.Context, userID, userEmail, ch
 		IsMention:      true,
 		PresetWorkflow: presetRoute,
 	}, pick
-}
-
-// DryRunMention builds the message a mention of this app in channelID by
-// userEmail would produce, on a fresh synthetic thread ("@bot <slug> ..."
-// picks a target as a real mention does; nothing is bound or posted).
-// blocked reports a sender the route refuses; reply is what the bot would
-// answer instead of a turn (the button prompt, a list).
-func (s *SlackService) DryRunMention(ctx context.Context, userEmail, channelID, text string) (msg BotIncomingMessage, blocked bool, reply string) {
-	threadTS := fmt.Sprintf("dryrun.%d", time.Now().UnixNano())
-	msg, pick := s.mentionMessage(ctx, "dry-run", strings.TrimSpace(userEmail), strings.ToUpper(strings.TrimSpace(channelID)), threadTS, threadTS, text, false)
-	if reply := dryRunPickReply(pick); reply != "" {
-		return msg, false, reply
-	}
-	return msg, pick.handled, ""
 }
 
 // slackUserMentionTag matches Slack user tags (<@U123>, <@U123|label>).
