@@ -477,7 +477,7 @@ export default function MyVaultsPage() {
           {isAdmin && <McpAppsSection />}
           <PersonalAccountsPanel />
           <VaultSlackBots />
-          {isAdmin && <section aria-label="Company Slack bot"><h2 className="mb-3 text-sm font-semibold">Company Slack bot</h2><SlackAdminPanel /></section>}
+          {isAdmin && <details aria-label="Company Slack bot" className="rounded-lg border border-border p-4"><summary className="cursor-pointer text-sm font-semibold">Company Slack bot (admin)</summary><div className="mt-3"><SlackAdminPanel /></div></details>}
           {sharedVaultsEnabled && <>
           <h2 className="pt-3 text-base font-semibold">Shared vaults</h2>
           <div className="flex flex-wrap items-start justify-between gap-3">
