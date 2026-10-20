@@ -185,16 +185,16 @@ func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 	if app.Code != 200 {
 		t.Fatal("disable second admin failed", app.Body)
 	}
-	legacy := &UserClaims{UserID: "legacy-admin", Username: "legacy-admin"}
+	unknown := &UserClaims{UserID: "outside-directory", Username: "outside-directory"}
 	for _, method := range []string{http.MethodPut, http.MethodDelete} {
 		app = httptest.NewRecorder()
 		handler := api.handleAdminUpdateUser
 		if method == http.MethodDelete {
 			handler = api.handleAdminDeleteUser
 		}
-		requireAdmin(handler)(app, adminRequest(method, "/api/admin/users/boss", `{"role":"editor"}`, legacy, map[string]string{"id": "boss"}))
-		if app.Code != 400 || !strings.Contains(app.Body.String(), "last active administrator") {
-			t.Fatalf("shared last-admin guard %s: %d %s", method, app.Code, app.Body)
+		requireAdmin(handler)(app, adminRequest(method, "/api/admin/users/boss", `{"role":"editor"}`, unknown, map[string]string{"id": "boss"}))
+		if app.Code != http.StatusForbidden || !strings.Contains(app.Body.String(), "workflow permission denied") {
+			t.Fatalf("unknown account admin guard %s: %d %s", method, app.Code, app.Body)
 		}
 	}
 	audit, err := os.ReadFile(filepath.Join(docs, filepath.FromSlash(codeAdminAuditPath(time.Now()))))
