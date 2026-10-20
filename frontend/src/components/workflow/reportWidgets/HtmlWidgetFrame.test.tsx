@@ -77,7 +77,7 @@ it('fills the host pane only when the dashboard author requests viewport fit', a
   vi.spyOn(host, 'getBoundingClientRect').mockReturnValue({ top: 20, bottom: 720 } as DOMRect)
   const root = createRoot(host)
   cleanups.push(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks() })
-  await act(async () => root.render(<HtmlReportFrame html="<p>Dashboard</p>" title="Fit report" autoHeight />))
+  await act(async () => root.render(<HtmlReportFrame html="<p>Dashboard</p>" title="Fit report" className="" autoHeight />))
   const frame = host.querySelector('iframe')!
   vi.spyOn(frame, 'getBoundingClientRect').mockReturnValue({ top: 20 } as DOMRect)
   frame.contentDocument!.documentElement.setAttribute('data-report-fit', 'viewport')
