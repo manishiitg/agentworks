@@ -56,7 +56,7 @@ export function SlackBotChoice({ workspacePath, noun = 'Crew' }: { workspacePath
     <p className="text-muted-foreground">{chosen.configured&&chosen.enabled?'Connected':'Check this bot in My Vault'}</p>
     <div className="flex flex-wrap items-end gap-2"><label className="min-w-0 flex-1">Name to use in Slack<Input aria-label="Slack slug" value={slug} onChange={event=>setSlug(event.target.value)} disabled={!data.can_select||busy}/></label><Button size="sm" variant="outline" disabled={!data.can_select||busy||slug===data.settings.slug||!slug} onClick={async()=>{setBusy(true);try{await agentApi.updateSlackTargetSettings(data.target!,{slug});await refresh()}catch(cause){setError(slackErrorText(cause,'Could not save the Slack name.'))}finally{setBusy(false)}}}>Save name</Button></div>
     {chosen.shared?<SlackSlugsSection hideSwitch destination={data.target} noun={noun} readOnly={!data.can_select} dmOnly={data.settings.dm_only} settings={data.settings} onSettings={settings=>setData({...data,settings})}/>:<SlackBotWhere botId={chosen.id} botName={chosen.name} destination={data.target} dmOnly={data.settings.dm_only}/>}
-    <p className="break-words text-muted-foreground">{data.settings.dm_only?`${slug} your question`:`@${chosen.name} ${slug} your question`}</p>
+    <p className="break-words text-muted-foreground">{data.settings.dm_only?`In a direct message to ${chosen.name}, start with “${slug}” to reach this ${noun}, for example: ${slug} your question`:`@${chosen.name} ${slug} your question`}</p>
    </>}
   </>}
  </section>
