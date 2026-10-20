@@ -194,7 +194,6 @@ export function AutomationHubPanel({
         icon={Zap}
         title="Automations"
         helpTopic={`Automation · ${SECTION_DEFS.find(item => item.id === section)?.label ?? 'Chats'}`}
-        subtitle={relayMode ? 'Webhooks, Watchers and chat history for this Relay.' : 'Schedules and actions that start work.'}
         actions={headerActions}
         context={
           section === 'schedules' && schedulesStatus ? <ScheduleStatusPills status={schedulesStatus} />
@@ -206,12 +205,7 @@ export function AutomationHubPanel({
             <span className="text-xs text-muted-foreground">{functionsCounts.functions} functions · {functionsCounts.running} running</span>
           ) : undefined
         }
-        tabs={{
-          value: section,
-          onChange: (value: string) => selectSection(value as AutomationHubSection),
-          options: SECTION_DEFS.filter(item => availableSections.has(item.id)).map(({ id, label, icon }) => ({ value: id, label, icon })),
-          ariaLabel: 'Automation center',
-        }}
+        /* Each automation is its own item in the side list, so this page has no tabs (owner, 2026-10-20). */
       />
 
       <div className="min-h-0 flex-1 overflow-hidden">

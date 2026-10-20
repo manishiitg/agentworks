@@ -168,6 +168,11 @@ export function WorkspaceViewHeader({
     </>
   )
   if (bare) return <>{body}</>
+  // With the title hidden, a header holding only the help and action icons sits inside the page as a light row,
+  // not as a separate bar with a divider (owner, 2026-10-20: "move help inside the pages").
+  if (!hasSubtitle && !context && !below && !tabs && !tabExtra) {
+    return <div className={`shrink-0 px-3 pt-2 ${sticky ? 'sticky top-0 z-10 bg-background/95 backdrop-blur' : ''} ${className}`}>{body}</div>
+  }
   return (
     <header className={`${sticky ? 'sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur' : 'shrink-0 border-b border-border'} px-3 py-2 ${className}`}>
       {body}
