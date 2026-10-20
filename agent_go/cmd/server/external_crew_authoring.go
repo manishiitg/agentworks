@@ -272,9 +272,9 @@ func normalizeCrewSpec(spec crewSpec) (crewSpec, []*crewAgentTemplate, error) {
 	spec.Role, spec.Purpose = strings.TrimSpace(spec.Role), strings.TrimSpace(spec.Purpose)
 	spec.Mode = strings.TrimSpace(spec.Mode)
 	switch spec.Mode {
-	case "", "dev", "cowork", "local":
+	case "", "dev", "cowork":
 	default:
-		return spec, nil, fmt.Errorf("choose Dev, Cowork or Local for this Crew")
+		return spec, nil, fmt.Errorf("choose Dev or Cowork for this Crew")
 	}
 	if config := spec.LLMConfig; config != nil {
 		if config.SchemaVersion != 2 || config.Mode != workflowtypes.LLMConfigModeExplicit && config.Mode != workflowtypes.LLMConfigModeProviderProfile {

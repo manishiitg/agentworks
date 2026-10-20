@@ -221,11 +221,8 @@ export interface AgentQueryResponse {
 // fields only for profiles that explicitly support them.
 export interface AgentProfileChatRequest {
   delivery_mode?: 'steer' | 'queue'
-  code_chat_mode?: 'server' | 'local'
-  /** Read-only uploads for this Local chat; revalidated against the owner/session folder. */
-  code_chat_attachments?: string[]
-  /** Code-only selection hint; device ownership and local grants are checked live. */
-  code_local_files?: { device_id: string; resource_id: string }
+  /** Optional Crew laptop connection; the server checks the current owner and live folder grants. */
+  laptop_connection?: { device_id: string; resource_id: string }
   /** Brain folder context only; the server revalidates visibility. */
   knowledgebase_folder_path?: string
   connection_id?: string

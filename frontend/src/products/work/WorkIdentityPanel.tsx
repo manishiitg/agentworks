@@ -41,7 +41,7 @@ const IDENTITY_TABS: Array<{ value: WorkIdentityTab; label: string }> = [
   { value: 'general', label: 'General' },
   { value: 'models', label: 'Models' },
   // Code only: where this chat's files and commands live (the server, or your own computer through the CLI).
-  { value: 'location', label: 'Location' },
+  { value: 'location', label: 'Laptop connection' },
 ]
 
 function identityTabAskAIMessage(noun: string, hasIdentity: boolean): Record<WorkIdentityTab, string> {
@@ -50,7 +50,7 @@ function identityTabAskAIMessage(noun: string, hasIdentity: boolean): Record<Wor
       ? `Help me with this ${noun} project's name, icon, and purpose. Explain what's set and ask what I want to change.`
       : `Help me with this ${noun} project's name. Explain what's set and ask what I want to change.`,
     models: 'Help me choose between the coding agents available for this project. Explain the practical differences before changing anything.',
-    location: 'Explain where this chat works with files today (server or my computer) and how I would connect my computer with the CLI.',
+    location: 'Explain how this server Crew can also run commands on my connected computer and copy its files into the Crew.',
   }
 }
 
@@ -318,7 +318,7 @@ function WorkFoldersBody({ workspacePath, workflowContextPaths, onWorkflowContex
     let cancelled = false
     void loadWorkSessions(CODE_PRODUCT).then(sessions => {
       if (cancelled) return
-      setCodeReferences(sessions.filter(session => productMode(session) !== 'local').map(session => ({ path: session.workspacePath, label: session.title })))
+      setCodeReferences(sessions.map(session => ({ path: session.workspacePath, label: session.title })))
     }).catch(() => { if (!cancelled) setCodeReferences([]) })
     return () => { cancelled = true }
   }, [product.profileId])
@@ -438,7 +438,7 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
   const product = useProjectProduct()
   const sessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId || '')
   const askMessages = identityTabAskAIMessage(product.noun, product.hasIdentity)
-  const visibleTabs = IDENTITY_TABS.filter(option => (!modelsOnly || option.value === 'models') && (option.value !== 'location' || product.supportsLocalFiles) && isWorkIdentityTabEnabled(option.value, enabledPanels))
+  const visibleTabs = IDENTITY_TABS.filter(option => (!modelsOnly || option.value === 'models') && isWorkIdentityTabEnabled(option.value, enabledPanels))
   const [tab, setTab] = usePersistentTab<WorkIdentityTab>('agentworks.tab.crew-identity', 'general', IDENTITY_TABS.map(option => option.value))
   useEffect(() => {
     if (!openLocalFilesSettings) return
@@ -484,7 +484,7 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
           onUpdateIdentity={onUpdateIdentity}
           onDeleteRequest={onDeleteRequest}
         />}
-        {activeTab === 'general' && product.supportsLocalFiles && <ModeRow sessionId={sessionId} />}
+        {activeTab === 'general' && product.profileId === 'code' && <ModeRow sessionId={sessionId} />}
         {activeTab === 'general' && !shared && projectId && <WorkspaceMemorySetting projectId={projectId} />}
         {activeTab === 'general' && !shared && <div className="mt-4"><ProjectInstructionsCard workspacePath={workspacePath} /></div>}
         {activeTab === 'location' && <Suspense fallback={<p className="text-sm text-muted-foreground">Loading connection settings…</p>}><CodeLocalFilesSettings sessionId={sessionId} workspaceName={projectIdentity?.name?.trim() || projectTitle} /></Suspense>}

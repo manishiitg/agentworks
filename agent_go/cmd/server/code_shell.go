@@ -160,8 +160,8 @@ func (api *StreamingAPI) codeShellTargetFull(r *http.Request) (userID, shellID, 
 	if !project.OwnedByCaller || !userAccessForClaims(claims).CanEdit {
 		return "", "", "", "", "", http.StatusForbidden, "Only a project Builder can use its terminal"
 	}
-	if mode := codeProjectMode(r.Context(), project.Binding.WorkspacePath); profileID == "code" && (mode == "cowork" || mode == "local") {
-		return "", "", "", "", "", http.StatusForbidden, "The terminal is available in server Dev projects. Open your Local folder on your computer."
+	if mode := codeProjectMode(r.Context(), project.Binding.WorkspacePath); profileID == "code" && mode == "cowork" {
+		return "", "", "", "", "", http.StatusForbidden, "The terminal is available in Dev Crews. Choose a Dev Crew to use the server terminal."
 	}
 	// The authorized binding can still name the pre-move location. Send the
 	// trusted canonical root to both the shell and its guard; the workspace
@@ -601,5 +601,5 @@ func projectTerminalBuilder(ctx context.Context, userID, root string) bool {
 		return false
 	}
 	mode := codeProjectMode(ctx, root)
-	return product.ProfileID != "code" || mode != "local" && mode != "cowork"
+	return product.ProfileID != "code" || mode != "cowork"
 }

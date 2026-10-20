@@ -14,9 +14,7 @@ New projects start **Only me**. Share changes the same hosted project's audience
 it does not copy or convert it. Old Crew/Code tool names and IDs remain supported.
 A Crew can have standing instructions (`purpose`), skills, typed **functions**,
 schedules, a dashboard and project files. Memory is optional; existing projects
-keep their setting. A Local project still needs its connected computer for local
-work; Publish to Crew creates a separate hosted target or adds a named agent,
-with private summary-based continuity rather than native chat resume.
+keep their setting. Every Crew runs on the server; an optional laptop connection adds local command and local-to-Crew copy tools without changing server features.
 A Crew has one main owner (its creator) and can have co-owners; owners build and edit it together, and everything runs as the main owner. All Builders can see every Builder chat in their project. People with Run access see their own chat and dashboard. Only the main owner adds or removes owners (`crew_owners`); `crew_owners action=lock_status` shows who is editing, because one owner edits at a time. Use Share to give others access to its dashboard, Ask and published functions. Shared people can also list, search and read its files over MCP, including skills, memory, knowledge, instructions, runs and logs. Secret values and private logs stay excluded.
 
 Over MCP, use `share action=get` to inspect the audience, then `share action=set` with `crew_id` and the owner's chosen mode: `private` (Only me), `people` (Chosen people, with `emails`) or `everyone`. Only the owner changes sharing, with existing authoring consent. The people list replaces the saved list: preserve people the owner did not ask to remove. A standard dashboard is created when needed. `get_dashboard_share` and `share_dashboard` remain callable aliases.
@@ -225,37 +223,8 @@ Agent-to-agent messages (AgentBridge) use an inbox for apps without a terminal, 
 
 Use `manage_crew_chats action=tools` with an explicit `chat_id` from your own live chat list for native UI/background schemas. Execute a returned `tool_name` through `action=tool` and its exact `arguments`. UI actions are presentation only and return the existing browser receipt, including unavailable/ambiguous states. Starting background work needs editable Crew ownership, `crews:write`, unrestricted file consent and an initialized manual chat; retained filesystem grants must fit this connection. Native completion notifications return to that chat. Session status/cancellation never crosses to another person's session. Human confirmation and account sign-in continue through their existing Needs you/Integrations flows.
 
-## Publish work from your computer
+## Import work from your computer
 
-Use the website Local chat's **Publish to Crew** button, or ask that chat to
-publish. Choose **New Crew** (Only me) or **Add agent to an existing Crew**.
-Adding keeps the destination's Main, instructions and Share. Files and exact raw
-chat are saved; raw history stays private to Builders, and online work continues
-from a summary on the disclosed company account while the computer is offline.
-Login files and `.env` stay on the computer. Native chat resume comes later.
+Import a laptop-native coding project's files and exact chat into a new Crew or a named agent in an existing Crew. Adding keeps that Crew's Main, instructions and Share. Raw history stays private to Builders; server continuation uses a summary and the disclosed company account. Login files and `.env` are excluded. Native chat resume comes later.
 
-Over MCP, discover the current `workspace` schema. `publish_preview` and
-`publish` take an exact own Local `source_workspace_id` and `conversation_key`,
-a name and optional destination `workspace_id` / saved `agent_id`.
-`publish_status` reads the durable operation receipt; only state `live` means
-success. `agents` lists published agent identities for a Crew you may build;
-`open_agent` opens your private Builder tab. Closing the tab keeps its agent.
-Shared use still enters through the Crew's Ask and published functions.
-
-Native Claude Code/Codex chats can use the bundled publish skill or
-`agentworks publish`; `--crew` adds an agent to an existing Crew. Republishing
-follows the saved project/agent identity and keeps online working data, chats
-and Share. Change imported source through another publish; save generated
-results in the authorized runtime folders. Existing Crew editing stays as it was.
-
-Sharing includes published agents' source files under existing file permissions.
-`workspace get` includes their stable IDs. Use `files action=list|search|read`
-with the Crew selector and `agent_id` to inspect that source and permitted
-results. This does not select a Builder chat; imported raw history remains
-Builder-only. Download it from **Agents → Saved chat** on the website, or use
-`workspace action=read_saved_chat` with `workspace_id` and `agent_id` over MCP.
-Choose `kind=raw` or `summary`. Replies contain the actual whole-file SHA-256,
-total bytes and a bounded content page. `limit=0` returns details only; otherwise
-use up to 65536 bytes and follow `next_offset`. Honor the returned `encoding`
-(`utf-8` or `base64`) when reconstructing bytes. Every page checks current
-Builder access and connection scope; Run people cannot read this history.
+Crews run on the server. An optional laptop connection in Settings adds local command and local-to-Crew file copy tools for its owner's interactive Builder chat. Sharing a Crew does not share the laptop. Initial imports of native laptop coding chats use the CLI import flow; a hosted Crew does not publish a second copy.

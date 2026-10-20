@@ -180,9 +180,7 @@ func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, 
 		return runShareState{}, dashboardFailure(400, "mode must be everyone, people or private")
 	}
 	stage = "owner"
-	if target.Kind == "code" && codeProjectMode(ctx, target.Root) == "local" && mode != runSharePrivate {
-		return runShareState{}, dashboardFailure(400, "This project runs on your computer. Shared execution is not available yet.")
-	}
+
 	if !api.dashboardShareOwner(ctx, claims, target) {
 		return runShareState{}, dashboardFailure(403, "only the owner can share this project")
 	}
@@ -327,7 +325,7 @@ func (api *StreamingAPI) handleDashboardShare(w http.ResponseWriter, r *http.Req
 		dashboardError(w, err)
 		return
 	}
-	state.CanShare = !(target.Kind == "code" && codeProjectMode(r.Context(), target.Root) == "local") && api.dashboardShareOwner(r.Context(), claims, target) && dashboardAuthoringAllowed(claims, &target)
+	state.CanShare = api.dashboardShareOwner(r.Context(), claims, target) && dashboardAuthoringAllowed(claims, &target)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(state)
 }

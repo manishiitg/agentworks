@@ -12,7 +12,7 @@ import (
 // A Code project made in Cowork mode (a private assistant for non-technical business users; product.json `mode`) has its own prompt
 // and skills and no coding or terminal guidance. The toolbar is the page's concern (WorkWorkspacePane); this is what the agent is told.
 
-// codeProjectMode is the mode saved in the project's product.json ("dev", "cowork", "local"), or "" when none is saved. It is
+// codeProjectMode is the mode saved in the project's product.json ("dev", "cowork"), or "" when none is saved. It is
 // context, not authority: it only changes the prompt and skills, and the person owns the file.
 func codeProjectMode(ctx context.Context, workspacePath string) string {
 	raw, exists, err := readFileFromWorkspace(ctx, strings.TrimSuffix(strings.TrimSpace(workspacePath), "/")+"/product.json")

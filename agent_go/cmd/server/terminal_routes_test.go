@@ -2134,7 +2134,7 @@ func TestCompactTerminalStatusMetaForListDropsOversizedUsageList(t *testing.T) {
 }
 
 // A Code chat working on the user's computer shows its live terminal view-only: the server refuses typed input and keys.
-func TestTerminalInputIsRefusedForALocalCodeChat(t *testing.T) {
+func TestLaptopConnectionKeepsServerTerminalInput(t *testing.T) {
 	store := terminals.NewStore()
 	api := &StreamingAPI{terminalStore: store, lastQueryRequests: map[string]QueryRequest{}}
 	sessionID := "session-local-code-terminal"
@@ -2152,20 +2152,20 @@ func TestTerminalInputIsRefusedForALocalCodeChat(t *testing.T) {
 		return rec.Code
 	}
 	api.lastQueryMu.Lock()
-	api.lastQueryRequests[sessionID] = QueryRequest{AgentProfileID: "code", CodeChatMode: "local"}
+	api.lastQueryRequests[sessionID] = QueryRequest{AgentProfileID: "code", LaptopConnection: &laptopConnectionTarget{DeviceID: "laptop", ResourceID: "project"}}
 	api.lastQueryMu.Unlock()
-	if code := send(api.handleSendTerminalInput, "/input", `{"text":"!ls","submit":true}`); code != http.StatusForbidden {
-		t.Fatalf("input status = %d, want 403", code)
+	if code := send(api.handleSendTerminalInput, "/input", `{"text":"!ls","submit":true}`); code != http.StatusOK {
+		t.Fatalf("input status = %d, want 200", code)
 	}
-	if code := send(api.handleSendTerminalKey, "/key", `{"key":"Enter"}`); code != http.StatusForbidden {
-		t.Fatalf("key status = %d, want 403", code)
+	if code := send(api.handleSendTerminalKey, "/key", `{"key":"Enter"}`); code != http.StatusOK {
+		t.Fatalf("key status = %d, want 200", code)
 	}
-	if calls != 0 {
-		t.Fatalf("nothing may reach tmux for a Local chat, got %d calls", calls)
+	if calls == 0 {
+		t.Fatalf("server terminal must remain writable with laptop tools, got %d calls", calls)
 	}
 	// A server chat is unchanged.
 	api.lastQueryMu.Lock()
-	api.lastQueryRequests[sessionID] = QueryRequest{AgentProfileID: "code", CodeChatMode: "server"}
+	api.lastQueryRequests[sessionID] = QueryRequest{AgentProfileID: "code", LaptopConnection: nil}
 	api.lastQueryMu.Unlock()
 	if code := send(api.handleSendTerminalInput, "/input", `{"text":"hi","submit":true}`); code != http.StatusOK {
 		t.Fatalf("a server chat's terminal input status = %d, want 200", code)

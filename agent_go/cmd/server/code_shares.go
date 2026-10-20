@@ -48,9 +48,7 @@ func codeRoleFor(ctx context.Context, callerID, ownerID, projectID string) codeR
 			continue
 		}
 		root := projectStorageRoot(record)
-		if codeProjectMode(ctx, root) == "local" {
-			return codeRoleNone
-		}
+
 		if !userAllowedProduct(currentProjectCallerClaims(ctx, callerID), "code") {
 			return codeRoleNone
 		}

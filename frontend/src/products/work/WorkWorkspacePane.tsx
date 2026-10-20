@@ -33,7 +33,7 @@ import { WorkIdentityPanel } from './WorkIdentityPanel'
 import { WorkIntegrationsPanel } from './WorkIntegrationsPanel'
 import type { CrewTemplateId } from './crewTemplates'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
-import { useCodeFilesPreference, useProjectMode } from './codeLocalFiles'
+import { useProjectMode } from './codeLocalFiles'
 import { WorkSkillsPanel } from './WorkSkillsPanel'
 import { WorkMemoryPanel } from './WorkMemoryPanel'
 import { WorkPlanPanel } from './WorkPlanPanel'
@@ -51,7 +51,6 @@ const ReportHumanInputPanel = lazy(() => import('../../components/workflow/Repor
 const CodeShellPanel = lazy(() => import('./CodeShellPanel').then(module => ({ default: module.CodeShellPanel })))
 const FileWorkspacePane = lazy(() => import('../../components/FileWorkspacePane').then(module => ({ default: module.FileWorkspacePane })))
 const CodeFilesPanel = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeFilesPanel })))
-const CodeLocalFilesSettings = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeLocalFilesSettings })))
 
 export type WorkWorkspaceView = 'context' | 'dashboard' | 'plan' | 'memory' | 'database' | 'files' | 'browser' | 'costs' | 'schedules' | 'history' | 'suggestions' | 'identity' | 'mcp' | 'shell'
 
@@ -68,19 +67,17 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
     .filter(tab => tab.metadata?.agentProfileWorkspace === workspacePath && tab.metadata?.agentProfileBuilder !== true)
     .map(tab => tab.sessionId).filter((id): id is string => Boolean(id))))
   const isCode = product.profileId === 'code'
-  const filePreference = useCodeFilesPreference(sessionId)
-  const localCodeSession = isCode && filePreference.location === 'computer'
   const projectMode = useProjectMode(sessionId)
   const isCowork = isCode && projectMode === 'cowork'
   const incomingEmail = useGmailInboundUIEnabled()
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
-  const inventory = workWorkspacePanels({ profileId: product.profileId, cowork: isCowork, localCodeSession, readOnly: Boolean(readOnly), showShell, enabledPanels })
+  const inventory = workWorkspacePanels({ profileId: product.profileId, cowork: isCowork, readOnly: Boolean(readOnly), showShell, enabledPanels })
   const admitted = [...inventory.views, ...inventory.ops, ...inventory.setup]
   const has = (id: string) => admitted.some(item => item.id === id)
   const canConnect = has('mcp')
   const bots = !enabledPanels || enabledPanels.has('bots')
   useRegisterPanelSwitcher(isCode ? 'code' : 'work', [
-    ...(!readOnly && !localCodeSession ? [{ id: 'context', label: 'Project menu' }] : []),
+    ...(!readOnly ? [{ id: 'context', label: 'Project menu' }] : []),
     ...admitted.filter(item => ['dashboard', 'browser'].includes(item.id)).map(item => ({ id: item.id, label: item.label, group: 'Use & share' })),
     ...(has('dashboard') && !readOnly ? [{ id: 'context:share', label: 'Share', group: 'Use & share' }] : []),
     ...(has('schedules') ? projectAutomationSections({ incomingEmail, triggers: enabledPanels?.has('triggers') !== false }).map(item => ({ id: `schedules:${item.id}`, label: item.label, group: 'Use & share' })) : []),
@@ -98,16 +95,6 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
     else if (target && id === 'identity') setWorkspaceViewTarget('identity', target)
     onViewChange(id as WorkWorkspaceView)
   })
-
-  if (localCodeSession) return <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1">
-    <TooltipProvider delayDuration={150}>
-      <WorkspaceToolbarFrame>
-        <WorkspaceToolbarButton label="Local CLI connection" icon={Laptop} active={view === 'files'} onClick={() => onViewChange('files')} />
-        {(!enabledPanels || enabledPanels.has('costs')) && <WorkspaceToolbarButton label="Costs and usage" icon={DollarSign} active={view === 'costs'} onClick={() => onViewChange('costs')} />}
-        {(!enabledPanels || enabledPanels.has('models')) && <WorkspaceToolbarButton label="Models" icon={Settings} active={view === 'identity'} onClick={() => onViewChange('identity')} />}
-      </WorkspaceToolbarFrame>
-    </TooltipProvider>
-  </div>
 
   return <div data-tour="work-tools" className="ml-auto flex shrink-0 items-center gap-1">
     <TooltipProvider delayDuration={150}>
@@ -253,10 +240,8 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   const [openLocalFilesSettings, setOpenLocalFilesSettings] = useState(false)
   const openHistoryChat = useResumePreviousChat()
   const activeSessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId ?? undefined)
-  const filePreference = useCodeFilesPreference(activeSessionId || '')
-  const localCodeSession = product.profileId === 'code' && filePreference.location === 'computer'
   const contextMode = useProjectMode(activeSessionId || '')
-  const contextPanels = workWorkspacePanels({ profileId: product.profileId, cowork: product.profileId === 'code' && contextMode === 'cowork', localCodeSession, readOnly: Boolean(readOnly), showShell, enabledPanels })
+  const contextPanels = workWorkspacePanels({ profileId: product.profileId, cowork: product.profileId === 'code' && contextMode === 'cowork', readOnly: Boolean(readOnly), showShell, enabledPanels })
   // The dashboard's only link to the chat beside it: a stable callback, so
   // nothing on the chat side re-renders or re-runs the dashboard.
   const sendDashboardMessage = useCallback(async (message: string) => ({
@@ -307,15 +292,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
     }
   }
 
-  // Every other saved or agent-requested view lands on the connection controls.
-  if (localCodeSession && view !== 'identity' && view !== 'costs') {
-    return <div className="h-full overflow-y-auto bg-background p-4"><Suspense fallback={<p className="text-sm text-muted-foreground">Loading connection settings…</p>}><CodeLocalFilesSettings sessionId={activeSessionId || ''} /></Suspense></div>
-  }
-
-  if (!isWorkWorkspaceViewEnabled(view, undefined, localCodeSession)) {
-    return <div className="grid h-full place-items-center bg-background p-6 text-center text-sm text-muted-foreground">Dashboard and Automation are unavailable while this Code chat uses local files.</div>
-  }
-  if (!isWorkWorkspaceViewEnabled(view, enabledPanels, localCodeSession)) {
+  if (!isWorkWorkspaceViewEnabled(view, enabledPanels)) {
     return <div className="grid h-full place-items-center bg-background text-sm text-muted-foreground">No workspace view is enabled for this product.</div>
   }
 
@@ -342,7 +319,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
         /> : <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{product.profileId === 'code' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>)}
         {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><CodeShellPanel projectId={projectId} /></div></div></Suspense>}
         {view === 'identity' && <WorkIdentityPanel
-          modelsOnly={localCodeSession}
+
           workspacePath={workspacePath}
           shared={Boolean(shared)}
           projectId={projectId}

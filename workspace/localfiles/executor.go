@@ -173,6 +173,11 @@ func (e *Executor) Execute(ctx context.Context, r Request) Response {
 	switch r.Operation {
 	case "publish_snapshot":
 		result.Publication, err = e.publicationSnapshot(ctx, g, r)
+	case "copy_read":
+		result.Bytes, err = e.editors[g.ID].ReadBytes(".", r.Path, &g.Guard)
+		if err == nil && result.Bytes == nil {
+			err = &wf.FileError{Status: 404, Message: "File not found"}
+		}
 	case "read":
 		var file wf.File
 		file, err = e.editors[g.ID].Read(".", r.Path, &g.Guard)
@@ -200,6 +205,7 @@ func (e *Executor) Execute(ctx context.Context, r Request) Response {
 	if err != nil {
 		result.Status = wf.StatusCode(err)
 		result.Code, result.Error = wf.ErrorDetails(err)
+		result.Bytes = nil
 		result.File = nil
 		result.Receipt = nil
 		result.Entries = nil

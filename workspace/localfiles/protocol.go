@@ -87,6 +87,7 @@ type Request struct {
 	RequestID           string          `json:"request_id,omitempty"`
 }
 type Response struct {
+	Bytes       []byte               `json:"bytes"`
 	Publication *PublicationSnapshot `json:"publication,omitempty"`
 	Patches     []wf.WriteReceipt    `json:"patches,omitempty"`
 	Shell       *ShellResult         `json:"shell,omitempty"`

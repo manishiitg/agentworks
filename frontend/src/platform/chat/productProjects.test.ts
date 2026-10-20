@@ -40,21 +40,21 @@ describe('parseProductProjectManifest', () => {
 describe('Code project mode in product.json', () => {
   const base = { schema_version: 1, product: 'code', id: 'code-1', title: 'App', session_id: 'code:1' }
   const parse = (extra: object) => parseProductProjectManifest(JSON.stringify({ ...base, ...extra }), 'Chats/Code/app', 'code')!
-  it('reads the saved mode, ignores an unknown one, and defaults old projects (dev, or local when a folder is saved)', () => {
+  it('reads the saved mode, ignores an unknown one, and keeps the optional laptop connection independent of server mode', () => {
     expect(productMode(parse({ mode: 'cowork' }))).toBe('cowork')
-    expect(productMode(parse({ mode: 'local' }))).toBe('local')
+    expect(productMode(parse({ mode: 'local' }))).toBe('dev')
     expect(productMode(parse({ mode: 'sandbox' }))).toBe('dev')
     expect(productMode(parse({}))).toBe('dev')
-    expect(productMode(parse({ local_files: { device_id: 'laptop', resource_id: 'app' } }))).toBe('local')
-    expect(productMode(parse({ mode: 'dev', local_files: { device_id: 'laptop', resource_id: 'app' } }))).toBe('dev')
+    expect(productMode(parse({ laptop_connection: { device_id: 'laptop', resource_id: 'app' } }))).toBe('dev')
+    expect(productMode(parse({ mode: 'dev', laptop_connection: { device_id: 'laptop', resource_id: 'app' } }))).toBe('dev')
   })
 })
 
 it('uses the server creation response and never writes project manifests or falls back after refusal', async () => {
   updatePlannerFile.mockClear()
   reserveProject.mockClear()
-  for (const mode of ['cowork', 'local'] as const) {
-    createServerProject.mockResolvedValueOnce({ id: 'new-project', workspace_path: 'Crew/assistant-new', product_manifest: { schema_version: 1, product: 'code', id: 'new-project', title: 'Assistant', session_id: 'code:project:new-project', mode }, runtime_manifest: { capabilities: { selected_servers: [], selected_skills: [], memory_enabled: mode !== 'local' } } })
+  for (const mode of ['cowork'] as const) {
+    createServerProject.mockResolvedValueOnce({ id: 'new-project', workspace_path: 'Crew/assistant-new', product_manifest: { schema_version: 1, product: 'code', id: 'new-project', title: 'Assistant', session_id: 'code:project:new-project', mode }, runtime_manifest: { capabilities: { selected_servers: [], selected_skills: [], memory_enabled: true } } })
     const created = await createProductProject({ product: 'code', root: 'Chats/Code/projects', sessionPrefix: 'code:project', slugFallback: 'code', commitLabel: 'Create Crew', title: 'Assistant', description: '', mode })
     expect(createServerProject).toHaveBeenLastCalledWith('code', expect.objectContaining({ name: 'Assistant', mode }))
     expect(created.workspacePath).toBe('Crew/assistant-new')
@@ -68,22 +68,22 @@ it('uses the server creation response and never writes project manifests or fall
 
 describe('Code local files in product.json', () => {
   const base = { schema_version: 1, product: 'code', id: 'code-1', title: 'App', session_id: 'code:1' }
-  it('reads local_files, ignoring a malformed one', () => {
-    expect(parseProductProjectManifest(JSON.stringify({ ...base, local_files: { device_id: 'laptop', resource_id: 'app' } }), 'Chats/Code/app', 'code')?.localFiles).toEqual({ device_id: 'laptop', resource_id: 'app' })
-    expect(parseProductProjectManifest(JSON.stringify({ ...base, local_files: { device_id: '../x', resource_id: 'app' } }), 'Chats/Code/app', 'code')?.localFiles).toBeUndefined()
+  it('reads laptop_connection, ignoring a malformed one', () => {
+    expect(parseProductProjectManifest(JSON.stringify({ ...base, laptop_connection: { device_id: 'laptop', resource_id: 'app' } }), 'Chats/Code/app', 'code')?.localFiles).toEqual({ device_id: 'laptop', resource_id: 'app' })
+    expect(parseProductProjectManifest(JSON.stringify({ ...base, laptop_connection: { device_id: '../x', resource_id: 'app' } }), 'Chats/Code/app', 'code')?.localFiles).toBeUndefined()
   })
 
-  it('writes and clears local_files without touching the rest of product.json', async () => {
+  it('writes and clears laptop_connection without touching the rest of product.json', async () => {
     const project = { product: 'code', id: 'code-1', title: 'App', workspacePath: 'Chats/Code/app' } as ProductProject<'code'>
     getPlannerFileContent.mockResolvedValue({ content: JSON.stringify({ ...base, identity: { name: 'Nova' } }) })
     const saved = await updateProductProjectLocalFiles(project, { device_id: 'laptop', resource_id: 'app' }, 'Set files location')
     const written = JSON.parse(updatePlannerFile.mock.calls[0][1])
-    expect(written.local_files).toEqual({ device_id: 'laptop', resource_id: 'app' })
+    expect(written.laptop_connection).toEqual({ device_id: 'laptop', resource_id: 'app' })
     expect(written.identity).toEqual({ name: 'Nova' })
     expect(saved.localFiles).toEqual({ device_id: 'laptop', resource_id: 'app' })
-    getPlannerFileContent.mockResolvedValue({ content: JSON.stringify({ ...base, local_files: written.local_files }) })
+    getPlannerFileContent.mockResolvedValue({ content: JSON.stringify({ ...base, laptop_connection: written.laptop_connection }) })
     await updateProductProjectLocalFiles(project, undefined, 'Set files location')
-    expect(JSON.parse(updatePlannerFile.mock.calls[1][1]).local_files).toBeUndefined()
+    expect(JSON.parse(updatePlannerFile.mock.calls[1][1]).laptop_connection).toBeUndefined()
   })
 })
 

@@ -16,12 +16,6 @@ it('preserves Cowork inventory without Terminal or Plan', () => {
   expect(panels).toContain('files')
   expect(panels).toContain('memory')
 })
-it('keeps local Code limited to connection, Costs and Models', () => {
-  expect(ids(workWorkspacePanels({ profileId: 'code', localCodeSession: true, showShell: true }))).toEqual([
-    'costs',
-    'identity',
-  ])
-})
 it('preserves shared/read-only dashboard-only access and feature gates', () => {
   expect(ids(workWorkspacePanels({ readOnly: true, showShell: true }))).toEqual(['dashboard'])
   expect(ids(workWorkspacePanels({ readOnly: true, enabledPanels: new Set() }))).toEqual([])

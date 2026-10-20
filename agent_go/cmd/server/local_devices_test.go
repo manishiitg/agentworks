@@ -2,22 +2,18 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/codeproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/workspace/localfiles"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
@@ -26,6 +22,12 @@ func localDeviceTestServer(t *testing.T) (*StreamingAPI, *httptest.Server, *acce
 	t.Helper()
 	tokenTestSetup(t)
 	f := newExternalToolsFixture(t)
+	f.write(t, "Crew/local-test/product.json", `{"schema_version":1,"product":"code","id":"local-test","title":"Laptop test"}`)
+	f.write(t, "Crew/local-test/workflow.json", `{"capabilities":{}}`)
+	registry := withProjectOwnerRegistry(t)
+	if err := registry.Register(projectOwnerRecord{Product: "code", Folder: "local-test", ProjectID: "local-test", OwnerID: "owner", CanonicalRoot: "Crew/local-test"}); err != nil {
+		t.Fatal(err)
+	}
 	store, err := openAccessTokens()
 	if err != nil {
 		t.Fatal(err)
@@ -69,7 +71,7 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 		t.Fatal("connect timeout")
 	}
 	owner := &UserClaims{UserID: "owner", Username: "owner"}
-	if err = api.validateCodeLocalFiles(owner, &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil {
+	if err = api.validateLaptopConnection(owner, &laptopConnectionTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = api.localDeviceCall(t.Context(), owner, "laptop", localfiles.Request{ResourceID: "not-shared", Operation: "read", Path: "readme.md"}); wf.StatusCode(err) != 403 {
@@ -87,7 +89,7 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 		t.Fatalf("cross-user %v", err)
 	}
 	registrar := &recordingRegistrar{}
-	if err = api.registerLocalWorkspaceTools(registrar, newProductToolGate(nil), owner, false, localWorkspaceTestSession(api, owner, &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"}), &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil || len(registrar.tools) != 3 {
+	if err = api.registerLaptopTools(registrar, newProductToolGate(nil), owner, false, localWorkspaceTestSession(api, owner, &laptopConnectionTarget{DeviceID: "laptop", ResourceID: "project"}), "Crew/local-test", &laptopConnectionTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil || len(registrar.tools) != 2 {
 		t.Fatalf("local tool count=%d: %v", len(registrar.tools), err)
 	}
 
@@ -96,46 +98,47 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 		changed := baseline
 		changed.TriggeredBy = trigger
 		api.lastQueryRequests["local-code"] = changed
-		if _, err := registrar.tools["execute_shell_command"].exec(t.Context(), map[string]interface{}{"command": "touch unauthorized"}); err == nil || !strings.Contains(err.Error(), "interactive website") {
+		if _, err := registrar.tools["execute_local_shell_command"].exec(t.Context(), map[string]interface{}{"command": "touch unauthorized"}); err == nil || !strings.Contains(err.Error(), "interactive Builder") {
 			t.Fatalf("retained callback accepted %s: %v", trigger, err)
 		}
 	}
 	api.lastQueryRequests["local-code"] = baseline
-	for _, tool := range []string{"arbitrary_mcp_tool", "get_secrets"} {
-		gate := newProductToolGate(&resolvedAgentProfile{Definition: codeproduct.BuiltinAgentProfile(), CodeChatMode: "local", CodeLocalFiles: baseline.CodeLocalFiles})
-		gate.DenyWhere(func(string) bool { return false })
-		gate.Declare(tool)
-		if gate.Allows(tool) {
-			t.Fatal("later deny predicate replaced local boundary")
-		}
-	}
-	if api.executeSyntheticTurn("local-code", "old completion") {
-		t.Fatal("local session accepted synthetic turn")
-	}
-	if api.steerBackgroundAgentCompletion("local-code", "old-child") {
-		t.Fatal("local session accepted synthetic steering")
-	}
-	api.lastQueryRequests["local-code"] = QueryRequest{userID: "owner", AgentProfileID: "code", CodeChatMode: "server"}
-	if _, err := registrar.tools["execute_shell_command"].exec(t.Context(), map[string]interface{}{"command": "touch unauthorized"}); err == nil {
+	api.lastQueryRequests["local-code"] = QueryRequest{userID: "owner", AgentProfileID: "code"}
+	if _, err := registrar.tools["execute_local_shell_command"].exec(t.Context(), map[string]interface{}{"command": "touch unauthorized"}); err == nil {
 		t.Fatal("disconnected retained callback dispatched to laptop")
 	}
 	api.lastQueryRequests["local-code"] = baseline
-	for _, definition := range append(workspace.GetShellToolDefinitions(), workspace.GetDiffPatchToolDefinitions()...) {
-		data, _ := json.Marshal(definition.Function.Parameters)
-		var expected map[string]interface{}
-		json.Unmarshal(data, &expected)
-		if !reflect.DeepEqual(expected, registrar.tools[definition.Function.Name].params) {
-			t.Fatalf("local tool changed bridge schema: %s", definition.Function.Name)
-		}
-	}
-	if _, err = registrar.tools["execute_shell_command"].exec(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "outsider"}), map[string]interface{}{"command": "cat readme.md"}); err == nil {
+	if _, err = registrar.tools["execute_local_shell_command"].exec(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "outsider"}), map[string]interface{}{"command": "cat readme.md"}); err == nil {
 		t.Fatal("conflicting tool owner admitted")
 	}
 	tokenClaims := writeTestClaims("owner")
 	reg := &recordingRegistrar{}
-	api.registerLocalWorkspaceTools(reg, newProductToolGate(nil), tokenClaims, false, "local-code", &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"})
+	api.registerLaptopTools(reg, newProductToolGate(nil), tokenClaims, false, "local-code", "Crew/local-test", &laptopConnectionTarget{DeviceID: "laptop", ResourceID: "project"})
 	if len(reg.tools) != 0 {
 		t.Fatal("public MCP received local device tools")
+	}
+	binary := []byte{0, 255, 10, 13, 128}
+	if err := os.WriteFile(filepath.Join(root, "sample.bin"), binary, 0600); err != nil {
+		t.Fatal(err)
+	}
+	copied, err := api.localDeviceCall(t.Context(), owner, "laptop", localfiles.Request{ResourceID: "project", Operation: "copy_read", Path: "sample.bin"})
+	if err != nil || string(copied.Bytes) != string(binary) {
+		t.Fatalf("binary transfer: %v", err)
+	}
+	if _, err := registrar.tools["copy_local_file_to_crew"].exec(t.Context(), map[string]interface{}{"local_path": "sample.bin", "crew_path": "uploads/import.bin"}); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := os.ReadFile(filepath.Join(os.Getenv("WORKSPACE_DOCS_PATH"), "Crew/local-test/uploads/import.bin"))
+	if err != nil || string(stored) != string(binary) {
+		t.Fatalf("Crew writer changed bytes: %v", err)
+	}
+	if _, err := registrar.tools["copy_local_file_to_crew"].exec(t.Context(), map[string]interface{}{"local_path": "sample.bin", "crew_path": "product.json"}); err == nil {
+		t.Fatal("copy overwrote Crew manifest")
+	}
+	for _, name := range []string{"../escape", ".env", "locked/private.key"} {
+		if _, err := api.localDeviceCall(t.Context(), owner, "laptop", localfiles.Request{ResourceID: "project", Operation: "copy_read", Path: name}); wf.StatusCode(err) != 403 {
+			t.Fatalf("private copy %s: %v", name, err)
+		}
 	}
 	request.Operation = "write"
 	request.Content = "edited locally"
@@ -265,7 +268,7 @@ func TestLocalDeviceToolsRejectConnectorPrincipals(t *testing.T) {
 			t.Fatalf("connector admitted %+v", claims)
 		}
 		reg := &recordingRegistrar{}
-		if err := api.registerLocalWorkspaceTools(reg, newProductToolGate(nil), claims, false, "local-code", &codeLocalFileTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil || len(reg.tools) != 0 {
+		if err := api.registerLaptopTools(reg, newProductToolGate(nil), claims, false, "local-code", "Crew/local-test", &laptopConnectionTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil || len(reg.tools) != 0 {
 			t.Fatalf("connector tool registration %+v %v", reg.tools, err)
 		}
 	}
@@ -292,33 +295,33 @@ func TestLocalDeviceShellUsesSelectedLaptopAndCancelsOnWire(t *testing.T) {
 		t.Fatalf("handshake %v", err)
 	}
 	owner := &UserClaims{UserID: "owner", Username: "owner"}
-	target := &codeLocalFileTarget{DeviceID: "shell-laptop", ResourceID: "project"}
+	target := &laptopConnectionTarget{DeviceID: "shell-laptop", ResourceID: "project"}
 	reg := &recordingRegistrar{}
-	if err = api.registerLocalWorkspaceTools(reg, newProductToolGate(nil), owner, false, localWorkspaceTestSession(api, owner, target), target); err != nil {
+	if err = api.registerLaptopTools(reg, newProductToolGate(nil), owner, false, localWorkspaceTestSession(api, owner, target), "Crew/local-test", target); err != nil {
 		t.Fatal(err)
 	}
 	for _, resource := range []string{"reference", "older-cli"} {
 		inspect := &recordingRegistrar{}
-		if err := api.registerLocalWorkspaceTools(inspect, newProductToolGate(nil), owner, false, localWorkspaceTestSession(api, owner, &codeLocalFileTarget{DeviceID: "shell-laptop", ResourceID: resource}), &codeLocalFileTarget{DeviceID: "shell-laptop", ResourceID: resource}); err != nil {
+		if err := api.registerLaptopTools(inspect, newProductToolGate(nil), owner, false, localWorkspaceTestSession(api, owner, &laptopConnectionTarget{DeviceID: "shell-laptop", ResourceID: resource}), "Crew/local-test", &laptopConnectionTarget{DeviceID: "shell-laptop", ResourceID: resource}); err != nil {
 			t.Fatal(err)
 		}
-		if len(inspect.tools) != 1 || inspect.tools["execute_shell_command"].exec == nil {
+		if len(inspect.tools) != 2 || inspect.tools["execute_local_shell_command"].exec == nil {
 			t.Fatalf("inspection tools for %s: %+v", resource, inspect.tools)
 		}
 	}
-	downloadTarget := &codeLocalFileTarget{DeviceID: "shell-laptop", ResourceID: "reference-downloads"}
+	downloadTarget := &laptopConnectionTarget{DeviceID: "shell-laptop", ResourceID: "reference-downloads"}
 	downloadTools := &recordingRegistrar{}
-	if err := api.registerLocalWorkspaceTools(downloadTools, newProductToolGate(nil), owner, false, localWorkspaceTestSession(api, owner, downloadTarget), downloadTarget); err != nil || len(downloadTools.tools) != 2 {
+	if err := api.registerLaptopTools(downloadTools, newProductToolGate(nil), owner, false, localWorkspaceTestSession(api, owner, downloadTarget), "Crew/local-test", downloadTarget); err != nil || len(downloadTools.tools) != 2 {
 		t.Fatalf("Downloads tools missing: %+v %v", downloadTools.tools, err)
 	}
 	localWorkspaceTestSession(api, owner, target)
-	tool, ok := reg.tools["execute_shell_command"]
+	tool, ok := reg.tools["execute_local_shell_command"]
 	if !ok {
 		t.Fatal("shell tool missing")
 	}
 	readonly := &recordingRegistrar{}
-	api.registerLocalWorkspaceTools(readonly, newProductToolGate(nil), owner, true, "local-code", target)
-	if _, ok := readonly.tools["execute_shell_command"]; ok {
+	api.registerLaptopTools(readonly, newProductToolGate(nil), owner, true, "local-code", "Crew/local-test", target)
+	if _, ok := readonly.tools["execute_local_shell_command"]; ok {
 		t.Fatal("read-only turn received shell")
 	}
 	localWorkspaceTestSession(api, owner, target)
@@ -345,43 +348,6 @@ func TestLocalDeviceShellUsesSelectedLaptopAndCancelsOnWire(t *testing.T) {
 	if err = <-returned; err != nil {
 		t.Fatal(err)
 	}
-	go func() {
-		output, err := reg.tools["diff_patch_workspace_file"].exec(t.Context(), map[string]interface{}{"filepath": "one.txt", "diff": "@@ -1 +1 @@\n-old\n+new\n"})
-		if err == nil && !strings.Contains(output, `"applied":true`) {
-			err = errors.New("patch result lost")
-		}
-		returned <- err
-	}()
-	if err = conn.ReadJSON(&dispatched); err != nil {
-		t.Fatal(err)
-	}
-	if dispatched.Operation != "patch" || dispatched.ResourceID != "project" || dispatched.Path != "one.txt" || dispatched.RequestID == "" || dispatched.Identity.UserID != "owner" {
-		t.Fatalf("not routed laptop patch %+v", dispatched)
-	}
-	if err = conn.WriteJSON(localfiles.Response{ID: dispatched.ID, Status: 200, Patches: []wf.WriteReceipt{{Path: "one.txt", Applied: true}}}); err != nil {
-		t.Fatal(err)
-	}
-	if err = <-returned; err != nil {
-		t.Fatal(err)
-	}
-	localWorkspaceTestSession(api, owner, downloadTarget)
-	go func() {
-		_, err := downloadTools.tools["diff_patch_workspace_file"].exec(t.Context(), map[string]interface{}{"filepath": "/Downloads/export.txt", "diff": "@@ -1 +1 @@\n-old\n+new\n"})
-		returned <- err
-	}()
-	if err = conn.ReadJSON(&dispatched); err != nil {
-		t.Fatal(err)
-	}
-	if dispatched.ResourceID != "reference-downloads" || dispatched.Operation != "patch" || dispatched.Path != "/Downloads/export.txt" {
-		t.Fatalf("Downloads patch binding lost: %+v", dispatched)
-	}
-	if err = conn.WriteJSON(localfiles.Response{ID: dispatched.ID, Status: 200}); err != nil {
-		t.Fatal(err)
-	}
-	if err = <-returned; err != nil {
-		t.Fatal(err)
-	}
-	localWorkspaceTestSession(api, owner, target)
 	for _, path := range []string{"../escape", "blocked", "locked"} {
 		r := localfiles.Request{Operation: "shell", ResourceID: "project", Path: path, Command: "echo no", RequestID: "guard"}
 		if _, err := api.localDeviceCall(t.Context(), owner, "shell-laptop", r); wf.StatusCode(err) != 403 {
@@ -413,13 +379,13 @@ func TestLocalDeviceShellUsesSelectedLaptopAndCancelsOnWire(t *testing.T) {
 	}
 }
 
-func localWorkspaceTestSession(api *StreamingAPI, claims *UserClaims, target *codeLocalFileTarget) string {
+func localWorkspaceTestSession(api *StreamingAPI, claims *UserClaims, target *laptopConnectionTarget) string {
 	api.lastQueryMu.Lock()
 	defer api.lastQueryMu.Unlock()
 	if api.lastQueryRequests == nil {
 		api.lastQueryRequests = map[string]QueryRequest{}
 	}
-	api.lastQueryRequests["local-code"] = QueryRequest{userID: claims.UserID, AgentProfileID: "code", CodeChatMode: "local", CodeLocalFiles: target}
+	api.lastQueryRequests["local-code"] = QueryRequest{userID: claims.UserID, AgentProfileID: "code", SelectedFolder: "Crew/local-test", LaptopConnection: target}
 	return "local-code"
 }
 

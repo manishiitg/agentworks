@@ -249,9 +249,7 @@ func (api *StreamingAPI) connectTriggerTarget(ctx context.Context, userID string
 		if api.productSchedules == nil {
 			return "", false, fmt.Errorf("Crew calls are unavailable")
 		}
-		if target.CrewProfile == codeproduct.ProfileID && codeProjectMode(ctx, target.Path) == "local" {
-			return "", false, fmt.Errorf("Local projects cannot receive remote function calls")
-		}
+
 		triggers, err := api.productSchedules.projectWebhookConfigs(ctx, target.ownerOr(userID), target.CrewProfile, target.CrewID)
 		if err != nil {
 			return "", false, err

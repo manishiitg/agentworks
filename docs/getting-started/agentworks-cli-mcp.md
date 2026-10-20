@@ -789,17 +789,17 @@ command sandbox**: commands run with your account's permissions, and `--block` a
 file tools refuse paths Windows resolves differently from how they are spelled (a trailing dot or space, 8.3 short names, `:`
 streams, device names such as `CON` and `NUL`) and do not follow a junction out of the shared folder.
 
-`--workspace` is the name of the Code workspace (as shown in Settings) that uses this folder. It is required the first time
+`--workspace` is the name of the Crew (as shown in Settings) that uses this folder. It is required the first time
 (asked in a terminal) and remembered per folder. `start` signs you in the first time (a browser approval limited to sharing local
 folders), shares the current folder with read and write access and shell commands, and keeps the connection open. It asks once
 whether to run in the background or keep the terminal open (`--background` / `--foreground` skip the question; the answer is
-remembered, `--ask` asks again), then always opens the website, whose link finds that workspace by name, opens it in Local mode and saves
-the folder in its `product.json` (`local_files`); Once connected it prints a short summary
+remembered, `--ask` asks again), then always opens the website, whose link finds that workspace by name, opens it and saves
+the optional folder connection in its `product.json` (`laptop_connection`); Once connected it prints a short summary
 (folder, computer, workspace, website link); a terminal that stays open shows each file and command request live, and
 `agentworks watch` shows the same for a background share (a terminal that stays open also writes the log). `agentworks debug` writes one text file (CLI version, system, sign-in state without the token, name lookup, HTTPS and WebSocket checks to the server, proxy settings, sandbox, what is shared, and recent activity) into Downloads, shows it in the file manager, and is meant to be sent to support; tokens and passwords are removed, folder paths and recent commands are not. Logs are size-limited: each folder's log stops at 2 MB, the 3 previous files are kept, a new run starts a new file, and logs of a folder no longer shared are deleted after 14 days. A lost connection is retried with exponential backoff (1 s up to 30 s, with a little random spread). `agentworks stop` ends sharing for the current folder (`--all` for every folder), `agentworks status` lists what is
 shared, and `agentworks start --debug` stays in the terminal, prints diagnostics (CLI version, server reachability, sign-in,
 sandbox) and logs every file and command request from the server. `--block <path>` hides a file or folder, `--downloads`
-also shares `~/Downloads`. In the website, **Verify connection** (Code settings) confirms the computer is connected.
+also shares `~/Downloads`. In the website, **Check connection** (Crew settings) confirms the computer is connected.
 The sections below describe the lower-level `executor connect` command that `start` is built on.
 
 The dedicated executor command opens an outbound authenticated connection to the
@@ -861,115 +861,40 @@ The CLI automatically reconnects after transport interruptions, including while
 the server waits for an old socket to expire. It never retries a mutation whose
 outcome is uncertain.
 
-### Code website: connect local files to the current chat
+### Crew website: optional laptop connection
 
-Open the right-side **Settings → General → Local CLI connection** panel in a
-Code chat. Click **Connect local files**. The panel walks through installation,
-sign-in and a project path, with copyable commands and a Downloads read/write
-checkbox that starts off. Keep the terminal running. Connected computers appear
-automatically; **Check connection** refreshes their live status. Choose a computer
-and folder. Review the explanation of laptop permissions, data sent to
-the server/model, and unavailable features, then click **Use this folder**.
-Opening setup or choosing a folder alone does not switch the chat. The composer
-only shows a small read-only connection label. All changes happen in the
-right-side connection panel; switching back requires **Disconnect local files**
-then **Switch to server files** after reviewing what changes. You cannot change
-connections during a running turn. The browser remembers the binding for your
-account, server workspace and chat only.
-The chat, agent and selected model continue running on the server.
-File contents and command output returned by tools reach the server/model and may
-remain in server chat history, accessible to authorized administrators and Code
-reviewers. Switching modes does not erase earlier history. Automated notifications,
-other chats, schedules and connector turns cannot drive a Local chat's executor.
+Every Crew runs on the server. Its normal files, shell, memory, skills, MCP
+connections, functions, schedules and background agents keep working there.
+Open **Settings → Laptop connection**, follow the setup and choose your shared
+folder. `agentworks start` can also connect the named Crew directly. Each folder
+has its own stable connection identity, so two folders on one computer can stay
+connected simultaneously. After updating an older CLI, choose its new connection
+once in Settings.
 
-Coding CLI models such as Claude Code also need the server's internal
-`mcpbridge` executable. Release builds ship it beside the server binary, and the
-server discovers that bundled executable automatically (including a `.bin/`
-directory beside the server). `MCP_BRIDGE_BINARY` takes precedence; otherwise
-the existing `PATH` and `~/go/bin/` lookup remains available. The development
-server launcher builds and configures its private `.bin/mcpbridge`.
-If technical details report `mcpbridge binary not found`, the server deployment
-must include the bridge, or set `MCP_BRIDGE_BINARY` to its installed executable
-and restart the backend. Connecting the laptop CLI does not supply this server
-executable.
+The owner's interactive Builder chat gets two extra tools:
 
-The right side shows only **Local CLI connection**, **Costs and usage**, and
-**Models**. The connection panel provides CLI setup, folder selection, status
-and disconnect. There is no local file browser/editor; ask the agent in chat
-to read/edit the shared files or run commands within the selected folder’s permissions.
+- `execute_local_shell_command`: run a command in the connected folder on the
+  laptop. Normal `execute_shell_command` continues to run on the server.
+- `copy_local_file_to_crew`: copy a relative local file into an editable relative
+  Crew path. Text and binary files up to 11 MiB are copied as bytes through the
+  normal guarded Crew writer. The model receives a receipt, not the file bytes.
 
-Local mode applies a separate minimal tool policy even before a folder is selected.
-The selected model and conversation stay the same. Local turns disable dashboards/databases, automation, messaging, MCP connections,
-skills, project/Vault secrets, background agents and server terminal/browser
-access. Saved selections are excluded without changing project settings.
-Other chats and existing schedules/connections are unchanged. Confirming the switch to server files returns
-this chat to normal Code mode; Ctrl-C in the CLI stops folder sharing.
+Sharing the Crew does not share the laptop. Run callers, other owners, remote
+asks, schedules, Pulse and background turns do not inherit its tools. Current
+account access and the laptop's live device/folder grants are checked on every
+call. Server secrets and environment variables are never forwarded into laptop
+commands. Existing macOS light sandbox, Linux folder confinement and Windows
+account permissions remain in effect.
 
-Local chats also accept **images and text/source files** through the paperclip,
-pasting screenshots or drag-and-drop. Up to 10 attachments, 10 MB each, are
-uploaded to that chat's server folder and sent to the server/model. They are
-read-only context and are **not copied to your computer**. PDFs and archives are
-not supported in this mode yet. Text previews include at most 64 KiB per file
-and 256 KiB per turn; the agent is told when a preview is truncated. Images use
-the existing `read_image` tool, restricted to images attached to the current
-turn. Attachments work without a connected laptop. Image analysis uses confined
-Codex or Claude Code on the server and requires a
-working Linux Landlock runner. Claude additionally needs Python 3 for its
-attachment-only read guard. Cursor image analysis is excluded from Local mode;
-the Code chat itself can still use Cursor. A host without confinement refuses
-image analysis; ask an administrator to enable it. No general server file
-access is enabled.
+If the CLI is not connected, laptop actions say so and normal server work stays
+available. Disconnecting in Settings removes the extra tools; it does not move
+files, erase chat or stop server work. To stop sharing the folder itself, stop
+AgentWorks on the laptop. There is no automatic sync or server-to-laptop copy.
 
-Every file action validates live ownership, authorization and folder grants.
-Changing the selected folder or permissions refreshes retained tools between
-turns. Offline bindings retain their restrictions: chat can continue, but local
-file and shell operations fail without server fallback. Patches retain revision checks and authenticated receipts. Request identities
-are generated internally; the transport never automatically retries mutations.
-
-Local tools are available only to interactive **Code** chats. Crew, Brain, Vault,
-schedules and connector turns do not acquire them. The CLI runs laptop builds/tests
-within writable folder grants. Browser tools remain disabled. File contents and command
-output reach the server and LLM; output may include absolute local paths.
-Provider credentials needed by the selected server model remain available.
-
-Local Code reuses the existing MCP bridge names and schemas:
-`execute_shell_command` accepts `command` and optional `timeout`;
-`diff_patch_workspace_file` accepts `filepath` and `diff` for writable folders.
-The selected laptop/folder is bound internally. No new local read/list/write
-agent tools, device IDs or request IDs are added to the tool interface. Read and
-list files with shell commands such as `cat`, `sed`, `head` and `ls`. Commands
-start at the selected folder root; absolute paths must stay within its grants.
-Patches support the existing unified diff and multi-file `*** Begin Patch`
-formats, reuse the existing parser/application, and check all file paths/hunks
-before writing. Commands default to 60 seconds, allow up to 300, and capture up
-to 1 MiB per output stream. Cancellation and connection loss terminate active
-command process groups. Public MCP and bot-route identities do not receive this
-laptop execution binding. Read-only accounts/turns do not receive mutating tools.
-
-The website backend exposes owner-authenticated `GET /api/devices` for connection
-selection/status. File operations are available to the local-connected Code
-agent through its scoped tools; there is no separate website file editor API.
-
-Ctrl-C stops sharing. Network loss or laptop sleep makes the device unavailable;
-there is no fallback to server files. The CLI reconnects with backoff and renewed
-credentials. Duplicate live device IDs are refused. Pending requests fail on
-disconnect, and mutation outcomes may be uncertain: reconnect and inspect current
-files before deciding whether another patch or command is needed.
-Shell requests save durable results: an identical completed request returns its
-result without rerunning. An interrupted request with an unknown result is refused;
-inspect local state before starting another command. Revocation cancels active
-commands when the socket closes, including at the next heartbeat for idle dispatch.
-Revoking the connection or disabling its account blocks dispatch immediately and
-closes idle sockets at the next heartbeat. Website chat tools are assembled at
-turn startup, so send a new Code message after connecting and selecting a folder.
-
-Device sockets are held by one backend process. Use a single backend or routing
-affinity so the website chat reaches the process holding its device connection.
-Schedules and browser tools remain excluded from Local mode; laptop shell commands
-are supported through the CLI grant. The old
-transparent workflow router, placement/move APIs and remote `mcp_only` override
-have been removed; local agents access server workflows through public MCP.
-
+A hosted Crew does not publish a second hosted copy. To start a new Crew or add
+a named agent from a laptop-native coding chat, use the explicit initial import
+flow. Imported raw chat remains private to Builders; server continuation uses a
+summary while the laptop is offline. Native chat resume comes later.
 
 ### Attribution and plan changelogs
 

@@ -140,9 +140,7 @@ func crewAccessFor(claims *UserClaims, ref crewPathRef) crewAccessLevel {
 	if !ok || !userAllowedProduct(claims, product.ProfileID) {
 		return crewAccessNone
 	}
-	if product.ProfileID == "code" && codeProjectMode(context.Background(), ref.Root) == "local" {
-		return crewAccessNone
-	}
+
 	// A co-owner builds with the same rights as the main owner (crew_co_owners.go); identity stays the main owner's.
 	if crewIsCoOwner(ref.Root, claims.UserID) {
 		return crewAccessOwner

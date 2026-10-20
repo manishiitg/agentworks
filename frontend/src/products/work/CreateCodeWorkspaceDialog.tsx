@@ -1,21 +1,19 @@
 import { useState, type FormEvent } from 'react'
 import { RunsOnPicker, type RunsOnSelection } from './RunsOnPicker'
-import { AlertCircle, Briefcase, Code2, Laptop, Loader2, X } from 'lucide-react'
+import { AlertCircle, Briefcase, Code2, Loader2, X } from 'lucide-react'
 import type { ProductMode } from '../../platform/chat/productProjects'
 
-// What each mode is for, in the words a person choosing it needs (Cowork, Code, Local: the order the owner asked for). Local cannot be changed to or from later.
+// Both modes run on the server; a laptop can be connected later in Settings.
 export const CODE_MODE_CHOICES: Array<{ mode: ProductMode; title: string; text: string; icon: typeof Code2 }> = [
   { mode: 'cowork', title: 'Cowork', text: 'An assistant for your work: dashboards, the browser and automations. No code needed.', icon: Briefcase },
   { mode: 'dev', title: 'Dev', text: 'Build and change code with an AI agent: files, terminal and chat on the server.', icon: Code2 },
-  { mode: 'local', title: 'Local', text: 'Work on a project folder on your own computer, through the AgentWorks CLI.', icon: Laptop },
 ]
 
 // Creation needs only a name; identity details and templates are optional later.
-export function CreateCodeWorkspaceDialog({ onClose, onCreate, submitting, error, profileId = 'code', initialMode = 'dev', noun = 'Crew', allowLocal = true }: {
+export function CreateCodeWorkspaceDialog({ onClose, onCreate, submitting, error, profileId = 'code', initialMode = 'dev', noun = 'Crew' }: {
   onClose: () => void
   onCreate: (title: string, runsOn?: RunsOnSelection, mode?: ProductMode) => void | Promise<void>
   noun?: string
-  allowLocal?: boolean
   profileId?: string
   initialMode?: ProductMode
   submitting: boolean
@@ -43,7 +41,7 @@ export function CreateCodeWorkspaceDialog({ onClose, onCreate, submitting, error
           </button>
         </div>
         {profileId === 'code' && <div role="radiogroup" aria-label="Mode" className="mt-4 grid gap-2">
-          {CODE_MODE_CHOICES.filter(choice => allowLocal || choice.mode !== 'local').map(choice => <label key={choice.mode} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${mode === choice.mode ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}>
+          {CODE_MODE_CHOICES.map(choice => <label key={choice.mode} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${mode === choice.mode ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}>
             <input type="radio" name="code-mode" className="mt-1" checked={mode === choice.mode} onChange={() => setMode(choice.mode)} disabled={submitting} />
             <choice.icon aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             <span><span className="block text-sm font-medium text-foreground">{choice.title}</span><span className="block text-xs leading-5 text-muted-foreground">{choice.text}</span></span>

@@ -100,6 +100,16 @@ func defaultDeviceName() string {
 	return sanitizeID(host, "my-computer")
 }
 
+// Each shared folder has its own outbound executor. Starting another folder on
+// the same computer must not collide with the first folder's live connection.
+func folderDeviceName(folder string) string {
+	host := defaultDeviceName()
+	if len(host) > 50 {
+		host = host[:50]
+	}
+	return host + "-" + shareKey(folder)
+}
+
 func writeShareState(path string, st shareState) {
 	raw, err := json.Marshal(st)
 	if err != nil {
@@ -164,7 +174,7 @@ func ask(in *bufio.Reader, out *os.File, question string, def bool) bool {
 	return def
 }
 
-// shareWebURL opens the website on the Code workspace that uses this folder; it finds the workspace by its name.
+// shareWebURL opens the website on the Crew that uses this folder; it finds the workspace by its name.
 func shareWebURL(server, device, alias, workspace string) string {
 	q := url.Values{"local_device": {device}, "local_folder": {alias}, "local_workspace": {workspace}}
 	return strings.TrimRight(server, "/") + "/?" + q.Encode()
@@ -204,7 +214,7 @@ func startCommand(o *options) *cobra.Command {
 	cmd.Flags().BoolVar(&f.downloads, "downloads", false, "Also allow reading and writing ~/Downloads (explicit opt-in)")
 	cmd.Flags().BoolVar(&f.foreground, "foreground", false, "Keep this terminal open instead of running in the background (Ctrl-C stops)")
 	cmd.Flags().BoolVar(&f.background, "background", false, "Run in the background without asking")
-	cmd.Flags().StringVar(&f.workspace, "workspace", "", "The Code workspace (its name in Settings) that uses this folder; asked the first time, then remembered")
+	cmd.Flags().StringVar(&f.workspace, "workspace", "", "The Crew (its name in Settings) that uses this folder; asked the first time, then remembered")
 	cmd.Flags().BoolVar(&f.askAgain, "ask", false, "Ask the background and open-website questions again instead of using the saved answers")
 	cmd.Flags().BoolVar(&f.debug, "debug", false, "Stay in this terminal, print diagnostics and log every file and command request the server sends")
 	return cmd
@@ -226,7 +236,7 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 	}
 	device := f.device
 	if device == "" {
-		device = defaultDeviceName()
+		device = folderDeviceName(folder)
 	}
 	if !localfiles.ValidID(device) {
 		return errors.New("--device needs letters, numbers, dashes or underscores")
@@ -242,10 +252,10 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 
 	cfg, cfgPath, err := o.connection(false)
 	if err != nil {
-		return errors.New("first time: run `agentworks start --server https://your-agentworks.example` (the website's Code settings show the exact command)")
+		return errors.New("first time: run `agentworks start --server https://your-agentworks.example` (the website's Crew settings show the exact command)")
 	}
 	if latest, ok := latestCLIRelease(ctx, cfg.Server); ok && cliVersion != "dev" && !cliIsCurrent(cliVersion, cliBuild, latest.Version, latest.CLIBuild) {
-		fmt.Fprintln(o.stderr, "A newer AgentWorks CLI is available on this server. Run `agentworks update`, then `agentworks stop` and `agentworks start`.")
+		fmt.Fprintln(o.stderr, "A newer AgentWorks CLI is available on this server. Run `agentworks update`, then `agentworks stop` and `agentworks start`, and choose the connected folder again in Crew Settings.")
 	}
 	login := func() error {
 		fmt.Fprintln(o.stderr, "Signing in (this approval is only for sharing local folders)...")
@@ -269,7 +279,7 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 
 	in := bufio.NewReader(o.stdin)
 	interactive := stdinIsTerminal() && !o.jsonOutput
-	// Which Code workspace uses this folder is required, never guessed: given with --workspace, remembered per folder, or asked.
+	// Which Crew uses this folder is required, never guessed: given with --workspace, remembered per folder, or asked.
 	linksPath := filepath.Join(dir, "workspaces.json")
 	links := loadShareLinks(linksPath)
 	workspace := strings.TrimSpace(f.workspace)
@@ -278,9 +288,9 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 	}
 	if workspace == "" {
 		if !interactive {
-			return errors.New("agentworks start needs the Code workspace that uses this folder: add --workspace \"<name shown in Settings>\"")
+			return errors.New("agentworks start needs the Crew that uses this folder: add --workspace \"<name shown in Settings>\"")
 		}
-		fmt.Fprintf(o.stderr, "Which Code workspace should use %s? Type its name as shown in Settings (Workspace name): ", folder)
+		fmt.Fprintf(o.stderr, "Which Crew should use %s? Type its name as shown in Settings (Workspace name): ", folder)
 		line, _ := in.ReadString('\n')
 		if workspace = strings.TrimSpace(line); workspace == "" {
 			return errors.New("a workspace name is required")
@@ -750,7 +760,7 @@ func watchCommand(o *options) *cobra.Command {
 	}}
 }
 
-// Which Code workspace uses which folder on this computer, remembered so only the first start asks.
+// Which Crew uses which folder on this computer, remembered so only the first start asks.
 func loadShareLinks(path string) map[string]string {
 	links := map[string]string{}
 	if raw, err := os.ReadFile(path); err == nil {

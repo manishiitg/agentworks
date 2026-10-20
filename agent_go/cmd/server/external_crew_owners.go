@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -89,9 +88,7 @@ func (api *StreamingAPI) changeCrewOwners(claims *UserClaims, crew crewProjectBi
 	if !crewProjectOwnedByCallerStrict(claims.UserID, crew.Binding.WorkspacePath) {
 		return crewOwnersState{}, http.StatusForbidden, "forbidden", "Only the main owner of this Crew can add or remove owners."
 	}
-	if action == "add" && isCodeProjectPath(crew.Binding.WorkspacePath) && codeProjectMode(context.Background(), crew.Binding.WorkspacePath) == "local" {
-		return crewOwnersState{}, http.StatusBadRequest, "unsupported", "Local projects are private; shared execution is not available yet."
-	}
+
 	id, ok := projectIdentityOf(crew.Binding.WorkspacePath)
 	if !ok || !isProjectProfileID(id.Product) {
 		return crewOwnersState{}, http.StatusConflict, "unsupported", "This Crew is not at the shared Crew root yet, so it cannot have co-owners."

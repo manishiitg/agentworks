@@ -26,10 +26,7 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 			return
 		}
 	}
-	if manifest.Product == "code" && codeProjectMode(r.Context(), project.Binding.WorkspacePath) == "local" {
-		externalError(w, 400, "local_project", "This project runs on your computer. Open its chat there; remote use is not available yet.")
-		return
-	}
+
 	chats, err := api.externalCodeRunChats(r.Context(), claims.UserID, manifest.ID, project.Binding, manifest.Product)
 	if err != nil {
 		externalFailure(w, err)

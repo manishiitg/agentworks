@@ -30,30 +30,9 @@ async function render(tabId?: string) {
 }
 const press = async (label: string) => { await act(async () => [...document.body.querySelectorAll('button')].find(b => b.textContent === label)!.click()) }
 
-it('offers focus mode once in a Local workspace, enters it, and shows a way out', async () => {
-  setProjectLocalFiles('code-1', { device_id: 'laptop', resource_id: 'app' })
-  const host = await render('tab')
-  expect(document.body.textContent).toContain('Use focus mode?')
-  await press('Enter focus mode')
-  expect(host.querySelector('[data-terminal-focus="true"]')).not.toBeNull()
-  expect(host.querySelector('[aria-label="Exit focus mode"]')).not.toBeNull()
-  await press('Exit focus mode')
-  expect(host.querySelector('[data-terminal-focus="true"]')).toBeNull()
-  expect(document.body.textContent).not.toContain('Use focus mode?')
-})
-
-it('does not ask on server files, again after an answer, or from the app-level layout', async () => {
-  setProjectLocalFiles('code-1', null)
-  await render('tab')
-  expect(document.body.textContent).not.toContain('Use focus mode?')
-  act(() => root?.unmount()); root = undefined
-  setProjectLocalFiles('code-1', { device_id: 'laptop', resource_id: 'app' })
-  await render()
-  expect(document.body.textContent).not.toContain('Use focus mode?')
-  act(() => root?.unmount()); root = undefined
-  await render('tab')
-  await press('Not now')
-  act(() => root?.unmount()); root = undefined
-  await render('tab')
-  expect(document.body.textContent).not.toContain('Use focus mode?')
+it('keeps the server layout without a Local-mode prompt when a laptop is connected', async () => {
+ setProjectLocalFiles('code-1', { device_id: 'laptop', resource_id: 'app' })
+ await render('tab')
+ expect(document.body.textContent).not.toContain('Use focus mode?')
+ expect(document.body.textContent).toContain('chat')
 })

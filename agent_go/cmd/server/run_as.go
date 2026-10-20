@@ -159,9 +159,7 @@ func checkProjectLaunchOwner(ctx context.Context, in turnRunAsInput, deps runAsD
 		if claims := GetUserFromContext(ctx); claims != nil && claims.UserID == in.CallerID && claims.Provider == "bot_route" {
 			// Channels retain their existing exact route grant. A bot principal
 			// is not a directory person and must never be reloaded as one.
-			if codeProjectMode(ctx, root) == "local" {
-				return errProjectOwnerMismatch
-			}
+
 			level, scoped := botRouteProfileAccessForRequest(claims, QueryRequest{AgentProfileID: in.ProfileID, AgentProfileConversationKey: in.ConversationKey, SelectedFolder: root})
 			if scoped && level != WorkflowAccessNone {
 				return nil

@@ -115,9 +115,7 @@ func listWorkspaceProjectsForOwner(ctx context.Context, userID, ownerID, query s
 		if json.Unmarshal([]byte(raw), &manifest) != nil || !strings.EqualFold(strings.TrimSpace(manifest.Product), product.ProfileID) {
 			continue
 		}
-		if product.ProfileID == "code" && codeProjectMode(ctx, strings.TrimSuffix(candidate, "/product.json")) == "local" {
-			continue
-		}
+
 		id := strings.TrimSpace(manifest.ID)
 		name := strings.TrimSpace(manifest.Title)
 		if id == "" || name == "" {

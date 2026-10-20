@@ -39,9 +39,7 @@ func (api *StreamingAPI) publicationTarget(ctx context.Context, claims *UserClai
 		if !ok || !binding.OwnedByCaller || !publicationOriginTokenAllowed(claims, manifest.Product, manifest.ID) {
 			return nil, fmt.Errorf("Choose a Crew you may build, or publish a new Crew.")
 		}
-		if codeProjectMode(ctx, binding.Binding.WorkspacePath) == "local" {
-			return nil, fmt.Errorf("Choose a hosted Crew. Your Local project remains on your computer.")
-		}
+
 		root := agentProfileRuntimeWorkspace(binding.OwnerID, binding.Binding.WorkspacePath)
 		agents, err := publishedAgents(ctx, root)
 		if err != nil {

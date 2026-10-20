@@ -21,10 +21,10 @@ The CLI identifies its invoking chat itself. Do not supply a session override,
 copy provider login files, or choose another chat's transcript. If disconnected,
 connect the project with the normal `agentworks start` flow first.
 
-In the website's Local chat use its `publish_project` tool, or the Files
-panel's **Publish to Crew** button. Apps using MCP can call workspace
-`publish_preview`, `publish` and `publish_status` for an exact own Local
-website conversation. They cannot select a native transcript on the computer.
+A Crew already runs on the server. Its optional laptop connection adds local
+commands and local-to-Crew file copy tools; it does not publish a second hosted
+copy. Use the initial import flow above for work that still lives only in this
+native coding chat.
 
 Keep the operation receipt. A lost response is not a failed publication:
 resume the same receipt (`agentworks publish --resume OPERATION_ID`) or check

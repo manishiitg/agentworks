@@ -13,13 +13,10 @@ func newProjectRuntimeDefaults(profileID, mode string) map[string]any {
 	if !isProjectProfileID(profileID) {
 		return nil
 	}
-	return map[string]any{"memory_enabled": mode != "local"}
+	return map[string]any{"memory_enabled": true}
 }
 
 func workspaceMemoryEnabled(ctx context.Context, profileID, root string) bool {
-	if profileID == "code" && codeProjectMode(ctx, root) == "local" {
-		return false
-	}
 	enabled := profileID == crewProfileID
 	raw, found, err := readFileFromWorkspace(ctx, projectRuntimeManifestPath(profileID, root))
 	if err != nil || !found {
@@ -101,8 +98,6 @@ func (api *StreamingAPI) workspaceEffectivePanels(ctx context.Context, userID, p
 		switch codeProjectMode(ctx, root) {
 		case "cowork":
 			applyCoworkProfile(&profile)
-		case "local":
-			restrictCodeLocalFeatures(&profile)
 		}
 	}
 	panels := []string{}

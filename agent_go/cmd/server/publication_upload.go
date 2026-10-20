@@ -27,27 +27,26 @@ import (
 )
 
 type publicationUpload struct {
-	Audience       *runShareState            `json:"audience,omitempty"`
-	WebsiteSource  *publicationWebsiteSource `json:"website_source,omitempty"`
-	ID             string                    `json:"operation_id"`
-	ActorID        string                    `json:"actor_id"`
-	SubmissionID   string                    `json:"submission_id"`
-	ProjectID      string                    `json:"project_id"`
-	Name           string                    `json:"name"`
-	ProfileID      string                    `json:"profile_id"`
-	WorkspaceID    string                    `json:"workspace_id,omitempty"`
-	NewWorkspaceID string                    `json:"new_workspace_id,omitempty"`
-	State          string                    `json:"state"`
-	Offset         int64                     `json:"offset"`
-	StartedAt      time.Time                 `json:"started_at"`
-	UpdatedAt      time.Time                 `json:"updated_at"`
-	Record         *publishedProject         `json:"record,omitempty"`
-	Excluded       []string                  `json:"excluded,omitempty"`
-	FileCount      int                       `json:"file_count,omitempty"`
-	RawBytes       int64                     `json:"raw_bytes,omitempty"`
-	TabError       string                    `json:"tab_error,omitempty"`
-	RawSHA256      string                    `json:"raw_sha256,omitempty"`
-	Error          string                    `json:"error,omitempty"`
+	Audience       *runShareState    `json:"audience,omitempty"`
+	ID             string            `json:"operation_id"`
+	ActorID        string            `json:"actor_id"`
+	SubmissionID   string            `json:"submission_id"`
+	ProjectID      string            `json:"project_id"`
+	Name           string            `json:"name"`
+	ProfileID      string            `json:"profile_id"`
+	WorkspaceID    string            `json:"workspace_id,omitempty"`
+	NewWorkspaceID string            `json:"new_workspace_id,omitempty"`
+	State          string            `json:"state"`
+	Offset         int64             `json:"offset"`
+	StartedAt      time.Time         `json:"started_at"`
+	UpdatedAt      time.Time         `json:"updated_at"`
+	Record         *publishedProject `json:"record,omitempty"`
+	Excluded       []string          `json:"excluded,omitempty"`
+	FileCount      int               `json:"file_count,omitempty"`
+	RawBytes       int64             `json:"raw_bytes,omitempty"`
+	TabError       string            `json:"tab_error,omitempty"`
+	RawSHA256      string            `json:"raw_sha256,omitempty"`
+	Error          string            `json:"error,omitempty"`
 }
 
 var publicationLocks sync.Map
@@ -234,9 +233,7 @@ func (api *StreamingAPI) handlePublicationUpload(w http.ResponseWriter, r *http.
 		return
 	}
 	if r.Method == http.MethodGet {
-		if upload.State == "capturing" && upload.WebsiteSource != nil {
-			api.startWebsitePublication(*upload, *claims)
-		}
+
 		if upload.State == "preparing" {
 			api.startPublication(*upload, *claims)
 		}

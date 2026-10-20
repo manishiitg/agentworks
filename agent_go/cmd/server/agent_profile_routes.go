@@ -34,14 +34,12 @@ const maxAgentProfileRequestBytes = 2 << 20
 // among a product-curated set of coding-agent runtimes (see ProviderOption's
 // doc comment) — never an arbitrary provider or model.
 type AgentProfileChatRequest struct {
-	DeliveryMode        string               `json:"delivery_mode,omitempty"`
-	CodeChatMode        string               `json:"code_chat_mode,omitempty"`
-	CodeChatAttachments []string             `json:"code_chat_attachments,omitempty"`
-	CodeLocalFiles      *codeLocalFileTarget `json:"code_local_files,omitempty"`
-	ConnectionID        string               `json:"connection_id,omitempty"`
-	Message             string               `json:"message"`
-	ConversationKey     string               `json:"conversation_key,omitempty"`
-	Engine              string               `json:"engine,omitempty"`
+	DeliveryMode     string                  `json:"delivery_mode,omitempty"`
+	LaptopConnection *laptopConnectionTarget `json:"laptop_connection,omitempty"`
+	ConnectionID     string                  `json:"connection_id,omitempty"`
+	Message          string                  `json:"message"`
+	ConversationKey  string                  `json:"conversation_key,omitempty"`
+	Engine           string                  `json:"engine,omitempty"`
 	// ModelID picks a model within the engine's provider: one the platform's
 	// model catalog lists for that provider (or, when the engine declares its
 	// own Models list, one of those). Empty keeps the option's own model.
@@ -148,18 +146,8 @@ func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentP
 	if !validChatDeliveryMode(input.DeliveryMode) {
 		return QueryRequest{}, fmt.Errorf("delivery_mode must be steer or queue")
 	}
-	if input.CodeChatMode != "" && profile.ID != "code" {
-		return QueryRequest{}, fmt.Errorf("chat mode is available only in Code")
-	}
-	if profile.ID == "code" {
-		mode, err := resolveCodeChatMode(input.CodeChatMode, input.CodeLocalFiles)
-		if err != nil {
-			return QueryRequest{}, err
-		}
-		input.CodeChatMode = mode
-	}
-	if input.CodeLocalFiles != nil && (profile.ID != "code" || !input.CodeLocalFiles.valid()) {
-		return QueryRequest{}, fmt.Errorf("local file selection requires Code and a valid device and folder alias")
+	if input.LaptopConnection != nil && (!isProjectProfileID(profile.ID) || !input.LaptopConnection.valid()) {
+		return QueryRequest{}, fmt.Errorf("Laptop connection requires a Crew and a valid device and folder")
 	}
 	if input.KnowledgebaseFolderPath != nil && profile.ID != "knowledgebase" {
 		return QueryRequest{}, fmt.Errorf("this profile does not accept Brain context")
@@ -168,9 +156,7 @@ func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentP
 		return QueryRequest{}, fmt.Errorf("product conversation has no runtime binding")
 	}
 	req := QueryRequest{
-		CodeLocalFiles:              input.CodeLocalFiles,
-		CodeChatMode:                input.CodeChatMode,
-		CodeChatAttachments:         input.CodeChatAttachments,
+		LaptopConnection:            input.LaptopConnection,
 		Query:                       input.Message,
 		DeliveryMode:                input.DeliveryMode,
 		ConnectionID:                firstNonEmptyTrimmed(input.ConnectionID, conversation.ConnectionID),

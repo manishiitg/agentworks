@@ -21,8 +21,7 @@ import (
 // Running your own Code over the external API and MCP (owner decision 2026-10-10: test Code features, folder guards and
 // the sandbox, without clicking). Four tools, merged into one `code` tool: list your Code projects, list a project's
 // chats (tabs), ask a chat a question (a turn in that chat, like ask_crew) and read the project's state. They need the
-// code:run scope, which is never in a default set, and they work on the caller's OWN Code only. A Code that runs on the
-// person's own device (Local mode) is refused: its turns belong to that device. Every ask is logged.
+// code:run scope, which is never in a default set, and they work on the caller's OWN Code only. Laptop tools are excluded; these turns run on the server. Every ask is logged.
 
 var externalCodeRunTools = map[string]bool{
 	"list_my_code_projects": true,
@@ -183,7 +182,7 @@ func (api *StreamingAPI) externalCodeRunCall(w http.ResponseWriter, r *http.Requ
 	describe := func() []map[string]any {
 		out := make([]map[string]any, 0, len(chats))
 		for _, chat := range chats {
-			item := map[string]any{"chat_id": chat.ID, "name": chat.Name, "is_main": chat.IsMain, "working": api.conversationTurnOccupied(chat.SessionID), "local": api.codeLocalSession(chat.SessionID)}
+			item := map[string]any{"chat_id": chat.ID, "name": chat.Name, "is_main": chat.IsMain, "working": api.conversationTurnOccupied(chat.SessionID)}
 			if chat.Purpose != "" {
 				item["purpose"] = chat.Purpose
 			}
@@ -288,10 +287,6 @@ func (api *StreamingAPI) externalCodeRunCall(w http.ResponseWriter, r *http.Requ
 		}
 		if chat == nil {
 			externalError(w, http.StatusNotFound, "chat_not_found", "No tab with that name or id in this project; see code action=chats.")
-			return
-		}
-		if api.codeLocalSession(chat.SessionID) {
-			externalError(w, http.StatusConflict, "local_code", "This chat runs on your own device (Local mode); it cannot be asked from here.")
 			return
 		}
 		target := triggerTarget{Kind: triggerCallerCrew, Path: binding.WorkspacePath, Label: "Code " + projectID + " · " + chat.Name, CrewID: projectID, CrewProfile: codeproduct.ProfileID, CrewOwner: claims.UserID}

@@ -24,7 +24,6 @@ export type ProjectProductConfig = {
   hasTemplates: boolean
   /** Existing owner working tools; independent of legacy route/storage IDs. */
   hasTerminal: boolean
-  supportsLocalFiles: boolean
   /**
    * Other owners' projects in the list: every Crew (Crew Run mode), or only
    * the Codes shared with the caller.
@@ -52,7 +51,6 @@ export const CREW_PRODUCT: ProjectProductConfig = {
   hasIdentity: true,
   hasTemplates: true,
   hasTerminal: true,
-  supportsLocalFiles: false,
   listsSharedProjects: true,
   // No switch (owner decision 2026-09-29): native agent tools are always on.
   hasNativeAgentToolsSetting: false,
@@ -71,7 +69,6 @@ export const CODE_PRODUCT: ProjectProductConfig = {
   hasIdentity: true,
   hasTemplates: true,
   hasTerminal: true,
-  supportsLocalFiles: true,
   listsSharedProjects: true,
   // Native agent tools are always on in a Code (owner decision 2026-09-29):
   // no switch, and the server ignores a stored "off".

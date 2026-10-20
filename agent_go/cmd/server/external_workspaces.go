@@ -11,22 +11,21 @@ import (
 // The canonical action family reuses native project services. Origin IDs remain
 // storage/routing identities, never a second set of workspace permissions.
 func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("workspace", "Your private and shared Code/Crew projects. list/get inspect current access; create starts Only me. ask and chat actions use your own conversations; update/export/import use existing Builder authority. Old tools remain supported. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
-		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "create", "update", "export", "import", "ask", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "agents", "open_agent", "read_saved_chat", "publish", "publish_preview", "publish_status", "storage_preview", "storage_status", "storage_backup", "storage_move"}},
+	add("workspace", "Your private and shared Crews. list/get inspect current access; create starts Only me. ask and chat actions use your own conversations; update/export/import use existing Builder authority. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
+		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "create", "update", "export", "import", "ask", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move"}},
 		"workspace_id": externalString("Stable work:<id> or code:<id> from workspace action=list; an unambiguous old ID also works."),
 		"profile_id":   externalString("Creation origin: work or code. Omit to use a product you can create in."),
 		"name":         externalString("Project or new chat name."), "message": externalString("Message for ask."),
 		"session_id":   externalString("An earlier chat session from action=chats, for read/delete."),
-		"agent_id":     externalString("Stable published agent ID from agents or a publish receipt, for open_agent or republish."),
-		"operation_id": externalString("Saved publication receipt for publish_status, or storage operation for storage_status/storage_backup/storage_move. Storage operations need administrator/users:manage access. storage_move moves ready projects to Crew with verified backups and old-path links; omit workspace_id for all ready projects. Explicitly select a registered project with unreadable files to move it with a partial backup; skipped entries are reported."),
+		"agent_id":     externalString("Stable published agent ID from agents or an import receipt, for open_agent."),
+		"operation_id": externalString("Storage operation for storage_status/storage_backup/storage_move. Storage operations need administrator/users:manage access. storage_move moves ready projects to Crew with verified backups and old-path links; omit workspace_id for all ready projects. Explicitly select a registered project with unreadable files to move it with a partial backup; skipped entries are reported."),
 		"kind":         externalString("read_saved_chat: raw (default) or summary. Builders can read an agent's private imported chat with its current website access."),
 		"offset":       externalInteger(0, 1<<30), "limit": externalInteger(0, 65536),
-		"source_workspace_id": externalString("Your Local project to publish; its own website chat supplies private history."),
-		"conversation_key":    externalString("Your exact Local conversation key. Publishing never guesses another chat."),
-		"chat_id":             externalString("A chat name/id you can access; omit to use your caller conversation."),
-		"query":               externalString("Optional list filter."), "submission_id": externalString("Stable submission ID for a retry of the same ask."),
+		"conversation_key": externalString("Your exact Local conversation key. Publishing never guesses another chat."),
+		"chat_id":          externalString("A chat name/id you can access; omit to use your caller conversation."),
+		"query":            externalString("Optional list filter."), "submission_id": externalString("Stable submission ID for a retry of the same ask."),
 		"wait_seconds": externalInteger(0, 25), "after": externalInteger(0, 1<<30),
-		"changes": map[string]any{"type": "object"}, "spec": map[string]any{"type": "object", "description": "Creation/import settings: name, icon, role, purpose, mode (dev/cowork/local on code origin), llm_config, selected_skills, templates, files, functions and schedules."},
+		"changes": map[string]any{"type": "object"}, "spec": map[string]any{"type": "object", "description": "Creation/import settings: name, icon, role, purpose, mode (dev/cowork on code origin), llm_config, selected_skills, templates, files, functions and schedules."},
 	}, "action")
 }
 
@@ -73,9 +72,7 @@ func (api *StreamingAPI) resolveExternalWorkspace(ctx context.Context, claims *U
 		if err != nil || doc.ID != id {
 			continue
 		}
-		if profile.ID == "code" && codeProjectMode(ctx, binding.Binding.WorkspacePath) == "local" && binding.OwnerID != sanitizeUserIDForPath(claims.UserID) {
-			continue
-		}
+
 		if found {
 			return crewProjectBinding{}, productProjectManifest{}, false
 		}
@@ -103,10 +100,6 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		api.externalPublicationHistory(w, r, args)
 		return
 	}
-	if action == "publish" || action == "publish_preview" || action == "publish_status" {
-		api.externalWorkspacePublish(w, r, args)
-		return
-	}
 
 	if action == "list" {
 		api.listExternalWorkspaces(w, r, args, false)
@@ -124,7 +117,7 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 			spec.Name = name
 		}
 		origin := externalArg(args, "profile_id")
-		if origin == "" && (spec.Mode == "cowork" || spec.Mode == "local") {
+		if origin == "" && spec.Mode == "cowork" {
 			origin = "code"
 		}
 		if origin == "" {
@@ -186,10 +179,7 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 				if crewEditLockRefuse(w, binding, claims, "") {
 					return
 				}
-				if codeProjectMode(r.Context(), binding.Binding.WorkspacePath) == "local" {
-					externalError(w, 400, "unsupported", "Memory is not available in Local mode.")
-					return
-				}
+
 				if err := setWorkspaceMemory(r.Context(), manifest.Product, binding.Binding.WorkspacePath, enabled); err != nil {
 					externalFailure(w, err)
 					return

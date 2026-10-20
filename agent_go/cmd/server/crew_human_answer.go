@@ -15,7 +15,6 @@ import (
 func crewHumanAnswerTurn(session string, req QueryRequest, active *ActiveSessionInfo, readOnly bool) bool {
 	policy := resolveWorkflowChatPolicy(session, req, active, readOnly)
 	return isProjectProfileID(req.AgentProfileID) && !req.PinRunMode && registerWorkUIAllowed(req) &&
-		req.CodeChatMode != "local" && req.CodeLocalFiles == nil &&
 		policy.Mode == "builder" && policy.Origin == "interactive" &&
 		(active == nil || !active.IsSyntheticTurn)
 }

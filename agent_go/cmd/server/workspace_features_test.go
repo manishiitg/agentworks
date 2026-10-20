@@ -52,7 +52,7 @@ func TestNewCrewMemoryDefaultsPreserveExistingProjects(t *testing.T) {
 		origin, mode string
 		enabled      bool
 	}{
-		{"work", "dev", true}, {"code", "dev", true}, {"code", "cowork", true}, {"code", "local", false},
+		{"work", "dev", true}, {"code", "dev", true}, {"code", "cowork", true},
 	} {
 		t.Run(tc.origin+"/"+tc.mode, func(t *testing.T) {
 			body := `{"name":"Memory default","purpose":"Keep project facts","icon":"M","role":"Assistant","mode":"` + tc.mode + `","llm_config":{"schema_version":2,"mode":"explicit","builder_llm":{"provider":"codex-cli","model_id":"gpt-6-luna","connection_id":"company-account","options":{"reasoning_effort":"high"}}}}`

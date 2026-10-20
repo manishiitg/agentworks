@@ -206,8 +206,11 @@ func TestStartSharesTheCurrentFolderReadAndWrite(t *testing.T) {
 		if hello.CLIVersion != cliVersion {
 			t.Fatalf("the CLI must tell the server which build it is (%q), got %q", cliVersion, hello.CLIVersion)
 		}
-		if hello.DeviceID != defaultDeviceName() || len(hello.Resources) != 1 {
+		if hello.DeviceID != folderDeviceName(project) || len(hello.Resources) != 1 {
 			t.Fatalf("hello %+v", hello)
+		}
+		if hello.DeviceID == folderDeviceName(filepath.Join(project, "second-folder")) {
+			t.Fatal("a second folder would collide with the first live connection")
 		}
 		if r := hello.Resources[0]; r.ID != "my-app" || !r.Writable || !r.Shell {
 			t.Fatalf("the folder must be shared read-and-write with shell, named after the folder: %+v", r)

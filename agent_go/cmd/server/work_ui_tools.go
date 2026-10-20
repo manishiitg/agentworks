@@ -80,22 +80,8 @@ func registerWorkUIAllowed(req QueryRequest) bool {
 		!req.IsAutoNotification
 }
 
-func (api *StreamingAPI) registerOpenWorkWorkspaceViewTool(registrar definitionToolRegistrar, userID, session, workspace string, localCode ...bool) error {
+func (api *StreamingAPI) registerOpenWorkWorkspaceViewTool(registrar definitionToolRegistrar, userID, session, workspace string) error {
 	workspace = canonicalChatHistoryWorkspacePath(userID, workspace)
 	contract := projectUIControlContract(workspace)
-	if isCodeProjectPath(workspace) && len(localCode) > 0 && localCode[0] {
-		views := make([]uiViewCapability, 0, len(contract.Views))
-		for _, view := range contract.Views {
-			switch view.ID {
-			case "files":
-				view.Label = "Local CLI connection"
-			case "costs", "llm":
-			default:
-				continue
-			}
-			views = append(views, view)
-		}
-		contract.Views = views
-	}
 	return api.registerUIControlToolsForContract(registrar, session, workspace, contract)
 }

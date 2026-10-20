@@ -136,9 +136,6 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 		}
 		for _, chat := range chats {
 			if chat.SessionID == peer.Session && chat.Key == peer.ChatKey {
-				if send && api.codeLocalSession(chat.SessionID) {
-					return fmt.Errorf("Local Code chats cannot receive external agent messages")
-				}
 				return nil
 			}
 		}

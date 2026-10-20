@@ -861,7 +861,7 @@ function AppWorkspace() {
 
 function App() {
   const setProductSurface = useProductSurfaceStore(state => state.setProductSurface)
-  // `agentworks start` opens the site with ?local_device=…&local_folder=…&local_workspace=<name>: open Code and remember the link; the
+  // `agentworks start` opens the site with ?local_device=…&local_folder=…&local_workspace=<name>: open Crew and remember the link; the
   // workspace screen applies it to the workspace with that name. Read before sign-in so a login redirect cannot lose it.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -870,7 +870,7 @@ function App() {
     const workspace = params.get('local_workspace')
     if (!device || !folder || !workspace) return
     setPendingLocalLink({ target: { device_id: device, resource_id: folder }, workspace })
-    setProductSurface('code')
+    setProductSurface('work')
     params.delete('local_device'); params.delete('local_folder'); params.delete('local_workspace')
     const rest = params.toString()
     window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`)

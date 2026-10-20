@@ -1,7 +1,6 @@
-import { codeChatAttachmentPaths } from '../utils/codeChatAttachments'
 import { publishWorkflowBuilderBinding } from '../hooks/useWorkflowBuilderBindings'
 import { useConversationOlderPages } from '../hooks/useConversationOlderPages'
-import { codeLocalFilesForChat, codeChatModeForChat } from '../products/work/codeLocalFiles'
+import { codeLocalFilesForChat } from '../products/work/codeLocalFiles'
 import { useMcpOAuthChatNotifications } from '../hooks/useMcpOAuthChatNotifications'
 import { getEventPayloadParts, getRuntimeEventScope } from '../utils/runtimeEventScope'
 import { isForegroundTurnCompletion } from '../utils/foregroundTurnActivity'
@@ -2884,11 +2883,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     const restoredConversationContext = restoredConversationPath && restoredConversationHasVisibleFallback
       ? `\n\nPrevious workflow-builder conversation file: ${restoredConversationPath}\nThis file is JSON with a top-level conversation_history array. User messages have Role "human" or "user" and text in Parts[].Text; assistant replies have Role "ai" or "assistant"; tool calls/results may be interleaved and are usually noisy. To understand the recent context, scan conversation_history from the end for the latest user/assistant Text parts. Do not treat the last JSON entry as the last user request, because it may be a tool result or function call.${restoredConversationSummary ? `\n\n${restoredConversationSummary}` : ''}`
       : ''
-    const isLocalCodeChat = currentTab.metadata?.agentProfileId === 'code' && codeChatModeForChat(currentTab.sessionId || '') === 'local'
-    const localChatAttachments = isLocalCodeChat
-      ? codeChatAttachmentPaths(currentTab.metadata?.agentProfileWorkspace || '', currentTab.sessionId || '', effectiveFileContext) : []
-    const fileContextForPrompt = isLocalCodeChat
-      ? effectiveFileContext.filter(file => localChatAttachments.includes(file.path)) : restoredConversationPath
+    const fileContextForPrompt = restoredConversationPath
       ? effectiveFileContext.filter((file) => file.path !== restoredConversationPath)
       : effectiveFileContext
 
@@ -3128,7 +3123,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             {
               ...buildAgentProfileChatRequest(requestPayload, currentTab.metadata.agentProfileConversationKey, currentTab.metadata.agentProfileEngine, currentTab.metadata.agentProfileModelID, reasoningEffort),
               ...(currentTab.metadata.agentProfileId === 'knowledgebase' && knowledgebaseFolderPath ? { knowledgebase_folder_path: knowledgebaseFolderPath } : {}),
-              ...(currentTab.metadata.agentProfileId === 'code' ? { code_chat_mode: codeChatModeForChat(currentTab.sessionId || ''), code_local_files: codeLocalFilesForChat(currentTab.sessionId || ''), code_chat_attachments: localChatAttachments } : {}),
+              ...(['code', 'work'].includes(currentTab.metadata.agentProfileId || '') ? { laptop_connection: codeLocalFilesForChat(currentTab.sessionId || '') } : {}),
             },
             tabSessionId,
             { identity, submissionId: receipt.id, submittedAtClientTime, continuation: hasLocalSessionEvents || Boolean(pendingRestoredConversationPath) || currentTab.metadata?.isRestored === true, queuedDelivery: options?.queuedDelivery },
@@ -3764,7 +3759,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                             <RuntimeDiagnosticsPanel currentSessionId={activeTab.sessionId} compact={false} />
                           </Suspense>
                         )
-                      : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || isReadOnlyRunView || (activeTab.metadata?.agentProfileId === 'code' && codeChatModeForChat(activeTab.sessionId || '') === 'local')} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
+                      : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || isReadOnlyRunView} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
                   )
                 : <TerminalEventTranscript
                     scrollKey={transcriptReadingKey(activeTab.tabId, activeSessionId)}
@@ -3831,7 +3826,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                             <RuntimeDiagnosticsPanel currentSessionId={activeTab.sessionId} compact={false} />
                           </Suspense>
                         )
-                      : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || isReadOnlyRunView || (activeTab.metadata?.agentProfileId === 'code' && codeChatModeForChat(activeTab.sessionId || '') === 'local')} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
+                      : <MainAgentTerminal sessionId={activeTab.sessionId} readOnly={!!activeTab.metadata?.isViewOnly || isReadOnlyRunView} onUnavailable={() => useChatStore.getState().setTabViewMode(activeTab.tabId, 'formatted')} />
                   )
                 : <TerminalEventTranscript
                     scrollKey={transcriptReadingKey(activeTab.tabId, activeSessionId)}

@@ -215,7 +215,7 @@ export async function loadWorkSessionsIncludingShared(product: ProjectProductCon
   return [...owned, ...shared.filter(session => !ownedIds.has(session.id))]
 }
 
-/** Code: the computer and folder this workspace works in (product.json `local_files`); undefined = the server's files. */
+/** Code: the computer and folder this workspace works in (product.json `laptop_connection`); undefined = the server's files. */
 export async function updateWorkSessionLocalFiles(session: WorkSession, localFiles: { device_id: string; resource_id: string } | undefined): Promise<WorkSession> {
   if (isWorkSessionRun(session)) throw new Error('Only the owner can change this.')
   return updateProductProjectLocalFiles(session, localFiles, `Set files location for ${session.title}`)

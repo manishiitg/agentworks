@@ -2,13 +2,11 @@ package virtualtools
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 
@@ -17,7 +15,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/llmguard"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
-	"github.com/manishiitg/coding-agent-loop/workspace/security"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/llm"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
@@ -672,7 +669,6 @@ func injectSelectedLLMConfig(
 func wrapReadImageWithLLM(
 	baseExecutor func(ctx context.Context, args map[string]any) (string, error),
 	workspaceURL string,
-	attachmentOnly ...bool,
 ) func(ctx context.Context, args map[string]any) (string, error) {
 	return func(ctx context.Context, args map[string]any) (string, error) {
 		log.Printf("[READ_IMAGE_DEBUG] Wrapped read_image executor called")
@@ -710,9 +706,6 @@ func wrapReadImageWithLLM(
 			return "", fmt.Errorf("failed to initialize LLM for image analysis: %w", err)
 		}
 
-		if len(attachmentOnly) > 0 && attachmentOnly[0] && !chatAttachmentImageProvider(provider) {
-			return "", fmt.Errorf("Local attachments support confined codex-cli or claude-code image analysis; choose one of those providers for read_image")
-		}
 		log.Printf("[READ_IMAGE_DEBUG] LLM client created (provider=%s, model=%s), making GenerateContent call",
 			provider, modelID)
 
@@ -728,17 +721,8 @@ func wrapReadImageWithLLM(
 				Data:       imageData.Data,
 			},
 		}
-		var attachmentOptions []llmtypes.CallOption
 		if readsImageByPath(provider) {
 			absoluteImagePath := workspaceAbsolutePath(normalizeWorkspaceDocumentPath(imageData.Filepath))
-			if len(attachmentOnly) > 0 && attachmentOnly[0] {
-				var cleanup func()
-				absoluteImagePath, attachmentOptions, cleanup, err = chatAttachmentImageCLI(provider, imageData)
-				if err != nil {
-					return "", err
-				}
-				defer cleanup()
-			}
 			if _, statErr := os.Stat(absoluteImagePath); statErr != nil {
 				return "", fmt.Errorf("%s image analysis requires a readable local workspace file at %q: %w", provider, absoluteImagePath, statErr)
 			}
@@ -770,9 +754,6 @@ func wrapReadImageWithLLM(
 			callOptions = append(callOptions, llmproviders.WithClaudeCodeWriteProjectInstructionFile(false))
 		}
 
-		if attachmentOptions != nil {
-			callOptions = attachmentOptions
-		}
 		if strings.EqualFold(provider, string(llm.ProviderPiCLI)) {
 			// A Pi session's own model is the fallback analysis model; Pi reads the file by path, as a bounded
 			// one-shot rather than a second interactive terminal.
@@ -1064,86 +1045,4 @@ func firstKey(values ...*string) *string {
 		}
 	}
 	return nil
-}
-
-// WrapChatAttachmentImage reuses the existing image analysis pipeline with a
-// bounded, chat-scoped byte reader. It does not expose another agent tool.
-func WrapChatAttachmentImage(reader func(context.Context, map[string]any) (string, error), workspaceURL string) func(context.Context, map[string]any) (string, error) {
-	return wrapReadImageWithLLM(reader, workspaceURL, true)
-}
-
-// A nested image CLI never receives the original server path. It sees only a
-// temporary copy and private runtime under the same kernel lock used by chats.
-// Hosts without that lock refuse CLI image analysis rather than launch open.
-var chatAttachmentLandlockRunner = security.CLILandlockRunner
-
-func chatAttachmentImageProvider(provider string) bool {
-	return provider == string(llmproviders.ProviderCodexCLI) || provider == string(llmproviders.ProviderClaudeCode)
-}
-
-func chatAttachmentImageCLI(provider string, image workspace.ReadImageResult) (string, []llmtypes.CallOption, func(), error) {
-	noop := func() {}
-	if !chatAttachmentImageProvider(provider) {
-		return "", nil, noop, fmt.Errorf("Local attachments support confined codex-cli or claude-code image analysis; choose one of those providers for read_image")
-	}
-	runner, available := chatAttachmentLandlockRunner()
-	if !available {
-		return "", nil, noop, fmt.Errorf("Local chat image analysis requires a working Linux Landlock runner on the server; ask an administrator to enable confined image analysis")
-	}
-	data, err := base64.StdEncoding.DecodeString(image.Data)
-	if err != nil || len(data) > 10<<20 {
-		return "", nil, noop, fmt.Errorf("invalid image attachment")
-	}
-	scratch, err := os.MkdirTemp("", "agentworks-chat-image-")
-	if err != nil {
-		return "", nil, noop, err
-	}
-	cleanup := func() { os.RemoveAll(scratch) }
-	canonical, err := filepath.EvalSymlinks(scratch)
-	if err != nil {
-		cleanup()
-		return "", nil, noop, err
-	}
-	scratch = canonical
-	imagePath := filepath.Join(scratch, "attachment"+filepath.Ext(image.Filepath))
-	if err := os.WriteFile(imagePath, data, 0600); err != nil {
-		cleanup()
-		return "", nil, noop, err
-	}
-	policy := llmtypes.CLISecurityPolicy{Mode: llmtypes.CLISecurityModeIsolated, Provider: provider, LandlockRunner: runner, PrivateHome: filepath.Join(scratch, "runtime"), WorkspaceReadPaths: []string{imagePath}}
-	options := structuredOneShotCallOptions(llm.Provider(provider))
-	if cwd := llmproviders.CodingAgentWorkingDirOption(llmproviders.Provider(provider), scratch); cwd != nil {
-		options = append(options, cwd)
-	}
-	options = append(options, llmproviders.WithCLISecurityPolicy(policy))
-	if provider == string(llmproviders.ProviderClaudeCode) {
-		python, err := exec.LookPath("python3")
-		if err != nil {
-			cleanup()
-			return "", nil, noop, fmt.Errorf("confined Claude attachment analysis requires server python3 for its read guard; select codex-cli or ask an administrator to install python3")
-		}
-		guard := filepath.Join(scratch, "read-guard.py")
-		expected, _ := json.Marshal(imagePath)
-		script := `import json, os, sys
-try:
-    request = json.load(sys.stdin)
-    allowed = request.get("tool_name") == "Read" and os.path.realpath(request.get("tool_input", {}).get("file_path", "")) == EXPECTED_PATH
-    decision = "allow" if allowed else "deny"
-    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": decision, "permissionDecisionReason": "Only the staged chat attachment may be read."}}))
-except Exception:
-    sys.exit(2)
-`
-		script = strings.Replace(script, "EXPECTED_PATH", string(expected), 1)
-		if err := os.WriteFile(guard, []byte(script), 0600); err != nil {
-			cleanup()
-			return "", nil, noop, err
-		}
-		quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'" }
-		settings, _ := json.Marshal(map[string]any{"hooks": map[string]any{"PreToolUse": []any{map[string]any{"matcher": "*", "hooks": []any{map[string]any{"type": "command", "command": quote(python) + " " + quote(guard)}}}}}})
-		options = append(options, llmproviders.WithClaudeCodeWriteProjectInstructionFile(false), llmproviders.WithClaudeCodeTools("Read"), llmproviders.WithClaudeCodeSettings(string(settings)), llmproviders.WithMCPConfig(`{"mcpServers":{}}`))
-	}
-	if provider == string(llmproviders.ProviderCodexCLI) {
-		options = append(options, llmproviders.WithCodexSandbox("read-only"), llmproviders.WithCodexDisableShellTool())
-	}
-	return imagePath, options, cleanup, nil
 }

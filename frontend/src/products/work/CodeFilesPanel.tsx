@@ -1,10 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Check, Copy, Download, FolderOpen, Laptop, Loader2, RefreshCw, Terminal, WifiOff } from 'lucide-react'
-import { CrewPublish } from './CrewPublish'
+import { Check, Copy, Laptop, RefreshCw, Terminal } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
-import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import { SettingsCard } from '../../components/ui/SettingsCard'
-import { useChatStore } from '../../stores/useChatStore'
 import { getApiBaseUrl } from '../../services/api'
 import { cliUpdateNeeded, useCodeFilesPreference, useLatestCliVersion, useLocalFileDevices, writeCodeFilesPreference } from './codeLocalFiles'
 
@@ -77,139 +74,54 @@ function ComputerSetup({ connected, reconnecting, workspaceName }: { connected: 
   </details>
 }
 
-// A reconnect after the hourly sign-in renewal takes about 10 s; the offline question waits twice that.
-const OFFLINE_PROMPT_DELAY_MS = 20_000
-
-/** The connection belongs to this Code session's files, not its runtime. */
+/** Optional laptop tools; the Crew's normal files and terminal stay on the server. */
 export function CodeLocalFilesSettings({ sessionId, workspaceName }: { sessionId: string; workspaceName?: string }) {
   const preference = useCodeFilesPreference(sessionId)
-  const local = preference.location === 'computer'
-  const selected = local ? preference.target : undefined
+  const selected = preference.location === 'computer' ? preference.target : undefined
   const selectedKey = selected ? JSON.stringify([selected.device_id, selected.resource_id]) : ''
-  const [setupOpen, setSetupOpen] = useState(false)
   const [draftKey, setDraftKey] = useState(selectedKey)
-  const [confirmServer, setConfirmServer] = useState(false)
+  const [setupOpen, setSetupOpen] = useState(false)
   const [settingError, setSettingError] = useState<string | null>(null)
-  const [verified, setVerified] = useState(false)
-  const [details, setDetails] = useState(false)
-  const [offlineDismissed, setOfflineDismissed] = useState(false)
-  const busy = useChatStore(state => Object.values(state.chatTabs).some(tab => tab.sessionId === sessionId && (tab.isStreaming || tab.hasRunningBgAgents)))
-  const { devices, error, checked, refreshing, refresh } = useLocalFileDevices(local || setupOpen)
-  useEffect(() => { setDraftKey(selectedKey); setSetupOpen(false); setConfirmServer(false); setSettingError(null) }, [sessionId, selectedKey, local])
-  const resource = devices.find(device => device.device_id === selected?.device_id)?.resources.find(folder => folder.id === selected?.resource_id)
-  // The CLI on this computer is not the build this server offers: ask the person to update it.
-  const latestCli = useLatestCliVersion(local || setupOpen)
-  const connectedDevice = devices.find(device => device.device_id === selected?.device_id) ?? devices[0]
-  const updateNotice = cliUpdateNeeded(connectedDevice, latestCli) ? <div role="status" className="rounded-md bg-amber-500/10 px-3 py-2 text-xs leading-5">
-    <p className="font-medium text-amber-700 dark:text-amber-300">Update your CLI</p>
-    <p className="text-muted-foreground">Your CLI is older than this server's. In a terminal run <code className="font-mono">agentworks update</code>, then restart it with <code className="font-mono">agentworks stop</code> and <code className="font-mono">agentworks start</code>.</p>
-  </div> : null
-  const draftResource = devices.flatMap(device => device.resources.map(folder => ({ ...folder, deviceId: device.device_id }))).find(folder => JSON.stringify([folder.deviceId, folder.id]) === draftKey)
-  // The saved folder is not connected but exactly one other folder is (the user started the CLI somewhere else): offer it,
-  // instead of saying "not connected" while the computer is connected.
-  const connectedFolders = devices.flatMap(device => device.resources.map(folder => ({ device_id: device.device_id, resource_id: folder.id })))
-  const otherFolder = local && !!selected && checked && !resource && !error && connectedFolders.length === 1 ? connectedFolders[0] : undefined
-  // The CLI drops its connection for a few seconds when it renews its sign-in (about every hour): that is not "not connected". Ask
-  // only once the folder has stayed missing for longer than a reconnect takes (PLAT-826).
-  const folderMissing = local && !!selected && checked && !resource && !error
-  const [missingLong, setMissingLong] = useState(false)
-  useEffect(() => {
-    if (!folderMissing) { setMissingLong(false); return }
-    const timer = window.setTimeout(() => setMissingLong(true), OFFLINE_PROMPT_DELAY_MS)
-    return () => window.clearTimeout(timer)
-  }, [folderMissing])
-  const savePreference = (pref: Parameters<typeof writeCodeFilesPreference>[1]) => {
-    if (busy) return
-    try { writeCodeFilesPreference(sessionId, pref); setSettingError(null) }
-    catch { setSettingError('This browser could not save the file connection.') }
+  const { devices, error, checked, refreshing, refresh } = useLocalFileDevices(Boolean(sessionId))
+  const latest = useLatestCliVersion(Boolean(sessionId))
+  useEffect(() => { setDraftKey(selectedKey); setSettingError(null) }, [sessionId, selectedKey])
+  const device = devices.find(item => item.device_id === selected?.device_id)
+  const folder = device?.resources.find(item => item.id === selected?.resource_id)
+  const available = devices.flatMap(item => item.resources.filter(resource => resource.id !== 'downloads').map(resource => ({ device_id: item.device_id, resource_id: resource.id })))
+  const draft = available.find(item => JSON.stringify([item.device_id, item.resource_id]) === draftKey)
+  const save = (target?: { device_id: string; resource_id: string }) => {
+    try {
+      writeCodeFilesPreference(sessionId, target ? { location: 'computer', target } : { location: 'server' })
+      setSettingError(null)
+    } catch { setSettingError('Could not save this laptop connection.') }
   }
-  const applyFolder = () => {
-    if (!draftResource) return
-    savePreference({ location: 'computer', target: { device_id: draftResource.deviceId, resource_id: draftResource.id } })
-  }
-  // Every time this opens in Local mode and the CLI is not running, ask: files are on the computer, so work cannot continue until it is.
-  const offlinePrompt = <ConfirmationDialog
-    isOpen={!!sessionId && (missingLong || (folderMissing && !!otherFolder)) && !offlineDismissed}
-    onClose={() => setOfflineDismissed(true)}
-    onConfirm={() => { if (otherFolder) savePreference({ location: 'computer', target: otherFolder }); else refresh() }}
-    title={otherFolder ? 'A different folder is connected' : 'Your computer is not connected'}
-    message={otherFolder
-      ? `This workspace is set to ${selected?.device_id} / ${selected?.resource_id}, but ${otherFolder.device_id} / ${otherFolder.resource_id} is connected now. Use ${otherFolder.resource_id} for this workspace?`
-      : `This workspace works on files on your computer${selected ? ` (${selected.device_id} / ${selected.resource_id})` : ''}, but the CLI is not running. Open a terminal in your project folder and run "agentworks start", then press Verify. File work and commands wait until it connects.`}
-    confirmText={otherFolder ? `Use ${otherFolder.resource_id}` : 'Verify connection'}
-    cancelText="Not now"
-    type="warning"
-    ignoreWorkspaceAutoCollapse
-  />
-  // Connected in Local mode: a small card about the connection. Everything else (folder choice, setup steps) is under Details.
-  if (local && resource && !details && sessionId) return <SettingsCard unboxed icon={<Laptop className="h-4 w-4 text-primary" />} title="Local CLI connection" description="This workspace works with files on your computer. Your agent and model run on the server.">
+  return <SettingsCard unboxed icon={<Laptop className="h-4 w-4 text-primary" />} title="Laptop connection" description="Your Crew runs on the server. Optionally let your Builder chat run commands on your computer and copy local files into this Crew.">
     <div className="space-y-3">
-      <div className="flex min-w-0 items-center gap-2.5">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"><Laptop className="h-4 w-4" /></span>
-        <div className="min-w-0"><p role="status" className="text-sm font-medium">Connected</p><p className="truncate text-xs text-muted-foreground">{selected?.device_id} · {resource.id}</p></div>
-      </div>
-      <div className="flex flex-wrap gap-2 rounded-md bg-emerald-500/5 px-3 py-2 text-xs"><span className="flex items-center gap-1.5"><FolderOpen className="h-3.5 w-3.5" />{resource.writable ? 'Project: read and write' : 'Project: read only'}</span>{resource.downloads && <span className="flex items-center gap-1.5"><Download className="h-3.5 w-3.5" />Downloads: read and write</span>}{resource.shell && <span className="flex items-center gap-1.5"><Terminal className="h-3.5 w-3.5" />Shell commands enabled on this computer</span>}</div>
-      {updateNotice}
-      <CrewPublish sessionId={sessionId} disabled={busy || !resource.publication} />
-      <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={refreshing} onClick={refresh}><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />Verify connection</Button><Button size="sm" variant="ghost" onClick={() => setDetails(true)}>Details</Button></div>
-      {busy && <p className="text-xs text-muted-foreground">Wait for the current turn to finish before changing the file connection.</p>}
+      <p className="text-xs leading-5 text-muted-foreground">Files, Terminal, connections, functions and background work continue on the server. Laptop tools are available only to you in your Builder chat, while the CLI is connected. Sharing the Crew does not share your computer. Files are copied only when requested; there is no sync.</p>
+      {selected && <div className="flex items-center justify-between gap-2 rounded-md bg-muted/40 p-3">
+        <div><p role="status" className="text-sm font-medium">{folder ? 'Connected' : checked ? 'Laptop not connected' : 'Checking connection…'}</p><p className="text-xs text-muted-foreground">{selected.device_id} · {selected.resource_id}</p></div>
+        <Button size="sm" variant="outline" onClick={() => save()}>Disconnect laptop</Button>
+      </div>}
+      {selected && checked && !folder && <p className="text-xs text-muted-foreground">Server work remains available. To use laptop tools again, open your shared folder on that computer and start AgentWorks.</p>}
+      {cliUpdateNeeded(device, latest) && <p role="status" className="rounded-md bg-amber-500/10 p-3 text-xs">Update the CLI on your computer with <code>agentworks update</code>, then run <code>agentworks stop</code> and <code>agentworks start</code>. Choose the connected folder again here after updating.</p>}
+      {!setupOpen ? <Button variant="outline" disabled={!sessionId} onClick={() => setSetupOpen(true)}>{selected ? 'Change connected folder' : 'Connect your computer'}</Button> : <>
+        <ComputerSetup connected={devices.length > 0} reconnecting={Boolean(selected)} workspaceName={workspaceName} />
+        <label htmlFor="crew-laptop-folder" className="block text-xs font-medium">Your computer and shared folder</label>
+        <select id="crew-laptop-folder" value={draftKey} className="w-full rounded-md border border-border bg-background p-2 text-sm" onChange={event => setDraftKey(event.target.value)}>
+          <option value="">Choose a connected folder…</option>
+          {selected && !folder && <option value={selectedKey}>{selected.device_id} / {selected.resource_id} — Offline</option>}
+          {available.map(item => <option key={JSON.stringify(item)} value={JSON.stringify([item.device_id, item.resource_id])}>{item.device_id} / {item.resource_id}</option>)}
+        </select>
+        <p className="text-xs leading-5 text-muted-foreground">The local command tool uses your existing CLI permissions. Commands can reach your computer’s services and network. Returned output and copied files reach the server and model and may be saved in chat history. Server secrets are not forwarded.</p>
+        <div className="flex gap-2"><Button size="sm" disabled={!draft || draftKey === selectedKey} onClick={() => { if (draft) save(draft) }}>Connect folder</Button><Button size="sm" variant="ghost" onClick={() => setSetupOpen(false)}>Close setup</Button></div>
+      </>}
+      <Button size="sm" variant="ghost" disabled={refreshing} onClick={refresh}><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />Check connection</Button>
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {settingError && <p role="alert" className="text-sm text-destructive">{settingError}</p>}
     </div>
   </SettingsCard>
-  return <SettingsCard unboxed icon={<Laptop className="h-4 w-4 text-primary" />} title="Local CLI connection" description="Choose where this workspace works with files. Your agent and model always run on the server.">
-    {offlinePrompt}
-    {updateNotice && <div className="mb-3">{updateNotice}</div>}
-    {!sessionId ? <p className="text-sm text-muted-foreground">Open a Code chat to connect local files.</p> : !local && !setupOpen ?
-      <Button variant="outline" disabled={busy} onClick={() => setSetupOpen(true)}>Connect local files</Button> : <div className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${resource || !local && devices.length ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-muted text-muted-foreground'}`}>{resource || !local && devices.length ? <Laptop className="h-4 w-4" /> : !checked ? <Loader2 className="h-4 w-4 animate-spin" /> : selected ? <WifiOff className="h-4 w-4" /> : <Terminal className="h-4 w-4" />}</span>
-            <div><p role="status" className="text-sm font-medium">{local ? resource ? 'Connected' : !selected ? 'Choose a folder' : checked ? 'Offline' : 'Checking connection…' : devices.length ? 'Your CLI is connected' : checked ? 'Waiting for your CLI' : 'Checking connection…'}</p><p className="text-xs text-muted-foreground">{resource ? `${selected?.device_id} · ${resource.id}` : local ? 'Local mode stays active.' : 'Server files stay active until you confirm a folder.'}</p></div>
-          </div>
-          {local ? <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirmServer(true)}>Disconnect local files</Button> : <Button size="sm" variant="ghost" onClick={() => { setSetupOpen(false); setDraftKey('') }}>Cancel setup</Button>}
-        </div>
-        {confirmServer && <div className="space-y-3 rounded-md bg-muted/40 p-3">
-          <p className="text-sm font-medium">Switch this workspace to server files?</p>
-          <p className="text-xs leading-5 text-muted-foreground">This is not a quick toggle. Your project files are on your computer; the server workspace does not have them, so the agent would work in a different folder and your work will look missing. Switching does not move or sync anything. Earlier messages stay in the chat history. The CLI keeps running until you stop it with agentworks stop.</p>
-          <div className="flex gap-2"><Button size="sm" disabled={busy} onClick={() => savePreference({ location: 'server' })}>Switch to server files</Button><Button size="sm" variant="ghost" onClick={() => setConfirmServer(false)}>Keep local connection</Button></div>
-        </div>}
-        {local && resource && <div className="flex flex-wrap gap-2 rounded-md bg-emerald-500/5 px-3 py-2 text-xs"><span className="flex items-center gap-1.5"><FolderOpen className="h-3.5 w-3.5" />{resource.writable ? 'Project: read and write' : 'Project: read only'}</span>{resource.downloads && <span className="flex items-center gap-1.5"><Download className="h-3.5 w-3.5" />Downloads: read and write</span>}</div>}
-        {local && selected && checked && !resource && !error && <div className="space-y-1 rounded-md bg-muted/40 p-3"><p className="text-xs font-medium">{otherFolder ? `A different folder is connected: ${otherFolder.device_id} / ${otherFolder.resource_id}` : 'Reconnect your computer to continue file work'}</p>{otherFolder && <Button size="sm" variant="outline" disabled={busy} onClick={() => savePreference({ location: 'computer', target: otherFolder })}>Use {otherFolder.resource_id} for this workspace</Button>}<p className="text-xs leading-5 text-muted-foreground">Wake your computer, check its network and keep the CLI running. It reconnects automatically. Conversation can continue; files will not switch to the server.</p></div>}
-        <ComputerSetup connected={devices.length > 0} reconnecting={!!selected} workspaceName={workspaceName} />
-        <div className="space-y-1">
-          <div className="flex items-center justify-between gap-2"><p className="text-xs text-muted-foreground">{devices.length ? `${devices.length} computer${devices.length === 1 ? '' : 's'} available · updates automatically` : 'Connected computers appear here automatically.'}</p><Button size="sm" variant="outline" disabled={refreshing} onClick={() => { setVerified(true); refresh() }}><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />Verify connection</Button></div>
-          {verified && checked && !refreshing && <p role="status" className={`text-xs leading-5 ${devices.length ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{error ? error : devices.length ? `Connected: ${devices.flatMap(device => device.resources.map(folder => `${device.device_id} / ${folder.id}`)).join(', ')}.` : 'Nothing is connected yet. Run agentworks start inside your project folder; if it does not connect, agentworks start --debug shows why.'}</p>}
-        </div>
-        <label className="block text-xs font-medium" htmlFor="code-local-folder">Computer and shared folder</label>
-        <select id="code-local-folder" aria-label="Computer and shared folder" value={draftKey} disabled={busy} className="w-full rounded-md border border-border bg-background p-2 text-sm" onChange={event => { setDraftKey(event.target.value); setConfirmServer(false) }}>
-          <option value="">Choose a folder…</option>
-          {selected && !resource && <option value={selectedKey}>{selected.device_id} / {selected.resource_id} — Offline</option>}
-          {devices.flatMap(device => device.resources.map(folder => <option key={`${device.device_id}/${folder.id}`} value={JSON.stringify([device.device_id, folder.id])}>{device.device_id} / {folder.id} — {folder.shell ? folder.writable ? 'Files and commands' : 'Can open files and commands' : folder.writable ? 'Can edit' : 'Can open'}</option>))}
-        </select>
-        {draftResource && draftKey !== selectedKey && <div className="space-y-3 rounded-md bg-muted/40 p-3">
-          <p className="text-sm font-medium">{local ? 'Change this chat’s local folder' : 'Use local files for this chat'}</p>
-          <ul className="list-disc space-y-1 pl-4 text-xs leading-5 text-muted-foreground">
-            <li>File access and shell commands will use {draftResource.deviceId} / {draftResource.id}. {draftResource.writable ? 'The agent can change files and run builds, tests and git commands within your CLI permissions.' : 'This folder is read only: the agent can inspect files and run commands that do not change them.'}</li>
-            {draftResource.downloads && <li>Downloads is also shared with read and write access. The agent can inspect, create and change files there alongside your project.</li>}
-            <li>Commands can access the internet, services on your computer (localhost), and your local network. Folder permissions limit file access; they do not limit network destinations.</li>
-            <li>Your agent and model stay on the server. File contents and command output are sent to the server and model provider and may be saved in server chat history. People with authorized administrator or Code review access can read that history.</li>
-            <li>MCP connections, reusable skills, project secrets, integrations, schedules, dashboards, browser tools and background agents are unavailable in Local mode.</li>
-            <li>{local ? 'The previous folder will no longer be used by this chat; files are not moved.' : 'Server files will no longer be used by this chat; files are not moved.'} If the CLI disconnects, local actions fail until it reconnects. Other chats and existing server schedules stay unchanged.</li>
-          </ul>
-          <Button size="sm" disabled={busy} onClick={applyFolder}>Use this folder</Button>
-        </div>}
-        {resource && <p className="text-xs text-muted-foreground">{resource.shell ? 'Shell commands enabled on this computer for the selected folder.' : 'Update and reconnect your CLI to enable shell commands for this folder.'}</p>}
-        <p className="text-xs leading-5 text-muted-foreground">This connection is saved for this workspace. The composer shows its current connection; it cannot switch modes. In Local mode, the right side shows only Local CLI connection, Costs and Models. Ctrl-C in the CLI stops sharing your folder.</p>
-        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      </div>}
-    {busy && <p className="text-xs text-muted-foreground">Wait for the current turn to finish before changing the file connection.</p>}
-    {settingError && <p role="alert" className="text-sm text-destructive">{settingError}</p>}
-  </SettingsCard>
 }
 
-export function CodeFilesPanel({ sessionId, serverFiles }: { sessionId: string; serverFiles: ReactNode; onAsk: (message: string) => Promise<void> }) {
-  const preference = useCodeFilesPreference(sessionId)
-  if (preference.location === 'computer') return <div className="h-full overflow-y-auto p-4"><CodeLocalFilesSettings sessionId={sessionId} /></div>
-  // Server files are the normal case: no header, no label. The connection settings stay in the right-side settings tab.
+export function CodeFilesPanel({ serverFiles }: { sessionId: string; serverFiles: ReactNode; onAsk: (message: string) => Promise<void> }) {
   return <div className="h-full min-h-0">{serverFiles}</div>
 }

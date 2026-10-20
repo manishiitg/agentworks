@@ -8,7 +8,7 @@ export interface CodeLocalFileTarget { device_id: string; resource_id: string }
 export type CodeFilesPreference = { location: 'server' } | { location: 'computer'; target?: CodeLocalFileTarget }
 export interface LocalFolderGuard { read_paths?: string[]; write_paths?: string[]; read_only_paths?: string[]; blocked_write_paths?: string[]; blocked_paths?: string[] }
 export interface LocalFileDevice { device_id: string; cli_version?: string; cli_build?: string; resources: { id: string; writable: boolean; publication?: boolean; shell?: boolean; downloads?: boolean; guard: LocalFolderGuard }[] }
-const changed = 'code-files-location-changed'
+const changed = 'crew-laptop-connection-changed'
 const validID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
 
 type TabsLike = Record<string, { sessionId?: string | null; metadata?: { agentProfileProjectId?: string } }>
@@ -17,7 +17,7 @@ function projectOf(chatTabs: TabsLike, sessionId: string): string | undefined {
 }
 // Without a known workspace (no project behind the chat) the choice is kept per chat in this browser.
 function preferenceKey(sessionId: string) {
-  return `code-files-location:${JSON.stringify([getApiBaseUrl(), useWorkspaceConnectionStore.getState().activeWorkspaceId, useAuthStore.getState().user?.id ?? 'local', sessionId])}`
+  return `crew-laptop-connection:${JSON.stringify([getApiBaseUrl(), useWorkspaceConnectionStore.getState().activeWorkspaceId, useAuthStore.getState().user?.id ?? 'local', sessionId])}`
 }
 function stored(key: string) { try { return localStorage.getItem(key) } catch { return null } }
 function parse(value: string | null): CodeFilesPreference {
@@ -30,10 +30,10 @@ function parse(value: string | null): CodeFilesPreference {
   } catch { /* Unknown preferences use server files. */ }
   return { location: 'server' }
 }
-// `agentworks start` opens the site with the computer, the folder and the name of the Code workspace that uses it. The link is
+// `agentworks start` opens the site with the computer, the folder and the name of the Crew that uses it. The link is
 // kept (12 hours, until used) so a sign-in redirect cannot lose it; the workspace screen finds the workspace by name and saves the
 // folder in its product.json (takePendingLocalLink). Nothing is ever applied to a workspace the user did not name.
-const pendingLinkKey = 'code-local-pending-link'
+const pendingLinkKey = 'crew-laptop-pending-link'
 const pendingLinkTtlMs = 12 * 60 * 60 * 1000
 export interface PendingLocalLink { target: CodeLocalFileTarget; workspace: string }
 export function setPendingLocalLink(link: PendingLocalLink) {
@@ -57,10 +57,10 @@ export function takePendingLocalLink(): PendingLocalLink | undefined {
   return link
 }
 
-// The computer and folder a Code workspace works in is saved in its product.json (`local_files`), so it survives a refresh,
-// another browser and another device; switching to server files is a deliberate act, not a toggle. The workspace screen
-// loads it here (setProjectLocalFiles) and registers how to save it (registerLocalFilesPersister).
-const projectLocal = new Map<string, CodeLocalFileTarget | null>() // project ID -> target; null = the server's files
+// The optional laptop folder is saved independently of server mode and files.
+// Disconnecting removes only the extra tools. The workspace loads and persists
+// this selection through its product manifest.
+const projectLocal = new Map<string, CodeLocalFileTarget | null>() // project ID -> target; null = no laptop connection
 type LocalFilesPersister = (projectId: string, target: CodeLocalFileTarget | null) => Promise<void>
 let persister: LocalFilesPersister | undefined
 export function registerLocalFilesPersister(fn: LocalFilesPersister | undefined) { persister = fn }
@@ -70,14 +70,14 @@ export function setProjectLocalFiles(projectId: string, target: CodeLocalFileTar
   projectLocal.set(projectId, target)
   window.dispatchEvent(new Event(changed))
 }
-// A project made in Local mode has no folder until `agentworks start` links one: it is Local already, and says so.
-const projectModes = new Map<string, 'dev' | 'cowork' | 'local'>()
-export function setProjectMode(projectId: string, mode: 'dev' | 'cowork' | 'local') {
+// Server mode and optional laptop connection are independent.
+const projectModes = new Map<string, 'dev' | 'cowork'>()
+export function setProjectMode(projectId: string, mode: 'dev' | 'cowork') {
   if (projectModes.get(projectId) === mode) return
   projectModes.set(projectId, mode)
   window.dispatchEvent(new Event(changed))
 }
-export function useProjectMode(sessionId: string): 'dev' | 'cowork' | 'local' {
+export function useProjectMode(sessionId: string): 'dev' | 'cowork' {
   const project = useChatStore(state => projectOf(state.chatTabs, sessionId))
   return useSyncExternalStore(subscribe, () => (project && projectModes.get(project)) || 'dev', () => 'dev')
 }
@@ -85,7 +85,6 @@ function resolveRaw(sessionId: string): string | null {
   const project = projectOf(useChatStore.getState().chatTabs, sessionId)
   if (project && projectLocal.has(project)) {
     const target = projectLocal.get(project)
-    if (!target && projectModes.get(project) === 'local') return JSON.stringify({ location: 'computer' })
     return JSON.stringify(target ? { location: 'computer', target } : { location: 'server' })
   }
   return stored(preferenceKey(sessionId))
@@ -118,9 +117,6 @@ export function useCodeFilesPreference(sessionId: string) {
   return useMemo(() => parse(raw), [raw])
 }
 /** The selection is context, never authority; the backend rechecks local grants. */
-export function codeChatModeForChat(sessionId: string): 'server' | 'local' {
-  return readCodeFilesPreference(sessionId).location === 'computer' ? 'local' : 'server'
-}
 export function codeLocalFilesForChat(sessionId: string): CodeLocalFileTarget | undefined {
   const pref = readCodeFilesPreference(sessionId)
   if (pref.location === 'server') return undefined

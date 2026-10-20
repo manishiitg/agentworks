@@ -404,9 +404,6 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 	if err != nil {
 		return "", err
 	}
-	if c.s.api.codeLocalSession(conversation.SessionID) {
-		return "", conditiontrigger.PermanentError{Err: errors.New("watcher targets require a server Code chat")}
-	}
 	if newTab {
 		_ = RenameChatHistorySession(job.UserID, conversation.SessionID, job.WorkspacePath, newWatcherChatName(job.Schedule.Name, ev.ID))
 	}

@@ -914,7 +914,7 @@ func (s *ProductScheduleService) findInternalProductTrigger(ctx context.Context,
 	if err != nil {
 		return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, nil, err
 	}
-	if profile.ID == codeproduct.ProfileID && (!trigger.WorkspaceFunction || codeProjectMode(ctx, binding.WorkspacePath) == "local") {
+	if profile.ID == codeproduct.ProfileID && !trigger.WorkspaceFunction {
 		return agentprofiles.Profile{}, productConversationBinding{}, productProjectManifest{}, nil, ErrInternalTriggerNotFound
 	}
 	return profile, binding, manifest, trigger, nil

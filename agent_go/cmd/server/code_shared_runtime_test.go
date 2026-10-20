@@ -46,11 +46,7 @@ func TestNonOwnerCodeUsesIsolatedBridgeRuntime(t *testing.T) {
 		if target, err := os.Readlink(filepath.Join(cli, "project")); err != nil || target != source {
 			t.Fatalf("isolated project link: %s %v", target, err)
 		}
-		local := req
-		local.CodeChatMode = "local"
-		if _, err := api.resolveAgentProfileForQuery(ctx, &local, fixtureUserB, "qa-code"); err == nil {
-			t.Fatal("non-owner selected Local mode")
-		}
+
 	}
 }
 

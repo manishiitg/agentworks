@@ -6,14 +6,12 @@ import type { WorkWorkspaceView } from './WorkWorkspacePane'
 export function workWorkspacePanels({
   profileId = 'work',
   cowork = false,
-  localCodeSession = false,
   readOnly = false,
   showShell = false,
   enabledPanels,
 }: {
   profileId?: 'work' | 'code'
   cowork?: boolean
-  localCodeSession?: boolean
   readOnly?: boolean
   showShell?: boolean
   enabledPanels?: Set<string>
@@ -49,16 +47,14 @@ export function workWorkspacePanels({
           ? item.id === 'dashboard' && (!enabledPanels || enabledPanels.has('dashboard'))
           : !enabledPanels || enabledPanels.has(item.id) || item.id === 'suggestions' || (item.id === 'memory' && enabledPanels.has('skills'))
       )
-      .filter((item) => isWorkWorkspaceViewEnabled(item.id, undefined, localCodeSession))
-      .filter((item) => item.id !== 'suggestions' || !localCodeSession),
+      .filter((item) => isWorkWorkspaceViewEnabled(item.id, undefined)),
     ops: ops
       .filter((item) => !readOnly && isWorkWorkspaceViewEnabled(item.id, enabledPanels))
-      .filter((item) => item.id !== 'shell' || (showShell && !cowork))
-      .filter(() => !localCodeSession),
+      .filter((item) => item.id !== 'shell' || (showShell && !cowork)),
     setup: readOnly
       ? []
       : WORK_PANELS.setup.filter((item) =>
-          isWorkWorkspaceViewEnabled(item.id, enabledPanels, localCodeSession)
+          isWorkWorkspaceViewEnabled(item.id, enabledPanels)
         ),
   }
 }

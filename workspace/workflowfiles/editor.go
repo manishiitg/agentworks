@@ -583,32 +583,42 @@ func (e *Editor) WriteWithPatch(ctx context.Context, r WriteRequest, patch func(
 	return record.Receipt, nil
 }
 
-// Read returns a revision suitable for Write, with identical path and grant checks.
-func (e *Editor) Read(scope, p string, g *FolderGuard) (File, error) {
+// ReadBytes returns bounded file bytes using anchored opens and the existing read grants.
+func (e *Editor) ReadBytes(scope, p string, g *FolderGuard) ([]byte, error) {
 	p, err := CleanRelative(p)
 	if err != nil || p == "." {
-		return File{}, fileError(400, "invalid file path")
+		return nil, fileError(400, "invalid file path")
 	}
 	if Private(p) || !g.Allows(p, false) {
-		return File{}, fileError(403, "file is private or outside read grants")
+		return nil, fileError(403, "file is private or outside read grants")
 	}
 	root, err := OpenDirectory(e.root, scope, false)
 	if err != nil {
-		return File{}, err
+		return nil, err
 	}
 	defer root.Close()
 	parent, err := OpenDirectory(root, path.Dir(p), false)
 	if os.IsNotExist(err) {
-		return File{Path: p, Revision: MissingRevision}, nil
+		return nil, nil
 	}
 	if err != nil {
-		return File{}, err
+		return nil, err
 	}
 	defer parent.Close()
 	data, _, err := readRegular(parent, path.Base(p))
 	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+// Read returns a revision suitable for Write, with identical path and grant checks.
+func (e *Editor) Read(scope, p string, g *FolderGuard) (File, error) {
+	data, err := e.ReadBytes(scope, p, g)
+	if err != nil {
 		return File{}, err
 	}
+	p, _ = CleanRelative(p)
 	// A binary file returns its revision and size, never its bytes as text, so
 	// it can be replaced with a content_base64 write.
 	if data != nil && (len(data) > MaxFileBytes || !utf8.Valid(data) || strings.ContainsRune(string(data), 0)) {

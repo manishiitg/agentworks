@@ -255,9 +255,9 @@ func (api *StreamingAPI) handleReserveAgentProfileProject(w http.ResponseWriter,
 		return
 	}
 	switch body.Mode {
-	case "", "dev", "cowork", "local":
+	case "", "dev", "cowork":
 	default:
-		writeAgentProfileError(w, http.StatusBadRequest, "Choose Dev, Cowork or Local for this Crew.")
+		writeAgentProfileError(w, http.StatusBadRequest, "Choose Dev or Cowork for this Crew.")
 		return
 	}
 	defaults := newProjectRuntimeDefaults(profile.ID, body.Mode)
@@ -322,9 +322,7 @@ func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agent
 		if sharedOnly && !crewSharedWith(projectRoot, claims.UserID) && !crewIsCoOwner(projectRoot, claims.UserID) {
 			continue
 		}
-		if sharedOnly && profile.ID == "code" && codeProjectMode(ctx, projectRoot) == "local" {
-			continue
-		}
+
 		manifest, err := readCrewProjectManifests(ctx, profile.ID, projectRoot)
 		if err != nil || seenProjects[manifest.ID] {
 			continue
