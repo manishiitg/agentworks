@@ -68,6 +68,11 @@ func (api *StreamingAPI) handleCrewLaptopSettings(w http.ResponseWriter, r *http
 	if !ok {
 		return
 	}
+	api.serveCrewLaptopSettings(w, r, root)
+}
+
+// Both website and MCP resolve ownership before using the same saved grants.
+func (api *StreamingAPI) serveCrewLaptopSettings(w http.ResponseWriter, r *http.Request, root string) {
 	claims := GetUserFromContext(r.Context())
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Method == http.MethodGet {
@@ -120,7 +125,7 @@ func (api *StreamingAPI) handleCrewLaptopSettings(w http.ResponseWriter, r *http
 	// Reducing/removing grants also works while the computer is offline.
 
 	if needsLaptop {
-		if _, err := api.localDeviceCall(r.Context(), claims, settings.DeviceID, localfiles.Request{Operation: "validate_folders", CrewID: root, Folders: settings.Folders}); err != nil {
+		if _, err := api.laptopSettingsDeviceCall(r.Context(), claims, settings.DeviceID, localfiles.Request{Operation: "validate_folders", CrewID: root, Folders: settings.Folders}); err != nil {
 			externalError(w, 400, "folder_unavailable", err.Error())
 			return
 		}

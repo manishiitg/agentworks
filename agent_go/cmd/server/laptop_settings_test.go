@@ -13,10 +13,11 @@ import (
 )
 
 func TestLaptopSettingsOwnerAndOfflineDowngrade(t *testing.T) {
-	tokenTestSetup(t)
-	api, _ := newCodePrivacyFixture(t)
+	f := newMCPLaptopFixture(t)
+	api := f.api
+	const root = "Crew/dashboard-team"
 	request := func(method, owner, body string) *http.Request {
-		return mux.SetURLVars(profileRouteRequest(method, "/laptop", []byte(body), owner), map[string]string{"id": "code", "project_id": "c0de0001-0000"})
+		return mux.SetURLVars(profileRouteRequest(method, "/laptop", []byte(body), owner), map[string]string{"id": "code", "project_id": "dashboard-team"})
 	}
 	for _, user := range []string{"owner", "other"} {
 		response := httptest.NewRecorder()
@@ -25,7 +26,7 @@ func TestLaptopSettingsOwnerAndOfflineDowngrade(t *testing.T) {
 			t.Fatalf("%s read: %d %s", user, response.Code, response.Body.String())
 		}
 	}
-	file, err := laptopSettingsPath("owner", codePrivacyOwnerRoot)
+	file, err := laptopSettingsPath("owner", root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +45,7 @@ func TestLaptopSettingsOwnerAndOfflineDowngrade(t *testing.T) {
 	if response.Code != 200 {
 		t.Fatalf("offline downgrade: %d %s", response.Code, response.Body.String())
 	}
-	saved, err := readLaptopSettings("owner", codePrivacyOwnerRoot)
+	saved, err := readLaptopSettings("owner", root)
 	if err != nil || saved.Folders[0].Access != "read" {
 		t.Fatalf("permission did not save: %+v %v", saved, err)
 	}

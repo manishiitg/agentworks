@@ -236,6 +236,7 @@ func externalTools() ([]externalTool, error) {
 		externalCodeRunDefinitions(add)
 		externalAgentEmailDefinitions(add)
 		externalWorkspaceDefinitions(add)
+		externalLaptopAccessDefinition(add)
 		// Shared-account token limits (get: code:review or users:manage; set: users:manage, admins).
 		externalTokenLimitDefinitions(add)
 		externalUsersDefinition(add)
@@ -636,6 +637,14 @@ func (api *StreamingAPI) handleExternalCall(w http.ResponseWriter, r *http.Reque
 	}
 	if isExternalVaultTool(tool.Name) {
 		api.externalVaultCall(w, r, tool.Name, call.Arguments)
+		return
+	}
+	if tool.Name == "execute_local_shell_command" || tool.Name == "copy_local_file_to_crew" {
+		api.externalLaptopToolCall(w, r, tool.Name, call.Arguments)
+		return
+	}
+	if tool.Name == "manage_laptop_access" {
+		api.externalLaptopAccessCall(w, r, call.Arguments)
 		return
 	}
 	if tool.Name == "workspace" {

@@ -27,6 +27,37 @@ Pass a unique `submission_id` for each new function call or message; reuse it
 when retrying an uncertain delivery. A function returns `call_id`; a conversational
 send returns an inbox acknowledgement, with optional explicit replies.
 
+## Use your laptop from MCP
+
+Your Crew keeps running on the server. Its normal shell and files stay there.
+To work with your computer too, open **Crew → Connections → Local laptop** for
+the download and sign-in steps. Install AgentWorks once on that computer and
+keep it running. The same connection serves AgentBridge and laptop access;
+starting it grants no folder automatically.
+
+Then tell your own MCP agent, for example: “Connect my Reports folder to this
+Crew with Read access” or “Allow commands in my project folder.” It can list
+your connected computer, browse folder names, and save the same permissions as
+the website with `manage_laptop_access`. Its `workspace_id` comes from
+`workspace action=list`. Read allows file copies; Read & write also permits
+commands. Removing access takes effect on subsequent calls, including while
+the computer is offline.
+
+- `execute_local_shell_command` runs on your computer in a granted Read & write
+  folder. Commands use your computer’s existing operating-system permissions;
+  the folder is their starting location. Server environment and secrets are
+  never forwarded. If a connection or timeout leaves the outcome uncertain,
+  inspect the result before retrying a command with effects.
+- `copy_local_file_to_crew` copies a local file into the Crew’s normal writable
+  areas, including binary files up to 11 MiB. It replaces the destination
+  through the normal guarded writer. Bytes do not pass through the model.
+
+Both the Crew and laptop must be yours. Sharing a Crew does not share your
+laptop. These are explicit tools for your own MCP connection; Run callers,
+schedules and Pulse do not inherit access. There is no automatic sync or
+server-to-laptop copy. When the computer disconnects, normal server work
+continues.
+
 ## Messages and function calls
 
 Use `messages` action=send to talk to an agent, and action=read to read explicit

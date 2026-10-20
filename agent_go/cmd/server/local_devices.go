@@ -252,6 +252,11 @@ func (api *StreamingAPI) localDeviceList(claims *UserClaims) []localfiles.Hello 
 	if !websiteDeviceClaims(claims) {
 		return devices
 	}
+	return api.localDeviceListForOwner(claims)
+}
+
+func (api *StreamingAPI) localDeviceListForOwner(claims *UserClaims) []localfiles.Hello {
+	devices := []localfiles.Hello{}
 	if _, err := accessTokenClaims(accesstokens.Token{UserID: claims.UserID, Username: claims.Username, Email: claims.Email, Provider: claims.Provider}); err != nil {
 		return devices
 	}
@@ -272,6 +277,11 @@ func (api *StreamingAPI) localDeviceCall(ctx context.Context, claims *UserClaims
 	if !websiteDeviceClaims(claims) {
 		return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Local devices require their owner's website login"}
 	}
+	return api.localDeviceCallForOwner(ctx, claims, deviceID, request)
+}
+
+// Caller wrappers establish the permitted surface and operation first.
+func (api *StreamingAPI) localDeviceCallForOwner(ctx context.Context, claims *UserClaims, deviceID string, request localfiles.Request) (localfiles.Response, error) {
 	// Resolve the account live, including read-only status and disabled accounts.
 	current, err := accessTokenClaims(accesstokens.Token{UserID: claims.UserID, Username: claims.Username, Email: claims.Email, Provider: claims.Provider})
 	if err != nil {
@@ -440,8 +450,6 @@ func (api *StreamingAPI) registerLaptopTools(registrar definitionToolRegistrar, 
 	if err != nil || settings.DeviceID != selected.DeviceID || len(settings.Folders) == 0 {
 		return nil
 	}
-	folderInfo, _ := json.Marshal(settings.Folders)
-	allowedFolders := " Allowed local folders (use the ID in folder): " + string(folderInfo)
 	check := func(ctx context.Context) (*UserClaims, error) {
 		if !api.laptopTurnAllowed(sessionID, claims.UserID, selected) {
 			log.Printf("[LAPTOP_TOOL] session=%s caller=%s operation=deny reason=current_interactive_owner_turn", sessionID, claims.UserID)
@@ -470,6 +478,18 @@ func (api *StreamingAPI) registerLaptopTools(registrar definitionToolRegistrar, 
 		}
 		return caller, nil
 	}
+	return api.registerGrantedLaptopTools(registrar, gate, sessionID, root, settings, check)
+}
+
+// The website live-turn guard and MCP caller guard share the execution code.
+func (api *StreamingAPI) registerGrantedLaptopTools(registrar definitionToolRegistrar, gate *productToolGate, sessionID, root string, settings crewLaptopSettings, check func(context.Context) (*UserClaims, error)) error {
+	selected := laptopConnectionTarget{DeviceID: settings.DeviceID}
+	activity := sessionID
+	if activity == "" {
+		activity = "mcp"
+	}
+	folderInfo, _ := json.Marshal(settings.Folders)
+	allowedFolders := " Allowed local folders (use the ID in folder): " + string(folderInfo)
 	gate.Declare("copy_local_file_to_crew")
 	hasWrite := false
 	for _, folder := range settings.Folders {
@@ -505,7 +525,7 @@ func (api *StreamingAPI) registerLaptopTools(registrar definitionToolRegistrar, 
 				}
 				opCtx, cancel := context.WithTimeout(ctx, time.Duration(request.ShellTimeout()+10)*time.Second)
 				defer cancel()
-				response, err := api.localDeviceCall(opCtx, caller, selected.DeviceID, request)
+				response, err := api.localDeviceCallForOwner(opCtx, caller, selected.DeviceID, request)
 				if err != nil {
 					return "", err
 				}
@@ -513,7 +533,7 @@ func (api *StreamingAPI) registerLaptopTools(registrar definitionToolRegistrar, 
 					return "", errors.New("Laptop returned no command result")
 				}
 				result := response.Shell
-				log.Printf("[LAPTOP_TOOL] session=%s owner=%s operation=shell request=%s exit=%d", sessionID, caller.UserID, request.RequestID, result.ExitCode)
+				log.Printf("[LAPTOP_TOOL] session=%s owner=%s operation=shell request=%s exit=%d", activity, caller.UserID, request.RequestID, result.ExitCode)
 				return workspace.MarshalShellResultForAgent(workspace.ShellCommandResult{Stdout: result.Stdout, Stderr: result.Stderr, ExitCode: result.ExitCode, TimedOut: result.TimedOut})
 			}, time.Duration(localfiles.MaxShellTimeout+15)*time.Second, "workspace_advanced"); err != nil {
 			return err
@@ -551,7 +571,7 @@ func (api *StreamingAPI) registerLaptopTools(registrar definitionToolRegistrar, 
 				expected = current.Revision
 			}
 			id := uuid.NewString()
-			response, err := api.localDeviceCall(ctx, caller, selected.DeviceID, localfiles.Request{CrewID: root, ResourceID: externalArg(args, "folder"), Operation: "copy_read", Path: externalArg(args, "local_path"), RequestID: id})
+			response, err := api.localDeviceCallForOwner(ctx, caller, selected.DeviceID, localfiles.Request{CrewID: root, ResourceID: externalArg(args, "folder"), Operation: "copy_read", Path: externalArg(args, "local_path"), RequestID: id})
 			if err != nil {
 				if strings.Contains(strings.ToLower(err.Error()), "unsupported operation") {
 					return "", errors.New("Update AgentWorks on your laptop, restart it and choose the connected folder again to copy files")
@@ -571,7 +591,7 @@ func (api *StreamingAPI) registerLaptopTools(registrar definitionToolRegistrar, 
 			if recorder.Code != http.StatusOK {
 				return "", fmt.Errorf("Crew file copy rejected: %s", strings.TrimSpace(recorder.Body.String()))
 			}
-			log.Printf("[LAPTOP_TOOL] session=%s owner=%s operation=copy_in request=%s destination=%q bytes=%d", sessionID, caller.UserID, id, destination, len(response.Bytes))
+			log.Printf("[LAPTOP_TOOL] session=%s owner=%s operation=copy_in request=%s destination=%q bytes=%d", activity, caller.UserID, id, destination, len(response.Bytes))
 			return recorder.Body.String(), nil
 		}, 180*time.Second, "workspace_advanced")
 }
