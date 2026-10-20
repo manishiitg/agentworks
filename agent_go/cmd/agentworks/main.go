@@ -122,7 +122,7 @@ func newCommand(o *options) *cobra.Command {
 	root.PersistentFlags().StringVar(&o.configPath, "config", "", "Private connection config path")
 	root.PersistentFlags().StringVar(&o.guidanceSessionID, "guidance-session", "", "Guidance receipt for this conversation (omit for explicit fresh preparation)")
 	root.PersistentFlags().BoolVar(&o.jsonOutput, "json", false, "Emit compact JSON results and structured errors")
-	root.AddCommand(loginCommand(o), loginsCommand(o), logoutCommand(o), skillsCommand(o), versionCommand(o), updateCommand(o), executorCommand(o), startCommand(o), stopCommand(o), statusCommand(o), watchCommand(o), debugCommand(o), serveShareCommand(o), pluginCommand(o), bridgeCommand(o), attachPluginCommand(o), claudeLauncherCommand(o), detachAgentCommand(o), agentsCommand(o), usageCommand(o), shareCommand(o, false), shareCommand(o, true), setupCommand(o))
+	root.AddCommand(loginCommand(o), loginsCommand(o), logoutCommand(o), skillsCommand(o), versionCommand(o), updateCommand(o), startCommand(o), stopCommand(o), statusCommand(o), watchCommand(o), debugCommand(o), serveShareCommand(o), pluginCommand(o), bridgeCommand(o), attachPluginCommand(o), claudeLauncherCommand(o), detachAgentCommand(o), agentsCommand(o), usageCommand(o), shareCommand(o, false), shareCommand(o, true), setupCommand(o))
 	toolsCmd := &cobra.Command{Use: "tools", Short: "Discover and call the server's current tools"}
 	toolsCmd.AddCommand(&cobra.Command{Use: "list", Args: cobra.NoArgs, Short: "List tools with authoritative JSON schemas", RunE: func(cmd *cobra.Command, _ []string) error {
 		client, err := o.client()
@@ -534,6 +534,12 @@ func logoutCommand(o *options) *cobra.Command {
 			if err := agentworksclient.SaveConfig(path, cfg); err != nil {
 				return err
 			}
+		}
+		if err := stopLaptopConnections(o); err != nil {
+			return err
+		}
+		if err := stopAgentBridge(cmd.Context()); err != nil {
+			return err
 		}
 		return o.output(map[string]any{"logged_out": true, "environment_token_active": o.getenv("AGENTWORKS_TOKEN") != ""})
 	}}

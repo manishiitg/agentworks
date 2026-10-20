@@ -130,7 +130,12 @@ func (e *Executor) shell(ctx context.Context, g Grant, r Request) (*ShellResult,
 	} else {
 		iso := &security.Isolator{BaseDir: root, WorkDir: workDir, StrictAllowlist: true, AllowNetwork: true, PrivateScratch: true}
 		commandGrants := []Grant{g}
-		if downloads != nil {
+		if r.CrewID != "" {
+			commandGrants = nil
+			for _, grant := range e.grants {
+				commandGrants = append(commandGrants, grant)
+			}
+		} else if downloads != nil {
 			commandGrants = append(commandGrants, *downloads)
 		}
 		for _, grant := range commandGrants {

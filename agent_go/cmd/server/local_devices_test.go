@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -49,7 +50,9 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 	root := filepath.Join(base, "files")
 	os.Mkdir(root, 0700)
 	os.WriteFile(filepath.Join(root, "readme.md"), []byte("laptop content"), 0600)
-	executor, err := localfiles.Open("laptop", []localfiles.Grant{{Resource: localfiles.Resource{ID: "project", Writable: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}, ReadOnlyPaths: []string{"locked"}}}, Root: root, State: filepath.Join(base, "state")}})
+	executor, err := localfiles.OpenSettings("laptop", filepath.Join(base, "state"), nil)
+	saveTestLaptopSettings(t, "laptop", []localfiles.FolderSelection{{ID: "project", Path: root, Access: "write"}, {ID: "locked", Path: filepath.Join(root, "locked"), Access: "read"}})
+	os.Mkdir(filepath.Join(root, "locked"), 0700)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,10 +77,11 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 	if err = api.validateLaptopConnection(owner, &laptopConnectionTarget{DeviceID: "laptop", ResourceID: "project"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = api.localDeviceCall(t.Context(), owner, "laptop", localfiles.Request{ResourceID: "not-shared", Operation: "read", Path: "readme.md"}); wf.StatusCode(err) != 403 {
+	if _, err = api.localDeviceCall(t.Context(), owner, "laptop", localfiles.Request{CrewID: "Crew/local-test", ResourceID: "not-shared", Operation: "read", Path: "readme.md"}); wf.StatusCode(err) != 403 {
 		t.Fatal("unshared Code folder could read files")
 	}
-	request := localfiles.Request{ResourceID: "project", Operation: "read", Path: "readme.md"}
+	request := localfiles.Request{CrewID: "Crew/local-test", ResourceID: "project", Operation: "read", Path: "readme.md"}
+	request.Folders = []localfiles.FolderSelection{{ID: "forged", Path: "/", Access: "write"}} // ignored: saved Crew grants decide
 	response, err := api.localDeviceCall(t.Context(), owner, "laptop", request)
 	if err != nil || response.File.Content != "laptop content" {
 		t.Fatalf("read %+v %v", response, err)
@@ -121,25 +125,33 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "sample.bin"), binary, 0600); err != nil {
 		t.Fatal(err)
 	}
-	copied, err := api.localDeviceCall(t.Context(), owner, "laptop", localfiles.Request{ResourceID: "project", Operation: "copy_read", Path: "sample.bin"})
+	copied, err := api.localDeviceCall(t.Context(), owner, "laptop", localfiles.Request{CrewID: "Crew/local-test", ResourceID: "project", Operation: "copy_read", Path: "sample.bin"})
 	if err != nil || string(copied.Bytes) != string(binary) {
 		t.Fatalf("binary transfer: %v", err)
 	}
-	if _, err := registrar.tools["copy_local_file_to_crew"].exec(t.Context(), map[string]interface{}{"local_path": "sample.bin", "crew_path": "uploads/import.bin"}); err != nil {
+	if _, err := registrar.tools["copy_local_file_to_crew"].exec(t.Context(), map[string]interface{}{"folder": "project", "local_path": "sample.bin", "crew_path": "uploads/import.bin"}); err != nil {
 		t.Fatal(err)
 	}
 	stored, err := os.ReadFile(filepath.Join(os.Getenv("WORKSPACE_DOCS_PATH"), "Crew/local-test/uploads/import.bin"))
 	if err != nil || string(stored) != string(binary) {
 		t.Fatalf("Crew writer changed bytes: %v", err)
 	}
-	if _, err := registrar.tools["copy_local_file_to_crew"].exec(t.Context(), map[string]interface{}{"local_path": "sample.bin", "crew_path": "product.json"}); err == nil {
+	if _, err := registrar.tools["copy_local_file_to_crew"].exec(t.Context(), map[string]interface{}{"folder": "project", "local_path": "sample.bin", "crew_path": "product.json"}); err == nil {
 		t.Fatal("copy overwrote Crew manifest")
 	}
 	for _, name := range []string{"../escape", ".env", "locked/private.key"} {
-		if _, err := api.localDeviceCall(t.Context(), owner, "laptop", localfiles.Request{ResourceID: "project", Operation: "copy_read", Path: name}); wf.StatusCode(err) != 403 {
+		if _, err := api.localDeviceCall(t.Context(), owner, "laptop", localfiles.Request{CrewID: "Crew/local-test", ResourceID: "project", Operation: "copy_read", Path: name}); wf.StatusCode(err) != 403 {
 			t.Fatalf("private copy %s: %v", name, err)
 		}
 	}
+	saveTestLaptopSettings(t, "laptop", []localfiles.FolderSelection{{ID: "project", Path: root, Access: "read"}})
+	if _, err := api.localDeviceCall(t.Context(), owner, "laptop", localfiles.Request{CrewID: "Crew/local-test", ResourceID: "project", Operation: "shell", Path: ".", Command: "touch nope", RequestID: "read-shell"}); wf.StatusCode(err) != 403 {
+		t.Fatalf("read allowed shell: %v", err)
+	}
+	if _, err := api.localDeviceCall(t.Context(), owner, "laptop", localfiles.Request{CrewID: "Crew/other", ResourceID: "project", Operation: "read", Path: "readme.md"}); wf.StatusCode(err) != 403 {
+		t.Fatalf("Crew grants leaked: %v", err)
+	}
+	saveTestLaptopSettings(t, "laptop", []localfiles.FolderSelection{{ID: "project", Path: root, Access: "write"}, {ID: "locked", Path: filepath.Join(root, "locked"), Access: "read"}})
 	request.Operation = "write"
 	request.Content = "edited locally"
 	request.ExpectedRevision = response.File.Revision
@@ -182,12 +194,13 @@ func TestLocalDeviceConnectionOwnerToolsRevocationAndOffline(t *testing.T) {
 }
 func TestLocalDeviceDisconnectFailsPendingWithoutRetry(t *testing.T) {
 	api, server, _, _, token := localDeviceTestServer(t)
+	saveTestLaptopSettings(t, "pending", []localfiles.FolderSelection{{ID: "project", Path: "/tmp/project", Access: "write"}})
 	conn, _, err := websocket.DefaultDialer.Dial(strings.Replace(server.URL, "http://", "ws://", 1)+"/api/external/v1/devices/connect", http.Header{"Authorization": []string{"Bearer " + token}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	hello := localfiles.Hello{Version: 1, DeviceID: "pending", Resources: []localfiles.Resource{{ID: "project", Writable: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}}}}}
+	hello := localfiles.Hello{SettingsManaged: true, Version: 1, DeviceID: "pending", Resources: []localfiles.Resource{{ID: "project", Writable: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}}}}}
 	if err = conn.WriteJSON(hello); err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +210,7 @@ func TestLocalDeviceDisconnectFailsPendingWithoutRetry(t *testing.T) {
 	}
 	returned := make(chan error, 1)
 	go func() {
-		_, err := api.localDeviceCall(context.Background(), &UserClaims{UserID: "owner", Username: "owner"}, "pending", localfiles.Request{ResourceID: "project", Operation: "write", Path: "one.md", Content: "one", ExpectedRevision: "missing", RequestID: "pending-write"})
+		_, err := api.localDeviceCall(context.Background(), &UserClaims{UserID: "owner", Username: "owner"}, "pending", localfiles.Request{CrewID: "Crew/local-test", ResourceID: "project", Operation: "write", Path: "one.md", Content: "one", ExpectedRevision: "missing", RequestID: "pending-write"})
 		returned <- err
 	}()
 	var dispatched localfiles.Request
@@ -276,12 +289,13 @@ func TestLocalDeviceToolsRejectConnectorPrincipals(t *testing.T) {
 
 func TestLocalDeviceShellUsesSelectedLaptopAndCancelsOnWire(t *testing.T) {
 	api, server, _, _, token := localDeviceTestServer(t)
+	saveTestLaptopSettings(t, "shell-laptop", []localfiles.FolderSelection{{ID: "project", Path: "/tmp/project", Access: "write"}})
 	conn, _, err := websocket.DefaultDialer.Dial(strings.Replace(server.URL, "http://", "ws://", 1)+"/api/external/v1/devices/connect", http.Header{"Authorization": []string{"Bearer " + token}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	hello := localfiles.Hello{Version: localfiles.Version, DeviceID: "shell-laptop", Resources: []localfiles.Resource{{ID: "project", Writable: true, Shell: true, Patch: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}, BlockedPaths: []string{"blocked"}, ReadOnlyPaths: []string{"locked"}}}}}
+	hello := localfiles.Hello{SettingsManaged: true, Version: localfiles.Version, DeviceID: "shell-laptop", Resources: []localfiles.Resource{{ID: "project", Writable: true, Shell: true, Patch: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}, BlockedPaths: []string{"blocked"}, ReadOnlyPaths: []string{"locked"}}}}}
 	hello.Resources = append(hello.Resources,
 		localfiles.Resource{ID: "reference-downloads", Downloads: true, Patch: true, Shell: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}}},
 		localfiles.Resource{ID: "downloads", Writable: true, Shell: true, Patch: true, Guard: wf.FolderGuard{ReadPaths: []string{"."}, WritePaths: []string{"."}}},
@@ -299,20 +313,6 @@ func TestLocalDeviceShellUsesSelectedLaptopAndCancelsOnWire(t *testing.T) {
 	reg := &recordingRegistrar{}
 	if err = api.registerLaptopTools(reg, newProductToolGate(nil), owner, false, localWorkspaceTestSession(api, owner, target), "Crew/local-test", target); err != nil {
 		t.Fatal(err)
-	}
-	for _, resource := range []string{"reference", "older-cli"} {
-		inspect := &recordingRegistrar{}
-		if err := api.registerLaptopTools(inspect, newProductToolGate(nil), owner, false, localWorkspaceTestSession(api, owner, &laptopConnectionTarget{DeviceID: "shell-laptop", ResourceID: resource}), "Crew/local-test", &laptopConnectionTarget{DeviceID: "shell-laptop", ResourceID: resource}); err != nil {
-			t.Fatal(err)
-		}
-		if len(inspect.tools) != 2 || inspect.tools["execute_local_shell_command"].exec == nil {
-			t.Fatalf("inspection tools for %s: %+v", resource, inspect.tools)
-		}
-	}
-	downloadTarget := &laptopConnectionTarget{DeviceID: "shell-laptop", ResourceID: "reference-downloads"}
-	downloadTools := &recordingRegistrar{}
-	if err := api.registerLaptopTools(downloadTools, newProductToolGate(nil), owner, false, localWorkspaceTestSession(api, owner, downloadTarget), "Crew/local-test", downloadTarget); err != nil || len(downloadTools.tools) != 2 {
-		t.Fatalf("Downloads tools missing: %+v %v", downloadTools.tools, err)
 	}
 	localWorkspaceTestSession(api, owner, target)
 	tool, ok := reg.tools["execute_local_shell_command"]
@@ -348,8 +348,8 @@ func TestLocalDeviceShellUsesSelectedLaptopAndCancelsOnWire(t *testing.T) {
 	if err = <-returned; err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"../escape", "blocked", "locked"} {
-		r := localfiles.Request{Operation: "shell", ResourceID: "project", Path: path, Command: "echo no", RequestID: "guard"}
+	for _, path := range []string{"../escape", ".env"} {
+		r := localfiles.Request{CrewID: "Crew/local-test", Operation: "shell", ResourceID: "project", Path: path, Command: "echo no", RequestID: "guard"}
 		if _, err := api.localDeviceCall(t.Context(), owner, "shell-laptop", r); wf.StatusCode(err) != 403 {
 			t.Fatalf("shell path admitted %s %v", path, err)
 		}
@@ -360,7 +360,7 @@ func TestLocalDeviceShellUsesSelectedLaptopAndCancelsOnWire(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	go func() {
-		_, err := api.localDeviceCall(ctx, owner, "shell-laptop", localfiles.Request{Operation: "shell", ResourceID: "project", Path: ".", Command: "sleep 100", RequestID: "cancel-command"})
+		_, err := api.localDeviceCall(ctx, owner, "shell-laptop", localfiles.Request{CrewID: "Crew/local-test", Operation: "shell", ResourceID: "project", Path: ".", Command: "sleep 100", RequestID: "cancel-command"})
 		returned <- err
 	}()
 	if err = conn.ReadJSON(&dispatched); err != nil {
@@ -418,5 +418,20 @@ func TestLocalDeviceOAuthConnectionOutlivesItsAccessTokenButNotSignOut(t *testin
 	}
 	if device.authorized(context.Background()) {
 		t.Fatal("signing the grant out must end the connection")
+	}
+}
+
+func saveTestLaptopSettings(t *testing.T, device string, folders []localfiles.FolderSelection) {
+	t.Helper()
+	file, err := laptopSettingsPath("owner", "Crew/local-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.MkdirAll(filepath.Dir(file), 0700); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(crewLaptopSettings{DeviceID: device, Folders: folders})
+	if err = os.WriteFile(file, data, 0600); err != nil {
+		t.Fatal(err)
 	}
 }

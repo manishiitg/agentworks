@@ -10,7 +10,7 @@ const reserveProject = vi.hoisted(() => vi.fn().mockResolvedValue({ shared: fals
 vi.mock('../../services/api', () => ({ agentApi: { getPlannerFileContent, updatePlannerFile, getPlannerFiles, listOwnSharedProjects, reserveProject, createProductProject: createServerProject } }))
 
 import { agentApi } from '../../services/api'
-import { createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, productMode, updateProductProjectLocalFiles, type ProductProject } from './productProjects'
+import { createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, productMode,  type ProductProject } from './productProjects'
 
 describe('parseProductProjectManifest', () => {
   it('loads the project bot identity and icon', () => {
@@ -64,27 +64,6 @@ it('uses the server creation response and never writes project manifests or fall
   await expect(createProductProject({ product: 'code', root: 'Chats/Code/projects', sessionPrefix: 'code:project', slugFallback: 'code', commitLabel: 'Create Crew', title: 'Assistant', description: '' })).rejects.toThrow('Creation refused')
   expect(updatePlannerFile).not.toHaveBeenCalled()
   expect(reserveProject).not.toHaveBeenCalled()
-})
-
-describe('Code local files in product.json', () => {
-  const base = { schema_version: 1, product: 'code', id: 'code-1', title: 'App', session_id: 'code:1' }
-  it('reads laptop_connection, ignoring a malformed one', () => {
-    expect(parseProductProjectManifest(JSON.stringify({ ...base, laptop_connection: { device_id: 'laptop', resource_id: 'app' } }), 'Chats/Code/app', 'code')?.localFiles).toEqual({ device_id: 'laptop', resource_id: 'app' })
-    expect(parseProductProjectManifest(JSON.stringify({ ...base, laptop_connection: { device_id: '../x', resource_id: 'app' } }), 'Chats/Code/app', 'code')?.localFiles).toBeUndefined()
-  })
-
-  it('writes and clears laptop_connection without touching the rest of product.json', async () => {
-    const project = { product: 'code', id: 'code-1', title: 'App', workspacePath: 'Chats/Code/app' } as ProductProject<'code'>
-    getPlannerFileContent.mockResolvedValue({ content: JSON.stringify({ ...base, identity: { name: 'Nova' } }) })
-    const saved = await updateProductProjectLocalFiles(project, { device_id: 'laptop', resource_id: 'app' }, 'Set files location')
-    const written = JSON.parse(updatePlannerFile.mock.calls[0][1])
-    expect(written.laptop_connection).toEqual({ device_id: 'laptop', resource_id: 'app' })
-    expect(written.identity).toEqual({ name: 'Nova' })
-    expect(saved.localFiles).toEqual({ device_id: 'laptop', resource_id: 'app' })
-    getPlannerFileContent.mockResolvedValue({ content: JSON.stringify({ ...base, laptop_connection: written.laptop_connection }) })
-    await updateProductProjectLocalFiles(project, undefined, 'Set files location')
-    expect(JSON.parse(updatePlannerFile.mock.calls[1][1]).laptop_connection).toBeUndefined()
-  })
 })
 
 describe('updateProductProjectIdentity', () => {

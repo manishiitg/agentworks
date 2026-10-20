@@ -39,11 +39,11 @@ type localDeviceConnection struct {
 
 type laptopConnectionTarget struct {
 	DeviceID   string `json:"device_id"`
-	ResourceID string `json:"resource_id"`
+	ResourceID string `json:"resource_id,omitempty"`
 }
 
 func (target *laptopConnectionTarget) valid() bool {
-	return target != nil && localfiles.ValidID(target.DeviceID) && localfiles.ValidID(target.ResourceID)
+	return target != nil && localfiles.ValidID(target.DeviceID)
 }
 
 // A connection is extra authority for one person's live Builder turn. It never
@@ -55,7 +55,7 @@ func laptopConnectionTurn(req QueryRequest, profile *resolvedAgentProfile) bool 
 }
 
 func laptopConnectionInstructions() string {
-	return "\nThis Crew runs on the server. Ordinary shell, files, skills, connections, secrets, functions and background work use the server. An optional owner laptop connection adds execute_local_shell_command and copy_local_file_to_crew. Use the local shell only when work needs that connected computer; paths are relative to its granted folder. Copy local files explicitly into the Crew when needed; there is no automatic sync. Local output and copied files reach this server and the model and may be saved in chat history. Never put server secrets, SECRET_* values, AGENTWORKS_* environment values or login data into a laptop command. If the laptop is not connected, explain that the local action is unavailable and continue server work; never retry an uncertain command blindly.\n"
+	return "\nThis Crew runs on the server. Ordinary shell, files, skills, connections, secrets, functions and background work use the server. The owner may allow laptop folders in Crew Settings. Read grants provide copy_local_file_to_crew; Read & write also enables execute_local_shell_command. Each tool lists the allowed folders and their IDs. Use the local shell only when work needs that connected computer; paths are relative to its granted folder. Copy local files explicitly into the Crew when needed; there is no automatic sync. Local output and copied files reach this server and the model and may be saved in chat history. Never put server secrets, SECRET_* values, AGENTWORKS_* environment values or login data into a laptop command. If the laptop is not connected, explain that the local action is unavailable and continue server work; never retry an uncertain command blindly.\n"
 }
 
 // Retained tool callbacks are reused between turns. Check the live turn and
@@ -79,22 +79,13 @@ func (api *StreamingAPI) validateLaptopConnection(claims *UserClaims, target *la
 	return nil
 }
 
-func (api *StreamingAPI) laptopConnectionPolicyKey(claims *UserClaims, target *laptopConnectionTarget, readOnly bool) string {
-	for _, hello := range api.localDeviceList(claims) {
-		if hello.DeviceID != target.DeviceID {
-			continue
-		}
-		for _, resource := range hello.Resources {
-			if resource.ID == target.ResourceID {
-				data, _ := json.Marshal(struct {
-					Resource localfiles.Resource `json:"resource"`
-					ReadOnly bool                `json:"read_only"`
-				}{resource, readOnly})
-				return string(data)
-			}
-		}
+func (api *StreamingAPI) laptopConnectionPolicyKey(claims *UserClaims, target *laptopConnectionTarget, readOnly bool, root string) string {
+	settings, err := readLaptopSettings(claims.UserID, root)
+	if err != nil {
+		return "unavailable"
 	}
-	return "offline"
+	data, _ := json.Marshal([]any{settings, readOnly})
+	return string(data)
 }
 
 func (device *localDeviceConnection) authorized(ctx context.Context) bool {
@@ -311,16 +302,38 @@ func (api *StreamingAPI) localDeviceCall(ctx context.Context, claims *UserClaims
 	shell := request.Operation == "shell"
 	write := request.Operation == "write"
 	var resource *localfiles.Resource
-	for i := range device.hello.Resources {
-		if device.hello.Resources[i].ID == request.ResourceID {
-			resource = &device.hello.Resources[i]
-			break
+	control := request.Operation == "browse_folders" || request.Operation == "validate_folders"
+	if !device.hello.SettingsManaged {
+		return localfiles.Response{}, &wf.FileError{Status: 409, Message: "Update the CLI, run agentworks stop then agentworks start, and choose folders in Crew Settings."}
+	}
+	if !control {
+		// Callers supply only the folder ID; authority is loaded from server-owned Crew settings now.
+		folders, err := currentLaptopFolder(claims.UserID, request.CrewID, deviceID, request.ResourceID, shell || write || patch)
+		if err != nil {
+			return localfiles.Response{}, &wf.FileError{Status: 403, Message: err.Error()}
+		}
+		request.Folders = folders
+		if request.ResourceID == "" && len(folders) == 1 {
+			request.ResourceID = folders[0].ID
+		}
+		for _, folder := range folders {
+			if folder.ID == request.ResourceID {
+				guard := wf.FolderGuard{ReadPaths: []string{"."}}
+				if folder.Access == "write" {
+					guard.WritePaths = []string{"."}
+				}
+				resource = &localfiles.Resource{ID: folder.ID, Writable: folder.Access == "write", Shell: folder.Access == "write", Patch: folder.Access == "write", Guard: guard}
+			}
+		}
+		if resource == nil {
+			return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Folder is not allowed for this Crew"}
 		}
 	}
-	if resource == nil {
-		return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Folder is not shared"}
-	}
-	if patch {
+	if control {
+		if !userAccessForClaims(current).CanEdit {
+			return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Your account cannot manage laptop access"}
+		}
+	} else if patch {
 		// All diff targets, including absolute local paths and multi-file patches,
 		// are checked independently by the file-owning CLI before any write.
 		if (!resource.Writable && !resource.Downloads) || !resource.Patch || request.RequestID == "" || len(request.RequestID) > 128 || len(request.Content) > wf.MaxFileBytes {
@@ -423,6 +436,12 @@ func (api *StreamingAPI) registerLaptopTools(registrar definitionToolRegistrar, 
 		return nil
 	}
 	selected := *target
+	settings, err := readLaptopSettings(claims.UserID, root)
+	if err != nil || settings.DeviceID != selected.DeviceID || len(settings.Folders) == 0 {
+		return nil
+	}
+	folderInfo, _ := json.Marshal(settings.Folders)
+	allowedFolders := " Allowed local folders (use the ID in folder): " + string(folderInfo)
 	check := func(ctx context.Context) (*UserClaims, error) {
 		if !api.laptopTurnAllowed(sessionID, claims.UserID, selected) {
 			log.Printf("[LAPTOP_TOOL] session=%s caller=%s operation=deny reason=current_interactive_owner_turn", sessionID, claims.UserID)
@@ -445,52 +464,64 @@ func (api *StreamingAPI) registerLaptopTools(registrar definitionToolRegistrar, 
 		if !crewProjectOwnedByCallerStrict(caller.UserID, agentProfileRuntimeWorkspace(caller.UserID, req.SelectedFolder)) || !workspacePathsMatchForUser(caller.UserID, req.SelectedFolder, root) {
 			return nil, errors.New("Laptop tools require your own Crew's Builder chat")
 		}
+		settings, err := readLaptopSettings(caller.UserID, root)
+		if err != nil || settings.DeviceID != selected.DeviceID || len(settings.Folders) == 0 {
+			return nil, errors.New("Laptop access was removed from this Crew")
+		}
 		return caller, nil
 	}
-	gate.Declare("execute_local_shell_command")
 	gate.Declare("copy_local_file_to_crew")
-	if err := registrar.RegisterCustomToolWithTimeout("execute_local_shell_command",
-		"Run a command on your connected computer in its selected shared folder. Ordinary execute_shell_command runs on the server. Use this tool for local files, programs, builds, tests and git. Commands follow the existing laptop folder grants and operating-system permissions. Output reaches the server/model. No server environment or secrets are forwarded. Paths start in the granted folder. timeout defaults to 60 seconds, maximum 300. If the laptop is disconnected, server work remains available.",
-		map[string]interface{}{"type": "object", "properties": map[string]interface{}{"command": map[string]interface{}{"type": "string"}, "timeout": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 300}}, "required": []string{"command"}},
-		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			caller, err := check(ctx)
-			if err != nil {
-				return "", err
-			}
-			request := localfiles.Request{ResourceID: selected.ResourceID, RequestID: uuid.NewString(), Operation: "shell", Path: ".", Command: externalArg(args, "command")}
-			if raw, ok := args["timeout"]; ok {
-				value, ok := raw.(float64)
-				if !ok {
-					if n, yes := raw.(int); yes {
-						value, ok = float64(n), true
+	hasWrite := false
+	for _, folder := range settings.Folders {
+		if folder.Access == "write" {
+			hasWrite = true
+		}
+	}
+	if hasWrite {
+		gate.Declare("execute_local_shell_command")
+		if err := registrar.RegisterCustomToolWithTimeout("execute_local_shell_command",
+			"Run a command on your connected computer in its selected shared folder. Ordinary execute_shell_command runs on the server. Use this tool for local files, programs, builds, tests and git. Commands require Read & write for that folder and run as you on this computer, with the existing operating-system permissions. Output reaches the server/model. No server environment or secrets are forwarded. Paths start in the granted folder. timeout defaults to 60 seconds, maximum 300. If the laptop is disconnected, server work remains available."+allowedFolders,
+			map[string]interface{}{"type": "object", "properties": map[string]interface{}{"folder": map[string]interface{}{"type": "string", "description": "Folder ID from your Crew Laptop access settings; optional when only one is allowed"}, "command": map[string]interface{}{"type": "string"}, "timeout": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 300}}, "required": []string{"command"}},
+			func(ctx context.Context, args map[string]interface{}) (string, error) {
+				caller, err := check(ctx)
+				if err != nil {
+					return "", err
+				}
+				request := localfiles.Request{CrewID: root, ResourceID: externalArg(args, "folder"), RequestID: uuid.NewString(), Operation: "shell", Path: ".", Command: externalArg(args, "command")}
+				if raw, ok := args["timeout"]; ok {
+					value, ok := raw.(float64)
+					if !ok {
+						if n, yes := raw.(int); yes {
+							value, ok = float64(n), true
+						}
 					}
+					if !ok || value < 1 || value > localfiles.MaxShellTimeout || value != float64(int(value)) {
+						return "", errors.New("timeout must be an integer from 1 to 300")
+					}
+					request.TimeoutSeconds = int(value)
 				}
-				if !ok || value < 1 || value > localfiles.MaxShellTimeout || value != float64(int(value)) {
-					return "", errors.New("timeout must be an integer from 1 to 300")
+				if err := request.ValidateShell(); err != nil {
+					return "", err
 				}
-				request.TimeoutSeconds = int(value)
-			}
-			if err := request.ValidateShell(); err != nil {
-				return "", err
-			}
-			opCtx, cancel := context.WithTimeout(ctx, time.Duration(request.ShellTimeout()+10)*time.Second)
-			defer cancel()
-			response, err := api.localDeviceCall(opCtx, caller, selected.DeviceID, request)
-			if err != nil {
-				return "", err
-			}
-			if response.Shell == nil {
-				return "", errors.New("Laptop returned no command result")
-			}
-			result := response.Shell
-			log.Printf("[LAPTOP_TOOL] session=%s owner=%s operation=shell request=%s exit=%d", sessionID, caller.UserID, request.RequestID, result.ExitCode)
-			return workspace.MarshalShellResultForAgent(workspace.ShellCommandResult{Stdout: result.Stdout, Stderr: result.Stderr, ExitCode: result.ExitCode, TimedOut: result.TimedOut})
-		}, time.Duration(localfiles.MaxShellTimeout+15)*time.Second, "workspace_advanced"); err != nil {
-		return err
+				opCtx, cancel := context.WithTimeout(ctx, time.Duration(request.ShellTimeout()+10)*time.Second)
+				defer cancel()
+				response, err := api.localDeviceCall(opCtx, caller, selected.DeviceID, request)
+				if err != nil {
+					return "", err
+				}
+				if response.Shell == nil {
+					return "", errors.New("Laptop returned no command result")
+				}
+				result := response.Shell
+				log.Printf("[LAPTOP_TOOL] session=%s owner=%s operation=shell request=%s exit=%d", sessionID, caller.UserID, request.RequestID, result.ExitCode)
+				return workspace.MarshalShellResultForAgent(workspace.ShellCommandResult{Stdout: result.Stdout, Stderr: result.Stderr, ExitCode: result.ExitCode, TimedOut: result.TimedOut})
+			}, time.Duration(localfiles.MaxShellTimeout+15)*time.Second, "workspace_advanced"); err != nil {
+			return err
+		}
 	}
 	return registrar.RegisterCustomToolWithTimeout("copy_local_file_to_crew",
-		"Copy one file from your connected computer's shared folder into this server Crew. local_path and crew_path are relative to their respective project folders. Supports text and binary files up to 11 MiB. Copies bytes directly, without sending file content through the model. Existing destination files are replaced through the Crew's normal guarded writer. Private files and protected Crew paths are excluded. No automatic sync; the original laptop file is unchanged.",
-		map[string]interface{}{"type": "object", "properties": map[string]interface{}{"local_path": map[string]interface{}{"type": "string"}, "crew_path": map[string]interface{}{"type": "string"}}, "required": []string{"local_path", "crew_path"}},
+		"Copy one file from your connected computer's shared folder into this server Crew. local_path and crew_path are relative to their respective project folders. Supports text and binary files up to 11 MiB. Copies bytes directly, without sending file content through the model. Existing destination files are replaced through the Crew's normal guarded writer. Private files and protected Crew paths are excluded. No automatic sync; the original laptop file is unchanged."+allowedFolders,
+		map[string]interface{}{"type": "object", "properties": map[string]interface{}{"folder": map[string]interface{}{"type": "string", "description": "Folder ID from your Crew Laptop access settings; optional when only one is allowed"}, "local_path": map[string]interface{}{"type": "string"}, "crew_path": map[string]interface{}{"type": "string"}}, "required": []string{"local_path", "crew_path"}},
 		func(ctx context.Context, args map[string]interface{}) (string, error) {
 			caller, err := check(ctx)
 			if err != nil {
@@ -520,7 +551,7 @@ func (api *StreamingAPI) registerLaptopTools(registrar definitionToolRegistrar, 
 				expected = current.Revision
 			}
 			id := uuid.NewString()
-			response, err := api.localDeviceCall(ctx, caller, selected.DeviceID, localfiles.Request{ResourceID: selected.ResourceID, Operation: "copy_read", Path: externalArg(args, "local_path"), RequestID: id})
+			response, err := api.localDeviceCall(ctx, caller, selected.DeviceID, localfiles.Request{CrewID: root, ResourceID: externalArg(args, "folder"), Operation: "copy_read", Path: externalArg(args, "local_path"), RequestID: id})
 			if err != nil {
 				if strings.Contains(strings.ToLower(err.Error()), "unsupported operation") {
 					return "", errors.New("Update AgentWorks on your laptop, restart it and choose the connected folder again to copy files")

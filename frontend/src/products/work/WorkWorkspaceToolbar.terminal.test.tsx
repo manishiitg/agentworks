@@ -8,7 +8,7 @@ vi.mock('../../hooks/useBrowserToolbarConnection', () => ({ useBrowserToolbarCon
 vi.mock('../../components/GlobalActivityMonitor', () => ({ GlobalActivityMonitor: () => <button aria-label="Active work monitor">Active work</button> }))
 
 import { agentApi } from '../../services/api'
-import { setProjectMode, writeCodeFilesPreference } from './codeLocalFiles'
+import { setProjectMode } from './codeLocalFiles'
 import { usePanelSwitcherStore } from '../../stores/usePanelSwitcherStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'

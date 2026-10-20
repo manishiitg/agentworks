@@ -28,7 +28,6 @@ import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { useModeStore } from '../stores/useModeStore'
 import { agentApi } from '../services/api'
 import { setProductCommands, setUserCommands } from '../commands/registry'
-import { writeCodeFilesPreference } from '../products/work/codeLocalFiles'
 import { MAIN_TERMINAL_FOCUS_EVENT } from '../utils/mainTerminalFocus'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })

@@ -19,14 +19,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/workspace/localfiles"
 	"github.com/spf13/cobra"
 )
 
-// `agentworks start` shares the folder you are standing in with your AgentWorks server (read and write, with shell
-// commands) and keeps the connection open, in the background or in this terminal. `stop` ends it, `status` lists
-// what is shared. The connection logic itself is runExecutor, shared with `executor connect`.
+// One CLI installation connects the computer. Crew settings own folder grants;
+// AgentBridge keeps its existing chat attachments and the same saved login.
 
 const shareAuthFailed = "sign-in"
 
@@ -47,17 +47,7 @@ type shareState struct {
 }
 
 // useShareConfig keeps the local connection's sign-in apart from remote MCP credentials, as the setup docs describe.
-func (o *options) useShareConfig() error {
-	if o.configPath != "" {
-		return nil
-	}
-	def, err := agentworksclient.DefaultConfigPath()
-	if err != nil {
-		return err
-	}
-	o.configPath = filepath.Join(filepath.Dir(def), "executor.json")
-	return nil
-}
+func (o *options) useShareConfig() error { return nil }
 
 func (o *options) shareDir() (string, error) {
 	config, err := o.path()
@@ -100,14 +90,28 @@ func defaultDeviceName() string {
 	return sanitizeID(host, "my-computer")
 }
 
-// Each shared folder has its own outbound executor. Starting another folder on
-// the same computer must not collide with the first folder's live connection.
-func folderDeviceName(folder string) string {
-	host := defaultDeviceName()
-	if len(host) > 50 {
-		host = host[:50]
+// One identity for this installation, independent of folders and Crew names.
+func computerDeviceName(o *options) (string, error) {
+	config, err := o.path()
+	if err != nil {
+		return "", err
 	}
-	return host + "-" + shareKey(folder)
+	file := filepath.Join(filepath.Dir(config), "computer-id")
+	if raw, err := os.ReadFile(file); err == nil && localfiles.ValidID(strings.TrimSpace(string(raw))) {
+		return strings.TrimSpace(string(raw)), nil
+	}
+	name := defaultDeviceName()
+	if len(name) > 50 {
+		name = name[:50]
+	}
+	name += "-" + uuid.NewString()[:8]
+	if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(file, []byte(name), 0600); err != nil {
+		return "", err
+	}
+	return name, nil
 }
 
 func writeShareState(path string, st shareState) {
@@ -128,19 +132,6 @@ func readShareState(path string) (shareState, bool) {
 		return st, false
 	}
 	return st, true
-}
-
-// otherSharesOnDevice describes the running shares, other than the one with this key, that use the same device id: the server keeps one
-// connection per device, so any of them would make a new share here fail to connect.
-func otherSharesOnDevice(running map[string]shareState, key, device string) []string {
-	var lines []string
-	for otherKey, other := range running {
-		if otherKey != key && other.Device == device {
-			lines = append(lines, fmt.Sprintf("  %s  (%s/%s, process %d)", other.Folder, other.Device, other.Alias, other.PID))
-		}
-	}
-	sort.Strings(lines)
-	return lines
 }
 
 // runningShares lists the shares whose process is alive; stale files are removed.
@@ -174,9 +165,9 @@ func ask(in *bufio.Reader, out *os.File, question string, def bool) bool {
 	return def
 }
 
-// shareWebURL opens the website on the Crew that uses this folder; it finds the workspace by its name.
+// shareWebURL opens Crew setup without selecting or granting any folder.
 func shareWebURL(server, device, alias, workspace string) string {
-	q := url.Values{"local_device": {device}, "local_folder": {alias}, "local_workspace": {workspace}}
+	q := url.Values{"laptop_setup": {"1"}}
 	return strings.TrimRight(server, "/") + "/?" + q.Encode()
 }
 
@@ -185,38 +176,24 @@ var openWebsite = func(link string) { openLoginBrowser(link) }
 
 type startFlags struct {
 	device                 string
-	blocked                []string
-	downloads, debug       bool
+	debug                  bool
 	foreground, background bool
 	askAgain               bool
-	workspace              string
 }
 
 func startCommand(o *options) *cobra.Command {
 	var f startFlags
-	cmd := &cobra.Command{
-		Use:   "start",
-		Args:  cobra.NoArgs,
-		Short: "Share the current folder with your AgentWorks server (read and write, with shell commands)",
-		Long: "Run this inside a project folder. It signs you in if needed, shares this folder with your AgentWorks server (the agent can edit " +
-			"files and run commands here, inside a sandbox limited to this folder), and keeps the connection open. It asks whether to run in " +
-			"the background (stop it with `agentworks stop`) or keep this terminal open (Ctrl-C stops), and whether to open the website. " +
-			"The first time, add --server https://your-agentworks.example.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := restoreAgentBridge(cmd.Context(), o, ""); err != nil {
-				fmt.Fprintln(o.stderr, err)
-			}
-			return runStart(cmd.Context(), o, f)
-		},
-	}
+	cmd := &cobra.Command{Use: "start", Args: cobra.NoArgs, Short: "Connect this computer; choose Crew folders and permissions in Settings", Long: "Connect this computer once using your AgentWorks login. AgentBridge messaging keeps its existing attachments. Choose folders with Read or Read & write access in each Crew's Settings → Laptop access. The current terminal folder is not shared automatically.", RunE: func(cmd *cobra.Command, _ []string) error {
+		if err := restoreAgentBridge(cmd.Context(), o, ""); err != nil {
+			fmt.Fprintln(o.stderr, err)
+		}
+		return runStart(cmd.Context(), o, f)
+	}}
 	cmd.Flags().StringVar(&f.device, "device", "", "Name for this computer (default: its host name)")
-	cmd.Flags().StringArrayVar(&f.blocked, "block", nil, "Relative path the agent must never read or change, e.g. .env (repeatable)")
-	cmd.Flags().BoolVar(&f.downloads, "downloads", false, "Also allow reading and writing ~/Downloads (explicit opt-in)")
-	cmd.Flags().BoolVar(&f.foreground, "foreground", false, "Keep this terminal open instead of running in the background (Ctrl-C stops)")
+	cmd.Flags().BoolVar(&f.foreground, "foreground", false, "Keep this terminal open; Ctrl-C disconnects")
 	cmd.Flags().BoolVar(&f.background, "background", false, "Run in the background without asking")
-	cmd.Flags().StringVar(&f.workspace, "workspace", "", "The Crew (its name in Settings) that uses this folder; asked the first time, then remembered")
-	cmd.Flags().BoolVar(&f.askAgain, "ask", false, "Ask the background and open-website questions again instead of using the saved answers")
-	cmd.Flags().BoolVar(&f.debug, "debug", false, "Stay in this terminal, print diagnostics and log every file and command request the server sends")
+	cmd.Flags().BoolVar(&f.askAgain, "ask", false, "Ask about running in the background again")
+	cmd.Flags().BoolVar(&f.debug, "debug", false, "Print connection diagnostics and local requests")
 	return cmd
 }
 
@@ -224,32 +201,29 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 	if err := o.useShareConfig(); err != nil {
 		return err
 	}
-	folder, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	if resolved, err := filepath.EvalSymlinks(folder); err == nil {
-		folder = resolved
-	}
-	if home, _ := os.UserHomeDir(); folder == "/" || folder == home {
-		return errors.New("run `agentworks start` inside a project folder, not your home folder or /")
-	}
 	device := f.device
 	if device == "" {
-		device = folderDeviceName(folder)
+		var err error
+		device, err = computerDeviceName(o)
+		if err != nil {
+			return err
+		}
 	}
 	if !localfiles.ValidID(device) {
 		return errors.New("--device needs letters, numbers, dashes or underscores")
 	}
-	alias := sanitizeID(filepath.Base(folder), "project")
 	dir, err := o.shareDir()
 	if err != nil {
 		return err
 	}
-	key := shareKey(folder)
+	config, err := o.path()
+	if err != nil {
+		return err
+	}
+	folder, alias, workspace := "", "", ""
+	key := shareKey(config)
 	statePath := filepath.Join(dir, key+".json")
 	pruneStaleLogs(dir, runningShares(dir))
-
 	cfg, cfgPath, err := o.connection(false)
 	if err != nil {
 		return errors.New("first time: run `agentworks start --server https://your-agentworks.example` (the website's Crew settings show the exact command)")
@@ -258,8 +232,8 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 		fmt.Fprintln(o.stderr, "A newer AgentWorks CLI is available on this server. Run `agentworks update`, then `agentworks stop` and `agentworks start`, and choose the connected folder again in Crew Settings.")
 	}
 	login := func() error {
-		fmt.Fprintln(o.stderr, "Signing in (this approval is only for sharing local folders)...")
-		return o.browserLogin(ctx, cfg, cfgPath, []string{"devices:connect"}, false)
+		fmt.Fprintln(o.stderr, "Signing in for AgentBridge and laptop access; choose folders in Crew Settings...")
+		return o.browserLogin(ctx, cfg, cfgPath, nil, false)
 	}
 	if cfg.Token == "" {
 		if err := login(); err != nil {
@@ -268,36 +242,11 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 	}
 
 	if st, ok := runningShares(dir)[key]; ok {
-		fmt.Fprintf(o.stderr, "%s is already shared as %s/%s (process %d). Use `agentworks stop` to end it.\n", folder, st.Device, st.Alias, st.PID)
+		fmt.Fprintf(o.stderr, "%s is already connected (process %d). Choose folders in Crew Settings → Laptop access.\n", st.Device, st.PID)
 		return nil
 	}
-	// A computer holds one live connection (its device id), so another folder that is still shared would refuse this one and `start`
-	// would only time out. Say so first and ask the person to stop it themselves (PLAT-834).
-	if others := otherSharesOnDevice(runningShares(dir), key, device); len(others) > 0 {
-		return fmt.Errorf("another folder on this computer is already being shared, and a computer shares one folder at a time:\n%s\nStop it first: run `agentworks stop` in that folder (or `agentworks stop --all`), then run `agentworks start` here again", strings.Join(others, "\n"))
-	}
-
 	in := bufio.NewReader(o.stdin)
 	interactive := stdinIsTerminal() && !o.jsonOutput
-	// Which Crew uses this folder is required, never guessed: given with --workspace, remembered per folder, or asked.
-	linksPath := filepath.Join(dir, "workspaces.json")
-	links := loadShareLinks(linksPath)
-	workspace := strings.TrimSpace(f.workspace)
-	if workspace == "" {
-		workspace = links[folder]
-	}
-	if workspace == "" {
-		if !interactive {
-			return errors.New("agentworks start needs the Crew that uses this folder: add --workspace \"<name shown in Settings>\"")
-		}
-		fmt.Fprintf(o.stderr, "Which Crew should use %s? Type its name as shown in Settings (Workspace name): ", folder)
-		line, _ := in.ReadString('\n')
-		if workspace = strings.TrimSpace(line); workspace == "" {
-			return errors.New("a workspace name is required")
-		}
-	}
-	links[folder] = workspace
-	saveShareLinks(linksPath, links)
 	// The first run asks; the answers are remembered, so later runs just connect (--ask asks again).
 	prefsPath := filepath.Join(dir, "start-preferences.json")
 	prefs := loadStartPrefs(prefsPath)
@@ -312,7 +261,7 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 	case prefs.Background != nil:
 		foreground, usedSaved = !*prefs.Background, true
 	case interactive:
-		fmt.Fprintf(o.stderr, "Sharing %s as %s/%s with read and write access and shell commands.\n", folder, device, alias)
+		fmt.Fprintf(o.stderr, "Connecting %s. Choose folders and permissions in Crew Settings.\n", device)
 		bg := ask(in, os.Stderr, "Run in the background? (No keeps this terminal open and shows live activity; Ctrl-C stops.)", true)
 		foreground, prefs.Background = !bg, &bg
 	}
@@ -336,7 +285,7 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 }
 
 func shareParams(f startFlags, device, alias, folder string) executorParams {
-	return executorParams{deviceID: device, writeFolders: []string{alias + "=" + folder}, blocked: f.blocked, downloads: f.downloads}
+	return executorParams{deviceID: device}
 }
 
 func runShareForeground(ctx context.Context, o *options, f startFlags, folder, device, alias, workspace, server, statePath string, openWeb bool) error {
@@ -348,7 +297,7 @@ func runShareForeground(ctx context.Context, o *options, f startFlags, folder, d
 		teed.stderr = io.MultiWriter(o.stderr, rot)
 		o = &teed
 	}
-	st := shareState{Publication: true, Blocked: f.blocked, PID: os.Getpid(), Device: device, Alias: alias, Workspace: workspace, Folder: folder, Server: server, Started: time.Now(), Log: logPath}
+	st := shareState{Publication: true, PID: os.Getpid(), Device: device, Alias: alias, Workspace: workspace, Folder: folder, Server: server, Started: time.Now(), Log: logPath}
 	writeShareState(statePath, st)
 	defer os.Remove(statePath)
 	p := shareParams(f, device, alias, folder)
@@ -381,13 +330,7 @@ func runShareBackground(ctx context.Context, o *options, f startFlags, folder, d
 			return err
 		}
 		_ = os.Remove(statePath)
-		args := []string{"share-serve", "--config", o.configPath, "--server", server, "--device", device, "--alias", alias, "--workspace", workspace, "--folder", folder, "--state", statePath, "--log", logPath}
-		for _, b := range f.blocked {
-			args = append(args, "--block", b)
-		}
-		if f.downloads {
-			args = append(args, "--downloads")
-		}
+		args := []string{"share-serve", "--config", o.configPath, "--server", server, "--device", device, "--state", statePath, "--log", logPath}
 		child := exec.Command(exe, args...)
 		child.Stdout, child.Stderr = logFile, logFile
 		detach(child)
@@ -456,7 +399,7 @@ func serveShareCommand(o *options) *cobra.Command {
 			}
 		}
 		server := o.serverURL
-		st := shareState{Publication: true, Blocked: f.blocked, PID: os.Getpid(), Device: f.device, Alias: alias, Workspace: workspace, Folder: folder, Server: server, Started: time.Now(), Log: logPath}
+		st := shareState{Publication: true, PID: os.Getpid(), Device: f.device, Alias: alias, Workspace: workspace, Folder: folder, Server: server, Started: time.Now(), Log: logPath}
 		writeShareState(statePath, st)
 		p := shareParams(f, f.device, alias, folder)
 		p.connected = func() { st.Connected = true; writeShareState(statePath, st) }
@@ -477,18 +420,30 @@ func serveShareCommand(o *options) *cobra.Command {
 		return nil
 	}}
 	cmd.Flags().StringVar(&f.device, "device", "", "")
-	cmd.Flags().StringVar(&alias, "alias", "", "")
-	cmd.Flags().StringVar(&workspace, "workspace", "", "")
-	cmd.Flags().StringVar(&folder, "folder", "", "")
 	cmd.Flags().StringVar(&statePath, "state", "", "")
 	cmd.Flags().StringVar(&logPath, "log", "", "")
-	cmd.Flags().StringArrayVar(&f.blocked, "block", nil, "")
-	cmd.Flags().BoolVar(&f.downloads, "downloads", false, "")
 	return cmd
 }
 
+func stopLaptopConnections(o *options) error {
+	dir, err := o.shareDir()
+	if err != nil {
+		return err
+	}
+	for key, st := range runningShares(dir) {
+		terminateProcess(st.PID, false)
+		for i := 0; i < 25 && processAlive(st.PID); i++ {
+			time.Sleep(100 * time.Millisecond)
+		}
+		if processAlive(st.PID) {
+			terminateProcess(st.PID, true)
+		}
+		_ = os.Remove(filepath.Join(dir, key+".json"))
+	}
+	return nil
+}
+
 func stopCommand(o *options) *cobra.Command {
-	var all bool
 	cmd := &cobra.Command{Use: "stop", Args: cobra.NoArgs, Short: "Stop folder sharing and pause messaging (retaining attached identities)", RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := stopAgentBridge(cmd.Context()); err != nil {
 			return err
@@ -505,27 +460,7 @@ func stopCommand(o *options) *cobra.Command {
 			fmt.Fprintln(o.stderr, "Nothing is being shared.")
 			return nil
 		}
-		targets := map[string]shareState{}
-		if all {
-			targets = shares
-		} else {
-			folder, _ := os.Getwd()
-			if resolved, err := filepath.EvalSymlinks(folder); err == nil {
-				folder = resolved
-			}
-			if st, ok := shares[shareKey(folder)]; ok {
-				targets[shareKey(folder)] = st
-			} else if len(shares) == 1 {
-				for k, st := range shares {
-					targets[k] = st
-				}
-			} else {
-				fmt.Fprintln(o.stderr, "This folder is not shared. Shared folders:")
-				listShares(o, shares)
-				fmt.Fprintln(o.stderr, "Run `agentworks stop` inside one of them, or `agentworks stop --all`.")
-				return errors.New("no share for this folder")
-			}
-		}
+		targets := shares
 		for key, st := range targets {
 			terminateProcess(st.PID, false)
 			for i := 0; i < 40 && processAlive(st.PID); i++ {
@@ -535,11 +470,10 @@ func stopCommand(o *options) *cobra.Command {
 				terminateProcess(st.PID, true)
 			}
 			_ = os.Remove(filepath.Join(dir, key+".json"))
-			fmt.Fprintf(o.stderr, "Stopped sharing %s (%s/%s).\n", st.Folder, st.Device, st.Alias)
+			fmt.Fprintf(o.stderr, "Disconnected %s (%s/%s).\n", st.Folder, st.Device, st.Alias)
 		}
 		return nil
 	}}
-	cmd.Flags().BoolVar(&all, "all", false, "Stop every shared folder")
 	return cmd
 }
 
@@ -555,7 +489,7 @@ func listShares(o *options, shares map[string]shareState) {
 		if st.Connected {
 			state = "connected"
 		}
-		fmt.Fprintf(o.stderr, "  %s  %s/%s  workspace %q  %s  (process %d, since %s)\n", st.Folder, st.Device, st.Alias, st.Workspace, state, st.PID, st.Started.Format("15:04"))
+		fmt.Fprintf(o.stderr, "  %s  %s  (process %d, since %s) · folders managed in Crew Settings\n", st.Device, state, st.PID, st.Started.Format("15:04"))
 	}
 }
 
@@ -581,7 +515,7 @@ func statusCommand(o *options) *cobra.Command {
 		}
 		shares := runningShares(dir)
 		if len(shares) == 0 {
-			fmt.Fprintln(o.stderr, "Nothing is being shared. Run `agentworks start` inside a project folder.")
+			fmt.Fprintln(o.stderr, "No laptop is connected. Run `agentworks start`, then choose folders in Crew Settings.")
 			return nil
 		}
 		listShares(o, shares)
@@ -625,7 +559,7 @@ func printDebug(ctx context.Context, o *options, cfg agentworksclient.Config, cf
 	if err := configureLocalShellSandbox(); err != nil {
 		fmt.Fprintf(w, "sandbox:    NOT available: %v\n", err)
 	} else {
-		fmt.Fprintln(w, "sandbox:    ok (commands are limited to the shared folder)")
+		fmt.Fprintln(w, "sandbox:    local operating-system command policy available")
 	}
 	fmt.Fprintln(w, "Every request from the server is logged below. Ctrl-C stops.")
 	fmt.Fprintln(w, "-------------------------------")
@@ -654,16 +588,14 @@ func requestTrace(o *options) func(request localfiles.Request, response localfil
 // printShared is the one short summary printed once the folder is connected.
 func printShared(o *options, folder, device, alias, workspace, server string, pid int, background bool) {
 	w := o.stderr
-	fmt.Fprintf(w, "\n✔ Sharing %s\n", folder)
-	fmt.Fprintf(w, "  Computer: %s / %s · read and write · shell commands on\n", device, alias)
-	fmt.Fprintf(w, "  Workspace: %s\n", workspace)
-	fmt.Fprintf(w, "  Website:  %s\n", shareWebURL(server, device, alias, workspace))
+	fmt.Fprintf(w, "\nConnected %s to AgentWorks.\n", device)
+	fmt.Fprintln(w, "Choose folders and Read or Read & write access in Crew Settings → Laptop access. AgentBridge uses the same CLI and login.")
 	if background {
-		fmt.Fprintf(w, "  Running in the background (process %d). Watch: agentworks watch · Status: agentworks status · Stop: agentworks stop\n\n", pid)
+		fmt.Fprintf(w, "Running in the background (process %d). Status: agentworks status · Stop: agentworks stop\n", pid)
 	} else {
-		fmt.Fprintln(w, "  Live activity appears below. Ctrl-C stops sharing.")
-		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Ctrl-C disconnects laptop access.")
 	}
+
 }
 
 // startPrefs is the answer to the first-run question, so later runs do not ask.
@@ -761,19 +693,6 @@ func watchCommand(o *options) *cobra.Command {
 }
 
 // Which Crew uses which folder on this computer, remembered so only the first start asks.
-func loadShareLinks(path string) map[string]string {
-	links := map[string]string{}
-	if raw, err := os.ReadFile(path); err == nil {
-		_ = json.Unmarshal(raw, &links)
-	}
-	return links
-}
-
-func saveShareLinks(path string, links map[string]string) {
-	if raw, err := json.Marshal(links); err == nil {
-		_ = os.WriteFile(path, raw, 0o600)
-	}
-}
 
 func shortVersion(v string) string {
 	if len(v) > 7 {

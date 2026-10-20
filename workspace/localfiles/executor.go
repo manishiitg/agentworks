@@ -23,10 +23,12 @@ type Grant struct {
 	PrivatePaths []string
 }
 type Executor struct {
-	Hello   Hello
-	editors map[string]*wf.Editor
-	grants  map[string]Grant
-	roots   map[string]*os.Root
+	Hello         Hello
+	settingsState string
+	privatePaths  []string
+	editors       map[string]*wf.Editor
+	grants        map[string]Grant
+	roots         map[string]*os.Root
 }
 
 func Open(deviceID string, grants []Grant) (*Executor, error) {
@@ -162,6 +164,9 @@ func (e *Executor) Close() {
 	}
 }
 func (e *Executor) Execute(ctx context.Context, r Request) Response {
+	if e.Hello.SettingsManaged {
+		return e.executeSettings(ctx, r)
+	}
 	result := Response{ID: r.ID, Status: 200}
 	g, ok := e.grants[r.ResourceID]
 	if !ok {

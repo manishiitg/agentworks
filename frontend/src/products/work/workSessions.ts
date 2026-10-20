@@ -1,4 +1,4 @@
-import { createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity, updateProductProjectLocalFiles, updateProductProjectSelections, type ProductIdentityPatch, type ProductMode, type ProductProject } from '../../platform/chat/productProjects'
+import { createProductProject, loadProductProjects, parseProductProjectManifest, updateProductProjectIdentity,  updateProductProjectSelections, type ProductIdentityPatch, type ProductMode, type ProductProject } from '../../platform/chat/productProjects'
 import { agentApi } from '../../services/api'
 import { secretsApi } from '../../api/secrets'
 import type { LLMProvider, PresetLLMConfig, SharedProjectSummary } from '../../services/api-types'
@@ -215,11 +215,7 @@ export async function loadWorkSessionsIncludingShared(product: ProjectProductCon
   return [...owned, ...shared.filter(session => !ownedIds.has(session.id))]
 }
 
-/** Code: the computer and folder this workspace works in (product.json `laptop_connection`); undefined = the server's files. */
-export async function updateWorkSessionLocalFiles(session: WorkSession, localFiles: { device_id: string; resource_id: string } | undefined): Promise<WorkSession> {
-  if (isWorkSessionRun(session)) throw new Error('Only the owner can change this.')
-  return updateProductProjectLocalFiles(session, localFiles, `Set files location for ${session.title}`)
-}
+
 
 export async function updateWorkSessionIdentity(session: WorkSession, patch: ProductIdentityPatch): Promise<WorkSession> {
   if (isWorkSessionRun(session)) throw new Error('Only the Crew owner can change this.')

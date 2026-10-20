@@ -222,7 +222,6 @@ export interface AgentQueryResponse {
 export interface AgentProfileChatRequest {
   delivery_mode?: 'steer' | 'queue'
   /** Optional Crew laptop connection; the server checks the current owner and live folder grants. */
-  laptop_connection?: { device_id: string; resource_id: string }
   /** Brain folder context only; the server revalidates visibility. */
   knowledgebase_folder_path?: string
   connection_id?: string

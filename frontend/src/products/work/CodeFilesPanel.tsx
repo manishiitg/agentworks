@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Check, Copy, Laptop, RefreshCw, Terminal } from 'lucide-react'
+import { Check, Copy, Laptop, RefreshCw, Terminal, Folder, ArrowUp, X } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { SettingsCard } from '../../components/ui/SettingsCard'
-import { getApiBaseUrl } from '../../services/api'
-import { cliUpdateNeeded, useCodeFilesPreference, useLatestCliVersion, useLocalFileDevices, writeCodeFilesPreference } from './codeLocalFiles'
+import api, { getApiBaseUrl } from '../../services/api'
+import { useChatStore } from '../../stores/useChatStore'
+import { cliUpdateNeeded, localFileError, useLatestCliVersion, useLocalFileDevices } from './codeLocalFiles'
 
 function shellQuote(value: string) { return `'${value.replace(/'/g, "'\\''")}'` }
 
@@ -43,13 +44,13 @@ const looksLikeWindows = () => typeof navigator !== 'undefined' && /windows/i.te
 function ComputerSetup({ connected, reconnecting, workspaceName }: { connected: boolean; reconnecting: boolean; workspaceName?: string }) {
   const base = getApiBaseUrl() || window.location.origin
   const [windows, setWindows] = useState(looksLikeWindows)
-  const name = workspaceName || 'your workspace name'
+  void workspaceName
   const installCommand = windows
     ? `& ([scriptblock]::Create((irm ${psQuote(`${base}/api/downloads/cli/install-agentworks.ps1`)}))) -Server ${psQuote(base)} -NoLogin`
     : `curl -fsSL ${shellQuote(`${base}/api/downloads/cli/install-agentworks.sh`)} | sh -s -- --server ${shellQuote(base)} --no-login`
   const startCommand = windows
-    ? `agentworks start --server ${psQuote(base)} --workspace ${psQuote(name)}`
-    : `agentworks start --server ${shellQuote(base)} --workspace ${shellQuote(name)}`
+    ? `agentworks start --server ${psQuote(base)}`
+    : `agentworks start --server ${shellQuote(base)}`
   return <details className="group" open={!connected && !reconnecting}>
     <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium"><Terminal className="h-4 w-4 text-muted-foreground" />{connected ? 'Set up another computer' : reconnecting ? 'CLI setup and reconnect' : 'Set up your computer'}<span className="ml-auto text-xs font-normal text-muted-foreground">macOS · Linux · Windows</span></summary>
     <div className="space-y-5 border-t border-border px-4 py-4">
@@ -57,67 +58,93 @@ function ComputerSetup({ connected, reconnecting, workspaceName }: { connected: 
         <Button size="sm" variant={windows ? 'ghost' : 'secondary'} aria-pressed={!windows} onClick={() => setWindows(false)}>macOS / Linux</Button>
         <Button size="sm" variant={windows ? 'secondary' : 'ghost'} aria-pressed={windows} onClick={() => setWindows(true)}>Windows</Button>
       </div>
-      <p className="text-xs leading-5 text-muted-foreground">Run these commands on your own computer{windows ? ' in PowerShell' : ''}. Your model stays on this server; the CLI connects your project folder. Already installed? Start at step 2.</p>
+      <p className="text-xs leading-5 text-muted-foreground">Run these commands on your own computer{windows ? ' in PowerShell' : ''}. Your model stays on this server; the CLI connects this computer. Choose folders in Crew settings. Already installed? Start at step 2.</p>
       <SetupStep number={1} title="Install the CLI">
         <CopyCommand label="install command" command={installCommand} />
         <p className="text-xs text-muted-foreground">{windows ? 'Installs AgentWorks in %LOCALAPPDATA%\\agentworks and adds it to your PATH; no administrator rights. Running commands on your computer needs Git for Windows (git-scm.com). No model or server runs on your computer.' : 'Installs AgentWorks in ~/.local/bin. No model or server runs on your computer.'}</p>
       </SetupStep>
-      <SetupStep number={2} title="Go to your project folder and start">
+      <SetupStep number={2} title="Connect your computer once">
         <CopyCommand label="start command" command={startCommand} />
-        <p className="text-xs leading-5 text-muted-foreground">It shares the folder you are in with this workspace (the name after --workspace, as shown in Settings), with read and write access, and the agent can run commands there. The CLI remembers the workspace for that folder. The first time it opens a browser to approve this computer. It then asks whether to run in the background or keep the terminal open, and opens this website. Next time just run <code className="font-mono">agentworks start</code>.</p>
+        <p className="text-xs leading-5 text-muted-foreground">Run from any folder. Sign in with the same account you use here. AgentBridge and laptop access use the same CLI and saved login. No folder is shared automatically. It can stay connected in the background.</p>
       </SetupStep>
-      <SetupStep number={3} title="Check it, stop it, or fix it">
-        <p className="text-xs leading-5 text-muted-foreground">Press <span className="font-medium">Verify connection</span> below to confirm this computer is connected. <code className="font-mono">agentworks stop</code> ends sharing for the current folder, <code className="font-mono">agentworks status</code> lists what is shared, <code className="font-mono">agentworks watch</code> follows a background share, and <code className="font-mono">agentworks debug</code> writes one file to send to support. <code className="font-mono">agentworks start --debug</code> prints diagnostics and every request from the server. Add <code className="font-mono">--block .env</code> to hide a file from the file tools, or <code className="font-mono">--downloads</code> to also share your Downloads folder.</p>
-        {windows && <p className="text-xs leading-5 text-muted-foreground">On Windows, commands the agent runs are not sandboxed: they run with your account&rsquo;s permissions. The folder rules protect file reads and edits only.</p>}
+      <SetupStep number={3} title="Choose folders here">
+        <p className="text-xs leading-5 text-muted-foreground">Choose your computer below, add folders and set Read or Read &amp; write. You can change these at any time. <code>agentworks status</code> checks the connection; <code>agentworks stop</code> stops laptop access and pauses AgentBridge messaging. Detaching one chat leaves the laptop connection available.</p>
       </SetupStep>
     </div>
   </details>
 }
 
-/** Optional laptop tools; the Crew's normal files and terminal stay on the server. */
-export function CodeLocalFilesSettings({ sessionId, workspaceName }: { sessionId: string; workspaceName?: string }) {
-  const preference = useCodeFilesPreference(sessionId)
-  const selected = preference.location === 'computer' ? preference.target : undefined
-  const selectedKey = selected ? JSON.stringify([selected.device_id, selected.resource_id]) : ''
-  const [draftKey, setDraftKey] = useState(selectedKey)
-  const [setupOpen, setSetupOpen] = useState(false)
-  const [settingError, setSettingError] = useState<string | null>(null)
-  const { devices, error, checked, refreshing, refresh } = useLocalFileDevices(Boolean(sessionId))
-  const latest = useLatestCliVersion(Boolean(sessionId))
-  useEffect(() => { setDraftKey(selectedKey); setSettingError(null) }, [sessionId, selectedKey])
-  const device = devices.find(item => item.device_id === selected?.device_id)
-  const folder = device?.resources.find(item => item.id === selected?.resource_id)
-  const available = devices.flatMap(item => item.resources.filter(resource => resource.id !== 'downloads').map(resource => ({ device_id: item.device_id, resource_id: resource.id })))
-  const draft = available.find(item => JSON.stringify([item.device_id, item.resource_id]) === draftKey)
-  const save = (target?: { device_id: string; resource_id: string }) => {
-    try {
-      writeCodeFilesPreference(sessionId, target ? { location: 'computer', target } : { location: 'server' })
-      setSettingError(null)
-    } catch { setSettingError('Could not save this laptop connection.') }
+interface LaptopFolder { id: string; path: string; access: 'read' | 'write' }
+interface LaptopSettings { device_id: string; folders: LaptopFolder[] }
+interface LaptopDirectory { path: string; parent: string; folders: string[] }
+
+/** The backend owns grants. No project manifest or browser preference grants laptop access. */
+export function CodeLocalFilesSettings({ sessionId }: { sessionId: string; workspaceName?: string }) {
+  const tab = useChatStore(state => Object.values(state.chatTabs).find(item => item.sessionId === sessionId))
+  const project = tab?.metadata?.agentProfileProjectId
+  const profile = tab?.metadata?.agentProfileId
+  const endpoint = project && profile ? `/api/agent-profiles/${encodeURIComponent(profile)}/projects/${encodeURIComponent(project)}/laptop` : ''
+  const [settings, setSettings] = useState<LaptopSettings>({ device_id: '', folders: [] })
+  const [directory, setDirectory] = useState<LaptopDirectory>()
+  const [path, setPath] = useState('')
+  const [error, setError] = useState<string>()
+  const [busy, setBusy] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const { devices, error: deviceError, refreshing, refresh } = useLocalFileDevices(Boolean(endpoint))
+  const latest = useLatestCliVersion(Boolean(endpoint))
+  useEffect(() => {
+    let active = true
+    setLoaded(false); setDirectory(undefined); setSettings({ device_id: '', folders: [] }); setError(undefined)
+    if (endpoint) void api.get<LaptopSettings>(endpoint, { skipSessionContext: true }).then(result => { if (active) { setSettings(result.data); setLoaded(true) } }).catch(cause => { if (active) setError(localFileError(cause)) })
+    return () => { active = false }
+  }, [endpoint])
+  const device = devices.find(item => item.device_id === settings.device_id)
+  const save = async (next: LaptopSettings) => {
+    if (!endpoint) return
+    setBusy(true); setError(undefined)
+    try { const result = await api.put<LaptopSettings>(endpoint, next, { skipSessionContext: true }); setSettings(result.data); window.dispatchEvent(new Event('crew-laptop-settings-changed')); return true }
+    catch (cause) { setError(localFileError(cause)); return false }
+    finally { setBusy(false) }
   }
-  return <SettingsCard unboxed icon={<Laptop className="h-4 w-4 text-primary" />} title="Laptop connection" description="Your Crew runs on the server. Optionally let your Builder chat run commands on your computer and copy local files into this Crew.">
-    <div className="space-y-3">
-      <p className="text-xs leading-5 text-muted-foreground">Files, Terminal, connections, functions and background work continue on the server. Laptop tools are available only to you in your Builder chat, while the CLI is connected. Sharing the Crew does not share your computer. Files are copied only when requested; there is no sync.</p>
-      {selected && <div className="flex items-center justify-between gap-2 rounded-md bg-muted/40 p-3">
-        <div><p role="status" className="text-sm font-medium">{folder ? 'Connected' : checked ? 'Laptop not connected' : 'Checking connection…'}</p><p className="text-xs text-muted-foreground">{selected.device_id} · {selected.resource_id}</p></div>
-        <Button size="sm" variant="outline" onClick={() => save()}>Disconnect laptop</Button>
-      </div>}
-      {selected && checked && !folder && <p className="text-xs text-muted-foreground">Server work remains available. To use laptop tools again, open your shared folder on that computer and start AgentWorks.</p>}
-      {cliUpdateNeeded(device, latest) && <p role="status" className="rounded-md bg-amber-500/10 p-3 text-xs">Update the CLI on your computer with <code>agentworks update</code>, then run <code>agentworks stop</code> and <code>agentworks start</code>. Choose the connected folder again here after updating.</p>}
-      {!setupOpen ? <Button variant="outline" disabled={!sessionId} onClick={() => setSetupOpen(true)}>{selected ? 'Change connected folder' : 'Connect your computer'}</Button> : <>
-        <ComputerSetup connected={devices.length > 0} reconnecting={Boolean(selected)} workspaceName={workspaceName} />
-        <label htmlFor="crew-laptop-folder" className="block text-xs font-medium">Your computer and shared folder</label>
-        <select id="crew-laptop-folder" value={draftKey} className="w-full rounded-md border border-border bg-background p-2 text-sm" onChange={event => setDraftKey(event.target.value)}>
-          <option value="">Choose a connected folder…</option>
-          {selected && !folder && <option value={selectedKey}>{selected.device_id} / {selected.resource_id} — Offline</option>}
-          {available.map(item => <option key={JSON.stringify(item)} value={JSON.stringify([item.device_id, item.resource_id])}>{item.device_id} / {item.resource_id}</option>)}
+  const browse = async (next: string) => {
+    setBusy(true); setError(undefined)
+    try {
+      const query = new URLSearchParams({ device_id: settings.device_id, path: next })
+      const result = await api.get<LaptopDirectory>(`${endpoint}/folders?${query}`, { skipSessionContext: true })
+      setDirectory(result.data); setPath(result.data.path)
+    } catch (cause) { setError(localFileError(cause)) }
+    finally { setBusy(false) }
+  }
+  const join = (root: string, child: string) => `${root.replace(/[\\/]$/, '')}${root.includes('\\') ? '\\' : '/'}${child}`
+  return <SettingsCard unboxed icon={<Laptop className="h-4 w-4 text-primary" />} title="Laptop access" description="Connect your computer once, then choose the folders this Crew can use.">
+    <div className="space-y-4">
+      <p className="text-xs leading-5 text-muted-foreground">Crew runs on the server. Laptop access is available only to you in your Builder chat while the CLI is connected. Sharing this Crew does not share your computer. AgentBridge uses the same CLI.</p>
+      <ComputerSetup connected={devices.length > 0} reconnecting={Boolean(settings.device_id)} />
+      <label htmlFor="crew-laptop-device" className="block text-xs font-medium">Your computer</label>
+      <select id="crew-laptop-device" value={settings.device_id} disabled={busy || !loaded} className="w-full rounded-md border border-border bg-background p-2 text-sm" onChange={event => { setDirectory(undefined); void save({ device_id: event.target.value, folders: [] }) }}>
+        <option value="">No laptop access</option>
+        {settings.device_id && !device && <option value={settings.device_id}>{settings.device_id} — Offline</option>}
+        {devices.map(item => <option key={item.device_id} value={item.device_id}>{item.device_id}</option>)}
+      </select>
+      {settings.device_id && !device && <p role="status" className="text-xs text-muted-foreground">This computer is offline. Run <code>agentworks start</code> there. Server work continues.</p>}
+      {cliUpdateNeeded(device, latest) && <p role="status" className="text-xs">Update once: <code>agentworks update</code>, then <code>agentworks stop</code> and <code>agentworks start</code>. Choose folders here.</p>}
+      {settings.folders.map(folder => <div key={folder.id} className="flex items-center gap-2 rounded-md border border-border p-3">
+        <Folder className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 break-all text-xs">{folder.path}</span>
+        <select aria-label={`Access for ${folder.path}`} value={folder.access} disabled={busy || !device} className="rounded border border-border bg-background p-1 text-xs" onChange={event => void save({ ...settings, folders: settings.folders.map(item => item.id === folder.id ? { ...item, access: event.target.value as LaptopFolder['access'] } : item) })}>
+          <option value="read">Read</option><option value="write">Read &amp; write</option>
         </select>
-        <p className="text-xs leading-5 text-muted-foreground">The local command tool uses your existing CLI permissions. Commands can reach your computer’s services and network. Returned output and copied files reach the server and model and may be saved in chat history. Server secrets are not forwarded.</p>
-        <div className="flex gap-2"><Button size="sm" disabled={!draft || draftKey === selectedKey} onClick={() => { if (draft) save(draft) }}>Connect folder</Button><Button size="sm" variant="ghost" onClick={() => setSetupOpen(false)}>Close setup</Button></div>
-      </>}
+        <Button size="icon" variant="ghost" aria-label={`Remove ${folder.path}`} disabled={busy} onClick={() => void save({ ...settings, folders: settings.folders.filter(item => item.id !== folder.id) })}><X className="h-4 w-4" /></Button>
+      </div>)}
+      {device && <Button size="sm" variant="outline" disabled={busy || !device.settings_managed} onClick={() => void browse('')}>Add folder</Button>}
+      {directory && <div className="space-y-2 rounded-md border border-border p-3">
+        <form className="flex gap-2" onSubmit={event => { event.preventDefault(); void browse(path) }}><input aria-label="Folder path" value={path} onChange={event => setPath(event.target.value)} className="min-w-0 flex-1 rounded border border-border bg-background p-2 text-xs" /><Button size="sm" variant="outline" disabled={busy}>Open</Button></form>
+        <Button size="sm" variant="ghost" disabled={busy || directory.parent === directory.path} onClick={() => void browse(directory.parent)}><ArrowUp className="h-3 w-3" />Parent folder</Button>
+        <div className="max-h-52 overflow-auto">{directory.folders.map(name => <button key={name} disabled={busy} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted" onClick={() => void browse(join(directory.path, name))}><Folder className="h-4 w-4" />{name}</button>)}</div>
+        <div className="flex gap-2"><Button size="sm" disabled={busy || settings.folders.some(folder => folder.path === directory.path)} onClick={() => void save({ ...settings, folders: [...settings.folders, { id: '', path: directory.path, access: 'read' }] }).then(saved => { if (saved) setDirectory(undefined) })}>Allow this folder</Button><Button size="sm" variant="ghost" onClick={() => setDirectory(undefined)}>Close</Button></div>
+      </div>}
+      <p className="text-xs leading-5 text-muted-foreground">Read allows reading and copying files into Crew. Read &amp; write also allows local commands. Commands run as you on this computer: Windows uses your account permissions; macOS uses its existing light sandbox. Folder permissions are not full command isolation. Local output and copied files reach the server and may be saved in chat. Server secrets are not forwarded.</p>
       <Button size="sm" variant="ghost" disabled={refreshing} onClick={refresh}><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />Check connection</Button>
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      {settingError && <p role="alert" className="text-sm text-destructive">{settingError}</p>}
+      {(error || deviceError) && <p role="alert" className="text-sm text-destructive">{error || deviceError}</p>}
     </div>
   </SettingsCard>
 }

@@ -41,7 +41,7 @@ const IDENTITY_TABS: Array<{ value: WorkIdentityTab; label: string }> = [
   { value: 'general', label: 'General' },
   { value: 'models', label: 'Models' },
   // Code only: where this chat's files and commands live (the server, or your own computer through the CLI).
-  { value: 'location', label: 'Laptop connection' },
+  { value: 'location', label: 'Laptop access' },
 ]
 
 function identityTabAskAIMessage(noun: string, hasIdentity: boolean): Record<WorkIdentityTab, string> {

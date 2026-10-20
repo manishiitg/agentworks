@@ -773,103 +773,39 @@ execution and typed tools retain their separately authorized scopes.
 
 ## Server agents using local files and commands
 
-### The short way: `agentworks start`
+### Connect once, choose folders in Crew settings
 
-Install the CLI, `cd` into your project folder and run:
-
-```sh
-agentworks start --server https://your-agentworks.example --workspace "My project"   # first time; later just: agentworks start
-```
-
-**Windows.** `install-agentworks.ps1` (served beside the shell installer; the setup page shows the PowerShell command) installs
-`agentworks.exe` in `%LOCALAPPDATA%\agentworks` and adds it to your user PATH, no administrator rights. Everything above works the
-same (`start`, `stop`, `status`, `watch`, `debug`, background mode). Commands the agent runs on your computer go through **Git
-Bash** (install Git for Windows; file tools work without it). Unlike macOS (Seatbelt) and Linux (Landlock), **Windows has no
-command sandbox**: commands run with your account's permissions, and `--block` and read-only paths bind the file tools only. The
-file tools refuse paths Windows resolves differently from how they are spelled (a trailing dot or space, 8.3 short names, `:`
-streams, device names such as `CON` and `NUL`) and do not follow a junction out of the shared folder.
-
-`--workspace` is the name of the Crew (as shown in Settings) that uses this folder. It is required the first time
-(asked in a terminal) and remembered per folder. `start` signs you in the first time (a browser approval limited to sharing local
-folders), shares the current folder with read and write access and shell commands, and keeps the connection open. It asks once
-whether to run in the background or keep the terminal open (`--background` / `--foreground` skip the question; the answer is
-remembered, `--ask` asks again), then always opens the website, whose link finds that workspace by name, opens it and saves
-the optional folder connection in its `product.json` (`laptop_connection`); Once connected it prints a short summary
-(folder, computer, workspace, website link); a terminal that stays open shows each file and command request live, and
-`agentworks watch` shows the same for a background share (a terminal that stays open also writes the log). `agentworks debug` writes one text file (CLI version, system, sign-in state without the token, name lookup, HTTPS and WebSocket checks to the server, proxy settings, sandbox, what is shared, and recent activity) into Downloads, shows it in the file manager, and is meant to be sent to support; tokens and passwords are removed, folder paths and recent commands are not. Logs are size-limited: each folder's log stops at 2 MB, the 3 previous files are kept, a new run starts a new file, and logs of a folder no longer shared are deleted after 14 days. A lost connection is retried with exponential backoff (1 s up to 30 s, with a little random spread). `agentworks stop` ends sharing for the current folder (`--all` for every folder), `agentworks status` lists what is
-shared, and `agentworks start --debug` stays in the terminal, prints diagnostics (CLI version, server reachability, sign-in,
-sandbox) and logs every file and command request from the server. `--block <path>` hides a file or folder, `--downloads`
-also shares `~/Downloads`. In the website, **Check connection** (Crew settings) confirms the computer is connected.
-The sections below describe the lower-level `executor connect` command that `start` is built on.
-
-The dedicated executor command opens an outbound authenticated connection to the
-AgentWorks server. It does not start a local model or a listening HTTP server.
-Use a separate CLI config to keep ordinary remote MCP credentials independent:
-
-`devices:connect` must be approved alone; combining it with workflow/MCP scopes
-is rejected. Share a project directory: the executor refuses your home directory,
-its parents, and any folder containing the CLI config or private state, including
-through another grant alias. Raw file operations also exclude private key files
-such as `.pem`, `.key`, `.p12`, `.pfx` and `.kdbx`. Shell programs have broader
-authority within a writable grant; keep credentials outside it and explicitly
-block any sensitive project directories.
+Install the CLI and run this from any folder:
 
 ```sh
-agentworks --config /absolute/path/private/executor.json login \
-  --server https://your-agentworks.example --scopes devices:connect
-agentworks --config /absolute/path/private/executor.json executor connect \
-  --device work-laptop \
-  --folder reference=/absolute/path/reference \
-  --write-folder project=/absolute/path/project \
-  --read-only generated --block secrets
+agentworks start --server https://your-agentworks.example
 ```
 
-`--folder` shares a read-only folder; shell commands can inspect its files but
-cannot modify them. `--write-folder` also permits edits and the existing patch
-tool; protected plans/configuration/database/private paths remain blocked in patches.
-`--downloads` separately grants read/write access to `~/Downloads` alongside
-each shared project. It is off by default. Shell commands use
-`$AGENTWORKS_DOWNLOADS`; guarded patches can name absolute Downloads paths,
-with one shared folder per request. Downloads remains writable even when the
-project is read-only. Merely sharing an additional folder alias does not expand
-a project’s command access. The same `--block`/`--read-only` exclusions apply
-to both roots; sensitive files should remain excluded.
+The CLI uses the same saved login as AgentBridge. The first run opens browser sign-in. It can stay in the background;
+`--foreground` keeps the terminal open, and `--background` skips that choice. The current folder is not shared automatically.
+AgentBridge keeps its existing chat attachments; `start` does not attach a chat for you.
 
-Every shared folder automatically enables shell commands; no separate flag is
-required. The CLI prints these permissions before connecting. Writable folders
-support builds, tests, git and package installation. Commands have network access
-to the internet, localhost services and the local network, even on read-only
-folder grants. File exclusions restrict filesystem access, not network destinations.
-Shell programs have broader project-file authority than patches; use `--block` and `--read-only` for paths
-commands must not access or modify. CLI credentials and receipt state stay denied.
-Commands use the filesystem sandbox and a sanitized environment; if the sandbox
-cannot enforce the grants, execution fails. Linux uses the launcher embedded in
-the CLI with Landlock; macOS uses sandbox-exec.
-Local commands on macOS allow only named directory lookup services through Mach
-IPC; desktop launching, Apple Events, clipboard and credential service lookups
-are not granted. Linux exclusions must exist
-before a command runs, and nested exclusions require supported user/mount namespaces. `--block` and
-`--read-only` accept repeatable relative paths and apply to each shared folder.
-Aliases and relative grants are sent to the server; absolute roots are omitted
-from grant metadata (shell output may contain local paths). `--state-dir` can select private durable receipt storage, which must be
-outside every shared folder. Both read-only and writable folders need private
-receipt storage and a writable private sibling `.<folder>-file-edits/` for a
-shared serialization lock; a read-only grant never
-writes inside the shared folder. Default receipt storage is beside the CLI config in
-`executor-state/<device>/<alias>/`. Do not delete it to resolve an uncertain write.
-The CLI automatically reconnects after transport interruptions, including while
-the server waits for an old socket to expire. It never retries a mutation whose
-outcome is uncertain.
+In **Crew → Settings → Laptop access**, choose your connected computer, browse its folders and add the ones this Crew needs.
+Each folder has **Read** or **Read & write** access. Read lets the agent read and copy files into Crew, with no arbitrary local
+commands. Read & write also enables local commands. Changes apply to the next operation without restarting the CLI.
+Permissions belong to this Crew and this computer; another Crew does not inherit them. Sharing a Crew does not share your laptop.
 
-### Crew website: optional laptop connection
+`agentworks status` shows the computer connection, `agentworks watch` shows local activity and `agentworks debug` produces a
+support file. `agentworks stop` stops laptop access and pauses AgentBridge messaging. `agentworks logout` signs out of both.
+Detaching a coding chat detaches only that chat. A lost network connection reconnects with backoff.
 
-Every Crew runs on the server. Its normal files, shell, memory, skills, MCP
-connections, functions, schedules and background agents keep working there.
-Open **Settings → Laptop connection**, follow the setup and choose your shared
-folder. `agentworks start` can also connect the named Crew directly. Each folder
-has its own stable connection identity, so two folders on one computer can stay
-connected simultaneously. After updating an older CLI, choose its new connection
-once in Settings.
+**Windows:** install the CLI with the PowerShell command shown in settings. Local commands use Git Bash (Git for Windows).
+Commands run with your account permissions, without an OS sandbox. Folder permissions bind file tools, not everything a shell
+command can do. macOS keeps its existing light Seatbelt sandbox and Linux uses Landlock. Read access never enables shell
+commands on any platform. The CLI's existing private-file, credential-state and guarded-path rules still apply.
+
+Crew continues running on the server when your laptop disconnects. Ordinary shell, Files, memory, functions and background work
+stay on the server. Only your own interactive Builder chat receives laptop tools; schedules, Run callers and co-owners do not.
+Server environment variables and secrets are never forwarded to local commands. Local output and copied files reach the server
+and model and may be saved in chat history. There is no automatic sync.
+
+After updating from the old folder-based CLI, run `agentworks stop`, then `agentworks start`. Choose folders and permissions in
+Crew settings. The old `--workspace`, `--block`, `--downloads`, `--folder` and `--write-folder` setup is removed.
 
 The owner's interactive Builder chat gets two extra tools:
 
@@ -970,6 +906,6 @@ agentworks agents
 
 In the exact chat use `/agentworks attach [NAME]`, `/agentworks detach` or `/agentworks agents`. Attach installs a missing Codex/Claude plugin, discovers verified live sessions in a terminal, connects or reconnects the selected chat and preserves its identity. NAME is optional; the agent sets its own purpose. Hook trust is still reviewed in the provider. No separate resume or cleanup command is needed.
 
-CLI update and stop/start preserve and reconnect still-live approved attachments. If the coding-agent process itself restarted, type attach again. These messaging commands do not replace local folder sharing, `executor connect`, workflows, files or Crew commands. Use `agentworks start` in a project to keep local coding access as before.
+CLI update and stop/start preserve and reconnect still-live approved attachments. If the coding-agent process itself restarted, type attach again. These messaging commands use the same CLI and saved login as laptop access. Run `agentworks start` once, then choose folders and permissions in Crew settings.
 
 Terminal attach/detach refuse coding-agent process ancestry even through a PTY; the person uses the in-chat hook instead. A missing plugin install names its provider and current project folder and asks for yes. Explicit NAME cannot take over another live chat: detach that name there first. Offline identities can move through person attach.

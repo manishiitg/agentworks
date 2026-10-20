@@ -15,8 +15,8 @@ it('makes executor folder access explicit without promising remote workflow acce
   const root = createRoot(host)
   await act(async () => root.render(<CLIOAuthConsent />))
   try {
-    expect(host.textContent).toContain('Only folders you explicitly select')
-    expect(host.textContent).toContain('Folders you open as Run cannot be edited')
+    expect(host.textContent).toContain('No folder is shared automatically')
+    expect(host.textContent).toContain('Choose folders and Read or Read & write in Crew Settings')
     expect(host.textContent).not.toContain('start or control runs')
     const allow = [...host.querySelectorAll('button')].find(button => button.textContent === 'Allow access')!
     await act(async () => allow.click())

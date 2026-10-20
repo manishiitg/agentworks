@@ -3,7 +3,6 @@ import type { PresetLLMConfig, SharedProjectSchedule, SharedProjectTrigger } fro
 import { dedupeByFilepath, flattenFiles, responseContent, responseFiles, slugifyTitle } from '../../utils/plannerFiles'
 import { nativeAgentToolsEnabled } from '../../utils/nativeAgentTools'
 
-export type ProductLocalFiles = { device_id: string; resource_id: string }
 
 /** Server project mode; the optional laptop connection does not change it. */
 export type ProductMode = 'dev' | 'cowork'
@@ -29,8 +28,6 @@ export type ProductProject<P extends string = string> = {
   workflowContextPaths: string[]
   /** Crew "Native agent tools": capabilities.native_agent_tools in workflow.json, on unless explicitly false. */
   nativeAgentTools?: boolean
-  /** Optional laptop folder for extra command and copy tools (product.json `laptop_connection`). Absent = no laptop connection. */
-  localFiles?: ProductLocalFiles
   /** Absent on projects made before modes: they are dev. */
   mode?: ProductMode
   creationWarnings?: string[]
@@ -74,7 +71,6 @@ type ProductManifest = {
   updated_at?: unknown
   capabilities?: unknown
   workflow_context_paths?: unknown
-  laptop_connection?: unknown
   mode?: unknown
 }
 
@@ -101,18 +97,14 @@ function parseProductTemplate(value: unknown): { id: string; version: number } |
 }
 
 const localFileId = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/
-function manifestLocalFiles(raw: ProductManifest): ProductLocalFiles | undefined {
-  const value = raw.laptop_connection as { device_id?: unknown; resource_id?: unknown } | undefined
-  return value && typeof value.device_id === 'string' && typeof value.resource_id === 'string' && localFileId.test(value.device_id) && localFileId.test(value.resource_id)
-    ? { device_id: value.device_id, resource_id: value.resource_id } : undefined
-}
+
 
 function manifestMode(raw: ProductManifest): ProductMode | undefined {
   return PRODUCT_MODES.find(mode => mode === raw.mode)
 }
 
 /** The server mode a project works in. */
-export function productMode(project: Pick<ProductProject, 'mode' | 'localFiles'>): ProductMode {
+export function productMode(project: Pick<ProductProject, 'mode'>): ProductMode {
   return project.mode ?? 'dev'
 }
 
@@ -199,7 +191,6 @@ export function parseProductProjectManifest<P extends string>(
     selectedGlobalSecrets: manifestGlobalSecretSelection(raw),
     workflowContextPaths: manifestStringList(raw, 'workflow_context_paths'),
     nativeAgentTools: manifestNativeAgentTools(raw),
-    localFiles: manifestLocalFiles(raw),
     mode: manifestMode(raw),
     selectionConfigInitialized: manifestHasSelectionConfig(raw),
     secretSelectionInitialized: manifestHasSecretSelection(raw),
@@ -525,33 +516,6 @@ export async function updateProductProjectLLMConfig<P extends string>(
   } catch {
     throw new Error('Project configuration is invalid JSON.')
   }
-}
-
-/**
- * Code: remembers the computer and folder this workspace works in (product.json `laptop_connection`), or clears it to use the
- * server's files. The setting is context, never authority: the server rechecks the device grants on every request.
- */
-export async function updateProductProjectLocalFiles<P extends string>(
-  project: ProductProject<P>,
-  localFiles: ProductLocalFiles | undefined,
-  commitLabel: string,
-): Promise<ProductProject<P>> {
-  const path = `${project.workspacePath}/product.json`
-  const response = await agentApi.getPlannerFileContent(path)
-  const document = responseContent(response)
-  if (!document) throw new Error('Project configuration was not found.')
-  let manifest: Record<string, unknown>
-  try {
-    manifest = JSON.parse(document.content) as Record<string, unknown>
-  } catch {
-    throw new Error('Project configuration is invalid JSON.')
-  }
-  if (localFiles) manifest.laptop_connection = { device_id: localFiles.device_id, resource_id: localFiles.resource_id }
-  else delete manifest.laptop_connection
-  const updatedAt = new Date().toISOString()
-  manifest.updated_at = updatedAt
-  await agentApi.updatePlannerFile(path, `${JSON.stringify(manifest, null, 2)}\n`, commitLabel)
-  return { ...project, localFiles, updatedAt }
 }
 
 /** Sets the crew's "Native agent tools" switch (capabilities.native_agent_tools). */

@@ -38,12 +38,12 @@ import { workProjectActivity, workSideChatDisplayName } from './workProjectPrese
 import { CreateCodeWorkspaceDialog } from './CreateCodeWorkspaceDialog'
 import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
-import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, removeWorkSessionTemplate, loadCombinedWorkSessions, isWorkSessionRun, updateWorkSessionLocalFiles, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
+import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, removeWorkSessionTemplate, loadCombinedWorkSessions, isWorkSessionRun, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
 import { useSharedCrewHasDashboard } from './useSharedCrewDashboard'
 import { loadWorkspaceLandingView } from '../../components/workflow/workspaceLandingView'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
-import { clearPendingLocalLink, peekPendingLocalLink, registerLocalFilesPersister, setProjectLocalFiles, setProjectMode } from './codeLocalFiles'
+import { setProjectMode } from './codeLocalFiles'
 import { useProductCreateRequest } from '../../hooks/useProductCreateRequest'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { WorkspaceSplitRail } from '../../components/workspace/WorkspaceSplitDivider'
@@ -346,13 +346,7 @@ function useWorkSessions(product: ProjectProductConfig) {
     return updated
   }, [product, sessions, updateSessions])
 
-  const updateLocalFiles = useCallback(async (projectId: string, localFiles: { device_id: string; resource_id: string } | undefined) => {
-    const project = sessions.find(item => item.product === product.profileId && item.id === projectId)
-    if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
-    const updated = await updateWorkSessionLocalFiles(project, localFiles)
-    updateSessions(current => current.map(item => item.product === updated.product && item.id === projectId ? updated : item))
-    return updated
-  }, [product, sessions, updateSessions])
+
 
   return {
     sessions,
@@ -366,7 +360,6 @@ function useWorkSessions(product: ProjectProductConfig) {
     updateNativeAgentTools,
     updateSelections,
     updateIdentity,
-    updateLocalFiles,
     refresh,
     loading,
     error,
@@ -1105,7 +1098,7 @@ function WorkTopBarControl({
 }
 
 function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
-  const { sessions, selected, select, create, installTemplate, removeTemplate, remove, updateLLMConfig, updateNativeAgentTools, updateSelections, updateIdentity, updateLocalFiles, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions(product)
+  const { sessions, selected, select, create, installTemplate, removeTemplate, remove, updateLLMConfig, updateNativeAgentTools, updateSelections, updateIdentity, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions(product)
   const selectedTemplates = !product.hasTemplates ? [] : crewTemplates.filter(template => selected?.templates.some(installed => installed.id === template.id && installed.version === template.version))
   const workflowContextSignature = selected?.workflowContextPaths.join('\u0000') || ''
   const persistLegacyRuntime = useCallback(async (selection: WorkRuntimeSelection) => {
@@ -1116,43 +1109,10 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
 
 
 
-  // Code: the computer and folder come from the workspace's product.json (`laptop_connection`), so the optional laptop connection survives a refresh.
-  const localFilesProjectId = selected?.id
-  const selectedLocalFiles = selected?.localFiles
-  const selectedIsShared = Boolean(selected?.shared)
-  useEffect(() => {
-    if (!localFilesProjectId) return
-    // Someone else's workspace never shows its owner's computer: not theirs to use, and the server refuses it.
-    setProjectLocalFiles(localFilesProjectId, selectedIsShared ? null : selectedLocalFiles ?? null)
-  }, [product.profileId, localFilesProjectId, selectedLocalFiles, selectedIsShared])
   const selectedMode = selected ? productMode(selected) : undefined
   useEffect(() => {
-    if (localFilesProjectId && selectedMode) setProjectMode(localFilesProjectId, selectedMode)
-  }, [product.profileId, localFilesProjectId, selectedMode])
-  // An `agentworks start` link names the Code workspace that uses the folder: open that workspace and save the folder in it.
-  // Only a workspace the user named is changed; no match (or several) says so and changes nothing.
-  useEffect(() => {
-    if (sessionsLoading) return
-    const link = peekPendingLocalLink()
-    if (!link) return
-    const wanted = link.workspace.trim().toLowerCase()
-    const matches = sessions.filter(item => !item.shared && (item.identity?.name?.trim() || item.title).trim().toLowerCase() === wanted)
-    clearPendingLocalLink()
-    if (matches.length !== 1) {
-      useChatStore.getState().addToast(matches.length === 0
-        ? `No Crew is named “${link.workspace}”. Check the name in Settings (or create the workspace), then run agentworks start again.`
-        : `Several Crews are named “${link.workspace}”. Rename one so the link can pick it, then run agentworks start again.`, 'error')
-      return
-    }
-    const match = matches[0]
-    select(match.id)
-    setProjectLocalFiles(match.id, link.target)
-    void updateLocalFiles(match.id, link.target).catch(() => setProjectLocalFiles(match.id, null))
-  }, [product.profileId, sessionsLoading, sessions, select, updateLocalFiles])
-  useEffect(() => {
-    registerLocalFilesPersister((projectId, target) => updateLocalFiles(projectId, target ?? undefined).then(() => undefined))
-    return () => registerLocalFilesPersister(undefined)
-  }, [product.profileId, updateLocalFiles])
+    if (selected?.id && selectedMode) setProjectMode(selected.id, selectedMode)
+  }, [selected?.id, selectedMode])
 
   // A browser reload loses transient tab metadata while the durable references
   // remain in workflow.json. Force the first follow-up through the full profile

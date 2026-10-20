@@ -12,7 +12,6 @@ vi.mock('../stores/useAuthStore', () => ({ useAuthStore: Object.assign((selector
 vi.mock('../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: Object.assign((selector: (state: unknown) => unknown) => selector({ activeWorkspaceId: 'hosted' }), { getState: () => ({ activeWorkspaceId: 'hosted' }) }) }))
 vi.mock('../services/api', () => ({ default: {}, getApiBaseUrl: () => 'https://code.example.test' }))
 import { TerminalFocusLayout } from './TerminalFocusLayout'
-import { setProjectLocalFiles } from '../products/work/codeLocalFiles'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let root: Root | undefined
@@ -31,7 +30,6 @@ async function render(tabId?: string) {
 const press = async (label: string) => { await act(async () => [...document.body.querySelectorAll('button')].find(b => b.textContent === label)!.click()) }
 
 it('keeps the server layout without a Local-mode prompt when a laptop is connected', async () => {
- setProjectLocalFiles('code-1', { device_id: 'laptop', resource_id: 'app' })
  await render('tab')
  expect(document.body.textContent).not.toContain('Use focus mode?')
  expect(document.body.textContent).toContain('chat')

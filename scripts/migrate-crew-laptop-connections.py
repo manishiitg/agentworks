@@ -28,7 +28,7 @@ def migrate(workspace_root, registry_path, backup_dir):
         product_path = project_root / "product.json"
         product = json.loads(product_path.read_text())
         was_local = product.get("mode") == "local"
-        old_connection = product.get("local_files")
+        old_connection = product.get("local_files") or product.get("laptop_connection")
         if not was_local and old_connection is None:
             continue
         runtime_path = project_root / "workflow.json"
@@ -36,8 +36,9 @@ def migrate(workspace_root, registry_path, backup_dir):
         if was_local:
             product["mode"] = "dev"
             runtime.setdefault("capabilities", {})["memory_enabled"] = True
-        if old_connection is not None:
-            product["laptop_connection"] = old_connection
+        # Folder permissions now belong to server-private per-Crew settings.
+        # The old binding has no local path or access level; the owner chooses them in Settings.
+        product.pop("laptop_connection", None)
         product.pop("local_files", None)
         changes.append((project_root, product_path, product, runtime_path, runtime, was_local))
     if not changes:
@@ -55,7 +56,7 @@ def migrate(workspace_root, registry_path, backup_dir):
         if was_local:
             runtime_path.write_text(json.dumps(runtime, indent=2, ensure_ascii=False) + "\n")
     print(json.dumps({"migrated": len(changes), "former_local": sum(row[-1] for row in changes),
-                      "laptop_bindings": sum(bool(row[2].get("laptop_connection")) for row in changes),
+                      "cleared_old_bindings": len(changes),
                       "backup": str(backup_dir)}))
 
 

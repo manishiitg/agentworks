@@ -3183,6 +3183,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/external/v1/brain/secret", api.handleBrainSecretSet).Methods("POST")
 	apiRouter.HandleFunc("/external/v1/secrets", api.handleSecretsImport).Methods("POST")
 	apiRouter.HandleFunc("/devices", api.handleLocalDevices).Methods("GET")
+	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/laptop", api.handleCrewLaptopSettings).Methods("GET", "PUT")
+	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/laptop/folders", api.handleLaptopBrowse).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/tools", api.handleExternalTools).Methods("GET")
 	apiRouter.HandleFunc("/external/v1/call", api.handleExternalCall).Methods("POST")
 	apiRouter.HandleFunc("/workspaces", api.handleWorkspaces).Methods("POST")
@@ -14826,6 +14828,14 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 	if isRetiredGeneralChat(req, resolvedProfile, sessionID) {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: errRetiredGeneralChat, invalidProfile: true}
 	}
+	// Laptop grants are server-owned, never granted by browser query fields or editable project files.
+	req.LaptopConnection = nil
+	if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && websiteDeviceClaims(GetUserFromContext(ctx)) && crewProjectOwnedByCallerStrict(currentUserID, agentProfileRuntimeWorkspace(currentUserID, req.SelectedFolder)) {
+		settings, err := readLaptopSettings(currentUserID, req.SelectedFolder)
+		if err == nil && (&laptopConnectionTarget{DeviceID: settings.DeviceID}).valid() && len(settings.Folders) > 0 {
+			req.LaptopConnection = &laptopConnectionTarget{DeviceID: settings.DeviceID}
+		}
+	}
 	// Automated and Run callers keep server capabilities, never an inherited laptop grant.
 	if req.LaptopConnection != nil && (!laptopConnectionTurn(*req, resolvedProfile) || !websiteDeviceClaims(GetUserFromContext(ctx))) {
 		log.Printf("[LAPTOP_TOOL] session=%s caller=%s operation=exclude reason=interactive_owner_only", sessionID, currentUserID)
@@ -14868,7 +14878,7 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 	}
 	crewReadOnly := readOnlyForRequest(access, *req) || crewGuestCallerForTurn(*req, currentUserID) != ""
 	if req.LaptopConnection != nil {
-		resolvedProfile.LaptopConnectionPolicy = api.laptopConnectionPolicyKey(GetUserFromContext(ctx), req.LaptopConnection, crewReadOnly)
+		resolvedProfile.LaptopConnectionPolicy = api.laptopConnectionPolicyKey(GetUserFromContext(ctx), req.LaptopConnection, crewReadOnly, req.SelectedFolder)
 	}
 	if err := applyCrewChatMode(resolvedProfile, req, crewReadOnly); err != nil {
 		return nil, WorkflowAccessNone, &queryAdmissionError{err: err, invalidProfile: true}

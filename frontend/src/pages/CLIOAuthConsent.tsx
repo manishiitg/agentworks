@@ -36,8 +36,8 @@ export function CLIOAuthConsent() {
         <p className="mt-1 text-sm text-muted-foreground">{decision ? 'You can return to your terminal.' : 'Approve the CLI running on your computer.'}</p>
       </div>
       {consent && !decision && <>
-        <p className="text-sm text-foreground">Only allow this if you started <code>agentworks login</code> and your terminal shows this code: <strong className="font-mono">{consent.user_code}</strong></p>
-        {consent.scopes.includes('devices:connect') && <p className="text-sm text-foreground">Connect a local file executor to your website account. Only folders you explicitly select in the executor command are shared. Folders you open as Run cannot be edited; plans and private files stay protected. Stopping the command disconnects it.</p>}
+        <p className="text-sm text-foreground">Only allow this if you started <code>agentworks start</code> or <code>agentworks login</code> and your terminal shows this code: <strong className="font-mono">{consent.user_code}</strong></p>
+        {consent.scopes.includes('devices:connect') && <p className="text-sm text-foreground">Connect this computer for AgentBridge and optional laptop access. No folder is shared automatically. Choose folders and Read or Read & write in Crew Settings → Laptop access. Stopping the CLI disconnects laptop access and pauses messaging.</p>}
         {consent.scopes.some(scope => scope !== 'devices:connect') && <p className="text-sm text-foreground">Approved permissions: {consent.scopes.filter(scope => scope !== 'devices:connect').join(', ')}. Your current account access applies to every request.</p>}
         <div className="flex justify-end gap-2">
           <Button variant="outline" disabled={busy} onClick={() => void decide('deny')}>Deny</Button>

@@ -26,7 +26,7 @@ func (s *mcpOAuthStore) CreateCLIDevice(ctx context.Context, requested ...string
 		return
 	}
 	if len(requested) == 0 {
-		requested = mcpOAuthDefaultScopes
+		requested = append(append([]string{}, mcpOAuthDefaultScopes...), "devices:connect")
 	}
 	scopes, _ := json.Marshal(requested)
 	result, err := s.db.ExecContext(ctx, `INSERT INTO cli_devices(hash,verification_hash,scopes,status,expires_at) SELECT ?,?,?,'pending',? WHERE (SELECT COUNT(*) FROM cli_devices)<10000`, mcpOAuthHash(deviceCode), mcpOAuthHash(verificationCode), string(scopes), time.Now().Add(10*time.Minute).Unix())
@@ -56,10 +56,20 @@ func (s *mcpOAuthStore) DecideCLIDevice(ctx context.Context, verificationCode st
 	if approve {
 		status = "approved"
 	}
-	if _, err := s.CLIDeviceRequest(ctx, verificationCode); err != nil {
+	requested, err := s.CLIDeviceRequest(ctx, verificationCode)
+	if err != nil {
 		return err
 	}
-	scopes, err := json.Marshal(mcpOAuthPersonScopes(user))
+	granted := mcpOAuthPersonScopes(user)
+	for _, scope := range requested {
+		if scope == "devices:connect" {
+			granted = append(granted, scope)
+		}
+	}
+	if len(requested) == 1 && requested[0] == "devices:connect" {
+		granted = requested
+	}
+	scopes, err := json.Marshal(granted)
 	if err != nil {
 		return err
 	}

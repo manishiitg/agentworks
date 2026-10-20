@@ -42,7 +42,6 @@ import ToastHost from './components/ui/ToastHost'
 import QuickSwitcher, { preloadQuickSwitcher } from './components/QuickSwitcherHost'
 import { useWorkspaceReturnStore } from './stores/useWorkspaceReturnStore'
 import { WelcomeHome } from './components/WelcomeHome'
-import { setPendingLocalLink } from './products/work/codeLocalFiles'
 import { markFeatureUsed } from './utils/featureUsage'
 
 const queryClient = new QueryClient();
@@ -861,17 +860,11 @@ function AppWorkspace() {
 
 function App() {
   const setProductSurface = useProductSurfaceStore(state => state.setProductSurface)
-  // `agentworks start` opens the site with ?local_device=…&local_folder=…&local_workspace=<name>: open Crew and remember the link; the
-  // workspace screen applies it to the workspace with that name. Read before sign-in so a login redirect cannot lose it.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    const device = params.get('local_device')
-    const folder = params.get('local_folder')
-    const workspace = params.get('local_workspace')
-    if (!device || !folder || !workspace) return
-    setPendingLocalLink({ target: { device_id: device, resource_id: folder }, workspace })
+    if (!params.has('laptop_setup')) return
     setProductSurface('work')
-    params.delete('local_device'); params.delete('local_folder'); params.delete('local_workspace')
+    params.delete('laptop_setup')
     const rest = params.toString()
     window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`)
   }, [setProductSurface])

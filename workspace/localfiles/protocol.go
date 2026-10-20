@@ -28,8 +28,9 @@ type Resource struct {
 	Guard       wf.FolderGuard `json:"guard"`
 }
 type Hello struct {
-	Version  int    `json:"version"`
-	DeviceID string `json:"device_id"`
+	SettingsManaged bool   `json:"settings_managed,omitempty"`
+	Version         int    `json:"version"`
+	DeviceID        string `json:"device_id"`
 	// CLIVersion is the build the CLI was made from (a source revision, or "dev"); the website compares it with the server's
 	// current one and asks the person to update. Empty from a CLI older than this field.
 	CLIVersion string `json:"cli_version,omitempty"`
@@ -39,7 +40,7 @@ type Hello struct {
 }
 
 func (h Hello) Validate() error {
-	if h.Version != Version || !ValidID(h.DeviceID) || len(h.Resources) == 0 || len(h.Resources) > 32 || len(h.CLIVersion) > 80 || len(h.CLIBuild) > 80 || strings.ContainsAny(h.CLIBuild, "\r\n\x00") || strings.ContainsAny(h.CLIVersion, "\r\n\x00") {
+	if h.Version != Version || !ValidID(h.DeviceID) || (!h.SettingsManaged && len(h.Resources) == 0) || len(h.Resources) > 32 || len(h.CLIVersion) > 80 || len(h.CLIBuild) > 80 || strings.ContainsAny(h.CLIBuild, "\r\n\x00") || strings.ContainsAny(h.CLIVersion, "\r\n\x00") {
 		return fmt.Errorf("invalid executor handshake")
 	}
 	seen := map[string]bool{}
@@ -72,21 +73,25 @@ func (h Hello) Validate() error {
 }
 
 type Request struct {
-	PublicationInfoOnly bool            `json:"publication_info_only,omitempty"`
-	Offset              int64           `json:"offset,omitempty"`
-	ProjectID           string          `json:"project_id,omitempty"`
-	Identity            wf.EditIdentity `json:"identity"`
-	ID                  string          `json:"id"`
-	ResourceID          string          `json:"resource_id"`
-	Operation           string          `json:"operation"`
-	Path                string          `json:"path"`
-	Command             string          `json:"command,omitempty"`
-	TimeoutSeconds      int             `json:"timeout_seconds,omitempty"`
-	Content             string          `json:"content,omitempty"`
-	ExpectedRevision    string          `json:"expected_revision,omitempty"`
-	RequestID           string          `json:"request_id,omitempty"`
+	Folders             []FolderSelection `json:"folders,omitempty"`
+	CrewID              string            `json:"crew_id,omitempty"`
+	PublicationInfoOnly bool              `json:"publication_info_only,omitempty"`
+	Offset              int64             `json:"offset,omitempty"`
+	ProjectID           string            `json:"project_id,omitempty"`
+	Identity            wf.EditIdentity   `json:"identity"`
+	ID                  string            `json:"id"`
+	ResourceID          string            `json:"resource_id"`
+	Operation           string            `json:"operation"`
+	Path                string            `json:"path"`
+	Command             string            `json:"command,omitempty"`
+	TimeoutSeconds      int               `json:"timeout_seconds,omitempty"`
+	Content             string            `json:"content,omitempty"`
+	ExpectedRevision    string            `json:"expected_revision,omitempty"`
+	RequestID           string            `json:"request_id,omitempty"`
 }
 type Response struct {
+	Folders     []FolderSelection    `json:"folders,omitempty"`
+	Directory   *Directory           `json:"directory,omitempty"`
 	Bytes       []byte               `json:"bytes"`
 	Publication *PublicationSnapshot `json:"publication,omitempty"`
 	Patches     []wf.WriteReceipt    `json:"patches,omitempty"`

@@ -149,7 +149,7 @@ func (api *StreamingAPI) handleCLIOAuthConsent(w http.ResponseWriter, r *http.Re
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": "AgentWorks CLI", "scopes": mcpOAuthPersonScopes(claims), "user_code": strings.ToUpper(code[len("cli_verify_") : len("cli_verify_")+8])})
+		_ = json.NewEncoder(w).Encode(map[string]any{"client_name": "AgentWorks CLI", "scopes": append(mcpOAuthPersonScopes(claims), "devices:connect"), "user_code": strings.ToUpper(code[len("cli_verify_") : len("cli_verify_")+8])})
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -294,7 +294,7 @@ func cliOAuthAllowedPath(method, path string) bool {
 
 func validCLIOAuthScopes(requested []string) ([]string, bool) {
 	if len(requested) == 0 {
-		return append([]string(nil), mcpOAuthDefaultScopes...), true
+		return append(append([]string(nil), mcpOAuthDefaultScopes...), "devices:connect"), true
 	}
 	device := false
 	ordinary := []string{}
@@ -309,9 +309,6 @@ func validCLIOAuthScopes(requested []string) ([]string, bool) {
 		}
 	}
 	if len(ordinary) > 0 {
-		if device {
-			return nil, false
-		}
 		var valid bool
 		ordinary, valid = validMCPOAuthScopes(strings.Join(ordinary, " "))
 		if !valid {
