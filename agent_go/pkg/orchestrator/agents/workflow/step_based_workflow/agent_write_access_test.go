@@ -210,7 +210,7 @@ func TestAgentTemplateVarsReflectItemWriteAccess(t *testing.T) {
 	}
 	readPaths, writePaths := hcpo.setupAgentFolderGuard("step-1", step.GetID(), getAgentConfigs(step), item.WriteAccess)
 	vars := hcpo.buildAgentTemplateVars(t.Context(), step, item, 0, "step-1", "write the durable notes", readPaths, writePaths, item.WriteAccess)
-	if !strings.Contains(vars["FolderGuardReadPaths"], filepath.Join("Workflow", "test-flow", "learnings", step.GetID())) {
+	if !guardCovers(readPaths, filepath.Join("Workflow", "test-flow", "learnings", step.GetID())) {
 		t.Fatalf("agent cannot read its step-specific learnings: %q", vars["FolderGuardReadPaths"])
 	}
 	if strings.Contains(vars["FolderGuardWritePaths"], filepath.Join("Workflow", "test-flow", "learnings", step.GetID())) {
