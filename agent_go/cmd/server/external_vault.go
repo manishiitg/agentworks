@@ -437,7 +437,8 @@ func (api *StreamingAPI) vaultShareProjectSecret(w http.ResponseWriter, r *http.
 		}
 	}
 	name, vaultName := externalArg(args, "name"), externalArg(args, "vault_name")
-	if err := api.shareWorkflowSecretToVault(ctx, claims.UserID, root, name, vaultName, ids); err != nil {
+	overwrite, _ := args["overwrite"].(bool)
+	if err := api.shareWorkflowSecretToVault(ctx, claims.UserID, root, name, vaultName, ids, overwrite); err != nil {
 		vaultSecretFail(w, err)
 		return
 	}

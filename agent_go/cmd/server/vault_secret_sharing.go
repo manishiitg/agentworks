@@ -41,7 +41,9 @@ func vaultSecretShareGroups(ctx context.Context, actor string) ([]vaultShareGrou
 
 // Host-side transfer: the source value never passes through the browser or model.
 // Copies are independent. Sharing never deletes, detaches or rotates the source.
-func (api *StreamingAPI) shareWorkflowSecretToVault(ctx context.Context, actor, workspace, sourceName, vaultName string, groupIDs []string) error {
+// overwrite replaces a Vault secret of the same name with the project's value (the migration into Vault, where the
+// owner chose that a project's own value wins, 2026-10-20); without it an existing name is never touched.
+func (api *StreamingAPI) shareWorkflowSecretToVault(ctx context.Context, actor, workspace, sourceName, vaultName string, groupIDs []string, overwrite bool) error {
 	if !canShareVaultSecrets(actor) {
 		return errGlobalAdmin
 	}
@@ -84,7 +86,7 @@ func (api *StreamingAPI) shareWorkflowSecretToVault(ctx context.Context, actor, 
 		if err != nil {
 			return errors.New("Could not decrypt source secret")
 		}
-		if err := api.saveManagedGlobalSecret(ctx, actor, vaultName, value, true); err != nil {
+		if err := api.saveManagedGlobalSecret(ctx, actor, vaultName, value, !overwrite); err != nil {
 			return err
 		}
 		if err := vaultSecretAdminRequest(ctx, actor, http.MethodPost, "/api/admin/secrets/"+url.PathEscape(vaultName)+"/grants", map[string]any{"group_ids": groupIDs}); err != nil {
@@ -121,7 +123,7 @@ func (api *StreamingAPI) handleShareVaultSecret(w http.ResponseWriter, r *http.R
 		writeUsersError(w, 400, "Invalid sharing request")
 		return
 	}
-	if err := api.shareWorkflowSecretToVault(r.Context(), actor, in.WorkspacePath, in.Name, in.VaultName, in.GroupIDs); err != nil {
+	if err := api.shareWorkflowSecretToVault(r.Context(), actor, in.WorkspacePath, in.Name, in.VaultName, in.GroupIDs, false); err != nil {
 		globalSecretError(w, err)
 		return
 	}

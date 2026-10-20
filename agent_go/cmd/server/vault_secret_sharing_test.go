@@ -53,7 +53,7 @@ func TestVaultSecretSharingKeepsSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	before, _ := api.ensureSharedWorkflowSecrets(ctx, sharedSecretsTestWorkflow, "admin")
-	if err := api.shareWorkflowSecretToVault(ctx, "admin", sharedSecretsTestWorkflow, "PROJECT_KEY", "TEAM_KEY", []string{"platform", "finance"}); err != nil {
+	if err := api.shareWorkflowSecretToVault(ctx, "admin", sharedSecretsTestWorkflow, "PROJECT_KEY", "TEAM_KEY", []string{"platform", "finance"}, false); err != nil {
 		t.Fatalf("sharing: %v", err)
 	}
 	after, _ := api.ensureSharedWorkflowSecrets(ctx, sharedSecretsTestWorkflow, "admin")
@@ -87,7 +87,7 @@ func TestVaultSecretSharingRejectsUnauthorizedInvalidAndConflictingRequests(t *t
 		{"admin", "Workflow/missing", "TEAM_KEY", []string{"platform"}},
 		{"admin", sharedSecretsTestWorkflow, "bad/name", []string{"platform"}},
 	} {
-		if err := api.shareWorkflowSecretToVault(ctx, tc.actor, tc.path, "PROJECT_KEY", tc.name, tc.groups); err == nil {
+		if err := api.shareWorkflowSecretToVault(ctx, tc.actor, tc.path, "PROJECT_KEY", tc.name, tc.groups, false); err == nil {
 			t.Fatalf("accepted %+v", tc)
 		}
 	}
@@ -106,7 +106,7 @@ func TestVaultSecretSharingReportsPartialPermissionFailure(t *testing.T) {
 	api := managedGlobalTestAPI(t)
 	sharingTestVault(t, true)
 	api.upsertSharedWorkflowSecret(context.Background(), sharedSecretsTestWorkflow, "PROJECT_KEY", "source")
-	err := api.shareWorkflowSecretToVault(context.Background(), "admin", sharedSecretsTestWorkflow, "PROJECT_KEY", "TEAM_KEY", []string{"platform", "finance"})
+	err := api.shareWorkflowSecretToVault(context.Background(), "admin", sharedSecretsTestWorkflow, "PROJECT_KEY", "TEAM_KEY", []string{"platform", "finance"}, false)
 	if err == nil || !strings.Contains(err.Error(), "copied to Vault") {
 		t.Fatalf("hidden partial failure: %v", err)
 	}
