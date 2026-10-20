@@ -88,10 +88,30 @@ describe('sanitizeApiBody', () => {
 
   it('truncates a payload larger than the cap instead of storing it whole', () => {
     const big = { data: 'x'.repeat(10000) }
-    const result = sanitizeApiBody(big) as { truncated: boolean; originalLength: number; preview: string }
+    const result = sanitizeApiBody(big) as { truncated: boolean; preview: string }
     expect(result.truncated).toBe(true)
-    expect(result.originalLength).toBeGreaterThan(4000)
     expect(result.preview.length).toBeLessThanOrEqual(4000)
+  })
+
+  it('does not traverse the rest of a large response to produce a tiny preview', () => {
+    let reads = 0
+    const rows = Array.from({ length: 10_000 }, () => ({
+      get content() { reads++; return 'x'.repeat(1000) },
+      token: 'never-retain-this',
+    }))
+    const result = sanitizeApiBody({ rows }) as { truncated: boolean; preview: string }
+    expect(reads).toBeLessThan(10)
+    expect(result.truncated).toBe(true)
+    expect(result.preview.length).toBeLessThanOrEqual(4000)
+    expect(result.preview).not.toContain('never-retain-this')
+  })
+
+  it('bounds wide objects and numeric arrays as well as long text', () => {
+    for (const value of [Object.fromEntries(Array.from({ length: 1000 }, (_, i) => [`k${i}`, i])), Array.from({ length: 1000 }, (_, i) => i)]) {
+      const result = sanitizeApiBody(value) as { truncated: boolean; preview: string }
+      expect(result.truncated).toBe(true)
+      expect(result.preview.length).toBeLessThanOrEqual(4000)
+    }
   })
 
   it('passes small, non-sensitive payloads through unchanged', () => {

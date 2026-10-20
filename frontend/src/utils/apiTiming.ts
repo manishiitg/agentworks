@@ -26,31 +26,62 @@ const entries: ApiTimingEntry[] = []
 const SENSITIVE_KEY_PATTERN = /password|token|secret|api[-_]?key|authorization|oauth/i
 const MAX_BODY_JSON_CHARS = 4000
 const MAX_REDACT_DEPTH = 6
+const MAX_COLLECTION_ENTRIES = 64
 
-function redactValue(value: unknown, depth: number): unknown {
+// Copy bounded text instead of retaining a slice backed by a multi-MB response.
+function copyPreview(value: string, length: number): string {
+  return value.slice(0, length).split('').join('')
+}
+
+type BodyBudget = { remaining: number; truncated: boolean }
+
+function redactValue(value: unknown, depth: number, budget: BodyBudget): unknown {
+  if (budget.remaining <= 0) { budget.truncated = true; return '[truncated]' }
   if (depth > MAX_REDACT_DEPTH) return '[max depth]'
-  if (Array.isArray(value)) return value.map((v) => redactValue(v, depth + 1))
-  if (value && typeof value === 'object') {
-    const out: Record<string, unknown> = {}
-    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-      out[key] = SENSITIVE_KEY_PATTERN.test(key) ? '[redacted]' : redactValue(val, depth + 1)
+  if (typeof value === 'string') {
+    const length = Math.min(value.length, budget.remaining)
+    budget.remaining -= length + 2
+    if (length < value.length) budget.truncated = true
+    return copyPreview(value, length)
+  }
+  if (Array.isArray(value)) {
+    const out: unknown[] = []
+    for (let i = 0; i < value.length; i++) {
+      if (i >= MAX_COLLECTION_ENTRIES || budget.remaining <= 0) { budget.truncated = true; break }
+      budget.remaining -= 1
+      out.push(redactValue(value[i], depth + 1, budget))
     }
     return out
   }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    let count = 0
+    // Do not allocate Object.entries for an unbounded response object.
+    for (const key in value) {
+      if (!Object.prototype.hasOwnProperty.call(value, key)) continue
+      if (count++ >= MAX_COLLECTION_ENTRIES || key.length + 4 > budget.remaining) { budget.truncated = true; break }
+      budget.remaining -= key.length + 4
+      const safe = SENSITIVE_KEY_PATTERN.test(key) ? '[redacted]' : (value as Record<string, unknown>)[key]
+      Object.defineProperty(out, key, { value: redactValue(safe, depth + 1, budget), enumerable: true })
+    }
+    return out
+  }
+  budget.remaining -= 8
   return value
 }
 
-// Redacts sensitive fields and caps the serialized size so one huge
-// payload (a full workflow manifest list, a long chat history) can't blow
-// up memory across up to MAX_ENTRIES retained entries.
+// Bound traversal BEFORE cloning/serialization. Cloning a full chat response
+// just to keep its first 4 KB caused large transient allocations; a sliced
+// preview could also keep that entire serialized response alive in the ring.
 export function sanitizeApiBody(value: unknown): unknown {
   if (value === undefined || value === null) return value
-  const redacted = redactValue(value, 0)
   try {
+    const budget: BodyBudget = { remaining: MAX_BODY_JSON_CHARS, truncated: false }
+    const redacted = redactValue(value, 0, budget)
     const json = JSON.stringify(redacted)
     if (json === undefined) return redacted
-    if (json.length > MAX_BODY_JSON_CHARS) {
-      return { truncated: true, originalLength: json.length, preview: json.slice(0, MAX_BODY_JSON_CHARS) }
+    if (budget.truncated || json.length > MAX_BODY_JSON_CHARS) {
+      return { truncated: true, preview: copyPreview(json, MAX_BODY_JSON_CHARS) }
     }
     return redacted
   } catch {

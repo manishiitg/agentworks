@@ -61,6 +61,7 @@ const STALE_STREAMING_GRACE_MS = 10000
 // in-flight promise across concurrent callers makes at most one request (and
 // therefore one reconciliation pass) outstanding at a time.
 let pendingActiveSessionsFetch: Promise<ActiveSessionInfo[]> | null = null
+let eventPollInFlight = false
 
 // This gate must exist before Zustand creates the persisted store. Browser
 // localStorage hydration can finish synchronously during create(), so the
@@ -1176,9 +1177,13 @@ export const useChatStore = create<ChatState>()(
         
         logger.debug('ChatStore', 'Starting polling interval')
         const interval = setInterval(() => {
-          onPoll().catch(error => {
+          // A slow server must not build an overlapping queue every 500 ms.
+          // Share this guard across stop/start cycles as well as one interval.
+          if (eventPollInFlight) return
+          eventPollInFlight = true
+          void Promise.resolve().then(onPoll).catch(error => {
             logger.error('ChatStore', 'Error in polling callback:', error)
-          })
+          }).finally(() => { eventPollInFlight = false })
         }, 500)  // 500ms for streaming responsiveness
         
         set({ pollingInterval: interval })
@@ -1298,7 +1303,7 @@ export const useChatStore = create<ChatState>()(
           }
 
           // Filter out events that already exist
-          const uniqueNewEvents = events.filter(event => {
+          const uniqueNewEvents = events.filter(event => retainEventInSessionWorkingSet(sessionId, event)).filter(event => {
             // An auto-notification is an idempotent status card: the same
             // steered completion can arrive as several distinct-ID events, so
             // collapse by content even when the ID index would let it through.
@@ -1317,7 +1322,6 @@ export const useChatStore = create<ChatState>()(
             idSet!.add(event.id)
             return true
           })
-            .filter(event => retainEventInSessionWorkingSet(sessionId, event))
             .map(trimLargeRetainedEventFields)
 
           // PERF: Skip state update entirely when no new events — avoids creating a new
@@ -1436,10 +1440,6 @@ export const useChatStore = create<ChatState>()(
         const retainedEvents = trimLargeRetainedEvents(
           coalesceThinkingDeltas(normalizeTranscriptChunkEvents(events).filter(event => retainEventInSessionWorkingSet(sessionId, event))),
         )
-        // Rebuild the persistent ID index for this session
-        tabEventIdSets.set(sessionId, new Set(retainedEvents.map(e => e.id).filter(Boolean) as string[]))
-        tabAutoNotificationKeys.set(sessionId, collectAutoNotificationKeys(retainedEvents))
-
         set((state) => {
           // Trigger cleanup if threshold exceeded
           let finalEvents = retainedEvents
@@ -1447,6 +1447,9 @@ export const useChatStore = create<ChatState>()(
             logger.debug('Memory', `Cleaning up events for session ${sessionId}: ${retainedEvents.length} -> ${MAX_EVENTS}`)
             finalEvents = cleanupOldEvents(retainedEvents)
           }
+          // Index only rows still in memory, not every row in a large restore.
+          tabEventIdSets.set(sessionId, new Set(finalEvents.map(e => e.id).filter(Boolean) as string[]))
+          tabAutoNotificationKeys.set(sessionId, collectAutoNotificationKeys(finalEvents))
 
           // Also update lastViewedEventCounts for the tab owning this session
           // so restored/hydrated events don't show as "new" in the badge

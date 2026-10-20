@@ -45,7 +45,7 @@ import type { ChatTab } from '../stores/useChatStore'
 import { appendTimelineAndApplyConfirmations, hydrateTabEvents, restoreSession } from '../utils/sessionRestore'
 import { hydrateExecutionConversation } from '../utils/executionConversationRestore'
 import { isExecutionConversationTab } from '../utils/sessionEventSource'
-import { nextForwardCursor } from '../utils/forwardCursor'
+import { durableStreamStartCursor, nextForwardCursor } from '../utils/forwardCursor'
 import { clientMessageEventId, readClientMessageId } from '../utils/clientMessageIdentity'
 import { conversationToRestoredEvents } from '../../shared/session/restore'
 import { logger } from '../utils/logger'
@@ -2179,33 +2179,24 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       const freshTab = currentTab ? chatStore.getTab(currentTab.tabId) : null
       const effectiveSessionId = freshTab?.sessionId || currentTab?.sessionId || sessionId
 
-      let rawLastEventIndex = currentTab
+      const rawLastEventIndex = currentTab
         ? getTabLastEventIndex(effectiveSessionId)
         : lastEventIndexRef.current
 
-      // Event cursors belong to the backend's raw event store, not the rendered
-      // transcript. A restored conversation includes synthesized history rows,
-      // so its length (or an old sentinel) can be ahead of a newly attached
-      // CLI stream and make every fresh tool/result event look already seen.
-      // Restart from the backend's safe forward cursor instead of guessing.
-      if (rawLastEventIndex >= 9999) {
-        rawLastEventIndex = 0
-        if (currentTab) {
-          setTabLastEventIndex(effectiveSessionId, 0)
-        } else {
-          setLastEventIndex(0)
-        }
-      }
-
-      // Ensure lastEventIndex is >= 0 (API requirement)
-      // -1 means "no events yet", which should be treated as 0
-      const currentLastEventIndex = Math.max(0, rawLastEventIndex === -1 ? 0 : rawLastEventIndex)
+      // Journal sequences legitimately exceed 9,999. Resetting a large cursor
+      // replayed the whole conversation on every fallback poll, repeatedly
+      // allocating/pruning thousands of events in background chats. Recovery
+      // follows the server's explicit reset/clamp response, never a size guess.
+      const durableChat = !isExecutionConversationTab(currentTab)
+      const currentLastEventIndex = durableChat
+        ? durableStreamStartCursor(rawLastEventIndex, chatStore.getTabEvents(effectiveSessionId))
+        : Math.max(0, rawLastEventIndex)
 
       // Track which session is currently being polled (for derived isStreaming)
 
       try {
         const response = await agentApi.getSessionEvents(effectiveSessionId, currentLastEventIndex, {
-          durableChat: !isExecutionConversationTab(currentTab),
+          durableChat,
         })
         if (!isChatIdentityCurrent(identity)) return
         if (response.session_id && response.session_id !== effectiveSessionId) continue

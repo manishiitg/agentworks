@@ -395,12 +395,6 @@ func (api *StreamingAPI) handleGetSessionEvents(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	for i, event := range sessionEvents {
-		if api.logger != nil {
-			api.logger.Debug(fmt.Sprintf("  [%d] %s", i, event.Type))
-		}
-	}
-
 	// The event store calculates this against the filtered pagination source.
 	// Do not infer it from page length: an exact final page would otherwise
 	// advertise a nonexistent next page forever.

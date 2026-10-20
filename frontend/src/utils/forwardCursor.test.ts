@@ -24,6 +24,10 @@ describe('nextForwardCursor', () => {
 })
 
 describe('durableStreamStartCursor', () => {
+  it('continues mature chats past 9,999 without replaying pruned history', () => {
+    expect(durableStreamStartCursor(25_000, [{ sequence: 24_900 }])).toBe(25_000)
+    expect(durableStreamStartCursor(0, [{ sequence: 25_000 }])).toBe(25_000)
+  })
   it('starts after the newest journal row the tab already holds when the stored cursor was reset', () => {
     expect(durableStreamStartCursor(0, [{ sequence: 3 }, { sequence: 470 }, {}])).toBe(470)
   })
