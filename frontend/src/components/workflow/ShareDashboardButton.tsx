@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Users } from 'lucide-react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import api from '../../services/api'
+import { WorkspaceContextRow as Row } from '../workspace/WorkspaceContextCard'
 
 type ShareState = {
   mode: 'everyone' | 'people' | 'private'
@@ -103,12 +104,15 @@ export function ShareDashboardButton({ workspacePath, label = 'Share', inline = 
 
   return (
     <div className="relative">
-      <button type="button" onClick={() => { if (!open) void loadOwners(); setOpen(v => !v) }} aria-label={label} title={label} aria-expanded={open}
-        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background/95 px-2 text-xs text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground">
-        <Users className="h-3.5 w-3.5" /> {label}
-      </button>
+      {inline
+        ? <Row icon={Users} detail={OPTIONS.find(option => option.mode === state.mode)?.label} onClick={() => { if (!open) void loadOwners(); setOpen(v => !v) }}>{label}</Row>
+        : <button type="button" onClick={() => { if (!open) void loadOwners(); setOpen(v => !v) }} aria-label={label} title={label} aria-expanded={open}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background/95 px-2 text-xs text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground">
+          <Users className="h-3.5 w-3.5" /> {label}
+        </button>}
+      {open && inline && <div aria-hidden="true" className="fixed inset-0 z-40 bg-black/40" onClick={() => setOpen(false)} />}
       {open && (
-        <div role="dialog" aria-label="Share" className={`${inline ? 'relative mt-3 w-full' : 'absolute right-0 mt-1 w-72'} space-y-2 rounded-md border border-border bg-background p-3 text-sm shadow-lg`}>
+        <div role="dialog" aria-label="Share" className={`${inline ? 'fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto' : 'absolute right-0 z-50 mt-1 w-72'} space-y-2 rounded-md border border-border bg-background p-3 text-sm shadow-lg`}>
           <p className="text-xs text-muted-foreground">People you share with open its dashboard, can ask it, use its functions and read its files (not secrets).</p>
           {state.accounts && state.accounts.length > 0 && <div className="space-y-1 border-b border-border pb-2" aria-label="Selected accounts">
             <p className="text-xs font-medium">Accounts this project uses</p>
