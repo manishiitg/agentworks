@@ -99,26 +99,31 @@ func TestMCPLaptopSettingsUseOwnerGrantsWithoutCommandAccess(t *testing.T) {
 func TestMCPLaptopCommandAndBinaryCopyUseSavedFolderAccess(t *testing.T) {
 	f := newMCPLaptopFixture(t)
 	const root = "Crew/dashboard-team"
-	store, err := openAccessTokens()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	issue := func(scopes []string) string {
-		t.Helper()
-		_, raw, err := store.Issue(t.Context(), accesstokens.Token{Name: "Fixture", UserID: "owner", Username: "owner", Scopes: scopes, AllCrews: scopes[0] != "devices:connect", ExpiresAt: time.Now().Add(time.Hour)}, time.Now())
-		if err != nil {
-			t.Fatal(err)
-		}
-		return raw
-	}
-	deviceToken := issue([]string{"devices:connect"})
-	personToken := issue([]string{"crews:read", "crews:write", "code:run"})
 	routes := http.NewServeMux()
 	routes.HandleFunc("GET /api/external/v1/devices/connect", f.api.handleLocalDeviceConnect)
 	routes.HandleFunc("POST /api/external/v1/call", f.api.handleExternalCall)
 	server := httptest.NewServer(AuthMiddleware(routes))
 	defer server.Close()
+	t.Setenv("PUBLIC_URL", server.URL)
+	store, err := openMCPOAuthStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	device, verification, err := store.CreateCLIDevice(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DecideCLIDevice(t.Context(), verification, &UserClaims{UserID: "owner", Username: "owner"}, true); err != nil {
+		t.Fatal(err)
+	}
+	grant, personToken, _, err := store.PollCLIDevice(t.Context(), device, server.URL+"/api/external/v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !mcpOAuthTokenForGrant(grant).Allows("devices:connect") || !mcpOAuthTokenForGrant(grant).Allows("crews:write") {
+		t.Fatal("fixture did not use the combined one-CLI grant")
+	}
 	base := t.TempDir()
 	folder := filepath.Join(base, "files")
 	if err := os.Mkdir(folder, 0700); err != nil {
@@ -133,7 +138,7 @@ func TestMCPLaptopCommandAndBinaryCopyUseSavedFolderAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer executor.Close()
-	client, err := agentworksclient.New(server.URL, deviceToken)
+	client, err := agentworksclient.New(server.URL, personToken)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -14,7 +14,7 @@ import (
 )
 
 // Laptop settings are personal authority, even when the Crew is shared.
-// A person's MCP connection acts as that person; product, device, Brain and
+// A person's MCP connection acts as that person; product, device-only, Brain and
 // attached-agent credentials do not become a personal laptop connection.
 func personalLaptopSettingsClaims(c *UserClaims) bool {
 	if c == nil || c.UserID == "" || c.Scope != "" || c.ExecutionPrincipal != nil || c.BotRouteGrant != "" || !userAccessForClaims(c).CanEdit {
@@ -24,7 +24,8 @@ func personalLaptopSettingsClaims(c *UserClaims) bool {
 		return true
 	}
 	t := c.AccessToken
-	return t != nil && t.ProjectKind == "" && t.ProjectIdentity == "" && t.BoundAgentID == "" && t.BoundAgentName == "" && t.KnowledgebaseIdentityID == "" && !t.Allows("devices:connect") && c.Provider != "bot_route" && c.Provider != "bot_owner" && c.Provider != slackDMProvider
+	deviceOnly := t != nil && len(t.Scopes) == 1 && t.Scopes[0] == "devices:connect"
+	return t != nil && t.ProjectKind == "" && t.ProjectIdentity == "" && t.BoundAgentID == "" && t.BoundAgentName == "" && t.KnowledgebaseIdentityID == "" && !deviceOnly && c.Provider != "bot_route" && c.Provider != "bot_owner" && c.Provider != slackDMProvider
 }
 
 // Capture the same tool callback used by the website, with an MCP-request
