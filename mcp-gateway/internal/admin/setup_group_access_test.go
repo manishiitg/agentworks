@@ -37,8 +37,7 @@ func TestBuilderGroupRemovalUsesEffectivePermissionsAndPersistsRevocation(t *tes
 		s.AddConnector(c)
 	}
 	for _, c := range []string{"linear", "notion"} {
-		tool := s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: c, PublicName: c + "__read", Fingerprint: "v1", InputSchema: []byte(`{"type":"object"}`)})
-		s.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version)
+		s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: c, PublicName: c + "__read", Fingerprint: "v1", InputSchema: []byte(`{"type":"object"}`)})
 	}
 	s.AddGroupServerGrant(platform, "linear")
 	s.AddGroupServerGrant(platform, "notion")

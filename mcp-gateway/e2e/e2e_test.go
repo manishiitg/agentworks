@@ -110,12 +110,8 @@ func TestM0GovernedCallPath(t *testing.T) {
 	if err := gw.SyncTools(ctx, "w1"); err != nil {
 		t.Fatalf("sync: %v", err)
 	}
-	allowed, ok := st.GetTool("fake__allowed_tool")
-	if !ok {
+	if _, ok := st.GetTool("fake__allowed_tool"); !ok {
 		t.Fatal("allowed tool missing after discovery")
-	}
-	if _, approved := st.ApproveTool("w1", allowed.PublicName, allowed.Fingerprint, allowed.Version); !approved {
-		t.Fatal("could not approve allowed tool")
 	}
 	st.AddGrant(store.Grant{UserID: "u1", PublicName: "fake__allowed_tool"})
 	go http.Serve(l, gw.Handler()) //nolint:errcheck

@@ -13,10 +13,7 @@ func TestAuthorizeRequiresCurrentWorkspacePrincipal(t *testing.T) {
 	s := store.NewMemoryStore()
 	s.AddWorkspace(store.Workspace{ID: "w"})
 	s.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Status: store.StatusActive})
-	tool := s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "p__t", Fingerprint: "v1"})
-	if _, ok := s.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version); !ok {
-		t.Fatal("approve tool")
-	}
+	s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "p__t", Fingerprint: "v1"})
 	s.AddGrant(store.Grant{UserID: "u", PublicName: "p__t"})
 	if _, err := Authorize(s, auth.Identity{UserID: "u", WorkspaceID: "w"}, "p__t"); !errors.Is(err, ErrUnknownUser) {
 		t.Fatalf("orphaned grant allowed: %v", err)
@@ -42,7 +39,6 @@ func TestPublishedPackageOverridesBroadGrantAndChecksArguments(t *testing.T) {
 	s.AddGroupServerGrant("g", "c")
 	s.AddGrant(store.Grant{UserID: "bob", PublicName: "p__t"})
 	tool := s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "p__t", Fingerprint: "v1"})
-	tool, _ = s.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version)
 	draft, ok := s.SavePackageDraft(access.Package{ID: "pkg", WorkspaceID: "w", GroupID: "g", Name: "Scoped", Rules: []access.ToolRule{{PublicName: "p__t", Fingerprint: "v1", Conditions: []access.Condition{{Path: "/project", Op: "equals", Value: "one"}}}}}, 0)
 	if !ok {
 		t.Fatal("save draft")
@@ -94,8 +90,7 @@ func TestRemovingToolFromPackageDoesNotRestoreLegacyGrant(t *testing.T) {
 	s.AddMember("g", "u")
 	s.AddGroupServerGrant("g", "c")
 	for _, name := range []string{"p__one", "p__two"} {
-		tool := s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: name, Fingerprint: "v1"})
-		s.ApproveTool("w", name, tool.Fingerprint, tool.Version)
+		s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: name, Fingerprint: "v1"})
 	}
 	id := auth.Identity{UserID: "u", WorkspaceID: "w"}
 	rules := []access.ToolRule{{PublicName: "p__one", Fingerprint: "v1"}, {PublicName: "p__two", Fingerprint: "v1"}}
@@ -122,8 +117,7 @@ func TestEveryoneGrantDoesNotExpandAnUnrelatedGroupKey(t *testing.T) {
 	s.AddUser(store.User{ID: "user", WorkspaceID: "w"})
 	s.AddGroup(store.Group{ID: "private", WorkspaceID: "w", Name: "Private"})
 	s.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Status: store.StatusActive})
-	tool := s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "c__read", Fingerprint: "f"})
-	s.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version)
+	s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "c__read", Fingerprint: "f"})
 	id := auth.Identity{UserID: "user", WorkspaceID: "w"}
 	if _, err := Authorize(s, id, "c__read"); err != nil {
 		t.Fatal("new server was not granted to Platform automatically", err)

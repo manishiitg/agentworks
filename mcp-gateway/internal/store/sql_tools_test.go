@@ -20,8 +20,7 @@ func sqlFixture(t *testing.T) (*MemoryStore, string) {
 	s.AddUser(User{ID: "u", WorkspaceID: "w", Email: "u@example.test"})
 	s.AddGroup(Group{ID: "g", WorkspaceID: "w", Name: "Readers"})
 	s.AddConnector(Connector{ID: "c", WorkspaceID: "w", Status: StatusActive})
-	tool := s.UpsertToolSnapshot(ToolSnapshot{PublicName: "c__read", UpstreamName: "read", WorkspaceID: "w", ConnectorID: "c", Fingerprint: "f", InputSchema: []byte(`{"type":"object","properties":{"project":{"type":"string"}}}`)})
-	s.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version)
+	s.UpsertToolSnapshot(ToolSnapshot{PublicName: "c__read", UpstreamName: "read", WorkspaceID: "w", ConnectorID: "c", Fingerprint: "f", InputSchema: []byte(`{"type":"object","properties":{"project":{"type":"string"}}}`)})
 	if err = s.EnableSQLWorkspace("w"); err != nil {
 		t.Fatal(err)
 	}

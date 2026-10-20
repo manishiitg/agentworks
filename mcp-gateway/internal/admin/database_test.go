@@ -23,7 +23,6 @@ func TestDatabaseSQLAPIEnforcesAuthAndUpdatesEffectiveAccess(t *testing.T) {
 	s.AddGroup(store.Group{ID: "g", WorkspaceID: "w", Name: "Readers"})
 	s.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Status: store.StatusActive})
 	tool := s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "c__read", Fingerprint: "f"})
-	s.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version)
 	if err = s.EnableSQLWorkspace("w"); err != nil {
 		t.Fatal(err)
 	}

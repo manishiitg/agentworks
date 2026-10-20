@@ -23,7 +23,6 @@ func TestPermissionsSaveAppliesImmediatelyAndRevokeAPI(t *testing.T) {
 	s.AddMember("g", "u")
 	s.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Status: store.StatusActive})
 	tool := s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "p__read", Fingerprint: "v1", InputSchema: []byte(`{"type":"object","properties":{"project":{"type":"string"}}}`)})
-	tool, _ = s.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version)
 	a := &Admin{Store: s, WorkspaceID: "w", HumanToken: "secret"}
 	mux := http.NewServeMux()
 	a.accessRoutes(mux)
@@ -106,8 +105,7 @@ func TestRemoveGroupServerAccess(t *testing.T) {
 		{WorkspaceID: "w", ConnectorID: "a", PublicName: "a__write", Fingerprint: "f1", InputSchema: []byte(`{"type":"object"}`)},
 		{WorkspaceID: "w", ConnectorID: "b", PublicName: "b__read", Fingerprint: "f1", InputSchema: []byte(`{"type":"object"}`)},
 	} {
-		t1 := s.UpsertToolSnapshot(tool)
-		s.ApproveTool("w", t1.PublicName, t1.Fingerprint, t1.Version)
+		s.UpsertToolSnapshot(tool)
 	}
 	s.AddGroupServerGrant("g", "a")
 	s.AddGroupServerGrant("other", "a")
@@ -198,7 +196,6 @@ func TestGroupPermissionInventoryUsesRuntimePolicy(t *testing.T) {
 	s.AddGroup(store.Group{ID: "foreign", WorkspaceID: "other"})
 	s.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Status: store.StatusActive})
 	tool := s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "p__read", Fingerprint: "v1", InputSchema: []byte(`{"type":"object","properties":{"project":{"type":"string"}}}`)})
-	s.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version)
 	s.AddGroupServerGrant("g", "c")
 	a := &Admin{Store: s, WorkspaceID: "w", HumanToken: "secret"}
 	mux := http.NewServeMux()
@@ -256,7 +253,6 @@ func TestConfigurationFailureReturns503AndDeniesCalls(t *testing.T) {
 	s.AddUser(store.User{ID: "u", WorkspaceID: "w"})
 	s.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Status: store.StatusActive})
 	tool := s.UpsertToolSnapshot(store.ToolSnapshot{ConnectorID: "c", WorkspaceID: "w", PublicName: "c__read", Fingerprint: "f"})
-	s.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version)
 	s.AddGrant(store.Grant{UserID: "u", PublicName: tool.PublicName})
 	identity := auth.Identity{UserID: "u", WorkspaceID: "w"}
 	if _, err := policy.Authorize(s, identity, tool.PublicName); err != nil {

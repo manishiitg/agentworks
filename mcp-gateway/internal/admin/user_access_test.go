@@ -20,8 +20,7 @@ func TestInspectUserAndMemberHistory(t *testing.T) {
 	st.AddGroup(store.Group{ID: "sales", WorkspaceID: "w", Name: "Sales"})
 	st.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Label: "CRM", Provider: "crm", Status: store.StatusActive, UpstreamURL: "https://crm.example.com/mcp"})
 	for _, name := range []string{"crm__search", "crm__delete"} {
-		tool := st.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: name, Fingerprint: "f", InputSchema: []byte(`{"type":"object"}`)})
-		st.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version)
+		st.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: name, Fingerprint: "f", InputSchema: []byte(`{"type":"object"}`)})
 	}
 	st.AddGroupGrant(store.GroupGrant{GroupID: "sales", PublicName: "crm__search"})
 	a := &Admin{Store: st, WorkspaceID: "w"}
@@ -73,8 +72,7 @@ func TestReadOnlyServerGrant(t *testing.T) {
 	st.AddMember("sales", "priya")
 	st.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Label: "Mail", Provider: "mail", Status: store.StatusActive, UpstreamURL: "https://mail.example.com/mcp"})
 	add := func(name, annotations string) {
-		tool := st.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: name, Fingerprint: "f", InputSchema: []byte(`{"type":"object"}`), Annotations: []byte(annotations)})
-		st.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version)
+		st.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: name, Fingerprint: "f", InputSchema: []byte(`{"type":"object"}`), Annotations: []byte(annotations)})
 	}
 	add("mail__search", `{"readOnlyHint":true}`)
 	add("mail__send", `{}`)

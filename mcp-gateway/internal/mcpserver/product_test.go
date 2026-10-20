@@ -43,10 +43,6 @@ func TestProductMCPScopesIdentityConnectorAndRevocation(t *testing.T) {
 	if err := g.SyncTools(context.Background(), "w"); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"one__read", "two__read"} {
-		snap, _ := st.GetTool(name)
-		st.ApproveTool("w", name, snap.Fingerprint, snap.Version)
-	}
 	st.AddGroupServerGrant("g", "one")
 	st.AddGroupServerGrant("g", "two")
 	handler := g.ProductHandler(func(r *http.Request) (auth.Identity, string, bool) {
@@ -128,7 +124,6 @@ func TestVaultBuilderCallsUngroupedToolsButRetainsOperationalChecksAndAudit(t *t
 		t.Fatal(err)
 	}
 	snap, _ := st.GetTool("one__fetch")
-	st.ApproveTool("w", snap.PublicName, snap.Fingerprint, snap.Version)
 	draft, _ := st.SavePackageDraft(access.Package{ID: "restriction", WorkspaceID: "w", GroupID: "empty", Rules: []access.ToolRule{{PublicName: snap.PublicName, Fingerprint: snap.Fingerprint, Conditions: []access.Condition{{Path: "/id", Op: "equals", Value: "group-only-id"}}}}}, 0)
 	if _, ok := st.PublishPackage("w", draft.ID, draft.Version); !ok {
 		t.Fatal("publish failed")
@@ -171,8 +166,6 @@ func TestVaultBuilderCallsUngroupedToolsButRetainsOperationalChecksAndAudit(t *t
 	if w := request(builder, path, "tools/call", params); !strings.Contains(w.Body.String(), "denied") || calls.Load() != 1 {
 		t.Fatal("unapproved fingerprint called", w.Body.String())
 	}
-	current, _ := st.GetTool(snap.PublicName)
-	st.ApproveTool("w", current.PublicName, current.Fingerprint, current.Version)
 	st.AddConnector(store.Connector{ID: "one", WorkspaceID: "w", Provider: "one", Status: store.StatusDisabled})
 	if w := request(builder, path, "tools/call", params); !strings.Contains(w.Body.String(), "denied") || calls.Load() != 1 {
 		t.Fatal("disabled connection called", w.Body.String())
@@ -219,8 +212,6 @@ func TestRestoredToolsRecoverAfterOAuthStartupFailure(t *testing.T) {
 			if err := original.Resync(context.Background(), c); err != nil {
 				t.Fatal(err)
 			}
-			snap, _ := st.GetTool("one__fetch")
-			st.ApproveTool("w", snap.PublicName, snap.Fingerprint, snap.Version)
 			up, _ := original.upstreamFor(c.ID)
 			up.Close()
 			// New process, persisted tools, and a temporarily unavailable broker.

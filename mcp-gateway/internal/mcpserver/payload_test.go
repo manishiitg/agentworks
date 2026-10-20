@@ -48,9 +48,6 @@ func TestCallsPreservePayloadsAndRecordAuditPayloads(t *testing.T) {
 		t.Fatal(err)
 	}
 	snap, _ := st.GetTool("test__echo")
-	if _, ok := st.ApproveTool("w1", snap.PublicName, snap.Fingerprint, snap.Version); !ok {
-		t.Fatal("approval failed")
-	}
 	snap, _ = st.GetTool(snap.PublicName)
 	ctx = auth.WithIdentity(ctx, auth.Identity{UserID: "u1", WorkspaceID: "w1", ClientID: "claude-test"})
 	req := mcp.CallToolRequest{}

@@ -22,7 +22,6 @@ func TestSQLiteConfigurationSurvivesRestart(t *testing.T) {
 	s.AddConnector(Connector{ID: "c", WorkspaceID: "w", Status: StatusActive})
 	s.SetConnectorBearer("c", "private-upstream-secret")
 	tool := s.UpsertToolSnapshot(ToolSnapshot{ConnectorID: "c", WorkspaceID: "w", PublicName: "files__read", Fingerprint: "f1"})
-	s.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version)
 	s.AddGroupGrant(GroupGrant{GroupID: "g", PublicName: tool.PublicName})
 	s.AddGroupServerGrant("g", "c")
 	s.AddGrant(Grant{UserID: "u", PublicName: tool.PublicName})

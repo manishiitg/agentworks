@@ -41,8 +41,7 @@ func TestSetupChatAppliesPermissionsImmediately(t *testing.T) {
 	s.AddWorkspace(store.Workspace{ID: "w"})
 	s.AddGroup(store.Group{ID: "g", WorkspaceID: "w"})
 	s.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Status: store.StatusActive})
-	tool := s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "p__read", Fingerprint: "v1", InputSchema: []byte(`{"type":"object","properties":{"project":{"type":"string"}}}`)})
-	s.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version)
+	s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "p__read", Fingerprint: "v1", InputSchema: []byte(`{"type":"object","properties":{"project":{"type":"string"}}}`)})
 	a := &Admin{Store: s, WorkspaceID: "w", HumanToken: "secret", SetupAgent: &setupagent.Agent{Endpoint: model.URL, Model: "fake", AvailableModels: []string{"other", "fake"}}}
 	mux := http.NewServeMux()
 	a.setupRoutes(mux)
@@ -81,8 +80,7 @@ func TestSharedSetupToolEndpointAppliesPermissionsAndRecordsActor(t *testing.T) 
 	s.AddWorkspace(store.Workspace{ID: "w"})
 	s.AddGroup(store.Group{ID: "g", WorkspaceID: "w"})
 	s.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Status: store.StatusActive})
-	tool := s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "p__read", Fingerprint: "v1", InputSchema: []byte(`{"type":"object","properties":{"project":{"type":"string"}}}`)})
-	s.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version)
+	s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "p__read", Fingerprint: "v1", InputSchema: []byte(`{"type":"object","properties":{"project":{"type":"string"}}}`)})
 	a := &Admin{Store: s, WorkspaceID: "w", HumanToken: "secret"}
 	mux := http.NewServeMux()
 	a.setupRoutes(mux)
@@ -164,8 +162,7 @@ func TestSetupInspectionReturnsLiveToolSchemaAndAnnotations(t *testing.T) {
 	s := store.NewMemoryStore()
 	s.AddWorkspace(store.Workspace{ID: "w"})
 	s.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Status: store.StatusActive})
-	tool := s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "notion__read", Fingerprint: "v1", Description: "Retrieve a page", InputSchema: []byte(`{"type":"object","properties":{"page_id":{"type":"string"}}}`), Annotations: []byte(`{"readOnlyHint":true,"destructiveHint":false}`)})
-	s.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version)
+	s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "notion__read", Fingerprint: "v1", Description: "Retrieve a page", InputSchema: []byte(`{"type":"object","properties":{"page_id":{"type":"string"}}}`), Annotations: []byte(`{"readOnlyHint":true,"destructiveHint":false}`)})
 	a := &Admin{Store: s, WorkspaceID: "w", Catalog: &catalog.Catalog{}}
 	for _, op := range []string{"inspect_environment", "inspect_tool"} {
 		result, err := a.setupTool(context.Background(), op, json.RawMessage(`{"public_name":"notion__read"}`))

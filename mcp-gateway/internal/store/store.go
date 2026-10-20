@@ -743,21 +743,6 @@ func (s *MemoryStore) UpsertToolSnapshot(t ToolSnapshot) ToolSnapshot {
 	return t
 }
 
-// ApproveTool activates exactly the reviewed version. A concurrent sync that
-// changes its definition makes the approval fail rather than approve new code.
-func (s *MemoryStore) ApproveTool(workspaceID, publicName, fingerprint string, version int) (ToolSnapshot, bool) {
-	s.mu.Lock()
-	defer s.persistUnlock()
-	t, ok := s.tools[publicName]
-	if !ok || t.WorkspaceID != workspaceID || t.Fingerprint != fingerprint || t.Version != version {
-		return ToolSnapshot{}, false
-	}
-	t.Status = StatusActive
-	t.ApprovedFingerprint = t.Fingerprint
-	s.tools[publicName] = t
-	return t, true
-}
-
 func (s *MemoryStore) ListToolVersions(workspaceID, publicName string) []ToolSnapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

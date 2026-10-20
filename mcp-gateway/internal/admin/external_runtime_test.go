@@ -44,10 +44,6 @@ func TestExternalPlatformMCPPermissionsAreLiveAndAuditedPerUser(t *testing.T) {
 	if err := gw.SyncTools(context.Background(), "w"); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"one__read", "two__read"} {
-		snap, _ := st.GetTool(name)
-		st.ApproveTool("w", name, snap.Fingerprint, snap.Version)
-	}
 	st.EnsurePlatformUser("w", "alice")
 	st.AddMember("readers", "alice")
 	st.AddGroupServerGrant("readers", "one")

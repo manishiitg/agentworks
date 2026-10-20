@@ -97,7 +97,7 @@ var pages = template.Must(template.New("admin").Parse(`
 <select name="group"><option value="">group…</option>{{range $.Groups}}<option value="{{.ID}}">{{.ID}}</option>{{end}}</select><button name="action" value="grant">+</button><button name="action" value="revoke">−</button></form></td>
 <td><details><summary>Definition</summary><p>{{.Description}}</p><pre>{{printf "%s" .InputSchema}}</pre>
 {{range .Previous}}<p>Previous v{{.Version}}: {{.Description}}</p><pre>{{printf "%s" .InputSchema}}</pre>{{end}}</details>
-{{if eq .Status "quarantined"}}<form method="post" action="/admin/tools/approve"><input type="hidden" name="name" value="{{.PublicName}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="fingerprint" value="{{.Fingerprint}}"><button>Approve v{{.Version}}</button></form>{{end}}</td></tr>{{end}}
+</td></tr>{{end}}
 </table>
 </body></html>{{end}}
 

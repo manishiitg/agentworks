@@ -393,15 +393,6 @@ func (a *Admin) DeleteConnector(id string) error {
 	return nil
 }
 
-// ApproveTool activates only the exact discovered definition the admin saw.
-func (a *Admin) ApproveTool(publicName, fingerprint string, version int) (store.ToolSnapshot, error) {
-	t, ok := a.Store.ApproveTool(a.WorkspaceID, publicName, fingerprint, version)
-	if !ok {
-		return store.ToolSnapshot{}, errors.New("tool changed, was removed, or is not awaiting review; refresh and try again")
-	}
-	return t, nil
-}
-
 func containsString(items []string, wanted string) bool {
 	for _, item := range items {
 		if item == wanted {
@@ -997,26 +988,6 @@ func (a *Admin) APIRoutes(mux *http.ServeMux) {
 			effective = "read"
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"public_name": t.PublicName, "label": in.Access, "access": effective})
-	}))
-	mux.HandleFunc("/api/admin/tools/{name}/approve", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		var in struct {
-			Fingerprint string `json:"fingerprint"`
-			Version     int    `json:"version"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-			writeErr(w, http.StatusBadRequest, err)
-			return
-		}
-		t, err := a.ApproveTool(r.PathValue("name"), in.Fingerprint, in.Version)
-		if err != nil {
-			writeErr(w, http.StatusConflict, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, t)
 	}))
 	mux.HandleFunc("/api/admin/grants", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {

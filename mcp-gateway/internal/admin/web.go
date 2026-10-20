@@ -6,7 +6,6 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
-	"strconv"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
@@ -27,7 +26,6 @@ func (a *Admin) UIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/connectors/sync", a.requireUI(a.uiConnectorsSync))
 	mux.HandleFunc("/admin/connectors/delete", a.requireUI(a.uiConnectorsDelete))
 	mux.HandleFunc("/admin/tools", a.requireUI(a.uiTools))
-	mux.HandleFunc("/admin/tools/approve", a.requireUI(a.uiToolsApprove))
 	mux.HandleFunc("/admin/grants/set", a.requireUI(a.uiGrantsSet))
 	mux.HandleFunc("/admin/audit", a.requireUI(a.uiAudit))
 }
@@ -226,22 +224,6 @@ func (a *Admin) uiTools(w http.ResponseWriter, r *http.Request) {
 		"Rows": rows, "Users": a.Store.ListUsers(a.WorkspaceID),
 		"Groups": a.Store.ListGroups(a.WorkspaceID), "Err": r.URL.Query().Get("err"),
 	})
-}
-
-func (a *Admin) uiToolsApprove(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		back(w, r, "/admin/tools", err)
-		return
-	}
-	version, err := strconv.Atoi(r.PostForm.Get("version"))
-	if err == nil {
-		_, err = a.ApproveTool(r.PostForm.Get("name"), r.PostForm.Get("fingerprint"), version)
-	}
-	back(w, r, "/admin/tools", err)
 }
 
 func (a *Admin) uiGrantsSet(w http.ResponseWriter, r *http.Request) {

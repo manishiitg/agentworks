@@ -16,7 +16,6 @@ func TestRuntimeInventoryIsServiceOnlyAndGrantFiltered(t *testing.T) {
 	st.AddUser(store.User{ID: "bob", WorkspaceID: "w"})
 	st.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Label: "Shared", Provider: "p", Status: store.StatusActive, UpstreamURL: "https://private.example/mcp"})
 	t1 := st.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "p__read", Fingerprint: "f", InputSchema: []byte(`{"type":"object"}`)})
-	st.ApproveTool("w", t1.PublicName, t1.Fingerprint, t1.Version)
 	st.AddGrant(store.Grant{UserID: "alice", PublicName: t1.PublicName})
 	a := &Admin{Store: st, Gateway: mcpserver.New(st, nil, nil, nil), WorkspaceID: "w", HumanToken: "secret"}
 	mux := http.NewServeMux()
@@ -61,8 +60,7 @@ func TestPlatformRuntimeBindingRequiresTrustedServiceAndGrantsPlatformResourcesA
 		t.Fatal(err)
 	}
 	st.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Status: store.StatusActive})
-	tool := st.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "c__read", Fingerprint: "f", InputSchema: []byte(`{"type":"object"}`)})
-	st.ApproveTool("w", tool.PublicName, tool.Fingerprint, tool.Version)
+	st.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "c__read", Fingerprint: "f", InputSchema: []byte(`{"type":"object"}`)})
 	if err := st.RegisterSecrets("w", []store.SecretResource{{Name: "TEAM_KEY", Managed: true}}); err != nil {
 		t.Fatal(err)
 	}
@@ -132,8 +130,7 @@ func TestRuntimeInventoryGroupsAreCallerScopedAndRevocationIsLive(t *testing.T) 
 	st.AddMember("finance", "bob")
 	st.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Label: "Shared Notion", Provider: "notion", Status: store.StatusActive, UpstreamURL: "https://credential.example/mcp"})
 	for _, name := range []string{"notion__read", "notion__write"} {
-		t := st.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: name, Fingerprint: "f", InputSchema: []byte(`{"type":"object"}`)})
-		st.ApproveTool("w", t.PublicName, t.Fingerprint, t.Version)
+		st.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: name, Fingerprint: "f", InputSchema: []byte(`{"type":"object"}`)})
 	}
 	st.AddGroupGrant(store.GroupGrant{GroupID: "engineering", PublicName: "notion__read"})
 	st.AddGroupGrant(store.GroupGrant{GroupID: "finance", PublicName: "notion__write"})
@@ -190,8 +187,7 @@ func TestBuilderInventoryAllConnectionsAndSecretMetadataIsServiceOnly(t *testing
 	st.AddUser(store.User{ID: "admin", WorkspaceID: "w"})
 	st.AddGroup(store.Group{ID: "empty", WorkspaceID: "w", Name: "No members"})
 	st.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Status: store.StatusActive, UpstreamURL: "https://credential.example/mcp"})
-	snap := st.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "c__read", Fingerprint: "f", InputSchema: []byte(`{"type":"object"}`)})
-	st.ApproveTool("w", snap.PublicName, snap.Fingerprint, snap.Version)
+	st.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "c__read", Fingerprint: "f", InputSchema: []byte(`{"type":"object"}`)})
 	st.RegisterSecrets("w", []store.SecretResource{{Name: "TEST2"}})
 	mux := http.NewServeMux()
 	a := &Admin{Store: st, WorkspaceID: "w", HumanToken: "service"}

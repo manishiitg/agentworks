@@ -56,7 +56,6 @@ func TestMCPErrorResultAuditedAsUpstreamError(t *testing.T) {
 		t.Fatal(err)
 	}
 	snap, _ := st.GetTool("test__read")
-	st.ApproveTool("w", snap.PublicName, snap.Fingerprint, snap.Version)
 	st.AddGrant(store.Grant{UserID: "alice", PublicName: snap.PublicName})
 	ctx := auth.WithIdentity(context.Background(), auth.Identity{UserID: "alice", WorkspaceID: "w"})
 	res, err := g.handleCall(ctx, snap, mcp.CallToolRequest{})
