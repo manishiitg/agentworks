@@ -63,7 +63,6 @@ vi.mock('../../hooks/useWorkflowBuilderBindings', () => ({ useWorkflowBuilderBin
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: vi.fn() }))
 vi.mock('../../hooks/useResumePreviousChat', () => ({ useResumePreviousChat: () => mocks.resume }))
 vi.mock('./SidebarStepInspections', () => ({ default: () => null }))
-vi.mock('./SidebarWorkspaceInspections', () => ({ default: (props: any) => React.createElement('div', { 'data-workspace-discovery': props.workflowId, 'data-selected': String(props.selected), 'data-excluded': props.listedSessions.join(',') }) }))
 vi.mock('../../utils/chatIdentity', () => ({
   captureChatIdentity: () => 1,
   isChatIdentityCurrent: () => true,
@@ -112,7 +111,7 @@ async function render(check: (host: HTMLDivElement, rerender: () => Promise<void
     host.remove()
   }
 }
-it('opens existing tabs through the shared navigator and hands recent Code history to its product', async () => {
+it('opens existing tabs through the shared navigator and lists no stored history', async () => {
   mocks.tabs = {
     tab: {
       tabId: 'tab',
@@ -128,12 +127,7 @@ it('opens existing tabs through the shared navigator and hands recent Code histo
   await render(async (host) => {
     await act(async () => (host.querySelector('[title="My Code · Code"]') as HTMLButtonElement).click())
     expect(mocks.openTab).toHaveBeenCalledWith('tab')
-    await act(async () =>
-      (host.querySelector('[title="Saved Code chat · Code"]') as HTMLButtonElement).click()
-    )
-    expect(mocks.selectCode).toHaveBeenCalledWith('two')
-    expect(useSidebarHistoryStore.getState().request?.session.session_id).toBe('code:project:two')
-    expect(mocks.history).toHaveBeenCalledWith(30)
+    expect(host.querySelector('[title="Saved Code chat · Code"]')).toBeNull()
   })
 })
 it('labels remembered Goal Run chats from server kind while keeping one unnumbered Builder', async () => {
@@ -303,20 +297,5 @@ it('labels the parent source and returns from inspection to the parent chat', as
     await act(async()=>main.click())
     expect(mocks.setMetadata).toHaveBeenCalledWith('main',{stepInspections:{items:[target],activeId:null}})
     expect(mocks.openTab).toHaveBeenCalledWith('main')
-  })
-})
-
-it('mounts workspace-level Inspect discovery for the selected Goal even when only its main chat is listed', async () => {
-  mocks.product = 'agentworks'
-  mocks.presets = [{ id: 'goal', label: 'Research', selectedFolder: { filepath: 'Workflow/demo' } }]
-  mocks.tabs = { main: { tabId: 'main', sessionId: 'main-chat', name: 'Research', createdAt: 1, metadata: { mode: 'workflow', phaseId: 'workflow-builder', presetQueryId: 'goal' } } }
-  mocks.selectedTab = 'main'
-  mocks.builders = { goal: { sessions: { 'main-chat': { is_builder: true } } } }
-  mocks.history.mockResolvedValue({ sessions: [] })
-  await render(async host => {
-    const discovery = host.querySelector('[data-workspace-discovery="goal"]')!
-    expect(discovery).not.toBeNull()
-    expect(discovery.getAttribute('data-selected')).toBe('true')
-    expect(discovery.getAttribute('data-excluded')).toBe('main-chat')
   })
 })
