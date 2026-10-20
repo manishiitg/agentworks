@@ -185,7 +185,7 @@ func (g *Gateway) SyncTools(ctx context.Context, workspaceID string) error {
 		if c.Status != store.StatusActive {
 			continue
 		}
-		if err := g.syncConnector(ctx, c, false); err != nil {
+		if err := g.syncConnector(ctx, c); err != nil {
 			return err
 		}
 	}
@@ -238,7 +238,7 @@ func (g *Gateway) connectorOptions(c store.Connector) (upstream.DialOptions, err
 	return opts, nil
 }
 
-func (g *Gateway) syncConnector(ctx context.Context, c store.Connector, approveInitial bool) error {
+func (g *Gateway) syncConnector(ctx context.Context, c store.Connector) error {
 	up, ok := g.upstreamFor(c.ID)
 	if !ok {
 		return fmt.Errorf("connector %s (%s): no upstream session", c.ID, c.Label)
@@ -255,12 +255,6 @@ func (g *Gateway) syncConnector(ctx context.Context, c store.Connector, approveI
 		schema := schemaBytes(t)
 		outputSchema := outputSchemaBytes(t)
 		annotations, _ := json.Marshal(t.Annotations)
-		// Connecting a new MCP explicitly trusts this initial discovery. Later
-		// background/admin syncs must still quarantine new or changed definitions.
-		status := ""
-		if approveInitial {
-			status = store.StatusActive
-		}
 		snap := g.store.UpsertToolSnapshot(store.ToolSnapshot{
 			ConnectorID:  c.ID,
 			WorkspaceID:  c.WorkspaceID,
@@ -273,7 +267,6 @@ func (g *Gateway) syncConnector(ctx context.Context, c store.Connector, approveI
 			Annotations:  annotations,
 			Fingerprint:  store.Fingerprint(t.Name, t.Description, schema, []byte(t.Title), outputSchema, annotations),
 			DiscoveredAt: time.Now().UTC(),
-			Status:       status,
 		})
 		seen[snap.PublicName] = true
 		g.register(snap, t)
@@ -285,10 +278,8 @@ func (g *Gateway) syncConnector(ctx context.Context, c store.Connector, approveI
 }
 
 // AddConnector dials a new upstream instance and syncs its tools while
-// serving. A new connector's initial tool definitions are approved by this
-// explicit configuration action. Approval grants no user/group access. An
-// existing connector with snapshots keeps the normal change-review behavior.
-// The connector row must already exist in the store.
+// serving. Its discovered tools are active (UpsertToolSnapshot); access still
+// comes only from grants. The connector row must already exist in the store.
 func (g *Gateway) AddConnector(ctx context.Context, c store.Connector) error {
 	defer g.lockConnector(c.ID)()
 	if _, ok := g.upstreamFor(c.ID); ok {
@@ -305,8 +296,7 @@ func (g *Gateway) AddConnector(ctx context.Context, c store.Connector) error {
 	g.mu.Lock()
 	g.upstreams[c.ID] = up
 	g.mu.Unlock()
-	approveInitial := len(g.store.ListToolsForConnector(c.ID)) == 0
-	if err := g.syncConnector(ctx, c, approveInitial); err != nil {
+	if err := g.syncConnector(ctx, c); err != nil {
 		g.mu.Lock()
 		delete(g.upstreams, c.ID)
 		g.mu.Unlock()
@@ -373,8 +363,7 @@ func (g *Gateway) resyncConnector(ctx context.Context, c store.Connector) error 
 		g.mu.Unlock()
 		dialed = true
 	}
-	initial := c.Status == store.StatusAuthRequired && len(g.store.ListToolsForConnector(c.ID)) == 0
-	if err := g.syncConnector(ctx, c, initial); err != nil {
+	if err := g.syncConnector(ctx, c); err != nil {
 		if dialed {
 			g.mu.Lock()
 			up := g.upstreams[c.ID]
@@ -433,7 +422,7 @@ func (g *Gateway) ReplaceConnectorCredentials(ctx context.Context, c store.Conne
 	old := g.upstreams[c.ID]
 	g.upstreams[c.ID] = newUp
 	g.mu.Unlock()
-	if err := g.syncConnector(ctx, current, false); err != nil {
+	if err := g.syncConnector(ctx, current); err != nil {
 		g.mu.Lock()
 		g.upstreams[c.ID] = old
 		g.mu.Unlock()

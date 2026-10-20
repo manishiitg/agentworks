@@ -713,39 +713,29 @@ func (s *MemoryStore) ListConnectors(workspaceID string) []Connector {
 	return out
 }
 
-// UpsertToolSnapshot inserts or versions a discovered tool. A changed
-// fingerprint on a known tool quarantines it until admin review.
+// UpsertToolSnapshot inserts or versions a discovered tool. Every discovered tool is active: a new tool and a changed
+// definition are approved as discovered (owner, 2026-10-20: "default we should approve all tools"), and a changed one
+// keeps its earlier version in the history. Grants still decide who may call it.
 func (s *MemoryStore) UpsertToolSnapshot(t ToolSnapshot) ToolSnapshot {
 	s.mu.Lock()
 	defer s.persistUnlock()
+	t.Status, t.ApprovedFingerprint = StatusActive, t.Fingerprint
 	prev, known := s.tools[t.PublicName]
 	if !known {
 		t.Version = 1
-		if t.Status == "" {
-			t.Status = StatusQuarantined
-		} else if t.Status == StatusActive {
-			t.ApprovedFingerprint = t.Fingerprint
-		}
 		s.tools[t.PublicName] = t
 		return t
 	}
 	if prev.Fingerprint == t.Fingerprint {
-		// A tool the last discovery dropped (DisableMissingTools) is back
-		// unchanged: revive it with its grants intact. Quarantined tools
-		// stay quarantined until admin review.
-		if prev.Status == StatusDisabled {
-			if prev.ApprovedFingerprint == prev.Fingerprint {
-				prev.Status = StatusActive
-			} else {
-				prev.Status = StatusQuarantined
-			}
+		// Unchanged: revive a tool the last discovery dropped (DisableMissingTools) and activate one an older
+		// release held for review, with its grants intact.
+		if prev.Status != StatusActive || prev.ApprovedFingerprint != prev.Fingerprint {
+			prev.Status, prev.ApprovedFingerprint = StatusActive, prev.Fingerprint
 			s.tools[t.PublicName] = prev
 		}
 		return prev
 	}
 	t.Version = prev.Version + 1
-	t.Status = StatusQuarantined
-	t.ApprovedFingerprint = prev.ApprovedFingerprint
 	s.toolVersions[t.PublicName] = append(s.toolVersions[t.PublicName], prev)
 	s.tools[t.PublicName] = t
 	return t
@@ -757,7 +747,7 @@ func (s *MemoryStore) ApproveTool(workspaceID, publicName, fingerprint string, v
 	s.mu.Lock()
 	defer s.persistUnlock()
 	t, ok := s.tools[publicName]
-	if !ok || t.WorkspaceID != workspaceID || t.Status != StatusQuarantined || t.Fingerprint != fingerprint || t.Version != version {
+	if !ok || t.WorkspaceID != workspaceID || t.Fingerprint != fingerprint || t.Version != version {
 		return ToolSnapshot{}, false
 	}
 	t.Status = StatusActive

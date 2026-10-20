@@ -120,11 +120,8 @@ func TestResyncDisablesRemovedTools(t *testing.T) {
 	}
 	for _, name := range []string{"mut__drop_tool", "mut__keep_tool"} {
 		snap, ok := st.GetTool(name)
-		if !ok || snap.Status != store.StatusQuarantined {
-			t.Fatalf("new tool %s = %+v, want quarantined", name, snap)
-		}
-		if _, approved := st.ApproveTool("w1", name, snap.Fingerprint, snap.Version); !approved {
-			t.Fatalf("could not approve %s", name)
+		if !ok || snap.Status != store.StatusActive {
+			t.Fatalf("new tool %s = %+v, want active", name, snap)
 		}
 	}
 	id := auth.Identity{UserID: "u1", WorkspaceID: "w1"}
@@ -170,10 +167,9 @@ func TestResyncDisablesRemovedTools(t *testing.T) {
 	}
 }
 
-// TestSchemaChangeQuarantinesTool: the snapshot stores the full normalized
-// input schema, and a property-level change quarantines the tool while an
-// unchanged resync keeps it stable.
-func TestSchemaChangeQuarantinesTool(t *testing.T) {
+// A changed definition stays usable as a new version, and the earlier one is kept for comparison (owner, 2026-10-20:
+// "default we should approve all tools").
+func TestSchemaChangeVersionsToolAndKeepsItActive(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -202,37 +198,20 @@ func TestSchemaChangeQuarantinesTool(t *testing.T) {
 	if !strings.Contains(string(snap.InputSchema), `"required"`) || !strings.Contains(string(snap.InputSchema), `"q"`) {
 		t.Fatalf("stored schema = %q, want full normalized input schema", snap.InputSchema)
 	}
-	if snap.Version != 1 || snap.Status != store.StatusQuarantined {
-		t.Fatalf("fresh snapshot = v%d %q, want v1 quarantined", snap.Version, snap.Status)
-	}
-	if _, approved := st.ApproveTool("w1", snap.PublicName, snap.Fingerprint, snap.Version); !approved {
-		t.Fatal("could not approve initial schema")
+	if snap.Version != 1 || snap.Status != store.StatusActive {
+		t.Fatalf("fresh snapshot = v%d %q, want v1 active", snap.Version, snap.Status)
 	}
 
-	// Unchanged resync: stable version, still active.
-	if err := gw.Resync(ctx, c); err != nil {
-		t.Fatalf("resync unchanged: %v", err)
-	}
-	if snap, _ := st.GetTool("mut__shaped_tool"); snap.Version != 1 || snap.Status != store.StatusActive {
-		t.Fatalf("after unchanged resync = v%d %q, want v1 active", snap.Version, snap.Status)
-	}
-
-	// A property-level change quarantines with a new version.
 	srv.DeleteTools("shaped_tool")
 	srv.AddTool(schemaTool("shaped_tool", `{"type":"object","properties":{"q":{"type":"string"},"n":{"type":"number"}},"required":["q","n"]}`), echoHandler())
 	if err := gw.Resync(ctx, c); err != nil {
 		t.Fatalf("resync changed: %v", err)
 	}
 	snap, _ = st.GetTool("mut__shaped_tool")
-	if snap.Version != 2 || snap.Status != store.StatusQuarantined {
-		t.Fatalf("after schema change = v%d %q, want v2 quarantined", snap.Version, snap.Status)
-	}
-	if !strings.Contains(string(snap.InputSchema), `"n"`) {
-		t.Fatalf("quarantined snapshot schema = %q, want the new definition", snap.InputSchema)
+	if snap.Version != 2 || snap.Status != store.StatusActive || !strings.Contains(string(snap.InputSchema), `"n"`) {
+		t.Fatalf("after schema change = %+v, want v2 active with the new definition", snap)
 	}
 
-	// Output-only schema changes also require review and retain the prior
-	// definition for an admin to compare.
 	srv.DeleteTools("shaped_tool")
 	changedOutput := schemaTool("shaped_tool", `{"type":"object","properties":{"q":{"type":"string"},"n":{"type":"number"}},"required":["q","n"]}`)
 	changedOutput.RawOutputSchema = json.RawMessage(`{"type":"object","properties":{"answer":{"type":"string"}}}`)
@@ -241,7 +220,7 @@ func TestSchemaChangeQuarantinesTool(t *testing.T) {
 		t.Fatalf("output resync: %v", err)
 	}
 	snap, _ = st.GetTool("mut__shaped_tool")
-	if snap.Version != 3 || snap.Status != store.StatusQuarantined || !strings.Contains(string(snap.OutputSchema), "answer") {
+	if snap.Version != 3 || snap.Status != store.StatusActive || !strings.Contains(string(snap.OutputSchema), "answer") {
 		t.Fatalf("output schema change = %+v", snap)
 	}
 	if versions := st.ListToolVersions("w1", snap.PublicName); len(versions) != 2 {
@@ -249,7 +228,8 @@ func TestSchemaChangeQuarantinesTool(t *testing.T) {
 	}
 }
 
-func TestServerGrantDoesNotAutoApproveFutureTool(t *testing.T) {
+// A whole-server grant covers a tool the server adds later; a person outside the group still gets nothing.
+func TestServerGrantCoversFutureToolOnlyForTheGroup(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	ts, srv := mutableUpstream(t)
@@ -262,6 +242,7 @@ func TestServerGrantDoesNotAutoApproveFutureTool(t *testing.T) {
 	st := store.NewMemoryStore()
 	st.AddWorkspace(store.Workspace{ID: "w1"})
 	st.AddUser(store.User{ID: "u1", WorkspaceID: "w1"})
+	st.AddUser(store.User{ID: "u2", WorkspaceID: "w1"})
 	st.AddGroup(store.Group{ID: "g1", WorkspaceID: "w1"})
 	st.AddMember("g1", "u1")
 	st.AddConnector(store.Connector{ID: "c1", WorkspaceID: "w1", Provider: "mut", Status: store.StatusActive})
@@ -270,23 +251,19 @@ func TestServerGrantDoesNotAutoApproveFutureTool(t *testing.T) {
 	if err := gw.SyncTools(ctx, "w1"); err != nil {
 		t.Fatal(err)
 	}
-	id := auth.Identity{UserID: "u1", WorkspaceID: "w1"}
-	if _, err := policy.Authorize(st, id, "mut__first"); err != policy.ErrToolNotActive {
-		t.Fatalf("first tool before approval: %v", err)
-	}
-	first, _ := st.GetTool("mut__first")
-	if _, approved := st.ApproveTool("w1", first.PublicName, first.Fingerprint, first.Version); !approved {
-		t.Fatal("approve first")
-	}
-	if _, err := policy.Authorize(st, id, "mut__first"); err != nil {
-		t.Fatalf("approved tool denied: %v", err)
+	member, outsider := auth.Identity{UserID: "u1", WorkspaceID: "w1"}, auth.Identity{UserID: "u2", WorkspaceID: "w1"}
+	if _, err := policy.Authorize(st, member, "mut__first"); err != nil {
+		t.Fatalf("group member denied a discovered tool: %v", err)
 	}
 	srv.AddTool(schemaTool("future", `{"type":"object"}`), echoHandler())
 	connector, _ := st.GetConnector("c1")
 	if err := gw.Resync(ctx, connector); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := policy.Authorize(st, id, "mut__future"); err != policy.ErrToolNotActive {
-		t.Fatalf("future tool auto-granted: %v", err)
+	if _, err := policy.Authorize(st, member, "mut__future"); err != nil {
+		t.Fatalf("group member denied a later tool: %v", err)
+	}
+	if _, err := policy.Authorize(st, outsider, "mut__future"); err == nil {
+		t.Fatal("a person outside the group reached the tool")
 	}
 }

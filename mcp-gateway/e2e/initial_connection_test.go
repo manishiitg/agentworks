@@ -66,11 +66,8 @@ func TestAdminConnectionApprovesInitialToolsAndStillRequiresGroupAccess(t *testi
 	}
 	for _, name := range []string{"local__read", "local__new_tool"} {
 		snap, ok := st.GetTool(name)
-		if !ok || snap.Status != store.StatusQuarantined {
-			t.Fatalf("later definition silently approved: %+v", snap)
-		}
-		if _, err := policy.Authorize(st, alice, name); !errors.Is(err, policy.ErrToolNotActive) {
-			t.Fatalf("unreviewed later definition accessible: %s: %v", name, err)
+		if !ok || snap.Status != store.StatusActive {
+			t.Fatalf("later definition not active: %+v", snap)
 		}
 	}
 	unchanged, _ := st.GetTool("local__write")
