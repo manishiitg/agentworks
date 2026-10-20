@@ -763,6 +763,12 @@ func initializeProductConversationWorkspace(ctx context.Context, userID string, 
 // A new side chat (tab) needs name; it becomes the tab's agent name and title.
 func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profile agentprofiles.Profile, requestedKey, name string) (ProductConversationRecord, error) {
 	userID := productWorkspaceUserID(r.Context())
+	// Resolve current project access before treating a missing registry entry
+	// as a new tab. A stale dashboard can still carry a removed chat's key.
+	binding, owned, err := resolveConversationBindingForUser(r.Context(), userID, profile, requestedKey)
+	if err != nil {
+		return ProductConversationRecord{}, err
+	}
 	unlock, isNew, capErr := guardNewSideChat(r.Context(), userID, profile.ID, requestedKey)
 	if capErr != nil {
 		return ProductConversationRecord{}, capErr
@@ -778,15 +784,6 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 		}
 		name = normalized
 	}
-	// Crew Run mode: opening resolves under whichever owner holds the
-	// project. Reader bindings carry no manifest path, so the registry
-	// below stays reader-scoped and project initialization (which
-	// creates folders and databases) is skipped.
-	binding, owned, err := resolveConversationBindingForUser(r.Context(), userID, profile, requestedKey)
-	if err != nil {
-		return ProductConversationRecord{}, err
-	}
-
 	if agentID := publicationAgentID(requestedKey); agentID != "" {
 		if !owned {
 			return ProductConversationRecord{}, fmt.Errorf("Open this agent from a Crew you may build; shared use is through its dashboard and functions.")

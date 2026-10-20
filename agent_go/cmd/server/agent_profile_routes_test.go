@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -31,6 +32,25 @@ func routeTestProfile(id string, builtIn bool, ownerID string) agentprofiles.Pro
 		Runtime:              agentprofiles.RuntimePolicy{Transport: "auto"},
 		BuiltIn:              builtIn,
 		OwnerID:              ownerID,
+	}
+}
+
+func TestStaleDashboardChatRefusesAccessBeforeAskingForATabName(t *testing.T) {
+	server, _ := newFakeWorkspaceServer(t)
+	t.Setenv("WORKSPACE_API_URL", server.URL)
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"caller","username":"caller"}]}`)
+	api := &StreamingAPI{}
+	req := profileRouteRequest(http.MethodPost, "/", nil, "caller")
+	_, err := api.resolveAgentProfileConversation(req, workCrewTestProfile(nil), "removed-project:chat:previous-main", "")
+	if !errors.Is(err, errCrewProjectUnavailable) {
+		t.Fatalf("stale dashboard access refusal was hidden by a new-tab prompt: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	writeAgentProfileQueryError(rec, err)
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), `"code":"project_unavailable"`) {
+		t.Fatalf("refusal must use the permanent access failure contract: %d %s", rec.Code, rec.Body.String())
 	}
 }
 
