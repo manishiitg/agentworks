@@ -51,7 +51,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       </>}
       {allowed('browser') && <WorkspaceBrowserRow workspacePath={workspacePath} profileId={profileId} onClick={() => onOpen('browser')} />}
       {allowed('schedules') && <WorkspaceAutomationRows onOpen={openAutomation} triggers={webhooks} counts={status} />}
-      {allowed('mcp') && <WorkspaceChannelRows onOpen={openConnection} slack={bots} whatsapp={bots} slackStatus={status.slack} whatsappStatus={status.whatsapp} emailStatus={status.email} onOpenEmail={allowed('schedules') && webhooks ? () => openAutomation('email') : undefined} />}
+      {allowed('mcp') && <WorkspaceChannelRows onOpen={openConnection} slack={bots} whatsapp={bots} slackBot={bots} slackAccountStatus={status.slackAccount} slackBotStatus={status.slackBot} whatsappStatus={status.whatsapp} emailStatus={status.email} onOpenEmail={allowed('schedules') && webhooks ? () => openAutomation('email') : undefined} />}
     </Group>
     {allowed('mcp') && <Group title="Connections">
       <WorkspaceConnectionRows onOpen={openConnection} workMode enabledPanels={enabledPanels} details={{ 'mcp:connected': status.mcps === undefined ? undefined : status.mcps ? String(status.mcps) : 'None' }} />

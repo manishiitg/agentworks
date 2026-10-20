@@ -60,8 +60,8 @@ it('keeps setup choices behind one action, supports keyboard selection and retur
   await act(async () => google.click())
   expect(select).toHaveBeenLastCalledWith('gmail')
   expect(document.querySelector('[role="menu"]')).toBeNull()
+  // A single item is its own page: no "Connections /" breadcrumb and no Add connection menu on it.
   render(false, 'gmail')
-  expect(host.textContent).toContain('Connections/Google apps')
-  await act(async () => host.querySelector<HTMLButtonElement>('button')!.click())
-  expect(back).toHaveBeenCalledOnce()
+  expect(host.textContent).toBe('')
+  expect(back).not.toHaveBeenCalled()
 })

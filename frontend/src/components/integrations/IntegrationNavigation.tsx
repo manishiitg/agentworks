@@ -32,6 +32,8 @@ export function IntegrationNavigation({ options, value, onChange, overview, onOv
   const choose = (next: string) => {
     if (options.some(option => option.value === next)) onChange(next === 'connected' && canEdit ? 'available' : next)
   }
+  // Each item in the side list is its own page; only the overview offers adding an app (owner, 2026-10-20).
+  if (!overview) return null
   return <nav aria-label="Connection actions" className={`mt-2 flex min-w-0 flex-wrap items-center gap-2 ${overview ? 'justify-end' : 'justify-between'}`}>
     {!overview && <button type="button" onClick={onOverview} className="inline-flex min-w-0 items-center gap-1.5 rounded py-1 text-xs text-muted-foreground hover:text-foreground">
       <ArrowLeft className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Connections<span aria-hidden="true">/</span><span className="truncate text-foreground">{value === 'available' ? 'Add MCP' : selected?.label}</span>
