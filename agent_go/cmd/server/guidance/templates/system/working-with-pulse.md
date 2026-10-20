@@ -23,8 +23,9 @@ Good messages say who is asking, the question, and the facts Pulse cannot see
 within the server-held permissions in its message: when Pulse is on, improve
 the workflow within existing access. Ask first for outward actions unless the
 owner allowed them within limits. When Pulse is off, it is unavailable, including tags and chat. Turn it on before messaging it. Reply
-with `send_message(inbox_id=<the supplied reply address>, message=...)` when a
-reply is useful. Final chat text is never forwarded. Read explicit replies
+with the `send_message` tool (`inbox_id` = the supplied reply address, plus `message`) when a
+reply is useful; if it is only listed as a route by `get_api_spec`, call
+`POST /tools/custom/send_message` from the shell. Final chat text is never forwarded. Read explicit replies
 with `read_agent_messages(inbox_id)`; either agent may send zero, one or many
 messages. If you need a later follow-up, request `schedule_message_wakeup`
 and decide what to do when it fires. Delivery creates no automatic deadline,
