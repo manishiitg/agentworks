@@ -50,10 +50,10 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       </>}
       {allowed('browser') && <WorkspaceBrowserRow workspacePath={workspacePath} profileId={profileId} onClick={() => onOpen('browser')} />}
       {allowed('schedules') && <WorkspaceAutomationRows onOpen={openAutomation} triggers={webhooks} counts={status} />}
-      {allowed('mcp') && <WorkspaceChannelRows onOpen={openConnection} slack={bots} whatsapp={bots} slackStatus={status.slack} onOpenEmail={allowed('schedules') && webhooks ? () => openAutomation('email') : undefined} />}
+      {allowed('mcp') && <WorkspaceChannelRows onOpen={openConnection} slack={bots} whatsapp={bots} slackStatus={status.slack} whatsappStatus={status.whatsapp} emailStatus={status.email} onOpenEmail={allowed('schedules') && webhooks ? () => openAutomation('email') : undefined} />}
     </Group>
     {allowed('mcp') && <Group title="Connections">
-      <WorkspaceConnectionRows onOpen={openConnection} workMode enabledPanels={enabledPanels} />
+      <WorkspaceConnectionRows onOpen={openConnection} workMode enabledPanels={enabledPanels} details={{ 'mcp:connected': status.mcps === undefined ? undefined : status.mcps ? String(status.mcps) : 'None' }} />
       {projectId && <Row icon={Laptop} detail={status.computerChats === undefined ? undefined : status.computerChats ? String(status.computerChats) : 'None'} onClick={() => openConnection('agents')}>Chats from your computer</Row>}
     </Group>}
     <Group title="Ops" collapsed>

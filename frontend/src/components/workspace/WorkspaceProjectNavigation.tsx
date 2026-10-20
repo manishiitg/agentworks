@@ -37,30 +37,28 @@ const countText = (value?: number) => (value === undefined ? undefined : value ?
 
 export function WorkspaceAutomationRows({ onOpen, relay = false, triggers = true, counts }: { onOpen: (section: string) => void; relay?: boolean; triggers?: boolean; counts?: ProjectStatus }) {
   const byId: Record<string, number | undefined> = { schedules: counts?.schedules, conditions: counts?.conditions, triggers: counts?.triggers, functions: counts?.functions }
-  return <div className="mt-2">
-    <h3 className="px-1 py-1 text-[10px] text-muted-foreground">Automations</h3>
+  return <div role="group" aria-label="Automations" className="mt-1 space-y-1 border-t border-border/60 pt-2">
     {projectAutomationSections({ relay, triggers }).map(item =>
       <Row key={item.id} icon={item.icon} detail={countText(byId[item.id])} onClick={() => onOpen(item.id)}>{item.label}</Row>)}
   </div>
 }
 
 /** Incoming email is a way to reach the project, so it sits with the other channels. */
-export function WorkspaceChannelRows({ onOpen, slack, whatsapp, slackStatus, onOpenEmail }: { onOpen: (section: string) => void; slack: boolean; whatsapp: boolean; slackStatus?: string; onOpenEmail?: () => void }) {
+export function WorkspaceChannelRows({ onOpen, slack, whatsapp, slackStatus, whatsappStatus, emailStatus, onOpenEmail }: { onOpen: (section: string) => void; slack: boolean; whatsapp: boolean; slackStatus?: string; whatsappStatus?: string; emailStatus?: string; onOpenEmail?: () => void }) {
   const incomingEmail = useGmailInboundUIEnabled()
-  return <div className="mt-2">
-    <h3 className="px-1 py-1 text-[10px] text-muted-foreground">Channels</h3>
+  return <div role="group" aria-label="Channels" className="mt-1 space-y-1 border-t border-border/60 pt-2">
     {projectChannelSections(slack, whatsapp).flatMap(item => [
-      <Row key={item.id} icon={item.icon} detail={item.id === 'slack' ? slackStatus : undefined} onClick={() => onOpen(item.id)}>{item.label}</Row>,
-      ...(item.id === (whatsapp ? 'whatsapp' : slack ? 'slack' : '') && onOpenEmail && incomingEmail ? [<Row key="email" icon={Mail} onClick={onOpenEmail}>Incoming email</Row>] : []),
+      <Row key={item.id} icon={item.icon} detail={item.id === 'slack' ? slackStatus : item.id === 'whatsapp' ? whatsappStatus : undefined} onClick={() => onOpen(item.id)}>{item.label}</Row>,
+      ...(item.id === (whatsapp ? 'whatsapp' : slack ? 'slack' : '') && onOpenEmail && incomingEmail ? [<Row key="email" icon={Mail} detail={emailStatus} onClick={onOpenEmail}>Incoming email</Row>] : []),
     ])}
   </div>
 }
 
 /** Uses the same already-admitted connection options as the existing panels. */
-export function WorkspaceConnectionRows({ onOpen, relayMode = false, workMode = false, enabledPanels }: { onOpen: (section: string) => void; relayMode?: boolean; workMode?: boolean; enabledPanels?: Set<string> }) {
+export function WorkspaceConnectionRows({ onOpen, relayMode = false, workMode = false, enabledPanels, details }: { onOpen: (section: string) => void; relayMode?: boolean; workMode?: boolean; enabledPanels?: Set<string>; details?: Record<string, string | undefined> }) {
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const options = projectConnectionSections({ allowedProducts, relayMode, workMode, enabledPanels, onOpen })
   return <>
-    {options.map(item => <Row key={item.id} icon={item.icon} onClick={item.onClick}>{item.label}</Row>)}
+    {options.map(item => <Row key={item.id} icon={item.icon} detail={details?.[item.id]} onClick={item.onClick}>{item.label}</Row>)}
   </>
 }
