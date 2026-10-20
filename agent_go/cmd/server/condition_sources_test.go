@@ -46,7 +46,7 @@ func TestConditionProductCallerOwnsDetectorAndCallsOwnCrew(t *testing.T) {
 		t.Fatal("watcher impersonates its associated Crew")
 	}
 	env.mock.mu.Lock()
-	unchanged := env.mock.files[linkAlphaPath+"/product.json"] == before
+	unchanged := sameProductIgnoringMainChatKey(t, before, env.mock.files[linkAlphaPath+"/product.json"])
 	_, sourceInTarget := env.mock.files[linkAlphaPath+"/"+job.Schedule.Condition.Script]
 	env.mock.mu.Unlock()
 	if !unchanged || sourceInTarget {
@@ -128,4 +128,22 @@ func TestConditionBuilderToolsInCrewWorkflowAndRelay(t *testing.T) {
 	if _, ok := reg.tools["manage_condition_triggers"]; !ok {
 		t.Fatal("Crew Builder missing watcher tool")
 	}
+}
+
+// sameProductIgnoringMainChatKey compares two product.json documents by content. Reading a Crew records its main chat
+// key once (the main-chat model), which rewrites the file; that is not a Watcher writing into the product.
+func sameProductIgnoringMainChatKey(t *testing.T, before, after string) bool {
+	t.Helper()
+	var a, b map[string]interface{}
+	if err := json.Unmarshal([]byte(before), &a); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(after), &b); err != nil {
+		t.Fatal(err)
+	}
+	delete(a, "main_chat_key")
+	delete(b, "main_chat_key")
+	left, _ := json.Marshal(a)
+	right, _ := json.Marshal(b)
+	return string(left) == string(right)
 }
