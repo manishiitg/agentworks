@@ -70,7 +70,8 @@ export default function ConnectedAgentsSidebar() {
     }
   }, [scope, userId, attempt])
   const data = snapshot?.scope === scope ? snapshot : null
-  if (!userId || !data || (!data.error && !data.agents.length)) return null
+  // Shown even with nothing connected, so every server offers the way to connect one.
+  if (!userId || !data) return null
   return (
     <section aria-label="Connected CLI agents" className="mt-5">
       <button
@@ -133,7 +134,7 @@ export default function ConnectedAgentsSidebar() {
           onClick={() => openProductWorkspace('bullpen')}
           className="ml-7 mt-1 rounded px-1 py-1.5 text-xs text-muted-foreground hover:text-foreground"
         >
-          Open AgentBridge{data && data.agents.length > 5 ? ` · ${data.agents.length} agents` : ''}
+          {!data.error && !data.agents.length ? 'Connect an agent' : `Open AgentBridge${data.agents.length > 5 ? ` · ${data.agents.length} agents` : ''}`}
         </button>
       </div>
     </section>

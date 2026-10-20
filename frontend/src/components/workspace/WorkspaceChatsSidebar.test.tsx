@@ -188,7 +188,7 @@ it('discards an old account’s late history response', async () => {
 it('does not turn an unavailable history catalog into a false empty state', async () => {
   mocks.history.mockRejectedValue(new Error('offline'))
   await render(async (host) => {
-    expect(host.textContent).toContain('Some recent chats could not load')
+    expect(host.textContent).toContain('Some chats could not load')
     expect(host.textContent).not.toContain('No chats yet.')
   })
 })
@@ -215,23 +215,18 @@ it('shows per-chat running state under one collapsible workspace without merging
   })
 })
 
-it('starts Recent collapsed and keeps ordinary named chats free of repeated status text', async () => {
+it('shows no Recent chats list and keeps ordinary named chats free of repeated status text', async () => {
   mocks.tabs = {
     analysis: { tabId: 'analysis', sessionId: 'analysis', name: 'Monthly analysis', createdAt: 1, isStreaming: true,
       metadata: { agentProfileId: 'code', agentProfileProjectId: 'one', agentProfileProjectTitle: 'Accounting' } },
   }
   mocks.history.mockResolvedValue({ sessions: [{ session_id: 'code:project:old', title: 'Previous report' }] })
   await render(async host => {
-    const recent = host.querySelector<HTMLButtonElement>('[aria-controls="sidebar-chats-recent"]')!
-    const panel = host.querySelector<HTMLDivElement>('#sidebar-chats-recent')!
-    expect(recent.getAttribute('aria-expanded')).toBe('false')
-    expect(panel.hidden).toBe(true)
+    expect(host.textContent).not.toContain('Recent chats')
+    expect(host.textContent).not.toContain('Previous report')
     const chat = host.querySelector<HTMLButtonElement>('[title="Monthly analysis · Code"]')!
     expect(chat.textContent).toBe('Monthly analysis')
     expect(chat.querySelector('[aria-label="Running"]')).not.toBeNull()
-    await act(async () => recent.click())
-    expect(panel.hidden).toBe(false)
-    expect(panel.textContent).toContain('Previous report')
   })
 })
 

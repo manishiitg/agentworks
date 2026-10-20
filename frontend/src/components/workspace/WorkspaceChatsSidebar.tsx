@@ -42,6 +42,10 @@ import SidebarStepInspections from './SidebarStepInspections'
 import SidebarWorkspaceInspections from './SidebarWorkspaceInspections'
 import { inspectionKey } from '../../utils/stepInspection'
 import { workflowTriggerLabel } from '../../utils/workflowSessionKinds'
+
+// Stored chats only resolve each workflow's Builder and run chats; there is no Recent list.
+const HISTORY_LIMIT = 30
+
 export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: ReactNode; footer?: ReactNode }) {
   const user = useAuthStore((state) => state.user)
   const workspace = useWorkspaceConnectionStore((state) => state.activeWorkspaceId)
@@ -74,13 +78,11 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   } | null>(null)
   const pendingHistory = useSidebarHistoryStore((state) => state.request)
   const resumeHistory = useResumePreviousChat()
-  const [limit, setLimit] = useState(30)
   const [tick, setTick] = useState(0)
   const [directoryTick, setDirectoryTick] = useState(0)
   const [opening, setOpening] = useState<string | null>(null)
   const [closing, setClosing] = useState<string | null>(null)
-  const [collapsed, setCollapsed] = useState<string[]>(['Recent'])
-  const [visibleRecent, setVisibleRecent] = useState(8)
+  const [collapsed, setCollapsed] = useState<string[]>([])
   const allowed = intersectAllowedProductSurfaces(enabledProductSurfaces(), user?.allowed_products)
   useLiveRefetch(
     () => {
@@ -99,9 +101,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     enabled: allowed.includes('work') || allowed.includes('code'),
   })
   useEffect(() => {
-    setLimit(30)
-    setCollapsed(['Recent'])
-    setVisibleRecent(8)
+    setCollapsed([])
   }, [scope])
   useEffect(() => {
     let disposed = false
@@ -121,7 +121,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       )
       .slice(0, 6)
     void Promise.allSettled([
-      agentApi.listChatHistorySessions(limit),
+      agentApi.listChatHistorySessions(HISTORY_LIMIT),
       ...scopedPresets.map((preset) =>
         agentApi.listChatHistorySessions(5, 0, preset.selectedFolder!.filepath)
       ),
@@ -143,7 +143,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     return () => {
       disposed = true
     }
-  }, [scope, limit, tick, presets.map((preset) => preset.id).join(','), allowed.join(',')])
+  }, [scope, tick, presets.map((preset) => preset.id).join(','), allowed.join(',')])
   useEffect(() => {
     let disposed = false
     const identity = captureChatIdentity()
@@ -352,7 +352,6 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       groups.includes(id) ? groups.filter((item) => item !== id) : [...groups, id]
     )
   const workspaces = sidebarWorkspaceGroups(rows)
-  const recent = rows.filter((row) => row.group === 'Recent')
   const renderChat = (row: SidebarChat, workspaceTitle?: string, genericChatNumber?: number, workspaceEntry?: string, visible = true) => {
     const tab = row.tabId ? tabs[row.tabId] : undefined
     const inspecting = tab?.metadata?.stepInspections?.items.some(item => inspectionKey(item) === tab.metadata?.stepInspections?.activeId)
@@ -554,65 +553,22 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
         {workspaces.map((workspace, index) => !isResourceWorkspace(workspace.surface) ? renderWorkspace(workspace, index) : null)}
         {allowed.includes('bullpen') && <ConnectedAgentsSidebar />}
         {workspaces.map((workspace, index) => isResourceWorkspace(workspace.surface) ? renderWorkspace(workspace, index) : null)}
-        {recent.length > 0 && (
-          <section className="mt-5">
-            <button
-              type="button"
-              aria-expanded={!collapsed.includes('Recent')}
-              aria-controls="sidebar-chats-recent"
-              onClick={() => toggleSection('Recent')}
-              className="mb-1 flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <ChevronDown
-                className={`h-3 w-3 ${collapsed.includes('Recent') ? '-rotate-90' : ''}`}
-                aria-hidden="true"
-              />
-              <span>Recent chats</span>
-            </button>
-            <div id="sidebar-chats-recent" hidden={collapsed.includes('Recent')}>
-              {recent.slice(0, visibleRecent).map((row) => renderChat(row, undefined, undefined, undefined, !collapsed.includes('Recent')))}
-              {recent.length > visibleRecent && (
-                <button
-                  type="button"
-                  className="ml-7 mt-1 rounded px-1 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-                  onClick={() => setVisibleRecent((value) => value + 8)}
-                >
-                  Show more
-                </button>
-              )}
-            </div>
-          </section>
-        )}
         {directory?.scope === scope && !directory.authoritative && (
           <button className="px-2 py-3 text-left text-xs text-muted-foreground underline" onClick={() => setDirectoryTick(value => value + 1)}>
             Some projects could not load. Try again.
           </button>
-        )}
-        {!history && (
-          <p className="px-2 py-3 text-xs text-muted-foreground">Loading recent chats…</p>
         )}
         {history?.error && (
           <button
             className="px-2 py-3 text-xs text-muted-foreground underline"
             onClick={() => setTick((value) => value + 1)}
           >
-            Some recent chats could not load · Retry
+            Some chats could not load · Retry
           </button>
         )}
         {history && !history.error && !rows.length && directory?.scope === scope && directory.authoritative && (
           <p className="px-2 py-3 text-xs text-muted-foreground">No chats yet.</p>
         )}
-        {history &&
-          history.sessions.length >= limit &&
-          limit < 150 &&
-          visibleRecent >= recent.length && (
-            <button
-              className="w-full rounded px-2 py-2 text-left text-xs text-muted-foreground hover:bg-muted"
-              onClick={() => setLimit((value) => value + 30)}
-            >
-              Load more recent chats
-            </button>
-          )}
       </div>
       {footer && <div className="shrink-0 border-t border-border/60 bg-background/60 p-2">{footer}</div>}
     </aside>

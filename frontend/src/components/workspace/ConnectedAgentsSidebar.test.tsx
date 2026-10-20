@@ -44,13 +44,16 @@ it('discards connections returned after the signed-in account changes', async ()
     await rerender()
     await act(async () => finish([{ agent_id: 'private', agent_name: 'alice-private-agent', online: true }]))
     expect(host.textContent).not.toContain('alice-private-agent')
-    expect(host.querySelector('section')).toBeNull()
+    expect(host.textContent).toContain('No agents connected')
   })
 })
 
-it('omits the empty section without hiding a failed connection lookup', async () => {
+it('keeps the empty section with a way to connect, and shows a failed lookup', async () => {
   mocks.agents.mockResolvedValue([])
-  await render(async host => expect(host.querySelector('section')).toBeNull())
+  await render(async host => {
+    expect(host.textContent).toContain('No agents connected')
+    expect(host.textContent).toContain('Connect an agent')
+  })
   mocks.agents.mockRejectedValue(new Error('offline'))
   await render(async host => {
     expect(host.textContent).toContain('Connections unavailable')
