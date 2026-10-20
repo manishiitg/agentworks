@@ -9,6 +9,7 @@ import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import type { ExecutionInspectionTarget, WorkspaceStepInspectionsResponse } from '../../services/api-types'
 import type { SidebarChat } from '../../utils/sidebarChats'
 import { inspectionKey } from '../../utils/stepInspection'
+import { useSidebarExpansionStore } from '../../stores/useSidebarExpansionStore'
 
 const auth = vi.hoisted(() => ({user:{id:'alice',allowed_products:['agentworks'],allowed_workflow_ids:['goal']}}))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((select: (state: typeof auth) => unknown) => select(auth), {getState: () => auth}) }))
@@ -17,7 +18,12 @@ const target: ExecutionInspectionTarget = {session_id:'parent', execution_id:'st
 const tree: WorkspaceStepInspectionsResponse = {items:[{inspection:target,status:'running',parent:{session_id:'parent',workspace_path:'Workflow/demo',status:'running'}}],next_cursor:null}
 const row: SidebarChat = {id:'parent',tabId:'parent-tab',title:'Daily briefing',surface:'agentworks',workflowId:'goal',workspace:'Workflow/demo',group:'Open',time:1,waiting:false}
 Object.assign(globalThis, {IS_REACT_ACT_ENVIRONMENT:true})
-afterEach(() => {useChatStore.setState(original,true);auth.user={id:'alice',allowed_products:['agentworks'],allowed_workflow_ids:['goal']};vi.restoreAllMocks()})
+afterEach(() => {useSidebarExpansionStore.setState({expanded:{}});useChatStore.setState(original,true);auth.user={id:'alice',allowed_products:['agentworks'],allowed_workflow_ids:['goal']};vi.restoreAllMocks()})
+async function expandSteps(host: HTMLDivElement) {
+  await vi.waitFor(()=>expect(host.querySelector('button[aria-expanded="false"]')).not.toBeNull())
+  expect(host.querySelector('[aria-label="Inspect Research"]')).toBeNull()
+  await act(async()=>host.querySelector<HTMLButtonElement>('button[aria-expanded="false"]')!.click())
+}
 async function render(check: (host: HTMLDivElement, update: (scope:string,visible?:boolean) => Promise<void>) => Promise<void>, visible=true) {
   useChatStore.setState({activeTabId:'other',chatTabs:{'parent-tab':{tabId:'parent-tab',sessionId:'parent',name:'Daily briefing',metadata:{mode:'workflow'}} as ChatTab}})
   const client = new QueryClient({defaultOptions:{queries:{retry:false}}})
@@ -29,6 +35,7 @@ async function render(check: (host: HTMLDivElement, update: (scope:string,visibl
 it('opens the exact step after selecting its parent and highlights the inspector',async()=>{
   vi.spyOn(agentApi,'getWorkspaceStepInspections').mockResolvedValue(tree)
   await render(async host=>{
+    await expandSteps(host)
     await vi.waitFor(()=>expect(host.querySelector('[aria-label="Inspect Research"]')).not.toBeNull())
     expect(agentApi.getWorkspaceStepInspections).toHaveBeenCalledWith('Workflow/demo',{sessionId:'parent',cursor:''})
     expect(host.querySelector('[aria-label="Step running"]')).not.toBeNull()
@@ -54,6 +61,7 @@ it('discards late data from the previous account even if session IDs coincide',a
 it('rechecks current workflow permission before opening the inspector',async()=>{
   vi.spyOn(agentApi,'getWorkspaceStepInspections').mockResolvedValue(tree)
   await render(async host=>{
+    await expandSteps(host)
     await vi.waitFor(()=>expect(host.querySelector('[aria-label="Inspect Research"]')).not.toBeNull())
     auth.user={id:'alice',allowed_products:['agentworks'],allowed_workflow_ids:[]}
     await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Inspect Research"]')!.click())

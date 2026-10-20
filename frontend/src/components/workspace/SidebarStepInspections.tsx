@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { Check, CircleAlert, GitBranch, Loader2 } from 'lucide-react'
+import { Check, ChevronDown, CircleAlert, GitBranch, Loader2 } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import type { ExecutionInspectionTarget, PollingEvent, WorkspaceStepInspection } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useSidebarHistoryStore } from '../../stores/useSidebarHistoryStore'
+import { sidebarExpansionKey, useSidebarExpansionStore } from '../../stores/useSidebarExpansionStore'
 import { enabledProductSurfaces, intersectAllowedProductSurfaces } from '../../products/productSurfaceConfig'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { inspectionKey, isWorkflowInspectionTab, openStepInspection } from '../../utils/stepInspection'
@@ -27,6 +28,9 @@ export default function SidebarStepInspections({ row, workspace, scope, visible,
   const events = useChatStore(state => state.tabEvents[row.id] ?? emptyEvents)
   const [limit, setLimit] = useState(4)
   const [opening, setOpening] = useState<string | null>(null)
+  const expansionKey = sidebarExpansionKey(scope, 'steps', row.workflowId || workspace, row.id)
+  const expanded = useSidebarExpansionStore(state => !!state.expanded[expansionKey])
+  const toggleExpanded = useSidebarExpansionStore(state => state.toggle)
   const enabled = visible && row.surface === 'agentworks' && workspace.startsWith('Workflow/')
   const query = useInfiniteQuery({
     queryKey: ['sidebar-step-receipts-v1', scope, row.id, workspace],
@@ -63,7 +67,13 @@ export default function SidebarStepInspections({ row, workspace, scope, visible,
   }
   if (!enabled || (query.isError && !receipts) || !steps.length) return null
   return <div aria-label={`Steps in ${row.title}`} className="mb-1 ml-5 border-l border-border/60 pl-1">
-    {steps.slice(0, limit).map(({target, status}) => {
+    <button type="button" aria-label={`Steps in ${row.title}`} aria-expanded={expanded}
+      onClick={() => toggleExpanded(expansionKey)}
+      className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <ChevronDown aria-hidden="true" className={`h-3 w-3 shrink-0 ${expanded ? '' : '-rotate-90'}`} />
+      <span>Steps</span>
+    </button>
+    {expanded && steps.slice(0, limit).map(({target, status}) => {
       const key = inspectionKey(target)
       const active = selected && tab?.tabId === selectedTab && tab.metadata?.stepInspections?.activeId === key
       const working = status === 'running'
@@ -77,6 +87,6 @@ export default function SidebarStepInspections({ row, workspace, scope, visible,
         {working || opening === key ? <Loader2 aria-label={working ? 'Step running' : 'Opening step'} className="h-3 w-3 shrink-0 animate-spin text-primary" /> : status === 'completed' ? <Check aria-label="Step completed" className="h-3 w-3 shrink-0" /> : status === 'failed' ? <CircleAlert aria-label="Step failed" className="h-3 w-3 shrink-0 text-amber-500" /> : null}
       </button>
     })}
-    {steps.length > limit && <button type="button" className="rounded px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground" onClick={() => setLimit(value => value + 8)}>Show {steps.length - limit} more steps</button>}
+    {expanded && steps.length > limit && <button type="button" className="rounded px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground" onClick={() => setLimit(value => value + 8)}>Show {steps.length - limit} more steps</button>}
   </div>
 }

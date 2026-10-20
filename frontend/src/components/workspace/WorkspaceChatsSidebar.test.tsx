@@ -84,8 +84,10 @@ vi.mock('../../products/productSurfaceConfig', () => ({
 vi.mock('../ProductSurfaceIcon', () => ({ ProductSurfaceIcon: () => null }))
 import WorkspaceChatsSidebar from './WorkspaceChatsSidebar'
 import { useSidebarHistoryStore } from '../../stores/useSidebarHistoryStore'
+import { useSidebarExpansionStore } from '../../stores/useSidebarExpansionStore'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterEach(() => {
+  useSidebarExpansionStore.setState({ expanded: {} })
   vi.clearAllMocks()
   mocks.tabs = {}
   mocks.presets = []
@@ -155,7 +157,7 @@ it('labels remembered Goal Run chats from server kind while keeping one unnumber
     expect(runs).toHaveLength(2)
     expect(runs[0].textContent).not.toBe(runs[1].textContent)
     expect(runs.every(button => !button.getAttribute('aria-label')?.includes('1970'))).toBe(true)
-    expect(host.querySelector('[title="Notes lookup · Goals"]')?.textContent).toBe('Notes lookup')
+    expect(host.querySelector('[title^="Notes lookup · Goals"]')?.textContent).toContain('Notes lookup')
     expect(host.textContent).not.toMatch(/Chat [12]/)
   })
 })
@@ -195,17 +197,18 @@ it('shows per-chat running state under one collapsible workspace without merging
   mocks.history.mockResolvedValue({ sessions: [] })
   await render(async (host) => {
     const heading = host.querySelector<HTMLButtonElement>('[title="Code · Accounting · 2 chats · 2 running"]')!
-    expect(heading.textContent).not.toContain('2 working')
+    expect(heading.textContent).toContain('2 working')
     const panel = host.querySelector<HTMLDivElement>(`#${heading.getAttribute('aria-controls')}`)!
     expect(panel.querySelectorAll('[title="Analysis · Code"]')).toHaveLength(2)
     expect(panel.querySelectorAll('[aria-label="Running"]')).toHaveLength(2)
-    await act(async () => heading.click())
     expect(panel.hidden).toBe(true)
     expect(heading.getAttribute('aria-expanded')).toBe('false')
-    expect(heading.textContent).toContain('2 working')
     await act(async () => heading.click())
     expect(panel.hidden).toBe(false)
     expect(heading.textContent).not.toContain('2 working')
+    await act(async () => heading.click())
+    expect(panel.hidden).toBe(true)
+    expect(heading.textContent).toContain('2 working')
   })
 })
 
@@ -287,9 +290,9 @@ it('labels the parent source and returns from inspection to the parent chat', as
   }
   mocks.history.mockResolvedValue({sessions:[]})
   await render(async host=>{
-    expect(host.querySelector('[title="Daily briefing · Goals"]')?.getAttribute('aria-label')).toContain('Schedule')
+    expect(host.querySelector('[title^="Daily briefing · Goals"]')?.getAttribute('aria-label')).toContain('Schedule')
     expect(host.querySelector('[title="Customer question · Goals"]')?.getAttribute('aria-label')).toContain('WhatsApp')
-    expect(host.querySelector('[title="Daily briefing · Goals"] [title="Schedule"] svg')).not.toBeNull()
+    expect(host.querySelector('[title^="Daily briefing · Goals"] [title="Schedule"] svg')).not.toBeNull()
     expect(host.querySelector('[title="Customer question · Goals"] [title="WhatsApp"] svg')).not.toBeNull()
     const main=host.querySelector<HTMLButtonElement>('[title="Planning · Goals"]')!
     expect(main.textContent).toBe('Planning')

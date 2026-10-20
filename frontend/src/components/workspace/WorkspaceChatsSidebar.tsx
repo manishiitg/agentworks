@@ -12,6 +12,7 @@ import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { useSidebarHistoryStore } from '../../stores/useSidebarHistoryStore'
+import { sidebarExpansionKey, useSidebarExpansionStore } from '../../stores/useSidebarExpansionStore'
 import { agentApi } from '../../services/api'
 import { canCloseWorkspaceChatTab, closeWorkspaceChatTab } from '../../utils/closeWorkspaceChatTab'
 import { schedulerApi } from '../../api/scheduler'
@@ -81,7 +82,8 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   const [directoryTick, setDirectoryTick] = useState(0)
   const [opening, setOpening] = useState<string | null>(null)
   const [closing, setClosing] = useState<string | null>(null)
-  const [collapsed, setCollapsed] = useState<string[]>([])
+  const expanded = useSidebarExpansionStore(state => state.expanded)
+  const toggleExpanded = useSidebarExpansionStore(state => state.toggle)
   const allowed = intersectAllowedProductSurfaces(enabledProductSurfaces(), user?.allowed_products)
   useLiveRefetch(
     () => {
@@ -99,9 +101,6 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     kinds: ['sessions'], fallbackMs: 60000, safetyMs: 60000, minIntervalMs: 30000,
     enabled: allowed.includes('work') || allowed.includes('code'),
   })
-  useEffect(() => {
-    setCollapsed([])
-  }, [scope])
   useEffect(() => {
     let disposed = false
     const identity = captureChatIdentity()
@@ -347,9 +346,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     }
   }
   const toggleSection = (id: string) =>
-    setCollapsed((groups) =>
-      groups.includes(id) ? groups.filter((item) => item !== id) : [...groups, id]
-    )
+    toggleExpanded(sidebarExpansionKey(scope, 'project', id))
   const workspaces = sidebarWorkspaceGroups(rows)
   const renderChat = (row: SidebarChat, workspaceTitle?: string, genericChatNumber?: number, workspaceEntry?: string, visible = true) => {
     const tab = row.tabId ? tabs[row.tabId] : undefined
@@ -463,7 +460,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   }
   const isResourceWorkspace = (surface: string) => surface === 'knowledgebase' || surface === 'mcp-gateway'
   const renderWorkspace = (workspace: (typeof workspaces)[number], index: number) => {
-    const hidden = collapsed.includes(workspace.id)
+    const hidden = !expanded[sidebarExpansionKey(scope, 'project', workspace.id)]
     const running = workspace.chats.filter(
       (row) => row.group === 'Running' && !row.waiting
     ).length
