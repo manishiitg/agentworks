@@ -95,27 +95,9 @@ in the directory, so nothing breaks mid-migration.
 
 ### Workflow Permissions
 
-Workflows stay in the shared `Workflow/` folder. The access tier the runtime
-enforces (`read` / `write` / `owner`, see PLAT-262 for what `read` may do) is
-derived from the user directory first: an admin is `owner`, an account with
-`can_create` is `write`, a read-only account is `read`. The env/file tiers
-below apply only to identities the directory does not know, and an
-unconfigured deployment keeps full owner-level access for everyone, as before.
-Per-workflow ownership and sharing is phase 3 of the design doc and not built yet.
+Workflows live in the shared `Workflow/` folder. Account capabilities come from the user directory. A workflow's owners, editors and Share settings decide who can build or use that workflow. An administrator manages accounts and product access. The website and MCP apply the same checks.
 
-**Configuration:**
-```bash
-WORKFLOW_USER_PERMISSIONS=admin:owner,user1:read,user2:write
-```
-
-You can also use list-based variables:
-```bash
-WORKFLOW_OWNER_USERS=admin
-WORKFLOW_WRITE_USERS=user2
-WORKFLOW_READ_USERS=user1
-```
-
-Entries can match the auth username, user ID, or email address. The owner-only `GET /api/auth/users` endpoint returns the current `AUTH_USERS` list with each user's workflow access.
+Use the workflow's Share settings to give someone access. There is no separate workflow grant file or environment-based user list.
 
 ### Cognito Provider
 
@@ -348,10 +330,6 @@ The agent backend enforces additional restrictions before shell commands reach t
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `AUTH_USERS` | Yes | Comma-separated `user:pass` pairs |
-| `WORKFLOW_USER_PERMISSIONS` | No | Comma-separated `user:read/write/owner` entries for workflow mode access |
-| `WORKFLOW_OWNER_USERS` | No | Comma-separated users with owner workflow access |
-| `WORKFLOW_WRITE_USERS` | No | Comma-separated users with builder/optimizer workflow access |
-| `WORKFLOW_READ_USERS` | No | Comma-separated users limited to run mode |
 
 #### Cognito Provider
 

@@ -555,9 +555,8 @@ func userAccessForClaims(claims *UserClaims) UserAccess {
 	return UserAccess{Known: false, CanCreate: true, CanEdit: true}
 }
 
-// currentUserIsAdmin is the gate for account management. With no directory
-// record it defers to the legacy owner tier so an existing deployment's
-// WORKFLOW_OWNER_USERS keep working until they are imported.
+// currentUserIsAdmin gates account management using directory capabilities.
+// A local installation without a directory keeps its existing administrator access.
 func currentUserIsAdmin(r *http.Request) bool {
 	claims := GetUserFromContext(r.Context())
 	acc := userAccessForClaims(claims)

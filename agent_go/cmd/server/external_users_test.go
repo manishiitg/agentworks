@@ -23,7 +23,6 @@ import (
 func TestAdminUsersMCPSharesAppGuards(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("WORKSPACE_API_TOKEN", "users-fixture-token")
-	t.Setenv("WORKFLOW_OWNER_USERS", "legacy-admin")
 	t.Setenv("AGENT_PRODUCTS", "")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	docs := t.TempDir()

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -14,32 +13,7 @@ import (
 
 type WorkflowAccessLevel string
 
-// A read tier was defined here once, removed 2026-08-17 (see below), and
-// restored in PLAT-262 with a materially different enforcement mechanism —
-// read the two paragraphs below in order, they explain both why it was safe
-// to bring back and what NOT to repeat.
-//
-// First attempt (removed 2026-08-17): none of WORKFLOW_READ_USERS /
-// WORKFLOW_WRITE_USERS / WORKFLOW_OWNER_USERS / WORKFLOW_USER_PERMISSIONS was
-// ever set in any deployment, so every caller resolved to owner and the tier
-// never took effect. What it did do was leave a query-access gate full of
-// unreachable checks against workshop modes that no longer exist, which cost
-// real debugging time while diagnosing PLAT-125. That gate checked HTTP
-// query-endpoint access against workshop-mode strings that had already gone
-// stale by the time anyone read the code.
-//
-// PLAT-262 (this restoration): a read-access identity is forced into Run
-// mode server-side at session-creation time
-// (installWorkflowPhaseTools/workflow_phase_tools.go), which in turn gates
-// real MCP tool registration (registerRunModeAgentTools,
-// interactive_workshop_manager.go) and the chat session's own shell
-// folder-guard write paths (createInteractiveWorkshopAgent) — not an
-// HTTP-query-level check against a mode string. If this tier ever again
-// resolves to owner for everyone because nothing sets
-// WORKFLOW_READ_USERS/WORKFLOW_USER_PERMISSIONS, that is still safe (no
-// regression, matches today's default), but unlike the removed gate, every
-// piece this tier feeds is exercised by a real caller whenever it IS
-// configured — there is no dead branch left behind if it goes unused again.
+// Account capabilities bound workflow access; each manifest owns its sharing.
 const (
 	WorkflowAccessRead  WorkflowAccessLevel = "read"
 	WorkflowAccessWrite WorkflowAccessLevel = "write"
@@ -51,100 +25,7 @@ type WorkflowPermissionInfo struct {
 	CanRunWorkflows            bool                `json:"can_run_workflows"`
 	CanWriteWorkflows          bool                `json:"can_write_workflows"`
 	CanManageWorkflowAccess    bool                `json:"can_manage_workflow_access"`
-	WorkflowPermissionSource   string              `json:"workflow_permission_source,omitempty"`
 	WorkflowPermissionsEnabled bool                `json:"workflow_permissions_enabled"`
-}
-
-type workflowPermissionConfig struct {
-	configured bool
-	entries    map[string]WorkflowAccessLevel
-}
-
-func loadWorkflowPermissionConfig() workflowPermissionConfig {
-	cfg := workflowPermissionConfig{entries: make(map[string]WorkflowAccessLevel)}
-
-	parseList := func(envName string, level WorkflowAccessLevel) {
-		raw := os.Getenv(envName)
-		if strings.TrimSpace(raw) == "" {
-			return
-		}
-		cfg.configured = true
-		for _, item := range splitPermissionList(raw) {
-			cfg.entries[normalizeWorkflowPermissionKey(item)] = level
-		}
-	}
-
-	parseList("WORKFLOW_WRITE_USERS", WorkflowAccessWrite)
-	parseList("WORKFLOW_OWNER_USERS", WorkflowAccessOwner)
-
-	if raw := strings.TrimSpace(os.Getenv("WORKFLOW_USER_PERMISSIONS")); raw != "" {
-		cfg.configured = true
-		for _, item := range splitPermissionList(raw) {
-			key, level, ok := parseWorkflowPermissionEntry(item)
-			if ok {
-				cfg.entries[key] = level
-			}
-		}
-	}
-
-	// File-backed grants override env. Failing to read the file is non-fatal —
-	// we fall back to env-only behavior (logged elsewhere if needed).
-	if persisted, err := readWorkflowUserPermissionsFile(); err == nil {
-		for k, v := range persisted {
-			cfg.configured = true
-			cfg.entries[k] = v
-		}
-	}
-
-	return cfg
-}
-
-func splitPermissionList(raw string) []string {
-	fields := strings.FieldsFunc(raw, func(r rune) bool {
-		return r == ',' || r == ';' || r == '\n' || r == '\t'
-	})
-	items := make([]string, 0, len(fields))
-	for _, field := range fields {
-		if item := strings.TrimSpace(field); item != "" {
-			items = append(items, item)
-		}
-	}
-	return items
-}
-
-func parseWorkflowPermissionEntry(entry string) (string, WorkflowAccessLevel, bool) {
-	entry = strings.TrimSpace(entry)
-	if entry == "" {
-		return "", "", false
-	}
-
-	separator := strings.LastIndex(entry, "=")
-	if separator < 0 {
-		separator = strings.LastIndex(entry, ":")
-	}
-	if separator <= 0 || separator >= len(entry)-1 {
-		return "", "", false
-	}
-
-	key := normalizeWorkflowPermissionKey(entry[:separator])
-	level, ok := parseWorkflowAccessLevel(entry[separator+1:])
-	return key, level, key != "" && ok
-}
-
-func parseWorkflowAccessLevel(raw string) (WorkflowAccessLevel, bool) {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "owner", "admin", "manage", "manager":
-		return WorkflowAccessOwner, true
-	case "write", "writer", "edit", "editor":
-		return WorkflowAccessWrite, true
-	// PLAT-262: these resolve to the real read tier again (previously
-	// collapsed into write while the tier was removed) — see the
-	// WorkflowAccessLevel doc comment above for why this is safe now.
-	case "read", "reader", "run", "runner", "view", "viewer":
-		return WorkflowAccessRead, true
-	default:
-		return "", false
-	}
 }
 
 func normalizeWorkflowPermissionKey(raw string) string {
@@ -156,9 +37,6 @@ func workflowAccessForClaims(claims *UserClaims) WorkflowAccessLevel {
 		return level
 	}
 	if claims == nil {
-		if loadWorkflowPermissionConfig().configured {
-			return WorkflowAccessWrite
-		}
 		return WorkflowAccessOwner
 	}
 	return workflowAccessForIdentity(claims.UserID, claims.Username, claims.Email)
@@ -169,8 +47,8 @@ func workflowAccessForIdentity(userID, username, email string) WorkflowAccessLev
 	// knows: an admin is owner, a creator or editor is write, and a viewer
 	// is read. Creation is intentionally separate so an editor can own an
 	// assigned workflow without creating new ones.
-	// Identities it does not know fall through
-	// to the legacy env/file tiers below, unchanged.
+	// Unknown identities retain the account capability floor below. Per-item
+	// access still comes from workflow owners, editors and sharing.
 	if rec := directoryUserFor(userID, username, email); rec != nil {
 		acc := accessForRecord(rec)
 		switch {
@@ -182,28 +60,11 @@ func workflowAccessForIdentity(userID, username, email string) WorkflowAccessLev
 			return WorkflowAccessRead
 		}
 	}
-	cfg := loadWorkflowPermissionConfig()
-	if !cfg.configured {
-		// An identity the directory does not list is not the deployment's
-		// owner just because no legacy tiers are configured: once a directory
-		// exists, admin is something a record grants.
-		if userDirectoryHasUsers() {
-			return WorkflowAccessWrite
-		}
-		return WorkflowAccessOwner
+	// An identity outside an existing directory is not the deployment owner.
+	if userDirectoryHasUsers() {
+		return WorkflowAccessWrite
 	}
-
-	for _, key := range []string{userID, username, email} {
-		normalized := normalizeWorkflowPermissionKey(key)
-		if normalized == "" {
-			continue
-		}
-		if access, ok := cfg.entries[normalized]; ok {
-			return access
-		}
-	}
-
-	return WorkflowAccessWrite
+	return WorkflowAccessOwner
 }
 
 func workflowPermissionInfoForClaims(claims *UserClaims) WorkflowPermissionInfo {
@@ -211,7 +72,6 @@ func workflowPermissionInfoForClaims(claims *UserClaims) WorkflowPermissionInfo 
 }
 
 func workflowPermissionInfo(access WorkflowAccessLevel) WorkflowPermissionInfo {
-	cfg := loadWorkflowPermissionConfig()
 	canWrite := access == WorkflowAccessWrite || access == WorkflowAccessOwner
 	canManage := access == WorkflowAccessOwner
 	return WorkflowPermissionInfo{
@@ -219,7 +79,7 @@ func workflowPermissionInfo(access WorkflowAccessLevel) WorkflowPermissionInfo {
 		CanRunWorkflows:            true,
 		CanWriteWorkflows:          canWrite,
 		CanManageWorkflowAccess:    canManage,
-		WorkflowPermissionsEnabled: cfg.configured || userDirectoryHasPasswordUsers(),
+		WorkflowPermissionsEnabled: userDirectoryHasPasswordUsers(),
 	}
 }
 
