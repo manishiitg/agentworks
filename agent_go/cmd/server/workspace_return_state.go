@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
@@ -58,9 +59,45 @@ type workspaceReturnState struct {
 	FirstVisit  bool                   `json:"first_visit,omitempty"` // response only
 }
 
-var workspaceReturnLocks dashboardQuestionLockSet
+var workspaceReturnLocks workspaceReturnLockSet
 var workspaceReturnID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,255}$`)
 var workspaceReturnView = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
+
+// Waiters hold a reference before waiting, so an idle key can be removed
+// without letting a later caller acquire a different lock for the same key.
+type workspaceReturnLockSet struct {
+	mu    sync.Mutex
+	locks map[string]*workspaceReturnLock
+}
+
+type workspaceReturnLock struct {
+	mu   sync.Mutex
+	refs int
+}
+
+func (s *workspaceReturnLockSet) Lock(key string) func() {
+	s.mu.Lock()
+	if s.locks == nil {
+		s.locks = map[string]*workspaceReturnLock{}
+	}
+	lock := s.locks[key]
+	if lock == nil {
+		lock = &workspaceReturnLock{}
+		s.locks[key] = lock
+	}
+	lock.refs++
+	s.mu.Unlock()
+	lock.mu.Lock()
+	return func() {
+		lock.mu.Unlock()
+		s.mu.Lock()
+		lock.refs--
+		if lock.refs == 0 {
+			delete(s.locks, key)
+		}
+		s.mu.Unlock()
+	}
+}
 
 func workspaceReturnPath(user string) string {
 	return filepath.ToSlash(filepath.Join(workspaceref.PhysicalPath(user, "preferences"), "workspace-state.json"))
