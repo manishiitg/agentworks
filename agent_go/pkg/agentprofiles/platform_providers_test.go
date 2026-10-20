@@ -32,4 +32,13 @@ func TestPlatformCodingProvidersKeepRoleDefaultAndOfferRegistry(t *testing.T) {
 	if len(original.Runtime.ProviderOptions[0].Models) != 1 {
 		t.Fatal("modified original profile")
 	}
+	museChoices := map[string]bool{}
+	for _, model := range PlatformModelMetadata() {
+		if model.Provider == "muse-cli" {
+			museChoices[model.ModelID] = true
+		}
+	}
+	if museChoices["muse-wonder-full-1.0"] || !museChoices["muse-wonder-1.0"] || !museChoices["muse-spark-1.3-contributor"] || !museChoices["muse-spark-1.3"] {
+		t.Fatalf("Muse choices must keep regular Wonder and Spark without Wonder Full: %v", museChoices)
+	}
 }

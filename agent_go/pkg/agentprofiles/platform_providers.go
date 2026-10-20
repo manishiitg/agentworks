@@ -80,6 +80,9 @@ func PlatformModelMetadata() []*llmtypes.ModelMetadata {
 			if model == nil || strings.TrimSpace(model.Provider) == "" || strings.TrimSpace(model.ModelID) == "" {
 				continue
 			}
+			if !IsModelChoiceOffered(model.Provider, model.ModelID) {
+				continue
+			}
 			key := strings.ToLower(strings.TrimSpace(model.Provider)) + "\x00" + strings.TrimSpace(model.ModelID)
 			if !seen[key] {
 				seen[key] = true
@@ -88,4 +91,11 @@ func PlatformModelMetadata() []*llmtypes.ModelMetadata {
 		}
 	}
 	return models
+}
+
+// IsModelChoiceOffered filters product choices without changing saved runtime
+// configurations or the provider library's support for existing sessions.
+func IsModelChoiceOffered(provider, modelID string) bool {
+	return !(strings.EqualFold(strings.TrimSpace(provider), "muse-cli") &&
+		strings.TrimSpace(modelID) == "muse-wonder-full-1.0")
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
 )
@@ -157,6 +158,9 @@ func LoadPublishedLLMs(ctx context.Context) ([]StoredPublishedLLM, error) {
 		clean, ok := sanitizePublishedLLM(entry)
 		if !ok {
 			log.Printf("[PUBLISHED_LLM] Dropping invalid entry during load: id=%q name=%q provider=%q model_id=%q", entry.ID, entry.Name, entry.Provider, entry.ModelID)
+			continue
+		}
+		if !agentprofiles.IsModelChoiceOffered(clean.Provider, clean.ModelID) {
 			continue
 		}
 		if isAutoPublishedLLM(clean) {
