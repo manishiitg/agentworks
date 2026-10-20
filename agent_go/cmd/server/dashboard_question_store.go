@@ -3,13 +3,10 @@ package server
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"log"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
@@ -21,43 +18,6 @@ const dashboardQuestionRegistryPath = "_system/dashboard_questions/resources.jso
 // persisted atomically by the workspace backend. These files are server-owned,
 // never project evidence or a source of access grants.
 var dashboardQuestionRegistryMu sync.Mutex
-var dashboardQuestionViewerLocks dashboardQuestionLockSet
-
-// Waiters hold a reference before waiting, so an idle key can be removed
-// without letting a later caller acquire a different lock for the same key.
-type dashboardQuestionLockSet struct {
-	mu    sync.Mutex
-	locks map[string]*dashboardQuestionLock
-}
-
-type dashboardQuestionLock struct {
-	mu   sync.Mutex
-	refs int
-}
-
-func (s *dashboardQuestionLockSet) Lock(key string) func() {
-	s.mu.Lock()
-	if s.locks == nil {
-		s.locks = map[string]*dashboardQuestionLock{}
-	}
-	lock := s.locks[key]
-	if lock == nil {
-		lock = &dashboardQuestionLock{}
-		s.locks[key] = lock
-	}
-	lock.refs++
-	s.mu.Unlock()
-	lock.mu.Lock()
-	return func() {
-		lock.mu.Unlock()
-		s.mu.Lock()
-		lock.refs--
-		if lock.refs == 0 {
-			delete(s.locks, key)
-		}
-		s.mu.Unlock()
-	}
-}
 
 type dashboardQuestionDiscovery struct {
 	Target   dashboardTarget
@@ -96,40 +56,6 @@ func newDashboardShortCode(taken map[string]bool) string {
 
 type dashboardQuestionRegistry struct {
 	Resources []dashboardQuestionResource `json:"resources"`
-}
-
-type dashboardQuestionConversation struct {
-	ID         string    `json:"conversation_id"`
-	ResourceID string    `json:"resource_id"`
-	CreatedAt  time.Time `json:"created_at"`
-}
-
-type dashboardQuestionTurn struct {
-	ID             string                   `json:"question_id"`
-	ConversationID string                   `json:"conversation_id"`
-	ResourceID     string                   `json:"resource_id"`
-	SubmissionID   string                   `json:"submission_id"`
-	RequestHash    string                   `json:"request_hash"`
-	Question       string                   `json:"question"`
-	Revision       string                   `json:"captured_revision"`
-	Context        dashboardQuestionContext `json:"context"`
-	State          string                   `json:"state"`
-	Answer         string                   `json:"answer,omitempty"`
-	Error          string                   `json:"error,omitempty"`
-	CreatedAt      time.Time                `json:"created_at"`
-	UpdatedAt      time.Time                `json:"updated_at"`
-	Runtime        string                   `json:"runtime"`
-}
-
-type dashboardQuestionStore struct {
-	Viewer        string                          `json:"viewer"`
-	Conversations []dashboardQuestionConversation `json:"conversations"`
-	Turns         []dashboardQuestionTurn         `json:"turns"`
-}
-
-func dashboardQuestionStorePath(viewer string) string {
-	sum := sha256.Sum256([]byte(viewer))
-	return "_system/dashboard_questions/viewers/" + hex.EncodeToString(sum[:]) + ".json"
 }
 
 func readDashboardQuestionJSON(ctx context.Context, p string, out any) error {
@@ -241,44 +167,5 @@ func addDashboardQuestionResources(ctx context.Context, items []dashboardQuestio
 				}
 			}
 		}
-	}
-}
-
-// Caller holds this viewer's persistence lock. An interrupted request is never silently
-// re-run after a restart. A retry returns its durable terminal status instead.
-func (api *StreamingAPI) readDashboardQuestions(ctx context.Context, viewer string) (dashboardQuestionStore, error) {
-	store := dashboardQuestionStore{Viewer: viewer}
-	p := dashboardQuestionStorePath(viewer)
-	if err := readDashboardQuestionJSON(ctx, p, &store); err != nil {
-		return store, err
-	}
-	if store.Viewer != viewer {
-		return store, dashboardFailure(404, "conversation unavailable")
-	}
-	api.dashboardQuestionRuntimeOnce.Do(func() {
-		api.dashboardQuestionRuntime = uuid.NewString()
-	})
-	changed := false
-	for i := range store.Turns {
-		turn := &store.Turns[i]
-		if (turn.State == "queued" || turn.State == "running") && turn.Runtime != api.dashboardQuestionRuntime {
-			turn.State, turn.Error, turn.UpdatedAt = "failed", "interrupted", time.Now().UTC()
-			changed = true
-		}
-	}
-	if changed {
-		return store, saveDashboardQuestionJSON(ctx, p, store)
-	}
-	return store, nil
-}
-
-// Internal hash and runtime fields never leave the server.
-func dashboardQuestionResponse(turn dashboardQuestionTurn) map[string]any {
-	return map[string]any{
-		"question_id": turn.ID, "conversation_id": turn.ConversationID,
-		"resource_id": turn.ResourceID, "submission_id": turn.SubmissionID,
-		"question": turn.Question, "captured_revision": turn.Revision, "context": turn.Context,
-		"state": turn.State, "answer": turn.Answer, "error": turn.Error,
-		"created_at": turn.CreatedAt, "updated_at": turn.UpdatedAt,
 	}
 }

@@ -8,15 +8,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 )
 
 func TestDashboardQuestionCapabilityMatrix(t *testing.T) {
@@ -152,221 +148,38 @@ func TestDashboardQuestionHTTPContract(t *testing.T) {
 	if listed["dashboards"].([]any)[0].(map[string]any)["resource_id"] != resource {
 		t.Fatal("discovery did not reuse the resource id")
 	}
-	// A draft can be edited, but cannot become question evidence even for its owner.
+
+	// Drafts never become published dashboard evidence, even for the Builder.
 	updated := op("update", root, slug, revision, "Private draft: 99")
 	draft := updated["dashboard"].(map[string]any)["revision"].(string)
-	args := dashboardQuestionSubmission{Question: "Where did 42 come from?", Revision: revision, SubmissionID: "first", Context: dashboardQuestionContext{SelectedText: "42", NearbyLabel: "Total", Filters: map[string]string{"period": "today"}}}
-	bad := args
-	bad.Revision, bad.SubmissionID = draft, "private-draft"
-	call("owner", http.MethodPost, base+"/questions", bad, 403)
-	call("reader", http.MethodPost, base+"/questions", bad, 403)
-	call("reader", http.MethodPost, base+"/questions", map[string]any{"question": "inject", "captured_revision": revision, "submission_id": "inject", "workspace": "Workflow/secret", "owner": "owner"}, 400)
-	// Concurrent uncertain retries must create exactly one turn and conversation.
-	results := make(chan result, 4)
-	for range 4 {
-		go func() { results <- request("owner", http.MethodPost, base+"/questions", args) }()
+	if _, err := api.resolveDashboardQuestion(context.Background(), &UserClaims{UserID: "owner", Username: "owner"}, resource, draft); err == nil {
+		t.Fatal("unpublished draft became shared dashboard evidence")
 	}
-	var first map[string]any
-	for range 4 {
-		out := <-results
-		if out.err != nil || out.status != 200 {
-			t.Fatalf("concurrent submit: %+v", out)
-		}
-		if first == nil {
-			first = out.body
-		} else if first["question_id"] != out.body["question_id"] || first["conversation_id"] != out.body["conversation_id"] {
-			t.Fatalf("duplicate turn: %v %v", first, out.body)
-		}
-	}
-	question := first["question_id"].(string)
-	conversation := first["conversation_id"].(string)
-	questionPath, conversationPath := base+"/questions/"+question, base+"/conversations/"+conversation
-	bad = args
-	bad.Question = "Different payload"
-	call("owner", http.MethodPost, base+"/questions", bad, 409)
-	for _, p := range []string{questionPath, conversationPath} {
-		call("reader", http.MethodGet, p, nil, 404)
-	}
-	call("reader", http.MethodPost, questionPath+"/cancel", nil, 404)
-	bad = args
-	bad.ConversationID, bad.SubmissionID = conversation, "foreign-conversation"
-	call("reader", http.MethodPost, base+"/questions", bad, 404)
-	// The same submission id belongs to a different namespace for another viewer.
-	readerTurn := call("reader", http.MethodPost, base+"/questions", args, 200)
-	if readerTurn["conversation_id"] == conversation || readerTurn["question_id"] == question {
-		t.Fatal("viewers shared a conversation or turn")
-	}
-	waitFailed := func(user, p string) map[string]any {
-		t.Helper()
-		deadline := time.Now().Add(5 * time.Second)
-		for {
-			turn := call(user, http.MethodGet, p, nil, 200)
-			if turn["state"] == "failed" {
-				if turn["error"] != "adapter_not_implemented" || turn["answer"] != "" || turn["runtime"] != nil || turn["request_hash"] != nil {
-					t.Fatalf("stub manufactured an answer or leaked internal fields: %v", turn)
-				}
-				return turn
-			}
-			if time.Now().After(deadline) {
-				t.Fatalf("stub did not settle: %v", turn)
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-	}
-	waitFailed("owner", questionPath)
-	waitFailed("reader", base+"/questions/"+readerTurn["question_id"].(string))
-	t.Run("viewer_store_io_is_independent", func(t *testing.T) {
-		unlock := dashboardQuestionViewerLocks.Lock("owner")
-		defer unlock()
-		read := make(chan result, 1)
-		go func() {
-			read <- request("reader", http.MethodGet, base+"/questions/"+readerTurn["question_id"].(string), nil)
-		}()
-		select {
-		case out := <-read:
-			if out.err != nil || out.status != 200 {
-				t.Fatalf("reader store unavailable while owner store is busy: %+v", out)
-			}
-		case <-time.After(5 * time.Second):
-			t.Fatal("one viewer's persistence blocked another viewer")
-		}
-	})
-	// Publishing later does not overwrite the original observed value/revision.
 	op("publish", root, slug, draft, "")
-	history := call("owner", http.MethodGet, questionPath, nil, 200)
-	if history["captured_revision"] != revision || history["current_revision"] != draft || history["captured_is_current"] != false || history["context"].(map[string]any)["selected_text"] != "42" {
-		t.Fatalf("lost captured evidence: %v", history)
-	}
-	followup := args
-	followup.Revision = draft
-	followup.SubmissionID, followup.ConversationID, followup.Question = "followup", conversation, "Why did it change?"
-	followupTurn := call("owner", http.MethodPost, base+"/questions", followup, 200)
-	waitFailed("owner", base+"/questions/"+followupTurn["question_id"].(string))
-	if len(call("owner", http.MethodGet, conversationPath, nil, 200)["questions"].([]any)) != 2 {
-		t.Fatal("followup lost its conversation")
-	}
-	t.Run("missing_old_snapshot_preserves_readable_history", func(t *testing.T) {
-		p := filepath.Join(f.docs, root, "db/reports/.dashboard-state", slug, revision+".json")
-		raw, err := os.ReadFile(p)
+	call("reader", http.MethodGet, base, nil, 200)
+	// Removing sharing rechecks access even for a previously discovered resource.
+	f.write(t, root+"/workflow.json", `{"id":"invoices","created_by":"owner","access":{"owners":["owner"]}}`)
+	call("reader", http.MethodGet, base, nil, 404)
+	// The unused question execution routes are gone. Native Ask is the one path.
+	for _, path := range []string{base + "/questions", base + "/questions/old", base + "/questions/old/cancel", base + "/conversations/old"} {
+		req, _ := http.NewRequest(http.MethodPost, server.URL+path, strings.NewReader(`{}`))
+		req.Header.Set("Authorization", "Bearer "+tokens["owner"])
+		response, err := server.Client().Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Remove(p); err != nil {
-			t.Fatal(err)
-		}
-		defer f.write(t, root+"/db/reports/.dashboard-state/"+slug+"/"+revision+".json", string(raw))
-		registryReads := f.questionRegistryReads.Load()
-		rows := call("owner", http.MethodGet, conversationPath, nil, 200)["questions"].([]any)
-		if f.questionRegistryReads.Load()-registryReads != 1 {
-			t.Fatal("history reread the resource registry for each turn")
-		}
-		old, current := rows[0].(map[string]any), rows[1].(map[string]any)
-		if old["evidence_available"] != false || old["error"] != "captured_evidence_unavailable" || old["context"] != nil || old["answer"] != nil || old["question"] != nil {
-			t.Fatalf("unavailable evidence leaked or hid its place in history: %v", old)
-		}
-		if current["evidence_available"] != true || current["question_id"] != followupTurn["question_id"] || current["question"] != followup.Question {
-			t.Fatalf("unavailable evidence hid a readable followup: %v", current)
-		}
-	})
-	// Access revocation applies to existing ids, reads, retries, and cancellation.
-	f.write(t, root+"/workflow.json", `{"id":"invoices","created_by":"owner","access":{"owners":["owner"]}}`)
-	call("reader", http.MethodGet, base, nil, 404)
-	call("reader", http.MethodGet, base+"/questions/"+readerTurn["question_id"].(string), nil, 404)
-	call("reader", http.MethodPost, base+"/questions", args, 404)
-	call("reader", http.MethodPost, base+"/questions/"+readerTurn["question_id"].(string)+"/cancel", nil, 404)
-	// Seed an in-flight turn at the durable boundary to exercise cancellation
-	// and process recovery deterministically, without a delayed fake adapter.
-	ctx := context.Background()
-	unlockStore := dashboardQuestionViewerLocks.Lock("owner")
-	store, err := api.readDashboardQuestions(ctx, "owner")
-	if err == nil {
-		queued := store.Turns[0]
-		queued.ID, queued.SubmissionID, queued.State, queued.Error = uuid.NewString(), "cancel-pending", "queued", ""
-		store.Turns = append(store.Turns, queued)
-		err = saveDashboardQuestionJSON(ctx, dashboardQuestionStorePath("owner"), store)
-	}
-	unlockStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	queuedID := store.Turns[len(store.Turns)-1].ID
-	cancelled := call("owner", http.MethodPost, base+"/questions/"+queuedID+"/cancel", nil, 200)
-	if cancelled["state"] != "cancelled" || api.transitionDashboardQuestion(ctx, "owner", queuedID, "queued", "running", "") {
-		t.Fatal("cancelled turn was dispatched")
-	}
-	unlockStore = dashboardQuestionViewerLocks.Lock("owner")
-	store, err = api.readDashboardQuestions(ctx, "owner")
-	if err == nil {
-		interrupted := store.Turns[0]
-		interrupted.ID, interrupted.SubmissionID, interrupted.State, interrupted.Error = uuid.NewString(), "interrupted", "running", ""
-		store.Turns = append(store.Turns, interrupted)
-		err = saveDashboardQuestionJSON(ctx, dashboardQuestionStorePath("owner"), store)
-	}
-	unlockStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	interruptedID := store.Turns[len(store.Turns)-1].ID
-	server.Close()
-	api = &StreamingAPI{}
-	server = start()
-	recovered := call("owner", http.MethodGet, base+"/questions/"+interruptedID, nil, 200)
-	if recovered["state"] != "failed" || recovered["error"] != "interrupted" {
-		t.Fatalf("restart replayed or lost running turn: %v", recovered)
-	}
-	retried := call("owner", http.MethodPost, base+"/questions", args, 200)
-	if retried["question_id"] != question || retried["state"] != "failed" {
-		t.Fatalf("restart lost duplicate receipt: %v", retried)
-	}
-	// Narrowed connections never obtain the full owner conversation mode.
-	claims := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"dashboards:read", "runs:execute"}, WorkflowIDs: []string{"invoices"}}}
-	resolved, err := api.resolveDashboardQuestion(ctx, claims, resource, revision)
-	if err != nil || !resolved.Capability.CanAsk || resolved.Capability.Mode != "question_only" {
-		t.Fatalf("run-only owner authority: %+v %v", resolved.Capability, err)
-	}
-	claims.AccessToken.Scopes = []string{"dashboards:read"}
-	resolved, err = api.resolveDashboardQuestion(ctx, claims, resource, revision)
-	if err != nil || !resolved.Capability.CanView || resolved.Capability.CanAsk {
-		t.Fatalf("read-only connection gained asks: %+v %v", resolved.Capability, err)
-	}
-	// A saved legacy free_text_ask=false no longer turns Ask off: Ask is open to
-	// everyone the Crew is shared with (sharing is the only access control).
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["agentworks","work"]},{"id":"reader","username":"reader","products":["agentworks","work"]}]}`)
-	stubCrewLookups(t, map[string]string{"Crew/dashboard-team": "owner"}, map[string]string{})
-	f.write(t, "Crew/dashboard-team/product.json", `{"id":"dashboard-team","product":"work","title":"Team","capabilities":{"free_text_ask":true}}`)
-	f.write(t, "Crew/dashboard-team/workflow.json", `{"schema_version":1,"capabilities":{"free_text_ask":false}}`)
-	crewCreated := op("create", "Crew/dashboard-team", "team", "", "Crew total")
-	crewRevision := crewCreated["dashboard"].(map[string]any)["revision"].(string)
-	op("publish", "Crew/dashboard-team", "team", crewRevision, "")
-	crewID := op("get", "Crew/dashboard-team", "team", "", "")["resource_id"].(string)
-	crewBase := "/api/dashboards/" + crewID
-	for _, user := range []string{"owner", "reader"} {
-		capability := call(user, http.MethodGet, crewBase, nil, 200)["capability"].(map[string]any)
-		if capability["can_view"] != true || capability["can_ask"] != true || capability["reason"] != nil {
-			t.Fatalf("legacy Crew ask switch still applied: %v", capability)
+		response.Body.Close()
+		if response.StatusCode != http.StatusNotFound {
+			t.Fatalf("retired execution route still exists: %s status=%d", path, response.StatusCode)
 		}
 	}
 	t.Run("registry_failure_preserves_dashboard_reads", func(t *testing.T) {
-		// A real unreadable registry must disable Ask without taking down the
-		// existing get, project listing, or cross-project discovery APIs.
 		if err := writeFileToWorkspace(context.Background(), dashboardQuestionRegistryPath, "{invalid"); err != nil {
 			t.Fatal(err)
 		}
 		body := call("owner", http.MethodPost, "/api/dashboards", map[string]any{"action": "get", "workspace": root, "dashboard_id": slug}, 200)
 		if body["resource_id"] != nil || body["dashboard"].(map[string]any)["id"] != slug {
-			t.Fatalf("registry failure broke dashboard get: %v", body)
-		}
-		for _, args := range []map[string]any{{"action": "list", "workspace": root}, {"action": "list"}} {
-			body = call("owner", http.MethodPost, "/api/dashboards", args, 200)
-			rows := body["dashboards"].([]any)
-			if len(rows) == 0 {
-				t.Fatalf("registry failure hid ordinary dashboards: %v", body)
-			}
-			for _, item := range rows {
-				if item.(map[string]any)["resource_id"] != nil {
-					t.Fatal("unavailable registry produced a question resource id")
-				}
-			}
+			t.Fatalf("registry failure broke get: %v", body)
 		}
 	})
 }
