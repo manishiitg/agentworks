@@ -96,7 +96,7 @@ export function DurableChatQueue({ sessionId, tabId, busy }: {
         <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2">
           <span title={description} className="flex items-center gap-1 text-[11px] font-medium text-amber-500">
             <Icon className={`h-3 w-3 shrink-0 ${pending || refreshing ? 'animate-spin' : ''}`} />
-            {message.delivery_error ? 'Delivery unconfirmed' : refreshing ? 'Updating this chat…' : message.steering ? 'Steering…' : `${reason === 'starting' ? 'Starting agent…' : 'Queued'}${message.queue_position ? ` · ${message.queue_position}` : ''}`}
+            {message.delivery_error ? 'Delivery unconfirmed' : refreshing ? 'Updating this chat…' : message.steering ? 'Steering…' : `${reason === 'starting' ? 'Agent starting · sends when ready' : reason === 'running' ? 'Waiting for the current reply · sends next' : 'Queued · sends next'}${message.queue_position && message.queue_position > 1 ? ` · ${message.queue_position} in line` : ''}`}
           </span>
           <details className="group min-w-0 text-xs text-foreground">
             <summary title={text} className="cursor-pointer list-none truncate [&::-webkit-details-marker]:hidden group-open:max-h-32 group-open:overflow-y-auto group-open:whitespace-pre-wrap group-open:break-words">{text}</summary>

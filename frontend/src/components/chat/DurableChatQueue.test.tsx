@@ -141,7 +141,7 @@ for (const reason of ['starting', 'waiting', undefined] as const) {
       expect(host.textContent).toContain('Remove')
       expect(host.querySelector('[title="Sends automatically when the current turn finishes"]')).toBeNull()
       if (reason === 'starting') {
-        expect(host.textContent).toContain('Starting agent…')
+        expect(host.textContent).toContain('Agent starting · sends when ready')
         expect(host.querySelector('[title="The agent is starting or resuming. Your message will send automatically."]')).toBeTruthy()
       }
     } finally {
