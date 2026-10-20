@@ -357,7 +357,7 @@ function WorkFoldersBody({ workspacePath, workflowContextPaths, onWorkflowContex
         additionalReferences={crewReferences}
         additionalLabel="Crew"
         showAdditionalGroup
-        extraGroups={product.profileId === 'code' ? [{ label: 'Code projects', description: 'Your other private projects, so this one can look at their files. Projects on your own computer can't be linked here.', placeholder: 'Attach a project…', references: codeReferences }] : []}
+        extraGroups={product.profileId === 'code' ? [{ label: 'Code projects', description: 'Your other private projects, so this one can look at their files. Projects on your own computer cannot be linked here.', placeholder: 'Attach a project…', references: codeReferences }] : []}
         hideAdd
       />
       <SettingsCard
