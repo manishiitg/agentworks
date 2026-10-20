@@ -12,8 +12,8 @@ import (
 // excluded. Check the complete pending list at each ladder boundary, rather
 // than merely checking that excluded labels are absent.
 func TestRelayKeepsEveryApplicableMigrationAtEachVersion(t *testing.T) {
-	versions := []string{workflowContractInitialVersion, workflowContractRunScopedRoutesVersion, workflowContractEvalRetirementVersion}
-	for _, upgrade := range fullWorkflowVersionUpgradePlan(&WorkflowManifest{}) {
+	versions := []string{workflowContractNestedAgentArtifactsVersion}
+	for _, upgrade := range fullWorkflowVersionUpgradePlan(&WorkflowManifest{Version: workflowContractNestedAgentArtifactsVersion}) {
 		versions = append(versions, upgrade.to)
 	}
 	for _, version := range versions {
@@ -33,7 +33,7 @@ func TestRelayKeepsEveryApplicableMigrationAtEachVersion(t *testing.T) {
 }
 
 func TestRelayMigrationHistoryNeverClaimsSkippedMigrationsWereApplied(t *testing.T) {
-	for _, version := range []string{workflowContractInitialVersion, workflowContractDeclaredExecutionModeStrippedVersion, workflowContractNestedAgentArtifactsVersion, WorkflowContractCurrentVersion} {
+	for _, version := range []string{workflowContractNestedAgentArtifactsVersion, WorkflowContractCurrentVersion} {
 		t.Run(version, func(t *testing.T) {
 			pending, applied := workflowContractUpgradeLists(&WorkflowManifest{Kind: "relay", Version: version, CodeLayoutVersion: 1})
 			for _, item := range append(pending, applied...) {
@@ -41,7 +41,7 @@ func TestRelayMigrationHistoryNeverClaimsSkippedMigrationsWereApplied(t *testing
 					t.Errorf("Relay history claims inapplicable migration %q", item.Label)
 				}
 			}
-			shared := workflowVersionUpgradePlan(&WorkflowManifest{Kind: "relay"})
+			shared := workflowVersionUpgradePlan(&WorkflowManifest{Kind: "relay", Version: workflowContractNestedAgentArtifactsVersion})
 			if len(pending)+len(applied) != len(shared) {
 				t.Fatalf("history lost shared migrations: pending=%d applied=%d shared=%d", len(pending), len(applied), len(shared))
 			}
@@ -57,7 +57,6 @@ func TestRelayMigrationRunGatesAndNextStampAgree(t *testing.T) {
 		layout                    int
 		allowed                   bool
 	}{
-		{name: "Relay owes shared artifact migration", kind: "relay", version: "1.0.43", next: "1.0.44", layout: 1},
 		{name: "Relay skips DB migration but owes description layout", kind: "relay", version: "1.0.44", next: "1.0.46", layout: 1},
 		{name: "Relay owes agent unification", kind: "relay", version: "1.0.46", next: "1.0.47", layout: 1},
 		{name: "Relay on the current contract runs", kind: "relay", version: WorkflowContractCurrentVersion, layout: 1, allowed: true},
@@ -92,8 +91,8 @@ func TestRelayMigrationRunGatesAndNextStampAgree(t *testing.T) {
 // PLAT-431: a Relay reuses the workflow migrations for the shared runtime and
 // skips only the goal-driven ones.
 func TestRelayOwesOnlySharedWorkflowMigrations(t *testing.T) {
-	goals := workflowVersionUpgradePlan(&WorkflowManifest{Version: workflowContractInitialVersion})
-	relay := workflowVersionUpgradePlan(&WorkflowManifest{Version: workflowContractInitialVersion, Kind: "relay"})
+	goals := workflowVersionUpgradePlan(&WorkflowManifest{Version: workflowContractNestedAgentArtifactsVersion})
+	relay := workflowVersionUpgradePlan(&WorkflowManifest{Version: workflowContractNestedAgentArtifactsVersion, Kind: "relay"})
 	labels := map[string]bool{}
 	for _, upgrade := range goals {
 		labels[upgrade.label] = true
@@ -149,7 +148,7 @@ func TestRelayCompatibilityIgnoresSkippedGoalsMigrations(t *testing.T) {
 
 // Python execution has no workflow contract or shared-step migration debt.
 func TestPythonRelayDoesNotOweWorkflowMigrations(t *testing.T) {
-	manifest := &WorkflowManifest{Version: workflowContractInitialVersion, Kind: "relay", RelayRuntime: "python"}
+	manifest := &WorkflowManifest{Version: workflowContractNestedAgentArtifactsVersion, Kind: "relay", RelayRuntime: "python"}
 	if upgrades := workflowVersionUpgradePlan(manifest); len(upgrades) != 0 {
 		t.Fatalf("Python Relay owes workflow migrations: %v", upgrades)
 	}

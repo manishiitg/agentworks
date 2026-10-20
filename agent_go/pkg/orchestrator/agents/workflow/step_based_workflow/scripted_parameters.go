@@ -174,7 +174,7 @@ func validateAndResolveScriptParameters(step PlanStepInterface, supplied map[str
 // execution context, so concurrent calls cannot overwrite shared workspace env.
 func applyWorkshopScriptParameters(ctx context.Context, step PlanStepInterface, opts *WorkshopExecuteOptions) (context.Context, error) {
 	provided := opts != nil && opts.ScriptParametersSet
-	if !isScriptedStep(step, getAgentConfigs(step)) {
+	if !isScriptedStep(step) {
 		if provided {
 			return ctx, fmt.Errorf("script_parameters is only supported for scripted steps")
 		}

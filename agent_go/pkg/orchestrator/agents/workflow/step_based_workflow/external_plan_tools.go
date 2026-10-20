@@ -311,14 +311,6 @@ func createUpdateStepConfigExecutor(runtime stepConfigToolRuntime, logger logger
 				targetConfig.AgentConfigs.UseCodeExecutionMode = &b
 			}
 		}
-		// PLAT-287: declared_execution_mode is retired. A step's plan type
-		// decides how it runs. Point at the real tools rather than silently
-		// dropping the argument.
-		for _, retired := range []string{"declared_execution_mode", "declared_execution_mode_reason"} {
-			if val, ok := args[retired]; ok && val != nil {
-				return "", fmt.Errorf("%s is retired (PLAT-287): a step's plan type decides how it runs (scripted = scripted main.py, agent = conversational) -- use change_step_type(step_id=%q, target_type=\"scripted\"|\"agent\", reason=...)", retired, stepID)
-			}
-		}
 		if val, ok := args["description_reviewed"]; ok && val != nil {
 			if b, ok := val.(bool); ok {
 				targetConfig.AgentConfigs.DescriptionReviewed = &b

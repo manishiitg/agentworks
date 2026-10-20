@@ -167,7 +167,7 @@ func TestVideoStudioIsPinnedToClaudeCodeWithoutProviderChoices(t *testing.T) {
 //
 // They previously authored as `scripted` and ran only because the runtime
 // rewrites non-scripted scripted steps into this same shape
-// (normalizeScriptedStepToAgent), which left the stored plan
+// (the retired scripted-to-agent adapter), which left the stored plan
 // describing an execution model that no longer exists and forced the plan UI to
 // reconstruct the real one.
 func TestGeneratedPlanAuthorsStagesAsAgents(t *testing.T) {

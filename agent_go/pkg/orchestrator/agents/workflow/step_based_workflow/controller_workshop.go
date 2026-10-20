@@ -160,8 +160,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 		return "", fmt.Errorf("invalid script_parameters for step %q: %w", stepID, err)
 	}
 	if opts != nil && opts.SavedScriptOnly {
-		agentCfgs := getAgentConfigs(stepInfo.Step)
-		if !isScriptedStep(stepInfo.Step, agentCfgs) {
+		if !isScriptedStep(stepInfo.Step) {
 			return "", fmt.Errorf("step %q is not in scripted code mode, so there is no saved main.py fast path to run", stepID)
 		}
 	}
@@ -656,7 +655,7 @@ func resolveInnerStepPath(topLevelSteps []PlanStepInterface, info *WorkshopStepI
 		return filepath.Join(parentRoot, "agents", workflowSafeIDPart(info.Step.GetID(), "nested"), "calls", "workshop")
 	case strings.HasPrefix(location, "route:"):
 		routeID := strings.TrimPrefix(location, "route:")
-		return todoSubAgentArtifactFolderName(parentID, parentRoot, routeID, "workshop", isScriptedStep(info.Step, getAgentConfigs(info.Step)))
+		return todoSubAgentArtifactFolderName(parentID, parentRoot, routeID, "workshop", isScriptedStep(info.Step))
 	default:
 		return filepath.Join(parentRoot, "agents", workflowSafeIDPart(info.Step.GetID(), "nested"), "calls", "workshop")
 	}

@@ -72,7 +72,7 @@ func resolveSequenceScripts(item AgentItem, plan *PlanningResponse) ([]resolvedS
 	resolved := make([]resolvedSequenceScript, 0, len(item.ScriptedSteps))
 	for _, call := range item.ScriptedSteps {
 		step, ok := orphans[call.StepID].(*ScriptedPlanStep)
-		if !ok || !isScriptedStep(step, step.AgentConfigs) {
+		if !ok || !isScriptedStep(step) {
 			return nil, fmt.Errorf("scripted item %q call %q: %q must reference a scripted step in orphan_steps; agentic workers are not supported", item.ID, call.ID, call.StepID)
 		}
 		if step.ValidationSchema == nil || (len(step.ValidationSchema.Files) == 0 && len(step.ValidationSchema.DB) == 0) {

@@ -23,9 +23,8 @@ func consolidatedPlanDraft(t *testing.T, files *externalPlanTestFiles) *workshop
 func TestConsolidatedPlanRegistryHidesNativeAliases(t *testing.T) {
 	d := consolidatedPlanDraft(t, newExternalPlanTestFiles(t, regularStep("fetch")))
 	for _, name := range []string{
-		"add_step", "update_step", "manage_step_route", "change_step_type", "maintain_plan",
+		"add_step", "update_step", "manage_step_route", "convert_routing_branch_step_type", "maintain_plan",
 		"migrate_agent_code_items", "migrate_agent_steps", "migrate_goal_agents", "migrate_workflow_skills",
-		"migrate_declared_execution_mode", "strip_declared_execution_mode",
 		"create_plan", "delete_plan_steps", "validate_plan_change", "update_validation_schema", "record_plan_drift_review",
 	} {
 		if _, ok := d.tools[name]; !ok {
@@ -33,7 +32,7 @@ func TestConsolidatedPlanRegistryHidesNativeAliases(t *testing.T) {
 		}
 	}
 	for name := range d.tools {
-		if capturedPlanName(name) && name != "change_step_type" {
+		if capturedPlanName(name) {
 			t.Errorf("legacy tool still exposed: %s", name)
 		}
 	}
@@ -184,7 +183,7 @@ func TestWorkshopConsolidatesGroupsAndRemovesReviewLauncher(t *testing.T) {
 	if _, err := d.tools["manage_group"].Execute(context.Background(), map[string]interface{}{"action": "delete", "parameters": map[string]interface{}{"name": "x", "values": map[string]interface{}{"bad": "value"}}}); err == nil {
 		t.Fatal("delete accepted update-only fields")
 	}
-	for _, n := range []string{"add_step", "update_step", "manage_step_route", "manage_group", "maintain_plan", "change_step_type"} {
+	for _, n := range []string{"add_step", "update_step", "manage_step_route", "manage_group", "maintain_plan", "convert_routing_branch_step_type"} {
 		if !ScheduleGuardedTool(n) {
 			t.Errorf("unguarded canonical tool %s", n)
 		}
@@ -226,24 +225,6 @@ func TestConsolidatedUpdateFindsNestedSteps(t *testing.T) {
 	step, _, _ := findStepByID(after.Steps, "nested")
 	if step == nil || step.GetTitle() != "Analyze invoices" {
 		t.Fatal("nested update missed target")
-	}
-}
-func TestConsolidatedConversionRetainsNativeRestrictions(t *testing.T) {
-	f := newExternalPlanTestFiles(t, testSequenceStep("fetch", "Fetch"))
-	d := consolidatedPlanDraft(t, f)
-	if _, err := d.tools["change_step_type"].Execute(context.Background(), map[string]interface{}{"step_id": "fetch", "target_type": "branch", "reason": "Reject unrelated conversion"}); err == nil {
-		t.Fatal("unrelated conversion accepted")
-	}
-	if f.writes != 0 {
-		t.Fatal("unrelated conversion wrote files")
-	}
-	if _, err := d.tools["change_step_type"].Execute(context.Background(), map[string]interface{}{"step_id": "fetch", "target_type": "scripted", "reason": "Make retrieval deterministic"}); err != nil {
-		t.Fatal(err)
-	}
-	var after PlanningResponse
-	_ = json.Unmarshal([]byte(f.files[externalPlanTestWorkspace+"/planning/plan.json"]), &after)
-	if after.Steps[0].GetID() != "fetch" || after.Steps[0].StepType() != StepTypeScripted {
-		t.Fatal("conversion lost identity or type")
 	}
 }
 

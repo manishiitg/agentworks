@@ -1340,8 +1340,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 
 	// Scripted code mode: add code/ subdir to the enforced write paths so the LLM can write main.py there.
 	// writePaths[0] is the step execution folder (e.g. execution/step-1); appending /code gives execution/step-1/code.
-	hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted_code] stepConfig nil=%v scripted=%v", stepConfig == nil, isScriptedStep(planStep, stepConfig)))
-	if isScriptedStep(planStep, stepConfig) {
+	hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted_code] stepConfig nil=%v scripted=%v", stepConfig == nil, isScriptedStep(planStep)))
+	if isScriptedStep(planStep) {
 		if len(writePaths) > 0 {
 			codePath := writePaths[0] + "/code"
 			writePaths = append(writePaths, codePath)
@@ -1385,7 +1385,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	// previously never consulted the resolver at all — harmless while everything
 	// was tmux, but it would silently diverge now that structured is the default.
 	execTransport := hcpo.applyWorkflowTransportToAgentConfig(config, stepConfig, "execution-only agent")
-	hcpo.publishWorkflowTransportContext(execTransport, executionModeLabel(isScriptedStep(planStep, stepConfig)))
+	hcpo.publishWorkflowTransportContext(execTransport, executionModeLabel(isScriptedStep(planStep)))
 	hcpo.disableParentAgentTimeout(config, "execution-only agent")
 
 	// Execution-only steps can run in parallel inside a group. If they all reuse the
@@ -1402,7 +1402,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 		execSessionID = hcpo.setupSubAgentSessionGuard("exec", stepID, readPaths, writePaths, kbAccessAllowsRead(kbAccess))
 	}
 	config.MCPSessionID = execSessionID
-	directDBAccess := isScriptedStep(planStep, stepConfig) && dbAccess != DBAccessNone
+	directDBAccess := isScriptedStep(planStep) && dbAccess != DBAccessNone
 	configureWorkflowDBSession(execSessionID, hcpo.GetWorkspacePath(), dbAccess, directDBAccess)
 	// Bind the per-step tool session to the workflow's browser session. Tool-session
 	// isolation protects folder and DB permissions without creating a second browser.
@@ -1420,7 +1420,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	hcpo.setupBrowserDownloadsPathOverride(ctx, config, stepConfig)
 
 	// Apply step-specific overrides
-	hcpo.applyStepConfigToAgentConfig(ctx, config, stepConfig, isCodeExecutionMode, isScriptedStep(planStep, stepConfig))
+	hcpo.applyStepConfigToAgentConfig(ctx, config, stepConfig, isCodeExecutionMode, isScriptedStep(planStep))
 	if override, ok := ctx.Value(agentSequenceRuntimeSessionOverrideKey{}).(*agentSequenceRuntimeSessionOverride); ok && override != nil && override.KeepAlive && common.IsCLIProvider(config.LLMConfig.Primary.Provider) && !config.ForceStructuredCodingAgent {
 		config.CodingAgentKeepAlive = true
 		hcpo.GetLogger().Info(fmt.Sprintf("🔁 agent runtime will keep coding-agent session alive: %s", config.MCPSessionID))
@@ -1513,7 +1513,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 	}
 	// Inject supplementary prompts (skills, secrets, browser instructions)
 	attachGlobalLearnings := learningsAccess != LearningsAccessNone
-	supplements := hcpo.appendSupplementaryPrompts(ctx, baseAgent, config, effectiveSkills, attachGlobalLearnings, registeredToolNames(toolsToRegister), isScriptedStep(planStep, stepConfig))
+	supplements := hcpo.appendSupplementaryPrompts(ctx, baseAgent, config, effectiveSkills, attachGlobalLearnings, registeredToolNames(toolsToRegister), isScriptedStep(planStep))
 	if executionAgent, ok := agent.(*WorkflowExecutionOnlyAgent); ok {
 		executionAgent.runtimeSupplements = supplements
 	}
@@ -2122,7 +2122,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutePredefinedSubAgentSyncFu
 			return "", fmt.Errorf("route_id %q not found in todo task step %q. Available route IDs: %v", routeID, execCtx.OrchestratorStep.GetID(), validRouteIDs)
 		}
 		parameters := virtualtools.SubAgentParametersFromContext(ctx)
-		isScriptedRoute := selectedRoute.SubAgentStep != nil && isScriptedStep(selectedRoute.SubAgentStep, getAgentConfigs(selectedRoute.SubAgentStep))
+		isScriptedRoute := selectedRoute.SubAgentStep != nil && isScriptedStep(selectedRoute.SubAgentStep)
 		isScriptedCall := virtualtools.IsScriptedSubAgentInvocation(ctx)
 		if isScriptedRoute && isScriptedCall {
 			resolved, paramErr := validateAndResolveScriptParameters(selectedRoute.SubAgentStep, parameters)

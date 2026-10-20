@@ -241,7 +241,7 @@ func readExternalBuilderFileEdit(ctx context.Context, claims *UserClaims, workfl
 
 func externalBuilderPlanMutates(name string) bool {
 	switch name {
-	case "add_step", "manage_group", "manage_step_route", "change_step_type", "maintain_plan", "create_plan", "delete_plan_steps", "update_step", "update_step_config", "update_validation_schema", "update_variable":
+	case "add_step", "manage_group", "manage_step_route", "convert_routing_branch_step_type", "maintain_plan", "create_plan", "delete_plan_steps", "update_step", "update_step_config", "update_validation_schema", "update_variable":
 		return true
 	default:
 		return false

@@ -165,67 +165,7 @@ func agentSequenceContinuationMessage(opts agentSequenceCallOptions) string {
 	return strings.TrimSpace(opts.ReentryMessage)
 }
 
-const normalizedScriptedSequenceItemID = "execute-and-verify"
-
-// normalizeScriptedStepToAgent routes persisted non-scripted
-// steps through the canonical conversational runtime. New plans author these as
-// agent directly; this normalization keeps existing workflows
-// executable without reviving the removed direct scripted-agent path.
-func normalizeScriptedStepToAgent(step *ScriptedPlanStep) *AgentPlanStep {
-	if step == nil {
-		return nil
-	}
-	return &AgentPlanStep{
-		Type:             StepTypeAgent,
-		CommonStepFields: step.CommonStepFields,
-		NextStepID:       step.NextStepID,
-		Items: []AgentItem{{
-			ID:   normalizedScriptedSequenceItemID,
-			Type: "user_message",
-			Kind: "execution",
-			Message: "Complete the step described above. Re-open the produced evidence, verify the result against every stated requirement, " +
-				"repair any gap you find, and finish only when the step is complete.",
-		}},
-		AgentConfigs: step.AgentConfigs,
-	}
-}
-
-// shouldNormalizeScriptedStepToAgent is the transitional shim: only a
-// scripted step whose unstripped step_config.json still declares the retired
-// agentic mode runs as a agent. Every other scripted step is
-// scripted (PLAT-287). Retire together with AgentConfigs.legacyDeclaredMode.
-func shouldNormalizeScriptedStepToAgent(step PlanStepInterface) bool {
-	return isLegacyAgenticScriptedStep(step, getAgentConfigs(step))
-}
-
-// normalizeAgentStepToScripted is normalizeScriptedStepToAgent's
-// mirror: an agent step whose step_config already declares scripted
-// mode (PLAT-280 — a checked-in learnings/{step-id}/main.py that needs the real
-// scripted executor's $DB_PATH/STEP_OUTPUT_DIR injection, which the
-// agent runtime does not reliably provide) has no in-place way to
-// become a true `scripted` plan step. Items carry no information a scripted step
-// can use — its work lives entirely in the checked-in script — so they are
-// dropped, not migrated.
-func normalizeAgentStepToScripted(step *AgentPlanStep) *ScriptedPlanStep {
-	if step == nil {
-		return nil
-	}
-	return &ScriptedPlanStep{
-		Type:             StepTypeScripted,
-		CommonStepFields: step.CommonStepFields,
-		NextStepID:       step.NextStepID,
-		AgentConfigs:     step.AgentConfigs,
-	}
-}
-
-// effectiveRuntimeStepType reports the execution model users actually see.
-// Persisted non-scripted steps run through agent for
-// compatibility, so exposing them as "scripted" in terminal metadata is
-// misleading even though the saved plan still has the legacy type.
 func effectiveRuntimeStepType(step PlanStepInterface) string {
-	if shouldNormalizeScriptedStepToAgent(step) {
-		return string(StepTypeAgent)
-	}
 	if step == nil {
 		return ""
 	}

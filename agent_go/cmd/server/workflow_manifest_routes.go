@@ -96,6 +96,9 @@ func (api *StreamingAPI) handleGetWorkflowManifest(w http.ResponseWriter, r *htt
 		"applied":          appliedUpgradeItems,
 		"history_basis":    "contract_version",
 	}
+	if workflowContractNeedsRecreation(manifest) {
+		upgradeStatus["message"] = oldWorkflowContractMessage
+	}
 	if len(pendingUpgrades) > 0 {
 		upgradeStatus["next_label"] = pendingUpgrades[0].label
 		upgradeStatus["next_version"] = pendingUpgrades[0].to

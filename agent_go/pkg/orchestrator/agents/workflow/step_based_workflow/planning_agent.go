@@ -242,42 +242,29 @@ type ConsistencyRule struct {
 
 // AgentConfigs represents per-agent configuration for a step
 type AgentConfigs struct {
-	ExecutionLLM                 *AgentLLMConfig `json:"execution_llm,omitempty"`
-	ExecutionLLMReason           string          `json:"execution_llm_reason,omitempty"`            // PLAT-060. Why this step is pinned to a specific model. Required whenever execution_llm is set — update_step_config rejects the pin without it. A pin outranks execution_tier entirely, so it silently overrides every tier decision above it. Cite the owning architecture_review finding id, and the human_input_id when the pin was user-approved.
-	ExecutionTier                string          `json:"execution_tier,omitempty"`                  // Persistent execution tier override in tiered mode: "high" | "medium" | "low"
-	ExecutionTierReason          string          `json:"execution_tier_reason,omitempty"`           // PLAT-060. Why this step's tier is pinned. Required whenever execution_tier is set — update_step_config rejects the override without it. The tier stays configured until explicitly changed; run counters do not select tiers. Cite the owning architecture_review finding id, and the human_input_id when approved.
-	LearningObjective            string          `json:"learning_objective,omitempty"`              // Legacy automatic contribution instruction; archived by contract 1.0.50. New contributions belong in the task.
-	LearningsAccess              string          `json:"learnings_access,omitempty"`                // read (default), read-write for explicit task contributions, or none. Legacy objective inference ends at migration.
-	LegacyLockLearnings          *bool           `json:"lock_learnings,omitempty"`                  // PLAT-263 migration-only. true is normalized to learnings_access="read"; false is removed. Never consumed by runtime.
-	LegacyLockLearningsReason    string          `json:"lock_learnings_reason,omitempty"`           // PLAT-263 migration-only audit residue; removed with LegacyLockLearnings.
-	LockCode                     *bool           `json:"lock_code,omitempty"`                       // lock code (main.py) - prevents LLM-rewritten main.py from being saved back to learnings, skips fix loop (nil = not set/unlocked, true = locked, false = explicitly unlocked)
-	SelectedServers              []string        `json:"selected_servers,omitempty"`                // step-level MCP server selection (subset of preset servers)
-	SelectedTools                []string        `json:"selected_tools,omitempty"`                  // step-level tool selection (format: "server:tool" or "server:*" for all tools)
-	EnabledCustomTools           []string        `json:"enabled_custom_tools,omitempty"`            // optional additions, e.g. ["human_tools:get_notification_history"]; baseline is the workspace tools; name send_email, send_slack_message or create_human_input_request when a step needs them
-	UseCodeExecutionMode         *bool           `json:"use_code_execution_mode,omitempty"`         // Step-level code execution mode override (nil = use preset default, true/false = override)
-	EnabledSkills                []string        `json:"enabled_skills,omitempty"`                  // Step-level skill selection (skill folder names, overrides preset if specified)
-	AdditionalReadPaths          []string        `json:"additional_read_paths,omitempty"`           // Extra workflow-relative folders/files this step may read (for example "variables" or "reports/reference.json"). Paths are read-only, must stay inside this workflow, and never widen write access.
-	KnowledgebaseAccess          string          `json:"knowledgebase_access,omitempty"`            // "read" | "write" | "read-write" | "none". Empty defaults to "read" so every step can consume shared context; "none" explicitly opts out. A non-empty knowledgebase_contribution promotes an unset mode to "read-write", but writes still require that contribution contract. Read access includes knowledgebase/context/context.md. knowledgebase/context/ is excluded from KB health/fixer passes — user-supplied content is never silently rewritten.
-	KnowledgebaseContribution    string          `json:"knowledgebase_contribution,omitempty"`      // Legacy automatic KB contribution instruction, archived with its destination by contract 1.0.50.
-	DisableParallelToolExecution *bool           `json:"disable_parallel_tool_execution,omitempty"` // Disable parallel tool execution for this step (nil = enabled by default, true = disabled, false = explicitly enabled)
-	CodingAgentTmuxLifecycle     string          `json:"coding_agent_tmux_lifecycle,omitempty"`     // Tmux lifecycle for CLI coding providers: "close_on_completion" (default for steps) or "keep_alive" (only when a step intentionally needs the native coding session after completion).
-	SuccessfulRuns               *int            `json:"successful_runs,omitempty"`                 // System-managed counter. Written by syncSuccessfulRunsToStepConfig after each successful validation; mirrors the authoritative count in learning metadata. Read by the readiness checklist to gauge optimization progress (3+ = ready). Agents must NOT set this directly.
-	// LegacyDeclaredExecutionMode / LegacyDeclaredExecutionModeReason are the
-	// RETIRED declared_execution_mode keys (PLAT-287). A step's execution model
-	// is decided by its plan type -- scripted is scripted, agent is
-	// conversational.
-	// Nothing sets these any more. They still round-trip through step_config.json
-	// for exactly two reasons: the runtime shim that keeps a not-yet-migrated
-	// legacy agentic scripted step running as a agent, and so that a
-	// step_config write made before the v1.0.39 migration does not silently drop
-	// the key and flip such a step to scripted. The v1.0.39 migration
-	// (strip_declared_execution_mode) clears both; delete the fields and the
-	// shim once no live workflow predates it.
-	LegacyDeclaredExecutionMode       string           `json:"declared_execution_mode,omitempty"`
-	LegacyDeclaredExecutionModeReason string           `json:"declared_execution_mode_reason,omitempty"`
-	DescriptionReviewed               *bool            `json:"description_reviewed,omitempty"` // True when the step description has been reviewed — clarity AND secrets/hardcoded values.
-	ReviewNotes                       string           `json:"review_notes,omitempty"`         // Free-form rationale covering why config, learning/KB choices, code locks, or description review state are justified.
-	DriftReview                       *StepDriftReview `json:"drift_review,omitempty"`         // Plan-drift review record: evidence from the last completed plan_drift_review pass over this step, plus a NeedsReview flag every persisted field change or unresolved failed drift check keeps true. Nil (no record yet) or NeedsReview==true both mean "due." Set by that module or its manual slash-command equivalent; never by a step-editing agent directly.
+	ExecutionLLM                 *AgentLLMConfig  `json:"execution_llm,omitempty"`
+	ExecutionLLMReason           string           `json:"execution_llm_reason,omitempty"`            // PLAT-060. Why this step is pinned to a specific model. Required whenever execution_llm is set — update_step_config rejects the pin without it. A pin outranks execution_tier entirely, so it silently overrides every tier decision above it. Cite the owning architecture_review finding id, and the human_input_id when the pin was user-approved.
+	ExecutionTier                string           `json:"execution_tier,omitempty"`                  // Persistent execution tier override in tiered mode: "high" | "medium" | "low"
+	ExecutionTierReason          string           `json:"execution_tier_reason,omitempty"`           // PLAT-060. Why this step's tier is pinned. Required whenever execution_tier is set — update_step_config rejects the override without it. The tier stays configured until explicitly changed; run counters do not select tiers. Cite the owning architecture_review finding id, and the human_input_id when approved.
+	LearningObjective            string           `json:"learning_objective,omitempty"`              // Legacy automatic contribution instruction; archived by contract 1.0.50. New contributions belong in the task.
+	LearningsAccess              string           `json:"learnings_access,omitempty"`                // read (default), read-write for explicit task contributions, or none. Legacy objective inference ends at migration.
+	LegacyLockLearnings          *bool            `json:"lock_learnings,omitempty"`                  // PLAT-263 migration-only. true is normalized to learnings_access="read"; false is removed. Never consumed by runtime.
+	LegacyLockLearningsReason    string           `json:"lock_learnings_reason,omitempty"`           // PLAT-263 migration-only audit residue; removed with LegacyLockLearnings.
+	LockCode                     *bool            `json:"lock_code,omitempty"`                       // lock code (main.py) - prevents LLM-rewritten main.py from being saved back to learnings, skips fix loop (nil = not set/unlocked, true = locked, false = explicitly unlocked)
+	SelectedServers              []string         `json:"selected_servers,omitempty"`                // step-level MCP server selection (subset of preset servers)
+	SelectedTools                []string         `json:"selected_tools,omitempty"`                  // step-level tool selection (format: "server:tool" or "server:*" for all tools)
+	EnabledCustomTools           []string         `json:"enabled_custom_tools,omitempty"`            // optional additions, e.g. ["human_tools:get_notification_history"]; baseline is the workspace tools; name send_email, send_slack_message or create_human_input_request when a step needs them
+	UseCodeExecutionMode         *bool            `json:"use_code_execution_mode,omitempty"`         // Step-level code execution mode override (nil = use preset default, true/false = override)
+	EnabledSkills                []string         `json:"enabled_skills,omitempty"`                  // Step-level skill selection (skill folder names, overrides preset if specified)
+	AdditionalReadPaths          []string         `json:"additional_read_paths,omitempty"`           // Extra workflow-relative folders/files this step may read (for example "variables" or "reports/reference.json"). Paths are read-only, must stay inside this workflow, and never widen write access.
+	KnowledgebaseAccess          string           `json:"knowledgebase_access,omitempty"`            // "read" | "write" | "read-write" | "none". Empty defaults to "read" so every step can consume shared context; "none" explicitly opts out. A non-empty knowledgebase_contribution promotes an unset mode to "read-write", but writes still require that contribution contract. Read access includes knowledgebase/context/context.md. knowledgebase/context/ is excluded from KB health/fixer passes — user-supplied content is never silently rewritten.
+	KnowledgebaseContribution    string           `json:"knowledgebase_contribution,omitempty"`      // Legacy automatic KB contribution instruction, archived with its destination by contract 1.0.50.
+	DisableParallelToolExecution *bool            `json:"disable_parallel_tool_execution,omitempty"` // Disable parallel tool execution for this step (nil = enabled by default, true = disabled, false = explicitly enabled)
+	CodingAgentTmuxLifecycle     string           `json:"coding_agent_tmux_lifecycle,omitempty"`     // Tmux lifecycle for CLI coding providers: "close_on_completion" (default for steps) or "keep_alive" (only when a step intentionally needs the native coding session after completion).
+	SuccessfulRuns               *int             `json:"successful_runs,omitempty"`                 // System-managed counter. Written by syncSuccessfulRunsToStepConfig after each successful validation; mirrors the authoritative count in learning metadata. Read by the readiness checklist to gauge optimization progress (3+ = ready). Agents must NOT set this directly.
+	DescriptionReviewed          *bool            `json:"description_reviewed,omitempty"`            // True when the step description has been reviewed — clarity AND secrets/hardcoded values.
+	ReviewNotes                  string           `json:"review_notes,omitempty"`                    // Free-form rationale covering why config, learning/KB choices, code locks, or description review state are justified.
+	DriftReview                  *StepDriftReview `json:"drift_review,omitempty"`                    // Plan-drift review record: evidence from the last completed plan_drift_review pass over this step, plus a NeedsReview flag every persisted field change or unresolved failed drift check keeps true. Nil (no record yet) or NeedsReview==true both mean "due." Set by that module or its manual slash-command equivalent; never by a step-editing agent directly.
 }
 
 // StepDriftReview is the "stale flag" model (superseding the earlier
@@ -4082,26 +4069,13 @@ func createUpdateScriptedStepExecutor(workspacePath string, logger loggerv2.Logg
 		if err != nil {
 			return "", fmt.Errorf("failed to read plan: %w", err)
 		}
-		stepConfigs, err := readStepConfigViaFileCallback(ctx, workspacePath, readFile)
-		if err != nil {
-			return "", fmt.Errorf("failed to read step config: %w", err)
-		}
-		downgradedLegacySequence, err := prepareScriptedStepUpdateTarget(plan, stepConfigs, partialUpdate.ExistingStepID)
-		if err != nil {
+		if err := requireStepUpdateType(plan, partialUpdate.ExistingStepID, StepTypeScripted); err != nil {
 			return "", err
 		}
 
 		// Track per-field changes — passed to the plan changelog after a
 		// successful write.
 		fieldChanges := make([]PlanFieldChange, 0)
-		if downgradedLegacySequence {
-			fieldChanges = append(fieldChanges, PlanFieldChange{
-				StepID:   partialUpdate.ExistingStepID,
-				Field:    "type",
-				OldValue: string(StepTypeAgent),
-				NewValue: string(StepTypeScripted),
-			})
-		}
 
 		_, _, err = updateSingleStep(plan, partialUpdate, &fieldChanges)
 		if err != nil {
@@ -4139,82 +4113,24 @@ func createUpdateScriptedStepExecutor(workspacePath string, logger loggerv2.Logg
 
 		dependentReviewNotice := handlePlanStepDependentArtifactReview(ctx, workspacePath, partialUpdate.ExistingStepID, fieldChanges, readFile, writeFile, logger)
 
-		downgradeNotice := ""
-		if downgradedLegacySequence {
-			downgradeNotice = " and downgraded its saved legacy agent type to scripted, so the real scripted executor (with its $DB_PATH/STEP_OUTPUT_DIR injection) now runs it"
-		}
-		logger.Info(fmt.Sprintf("✅ Updated scripted step '%s' in plan%s", partialUpdate.ExistingStepID, downgradeNotice))
-		return fmt.Sprintf("Successfully updated scripted step '%s' in the plan%s%s", partialUpdate.ExistingStepID, downgradeNotice, dependentReviewNotice), nil
+		logger.Info(fmt.Sprintf("✅ Updated scripted step '%s' in plan", partialUpdate.ExistingStepID))
+		return fmt.Sprintf("Successfully updated scripted step '%s' in the plan%s", partialUpdate.ExistingStepID, dependentReviewNotice), nil
 	}
 }
 
-// prepareScriptedStepUpdateTarget is prepareAgentUpdateTarget's
-// mirror (PLAT-280). An agent step whose step_config already
-// declares scripted mode has no in-place way to become a true `scripted` plan
-// step, so update_agent_step was its only editable path even
-// though its checked-in learnings/{step-id}/main.py needs the real scripted
-// executor. This atomically downgrades it to `scripted` (dropping items, which
-// carry no information a scripted step uses) while applying the edit.
-func prepareScriptedStepUpdateTarget(plan *PlanningResponse, stepConfigs []StepConfig, stepID string) (bool, error) {
+// requireStepUpdateType prevents a typed updater from changing execution models.
+func requireStepUpdateType(plan *PlanningResponse, stepID string, expected StepType) error {
 	if plan == nil {
-		return false, fmt.Errorf("cannot update scripted step %q: plan is unavailable", stepID)
+		return fmt.Errorf("cannot update step %q: plan is unavailable", stepID)
 	}
-	existingStep, _, _ := findStepByID(plan.Steps, stepID)
-	if existingStep == nil {
-		existingStep, _, _ = findStepByID(plan.OrphanSteps, stepID)
+	step, _, _ := findStepByID(plan.Steps, stepID)
+	if step == nil {
+		step, _, _ = findStepByID(plan.OrphanSteps, stepID)
 	}
-	if existingStep == nil {
-		return false, nil // updateSingleStep returns the existing detailed not-found error.
+	if step != nil && step.StepType() != expected {
+		return wrongStepTypeToolError(stepID, step.StepType(), "update_"+string(expected)+"_step")
 	}
-
-	switch step := existingStep.(type) {
-	case *ScriptedPlanStep:
-		if isLegacyAgenticScriptedStep(step, MatchStepConfigByID(stepID, stepConfigs)) {
-			return false, fmt.Errorf("step %q is a legacy agentic scripted step (retired declared_execution_mode=\"agentic\") that still runs as a agent; use update_agent_step, which upgrades its saved type atomically with the edit (or run the v1.0.38 migration migrate_declared_execution_mode), or change_step_type(step_id=%q, target_type=\"scripted\") if it should become a real scripted step", stepID, stepID)
-		}
-		return false, nil
-	case *AgentPlanStep:
-		return false, fmt.Errorf("step %q is an agent step, not a scripted step; use update_agent_step, or change_step_type(step_id=%q, target_type=\"scripted\") first if it should become a scripted step", stepID, stepID)
-	default:
-		return false, wrongStepTypeToolError(stepID, existingStep.StepType(), "update_scripted_step")
-	}
-}
-
-// prepareAgentUpdateTarget makes the mutation API agree with the
-// runtime compatibility adapter. Persisted non-scripted steps already
-// execute as agent, so the agent updater is their single
-// valid editing path and upgrades the stored type atomically with the edit.
-func prepareAgentUpdateTarget(plan *PlanningResponse, stepConfigs []StepConfig, stepID string) (bool, error) {
-	if plan == nil {
-		return false, fmt.Errorf("cannot update agent step %q: plan is unavailable", stepID)
-	}
-	existingStep, _, _ := findStepByID(plan.Steps, stepID)
-	if existingStep == nil {
-		existingStep, _, _ = findStepByID(plan.OrphanSteps, stepID)
-	}
-	if existingStep == nil {
-		return false, nil // updateSingleStep returns the detailed not-found error.
-	}
-
-	switch step := existingStep.(type) {
-	case *AgentPlanStep:
-		return false, nil
-	case *ScriptedPlanStep:
-		if !isLegacyAgenticScriptedStep(step, MatchStepConfigByID(stepID, stepConfigs)) {
-			return false, fmt.Errorf("step %q is a scripted (scripted) step, not agent; use update_scripted_step, or change_step_type(step_id=%q, target_type=\"agent\") first if it should become conversational", stepID, stepID)
-		}
-		replacement := normalizeScriptedStepToAgent(step)
-		replaced, _ := replaceStepRecursively(plan.Steps, stepID, replacement)
-		if !replaced {
-			replaced, _ = replaceStepRecursively(plan.OrphanSteps, stepID, replacement)
-		}
-		if !replaced {
-			return false, fmt.Errorf("failed to upgrade legacy agentic scripted step %q to agent", stepID)
-		}
-		return true, nil
-	default:
-		return false, wrongStepTypeToolError(stepID, existingStep.StepType(), "update_agent_step")
-	}
+	return nil // The update handler reports a missing step.
 }
 
 // descriptionSizeRelativeMultiplier and descriptionSizeAbsoluteFloor gate
@@ -4330,12 +4246,7 @@ func createUpdateAgentStepExecutor(workspacePath string, logger loggerv2.Logger,
 		if err != nil {
 			return "", fmt.Errorf("failed to read plan: %w", err)
 		}
-		stepConfigs, err := readStepConfigViaFileCallback(ctx, workspacePath, readFile)
-		if err != nil {
-			return "", fmt.Errorf("failed to read step config: %w", err)
-		}
-		upgradedLegacyScripted, err := prepareAgentUpdateTarget(plan, stepConfigs, partialUpdate.ExistingStepID)
-		if err != nil {
+		if err := requireStepUpdateType(plan, partialUpdate.ExistingStepID, StepTypeAgent); err != nil {
 			return "", err
 		}
 		descriptionBeforeLen := 0
@@ -4359,14 +4270,6 @@ func createUpdateAgentStepExecutor(workspacePath string, logger loggerv2.Logger,
 			}
 		}
 		fieldChanges := make([]PlanFieldChange, 0)
-		if upgradedLegacyScripted {
-			fieldChanges = append(fieldChanges, PlanFieldChange{
-				StepID:   partialUpdate.ExistingStepID,
-				Field:    "type",
-				OldValue: string(StepTypeScripted),
-				NewValue: string(StepTypeAgent),
-			})
-		}
 		_, _, err = updateSingleStep(plan, partialUpdate, &fieldChanges)
 		if err != nil {
 			return "", err
@@ -4419,18 +4322,14 @@ func createUpdateAgentStepExecutor(workspacePath string, logger loggerv2.Logger,
 			Changes: fieldChanges,
 		}, readFile, writeFile, logger)
 		dependentReviewNotice := handlePlanStepDependentArtifactReview(ctx, workspacePath, partialUpdate.ExistingStepID, fieldChanges, readFile, writeFile, logger)
-		upgradeNotice := ""
-		if upgradedLegacyScripted {
-			upgradeNotice = " and upgraded its saved legacy scripted type to agent"
-		}
 		sizeNudge := ""
 		if _, descriptionProvided := args["description"]; descriptionProvided && updatedStep != nil {
 			planMedian := planMedianOtherStepDescriptionLen(plan.Steps, partialUpdate.ExistingStepID)
 			sizeNudge = stepDescriptionSizeNudge(descriptionBeforeLen, len(updatedStep.GetDescription()), planMedian)
 			sizeNudge += descriptionReferencesEditNotice(workspacePath, updatedStep.GetDescription())
 		}
-		logger.Info(fmt.Sprintf("✅ Updated agent step '%s' in plan%s", partialUpdate.ExistingStepID, upgradeNotice))
-		return fmt.Sprintf("Successfully updated agent step '%s' in the plan%s%s%s", partialUpdate.ExistingStepID, upgradeNotice, dependentReviewNotice, sizeNudge), nil
+		logger.Info(fmt.Sprintf("✅ Updated agent step '%s' in plan", partialUpdate.ExistingStepID))
+		return fmt.Sprintf("Successfully updated agent step '%s' in the plan%s%s", partialUpdate.ExistingStepID, dependentReviewNotice, sizeNudge), nil
 	}
 }
 
@@ -5121,8 +5020,6 @@ func upsertNewScriptedStepConfig(configs []StepConfig, stepID, title string) []S
 		}
 		configs[i].Title = title
 		configs[i].AgentConfigs.UseCodeExecutionMode = &useCode
-		configs[i].AgentConfigs.LegacyDeclaredExecutionMode = ""
-		configs[i].AgentConfigs.LegacyDeclaredExecutionModeReason = ""
 		return configs
 	}
 	return append(configs, StepConfig{
@@ -5739,34 +5636,6 @@ func registerNativePlanModificationTools(
 		return fmt.Errorf("failed to register migrate_agent_code_items tool: %w", err)
 	}
 
-	migrateDeclaredModeParams, err := parseSchemaForToolParameters(`{"type":"object","properties":{}}`)
-	if err != nil {
-		return fmt.Errorf("failed to parse migrate_declared_execution_mode schema: %w", err)
-	}
-	if err := mcpAgent.RegisterCustomTool(
-		"migrate_declared_execution_mode",
-		"Product-managed workflow-version migration for contract v1.0.38 (PLAT-287, half 1). Rewrites planning/plan.json so every step's type states its execution model explicitly: each legacy agentic scripted step (no declared scripted mode) becomes the agent the runtime already ran it as, and any agent still declared scripted becomes scripted -- same id, description, dependencies, validation, next_step_id, position. Touches only plan.json: step_config.json is read, never written, and declared_execution_mode stays in place because the current runtime still reads it. Behavior is unchanged. Idempotent. Refuses without changing anything when a step is declared scripted but has no code/<step-id>/main.py (code_layout_version=1; legacy: learnings/<step-id>/main.py). Call only during the v1.0.38 workflow preflight.",
-		migrateDeclaredModeParams,
-		createMigrateDeclaredExecutionModeExecutor(workspacePath, logger, readFile, writeFile),
-		"workflow",
-	); err != nil {
-		return fmt.Errorf("failed to register migrate_declared_execution_mode tool: %w", err)
-	}
-
-	stripDeclaredModeParams, err := parseSchemaForToolParameters(`{"type":"object","properties":{}}`)
-	if err != nil {
-		return fmt.Errorf("failed to parse strip_declared_execution_mode schema: %w", err)
-	}
-	if err := mcpAgent.RegisterCustomTool(
-		"strip_declared_execution_mode",
-		"Product-managed workflow-version migration for contract v1.0.39 (PLAT-287, half 2). The plan type alone now decides how a step runs -- scripted is scripted, agent is conversational -- so the retired declared_execution_mode / declared_execution_mode_reason keys are removed from planning/step_config.json. Evaluation files are retired and left untouched. Every removed reason is preserved in the planning/changelog entry. Refuses, without changing anything, while any scripted step still carries declared_execution_mode=\"agentic\" (run migrate_declared_execution_mode, the v1.0.38 step, first). Idempotent.",
-		stripDeclaredModeParams,
-		createStripDeclaredExecutionModeExecutor(workspacePath, logger, readFile, writeFile),
-		"workflow",
-	); err != nil {
-		return fmt.Errorf("failed to register strip_declared_execution_mode tool: %w", err)
-	}
-
 	// Register workflow-specific plan update tools with "workflow" category
 	// Individual update tools for each step type
 	regularUpdateSchema := getUpdateScriptedStepSchema()
@@ -5776,26 +5645,12 @@ func registerNativePlanModificationTools(
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"update_scripted_step",
-		"Update an existing deterministic scripted step. The internal plan type remains scripted, but this tool only edits a checked-in script boundary implemented by code/<step-id>/main.py (code_layout_version=1; legacy: learnings/<step-id>/main.py). Provide existing_step_id and only the contract fields to change. Use next_step_id to chain scripted steps inside a selected route and make the final script converge on a shared downstream step. Do not use it for conversational or judgment-heavy work; those steps must be agent. An agent step is rejected: convert it first with change_step_type(target_type=\"scripted\"), or edit it as a sequence with update_agent_step. A scripted step is scripted by its plan type alone (PLAT-287); a scripted step still carrying the retired declared_execution_mode=\"agentic\" runs as a sequence until the v1.0.38 migration converts it, and is likewise rejected here. The plan is updated immediately. After related edits, update and test main.py and check affected validation, learnings, and downstream consumers once in the current agent; follow builder-reference/references/plan-change-impact.md. A full drift audit is reserved for Pulse or an explicit user request.",
+		"Update an existing deterministic scripted step. The internal plan type remains scripted, but this tool only edits a checked-in script boundary implemented by code/<step-id>/main.py (code_layout_version=1; legacy: learnings/<step-id>/main.py). Provide existing_step_id and only the contract fields to change. Use next_step_id to chain scripted steps inside a selected route and make the final script converge on a shared downstream step. Do not use it for conversational or judgment-heavy work; those steps must be agent. An agent step is rejected; edit it with update_agent_step. A scripted step runs its saved script by plan type. The plan is updated immediately. After related edits, update and test main.py and check affected validation, learnings, and downstream consumers once in the current agent; follow builder-reference/references/plan-change-impact.md. A full drift audit is reserved for Pulse or an explicit user request.",
 		regularUpdateParams,
 		createUpdateScriptedStepExecutor(workspacePath, logger, readFile, writeFile),
 		"workflow",
 	); err != nil {
 		return fmt.Errorf("failed to register update_scripted_step tool: %w", err)
-	}
-
-	changeStepTypeParams, err := parseSchemaForToolParameters(getChangeStepTypeSchema())
-	if err != nil {
-		return fmt.Errorf("failed to parse change_step_type schema: %w", err)
-	}
-	if err := mcpAgent.RegisterCustomTool(
-		"change_step_type",
-		"Convert a step between the two execution models in place, keeping its id, description, dependencies, validation_schema, next_step_id and position (nested and orphan steps included). target_type=\"scripted\" turns a agent into a deterministic scripted step (internal plan type scripted) and declares scripted mode in step_config in the same atomic change -- its conversational items are dropped, since a scripted step's work lives in code/<step-id>/main.py (code_layout_version=1; legacy: learnings/<step-id>/main.py), which you then write with update_scripted_step(code=...). target_type=\"agent\" turns a scripted step into a description-first agent with optional follow-up items and clears the declared mode; refine the turns with update_agent_step. Use it instead of add_scripted_step + delete_plan_steps + rewiring. Records a revertable before/after entry in planning/changelog. Only scripted <-> agent; other step types have their own tools.",
-		changeStepTypeParams,
-		createChangeStepTypeExecutor(workspacePath, logger, readFile, writeFile),
-		"workflow",
-	); err != nil {
-		return fmt.Errorf("failed to register change_step_type tool: %w", err)
 	}
 
 	// NOTE: update_conditional_step tool removed (deprecated in favor of decision/routing).

@@ -63,9 +63,6 @@ func TestSequenceScriptsPlanRoundTripAndInvalidReferences(t *testing.T) {
 		{"agentic target", func(p *PlanningResponse, _ *AgentItem) {
 			p.OrphanSteps[0] = &AgentPlanStep{CommonStepFields: CommonStepFields{ID: "fetch"}}
 		}},
-		{"legacy agentic scripted", func(p *PlanningResponse, _ *AgentItem) {
-			p.OrphanSteps[0].(*ScriptedPlanStep).AgentConfigs = &AgentConfigs{LegacyDeclaredExecutionMode: StepModeAgentic}
-		}},
 		{"main-flow target", func(p *PlanningResponse, _ *AgentItem) {
 			p.Steps = append(p.Steps, p.OrphanSteps...)
 			p.OrphanSteps = nil

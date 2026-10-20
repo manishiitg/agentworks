@@ -29,7 +29,7 @@ a real step; a route straight to `end` is rejected, because a "mode" that does
 nothing is a simple if-condition. Every further fixed choice inside the flow —
 a skip/continue gate, an approval outcome, a "did the probe succeed" check —
 is a `branch`, however late in the plan it sits. `add_step` rejects a
-second routing step or a route to `end`, and `change_step_type`
+second routing step or a route to `end`, and `convert_routing_branch_step_type`
 rejects a conversion to routing in the same cases; plans authored before this
 rule keep the routing steps they already have (PLAT-294).
 

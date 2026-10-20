@@ -391,7 +391,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 		}
 		fmt.Fprintf(&routesBuilder, "- **%s** (`%s`) — %s", ResolveVariables(route.RouteName, promptValues), route.RouteID, routeStepTypeSummary(route.SubAgentStep))
 		if route.SubAgentStep != nil {
-			scripted := isScriptedStep(route.SubAgentStep, getAgentConfigs(route.SubAgentStep))
+			scripted := isScriptedStep(route.SubAgentStep)
 			subStepPath := todoSubAgentArtifactFolderName(step.GetID(), stepPath, route.RouteID, "<call-id>", scripted)
 			subExecRelPath := getExecutionFolderPath(hcpo.getOrchestratorExecutionWorkspacePath(), "", subStepPath)
 			subExecAbsPath := filepath.Join(GetPromptDocsRoot(), subExecRelPath)
@@ -911,10 +911,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeRoutedSubAgentStep(
 	}
 
 	sequenceExecutionStep := stepToExecute
-	if shouldNormalizeScriptedStepToAgent(stepToExecute) {
-		sequenceExecutionStep = normalizeScriptedStepToAgent(stepToExecute.(*ScriptedPlanStep))
-		hcpo.GetLogger().Info(fmt.Sprintf("💬 Normalizing routed non-scripted step %q to the agent runtime", stepToExecute.GetID()))
-	}
 	if isAgentStep(sequenceExecutionStep) {
 		agentSequenceRestart, _ := ctx.Value(virtualtools.SubAgentAgentRestartKey).(bool)
 		// The caller already registered this delegation's execution identity.
@@ -1010,7 +1006,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executePredefinedSubAgent(
 	// calls/<call-id>/ output folder. Scripted routes live under scripts/routes;
 	// conversational routes live under agents.
 	callID := subAgentCallID(asyncSubAgentExecutionID(ctx), response.TodoIDToExecute, time.Now().UnixNano())
-	isScriptedRoute := isScriptedStep(route.SubAgentStep, getAgentConfigs(route.SubAgentStep))
+	isScriptedRoute := isScriptedStep(route.SubAgentStep)
 	subAgentStepPath := todoSubAgentArtifactFolderName(step.GetID(), stepPath, route.RouteID, callID, isScriptedRoute)
 	agentSequenceRestart, _ := ctx.Value(virtualtools.SubAgentAgentRestartKey).(bool)
 	if !isAgentStep(stepToExecute) || agentSequenceRestart {

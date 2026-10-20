@@ -105,7 +105,7 @@ func scheduledBuilderCallableTools(t *testing.T) map[string]bool {
 
 func TestWorkflowUpgradePromptsOnlyCallScheduledBuilderTools(t *testing.T) {
 	callable := scheduledBuilderCallableTools(t)
-	upgrades := workflowVersionUpgradePlan(&WorkflowManifest{Version: workflowContractInitialVersion})
+	upgrades := workflowVersionUpgradePlan(&WorkflowManifest{Version: workflowContractNestedAgentArtifactsVersion})
 	if len(upgrades) == 0 {
 		t.Fatal("no workflow contract upgrades were collected")
 	}

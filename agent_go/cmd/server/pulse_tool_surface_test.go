@@ -193,7 +193,7 @@ func TestSchedulerPulsePromptsNameNoRemovedTool(t *testing.T) {
 	}
 	// Contract-upgrade turns are delivered by the pre-run preflight, not by
 	// Pulse, but they name tools too and are built in the same package.
-	for _, upgrade := range workflowVersionUpgradePlan(&WorkflowManifest{Version: "1.0.0"}) {
+	for _, upgrade := range workflowVersionUpgradePlan(&WorkflowManifest{Version: "1.0.44"}) {
 		prompts[upgrade.label+"-upgrade"] = upgrade.query
 	}
 	if len(prompts) == 0 {

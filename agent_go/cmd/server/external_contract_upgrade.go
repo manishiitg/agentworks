@@ -56,6 +56,10 @@ func (api *StreamingAPI) externalContractUpgradeCall(w http.ResponseWriter, r *h
 			externalError(w, 502, "workflow_unavailable", "Cannot read this workflow's manifest.")
 			return
 		}
+		if workflowContractNeedsRecreation(current) {
+			externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "version": workflowContractVersionForUpgrade(current), "platform_version": WorkflowContractCurrentVersion, "pending": []map[string]string{}, "next": oldWorkflowContractMessage})
+			return
+		}
 		pending := []map[string]string{}
 		for _, step := range workflowVersionUpgradePlan(current) {
 			pending = append(pending, map[string]string{"version": step.to, "migration": step.label})

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// The type spelling must not change the legacy agentic adapter's decision.
+// Persisted scripted types round-trip without altering user text.
 func TestScriptedStepTypeReadsLegacyAndWritesCanonical(t *testing.T) {
 	for _, typ := range []string{"regular", "scripted"} {
 		input := `{"steps":[{"id":"owner","type":"agent","items":[],"predefined_routes":[{"route_id":"fetch","sub_agent_step":{"id":"nested","type":"` + typ + `","description":"keep regular in user text"}}]}],"orphan_steps":[{"id":"saved","type":"` + typ + `"}]}`
@@ -17,10 +17,6 @@ func TestScriptedStepTypeReadsLegacyAndWritesCanonical(t *testing.T) {
 		nested := plan.Steps[0].(*AgentPlanStep).PredefinedRoutes[0].SubAgentStep.(*ScriptedPlanStep)
 		if nested.Type != StepTypeScripted || plan.OrphanSteps[0].StepType() != StepTypeScripted {
 			t.Fatal("saved alias must normalize at the read boundary")
-		}
-		nested.AgentConfigs = &AgentConfigs{LegacyDeclaredExecutionMode: StepModeAgentic}
-		if !shouldNormalizeScriptedStepToAgent(nested) {
-			t.Fatal("legacy agentic execution must remain agentic")
 		}
 		data, err := json.Marshal(plan)
 		if err != nil {

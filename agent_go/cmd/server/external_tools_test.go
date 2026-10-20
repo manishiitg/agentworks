@@ -331,7 +331,7 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 		}
 		// Tokens never author: file writes, plan mutations, and Builder
 		// execution stay out of the catalog alongside internal tools.
-		for _, name := range []string{"migrate_declared_execution_mode", "write_file", "patch_file", "update_scripted_step", "update_step_config", "builder_chat", "builder_status", "builder_reply_input", "builder_cancel"} {
+		for _, name := range []string{"write_file", "patch_file", "update_scripted_step", "update_step_config", "builder_chat", "builder_status", "builder_reply_input", "builder_cancel"} {
 			if names[name] {
 				t.Fatalf("write tool exposed: %s", name)
 			}

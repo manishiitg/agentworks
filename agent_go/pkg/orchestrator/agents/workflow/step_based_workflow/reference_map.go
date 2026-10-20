@@ -928,7 +928,7 @@ func ReferenceMapStepOutputs(workspacePath string, stepIDs []string) map[string]
 // responses carry the dependents note.
 func referenceMapPlanEditTool(name string) bool {
 	switch name {
-	case "delete_plan_steps", "update_step_config", "update_validation_schema", "change_step_type",
+	case "delete_plan_steps", "update_step_config", "update_validation_schema", "convert_routing_branch_step_type",
 		"convert_routing_branch_step_type", "restore_step_from_changelog":
 		return true
 	}

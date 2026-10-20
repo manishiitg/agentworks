@@ -64,7 +64,7 @@ func stageStep(p *Pipeline, stage PipelineStage, deps []string, last bool) map[s
 //
 // These stages were authored as `scripted` and only ran because the runtime
 // rewrites every non-scripted scripted step into a sequence exactly like this one
-// (normalizeScriptedStepToAgent). Declaring it makes the stored plan
+// (the retired scripted-to-agent adapter). Declaring it makes the stored plan
 // say what actually executes, so the plan UI no longer has to reconstruct it and
 // a stage that later wants a second turn — a critique pass, a repair gate — can
 // simply add an item instead of needing a different step type.

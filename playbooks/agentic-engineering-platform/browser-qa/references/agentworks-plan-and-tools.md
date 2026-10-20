@@ -31,7 +31,7 @@ Otherwise prefer one coherent step with a clear output and validation contract.
 | Work belongs to a persistent specialist | `crew` | `add_step(type="crew", step={...})` | Invoke an attached Crew's enabled trigger and wait for its response. Discover the Crew and trigger before authoring the step. |
 | Reusable deterministic helper that should not run in the main path | orphan `scripted` step | `add_step(type="scripted", step={"is_orphan": true, ...})` | A selector audit, evidence exporter, or one-off repair verifier launched from Workshop or referenced by a supported scripted batch. |
 
-Use `update_step(step_id, changes)` to revise a step and `change_step_type` for supported `scripted` ↔ `agent` or `routing` ↔ `branch` conversions. Use `delete_plan_steps` when removing steps. Read `builder-reference/references/plan-editing-tools.md` and the live selected schema before mutations; fields belong inside `step`, `changes` or `parameters`. External MCP clients delegate through `builder action=chat` only when it is listed. Never patch `planning/plan.json` directly.
+Use `update_step(step_id, changes)` to revise a step and `convert_routing_branch_step_type` for `routing` ↔ `branch` conversions. Use `delete_plan_steps` when removing steps. Read `builder-reference/references/plan-editing-tools.md` and the live selected schema before mutations; fields belong inside `step`, `changes` or `parameters`. External MCP clients delegate through `builder action=chat` only when it is listed. Never patch `planning/plan.json` directly.
 
 ## Recommended Browser QA composition
 

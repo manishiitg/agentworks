@@ -103,24 +103,8 @@ const workflowContractOrchestratorStepTypeVersion = "1.0.35"
 const workflowContractActivityTabFromRunSummaryVersion = "1.0.36"
 const workflowContractScriptedPlanTypeVersion = "1.0.37"
 
-// workflowContractDeclaredExecutionModeRetiredVersion (PLAT-287, half 1):
-// every step's plan type states its execution model explicitly -- legacy
-// agentic scripted steps become the agent they already ran as,
-// declared-scripted sequences become regular -- so that after this version
-// every scripted step is a declared scripted one. declared_execution_mode
-// itself is NOT touched here: the runtime still reads it. A later version
-// flips the runtime to "regular means scripted", stops every writer, and
-// strips and deletes the field, gated on no legacy agentic scripted step
-// remaining on any live workflow.
+// Historical contract markers used to identify retired workflow versions.
 const workflowContractDeclaredExecutionModeRetiredVersion = "1.0.38"
-
-// workflowContractDeclaredExecutionModeStrippedVersion (PLAT-287, half 2):
-// the runtime now decides a step's execution model from its plan type alone
-// (regular = scripted, agent = conversational),
-// so the retired declared_execution_mode / _reason keys are stripped from
-// planning/step_config.json by
-// strip_declared_execution_mode, which refuses while any scripted step still
-// carries declared_execution_mode="agentic" (i.e. v1.0.38 did not complete).
 const workflowContractDeclaredExecutionModeStrippedVersion = "1.0.39"
 
 const (

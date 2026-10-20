@@ -235,14 +235,12 @@ chat:
       - add_mcp_server
       - manage_step_route
       - agent_browser
-      - change_step_type
+      - convert_routing_branch_step_type
       - maintain_plan
-      - migrate_declared_execution_mode
       - migrate_agent_code_items
       - migrate_agent_steps
       - migrate_goal_agents
       - migrate_workflow_skills
-      - strip_declared_execution_mode
       - configure_slack_bot
       - manage_slack_bot
       - consolidate_knowledgebase

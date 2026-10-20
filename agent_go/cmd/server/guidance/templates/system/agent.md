@@ -35,7 +35,7 @@ Supported item types:
 - `prevalidation`: a deterministic backend validation gate with corrective feedback sent to the same conversation.
 - `scripted`: a finite batch of saved scripted scripts; the runtime executes and validates every call before advancing, without creating agent sessions.
 
-`type: "code"` was removed in workflow contract v1.0.10. Deterministic code lives in a saved `scripted` step definition — the type alone makes it scripted; create it with `add_step`, or move existing conversational work there with `change_step_type` — with its script at `<script-dir>/main.py`. Connect conversational and scripted steps through explicit `context_dependencies`, `context_output`, database contracts, and validation.
+`type: "code"` was removed in workflow contract v1.0.10. Deterministic code lives in a saved `scripted` step definition — the type alone makes it scripted; create it with `add_step` — with its script at `<script-dir>/main.py`. Connect conversational and scripted steps through explicit `context_dependencies`, `context_output`, database contracts, and validation.
 
 Preferred split when deterministic data is needed:
 

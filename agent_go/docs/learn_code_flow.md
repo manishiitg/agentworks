@@ -66,7 +66,6 @@ Prefer a `agent` when the logic changes from run to run:
 Tools:
 
 - `add_scripted_step` creates a `scripted` step; `add_agent_step` creates a sequence.
-- `change_step_type(step_id, target_type="scripted"|"agent", reason)` moves an existing step between the two in place — same id, description, dependencies, validation and position — and records the change (with the reason) in the plan changelog. To scripted, its conversational items are dropped and `learnings/{step-id}/main.py` must then be written with `update_scripted_step(code=...)`; to a sequence, one execute-and-verify item is synthesized and `lock_code` is cleared.
 - `update_step_config(...)` no longer accepts an execution-mode field; it still owns `use_code_execution_mode`, `lock_code`, tiers, models and access flags.
 - `run_saved_main_py(step_id, group_id?)` is valid only for `scripted` steps, because only those have a persistent saved-script fast path.
 
@@ -307,7 +306,6 @@ Choose a `agent` when:
 | `agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_execution.go` | Main execution loop, fast-path invocation, repair loop, fallback handling |
 | `agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_learn_code.go` | Saved-script execution, static review, save-back, diff capture |
 | `agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_agent.go` | Sequence runtime; the type-based scripted/agentic decision and the transitional legacy-agentic shim |
-| `agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/change_step_type_tool.go` | `change_step_type`: in-place conversion between the two models |
 | `agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/interactive_workshop_manager.go` | Workshop guidance, `run_saved_main_py`, `update_step_config` |
 | `agent_go/pkg/orchestrator/agents/workflow/step_based_workflow/step_config.go` | Applies step config (tiers, models, tools, access, `use_code_execution_mode`, `lock_code`) |
 | `agent_go/cmd/server/server.go` | Per-tool HTTP endpoints and bridge env setup |

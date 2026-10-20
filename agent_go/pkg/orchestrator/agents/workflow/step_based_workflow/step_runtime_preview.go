@@ -105,7 +105,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 		config.SelectedTools = filterToolsByWorkflow(stepConfig.SelectedTools, hcpo.GetSelectedServers())
 	}
 	result.MCPServers, result.MCPToolSelection = config.ServerNames, config.SelectedTools
-	scripted := isScriptedStep(step, stepConfig)
+	scripted := isScriptedStep(step)
 	if llmConfig := hcpo.selectExecutionLLM(ctx, stepConfig, step.GetID()); llmConfig != nil {
 		config.LLMConfig.Primary.Provider = llmConfig.Primary.Provider
 	} else {

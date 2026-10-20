@@ -58,7 +58,7 @@ func workflowContractUpgradeLists(manifest *WorkflowManifest) (pending, applied 
 	// Use the same product eligibility for history as for pending upgrades.
 	// A skipped Goals/store migration was never applied to a Relay merely
 	// because its shared contract marker advanced past that migration.
-	allActive := workflowVersionUpgradePlan(&WorkflowManifest{Version: workflowContractInitialVersion, Kind: manifest.Kind})
+	allActive := eligibleWorkflowVersionUpgrades(manifest, fullWorkflowVersionUpgradePlan(&WorkflowManifest{Version: workflowContractInitialVersion, Kind: manifest.Kind}))
 	pendingPlan := workflowVersionUpgradePlan(manifest)
 	pendingLabels := make(map[string]struct{}, len(pendingPlan))
 	for _, upgrade := range pendingPlan {
@@ -118,6 +118,9 @@ func describeWorkflowContractUpgrades(ctx context.Context, workspacePath string)
 		return "No workflow manifest found.", nil
 	}
 
+	if workflowContractNeedsRecreation(manifest) {
+		return oldWorkflowContractMessage, nil
+	}
 	current := workflowContractVersionForUpgrade(manifest)
 	var sb strings.Builder
 	sb.WriteString("## Workflow contract version\n\n")
@@ -162,6 +165,9 @@ func nextWorkflowContractUpgrade(ctx context.Context, workspacePath string) (str
 	}
 	if !found {
 		return "", "", fmt.Errorf("workflow manifest not found at %s", workspacePath)
+	}
+	if workflowContractNeedsRecreation(manifest) {
+		return "", "", fmt.Errorf("%s", oldWorkflowContractMessage)
 	}
 	pending := workflowVersionUpgradePlan(manifest)
 	if len(pending) == 0 {

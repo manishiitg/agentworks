@@ -1262,31 +1262,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 		}()
 	}
 
-	// Scripted code mode — determined once per step invocation (persists across outer-loop iterations).
-	// Check embedded plan AgentConfigs first; fall back to step_configs.json so that workshop-saved
-	// configs (use_code_execution_mode) also take effect for sub-agent steps whose embedded plan
-	// config may not have the flag.
-	isScriptedMode := false
-	{
-		// The plan type decides (PLAT-287). The config only matters for the
-		// transitional legacy-agentic shim, and the embedded plan config may
-		// not carry that raw key for a sub-agent step, so consult
-		// step_config.json by id when the embedded one says nothing.
-		agentCfgs := getAgentConfigs(step)
-		if agentCfgs.legacyDeclared() == "" && step.GetID() != "" {
-			if stepConfigs, err := hcpo.ReadStepConfigs(ctx); err == nil {
-				if sc := MatchStepConfigByID(step.GetID(), stepConfigs); sc.legacyDeclared() != "" {
-					agentCfgs = sc
-				}
-			}
-		}
-		isScriptedMode = isScriptedStep(step, agentCfgs)
-		if regular, ok := step.(*ScriptedPlanStep); ok && regular.ScriptOnly {
-			isScriptedMode = true
-		}
-		hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted_code] step=%s type=%s scripted=%v",
-			step.GetID(), step.StepType(), isScriptedMode))
-	}
+	isScriptedMode := isScriptedStep(step)
+	hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted_code] step=%s type=%s scripted=%v", step.GetID(), step.StepType(), isScriptedMode))
 	if execCtx != nil && execCtx.SavedScriptOnly && !isScriptedMode {
 		return "", updatedContextFiles, fmt.Errorf("step %q is not in scripted code mode", step.GetID())
 	}
@@ -3251,10 +3228,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) runExecutionPhase(
 		}
 
 		sequenceExecutionStep := step
-		if shouldNormalizeScriptedStepToAgent(step) {
-			sequenceExecutionStep = normalizeScriptedStepToAgent(step.(*ScriptedPlanStep))
-			hcpo.GetLogger().Info(fmt.Sprintf("💬 Normalizing non-scripted step %q to the agent runtime", step.GetID()))
-		}
 		if isAgentStep(sequenceExecutionStep) {
 			hcpo.GetLogger().Info(fmt.Sprintf("💬 Starting agent step execution: %s", sequenceExecutionStep.GetTitle()))
 			stepPath := fmt.Sprintf("step-%d", i+1)

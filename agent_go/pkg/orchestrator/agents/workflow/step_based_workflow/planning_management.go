@@ -548,14 +548,14 @@ func populateRuntimeFields(typedStep PlanStepInterface, stepConfigs []StepConfig
 // IsPlanModificationTool checks if a tool name is a plan modification tool.
 // Kept on 2026-09-22: the CheckAndEmitPlanUpdateEvent consumer was removed
 // (never called), but four tests pin this classification as the definition
-// of "plan mutation" (change_step_type, declared-execution-mode migrations,
+// of "plan mutation" (typed edits and routing/branch conversion,
 // agent compat).
 func IsPlanModificationTool(name string) bool {
 	return name == "add_step" || name == "update_step" || name == "manage_step_route" || name == "manage_group" || name == "maintain_plan" || name == "update_scripted_step" || name == "update_routing_step" || name == "update_branch_step" || name == "update_agent_step" || name == "update_crew_step" || name == "delete_plan_steps" || name == "add_scripted_step" || name == "add_routing_step" || name == "add_branch_step" || name == "add_agent_step" || name == "add_crew_step" ||
 		name == "update_validation_schema" ||
 		name == "add_todo_task_route" ||
 		name == "add_agent_route" || name == "update_agent_route" || name == "delete_agent_route" || name == "migrate_agent_steps" || name == "migrate_goal_agents" || name == "migrate_workflow_skills" ||
-		name == "change_step_type" || name == "migrate_declared_execution_mode" || name == "strip_declared_execution_mode"
+		name == "convert_routing_branch_step_type"
 }
 
 // IsStepConfigModificationTool checks if a tool name is a step_config modification tool.

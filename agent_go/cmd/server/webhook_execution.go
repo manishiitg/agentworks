@@ -40,6 +40,9 @@ func directWebhookContractCompatible(manifest *WorkflowManifest) bool {
 }
 
 func directWebhookPreflight(manifest *WorkflowManifest) error {
+	if workflowContractNeedsRecreation(manifest) {
+		return fmt.Errorf("%s", oldWorkflowContractMessage)
+	}
 	if isPythonRelay(manifest) {
 		return nil
 	}

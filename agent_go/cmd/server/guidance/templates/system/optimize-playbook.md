@@ -184,7 +184,7 @@ When the user runs a step, briefly note the highest-priority improvement needed.
 
 ### 7. Execution Modes: Agentic vs Scripted
 
-A step's execution mode is its plan type — `scripted` is scripted, `agent` is agentic. Create with `add_step` / `add_step`; move an existing step between the two with **change_step_type(step_id, target_type="scripted"|"agent", reason)** — never via `update_step_config`:
+A step's execution mode is its plan type: `scripted` runs a saved script and `agent` runs a conversation. Choose the type with `add_step`; `update_step_config` does not change it:
 
 - **Scripted** (`scripted` type): Agent writes a reusable `main.py` that is saved and tried first on future runs (0 LLM tokens when stable). If the saved script fails, the LLM repairs it. This is the default execution mode for deterministic API/SDK calls, CLI commands, known pagination, data fetching, stable parsing/normalization/transforms, and mechanical persistence. Create or move that work to scripted immediately; no run-count gate applies to mode selection. The 10+-scenario-covering-runs evidence gates only *trusting and freezing* the script with `lock_code`.
 
@@ -198,7 +198,7 @@ A step's execution mode is its plan type — `scripted` is scripted, `agent` is 
 
 **Mode-selection rule:** Create or convert deterministic API/CLI/SDK/data-fetch/parse/transform/persist work as `scripted` on Workshop's own initiative; this is architecture selection, not freezing. Treat 10+ scenario-covering successful runs (with eval/run evidence at target) as the bar only for **freezing the saved script with `lock_code`**. Keep `lock_code=false` until that evidence exists so you can still repair drift with `execute_step`. Keep judgment, adaptive discovery, and browser/UI work agentic.
 
-**There is no mode field to fill in**: the plan type is the declaration. When the user asks to make a step scripted, use `change_step_type(step_id, target_type="scripted", reason=...)`, then author and test `<script-dir>/main.py`. `use_code_execution_mode` is a separate, independent toggle — an `agent` can use code execution without being scripted.
+**There is no mode field to fill in**: the plan type is the declaration. When the user asks to make a step scripted, create a scripted step with `add_step`, then author and test `<script-dir>/main.py`. `use_code_execution_mode` is a separate, independent toggle — an `agent` can use code execution without being scripted.
 
 **Workshop agent behavior for code-exec steps**: When you (the workshop agent) are asked to explore, investigate, or do manual work related to a step marked with code execution mode, you should also adopt the code-exec approach — use **execute_shell_command** to write and run Python/shell scripts that combine multiple MCP tool calls together, rather than making individual tool calls one by one. This mirrors how the step's execution agent works and helps you build reusable scripts and patterns that can inform the step's learnings.
 

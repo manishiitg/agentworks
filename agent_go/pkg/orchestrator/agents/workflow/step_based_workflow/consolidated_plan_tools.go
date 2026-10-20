@@ -51,7 +51,7 @@ func capturedPlanName(n string) bool {
 	}
 	switch n {
 	case "add_agent_route", "update_agent_route", "delete_agent_route",
-		"add_group", "update_group", "delete_group", "change_step_type", "convert_routing_branch_step_type":
+		"add_group", "update_group", "delete_group":
 		return true
 	}
 	for _, v := range consolidatedMaintenance {
@@ -251,7 +251,7 @@ func (r *consolidatedPlanRegistrar) flush() error {
 	}
 	if len(updateSchemas) > 0 {
 		s := objectToolSchema(map[string]interface{}{"step_id": stringToolSchema(), "changes": map[string]interface{}{"anyOf": updateSchemas}}, "step_id", "changes")
-		if err := r.register("update_step", "Update a step by ID. Its type is read from the current persisted plan, including nested and orphan steps. Put native update fields and reason in changes; omit existing_step_id. Type-specific fields are strictly validated before writing. Use change_step_type for conversions.", s, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		if err := r.register("update_step", "Update a step by ID. Its type is read from the current persisted plan, including nested and orphan steps. Put native update fields and reason in changes; omit existing_step_id. Type-specific fields are strictly validated before writing.", s, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			id := args["step_id"].(string)
 			plan, err := readPlanFromFile(ctx, r.workspace, r.readFile)
 			if err != nil {
@@ -281,21 +281,8 @@ func (r *consolidatedPlanRegistrar) flush() error {
 	if err := r.registerActions("manage_group", "Manage a variable group with action=add/update/delete. parameters uses that action's native fields. Existing group validation, current-session refresh and last-group deletion checks are preserved.", map[string]string{"add": "add_group", "update": "update_group", "delete": "delete_group"}); err != nil {
 		return err
 	}
-	if err := r.registerActions("maintain_plan", "Explicit plan maintenance only. Select a supported action and its parameters; normal edits use add_step/update_step/change_step_type. Keeps existing migration validation and changelog behavior.", consolidatedMaintenance); err != nil {
+	if err := r.registerActions("maintain_plan", "Explicit plan maintenance only. Select a supported action and its parameters; normal edits use add_step/update_step. Keeps existing migration validation and changelog behavior.", consolidatedMaintenance); err != nil {
 		return err
-	}
-	if _, ok := r.tools["change_step_type"]; ok {
-		s := objectToolSchema(map[string]interface{}{"step_id": stringToolSchema(), "target_type": stringToolSchema("scripted", "agent", "routing", "branch"), "reason": stringToolSchema()}, "step_id", "target_type", "reason")
-		if err := r.register("change_step_type", "Convert a step in place, preserving its identity and the existing conversion checks. Supported pairs: scripted <-> agent and routing <-> branch only; arbitrary cross-type conversion is rejected. Scripted conversion drops conversational items. reason is required and recorded.", s, func(ctx context.Context, args map[string]interface{}) (string, error) {
-			target := args["target_type"].(string)
-			if target == "routing" || target == "branch" {
-				v := map[string]interface{}{"existing_step_id": args["step_id"], "target_type": target, "reason": args["reason"]}
-				return r.invoke(ctx, "convert_routing_branch_step_type", v)
-			}
-			return r.invoke(ctx, "change_step_type", args)
-		}); err != nil {
-			return err
-		}
 	}
 	return nil
 }
@@ -340,9 +327,6 @@ func ConsolidatedPlanToolName(n string) string {
 	}
 	if n == "add_group" || n == "update_group" || n == "delete_group" {
 		return "manage_group"
-	}
-	if n == "convert_routing_branch_step_type" {
-		return "change_step_type"
 	}
 	for _, v := range consolidatedMaintenance {
 		if n == v {

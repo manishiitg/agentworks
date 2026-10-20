@@ -233,36 +233,10 @@ const StepModeAgentic = "agentic"
 // the directory are decoupled. Old name is still accepted on read.
 const StepModeScripted = "scripted"
 
-// canonicalDeclaredExecutionMode normalizes the declared execution mode
-// string. It accepts both the new canonical names ("agentic", "scripted")
-// and the legacy names ("agentic", "scripted") on input, always
-// returning the canonical form. Empty input returns empty.
-func canonicalDeclaredExecutionMode(mode string) string {
-	switch strings.TrimSpace(mode) {
-	case "code_exec", StepModeAgentic:
-		return StepModeAgentic
-	case "learn_code", StepModeScripted:
-		return StepModeScripted
-	default:
-		return strings.TrimSpace(mode)
-	}
-}
-
-// isScriptedStep reports whether a step runs through the scripted executor
-// (a persistent learnings/{step-id}/main.py, replayed across runs). The plan
-// decides (PLAT-287): a scripted step IS scripted, an agent is
-// conversational. The one exception is transitional: a scripted step whose
-// step_config.json still carries the retired declared_execution_mode="agentic"
-// key (not yet stripped by v1.0.39) is a legacy agentic step the runtime keeps
-// running as a agent.
-// cfg may be nil.
-func isScriptedStep(step PlanStepInterface, cfg *AgentConfigs) bool {
-	switch step.(type) {
-	case *ScriptedPlanStep:
-		return cfg.legacyDeclared() != StepModeAgentic
-	default:
-		return false
-	}
+// isScriptedStep derives execution from the saved plan type.
+func isScriptedStep(step PlanStepInterface) bool {
+	_, scripted := step.(*ScriptedPlanStep)
+	return scripted
 }
 
 // workshopPlanStepIndex maps every step id in the current workflow plan
@@ -291,17 +265,6 @@ func executionModeLabel(scripted bool) string {
 		return StepModeScripted
 	}
 	return StepModeAgentic
-}
-
-// isLegacyAgenticScriptedStep is the transitional shim's predicate: a scripted
-// step whose unstripped step_config.json still declares agentic. Such a step
-// executed as a agent before PLAT-287 and must keep doing so until
-// the v1.0.38 migration rewrites its plan type -- which the scheduler's
-// preflight runs before a scheduled workflow, but a manual run does not wait
-// for.
-func isLegacyAgenticScriptedStep(step PlanStepInterface, cfg *AgentConfigs) bool {
-	_, regular := step.(*ScriptedPlanStep)
-	return regular && cfg.legacyDeclared() == StepModeAgentic
 }
 
 // findWorkshopStepByID searches all steps (including inner) for a matching ID.
@@ -1267,7 +1230,7 @@ func GetToolsForWorkshopMode(mode string) []string {
 	planMod := []string{
 		"create_plan",
 		"validate_plan_change",
-		"migrate_agent_code_items", "migrate_agent_steps", "migrate_goal_agents", "migrate_workflow_skills", "migrate_declared_execution_mode", "strip_declared_execution_mode",
+		"migrate_agent_code_items", "migrate_agent_steps", "migrate_goal_agents", "migrate_workflow_skills",
 		"add_scripted_step", "add_agent_step", "add_routing_step", "add_branch_step",
 
 		"add_agent_route", "update_agent_route", "delete_agent_route",
@@ -1276,7 +1239,7 @@ func GetToolsForWorkshopMode(mode string) []string {
 
 		"delete_plan_steps", "cleanup_orphan_step_configs",
 		"update_validation_schema",
-		"change_step_type",
+		"convert_routing_branch_step_type",
 		"record_plan_drift_review",
 		"check_plan_no_loss", "restore_step_from_changelog",
 	}
@@ -2232,22 +2195,12 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 				}
 			}
 
-			// The plan type decides (PLAT-287); step_config.json is consulted
-			// only for the transitional legacy-agentic shim.
 			scriptedStep := false
 			var resolvedStep PlanStepInterface
 			if plan != nil {
 				if stepInfo := findWorkshopStepByID(plan.Steps, stepID); stepInfo != nil {
 					resolvedStep = stepInfo.Step
-					cfg := getAgentConfigs(stepInfo.Step)
-					if cfg.legacyDeclared() == "" {
-						if configs, err := iwm.controller.ReadStepConfigs(ctx); err == nil {
-							if sc := MatchStepConfigByID(stepID, configs); sc.legacyDeclared() != "" {
-								cfg = sc
-							}
-						}
-					}
-					scriptedStep = isScriptedStep(stepInfo.Step, cfg)
+					scriptedStep = isScriptedStep(stepInfo.Step)
 				}
 			}
 			if scriptParametersSet && !scriptedStep {
@@ -8056,7 +8009,7 @@ func (iwm *InteractiveWorkshopManager) runReviewWorkflowTimingAgent(ctx context.
 		var sb strings.Builder
 		planSteps := workshopPlanStepIndex(ctx, iwm.controller)
 		for _, sc := range stepConfigs {
-			mode := executionModeLabel(isScriptedStep(planSteps[sc.ID], sc.AgentConfigs))
+			mode := executionModeLabel(isScriptedStep(planSteps[sc.ID]))
 			successfulRuns := 0
 			lockCode := false
 			if sc.AgentConfigs != nil {
@@ -8145,7 +8098,7 @@ func (iwm *InteractiveWorkshopManager) runReviewWorkflowCostsAgent(ctx context.C
 		var sb strings.Builder
 		planSteps := workshopPlanStepIndex(ctx, iwm.controller)
 		for _, sc := range stepConfigs {
-			mode := executionModeLabel(isScriptedStep(planSteps[sc.ID], sc.AgentConfigs))
+			mode := executionModeLabel(isScriptedStep(planSteps[sc.ID]))
 			successfulRuns := 0
 			lockCode := false
 			if sc.AgentConfigs != nil {
@@ -8266,7 +8219,7 @@ func (iwm *InteractiveWorkshopManager) runReviewStepCodeAgent(ctx context.Contex
 		hasSavedScript := scriptErr == nil && strings.TrimSpace(scriptContent) != ""
 		isScriptedConfig := false
 		if sc != nil {
-			isScriptedConfig = isScriptedStep(planStepsByID[sid], sc.AgentConfigs)
+			isScriptedConfig = isScriptedStep(planStepsByID[sid])
 		}
 
 		if !hasSavedScript && !isScriptedConfig {

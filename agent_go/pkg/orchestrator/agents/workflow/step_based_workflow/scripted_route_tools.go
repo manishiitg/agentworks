@@ -164,7 +164,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) scriptedRouteSourceReadPaths(execCtx 
 	}
 	var paths []string
 	for _, route := range execCtx.OrchestratorStep.PredefinedRoutes {
-		if route.SubAgentStep == nil || !isScriptedStep(route.SubAgentStep, getAgentConfigs(route.SubAgentStep)) {
+		if route.SubAgentStep == nil || !isScriptedStep(route.SubAgentStep) {
 			continue
 		}
 		paths = append(paths, filepath.ToSlash(filepath.Join(hcpo.GetWorkspacePath(), hcpo.scriptedSourceDir(route.SubAgentStep.GetID()))))
@@ -188,7 +188,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) scriptedRouteDirectTools(execCtx *Sub
 	execCtx.ScriptToolNames = map[string]string{}
 	var definitions []mcpagent.ToolDefinition
 	for _, route := range execCtx.OrchestratorStep.PredefinedRoutes {
-		if route.SubAgentStep == nil || !isScriptedStep(route.SubAgentStep, getAgentConfigs(route.SubAgentStep)) {
+		if route.SubAgentStep == nil || !isScriptedStep(route.SubAgentStep) {
 			continue
 		}
 		parameters := scriptedParameterDefinitions(route.SubAgentStep)

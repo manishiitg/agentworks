@@ -69,6 +69,9 @@ func requireCurrentWorkflowContractForManualRun(ctx context.Context, workspacePa
 	if !found {
 		return fmt.Errorf("workflow_contract_check_failed: workflow.json was not found at %s; no execution was started", workspacePath)
 	}
+	if workflowContractNeedsRecreation(manifest) {
+		return fmt.Errorf("%s", oldWorkflowContractMessage)
+	}
 	current := workflowContractVersionForUpgrade(manifest)
 	if manifestContractIsExecutionCompatible(manifest) && manifest.CodeLayoutVersion == 1 {
 		return nil
