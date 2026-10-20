@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BookOpen, Cpu, DollarSign, HardDrive, Files, Hand, Laptop, LayoutDashboard, MessageSquareText, Route, Settings, Terminal, Database } from 'lucide-react'
+import { BookOpen, Cpu, DollarSign, Files, Hand, Laptop, LayoutDashboard, MessageSquareText, Route, Settings, Terminal, Database } from 'lucide-react'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
 import { WorkspaceAgentBridgeRows } from '../../components/workspace/WorkspaceAgentBridgeRows'
 import { WorkspaceAutomationRows, WorkspaceChannelRows, WorkspaceConnectionRows } from '../../components/workspace/WorkspaceProjectNavigation'
@@ -59,7 +59,6 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       <WorkspaceConnectionRows onOpen={openConnection} workMode enabledPanels={enabledPanels} details={{ 'mcp:connected': status.mcps === undefined ? undefined : status.mcps ? String(status.mcps) : 'None' }} />
       {projectId && <Row icon={Laptop} detail={status.computerChats === undefined ? undefined : status.computerChats ? String(status.computerChats) : 'None'} onClick={() => openConnection('agents')}>Chats from your computer</Row>}
       {allowed('identity') && <Row icon={Laptop} onClick={() => { setWorkspaceViewTarget('identity', 'location'); onOpen('identity') }}>Local laptop</Row>}
-      {allowed('identity') && <Row icon={HardDrive} onClick={() => openIdentity('location')}>Laptop access</Row>}
       <WorkspaceAgentBridgeRows />
     </Group>}
     <Group title="Ops" collapsed>
