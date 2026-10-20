@@ -138,7 +138,7 @@ func reportPreviewAllowedPath(relative string) (string, bool) {
 			return normalized, true
 		}
 	}
-	if normalized == "soul.md" || normalized == "workflow.json" {
+	if normalized == "soul.md" || normalized == "workflow.json" || normalized == "MEMORY.md" {
 		return normalized, true
 	}
 	return "", false
@@ -235,7 +235,7 @@ func (api *StreamingAPI) handleReportPreviewFile(w http.ResponseWriter, r *http.
 	}
 	relative, ok := reportPreviewAllowedPath(r.URL.Query().Get("path"))
 	if !ok {
-		http.Error(w, "path must be under db/, knowledgebase/, docs/, planning/, evaluation/, costs/ or variables/", http.StatusBadRequest)
+		http.Error(w, "Choose a file in the dashboard data folders, or the project MEMORY.md, soul.md or workflow.json.", http.StatusBadRequest)
 		return
 	}
 	relative, err = api.resolveDashboardDocument(r, workspacePath, relative)

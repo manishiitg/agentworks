@@ -72,18 +72,13 @@ interface ReportViewProps {
 
 const normalizeSource = normalizeReportSource
 
-async function readWorkspaceText(filepath: string): Promise<string | null> {
+async function readWorkspaceText(workspacePath: string, path: string): Promise<string | null> {
   try {
-    const marker = filepath.lastIndexOf('/db/')
-    if (marker >= 0) {
-      const response = await api.get<string>('/api/workflow/report-preview/file', {
-        params: { workspace: filepath.slice(0, marker), path: filepath.slice(marker + 1) },
-        responseType: 'text',
-      })
-      return typeof response.data === 'string' ? response.data : null
-    }
-    const response = await agentApi.getPlannerFileContent(filepath)
-    return response?.success && typeof response.data?.content === 'string' ? response.data.content : null
+    const response = await api.get<string>('/api/workflow/report-preview/file', {
+      params: { workspace: workspacePath, path },
+      responseType: 'text',
+    })
+    return typeof response.data === 'string' ? response.data : null
   } catch { return null }
 }
 
@@ -109,7 +104,7 @@ function useReportDataApi(workspacePath: string, sendChatMessage: ReportDataApi[
   return useMemo(() => {
     const getText = async (path: string): Promise<string | null> => {
       const allowed = allowedReportPath(path)
-      return allowed ? readWorkspaceText(`${workspacePath}/${allowed}`) : null
+      return allowed ? readWorkspaceText(workspacePath, allowed) : null
     }
     const renderMarkdown = (markdown: string): string => renderReportMarkdown(markdown)
     const mediaUrl = async (allowedPath: string): Promise<string> => {
@@ -219,7 +214,7 @@ async function loadReportDocument(workspacePath: string, documentPath = 'db/repo
     allowedDocumentPath = data.resolved_path
   }
   const path = `${normalizeSource(workspacePath)}/${allowedDocumentPath}`
-  const html = await readWorkspaceText(path)
+  const html = await readWorkspaceText(normalizeSource(workspacePath), allowedDocumentPath)
   if (html == null) return null
   const title = html.match(/<title[^>]*>\s*([^<]+?)\s*<\/title>/i)?.[1]?.trim()
   return { path, html, label: title || 'Dashboard', questions }

@@ -10,7 +10,7 @@ import remarkGfm from 'remark-gfm'
 import { rewriteReportMarkdownReferences } from './reportMarkdownLinks'
 
 export const REPORT_ALLOWED_ROOTS = ['db/', 'dashboard/', 'knowledgebase/', 'docs/', 'planning/', 'evaluation/', 'costs/', 'variables/']
-const REPORT_ALLOWED_FILES = ['soul.md', 'workflow.json']
+const REPORT_ALLOWED_FILES = ['soul.md', 'workflow.json', 'MEMORY.md']
 
 export function normalizeReportSource(path: string): string {
   return path.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+/g, '/')

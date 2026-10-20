@@ -14,6 +14,7 @@ vi.mock('./reportWidgets/ReportQuestionFrame', () => ({ ReportQuestionFrame: ({ 
 vi.mock('./ShareDashboardButton', () => ({ ShareDashboardButton: () => null }))
 vi.mock('./WorkspacePanelGuideButton', () => ({ WorkspacePanelGuideButton: () => null }))
 import { ReportView } from './ReportViewer'
+import { allowedReportPath } from './reportWidgets/reportMarkdown'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterEach(() => vi.resetAllMocks())
 async function mount(path?: string) {
@@ -38,4 +39,12 @@ it('keeps an explicit authored document instead of replacing it with a default',
  mocks.get.mockResolvedValue({ data: '<html><title>Actual project dashboard</title></html>' })
  expect(await mount('db/reports/team.html')).toBe('Crew/project/db/reports/team.html')
  expect(mocks.catalog).not.toHaveBeenCalled()
+})
+
+it('reads project memory through the same bound report endpoint as dashboard files', async () => {
+ expect(allowedReportPath('MEMORY.md')).toBe('MEMORY.md')
+ expect(allowedReportPath('../MEMORY.md')).toBe('')
+ mocks.get.mockResolvedValue({ data: '<html><title>Actual project dashboard</title></html>' })
+ expect(await mount('MEMORY.md')).toBe('Crew/project/MEMORY.md')
+ expect(mocks.get).toHaveBeenCalledWith('/api/workflow/report-preview/file', expect.objectContaining({ params: { workspace: 'Crew/project', path: 'MEMORY.md' } }))
 })

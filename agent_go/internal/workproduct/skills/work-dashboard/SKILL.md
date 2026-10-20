@@ -156,7 +156,10 @@ on the server; interactive motion does not require that renderer.
   only through `mutate_workflow_db`. Never open or edit `db/db.sqlite`, WAL, or
   SHM files directly.
 - Dashboard documents can read allowed project files with `window.report.get`,
-  `getText`, or `getHtml` when a database is unnecessary.
+  `getText`, or `getHtml` when a database is unnecessary. For example,
+  `await window.report.getText('MEMORY.md')` reads this project's memory through
+  the same authorized report file endpoint. Handle a missing file with a useful
+  empty state; sharing and connection file grants still apply.
 - A Dashboard action that needs the agent to change project state may call
   `window.report.sendChatMessage(message, { requestId })`. Use a stable,
   item-specific request ID and make the message describe the exact requested
