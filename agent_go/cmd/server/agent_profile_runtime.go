@@ -271,7 +271,6 @@ func agentProfileRuntimeWorkspace(userID, workspacePath string) string {
 // logical form alone resolves outside any user tree and finds nothing — which
 // made restored Crews start a fresh native session (server A 2026-09-24).
 func productConversationRuntimeWorkspace(userID, selectedFolder string) string {
-	selectedFolder = selectedFolder
 	ref := workspaceref.MustParse(filepath.ToSlash(strings.TrimSpace(selectedFolder)))
 	if ref.IsEmpty() && !ref.IsUsersRoot() {
 		return ""

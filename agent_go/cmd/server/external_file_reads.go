@@ -30,10 +30,6 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	if err != nil {
 		return wf.Result{}, &externalUpstreamError{400, "invalid workflow root"}
 	}
-	// A migrated crew's old root keeps working (PLAT-442 step 4).
-	if workspaceref.MustParse(rootPath).HasOwner() {
-		rootPath = rootPath
-	}
 	parts := strings.Split(rootPath, "/")
 	crewRoot := externalIsCrewRoot(rootPath)
 	// A Flow release folder is allowed only when it maps back to a live Flow;
