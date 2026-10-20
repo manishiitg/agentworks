@@ -12,7 +12,7 @@ import (
 // storage/routing identities, never a second set of workspace permissions.
 func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
 	add("workspace", "Your private and shared Crews. list/get inspect current access; create starts Only me. ask and chat actions use your own conversations; update/export/import use existing Builder authority. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
-		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "costs", "create", "update", "export", "import", "ask", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move"}},
+		"action":       map[string]any{"type": "string", "enum": []any{"list", "get", "costs", "create", "update", "export", "import", "ask", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "set_chat_model", "chat_tools", "chat_tool", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move"}},
 		"workspace_id": externalString("Crew workspace ID from workspace action=list."),
 		"name":         externalString("Project or new chat name."), "message": externalString("Message for ask."),
 		"session_id":   externalString("An earlier chat session from action=chats, for read/delete."),
@@ -24,7 +24,12 @@ func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[strin
 		"chat_id":          externalString("A chat name/id you can access; omit to use your caller conversation."),
 		"query":            externalString("Optional list filter."), "submission_id": externalString("Stable submission ID for a retry of the same ask."),
 		"wait_seconds": externalInteger(0, 25), "after": externalInteger(0, 1<<30),
-		"changes": map[string]any{"type": "object"}, "spec": map[string]any{"type": "object", "description": "Creation/import settings: name, icon, role, purpose, mode (dev/cowork), llm_config, selected_skills, templates, files, functions and schedules."},
+		"engine":           externalString("For set_chat_model: a provider from this Crew. Omit to use the Crew model."),
+		"model_id":         externalString("For set_chat_model: the model for that provider."),
+		"reasoning_effort": externalString("For set_chat_model: optional reasoning level."),
+		"tool_name":        externalString("For chat_tool: exact native name from chat_tools."),
+		"arguments":        map[string]any{"type": "object"},
+		"changes":          map[string]any{"type": "object"}, "spec": map[string]any{"type": "object", "description": "Creation/import settings: name, icon, role, purpose, mode (dev/cowork), llm_config, selected_skills, templates, files, functions and schedules."},
 	}, "action")
 }
 
@@ -227,7 +232,7 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 	}
 
 	member := map[string]string{"costs": "get_crew_costs", "ask": "ask_crew", "update": "update_crew", "export": "export_crew", "import": "import_crew"}[action]
-	if chatAction := map[string]string{"chats": "list", "read_chat": "read", "open_chat": "side_open", "rename_chat": "side_rename", "close_chat": "side_close", "new_chat": "new", "delete_chat": "delete", "stop": "stop"}[action]; chatAction != "" {
+	if chatAction := map[string]string{"chats": "list", "read_chat": "read", "open_chat": "side_open", "rename_chat": "side_rename", "close_chat": "side_close", "new_chat": "new", "delete_chat": "delete", "stop": "stop", "set_chat_model": "set_model", "chat_tools": "tools", "chat_tool": "tool"}[action]; chatAction != "" {
 		memberArgs["action"] = chatAction
 		member = "manage_crew_chats"
 	}

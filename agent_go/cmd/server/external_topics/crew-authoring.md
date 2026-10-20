@@ -97,6 +97,7 @@ type, properties, required, items, enum).
 - Builders change the Crew; people with Run access use its shared chat, dashboard and published functions under the current server checks. Share never grants Builder tools or access to Builder conversations.
 - For a conversation, use `workspace action=ask` with the discovered workspace ID and optional `chat_id`. Keep the returned chat and submission receipt; read progress and replies with `workspace action=read_chat`, `chat_id`, `after` and `wait_seconds` (up to 25). Ask without a chat ID opens or uses the caller's own conversation. A started turn is not a finished answer; inspect its returned status.
 - Ask is available to people the Crew is shared with. Inside a Crew, `schedule_message_wakeup` can set one timed wakeup in its own conversation; it does not fire while the scheduler is paused.
+- Use `workspace action=set_chat_model` with `workspace_id`, `chat_id`, `engine`, `model_id` and optional `reasoning_effort` to select one chat's model. Omit `engine` to use the Crew's model again.
 - Named function tabs keep earlier calls' conversation; `execution: "fresh"` starts without it.
   Put lasting instructions and shared knowledge in `MEMORY.md` or the Crew's files,
   and say how to use them in `purpose` and function `instructions`.
@@ -223,7 +224,7 @@ unattached private accounts and server-wide raw logs are excluded.
 
 Agent-to-agent messages (AgentBridge) use an inbox for apps without a terminal, through their normal MCP sign-in and the discovered `messages` schema. Nothing is pushed; check when asked or at the start of a conversation. For live delivery, install the CLI from Connect AI agents and run `agentworks attach` for this chat. Recipients show Live now or Inbox. Named addresses do not bypass Crew/project scopes or access.
 
-Use `manage_crew_chats action=tools` with an explicit `chat_id` from your own live chat list for native UI/background schemas. Execute a returned `tool_name` through `action=tool` and its exact `arguments`. UI actions are presentation only and return the existing browser receipt, including unavailable/ambiguous states. Starting background work needs editable Crew ownership, `crews:write`, unrestricted file consent and an initialized manual chat; retained filesystem grants must fit this connection. Native completion notifications return to that chat. Session status/cancellation never crosses to another person's session. Human confirmation and account sign-in continue through their existing Needs you/Integrations flows.
+Use `workspace action=chat_tools` with `workspace_id` and an explicit `chat_id` from your own live chat list for native UI/background schemas. Execute a returned `tool_name` through `action=chat_tool` and its exact `arguments`. UI actions are presentation only and return the existing browser receipt, including unavailable/ambiguous states. Starting background work needs editable Crew ownership, `crews:write`, unrestricted file consent and an initialized manual chat; retained filesystem grants must fit this connection. Native completion notifications return to that chat. Session status/cancellation never crosses to another person's session. Human confirmation and account sign-in continue through their existing Needs you/Integrations flows.
 
 ## Import work from your computer
 

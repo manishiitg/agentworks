@@ -201,7 +201,7 @@ func TestExternalCrewSessionToolsOverMCP(t *testing.T) {
 	cli := dialExternalMCP(t, ctx, server.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, cli)
 	for _, name := range []string{"list_ui_capabilities", "get_ui_state", "list_agents"} {
-		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "manage_crew_chats", "arguments": map[string]any{"crew_id": "team", "chat_id": "main", "action": "tool", "tool_name": name, "arguments": map[string]any{}}})
+		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "workspace", "arguments": map[string]any{"workspace_id": "work:team", "chat_id": "main", "action": "chat_tool", "tool_name": name, "arguments": map[string]any{}}})
 		requireRemoteSuccess(t, result, name)
 		raw, _ := json.Marshal(result)
 		if strings.Contains(string(raw), "private background task") {
