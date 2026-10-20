@@ -469,7 +469,7 @@ func discoveryModelOptions(provider string) []string {
 	case "pi-cli":
 		return piCuratedModelIDs()
 	case "muse-cli":
-		return []string{"muse-wonder-1.0", "muse-spark-1.3-contributor"}
+		return []string{llm.DefaultMuseCLIModel, "muse-wonder-1.0", "muse-spark-1.3-contributor"}
 	case "agy-cli":
 		return []string{"gemini-3.8-flash-high"}
 	case "claude-code":
@@ -1058,7 +1058,7 @@ func validateMuseCLI(apiKey string) llm.APIKeyValidationResponse {
 
 	model, err := llm.InitializeLLM(llm.Config{
 		Provider: llm.ProviderMuseCLI,
-		ModelID:  "muse-spark-1.3-contributor",
+		ModelID:  llm.DefaultMuseCLIModel,
 		APIKeys:  keys,
 		Context:  context.Background(),
 	})

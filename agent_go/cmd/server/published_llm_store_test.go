@@ -124,6 +124,8 @@ func TestMuseWonderPublishedWhenMuseAvailable(t *testing.T) {
 		"auto:muse-cli:muse-wonder-1.0:high",
 		"auto:muse-cli:muse-wonder-1.0:xhigh",
 		"auto:muse-cli:muse-spark-1.3-contributor:high",
+		"auto:muse-cli:muse-spark-1.3:high",
+		"auto:muse-cli:muse-spark-1.3:xhigh",
 	} {
 		if !containsPublishedLLMID(llms, want) {
 			t.Fatalf("auto-published ids missing %q; got %#v", want, publishedLLMIDs(llms))
@@ -134,7 +136,6 @@ func TestMuseWonderPublishedWhenMuseAvailable(t *testing.T) {
 	for _, unwanted := range []string{
 		"auto:muse-cli:muse-spark-1.3-contributor:xhigh",
 		"auto:muse-cli:muse-wonder-full-1.0:high",
-		"auto:muse-cli:muse-spark-1.3:high",
 		"auto:muse-cli:muse-spark-1.2-contributor:high",
 		"auto:muse-cli:muse-spark-1.2:high",
 	} {

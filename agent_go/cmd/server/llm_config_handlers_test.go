@@ -285,7 +285,7 @@ func TestMuseCLIIsPublishedAsCodingAgent(t *testing.T) {
 	if candidate.Usable {
 		t.Fatal("usable = true, want false when muse runtime and auth are missing")
 	}
-	wantOptions := []string{"muse-wonder-1.0", "muse-spark-1.3-contributor"}
+	wantOptions := []string{"muse-spark-1.3", "muse-wonder-1.0", "muse-spark-1.3-contributor"}
 	if len(candidate.Options) != len(wantOptions) {
 		t.Fatalf("options = %v, want %v", candidate.Options, wantOptions)
 	}

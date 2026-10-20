@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	llm "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
 )
@@ -272,7 +273,7 @@ func autoPublishedCodingAgentModelMetadata(provider string) []*llmtypes.ModelMet
 		if modelID == "" || seen[modelID] || isCodingAgentAliasModel(provider, modelID) {
 			continue
 		}
-		if provider == "muse-cli" && modelID != "muse-wonder-1.0" && modelID != "muse-spark-1.3-contributor" {
+		if provider == "muse-cli" && modelID != llm.DefaultMuseCLIModel && modelID != "muse-wonder-1.0" && modelID != "muse-spark-1.3-contributor" {
 			// Auto-publish only the current Muse picks; the rest of the
 			// catalog stays available for manual Library publishing.
 			continue

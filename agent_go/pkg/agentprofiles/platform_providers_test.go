@@ -32,6 +32,9 @@ func TestPlatformCodingProvidersKeepRoleDefaultAndOfferRegistry(t *testing.T) {
 	if len(original.Runtime.ProviderOptions[0].Models) != 1 {
 		t.Fatal("modified original profile")
 	}
+	if choices["muse-cli"].ModelID != "muse-spark-1.3" {
+		t.Fatalf("Muse product default = %q, want regular Spark 1.3", choices["muse-cli"].ModelID)
+	}
 	museChoices := map[string]bool{}
 	for _, model := range PlatformModelMetadata() {
 		if model.Provider == "muse-cli" {
