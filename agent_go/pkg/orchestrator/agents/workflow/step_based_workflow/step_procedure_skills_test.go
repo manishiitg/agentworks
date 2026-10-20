@@ -20,7 +20,7 @@ func TestStepProceduresResolveOnDemand(t *testing.T) {
 	common.SetSessionShellEnv(session, map[string]string{"SECRET_SELECTED": "synthetic-value"})
 	c.SetSecrets([]orchestrator.SecretEntry{{Name: "SELECTED", Value: "synthetic-value"}, {Name: "OTHER", Value: "unused-value"}})
 	cfg := &agents.OrchestratorAgentConfig{MCPSessionID: session, UseCodeExecutionMode: true}
-	identity, supplements := c.assembleStepRuntimeIdentity(cfg, nil, false, []string{"query_workflow_db", "mutate_workflow_db", "agent_browser"}, false, true)
+	identity, supplements := c.assembleStepRuntimeIdentity(cfg, nil, []string{"query_workflow_db", "mutate_workflow_db", "agent_browser"}, false, true)
 	var names []string
 	for _, skill := range identity {
 		names = append(names, skill.Name)
@@ -55,7 +55,7 @@ func TestStepProceduresResolveOnDemand(t *testing.T) {
 	// WORKFLOW_KB_ACCESS environment, through the same effectiveStepSkills path
 	// used by factories and preview.
 	writeSkills := c.effectiveStepSkills(&AgentConfigs{KnowledgebaseAccess: KBAccessReadWrite})
-	writeIdentity, _ := c.assembleStepRuntimeIdentity(cfg, writeSkills, false, []string{"query_workflow_db"}, false, false)
+	writeIdentity, _ := c.assembleStepRuntimeIdentity(cfg, writeSkills, []string{"query_workflow_db"}, false, false)
 	found := false
 	for _, skill := range writeIdentity {
 		if skill.Name == "workflow-knowledgebase" {

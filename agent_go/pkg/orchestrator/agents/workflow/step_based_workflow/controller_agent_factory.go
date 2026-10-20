@@ -617,14 +617,11 @@ func appendAdditionalWorkflowReadPaths(readPaths []string, baseWorkspacePath str
 	return readPaths
 }
 
-// appendLearningReadPaths grants a step its shared workflow guidance and its own
-// saved implementation/helpers. It deliberately does not grant the learnings root
+// appendLearningReadPaths grants a step its own saved implementation/helpers. It deliberately does not grant the learnings root
 // or another step's folder, and it never grants write access.
 func appendLearningReadPaths(readPaths []string, baseWorkspacePath string, stepID string) []string {
-	readPaths = append(readPaths, filepath.Join(baseWorkspacePath, LearningsFolderName, GlobalLearningID))
-
 	stepID = strings.TrimSpace(stepID)
-	if stepID == "" || stepID == GlobalLearningID || filepath.Base(stepID) != stepID || stepID == "." || stepID == ".." {
+	if stepID == "" || filepath.Base(stepID) != stepID || stepID == "." || stepID == ".." {
 		return readPaths
 	}
 	return append(readPaths, filepath.Join(baseWorkspacePath, LearningsFolderName, stepID))
@@ -1512,8 +1509,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 		return nil, fmt.Errorf("base agent is nil after creation for %s - this should never happen", agentName)
 	}
 	// Inject supplementary prompts (skills, secrets, browser instructions)
-	attachGlobalLearnings := learningsAccess != LearningsAccessNone
-	supplements := hcpo.appendSupplementaryPrompts(ctx, baseAgent, config, effectiveSkills, attachGlobalLearnings, registeredToolNames(toolsToRegister), isScriptedStep(planStep))
+
+	supplements := hcpo.appendSupplementaryPrompts(ctx, baseAgent, config, effectiveSkills, registeredToolNames(toolsToRegister), isScriptedStep(planStep))
 	if executionAgent, ok := agent.(*WorkflowExecutionOnlyAgent); ok {
 		executionAgent.runtimeSupplements = supplements
 	}
@@ -1962,9 +1959,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) createOrchestratorAgent(ctx context.C
 	effectiveSkills := hcpo.effectiveStepSkills(stepConfig)
 	if baseAgent := agent.GetBaseAgent(); baseAgent != nil {
 		if baseAgent.Agent() != nil {
-			attachGlobalLearnings := hcpo.resolveLearningsAccess(stepConfig) != LearningsAccessNone
+
 			// An agent step is never scripted (PLAT-287).
-			supplements := hcpo.appendSupplementaryPrompts(ctx, baseAgent, config, effectiveSkills, attachGlobalLearnings, registeredToolNames(toolsToRegister), false)
+			supplements := hcpo.appendSupplementaryPrompts(ctx, baseAgent, config, effectiveSkills, registeredToolNames(toolsToRegister), false)
 			if executionAgent, ok := agent.(*WorkflowExecutionOnlyAgent); ok {
 				executionAgent.runtimeSupplements = supplements
 			}

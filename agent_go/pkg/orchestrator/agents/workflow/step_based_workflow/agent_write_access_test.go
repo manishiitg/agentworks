@@ -220,7 +220,7 @@ func TestAgentTemplateVarsReflectItemWriteAccess(t *testing.T) {
 	if got := vars["KbAccess"]; got != KBAccessReadWrite {
 		t.Fatalf("KbAccess = %q, want %q", got, KBAccessReadWrite)
 	}
-	if note := vars["AgentAccessNote"]; !strings.Contains(note, "db/") || !strings.Contains(note, "knowledgebase/notes/") || !strings.Contains(note, "learnings/_global/") {
+	if note := vars["AgentAccessNote"]; !strings.Contains(note, "mutate_workflow_db") || !strings.Contains(note, "knowledgebase/notes/") || strings.Contains(note, "learnings/_global/") {
 		t.Fatalf("access note does not list item write grants: %q", note)
 	}
 	if got := vars["KBGuidanceBlock"]; !strings.Contains(got, "Knowledgebase contribution") {

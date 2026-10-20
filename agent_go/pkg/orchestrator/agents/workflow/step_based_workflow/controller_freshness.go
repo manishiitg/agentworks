@@ -78,10 +78,6 @@ type FreshnessLedger struct {
 	History          []FreshnessEntry         `json:"history,omitempty"`
 }
 
-func learningsFreshnessLedgerPath() string {
-	return filepath.Join("learnings", GlobalLearningID, freshnessLedgerFileName)
-}
-
 func knowledgebaseFreshnessLedgerPath() string {
 	return filepath.Join(KnowledgebaseFolderName, freshnessLedgerFileName)
 }
@@ -258,25 +254,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) recordStoreConfirmation(
 	return nil
 }
 
-// learningsItemsAbsDir / knowledgebaseItemsAbsDir resolve the absolute on-disk
-// directories whose `.md` files are the per-item knowledge units.
-func (hcpo *StepBasedWorkflowOrchestrator) learningsItemsAbsDir() string {
-	return filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), "learnings", GlobalLearningID)
-}
-
 func (hcpo *StepBasedWorkflowOrchestrator) knowledgebaseItemsAbsDir() string {
 	return filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), KnowledgebaseFolderName, KBNotesFolderName)
-}
-
-// recordLearningsConfirmation stamps that a run re-confirmed the learnings store,
-// distinguishing an actual update from a reviewed-unchanged confirmation, and
-// reconciles per-reference-file freshness.
-func (hcpo *StepBasedWorkflowOrchestrator) recordLearningsConfirmation(ctx context.Context, runFolder, stepID string, updated bool) error {
-	action := freshnessActionConfirmedUnchanged
-	if updated {
-		action = freshnessActionUpdated
-	}
-	return hcpo.recordStoreConfirmation(ctx, "learnings", learningsFreshnessLedgerPath(), hcpo.learningsItemsAbsDir(), runFolder, stepID, action)
 }
 
 // recordKnowledgebaseConfirmation stamps that a run reviewed the knowledgebase

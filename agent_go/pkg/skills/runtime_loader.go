@@ -26,58 +26,6 @@ import (
 // could resolve rather than failing the whole attach. This matches the
 // behavior of the old buildSkillPrompt path which silently fell back to
 // a one-line stub for unreadable skills.
-//
-// LoadGlobalSkill returns a small "pointer" skill that directs the
-// agent to read the workflow's accumulated learnings bundle at
-// learnings/_global/ (SKILL.md + references/ + any scripts/, assets/)
-// from the workflow folder, instead of copying the bundle into the
-// projected skills directory.
-//
-// Why a pointer instead of a full bundle copy: the global learnings
-// can be large and grows over time, with multiple references/ files.
-// Copying the tree into .agents/skills/workflow-learnings/ on every
-// session launch duplicates the content and risks drift if the workflow
-// updates _global/ mid-session. The pointer skill stays tiny (one
-// short SKILL.md), and the agent reads the authoritative files
-// from the workflow folder when it needs them.
-//
-// The skill is named "workflow-learnings" (not the on-disk folder name
-// "_global") so listings and description-based matching carry meaning;
-// the learnings folder itself keeps the _global name.
-//
-// Returns nil when the workflow has no _global/SKILL.md yet — no
-// point attaching a pointer to a file that doesn't exist.
-//
-// workflowPath is workspace-relative (e.g. "Workflow/HDFC-Personal-Accounts").
-func LoadGlobalSkill(workspaceAPIURL, workflowPath string) *llmtypes.Skill {
-	if strings.TrimSpace(workflowPath) == "" {
-		return nil
-	}
-	client := NewWorkspaceAPIClient(workspaceAPIURL)
-	skillPath := path.Join(workflowPath, "learnings", "_global", "SKILL.md")
-	if content, err := client.ReadFile(skillPath); err != nil || strings.TrimSpace(content) == "" {
-		return nil
-	}
-	body := fmt.Sprintf(`This skill is a pointer to the workflow's accumulated execution know-how.
-
-When you need to recall how a step worked in this workflow — selectors, API quirks, timing patterns, conventions established by prior runs — read the authoritative files in the workflow folder:
-
-- %s/learnings/_global/SKILL.md (the main guide)
-- %s/learnings/_global/references/ (per-topic detail files, if any)
-- %s/learnings/_global/scripts/ and assets/ (if any)
-
-These files are written by step agents during successful runs and shared across the workflow. They live in the workflow folder rather than this skills directory so they remain the single source of truth as the workflow learns more.
-
-If a referenced file does not exist, the workflow has not accumulated that piece of knowledge yet — proceed with general best practices for that area.
-`, workflowPath, workflowPath, workflowPath)
-	return &llmtypes.Skill{
-		Name:        "workflow-learnings",
-		Description: "Pointer to the workflow's accumulated learnings (selectors, timings, API quirks, conventions). Read learnings/_global/ in the workflow folder for the full content.",
-		Content:     body,
-		Source:      llmtypes.SkillSource{Origin: "global-learnings"},
-	}
-}
-
 func LoadAttachable(workspaceAPIURL string, selectedSkills []string) []*llmtypes.Skill {
 	return LoadAttachableIn(workspaceAPIURL, "", selectedSkills)
 }
@@ -103,8 +51,7 @@ func WithAgentBrowserCapability(selectedSkills []string, hasAgentBrowser bool) [
 }
 
 // LoadAttachableIn resolves each skill against the given workspace first, then
-// the user-level skills folder. LoadGlobalSkill already took a workspace path;
-// attachment did not, so a workspace's own skills/ folder could never be found.
+// the user-level skills folder.
 func LoadAttachableIn(workspaceAPIURL, workspacePath string, selectedSkills []string) []*llmtypes.Skill {
 	if len(selectedSkills) == 0 {
 		return nil
@@ -172,8 +119,7 @@ func loadOneAttachable(workspaceAPIURL, workspacePath, folderName string) (*llmt
 // Imported skill bodies above lazySkillBodyLineThreshold lines are injected
 // as an excerpt plus a pointer instead of in full. Reference-heavy imported
 // skills run 300-800 lines (~1.5-3k tokens each), paid on every run of every
-// step that selects them whether or not the depth is needed. This mirrors the
-// LoadGlobalSkill pointer pattern: the prompt carries the quick-start head,
+// step that selects them whether or not the depth is needed. For large selected skills, the prompt carries the quick-start head,
 // and the agent reads the authoritative on-disk SKILL.md (read access comes
 // from BuildSkillFolderGuardPaths) only when it needs more. Small skills are
 // injected whole — an excerpt of a skill that fits anyway just loses detail.

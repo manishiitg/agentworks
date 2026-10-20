@@ -1,7 +1,6 @@
 package step_based_workflow
 
 import (
-	"context"
 	"fmt"
 	"strings"
 )
@@ -16,7 +15,7 @@ const (
 // resolveLearningsAccess returns the effective learnings_access for a step.
 // Explicit value wins; empty falls back to auto-migration:
 //   - learning_objective non-empty → "read-write" (preserves legacy behavior)
-//   - learning_objective empty     → "read"       (new default — all steps see _global/)
+//   - learning_objective empty     → "read"       (legacy per-step guides)
 //
 // An explicit bad value is normalized to "read" with a warning at validation time.
 func resolveLearningsAccess(agentConfigs *AgentConfigs) string {
@@ -38,7 +37,7 @@ func resolveLearningsAccess(agentConfigs *AgentConfigs) string {
 }
 
 // canReadLearnings reports whether this step's execution prompt should include
-// the global SKILL.md content. Read is the default unless explicitly set to
+// legacy per-step guides. Read is the default unless explicitly set to
 // "none"; routing steps always skip to keep their prompts lean.
 func canReadLearnings(agentConfigs *AgentConfigs, step PlanStepInterface) bool {
 	if step != nil && isRoutingStep(step) {
@@ -118,33 +117,4 @@ func validateExecutionLLMChange(pinned bool, reason string) error {
 	}
 	return fmt.Errorf("execution_llm requires execution_llm_reason: a model pin outranks execution_tier entirely, so it silently overrides every tier decision above it and will not follow provider-profile updates. Cite the owning architecture_review finding (and the human_input_id if it was approved), the current model, and the capability/cost comparison that justified the pin.%s",
 		reasonEscapeHatch)
-}
-
-// findStepInPlan recursively finds a step by ID in the plan structure
-// LoadGlobalLearningHistory loads and formats the global workflow-level learning history.
-// Returns empty string if no global learnings found or on error.
-func (hcpo *StepBasedWorkflowOrchestrator) LoadGlobalLearningHistory(
-	ctx context.Context,
-) (string, error) {
-	if !hcpo.platformStoresEnabled() {
-		return "", nil
-	}
-	globalLearningsPath := hcpo.getLearningsBasePath() + "/" + GlobalLearningID
-
-	// Read learning files from global folder
-	learningFiles, err := hcpo.readStepLearningFiles(ctx, globalLearningsPath)
-	if err != nil {
-		hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to read global learning files from %s: %v - proceeding without global learnings", globalLearningsPath, err))
-		return "", nil
-	}
-
-	if len(learningFiles) == 0 {
-		return "", nil
-	}
-
-	// Format learnings for system prompt
-	formattedLearnings, _ := hcpo.formatStepLearningFilesAsHistory(learningFiles)
-	hcpo.GetLogger().Info(fmt.Sprintf("✅ Loaded %d global learning file(s) for execution agent system prompt", len(learningFiles)))
-
-	return formattedLearnings, nil
 }

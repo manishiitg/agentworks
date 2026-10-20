@@ -23,7 +23,7 @@ func TestGoalReflectionSkillIsNotAttached(t *testing.T) {
 		t.Fatalf("stale skill selection prevented loading: %+v", loaded)
 	}
 	c := newAgentClosingTestOrchestrator(t)
-	identity, _ := c.assembleStepRuntimeIdentity(&agents.OrchestratorAgentConfig{}, nil, false, []string{"query_workflow_db"}, false, false)
+	identity, _ := c.assembleStepRuntimeIdentity(&agents.OrchestratorAgentConfig{}, nil, []string{"query_workflow_db"}, false, false)
 	for _, skill := range identity {
 		if skill.Name == "workflow-reflection" {
 			t.Fatal("automatic reflection skill attached")

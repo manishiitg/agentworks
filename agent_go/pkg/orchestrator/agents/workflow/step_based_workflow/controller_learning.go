@@ -16,7 +16,6 @@ import (
 // Returns a map of filename -> content
 func (hcpo *StepBasedWorkflowOrchestrator) readStepLearningFiles(ctx context.Context, stepLearningsPath string) (map[string]string, error) {
 	learningFiles := make(map[string]string)
-	allowSkillIndex := filepath.Base(filepath.Clean(stepLearningsPath)) == GlobalLearningID
 
 	// List all files in the step folder
 	files, err := hcpo.BaseOrchestrator.ListWorkspaceFiles(ctx, stepLearningsPath)
@@ -36,8 +35,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) readStepLearningFiles(ctx context.Con
 	}
 
 	// Read root-level learning files from the step folder.
-	// Only the shared _global folder is allowed to surface SKILL.md as a reusable
-	// index. Step-local SKILL.md is deprecated; scripted steps should persist
+	// Step-local SKILL.md is deprecated; scripted steps should persist
 	// code artifacts (main.py, helpers) here instead.
 	// Exclude metadata files and temporary files used for internal tracking only.
 	for _, file := range files {
@@ -49,7 +47,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) readStepLearningFiles(ctx context.Con
 		if file == "_learning_new.md" {
 			continue
 		}
-		if file == "SKILL.md" && !allowSkillIndex {
+		if file == "SKILL.md" {
 			continue
 		}
 		if strings.HasSuffix(file, ".md") {

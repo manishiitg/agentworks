@@ -1002,29 +1002,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentUserMessage(ctx context.C
 	if err != nil {
 		return "", err
 	}
-	if writeAccess.Learnings {
-		restoreDirectLearningTurn := hcpo.prepareDirectLearningTurn(runtime.Agent, []string{filepath.Join(hcpo.GetWorkspacePath(), LearningsFolderName, GlobalLearningID)})
-		defer restoreDirectLearningTurn()
-	}
-	// Historical authored learning items diff_patch the SHARED
-	// learnings/_global files. Serialize it against every other direct-learnings
-	// writer (legacy scripted learning uses the same mutex —
-	// see controller_execution.go — and learnings_direct.go documents the
-	// contract). Without this, parallel agent steps race on SKILL.md.
-	// Scoped to Kind=="learning" only: locking every learnings-writable work
-	// turn would serialize whole parallel sequences.
-	// Not for a legacy delegating orchestrator: children may take this mutex,
-	// and the parent waits for them inside the turn (reconcile) — holding the lock here would deadlock.
-	// The orchestrator never held it before the executor merge either.
-	if strings.TrimSpace(item.Kind) == "learning" && writeAccess.Learnings && delegation == nil {
-		learningsGlobalFileMutex.Lock()
-		defer learningsGlobalFileMutex.Unlock()
-	}
-	learningRefBefore := ""
-	if strings.TrimSpace(item.Kind) == "learning" && writeAccess.Learnings {
-		learningRefBefore = hcpo.snapshotCanonicalArtifactRef(ctx, filepath.Join(hcpo.GetWorkspacePath(), LearningsFolderName, GlobalLearningID))
-	}
-
 	message := item.Message
 	if !step.AuthoredPrompt {
 		message = strings.TrimSpace(message)
@@ -1173,23 +1150,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeAgentUserMessage(ctx context.C
 	}
 	session.LastRuntimeContext = ""
 	trimmedResult := strings.TrimSpace(result)
-	// Freshness: agent is the primary execution path, so its synthetic
-	// learnings/KB closing turns are where store confirmation is recorded (the
-	// scripted-step hooks in controller_execution.go rarely fire now). Best-effort.
-	learningChanged := false
-	if strings.TrimSpace(item.Kind) == "learning" && writeAccess.Learnings {
-		learningRefAfter := hcpo.snapshotCanonicalArtifactRef(context.Background(), filepath.Join(hcpo.GetWorkspacePath(), LearningsFolderName, GlobalLearningID))
-		learningChanged = learningRefBefore != learningRefAfter
-	}
-	hcpo.recordAgentStoreFreshness(item, step.GetID(), trimmedResult, learningChanged)
+	hcpo.recordAgentStoreFreshness(item, step.GetID(), trimmedResult)
 	return trimmedResult, nil
 }
 
-// recordAgentStoreFreshness stamps the code-owned freshness ledger when
-// a learnings/KB contribution closing turn completes: a run reviewed the store and
-// left it current this run. Learnings distinguishes updated vs reviewed-unchanged
-// from the turn result; KB records a review. Never fails the run.
-func (hcpo *StepBasedWorkflowOrchestrator) recordAgentStoreFreshness(item AgentItem, stepID, result string, learningChanged bool) {
+// recordAgentStoreFreshness records an explicit knowledge-base contribution.
+func (hcpo *StepBasedWorkflowOrchestrator) recordAgentStoreFreshness(item AgentItem, stepID, result string) {
 	// Do not record a confirmation for a turn that self-reported failure. The
 	// sequence driver treats STATUS: FAILED as a terminal item failure (see
 	// agentSequenceItemReportedFailure in the driver loop), and this hook runs
@@ -1199,10 +1165,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) recordAgentStoreFreshness(item AgentI
 		return
 	}
 	switch strings.TrimSpace(item.Kind) {
-	case "learning":
-		if err := hcpo.recordLearningsConfirmation(context.Background(), hcpo.selectedRunFolder, stepID, learningChanged); err != nil {
-			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to record learnings freshness for agent step %s: %v", stepID, err))
-		}
 	case "knowledgebase":
 		if err := hcpo.recordKnowledgebaseConfirmation(context.Background(), hcpo.selectedRunFolder, stepID); err != nil {
 			hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Failed to record knowledgebase freshness for agent step %s: %v", stepID, err))
@@ -1303,18 +1265,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) getAgentRuntime(ctx context.Context, 
 	hcpo.configureSubAgentSessionGuard(sessionID, "agent", step.GetID(), readPaths, writePaths)
 	hcpo.setAgentShellEnv(sessionID, stepPath, step.GetID())
 
-	// The agent execution agent is created ONCE and reused for every
-	// item, and the workspace-write tools (diff_patch_workspace_file) enforce a
-	// folder-guard snapshot FROZEN into the agent at creation (createExecutionOnlyAgent
-	// -> config.FolderGuardWritePaths, which the wrapper captures by value and never
-	// re-reads). So the snapshot must cover every store the sequence's synthetic
-	// closing turns will write — the learnings and KB contribution turns — not just
-	// the first item's scope, or those later turns are denied their granted access
-	// (their diff_patch to learnings/_global fails even though the step is configured
-	// for it). Widen ONLY the frozen tool snapshot to the step's full granted write
-	// scope; shell writes stay per-item via the session guard set above. This mirrors
-	// what scripted steps get, since a scripted step's learnings turn enforces through
-	// the per-item session guard rather than a reused frozen snapshot.
+	// The reused agent freezes its workspace-file write snapshot at construction.
+	// Include every explicit item grant; the shell guard still narrows each turn.
 	_, snapshotWrite := hcpo.setupAgentFolderGuard(stepPath, step.GetID(), getAgentConfigs(step), hcpo.agentSequenceStepFullWriteAccess(step))
 	outputPath := filepath.Join(hcpo.GetWorkspacePath(), hcpo.agentSequenceExecutionRelPath(stepPath, step.GetID()))
 	folderOverride := &agentSequenceFolderGuardOverride{ReadPaths: readPaths, WritePaths: snapshotWrite, OutputPath: outputPath}
@@ -1518,7 +1470,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) constrainAgentWriteAccess(stepConfig 
 	}
 }
 
-func (hcpo *StepBasedWorkflowOrchestrator) setupAgentFolderGuard(stepPath string, stepID string, stepConfig *AgentConfigs, itemWriteAccess AgentWriteAccess, preview ...bool) (readPaths, writePaths []string) {
+func (hcpo *StepBasedWorkflowOrchestrator) setupAgentFolderGuard(stepPath string, stepID string, stepConfig *AgentConfigs, itemWriteAccess AgentWriteAccess) (readPaths, writePaths []string) {
 	baseWorkspacePath := hcpo.GetWorkspacePath()
 	runWorkspacePath := baseWorkspacePath
 	if hcpo.selectedRunFolder != "" {
@@ -1570,18 +1522,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupAgentFolderGuard(stepPath string
 		// A "write" knowledgebase_source grants the same notes/-only write,
 		// just in a resolved external workflow's KB instead of this one's own.
 		writePaths = append(writePaths, writableExternalKBNotesPaths(baseWorkspacePath)...)
-	}
-	if itemWriteAccess.Learnings && learningsAccess == LearningsAccessReadWrite {
-		globalLearnings := filepath.Join(baseWorkspacePath, LearningsFolderName, GlobalLearningID)
-		// The step may write here, so the folder must exist: the sandbox refuses to start over a writable folder it
-		// cannot find, and a workflow that never wrote a learning has none (server A 2026-10-05: the review step could not
-		// run a single shell command, PLAT-514). Creating it is idempotent.
-		if len(preview) == 0 || !preview[0] {
-			if err := createFolderViaAPI(context.Background(), globalLearnings); err != nil {
-				hcpo.GetLogger().Warn(fmt.Sprintf("⚠️ Could not create the global learnings folder %s: %v", globalLearnings, err))
-			}
-		}
-		writePaths = append(writePaths, globalLearnings)
 	}
 	readPaths = appendAdditionalWorkflowReadPaths(readPaths, baseWorkspacePath, stepConfig)
 	readPaths, writePaths = hcpo.appendCDPHostDownloadsPaths(readPaths, writePaths)
@@ -1697,9 +1637,6 @@ func buildAgentAccessNote(writeAccess AgentWriteAccess, dbAccess string) string 
 	}
 	if writeAccess.Knowledgebase {
 		extras = append(extras, "knowledgebase/notes/")
-	}
-	if writeAccess.Learnings {
-		extras = append(extras, "learnings/_global/")
 	}
 	note := "Database rows go through query_workflow_db/mutate_workflow_db; the raw database file is not readable."
 	if len(extras) > 0 {

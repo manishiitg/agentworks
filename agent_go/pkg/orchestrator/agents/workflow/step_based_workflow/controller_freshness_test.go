@@ -93,9 +93,6 @@ func TestApplyFreshnessConfirmationBoundsHistory(t *testing.T) {
 }
 
 func TestFreshnessLedgerPaths(t *testing.T) {
-	if got := learningsFreshnessLedgerPath(); got != "learnings/_global/_freshness.json" {
-		t.Fatalf("learnings ledger path wrong: %s", got)
-	}
 	if got := knowledgebaseFreshnessLedgerPath(); !strings.HasSuffix(got, "/_freshness.json") || !strings.HasPrefix(got, "knowledgebase/") {
 		t.Fatalf("kb ledger path wrong: %s", got)
 	}

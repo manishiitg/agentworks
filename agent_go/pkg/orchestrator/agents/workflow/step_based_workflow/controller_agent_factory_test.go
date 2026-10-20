@@ -945,7 +945,6 @@ func TestSetupExecutionFolderGuardAddsOnlyConfiguredStores(t *testing.T) {
 	)
 
 	for _, expected := range []string{
-		"Workflow/testing/learnings/_global",
 		"Workflow/testing/learnings/kb-direct",
 		"Workflow/testing/knowledgebase",
 	} {
@@ -967,7 +966,6 @@ func TestSetupExecutionFolderGuardAddsOnlyConfiguredStores(t *testing.T) {
 func TestAppendLearningReadPathsScopesAccessToCurrentStep(t *testing.T) {
 	got := appendLearningReadPaths(nil, "Workflow/testing", "score-and-plan")
 	for _, expected := range []string{
-		"Workflow/testing/learnings/_global",
 		"Workflow/testing/learnings/score-and-plan",
 	} {
 		if !slices.Contains(got, expected) {
@@ -981,7 +979,7 @@ func TestAppendLearningReadPathsScopesAccessToCurrentStep(t *testing.T) {
 
 func TestAppendLearningReadPathsRejectsNonSegmentStepID(t *testing.T) {
 	got := appendLearningReadPaths(nil, "Workflow/testing", "../other-workflow")
-	if len(got) != 1 || got[0] != "Workflow/testing/learnings/_global" {
+	if len(got) != 0 {
 		t.Fatalf("unsafe step ID widened learning read scope: %v", got)
 	}
 }

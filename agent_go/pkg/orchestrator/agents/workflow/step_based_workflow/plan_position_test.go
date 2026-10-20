@@ -63,7 +63,7 @@ func TestStepPlacementAcrossExecutionPaths(t *testing.T) {
 			}
 			var vars map[string]string
 			if path == "manager" {
-				vars = c.buildOrchestratorTemplateVars(active, step, 1, "transform", nil, nil, all, "", nil)
+				vars = c.buildOrchestratorTemplateVars(active, step, 1, "transform", nil, nil, all, nil)
 			} else {
 				vars = c.buildAgentTemplateVars(active, step, AgentItem{}, 1, "transform", "", nil, nil, AgentWriteAccess{})
 			}

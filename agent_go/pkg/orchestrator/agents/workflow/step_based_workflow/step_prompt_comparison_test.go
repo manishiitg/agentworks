@@ -65,7 +65,7 @@ import (
 func TestPrintRemotePromptFixture(t *testing.T) {
  c:=newAgentClosingTestOrchestrator(t)
  cfg:=&agents.OrchestratorAgentConfig{}
- identity,supplements:=c.assembleStepRuntimeIdentity(cfg,nil,false,[]string{"query_workflow_db","mutate_workflow_db","agent_browser"},false,true)
+ identity,supplements:=c.assembleStepRuntimeIdentity(cfg,nil,[]string{"query_workflow_db","mutate_workflow_db","agent_browser"},false,true)
  var names []string
  for _, s:=range identity {names=append(names,s.Name)}
  for _, role:=range []string{"direct","manager","child"} {

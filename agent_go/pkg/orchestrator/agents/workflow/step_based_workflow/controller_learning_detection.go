@@ -28,9 +28,6 @@ type DetectionHistoryEntry struct {
 	Confidence     float64 `json:"confidence"`
 }
 
-// GlobalLearningID is the identifier used for the workflow-level global learning folder
-const GlobalLearningID = "_global"
-
 // LearningMetadata represents the learning metadata stored per step
 type LearningMetadata struct {
 	StepID              string `json:"step_id"`

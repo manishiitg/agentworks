@@ -187,7 +187,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 		if item.ID == AgentDescriptionTurnID && agent.InitialWriteAccess != nil {
 			access = hcpo.constrainAgentWriteAccess(stepConfig, *agent.InitialWriteAccess)
 		}
-		readPaths, writePaths = hcpo.setupAgentFolderGuard(step.GetID(), step.GetID(), stepConfig, access, true)
+		readPaths, writePaths = hcpo.setupAgentFolderGuard(step.GetID(), step.GetID(), stepConfig, access)
 		vars = hcpo.buildAgentTemplateVars(ctx, agent, *item, max(info.TopIndex-1, 0), step.GetID(), ResolveVariables(item.Message, values), readPaths, writePaths, access, values)
 		result.ItemID = item.ID
 		if !agentDescriptionFirst(agent) && (itemID == "" || (len(agent.Items) > 0 && item.ID == agent.Items[0].ID)) {
@@ -195,7 +195,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 		}
 		if hadHelpers {
 			readPaths, writePaths = hcpo.setupOrchestratorFolderGuard(step, step.GetID())
-			vars = hcpo.buildOrchestratorTemplateVars(ctx, agent, max(info.TopIndex-1, 0), step.GetID(), nil, nil, plan.Steps, "", nil, values)
+			vars = hcpo.buildOrchestratorTemplateVars(ctx, agent, max(info.TopIndex-1, 0), step.GetID(), nil, nil, plan.Steps, nil, values)
 			vars["StepContextDependencies"] = strings.Join(step.GetContextDependencies(), "\n")
 			vars["FollowUpMessage"] = ResolveVariables(item.Message, values)
 			applyAgentPromptContract(vars, agent, values)
@@ -243,7 +243,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) previewStepRuntime(ctx context.Contex
 	vars["ScriptedVarMapping"] = buildScriptedVarMappingForPrompt(config.UseCodeExecutionMode || scripted, hcpo.variablesManifest)
 	vars["VariableNames"] = FormatVariableNames(hcpo.variablesManifest)
 	registeredTools := append(append([]string(nil), result.Tools...), result.InvocationTools...)
-	identity, supplements := hcpo.assembleStepRuntimeIdentity(config, selected, learningsAccess != LearningsAccessNone, registeredTools, scripted, kbAccessAllowsRead(kbAccess), filepath.Join(executionPath, "Downloads"))
+	identity, supplements := hcpo.assembleStepRuntimeIdentity(config, selected, registeredTools, scripted, kbAccessAllowsRead(kbAccess), filepath.Join(executionPath, "Downloads"))
 	seen := map[string]bool{}
 	for _, skill := range identity {
 		if seen[strings.TrimSpace(skill.Name)] {

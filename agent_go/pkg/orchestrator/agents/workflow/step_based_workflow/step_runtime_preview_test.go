@@ -106,7 +106,7 @@ func TestStepRuntimePreviewReadsCurrentConfigWithoutExecuting(t *testing.T) {
 	if counts["builder-reference"] != 1 || counts["agent-browser"] != 1 {
 		t.Fatalf("wrong assembled identities: %v", counts)
 	}
-	identity, _ := controller.assembleStepRuntimeIdentity(&agents.OrchestratorAgentConfig{}, []string{"builder-reference", "agent-browser"}, false, preview.Tools, false, false)
+	identity, _ := controller.assembleStepRuntimeIdentity(&agents.OrchestratorAgentConfig{}, []string{"builder-reference", "agent-browser"}, preview.Tools, false, false)
 	if len(identity) != len(preview.Skills) {
 		t.Fatal("preview and execution identity assembly diverged")
 	}
@@ -146,8 +146,8 @@ func TestStepRuntimePreviewReadsCurrentConfigWithoutExecuting(t *testing.T) {
 	files["planning/step_config.json"] = strings.Replace(before["planning/step_config.json"], `"learnings_access":"none"`, `"learnings_access":"read-write"`, 1)
 	files["learnings/_global/SKILL.md"] = "# Workflow learnings\nUse verified sources."
 	result, err = tool.Execute(ctx, map[string]interface{}{"step_id": "research"})
-	if err != nil || !strings.Contains(result, "workflow-learnings") {
-		t.Fatalf("learnings-writer preview failed: %v", err)
+	if err != nil || strings.Contains(result, "workflow-learnings") {
+		t.Fatalf("retired global guide leaked into preview: %v", err)
 	}
 	// Migration notes must survive saved plans without becoming task instructions.
 	for _, typ := range []string{"agent", "scripted"} {

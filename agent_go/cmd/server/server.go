@@ -7594,15 +7594,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						log.Printf("[WORKFLOW_PHASE] Added read-only access for #workflow references: %v", workflowReadOnlyFolders)
 					}
 
-					// Older workflows keep their guide attachment until the explicit
-					// skills upgrade. Current workflows use selected local skills.
-					if !relayChat {
-						if manifest, found, readErr := ReadWorkflowManifest(r.Context(), phaseWorkspacePath); readErr != nil || !found || !todo_creation_human.UsesWorkflowSkills(manifest.Version) {
-							if globalSkill := skills.LoadGlobalSkill(getWorkspaceAPIURL(), phaseWorkspacePath); globalSkill != nil {
-								_ = llmAgent.AttachSkill(globalSkill)
-							}
-						}
-					}
 					// Playbooks are workflow-local skills for Builder setup. They are
 					// intentionally attached here, after the definitive workflow path is
 					// known, and never added to the workflow execution skill defaults.

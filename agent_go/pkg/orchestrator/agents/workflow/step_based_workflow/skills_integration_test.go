@@ -39,9 +39,7 @@ func TestBrowserRuntimeSkillsDoNotFilterOtherSkills(t *testing.T) {
 // TestPhase5StepSkillsDoNotInheritFromOrchestrator locks in the hard-cut
 // behavior from Phase 5: step-level skill resolution never falls back to
 // orchestrator.SelectedSkills. Workflows that used to rely on the
-// cascade need to either (a) declare skills per step in EnabledSkills,
-// or (b) put shared know-how in learnings/_global/SKILL.md which is
-// auto-attached separately.
+// cascade must declare skills per step in EnabledSkills.
 //
 // If this test ever fails by returning the orchestrator's skills, it
 // means someone reintroduced the inheritance fallback — that breaks the

@@ -36,7 +36,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupOrchestratorFolderGuard(step Pla
 	executionWorkspacePath := hcpo.getOrchestratorExecutionWorkspacePath()
 	skillStepConfig := getAgentConfigs(step)
 	kbAccessForGuard := resolveKnowledgebaseAccess(skillStepConfig, hcpo.UseKnowledgebase())
-	learningsAccessForGuard := hcpo.resolveExecutionLearningsAccess(skillStepConfig, step)
 
 	// READ: current group's execution folder + DB documentation/assets, plus KB/learnings only when
 	// the step config grants those stores. WRITE: current group's execution
@@ -57,17 +56,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) setupOrchestratorFolderGuard(step Pla
 	}
 	if hcpo.platformStoresEnabled() {
 		readPaths, writePaths = appendManagedDBFileAccess(baseWorkspacePath, readPaths, writePaths)
-	}
-	if learningsAccessForGuard != LearningsAccessNone {
-		globalLearningsPath := filepath.Join(baseWorkspacePath, "learnings", GlobalLearningID)
-		readPaths = append(readPaths, globalLearningsPath)
-		// Unlike scripted steps (which write learnings in a dedicated post-step turn),
-		// the orchestrator writes its stores directly via the folder guard — same as it
-		// does for knowledgebase/notes below. Grant learnings write when access is read-write
-		// and the step's single access mode permits writes.
-		if learningsAccessForGuard == LearningsAccessReadWrite {
-			writePaths = append(writePaths, globalLearningsPath)
-		}
 	}
 	if kbAccessAllowsRead(kbAccessForGuard) {
 		readPaths = append(readPaths, getKnowledgebasePath(baseWorkspacePath))
@@ -193,17 +181,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 		return false, "", fmt.Errorf("agent step %q does not support scripted execution; put deterministic delegation in a scripted step that calls its routes", stepID)
 	}
 
-	// Learnings read gate — default-on unless learnings_access="none" or routing/eval.
-	// Todo-task agents benefit from seeing _global/SKILL.md to reuse cross-step knowledge.
-	isLearningDisabled := !hcpo.canReadLearnings(stepConfig, orchestratorStep)
 	select {
 	case <-ctx.Done():
 		return false, "", fmt.Errorf("todo task execution canceled: %w", ctx.Err())
 	default:
-	}
-	var orchestratorLearningHistory string
-	if !isLearningDisabled {
-		orchestratorLearningHistory, _ = hcpo.readGlobalLearningHistory(ctx)
 	}
 
 	// The orchestrator's own prompt variables: routes catalog, dependencies, stores,
@@ -217,7 +198,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeDelegatingAgentStep(
 		previousContextFiles,
 		previousExecutionResults,
 		allSteps,
-		orchestratorLearningHistory,
 		execCtx,
 	)
 
@@ -375,7 +355,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 	previousContextFiles []string,
 	previousExecutionResults []string,
 	allSteps []PlanStepInterface,
-	orchestratorLearningHistory string, // Persisted learnings from previous runs
 	execCtx *ExecutionContext,
 	previewValues ...map[string]string,
 ) map[string]string {
@@ -431,7 +410,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 	// Build folder guard paths for prompt (same logic as executeDelegatingAgentStep setup)
 	docsRoot := GetPromptDocsRoot()
 	fgExecPath := hcpo.getOrchestratorExecutionWorkspacePath()
-	fgGlobalLearningsPath := filepath.Join(baseWorkspacePath, "learnings", GlobalLearningID)
 	fgKnowledgebasePath := getKnowledgebasePath(baseWorkspacePath)
 	fgDBPath := getDBPath(baseWorkspacePath)
 	fgReadPaths, fgWritePaths := hcpo.setupOrchestratorFolderGuard(step, stepPath)
@@ -478,7 +456,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 		"DBAccess":              dbAccessForGuard,
 		"DBDirectAccess":        "false", // agent steps are never scripted (PLAT-287)
 		"WorkflowRoot":          filepath.Join(docsRoot, baseWorkspacePath),
-		"LearningsPath":         filepath.Join(docsRoot, fgGlobalLearningsPath),
 	}
 
 	templateVars["PlanPosition"] = hcpo.buildStepPlacement(ctx, allSteps, stepIndex)
@@ -500,11 +477,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) buildOrchestratorTemplateVars(
 	}
 	if variableValues := FormatVariableValues(hcpo.variablesManifest, promptValues); variableValues != "" {
 		templateVars["VariableValues"] = variableValues
-	}
-
-	// Add orchestrator learning history if available
-	if orchestratorLearningHistory != "" {
-		templateVars["LearningHistory"] = orchestratorLearningHistory
 	}
 
 	// Surface the pre-validation schema in the prompt so the orchestrator knows

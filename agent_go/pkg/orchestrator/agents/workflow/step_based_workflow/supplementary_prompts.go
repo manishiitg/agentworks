@@ -24,7 +24,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) appendSupplementaryPrompts(
 	baseAgent *agents.BaseAgent,
 	config *agents.OrchestratorAgentConfig,
 	effectiveSkills []string,
-	attachGlobalLearnings bool,
 	registeredTools []string,
 	scriptedStep bool,
 ) []string {
@@ -35,7 +34,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) appendSupplementaryPrompts(
 	if session := common.GetSessionShellConfig(config.MCPSessionID); session != nil {
 		sharedKBRead = session.Env["WORKFLOW_KB_ACCESS"] == "read"
 	}
-	identitySkills, supplements := hcpo.assembleStepRuntimeIdentity(config, effectiveSkills, attachGlobalLearnings, registeredTools, scriptedStep, sharedKBRead)
+	identitySkills, supplements := hcpo.assembleStepRuntimeIdentity(config, effectiveSkills, registeredTools, scriptedStep, sharedKBRead)
 	if err := baseAgent.ApplyIdentity(ctx, identitySkills, supplements...); err != nil {
 		hcpo.GetLogger().Warn(fmt.Sprintf("Failed to apply supplementary agent identity: %v", err))
 	}
@@ -44,7 +43,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) appendSupplementaryPrompts(
 
 // assembleStepRuntimeIdentity is shared by execution and the read-only Builder
 // preview. It resolves documentation, not sessions, model clients or tool calls.
-func (hcpo *StepBasedWorkflowOrchestrator) assembleStepRuntimeIdentity(config *agents.OrchestratorAgentConfig, effectiveSkills []string, attachGlobalLearnings bool, registeredTools []string, scriptedStep, sharedKBRead bool, previewDownloads ...string) ([]*llmtypes.Skill, []string) {
+func (hcpo *StepBasedWorkflowOrchestrator) assembleStepRuntimeIdentity(config *agents.OrchestratorAgentConfig, effectiveSkills []string, registeredTools []string, scriptedStep, sharedKBRead bool, previewDownloads ...string) ([]*llmtypes.Skill, []string) {
 	var identitySkills []*llmtypes.Skill
 	var supplements []string
 	browserCfg := hcpo.resolveBrowserConfig(config.ServerNames, effectiveSkills)
@@ -104,23 +103,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) assembleStepRuntimeIdentity(config *a
 			// beside the count read as "attached 2: [seven names]" and hid the
 			// five failures behind a line that looked like success.
 			hcpo.GetLogger().Info(fmt.Sprintf("🎯 Attached %d of %d step skill(s): %v", len(attached), len(effectiveSkills), attachedNames))
-		}
-	}
-
-	// 1b. Workflow global skill (Phase 4): attach a small pointer
-	// skill telling the agent to read learnings/_global/ in the
-	// workflow folder when it needs the workflow's accumulated
-	// know-how. We attach a pointer (not the full body + references/)
-	// so the workspace files stay the single source of truth and the
-	// projected skill doesn't drift from what the workflow has
-	// learned mid-session.
-	//
-	// Same helper the workshop chat uses (server.go workshop-phase
-	// setup) — both paths land the identical pointer skill.
-	if attachGlobalLearnings {
-		if globalSkill := skills.LoadGlobalSkill(getWorkspaceAPIURL(), hcpo.GetWorkspacePath()); globalSkill != nil {
-			identitySkills = append(identitySkills, globalSkill)
-			hcpo.GetLogger().Info("🌐 Attached workflow global skill pointer (_global → learnings/_global/)")
 		}
 	}
 

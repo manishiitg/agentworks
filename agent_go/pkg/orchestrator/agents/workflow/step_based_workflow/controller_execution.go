@@ -1674,27 +1674,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 			resolvedTitle := ResolveVariables(step.GetTitle(), hcpo.variableValues)
 			sanitizedTitle := hcpo.sanitizeTitleForAgentName(resolvedTitle)
 
-			// Run learning reading agent ONCE per main loop iteration (before retry loop)
-			// This ensures learning is only discovered once, even if validation fails and we retry
-			// Always reads fresh learnings (no caching)
-			var formattedLearningHistory string
-			agentConfigs := getAgentConfigs(step)
-
-			// Learnings READ gate — controlled by learnings_access.
-			// Default is "read": every step sees _global/SKILL.md in its prompt.
-			// Only routing steps or explicit learnings_access="none" opt out.
-			// Contribution (write) is a separate gate further below.
-			if !hcpo.canReadLearnings(agentConfigs, step) {
-				formattedLearningHistory = ""
-				hcpo.GetLogger().Info(fmt.Sprintf("⏭️ Learnings read disabled for step %d (learnings_access=%s) - skipping _global/ injection", stepIndex+1, hcpo.resolveLearningsAccess(agentConfigs)))
-			} else {
-				// Learning is enabled - read from global learning skill
-				formattedLearningHistory, err = hcpo.readGlobalLearningHistory(ctx)
-				if err != nil {
-					return "", updatedContextFiles, fmt.Errorf("failed to read learning history for step %d: %w", stepIndex+1, err)
-				}
-			}
-
 			// Track if validation failed after exhausting all retry attempts
 			validationFailedAfterMaxRetries := false
 			var validationFailures []validationFailureConcern
@@ -1749,7 +1728,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) executeSingleStep(
 				// Add learning history to template vars for execution-only agent (reused for all retry attempts)
 				// If a saved main.py exists for this step, point to the execution/code/ copy (not learnings/)
 				// so the LLM doesn't reference or hardcode learnings paths in generated scripts.
-				stepLearningHistory := formattedLearningHistory
+				stepLearningHistory := ""
 				execCodeMainPyRelPath := hcpo.scriptedWorkingDir(step.GetID(), stepExecutionPath) + "/main.py"
 				if _, mainPyReadErr := hcpo.ReadWorkspaceFile(ctx, execCodeMainPyRelPath); mainPyReadErr == nil {
 					execCodeMainPyAbsPath := filepath.Join(toAbsPath(hcpo.scriptedWorkingDir(step.GetID(), stepExecutionPath)), "main.py")
@@ -3537,34 +3516,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) sanitizeTitleForAgentName(title strin
 	}
 
 	return sanitized
-}
-
-// readLearningHistory reads learning history from the learnings folder
-// Returns a file-path reference string (not full content) and any error.
-// readGlobalLearningHistory reads the global workflow-level learning history.
-// Returns a file-path reference string (not full content) and any error.
-func (hcpo *StepBasedWorkflowOrchestrator) readGlobalLearningHistory(
-	ctx context.Context,
-) (formattedLearningHistory string, err error) {
-	hcpo.GetLogger().Info("🔀 Reading global learning history")
-
-	globalLearningsPath := hcpo.getLearningsBasePath() + "/" + GlobalLearningID
-	globalSkillPath := globalLearningsPath + "/SKILL.md"
-	globalSkillBody, err := hcpo.ReadWorkspaceFile(ctx, globalSkillPath)
-	if err != nil || strings.TrimSpace(globalSkillBody) == "" {
-		hcpo.GetLogger().Info(fmt.Sprintf("⏭️ No global learning skill found: %s", globalSkillPath))
-		return "", nil
-	}
-
-	absLearningsPath := filepath.Join(GetPromptDocsRoot(), hcpo.GetWorkspacePath(), globalLearningsPath)
-	formattedLearningHistory = fmt.Sprintf(
-		"📚 **Workflow skill available** at `%s/`.\n"+
-			"Read `SKILL.md` first, then only the relevant linked file under `references/`, `scripts/`, `code/`, or `assets/`. "+
-			"Treat this prior-run know-how as advisory when it conflicts with the current step.",
-		absLearningsPath)
-	hcpo.GetLogger().Info("✅ Found global workflow skill (compact path reference only)")
-
-	return formattedLearningHistory, nil
 }
 
 // buildValidationContinuationUserMessage formats a pre-validation failure as a
