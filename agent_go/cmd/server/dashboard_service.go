@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"io"
 	"log"
 	"net/http"
@@ -245,10 +246,10 @@ func (api *StreamingAPI) dashboardValidation(ctx context.Context, claims *UserCl
 	return workshop.ValidateDashboardHTML(ctx, p, string(data), hooks)
 }
 func dashboardError(w http.ResponseWriter, err error) {
-	code, message := wf.ErrorDetails(err)
-	if wf.StatusCode(err) == 500 {
-		message = "dashboard service unavailable"
-	}
+	code, _ := wf.ErrorDetails(err)
+	// Keep the workspace or adapter's actual refusal. Generic file-error text
+	// hides the reason a dashboard could not be opened, checked or previewed.
+	message := strings.ReplaceAll(err.Error(), strings.TrimRight(fsutil.WorkspaceDocsRoot(), "/\\")+string(os.PathSeparator), "")
 	externalError(w, wf.StatusCode(err), code, message)
 }
 
