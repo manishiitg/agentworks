@@ -1255,10 +1255,6 @@ export const agentApi = {
     await api.post(`/api/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(messageId)}/retry`, {}, { headers: { 'X-Session-ID': sessionId } })
   },
 
-  steerQueuedMessage: async (sessionId: string, messageId: string) => {
-    await api.post(`/api/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(messageId)}/steer`, {}, { headers: { 'X-Session-ID': sessionId } })
-  },
-
   startQuery: async (request: AgentQueryRequest, sessionId?: string, context?: ChatRequestContext): Promise<AgentQueryResponse> => {
     const config = chatRequestConfig(sessionId, context)
     const response = await api.post('/api/query', request, config)

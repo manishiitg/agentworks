@@ -38,7 +38,7 @@ it('restores the server queue and keeps a failed remove visible until the server
     await flush()
     expect(host.textContent).toContain('Review the settings page.')
     expect(host.querySelector('[title="Sends automatically when the current turn finishes"]')).toBeTruthy()
-    expect(host.textContent).toContain('Steer now')
+    expect(host.textContent).not.toContain('Steer now')
     fixture.remove.mockRejectedValueOnce(new Error('network unavailable'))
     const remove = () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Remove')!
     await act(async () => remove().click())
@@ -115,7 +115,7 @@ it('says the chat is being updated and offers no Steer now, but keeps Remove so 
   try {
     await act(async () => root.render(<QueryClientProvider client={client}><DurableChatQueue sessionId="chat-1" tabId="A" busy /></QueryClientProvider>))
     await flush()
-    expect(host.textContent).toContain('Updating this chat')
+    expect(host.textContent).toContain('chat restarts with the Crew')
     expect(host.textContent).toContain('Go on with the plan.')
     expect(host.textContent).not.toContain('Steer now')
     const remove = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Remove')

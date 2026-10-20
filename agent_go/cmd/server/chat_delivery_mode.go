@@ -20,7 +20,7 @@ func (api *StreamingAPI) queuedMessageDeliveryState(sessionID string, req QueryR
 	api.conversationTurnQueueMu.Lock()
 	refreshing := api.conversationTurnQueueRuntimeChange[sessionID]
 	api.conversationTurnQueueMu.Unlock()
-	if refreshing || req.RestartCodingCLI || sessionSecretsChanged(sessionID) || api.retainedCLIProviderDiffers(sessionID, queuedRequestProvider(req)) {
+	if refreshing || req.RestartCodingCLI || sessionSecretsChanged(sessionID) || api.retainedCLIProviderDiffers(sessionID, queuedRequestProvider(req)) || api.launchedAgentProfileDiffers(sessionID) {
 		return "refreshing", false
 	}
 	if api.externalBuilderOwnsSession(sessionID) {
@@ -352,4 +352,15 @@ func (api *StreamingAPI) restoreQueuedSteer(turn queuedConversationTurn) {
 		logTurnQueue("cannot release unavailable steer %s: %v", turn.ID, err)
 	}
 	api.kickConversationTurnQueue(turn.SessionID)
+}
+
+// launchedAgentProfileDiffers reports that the product's setup changed since its CLI was launched (a function,
+// skill or instruction edit): the next message relaunches the CLI after the current reply instead of going in live,
+// so it waits as "updating this chat", not as an ordinary queue.
+func (api *StreamingAPI) launchedAgentProfileDiffers(sessionID string) bool {
+	api.conversationMux.RLock()
+	defer api.conversationMux.RUnlock()
+	current, known := api.lastAgentProfileKeyBySession[sessionID]
+	launched, launchKnown := api.launchedAgentProfileKeyBySession[sessionID]
+	return known && launchKnown && current != "" && launched != current
 }
