@@ -189,9 +189,26 @@ function GmailInboundPanelContent({ workspacePath, connections = [], refreshToke
     {senderConsentContent}
     {state && route && !state.sender_consent?.required && <p>No additional sender approval is needed.</p>}
   </section>
-  return <FormSection title="Incoming email" description="Ask Builder to connect Gmail, choose chat instructions or workflow routes, or disable this trigger. This panel shows the saved configuration." actions={embedded ? undefined : <AskAIButton workspacePath={workspacePath} onAsk={onAsk} message={gmailInboundSetupMessage} />}>
+  // The page shows two things: this Crew's email address and whether incoming email works (owner, 2026-10-20).
+  // Rules, sender approval and server setup stay one click away.
+  const inboxAddress = state?.inbox?.address || ''
+  const working = !!(state?.inbox && route?.enabled && route.address === state.inbox.address && !state.error && (!state.sender_consent?.required || state.sender_consent.approved))
+  const status = !state ? 'Checking…' : !state.inbox ? 'Not set up' : working ? 'Connected' : 'Not connected'
+  return <FormSection title="Incoming email" actions={embedded ? undefined : <AskAIButton workspacePath={workspacePath} onAsk={onAsk} message={gmailInboundSetupMessage} />}>
     <div className="space-y-3 text-sm">
       {error && <p role="alert" className="text-destructive">{error}</p>}
+      <div className="space-y-2 rounded-md border p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="break-all font-mono text-xs">{inboxAddress || 'No email address yet'}</span>
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${working ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'}`}>{status}</span>
+        </div>
+        {inboxAddress && <Button size="sm" variant="outline" onClick={async () => { try { await navigator.clipboard.writeText(inboxAddress); setCopied(true) } catch { setError('Could not copy the address. Select and copy it manually.') } }}>{copied ? 'Copied' : 'Copy email address'}</Button>}
+        {state && !state.inbox && <p className="text-xs text-muted-foreground">Choose your inbox in My Vault first.</p>}
+        {state?.inbox && !working && <AskAIButton workspacePath={workspacePath} onAsk={onAsk} message={gmailInboundSetupMessage} label="Ask Builder to connect it" />}
+      </div>
+      {state && <details className="text-xs">
+        <summary className="cursor-pointer text-muted-foreground">Rules and setup</summary>
+        <div className="mt-2 space-y-3">
       {state && (!state.configured || state.setup?.oauth_clients.length === 0) && <div className="space-y-2 rounded-md border p-3">
         <p className="font-medium">Automatic incoming email is not set up</p>
         <p className="text-muted-foreground">Google sign-in connects your account. To start chats or workflows when mail arrives, this server also needs Google Pub/Sub, Google's mailbox event delivery service. A connected account alone cannot receive automatic events.</p>
@@ -219,12 +236,11 @@ function GmailInboundPanelContent({ workspacePath, connections = [], refreshToke
         {setupJob.review_url && <a className="inline-block rounded-md border px-3 py-2 text-primary underline" href={setupJob.review_url} target="_blank" rel="noreferrer">Review setup and continue with Google</a>}
         <p className="text-xs text-muted-foreground">Ask Builder to check progress. Infrastructure readiness is separate from connecting a mailbox and testing email delivery.</p>
       </section>}
-      {state?.configured && state.setup?.oauth_clients.length !== 0 && !route && <p className="text-muted-foreground">No trigger configured here. Ask Builder to use your personal inbox from My Vault.</p>}
-      {state?.inbox && <p className="break-all text-xs text-muted-foreground">Your personal inbox: {state.inbox.address} · Managed in My Vault</p>}
-      {senderConsentContent}
-      {routeContent}
-      <AskAIButton workspacePath={workspacePath} onAsk={onAsk} message={fetchMessage} label="Fetch emails" />
-      <p className="text-xs text-muted-foreground">Fetch matching emails into chat. Recent email activity shows saved trigger deliveries.</p>
+          {senderConsentContent}
+          {routeContent}
+          <AskAIButton workspacePath={workspacePath} onAsk={onAsk} message={fetchMessage} label="Fetch emails" />
+        </div>
+      </details>}
     </div>
   </FormSection>
 }
