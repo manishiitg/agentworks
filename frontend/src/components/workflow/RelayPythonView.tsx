@@ -66,6 +66,10 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
   onBuild: () => void
 }) {
   const [tab, setTab] = useState<'graph' | 'calls' | 'source'>('graph')
+  const viewTarget = useWorkflowStore(state => state.workspaceViewTarget)
+  useEffect(() => {
+    if (viewTarget?.view === 'flow' && (viewTarget.target === 'graph' || viewTarget.target === 'calls' || viewTarget.target === 'source')) setTab(viewTarget.target)
+  }, [viewTarget])
   const [runSource, setRunSource] = useState<string | null>(null)
   const [runSourceError, setRunSourceError] = useState('')
   const [runGraphOpen, setRunGraphOpen] = useState(false)
@@ -183,7 +187,8 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
   }, [refreshRuns])
 
   useEffect(() => {
-    setSource(null); setTab('graph')
+    const target = useWorkflowStore.getState().workspaceViewTarget
+    setSource(null); setTab(target?.view === 'flow' && (target.target === 'calls' || target.target === 'source') ? target.target : 'graph')
     setRunSource(null); setRunSourceError(''); setRunGraphOpen(false)
     setRuns([]); setTrace(null); setResult(undefined)
     setSourceError(''); setRunError(''); setTraceError(''); setLoadingSource(true)
@@ -205,9 +210,8 @@ export default function RelayPythonView({ workspacePath, relayID, onBuild }: {
 
   return <div className="relative flex h-full min-h-0 flex-col bg-background">
     <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-      <div className="flex gap-1" role="tablist" aria-label="Flow">
-        {(['graph', 'calls', 'source'] as const).map(value => <button key={value} type="button" role="tab" aria-selected={tab === value} aria-controls={`relay-python-${value}`} onClick={() => setTab(value)} className={`rounded-md px-3 py-1.5 text-xs font-medium ${tab === value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}>{value === 'graph' ? 'Graph' : value === 'calls' ? 'Runs' : 'Code'}</button>)}
-      </div>
+      {/* Graph, Runs and Code are separate side-list items (owner, 2026-10-20); the side list picks one. */}
+      <span className="text-xs font-medium text-muted-foreground">{tab === 'graph' ? 'Flow' : tab === 'calls' ? 'Runs' : 'Code'}</span>
       <div className="ml-auto flex items-center gap-1">
         <button type="button" onClick={() => setConfigurationOpen(open => !open)} aria-label="Flow configuration" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"><Settings2 className="h-4 w-4" /></button>
         <button type="button" onClick={() => { refresh(); void refreshReleases() }} aria-label="Refresh Flow" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"><RefreshCw className="h-4 w-4" /></button>

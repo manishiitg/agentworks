@@ -1,4 +1,4 @@
-import { ArrowUpCircle, BookOpen, Cloud, Cpu, DollarSign, Files, FileText, Globe, Hand, LayoutDashboard, MessageSquareText, Route, Settings, BellRing, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowUpCircle, BookOpen, Code2, Database, History, Cloud, Cpu, DollarSign, Files, FileText, Globe, Hand, LayoutDashboard, MessageSquareText, Route, Settings, BellRing, ShieldCheck, Sparkles } from 'lucide-react'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
@@ -46,10 +46,15 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
     </Group>
     <Group title="Ops" collapsed>
       {!relayMode && !pulseOn && <Row icon={PulseIcon} onClick={() => open('pulse')}>Turn Pulse on</Row>}
-      <Row icon={Route} onClick={() => open('flow')}>{relayMode ? 'Flow & runs' : 'Plan'}</Row>
+      {relayMode ? <>
+        <Row icon={Route} onClick={() => open('flow', 'graph')}>Flow</Row>
+        <Row icon={History} onClick={() => open('flow', 'calls')}>Runs</Row>
+        <Row icon={Code2} onClick={() => open('flow', 'source')}>Code</Row>
+      </> : <Row icon={Route} onClick={() => open('flow')}>Plan</Row>}
       <Row icon={Files} onClick={() => open('files')}>Files</Row>
       {!relayMode && <>
-        <Row icon={BookOpen} onClick={() => open('knowledge')}>Knowledge base</Row>
+        <Row icon={BookOpen} onClick={() => open('knowledge', 'knowledgebase')}>Knowledge base</Row>
+        <Row icon={Database} onClick={() => open('knowledge', 'database')}>Database</Row>
       </>}
       <Row icon={Sparkles} onClick={() => open('mcp', 'skills')}>Skills</Row>
       <Row icon={MessageSquareText} onClick={() => open('workshop', 'chats')}>Chat history</Row>
@@ -59,7 +64,7 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
       <Row icon={Cpu} onClick={() => open('identity', 'llm')}>Models</Row>
       {!relayMode && <Row icon={ArrowUpCircle} onClick={() => open('identity', 'upgrades')}>Upgrades</Row>}
       <Row icon={Settings} onClick={() => open('identity', 'general')}>Settings</Row>
-      {multiUser && <Row icon={ShieldCheck} onClick={() => open('access')}>Team</Row>}
+      {multiUser && <Row icon={ShieldCheck} onClick={() => open('access', 'workflow')}>Team</Row>}
       {!relayMode && <>
         <Row icon={BookOpen} onClick={() => open('playbooks')}>Workflow playbooks</Row>
         <Row icon={Cloud} onClick={() => open('backup')}>Backup</Row>

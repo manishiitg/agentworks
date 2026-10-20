@@ -154,8 +154,10 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
             refreshLabel={sharing ? 'Refresh sharing and channels' : overview ? 'Refresh connections' : `Refresh ${connectionLabel}`}
           />
         )}
-        below={!sharing ? <IntegrationNavigation options={navigationOptions} value={activeConnection} onChange={selectConnection} overview={overview} onOverview={() => selectConnection('overview')} canEdit={canEdit} /> : undefined}
-        tabs={!sharing && !overview && activeTab === 'apps' && (activePluginTab === 'connected' || activePluginTab === 'available') ? { value: activePluginTab, onChange: selectConnection, options: mcpTabs, ariaLabel: 'MCP servers' } : undefined}
+        below={!sharing && !overview && activeTab === 'apps' && (activePluginTab === 'connected' || activePluginTab === 'available')
+          ? <button type="button" className="mt-1 rounded text-xs font-medium text-primary hover:underline" onClick={() => selectConnection(activePluginTab === 'connected' ? 'available' : 'connected')}>{activePluginTab === 'connected' ? '+ Add an MCP' : '← Your MCPs'}</button>
+          : !sharing ? <IntegrationNavigation options={navigationOptions} value={activeConnection} onChange={selectConnection} overview={overview} onOverview={() => selectConnection('overview')} canEdit={canEdit} /> : undefined}
+        /* No Connected/Available tabs: the MCPs page lists yours and offers Add (owner, 2026-10-20). */
       />
       <div data-ui-view-section={sharing ? shareChannel : activeConnection} key={`${sharing ? shareChannel : activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
         {sharing ? <>

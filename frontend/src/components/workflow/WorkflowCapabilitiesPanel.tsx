@@ -345,9 +345,11 @@ export default function WorkflowCapabilitiesPanel({ section, workspacePath, pres
               refreshLabel={section === 'mcp' ? sharing ? 'Refresh sharing and channels' : mcpRefreshLabel : section === 'identity' ? identityRefreshLabel : `Refresh ${copy.title}`}
             />
           )}
-          below={section === 'mcp' && !sharing && !(activeMcpTab === 'apps' && pluginTab === 'skills') ? <IntegrationNavigation options={navigationOptions} value={activeConnection} onChange={selectConnection} overview={overview} onOverview={() => selectConnection('overview')} canEdit={canWriteWorkflow} /> : undefined}
+          below={section === 'mcp' && !sharing && !overview && activeMcpTab === 'apps' && (pluginTab === 'connected' || pluginTab === 'available')
+            ? <button type="button" className="mt-1 rounded text-xs font-medium text-primary hover:underline" onClick={() => selectConnection(pluginTab === 'connected' ? 'available' : 'connected')}>{pluginTab === 'connected' ? '+ Add an MCP' : '← Your MCPs'}</button>
+            : section === 'mcp' && !sharing && !(activeMcpTab === 'apps' && pluginTab === 'skills') ? <IntegrationNavigation options={navigationOptions} value={activeConnection} onChange={selectConnection} overview={overview} onOverview={() => selectConnection('overview')} canEdit={canWriteWorkflow} /> : undefined}
           tabs={section === 'mcp'
-            ? (!sharing && !overview && activeMcpTab === 'apps' && (pluginTab === 'connected' || pluginTab === 'available') ? { value: pluginTab, onChange: selectConnection, options: serverTabs, ariaLabel: 'MCP servers' } : undefined)
+            ? undefined
             // Settings, Models and Upgrades are separate items in the side list, so Settings has no sub-tabs (owner, 2026-10-20).
             : undefined}
         />

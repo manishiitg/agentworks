@@ -126,7 +126,7 @@ export function WorkMemoryPanel({ workspacePath, onAsk, onOpenFile, fileClient, 
       <WorkspaceViewHeader
         icon={Brain}
         title="Memory & skills"
-        tabs={{ value: activeTab, onChange: setTab, options: [...(memoryEnabled ? [{ value: 'memory', label: 'Memory' }] : []), ...(skillsEnabled ? [{ value: 'skills', label: 'Skills' }] : [])], ariaLabel: 'Memory & skills' }}
+        /* Memory and Skills are separate side-list items (owner, 2026-10-20: every tab independent). */
         actions={<WorkspaceViewActions
           workspacePath={workspacePath}
           message={readOnly

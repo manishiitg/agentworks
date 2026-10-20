@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BookOpen, Cpu, DollarSign, Files, Hand, Laptop, LayoutDashboard, MessageSquareText, Route, Settings, Terminal, Database } from 'lucide-react'
+import { BookOpen, Cpu, Sparkles, DollarSign, Files, Hand, Laptop, LayoutDashboard, MessageSquareText, Route, Settings, Terminal, Database } from 'lucide-react'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
 import { WorkspaceAgentBridgeRows } from '../../components/workspace/WorkspaceAgentBridgeRows'
 import { WorkspaceAutomationRows, WorkspaceChannelRows, WorkspaceConnectionRows } from '../../components/workspace/WorkspaceProjectNavigation'
@@ -66,7 +66,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       {allowed('files') && <Row icon={Files} onClick={() => onOpen('files')}>Files</Row>}
       {allowed('shell') && <Row icon={Terminal} onClick={() => onOpen('shell')}>Terminal</Row>}
       {allowed('database') && <Row icon={Database} onClick={() => onOpen('database')}>Database</Row>}
-      {allowed('memory') && <Row icon={BookOpen} onClick={() => onOpen('memory')}>Memory &amp; skills</Row>}
+      {allowed('memory') && (!enabledPanels || enabledPanels.has('memory')) && <Row icon={BookOpen} onClick={() => { setWorkspaceViewTarget('memory', 'memory'); onOpen('memory') }}>Memory</Row>}
+      {allowed('memory') && (!enabledPanels || enabledPanels.has('skills')) && <Row icon={Sparkles} onClick={() => { setWorkspaceViewTarget('memory', 'skills'); onOpen('memory') }}>Skills</Row>}
       {allowed('history') && <Row icon={MessageSquareText} onClick={() => onOpen('history')}>Chat history</Row>}
       {showSuggestions && <Row icon={Hand} attention={Boolean(count)} detail={count ? `${count} waiting` : undefined} onClick={() => onOpen('suggestions')}>Suggestions</Row>}
       {allowed('costs') && <Row icon={DollarSign} onClick={() => onOpen('costs')}>Costs and usage</Row>}

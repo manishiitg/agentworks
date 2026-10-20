@@ -6,7 +6,6 @@ import type { InstalledPlaybook } from '../../services/api-types'
 import { useCanWriteWorkflow, READ_ONLY_TITLE } from '../../hooks/useCanWriteWorkflow'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { AskAIButton } from '../workflow/AskAIButton'
-import { WorkspaceViewTabs } from '../workflow/WorkspaceViewTabs'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
@@ -22,7 +21,7 @@ type PlaybooksPanelProps = {
 type Tab = 'installed' | 'catalog'
 
 export default function PlaybooksPanel({ workspacePath }: PlaybooksPanelProps) {
-  const [tab, setTab] = usePersistentTab<Tab>('agentworks.tab.playbooks', 'catalog', ['installed', 'catalog'])
+  const [tab, setTab] = usePersistentTab<Tab>('agentworks.tab.playbooks', 'installed', ['installed', 'catalog'])
   const [query, setQuery] = useState('')
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(() => new Set(PLAYBOOK_CATEGORIES))
   const [selected, setSelected] = useState<PlaybookCatalogItem | null>(null)
@@ -280,16 +279,10 @@ export default function PlaybooksPanel({ workspacePath }: PlaybooksPanelProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 border-b border-border">
-        <WorkspaceViewTabs
-          value={tab}
-          onChange={(value: string) => setTab(value as Tab)}
-          options={[
-            { value: 'installed', label: 'Installed', count: installed.length },
-            { value: 'catalog', label: 'Catalog', count: catalog.length },
-          ]}
-          ariaLabel="Workflow playbooks"
-        />
+      {/* No Installed/Catalog tabs (owner, 2026-10-20): installed playbooks first, the catalog one click away. */}
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-1 py-1.5 text-xs">
+        <span className="text-muted-foreground">{tab === 'installed' ? `Installed · ${installed.length}` : `Catalog · ${catalog.length}`}</span>
+        <button type="button" className="rounded font-medium text-primary hover:underline" onClick={() => setTab(tab === 'installed' ? 'catalog' : 'installed')}>{tab === 'installed' ? '+ Add from catalog' : '← Installed'}</button>
       </div>
 
       {loading ? <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading playbooks…</div> : tab === 'installed' ? (

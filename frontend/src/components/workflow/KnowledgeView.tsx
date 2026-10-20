@@ -52,7 +52,6 @@ export default function KnowledgeView({ workspacePath }: KnowledgeViewProps) {
         icon={BookOpen}
         title="Knowledge"
         helpTopic={`Knowledge · ${tabLabel}`}
-        subtitle="Background knowledge and stored records. Task guides are in Integrations → Skills."
         actions={(
           <WorkspaceViewActions
             workspacePath={workspacePath}
@@ -61,7 +60,7 @@ export default function KnowledgeView({ workspacePath }: KnowledgeViewProps) {
             refreshLabel={`Refresh ${tabLabel}`}
           />
         )}
-        tabs={{ value: tab, onChange: (value: string) => selectTab(value as KnowledgeTabId), options: KNOWLEDGE_TABS, ariaLabel: 'Knowledge' }}
+        /* Knowledge base and Database are separate side-list items (owner, 2026-10-20). */
       />
       <div className="min-h-0 flex-1">
         {tab === 'knowledgebase' && <KnowledgebaseView workspacePath={workspacePath} hideHeader />}

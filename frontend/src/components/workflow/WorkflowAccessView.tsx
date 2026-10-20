@@ -80,9 +80,7 @@ export default function WorkflowAccessView({ workspacePath, relayMode = false }:
             />
           ) : undefined
         }
-        tabs={visibleTabs.length > 1
-          ? { value: activeTab ?? 'workflow', onChange: (value: string) => setTab(value as AccessTabId), options: visibleTabs, ariaLabel: 'Access sections' }
-          : undefined}
+        /* No sub-tabs: the side list opens this workflow's access (owner, 2026-10-20). */
       />
 
       <div className="flex-1 overflow-y-auto">
