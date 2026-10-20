@@ -188,7 +188,7 @@ func (s *ProductScheduleService) CreateCrewProject(ctx context.Context, req Crea
 	if !strings.EqualFold(strings.TrimSpace(profile.Runtime.Conversation.Mode), agentprofiles.ConversationModeKeyed) {
 		return CreatedCrew{}, fmt.Errorf("profile %q does not support crew projects", profileID)
 	}
-	projectsRoot, err := cleanAgentProfileWorkspace(profile.Runtime.Workspace.ProjectsRoot, userID)
+	projectsRoot, err := projectProfileProjectsRoot(profile, userID)
 	if err != nil {
 		return CreatedCrew{}, fmt.Errorf("invalid product projects root: %w", err)
 	}

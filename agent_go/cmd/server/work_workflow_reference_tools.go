@@ -57,28 +57,12 @@ func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string
 
 func listWorkspaceProjectsForOwner(ctx context.Context, userID, ownerID, query string, product projectProduct) ([]map[string]interface{}, error) {
 	root := agentProfileRuntimeWorkspace(ownerID, product.ProjectsRoot)
-	if sanitizeUserIDForPath(ownerID) != sanitizeUserIDForPath(userID) && root == agentProfileRuntimeWorkspace(userID, product.ProjectsRoot) {
-		// Single-account layouts share one Chats root; don't list it twice.
-		return nil, nil
-	}
 	store := defaultProductProjectStore()
-	paths, exists, err := store.listPaths(ctx, root)
+	paths, err := listSharedCrewManifestPaths(ctx, store, ownerID, product.ProfileID)
 	if err != nil {
 		return nil, fmt.Errorf("list Crew projects: %w", err)
 	}
 	rootPrefix := strings.TrimSuffix(filepath.ToSlash(root), "/") + "/"
-	if !exists {
-		paths = nil
-	}
-	// Crews that moved to the shared root (PLAT-442 step 4) belong to their manifest owner.
-	shared := []string{}
-	if isProjectProfileID(product.ProfileID) {
-		shared, err = listSharedCrewManifestPaths(ctx, store, ownerID, product.ProfileID)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("list Crew projects: %w", err)
-	}
-	paths = append(paths, shared...)
 	if len(paths) == 0 {
 		return []map[string]interface{}{}, nil
 	}

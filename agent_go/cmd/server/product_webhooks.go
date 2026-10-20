@@ -556,6 +556,9 @@ func (s *ProductScheduleService) findProductWebhook(ctx context.Context, id stri
 		}
 		users := s.users(productAccessName(profile))
 		for _, userID := range users {
+			if isProjectProfileID(profile.ID) {
+				continue
+			}
 			root, err := cleanAgentProfileWorkspace(profile.Runtime.Workspace.ProjectsRoot, userID)
 			if err != nil {
 				continue

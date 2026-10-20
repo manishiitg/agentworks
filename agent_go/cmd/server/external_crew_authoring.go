@@ -526,7 +526,7 @@ func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *Us
 	if err != nil {
 		return "", err
 	}
-	projectsRoot, err := cleanAgentProfileWorkspace(profile.Runtime.Workspace.ProjectsRoot, userID)
+	projectsRoot, err := projectProfileProjectsRoot(profile, userID)
 	if err != nil {
 		return "", fmt.Errorf("invalid Crew projects root: %w", err)
 	}

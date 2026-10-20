@@ -287,20 +287,9 @@ func listSharedProjectsForOwner(ctx context.Context, claims *UserClaims, profile
 // on it); the admin Code listing passes false, since Code is never shared and
 // a reviewer must see every Code (PLAT-725 filtered them all out).
 func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agentprofiles.Profile, ownerID string, sharedOnly bool) []sharedProjectSummary {
-	projectsRoot, err := cleanAgentProfileWorkspace(profile.Runtime.Workspace.ProjectsRoot, ownerID)
+	paths, _, err := listProjectManifestPaths(ctx, defaultProductProjectStore(), ownerID, profile)
 	if err != nil {
 		return nil
-	}
-	listing, exists, err := listWorkspaceFolder(ctx, agentProfileRuntimeWorkspace(ownerID, projectsRoot), 3)
-	var paths []string
-	if err == nil && exists {
-		collectWorkspaceFilePaths(listing, &paths)
-	}
-	// Crews that moved to the shared root belong to their registered owner (PLAT-442 step 4).
-	if isProjectProfileID(profile.ID) {
-		if shared, sharedErr := listSharedCrewManifestPaths(ctx, defaultProductProjectStore(), ownerID, profile.ID); sharedErr == nil {
-			paths = append(paths, shared...)
-		}
 	}
 	if len(paths) == 0 {
 		return nil

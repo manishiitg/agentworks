@@ -3,6 +3,7 @@ package server
 import (
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
@@ -95,4 +96,12 @@ func (api *StreamingAPI) projectProductName(userID, workspacePath string) string
 func projectSupportsRunAudience(profileID string) bool {
 	product, ok := projectProductForProfile(profileID)
 	return ok && product.RunAudience
+}
+
+// Inventory/creation roots are configuration, never a selectable chat workspace.
+func projectProfileProjectsRoot(profile agentprofiles.Profile, userID string) (string, error) {
+	if isProjectProfileID(profile.ID) {
+		return workspaceref.SharedCrewRoot, nil
+	}
+	return cleanAgentProfileWorkspace(profile.Runtime.Workspace.ProjectsRoot, userID)
 }

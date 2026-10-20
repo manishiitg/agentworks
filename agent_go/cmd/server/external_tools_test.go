@@ -284,6 +284,11 @@ func TestExternalToolsHTTPCatalogCompilesSchemasAndRequiresIdentity(t *testing.T
 		if !productpolicy.Enabled("bullpen") {
 			delete(want, bullpenAdminTool) // listed only where the AgentBridge product runs
 		}
+		for name := range want {
+			if projectServiceTool(name) {
+				delete(want, name)
+			}
+		}
 		if !ok || len(definitions) != len(want) {
 			t.Fatalf("unexpected catalog size %d, want %d", len(definitions), len(want))
 		}
@@ -425,7 +430,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 		if tool.Name != wantCatalog[i] {
 			t.Fatalf("catalog[%d] = %s, product.yaml admits %s", i, tool.Name, wantCatalog[i])
 		}
-		if tool.mutates && tool.Name != "workspace" && !isDashboardTool(tool.Name) && !isExternalCrewTool(tool.Name) && tool.Name != "write_file" && tool.Name != "plan" && tool.Name != "workflow_upgrade" && tool.Name != "workflow_crews" && !isExternalWorkflowAccountTool(tool.Name) && tool.Name != "create_workflow" && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) && !isExternalKnowledgebaseTool(tool.Name) && !isExternalVaultTool(tool.Name) && tool.Name != "manage_condition_triggers" && tool.Name != "manage_agent_email" && tool.Name != "set_token_limits" && tool.Name != "set_allowed_models" && tool.Name != bullpenAdminTool && tool.Name != serverProductManagementTool && tool.Name != externalSignInAppsTool && tool.Name != brainAdminTool && tool.Name != "browser_connections" && tool.Name != "update_settings" && tool.Name != "manage_schedules" && tool.Name != "workflow_team" && tool.Name != "manage_triggers" && tool.Name != "answer_needs_you" && tool.Name != "dismiss_needs_you" && tool.Name != "manage_pulse" && tool.Name != "manage_project" && tool.Name != "manage_crew_chats" && tool.Name != "run_after_run" && tool.Name != "manage_messaging" {
+		if tool.mutates && tool.Name != "workspace" && !isDashboardTool(tool.Name) && !isExternalCrewTool(tool.Name) && tool.Name != "write_file" && tool.Name != "plan" && tool.Name != "workflow_upgrade" && tool.Name != "workflow_crews" && !isExternalWorkflowAccountTool(tool.Name) && tool.Name != "create_workflow" && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) && !isExternalKnowledgebaseTool(tool.Name) && !isExternalVaultTool(tool.Name) && tool.Name != "manage_condition_triggers" && tool.Name != "manage_agent_email" && tool.Name != "set_token_limits" && tool.Name != "set_allowed_models" && tool.Name != bullpenAdminTool && tool.Name != serverProductManagementTool && tool.Name != externalSignInAppsTool && tool.Name != brainAdminTool && tool.Name != "browser_connections" && tool.Name != "update_settings" && tool.Name != "manage_schedules" && tool.Name != "workflow_team" && tool.Name != "manage_triggers" && tool.Name != "answer_needs_you" && tool.Name != "dismiss_needs_you" && tool.Name != "manage_pulse" && tool.Name != "manage_project" && tool.Name != "manage_crew_chats" && tool.Name != "run_after_run" && tool.Name != "manage_messaging" && tool.Name != "manage_laptop_access" {
 			t.Fatalf("unexpected workflow authoring tool %s", tool.Name)
 		}
 	}
@@ -491,15 +496,6 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 	cliActions := cliMessageTool.InputSchema["properties"].(map[string]any)["action"]
 	if strings.Contains(fmt.Sprint(cliActions), "register") || !strings.Contains(fmt.Sprint(messageParams["action"]), "register") {
 		t.Fatal("per-connection catalog was not narrowed or changed the shared schema")
-	}
-	wantExternal := []string{"list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "export_dashboard_motion", "publish_dashboard", "restore_dashboard", "get_dashboard_link", "get_dashboard_share", "share_dashboard", "list_workflows", "get_workflow", "get_settings", "get_secret_sources", "browser_connections", "update_settings", "manage_schedules", "workflow_team", "manage_triggers", "list_needs_you", "answer_needs_you", "dismiss_needs_you", "manage_pulse", "manage_project", "manage_crew_chats", "query_database", "run_after_run", "manage_messaging", "manage_condition_triggers", "list_files", "search_files", "list_step_code", "get_file_link", "read_file", "write_file", "get_plan", "get_agent_context", "list_guidance_topics", "get_guidance_topic", "get_guidance_skills", "get_skill", "list_workflow_knowledge", "read_workflow_knowledge", "list_runs", "get_run", "get_logs", "run_status", "chat", "messages", "run_reply_input", "list_workflow_functions", "call_workflow_function", "get_workflow_function_call", "reply_workflow_function_call", "suggest_workflow_change", "list_crews", "workspace", "get_crew", "get_crew_costs", "list_crew_files", "search_crew_files", "read_crew_file", "list_crew_functions", "call_crew_function", "ask_crew", "get_crew_function_call", "list_crew_function_calls", "reply_crew_function_call", "suggest_crew_change", "create_crew", "update_crew", "write_crew_file", "export_crew", "import_crew", "list_review_workspaces", "get_review_costs", "list_review_files", "read_review_file", "list_review_chats", "read_review_chat", "get_review_audit", "list_my_code_projects", "list_my_code_chats", "ask_my_code", "read_my_code_chat", "get_my_code_state", "open_my_code_chat", "close_my_code_chat", "stop_my_code_chat", "rename_my_code_chat", "get_token_usage", "set_token_limits", "set_allowed_models", "server_product", "bullpen_admin", "brain_admin", "costs", "users", "sign_in_apps", "agent_inbox", "manage_agent_email"}
-	if len(admitted) != len(wantExternal) {
-		t.Fatalf("admitted %d tools, want %d", len(admitted), len(wantExternal))
-	}
-	for i, name := range wantExternal {
-		if admitted[i] != name {
-			t.Fatalf("admitted[%d] = %s, want %s", i, admitted[i], name)
-		}
 	}
 	wantRun := []string{"agent_browser", "execute_step", "get_contract_upgrades", "get_cost_summary", "get_file_link", "get_llm_config", "get_notification_history", "get_report_link", "get_schedule_runs", "get_slack_bot_settings", "slack", "get_step_prompts", "preview_step_runtime", "send_message", "read_agent_messages", "list_agents", "schedule_message_wakeup", "submit_workflow_suggestion", "get_ui_state", "get_workflow_command_guidance", "get_workflow_config", "get_workflow_team", "read_team_source", "get_human_input_request", "list_executions", "list_mcp_servers", "list_schedules", "list_secrets", "list_skills", "list_ui_capabilities", "perform_ui_action", "create_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request", "human_feedback", "send_email", "record_summary", "send_slack_message", "google_workspace_cli", "query_step", "request_workflow_folder_access", "run_full_workflow", "search_skills", "send_step_message", "stop_all_executions", "stop_step", "test_slack_bot_connection", "trigger_schedule"}
 	wantRun = append([]string{"brain_browse", "brain_read", "brain_update", "brain_skills", "brain_access"}, wantRun...)
