@@ -167,16 +167,28 @@ func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID strin
 	for _, n := range *selection {
 		wanted[n] = true
 	}
+	taken := map[string]string{} // short name -> the full name that has it
 	for _, s := range scoped {
 		delete(wanted, s.Name)
+		taken[s.Name] = s.Name
 	}
 	for _, s := range rows {
-		if wanted[s.Name] {
-			scoped = append(scoped, struct {
-				Name  string `json:"name"`
-				Value string `json:"value"`
-			}{s.Name, s.Value})
+		if !wanted[s.Name] {
+			continue
 		}
+		// A Vault secret reaches scripts under the name its owner gave it ($SECRET_GITHUB_TOKEN, not
+		// $SECRET_VLT_<vault>__GITHUB_TOKEN; owner 2026-10-20), so moving a project secret into Vault keeps every
+		// script working. The first secret with a name wins; the picker refuses a second one with the same name.
+		name := vaultSecretShortName(s.Name)
+		if prior, clash := taken[name]; clash {
+			log.Printf("[SECRETS] Two selected secrets share the name %s; using %s, skipping %s", name, prior, s.Name)
+			continue
+		}
+		taken[name] = s.Name
+		scoped = append(scoped, struct {
+			Name  string `json:"name"`
+			Value string `json:"value"`
+		}{name, s.Value})
 	}
 	return scoped
 }
