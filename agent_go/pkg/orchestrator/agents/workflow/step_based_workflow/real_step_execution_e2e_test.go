@@ -126,9 +126,4 @@ print('STATUS: COMPLETED')
 	if _, err := os.Stat(filepath.Join(docs, workflow, "runs/test-historical/test_mode.json")); err != nil {
 		t.Fatalf("historical receipt was removed: %v", err)
 	}
-	for _, args := range []map[string]interface{}{{"test_mode": true}, {"source_run": "iteration-1/default"}} {
-		if err := validateRealExecutionArguments(args); err == nil || !strings.Contains(err.Error(), "has been removed") {
-			t.Fatalf("stale invocation argument was not clearly rejected: %v", err)
-		}
-	}
 }

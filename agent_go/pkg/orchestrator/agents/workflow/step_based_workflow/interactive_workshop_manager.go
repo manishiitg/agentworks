@@ -2015,9 +2015,6 @@ func registerInteractiveWorkshopTools(iwm *InteractiveWorkshopManager, mcpAgent 
 			"required": []string{"step_id"},
 		},
 		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			if err := validateRealExecutionArguments(args); err != nil {
-				return err.Error(), nil
-			}
 
 			stepIDRaw, ok := args["step_id"]
 			if !ok || stepIDRaw == nil {

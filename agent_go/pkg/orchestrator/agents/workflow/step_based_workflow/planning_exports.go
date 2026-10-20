@@ -1776,9 +1776,6 @@ func RegisterRunFullWorkflowTool(
 			"required": []string{"group_name"},
 		},
 		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			if err := validateRealExecutionArguments(args); err != nil {
-				return err.Error(), nil
-			}
 
 			cfg := session.config
 			if cfg == nil {

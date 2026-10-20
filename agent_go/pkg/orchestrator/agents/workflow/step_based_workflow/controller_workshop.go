@@ -13,7 +13,6 @@ import (
 // When GroupName is set, the controller resolves the run folder and variable values
 // for that group, making each execute_step call self-contained.
 type WorkshopExecuteOptions struct {
-	GroupID             string                 // Deprecated: use GroupName instead. Kept for backward compat; mapped to GroupName internally.
 	GroupName           string                 // e.g., "production" — overrides session-level group
 	Iteration           string                 // e.g., "iteration-3" — combined with group folder name to form RunFolder
 	RunFolder           string                 // e.g., "iteration-3/xtech" — auto-calculated from Iteration + group, or set directly
@@ -26,16 +25,6 @@ type WorkshopExecuteOptions struct {
 	ScriptParameters    map[string]interface{} // Validated named inputs for a scripted step, exposed through STEP_PARAMS_JSON.
 	ScriptParametersSet bool                   // Distinguishes an omitted field from an explicitly supplied empty object.
 	ExecutionID         string                 // Server-generated identity for this direct step execution.
-}
-
-// validateRealExecutionArguments prevents stale callers from mistaking real execution for the retired simulation mode.
-func validateRealExecutionArguments(args map[string]interface{}) error {
-	for _, key := range []string{"test_mode", "source_run"} {
-		if _, supplied := args[key]; supplied {
-			return fmt.Errorf("%s has been removed: steps and workflows execute normally with real database updates and tool actions; omit this argument to run", key)
-		}
-	}
-	return nil
 }
 
 // cleanupWorkshopExecutionPath removes a specific workshop execution folder and archives
@@ -73,10 +62,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 
 	// 1. Apply per-call overrides (group name, run_folder, human_input)
 	if opts != nil {
-		// Backward compat: map deprecated GroupID to GroupName
-		if opts.GroupName == "" && opts.GroupID != "" {
-			opts.GroupName = opts.GroupID
-		}
 		hcpo.GetLogger().Info(fmt.Sprintf("[WORKSHOP] Per-call options: groupName=%s, runFolder=%s, humanInput=%d chars, savedScriptOnly=%v", opts.GroupName, opts.RunFolder, len(opts.HumanInput), opts.SavedScriptOnly))
 		releaseFn, err := hcpo.applyWorkshopExecuteOptions(ctx, opts)
 		if err != nil {
@@ -382,7 +367,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) ExecuteStepForWorkshop(
 func (hcpo *StepBasedWorkflowOrchestrator) applyWorkshopExecuteOptions(ctx context.Context, opts *WorkshopExecuteOptions) (func(), error) {
 	releaseGroupSession := func() {}
 	if hcpo.isRelayExecution() {
-		if opts.GroupName != "" || opts.GroupID != "" {
+		if opts.GroupName != "" {
 			return releaseGroupSession, fmt.Errorf("Flows do not accept variable groups")
 		}
 		if opts.RunFolder == "" {
@@ -397,10 +382,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) applyWorkshopExecuteOptions(ctx conte
 		return releaseGroupSession, nil
 	}
 
-	// Backward compat: map deprecated GroupID to GroupName
-	if opts.GroupName == "" && opts.GroupID != "" {
-		opts.GroupName = opts.GroupID
-	}
 	if opts.GroupName != "" {
 		hcpo.GetLogger().Info(fmt.Sprintf("[WORKSHOP] applyWorkshopExecuteOptions: groupName=%s, manifestLoaded=%v", opts.GroupName, hcpo.variablesManifest != nil))
 		resolvedGroupName := opts.GroupName
