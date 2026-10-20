@@ -39,7 +39,7 @@ func TestExternalBuilderHasWebsiteBuilderTools(t *testing.T) {
 			if !website.Allows(name) {
 				continue
 			}
-			want := kb || !slices.Contains(knowledgebase.ToolNames(), knowledgebase.CanonicalToolName(name))
+			want := kb || !slices.Contains(knowledgebase.ToolNames(), name)
 			if slices.Contains(bridge, name) != want || accessTokenRunToolDenied(claims, name) == want {
 				t.Fatalf("Builder tool %s: on bridge=%v, want %v (brain scope %v)", name, slices.Contains(bridge, name), want, kb)
 			}

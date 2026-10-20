@@ -273,7 +273,6 @@ func knowledgebaseRuntimePolicy(ctx context.Context, userID string, principal *k
 }
 
 func knowledgebaseDispatch(ctx context.Context, service *knowledgebase.Service, p knowledgebase.Principal, userID, tool string, args map[string]any) (any, error) {
-	tool = knowledgebase.CanonicalToolName(tool)
 	action, _ := args["action"].(string)
 	if tool == knowledgebase.ToolAccess && (action == "inspect_project" || action == "set_project_access") {
 		if err := knowledgebase.ValidateToolArguments(tool, args); err != nil {

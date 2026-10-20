@@ -302,9 +302,6 @@ func externalToolMutates(name string, catalog []externalTool) bool {
 }
 
 func externalGuidanceTopicByName(name string) *externalGuidanceTopic {
-	if name == "message-sequence" {
-		name = "agent"
-	}
 	for i := range externalGuidanceTopics {
 		if externalGuidanceTopics[i].Name == name {
 			return &externalGuidanceTopics[i]

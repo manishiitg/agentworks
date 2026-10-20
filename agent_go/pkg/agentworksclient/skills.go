@@ -19,7 +19,7 @@ var installedSkillFile embed.FS
 //go:embed skills/publish/SKILL.md
 var publicationSkillFile embed.FS
 
-const EntrySkillVersion = "1.0.7"
+const EntrySkillVersion = "1.0.8"
 
 // EntrySkillFiles is shared by CLI installation and hosted skill packages.
 func EntrySkillFiles() map[string]string {

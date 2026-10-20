@@ -1,4 +1,4 @@
-Choose a product by the work you want to accomplish. Discover its current tools before acting: the products enabled on this server and your access decide what you can use.
+Choose a product by the work you want to accomplish. Discover its current tools before acting: the products enabled on this server and your access decide what you can use. Your own MCP sign-in follows your website role: owners and workflow editors build; other people use shared work in Run mode. Machine, service-account and device connections keep their assigned limits.
 
 Agent conversations have two modes: **Builder** is the owner's workspace for building and changing the product; **Run** is how everyone else understands it and uses what the owner published. These mode names do not replace the current permission checks on individual operations. Shared dashboards let people in Run mode understand and use published work. Within a product shared with you, runs, results, execution and step logs, function calls and token usage are visible. Sharing also includes MCP reads of its files, skills, memory, knowledge and instructions; secret values and private logs stay excluded. Share offers Only me, Chosen people or Everyone and creates a standard dashboard when needed. Secret values and personal provider accounts and logins remain private. Personal chats stay private. Crew and Flows have a main owner and can have co-owners. Builders can see every Builder chat in their project. People with Run access use their own chat and the dashboard; Builder chats stay private to Builders. Workflows retain their current owners and editors.
 
@@ -21,7 +21,7 @@ Use Goals when the task is a continuing outcome, rather than a single question o
 
 - **Abilities:** define the objective and success measures; create and edit the workflow plan; configure steps, skills, schedules and integrations; run steps or the workflow; inspect results, reports and costs; use Pulse to follow up on the goal.
 - **MCP route:** discover workflows with `workflow action=list`; read the plan and current revision; discover native edit operations with `plan action=list`; inspect run state and evidence through the available run tools. Load the relevant plan, execution and Pulse guidance.
-- **Access:** edits require current project editing authority and existing authoring consent. Running, sharing and integration access have their own current checks.
+- **Access:** owners and workflow editors can build through MCP just as on the website. Running, sharing and integration access use the same server checks.
 - **Example:** monitor incoming support requests, measure response time and follow up on unresolved cases.
 
 <!-- /product --><!-- product:crew -->### Crew
@@ -29,10 +29,10 @@ Use Goals when the task is a continuing outcome, rather than a single question o
 Crew combines the former Code and Crew products. Use it to work privately with an agent, develop a repository or build a specialist that other people can use. New projects start **Only me**; Share changes access to the same project.
 
 - **Abilities:** project files and instructions, coding and review, named chat tabs, selected skills and integrations, browser and database tools, dashboards, typed functions, schedules and costs. Memory is optional: existing former Code projects keep it off and former Crew projects keep it on until a Builder changes the setting. A Builder can switch Memory on or off in Settings.
-- **MCP route:** start with `workspace action=list`, then `get` using its returned `workspace_id`. Use `create`, `update`, `ask` and the chat actions from the live schema. Load `crew-authoring` for setup and discover published functions with `functions action=list`. Existing Crew/Code tool names and IDs remain supported; an internal `code:` or `work:` prefix is an origin, not another product or a new permission.
+- **MCP route:** start with `workspace action=list`, then `get` using its returned `workspace_id`. Use `create`, `update`, `ask` and the chat actions from the live schema. Load `crew-authoring` for setup and discover published functions with `functions action=list`. Keep the returned project IDs; an internal `code:` or `work:` prefix identifies the stored project, without creating another product or permission.
 - **Access:** the main owner and co-owners build together and can see all Builder chats. Share offers **Only me / Chosen people / Everyone**. People with Run access see their own chat and the dashboard, can use published functions and read permitted files, runs and results over MCP. Builder chats, secret values and private logs remain excluded. Current connection, account and project checks still apply; sharing does not grant Builder access.
 - **Accounts and costs:** work uses the project's selected model and connected accounts under their current grants. Sharing does not switch accounts automatically. Show whose account will be used and attribute activity to the caller.
-- **Local work:** a Local project runs on its connected computer. Use its chat on that computer; remote Ask is not available for Local projects. Use the available Publish to Crew tools to create a separate hosted Crew or add a named agent to an existing Crew; inspect the returned publication status. Hosted continuation starts from a handoff summary; saved raw Builder history stays private. Publishing is separate from sharing an existing hosted project.
+- **Optional laptop access:** Crew runs on the server, including its files, shell, functions, schedules and background work. Connect your computer once with the AgentWorks CLI, then choose it and its folders in Crew Settings. Read access lets the owner copy files into Crew; Read & write also allows commands on that computer. Use `manage_laptop_access` for settings and folder grants, `execute_local_shell_command` for commands and `copy_local_file_to_crew` to copy into Crew, using their live schemas. Laptop access belongs to the owner’s interactive Builder chat; Run callers, schedules and Pulse do not inherit it. A disconnected laptop leaves normal server work available. There is no separate Publish copy, sync or copy back to the laptop; server secrets are not sent to laptop commands.
 - **Example:** develop an invoice assistant privately, expose a reconciliation function, then share the same Crew with the finance team. A Goal can call its published function.
 
 <!-- /product --><!-- product:relays -->### Flows
@@ -66,7 +66,7 @@ Use Vault when integrations or secrets need shared, centrally controlled access 
 
 Use AgentBridge to connect and coordinate external agents while they keep working in their own coding clients.
 
-- **Abilities:** discover registered agents and their purposes, exchange messages, use groups and see whether a message is waiting, received or handled.
+- **Abilities:** discover registered agents and their purposes, exchange messages and see whether a message is waiting, received or handled.
 - **MCP/CLI route:** discover the current messaging tools; register or inspect your named mailbox; send with a stable submission ID and reply in the original inbox. Apps without a terminal use an inbox over their normal MCP sign-in; nothing is pushed, so check at the start of a conversation or when asked. The CLI connects a coding chat for live delivery. The directory labels recipients Live now or Inbox.
 - **Access:** authorized account connections and mailbox ownership apply. Stored or online does not mean a receiving agent has processed a message; peer messages do not grant human permission.
 - **Example:** ask a reviewer agent to inspect a specific candidate and return its findings.
@@ -104,7 +104,7 @@ Use **Crew** to work inside an AgentWorks project. Use **AgentBridge** to find a
 
 <!-- /product -->### Why is a product or tool missing?
 
-It may be disabled on this installation, outside this connection's consent or outside your current access. Check the live catalog and context; another tool cannot bypass that boundary. <!-- product:knowledgebase -->Shared Brain guidance describes the installation. <!-- /product -->Live MCP guidance also reflects the caller's allowed products.
+It may be disabled on this installation or outside your current website access. A machine or device connection may also have narrower limits. Check the live catalog and context; another tool cannot bypass that boundary. <!-- product:knowledgebase -->Shared Brain guidance describes the installation. <!-- /product -->Live MCP guidance also reflects the caller's allowed products.
 
 ## Versions and local copies
 

@@ -88,10 +88,8 @@ func TestExternalMCPGuidanceRefresh(t *testing.T) {
 			if !denied.IsError {
 				t.Fatal("unmarked source was exposed")
 			}
-			alias := call("topic", map[string]any{"topic": "message-sequence"})
-			if alias["version"] != topics["agent"] {
-				t.Fatal("legacy agent topic lost canonical version")
-			}
+			removed := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "help", "arguments": map[string]any{"action": "topic", "topic": "message-sequence"}})
+			requireRemoteError(t, removed, "removed topic", "unknown_topic")
 		})
 	}
 }

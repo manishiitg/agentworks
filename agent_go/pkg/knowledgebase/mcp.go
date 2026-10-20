@@ -25,7 +25,7 @@ var mcpSurface = []mcpTool{
 }
 
 // ToolDefinitions is the complete five-tool surface. The dedicated access
-// builder receives only manage_knowledgebase_access from this definition.
+// builder receives only brain_access from this definition.
 func ToolDefinitions() []ToolDefinition { return mcpDefinitions(true, true, true, false) }
 
 // IsProjectAction is an action that configures a workflow/Crew project (not a folder): inspect and the Off/Read/Read &
@@ -35,7 +35,6 @@ func IsProjectAction(action string) bool {
 }
 
 func IsMCPTool(name string) bool {
-	name = CanonicalToolName(name)
 	for _, tool := range mcpSurface {
 		if tool.name == name {
 			return true
@@ -172,11 +171,9 @@ func containsRequired(xs []any, key string) bool {
 }
 
 func ToolActionMutates(tool, action string) bool {
-	switch CanonicalToolName(tool) {
+	switch tool {
 	case ToolUpdate:
 		return true
-	case ToolBackup:
-		return action == "commit" || action == "push" || action == "git"
 	case ToolAccess:
 		return action != "inspect" && action != "list" && action != "inspect_project"
 	case ToolSkills:
@@ -194,7 +191,6 @@ var mcpValidators struct {
 // CallTool is the public MCP boundary. Internal viewer/domain operations remain
 // behind Call; their old names are not registered in MCP discovery or dispatch.
 func ValidateToolArguments(tool string, args map[string]any) error {
-	tool = CanonicalToolName(tool)
 	mcpValidators.Do(func() {
 		mcpValidators.byName = map[string]*jsonschema.Schema{}
 		compiler := jsonschema.NewCompiler()
@@ -226,7 +222,6 @@ func ValidateToolArguments(tool string, args map[string]any) error {
 }
 
 func (s *Service) CallTool(ctx context.Context, p Principal, tool string, args map[string]any) (any, error) {
-	tool = CanonicalToolName(tool)
 	if err := ValidateToolArguments(tool, args); err != nil {
 		return nil, err
 	}

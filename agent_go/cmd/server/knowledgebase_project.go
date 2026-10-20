@@ -29,7 +29,6 @@ func knowledgeProjectBuilderQuery(req QueryRequest, claims *UserClaims, authorit
 }
 
 func knowledgeProjectExecute(ctx context.Context, userID, workspace, tool string, args map[string]any) (string, error) {
-	tool = knowledgebase.CanonicalToolName(tool)
 	claims := GetUserFromContext(ctx)
 	if claims == nil || claims.UserID != userID || !knowledgebaseProductAllowed(claims) ||
 		!knowledgebaseConnectionAllowsAction(claims, knowledgebase.ToolAccess, map[string]any{"action": "set_project_access"}) ||
@@ -165,6 +164,5 @@ func (api *StreamingAPI) handleKnowledgebaseProject(w http.ResponseWriter, r *ht
 
 // isKnowledgeProjectTool names the Builder's project-scoped Brain tools.
 func isKnowledgeProjectTool(name string) bool {
-	name = knowledgebase.CanonicalToolName(name)
 	return name == knowledgebase.ToolBrowse || name == knowledgebase.ToolAccess
 }

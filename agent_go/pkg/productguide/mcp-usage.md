@@ -12,6 +12,8 @@ Use plain words. Explain the result and give one useful next step they can take 
 
 ## Discover before acting
 
+Your own MCP sign-in has your website access. Owners and workflow editors build; people using shared products use Run mode. Do not ask people to choose extra tool permissions for their own sign-in. Machine, service-account and device connections retain their assigned limits.
+
 1. Read the live tool list. Remote MCP uses `get_api_spec` for discovery and selected schemas, then `call_tool`; stdio clients may expose tools directly. Use returned names and argument shapes.
 2. Call `help action=context` for current access and `guidance_version`. Find relevant topics with `help action=topics`, then load them with `help action=topic` or selected packages with `help action=skills`.
 3. Discover the project and read its current state. Native edits use the returned revision/version and a unique request ID where required; reuse an ID only for an identical retry.
@@ -39,7 +41,7 @@ Schedules call shared entry points at a chosen time. Watchers check for a condit
 
 Load guidance relevant to the work:
 
-<!-- product:crew -->- Crew: `workspace` for discovery, project setup and chat tabs; `crew-authoring` for detailed setup, functions and use. Legacy tools stay available through discovery. A Local project needs its connected computer for local work; publishing creates a hosted target with a private handoff summary.
+<!-- product:crew -->- Crew: `workspace` for discovery, project setup and chat tabs; `crew-authoring` for detailed setup, functions and use. Crew works on the server. Optional laptop tools use the owner’s selected computer and folder access from Crew Settings; they do not replace server work or create a separate published project.
 <!-- /product --><!-- product:relays -->- Flows: `relay-builder` for source, test and publication; `relay-dashboard` for dashboards.
 <!-- /product --><!-- product:agentworks -->- Goals: the relevant plan, step, execution and Pulse topics.
 <!-- /product -->

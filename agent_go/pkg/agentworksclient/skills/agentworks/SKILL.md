@@ -2,7 +2,7 @@
 name: agentworks
 description: Use AgentWorks products through the current MCP connection, or help install the CLI and connect a coding chat.
 metadata:
-  version: 1.0.7
+  version: 1.0.8
 ---
 
 # AgentWorks
@@ -13,9 +13,11 @@ For CLI installation, sign-in, updates or connecting this coding chat, read [the
 
 1. Discover live tools and selected schemas with `get_api_spec` (remote MCP) or the stdio tool list. Invoke returned names and arguments through `call_tool` or the tool itself.
 2. Call `help action=context` for current access and `guidance_version`; find relevant guidance with `help action=topics`. Load `agentworks-mcp` and the selected product topics with `help action=topic` or `help action=skills`. Keep their `external_note`: internal reference names may be action values rather than standalone MCP tools.
-3. Discover the project before acting. For workflow plan edits, use `plan action=list` and the revision from `get_plan`. For combined Crew work, discover projects with `workspace action=list` and load `crew-authoring`; for Flows, load `relay-builder` or `relay-dashboard`. Follow current schemas, revisions and the product's test/publish/run lifecycle.
+3. Discover the project before acting. For workflow plan edits, use `plan action=list` and the revision from `workflow action=plan`. For combined Crew work, discover projects with `workspace action=list` and load `crew-authoring`; for Flows, load `relay-builder` or `relay-dashboard`. Follow current schemas, revisions and the product's test/publish/run lifecycle.
 
 Read prepared skills and retain the returned `guidance_session_id` per conversation; pass it on later schema/tool calls. Related tools share one delivered version. Full Crew/workflow skill-file reads and Brain skill-package fetches also record delivery. After context loss, reload canonical skills without `known_versions` or refetch the original files/package. Receipts grant no access and do not prove reading; preserve customized local copies.
+
+Your own MCP sign-in uses your website role: owners and workflow editors build; people using shared work use Run mode. Machine and device connections keep their assigned limits. Crew runs on the server; a connected laptop adds optional folder access and commands selected in Crew Settings.
 
 For questions and conversational requests, use the product's `ask` entry point. Use published functions/routes for defined inputs and results; discover them first, retain the call receipt and check completion. Runs have real effects within the person's requested scope. Crew combines private project/coding work and reusable agents. New projects start Only me; Share changes access to the same hosted project. Crew and Flows have a main owner and can have co-owners. Builders can see all Builder chats in their project; people with Run access use their own chat and the dashboard. Schedules and Watchers call shared entry points with their creator's current access and selected secrets.
 

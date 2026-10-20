@@ -16,7 +16,6 @@ import (
 )
 
 func knowledgebaseExecute(ctx context.Context, userID string, accessOnly bool, tool string, args map[string]any) (string, error) {
-	tool = knowledgebase.CanonicalToolName(tool)
 	claims := GetUserFromContext(ctx)
 	if claims == nil || strings.TrimSpace(userID) == "" || claims.UserID != userID || !knowledgebaseMCPAllowed(claims) {
 		// Agents and connections act within the person's folder roles; the app product is not needed.
@@ -180,7 +179,6 @@ func createKnowledgebaseTools(userID string, sessionIDs ...string) ([]llmtypes.T
 }
 
 func knowledgebaseConnectionAllowsAction(claims *UserClaims, tool string, args map[string]any) bool {
-	tool = knowledgebase.CanonicalToolName(tool)
 	if claims == nil || claims.AccessToken != nil && !claims.AccessToken.Allows("knowledgebase:read") {
 		return false
 	}
