@@ -12,6 +12,15 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
+// testSequenceStep builds a conversational step valid for native plan reads.
+func testSequenceStep(id, title string) *AgentPlanStep {
+	return &AgentPlanStep{
+		Type:             StepTypeAgent,
+		CommonStepFields: CommonStepFields{ID: id, Title: title, Description: title + " step."},
+		Items:            []AgentItem{{ID: "work", Type: "user_message", Kind: "execution", Message: "Do the work."}},
+	}
+}
+
 func consolidatedPlanDraft(t *testing.T, files *externalPlanTestFiles) *workshopDefinitionDraft {
 	t.Helper()
 	d := newWorkshopDefinitionDraft()
