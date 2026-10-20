@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/conditiontrigger"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 )
@@ -22,7 +23,12 @@ import (
 // secret removal and completion are enforced on subsequent notifications.
 func TestConditionWebhookWakeRealPythonRecovery(t *testing.T) {
 	env, ctx, root := conditionCodeFixture(t)
-	_, env.api.chatStore = productSecretsMigrationTestDocs(t)
+	t.Setenv("AUTH_SECRET", "watcher-test-auth-secret-0123456789")
+	store, err := chathistory.NewFilesystemStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.api.chatStore = store
 	t.Setenv("CAPLAYER_SERVICE_URL", "")
 	managedGlobalsMu.Lock()
 	oldGlobals, oldManaged := globalSecrets, managedGlobals
