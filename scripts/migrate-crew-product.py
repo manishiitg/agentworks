@@ -52,7 +52,11 @@ class Conversion:
         self.original = self.registry["projects"]
         self.paths, self.owners, self.ids, self.links, self.moves = {}, collections.defaultdict(list), {}, [], []
         self.files = {}
+        self.project_owners = {}
+        self.context_owner = None
+        self.unresolved_contexts = []
         self.state_moves = []
+        self.retired_states = []
         self.schedule_state_keys = 0
         self.skipped_history_metadata = 0
         records = {}
@@ -64,6 +68,7 @@ class Conversion:
                 raise ValueError("Invalid registered project location")
             legacy = f"_users/{owner}/Chats/{'Code' if record['product'] == 'code' else 'Work'}/projects/{folder}"
             canonical = "Crew/" + folder
+            self.project_owners[canonical] = owner
             source = record.get("canonical_root") or (canonical if record.get("shared") else legacy)
             if source not in (legacy, canonical):
                 raise ValueError("Unexpected registered storage location")
@@ -85,7 +90,9 @@ class Conversion:
                     raise ValueError("Both source and destination exist")
                 new.setdefault("binding_root", source)
                 self.moves.append((source, canonical))
-            aliases = set(record.get("aliases", [])) | {legacy, source}
+            aliases = set(record.get("aliases", [])) | {legacy, source,
+                f"_users/{owner}/Chats/Code/projects/{folder}",
+                f"_users/{owner}/Chats/Work/projects/{folder}"}
             for alias in aliases:
                 if alias == canonical:
                     continue
@@ -122,6 +129,19 @@ class Conversion:
         if field in PRIVATE_FIELDS:
             return value
         if isinstance(value, list):
+            if field == "workflow_context_paths":
+                result = []
+                for item in value:
+                    converted = self.path(item) if isinstance(item, str) else item
+                    logical = converted.removeprefix(str(self.docs) + "/") if isinstance(converted, str) else ""
+                    owner = self.project_owners.get(logical)
+                    if owner and owner == self.context_owner:
+                        result.append(converted)
+                    else:
+                        result.append(item)
+                        if isinstance(item, str) and (item.startswith(("Chats/", "_users/")) or "/Chats/" in item):
+                            self.unresolved_contexts.append({"conversation_owner": self.context_owner, "path": item})
+                return result
             if field == "scopes":
                 return scopes(value)
             if field in ("products", "create_products", "paused_products", "enabled_product_surfaces"):
@@ -139,6 +159,10 @@ class Conversion:
                     key = "crew_reviewer"
                 if key.startswith("code/") and field in ("entries", "previous", "agents", "schedule_states"):
                     key = "work/" + key[5:]
+                    # A running canonical schedule owns its latest state. Never
+                    # reset it by replacing it with the pre-migration twin.
+                    if field == "schedule_states" and key in value:
+                        continue
                 if key == "code" and field in ("create_products", "product_defaults", "can_create_products"):
                     if "work" in value:
                         continue
@@ -183,7 +207,8 @@ class Conversion:
     def collect(self):
         candidates = {self.docs / "config" / name for name in ("users.json", "provider-account-settings.json", "slack-targets.json", "slack-config.json", "scheduler.json")}
         for pattern in ("Crew/*/product.json", "Crew/*/workflow.json", "Workflow/*/workflow.json",
-                        "_users/*/chat_history/**/*.json", "Crew/*/builder/conversation/**/*.json", "_users/*/preferences/workspace-state.json"):
+                        "_users/*/chat_history/**/*.json", "_users/**/product-conversations.json",
+                        "Crew/*/builder/conversation/**/*.json", "_users/*/preferences/workspace-state.json"):
             candidates.update(self.docs.glob(pattern))
         for source, _ in self.moves:
             candidates.update((self.docs / source).glob("*.json"))
@@ -204,6 +229,9 @@ class Conversion:
                 self.skipped_history_metadata += 1
                 continue
             try:
+                parts = path.relative_to(self.docs).parts if path.is_relative_to(self.docs) else ()
+                self.context_owner = (parts[1] if len(parts) > 1 and parts[0] == "_users" else
+                    self.project_owners.get("/".join(parts[:2])))
                 if path.name == "product-schedules.json":
                     owner = path.parent.parent.name
                     for key, row in value.items():
@@ -220,8 +248,11 @@ class Conversion:
                             raise ValueError("Watcher ledger must be a regular file")
                         if old_file.is_file():
                             if new_file.exists():
-                                raise ValueError("Both Watcher state identities exist")
-                            self.state_moves.append((old_file, new_file))
+                                if not new_file.is_file() or new_file.is_symlink():
+                                    raise ValueError("Canonical Watcher ledger must be a regular file")
+                                self.retired_states.append(old_file)
+                            else:
+                                self.state_moves.append((old_file, new_file))
                         source = (row.get("watcher") or {}).get("source", {})
                         project = source.get("project_id")
                         if source.get("profile_id") == "code" and project:
@@ -238,6 +269,7 @@ class Conversion:
                 raise ValueError(str(error) + " in " + str(path)) from None
 
         self.state_moves = list(dict.fromkeys(self.state_moves))
+        self.retired_states = list(dict.fromkeys(self.retired_states))
 
     def databases(self, apply=False, backup=None):
         counts = collections.Counter()
@@ -297,6 +329,8 @@ class Conversion:
                 archive.add(file, arcname=label)
             for source, _ in self.state_moves:
                 archive.add(source, arcname="docs/" + str(source.relative_to(self.docs)))
+            for source in self.retired_states:
+                archive.add(source, arcname="docs/" + str(source.relative_to(self.docs)))
             for source, _ in self.moves:
                 archive.add(self.docs / source, arcname="docs/" + source)
         (backup / "links.json").write_text(json.dumps(self.links, indent=2) + "\n")
@@ -310,6 +344,8 @@ class Conversion:
         for source, destination in self.state_moves:
             destination.parent.mkdir(parents=True, exist_ok=True)
             source.rename(destination)
+        for source in self.retired_states:
+            source.unlink()
         for alias, _ in self.links:
             (self.docs / alias).unlink()
         old_audit, audit = self.docs / "config/code-admin-audit", self.docs / "config/crew-admin-audit"
@@ -336,6 +372,8 @@ def main():
     report = {"projects": len(conversion.original), "converted_code_projects": sum(x["product"] == "code" for x in conversion.original.values()),
               "metadata_files": len(conversion.files), "folder_moves": len(conversion.moves), "old_links": len(conversion.links),
               "watcher_state_moves": len(conversion.state_moves),
+              "retired_state_twins": len(conversion.retired_states),
+              "unresolved_context_paths": conversion.unresolved_contexts,
               "converted_schedule_state_keys": conversion.schedule_state_keys,
               "skipped_history_metadata": conversion.skipped_history_metadata,
               **conversion.databases()}
