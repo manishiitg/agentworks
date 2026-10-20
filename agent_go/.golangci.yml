@@ -86,7 +86,6 @@ linters:
       - tool_output_folder
       - tool_output
       - schema-gen
-      - cmd/timeout/timeout-bin
       - ".*\\.pb\\.go$"
       - ".*_generated\\.go$"
 

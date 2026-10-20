@@ -5,7 +5,6 @@ on:
   pull_request:
     paths:
       - agent_go/pkg/relaypython/**
-      - agent_go/cmd/relay-dbos-demo/**
       - agent_go/pkg/schedulerstate/**
       - agent_go/cmd/server/*relay*.go
       - deploy/common/relay-dbos.sh
@@ -15,7 +14,6 @@ on:
     branches: [main]
     paths:
       - agent_go/pkg/relaypython/**
-      - agent_go/cmd/relay-dbos-demo/**
       - agent_go/pkg/schedulerstate/**
       - agent_go/cmd/server/*relay*.go
       - deploy/common/relay-dbos.sh
@@ -67,7 +65,7 @@ jobs:
         env:
           GOWORK: 'off'
         run: |
-          RELAY_DBOS_PYTHON="$(command -v python)" go test -race ./pkg/relaypython ./pkg/schedulerstate ./cmd/relay-dbos-demo -count=1 -v
+          RELAY_DBOS_PYTHON="$(command -v python)" go test -race ./pkg/relaypython ./pkg/schedulerstate -count=1 -v
           dbos_python="$(command -v python)"
           go_toolchain="$(command -v go)"
           # Source inspection uses the host Python, as on native deployments;
