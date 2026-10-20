@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"sort"
 	"strings"
 	"sync"
@@ -736,6 +737,7 @@ func (s *MemoryStore) UpsertToolSnapshot(t ToolSnapshot) ToolSnapshot {
 		return prev
 	}
 	t.Version = prev.Version + 1
+	log.Printf("gateway: tool definition changed and activated: connector=%s tool=%s v%d->v%d fingerprint %s->%s", t.ConnectorID, t.PublicName, prev.Version, t.Version, prev.Fingerprint, t.Fingerprint)
 	s.toolVersions[t.PublicName] = append(s.toolVersions[t.PublicName], prev)
 	s.tools[t.PublicName] = t
 	return t
