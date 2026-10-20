@@ -3,6 +3,7 @@ package virtualtools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"os"
@@ -475,6 +476,10 @@ func QueryWorkflowDBForValidation(ctx context.Context, client *workspace.Client,
 	return result.Rows, err
 }
 
+// ErrNoWorkflowDBSession means the call carries no session at all (as in a
+// scheduled run's validation), as opposed to a session that is not allowed.
+var ErrNoWorkflowDBSession = errors.New("workflow database context is unavailable: missing trusted session")
+
 func resolveWorkflowDBSession(ctx context.Context, fallbackSessionID string) (string, *common.SessionShellConfig, error) {
 	sessionID := strings.TrimSpace(fallbackSessionID)
 	if ctx != nil {
@@ -483,7 +488,7 @@ func resolveWorkflowDBSession(ctx context.Context, fallbackSessionID string) (st
 		}
 	}
 	if sessionID == "" {
-		return "", nil, fmt.Errorf("workflow database context is unavailable: missing trusted session")
+		return "", nil, ErrNoWorkflowDBSession
 	}
 	cfg := common.GetSessionShellConfig(sessionID)
 	if cfg == nil {

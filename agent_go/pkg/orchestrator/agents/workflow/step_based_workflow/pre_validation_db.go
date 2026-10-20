@@ -2,6 +2,7 @@ package step_based_workflow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -29,6 +30,11 @@ func validateDBRule(ctx context.Context, rule DBValidationRule, baseOrchestrator
 	}
 
 	rows, err := virtualtools.QueryWorkflowDBForValidation(ctx, baseOrchestrator.WorkspaceClient, baseOrchestrator.GetWorkspacePath(), rule.SQL)
+	if errors.Is(err, virtualtools.ErrNoWorkflowDBSession) {
+		// Scheduled runs validate outside any chat session; the orchestrator's own
+		// workflow database is the owning scope, and no step input picks the path.
+		rows, err = baseOrchestrator.QueryWorkflowDB(ctx, "db/db.sqlite", rule.SQL)
+	}
 	if err != nil {
 		fr.JSONChecks = append(fr.JSONChecks, JSONCheckResult{
 			CheckType: "db_query", Passed: false,
