@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"strings"
 )
 
 // Reads per-user workflow access grants to config/workflow-user-permissions.json.
