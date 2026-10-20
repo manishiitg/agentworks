@@ -12535,10 +12535,11 @@ func (api *StreamingAPI) buildWorkshopConfig(
 			scopedSecrets = api.loadSelectedSecrets(context.Background(), currentUserID, workspacePath, manifest.Capabilities.SelectedSecrets)
 		}
 	}
-	if err := validateVaultSecretSelection(ctx, currentUserID, scopedSecrets, effectiveGlobalSecretSelection); err != nil {
+	secretsOwner := api.projectSecretsOwner(currentUserID, workspacePath)
+	if err := validateVaultSecretSelection(ctx, secretsOwner, scopedSecrets, effectiveGlobalSecretSelection); err != nil {
 		return nil, err
 	}
-	allSecrets := api.mergeGlobalSecretsFor(context.Background(), currentUserID, scopedSecrets, effectiveGlobalSecretSelection)
+	allSecrets := api.mergeGlobalSecretsFor(context.Background(), secretsOwner, scopedSecrets, effectiveGlobalSecretSelection)
 	if len(allSecrets) > 0 {
 		entries := make([]orchestrator.SecretEntry, len(allSecrets))
 		for i, s := range allSecrets {

@@ -305,10 +305,15 @@ func validateVaultSecretSelection(ctx context.Context, userID string, scoped []s
 
 // projectSecretsOwner is the person whose Vault a project's selected secrets come from: the Crew's owner, for everyone
 // who uses it (owner-lent, owner 2026-10-20: "if user is sharing with someone .. a crew.. and he know its personal
-// mcps.. it upto the user"). Outside a Crew it is the caller.
+// mcps.. it upto the user"). For a Goal it is the workflow's creator (its main owner); elsewhere the caller.
 func (api *StreamingAPI) projectSecretsOwner(userID, workspacePath string) string {
 	if owner, ok := crewProjectOwnerID(workspacePath); ok && strings.TrimSpace(owner) != "" {
 		return owner
+	}
+	if parts := strings.SplitN(strings.Trim(strings.TrimSpace(workspacePath), "/"), "/", 3); len(parts) >= 2 && parts[0] == "Workflow" {
+		if manifest, found, err := ReadWorkflowManifest(context.Background(), parts[0]+"/"+parts[1]); err == nil && found && manifest != nil && strings.TrimSpace(manifest.CreatedBy) != "" {
+			return strings.TrimSpace(manifest.CreatedBy)
+		}
 	}
 	return userID
 }
