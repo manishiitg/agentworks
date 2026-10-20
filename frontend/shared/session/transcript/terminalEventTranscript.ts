@@ -158,7 +158,9 @@ const TERMINAL_RAIL_HIDDEN_TYPES = new Set([
 // a "Full Run [Group / Iteration 0]" row restating the panel header above it
 // before the first thing that actually happened.
 const CONTAINER_EXECUTION_KINDS = new Set(['full_run'])
-const MAIN_AGENT_EXECUTION_KINDS = new Set(['main_agent', 'main', 'chat'])
+// A synthetic turn (the main agent processing a background or function result) is the same CLI conversation, and a
+// message the person typed while it ran is answered inside it, so its reply belongs in the chat (2026-10-20).
+const MAIN_AGENT_EXECUTION_KINDS = new Set(['main_agent', 'main', 'chat', 'synthetic_turn'])
 const TOOL_CALL_TYPES = new Set([
   'tool_call_start',
   'tool_call_end',
@@ -664,13 +666,13 @@ function isProductMainConversationEvent(event: PollingEvent): boolean {
     : undefined
   const kind = (textField(event.execution_kind) || textField(fields.execution_kind) || textField(metadata?.execution_kind))
     .toLowerCase()
-  if (kind && !MAIN_AGENT_EXECUTION_KINDS.has(kind)) return false
-
   const executionID = (
     textField(event.execution_id) ||
     textField(fields.execution_id) ||
     textField(metadata?.execution_id)
   ).toLowerCase()
+  // The server names a synthetic turn's execution "synthetic-turn:<id>" and may infer a generic kind for it.
+  if (kind && !MAIN_AGENT_EXECUTION_KINDS.has(kind) && !executionID.startsWith('synthetic-turn:')) return false
   if (executionID &&
     !executionID.startsWith('main:') &&
     !executionID.startsWith('session:') &&
