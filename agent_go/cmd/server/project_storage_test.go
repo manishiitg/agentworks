@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
@@ -23,6 +24,10 @@ func TestCanonicalCrewKeepsPrivateBindingsAndAudience(t *testing.T) {
 	}
 	if got := projectBindingRoot(root); got != old {
 		t.Fatalf("private namespace changed: %q", got)
+	}
+	connection := services.GmailConnection{Personal: true, Workspaces: []string{old}}
+	if !connection.UsableFrom(services.GmailUseScope{Workspace: root}) || connection.UsableFrom(services.GmailUseScope{Workspace: "Crew/other"}) {
+		t.Fatal("saved private connection lost its exact project binding")
 	}
 	if _, ok := resolveCrewPath(context.Background(), "owner", old); ok {
 		t.Fatal("retired filesystem path accepted")

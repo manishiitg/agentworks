@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	services.SetConnectionWorkspaceResolver(foldCrewRootForStoredReference)
+	services.SetConnectionWorkspaceResolver(projectBindingRoot)
 	chathistory.SetWorkflowStateRootResolver(projectBindingRoot)
 
 }

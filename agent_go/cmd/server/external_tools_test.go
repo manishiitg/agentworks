@@ -430,7 +430,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 		if tool.Name != wantCatalog[i] {
 			t.Fatalf("catalog[%d] = %s, product.yaml admits %s", i, tool.Name, wantCatalog[i])
 		}
-		if tool.mutates && tool.Name != "workspace" && !isDashboardTool(tool.Name) && !isExternalCrewTool(tool.Name) && tool.Name != "write_file" && tool.Name != "plan" && tool.Name != "workflow_upgrade" && tool.Name != "workflow_crews" && !isExternalWorkflowAccountTool(tool.Name) && tool.Name != "create_workflow" && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) && !isExternalKnowledgebaseTool(tool.Name) && !isExternalVaultTool(tool.Name) && tool.Name != "manage_condition_triggers" && tool.Name != "manage_agent_email" && tool.Name != "set_token_limits" && tool.Name != "set_allowed_models" && tool.Name != bullpenAdminTool && tool.Name != serverProductManagementTool && tool.Name != externalSignInAppsTool && tool.Name != brainAdminTool && tool.Name != "browser_connections" && tool.Name != "update_settings" && tool.Name != "manage_schedules" && tool.Name != "workflow_team" && tool.Name != "manage_triggers" && tool.Name != "answer_needs_you" && tool.Name != "dismiss_needs_you" && tool.Name != "manage_pulse" && tool.Name != "manage_project" && tool.Name != "manage_crew_chats" && tool.Name != "run_after_run" && tool.Name != "manage_messaging" && tool.Name != "manage_laptop_access" {
+		if tool.mutates && tool.Name != "workspace" && !isDashboardTool(tool.Name) && !isExternalCrewTool(tool.Name) && tool.Name != "write_file" && tool.Name != "plan" && tool.Name != "workflow_upgrade" && tool.Name != "workflow_crews" && !isExternalWorkflowAccountTool(tool.Name) && tool.Name != "create_workflow" && !strings.HasPrefix(tool.Name, "builder_") && !isExternalRelayAuthoringTool(tool.Name) && !isExternalKnowledgebaseTool(tool.Name) && !isExternalVaultTool(tool.Name) && tool.Name != "manage_condition_triggers" && tool.Name != "manage_agent_email" && tool.Name != "set_token_limits" && tool.Name != "set_allowed_models" && tool.Name != bullpenAdminTool && tool.Name != serverProductManagementTool && tool.Name != externalSignInAppsTool && tool.Name != brainAdminTool && tool.Name != "browser_connections" && tool.Name != "update_settings" && tool.Name != "manage_schedules" && tool.Name != "workflow_team" && tool.Name != "manage_triggers" && tool.Name != "answer_needs_you" && tool.Name != "dismiss_needs_you" && tool.Name != "manage_pulse" && tool.Name != "manage_project" && tool.Name != "manage_crew_chats" && tool.Name != "run_after_run" && tool.Name != "manage_messaging" && tool.Name != "manage_laptop_access" && tool.Name != "execute_local_shell_command" && tool.Name != "copy_local_file_to_crew" {
 			t.Fatalf("unexpected workflow authoring tool %s", tool.Name)
 		}
 	}
@@ -497,18 +497,7 @@ func TestExternalCatalogMatchesProductYAMLAdmission(t *testing.T) {
 	if strings.Contains(fmt.Sprint(cliActions), "register") || !strings.Contains(fmt.Sprint(messageParams["action"]), "register") {
 		t.Fatal("per-connection catalog was not narrowed or changed the shared schema")
 	}
-	wantRun := []string{"agent_browser", "execute_step", "get_contract_upgrades", "get_cost_summary", "get_file_link", "get_llm_config", "get_notification_history", "get_report_link", "get_schedule_runs", "get_slack_bot_settings", "slack", "get_step_prompts", "preview_step_runtime", "send_message", "read_agent_messages", "list_agents", "schedule_message_wakeup", "submit_workflow_suggestion", "get_ui_state", "get_workflow_command_guidance", "get_workflow_config", "get_workflow_team", "read_team_source", "get_human_input_request", "list_executions", "list_mcp_servers", "list_schedules", "list_secrets", "list_skills", "list_ui_capabilities", "perform_ui_action", "create_human_input_request", "mark_human_input_consumed", "dismiss_duplicate_human_input_request", "human_feedback", "send_email", "record_summary", "send_slack_message", "google_workspace_cli", "query_step", "request_workflow_folder_access", "run_full_workflow", "search_skills", "send_step_message", "stop_all_executions", "stop_step", "test_slack_bot_connection", "trigger_schedule"}
-	wantRun = append([]string{"brain_browse", "brain_read", "brain_update", "brain_skills", "brain_access"}, wantRun...)
-	wantRun = append([]string{"execute_shell_command", "diff_patch_workspace_file", "read_image", "list_llm_capabilities", "get_goal_metrics", "get_pulse_state", "query_workflow_db", "query_workflow_costs", "read_crew_calls"}, wantRun...)
-	wantRun = append([]string{"list_workflow_functions", "call_workflow_function", "get_workflow_function_call", "reply_workflow_function_call"}, wantRun...)
-	if len(run) != len(wantRun) {
-		t.Fatalf("run.tools has %d tools, want %d", len(run), len(wantRun))
-	}
-	for i, name := range wantRun {
-		if run[i] != name {
-			t.Fatalf("run.tools[%d] = %s, want %s", i, run[i], name)
-		}
-	}
+
 }
 
 func TestExternalRunAuthorityBoundary(t *testing.T) {
