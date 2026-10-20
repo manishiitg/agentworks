@@ -47,15 +47,26 @@ func (api *StreamingAPI) handleCapLayerOAuthToken(w http.ResponseWriter, r *http
 		writeUsersError(w, http.StatusBadRequest, "server name and URL required")
 		return
 	}
-	config, err := mcpclient.LoadMergedConfig(api.mcpConfigPath, api.logger)
-	if err != nil {
-		writeUsersError(w, http.StatusServiceUnavailable, "MCP configuration unavailable")
-		return
-	}
-	name, cfg, err := config.ResolveServer(in.ServerName)
-	if err != nil || cfg.OAuth == nil || cfg.URL != in.URL {
-		writeUsersError(w, http.StatusForbidden, "OAuth connection does not match the configured server")
-		return
+	var name string
+	var cfg mcpclient.MCPServerConfig
+	if isCustomVaultOAuthServer(in.ServerName) {
+		// A custom Vault connection has no catalog entry; the live connection is the only source of its sign-in.
+		if in.ConnectionID == "" {
+			writeUsersError(w, http.StatusForbidden, "OAuth connection does not match the configured server")
+			return
+		}
+		name, cfg = in.ServerName, mcpclient.MCPServerConfig{URL: in.URL}
+	} else {
+		config, loadErr := mcpclient.LoadMergedConfig(api.mcpConfigPath, api.logger)
+		if loadErr != nil {
+			writeUsersError(w, http.StatusServiceUnavailable, "MCP configuration unavailable")
+			return
+		}
+		name, cfg, err = config.ResolveServer(in.ServerName)
+		if err != nil || cfg.OAuth == nil || cfg.URL != in.URL {
+			writeUsersError(w, http.StatusForbidden, "OAuth connection does not match the configured server")
+			return
+		}
 	}
 	if in.ConnectionID != "" {
 		cfg, err = api.vaultOAuthConfig(r.Context(), in.ConnectionID, name, in.URL)

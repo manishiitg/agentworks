@@ -198,6 +198,11 @@ func DialWithOptions(ctx context.Context, url string, opts DialOptions) (*Client
 
 func (u *Client) Close() error { return u.c.Close() }
 
+// IsAuthorizationRequired reports an upstream that answered 401 because it needs a sign-in.
+func IsAuthorizationRequired(err error) bool {
+	return errors.Is(err, transport.ErrAuthorizationRequired) || errors.Is(err, transport.ErrOAuthAuthorizationRequired)
+}
+
 func (u *Client) URL() string { return u.url }
 
 // Discover returns every tool the upstream exposes (all pages).

@@ -86,3 +86,29 @@ func TestCustomBasicConnectorPersistsAndRotatesWithoutLeaking(t *testing.T) {
 		t.Fatal("rotated credential not stored")
 	}
 }
+
+// A custom server that needs a sign-in becomes a sign-in connection for its own URL (the product discovers the
+// server's published sign-in details); without the product's OAuth service it is refused as before.
+func TestCustomConnectorNeedingSignInBecomesSignInConnection(t *testing.T) {
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(401) }))
+	defer remote.Close()
+	st, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "gateway.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	st.AddWorkspace(store.Workspace{ID: "w"})
+	g := mcpserver.New(st, nil, map[string]*upstream.Client{}, nil, upstream.DialOptions{AllowPrivate: true})
+	a := &Admin{Store: st, Gateway: g, WorkspaceID: "w"}
+	if _, err := a.AddConnectorCustom(context.Background(), "jam", "Jam", "", remote.URL+"/mcp"); err == nil {
+		t.Fatal("a sign-in server was added without the product's OAuth service")
+	}
+	g.SetSharedOAuth(func(context.Context, string, string, string) (string, error) { return "", nil })
+	c, err := a.AddConnectorCustom(context.Background(), "jam", "Jam", "", remote.URL+"/mcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Status != store.StatusAuthRequired || !strings.HasPrefix(c.OAuthServer, "custom:") || c.OAuthCredentialID != c.ID || c.UpstreamURL != remote.URL+"/mcp" {
+		t.Fatalf("not a sign-in connection for its own URL: %+v", c)
+	}
+}

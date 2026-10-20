@@ -28,6 +28,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/mcpserver"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/setupagent"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/upstream"
 )
 
 // Admin wires the store, gateway runtime, and catalog to HTTP.
@@ -361,6 +362,11 @@ func (a *Admin) AddConnectorCustomWithCredential(ctx context.Context, provider, 
 	}
 	if err := a.Gateway.AddConnector(ctx, c); err != nil {
 		a.Store.DeleteConnector(c.ID)
+		// A custom server that needs a sign-in becomes a sign-in connection: the product discovers the server's own
+		// published sign-in details (OAuthServer "custom:<key>") the way it does for a catalog app's fixed ones.
+		if bearerToken == "" && upstream.IsAuthorizationRequired(err) && a.Gateway.HasSharedOAuth() {
+			return a.addConnectorRow(key, label, slug, upstreamURL, "custom:"+key)
+		}
 		return store.Connector{}, err
 	}
 	return c, nil

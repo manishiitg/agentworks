@@ -103,6 +103,12 @@ func (api *StreamingAPI) vaultOAuthTemplate(ctx context.Context, id, name, resou
 	if err != nil {
 		return mcpclient.MCPServerConfig{}, err
 	}
+	if isCustomVaultOAuthServer(c.OAuthServer) {
+		if name != c.OAuthServer || (resource != "" && resource != c.UpstreamURL) {
+			return mcpclient.MCPServerConfig{}, errors.New("connection does not match the configured OAuth provider")
+		}
+		return customVaultOAuthTemplate(ctx, id, c.UpstreamURL)
+	}
 	config, err := mcpclient.LoadMergedConfig(api.mcpConfigPath, api.logger)
 	if err != nil {
 		return mcpclient.MCPServerConfig{}, err
