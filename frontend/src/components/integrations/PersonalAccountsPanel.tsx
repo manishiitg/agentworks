@@ -12,6 +12,8 @@ type Provider = 'google' | 'slack'
 interface Account {
   id: string; owner: string; label: string; mine: boolean; selected: boolean; connected: boolean
   can_add: boolean; can_manage: boolean; can_reconnect: boolean; can_detach: boolean
+  // Why it last failed to connect, in the service's own words (Slack).
+  problem?: string
   google?: GmailConnection
 }
 interface Accounts { accounts: Account[]; can_connect: boolean; notice: string; sign_in_ready?: boolean }
@@ -82,6 +84,7 @@ function ProviderAccounts({ provider, workspacePath, onChanged }: { provider: Pr
         {central && account.can_reconnect && <Button size="xs" variant="outline" disabled={busy} onClick={() => provider === 'google' && account.google ? changeGoogleAccountAccess(account.google, '') : void act('reconnect', account)}>{provider === 'google' ? 'Change access' : 'Reconnect'}</Button>}
         {central && account.can_manage && <Button size="xs" variant="ghost" disabled={busy} onClick={() => void act('disconnect', account)}>Disconnect everywhere</Button>}
       </div>
+      {account.problem && <p role="alert" className="mt-2 break-words text-xs text-destructive">Not working: {account.problem}</p>}
       {account.google && <><p className="mt-2 text-xs text-muted-foreground">{googleAccessSummary(account.google)}</p><GooglePermissions account={account.google} /></>}
     </div>)}
     {central && provider === 'google' && data && (data.can_connect || data.accounts.some(account => account.can_reconnect)) && <GoogleAccountConnect canConnect={data.can_connect} onChanged={() => { void refresh(); onChanged?.() }} />}

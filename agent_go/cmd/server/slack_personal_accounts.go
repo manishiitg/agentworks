@@ -30,6 +30,8 @@ type slackAccountRow struct {
 	Connected bool   `json:"connected"`
 	// Mine marks the caller's own account; others appear only when added here.
 	Mine bool `json:"mine"`
+	// Problem is why the account last failed to connect, in Slack's own words; empty once it connects again.
+	Problem string `json:"problem,omitempty"`
 }
 
 type slackAccountsResponse struct {
@@ -147,7 +149,7 @@ func (api *StreamingAPI) personalSlackAccounts(r *http.Request, workspace string
 			if owner != actor {
 				label = shareOwnerLabel(owner) + "'s Slack"
 			}
-			out.Accounts = append(out.Accounts, slackAccountRow{personalConnectionPermissions: personalConnectionAccess(r, owner, workspace, selected, "Slack", "My Vault"), ID: server.Name, Owner: owner, Label: label, Selected: selected, Connected: placeMCPServerConnected(dir, owner, server), Mine: owner == actor})
+			out.Accounts = append(out.Accounts, slackAccountRow{personalConnectionPermissions: personalConnectionAccess(r, owner, workspace, selected, "Slack", "My Vault"), ID: server.Name, Owner: owner, Label: label, Selected: selected, Connected: placeMCPServerConnected(dir, owner, server), Mine: owner == actor, Problem: mcpConnectProblemFor(server.Name)})
 		}
 	}
 	sort.Slice(out.Accounts, func(i, j int) bool {

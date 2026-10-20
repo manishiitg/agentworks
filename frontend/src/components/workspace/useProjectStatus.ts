@@ -32,8 +32,9 @@ export function useProjectStatus({ kind, workspacePath, profileId, projectId, en
         (async () => ((kind === 'crew' ? await productWebhooksApi.list(scope) : await workflowWebhooksApi.list(workspacePath)).triggers || []).length)(),
         kind === 'crew' ? crewFunctionsApi.list(scope).then(result => (result.functions || []).length) : Promise.reject(new Error('not listed')),
         slackBotsApi.list(workspacePath).then(result => (result.allow_bots === false ? '' : result.bots.find(bot => bot.id === result.selected_id)?.name || 'None chosen')),
-        api.get<{ accounts: { selected: boolean; connected: boolean }[] }>('/api/integrations/slack/accounts', { params: { workspace_path: workspacePath } }).then(({ data }) => {
+        api.get<{ accounts: { selected: boolean; connected: boolean; problem?: string }[] }>('/api/integrations/slack/accounts', { params: { workspace_path: workspacePath } }).then(({ data }) => {
           const list = data.accounts || []
+          if (list.some(item => item.selected && item.problem)) return 'Not working'
           if (list.some(item => item.selected && item.connected)) return 'On'
           return list.some(item => item.connected) ? 'Not used here' : 'Not set up'
         }),
