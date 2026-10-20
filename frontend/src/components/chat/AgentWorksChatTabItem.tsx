@@ -19,6 +19,7 @@ export interface AgentWorksChatTabItemProps {
   closeStopsSession?: boolean
   onRenameTab?: (tab: ChatTab, name: string) => Promise<boolean | void>
   onMakeInteractive?: (tabId: string) => void
+  onUnpin?: () => void
 }
 
 /** Runtime adapter for the shared Chat tab presentation. */

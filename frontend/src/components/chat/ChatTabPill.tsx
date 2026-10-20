@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronDown, Loader2, MessageSquare, Pencil, X } from 'lucide-react'
+import { ChevronDown, Loader2, MessageSquare, Pencil, PinOff, X } from 'lucide-react'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { readableGeneratedChatTitle } from '../../utils/generatedChatTitle'
 import { foregroundTurnState } from '../../utils/foregroundTurnActivity'
@@ -28,6 +28,8 @@ export interface ChatTabPillProps {
   closeStopsSession?: boolean
   onRename?: (name: string) => Promise<boolean | void>
   onMakeInteractive?: (tabId: string) => void
+  /** Takes the tab off the strip into the Agents menu (it stays open). */
+  onUnpin?: () => void
 }
 
 const ALLOW_MAKE_SCHEDULE_INTERACTIVE = false
@@ -45,7 +47,7 @@ const TAB_STATUS_DOT: Record<TabStatus, { cls: string; label: string }> = {
 /** The shared Chat tab pill used by workflows, Work, and Vault. */
 export const ChatTabPill = React.memo<ChatTabPillProps>(({
   tab, isActive, canClose, isBlank, displayName: displayNameOverride, titleOverride, productSurface, workspaceActivity,
-  onTabClick, onCloseTab, onRename, onMakeInteractive, readOnly = false, closeStopsSession = false,
+  onTabClick, onCloseTab, onRename, onMakeInteractive, onUnpin, readOnly = false, closeStopsSession = false,
 }) => {
   const rawName = displayNameOverride ?? tab.name
   const displayName = readableGeneratedChatTitle(rawName, tab.metadata?.isScheduledRun) ||
@@ -203,6 +205,17 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
           title="Rename chat"
         >
           <Pencil className="h-2.5 w-2.5" />
+        </button>
+      )}
+      {onUnpin && !isBlank && !isRenaming && (
+        <button
+          type="button"
+          onClick={(event) => { event.stopPropagation(); onUnpin() }}
+          className="ml-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-gray-400 opacity-0 transition-colors hover:bg-gray-200 hover:text-gray-700 group-hover:opacity-100 focus:opacity-100 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+          aria-label={`Unpin ${displayName}`}
+          title="Unpin: move to the Agents menu"
+        >
+          <PinOff className="h-2.5 w-2.5" />
         </button>
       )}
       {ALLOW_MAKE_SCHEDULE_INTERACTIVE && onMakeInteractive && tab.metadata?.isViewOnly && (tab.metadata?.isScheduledRun || tab.metadata?.isBotRun) && !readOnly && (

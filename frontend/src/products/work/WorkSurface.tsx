@@ -8,7 +8,7 @@ import { markFeatureUsed } from '../../utils/featureUsage'
 import { recordTabReorderTelemetry } from '../../utils/chatDeliveryTelemetry'
 import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../../utils/workspaceViewPreference'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from 'react'
-import { Check, ChevronDown, GripVertical, Loader2, Pin, PinOff, Plus, Trash2, X } from 'lucide-react'
+import { Check, ChevronDown, GripVertical, Loader2, Pencil, Pin, PinOff, Plus, Trash2, X } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { ProductChatLandingCard } from '../../components/chat/ProductChatLandingCard'
@@ -591,6 +591,8 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   const activeTab = tabs.find(tab => tab.tabId === activeTabId)
   const visibleTabs = activeTab && !onStrip(activeTab) ? [...tabs.filter(onStrip), activeTab] : tabs.filter(onStrip)
   const [moreOpen, setMoreOpen] = useState(false)
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
   const moreRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!moreOpen) return
@@ -840,7 +842,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         onTabClick={selectTab}
         onCloseTab={closeProjectTab}
         closeStopsSession={isWorkSideChatTab(tab, projectId)}
-        onRenameTab={isWorkSideChatTab(tab, projectId) ? renameSideChat : undefined}
+        onUnpin={key ? () => { void pinSideChat(key, false) } : undefined}
       /></div>
       })}
       </div>
@@ -874,13 +876,25 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
                   className="group flex items-center rounded hover:bg-muted"
                 >
                   {key && <GripVertical aria-hidden="true" className="ml-1 h-3 w-3 shrink-0 cursor-grab text-muted-foreground/60" />}
-                  <button
+                  {renaming === tab.tabId ? <input
+                    autoFocus
+                    aria-label={`New name for ${label}`}
+                    value={renameDraft}
+                    onChange={event => setRenameDraft(event.target.value)}
+                    onKeyDown={event => {
+                      if (event.key === 'Escape') { event.stopPropagation(); setRenaming(null) }
+                      if (event.key === 'Enter') { void renameSideChat(tab, renameDraft).finally(() => setRenaming(null)) }
+                    }}
+                    onBlur={() => setRenaming(null)}
+                    className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 text-xs"
+                  /> : <button
                     type="button"
                     onClick={() => { setMoreOpen(false); selectTab(tab.tabId) }}
                     className={`min-w-0 flex-1 truncate px-2 py-1.5 text-left text-xs ${tab.tabId === activeTabId ? 'font-medium text-foreground' : 'text-muted-foreground'}`}
                   >
                     {tab.tabId === activeTabId && <Check aria-hidden="true" className="mr-1 inline h-3 w-3" />}{label}{!isAgentTab(tab) && <span className="ml-2 text-[10px] text-muted-foreground">Activity</span>}
-                  </button>
+                  </button>}
+                  {key && renaming !== tab.tabId && <button type="button" aria-label={`Rename ${label}`} title="Rename" className="rounded p-1 text-muted-foreground/60 hover:bg-muted hover:text-foreground" onClick={() => { setRenameDraft(workSideChatDisplayName(tab.name)); setRenaming(tab.tabId) }}><Pencil className="h-3.5 w-3.5" /></button>}
                   {key && <button type="button" aria-pressed={tab.metadata?.agentProfileTabPinned !== false} aria-label={tab.metadata?.agentProfileTabPinned !== false ? `Unpin ${label}` : `Pin ${label} to the tab bar`} title={tab.metadata?.agentProfileTabPinned !== false ? 'Pinned to the tab bar. Click to unpin' : 'Pin to the tab bar'} className={`rounded p-1 hover:bg-muted ${tab.metadata?.agentProfileTabPinned !== false ? 'text-foreground' : 'text-muted-foreground/60'}`} onClick={() => { void pinSideChat(key, tab.metadata?.agentProfileTabPinned === false) }}>{tab.metadata?.agentProfileTabPinned !== false ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}</button>}
                   {tab.tabId !== canonicalTabId && (
                     <button
