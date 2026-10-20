@@ -157,11 +157,6 @@ func (r RawMessage) Parse(account string) (Message, error) {
 	if m.Body == "" {
 		m.Body = htmlTag.ReplaceAllString(html.String(), " ")
 	}
-	if len(m.Body) > 256*1024 {
-		return Message{}, fmt.Errorf("email body exceeds 256 KiB")
-	}
-	if len(m.Attachments) > 20 {
-		return Message{}, fmt.Errorf("too many attachments")
-	}
+
 	return m, nil
 }

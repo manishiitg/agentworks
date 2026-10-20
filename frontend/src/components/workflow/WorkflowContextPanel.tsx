@@ -38,7 +38,7 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
       <ShareDashboardButton workspacePath={workspacePath} variant="row" onOpen={() => openConnection('share')} />
       {!relayMode && <WorkspaceBrowserRow workspacePath={workspacePath} profileId="workflow" onClick={() => open('browser')} />}
       <WorkspaceAutomationRows relay={relayMode} onOpen={section => open('workshop', section)} counts={status} />
-      <WorkspaceChannelRows onOpen={openConnection} slack={true} whatsapp={!relayMode} slackBot={!relayMode} slackAccountStatus={status.slackAccount} slackBotStatus={status.slackBot} whatsappStatus={status.whatsapp} emailStatus={status.email} onOpenEmail={relayMode ? undefined : () => open('workshop', 'email')} />
+      <WorkspaceChannelRows onOpen={openConnection} slack={true} whatsapp={!relayMode} slackBot={!relayMode} slackAccountStatus={status.slackAccount} slackBotStatus={status.slackBot} whatsappStatus={status.whatsapp} emailStatus={status.email} onOpenEmail={() => open('workshop', 'email')} />
     </Group>
     <Group title="Connections">
       <WorkspaceConnectionRows onOpen={openConnection} relayMode={relayMode} details={{ 'mcp:connected': status.mcps === undefined ? undefined : status.mcps ? String(status.mcps) : 'None' }} />

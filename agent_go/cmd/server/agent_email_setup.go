@@ -16,7 +16,7 @@ const agentEmailSetupDescription = "Manage company receiving for every agent inb
 
 func agentEmailSetupSchema() map[string]interface{} {
 	return map[string]interface{}{"type": "object", "required": []string{"action"}, "additionalProperties": false, "properties": map[string]interface{}{
-		"action":        map[string]interface{}{"type": "string", "enum": []string{"status", "connect", "prepare", "configure"}},
+		"action":        map[string]interface{}{"type": "string", "enum": []any{"status", "connect", "prepare", "configure"}},
 		"connection_id": map[string]interface{}{"type": "string"}, "enabled": map[string]interface{}{"type": "boolean"},
 		"client_name": map[string]interface{}{"type": "string"}, "project_id": map[string]interface{}{"type": "string"},
 	}}
@@ -142,6 +142,19 @@ func (api *StreamingAPI) connectCompanyInbox(ctx context.Context, cfg gmailInbou
 	id, _ := args["connection_id"].(string)
 	if id == "" {
 		id = cfg.ConnectionID
+	}
+	if id == "" {
+		choices := []string{}
+		for _, conn := range svc.ListConnections() {
+			if !conn.IsPrivate() {
+				choices = append(choices, conn.ID)
+			}
+		}
+		if len(choices) == 1 {
+			id = choices[0]
+		} else if len(choices) > 1 {
+			return nil, fmt.Errorf("Choose a company receiving mailbox from status; saved accounts are reused")
+		}
 	}
 	if id == "" {
 		clients := gmailSetupClients()

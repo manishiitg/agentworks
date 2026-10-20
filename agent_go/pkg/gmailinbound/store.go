@@ -192,7 +192,7 @@ func (s *Store) SyncError(ctx context.Context, id string, e error) error {
 // The screen opens on recent mail; Watchers and MCP use the forward cursor above.
 func (s *Store) RecentMessages(ctx context.Context, inbox string, before int64) (Page, error) {
 	p := Page{Messages: []Item{}}
-	rows, err := s.db.QueryContext(ctx, `SELECT sequence,data FROM inbox_messages WHERE inbox=? AND (?=0 OR sequence<?) ORDER BY sequence DESC LIMIT 51`, inbox, before, before)
+	rows, err := s.db.QueryContext(ctx, `SELECT sequence,data FROM inbox_messages WHERE inbox=? AND (?=0 OR (received_at,sequence)<(SELECT received_at,sequence FROM inbox_messages WHERE inbox=? AND sequence=?)) ORDER BY received_at DESC,sequence DESC LIMIT 51`, inbox, before, inbox, before)
 	if err != nil {
 		return p, err
 	}

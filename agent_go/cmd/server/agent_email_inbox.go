@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/gmailinbound"
+	"mime"
 	"net/http"
 	"path"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -202,8 +202,8 @@ func (api *StreamingAPI) agentEmailInboxHTTP(w http.ResponseWriter, r *http.Requ
 			http.Error(w, "Could not load attachment", 502)
 			return
 		}
-		name := strings.NewReplacer("\r", "", "\n", "", "\"", "_").Replace(path.Base(a.Name))
-		w.Header().Set("Content-Disposition", "attachment; filename=\""+name+"\"")
+		name := path.Base(a.Name)
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "no-store")

@@ -52,8 +52,8 @@ export function WorkspaceChannelRows({ onOpen, slack, whatsapp, slackBot = true,
         <Row key="slack-account" icon={item.icon} detail={slackAccountStatus} onClick={() => onOpen('slack')}>Slack as me</Row>,
         ...(slackBot ? [<Row key="slack-bot" icon={item.icon} detail={slackBotStatus} onClick={() => onOpen('slack')}>Slack bot</Row>] : []),
       ] : [<Row key={item.id} icon={item.icon} detail={item.id === 'whatsapp' ? whatsappStatus : undefined} onClick={() => onOpen(item.id)}>{item.label}</Row>]),
-      ...(item.id === (whatsapp ? 'whatsapp' : slack ? 'slack' : '') && onOpenEmail && incomingEmail ? [<Row key="email" icon={Mail} detail={emailStatus} onClick={onOpenEmail}>Inbox</Row>] : []),
     ])}
+    {onOpenEmail && incomingEmail && <Row icon={Mail} detail={emailStatus} onClick={onOpenEmail}>Inbox</Row>}
   </div>
 }
 

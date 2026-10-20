@@ -60,22 +60,12 @@ esac
 	}
 	svc.config.Connections[0].AllowReadAccess = true
 	svc.config.Connections[0].ScopeWorkspace = "_users/owner/Chats/Code/projects/private"
-	svc.config.Connections[0].OwnerID = "owner"
 	if _, _, e = c.Watch(context.Background()); e == nil {
-		t.Fatal("shared scope accessed a private Code's Gmail")
+		t.Fatal("company receiving used a private Code account")
 	}
-	c.Scope = GmailUseScope{UserID: "owner", CodeWorkspace: svc.config.Connections[0].ScopeWorkspace}
-	if _, _, e = c.Watch(context.Background()); e != nil {
-		t.Fatalf("private owner scope rejected: %v", e)
-	}
+	svc.config.Connections[0].ScopeWorkspace = ""
 	svc.config.Connections[0].Personal = true
-	svc.config.Connections[0].Workspaces = []string{"Workflow/second"}
-	c.Scope = GmailUseScope{UserID: "owner", Workspace: "Workflow/removed"}
-	if _, _, e = c.Watch(context.Background()); e != nil {
-		t.Fatalf("removed item stranded shared mailbox watch: %v", e)
-	}
-	svc.config.Connections[0].Workspaces = nil
 	if _, _, e = c.Watch(context.Background()); e == nil {
-		t.Fatal("watch survived removal of every account selection")
+		t.Fatal("company receiving used a personal Google account")
 	}
 }

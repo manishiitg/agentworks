@@ -4,7 +4,7 @@ Agent inboxes are available on server deployments only. Personal Google connecti
 
 An administrator enables company receiving once. Every existing and future Crew, Code project, Goal and Relay automatically gets a unique address and an Inbox. The address uses the stable agent ID; renaming an agent does not change it. These are separate AgentWorks inboxes backed by one connected company Gmail mailbox, using Gmail plus-addresses. No additional Google user or mailbox license is created per agent.
 
-Receiving mail stores it. It does not start a chat, execute a workflow, send replies or grant tools. People who can access the product can read its inbox through the website or MCP, using the same sharing and token scopes. Message text is displayed as text; attachments are downloaded through an access-checked endpoint.
+Receiving mail stores it. It does not start a chat, execute a workflow, send replies or grant tools. People who can access the product can read its inbox through the website or MCP, using the same live sharing and product roles. Message text is displayed as text; attachments are downloaded through an access-checked endpoint.
 
 ## Admin setup
 

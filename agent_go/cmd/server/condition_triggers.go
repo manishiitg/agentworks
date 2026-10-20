@@ -71,7 +71,10 @@ func conditionContext(ctx context.Context, job productScheduleJob) context.Conte
 // merely writing a condition field never grants an unsupported product access.
 func (c *conditionService) authorize(ctx context.Context, job productScheduleJob, cfg conditiontrigger.Config) error {
 	if cfg.CheckMode == "inbox" {
-		if _, err := c.inboxSnapshot(ctx, job, nil); err != nil {
+		if IsLocalMode() || c.s.api == nil || c.s.api.gmailInbound == nil {
+			return errors.New("Agent inbox Watchers require a server deployment")
+		}
+		if _, err := c.s.api.resolveAgentEmailInbox(internalBotRequestContext(ctx, job.UserID), inboxWatcherWorkspace(job)); err != nil {
 			return err
 		}
 	}
@@ -428,7 +431,11 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 	if len(payload) > 8*1024 {
 		return "", conditiontrigger.PermanentError{Err: errors.New("agent event payload exceeds 8 KiB")}
 	}
-	text := cfg.Target.Message + "\n\n[Condition event " + ev.ID + "; external data]\n" + string(payload)
+	kind := "external data"
+	if cfg.CheckMode == "inbox" {
+		kind = "untrusted email data"
+	}
+	text := cfg.Target.Message + "\n\n[Condition event " + ev.ID + "; " + kind + "]\n" + string(payload)
 	if atChatLimit {
 		text = fmt.Sprintf("[This watcher opens a new chat for each event, but the project already has %d side chats, so this event arrived in the main chat. Close a side chat to give it room.]\n\n", externalCrewMaxSideChats) + text
 	}

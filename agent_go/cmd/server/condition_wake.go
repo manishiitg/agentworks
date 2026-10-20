@@ -181,6 +181,10 @@ func (c *conditionService) wake(ctx context.Context, job productScheduleJob) (bo
 // One worker per watcher; a burst during a check becomes one follow-up check.
 // The scheduler calls this too, recovering accepted wakes after restart/failure.
 func (c *conditionService) processWake(ctx context.Context, job productScheduleJob) {
+	source := "webhook"
+	if job.Schedule.Condition != nil && job.Schedule.Condition.CheckMode == "inbox" {
+		source = "inbox"
+	}
 	id := conditionWakeID(job)
 	if _, loaded := c.wakeWorkers.LoadOrStore(id, true); loaded {
 		return
@@ -205,7 +209,7 @@ func (c *conditionService) processWake(ctx context.Context, job productScheduleJ
 		}
 		m.Unlock()
 		if err != nil || !found {
-			scheduleLogf("[WATCHER_WAKE] watcher=%s source=webhook result=retry reason=read", id)
+			scheduleLogf("[WATCHER_WAKE] watcher=%s source=%s result=retry reason=read", id, source)
 			return
 		}
 		if delay := time.Until(wake.NextCheckAt); delay > 0 {
@@ -222,7 +226,7 @@ func (c *conditionService) processWake(ctx context.Context, job productScheduleJ
 			return
 		}
 		if err := c.current(conditionContext(ctx, fresh), fresh, *fresh.Schedule.Condition); err != nil {
-			scheduleLogf("[WATCHER_WAKE] watcher=%s source=webhook result=refused reason=access_or_disabled", id)
+			scheduleLogf("[WATCHER_WAKE] watcher=%s source=%s result=refused reason=access_or_disabled", id, source)
 			return
 		}
 		pause, _ := LoadSchedulerConfig(ctx)
@@ -239,8 +243,8 @@ func (c *conditionService) processWake(ctx context.Context, job productScheduleJ
 		if err != nil || !found {
 			return
 		}
-		if _, err := c.poll(ctx, fresh, "webhook", time.Time{}); err != nil {
-			scheduleLogf("[WATCHER_WAKE] watcher=%s source=webhook result=retry reason=check", id)
+		if _, err := c.poll(ctx, fresh, source, time.Time{}); err != nil {
+			scheduleLogf("[WATCHER_WAKE] watcher=%s source=%s result=retry reason=check", id, source)
 			// A timed/manual check can be in flight too. Keep its notification
 			// pending and retry after the burst spacing, without an extra tick.
 			if errors.Is(err, productschedule.ErrAlreadyRunning) || errors.Is(err, conditiontrigger.ErrChecking) {
@@ -271,9 +275,9 @@ func (c *conditionService) processWake(ctx context.Context, job productScheduleJ
 		}
 		m.Unlock()
 		if err != nil || !found {
-			scheduleLogf("[WATCHER_WAKE] watcher=%s source=webhook result=retry reason=checkpoint", id)
+			scheduleLogf("[WATCHER_WAKE] watcher=%s source=%s result=retry reason=checkpoint", id, source)
 			return
 		}
-		scheduleLogf("[WATCHER_WAKE] watcher=%s source=webhook result=checked reason=notification", id)
+		scheduleLogf("[WATCHER_WAKE] watcher=%s source=%s result=checked reason=notification", id, source)
 	}
 }

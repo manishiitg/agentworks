@@ -16,12 +16,11 @@ import (
 )
 
 // GmailInboundClient is a narrow server-owned adapter. Watch registration and
-// fixed replies do not opt agents into general Gmail writes. Every invocation
-// re-resolves the scoped connection and its current read grant.
+// attachment reads use only the company receiving connection. Every invocation
+// re-resolves it and its current read grant; personal Gmail is never watched.
 type GmailInboundClient struct {
 	ConnectionID string
 	Topic        string
-	Scope        GmailUseScope
 }
 
 func (c GmailInboundClient) run(ctx context.Context, readOnly bool, args ...string) ([]byte, error) {
@@ -29,15 +28,11 @@ func (c GmailInboundClient) run(ctx context.Context, readOnly bool, args ...stri
 	if svc == nil {
 		return nil, fmt.Errorf("Gmail is unavailable")
 	}
-	scope := c.Scope
-	if saved, ok := svc.GetConnection(c.ConnectionID); ok && saved.Personal {
-		if scope.UserID != saved.OwnerID || len(saved.Workspaces) == 0 {
-			return nil, fmt.Errorf("personal Gmail account is not selected for any item")
-		}
-		// Account selections can change between commands in a mailbox sync.
-		// Re-resolve instead of retaining a removed item's scope for the watch.
-		scope.Workspace = saved.Workspaces[0]
+	saved, ok := svc.GetConnection(c.ConnectionID)
+	if !ok || saved.IsPrivate() {
+		return nil, fmt.Errorf("Agent inbox receiving requires a company Google connection")
 	}
+	scope := GmailUseScope{}
 	conn, e := svc.ConnectionForScope(c.ConnectionID, scope)
 	if e != nil {
 		return nil, e
@@ -49,9 +44,7 @@ func (c GmailInboundClient) run(ctx context.Context, readOnly bool, args ...stri
 	if !GoogleScopesGrant(status.Scopes, GmailReadonlyScope) {
 		return nil, fmt.Errorf("Gmail read permission has not been granted")
 	}
-	if len(args) > 1 && args[0] == "gmail" && args[1] == "send" && !(scopesGrantGmailSend(status.Scopes) || GoogleScopesGrant(status.Scopes, GmailComposeScope)) {
-		return nil, fmt.Errorf("Gmail send permission has not been granted")
-	}
+
 	access, e := svc.GoogleCLIAccessForConnectionIn(ctx, c.ConnectionID, scope)
 	if e != nil {
 		return nil, e
