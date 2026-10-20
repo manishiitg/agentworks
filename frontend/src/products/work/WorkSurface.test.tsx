@@ -281,29 +281,41 @@ describe('CreateWorkProjectDialog', () => {
 
 
 describe('Crew native tab dragging', () => {
-  it('uses the sidebar server order and counts agents without counting schedule or bot activity views', async () => {
-    const make = (id: string, position = 0, activity = false) => ({ tabId: id, sessionId: `session-${id}`, name: id, createdAt: id === 'z' ? 1 : 900, config: {}, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: id === 'main', agentProfileConversationKey: id === 'main' ? 'crew:chat:root-main' : `crew:chat:${id}`, agentProfileTabPosition: position, ...(id === 'z' ? { agentProfileTabPinned: false } : {}), ...(activity ? { isViewOnly: true, isScheduledRun: id === 'schedule', isBotRun: id === 'bot' } : {}) } } as ChatTab)
-    useChatStore.setState({ chatTabs: { z: make('z'), bot: make('bot', 0, true), main: make('main'), a: make('a'), schedule: make('schedule', 0, true), b: make('b', 1) }, activeTabId: 'b' })
+  it('shows exactly the server list in its order, whatever this browser remembered about a tab', async () => {
+    const make = (id: string, extra: Record<string, unknown> = {}) => ({ tabId: id, sessionId: `session-${id}`, name: id, createdAt: 900, config: {}, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: id === 'main', agentProfileConversationKey: id === 'main' ? 'crew:chat:root-main' : `crew:chat:${id}`, ...extra } } as ChatTab)
+    useChatStore.setState({ chatTabs: {
+      main: make('main'),
+      // Remembered from before the project moved from Code to Crew: still listed by the server, so it shows.
+      a: make('a', { agentProfileId: 'code', agentProfileConversationKey: undefined }),
+      b: make('b'), z: make('z'),
+      // A tab the server no longer lists is not shown.
+      gone: make('gone'),
+      bot: make('bot', { isViewOnly: true, isBotRun: true }), schedule: make('schedule', { isViewOnly: true, isScheduledRun: true }),
+    }, activeTabId: 'b' })
+    const list = vi.spyOn(agentApi, 'listAgentProfileSideChats').mockResolvedValue([
+      { conversation_key: 'crew:chat:b', session_id: 'session-b', name: 'b', position: 1, pinned: true },
+      { conversation_key: 'crew:chat:a', session_id: 'session-a', name: 'a', pinned: true },
+      { conversation_key: 'crew:chat:z', session_id: 'session-z', name: 'z', pinned: false },
+    ])
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host)
     try {
-      await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats={false} />))
+      await act(async () => root.render(<WorkChatTabs projectId="crew" projectName="Crew" canonicalTabId="main" profileId="work" allowSideChats />))
       const ids = (selector: string, attribute: string) => [...host.querySelectorAll(selector)].map(node => node.getAttribute(attribute))
-      // Every tab starts pinned; the person unpins the ones they want in the menu only (owner, 2026-10-20).
       expect(ids('[data-chat-tab-id]', 'data-chat-tab-id')).toEqual(['main', 'b', 'a', 'bot', 'schedule'])
       const menu = host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!
       expect(menu.textContent).toBe('Agents · 4')
       await act(async () => menu.click())
-      expect(ids('[data-chat-list-id]', 'data-chat-list-id')).toEqual(['main', 'b', 'a', 'bot', 'schedule', 'z'])
+      expect(ids('[data-chat-list-id]', 'data-chat-list-id')).toEqual(['main', 'b', 'a', 'z', 'bot', 'schedule'])
       expect(host.querySelector('[aria-label="Agents"] [title="Close activity view"]')).not.toBeNull()
       expect(host.querySelector('[aria-label="Close Crew"]')).toBeNull()
-    } finally { await act(async () => root.unmount()); host.remove() }
+    } finally { await act(async () => root.unmount()); host.remove(); list.mockRestore() }
   })
 
   it.each(['a', 'b'])('keeps a drag source and drop target working while %s is selected', async active => {
     const make = (id: string, position: number) => ({ tabId: id, sessionId: `session-${id}`, name: id, createdAt: position, config: {}, metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: id === 'main', agentProfileConversationKey: id === 'main' ? 'crew' : `crew:chat:${id}`, agentProfileTabPosition: position } } as ChatTab)
     useChatStore.setState({ chatTabs: { main: make('main', 0), a: make('a', 1), b: make('b', 2) }, activeTabId: active })
-    const list = vi.spyOn(agentApi, 'listAgentProfileSideChats').mockResolvedValue([])
+    const list = vi.spyOn(agentApi, 'listAgentProfileSideChats').mockResolvedValue([{ conversation_key: 'crew:chat:a', session_id: 'session-a', name: 'a', position: 1 }, { conversation_key: 'crew:chat:b', session_id: 'session-b', name: 'b', position: 2 }])
     const order = vi.spyOn(agentApi, 'orderAgentProfileSideChats').mockResolvedValue([{ conversation_key: 'crew:chat:b', session_id: 'session-b', name: 'b', position: 1 }, { conversation_key: 'crew:chat:a', session_id: 'session-a', name: 'a', position: 2 }])
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host)
