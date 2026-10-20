@@ -96,6 +96,23 @@ func TestWorkspaceSkillsLifecycle(t *testing.T) {
 	if err != nil || !bytes.Equal(got, asset) {
 		t.Fatalf("migration lost binary assets: %v %v", got, err)
 	}
+	// Step/global how-to guides can themselves be called SKILL.md. Only the
+	// root guide is supplied separately; nested guides must survive packaging.
+	stepGuide := []byte("# Login procedure\nFollow the saved login steps.\n")
+	globalGuide := []byte("# Shared procedure\nUse the shared references.\n")
+	write("Workflow/mine/skills/report/references/login/SKILL.md", stepGuide)
+	write("Workflow/mine/skills/report/references/_global/SKILL.md", globalGuide)
+	filesPayload = call("/files", `{"workspace_path":"Workflow/mine","name":"report"}`, 200)
+	if err := json.Unmarshal(filesPayload, &bundle); err != nil {
+		t.Fatal(err)
+	}
+	packaged := map[string][]byte{}
+	for _, file := range bundle.Files {
+		packaged[file.RelPath] = file.Content
+	}
+	if len(packaged) != 3 || !bytes.Equal(packaged["references/login/SKILL.md"], stepGuide) || !bytes.Equal(packaged["references/_global/SKILL.md"], globalGuide) || !bytes.Equal(packaged["assets/chart.bin"], asset) {
+		t.Fatal("runtime bundle omitted nested skill guides or included the root guide")
+	}
 	write("Workflow/mine/.claude/skills/report/SKILL.md", skill("report"))
 	write("Workflow/mine/.claude/skills/report/.agentworks-managed", []byte("managed"))
 	call("/list", `{"workspace_path":"Workflow/other"}`, 200)

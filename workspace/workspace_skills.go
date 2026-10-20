@@ -471,7 +471,9 @@ func handleWorkspaceSkillFiles(c *gin.Context) {
 		if err != nil {
 			return err
 		}
-		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || entry.Name() == "SKILL.md" || entry.Name() == ".agentworks-managed" {
+		// Only the root guide is attached separately. Nested SKILL.md files
+		// are reference documents and must remain readable in the bundle.
+		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || file == filepath.Join(root, "SKILL.md") || entry.Name() == ".agentworks-managed" {
 			return nil
 		}
 		info, err := entry.Info()
