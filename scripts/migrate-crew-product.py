@@ -131,6 +131,8 @@ class Conversion:
             out = {}
             for key, item in value.items():
                 source_key = key
+                if key == "work" and field in ("create_products", "can_create_products") and isinstance(item, bool):
+                    item = item or value.get("code") is True
                 if key == "code_reviewer":
                     key = "crew_reviewer"
                 if key.startswith("code/") and field in ("entries", "previous", "agents"):

@@ -8,21 +8,21 @@ it('groups registered project aliases by server identity, drops absent projects 
   const legacy = 'Chats/Code/projects/private-old'
   const canonical = 'Crew/private-current'
   const tabs = {
-    main: tab('main', { name: 'Main', metadata: { agentProfileId: 'code', agentProfileProjectId: 'private-id', agentProfileWorkspace: legacy } }),
+    main: tab('main', { name: 'Main', metadata: { agentProfileId: 'work', agentProfileProjectId: 'private-id', agentProfileWorkspace: canonical } }),
     schedule: tab('schedule-run', { name: 'Daily wrap-up', metadata: { agentProfileId: 'work', agentProfileProjectId: 'legacy-id', agentProfileWorkspace: canonical, isScheduledRun: true } }),
     other: tab('other', { metadata: { agentProfileId: 'work', agentProfileProjectId: 'other-id', agentProfileWorkspace: 'Crew/other' } }),
     ghost: tab('ghost', { metadata: { agentProfileId: 'work', agentProfileProjectId: 'deleted-test', agentProfileWorkspace: 'Crew/deleted-test' } }),
   }
   const rows = sidebarChats({ tabs, active: [], recent: [], presets: [], allowed: ['work', 'work'], projectInventoryKnown: true,
     projects: [
-      { id: 'private-id', workspaceId: 'code:private-id', surface: 'work', title: 'Private Crew', workspacePath: canonical, aliases: [legacy] },
+      { id: 'private-id', workspaceId: 'work:private-id', surface: 'work', title: 'Private Crew', workspacePath: canonical },
       { id: 'other-id', workspaceId: 'work:other-id', surface: 'work', title: 'Private Crew', workspacePath: 'Crew/other' },
     ],
   })
   expect(rows.map(row => row.id).sort()).toEqual(['main', 'other', 'schedule-run'])
   const groups = sidebarWorkspaceGroups(rows)
   expect(groups).toHaveLength(2)
-  expect(groups.find(group => group.id === 'code:private-id')?.chats.map(row => row.id)).toEqual(['main', 'schedule-run'])
+  expect(groups.find(group => group.id === 'work:private-id')?.chats.map(row => row.id)).toEqual(['main', 'schedule-run'])
   expect(groups.find(group => group.id === 'work:other-id')?.chats).toHaveLength(1)
   expect(tabs.schedule.metadata?.agentProfileProjectId).toBe('legacy-id')
 })
@@ -43,7 +43,7 @@ const tab = (id: string, patch: Partial<ChatTab> = {}) =>
     name: 'Chat',
     createdAt: 1,
     metadata: {
-      agentProfileId: 'code',
+      agentProfileId: 'work',
       agentProfileProjectId: 'project',
       agentProfileProjectTitle: 'My Code',
     },
@@ -238,7 +238,7 @@ it('keeps multiple running tabs nested under their workspace and separates produ
 it('uses the saved scheduled run time instead of the restored tab creation time', () => {
   const createdAt = '2026-10-15T02:00:00Z'
   const rows = sidebarChats({
-    tabs: { run: tab('schedule-run', { createdAt: Date.parse('2026-10-15T16:00:00Z'), metadata: { agentProfileId: 'code', isScheduledRun: true, scheduledJobName: 'Daily report' } }) },
+    tabs: { run: tab('schedule-run', { createdAt: Date.parse('2026-10-15T16:00:00Z'), metadata: { agentProfileId: 'work', isScheduledRun: true, scheduledJobName: 'Daily report' } }) },
     active: [],
     recent: [{ session_id: 'schedule-run', created_at: createdAt }],
     presets: [], allowed: ['work'],
@@ -319,7 +319,7 @@ it('uses activity in any child chat to rank its project while preserving saved c
   const rows = sidebarChats({ tabs: {
     main: tab('main', { metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileIsMainChat: true } }),
     side: tab('side', { metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew', agentProfileTabPosition: 1 } }),
-    other: tab('other', { metadata: { agentProfileId: 'code', agentProfileProjectId: 'other' } }),
+    other: tab('other', { metadata: { agentProfileId: 'work', agentProfileProjectId: 'other' } }),
   }, active: [
     activity('side', { last_activity: '2026-10-20T10:00:00Z' }),
     activity('other', { last_activity: '2026-10-20T09:00:00Z' }),

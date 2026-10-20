@@ -1,7 +1,7 @@
 import { panelSearchAliases } from './workspace/workspacePanelGroups'
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { isWorkSideChatTab } from '../products/work/workTabs'
-import { Activity, CalendarClock, Code2, Cpu, Layers, LayoutGrid, MessageSquare, NotebookText, PanelRight, Plus, Plug, PlugZap, ScrollText, Search, Users, X } from 'lucide-react'
+import { Activity, CalendarClock, Cpu, Layers, LayoutGrid, MessageSquare, NotebookText, PanelRight, Plus, Plug, PlugZap, ScrollText, Search, Users, X } from 'lucide-react'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useModeStore } from '../stores/useModeStore'
 import { useChatStore } from '../stores'
@@ -180,7 +180,7 @@ const workflowSessionMatchesPreset = (
 
 const itemTypeRank = (item: QuickSwitcherItem): number => {
   if (item.type === 'active') return 0
-  if (item.type === 'crew' || item.type === 'crew') return 1
+  if (item.type === 'crew') return 1
   if (item.type === 'chat') return 1
   if (item.type === 'workflow') return 2
   return 3
@@ -723,8 +723,6 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                   ? item.action === 'providers' ? Cpu : item.action === 'users' ? Users : item.action === 'mcp' ? Plug : item.action === 'schedules' ? CalendarClock : Activity
                 : item.type === 'crew'
                   ? Users
-                : item.type === 'crew'
-                  ? Code2
                 : item.type === 'active'
                   ? Activity
                   : MessageSquare

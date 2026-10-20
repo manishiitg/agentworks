@@ -346,7 +346,7 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 		// shared with them, with their functions, next to their AgentBridge agents.
 		if directory, err := listAgentDirectory(r.Context(), claims); err == nil {
 			out["agents"] = directory["agents"]
-			out["how_to_call"] = "Crew: call_crew_function(crew_id, function) or ask_crew(crew_id). Goal: call_workflow_function(workflow_id, function). Relay: run_relay(workflow_id). Connected agent: messages action=send target=agent:<name>."
+			out["how_to_call"] = "Crew: functions action=call with crew_id and function, or workspace action=ask. Goal: functions action=call with workflow_id and function. Relay: relay action=run with workflow_id. Connected agent: messages action=send target=agent:<name>."
 		}
 		externalJSON(w, out)
 	case "state":

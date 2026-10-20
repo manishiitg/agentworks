@@ -52,7 +52,6 @@ vi.mock('../../stores/useProductSurfaceStore', () => ({
   useProductSurfaceStore: Object.assign((select: any) => select({ productSurface: mocks.product }), {
     getState: () => ({
       productSurface: mocks.product,
-      setSelectedWorkProjectId: mocks.selectCode,
       setSelectedWorkProjectId: mocks.selectWork,
     }),
   }),

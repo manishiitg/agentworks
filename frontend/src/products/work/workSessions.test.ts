@@ -116,9 +116,9 @@ describe('createWorkSession', () => {
     updatePlannerFile.mockClear()
     createPlannerFolder.mockClear()
     const session = await createWorkSession('Finance desk', 'Review records.', '📊', 'finance-analyst', CREW_PRODUCT, { provider: 'codex-cli', modelId: 'gpt-6-luna', connectionId: 'company-account' }, 'cowork')
-    expect(createServerProject).toHaveBeenLastCalledWith('code', expect.objectContaining({ name: 'Finance desk', purpose: 'Review records.', icon: '📊', mode: 'cowork', templates: [{ id: 'finance-analyst', version: 1 }], selected_skills: ['finance-analyst'], llm_config: expect.objectContaining({ builder_llm: expect.objectContaining({ provider: 'codex-cli', model_id: 'gpt-6-luna', connection_id: 'company-account' }) }) }))
+    expect(createServerProject).toHaveBeenLastCalledWith('work', expect.objectContaining({ name: 'Finance desk', purpose: 'Review records.', icon: '📊', mode: 'cowork', templates: [{ id: 'finance-analyst', version: 1 }], selected_skills: ['finance-analyst'], llm_config: expect.objectContaining({ builder_llm: expect.objectContaining({ provider: 'codex-cli', model_id: 'gpt-6-luna', connection_id: 'company-account' }) }) }))
     expect(session.workspacePath).toBe('Crew/server-project')
-    expect(session.product).toBe('code')
+    expect(session.product).toBe('work')
     expect(session.mode).toBe('cowork')
     expect(updatePlannerFile).not.toHaveBeenCalled()
     expect(createPlannerFolder).not.toHaveBeenCalled()
@@ -148,12 +148,12 @@ describe('createWorkSession', () => {
 describe('deleteWorkSession', () => {
   it('allows cached project cleanup when Files already removed the project', async () => {
     deleteAgentProfileProject.mockRejectedValueOnce({ response: { status: 404 } })
-    await expect(deleteWorkSession({ product: 'code', id: 'gone-code' } as WorkSession)).resolves.toBeUndefined()
+    await expect(deleteWorkSession({ product: 'work', id: 'gone-code' } as WorkSession)).resolves.toBeUndefined()
   })
   it.each([403, 409, 500])('keeps deletion errors visible for status %s', async status => {
     const error = { response: { status } }
     deleteAgentProfileProject.mockRejectedValueOnce(error)
-    await expect(deleteWorkSession({ product: 'code', id: 'existing-code' } as WorkSession)).rejects.toBe(error)
+    await expect(deleteWorkSession({ product: 'work', id: 'existing-code' } as WorkSession)).rejects.toBe(error)
   })
   it('deletes the authenticated durable Crew project through its profile', async () => {
     const session = parseSessionManifest(JSON.stringify({

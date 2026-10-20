@@ -31,12 +31,12 @@ const render = (product: typeof CREW_PRODUCT, props: { view?: WorkWorkspaceView;
 const hasTerminal = () => Array.from(host.querySelectorAll('button,[role="button"]')).some(node => /Terminal/.test(node.getAttribute('aria-label') || node.textContent || ''))
   || host.innerHTML.includes('Terminal')
 
-it('keeps Terminal in the owner Code menu, without duplicate toolbar buttons', () => {
+it('keeps Terminal in the Crew Builder menu, without duplicate toolbar buttons', () => {
   render(CREW_PRODUCT, { showShell: true })
-  expect(usePanelSwitcherStore.getState().entries.code?.panels.some(item => item.id === 'shell')).toBe(true)
+  expect(usePanelSwitcherStore.getState().entries.work?.panels.some(item => item.id === 'shell')).toBe(true)
   expect(hasTerminal()).toBe(false)
   render(CREW_PRODUCT, { showShell: false })
-  expect(usePanelSwitcherStore.getState().entries.code?.panels.some(item => item.id === 'shell')).toBe(false)
+  expect(usePanelSwitcherStore.getState().entries.work?.panels.some(item => item.id === 'shell')).toBe(false)
 })
 
 it('shows Run people only the dashboard inventory', () => {

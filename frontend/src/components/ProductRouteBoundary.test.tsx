@@ -19,14 +19,14 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterEach(() => { vi.clearAllMocks(); mocks.authValid = false; window.history.replaceState({}, '', '/') })
 describe('protected deep-link boundary', () => {
   it('opens the default product for safe legacy bookmarks and re-checks expired sessions at the requested URL', async () => {
-    window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['bullpen', 'code'], defaultProductSurface: 'bullpen' }
+    window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['bullpen', 'work'], defaultProductSurface: 'bullpen' }
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host)
     const activate = vi.fn()
     mocks.resolve.mockResolvedValue(activate)
     try {
       window.history.replaceState({}, '', '/settings')
-      await act(async () => root.render(<ProductRouteBoundary account="reader" allowedProducts={['bullpen', 'code']}>Workspace</ProductRouteBoundary>))
+      await act(async () => root.render(<ProductRouteBoundary account="reader" allowedProducts={['bullpen', 'work']}>Workspace</ProductRouteBoundary>))
       expect(activate).toHaveBeenCalledOnce()
       expect(host.textContent).toBe('Workspace')
       expect(window.location.pathname).toBe('/agentbridge')
@@ -41,19 +41,19 @@ describe('protected deep-link boundary', () => {
       expect(host.textContent).toContain('Could not open this link')
       expect(host.querySelector('button')?.textContent).toBe('Retry')
       const lookups = mocks.resolve.mock.calls.length
-      await act(async () => root.render(<ProductRouteBoundary account="reader" allowedProducts={['bullpen', 'code']}>Workspace</ProductRouteBoundary>))
+      await act(async () => root.render(<ProductRouteBoundary account="reader" allowedProducts={['bullpen', 'work']}>Workspace</ProductRouteBoundary>))
       expect(mocks.resolve).toHaveBeenCalledTimes(lookups)
     } finally { await act(async () => root.unmount()); host.remove() }
   })
   it('does not mount a denied/disabled/missing target or overwrite its URL', async () => {
-    window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['bullpen', 'code'] }
+    window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['bullpen', 'work'] }
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host)
     const mounted = vi.fn()
     const PrivateView = () => { mounted(); return <div>Private project data</div> }
     try {
       window.history.replaceState({}, '', '/agentbridge/connect')
-      await act(async () => root.render(<ProductRouteBoundary account="reader" allowedProducts={['code']}><PrivateView /></ProductRouteBoundary>))
+      await act(async () => root.render(<ProductRouteBoundary account="reader" allowedProducts={['work']}><PrivateView /></ProductRouteBoundary>))
       const deniedText = host.querySelector('[role=alert]')?.textContent
       expect(deniedText).toContain('not available')
       expect(mocks.resolve).not.toHaveBeenCalled()
@@ -86,9 +86,9 @@ describe('server workspace return', () => {
     const { workspaceStateApi } = await import('../services/workspaceState')
     const { useWorkspaceReturnStore } = await import('../stores/useWorkspaceReturnStore')
     useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null })
-    const saved = { surface: 'code' as const, id: 'last', session_id: 'chat-1' }
+    const saved = { surface: 'work' as const, id: 'last', session_id: 'chat-1' }
     vi.mocked(workspaceStateApi.get).mockResolvedValueOnce({ version: 1, revision: 3, last: saved, recent: [saved] })
-    window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['code'] }
+    window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work'] }
     window.history.replaceState({}, '', '/home')
     mocks.resolve.mockResolvedValue(vi.fn())
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
@@ -105,7 +105,7 @@ describe('server workspace return', () => {
     const { useWorkspaceReturnStore } = await import('../stores/useWorkspaceReturnStore')
     useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null })
     vi.mocked(workspaceStateApi.get).mockResolvedValueOnce({ version: 1, revision: 0, last: null, recent: [], destination: existing ? { surface: 'work', id: 'existing', workspace_path: 'Code/existing' } : { surface: 'work' }, first_visit: !existing })
-    window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['code'] }
+    window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work'] }
     mocks.resolve.mockResolvedValue(vi.fn())
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {
@@ -120,14 +120,14 @@ describe('server workspace return', () => {
     const { useWorkspaceReturnStore } = await import('../stores/useWorkspaceReturnStore')
     const { restoreWorkspaceChat } = await import('../utils/restoreWorkspaceChat')
     useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null, restore: null, firstVisit: false })
-    const saved = { surface: 'code' as const, id: 'last', view: 'files', session_id: 'chat-1', layout: { chat_open: true, panel_open: false, split_ratio: 0.4, navigation_mode: 'fixed' as const, focused_pane: 'chat' as const } }
+    const saved = { surface: 'work' as const, id: 'last', view: 'files', session_id: 'chat-1', layout: { chat_open: true, panel_open: false, split_ratio: 0.4, navigation_mode: 'fixed' as const, focused_pane: 'chat' as const } }
     vi.mocked(workspaceStateApi.get).mockResolvedValueOnce({ version: 1, revision: 3, last: saved, recent: [saved] })
-    window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['code', 'bullpen'] }
+    window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'bullpen'] }
     window.history.replaceState({}, '', '/')
     mocks.resolve.mockResolvedValue(vi.fn())
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {
-      await act(async () => root.render(<ProductRouteBoundary account="alice" allowedProducts={['code', 'bullpen']}>Workspace</ProductRouteBoundary>))
+      await act(async () => root.render(<ProductRouteBoundary account="alice" allowedProducts={['work', 'bullpen']}>Workspace</ProductRouteBoundary>))
       expect(mocks.resolve).toHaveBeenCalledWith(saved, expect.any(AbortSignal))
       expect(restoreWorkspaceChat).toHaveBeenCalledWith(saved, expect.any(AbortSignal))
       expect(window.location.pathname).toBe('/code/projects/last')
@@ -149,14 +149,14 @@ describe('server workspace return', () => {
     const { useWorkspaceReturnStore } = await import('../stores/useWorkspaceReturnStore')
     useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null })
     vi.mocked(workspaceStateApi.get).mockResolvedValueOnce({ version: 1, revision: 3, last: null, recent: [], destination: {surface:'work'}, note: 'Your last workspace is no longer available.' })
-    window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['code'] }
+    window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work'] }
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {
-      await act(async () => root.render(<ProductRouteBoundary account="bob" allowedProducts={['code']}>Workspace</ProductRouteBoundary>))
+      await act(async () => root.render(<ProductRouteBoundary account="bob" allowedProducts={['work']}>Workspace</ProductRouteBoundary>))
       expect(window.location.pathname).toBe('/code')
       expect(useWorkspaceReturnStore.getState().firstVisit).toBe(false)
       expect(useWorkspaceReturnStore.getState().note).toContain('no longer available')
-      expect(mocks.resolve).toHaveBeenCalledWith({ surface: 'code' }, expect.any(AbortSignal))
+      expect(mocks.resolve).toHaveBeenCalledWith({ surface: 'work' }, expect.any(AbortSignal))
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 })

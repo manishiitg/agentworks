@@ -67,7 +67,7 @@ afterEach(async () => {
 const click = async (el: Element | null) => { await act(async () => { (el as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true })) }) }
 
 describe('Crew terminal tabs', { timeout: 20000 }, () => {
-  it.each(['work', 'code'] as const)('opens three independent terminals in %s origin and stops the one closed', async profileId => {
+  it.each(['work'] as const)('opens three independent terminals in %s origin and stops the one closed', async profileId => {
     await act(async () => { root.render(<ProjectProductProvider value={projectProductConfig(profileId)}><CodeShellPanel projectId="p1" /></ProjectProductProvider>) })
     expect(opened.length).toBe(1)
     expect(opened[0]).toContain(`/api/agent-profiles/${profileId}/projects/p1/shell/stream`)

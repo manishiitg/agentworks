@@ -55,7 +55,7 @@ describe('Panel walkthroughs', () => {
     const host = document.createElement('div'); document.body.append(host)
     let root = createRoot(host)
     try {
-      for (const surface of ['agentworks', 'crew', 'code'] as const) {
+      for (const surface of ['agentworks', 'crew', 'crew'] as const) {
         for (const topic of ['Pulse', 'Identity · General']) {
           await act(async () => root.render(<WorkspacePanelGuideContext.Provider value={surface}>
             <WorkspaceViewHeader title="Manual panel help" helpTopic={topic} />
@@ -78,11 +78,11 @@ describe('Panel walkthroughs', () => {
   })
 
   it('uses Code wording and scope for project sections', () => {
-    const code = getWorkspacePanelGuide('Identity · General', 'code')
-    expect(code.surface).toBe('code')
+    const code = getWorkspacePanelGuide('Identity · General', 'crew')
+    expect(code.surface).toBe('crew')
     expect(code.purpose).toContain('coding workspace')
     expect(code.purpose).not.toContain('Crew')
-    expect(getWorkspacePanelGuide('Integrations · MCPs', 'code').howTo).toContain('project')
+    expect(getWorkspacePanelGuide('Integrations · MCPs', 'crew').howTo).toContain('project')
   })
 
   it('provides specific guidance for different panels', () => {
