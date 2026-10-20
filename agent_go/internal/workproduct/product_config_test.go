@@ -156,6 +156,7 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 		"send_slack_message": false, "slack": false, "get_slack_bot_settings": false, "get_slack_bot_credentials": false, "configure_slack_bot": false, "test_slack_bot_connection": false, "create_slack_bot_route": false, "update_slack_bot_route_permission": false, "remove_slack_bot_route": false,
 		"list_gmail_connections":            false,
 		"manage_google_account":             false,
+		"manage_slack_bot":                  false,
 		"manage_slack_account":              false,
 		"get_agent_inbox":                   false,
 		"manage_agent_email":                false,

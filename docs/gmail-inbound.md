@@ -10,7 +10,7 @@ Receiving mail stores it. It does not start a chat, execute a workflow, send rep
 
 In **My Vault → Sign-in apps**, upload the company Google OAuth client JSON. Then open **Company agent inboxes**:
 
-1. Connect the company receiving Gmail mailbox and complete Google sign-in with read access. Reuse a saved company account when one exists. Personal connections cannot be selected.
+1. Connect the company receiving Gmail mailbox and complete Google sign-in with read access. Reuse the saved receiving connection when one exists. Personal or general shared connections cannot be selected; their permissions remain unchanged.
 2. Choose **Set up receiving**. Review the resource plan and complete Google Cloud consent with an account permitted to configure the OAuth app's project. The server sets up Gmail/Pub/Sub APIs, topic, push identity, authentication and subscription. The uploaded JSON's project metadata is reused; if it is absent, provide the Cloud project ID.
 3. Choose **Enable all agent inboxes**. No per-agent binding, sender approval or rule setup is needed. The server provisions existing agents and discovers new ones automatically.
 
@@ -30,7 +30,9 @@ Setup saves private durable configuration at `<AGENTWORKS_STATE_ROOT>/gmail-inbo
 }
 ```
 
-The referenced company Google connection must already be authorized in the platform's encrypted connection store. Alternatively set `AGENT_INBOX_ENABLED=true`, `AGENT_INBOX_CONNECTION_ID`, `GMAIL_INBOUND_TOPICS` (JSON map), `GMAIL_INBOUND_AUDIENCE` and `GMAIL_INBOUND_PUSH_EMAIL`. Environment and saved receiving identities must agree. Topic ownership must match the OAuth project. The public HTTPS event URL must reach this backend and preserve Google's Authorization header. The receiver checks Google's signed push identity and exact audience.
+The referenced receiving-only Google connection must already be authorized in the platform's encrypted connection store (created with manage_agent_email action=connect). Alternatively set `AGENT_INBOX_ENABLED=true`, `AGENT_INBOX_CONNECTION_ID`, `GMAIL_INBOUND_TOPICS` (JSON map), `GMAIL_INBOUND_AUDIENCE` and `GMAIL_INBOUND_PUSH_EMAIL`. Environment and saved receiving identities must agree. Topic ownership must match the OAuth project. The public HTTPS event URL must reach this backend and preserve Google's Authorization header. The receiver checks Google's signed push identity and exact audience.
+
+The receiving connection is reserved for server delivery, hidden from personal account/product selection, general gog access and default sending. Its token uses the existing private gog store outside the shared terminal store. Agents receive only the mail in their access-checked inboxes, never credentials to the underlying company mailbox.
 
 There is one company mailbox watch, not one process per agent. Fixed workers keep its history cursor, recover missed events and renew the watch. Gmail notifications are wake signals; the receiver reads actual mail through the existing gog adapter. Mail is persisted by exact recipient address and deduplicated per agent/message. All received mail remains available for filtering, with Gmail labels and sender authentication information included as data.
 

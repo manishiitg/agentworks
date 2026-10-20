@@ -68,7 +68,7 @@ func companyInboxClient(c gmailInboundConfig) (services.GmailInboundClient, stri
 		return services.GmailInboundClient{}, "", fmt.Errorf("Connect the company receiving mailbox in My Vault first")
 	}
 	conn, found := svc.GetConnection(c.ConnectionID)
-	if !found || conn.IsPrivate() || !conn.Enabled || !conn.AllowReadAccess {
+	if !found || conn.IsPrivate() || !conn.AgentInboxReceiver || !conn.Enabled || !conn.AllowReadAccess {
 		return services.GmailInboundClient{}, "", fmt.Errorf("Choose a connected company Google account with Gmail read access")
 	}
 	topic := c.Topics[conn.ClientName]

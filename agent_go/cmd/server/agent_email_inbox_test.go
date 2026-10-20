@@ -23,6 +23,12 @@ func TestAgentEmailInboxUsesExistingSharingAndNeverPersonalAccounts(t *testing.T
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENT_INBOX_ENABLED", "true")
 	t.Setenv("AGENT_INBOX_CONNECTION_ID", "mail")
+	svc := services.GetGmailService()
+	config := svc.GetConfig()
+	config.Connections[0].AgentInboxReceiver = true
+	if err := svc.SaveConfig(ctx, config); err != nil {
+		t.Fatal(err)
+	}
 	inbox, err := api.resolveAgentEmailInbox(ctx, "Workflow/mail")
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +100,7 @@ func TestAgentEmailWatcherRealPythonAndDurableCursor(t *testing.T) {
 	t.Setenv("GMAIL_INBOUND_AUDIENCE", "https://example.com/api/hooks/gmail/events")
 	t.Setenv("GMAIL_INBOUND_PUSH_EMAIL", "push@test-project.iam.gserviceaccount.com")
 	env.mock.mu.Lock()
-	env.mock.files["config/gmail-config.json"] = `{"connections":[{"id":"company","email":"company@example.com","client_name":"app","allow_read_access":true,"enabled":true}]}`
+	env.mock.files["config/gmail-config.json"] = `{"connections":[{"id":"company","agent_inbox_receiver":true,"email":"company@example.com","client_name":"app","allow_read_access":true,"enabled":true}]}`
 	env.mock.mu.Unlock()
 	previous := services.GetGmailService()
 	t.Cleanup(func() { services.SetGmailService(previous) })

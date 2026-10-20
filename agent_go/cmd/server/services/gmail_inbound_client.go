@@ -29,10 +29,10 @@ func (c GmailInboundClient) run(ctx context.Context, readOnly bool, args ...stri
 		return nil, fmt.Errorf("Gmail is unavailable")
 	}
 	saved, ok := svc.GetConnection(c.ConnectionID)
-	if !ok || saved.IsPrivate() {
+	if !ok || saved.IsPrivate() || !saved.AgentInboxReceiver {
 		return nil, fmt.Errorf("Agent inbox receiving requires a company Google connection")
 	}
-	scope := GmailUseScope{}
+	scope := GmailUseScope{InboxReceiver: true}
 	conn, e := svc.ConnectionForScope(c.ConnectionID, scope)
 	if e != nil {
 		return nil, e

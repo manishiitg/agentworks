@@ -46,6 +46,9 @@ func (api *StreamingAPI) personalGoogleOperation(r *http.Request, workspace stri
 		scope.UserID = actor
 		scope.Workspace = personalConnectionItemRoot(actor, workspace)
 		for _, c := range svc.ListConnections() {
+			if c.AgentInboxReceiver {
+				continue
+			}
 			selected := workspace != "" && c.UsableFrom(scope)
 			if c.IsPrivate() && c.OwnerID != actor && !selected || !c.IsPrivate() && (workspace != "" || !currentUserIsAdmin(r)) {
 				continue

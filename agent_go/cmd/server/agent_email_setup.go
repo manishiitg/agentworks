@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const agentEmailSetupDescription = "Manage company receiving for every agent inbox on this server. Personal Gmail stays independent via gog. Administrator only (MCP requires users:manage). status lists company mailbox choices, readiness and Google setup progress. prepare returns a resource review link: the human administrator opens it and completes Google Cloud consent. configure selects a COMPANY Google connection with granted Gmail read access and enabled=true/false; the same configuration applies automatically to all existing and future agents. Register/upload the company OAuth app in My Vault and connect its receiving mailbox once; OAuth JSON alone is not a mailbox login. DevOps may set the same private JSON/environment configuration. No per-agent opt-in, sender approvals or Gmail rules. Receiving stores mail only; optional Python Watchers start work. Server only, unavailable locally."
+const agentEmailSetupDescription = "Manage company receiving for every agent inbox on this server. Personal Gmail stays independent via gog. Administrator only (MCP requires users:manage). status lists company mailbox choices, readiness and Google setup progress. prepare returns a resource review link: the human administrator opens it and completes Google Cloud consent. configure selects a COMPANY Google connection with granted Gmail read access and enabled=true/false; the same configuration applies automatically to all existing and future agents. Register/upload the company OAuth app in My Vault and connect its receiving mailbox once; OAuth JSON alone is not a mailbox login. DevOps may set the same private JSON/environment configuration. The receiving connection is delivery-only and unavailable to general gog commands, personal account selection or default sending. No per-agent opt-in, sender approvals or Gmail rules. Receiving stores mail only; optional Python Watchers start work. Server only, unavailable locally."
 
 func agentEmailSetupSchema() map[string]interface{} {
 	return map[string]interface{}{"type": "object", "required": []string{"action"}, "additionalProperties": false, "properties": map[string]interface{}{
@@ -81,7 +81,7 @@ func (api *StreamingAPI) agentEmailSetupOperation(ctx context.Context, args map[
 	choices := []map[string]any{}
 	if svc := services.GetGmailService(); svc != nil {
 		for _, c := range svc.ListConnections() {
-			if !c.IsPrivate() {
+			if c.AgentInboxReceiver && !c.IsPrivate() {
 				choices = append(choices, map[string]any{"id": c.ID, "email": c.Email, "read_access": c.AllowReadAccess, "enabled": c.Enabled, "client_name": c.ClientName})
 			}
 		}
@@ -146,7 +146,7 @@ func (api *StreamingAPI) connectCompanyInbox(ctx context.Context, cfg gmailInbou
 	if id == "" {
 		choices := []string{}
 		for _, conn := range svc.ListConnections() {
-			if !conn.IsPrivate() {
+			if conn.AgentInboxReceiver && !conn.IsPrivate() {
 				choices = append(choices, conn.ID)
 			}
 		}
@@ -175,7 +175,7 @@ func (api *StreamingAPI) connectCompanyInbox(ctx context.Context, cfg gmailInbou
 			}
 		}
 		read := true
-		conn, err := svc.CreateConnection(ctx, services.GmailConnectionInput{DisplayName: "Company agent inboxes", ClientName: client, AllowReadAccess: &read})
+		conn, err := svc.CreateConnection(ctx, services.GmailConnectionInput{AgentInboxReceiver: true, DisplayName: "Company agent inboxes", ClientName: client, AllowReadAccess: &read})
 		if err != nil {
 			return nil, err
 		}
@@ -189,7 +189,7 @@ func (api *StreamingAPI) connectCompanyInbox(ctx context.Context, cfg gmailInbou
 		}
 	}
 	conn, ok := svc.GetConnection(id)
-	if !ok || conn.IsPrivate() {
+	if !ok || conn.IsPrivate() || !conn.AgentInboxReceiver {
 		return nil, fmt.Errorf("Choose a company account; personal Gmail is never used for agent inboxes")
 	}
 	read := true

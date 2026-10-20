@@ -221,7 +221,7 @@ print(json.dumps({"events": events, "state": state}))
 Use My Vault → Sign-in apps to upload the company Google OAuth JSON. That file identifies the app; it is not authorization to read a mailbox. Use My Vault → Company agent inboxes, or `manage_agent_email`:
 
 1. `status` lists company mailbox choices and Google apps.
-2. `connect` connects or reconnects the company receiving mailbox once. The person completes Google sign-in. Personal accounts cannot be selected.
+2. `connect` connects or reconnects the company receiving mailbox once. The person completes Google sign-in. Personal accounts and general shared accounts cannot be selected. The saved receiving connection is reserved for delivery; its private token is never available to agents or general gog commands.
 3. `prepare` prepares Google Pub/Sub setup with client_name and its owning project_id. Uploaded project metadata is reused. The person opens the review link, reviews and completes Google Cloud consent with project setup permissions. Agents never follow the review link or complete consent. Existing `setup_gmail_inbound` also prepares this same infrastructure.
 4. `configure` with connection_id and enabled=true enables ALL agent inboxes automatically. There is no per-agent opt-in, personal inbox binding, sender approval or special Gmail rule.
 

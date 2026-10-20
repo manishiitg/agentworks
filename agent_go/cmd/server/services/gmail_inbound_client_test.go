@@ -29,12 +29,26 @@ esac
 		t.Fatal(e)
 	}
 	t.Setenv("TEST_INBOUND_ARGS", logPath)
-	conn := GmailConnection{ID: "test", Email: "owner@example.com", ClientName: "private-client", Enabled: true, AllowReadAccess: true, AuthBackend: "gog"}
+	conn := GmailConnection{AgentInboxReceiver: true, ID: "test", Email: "owner@example.com", ClientName: "private-client", Enabled: true, AllowReadAccess: true, AuthBackend: "gog"}
 	svc := &GmailService{config: &GmailConfig{GogPath: binary, Connections: []GmailConnection{conn}}, authCaches: map[string]*gmailAuthCacheEntry{"test": {status: &GmailAuthStatus{Authenticated: true, Scopes: []string{GmailReadonlyScope}}, cachedAt: time.Now()}}}
 	old := GetGmailService()
 	SetGmailService(svc)
 	t.Cleanup(func() { SetGmailService(old) })
 	c := GmailInboundClient{ConnectionID: "test", Topic: "projects/test/topics/email"}
+	if conn.UsableFrom(GmailUseScope{}) || conn.UsableFrom(GmailUseScope{Workspace: "Workflow/example", UserID: "other"}) || len(svc.ConnectionsUsableFrom(GmailUseScope{})) != 0 {
+		t.Fatal("receiving credentials exposed to an agent")
+	}
+	if _, err := svc.GoogleCLIAccessForConnectionIn(context.Background(), conn.ID, GmailUseScope{}); err == nil {
+		t.Fatal("general gog reached the receiving mailbox")
+	}
+	if gogHomeForConnection(conn) == gogHomeDir() {
+		t.Fatal("receiving token stored in the shared terminal's gog home")
+	}
+	svc.config.DefaultConnectionID = conn.ID
+	if _, ok := svc.DefaultConnection(); ok {
+		t.Fatal("receiving account became the default sender")
+	}
+
 	cursor, expiry, e := c.Watch(context.Background())
 	if e != nil || cursor != "100" || expiry != 1999999999 {
 		t.Fatalf("watch %s %d %v", cursor, expiry, e)
