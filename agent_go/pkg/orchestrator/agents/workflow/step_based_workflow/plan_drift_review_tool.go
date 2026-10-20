@@ -59,21 +59,6 @@ func validateStepDriftChecks(checks []StepDriftCheck) error {
 	return nil
 }
 
-// pulseFindingInactiveStatuses mirrors the "active" boundary used elsewhere
-// in this package (e.g. run_concerns.go's active-issue filter): a finding
-// that has been closed out no longer represents unresolved repair work, so
-// referencing one is exactly as fraudulent as referencing an unrelated
-// finding — it does not prove anything is currently being tracked.
-
-// verifyStepDriftCheckFindingsExist confirms every fail-status check's
-// finding_id resolves to a real Pulse finding that is (a) currently active
-// (not resolved/rejected — a closed-out finding proves nothing is still
-// being tracked) and (b) filed against this exact step (stepID) — not merely
-// any finding that happens to exist anywhere in the workspace. Both
-// conditions together are what "belongs to this exact drift failure" means:
-// a fabricated id, a resolved id, or a real-but-unrelated-step's id are all
-// rejected the same way.
-
 func getRecordPlanDriftReviewSchema() string {
 	return `{
 		"type": "object",
@@ -99,8 +84,7 @@ func getRecordPlanDriftReviewSchema() string {
 						"evidence": {
 							"type": "string",
 							"description": "What was actually compared and what was found — specific, not a bare verdict. E.g. 'compared description sentence 2 (\"reads leads table\") against the step's actual tool config, which only reads campaigns; description is stale' — not 'reviewed, looks fine'."
-						},
-
+						}
 					},
 					"required": ["check_id", "status", "evidence"]
 				},
