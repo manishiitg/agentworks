@@ -347,7 +347,6 @@ func (o *options) loginPath(name string) (string, error) {
 }
 
 func loginCommand(o *options) *cobra.Command {
-	var tokenStdin bool
 	var loginName string
 	var noBrowser bool
 	var scopes []string
@@ -379,37 +378,12 @@ func loginCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		if !tokenStdin {
-			if err := o.browserLogin(cmd.Context(), cfg, path, scopes, noBrowser); err != nil {
-				return err
-			}
-			return o.output(map[string]any{"server": cfg.Server, "logged_in": true, "name": firstNonEmpty(loginName, agentworksclient.DefaultLoginName)})
-		}
-		secret, err := io.ReadAll(io.LimitReader(o.stdin, 1025))
-		if err != nil {
-			return err
-		}
-		value := strings.TrimSpace(string(secret))
-		if !strings.HasPrefix(value, "aw_pat_") || len(value) != 71 {
-			return errors.New("expected a legacy AgentWorks personal access token (aw_pat_...)")
-		}
-		cfg.Token = value
-		cfg.RefreshToken = ""
-		cfg.ExpiresAt = time.Time{}
-		client, err := agentworksclient.New(cfg.Server, cfg.Token)
-		if err != nil {
-			return err
-		}
-		if _, err := client.Tools(cmd.Context()); err != nil {
-			return fmt.Errorf("verify token access: %w", err)
-		}
-		if err := o.saveLogin(path, cfg); err != nil {
+		if err := o.browserLogin(cmd.Context(), cfg, path, scopes, noBrowser); err != nil {
 			return err
 		}
 		return o.output(map[string]any{"server": cfg.Server, "logged_in": true, "name": firstNonEmpty(loginName, agentworksclient.DefaultLoginName)})
 	}}
 	cmd.Flags().StringVar(&loginName, "name", "", "Save this login under a name (for example work) instead of replacing the default login")
-	cmd.Flags().BoolVar(&tokenStdin, "token-stdin", false, "Read a legacy personal access token from stdin")
 	cmd.Flags().StringSliceVar(&scopes, "scopes", nil, "Explicit permissions for this connection (e.g. devices:connect for the local executor)")
 	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "Print the approval link without opening a browser")
 	return cmd

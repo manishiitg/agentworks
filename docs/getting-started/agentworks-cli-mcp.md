@@ -217,9 +217,7 @@ subsequent calls, including calls from an MCP bridge already running.
 
 Configuration is stored in the OS user-config directory under
 `agentworks/config.json`, with private permissions. `--config` selects another
-file. `AGENTWORKS_SERVER` selects the server for automation. Existing personal
-access tokens still work through `AGENTWORKS_TOKEN` or `login --token-stdin`
-for older scripts; they are no longer created or displayed in Connect.
+file. `AGENTWORKS_SERVER` selects the server for automation. Sign in through your browser to save a renewable connection.
 HTTPS is required except on loopback development addresses.
 Redirects are refused to avoid forwarding credentials to another location.
 

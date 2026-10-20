@@ -9,11 +9,9 @@
 #     sh -s -- --server https://SERVER
 #
 # Browser sign-in grants read and run access without copying a credential.
-# Existing --token / AGENTWORKS_TOKEN installations remain supported.
 set -eu
 
 SERVER="${AGENTWORKS_SERVER:-}"
-TOKEN="${AGENTWORKS_TOKEN:-}"
 INSTALL_DIR="${HOME:-/tmp}/.local/bin"
 
 usage() {
@@ -23,7 +21,6 @@ usage() {
 while [ $# -gt 0 ]; do
   case "$1" in
     --server) SERVER="${2:-}"; shift 2 ;;
-    --token) TOKEN="${2:-}"; shift 2 ;;
     --dir) INSTALL_DIR="${2:-}"; shift 2 ;;
     --no-login) NO_LOGIN=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -38,9 +35,6 @@ case "$SERVER" in
     exit 2 ;;
 esac
 case "$SERVER" in https://*|http://localhost*|http://127.0.0.1*) ;; *) echo "The server address must start with https:// (got \"$SERVER\")." >&2; exit 2 ;; esac
-if [ -n "$TOKEN" ]; then
-  case "$TOKEN" in aw_pat_*) ;; *) echo "expected an AgentWorks access token (aw_pat_...)" >&2; exit 2 ;; esac
-fi
 command -v curl >/dev/null 2>&1 || { echo "curl is required to install the AgentWorks CLI" >&2; exit 1; }
 
 OS="$(uname -s)"
@@ -112,11 +106,7 @@ fi
 
 if [ "${NO_LOGIN:-0}" != 1 ]; then
   echo "Signing in to $SERVER ..."
-  if [ -n "$TOKEN" ]; then
-    printf '%s' "$TOKEN" | "$INSTALL_DIR/agentworks" login --server "$SERVER" --token-stdin
-  else
-    "$INSTALL_DIR/agentworks" login --server "$SERVER"
-  fi
+  "$INSTALL_DIR/agentworks" login --server "$SERVER"
 fi
 
 echo "Done. Try: $INSTALL_DIR/agentworks workflows list"

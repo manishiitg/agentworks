@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -14,14 +13,14 @@ import (
 
 func TestWindowsSavedLoginCommands(t *testing.T) {
 	t.Setenv("APPDATA", t.TempDir())
-	token := "aw_pat_" + strings.Repeat("a", 64)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	token := "aw_cli_windows_fixture"
+	srv := cliOAuthTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+token {
 			t.Error("saved credential was not used")
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"tools":[]}`))
-	}))
+	}), token)
 	defer srv.Close()
 	invoke := func(input string, args ...string) (int, string, string) {
 		var out, problems bytes.Buffer
@@ -32,11 +31,11 @@ func TestWindowsSavedLoginCommands(t *testing.T) {
 		return code, out.String(), problems.String()
 	}
 	for _, name := range []string{"default", "work"} {
-		args := []string{"--server", srv.URL, "login", "--token-stdin"}
+		args := []string{"--server", srv.URL, "login", "--no-browser"}
 		if name != "default" {
 			args = append(args, "--name", name)
 		}
-		if code, _, problem := invoke(token, args...); code != 0 {
+		if code, _, problem := invoke("", args...); code != 0 {
 			t.Fatalf("login %s: %s", name, problem)
 		}
 		path, err := agentworksclient.LoginPath(name)

@@ -202,28 +202,46 @@ func TestInvalidInputDoesNotCallServer(t *testing.T) {
 	}
 }
 
+func cliOAuthTestServer(handler http.Handler, accessToken string) *httptest.Server {
+	var address string
+	server := cliTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/oauth/cli/device":
+			_ = json.NewEncoder(w).Encode(map[string]any{"device_code": "device_fixture", "verification_uri_complete": address + "/oauth/cli?code=verification_fixture", "user_code": "EXAMPLE", "expires_in": 30, "interval": 1})
+		case "/api/oauth/cli/token":
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": accessToken, "refresh_token": "aw_cli_refresh_fixture", "expires_in": 3600})
+		case "/api/oauth/cli/revoke":
+			_ = json.NewEncoder(w).Encode(map[string]any{"revoked": true})
+		default:
+			handler.ServeHTTP(w, r)
+		}
+	}))
+	address = server.URL
+	return server
+}
+
 func TestLoginLogoutAndServerCredentialIsolation(t *testing.T) {
 	var requests atomic.Int32
-	s := cliTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s := cliOAuthTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
-		if r.Header.Get("Authorization") != "Bearer aw_pat_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
+		if r.Header.Get("Authorization") != "Bearer aw_cli_isolation_fixture" {
 			t.Error("wrong login token")
 		}
 		_, _ = w.Write([]byte(`{"tools":[]}`))
-	}))
+	}), "aw_cli_isolation_fixture")
 	defer s.Close()
 	path := filepath.Join(t.TempDir(), "config.json")
 	var stdout, stderr bytes.Buffer
 	env := func(string) string { return "" }
-	code := run(context.Background(), []string{"--config", path, "--server", s.URL, "login", "--token-stdin"}, strings.NewReader("aw_pat_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"), &stdout, &stderr, env)
+	code := run(context.Background(), []string{"--config", path, "--server", s.URL, "login", "--no-browser"}, strings.NewReader("aw_cli_isolation_fixture\n"), &stdout, &stderr, env)
 	if code != 0 {
 		t.Fatalf("login: %s", &stderr)
 	}
-	if strings.Contains(stdout.String(), "aw_pat_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+	if strings.Contains(stdout.String(), "aw_cli_isolation_fixture") {
 		t.Fatal("token exposed in output")
 	}
 	cfg, err := agentworksclient.LoadConfig(path)
-	if err != nil || cfg.Token != "aw_pat_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
+	if err != nil || cfg.Token != "aw_cli_isolation_fixture" {
 		t.Fatalf("saved: %#v %v", cfg, err)
 	}
 	var targetCalls atomic.Int32
@@ -679,14 +697,14 @@ func TestNamedLoginsAreSeparateAndNeverOverwriteAnother(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", home)
 	tool := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"tools":[]}`)) })
-	first, second := cliTestServer(tool), cliTestServer(tool)
+	first, second := cliOAuthTestServer(tool, "aw_cli_named_fixture"), cliOAuthTestServer(tool, "aw_cli_named_fixture")
 	defer first.Close()
 	defer second.Close()
-	secret := "aw_pat_" + strings.Repeat("b", 64)
+	secret := "aw_cli_named_fixture"
 	env := func(string) string { return "" }
 	login := func(server, name string) (int, string) {
 		var stdout, stderr bytes.Buffer
-		code := run(context.Background(), []string{"--server", server, "login", "--name", name, "--token-stdin"}, strings.NewReader(secret+"\n"), &stdout, &stderr, env)
+		code := run(context.Background(), []string{"--server", server, "login", "--name", name, "--no-browser"}, strings.NewReader(""), &stdout, &stderr, env)
 		return code, stdout.String() + stderr.String()
 	}
 	if code, out := login(first.URL, "work"); code != 0 {
