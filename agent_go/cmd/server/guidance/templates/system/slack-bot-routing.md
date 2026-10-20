@@ -1,6 +1,6 @@
 ## Personal Slack accounts and bots
 
-`manage_slack_account` connects a person's own Slack account once and explicitly adds it to each item. Website: **Slack → Act in Slack**; sign-ins are managed in My Vault. Shared runs use that selected account; messages appear as sent by its owner with Slack's app attribution. Anyone who can run or change this item can send as that person through it. The account stays selected until explicitly removed. Removing it from one item preserves other selections. Builders may add their own saved account; only its owner signs in again; its owner or an administrator can disconnect the saved connection. Discover its live tools with `list_mcp_servers` and use `call_mcp_tool`; a new DM requires `im:write`. Never silently use a bot instead, or present the bot's status as personal sign-in status.
+`manage_slack_account` connects a person's own Slack account once and explicitly adds it to each item. Website: **Slack → Send as me**; sign-ins are managed in My Vault. Shared runs use that selected account; messages appear as sent by its owner with Slack's app attribution. Anyone who can run or change this item can send as that person through it. The account stays selected until explicitly removed. Removing it from one item preserves other selections. Builders may add their own saved account; only its owner signs in again; its owner or an administrator can disconnect the saved connection. Discover its live tools with `list_mcp_servers` and use `call_mcp_tool`; a new DM requires `im:write`. Never silently use a bot instead, or present the bot's status as personal sign-in status.
 
 # Slack bot routes and threaded messages
 
@@ -26,11 +26,11 @@ A slug is a name, never a grant: every message, turn and tool call re-checks tha
 When asked to connect Slack or configure a route, inspect `get_slack_bot_settings` first. Distinguish enabled/configured settings from a successful connection test; never say connected merely because `enabled` and `bot_mode` are true. A channel is live when it has a saved route and the connection test passes.
 
 1. Open `perform_ui_action(action="open", view="mcp", target="slack")`.
-   This is one Slack page: **Act in Slack** chooses an existing personal account
-   using manage_slack_account; **Talk to this Goal/Crew** chooses an existing bot
+   This is one Slack page: **Send as me** chooses an existing personal account
+   using manage_slack_account; **Let people talk to this Goal/Crew** chooses an existing bot (one bot can serve several Crews and Goals; people name the item to talk to it)
    with manage_slack_bot(action="list_saved"), then action="select" and its exact
    connection_id. Do not copy credentials into another connection. Flows offer
-   Act in Slack only. Bot credentials (including the company bot) are managed in
+   Send as me only. Bot credentials (including the company bot) are managed in
    My Vault, with the same owners/admins. The admin Slack sign-in app is in My Vault
    → Sign-in apps. Connections and Access have no separate Slack management page.
 

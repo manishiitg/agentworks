@@ -145,9 +145,6 @@ func (api *StreamingAPI) slackVaultBotState(r *http.Request, workspace string) (
 	}
 	bots := []slackVaultBot{}
 	for _, conn := range svc.ListConnections() {
-		if settings != nil && settings.DMOnly && !currentSlackRef(ref).Same(currentSlackRef(services.SlackTargetRef{WorkspacePath: conn.WorkspacePath, ProfileID: conn.ProfileID})) {
-			continue
-		}
 		manageable := requireSlackConnectionAccess(r, api, conn) == nil
 		shared := workspace != "" && conn.WorkspacePath == "" && settings != nil && settings.PlatformAvailable && settings.ProductAllowed && conn.ID == svc.DefaultConnectionID()
 		selected := out["selected_id"] == conn.ID
@@ -198,9 +195,6 @@ func (api *StreamingAPI) slackVaultBotOperation(r *http.Request, workspace strin
 		conn, found := svc.GetConnection(id)
 		if !found {
 			return nil, fmt.Errorf("Choose an existing bot from My Vault.")
-		}
-		if ref.IsCode() && !currentSlackRef(ref).Same(currentSlackRef(services.SlackTargetRef{WorkspacePath: conn.WorkspacePath, ProfileID: conn.ProfileID})) {
-			return nil, fmt.Errorf("This Crew uses its own bot for direct messages only. Choose its existing bot from My Vault.")
 		}
 		if conn.WorkspacePath != "" {
 			if err := requireSlackConnectionAccess(r, api, conn); err != nil {
