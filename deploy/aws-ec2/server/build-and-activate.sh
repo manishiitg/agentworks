@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
-# Invoked only inside a fresh server-side checkout started by `./deploy.sh <server>`.
-#
-#   build-and-activate.sh WORKSPACE_ROOT GLOBAL_FILE [--prebuilt BUILD_DIR [--manifest-sha256 HASH]]
-#
-# Without --prebuilt it compiles on this host (the original path, kept as the fallback). With --prebuilt (PLAT-426) it compiles
-# nothing: BUILD_DIR is a release made once by deploy/common/build-release.sh and shipped here as a tarball (without the
-# mcpagent and multi-llm-provider-go source and without downloads/, which this host never used); WORKSPACE_ROOT must be its source/
-# folder. The manifest (CPU architecture, glibc, sha256 of every file, and the manifest's own hash as announced by the build host)
-# is verified before anything is touched. Everything after the compile step is unchanged.
+# Activate a shared prebuilt release; no compiler runs on the target host.
+# build-and-activate.sh WORKSPACE_ROOT GLOBAL_FILE --prebuilt BUILD_DIR [--manifest-sha256 HASH]
+# WORKSPACE_ROOT must be BUILD_DIR/source. The manifest, files and host
+# compatibility are verified before assembling the product release.
 set -euo pipefail
 [[ "$(uname -sm)" == "Linux x86_64" ]] || { echo "Build must run on Linux x86_64" >&2; exit 1; }
 WORKSPACE_ROOT="$1"
@@ -23,6 +18,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 BUILDER_REPO_ROOT="$WORKSPACE_ROOT/mcp-agent-builder-go"
+[[ -n "$PREBUILT" ]] || { echo "A prebuilt release is required; create it with ./deploy.sh build." >&2; exit 2; }
 REPO_ROOT="$BUILDER_REPO_ROOT"
 SCRIPT_DIR="$REPO_ROOT/deploy/aws-ec2"
 # This server's branding, public URL and agent service file come from the private deployments repo, shipped next to the
@@ -36,8 +32,7 @@ LIVE_URL="$(sed -n 's/^Environment=PUBLIC_URL=//p' "$AGENT_SERVICE_FILE" | head 
 HYPERFRAMES_VERSION="${HYPERFRAMES_VERSION:-0.8.6}"
 AGENTWORKS_PROVIDER="${AGENTWORKS_PROVIDER:-cursor-cli}"
 AGENTWORKS_MODEL="${AGENTWORKS_MODEL:-cursor-cli}"
-export GOMAXPROCS=2 GOFLAGS=-p=2 NODE_OPTIONS=--max-old-space-size=2048
-if [[ -n "$PREBUILT" ]]; then
+export NODE_OPTIONS=--max-old-space-size=2048
   [[ "$WORKSPACE_ROOT" == "$PREBUILT/source" ]] || { echo "With --prebuilt, WORKSPACE_ROOT must be $PREBUILT/source" >&2; exit 2; }
   for command in jq rsync python3 ffmpeg ldd; do command -v "$command" >/dev/null || { echo "Missing $command" >&2; exit 1; }; done
   # shellcheck disable=SC1091
@@ -45,9 +40,6 @@ if [[ -n "$PREBUILT" ]]; then
   # The shipped copy has no mcpagent / multi-llm-provider-go source and no downloads/ (listed in the manifest, absent here by design).
   prebuilt_verify "$REPO_ROOT" "$PREBUILT" --skip-prefix source/mcpagent/ --skip-prefix source/multi-llm-provider-go/ --skip-prefix downloads/ \
     ${MANIFEST_SHA256:+--manifest-sha256 "$MANIFEST_SHA256"}
-else
-  for command in git go gcc npm jq rsync python3 ffmpeg; do command -v "$command" >/dev/null || { echo "Missing $command" >&2; exit 1; }; done
-fi
 # This host has one fixed deployment contract: AgentWorks supplies the shared
 # application shell and the approved product backends. Fail before
 # building or touching the server if a checked-in allowlist drifts.
@@ -81,11 +73,7 @@ grep -Fq 'cdpEnabled: false' "$RUNTIME_CONFIG" || {
   exit 1
 }
 
-if [[ -n "$PREBUILT" ]]; then
-  RELEASE_ID="$(prebuilt_revision "$PREBUILT" mcp-agent-builder-go | cut -c1-7)-$(date +%Y%m%d%H%M%S)"
-else
-  RELEASE_ID="$(git -C "$REPO_ROOT" rev-parse --short HEAD)-$(date +%Y%m%d%H%M%S)"
-fi
+RELEASE_ID="$(prebuilt_revision "$PREBUILT" mcp-agent-builder-go | cut -c1-7)-$(date +%Y%m%d%H%M%S)"
 REMOTE_APP=/var/lib/video-studio/video-studio
 REMOTE_RELEASE="$REMOTE_APP/releases/$RELEASE_ID"
 BUILD_DIR="$REMOTE_RELEASE"
@@ -108,7 +96,6 @@ mkdir -p "$BUILD_DIR/bin" "$BUILD_DIR/frontend" "$BUILD_DIR/configs" "$BUILD_DIR
 # Per-user accounts: slotctl and slottmux (deploy/common/slots.sh, shared with the rootless-linux build).
 source "$REPO_ROOT/deploy/common/slots.sh"
 source "$REPO_ROOT/deploy/common/vault.sh"
-if [[ -n "$PREBUILT" ]]; then
 echo "==> [$RELEASE_ID] Copying prebuilt release $(basename "$PREBUILT") (no compile)"
 # Plain cp -R, not -a: copied files get today's mtime, as freshly built ones did (the carried-over asset cleanup works by age).
 cp -R "$PREBUILT/packages" "$BUILD_DIR/packages"
@@ -116,34 +103,7 @@ cp "$PREBUILT/SOURCE_REVISIONS" "$BUILD_DIR/SOURCE_REVISIONS"
 # update-coding-clis is installed below from the repository, as before.
 prebuilt_copy_bin "$PREBUILT" "$BUILD_DIR/bin" video-studio "agent workspace gateway browser" "update-coding-clis"
 cp -R "$PREBUILT/frontend/." "$BUILD_DIR/frontend/"
-else
-python3 "$REPO_ROOT/scripts/build-playwright-packages.py" "$BUILD_DIR/packages"
-# Build exactly the requested checkout while resolving the shared sibling
-# modules from the declared workspace root. The checked-in go.work may point
-# at a primary checkout instead of this worktree.
-DEPLOY_GOWORK="$BUILD_DIR/go.work"
-(cd "$BUILD_DIR" && go work init "$BUILDER_REPO_ROOT/agent_go" "$BUILDER_REPO_ROOT/workspace" "$WORKSPACE_ROOT/mcpagent" "$WORKSPACE_ROOT/multi-llm-provider-go")
-{
-  printf 'mcp-agent-builder-go=%s\n' "$(git -C "$BUILDER_REPO_ROOT" rev-parse HEAD)"
-  printf 'mcpagent=%s\n' "$(git -C "$WORKSPACE_ROOT/mcpagent" rev-parse HEAD)"
-  printf 'multi-llm-provider-go=%s\n' "$(git -C "$WORKSPACE_ROOT/multi-llm-provider-go" rev-parse HEAD)"
-} > "$BUILD_DIR/SOURCE_REVISIONS"
 
-bash "$SCRIPT_DIR/build/build-linux-agent.sh" "$BUILD_DIR" "$BUILDER_REPO_ROOT/agent_go" "$WORKSPACE_ROOT"
-(cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/video-studio-workspace" "$BUILDER_REPO_ROOT/workspace")
-(cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/video-studio-browser" "$BUILDER_REPO_ROOT/workspace/cmd/shared-browser")
-(cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/video-studio-landlock-runner" "$BUILDER_REPO_ROOT/workspace/cmd/landlock-runner")
-(cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go test -c -o "$BUILD_DIR/bin/workspace-security.test" "$BUILDER_REPO_ROOT/workspace/security")
-slots_build "$WORKSPACE_ROOT" "$DEPLOY_GOWORK" "$BUILDER_REPO_ROOT" "$BUILD_DIR"
-(cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/mcpbridge" ./mcpagent/cmd/mcpbridge)
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/video-studio-gateway" "$SCRIPT_DIR/server/auth-gateway.go"
-vault_build "$REPO_ROOT" "$BUILD_DIR"
-if [[ ! -x "$REPO_ROOT/frontend/node_modules/.bin/tsc" ]]; then
-  (cd "$REPO_ROOT/frontend" && npm ci)
-fi
-(cd "$REPO_ROOT/frontend" && VITE_API_BASE_URL='' VITE_WORKSPACE_API_URL=/api/wp npm run build)
-cp -R "$REPO_ROOT/frontend/dist/." "$BUILD_DIR/frontend/"
-fi
 vault_check_build "$BUILD_DIR"
 node "$REPO_ROOT/frontend/scripts/check-release-assets.mjs" "$BUILD_DIR/frontend"
 cp "$REPO_ROOT/frontend/scripts/check-release-assets.mjs" "$BUILD_DIR/check-release-assets.mjs"
@@ -164,8 +124,7 @@ install -m 0644 "$SCRIPT_DIR/workflow-builder-chat-owners-v1.json" "$BUILD_DIR/m
 # 503s with "Report preview runtime is missing" regardless of how many times
 # the frontend gets built.
 mkdir -p "$BUILD_DIR/static"
-static_source="$REPO_ROOT/agent_go/cmd/server/static"
-[[ -z "$PREBUILT" ]] || static_source="$PREBUILT/static"
+static_source="$PREBUILT/static"
 cp -R "$static_source/." "$BUILD_DIR/static/"
 install -m 0644 "$RUNTIME_CONFIG" "$BUILD_DIR/frontend/runtime-config.js"
 # This deployment's own branding assets (logo, mark, favicon), served at /brand/.

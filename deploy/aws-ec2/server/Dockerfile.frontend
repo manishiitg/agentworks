@@ -1,3 +1,0 @@
-FROM nginxinc/nginx-unprivileged:alpine
-COPY frontend/ /usr/share/nginx/html/
-RUN printf 'server { listen 8080; root /usr/share/nginx/html; index index.html; location / { try_files $uri $uri/ /index.html; } location = /health { default_type application/json; return 200 "{\\"status\\":\\"healthy\\"}"; } location /assets/ { expires 1y; add_header Cache-Control "public, immutable"; } }' > /etc/nginx/conf.d/default.conf

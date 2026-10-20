@@ -45,7 +45,6 @@ server only copies and activates it after verifying its manifest (architecture, 
                         slotted `pwd` per slot + the refusal checks; full adds a live tmux server on the test slot that no slot
                         command may reach, the Python helpers, and the refusals a workflow chat must get (PLAT-480). Runs on the
                         unassigned TEST slot only. Example: DEPLOY_SECURITY_CHECKS=basic ./deploy.sh confida
-  DEPLOY_BUILD_MODE=server   the original path: the server clones main and compiles itself (fallback)
   Build host: BUILD_HOST, BUILD_PORT, BUILD_USER, BUILD_SSH_KEY, BUILDS_DIR (/srv/_builds); defaults in the private deployments/deploy.env
 
 EOF
@@ -110,22 +109,12 @@ deploy_rts() {
   # The same standard user-namespace profile as every other server, through SSM (this host has no sudo over ssh).
   rts_userns() { echo "==> [rts] userns: $1"; AWS_PROFILE_NAME="$AWS_PROFILE_NAME" AWS_REGION="$AWS_REGION" STACK_NAME="$STACK_NAME" "$RTS_DIR/slots-admin.sh" "$1" || echo "WARN userns $1 via SSM did not run; the host's operator runs deploy/aws-ec2/slots-admin.sh $1"; }
   rts_userns userns
-  local repo url prebuilt_name=""
-  if [[ "${DEPLOY_BUILD_MODE:-prebuilt}" == prebuilt ]]; then
-    # Build once on the Hetzner box (or reuse the build of these revisions); RTS only copies it after verifying the manifest.
-    prebuilt_name="$(ensure_prebuilt_build)" || exit 1
-    # The manifest's own hash travels separately from the tarball, so RTS can tell a damaged or swapped manifest.
-    build_ssh "sha256sum '$BUILDS_DIR/$prebuilt_name/manifest.json'" | awk '{print $1}' > "$STAGING/prebuilt"
-    [[ "$(cat "$STAGING/prebuilt")" =~ ^[0-9a-f]{64}$ ]] || { echo "Cannot read the build's manifest hash" >&2; exit 1; }
-  else
-    [[ -z "${DEPLOY_BUILD:-}" ]] || { echo "--build needs the prebuilt mode (unset DEPLOY_BUILD_MODE=server)" >&2; exit 1; }
-    for repo in mcp-agent-builder-go mcpagent multi-llm-provider-go; do
-      url="$(git -C "$REPO_ROOT/../$repo" remote get-url origin)"
-      url="${url/git@github.com:/https://github.com/}"
-      [[ "$url" =~ ^https://github.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "Unsupported repository URL for $repo" >&2; exit 1; }
-      printf '%s\n' "$url" >> "$STAGING/repos"
-    done
-  fi
+  local prebuilt_name
+  # Build once on the Hetzner box (or reuse the build of these revisions); RTS only copies it after verifying the manifest.
+  prebuilt_name="$(ensure_prebuilt_build)" || exit 1
+  # The manifest's own hash travels separately from the tarball, so RTS can tell a damaged or swapped manifest.
+  build_ssh "sha256sum '$BUILDS_DIR/$prebuilt_name/manifest.json'" | awk '{print $1}' > "$STAGING/prebuilt"
+  [[ "$(cat "$STAGING/prebuilt")" =~ ^[0-9a-f]{64}$ ]] || { echo "Cannot read the build's manifest hash" >&2; exit 1; }
   aws_rts secretsmanager get-secret-value --secret-id "$GLOBAL_SECRETS_SECRET_ID" --query SecretString --output text \
    | jq -er 'to_entries[] | select(.key | test("^[A-Z0-9_]+$")) | select(.value | type == "string" and length > 0) | if .key == "CLAUDE_CODE_OAUTH_TOKEN" or .key == "CURSOR_API_KEY" then "\(.key)=\(.value)" else "GLOBAL_SECRET_\(.key)=\(.value)" end' > "$STAGING/globals"
   chmod 600 "$STAGING/globals"
@@ -140,14 +129,9 @@ deploy_rts() {
     || echo 'warning: could not make room on RTS before the deploy' >&2
   "${SSH[@]}" "install -d -m 0700 '$REMOTE_JOB'"
   rsync -az -e "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i $SSH_KEY_PATH" "$STAGING/" "video-studio@$HOST_IP:$REMOTE_JOB/"
-  if [[ -n "$prebuilt_name" ]]; then
-    echo "Getting build $prebuilt_name onto RTS (verified there against its manifest); nothing is compiled on RTS."
-    deliver_build_to_rts "$prebuilt_name" "$REMOTE_JOB" "$(cat "$STAGING/prebuilt")"
-  else
-    echo 'Server cloning main from all three repositories and building the release locally.'
-  fi
-  # Keep builds below ~3/4 of a 4 GB host (RTS_BUILD_MEMORY_MAX overrides, e.g. 6G on a larger instance) and two CPU
-  # cores while tests keep running; swap absorbs the rest, so a build is slower, not killed.
+  echo "Getting build $prebuilt_name onto RTS (verified there against its manifest); nothing is compiled on RTS."
+  deliver_build_to_rts "$prebuilt_name" "$REMOTE_JOB" "$(cat "$STAGING/prebuilt")"
+  # Bound activation resources while other work keeps running.
   "${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' --setenv=SECURITY_CHECKS_LEVEL='$SECURITY_CHECKS_LEVEL' -p MemoryMax=${RTS_BUILD_MEMORY_MAX:-3G} -p CPUQuota=200% -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
   # The release is live and its services re-exec'd: retire an older per-product profile (refuses while any service still lacks the standard one).
   rts_userns userns-retire
@@ -273,19 +257,14 @@ fi
 echo "==> [$PRODUCT] Checking deployment configuration"
 "${SSH[@]}" "PRODUCT=$PRODUCT EXPECTED_PUBLIC_URL=${EXPECTED_PUBLIC_URL:-} python3 - preflight" < "$LOCAL_SCRIPT_DIR/deployment_checks.py"
 
-PREBUILT_NAME=""
-if [[ "${DEPLOY_BUILD_MODE:-prebuilt}" == prebuilt ]]; then
-  # Build once (or reuse the build of these revisions); the server below only copies and activates it.
-  PREBUILT_NAME="$(ensure_prebuilt_build)"
-  [[ -n "$PREBUILT_NAME" ]]
-  PREBUILT_PATH="$BUILDS_DIR/$PREBUILT_NAME"
-  # PREBUILT_DELIVERY=fetch: a host that cannot read the build host's folder gets its own copy (GitHub, else streamed).
-  if [[ "${PREBUILT_DELIVERY:-local}" == fetch ]]; then
-    PREBUILT_PATH="$REMOTE_APP/prebuilt/$PREBUILT_NAME"
-    deliver_build_to_product_host "$PREBUILT_NAME" "$PREBUILT_PATH"
-  fi
-else
-  [[ -z "${DEPLOY_BUILD:-}" ]] || { echo "--build needs the prebuilt mode (unset DEPLOY_BUILD_MODE=server)" >&2; exit 1; }
+# Build once (or reuse the build of these revisions); the server below only copies and activates it.
+PREBUILT_NAME="$(ensure_prebuilt_build)"
+[[ -n "$PREBUILT_NAME" ]]
+PREBUILT_PATH="$BUILDS_DIR/$PREBUILT_NAME"
+# PREBUILT_DELIVERY=fetch: a host that cannot read the build host's folder gets its own copy (GitHub, else streamed).
+if [[ "${PREBUILT_DELIVERY:-local}" == fetch ]]; then
+  PREBUILT_PATH="$REMOTE_APP/prebuilt/$PREBUILT_NAME"
+  deliver_build_to_product_host "$PREBUILT_NAME" "$PREBUILT_PATH"
 fi
 
 echo "==> [$PRODUCT] Checking for jq on the remote host (required by agent shell scripts)"
@@ -373,32 +352,16 @@ cleanup() { rm -rf "$STAGING"; "${SSH[@]}" "rm -rf '$REMOTE_JOB'" >/dev/null 2>&
 trap cleanup EXIT
 
 cp "$LOCAL_SCRIPT_DIR/bootstrap-build.sh" "$STAGING/bootstrap-build.sh"
-printf '%s\n' "$DEPLOY_BRANCH" > "$STAGING/branch"
 printf '%s\n' "$PRODUCT" > "$STAGING/product"
 # The product's config travels with the job: build-and-activate.sh on the server reads it from here, not from the
 # public source checkout (where customer configs no longer live).
 tar -C "$PRODUCT_DIR" -czf "$STAGING/product-config.tgz" .
 "${SSH[@]}" "install -d -m 0700 '$REMOTE_JOB'"
 
-# All three repos are public; to_https_url (above) gives an anonymous HTTPS URL so a fresh account with no SSH deploy key for
-# github.com can still clone (confida hit "Host key verification failed" on the SSH remote form, 2026-09-11).
-if [[ -n "$PREBUILT_NAME" ]]; then
-  printf '%s\n' "$PREBUILT_PATH" > "$STAGING/prebuilt"
-  "${SCP[@]}" "$STAGING/bootstrap-build.sh" "$STAGING/branch" "$STAGING/product" "$STAGING/product-config.tgz" "$STAGING/prebuilt" "$PRODUCT@$HOST_IP:$REMOTE_JOB/"
-  echo "==> [$PRODUCT] Activating prebuilt release $PREBUILT_NAME on $PRODUCT@$HOST_IP (copy and activate, no compile)"
-else
-  echo "==> [$PRODUCT] Resolving git remotes for $DEPLOY_BRANCH (mcp-agent-builder-go, mcpagent, multi-llm-provider-go)"
-  {
-    to_https_url "$(git -C "$LOCAL_REPO_ROOT" remote get-url origin)"
-    to_https_url "$(git -C "$LOCAL_WORKSPACE_ROOT/mcpagent" remote get-url origin)"
-    to_https_url "$(git -C "$LOCAL_WORKSPACE_ROOT/multi-llm-provider-go" remote get-url origin)"
-  } > "$STAGING/repos"
-  "${SCP[@]}" "$STAGING/bootstrap-build.sh" "$STAGING/branch" "$STAGING/product" "$STAGING/product-config.tgz" "$STAGING/repos" "$PRODUCT@$HOST_IP:$REMOTE_JOB/"
-  echo "==> [$PRODUCT] Building on $PRODUCT@$HOST_IP: cloning/using $DEPLOY_BRANCH and building natively"
-fi
-# Throttled below the box's shared core/RAM budget: this box also runs other
-# products, each under its own account, and a full go+npm build must not
-# starve their live services while it runs.
+printf '%s\n' "$PREBUILT_PATH" > "$STAGING/prebuilt"
+"${SCP[@]}" "$STAGING/bootstrap-build.sh" "$STAGING/product" "$STAGING/product-config.tgz" "$STAGING/prebuilt" "$PRODUCT@$HOST_IP:$REMOTE_JOB/"
+echo "==> [$PRODUCT] Activating prebuilt release $PREBUILT_NAME on $PRODUCT@$HOST_IP (copy and activate, no compile)"
+# Activation shares this host with other products, so retain its resource limits.
 # DEPLOY_DRAIN_SECONDS is how long the switch-over waits for running agent turns to finish (build-and-activate.sh's
 # drain). The owner asked for forced deploys for now (2026-10-03), so it defaults to 0: restart at once. Set
 # DEPLOY_DRAIN_SECONDS=300 to wait for turns again.
@@ -648,26 +611,25 @@ case "$SERVER" in
     reject_extra_arguments "$@"
     deploy_rts
     report_rts_cloudfront_usage || echo "CloudFront usage report unavailable (deploy succeeded)." >&2
-    [[ "${DEPLOY_BUILD_MODE:-prebuilt}" != prebuilt ]] || prune_builds_remote
+    prune_builds_remote
     ;;
   confida|sparkquill|dominion|citymall)
     # Dominion is deployed like Confida since 2026-10-07 (owner: "everything same as excellence/confida").
     # A product on its own host sets SSH_JUMP, HOST_SETUP_SCRIPT and PREBUILT_DELIVERY=fetch in its private product.env.
     reject_extra_arguments "$@"
     deploy_rootless_product "$SERVER"
-    [[ "${DEPLOY_BUILD_MODE:-prebuilt}" != prebuilt ]] || prune_builds_remote
+    prune_builds_remote
     ;;
   excellence)
     # the Hetzner server; its account, units and product
     # folder are named "agents" on the host.
     reject_extra_arguments "$@"
     deploy_rootless_product agents
-    [[ "${DEPLOY_BUILD_MODE:-prebuilt}" != prebuilt ]] || prune_builds_remote
+    prune_builds_remote
     ;;
   all-hetzner)
     # Excellence, Confida and SparkQuill from ONE build, one after the other; stops at the first failure. Never Dominion.
     reject_extra_arguments "$@"
-    [[ "${DEPLOY_BUILD_MODE:-prebuilt}" == prebuilt ]] || { echo "all-hetzner needs the prebuilt mode" >&2; exit 1; }
     DEPLOY_PREBUILT_NAME="$(ensure_prebuilt_build)"
     [[ -n "$DEPLOY_PREBUILT_NAME" ]]
     export DEPLOY_PREBUILT_NAME
@@ -691,7 +653,7 @@ case "$SERVER" in
     if [[ "$SERVER" =~ ^[a-z][a-z0-9-]{0,31}$ && -f "$(deployments_dir)/products/$SERVER/product.env" ]]; then
       reject_extra_arguments "$@"
       deploy_rootless_product "$SERVER"
-      [[ "${DEPLOY_BUILD_MODE:-prebuilt}" != prebuilt ]] || prune_builds_remote
+      prune_builds_remote
     else
       echo "Unknown deployment server: $SERVER" >&2
       usage >&2

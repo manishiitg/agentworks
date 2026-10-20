@@ -1,29 +1,14 @@
 #!/usr/bin/env bash
-# Invoked only inside a fresh $PRODUCT@<host> checkout by bootstrap-build.sh.
-# Everything below runs directly on the target host -- there is no
-# cross-compile and no artifact upload, matching
-# deploy/aws-ec2/server/build-and-activate.sh's (video-studio's) on-server
-# build shape. Server C and SparkQuill share this parameterized version:
-# per-product
-# facts (ports, provider/model, CLI list, extra env, runtime-config.js,
-# an optional mcp-servers.override.json) live under deploy/rootless-linux/products/$PRODUCT/ and
-# are read from the checkout on the deployed branch, never from the
-# triggering machine.
-#
-#   build-and-activate.sh WORKSPACE_ROOT PRODUCT [--prebuilt BUILD_DIR] [--stage-only]
-#
-# Without --prebuilt (or PREBUILT_DIR) it builds on this host from the three checkouts under WORKSPACE_ROOT (the original path,
-# kept as the fallback). With --prebuilt it compiles nothing: BUILD_DIR is a release made once by deploy/common/build-release.sh
-# (PLAT-426); WORKSPACE_ROOT must be its source/ folder. The manifest (CPU architecture, glibc, sha256 of every file) is verified
-# before anything is touched, then the files are copied into this product's own release folder and the same activation runs.
-# --stage-only (prebuilt only) stops after the release is assembled, before preflight, `current` or any service is touched, and
-# may be combined with DEPLOY_APP_ROOT=<scratch dir> to rehearse the copy without the product's own folders.
+# Activate a verified release produced by the shared build host.
+# build-and-activate.sh WORKSPACE_ROOT PRODUCT --prebuilt BUILD_DIR [--stage-only]
+# WORKSPACE_ROOT must be BUILD_DIR/source. --stage-only assembles a release in
+# DEPLOY_APP_ROOT without changing current or starting services.
 set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../common" && pwd)/linux-arch.sh"
 WORKSPACE_ROOT="$1"
 PRODUCT="$2"
 shift 2
-PREBUILT="${PREBUILT_DIR:-}"
+PREBUILT=""
 STAGE_ONLY=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -33,6 +18,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 REPO_ROOT="$WORKSPACE_ROOT/mcp-agent-builder-go"
+[[ -n "$PREBUILT" ]] || { echo "A prebuilt release is required; create it with ./deploy.sh build." >&2; exit 2; }
 SCRIPT_DIR="$REPO_ROOT/deploy/rootless-linux"
 # The product config shipped with the deploy job (PRODUCT_CONFIG_DIR), else the copy in this checkout.
 PRODUCT_DIR="${PRODUCT_CONFIG_DIR:-$SCRIPT_DIR/products/$PRODUCT}"
@@ -42,13 +28,10 @@ if [[ -n "${DEPLOY_APP_ROOT:-}" ]]; then
   [[ "$STAGE_ONLY" == 1 ]] || { echo "DEPLOY_APP_ROOT is only allowed together with --stage-only" >&2; exit 2; }
   REMOTE_APP="$DEPLOY_APP_ROOT"
 fi
-if [[ "$STAGE_ONLY" == 1 && -z "$PREBUILT" ]]; then echo "--stage-only needs --prebuilt" >&2; exit 2; fi
-if [[ -n "$PREBUILT" ]]; then
-  [[ "$WORKSPACE_ROOT" == "$PREBUILT/source" ]] || { echo "With --prebuilt, WORKSPACE_ROOT must be $PREBUILT/source" >&2; exit 2; }
-fi
+[[ "$WORKSPACE_ROOT" == "$PREBUILT/source" ]] || { echo "WORKSPACE_ROOT must be $PREBUILT/source" >&2; exit 2; }
 # shellcheck disable=SC1091
 source "$REPO_ROOT/deploy/common/prebuilt.sh"
-export GOMAXPROCS=4 GOFLAGS=-p=4 NODE_OPTIONS=--max-old-space-size=2048
+export NODE_OPTIONS=--max-old-space-size=2048
 export PATH="$REMOTE_APP/tools/node/bin:$REMOTE_APP/tools/bin:$PATH"
 
 test -f "$PRODUCT_DIR/product.env" || { echo "No such product: $PRODUCT_DIR/product.env" >&2; exit 1; }
@@ -81,13 +64,9 @@ for snippet in "${RUNTIME_CONFIG_REQUIRED_SNIPPETS[@]:-}"; do
   }
 done
 
-if [[ -n "$PREBUILT" ]]; then
   # Nothing is compiled here: refuse the build before touching anything if it does not match this host or its files differ.
   for command in python3 file sha256sum openssl ldd; do command -v "$command" >/dev/null || { echo "Missing $command" >&2; exit 1; }; done
   prebuilt_verify "$REPO_ROOT" "$PREBUILT"
-else
-  for command in git go gcc npm python3 file sha256sum openssl; do command -v "$command" >/dev/null || { echo "Missing $command" >&2; exit 1; }; done
-fi
 # gog (Gmail connector) needs its encrypted file keyring on a headless box;
 # on "auto" it uses the service user's gnome-keyring, which has no unlocked
 # default collection, and every Gmail connect fails. Generate the password
@@ -100,11 +79,7 @@ if [[ -f "$REMOTE_APP/.env" ]]; then
 fi
 [[ "$STAGE_ONLY" == 1 ]] || PRODUCT="$PRODUCT" EXPECTED_PUBLIC_URL="${EXPECTED_PUBLIC_URL:-}" python3 "$SCRIPT_DIR/deployment_checks.py" preflight
 
-if [[ -n "$PREBUILT" ]]; then
-  builder_revision="$(prebuilt_revision "$PREBUILT" mcp-agent-builder-go)"
-else
-  builder_revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
-fi
+builder_revision="$(prebuilt_revision "$PREBUILT" mcp-agent-builder-go)"
 test -n "$builder_revision"
 RELEASE_ID="${PRODUCT}-${builder_revision:0:8}-$(date +%Y%m%d%H%M%S)"
 REMOTE_RELEASE="$REMOTE_APP/releases/$RELEASE_ID"
@@ -126,7 +101,7 @@ cleanup_build() {
 }
 trap cleanup_build EXIT
 
-# slotctl/slottmux helpers (slots_build in the build path, slots_install_shim at activation).
+# Slot helper installation runs during activation.
 # version.json: which CLI build this server offers and its compatibility epoch (downloads/cli-release.json, from
 # deploy/cli-release.json). The CLI installs a release automatically only when the epoch equals the one it was built with;
 # bumping the epoch is how a release is marked breaking, and the person is told why.
@@ -156,7 +131,6 @@ PY
 
 source "$REPO_ROOT/deploy/common/slots.sh"
 source "$REPO_ROOT/deploy/common/vault.sh"
-if [[ -n "$PREBUILT" ]]; then
 echo "==> [$RELEASE_ID] Copying prebuilt release $(basename "$PREBUILT") (no compile)"
 # Plain cp -R, not -a: copied files get today's mtime, as freshly built ones did. The carried-over asset cleanup below
 # deletes files by age, and an old build must not have its assets removed for the age of the build.
@@ -169,84 +143,7 @@ cp -R "$PREBUILT/downloads/." "$BUILD_DIR/downloads/"
 cli_build="$(cat "$BUILD_DIR/downloads/cli-build.txt" 2>/dev/null || true)"
 write_cli_version_json
 cp -R "$PREBUILT/frontend/." "$BUILD_DIR/frontend/"
-else
-# Build exactly the requested checkout while resolving the shared sibling
-# modules from the declared workspace root, rather than trusting whatever
-# checked-in go.work happens to be sitting in the cloned repo.
-DEPLOY_GOWORK="$BUILD_DIR/go.work"
-(cd "$BUILD_DIR" && go work init "$REPO_ROOT/agent_go" "$REPO_ROOT/workspace" "$WORKSPACE_ROOT/mcpagent" "$WORKSPACE_ROOT/multi-llm-provider-go")
-{
-  printf 'mcp-agent-builder-go=%s\n' "$builder_revision"
-  printf 'mcpagent=%s\n' "$(git -C "$WORKSPACE_ROOT/mcpagent" rev-parse HEAD)"
-  printf 'multi-llm-provider-go=%s\n' "$(git -C "$WORKSPACE_ROOT/multi-llm-provider-go" rev-parse HEAD)"
-} > "$BUILD_DIR/SOURCE_REVISIONS"
 
-# Keep the exact source this release was built from beside its binaries (no .git, no
-# dependency or build folders), so the code running on the host can always be inspected there.
-# It lives in the release folder and is pruned with it; SOURCE_REVISIONS names the commits.
-echo "==> [$RELEASE_ID] Saving the source this release is built from"
-mkdir -p "$BUILD_DIR/source"
-for source_repo in mcp-agent-builder-go mcpagent multi-llm-provider-go; do
-  source_dir="$WORKSPACE_ROOT/$source_repo"
-  [[ "$source_repo" == mcp-agent-builder-go ]] && source_dir="$REPO_ROOT"
-  mkdir -p "$BUILD_DIR/source/$source_repo"
-  tar -C "$source_dir" --exclude=.git --exclude=node_modules --exclude=dist -cf - . | tar -C "$BUILD_DIR/source/$source_repo" -xf -
-done
-
-echo "==> [$RELEASE_ID] Building binaries (native linux/$BUILD_ARCH, on $(hostname))"
-# Compile the agent with cgo enabled (it links sherpa-onnx for voice/STT) and
-# an $ORIGIN/lib rpath, staging the native libraries beside the binary. The
-# remaining Go services stay static CGO_ENABLED=0 builds.
-bash "$REPO_ROOT/deploy/aws-ec2/build/build-linux-agent.sh" "$BUILD_DIR" "$REPO_ROOT/agent_go" "$WORKSPACE_ROOT"
-mv "$BUILD_DIR/bin/video-studio-agent" "$BUILD_DIR/bin/$PRODUCT-agent"
-(cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH="$BUILD_ARCH" CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/$PRODUCT-workspace" "$REPO_ROOT/workspace")
-# Literal filename required: workspace/security/landlock_policy.go resolves
-# its sandbox launcher by this exact name regardless of which product runs.
-(cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH="$BUILD_ARCH" CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/video-studio-landlock-runner" "$REPO_ROOT/workspace/cmd/landlock-runner")
-# The activation proves the sandbox works on this host with it (below).
-(cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH="$BUILD_ARCH" CGO_ENABLED=0 go test -c -o "$BUILD_DIR/bin/workspace-security.test" "$REPO_ROOT/workspace/security")
-# Per-user accounts: slotctl and slottmux (deploy/common/slots.sh, shared with the server A build).
-source "$REPO_ROOT/deploy/common/slots.sh"
-slots_build "$WORKSPACE_ROOT" "$DEPLOY_GOWORK" "$REPO_ROOT" "$BUILD_DIR"
-(cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH="$BUILD_ARCH" CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/mcpbridge" ./mcpagent/cmd/mcpbridge)
-GOWORK="$DEPLOY_GOWORK" GOOS=linux GOARCH="$BUILD_ARCH" CGO_ENABLED=0 go build -o "$BUILD_DIR/bin/$PRODUCT-gateway" "$REPO_ROOT/deploy/aws-ec2/server/auth-gateway.go"
-
-vault_build "$REPO_ROOT" "$BUILD_DIR"
-
-echo "==> [$RELEASE_ID] Building AgentWorks CLI downloads"
-mkdir -p "$BUILD_DIR/downloads"
-source "$REPO_ROOT/deploy/common/cli-build-id.sh"
-cli_build="$(cli_build_id "$REPO_ROOT" "$WORKSPACE_ROOT" "$DEPLOY_GOWORK")"
-cli_epoch="$(python3 -c 'import json, re, sys
-e = json.load(open(sys.argv[1])).get("compat_epoch", "")
-if not isinstance(e, str) or not re.fullmatch(r"[A-Za-z0-9._-]{0,63}", e): sys.exit("deploy/cli-release.json: compat_epoch must be letters, digits, . _ - and under 64 characters")
-print(e)' "$REPO_ROOT/deploy/cli-release.json")"
-cli_built_at="$(date +%s)"; mkdir -p "$BUILD_DIR/downloads"; printf '%s' "$cli_built_at" > "$BUILD_DIR/downloads/cli-built-at.txt"
-for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 windows-arm64; do
-  os="${target%-*}"
-  arch="${target#*-}"
-  name="agentworks-$target"; [[ "$os" != windows ]] || name="$name.exe"
-  (cd "$WORKSPACE_ROOT" && GOWORK="$DEPLOY_GOWORK" GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -ldflags "-X main.cliVersion=$builder_revision -X main.cliBuild=$cli_build -X main.cliCompatEpoch=$cli_epoch -X main.cliBuiltAt=$cli_built_at" -o "$BUILD_DIR/downloads/$name" "$REPO_ROOT/agent_go/cmd/agentworks")
-  [[ "$os" == windows ]] || chmod +x "$BUILD_DIR/downloads/$name"
-  (cd "$BUILD_DIR/downloads" && sha256sum "$name" > "$name.sha256" && sha256sum -c "$name.sha256")
-done
-install -m 0644 "$REPO_ROOT/scripts/install-agentworks-cli.sh" "$BUILD_DIR/downloads/install-agentworks.sh"
-install -m 0644 "$REPO_ROOT/scripts/install-agentworks-cli.ps1" "$BUILD_DIR/downloads/install-agentworks.ps1"
-install -m 0644 "$REPO_ROOT/deploy/cli-release.json" "$BUILD_DIR/downloads/cli-release.json"
-write_cli_version_json
-bash -n "$BUILD_DIR/downloads/install-agentworks.sh"
-for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 windows-arm64; do
-  case "$target" in darwin-*) expected=Mach-O ;; linux-*) expected=ELF ;; windows-*) expected=PE32 ;; esac
-  suffix=""; [[ "$target" != windows-* ]] || suffix=".exe"
-  actual="$(file -b "$BUILD_DIR/downloads/agentworks-$target$suffix")"
-  [[ "$actual" == *"$expected"* ]] || { echo "Invalid agentworks-$target$suffix binary: $actual" >&2; exit 1; }
-done
-
-echo "==> [$RELEASE_ID] Building frontend"
-(cd "$REPO_ROOT/frontend" && npm ci)
-(cd "$REPO_ROOT/frontend" && VITE_API_BASE_URL='' VITE_WORKSPACE_API_URL=/api/wp npm run build)
-cp -R "$REPO_ROOT/frontend/dist/." "$BUILD_DIR/frontend/"
-fi
 vault_check_build "$BUILD_DIR"
 cp "$REPO_ROOT/frontend/scripts/check-release-assets.mjs" "$BUILD_DIR/check-release-assets.mjs"
 cp "$REPO_ROOT/deploy/common/prune-releases.py" "$BUILD_DIR/prune-releases.py"
@@ -264,8 +161,7 @@ cp "$REPO_ROOT/deploy/common/merge_env.py" "$BUILD_DIR/merge_env.py"
 # this copy preview_report always 503s with "Report preview runtime is
 # missing" regardless of how many times the frontend gets built.
 mkdir -p "$BUILD_DIR/static"
-static_source="$REPO_ROOT/agent_go/cmd/server/static"
-[[ -z "$PREBUILT" ]] || static_source="$PREBUILT/static"
+static_source="$PREBUILT/static"
 cp -R "$static_source/." "$BUILD_DIR/static/"
 install -m 0644 "$PRODUCT_DIR/runtime-config.js" "$BUILD_DIR/frontend/runtime-config.js"
 # A deployment's own branding assets (logo, mark, favicon), served at /brand/.
@@ -316,7 +212,6 @@ if [[ "${COPY_PLAYBOOKS:-false}" == "true" ]]; then
   # With --prebuilt, REPO_ROOT is the shared build's source: read-only for the product account, and the playbook tests create temporary folders
   # next to the playbooks (server C's first prebuilt deploy failed with PermissionError there, 2026-10-04). The build validated that source once
   # (build-release.sh); the release's own writable copy is validated below.
-  [[ -n "$PREBUILT" ]] || python3 "$REPO_ROOT/playbooks/scripts/validate_playbooks.py"
   mkdir -p "$BUILD_DIR/playbooks"
   cp -R "$REPO_ROOT/playbooks/." "$BUILD_DIR/playbooks/"
   python3 "$BUILD_DIR/playbooks/scripts/validate_playbooks.py"

@@ -26,35 +26,11 @@ per-product configuration. Video Studio and Dominion have their own cases in
 
 ## How it works
 
-(This is the original on-server build path, still used by `DEPLOY_BUILD_MODE=server`; the default builds once, see
-"Build once, deploy everywhere" below.)
-
-1. `./deploy.sh <product>` runs on your machine. It reads
-   `products/<product>/product.env`, installs/updates the product's CLI
-   dependencies over SSH, then ships `bootstrap-build.sh` plus the branch
-   name and repo URLs to `<product>@<host>`. **It never builds anything
-   itself** — no local go/node/npm required to trigger a deploy.
-2. `bootstrap-build.sh` runs on the server. It takes a `flock` on
-   `/srv/<product>/deploy.lock` (refuses a second concurrent deploy), clones
-   fresh depth-1 checkouts of all three repos at the requested branch, then
-   hands off to `build-and-activate.sh` **from that fresh checkout** — so the
-   build logic always matches whatever is on the deployed branch, never a
-   stale copy cached on the triggering machine.
-3. `build-and-activate.sh` builds the four Go binaries and the frontend,
-   assembles a new immutable release under `/srv/<product>/releases/<rev>-<timestamp>/`
-   (with a `SOURCE_REVISIONS` file recording the exact commit of every repo, and
-   the source of all three repos under `source/`, without `.git`, dependency or
-   build folders, pruned with the release),
-   waits for the current release to drain in-flight turns, swaps the
-   `current` symlink, restarts the three systemd units, verifies the
-   running processes actually received the expected environment, health
-   checks both loopback ports and the public domain, then prunes old
-   releases (only ones with no process still referencing them, and only
-   after a health check confirms the new release is up).
+`./deploy.sh <product>` builds one release on the shared build host, or reuses an existing verified build. The target copies that release and runs its own activation script. No Go or frontend compiler runs on the target. The release records all three source revisions and verifies its manifest before switching `current` and checking services.
 
 ## Build once, deploy everywhere (PLAT-426)
 
-By default `./deploy.sh <excellence|confida|sparkquill|all-hetzner|rts>` no longer compiles on the target. The release is built
+`./deploy.sh <server>` does not compile on the target. The release is built
 **once** on the Hetzner box and each server only copies and activates it:
 
 1. `deploy/common/build-release.sh` (shipped and run over ssh as `root` by `deploy.sh`, under `systemd-run` limits: 800% CPU,
@@ -88,7 +64,6 @@ By default `./deploy.sh <excellence|confida|sparkquill|all-hetzner|rts>` no long
 ./deploy.sh <server> --build 7357c770   # deploy an existing build (name or any revision prefix); its three revisions must be
                                        # ancestors of origin/main, so a known-good older build can go out while main is held
 ./deploy.sh pin 7357c770               # keep that build from being pruned by later builds ("unpin" to release it)
-DEPLOY_BUILD_MODE=server ./deploy.sh <server>   # the original path: the server clones main and compiles (fallback)
 ```
 
 Build host settings: `BUILD_HOST`, `BUILD_PORT`, `BUILD_USER` (default root; host and port in the private deployments/deploy.env), `BUILD_SSH_KEY`, `BUILDS_DIR`
