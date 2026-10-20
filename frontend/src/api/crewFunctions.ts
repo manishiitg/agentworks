@@ -21,6 +21,10 @@ export interface CrewFunction {
   created_at?: string
   updated_at?: string
   implicit?: boolean
+  /** "tab" (default): runs in its own named tab; "fresh": a new chat for every call. */
+  execution?: string
+  /** Tab name shared by functions with the same agent; empty uses the function's name. */
+  agent?: string
 }
 
 export interface CrewFunctionProgress { at: string; message: string; percent?: number }
