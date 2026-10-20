@@ -2721,8 +2721,10 @@ func runServer(cmd *cobra.Command, args []string) {
 		if r.Method == http.MethodPost && refuseReaderDeniedTool(w, r.Context(), vars["tool"]) {
 			return
 		}
-		withReadOnlyShellHint(w, r.Context(), vars["tool"], func(out http.ResponseWriter) {
-			executorHandlers.HandlePerToolCustomRequest(out, r, vars["tool"])
+		logCustomToolDuration(vars["tool"], strings.TrimSpace(r.Header.Get("X-Session-ID")), func() {
+			withReadOnlyShellHint(w, r.Context(), vars["tool"], func(out http.ResponseWriter) {
+				executorHandlers.HandlePerToolCustomRequest(out, r, vars["tool"])
+			})
 		})
 	}).Methods("POST", "OPTIONS")
 	toolsRouter.HandleFunc("/virtual/{tool}", func(w http.ResponseWriter, r *http.Request) {
@@ -2774,8 +2776,10 @@ func runServer(cmd *cobra.Command, args []string) {
 		if r.Method == http.MethodPost && refuseReaderDeniedTool(w, ctx, tool) {
 			return
 		}
-		withReadOnlyShellHint(w, ctx, tool, func(out http.ResponseWriter) {
-			executorHandlers.HandlePerToolCustomRequest(out, r.WithContext(ctx), tool)
+		logCustomToolDuration(tool, sid, func() {
+			withReadOnlyShellHint(w, ctx, tool, func(out http.ResponseWriter) {
+				executorHandlers.HandlePerToolCustomRequest(out, r.WithContext(ctx), tool)
+			})
 		})
 	}).Methods("POST", "OPTIONS")
 	sessionToolsRouter.HandleFunc("/virtual/{tool}", func(w http.ResponseWriter, r *http.Request) {
@@ -14927,4 +14931,14 @@ func waitForLiveInputDelivery(done <-chan bool, sessionID, queryID string, waite
 			warnings = warnings[1:]
 		}
 	}
+}
+
+// logCustomToolDuration logs when a custom tool call (the shell, send_message and the like) finishes and how long it
+// took, so a call that never returns shows as a START with no END (a hung shell showed only its start before).
+func logCustomToolDuration(tool, sessionID string, run func()) {
+	started := time.Now()
+	defer func() {
+		log.Printf("[CUSTOM_TOOL] END tool=%s session=%s duration=%s", tool, sessionID, time.Since(started).Round(time.Millisecond))
+	}()
+	run()
 }
