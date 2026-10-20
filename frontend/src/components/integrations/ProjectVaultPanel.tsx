@@ -72,6 +72,7 @@ export function ProjectVaultPanel({ selectedSecrets, onSelectedSecretsChange, se
       <span className="text-muted-foreground">{onSelectedServersChange ? (pickedVault.length ? `${pickedVault.length} Vault ${pickedVault.length === 1 ? 'MCP' : 'MCPs'} picked for this project` : 'All Vault MCPs are used · tick some to use only those') : 'MCPs available automatically'} · select secrets for this project</span>
       <div className="flex items-center gap-1"><OpenVaultButton panel="servers"/><Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Refresh Vault access" disabled={loading} onClick={() => void refresh()}><RefreshCw className={loading ? 'animate-spin' : ''}/></Button></div>
     </div>
+    <p className="text-muted-foreground">Everyone who uses this project gets the MCPs and secrets picked here, from your Vault. Their runs can read the secret values, so pick only what you are happy to share.</p>
     {error && <p role="alert" className="text-destructive">{error}</p>}
     {loading ? <p className="text-muted-foreground">Loading your access…</p> : <>
       {groups.length === 0 && <p className="py-4 text-muted-foreground">No Vault groups or shared resources available.</p>}
