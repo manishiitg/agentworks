@@ -68,7 +68,7 @@ func buildWorkflowPhaseSystemPrompt(phase string, vars map[string]string, ctx pr
 		parts.parts = append(parts.parts, GetWorkspaceReference(ctx.ShellRoot, ctx.PerUserChatsFolder))
 	}
 	if vars["IsCodeExecutionMode"] == "true" {
-		parts.parts = append(parts.parts, workflow.BuildCodeExecutionSection(true, vars["WorkspacePath"]))
+		parts.parts = append(parts.parts, workflow.BuildCodeExecutionSection(true))
 	}
 	ctx.IsWorkflowPhase = true
 	ctx.WorkflowMode = vars["WorkshopMode"]

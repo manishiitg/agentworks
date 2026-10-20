@@ -55,7 +55,7 @@ func executeRealisticWorkshopPromptForMode(t *testing.T, mode string) string {
 	// for every coding CLI. It must be included in the budget: omitting it
 	// previously let the test pass while the actual CLAUDE.md could cross the
 	// provider's 40k-character limit.
-	return rendered + "\n\n" + BuildCodeExecutionSection(true, "Workflow/example")
+	return rendered + "\n\n" + BuildCodeExecutionSection(true)
 }
 
 // Template + bridge budget only. The server's production composer has its

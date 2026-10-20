@@ -81,10 +81,9 @@ func BuildManagedWorkflowDBGuidance(access string) string {
 
 // BuildCodeExecutionSection returns the code execution mode instructions.
 // isCodeExecution: agent uses code execution mode (HTTP API calls via shell)
-// workspacePath: absolute workspace path for code examples
-func BuildCodeExecutionSection(isCodeExecution bool, workspacePath string) string {
+func BuildCodeExecutionSection(isCodeExecution bool) string {
 	if isCodeExecution {
-		return prompt.GetCodeExecutionInstructions(workspacePath) + `
+		return prompt.GetCodeExecutionInstructions() + `
 
 ## Workflow execution environment
 

@@ -231,7 +231,7 @@ func (api *StreamingAPI) callPythonRelayAgent(ctx context.Context, sctx *Schedul
 		costobserver.WithProductAttribution(a))
 	runtime := mcpagent.RuntimeConfig{Model: initialized, MCPConfigPath: api.mcpConfigPath,
 		Generation:    mcpagent.GenerationRuntimeConfig{Provider: provider, APIKeys: keys, MaxTurns: call.MaxTurns, LLM: mcpagent.AgentLLMConfiguration{Primary: mcpagent.LLMModel{Provider: model.Provider, ModelID: model.ModelID, ConnectionID: model.ConnectionID, Options: model.Options}}},
-		Tools:         mcpagent.ToolRuntimeConfig{CodeExecution: true, Discovery: true},
+		Tools:         mcpagent.ToolRuntimeConfig{CodeExecution: true},
 		Coding:        mcpagent.CodingRuntimeConfig{AgentToolsMode: "mcp_only", BridgeToolAdmit: func(string) bool { return false }},
 		MCP:           mcpagent.MCPRuntimeConfig{SessionID: sessionID, APIBaseURL: api.GetCodeExecAPIURL(), BridgeAPIBaseURL: api.GetAPIURL(), APIToken: common.BridgeTokenForSession(sessionID)},
 		Workspace:     mcpagent.WorkspaceRuntimeConfig{CodingAgentWorkingDir: filepath.Join(fsutil.WorkspaceDocsRoot(), outputPath), IsolatedSession: true, ReadPaths: []string{sctx.WorkspacePath}, WritePaths: []string{outputPath}},
@@ -241,7 +241,6 @@ func (api *StreamingAPI) callPythonRelayAgent(ctx context.Context, sctx *Schedul
 		// Every effect must cross the Python tool journal. Do not expose generic
 		// code execution/discovery paths that can bypass its durable receipts.
 		runtime.Tools.CodeExecution = false
-		runtime.Tools.Discovery = false
 	}
 	for _, tool := range definition.Tools.Direct {
 		runtime.Tools.AdditionalBridge = append(runtime.Tools.AdditionalBridge, tool.Name)
