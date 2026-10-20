@@ -1413,7 +1413,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		var failed *LocalBridgeReply
 		b.unlocked(func() { // server calls run without the bridge lock
 			if _, err := snap.client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": snap.Attachment.AgentName, "attachment_id": snap.Attachment.ID, "message_ids": []string{}}, true); err != nil {
-				failed = &LocalBridgeReply{Error: "attachment no longer authorized"}
+				failed = &LocalBridgeReply{Error: attachmentValidationError("purpose", snap.Attachment.ID, err).Error()}
 				return
 			}
 			var err error
@@ -1969,12 +1969,12 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 		checked := make(chan error, 1)
 		go func() { checked <- validate() }()
 		raw, err = s.client.Call(callCtx, "messages", args)
-		if <-checked != nil {
-			return LocalBridgeReply{Error: "attachment no longer authorized"}
+		if validationErr := <-checked; validationErr != nil {
+			return LocalBridgeReply{Error: attachmentValidationError(in.Action, s.Attachment.ID, validationErr).Error()}
 		}
 	} else {
-		if validate() != nil {
-			return LocalBridgeReply{Error: "attachment no longer authorized"}
+		if validationErr := validate(); validationErr != nil {
+			return LocalBridgeReply{Error: attachmentValidationError(in.Action, s.Attachment.ID, validationErr).Error()}
 		}
 		raw, err = s.client.Call(callCtx, "messages", args)
 	}
@@ -1989,6 +1989,34 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 	}
 	out.Result = raw
 	return out
+}
+
+// A restart or failed request does not prove that the server revoked this chat.
+// Keep refusals distinct without changing retries or the saved attachment.
+func attachmentValidationError(action, attachmentID string, err error) error {
+	reason, status := "request", 0
+	message := "AgentWorks could not check this chat's connection. Try this action again shortly."
+	var apiErr *APIError
+	var networkErr net.Error
+	switch {
+	case errors.As(err, &apiErr):
+		status = apiErr.Status
+		switch {
+		case status == http.StatusUnauthorized || status == http.StatusForbidden:
+			reason, message = "authorization", "This chat is no longer authorized to use AgentWorks. Connect this chat to AgentWorks again."
+		case status >= http.StatusInternalServerError:
+			reason, message = "server", "AgentWorks is temporarily unavailable. Try this action again shortly."
+		}
+	case errors.Is(err, context.Canceled):
+		reason, message = "cancelled", "This AgentWorks request was cancelled. Try again when ready."
+	case errors.Is(err, context.DeadlineExceeded):
+		reason, message = "timeout", "AgentWorks did not respond in time. Try this action again shortly."
+	case errors.As(err, &networkErr):
+		reason, message = "transport", "AgentWorks is temporarily unavailable. Try this action again shortly."
+	}
+	// Do not log response text, credentials or request arguments.
+	log.Printf("[BRIDGE] attachment_validation_failed action=%s attachment=%s reason=%s http_status=%d", action, attachmentID, reason, status)
+	return errors.New(message)
 }
 
 func filterAttachedMailbox(ctx context.Context, s *localSession, raw json.RawMessage) (json.RawMessage, error) {
@@ -2012,7 +2040,7 @@ func filterAttachedMailbox(ctx context.Context, s *localSession, raw json.RawMes
 	}
 	validated, err := s.client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": ids, "history": true}, true)
 	if err != nil {
-		return nil, errors.New("mailbox attachment or sender no longer authorized")
+		return nil, attachmentValidationError("read_history", s.Attachment.ID, err)
 	}
 	var checked struct {
 		IDs []string `json:"message_ids"`

@@ -246,6 +246,81 @@ func TestMailboxReadChecksLeaseBesideTheReadAndLogRolls(t *testing.T) {
 	}
 }
 
+// A restart must not look like revoked access, let a send through a failed check,
+// or require replacing the same attachment once the server recovers.
+func TestMailboxValidationOutageDoesNotRevokeAttachment(t *testing.T) {
+	var status, sends atomic.Int32
+	status.Store(http.StatusBadGateway)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/agents/attachment") {
+			var request struct {
+				Action       string `json:"action"`
+				AgentName    string `json:"agent_name"`
+				AttachmentID string `json:"attachment_id"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Action != "validate" || request.AgentName != "test-agent" || request.AttachmentID != "test-attachment" {
+				t.Error("validation changed the chat's attachment identity")
+			}
+			if code := int(status.Load()); code != http.StatusOK {
+				http.Error(w, `{"error":"unavailable"}`, code)
+				return
+			}
+			_, _ = w.Write([]byte(`{"message_ids":[]}`))
+			return
+		}
+		var request struct {
+			Arguments struct {
+				Action string `json:"action"`
+			} `json:"arguments"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Error(err)
+		}
+		if request.Arguments.Action == "send" {
+			sends.Add(1)
+		}
+		_, _ = w.Write([]byte(`{"agents":[]}`))
+	}))
+	defer server.Close()
+	client, err := New(server.URL, "test-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bridge := &localBridge{}
+	session := &localSession{Attachment: AgentAttachment{AgentName: "test-agent", ID: "test-attachment"}, client: client}
+	check := func(want string) {
+		t.Helper()
+		for _, action := range []string{"peers", "send"} {
+			reply := bridge.mailboxCall(context.Background(), session, LocalBridgeRequest{Action: action, Target: "agent:recipient", Message: "test", SubmissionID: "test-submission"}, LocalBridgeReply{})
+			if want == "" {
+				if reply.Error != "" || reply.Result == nil {
+					t.Fatalf("%s after recovery: error=%q result=%s", action, reply.Error, reply.Result)
+				}
+			} else if !strings.Contains(reply.Error, want) || reply.Result != nil {
+				t.Fatalf("%s: error=%q result=%s, want %q and no result", action, reply.Error, reply.Result, want)
+			}
+		}
+	}
+	check("temporarily unavailable")
+	for _, denied := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		status.Store(int32(denied))
+		check("no longer authorized")
+	}
+	if sends.Load() != 0 {
+		t.Fatal("a failed validation allowed a send")
+	}
+	status.Store(http.StatusOK)
+	check("")
+	if sends.Load() != 1 {
+		t.Fatal("the same attachment could not send after recovery")
+	}
+	server.Close()
+	check("temporarily unavailable")
+	if sends.Load() != 1 || session.Attachment.ID != "test-attachment" {
+		t.Fatal("transport failure sent a message or changed attachment identity")
+	}
+}
+
 type lockedBuffer struct {
 	mu  sync.Mutex
 	buf strings.Builder
