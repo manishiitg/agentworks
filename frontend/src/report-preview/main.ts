@@ -204,6 +204,11 @@ function resizeFrame() {
   const doc = frame?.contentDocument
   if (!frame || !doc?.body) return
   if (exportHeight) return
+  if (doc.documentElement.getAttribute('data-report-fit') === 'viewport') {
+    const available = window.innerHeight - Math.max(0, frame.getBoundingClientRect().top)
+    if (available > 0) frame.style.height = `${Math.floor(available)}px`
+    return
+  }
   const scrollY = doc.defaultView?.scrollY ?? 0
   let maxBottom = 0
   for (const child of Array.from(doc.body.children)) {
@@ -234,6 +239,7 @@ function setWidth(width: number) {
 }
 
 async function start() {
+  window.addEventListener('resize', resizeFrame)
   const style = document.createElement('style')
   style.textContent = APP_TOKENS_CSS
   document.head.appendChild(style)
