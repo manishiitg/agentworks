@@ -373,7 +373,7 @@ export function KnowledgebaseSources({
               : "Viewing this workflow’s local knowledge."}
           </p>
           <p className="text-[11px] text-muted-foreground">
-            Shared knowledge is set up in Connections → Add connection → Brain; earlier sources stay in Connections → Add connection → Folders &amp; workflows.
+            Shared knowledge is set up in Connections → Add connection → Brain; earlier sources stay in Connections → Add connection → Linked work.
           </p>
           {sources.find((s) => s.alias === selected)?.available === false && (
             <p role="status" className="text-amber-700 dark:text-amber-300">

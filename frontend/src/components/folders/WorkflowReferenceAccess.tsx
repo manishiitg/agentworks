@@ -65,7 +65,7 @@ export function WorkflowReferenceAccess({ selectedPaths, onChange, excludeWorksp
         <EntityIdentityIcon icon={reference.icon} label={reference.label} />
         <div className="min-w-0 flex-1">
           <div className="truncate text-xs font-medium text-foreground">{reference.label}</div>
-          <div className="truncate font-mono text-[10px] text-muted-foreground">{reference.path} · read only</div>
+          <div className="truncate font-mono text-[10px] text-muted-foreground">{reference.path} · view only</div>
         </div>
         <button type="button" disabled={disabled} onClick={() => remove(reference.path)} aria-label={`Remove ${reference.path}`} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"><X className="h-3.5 w-3.5" /></button>
       </div>
@@ -99,13 +99,13 @@ export function WorkflowReferenceAccess({ selectedPaths, onChange, excludeWorksp
       <div className="flex items-start gap-2">
         <Link2 className="mt-0.5 h-4 w-4 text-muted-foreground" />
         <div>
-          <h3 className="text-sm font-medium text-foreground">Context (can open)</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Attach workflows, Crews or your other projects as durable context. Access is checked again on every run.</p>
+          <h3 className="text-sm font-medium text-foreground">Work linked here</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Link your other workflows, Crews or projects so this one can look at them. Access is checked again on every run.</p>
         </div>
       </div>
       <div className="mt-3 grid gap-3">
-        {renderGroup('Workflows', 'Reusable AgentWorks automations.', workflowReferences, availableWorkflows, 'Attach a workflow…')}
-        {showAdditionalGroup && renderGroup(additionalLabel, 'Other persistent Crew projects.', crewReferences, availableCrew, `Attach ${additionalLabel}…`)}
+        {renderGroup('Workflows', 'Reusable automations you have built.', workflowReferences, availableWorkflows, 'Attach a workflow…')}
+        {showAdditionalGroup && renderGroup(additionalLabel, 'Your other Crews.', crewReferences, availableCrew, `Attach ${additionalLabel}…`)}
         {extraGroups.map((group, index) => <div key={group.label}>{renderGroup(group.label, group.description, extraReferences[index], extraReferences[index].filter(reference => !normalizedSelected.includes(reference.path)), group.placeholder, true)}</div>)}
         {unknownSelected.length > 0 && <div className="rounded-md border border-border/80 p-3">
           <div className="text-xs font-medium text-foreground">Other linked folders</div>

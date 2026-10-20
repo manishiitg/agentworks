@@ -357,7 +357,7 @@ function WorkFoldersBody({ workspacePath, workflowContextPaths, onWorkflowContex
         additionalReferences={crewReferences}
         additionalLabel="Crew"
         showAdditionalGroup
-        extraGroups={product.profileId === 'code' ? [{ label: 'Code projects', description: 'Your other private Code and Cowork projects: their files (can open). Local projects are not available.', placeholder: 'Attach a project…', references: codeReferences }] : []}
+        extraGroups={product.profileId === 'code' ? [{ label: 'Code projects', description: 'Your other private projects, so this one can look at their files. Projects on your own computer can't be linked here.', placeholder: 'Attach a project…', references: codeReferences }] : []}
         hideAdd
       />
       <SettingsCard
@@ -384,15 +384,15 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
     <div className="space-y-4">
       <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
             <div className="min-w-0 flex-1 basis-48">
-              <p className="text-sm font-semibold text-foreground">Need to attach something?</p>
+              <p className="text-sm font-semibold text-foreground">Want to link something else?</p>
               <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-                Ask the agent to attach folders or link other work for context — no manual setup needed.
+                Ask the agent to link a folder or other work you made. No manual setup needed.
               </p>
             </div>
             <AskAIButton
               workspacePath={workspacePath}
               onAsk={onAsk}
-              label="Ask AI to add"
+              label="Ask AI to link"
               message={askMessage}
               className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             />

@@ -208,14 +208,14 @@ export default function WorkflowFolderAccessView({ workspacePath, headerAction, 
           <div className={`space-y-5 ${manageOwnScroll ? 'min-h-0 flex-1 overflow-y-auto p-5' : ''}`}>
             <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
               <div className="min-w-0 flex-1 basis-48">
-                <p className="text-sm font-semibold text-foreground">Need to attach something?</p>
+                <p className="text-sm font-semibold text-foreground">Want to link something else?</p>
                 <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-                  Ask the builder to attach folders or other workflows — no manual setup needed. For shared knowledge, open Connections → Add connection → Brain.
+                  Ask the builder to link a folder or other work you made. No manual setup needed. For shared knowledge, open Connections → Add connection → Brain.
                 </p>
               </div>
               <AskAIButton
                 workspacePath={!canWriteWorkflow ? null : workspacePath ?? null}
-                label="Ask AI to add"
+                label="Ask AI to link"
                 message={getIntegrationTabAskAIMessage('folders')}
                 className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               />

@@ -13,7 +13,7 @@ export interface IntegrationSectionOption {
 export const PROJECT_INTEGRATION_SECTIONS: IntegrationSectionOption[] = [
   { value: 'apps', label: 'Tools & secrets', description: 'MCPs, secrets and Vault.', icon: Blocks },
   { value: 'brain', label: 'Brain', description: 'Shared knowledge for your agents: open and edit by default, open only, or off.', icon: Brain, requiredProduct: 'knowledgebase' },
-  { value: 'folders', label: 'Folders & workflows', description: 'Folders on this server and other workflows this one can use.', icon: FolderOpen },
+  { value: 'folders', label: 'Linked work', description: 'Other workflows, Crews and projects this one can use.', icon: FolderOpen },
   { value: 'slack', label: 'Slack', description: 'Act in Slack with a saved account, or choose a bot from My Vault.', icon: Slack },
   { value: 'whatsapp', label: 'WhatsApp', description: 'Use & share: let people message this project in WhatsApp.', icon: MessageCircle },
   { value: 'gmail', label: 'Google apps', description: 'Gmail, Drive, Calendar and other Google apps.', icon: Grid2X2 },
