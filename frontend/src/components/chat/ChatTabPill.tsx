@@ -146,13 +146,13 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       role="button"
       tabIndex={0}
       data-tab-active={isActive ? 'true' : undefined}
-      className={`group flex min-w-0 cursor-pointer items-center gap-1.5 px-2 font-medium outline-none transition-colors ${productSurface ? 'rounded-lg py-1.5 text-sm' : 'rounded-t-md py-1 text-xs'} ${
-        productSurface
-          ? isActive ? 'bg-muted text-foreground shadow-[inset_0_-2px_0_hsl(var(--primary))]' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-          // The open tab: filled, bold and underlined in the accent colour, so it stands out in a long tab bar.
-          : isActive
-          ? 'bg-muted font-semibold text-foreground shadow-[inset_0_-2px_0_hsl(var(--primary))]'
-          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100'
+      className={`group flex min-w-0 cursor-pointer items-center gap-1.5 border-b-2 px-2 font-medium outline-none transition-colors ${productSurface ? 'rounded-t-lg py-1.5 text-sm' : 'rounded-t-md py-1 text-xs'} ${
+        // The open tab: bold text and a thin accent line under it, no filled box.
+        isActive
+          ? 'border-primary font-semibold text-foreground'
+          : productSurface
+          ? 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+          : 'border-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100'
       }`}
     >
       {productSurface && <ProductSurfaceIcon surface={productSurface} className="h-4 w-4" />}
