@@ -226,7 +226,7 @@ func workflowWebhookDTO(s WorkflowSchedule) workflowWebhookResponse {
 	if s.Webhook != nil {
 		authMode = s.Webhook.AuthMode
 	}
-	path := "/api/hooks/workflow/" + s.ID
+	path := "/api/hooks/" + s.ID
 	if s.IsInternalTrigger() {
 		path = ""
 	}

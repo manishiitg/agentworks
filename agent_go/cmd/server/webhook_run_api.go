@@ -135,7 +135,7 @@ func validWebhookAccess(token, trigger, run, file string) bool {
 	return err == nil && c.Scope == "webhook-run" && c.Trigger == trigger && c.Run == run && (c.File == "" || c.File == file)
 }
 func webhookStatusPath(trigger, run string) string {
-	return "/api/hooks/workflow/" + trigger + "/runs/" + run
+	return "/api/hooks/" + trigger + "/runs/" + run
 }
 
 type webhookArtifact struct {

@@ -3117,6 +3117,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	SchedulerRoutes(router, schedulerSvc)
 	WorkflowWebhookRoutes(router, schedulerSvc)
 	ProductWebhookRoutes(router, productScheduleSvc)
+	UnifiedWebhookRoutes(router, schedulerSvc, productScheduleSvc)
 	stopGmailInbound := api.initGmailInbound(router)
 	defer stopGmailInbound()
 

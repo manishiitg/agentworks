@@ -17,7 +17,7 @@ func TestProductWebhookTriggerValidationAndDTO(t *testing.T) {
 		t.Fatal(err)
 	}
 	dto := productWebhookDTO(trigger)
-	if dto.Path != "/api/hooks/product/"+trigger.ID || dto.AuthMode != "bearer" || dto.Message != trigger.Message || dto.RunDestination != runDestinationCrewChat {
+	if dto.Path != "/api/hooks/"+trigger.ID || dto.AuthMode != "bearer" || dto.Message != trigger.Message || dto.RunDestination != runDestinationCrewChat {
 		t.Fatalf("dto = %+v", dto)
 	}
 	trigger.RunDestination = runDestinationIsolated
@@ -52,7 +52,7 @@ func TestProductWebhookUsesItsOwnAuthenticationBoundary(t *testing.T) {
 }
 
 func TestProductWebhookStatusPath(t *testing.T) {
-	if got := productWebhookStatusPath("trigger-1", "run-1"); got != "/api/hooks/product/trigger-1/runs/run-1" {
+	if got := productWebhookStatusPath("trigger-1", "run-1"); got != "/api/hooks/trigger-1/runs/run-1" {
 		t.Fatalf("status path = %q", got)
 	}
 }

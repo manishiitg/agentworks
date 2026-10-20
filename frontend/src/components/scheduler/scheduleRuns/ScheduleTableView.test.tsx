@@ -57,7 +57,7 @@ describe('global schedule table', () => {
       expect(Boolean(run)).toBe(!isReadOnlyUser && !isWebhook)
       if (isWebhook) {
         expect(host.textContent).toContain('Webhook · on request')
-        expect(details.textContent).toContain('/api/hooks/workflow/daily')
+        expect(details.textContent).toContain('/api/hooks/daily')
         expect(details.querySelector('[aria-label="Copy webhook URL for Daily report"]')).not.toBeNull()
       }
       if (run) {

@@ -88,7 +88,7 @@ func productWebhookDTO(trigger productWebhookTrigger) productWebhookResponse {
 	if trigger.Webhook != nil {
 		authMode = trigger.Webhook.AuthMode
 	}
-	path := "/api/hooks/product/" + trigger.ID
+	path := "/api/hooks/" + trigger.ID
 	if trigger.IsInternal() {
 		path = ""
 	}
@@ -960,7 +960,7 @@ type productWebhookRunStatus struct {
 }
 
 func productWebhookStatusPath(triggerID, runID string) string {
-	return "/api/hooks/product/" + triggerID + "/runs/" + runID
+	return "/api/hooks/" + triggerID + "/runs/" + runID
 }
 
 func productWebhookRunStatusDTO(entry *ScheduleRunEntry) productWebhookRunStatus {

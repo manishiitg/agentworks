@@ -4,7 +4,7 @@ import { apiTriggerURL } from '../../../api/workflowWebhooks'
 import { copyToClipboard } from '../../../utils/textUtils'
 
 export function WebhookEndpoint({ id, name, path }: { id: string; name: string; path?: string }) {
-  const url = apiTriggerURL(path ?? `/api/hooks/workflow/${encodeURIComponent(id)}`)
+  const url = apiTriggerURL(path ?? `/api/hooks/${encodeURIComponent(id)}`)
   const [copyStatus, setCopyStatus] = useState('')
   const copy = async () => {
     setCopyStatus(await copyToClipboard(url) ? 'URL copied' : 'Copy failed — select the value to copy it.')

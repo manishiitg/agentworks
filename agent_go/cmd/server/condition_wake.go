@@ -53,7 +53,7 @@ func (c *conditionService) saveWake(ctx context.Context, id string, wake conditi
 func conditionJobView(job productScheduleJob) map[string]interface{} {
 	out := conditionView(job.Schedule)
 	if job.Schedule.Condition.WakesOnEvents() {
-		out["event_path"] = "/api/hooks/product/" + conditionWakeID(job)
+		out["event_path"] = "/api/hooks/" + conditionWakeID(job)
 	}
 	return out
 }

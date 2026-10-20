@@ -15,7 +15,7 @@ it('shows a paused webhook, its real URL, path highlighting and settings control
   try {
     await act(async () => root.render(<WorkflowTriggerNode {...props(data)} />))
     expect(host.textContent).toContain('Paused')
-    expect(host.textContent).toContain('https://agent.example/api/hooks/workflow/hook')
+    expect(host.textContent).toContain('https://agent.example/api/hooks/hook')
     expect(host.textContent).toContain('Webhook event')
     expect(host.textContent).toContain('Starts')
     await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'View path')!.click())
