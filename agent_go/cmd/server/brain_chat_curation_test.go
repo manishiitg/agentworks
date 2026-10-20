@@ -25,7 +25,7 @@ func TestBrainChatCuratesWithThePersonsOwnRoles(t *testing.T) {
 	for _, tool := range tools {
 		names[tool.Function.Name] = true
 	}
-	if !names[knowledgebase.ToolBrowse] || !names[knowledgebase.ToolUpdate] || names[knowledgebase.ToolAccess] || names[knowledgebase.ToolBackup] {
+	if !names[knowledgebase.ToolBrowse] || !names[knowledgebase.ToolUpdate] || names[knowledgebase.ToolAccess] || names["brain_backup"] {
 		t.Fatalf("Brain chat content tools: %v", names)
 	}
 	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "admin", Username: "admin"})
