@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import axios from 'axios'
-import { Copy, GitBranch, ShieldCheck, Webhook, Zap } from 'lucide-react'
+import { Copy, GitBranch, ShieldCheck, Webhook } from 'lucide-react'
 import { workflowWebhooksApi, apiTriggerURL, type APITriggerOptions, type WorkflowAPITrigger } from '../../api/workflowWebhooks'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
+import { AutomationIntro, AutomationListBox, AutomationRow, EmptyAutomations } from '../automation/AutomationKit'
 import { WorkspaceViewHeader } from './WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from './WorkspaceViewIconButton'
 
@@ -20,6 +21,7 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
   const canWrite = useCanWriteWorkflow(workspacePath)
   const [options, setOptions] = useState<APITriggerOptions>(emptyOptions)
   const [issued, setIssued] = useState<WorkflowAPITrigger | null>(null)
+  const [openId, setOpenId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState('')
@@ -107,10 +109,9 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
       />}
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
       <div className="space-y-4 p-4 sm:p-6">
-      <div className="flex min-w-0 max-w-full items-start gap-2 rounded-lg bg-muted/35 px-3 py-2.5 text-xs text-muted-foreground">
-        <Zap className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        <p className="min-w-0 [overflow-wrap:anywhere]">Create a webhook or change its routing by asking Builder. Each webhook accepts up to four deliveries at once; additional deliveries receive a retry response.</p>
-      </div>
+      <AutomationIntro icon={Webhook} tone="amber" title="Webhooks">
+        A web address other services (GitHub, your CI, a form) call to start this workflow. Ask the Builder to add one or change where it goes.
+      </AutomationIntro>
       {error && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}
       {issued?.secret && (
         <section className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
@@ -121,22 +122,17 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
           {issued.auth_mode === 'github' ? <p className="text-xs text-muted-foreground">In GitHub webhook settings, paste the endpoint into Payload URL, choose application/json, paste this value into Secret, and select the events to deliver. Setup pings do not start runs.</p> : <pre className="overflow-x-auto rounded bg-background p-2 text-xs">{`curl -X POST '${apiTriggerURL(issued.path)}' \\\n  -H 'Authorization: Bearer YOUR_TRIGGER_SECRET' \\\n  -H 'Content-Type: application/json' \\\n  -H 'Idempotency-Key: delivery-123' \\\n  -d '{"event":"example","data":{}}'`}</pre>}
         </section>
       )}
-      <div className="space-y-3">
+      {options.triggers.filter(trigger => !trigger.kind).length > 0 && <AutomationListBox>
         {options.triggers.filter(trigger => !trigger.kind).map(trigger => {
           const routeSelections = trigger.route_selections || {}
           const groupNames = trigger.group_names || []
           const concurrency = trigger.max_concurrency || 4
-          return <section key={trigger.id} className="min-w-0 max-w-full overflow-hidden rounded-xl border border-border bg-card">
-            <div className="flex items-start justify-between gap-3 px-4 py-3">
-              <div className="min-w-0">
-                <div className="flex min-w-0 items-center gap-2">
-                  <h3 className="truncate text-sm font-semibold" title={trigger.name}>{trigger.name}</h3>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${trigger.enabled ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'bg-muted text-muted-foreground'}`}>{trigger.enabled ? 'Active' : 'Paused'}</span>
-                </div>
-                <p className="mt-1 text-[11px] text-muted-foreground">POST endpoint · up to {concurrency} concurrent deliveries</p>
-              </div>
-              {canWrite && <button type="button" disabled={busy} className={buttonClass} onClick={() => void save({ ...trigger, enabled: !trigger.enabled })}>{trigger.enabled ? 'Pause' : 'Enable'}</button>}
-            </div>
+          const starts = Object.entries(routeSelections).map(([stepId, routeId]) => (options.routes || []).find(option => option.step_id === stepId && option.route_id === routeId)?.route_name || routeId).join(', ')
+          return <AutomationRow key={trigger.id} icon={Webhook} tone="amber" open={openId === trigger.id} onToggle={() => setOpenId(openId === trigger.id ? null : trigger.id)}
+            title={trigger.name} summary={starts ? `Starts ${starts}` : 'Starts the whole workflow'} meta={trigger.auth_mode === 'github' ? 'From GitHub' : 'Any service with the key'}
+            status={trigger.enabled ? 'on' : 'paused'} statusLabel={trigger.enabled ? 'On' : 'Off'}>
+            {canWrite && <button type="button" disabled={busy} className={buttonClass} onClick={() => void save({ ...trigger, enabled: !trigger.enabled })}>{trigger.enabled ? 'Pause' : 'Enable'}</button>}
+            <p className="text-[11px] text-muted-foreground">Takes up to {concurrency} deliveries at once.</p>
             <div className="border-y border-border bg-muted/20 px-4 py-2.5">
               <div className="flex min-w-0 items-center gap-2 overflow-hidden">
                 <code className="block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-foreground" title={apiTriggerURL(trigger.path)}>{apiTriggerURL(trigger.path)}</code>
@@ -162,10 +158,10 @@ export default function WorkflowAPITriggersView({ workspacePath, onViewRuns, del
               <button type="button" disabled={busy} className={buttonClass} onClick={() => void save(trigger, true)}>Rotate secret</button>
               <button type="button" disabled={busy} className="ml-auto rounded-md px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50" onClick={() => void remove(trigger.id)}>Remove</button>
             </div>}
-          </section>
+          </AutomationRow>
         })}
-        {options.triggers.filter(trigger => !trigger.kind).length === 0 && <p className="rounded-lg border border-dashed border-border p-5 text-center text-sm text-muted-foreground">No webhooks configured. Ask the workflow builder chat to create one.</p>}
-      </div>
+      </AutomationListBox>}
+      {options.triggers.filter(trigger => !trigger.kind).length === 0 && <EmptyAutomations>No webhooks yet. Ask the Builder to create one.</EmptyAutomations>}
       {options.triggers.some(trigger => trigger.kind && trigger.kind !== 'gmail') && <p className="text-xs text-muted-foreground">Functions (typed calls from Crews, workflows and MCP/CLI) are under Automation → Functions.</p>}
       {copied && <p role="status" className="text-xs text-muted-foreground">{copied}</p>}
       {options.route_error && <p className="text-xs text-muted-foreground">{options.route_error}</p>}
