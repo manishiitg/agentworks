@@ -1755,11 +1755,7 @@ func init() {
 	ServerCmd.AddCommand(rotateAuthSecretCmd)
 	ServerCmd.AddCommand(addUserCmd)
 	ServerCmd.AddCommand(migrateSparkQuillCmd)
-	ServerCmd.AddCommand(migrateProductSecretsCmd)
-	ServerCmd.AddCommand(migrateSecretSelectionsCmd)
 	ServerCmd.AddCommand(setMCPAppCmd)
-	ServerCmd.AddCommand(migrateDurableChatsCmd)
-	ServerCmd.AddCommand(dedupeChatHistoryCmd)
 }
 
 func runServer(cmd *cobra.Command, args []string) {
@@ -1981,14 +1977,10 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 	eventStore := events.NewEventStore(maxSessionEvents)
 	eventStore.EnableTurnPhase()
-	carryOverLegacyStateRoot()
 	eventStateRoot, err := workflowCLIStateRoot()
 	if err != nil {
 		log.Fatalf("Failed to resolve durable structured-event state: %v", err)
 	}
-	migrateDurableChatsAtStartup(eventStateRoot)
-	migrateSecretSelectionsAtStartup(eventStateRoot)
-	dedupeChatHistoriesAtStartup(eventStateRoot)
 	eventJournal, err := events.OpenSQLiteEventJournal(filepath.Join(eventStateRoot, "structured-chat-events-v2.sqlite"))
 	if err != nil {
 		log.Fatalf("Failed to initialize durable structured-event journal: %v", err)

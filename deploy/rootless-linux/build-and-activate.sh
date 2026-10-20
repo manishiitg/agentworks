@@ -452,42 +452,6 @@ fi
 # rest of this script keeps its own environment). Personal files are
 # archived, never deleted, and only after every secret for that user
 # migrated cleanly; anything unreadable is reported and left in place.
-if [[ "${RUN_PRODUCT_SECRETS_MIGRATION:-false}" == "true" ]]; then
-  migration_state="$REMOTE_APP/state/migrations"
-  migration_marker="$migration_state/product-secrets-v1.done"
-  install -d -m 0700 "$migration_state"
-  if [[ ! -f "$migration_marker" ]]; then
-    echo "==> [$RELEASE_ID] Migrating personal secrets into the $PRODUCT box"
-    # shellcheck disable=SC1091
-    ( set -a; . "$REMOTE_APP/.env"; set +a; exec "$BUILD_DIR/bin/$PRODUCT-agent" server migrate-product-secrets --product "$PRODUCT" --apply )
-    marker_tmp="$(mktemp "$migration_state/.product-secrets-v1.XXXXXX")"
-    printf 'release=%s\ncompleted_at=%s\n' "$RELEASE_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$marker_tmp"
-    chmod 0600 "$marker_tmp"
-    mv "$marker_tmp" "$migration_marker"
-  fi
-fi
-
-# Reconcile after any value/layout migration, before Vault's stricter admission
-# starts serving. Existing records, including ungranted globals, are retained.
-# Completion is stamped only after a fully readable scan and backed-up writes.
-if [[ "${VAULT_ENABLED:-false}" == "true" ]]; then
-  echo "==> [$RELEASE_ID] Reconciling legacy secret selections"
-  # shellcheck disable=SC1091
-  ( set -a; . "$REMOTE_APP/.env"; set +a;
-    exec "$BUILD_DIR/bin/$PRODUCT-agent" server migrate-secret-selections \
-      --docs-root "$REMOTE_APP/data/docs" --state-root "$REMOTE_APP/state" --apply --once )
-fi
-
-# Build the canonical chat log last, so it reads the layout the migrations
-# above produced. Marker-backed; a no-op on later deployments. A failure is not
-# fatal: the new agent runs the same idempotent import at startup and retries
-# on every start until it completes.
-if ! "$BUILD_DIR/bin/$PRODUCT-agent" server migrate-chat-events \
-  --docs-root "$REMOTE_APP/data/docs" \
-  --state-root "$REMOTE_APP/state"; then
-  echo "WARNING: [$RELEASE_ID] legacy chat import failed; the agent retries it at startup" >&2
-fi
-
 systemctl --user daemon-reload
 systemctl --user restart "$PRODUCT-workspace"
 sleep 2

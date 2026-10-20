@@ -51,8 +51,7 @@ func workflowCLIStateRoot() (string, error) {
 }
 
 // defaultWorkflowCLIStateRoot is the root used when no launcher pins
-// AGENTWORKS_STATE_ROOT. Deployments that start pinning it carry state from
-// here once (carryOverLegacyStateRoot) instead of silently starting empty.
+// AGENTWORKS_STATE_ROOT.
 func defaultWorkflowCLIStateRoot() (string, error) {
 	if userData := strings.TrimSpace(os.Getenv("RUNLOOP_USER_DATA_DIR")); userData != "" {
 		if !filepath.IsAbs(userData) {

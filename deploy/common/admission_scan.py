@@ -4,8 +4,7 @@
 Reports, by NAME only (never a value, never a token):
   - a manifest (workflow.json / product.json) that selects a secret which exists nowhere: not in the shared stores
     (managed `_users/_system_global_secrets/secrets.json`, environment `GLOBAL_SECRET_*`) and not in the project's
-    own stores (`_users/<owner>/workflow_secrets/<sha256(path)>.json`) -- the same rule as
-    `agentworks server migrate-secret-selections`;
+    own stores (`_users/<owner>/workflow_secrets/<sha256(path)>.json`);
   - a shared secret that manifests select but the Vault Platform group has no grant for (only when Vault is
     configured: CAPLAYER_SERVICE_URL and CAPLAYER_SERVICE_TOKEN[_FILE] in the agent's environment). Admission refuses
     those selections ("Your groups do not have access to secret ...").
@@ -157,7 +156,7 @@ def scan(docs: Path, env: dict[str, str], grants: set[str] | None) -> tuple[list
                 if not isinstance(name, str):
                     continue
                 if name not in available:
-                    warnings.append(f"WARN secret-missing {display(docs, path)}: {field} names {name}, which exists nowhere (agentworks server migrate-secret-selections --dry-run lists it; add the secret or remove the selection)")
+                    warnings.append(f"WARN secret-missing {display(docs, path)}: {field} names {name}, which exists nowhere (add the secret in Vault or remove the selection)")
                 elif field == "selected_global_secret_names" or name in globals_:
                     selected_shared[name] = selected_shared.get(name, 0) + 1
     if grants is not None:
