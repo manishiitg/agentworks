@@ -11,7 +11,7 @@ import {
   type NodeChange,
   type OnNodeDrag
 } from '@xyflow/react'
-import { Braces, FileCode2, FileText, ListOrdered, Maximize, RefreshCw, Repeat, Route, Settings, X } from 'lucide-react'
+import { Braces, FileCode2, FileText, ListOrdered, Maximize, RefreshCw, Route, Settings, X } from 'lucide-react'
 import '@xyflow/react/dist/style.css'
 
 import { useModeStore } from '../../../stores/useModeStore'
@@ -908,14 +908,6 @@ export function ReadOnlyStepDetailPanel({
         {step?.success_criteria && (
           <DetailSection icon={FileText} title="Completion requirements">
             <div className="prose prose-sm max-w-none dark:prose-invert"><MarkdownRenderer content={step.success_criteria} className="max-w-none" /></div>
-          </DetailSection>
-        )}
-
-        {step && (step.type === 'scripted' || step.type === 'regular') && step.has_loop && (
-          <DetailSection icon={Repeat} title="Script loop">
-            {step.loop_description && <p className="mb-2 text-xs">{step.loop_description}</p>}
-            {step.loop_condition && <p className="text-xs"><span className="text-muted-foreground">Condition: </span>{step.loop_condition}</p>}
-            {step.max_iterations != null && <p className="mt-1 text-xs">Maximum iterations: {step.max_iterations}</p>}
           </DetailSection>
         )}
 

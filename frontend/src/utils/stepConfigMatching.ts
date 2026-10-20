@@ -21,7 +21,6 @@ export interface AgentConfigs {
   // workflow-local enabled_skills. New authoring never uses these settings.
   disable_learning?: boolean;
   learning_detail_level?: string;
-  learning_after_loop_iteration?: boolean;
   keep_learning_full?: boolean;
   learnings_access?: 'read' | 'read-write' | 'none';
   learning_objective?: string;
@@ -62,10 +61,6 @@ export interface TodoStepWithConfigs {
   context_output?: string;
   success_patterns?: string[];
   failure_patterns?: string[];
-  has_loop?: boolean;
-  loop_condition?: string;
-  max_iterations?: number;
-  loop_description?: string;
   next_step_id?: string;
   // Human input step fields (asks question to human and blocks for input)
   has_human_input?: boolean;
@@ -174,15 +169,11 @@ interface CommonStepFields {
   shared_with?: StepSharing;
 }
 
-// Scripted step (may have loops)
+// Scripted step
 export interface ScriptedPlanStep extends CommonStepFields {
   type: 'scripted' | 'regular'; // regular is a saved-plan compatibility alias.
   script_only?: boolean;
   next_step_id?: string;                    // Explicit successor for scripted route chains
-  has_loop?: boolean;
-  loop_condition?: string;
-  max_iterations?: number;
-  loop_description?: string;
 }
 
 // Todo task step (orchestrator with todo list management + predefined routes + generic agent)

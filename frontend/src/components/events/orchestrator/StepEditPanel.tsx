@@ -959,30 +959,6 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
               ) : null}
             </div>
 
-            {/* Loop Configuration (only shown if has_loop is true) */}
-            {step.has_loop && (
-              <>
-                <div className="border-t border-gray-200 dark:border-gray-700"></div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id={`learning-after-loop-${stepIndex}`}
-                    checked={agentConfigs.learning_after_loop_iteration !== undefined ? agentConfigs.learning_after_loop_iteration : (step.has_loop ? true : false)}
-                    onChange={(e) =>
-                      handleToggleChange('learning_after_loop_iteration', e.target.checked)
-                    }
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                  />
-                  <label
-                    htmlFor={`learning-after-loop-${stepIndex}`}
-                    className="text-xs text-gray-600 dark:text-gray-400 cursor-pointer"
-                  >
-                    Run Learning After Each Loop Iteration
-                  </label>
-                </div>
-              </>
-            )}
-
             {/* MCP Servers and Tools Selection (Step Level) */}
             {presetServers.length > 0 && (
               <>
