@@ -540,36 +540,22 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
     }
 
     try {
-      const deletingActiveWorkflow = useGlobalPresetStore.getState().activePresetIds.workflow === preset.id
-      const result = await agentApi.deleteWorkflowFolder(workspacePath)
-      useChatStore.getState().addToast(
-        result.cleanup_pending
-          ? 'Automation deleted. An administrator needs to finish removing some sandbox files.'
-          : 'Automation deleted.',
-        result.cleanup_pending ? 'warning' : 'success',
-      )
-
-      if (deletingActiveWorkflow) {
-        clearActivePreset('workflow')
-        useGlobalPresetStore.getState().setSelectedPresetFolder(null)
-        useGlobalPresetStore.getState().setCurrentPresetServers([])
-        useGlobalPresetStore.getState().setCurrentPresetTools([])
-        useGlobalPresetStore.getState().setCurrentQuery('')
-        setSelectedFile(null)
-        setShowFileContent(false)
-      }
-
-      await refreshPresets()
-
       setShowPresetModal(false)
       setEditingPreset(null)
       setShowPresetDropdown(false)
+      await useGlobalPresetStore.getState().deleteWorkflow(workspacePath)
+
+      // A user may have switched workflows while deletion was in flight.
+      if (!useGlobalPresetStore.getState().activePresetIds.workflow) {
+        setSelectedFile(null)
+        setShowFileContent(false)
+      }
     } catch (error) {
       console.error('[ModePresetBar] Failed to delete workflow:', error)
-      alert('Failed to delete automation. Please try again.')
+      useChatStore.getState().addToast('Failed to delete automation. Please try again.', 'error')
       throw error
     }
-  }, [clearActivePreset, refreshPresets, setSelectedFile, setShowFileContent])
+  }, [setSelectedFile, setShowFileContent])
 
   const requestDuplicatePreset = useCallback((preset: CustomPreset | PredefinedPreset, e: React.MouseEvent) => {
     e.stopPropagation()

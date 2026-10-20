@@ -39,7 +39,13 @@ func noteWorkspaceMutation(filePath string, folder bool) {
 	}
 	switch {
 	case folder:
-		manifestDirtyAll.Store(true)
+		if parts := strings.Split(clean, "/"); len(parts) >= 2 && parts[0] == "Workflow" {
+			// Discovery's folder listing detects removals. Re-read only the
+			// affected workflow, not every other workflow on the server.
+			manifestDirtyFolders.Store(strings.Join(parts[:2], "/"), struct{}{})
+		} else {
+			manifestDirtyAll.Store(true)
+		}
 	case path.Base(clean) == "workflow.json":
 		manifestDirtyFolders.Store(path.Dir(clean), struct{}{})
 	case path.Base(clean) == "schedule-runs.json":
@@ -135,6 +141,11 @@ func (x *workflowManifestIndex) discover(ctx context.Context, freshness time.Dur
 		order = append(order, folder)
 	}
 
+	for folder := range x.entries {
+		if _, kept := next[folder]; !kept {
+			manifestDirtyFolders.Delete(folder)
+		}
+	}
 	x.entries, x.order = next, order
 	x.built, x.seenGen, x.checkedAt = true, gen, now
 	if full {

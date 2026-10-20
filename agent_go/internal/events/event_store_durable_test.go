@@ -190,6 +190,43 @@ func TestDeletedDurableChatDoesNotRecreateRows(t *testing.T) {
 	}
 }
 
+func TestBulkDeletedDurableChatsStayDeletedAndOtherChatsKeepTheirOwner(t *testing.T) {
+	journal, err := OpenSQLiteEventJournal(filepath.Join(t.TempDir(), "events.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewEventStore(100)
+	defer store.Stop()
+	store.SetDurableJournal(journal)
+	for _, id := range []string{"delete-a", "delete-b", "keep"} {
+		classifyInteractiveTestSession(t, store, id)
+		if err := journal.RegisterOwner(id, "alice"); err != nil {
+			t.Fatal(err)
+		}
+		store.AddEvent(id, journalTestEvent(id+"-1", "before deletion"))
+	}
+	if err := store.DeleteDurableChatSessions([]string{"delete-b", "delete-a", "delete-a", ""}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"delete-a", "delete-b"} {
+		store.AddEvent(id, journalTestEvent(id+"-late", "late update"))
+		if known, _, err := journal.KnownSession(id); err != nil || known {
+			t.Fatalf("deleted %s recreated: known=%v err=%v", id, known, err)
+		}
+		if owner, _ := journal.Owner(id); owner != "" {
+			t.Fatalf("deleted %s retained owner %q", id, owner)
+		}
+	}
+	if owner, _ := journal.Owner("keep"); owner != "alice" {
+		t.Fatalf("untouched chat owner = %q", owner)
+	}
+	store.AddEvent("keep", journalTestEvent("keep-2", "after deletion"))
+	page, err := journal.ReadPage("keep", DurableEventPageOptions{Limit: 10})
+	if err != nil || len(page.Events) != 2 {
+		t.Fatalf("untouched chat history = %+v, %v", page, err)
+	}
+}
+
 func TestHumanFeedbackResolutionIsDurable(t *testing.T) {
 	event := Event{
 		ID: "resolved-1", Type: "human_feedback_resolved", Timestamp: time.Now(),

@@ -12,6 +12,7 @@ import { useLLMStore } from './useLLMStore'
 import { useWorkflowStore } from './useWorkflowStore'
 import { useSecretsStore } from './useSecretsStore'
 import { useWorkflowManifestStore } from './useWorkflowManifestStore'
+import { normalizeWorkspacePath } from '../utils/workspacePathUtils'
 
 // Build workflow presets from manifests
 export function buildWorkflowPresetsFromManifests(workflows = useWorkflowManifestStore.getState().workflows || []): CustomPreset[] {
@@ -74,6 +75,7 @@ interface GlobalPresetState {
 
   // Actions for manifest management
   refreshPresets: () => Promise<void>
+  deleteWorkflow: (workspacePath: string) => Promise<void>
   savePreset: (label: string, query?: string, selectedServers?: string[], selectedTools?: string[], selectedSkills?: string[], agentMode?: 'multi-agent' | 'workflow', selectedFolder?: PlannerFile, llmConfig?: PresetLLMConfig, useCodeExecutionMode?: boolean, id?: string, selectedSecrets?: string[], selectedGlobalSecretNames?: string[] | null, browserMode?: 'none' | 'auto' | 'headless' | 'cdp', cdpPorts?: number[], icon?: string, workflowKind?: 'relay' | 'workflow') => Promise<CustomPreset | null>
   duplicatePreset: (presetId: string) => Promise<CustomPreset | null>
 
@@ -118,6 +120,29 @@ export const useGlobalPresetStore = create<GlobalPresetState>()(
       recentPresetAccessedAt: {},
 
       // Manifest management actions
+      deleteWorkflow: async (workspacePath) => {
+        await useWorkflowManifestStore.getState().deleteWorkflow(workspacePath)
+        const normalized = normalizeWorkspacePath(workspacePath)
+        set(state => {
+          const removedIDs = new Set(state.workflowPresets
+            .filter(preset => normalizeWorkspacePath(preset.selectedFolder?.filepath || '') === normalized)
+            .map(preset => preset.id))
+          const deletingActive = state.activePresetIds.workflow !== null && removedIDs.has(state.activePresetIds.workflow)
+          return {
+            workflowPresets: state.workflowPresets.filter(preset => !removedIDs.has(preset.id)),
+            recentPresetOrder: state.recentPresetOrder.filter(id => !removedIDs.has(id)),
+            recentPresetAccessedAt: Object.fromEntries(Object.entries(state.recentPresetAccessedAt).filter(([id]) => !removedIDs.has(id))),
+            ...(deletingActive ? {
+              activePresetIds: { ...state.activePresetIds, workflow: null },
+              selectedPresetFolder: null,
+              currentPresetServers: [],
+              currentPresetTools: [],
+              currentQuery: '',
+            } : {}),
+          }
+        })
+      },
+
       refreshPresets: async () => {
         const existingPromise = get().refreshPromise
         if (existingPromise) return existingPromise

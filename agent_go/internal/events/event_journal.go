@@ -42,6 +42,11 @@ type DurableEventJournalPageReader interface {
 	DeleteSession(sessionID string) error
 }
 
+// DurableEventJournalBulkDeleter removes a workflow's chats in one transaction.
+type DurableEventJournalBulkDeleter interface {
+	DeleteSessions(sessionIDs []string) error
+}
+
 type DurableEventJournalMigrator interface {
 	MigrationComplete(sessionID string) (bool, error)
 	MarkMigrationComplete(sessionID string) error
@@ -401,7 +406,11 @@ func (j *SQLiteEventJournal) ReadPage(sessionID string, opts DurableEventPageOpt
 }
 
 func (j *SQLiteEventJournal) DeleteSession(sessionID string) error {
-	if j == nil || j.db == nil || sessionID == "" {
+	return j.DeleteSessions([]string{sessionID})
+}
+
+func (j *SQLiteEventJournal) DeleteSessions(sessionIDs []string) error {
+	if j == nil || j.db == nil || len(sessionIDs) == 0 {
 		return nil
 	}
 	tx, err := j.db.BeginTx(context.Background(), &sql.TxOptions{})
@@ -409,25 +418,32 @@ func (j *SQLiteEventJournal) DeleteSession(sessionID string) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`DELETE FROM structured_chat_events WHERE session_id = ?`, sessionID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`DELETE FROM structured_chat_sequences WHERE session_id = ?`, sessionID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`DELETE FROM structured_chat_migrations WHERE session_id = ?`, sessionID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`DELETE FROM structured_chat_sessions WHERE session_id = ?`, sessionID); err != nil {
-		return err
+	for _, sessionID := range sessionIDs {
+		if sessionID == "" {
+			continue
+		}
+		for _, table := range []string{"structured_chat_events", "structured_chat_sequences", "structured_chat_migrations", "structured_chat_sessions"} {
+			if _, err := tx.Exec(`DELETE FROM `+table+` WHERE session_id = ?`, sessionID); err != nil {
+				return err
+			}
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	if err := j.removeSessionArtifacts(sessionID); err != nil {
-		return err
+	var errs []error
+	for _, sessionID := range sessionIDs {
+		if sessionID != "" {
+			if err := j.removeSessionArtifacts(sessionID); err != nil {
+				errs = append(errs, err)
+			}
+		}
 	}
-	return j.Checkpoint()
+	// FULL synchronous WAL commits already make deletion durable. Checkpointing
+	// the shared journal after every chat adds unrelated disk work to deletion
+	// and blocks other chats on the single DB connection. Normal WAL/retention
+	// maintenance reclaims the space.
+	return errors.Join(errs...)
 }
 
 func (j *SQLiteEventJournal) Close() error {

@@ -2,6 +2,7 @@ package events
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
 
 	agentevents "github.com/manishiitg/mcpagent/events"
@@ -179,7 +180,11 @@ func (es *EventStore) ReadDurableChatCompactPage(sessionID string, opts CompactP
 }
 
 func (es *EventStore) DeleteDurableChatSession(sessionID string) error {
-	if es == nil || strings.TrimSpace(sessionID) == "" {
+	return es.DeleteDurableChatSessions([]string{sessionID})
+}
+
+func (es *EventStore) DeleteDurableChatSessions(sessionIDs []string) error {
+	if es == nil || len(sessionIDs) == 0 {
 		return nil
 	}
 	es.mu.RLock()
@@ -191,14 +196,37 @@ func (es *EventStore) DeleteDurableChatSession(sessionID string) error {
 	// Hold the session's append lock so an in-flight turn cannot write a row
 	// after the delete, then drop the in-memory class and buffer: a still
 	// running turn continues live-only instead of re-creating ownerless rows.
-	defer es.lockSessionAppend(sessionID)()
-	if err := journal.DeleteSession(sessionID); err != nil {
-		return err
+	seen := make(map[string]bool, len(sessionIDs))
+	ids := make([]string, 0, len(sessionIDs))
+	for _, id := range sessionIDs {
+		if strings.TrimSpace(id) != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
 	}
-	es.RemoveSession(sessionID)
-	es.mu.Lock()
-	es.journalProbed[sessionID] = true
-	es.mu.Unlock()
+	// A stable order prevents concurrent bulk deletions deadlocking on each
+	// other's append locks. Other sessions can continue publishing normally.
+	sort.Strings(ids)
+	for _, id := range ids {
+		defer es.lockSessionAppend(id)()
+	}
+	if bulk, ok := journal.(DurableEventJournalBulkDeleter); ok {
+		if err := bulk.DeleteSessions(ids); err != nil {
+			return err
+		}
+	} else {
+		for _, id := range ids {
+			if err := journal.DeleteSession(id); err != nil {
+				return err
+			}
+		}
+	}
+	for _, id := range ids {
+		es.RemoveSession(id)
+		es.mu.Lock()
+		es.journalProbed[id] = true
+		es.mu.Unlock()
+	}
 	return nil
 }
 

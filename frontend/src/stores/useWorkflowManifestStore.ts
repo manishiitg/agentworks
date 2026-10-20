@@ -11,6 +11,9 @@ import type {
   PulseOutwardActions } from '../services/api-types'
 import { normalizeWorkspacePath } from '../utils/workspacePathUtils'
 
+// Discard discovery responses started before a confirmed deletion.
+let workflowListRevision = 0
+
 export interface WorkflowManifestState {
   // Discovered workflows from manifest scan
   workflows: DiscoveredWorkflow[]
@@ -53,9 +56,11 @@ export const useWorkflowManifestStore = create<WorkflowManifestState>((set, get)
   activeWorkflowId: null,
 
   refreshWorkflows: async () => {
+    const revision = workflowListRevision
     set({ isLoading: true })
     try {
       const response = await workflowManifestApi.listWorkflowManifests()
+      if (revision !== workflowListRevision) return
       set({
         workflows: response.workflows || [],
         lastRefreshed: Date.now(),
@@ -129,19 +134,24 @@ export const useWorkflowManifestStore = create<WorkflowManifestState>((set, get)
 
   deleteWorkflow: async (workspacePath) => {
     const result = await workflowManifestApi.deleteWorkflowFolder(workspacePath)
+    workflowListRevision++
     useChatStore.getState().addToast(
       result.cleanup_pending
         ? 'Automation deleted. An administrator needs to finish removing some sandbox files.'
         : 'Automation deleted.',
       result.cleanup_pending ? 'warning' : 'success',
     )
-    // Refresh to remove from list
-    const { activeWorkflowId, workflows } = get()
-    const deleted = workflows.find(w => w.workspace_path === workspacePath)
-    if (deleted && deleted.manifest.id === activeWorkflowId) {
-      set({ activeWorkflowId: null })
-    }
-    await get().refreshWorkflows()
+    // The server has confirmed deletion. Remove this entry immediately;
+    // waiting for a full discovery scan keeps the delete dialog blocked and
+    // unnecessarily re-reads every remaining workflow.
+    const normalized = normalizeWorkspacePath(workspacePath)
+    set(state => {
+      const deleted = state.workflows.find(w => normalizeWorkspacePath(w.workspace_path) === normalized)
+      return {
+        workflows: state.workflows.filter(w => normalizeWorkspacePath(w.workspace_path) !== normalized),
+        activeWorkflowId: deleted?.manifest.id === state.activeWorkflowId ? null : state.activeWorkflowId,
+      }
+    })
   },
 
   duplicateWorkflow: async (sourceWorkspacePath, targetWorkspacePath, newLabel) => {

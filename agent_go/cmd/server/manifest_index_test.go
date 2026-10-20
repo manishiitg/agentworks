@@ -116,6 +116,29 @@ func TestManifestIndexRereadsFolderWrittenByThisServerEvenWithSameStamp(t *testi
 	}
 }
 
+func TestManifestIndexFolderDeletionDoesNotRereadOtherWorkflows(t *testing.T) {
+	resetManifestIndexGlobals(t)
+	fake := &fakeManifestWorkspace{
+		folders: []string{"Workflow/a", "Workflow/b"},
+		stamps:  map[string]manifestStamp{"Workflow/a": stampAt("t1"), "Workflow/b": stampAt("t1")},
+	}
+	idx := fake.index()
+	_, _ = idx.discover(context.Background(), time.Minute)
+	fake.readLog = nil
+	fake.folders = []string{"Workflow/b"}
+	noteWorkspaceMutation("Workflow/a", true)
+	got, err := idx.discover(context.Background(), time.Minute)
+	if err != nil || len(got) != 1 || got[0].WorkspacePath != "Workflow/b" {
+		t.Fatalf("discover after delete = %+v, %v", got, err)
+	}
+	if len(fake.readLog) != 0 {
+		t.Fatalf("deletion re-read unrelated manifests: %v", fake.readLog)
+	}
+	if _, dirty := manifestDirtyFolders.Load("Workflow/a"); dirty {
+		t.Fatal("deleted workflow retained a dirty-cache entry")
+	}
+}
+
 func TestParseWorkflowFolderListingReadsManifestStamps(t *testing.T) {
 	body := []byte(`{"data":[{"filepath":"Workflow","type":"folder","children":[
 		{"filepath":"Workflow/a","type":"folder","children":[

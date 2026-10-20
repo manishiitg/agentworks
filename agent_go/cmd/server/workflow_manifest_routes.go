@@ -754,10 +754,22 @@ func (api *StreamingAPI) handleDeleteWorkflowFolder(w http.ResponseWriter, r *ht
 		http.Error(w, "workspace_path must be a Workflow/<name> folder", http.StatusBadRequest)
 		return
 	}
+	started, phaseStarted := time.Now(), time.Now()
+	var phases []string
+	markPhase := func(name string) {
+		phases = append(phases, fmt.Sprintf("%s=%s", name, time.Since(phaseStarted).Round(time.Millisecond)))
+		phaseStarted = time.Now()
+	}
+	defer func() {
+		if time.Since(started) >= 250*time.Millisecond {
+			log.Printf("[WORKFLOW_DELETE] duration=%s %s", time.Since(started).Round(time.Millisecond), strings.Join(phases, " "))
+		}
+	}()
 	if currentUserWorkflowAccess(r, workspacePath) != WorkflowAccessOwner {
 		writeWorkflowPermissionDenied(w, "owner")
 		return
 	}
+	markPhase("owner_check")
 
 	manifest, exists, err := ReadWorkflowManifest(r.Context(), workspacePath)
 	if err != nil {
@@ -768,6 +780,7 @@ func (api *StreamingAPI) handleDeleteWorkflowFolder(w http.ResponseWriter, r *ht
 		http.Error(w, "No workflow.json found at this workspace path", http.StatusNotFound)
 		return
 	}
+	markPhase("manifest")
 
 	// Enumerate before deleting: once the folder is gone its chat IDs are
 	// unrecoverable and their durable journal rows would be orphaned.
@@ -777,22 +790,24 @@ func (api *StreamingAPI) handleDeleteWorkflowFolder(w http.ResponseWriter, r *ht
 			builderSessionIDs = durableSessionIDsFromConversationPaths(files)
 		}
 	}
+	markPhase("list_chats")
 
 	cleanupPending, err := deleteWorkspaceFolderWithCleanup(r.Context(), workspacePath)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to delete workflow folder: %v", err), http.StatusInternalServerError)
 		return
 	}
-	api.deleteDurableChatSessionsAfterBulkDelete("workflow folder delete", codeSessionPinCaller(r.Context()), builderSessionIDs)
+	markPhase("remove_folder")
 
 	deleteWorkflowRuntime(manifest.ID)
 
 	api.workflowOrchestratorContextMux.Lock()
-	if cancelFunc, ok := api.workflowOrchestratorContexts[manifest.ID]; ok {
-		cancelFunc()
-		delete(api.workflowOrchestratorContexts, manifest.ID)
-	}
+	cancelFunc := api.workflowOrchestratorContexts[manifest.ID]
+	delete(api.workflowOrchestratorContexts, manifest.ID)
 	api.workflowOrchestratorContextMux.Unlock()
+	if cancelFunc != nil {
+		cancelFunc()
+	}
 
 	api.workflowStepIDMux.Lock()
 	delete(api.workflowStepIDs, manifest.ID)
@@ -801,6 +816,11 @@ func (api *StreamingAPI) handleDeleteWorkflowFolder(w http.ResponseWriter, r *ht
 	api.workflowObjectiveMux.Lock()
 	delete(api.workflowObjectives, manifest.ID)
 	api.workflowObjectiveMux.Unlock()
+	markPhase("stop_runtime")
+	// Stop the deleted workflow before taking its sessions' append locks, so
+	// its runtime cannot keep adding history while cleanup waits for the DB.
+	api.deleteDurableChatSessionsAfterBulkDelete("workflow folder delete", codeSessionPinCaller(r.Context()), builderSessionIDs)
+	markPhase("remove_chat_history")
 
 	message := fmt.Sprintf("Deleted workflow folder %s", workspacePath)
 	if cleanupPending {

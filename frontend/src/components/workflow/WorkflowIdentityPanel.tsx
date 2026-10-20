@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Loader2, Tag, Target, Trash2 } from 'lucide-react'
 import { Button } from '../ui/Button'
 import ConfirmationDialog from '../ui/ConfirmationDialog'
@@ -9,6 +9,7 @@ import { READ_ONLY_TITLE, useCanWriteWorkflow } from '../../hooks/useCanWriteWor
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
+import { useChatStore } from '../../stores/useChatStore'
 import { AskAIButton } from './AskAIButton'
 import { SoulViewer } from './SoulViewer'
 import { StatusBanner } from './bots/StatusBanner'
@@ -30,6 +31,8 @@ export default function WorkflowIdentityPanel({ workspacePath, relayMode = false
   const [error, setError] = useState<string | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const currentWorkspace = useRef(workspacePath)
+  currentWorkspace.current = workspacePath
 
   useEffect(() => {
     setLabelDraft(workflow?.manifest.label ?? '')
@@ -62,19 +65,21 @@ export default function WorkflowIdentityPanel({ workspacePath, relayMode = false
   }
 
   const remove = async () => {
-    if (!canWriteWorkflow) return
+    if (!canWriteWorkflow || deleting) return
     setDeleting(true)
+    // Confirmation is complete. Keep navigation usable while the server
+    // finishes deletion; only this workflow's Delete button stays disabled.
+    setConfirmingDelete(false)
     setError(null)
     try {
-      await useWorkflowManifestStore.getState().deleteWorkflow(workspacePath)
-      useGlobalPresetStore.getState().clearActivePreset('workflow')
-      await Promise.all([
-        useGlobalPresetStore.getState().refreshPresets(),
-        useWorkflowManifestStore.getState().refreshWorkflows(),
-      ])
-      useWorkflowStore.getState().setShowWorkspacePane(false)
+      await useGlobalPresetStore.getState().deleteWorkflow(workspacePath)
+      if (currentWorkspace.current === workspacePath && !useGlobalPresetStore.getState().activePresetIds.workflow) {
+        useWorkflowStore.getState().setShowWorkspacePane(false)
+      }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : `Failed to delete ${relayMode ? 'Flow' : 'automation'}. Please try again.`)
+      const message = cause instanceof Error ? cause.message : `Failed to delete ${relayMode ? 'Flow' : 'automation'}. Please try again.`
+      useChatStore.getState().addToast(message, 'error')
+      if (currentWorkspace.current === workspacePath) setError(message)
     } finally {
       setDeleting(false)
       setConfirmingDelete(false)
@@ -144,7 +149,8 @@ export default function WorkflowIdentityPanel({ workspacePath, relayMode = false
             disabled={!canWriteWorkflow || deleting}
             title={!canWriteWorkflow ? READ_ONLY_TITLE : undefined}
           >
-            <Trash2 className="h-4 w-4" /> Delete {relayMode ? 'Flow' : 'workflow'}
+            {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            {deleting ? 'Deleting…' : `Delete ${relayMode ? 'Flow' : 'workflow'}`}
           </Button>
         </div>
       </SettingsCard>

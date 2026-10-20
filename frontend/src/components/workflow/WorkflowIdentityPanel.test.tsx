@@ -14,6 +14,8 @@ const { manifestState, presetState, workflowState } = vi.hoisted(() => ({
   },
   presetState: {
     clearActivePreset: vi.fn(),
+    deleteWorkflow: vi.fn(async () => {}),
+    activePresetIds: { workflow: null as string | null },
     refreshPresets: vi.fn(async () => {}),
   },
   workflowState: {
@@ -131,7 +133,30 @@ it("deletes through the confirm dialog and closes the pane", async () => {
     confirm.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
   await act(async () => {});
-  expect(manifestState.deleteWorkflow).toHaveBeenCalledWith("/workflows/demo");
-  expect(presetState.clearActivePreset).toHaveBeenCalledWith("workflow");
+  expect(presetState.deleteWorkflow).toHaveBeenCalledWith("/workflows/demo");
+  expect(manifestState.refreshWorkflows).not.toHaveBeenCalled();
+  expect(presetState.refreshPresets).not.toHaveBeenCalled();
   expect(workflowState.setShowWorkspacePane).toHaveBeenCalledWith(false);
+});
+
+it("dismisses confirmation before a slow delete and preserves a newer workspace selection", async () => {
+  let finish!: () => void;
+  presetState.deleteWorkflow.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+  const host = await renderPanel();
+  const trigger = Array.from(host.querySelectorAll("button")).find(button => button.textContent?.includes("Delete workflow"))!;
+  await act(async () => trigger.click());
+  const confirmation = document.body.querySelector('input[aria-label="Confirmation text"]') as HTMLInputElement;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!.call(confirmation, "Demo");
+    confirmation.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  const confirm = Array.from(document.body.querySelectorAll("button")).find(button => button.textContent === "Delete workflow" && !host.contains(button))!;
+  await act(async () => confirm.click());
+  expect(document.body.querySelector('input[aria-label="Confirmation text"]')).toBeNull();
+  expect(host.textContent).toContain("Deleting…");
+  expect(workflowState.setShowWorkspacePane).not.toHaveBeenCalled();
+  presetState.activePresetIds.workflow = "another-workflow";
+  await act(async () => finish());
+  expect(workflowState.setShowWorkspacePane).not.toHaveBeenCalled();
+  presetState.activePresetIds.workflow = null;
 });

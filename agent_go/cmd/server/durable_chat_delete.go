@@ -29,6 +29,7 @@ func (api *StreamingAPI) deleteDurableChatSessions(sessionIDs []string) error {
 		return nil
 	}
 	var errs []error
+	ready := make([]string, 0, len(sessionIDs))
 	for _, sessionID := range sessionIDs {
 		owner, err := api.eventStore.DurableChatOwner(sessionID)
 		if err != nil {
@@ -41,9 +42,10 @@ func (api *StreamingAPI) deleteDurableChatSessions(sessionIDs []string) error {
 				continue
 			}
 		}
-		if err := api.eventStore.DeleteDurableChatSession(sessionID); err != nil {
-			errs = append(errs, fmt.Errorf("delete durable chat %s: %w", sessionID, err))
-		}
+		ready = append(ready, sessionID)
+	}
+	if err := api.eventStore.DeleteDurableChatSessions(ready); err != nil {
+		errs = append(errs, fmt.Errorf("delete durable chats: %w", err))
 	}
 	return errors.Join(errs...)
 }
