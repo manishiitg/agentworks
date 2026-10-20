@@ -37,7 +37,7 @@ func (api *StreamingAPI) ensureAgentEmailInbox(ctx context.Context, profile, pro
 	return api.gmailInbound.Store.EnsureInbox(ctx, gmailinbound.Inbox{ID: id, ProfileID: profile, ProjectID: project, WorkspacePath: workspace, OwnerID: owner, Address: address})
 }
 
-// The same sharing checks protect browser, MCP and Watcher snapshots. No inbox ACL exists.
+// The same sharing checks protect browser, MCP and Watcher snapshots. MCP follows the person’s current role. No inbox ACL exists.
 func (api *StreamingAPI) resolveAgentEmailInbox(ctx context.Context, workspace string) (gmailinbound.Inbox, error) {
 	claims := GetUserFromContext(ctx)
 	if claims == nil || userAccessForClaims(claims).Disabled {
@@ -56,15 +56,7 @@ func (api *StreamingAPI) resolveAgentEmailInbox(ctx context.Context, workspace s
 		if err != nil || m.ID == "" {
 			return gmailinbound.Inbox{}, fmt.Errorf("Agent inbox unavailable")
 		}
-		if token := claims.AccessToken; token != nil {
-			if product.ProfileID == "code" {
-				if !externalCodeRunAllowed(claims) || ref.OwnerID != sanitizeUserIDForPath(user) {
-					return gmailinbound.Inbox{}, fmt.Errorf("Own Code access required")
-				}
-			} else if !token.Allows("crews:read") || !token.AllowsCrew(m.ID) {
-				return gmailinbound.Inbox{}, fmt.Errorf("Crew read access required")
-			}
-		}
+
 		return api.ensureAgentEmailInbox(ctx, product.ProfileID, m.ID, ref.Root, ref.OwnerID)
 	}
 	workspace = canonicalCrewWorkspaceRoot(workspace)
@@ -72,9 +64,7 @@ func (api *StreamingAPI) resolveAgentEmailInbox(ctx context.Context, workspace s
 	if level == WorkflowAccessNone || m == nil || m.ID == "" {
 		return gmailinbound.Inbox{}, fmt.Errorf("Agent inbox unavailable")
 	}
-	if token := claims.AccessToken; token != nil && (!token.Allows("workflows:read") || !token.AllowsWorkflow(m.ID)) {
-		return gmailinbound.Inbox{}, fmt.Errorf("Workflow read access required")
-	}
+
 	owners := m.effectiveOwners()
 	if len(owners) == 0 {
 		return gmailinbound.Inbox{}, fmt.Errorf("Agent owner unavailable")

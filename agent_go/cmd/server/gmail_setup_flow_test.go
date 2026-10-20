@@ -162,7 +162,7 @@ func TestGmailSetupRefusesAnOAuthAppChangedAfterReview(t *testing.T) {
 func TestGmailSetupToolRequiresInteractiveAdminAndDoesNotProvisionOnPrepare(t *testing.T) {
 	api, ctx := gmailSetupFixture(t)
 	reg := &recordingRegistrar{}
-	if err := api.registerGmailTriggerTools(reg, "human", "Workflow/mail"); err != nil {
+	if err := api.registerGmailSetupTool(reg, "human"); err != nil {
 		t.Fatal(err)
 	}
 	tool := reg.tools["setup_gmail_inbound"].exec

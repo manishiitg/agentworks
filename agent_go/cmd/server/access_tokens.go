@@ -386,8 +386,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return externalCostsAllowed(c)
 	}
 	if tool.Name == "agent_inbox" {
-		return !IsLocalMode() && (c.AccessToken == nil || c.AccessToken.Allows("workflows:read") || c.AccessToken.Allows("crews:read") || externalCodeRunAllowed(c))
+		return !IsLocalMode() && c != nil
 	}
+
 	if tool.Name == "manage_agent_email" {
 		return !IsLocalMode() && externalUsersAllowed(c)
 	}
