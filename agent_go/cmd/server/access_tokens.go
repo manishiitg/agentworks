@@ -99,6 +99,16 @@ func accessTokenClaims(t accesstokens.Token) (*UserClaims, error) {
 		c.Username = rec.Username
 		c.Email = rec.Email
 	}
+	// MCP acts with the person's current role (owner, 2026-10-20: "mcp = role
+	// of user"); what was picked when the token was made no longer narrows it.
+	// Service accounts, device links, agent-bound and project connections keep
+	// their own grant.
+	if t.KnowledgebaseIdentityID == "" && t.BoundAgentID == "" && t.ProjectKind == "" && t.ProjectIdentity == "" && !t.Allows("devices:connect") {
+		t.Scopes = mcpOAuthPersonScopes(c)
+		t.AllWorkflows, t.AllCrews = true, true
+		t.WorkflowIDs, t.CrewIDs = nil, nil
+		t.FileGuard, t.KnowledgebaseFolders = nil, nil
+	}
 	if t.KnowledgebaseIdentityID != "" {
 		if !knowledgebaseMCPAllowed(c) {
 			return nil, accesstokens.ErrInvalid
