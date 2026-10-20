@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useId } from 'react'
 import { Layers, Search } from 'lucide-react'
-import { listFunctionReferences, type FunctionReference } from '../api/functionReferences'
 import { workflowManifestApi } from '../services/api'
 import { useAuthStore } from '../stores/useAuthStore'
 import { loadProductProjects } from '../platform/chat/productProjects'
@@ -15,26 +14,9 @@ interface WorkflowItem {
   kind: 'workflow' | 'crew' | 'pulse'
   icon?: string
   secondaryLabel?: string
-  functionTarget?: string
-  functionName?: string
 }
 
-const referenceRowKey = (item: WorkflowItem) => JSON.stringify([item.presetId, item.functionName ?? null])
-
-interface FunctionResult {
-  loading: boolean
-  items: FunctionReference[]
-  error?: string
-}
-
-// Discovery is fresh for each opening/account. Limit concurrent requests so
-// searching all accessible projects does not flood the metadata endpoint.
-interface FunctionDiscovery {
-  cancelled: boolean
-  active: number
-  queue: WorkflowItem[]
-  requested: Set<string>
-}
+const referenceRowKey = (item: WorkflowItem) => item.presetId
 
 interface WorkflowSelectionDialogProps {
   isOpen: boolean
@@ -61,9 +43,6 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
   const searchInputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const userID = useAuthStore(state => state.user?.id)
-  const functionDiscovery = useMemo<FunctionDiscovery>(() => ({ cancelled: false, active: 0, queue: [], requested: new Set() }), [isOpen, userID])
-  const [functionState, setFunctionState] = useState<{ discovery: FunctionDiscovery; results: Record<string, FunctionResult> } | null>(null)
-  const functionResults = functionState?.discovery === functionDiscovery ? functionState.results : {}
 
   // Refs so keyboard handler always has fresh values
   const selectedIndexRef = useRef(0)
@@ -88,10 +67,6 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
     }
   }, [isOpen])
 
-  useEffect(() => {
-    functionDiscovery.cancelled = false
-    return () => { functionDiscovery.cancelled = true }
-  }, [functionDiscovery])
   const [referenceResult, setReferenceResult] = useState<{ userID?: string; items: WorkflowItem[]; pending: number } | null>(null)
   const [loadError, setLoadError] = useState(false)
   // Fetch fresh permission-filtered workflows and user-scoped Crew projects
@@ -119,7 +94,6 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
         workspacePath: workflow.workspace_path,
         kind: 'workflow',
         icon: workflow.manifest.icon,
-        functionTarget: `workflow:${workflow.manifest.id || workflow.workspace_path}`,
       }))
     }).catch(failed).finally(finish)
     void loadProductProjects(WORK_PROJECTS_ROOT, WORK_PROFILE_ID, { includeOwnSharedProjects: true }).then(crews => {
@@ -132,7 +106,6 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
           workspacePath: crew.workspacePath,
           kind: 'crew',
           icon: crew.identity?.icon,
-          functionTarget: `workspace:${crew.product}:${crew.id}`,
         }
       })
     }).catch(failed).finally(finish)
@@ -144,55 +117,18 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
     return [{ presetId: 'pulse', label: 'pulse', secondaryLabel: 'Ask this workflow\'s Pulse', workspacePath: '', kind: 'pulse' as const }, ...items]
   }, [includePulse, isOpen, referenceResult, userID])
 
-  useEffect(() => {
-    if (!isOpen) return
-    const publish = (project: string, result: FunctionResult) => {
-      if (functionDiscovery.cancelled) return
-      setFunctionState(previous => ({
-        discovery: functionDiscovery,
-        results: { ...(previous?.discovery === functionDiscovery ? previous.results : {}), [project]: result },
-      }))
-    }
-    for (const project of allReferences) {
-      if (!project.functionTarget || functionDiscovery.requested.has(project.presetId)) continue
-      functionDiscovery.requested.add(project.presetId)
-      functionDiscovery.queue.push(project)
-      publish(project.presetId, { loading: true, items: [] })
-    }
-    const pump = () => {
-      while (!functionDiscovery.cancelled && functionDiscovery.active < 4 && functionDiscovery.queue.length) {
-        const project = functionDiscovery.queue.shift()!
-        functionDiscovery.active += 1
-        void listFunctionReferences(project.functionTarget!).then(items => {
-          publish(project.presetId, { loading: false, items })
-        }).catch(() => {
-          publish(project.presetId, { loading: false, items: [], error: 'Functions are unavailable. Reopen to retry.' })
-        }).finally(() => {
-          functionDiscovery.active -= 1
-          pump()
-        })
-      }
-    }
-    pump()
-  }, [allReferences, functionDiscovery, isOpen])
-
   const query = localQuery.toLowerCase().trim()
   const projectMatches = (project: WorkflowItem) => !query ||
     project.label.toLowerCase().includes(query) ||
     !!project.secondaryLabel?.toLowerCase().includes(query) ||
     project.kind.includes(query) ||
     project.workspacePath.toLowerCase().includes(query)
-  const visibleFunctions = (project: WorkflowItem) => (functionResults[project.presetId]?.items || []).filter(fn =>
-    projectMatches(project) || fn.name.toLowerCase().includes(query) || fn.description?.toLowerCase().includes(query),
-  )
 
-  // A function-name match retains its project as context, even when that
-  // project's name does not match. Internal paths stay searchable but are
-  // displayed only on hover.
+  // Internal paths stay searchable but are displayed only on hover.
   const filteredWorkflows = (() => {
     if (!localQuery.trim()) return allReferences
 
-    const filtered = allReferences.filter(project => projectMatches(project) || visibleFunctions(project).length > 0)
+    const filtered = allReferences.filter(projectMatches)
 
     filtered.sort((a, b) => {
       const aExact = a.label.toLowerCase() === query
@@ -209,12 +145,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
     return filtered
   })()
 
-  // Projects and their functions share one selection model. Opening function
-  // metadata never changes what Enter selects or steals focus from search.
-  const navigationRows = filteredWorkflows.flatMap(workflow => [
-    workflow,
-    ...visibleFunctions(workflow).map(fn => ({ ...workflow, functionName: fn.name })),
-  ])
+  const navigationRows = filteredWorkflows
   const selectedIndex = Math.max(0, navigationRows.findIndex(item => referenceRowKey(item) === selectedPresetId))
   const selectedWorkflow = navigationRows[selectedIndex]
 
@@ -272,9 +203,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
   // Nothing matches the typed reference (e.g. a ticket number like #1764):
   // close instead of holding the composer's Enter behind an empty picker.
   const loadingReferences = !referenceResult || referenceResult.pending > 0
-  const loadingFunctions = allReferences.some(project => project.functionTarget && (!functionResults[project.presetId] || functionResults[project.presetId].loading))
-  const functionError = Object.values(functionResults).some(result => result.error)
-  const nothingMatches = isOpen && !loadError && !functionError && !loadingReferences && !loadingFunctions && !!query && filteredWorkflows.length === 0
+  const nothingMatches = isOpen && !loadError && !loadingReferences && !!query && filteredWorkflows.length === 0
   useEffect(() => {
     if (nothingMatches) onCloseRef.current()
   }, [nothingMatches])
@@ -306,7 +235,7 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
             aria-expanded="true"
             aria-controls={listID}
             aria-activedescendant={selectedWorkflow ? rowID(selectedWorkflow) : undefined}
-            placeholder="Search projects and functions…"
+            placeholder="Search projects…"
             value={localQuery}
             onChange={e => setLocalQuery(e.target.value)}
             onKeyDown={e => {
@@ -321,10 +250,10 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
       </div>
 
       {/* Workflow list */}
-      <div ref={listRef} id={listID} role="listbox" aria-label="Projects and functions" className="overflow-y-auto max-h-64">
+      <div ref={listRef} id={listID} role="listbox" aria-label="Projects" className="overflow-y-auto max-h-64">
         {filteredWorkflows.length === 0 ? (
           <div className="px-3 py-4 text-center text-muted-foreground text-sm">
-            {loadingReferences ? 'Loading accessible references…' : loadingFunctions ? 'Searching functions…' : loadError ? 'Unable to load accessible references. Close and reopen to retry.' : functionError ? 'Some functions could not be searched. Reopen to retry.' : localQuery ? 'No references found' : 'No accessible workflows or Crews available'}
+            {loadingReferences ? 'Loading accessible references…' : loadError ? 'Unable to load accessible references. Close and reopen to retry.' : localQuery ? 'No references found' : 'No accessible workflows or Crews available'}
           </div>
         ) : (
           filteredWorkflows.map(workflow => (
@@ -352,31 +281,13 @@ export const WorkflowSelectionDialog: React.FC<WorkflowSelectionDialogProps> = (
                 </div>
               </div>
             </div>
-            {workflow.functionTarget && (functionResults[workflow.presetId]?.loading || functionResults[workflow.presetId]?.error || visibleFunctions(workflow).length > 0) && <div className="border-b border-border bg-muted/30 py-1 pl-9 pr-3" data-testid="reference-functions">
-              {functionResults[workflow.presetId]?.loading || functionResults[workflow.presetId]?.error
-                ? <p className="py-2 text-xs text-muted-foreground" role="status">{functionResults[workflow.presetId]?.loading ? 'Loading functions…' : functionResults[workflow.presetId]?.error}</p>
-                : visibleFunctions(workflow).map(fn => <button
-                    type="button" key={fn.name}
-                    id={rowID({ ...workflow, functionName: fn.name })}
-                    role="option"
-                    tabIndex={-1}
-                    aria-label={`${workflow.label}: ${fn.name}`}
-                    title={fn.description || fn.name}
-                    data-reference-row
-                    aria-selected={selectedWorkflow?.presetId === workflow.presetId && selectedWorkflow?.functionName === fn.name}
-                    className={`block w-full rounded px-2 py-1.5 text-left ${selectedWorkflow?.presetId === workflow.presetId && selectedWorkflow?.functionName === fn.name ? 'bg-primary/10 text-primary' : 'hover:bg-muted'}`}
-                    onMouseEnter={() => setSelectedPresetId(referenceRowKey({ ...workflow, functionName: fn.name }))}
-                    onFocus={() => setSelectedPresetId(referenceRowKey({ ...workflow, functionName: fn.name }))}
-                    onClick={() => onSelectWorkflow({ ...workflow, functionName: fn.name })}
-                  ><span className="block truncate text-xs font-medium">{fn.name}</span></button>)}
-            </div>}
             </div>
           ))
         )}
       </div>
-      {filteredWorkflows.length > 0 && (loadingReferences || loadingFunctions || loadError || functionError) && (
+      {filteredWorkflows.length > 0 && (loadingReferences || loadError) && (
         <div className="border-t border-border px-3 py-1.5 text-xs text-muted-foreground" role="status">
-          {loadingReferences ? 'Loading more references…' : loadingFunctions ? 'Searching functions…' : 'Some references could not be loaded. Reopen to retry.'}
+          {loadingReferences ? 'Loading more references…' : 'Some references could not be loaded. Reopen to retry.'}
         </div>
       )}
 
