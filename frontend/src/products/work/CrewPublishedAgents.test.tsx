@@ -18,8 +18,8 @@ async function render(check: (host: HTMLDivElement) => Promise<void>) {
 it('explains an empty list in Connections without adding a tab-strip control or starting a conversation', async () => {
   vi.mocked(api.post).mockResolvedValue({ data: { agents: [] } })
   await render(async host => {
-    expect(host.textContent).toContain('Bring an agent you already use on your computer into this project.')
-    expect(host.querySelector('summary')?.textContent).toBe('How to add an agent')
+    expect(host.textContent).toContain('Nothing brought in yet. You can bring in a chat you started on your computer and keep working on it inside this Crew.')
+    expect(host.querySelector('summary')?.textContent).toBe('How to bring one in')
     expect(api.post).toHaveBeenCalledExactlyOnceWith('/api/workspaces', { action: 'agents', workspace_id: 'work:one' })
     expect(openPublishedAgentChat).not.toHaveBeenCalled()
   })

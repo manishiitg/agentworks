@@ -50,7 +50,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     </Group>
     {allowed('mcp') && <Group title="Connections">
       <WorkspaceConnectionRows onOpen={openConnection} workMode enabledPanels={enabledPanels} />
-      {projectId && <Row icon={Laptop} onClick={() => openConnection('agents')}>Agents from your computer</Row>}
+      {projectId && <Row icon={Laptop} onClick={() => openConnection('agents')}>Chats from your computer</Row>}
     </Group>}
     <Group title="Ops" collapsed>
       {allowed('plan') && <Row icon={Route} onClick={() => onOpen('plan')}>Plan</Row>}

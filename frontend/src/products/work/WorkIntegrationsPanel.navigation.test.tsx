@@ -21,7 +21,7 @@ vi.mock('./WorkIdentityPanel', () => ({ WorkFoldersSection: () => <div data-cont
 vi.mock('../../components/workflow/WorkflowBotsPanel', () => ({ default: ({ fixedChannel, channelOnly, ownBotOnly }: any) => <div data-content={fixedChannel} data-channel-only={String(channelOnly)} data-own-bot-only={String(ownBotOnly)}>Existing {fixedChannel}</div> }))
 vi.mock('../../components/workflow/WorkflowEmailPanel', () => ({ default: () => <div data-content="gmail">Existing Google apps</div> }))
 vi.mock('../../components/integrations/ProjectMcpSetupPanel', () => ({ ProjectMcpSetupPanel: () => <div data-content="cli">Existing MCP setup</div> }))
-vi.mock('./CrewPublishedAgents', () => ({ CrewPublishedAgents: () => <div data-content="agents">Agents from your computer</div> }))
+vi.mock('./CrewPublishedAgents', () => ({ CrewPublishedAgents: () => <div data-content="agents">Chats from your computer</div> }))
 vi.mock('./McpAppsSection', () => ({ McpAppsSection: () => null }))
 vi.mock('./codeLocalFiles', () => ({ useCodeFilesPreference: () => ({ location: 'server' }) }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (value: unknown) => unknown) => select({ chatTabs: {} }) }))
@@ -103,7 +103,7 @@ it('does not expose disabled bot channels through Use & share or direct targets'
 it('keeps published agents discoverable in Connections and mounts only the selected list', async () => {
   const host = await mount()
   expect(host.querySelector('[data-content="agents"]')).toBeNull()
-  await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Agents from your computer')!.click())
+  await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Chats from your computer')!.click())
   expect(host.querySelector('[data-content="agents"]')).not.toBeNull()
   expect(host.querySelector('[data-content="mcp"]')).toBeNull()
   await act(async () => state.target('overview'))
@@ -114,7 +114,7 @@ it('keeps published agents discoverable in Connections and mounts only the selec
 
 it('does not expose private published agents to a viewer or through a direct section target', async () => {
   const host = await mount(CREW_PRODUCT, undefined, false)
-  expect(host.textContent).not.toContain('Agents from your computer')
+  expect(host.textContent).not.toContain('Chats from your computer')
   await act(async () => state.target('agents'))
   expect(host.querySelector('[data-content="agents"]')).toBeNull()
 })

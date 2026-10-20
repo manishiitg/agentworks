@@ -122,7 +122,7 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
   const pluginTabs = projectPluginTabs(allowedProducts).filter(option => option.value !== 'skills').filter(option => !enabledPanels || (option.value === 'secrets' ? enabledPanels.has('secrets') || integrationProductAvailable('mcp-gateway', allowedProducts) : enabledPanels.has('mcp')))
   const pluginTab = overview && pluginTabs.some(option => option.value === 'connected') ? 'connected' : preferredPluginTab
   const activePluginTab = pluginTabs.some(option => option.value === pluginTab) ? pluginTab : pluginTabs[0]?.value ?? 'connected'
-  const navigationOptions = [...integrationNavigationOptions(visibleTabs, pluginTabs), ...(canEdit ? [{ value: 'agents', label: 'Agents from your computer', icon: Laptop }] : [])]
+  const navigationOptions = [...integrationNavigationOptions(visibleTabs, pluginTabs), ...(canEdit ? [{ value: 'agents', label: 'Chats from your computer', icon: Laptop }] : [])]
   const selectConnection = (target: string) => {
     if (target === 'agents' && canEdit) { setSharing(false); setOverview(false); setTab('agents'); return }
     if (target === 'cli' || (target === 'slack' && visibleTabs.some(option => option.value === 'slack')) || (target === 'whatsapp' && visibleTabs.some(option => option.value === 'whatsapp'))) { setSharing(true); setShareChannel(target as ProjectChannel); return }
@@ -164,7 +164,7 @@ export function WorkIntegrationsPanel({ canEdit = false, workspacePath, projectI
         {sharing ? <>
           {shareChannel === 'cli' ? <ProjectMcpSetupPanel workspacePath={workspacePath} /> : <>{shareChannel === 'slack' ? <ProductSlackPanel workspacePath={workspacePath} noun="Crew" /> : <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" scopeNoun="project" onAsk={onAsk} target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }} />}</>}
         </> : <>
-        {overview && canEdit && <button type="button" onClick={() => selectConnection('agents')} className="mb-4 flex w-full items-center gap-2 rounded-md border border-border p-3 text-left text-sm hover:bg-muted/40"><Laptop className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />Agents from your computer</button>}
+        {overview && canEdit && <button type="button" onClick={() => selectConnection('agents')} className="mb-4 flex w-full items-center gap-2 rounded-md border border-border p-3 text-left text-sm hover:bg-muted/40"><Laptop className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />Chats from your computer</button>}
         {activeTab === 'agents' && canEdit && <CrewPublishedAgents key={`${product.profileId}:${projectId}`} profileId={product.profileId} projectId={projectId} />}
         {overview && <ConnectedProjectAccounts workspacePath={workspacePath} options={navigationOptions} onOpen={selectConnection} />}
         {activeTab === 'apps' && <ProjectPluginsPanel tab={activePluginTab}

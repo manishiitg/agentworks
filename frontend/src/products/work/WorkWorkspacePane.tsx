@@ -86,7 +86,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ session
     ...(has('schedules') ? projectAutomationSections({ incomingEmail, triggers: enabledPanels?.has('triggers') !== false }).map(item => ({ id: `schedules:${item.id}`, label: item.label, group: 'Use & share' })) : []),
     ...(canConnect ? projectChannelSections(bots, bots).map(item => ({ id: `mcp:${item.id}`, label: item.label, group: 'Use & share' })) : []),
     ...(canConnect ? projectConnectionSections({ allowedProducts, workMode: true, enabledPanels, onOpen: () => {} }).map(item => ({ id: item.id, label: item.label, group: 'Connections' })) : []),
-    ...(canConnect ? [{ id: 'mcp:agents', label: 'Agents from your computer', group: 'Connections' }] : []),
+    ...(canConnect ? [{ id: 'mcp:agents', label: 'Chats from your computer', group: 'Connections' }] : []),
     ...admitted.filter(item => !['dashboard', 'browser', 'schedules', 'mcp'].includes(item.id)).map(item => ({ id: item.id, label: item.label, group: 'Ops', sections: workPanelSections(item.id, isCode).filter(section => item.id !== 'memory' || !enabledPanels || enabledPanels.has(section.id)) })),
   ], (key, section) => {
     const [id, destination] = key.split(':')

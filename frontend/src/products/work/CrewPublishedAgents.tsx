@@ -51,16 +51,16 @@ export function CrewPublishedAgents({ profileId, projectId }: { profileId: strin
     } catch (cause) { if (isChatIdentityCurrent(identity)) setError(localFileError(cause)) }
     finally { if (isChatIdentityCurrent(identity)) setBusy(false) }
   }
-  return <section aria-label="Agents from your computer" className="space-y-3 text-sm">
-    <p className="text-xs text-muted-foreground">Open an agent you published to this project. Each agent has its own private chat.</p>
+  return <section aria-label="Chats from your computer" className="space-y-3 text-sm">
+    <p className="text-xs text-muted-foreground">Chats you started on your computer (in Claude Code, Codex or Cursor) and brought into this Crew. Open one to keep working on it here. Each keeps its own private chat.</p>
     {busy && <p role="status" className="text-xs text-muted-foreground">Loading…</p>}
     {agents.map(agent => <div key={agent.agent_id} className="flex items-center gap-2 rounded-md border border-border p-2">
       <button type="button" className="min-w-0 flex-1 rounded px-2 py-1 text-left hover:bg-muted" disabled={busy} onClick={() => void choose(agent)}>{agent.name || 'Untitled agent'}</button>
-      <button type="button" className="shrink-0 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted" disabled={busy} onClick={() => void history(agent)} aria-label={`Download imported chat for ${agent.name || 'Untitled agent'}`}>Saved chat</button>
+      <button type="button" className="shrink-0 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted" disabled={busy} onClick={() => void history(agent)} aria-label={`Download a copy of the chat for ${agent.name || 'Untitled agent'}`}>Download copy</button>
     </div>)}
-    {!busy && !error && !agents.length && <p className="text-muted-foreground">Bring an agent you already use on your computer into this project.</p>}
-    <details className="text-xs text-muted-foreground"><summary className="w-fit cursor-pointer rounded underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">How to add an agent</summary>
-      <p className="mt-2 max-w-prose leading-relaxed">On your computer, choose <strong>Publish to Crew</strong> in the AgentWorks app and select this Crew. Developers can also run <code>agentworks publish</code> from a coding chat. Review what will be shared before publishing. Return here to open its chat.</p>
+    {!busy && !error && !agents.length && <p className="text-muted-foreground">Nothing brought in yet. You can bring in a chat you started on your computer and keep working on it inside this Crew.</p>}
+    <details className="text-xs text-muted-foreground"><summary className="w-fit cursor-pointer rounded underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">How to bring one in</summary>
+      <p className="mt-2 max-w-prose leading-relaxed">On your computer, open the AgentWorks app, choose <strong>Publish to Crew</strong> and pick this Crew. You see what will be shared before anything is sent. Then come back here and open it. Developers can also run <code>agentworks publish</code> from the coding chat.</p>
     </details>
     {error && <p role="alert" className="text-xs text-destructive">{error} <button type="button" className="underline" disabled={busy} onClick={() => setAttempt(value => value + 1)}>Retry</button></p>}
   </section>
