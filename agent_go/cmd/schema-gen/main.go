@@ -97,9 +97,6 @@ type EventDataUnion struct {
 	ContextCancelled *events.ContextCancelledEvent `json:"context_cancelled,omitempty"`
 
 	// Large Output Events
-	LargeToolOutputDetected       *events.LargeToolOutputDetectedEvent       `json:"large_tool_output_detected,omitempty"`
-	LargeToolOutputFileWritten    *events.LargeToolOutputFileWrittenEvent    `json:"large_tool_output_file_written,omitempty"`
-	LargeToolOutputFileWriteError *events.LargeToolOutputFileWriteErrorEvent `json:"large_tool_output_file_write_error,omitempty"`
 
 	// Fallback & Resilience Events
 	RetryAttempt *events.RetryAttemptEvent `json:"retry_attempt,omitempty"`
@@ -201,9 +198,6 @@ var EventRegistry = map[events.EventType]string{
 	events.ContextCancelled: "context_cancelled",
 
 	// Large Output Events
-	events.LargeToolOutputDetected:       "large_tool_output_detected",
-	events.LargeToolOutputFileWritten:    "large_tool_output_file_written",
-	events.LargeToolOutputFileWriteError: "large_tool_output_file_write_error",
 
 	// Fallback & Resilience Events
 	events.RetryAttempt: "retry_attempt",
@@ -443,11 +437,9 @@ type UnifiedEvent struct {
 	SystemPromptEvent events.SystemPromptEvent `json:"system_prompt"`
 	UserMessageEvent  events.UserMessageEvent  `json:"user_message"`
 
-	LargeToolOutputDetectedEvent    events.LargeToolOutputDetectedEvent    `json:"large_tool_output_detected"`
-	LargeToolOutputFileWrittenEvent events.LargeToolOutputFileWrittenEvent `json:"large_tool_output_file_written"`
-	TokenUsageEvent                 events.TokenUsageEvent                 `json:"token_usage"`
-	MaxTurnsReachedEvent            events.MaxTurnsReachedEvent            `json:"max_turns_reached"`
-	ContextCancelledEvent           events.ContextCancelledEvent           `json:"context_cancelled"`
+	TokenUsageEvent       events.TokenUsageEvent       `json:"token_usage"`
+	MaxTurnsReachedEvent  events.MaxTurnsReachedEvent  `json:"max_turns_reached"`
+	ContextCancelledEvent events.ContextCancelledEvent `json:"context_cancelled"`
 
 	// Additional MCP Agent Events that exist in backend
 
@@ -485,7 +477,6 @@ type UnifiedEvent struct {
 	VariablesExtractedEvent todo_creation_human.VariablesExtractedEvent `json:"variables_extracted"`
 
 	// Large Output Error Events
-	LargeToolOutputFileWriteErrorEvent events.LargeToolOutputFileWriteErrorEvent `json:"large_tool_output_file_write_error"`
 
 	// Nested types that need to be included in schema (not events themselves)
 	// TodoStep is used by frontend but not directly in events, so we include it here to ensure it's generated
