@@ -93,9 +93,11 @@ func inboundAddress(account, id string) (string, error) {
 	}
 	parts := strings.SplitN(strings.ToLower(a.Address), "@", 2)
 	base := strings.SplitN(parts[0], "+", 2)[0]
-	local := base + "+agent-" + strings.ReplaceAll(id, "-", "")
+	// All Crew addresses use the same short, stable suffix, including long Gmail usernames.
+	suffix := strings.ReplaceAll(id, "-", "")[:16]
+	local := base + "+agent-" + suffix
 	if len(local) > 64 {
-		return "", fmt.Errorf("Gmail account name is too long for a receiving address")
+		return "", fmt.Errorf("Choose a shorter Gmail address in My Vault for Crew inboxes")
 	}
 	return local + "@" + parts[1], nil
 }

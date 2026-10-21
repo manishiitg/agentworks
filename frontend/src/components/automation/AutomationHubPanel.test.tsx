@@ -55,7 +55,7 @@ it.each(['work','code'] as const)('opens the shared Inbox for %s and keeps Ask i
  inboxCapability.enabled=true
  storeState.workspaceViewTarget={view:'workshop',target:'email',token:1}
  try {
-  await act(async()=>root.render(<AutomationHubPanel entityType={profile==='work'||profile==='code'?'product':'workflow'} relayMode={profile==='relays'} workspacePath="Workflow/example" productTriggerScope={profile==='work'||profile==='code'?{profileId:profile,projectId:'example'}:undefined} onAskAI={onAsk}/>))
+  await act(async()=>root.render(<AutomationHubPanel entityType="product" workspacePath="Crew/example" productTriggerScope={{profileId:profile,projectId:'example'}} onAskAI={onAsk}/>))
   const inbox=host.querySelector<HTMLButtonElement>('[data-testid="incoming-email"]')
   expect(inbox).not.toBeNull()
   await act(async()=>inbox!.click())

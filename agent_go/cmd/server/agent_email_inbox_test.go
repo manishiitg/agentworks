@@ -18,6 +18,10 @@ import (
 )
 
 func TestAgentEmailInboxUsesOwnerVaultAccountAndServerOnly(t *testing.T) {
+	address, e := inboundAddress(strings.Repeat("a", 30)+"@example.com", agentEmailID("work", "stable"))
+	if e != nil || len(strings.SplitN(address, "@", 2)[0]) > 64 {
+		t.Fatalf("valid Gmail username rejected: %s %v", address, e)
+	}
 	env, ctx, root := conditionCodeFixture(t)
 	t.Setenv("LOCAL_MODE", "false")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
