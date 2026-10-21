@@ -2856,18 +2856,6 @@ func pulseLifecycleIntro(contextSummary, workspacePath, pulseRunID, runStatus, r
 		contextSummary, workspacePath, pulseRunID, runStatus, runFolder)
 }
 
-func runFolderMetadataIsTerminal(metadata *RunMetadata) bool {
-	if metadata == nil {
-		return false
-	}
-	switch strings.TrimSpace(strings.ToLower(metadata.Status)) {
-	case "completed", "failed", "canceled":
-		return true
-	default:
-		return false
-	}
-}
-
 type workflowNotificationContentInstructions struct {
 	runSummary             string
 	pulseSummary           string

@@ -121,11 +121,6 @@ func addAgentPresence(out map[string]any, a namedMessageAgent) {
 	}
 }
 
-func withAgentPresence(a namedMessageAgent, out map[string]interface{}) map[string]interface{} {
-	addAgentPresence(out, a)
-	return out
-}
-
 // The route of this message is distinct from the recipient's current presence.
 // An online stream alone never proves that the native chat received anything.
 func messageArrivalFields(m agentMessage) map[string]any {

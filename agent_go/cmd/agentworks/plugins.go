@@ -1174,18 +1174,6 @@ func desktopNotify(ctx context.Context, a agentworksclient.AgentAttachment, text
 	}
 }
 
-func agentSessionStatus(o *options, ctx context.Context) error {
-	root, err := agentworksclient.DefaultLocalBridgeRoot()
-	if err != nil {
-		return err
-	}
-	out, err := agentworksclient.CallLocalBridge(ctx, root, agentworksclient.LocalBridgeRequest{Action: "list"})
-	if err != nil {
-		return o.output(map[string]any{"sessions": []any{}, "bridge": "not running"})
-	}
-	return o.output(out)
-}
-
 func providerPIDHostKey(provider string, pid int) (string, error) {
 	if provider == "cursor" {
 		process, err := cursorProcessAt(pid)

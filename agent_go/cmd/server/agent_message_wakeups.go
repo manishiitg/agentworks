@@ -22,13 +22,6 @@ type agentWakeup struct {
 func materializeAgentWakeups(s *agentMessageStore, now time.Time) bool {
 	return materializeAgentWakeupsAllowed(s, now, nil)
 }
-func materializeAgentWakeupsWithPause(s *agentMessageStore, now time.Time) bool {
-	config, err := LoadSchedulerConfig(context.Background())
-	if err != nil {
-		return false
-	}
-	return materializeAgentWakeupsAllowed(s, now, config)
-}
 func materializeAgentWakeupsAllowed(s *agentMessageStore, now time.Time, config *SchedulerConfig) bool {
 	changed := false
 	for i := range s.Wakeups {

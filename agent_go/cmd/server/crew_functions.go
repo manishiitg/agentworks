@@ -1220,13 +1220,6 @@ func (api *StreamingAPI) settleCrewFunctionRun(ctx context.Context, call *crewFu
 	return true
 }
 
-func minDuration(a, b time.Duration) time.Duration {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // startCrewFunctionWatch resumes the caller's chat with the call's outcome
 // through the auto-notification pipeline. A call that times out and later
 // gets its answer resumes the chat again with that late answer.

@@ -157,10 +157,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) assembleStepRuntimeIdentity(config *a
 	return identitySkills, supplements
 }
 
-func isCodingCLIConfig(config *agents.OrchestratorAgentConfig) bool {
-	return config != nil && common.IsCLIProvider(config.LLMConfig.Primary.Provider)
-}
-
 // Every provider gets the same on-demand skill model. Only disk projection is
 // transport-specific; archived switches cannot reinject full procedural bodies.
 func usesProjectedReferenceSkills(_ *agents.OrchestratorAgentConfig, _ map[string]string) bool {

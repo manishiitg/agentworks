@@ -20,11 +20,6 @@ const externalRunPageBytes = 100 << 10
 // externalFinalAnswerRunes bounds final_answer.
 const externalFinalAnswerRunes = 20000
 
-func externalBoolArg(args map[string]any, name string) bool {
-	v, _ := args[name].(bool)
-	return v
-}
-
 // externalCompact reports whether a listing or status call wants the compact
 // view. Compact is the default (owner, 2026-10-08: nothing relies on the full
 // shape yet); compact: false returns the full one.
@@ -83,17 +78,6 @@ func (w *externalBufferedResponse) Write(data []byte) (int, error) {
 	}
 	return w.body.Write(data)
 }
-func (w *externalBufferedResponse) flushTo(target http.ResponseWriter) {
-	for key, values := range w.header {
-		target.Header()[key] = append([]string(nil), values...)
-	}
-	if w.status == 0 {
-		w.status = http.StatusOK
-	}
-	target.WriteHeader(w.status)
-	_, _ = target.Write(w.body.Bytes())
-}
-
 func externalPendingInputs(sessionID string) []virtualtools.HumanFeedbackRequest {
 	return virtualtools.GetHumanFeedbackStore().PendingForSession(sessionID, time.Now())
 }

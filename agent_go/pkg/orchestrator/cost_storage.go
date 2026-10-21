@@ -611,42 +611,6 @@ func TokenUsageTotalCostUSD(tokenFile *TokenUsageFile) float64 {
 	return TokenUsageLLMCostUSD(tokenFile) + TokenUsageToolCostUSD(tokenFile)
 }
 
-func ApplyToolCostUsage(tokenFile *TokenUsageFile, stepKey, aggregateKey string, usage *ToolCostUsage, now time.Time) {
-	if tokenFile == nil || usage == nil || usage.TotalCost <= 0 {
-		return
-	}
-	EnsureTokenUsageFileInitialized(tokenFile)
-	if now.IsZero() {
-		now = time.Now().UTC()
-	}
-	if tokenFile.CreatedAt.IsZero() {
-		tokenFile.CreatedAt = now
-	}
-	tokenFile.UpdatedAt = now
-	if usage.CreatedAt.IsZero() {
-		usage.CreatedAt = now
-	}
-	if usage.UpdatedAt.IsZero() {
-		usage.UpdatedAt = now
-	}
-	if aggregateKey == "" {
-		aggregateKey = usage.ToolName
-		if usage.Provider != "" {
-			aggregateKey += ":" + usage.Provider
-		}
-		if usage.ModelID != "" {
-			aggregateKey += ":" + usage.ModelID
-		}
-	}
-	tokenFile.ByTool[aggregateKey] = MergeToolCostUsage(tokenFile.ByTool[aggregateKey], usage)
-	if stepKey != "" {
-		if tokenFile.ByStepAndTool[stepKey] == nil {
-			tokenFile.ByStepAndTool[stepKey] = make(map[string]*ToolCostUsage)
-		}
-		tokenFile.ByStepAndTool[stepKey][aggregateKey] = MergeToolCostUsage(tokenFile.ByStepAndTool[stepKey][aggregateKey], usage)
-	}
-}
-
 func ClonePhaseTokenUsageFile(src *PhaseTokenUsageFile) *PhaseTokenUsageFile {
 	if src == nil {
 		return nil
@@ -675,52 +639,6 @@ func ClonePhaseTokenUsageFile(src *PhaseTokenUsageFile) *PhaseTokenUsageFile {
 	}
 
 	return clone
-}
-
-func MergePhaseTokenUsageFiles(dst, src *PhaseTokenUsageFile) *PhaseTokenUsageFile {
-	if src == nil {
-		return dst
-	}
-	if dst == nil {
-		return ClonePhaseTokenUsageFile(src)
-	}
-
-	if dst.CreatedAt.IsZero() || (!src.CreatedAt.IsZero() && src.CreatedAt.Before(dst.CreatedAt)) {
-		dst.CreatedAt = src.CreatedAt
-	}
-	if src.UpdatedAt.After(dst.UpdatedAt) {
-		dst.UpdatedAt = src.UpdatedAt
-	}
-	if dst.ByModel == nil {
-		dst.ByModel = make(map[string]*ModelTokenUsage)
-	}
-	if dst.ByPhaseAndModel == nil {
-		dst.ByPhaseAndModel = make(map[string]map[string]*ModelTokenUsage)
-	}
-	if dst.SessionCumulative == nil {
-		dst.SessionCumulative = make(map[string]*ModelTokenUsage)
-	}
-
-	for modelID, usage := range src.ByModel {
-		dst.ByModel[modelID] = MergeModelTokenUsage(dst.ByModel[modelID], usage)
-	}
-
-	for phaseID, modelMap := range src.ByPhaseAndModel {
-		if dst.ByPhaseAndModel[phaseID] == nil {
-			dst.ByPhaseAndModel[phaseID] = make(map[string]*ModelTokenUsage)
-		}
-		for modelID, usage := range modelMap {
-			dst.ByPhaseAndModel[phaseID][modelID] = MergeModelTokenUsage(dst.ByPhaseAndModel[phaseID][modelID], usage)
-		}
-	}
-	for sessionID, usage := range src.SessionCumulative {
-		current := dst.SessionCumulative[sessionID]
-		if current == nil || modelUsageSnapshotIsNewer(usage, current) {
-			dst.SessionCumulative[sessionID] = CloneModelTokenUsage(usage)
-		}
-	}
-
-	return dst
 }
 
 func ApplyModelTokenDataToPhaseTokenUsageFile(tokenFile *PhaseTokenUsageFile, phaseKey string, modelTokenData *ModelTokenData, now time.Time) {

@@ -49,10 +49,6 @@ func ConnectionToolDefinitions(canWrite bool) []ToolDefinition {
 	return mcpDefinitions(canWrite, false, false, false)
 }
 
-func MigrationConnectionToolDefinitions(canWrite bool) []ToolDefinition {
-	return mcpDefinitions(canWrite, false, true, false)
-}
-
 // ExternalConnectionToolDefinitions exposes direct access management to writable,
 // unrestricted external connections. Folder Owner/admin checks remain authoritative.
 // Managed workflow/Crew tools retain their content-only definitions.

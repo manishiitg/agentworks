@@ -17,19 +17,6 @@ func stringToolArg(args map[string]interface{}, key string) string {
 	return strings.TrimSpace(value)
 }
 
-func intToolArg(args map[string]interface{}, key string) int {
-	switch value := args[key].(type) {
-	case int:
-		return value
-	case int64:
-		return int(value)
-	case float64:
-		return int(value)
-	default:
-		return 0
-	}
-}
-
 func stringSliceFromToolArg(raw interface{}) []string {
 	if values, ok := raw.([]string); ok {
 		return normalizePulseEvidence(values)

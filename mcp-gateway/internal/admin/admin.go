@@ -180,10 +180,6 @@ func (a *Admin) CreateUser(id, email string) error {
 	return nil
 }
 
-func (a *Admin) CreateGroup(id, name string) error {
-	return a.CreateGroupWithDescription(id, name, "")
-}
-
 func (a *Admin) CreateGroupWithDescription(id, name, description string) error {
 	if !validID.MatchString(id) {
 		return errors.New("invalid group id")

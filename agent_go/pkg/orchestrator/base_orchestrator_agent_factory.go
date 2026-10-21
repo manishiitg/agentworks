@@ -54,26 +54,6 @@ func (e *BridgeSessionEventEmitter) EmitBlockingHumanFeedback(requestID, questio
 	}
 }
 
-func (e *BridgeSessionEventEmitter) EmitPlanApproval(question, contextText, yesLabel string) {
-	now := time.Now()
-	eventData := &orchEvents.PlanApprovalEvent{
-		BaseEventData: baseevents.BaseEventData{
-			Timestamp: now,
-		},
-		Question: question,
-		Context:  contextText,
-		YesLabel: yesLabel,
-	}
-	agentEvent := &baseevents.AgentEvent{
-		Type:      orchEvents.PlanApproval,
-		Timestamp: now,
-		Data:      eventData,
-	}
-	if err := e.Bridge.HandleEvent(context.Background(), agentEvent); err != nil {
-		// Best-effort emission
-	}
-}
-
 // CreateStandardAgentConfig creates a standardized agent configuration
 // use CreateAndSetupStandardAgent instead which combines configuration and setup.
 func (bo *BaseOrchestrator) CreateStandardAgentConfig(agentName string, maxTurns int, outputFormat agents.OutputFormat) *agents.OrchestratorAgentConfig {

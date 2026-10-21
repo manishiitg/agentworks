@@ -296,16 +296,6 @@ func messageEndpointMatches(e agentMessageEndpoint, userID string, c triggerLink
 	}
 	return false // an undelivered target cannot impersonate a receiving conversation
 }
-func endpointTarget(e agentMessageEndpoint) triggerTarget {
-	t := triggerTarget{NamedAgentID: e.NamedAgentID, Kind: e.Kind, Path: e.Path, Label: e.Label, CrewID: e.ID, CrewProfile: e.Profile, CrewOwner: e.UserID, TeamRecipientID: e.UserID}
-	if e.Kind == triggerCallerWorkflow {
-		t.Manifest = &WorkflowManifest{ID: e.ID}
-	}
-	if e.Session != "" {
-		t.Chat = &codeChat{Key: e.ChatKey, ID: e.ChatKey, SessionID: e.Session, Name: e.Label}
-	}
-	return t
-}
 func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) error {
 	// Existing reply addresses must not acknowledge new mail to a disabled
 	// Pulse. This also rechecks pending deliveries after a setting change.

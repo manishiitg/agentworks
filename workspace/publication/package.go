@@ -475,9 +475,6 @@ func HandoffTranscript(raw []byte) string {
 func Unpack(ctx context.Context, input io.Reader, sourceDir, historyDir string) (Manifest, error) {
 	return unpack(ctx, input, sourceDir, historyDir, false)
 }
-func UnpackFiles(ctx context.Context, input io.Reader, sourceDir, historyDir string) (Manifest, error) {
-	return unpack(ctx, input, sourceDir, historyDir, true)
-}
 func unpack(ctx context.Context, input io.Reader, sourceDir, historyDir string, filesOnly bool) (Manifest, error) {
 	var manifest Manifest
 	tr := tar.NewReader(io.LimitReader(input, MaxBytes+1))

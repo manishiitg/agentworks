@@ -43,11 +43,3 @@ func (hcpo *StepBasedWorkflowOrchestrator) grantSessionCDPHostDownloadsReadWrite
 		hcpo.GetLogger().Info("Added read-write CDP host Downloads grant: " + hostDownloads)
 	}
 }
-
-//nolint:unused // Used by the already-pushed read-only callers on a clean main checkout.
-func (hcpo *StepBasedWorkflowOrchestrator) grantSessionCDPHostDownloadsReadOnly(sessionID string) {
-	hostDownloads := common.GrantSessionCDPHostDownloadsReadOnly(sessionID, hcpo.effectiveBrowserModeForHostDownloads())
-	if hostDownloads != "" && hcpo.BaseOrchestrator != nil && hcpo.GetLogger() != nil {
-		hcpo.GetLogger().Info("Added read-only CDP host Downloads grant: " + hostDownloads)
-	}
-}

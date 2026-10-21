@@ -257,33 +257,6 @@ func (es *EventStore) ImportDurableChatEvents(sessionID string, imported []Event
 	return nil
 }
 
-func (es *EventStore) DurableChatMigrationComplete(sessionID string) (bool, error) {
-	if es == nil || strings.TrimSpace(sessionID) == "" {
-		return false, nil
-	}
-	es.mu.RLock()
-	journal := es.durableJournal
-	es.mu.RUnlock()
-	migrator, ok := journal.(DurableEventJournalMigrator)
-	if !ok {
-		return true, nil
-	}
-	return migrator.MigrationComplete(sessionID)
-}
-
-func (es *EventStore) MarkDurableChatMigrationComplete(sessionID string) error {
-	if es == nil || strings.TrimSpace(sessionID) == "" {
-		return nil
-	}
-	es.mu.RLock()
-	journal := es.durableJournal
-	es.mu.RUnlock()
-	if migrator, ok := journal.(DurableEventJournalMigrator); ok {
-		return migrator.MarkMigrationComplete(sessionID)
-	}
-	return nil
-}
-
 func (es *EventStore) DurableChatOwner(sessionID string) (string, error) {
 	if es == nil || strings.TrimSpace(sessionID) == "" {
 		return "", nil

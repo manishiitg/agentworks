@@ -454,10 +454,6 @@ func (bo *BaseOrchestrator) GetAllModelTokenUsage() map[string]*ModelTokenUsage 
 	return tokenFile.ByModel
 }
 
-func (bo *BaseOrchestrator) GetCurrentRunTokenUsageFile() *TokenUsageFile {
-	return newBaseOrchestratorTokenUsageStore(bo).readRun(context.Background(), bo.iterationFolder)
-}
-
 // GetRunTokenUsageFile returns the complete authoritative ledger projection
 // for a run, including every date shard the run spans.
 func (bo *BaseOrchestrator) GetRunTokenUsageFile(ctx context.Context, runFolder string) *TokenUsageFile {

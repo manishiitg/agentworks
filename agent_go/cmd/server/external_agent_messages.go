@@ -12,12 +12,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 )
 
-// An inbox is an address, not an access grant. Recheck both the authenticated
-// caller and the peer's current product/token selection on every operation.
-func (api *StreamingAPI) externalMessagePeer(ctx context.Context, claims *UserClaims, inboxID string, send bool) (agentMessageEndpoint, error) {
-	return api.externalMessagePeerForCaller(ctx, claims, externalCrewCaller(claims), inboxID, send)
-}
-
 func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claims *UserClaims, caller triggerLinkCaller, inboxID string, send bool) (agentMessageEndpoint, error) {
 	store, err := readAgentMessageSnapshot(ctx)
 	if err != nil {

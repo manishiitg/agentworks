@@ -6,8 +6,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 )
 
 // Crew paths: one parser, one resolver, one access rule.
@@ -70,10 +68,6 @@ func parseCrewPath(callerID, raw string) (crewPathRef, bool) {
 
 	}
 	return crewPathRef{}, false
-}
-
-func legacyCrewRoot(owner, id string) string {
-	return workspaceref.PhysicalPathOf(owner, workspaceref.CrewProjectsRoot, id)
 }
 
 // resolveCrewPath is the one entry point for a crew path from a request or a

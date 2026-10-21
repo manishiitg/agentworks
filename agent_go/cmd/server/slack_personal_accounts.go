@@ -42,16 +42,6 @@ type slackAccountsResponse struct {
 	SignInReady bool `json:"sign_in_ready"`
 }
 
-func slackSelected(owner, id, root string) bool {
-	attachments, _ := placeMCPAttachmentsFor(root)
-	for _, a := range attachments {
-		if a.Owner == owner && a.Server == id && a.Scope == "user" {
-			return true
-		}
-	}
-	return false
-}
-
 func personalSlackServer(owner, id string) (placeMCPServer, error) {
 	servers, err := listPlaceMCPServers(owner)
 	if err != nil {
@@ -272,4 +262,3 @@ func restrictSelectedToolsForSlack(selected, serverNames []string, entries []str
 	}
 	return append(out, entries...)
 }
-

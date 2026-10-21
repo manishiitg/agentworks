@@ -385,13 +385,6 @@ func (hctpeoa *WorkflowExecutionOnlyAgent) useProjectedReferenceSkills(templateV
 	return usesProjectedReferenceSkills(hctpeoa.BaseOrchestratorAgent.GetConfig(), templateVars)
 }
 
-func browserAuthoringRulesForExecution(templateVars map[string]string, useProjectedReferenceSkills bool) string {
-	if useProjectedReferenceSkills {
-		return ""
-	}
-	return BrowserAuthoringRulesFromTemplateVars(templateVars)
-}
-
 // executionOnlyUserMessageProcessor generates the user message for execution-only agent
 func (hctpeoa *WorkflowExecutionOnlyAgent) executionOnlyUserMessageProcessor(templateVars map[string]string) string {
 	if templateVars["IsContributionTurn"] == "true" {

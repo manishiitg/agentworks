@@ -336,16 +336,6 @@ func workspaceCreateTokenAllowed(claims *UserClaims, origin string) bool {
 	return true
 }
 
-// These existing services resolve the target and its origin before admitting
-// an operation. Crew-origin creation remains separately gated by Crew.
-func sharedWorkspaceMember(name string) bool {
-	switch name {
-	case "get_crew", "list_crew_files", "search_crew_files", "read_crew_file", "write_crew_file", "list_crew_functions", "call_crew_function", "get_crew_function_call", "list_crew_function_calls", "reply_crew_function_call", "update_crew", "export_crew":
-		return true
-	}
-	return false
-}
-
 func workspaceOriginAllowed(claims *UserClaims, profileID string) bool {
 	return productEnabled(profileID) && userAllowedProduct(claims, profileID)
 }

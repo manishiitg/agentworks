@@ -122,14 +122,6 @@ func LoadSchedulerConfig(ctx context.Context) (*SchedulerConfig, error) {
 	return sanitizeSchedulerConfig(&cfg), nil
 }
 
-func (s *SchedulerService) IsGloballyPaused(ctx context.Context) (bool, *SchedulerConfig, error) {
-	cfg, err := LoadSchedulerConfig(ctx)
-	if err != nil {
-		return false, nil, err
-	}
-	return cfg.GloballyPaused, cfg, nil
-}
-
 // IsProductPaused reports whether a product's timed runs are held, by the global pause or its own (PLAT-782).
 func (s *SchedulerService) IsProductPaused(ctx context.Context, product string) (bool, *SchedulerConfig, error) {
 	cfg, err := LoadSchedulerConfig(ctx)
