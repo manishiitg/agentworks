@@ -207,9 +207,9 @@ func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	record := ProductConversationRecord{ConversationID: "conversation-44444444-2222-4333-8444-555555555555", ProfileID: workproduct.ProfileID, ConversationKey: hostedKey, SessionID: hostedSession, WorkspacePath: hostedRoot, ResourceID: "example"}
-	registry, _ := json.Marshal(productConversationRegistryDocument{Version: 1, Entries: map[string]ProductConversationRecord{"code/" + hostedKey: record}})
+	registry, _ := json.Marshal(productConversationRegistryDocument{Version: 1, Entries: map[string]ProductConversationRecord{string(workproduct.ProfileID) + "/" + hostedKey: record}})
 	env.mock.mu.Lock()
-	env.mock.files[hostedRoot+"/product.json"] = `{"schema_version":1,"product":"code","id":"example","owner_id":"owner","title":"Example","session_id":"project-main"}`
+	env.mock.files[hostedRoot+"/product.json"] = `{"schema_version":1,"product":"work","id":"example","owner_id":"owner","title":"Example","session_id":"project-main"}`
 	env.mock.files[productConversationRegistryPath("owner")] = string(registry)
 	env.mock.mu.Unlock()
 	reg := &recordingRegistrar{}
