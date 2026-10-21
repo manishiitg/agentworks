@@ -12,6 +12,9 @@ platform operations and data access.
 Sharing a product means sharing its dashboard: people use the published work there through Ask and available function buttons. Crew includes projects formerly called Code; existing Builder and Run roles apply to both origins. Use the current dashboard sharing controls and returned links; a copied URL alone does not give access. Describe people as Builder or Run in replies, never as permission-level labels.
 
 When nobody has designed a dashboard, Share creates an automatic starting page.
+It shows the project content and actions first, with an **Ask about this dashboard**
+button that opens the existing chat. This starting layout does not constrain
+authored dashboards: their designer can choose an open panel, a button, or both.
 Automatic Crew and Goal pages reflect the current callable functions without
 republishing. Once the owner or their AI edits a page, its content and layout belong to them:
 new functions appear there only when they update the page. The platform does

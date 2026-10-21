@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
@@ -20,6 +21,14 @@ import (
 // Drive shared live reads through the real workspace store: declarations
 // change without republishing, while authored and pinned HTML stays saved.
 func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) {
+	// Stored output of the previous platform template, before content-first Ask.
+	oldPage, err := os.ReadFile("testdata/automatic-dashboard-inline-chat.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !unmodifiedDefaultDashboard(string(oldPage)) || !strings.Contains(string(oldPage), "data-report-chat-panel") {
+		t.Fatal("the fixture must be an untouched automatic page with the old inline chat")
+	}
 	for _, published := range []bool{false, true} {
 		label := "native"
 		if published {
@@ -54,8 +63,21 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 				return result
 			}
 			op("share", map[string]any{"mode": "everyone"})
+			created := op("get", nil)
+			// Seed historical platform output through the same workspace writer
+			// as automatic creation, without the authored-page HTML validator.
+			old, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "update", ID: defaultDashboardID, ExpectedRevision: created.Dashboard.Revision, Files: map[string]string{"index.html": string(oldPage)}, IncludeDraft: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "publish", ID: defaultDashboardID, ExpectedRevision: old.Dashboard.Revision, IncludeDraft: true}); err != nil {
+				t.Fatal(err)
+			}
 			before := op("get", nil)
 			original := before.Snapshot.Files["index.html"]
+			if original != string(oldPage) {
+				t.Fatal("the stored snapshot must keep the previous inline-chat template")
+			}
 			if before.ResourceID == "" {
 				t.Fatal("the browser has no dashboard view identity")
 			}
@@ -75,7 +97,11 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 				if status != 200 || !ok || page["document_path"] != dashboards.Document(defaultDashboardID, "") {
 					t.Fatalf("browser view lacks the server's automatic page: %d %v", status, out)
 				}
-				return page["html"].(string)
+				html := page["html"].(string)
+				if !strings.Contains(html, "data-report-chat-button") || strings.Contains(html, "data-report-chat-panel") {
+					t.Fatal("the old automatic snapshot must receive the new live button layout")
+				}
+				return html
 			}
 			live := dashboards.Document(defaultDashboardID, "")
 			read := func(document string, claims *UserClaims) *httptest.ResponseRecorder {

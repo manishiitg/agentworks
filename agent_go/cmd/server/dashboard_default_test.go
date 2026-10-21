@@ -7,17 +7,20 @@ import (
 )
 
 // The generated default dashboard shows only what the product declares: a
-// button per published function (names escaped), the Ask panel, a marker the
+// button per published function (names escaped), an Ask button, a marker the
 // server uses to refresh it, and no script of its own.
 func TestDefaultDashboardHTMLShowsOnlyDeclaredThings(t *testing.T) {
 	page := defaultDashboardHTML(defaultDashboardInfo{
 		Kind: "crew", Title: `Support <b>desk</b>`, Description: "Answers  customer\nquestions.",
 		Functions: []defaultDashboardFunction{{Name: "find_order", Description: "Finds an order"}, {Name: `x"><script>`, Description: ""}},
 	})
-	for _, want := range []string{`data-report-action="find_order"`, `data-report-chat-panel`, "Answers customer questions.", "Support &lt;b&gt;desk&lt;/b&gt;"} {
+	for _, want := range []string{`data-report-action="find_order"`, `data-report-chat-button`, "Ask about this dashboard", "Answers customer questions.", "Support &lt;b&gt;desk&lt;/b&gt;"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("missing %q in the generated page", want)
 		}
+	}
+	if strings.Contains(page, "data-report-chat-panel") || strings.Index(page, `data-report-chat-button`) < strings.Index(page, `data-report-action="find_order"`) {
+		t.Fatal("the automatic page must show its content and actions before Ask, without a second inline chat")
 	}
 	if strings.Contains(page, "<script") || strings.Contains(page, `x"><`) {
 		t.Fatal("a function name or title must be escaped and the page must not run a script")

@@ -76,7 +76,7 @@ func TestCrewBuilderCatalogCreatesDefaultDashboard(t *testing.T) {
 				t.Fatalf("new Crew has no default dashboard: %v", got)
 			}
 			stored, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: root, Action: "get", ID: defaultDashboardID, IncludeDraft: true})
-			if err != nil || stored.Dashboard == nil || stored.Dashboard.Published == "" || stored.Snapshot == nil || !strings.Contains(stored.Snapshot.Files["index.html"], "data-report-chat-panel") {
+			if err != nil || stored.Dashboard == nil || stored.Dashboard.Published == "" || stored.Snapshot == nil || !strings.Contains(stored.Snapshot.Files["index.html"], "data-report-chat-button") {
 				t.Fatalf("default is not usable: %+v %v", stored, err)
 			}
 			revision := stored.Dashboard.Revision
@@ -115,7 +115,7 @@ func TestGoalBuilderCatalogCreatesDefaultDashboard(t *testing.T) {
 	}
 	list()
 	stored, err := dashboardWorkspaceRequest(context.Background(), dashboards.Request{Root: "Workflow/invoices", Action: "get", ID: defaultDashboardID, IncludeDraft: true})
-	if err != nil || stored.Dashboard == nil || stored.Dashboard.Published == "" || stored.Snapshot == nil || !strings.Contains(stored.Snapshot.Files["index.html"], "data-report-chat-panel") {
+	if err != nil || stored.Dashboard == nil || stored.Dashboard.Published == "" || stored.Snapshot == nil || !strings.Contains(stored.Snapshot.Files["index.html"], "data-report-chat-button") {
 		t.Fatalf("Goal has no usable default: %+v %v", stored, err)
 	}
 	revision := stored.Dashboard.Revision

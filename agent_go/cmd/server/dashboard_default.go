@@ -77,7 +77,7 @@ func defaultDashboardText(s string, limit int) string {
 }
 
 // defaultDashboardHTML is the generated page: pure markup, no scripts that run
-// anything. The chat panel and function buttons are the host's own widgets.
+// anything. The Ask button and function buttons are the host's own widgets.
 func defaultDashboardHTML(info defaultDashboardInfo) string {
 	var buttons strings.Builder
 	for _, fn := range info.Functions {
@@ -108,12 +108,7 @@ func defaultDashboardHTML(info defaultDashboardInfo) string {
   * { box-sizing: border-box; }
   html, body { overflow-x: hidden; }
   body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
-  .layout { display:flex; min-height:100vh; align-items:stretch; }
-  .chat { flex:0 0 clamp(440px, 42vw, 680px); display:flex; flex-direction:column; min-height:600px; padding:16px; background:var(--card); border-right:1px solid var(--line); }
-  .chat h2 { font-size:16px; font-weight:600; margin:0 0 2px; }
-  .meta { color:var(--muted); font-size:12px; margin:0 0 10px; }
-  #ask { flex:1 1 auto; min-height:500px; overflow:hidden; border:1px solid var(--line); border-radius:6px; }
-  .main { flex:1 1 auto; min-width:0; padding:20px 24px; }
+  .main { min-width:0; max-width:1200px; margin:0 auto; padding:20px 24px; }
   h1 { font-size:22px; font-weight:600; margin:0 0 6px; }
   h3 { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:20px 0 8px; }
   .lead { margin:0 0 8px; color:var(--muted); max-width:70ch; }
@@ -123,20 +118,17 @@ func defaultDashboardHTML(info defaultDashboardInfo) string {
   button:disabled { opacity:.5; cursor:not-allowed; }
   button b { display:block; font-weight:600; overflow-wrap:anywhere; }
   button small { display:block; color:var(--muted); font-size:12px; margin-top:2px; }
-  @media (max-width: 1000px) { .layout { flex-direction:column; min-height:0; } .chat { flex:none; height:560px; border-right:0; border-bottom:1px solid var(--line); } #ask { min-height:440px; } }
+  .ask { margin-top:24px; padding-top:16px; border-top:1px solid var(--line); }
+  @media (max-width: 640px) { .main { padding:20px 16px; } }
 </style>
 </head>
 <body>
-<div class="layout">
-  <section class="chat">
-    <h2>Ask</h2>
-    <div class="meta">Ask a question in plain words.</div>
-    <section id="ask" data-report-chat-panel data-report-chat-fit="viewport"></section>
-  </section>
-  <div class="main">
+<main class="main">
     <h1>` + html.EscapeString(info.Title) + `</h1>
-` + description + functions + `  </div>
-</div>
+` + description + functions + `    <div class="ask">
+      <button type="button" data-report-chat-button>Ask about this dashboard</button>
+    </div>
+</main>
 </body>
 </html>
 `
