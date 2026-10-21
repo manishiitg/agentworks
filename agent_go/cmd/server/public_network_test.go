@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Public enrollment must never claim another person's email, mint an admin,
@@ -44,6 +45,19 @@ func TestPublicNetworkSignupAndConsent(t *testing.T) {
 	google := ensureDirectoryUserForExternal(ext.ExternalID, ext)
 	if google == nil || google.Admin || isConfiguredAdmin(google) || google.CanCreate || google.ID == rec.ID {
 		t.Fatal("Google display name granted account authority")
+	}
+
+	for _, reserved := range []string{"admin", "owner", "support", "agentworks"} {
+		if !publicNetworkReservedUsername(reserved) {
+			t.Fatalf("reserved name offered: %s", reserved)
+		}
+	}
+	presence := map[string]any{}
+	addAgentPresence(presence, namedMessageAgent{ID: "public-agent", Attachment: &namedAgentAttachment{Provider: "codex", Repository: "private-repository", Branch: "private-branch", Activity: "busy", ActivityAt: time.Now()}})
+	for _, key := range []string{"repository", "branch", "activity", "activity_at"} {
+		if _, present := presence[key]; present {
+			t.Fatalf("public directory leaked %s", key)
+		}
 	}
 	scopes, ok := validCLIOAuthScopes(nil)
 	if !ok || !slices.Equal(scopes, []string{"messages:read", "messages:send"}) || !slices.Equal(cliPersonScopes(&UserClaims{UserID: rec.ID}), scopes) {

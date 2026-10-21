@@ -102,16 +102,18 @@ func addAgentPresence(out map[string]any, a namedMessageAgent) {
 	if a.Attachment != nil {
 		out["provider"] = a.Attachment.Provider
 		out["delivery_route"] = a.Attachment.DeliveryRoute
-		out["repository"], out["branch"] = a.Attachment.Repository, a.Attachment.Branch
-		out["activity"] = "Unknown"
-		if namedAgentOnline(a) && !a.Attachment.ActivityAt.IsZero() && time.Since(a.Attachment.ActivityAt) <= 10*time.Minute {
-			switch a.Attachment.Activity {
-			case "busy":
-				out["activity"] = "Working"
-			case "idle":
-				out["activity"] = "Idle"
+		if !agentBridgeOnlyDeployment() {
+			out["repository"], out["branch"] = a.Attachment.Repository, a.Attachment.Branch
+			out["activity"] = "Unknown"
+			if namedAgentOnline(a) && !a.Attachment.ActivityAt.IsZero() && time.Since(a.Attachment.ActivityAt) <= 10*time.Minute {
+				switch a.Attachment.Activity {
+				case "busy":
+					out["activity"] = "Working"
+				case "idle":
+					out["activity"] = "Idle"
+				}
+				out["activity_at"] = a.Attachment.ActivityAt
 			}
-			out["activity_at"] = a.Attachment.ActivityAt
 		}
 	}
 	if !a.LastOnlineAt.IsZero() {

@@ -735,9 +735,12 @@ func ensureDirectoryUserForExternal(userID string, ext *ExternalUser) *UserRecor
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	configuredAdmin := rec.Email != "" && adminUsernamesFromEnv()[rec.Email]
-	if !configuredAdmin && adminUsernamesFromEnv()[strings.ToLower(rec.Username)] {
-		rec.Username = dir.uniqueDirectoryUsername("", rec.Email)
+	configuredAdmin := isConfiguredAdmin(&rec)
+	if publicNetworkSignupEnabled() {
+		configuredAdmin = rec.Email != "" && adminUsernamesFromEnv()[rec.Email]
+		if !configuredAdmin && publicNetworkReservedUsername(rec.Username) {
+			rec.Username = dir.uniqueDirectoryUsername("", rec.Email)
+		}
 	}
 	if !configuredAdmin && !publicNetworkExternalSignup(ext) {
 		return nil

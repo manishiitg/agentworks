@@ -49,7 +49,7 @@ func (api *StreamingAPI) registerPublicNetworkUser(w http.ResponseWriter, r *htt
 		return
 	}
 	name, err := normalizeMessageAgentName(req.Username)
-	if err != nil || len(name) < 3 || adminUsernamesFromEnv()[name] {
+	if err != nil || len(name) < 3 || publicNetworkReservedUsername(name) {
 		writeUsersError(w, http.StatusBadRequest, "Choose a username of 3 to 64 letters, digits, dots, underscores or hyphens, starting with a letter or digit.")
 		return
 	}
@@ -120,4 +120,13 @@ func publicNetworkMessageQuotaErr(s agentMessageStore, userID string, now time.T
 		return fmt.Errorf("You can send up to 60 messages per minute. Wait a minute, then send again.")
 	}
 	return nil
+}
+
+func publicNetworkReservedUsername(name string) bool {
+	name = strings.ToLower(strings.TrimSpace(name))
+	switch name {
+	case "admin", "administrator", "support", "help", "security", "system", "agentworks", "agentbridge", "bullpen", "root", "owner", "platform", "moderator":
+		return true
+	}
+	return adminUsernamesFromEnv()[name]
 }
