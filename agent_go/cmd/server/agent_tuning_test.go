@@ -47,6 +47,9 @@ func TestApplySharedLLMAgentTuningDisablesClaudePrivateMemoryForEveryAgent(t *te
 	if got := claude.CodingAgentSecretEnvironment["CLAUDE_CODE_DISABLE_AUTO_MEMORY"]; got != "1" {
 		t.Fatalf("Claude auto-memory control = %q, want 1", got)
 	}
+	if got := claude.CodingAgentSecretEnvironment["DISABLE_AUTOUPDATER"]; got != "1" {
+		t.Fatalf("Claude must not update itself in place, got %q", got)
+	}
 	if claude.CodingAgentSecretEnvironment["SECRET_EXISTING"] != "kept" {
 		t.Fatal("adding the Claude control replaced the existing scoped environment")
 	}

@@ -32,6 +32,9 @@ func applySharedLLMAgentTuning(cfg *agent.LLMAgentConfig, req *QueryRequest, pre
 			cfg.CodingAgentSecretEnvironment = make(map[string]string)
 		}
 		cfg.CodingAgentSecretEnvironment["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
+		// The backend updater (internal/cliupdate) owns Claude Code's version. Its own in-place self-update, started by a
+		// running session, left a half-installed package on a server (no `claude` command) when it did not finish.
+		cfg.CodingAgentSecretEnvironment["DISABLE_AUTOUPDATER"] = "1"
 	}
 	cfg.ToolTimeout = resolveToolTimeout()
 
