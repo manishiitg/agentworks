@@ -241,8 +241,8 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	}
 	owner.AccessToken.FileGuard = nil
 	// The existing connection loses editing immediately when the account is disabled.
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"editor","disabled":true,"products":["code"]}]}`)
-	data, _ := json.Marshal(map[string]any{"workspace": codeRoot, "action": "update", "dashboard_id": "code-view", "expected_revision": codeRev})
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"editor","disabled":true,"products":["work"]}]}`)
+	data, _ := json.Marshal(map[string]any{"workspace": "Crew/dashboard-team", "action": "update", "dashboard_id": "team", "expected_revision": crewRevision})
 	roleDenied := httptest.NewRecorder()
 	f.api.handleDashboards(roleDenied, adminRequest(http.MethodPost, "/api/dashboards", string(data), owner, nil))
 	if roleDenied.Code != http.StatusForbidden {
