@@ -20,6 +20,7 @@ func noteWorkspaceFileWrite(paths ...string) {
 			livefeed.PublishWorkflow(livefeed.Report, p)
 		}
 		livefeed.PublishPlanPath(p)
+		livefeed.PublishDashboardDeclaration(p)
 	}
 }
 

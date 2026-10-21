@@ -16,6 +16,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // Every Crew, workflow and Relay opens on a dashboard (PLAT-750, share =
@@ -181,6 +182,42 @@ func (api *StreamingAPI) defaultDashboardInfoFor(ctx context.Context, claims *Us
 		return info, dashboardFailure(404, "no default dashboard for this kind of project")
 	}
 	return info, nil
+}
+
+// liveDefaultDashboard renders only the platform's untouched automatic page.
+// Authored pages and explicitly selected snapshots remain exactly as saved.
+func (api *StreamingAPI) liveDefaultDashboard(ctx context.Context, claims *UserClaims, root, document string, data []byte) ([]byte, error) {
+	if document != dashboards.Document(defaultDashboardID, "") || !unmodifiedDefaultDashboard(string(data)) || (claims != nil && claims.Scope == reportPreviewScope) {
+		return data, nil
+	}
+	target, err := api.dashboardTarget(ctx, claims, root)
+	if err != nil {
+		return nil, err
+	}
+	publication, err := readPublishedProject(ctx, root)
+	if err != nil {
+		return storedDefaultDashboard(data, root, err)
+	}
+	if publishedDashboardSource(publication) {
+		return data, nil
+	}
+	info, err := api.defaultDashboardInfoFor(ctx, claims, target)
+	if err != nil {
+		return storedDefaultDashboard(data, root, err)
+	}
+	log.Printf("[DASHBOARD_DEFAULT] live automatic page: kind=%s root=%s functions=%d", target.Kind, target.Root, len(info.Functions))
+	return []byte(defaultDashboardHTML(info)), nil
+}
+
+// An unavailable declaration store does not take the saved Ask page down.
+// Current access refusals still win over the previously published bytes.
+func storedDefaultDashboard(data []byte, root string, err error) ([]byte, error) {
+	status := wf.StatusCode(err)
+	if status == http.StatusUnauthorized || status == http.StatusForbidden || status == http.StatusNotFound {
+		return nil, err
+	}
+	log.Printf("[DASHBOARD_DEFAULT] live declarations unavailable; serving stored automatic page: root=%s status=%d error=%v", root, status, err)
+	return data, nil
 }
 
 // ensureDefaultDashboard returns the dashboard a person opens for this

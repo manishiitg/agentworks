@@ -107,3 +107,17 @@ func TestIsPlanPathBothSpellings(t *testing.T) {
 		}
 	}
 }
+
+// Declaration notices wake shared dashboards without exposing private project paths.
+func TestDashboardDeclarationNoticesKeepPrivatePathsOutOfTheFeed(t *testing.T) {
+	sub := Default.Subscribe()
+	defer Default.Unsubscribe(sub)
+	for _, p := range []string{"Crew/support/functions.json", "Workflow/invoices/workflow.json", "_users/owner/Chats/Code/projects/private/functions.json", "Crew/support/code/functions.json"} {
+		PublishDashboardDeclaration(p)
+	}
+	got, _ := sub.Drain()
+	want := []Notice{{Kind: Report, Workflow: "Crew/support"}, {Kind: Report, Workflow: "Workflow/invoices"}, {Kind: Report}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("declaration notices = %v, want %v", got, want)
+	}
+}

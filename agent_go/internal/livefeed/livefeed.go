@@ -218,3 +218,31 @@ func PublishWorkflow(kind Kind, path string) {
 		Default.Publish(kind, wf)
 	}
 }
+
+// IsDashboardDeclarationPath identifies the product declarations used by the
+// automatic dashboard. Nested files with the same name are ordinary assets.
+func IsDashboardDeclarationPath(p string) bool {
+	ref, ok := workspaceref.Parse(p)
+	if !ok {
+		return false
+	}
+	relative := ""
+	if root, project, ok := ref.Project(); ok {
+		relative = strings.TrimPrefix(ref.Logical(), root+"/"+project+"/")
+	} else {
+		parts := strings.Split(ref.Logical(), "/")
+		if len(parts) != 3 || (parts[0] != "Workflow" && parts[0] != "Crew") {
+			return false
+		}
+		relative = parts[2]
+	}
+	return relative == "functions.json" || relative == "workflow.json"
+}
+
+// PublishDashboardDeclaration keeps private project paths out of the feed,
+// just like Plan notices. The normal read endpoint still decides access.
+func PublishDashboardDeclaration(p string) {
+	if IsDashboardDeclarationPath(p) {
+		Default.Publish(Report, WorkflowRoot(p))
+	}
+}

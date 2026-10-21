@@ -201,6 +201,7 @@ func publishReportChanged(workspacePath string) {
 
 func publishPlanChanged(filePath string) {
 	livefeed.PublishPlanPath(filePath)
+	livefeed.PublishDashboardDeclaration(filePath)
 }
 
 // liveFeedReportPath reports whether a workspace file feeds a workflow's

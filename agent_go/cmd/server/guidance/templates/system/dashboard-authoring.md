@@ -11,6 +11,13 @@ platform operations and data access.
 
 Sharing a product means sharing its dashboard: people use the published work there through Ask and available function buttons. Crew includes projects formerly called Code; existing Builder and Run roles apply to both origins. Use the current dashboard sharing controls and returned links; a copied URL alone does not give access. Describe people as Builder or Run in replies, never as permission-level labels.
 
+When nobody has designed a dashboard, Share creates an automatic starting page.
+Automatic Crew and Goal pages reflect the current callable functions without
+republishing. Once the owner or their AI edits a page, its content and layout belong to them:
+new functions appear there only when they update the page. The platform does
+not add controls to custom dashboards. Exact revisions and exports stay saved
+snapshots.
+
 For external MCP, call `get_api_spec` to discover tool schemas, then `call_tool`
 with the chosen name and arguments. App Builder tools are bound to their project;
 external operations use the authorized `workspace` returned by discovery.

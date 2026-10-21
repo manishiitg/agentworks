@@ -238,6 +238,7 @@ func (api *StreamingAPI) handleReportPreviewFile(w http.ResponseWriter, r *http.
 		http.Error(w, "Choose a file in the dashboard data folders, or the project MEMORY.md, soul.md or workflow.json.", http.StatusBadRequest)
 		return
 	}
+	document := relative
 	relative, err = api.resolveDashboardDocument(r, workspacePath, relative)
 	if err != nil {
 		dashboardError(w, err)
@@ -259,6 +260,11 @@ func (api *StreamingAPI) handleReportPreviewFile(w http.ResponseWriter, r *http.
 			status = http.StatusBadGateway
 		}
 		http.Error(w, fmt.Sprintf("read %s: %v", relative, err), status)
+		return
+	}
+	data, err = api.liveDefaultDashboard(r.Context(), claims, workspacePath, document, data)
+	if err != nil {
+		dashboardError(w, err)
 		return
 	}
 	contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(relative)))
