@@ -158,6 +158,18 @@ func atomicWrite(root *os.Root, p string, data []byte) error {
 	if err := safeParents(root, p); err != nil {
 		return err
 	}
+	mode := os.FileMode(0600)
+	if strings.HasPrefix(p, Prefix) {
+		project, err := root.Stat(".")
+		if err != nil {
+			return err
+		}
+		// Published page assets are read by the project's existing slot for
+		// export. Private manifests, snapshots and script source stay 0600.
+		if utils.ProjectDirectoryMode(project)&os.ModeSetgid != 0 {
+			mode = 0640
+		}
+	}
 	if info, err := root.Lstat(p); err == nil && !info.Mode().IsRegular() {
 		return fail(403, "unsafe dashboard file")
 	}
@@ -168,6 +180,9 @@ func atomicWrite(root *os.Root, p string, data []byte) error {
 	}
 	defer root.Remove(tmp)
 	if _, err = f.Write(data); err == nil {
+		err = f.Chmod(mode)
+	}
+	if err == nil {
 		err = f.Sync()
 	}
 	closeErr := f.Close()

@@ -71,7 +71,7 @@ func TestDashboardPublicationAndGuards(t *testing.T) {
 	}
 }
 
-// Dashboard scripts and pages are private to the service: the runner is handed the code, not the file (no world-readable scripts).
+// Script source remains private. Non-slot projects keep service-private page files too.
 func TestDashboardScriptsStayPrivate(t *testing.T) {
 	docs := t.TempDir()
 	root := "Crew/example"
@@ -82,6 +82,10 @@ func TestDashboardScriptsStayPrivate(t *testing.T) {
 		Files: map[string]string{"index.html": "<html><title>S</title></html>", "scripts/data.py": "print('{}')\n"}})
 	if err != nil {
 		t.Fatal(err)
+	}
+	page, err := os.Stat(filepath.Join(docs, root, Document("status", out.Dashboard.Revision)))
+	if err != nil || page.Mode().Perm() != 0600 {
+		t.Fatalf("non-slot page must stay 0600: %v %v", page, err)
 	}
 	script, err := os.Stat(filepath.Join(docs, root, "code/reports/managed/status", out.Dashboard.Revision, "data.py"))
 	if err != nil || script.Mode().Perm() != 0600 {

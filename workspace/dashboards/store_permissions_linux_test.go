@@ -21,7 +21,7 @@ func TestDashboardDirectoriesPreserveProjectGroupWrite(t *testing.T) {
 	if err := os.Chmod(abs, os.ModeSetgid|0o770); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Execute(context.Background(), docs, Request{Root: root, Action: "create", ID: "overview", Title: "Overview", IncludeDraft: true, Files: map[string]string{"index.html": "<html><body>Example</body></html>"}})
+	_, err := Execute(context.Background(), docs, Request{Root: root, Action: "create", ID: "overview", Title: "Overview", IncludeDraft: true, Files: map[string]string{"index.html": "<html><body>Example</body></html>", "summary.json": "{}", "scripts/data.py": "print('{}')"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,5 +36,30 @@ func TestDashboardDirectoriesPreserveProjectGroupWrite(t *testing.T) {
 		return err
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDashboardSlotReadsOnlyPublicArtifacts(t *testing.T) {
+	docs := t.TempDir()
+	project := "Crew/example"
+	abs := filepath.Join(docs, project)
+	if err := os.MkdirAll(abs, 0770); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(abs, os.ModeSetgid|0770); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Execute(context.Background(), docs, Request{Root: project, Action: "create", ID: "overview", Title: "Example", IncludeDraft: true, Files: map[string]string{"index.html": "<html>Example</html>", "summary.json": "{}", "scripts/data.py": "print('{}')"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]os.FileMode{Document("overview", out.Dashboard.Revision): 0640, renderFile("overview", out.Dashboard.Revision, "summary.json"): 0640, StatePath("overview"): 0600, snapshotPath("overview", out.Dashboard.Revision): 0600, renderFile("overview", out.Dashboard.Revision, "scripts/data.py"): 0600} {
+		info, err := os.Stat(filepath.Join(abs, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != want {
+			t.Errorf("%s mode %o, want %o", name, info.Mode().Perm(), want)
+		}
 	}
 }
