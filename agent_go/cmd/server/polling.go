@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -196,6 +197,16 @@ func (api *StreamingAPI) handleGetSessionEvents(w http.ResponseWriter, r *http.R
 		http.Error(w, "Session ID is required", http.StatusBadRequest)
 		return
 	}
+	// A slow poll says where its time went (authorize / durable store read / runtime snapshot / the rest), so a slow
+	// server can be fixed at the step that costs, not guessed at.
+	pollStart := time.Now()
+	var authDone, storeDone, runtimeDone time.Time
+	defer func() {
+		if total := time.Since(pollStart); total > 400*time.Millisecond {
+			log.Printf("[EVENTS_POLL] slow session=%s total=%s authorize=%s store=%s runtime=%s rest=%s", sessionID, total.Round(time.Millisecond),
+				pollSpan(pollStart, authDone), pollSpan(authDone, storeDone), pollSpan(storeDone, runtimeDone), pollSpan(runtimeDone, time.Now()))
+		}
+	}()
 
 	// Parse query parameters
 	sinceStr := r.URL.Query().Get("since")
@@ -226,6 +237,7 @@ func (api *StreamingAPI) handleGetSessionEvents(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	authDone = time.Now()
 	// Build options for GetEvents
 	opts := events.GetEventsOptions{
 		SinceIndex: -1, // Default: not using sinceIndex
@@ -357,6 +369,7 @@ func (api *StreamingAPI) handleGetSessionEvents(w http.ResponseWriter, r *http.R
 		hasMoreFromStore = getEventsResult.HasMore
 	}
 
+	storeDone = time.Now()
 	// Session status comes from the in-memory active sessions map.
 	var sessionStatus string
 	if existsInActive {
@@ -369,6 +382,7 @@ func (api *StreamingAPI) handleGetSessionEvents(w http.ResponseWriter, r *http.R
 		sessionStatus = "completed"
 	}
 	runtimeState, _ := api.authoritativeRuntimeSnapshot(sessionID)
+	runtimeDone = time.Now()
 	runtimeStatus := sessionDisplayStatusFromRuntime(runtimeState)
 	canSteer := runtimeStatus.CanSteer
 	hasRunningBackgroundAgents = runtimeStatus.HasRunningBackgroundAgents
@@ -870,4 +884,12 @@ func (api *StreamingAPI) handleGetSessionStatus(w http.ResponseWriter, r *http.R
 		http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
 		return
 	}
+}
+
+// pollSpan is the time between two phase marks, or zero when the request ended before the later one was reached.
+func pollSpan(from, to time.Time) time.Duration {
+	if from.IsZero() || to.IsZero() {
+		return 0
+	}
+	return to.Sub(from).Round(time.Millisecond)
 }
