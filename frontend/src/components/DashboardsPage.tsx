@@ -70,7 +70,6 @@ export function DashboardsPage() {
   return <main className="flex h-full min-h-0 flex-col bg-background text-foreground">
     <WorkspaceTopToolbar navigationKind="page">
       <div className="flex items-center gap-3"><LayoutDashboard className="h-5 w-5 text-muted-foreground" /><h1 className="text-lg font-semibold">Dashboards</h1></div>
-      <a href="/" className="text-sm text-muted-foreground hover:text-foreground">Workspace</a>
     </WorkspaceTopToolbar>
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto max-w-6xl px-5 py-7 sm:px-8 sm:py-9">

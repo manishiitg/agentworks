@@ -55,6 +55,8 @@ it('shows compact website names without product labels and finds them by name or
     expect(shared.textContent).not.toContain('index')
     expect(shared.textContent).not.toContain('Crew')
     expect(shared.textContent).not.toContain('Goal')
+    expect(host.querySelector('header a')).toBeNull()
+    expect(host.querySelector('header')!.textContent).toBe('Dashboards')
     expect(host.querySelector('section[aria-label="Yours"]')).toBeNull()
     await type('  REVENUE ')
     expect(shared.querySelectorAll('a')).toHaveLength(1)

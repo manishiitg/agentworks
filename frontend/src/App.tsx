@@ -12,6 +12,7 @@ import { resetSessionId } from "./services/api";
 import { AuthWrapper } from "./components/AuthWrapper";
 import { Loader2 } from "lucide-react";
 import { ProductTopBar, ProductTopBarMain } from './components/workspace/ProductTopBar'
+import WorkspaceTopBarControls from './components/WorkspaceTopBarControls'
 import { ModePresetBar } from "./components/ModePresetBar";
 import { TerminalFocusLayout } from './components/TerminalFocusLayout'
 import { useAppStore, useMCPStore, useGlobalPresetStore, useWorkflowStore, useChatStore } from "./stores";
@@ -793,7 +794,7 @@ function AppWorkspace() {
           />
         )}
         {dashboardsOpen ? (
-          <div className="flex h-screen min-h-0 bg-background"><ModePresetBar reduced walkthroughPaused /><div className="min-h-0 min-w-0 flex-1"><Suspense fallback={<FileSurfaceFallback />}><DashboardsPage /></Suspense></div></div>
+          <div className="flex h-screen min-h-0 bg-background"><ProductTopBar sidebar><WorkspaceTopBarControls /></ProductTopBar><div className="min-h-0 min-w-0 flex-1"><Suspense fallback={<FileSurfaceFallback />}><DashboardsPage /></Suspense></div></div>
         ) : productSurface === 'bullpen' ? (
           <Suspense fallback={<ProductSurfaceFallback label="AgentBridge" />}><BullpenSurface /></Suspense>
         ) : productSurface === 'video-studio' ? (
