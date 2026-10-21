@@ -4,7 +4,7 @@ import { Button } from '../../components/ui/Button'
 import { SettingsCard } from '../../components/ui/SettingsCard'
 import api, { getApiBaseUrl } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
-import { cliUpdateNeeded, localFileError, useLatestCliVersion, useLocalFileDevices } from './codeLocalFiles'
+import { cliUpdateNeeded, localFileError, useLatestCliVersion, useLocalFileDevices, type LocalFileDevice } from './codeLocalFiles'
 
 function shellQuote(value: string) { return `'${value.replace(/'/g, "'\\''")}'` }
 
@@ -74,6 +74,12 @@ function ComputerSetup({ connected, reconnecting, workspaceName }: { connected: 
   </details>
 }
 
+// What the person sees after pressing Check connection.
+function connectionNote(listed: LocalFileDevice[], chosen: string) {
+  if (chosen) return listed.some(item => item.device_id === chosen) ? `${chosen} is connected.` : `${chosen} is not connected. Run agentworks start on that computer.`
+  return listed.length ? `Connected: ${listed.map(item => item.device_id).join(', ')}. Choose it above.` : 'No computer is connected yet. Use "Set up your computer" above.'
+}
+
 interface LaptopFolder { id: string; path: string; access: 'read' | 'write' }
 interface LaptopSettings { device_id: string; folders: LaptopFolder[] }
 interface LaptopDirectory { path: string; parent: string; folders: string[] }
@@ -90,6 +96,7 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string; works
   const [error, setError] = useState<string>()
   const [busy, setBusy] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [checkNote, setCheckNote] = useState<string>()
   const { devices, error: deviceError, refreshing, refresh } = useLocalFileDevices(Boolean(endpoint))
   const latest = useLatestCliVersion(Boolean(endpoint))
   useEffect(() => {
@@ -143,7 +150,8 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string; works
         <div className="flex gap-2"><Button size="sm" disabled={busy || settings.folders.some(folder => folder.path === directory.path)} onClick={() => void save({ ...settings, folders: [...settings.folders, { id: '', path: directory.path, access: 'read' }] }).then(saved => { if (saved) setDirectory(undefined) })}>Allow this folder</Button><Button size="sm" variant="ghost" onClick={() => setDirectory(undefined)}>Close</Button></div>
       </div>}
       <p className="text-xs leading-5 text-muted-foreground">Read allows reading and copying files into Crew. Read &amp; write also allows local commands. Commands run as you on this computer: Windows uses your account permissions; macOS uses its existing light sandbox. Folder permissions are not full command isolation. Local output and copied files reach the server and may be saved in chat. Server secrets are not forwarded.</p>
-      <Button size="sm" variant="ghost" disabled={refreshing} onClick={refresh}><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />Check connection</Button>
+      <Button size="sm" variant="ghost" disabled={refreshing} onClick={() => { setCheckNote(undefined); void refresh().then(listed => { if (listed) setCheckNote(connectionNote(listed, settings.device_id)) }) }}><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />Check connection</Button>
+      {checkNote && <p role="status" className="text-xs text-muted-foreground">{checkNote}</p>}
       {(error || deviceError) && <p role="alert" className="text-sm text-destructive">{error || deviceError}</p>}
     </div>
   </SettingsCard>

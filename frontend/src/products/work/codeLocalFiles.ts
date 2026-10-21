@@ -44,24 +44,24 @@ export function useLocalFileDevices(enabled: boolean) {
   const [error, setError] = useState<string | null>(null)
   const [checked, setChecked] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
-  const refreshRef = useRef<() => void>(() => {})
+  const refreshRef = useRef<() => Promise<LocalFileDevice[] | null>>(async () => null)
   useEffect(() => {
     setDevices([]); setChecked(false); setError(null); setRefreshing(false)
     if (!enabled) return
     let active = true
     let loading = false
-    const refresh = async () => {
-      if (loading) return
+    const refresh = async (): Promise<LocalFileDevice[] | null> => {
+      if (loading) return null
       loading = true
       if (active) setRefreshing(true)
-      try { const listed = await codeLocalFilesApi.devices(); if (active) { setDevices(listed); setError(null); setChecked(true) } }
-      catch (cause) { if (active) { setDevices([]); setError(localFileError(cause)); setChecked(true) } }
+      try { const listed = await codeLocalFilesApi.devices(); if (active) { setDevices(listed); setError(null); setChecked(true) } return listed }
+      catch (cause) { if (active) { setDevices([]); setError(localFileError(cause)); setChecked(true) } return null }
       finally { loading = false; if (active) setRefreshing(false) }
     }
-    refreshRef.current = () => { void refresh() }
+    refreshRef.current = refresh
     void refresh()
     const timer = window.setInterval(() => void refresh(), 5000)
-    return () => { active = false; refreshRef.current = () => {}; window.clearInterval(timer) }
+    return () => { active = false; refreshRef.current = async () => null; window.clearInterval(timer) }
   }, [enabled, account, workspace])
   return { devices, error, checked, refreshing, refresh: () => refreshRef.current() }
 }

@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 const transport = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }))
 vi.mock('../../services/api', () => ({ default: transport, getApiBaseUrl: () => 'https://example.test' }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (selector: (state: unknown) => unknown) => selector({ chatTabs: { own: { sessionId: 'chat', metadata: { agentProfileId: 'work', agentProfileProjectId: 'crew' } } } }) }))
-vi.mock('./codeLocalFiles', () => ({ useLocalFileDevices: () => ({ devices: [{ device_id: 'laptop', settings_managed: true }], refresh: vi.fn() }), useLatestCliVersion: () => undefined, cliUpdateNeeded: () => false, localFileError: (e: Error) => e.message }))
+vi.mock('./codeLocalFiles', () => ({ useLocalFileDevices: () => ({ devices: [{ device_id: 'laptop', settings_managed: true }], refresh: vi.fn(async () => [{ device_id: 'laptop' }]) }), useLatestCliVersion: () => undefined, cliUpdateNeeded: () => false, localFileError: (e: Error) => e.message }))
 import { CodeFilesPanel, CodeLocalFilesSettings } from './CodeFilesPanel'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let root: Root
