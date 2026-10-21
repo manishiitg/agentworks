@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -197,7 +198,8 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	}
 	stateDir := filepath.Join(state, "brain-starters", productguide.Fingerprint(config.Root+"\x00"+config.LiveRoot+"\x00"+config.OrganizationID))
 	originalFiles := knowledgebaseStarterFiles()
-	futureFiles := futureStarterFiles(originalFiles, "1.1.0")
+	futureVersion := nextStarterVersion(t, originalFiles)
+	futureFiles := futureStarterFiles(originalFiles, futureVersion)
 	if err := seedBrainStarterFiles(t.Context(), service, admin, stateDir, futureFiles); err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +210,7 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	// Installation changes refresh the projection without requiring a new
 	// semantic release, and also change the skill's guide fingerprint/version.
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "work,relays,knowledgebase,mcp-gateway,code,bullpen,sparkquill,video-studio")
-	projection := futureStarterFiles(knowledgebaseStarterFiles(), "1.1.0")
+	projection := futureStarterFiles(knowledgebaseStarterFiles(), futureVersion)
 	beforeProjection, err := service.CallTool(t.Context(), admin, "brain_skills", map[string]any{"action": "get", "folder_path": skillFolder})
 	if err != nil {
 		t.Fatal(err)
@@ -269,7 +271,7 @@ func TestMCPProductGuideAndBrainStarter(t *testing.T) {
 	if err := seedKnowledgebaseStarter(t.Context(), restarted, admin); err != nil {
 		t.Fatal(err)
 	}
-	if err := seedBrainStarterFiles(t.Context(), restarted, admin, stateDir, futureStarterFiles(futureFiles, "1.2.0")); err != nil {
+	if err := seedBrainStarterFiles(t.Context(), restarted, admin, stateDir, futureStarterFiles(futureFiles, nextStarterVersion(t, futureFiles))); err != nil {
 		t.Fatal(err)
 	}
 	if value, err := restarted.CallTool(t.Context(), admin, "brain_read", map[string]any{"action": "read", "path": "Shared/AgentWorks/product-guide.md"}); err != nil || value.(map[string]any)["content"] != "Our own product guide" {
@@ -361,6 +363,21 @@ func (c *refuseStarterOnce) CallTool(ctx context.Context, p knowledgebase.Princi
 		return nil, &knowledgebase.Error{Code: "FORBIDDEN", Message: "temporary pre-write refusal"}
 	}
 	return c.brainStarterCaller.CallTool(ctx, p, name, args)
+}
+
+// Keep simulated releases ahead of every current source version.
+func nextStarterVersion(t *testing.T, files []brainStarterFile) string {
+	t.Helper()
+	major := 0
+	for _, file := range files {
+		value, _, _ := strings.Cut(file.SourceVersion, ".")
+		n, err := strconv.Atoi(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		major = max(major, n)
+	}
+	return strconv.Itoa(major+1) + ".0.0"
 }
 
 // Render a future release fixture with coherent source versions and hashes.
