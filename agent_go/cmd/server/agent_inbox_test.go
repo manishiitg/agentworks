@@ -302,7 +302,9 @@ func TestHostedAgentInboxOverMCP(t *testing.T) {
 			t.Fatalf("file retries or refused changes left %d files, want 2", files)
 		}
 	})
-	// Project MCP is checked through its real audience in project_mcp_test.go.
+	// TestProjectMCPOAuthDiscoveryPermissionsAndRevocation checks the actual
+	// project audience and message refusal; TestProjectMCPResourceCannotWiden
+	// checks that it cannot become a personal connection.
 	// A PAT display name cannot claim hosted provenance.
 	patStore, err := openAccessTokens()
 	if err != nil {
