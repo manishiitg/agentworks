@@ -21,7 +21,7 @@ func TestInitializeDBKeepsProjectDirectoryWritable(t *testing.T) {
 	if err := os.Chmod(filepath.Dir(abs), os.ModeSetgid|0o750); err != nil {
 		t.Fatal(err)
 	}
-	recorder := postWorkflowDBTest(t, router, "/api/db/initialize", models.InitializeDatabaseRequest{DBPath: rel})
+	recorder := postWorkflowDBTest(t, router, "/api/db/initialize", models.InitializeDatabaseRequest{DBPath: rel, Migrations: []string{"CREATE TABLE IF NOT EXISTS example (id TEXT PRIMARY KEY)"}})
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("initialize status=%d %s", recorder.Code, recorder.Body)
 	}
@@ -29,7 +29,14 @@ func TestInitializeDBKeepsProjectDirectoryWritable(t *testing.T) {
 	if err != nil || info.Mode().Perm() != 0o770 || info.Mode()&os.ModeSetgid == 0 {
 		t.Fatalf("db directory = %v, %v", info, err)
 	}
-	if err := os.Mkdir(filepath.Join(project, "db", "migrations"), 0o770); err != nil {
-		t.Fatal(err)
+	// A destructive migration creates the public source directory before its
+	// private snapshot folder; that later writer must preserve slot access too.
+	recorder = postWorkflowDBTest(t, router, "/api/db/initialize", models.InitializeDatabaseRequest{DBPath: rel, Migrations: []string{"DROP TABLE IF EXISTS example"}})
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("migration status=%d %s", recorder.Code, recorder.Body)
+	}
+	info, err = os.Stat(filepath.Join(project, "db", "migrations"))
+	if err != nil || info.Mode().Perm() != 0o770 || info.Mode()&os.ModeSetgid == 0 {
+		t.Fatalf("migration source directory = %v, %v", info, err)
 	}
 }

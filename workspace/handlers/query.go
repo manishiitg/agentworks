@@ -118,13 +118,32 @@ func isDestructiveMigrationStatement(statement string) bool {
 		managedAlterDropCol.MatchString(statement)
 }
 
+// prepareManagedDBDirectory keeps late public folders usable by the project slot.
+func prepareManagedDBDirectory(directory, project string) error {
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		return err
+	}
+	info, err := os.Stat(project)
+	if err != nil {
+		return err
+	}
+	if mode := utils.ProjectDirectoryMode(info); mode&os.ModeSetgid != 0 {
+		return makeSlotWriteDirectoryUsable(directory, project)
+	}
+	return nil
+}
+
 // backupDatabaseBeforeDestructiveMigration writes a transactionally
 // consistent VACUUM INTO snapshot of fullPath before a destructive migration
 // runs. There is no human-approval gate in front of InitializeWorkflowDB, so
 // this snapshot is the only recovery path if a DROP/RENAME/DROP COLUMN turns
 // out to be wrong.
 func backupDatabaseBeforeDestructiveMigration(ctx context.Context, fullPath string) (string, error) {
-	backupDir := filepath.Join(filepath.Dir(fullPath), "migrations", ".backups")
+	migrationDir := filepath.Join(filepath.Dir(fullPath), "migrations")
+	if err := prepareManagedDBDirectory(migrationDir, filepath.Dir(filepath.Dir(fullPath))); err != nil {
+		return "", fmt.Errorf("prepare migration source folder: %w", err)
+	}
+	backupDir := filepath.Join(migrationDir, ".backups")
 	if err := os.MkdirAll(backupDir, 0o755); err != nil {
 		return "", fmt.Errorf("create migration backup folder: %w", err)
 	}
@@ -352,24 +371,11 @@ func InitializeWorkflowDB(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.APIResponse[any]{Success: false, Message: "Invalid db_path", Error: "path escapes the workspace boundary"})
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+	// Keep the existing slot-group policy for public migration source folders;
+	// SQLite files and their raw-access guards are unchanged.
+	if err := prepareManagedDBDirectory(filepath.Dir(fullPath), filepath.Dir(filepath.Dir(fullPath))); err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{Success: false, Message: "Failed to create database folder", Error: err.Error()})
 		return
-	}
-
-	// A DB created after Crew setup must keep the project slot's existing
-	// directory write access, so its owner can author db/migrations/ files.
-	// Database files and their raw-access guards are unchanged.
-	project, err := os.Stat(filepath.Dir(filepath.Dir(fullPath)))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{Success: false, Message: "Failed to inspect database project", Error: err.Error()})
-		return
-	}
-	if mode := utils.ProjectDirectoryMode(project); mode&os.ModeSetgid != 0 {
-		if err := makeSlotWriteDirectoryUsable(filepath.Dir(fullPath), filepath.Dir(filepath.Dir(fullPath))); err != nil {
-			c.JSON(http.StatusInternalServerError, models.APIResponse[any]{Success: false, Message: "Failed to prepare database folder", Error: err.Error()})
-			return
-		}
 	}
 
 	var backupPath string
