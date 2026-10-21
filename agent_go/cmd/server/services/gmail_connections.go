@@ -46,8 +46,8 @@ const (
 
 // GmailConnection is one sending identity.
 type GmailConnection struct {
-	// AgentInboxReceiver credentials are reserved for server delivery, never general gog use.
-	AgentInboxReceiver bool `json:"agent_inbox_receiver,omitempty"`
+	// AgentInbox selects this personal Vault account for all of its owner’s Crew inboxes.
+	AgentInbox bool `json:"agent_inbox,omitempty"`
 	// AuthBackend is "gog" once gog owns this connection's token and refresh.
 	// Empty retains legacy authentication until a verified migration succeeds.
 	AuthBackend string `json:"auth_backend,omitempty"`
@@ -139,8 +139,8 @@ func (c GmailConnection) IsPrivate() bool {
 // GmailUseScope is where a connection is about to be used: the Code
 // workspace of the session (empty outside a Code) and the acting user.
 type GmailUseScope struct {
-	// InboxReceiver is set only by the server-owned receiving adapter, never by request input.
-	InboxReceiver bool
+	// inboxOwner is set only by the narrow receiving adapter, never by tools.
+	inboxOwner    string
 	CodeWorkspace string
 	// Workspace is the server-bound target, independent of the person running it.
 	Workspace string
@@ -155,8 +155,8 @@ type GmailUseScope struct {
 // private connection only in its own Code by its owner; a shared connection
 // only outside a Code (a Code uses its own accounts only).
 func (c GmailConnection) UsableFrom(scope GmailUseScope) bool {
-	if c.AgentInboxReceiver {
-		return scope.InboxReceiver
+	if scope.inboxOwner != "" {
+		return c.Personal && c.AgentInbox && c.Enabled && c.OwnerID == scope.inboxOwner
 	}
 	workspace := connectionWorkspaceRoot(scope.CodeWorkspace)
 	if c.Personal {
@@ -378,7 +378,7 @@ func normalizeGmailConnections(cfg *GmailConfig) {
 	if cfg.DefaultConnectionID != "" {
 		valid := false
 		for _, c := range cfg.Connections {
-			if c.ID == cfg.DefaultConnectionID && c.Enabled && !c.IsPrivate() && !c.AgentInboxReceiver {
+			if c.ID == cfg.DefaultConnectionID && c.Enabled && !c.IsPrivate() {
 				valid = true
 				break
 			}
@@ -391,7 +391,7 @@ func normalizeGmailConnections(cfg *GmailConfig) {
 	if cfg.DefaultConnectionID == "" {
 		var enabled []string
 		for _, c := range cfg.Connections {
-			if c.Enabled && !c.IsPrivate() && !c.AgentInboxReceiver {
+			if c.Enabled && !c.IsPrivate() {
 				enabled = append(enabled, c.ID)
 			}
 		}
@@ -446,7 +446,7 @@ func (g *GmailService) DefaultConnection() (GmailConnection, bool) {
 		return GmailConnection{}, false
 	}
 	c, ok := findGmailConnection(g.config, g.config.DefaultConnectionID)
-	if !ok || !c.Enabled || c.IsPrivate() || c.AgentInboxReceiver {
+	if !ok || !c.Enabled || c.IsPrivate() {
 		return GmailConnection{}, false
 	}
 	return c, true
@@ -455,10 +455,9 @@ func (g *GmailService) DefaultConnection() (GmailConnection, bool) {
 // GmailConnectionInput is the mutable subset of a connection. Fields the server
 // discovers (Email, Status, Scopes) are not settable by a caller.
 type GmailConnectionInput struct {
-	AgentInboxReceiver bool // create-only; reserved by the company Inbox setup operation.
-	DisplayName        string
-	ConfigHome         string
-	CredentialsFile    string
+	DisplayName     string
+	ConfigHome      string
+	CredentialsFile string
 	// ClientName selects which named OAuth client (gmail_oauth_clients.go)
 	// this connection authorizes under. Required on create — see CreateConnection.
 	ClientName string
@@ -501,7 +500,7 @@ type GmailConnectionInput struct {
 // connection depends on (the shared client_secret.json failure mode this
 // registry replaces).
 func (g *GmailService) CreateConnection(ctx context.Context, in GmailConnectionInput) (GmailConnection, error) {
-	if (in.Personal || in.AgentInboxReceiver || strings.TrimSpace(in.ScopeWorkspace) != "") && pinsGmailCredentialPaths(in) {
+	if (in.Personal || strings.TrimSpace(in.ScopeWorkspace) != "") && pinsGmailCredentialPaths(in) {
 		return GmailConnection{}, ErrPrivateGmailCredentialPaths
 	}
 	name := strings.TrimSpace(in.DisplayName)
@@ -531,7 +530,6 @@ func (g *GmailService) CreateConnection(ctx context.Context, in GmailConnectionI
 		enabled = *in.Enabled
 	}
 	conn := GmailConnection{
-		AgentInboxReceiver:    in.AgentInboxReceiver,
 		ID:                    id,
 		AuthBackend:           authBackend,
 		DisplayName:           name,
@@ -585,7 +583,7 @@ func (g *GmailService) UpdateConnection(ctx context.Context, id string, in Gmail
 	}
 
 	conn := &cfg.Connections[idx]
-	if (conn.IsPrivate() || conn.AgentInboxReceiver) && pinsGmailCredentialPaths(in) {
+	if conn.IsPrivate() && pinsGmailCredentialPaths(in) {
 		return GmailConnection{}, ErrPrivateGmailCredentialPaths
 	}
 	if v := strings.TrimSpace(in.DisplayName); v != "" {
@@ -642,7 +640,7 @@ func (g *GmailService) SetDefaultConnection(ctx context.Context, id string) erro
 	if !conn.Enabled {
 		return fmt.Errorf("gmail connection %q is disabled and cannot be the default", id)
 	}
-	if conn.IsPrivate() || conn.AgentInboxReceiver {
+	if conn.IsPrivate() {
 		return fmt.Errorf("This Google account is reserved and cannot be the default sender")
 	}
 	cfg.DefaultConnectionID = conn.ID
@@ -711,8 +709,8 @@ func (g *GmailService) DeleteConnection(ctx context.Context, id string) error {
 			return fmt.Errorf("gmail connection: remove config dir: %w", err)
 		}
 	}
-	// Private and receiving stores belong to this connection alone.
-	if conn.IsPrivate() || conn.AgentInboxReceiver {
+	// Private stores belong to this connection alone.
+	if conn.IsPrivate() {
 		if err := os.RemoveAll(home); err != nil {
 			return fmt.Errorf("gmail connection: remove private store: %w", err)
 		}
@@ -1161,4 +1159,39 @@ func (g *GmailService) PrivateDuplicatesOf(id string) []GmailConnection {
 		}
 	}
 	return out
+}
+
+// AgentInboxConnection never falls back to another account when consent is lost.
+func (g *GmailService) AgentInboxConnection(owner string) (GmailConnection, error) {
+	for _, c := range g.ListConnections() {
+		if c.Personal && c.OwnerID == owner && c.AgentInbox {
+			if !c.Enabled || !c.AllowReadAccess || c.Email == "" {
+				return GmailConnection{}, fmt.Errorf("Reconnect your inbox account with Gmail read access in My Vault")
+			}
+			return c, nil
+		}
+	}
+	return GmailConnection{}, fmt.Errorf("Choose your Gmail inbox account in My Vault to give your Crews email addresses")
+}
+
+// SetAgentInboxAccount uses the same encrypted connection store, without a second login.
+func (g *GmailService) SetAgentInboxAccount(ctx context.Context, owner, id string) error {
+	cfg := g.GetConfig()
+	c, ok := findGmailConnection(cfg, id)
+	if !ok || !c.Personal || c.OwnerID != owner {
+		return fmt.Errorf("Choose your own Gmail account in My Vault")
+	}
+	if !c.Enabled || !c.AllowReadAccess || c.Email == "" {
+		return fmt.Errorf("Enable Gmail read access and complete sign-in before choosing this inbox account")
+	}
+	for n := range cfg.Connections {
+		if cfg.Connections[n].Personal && cfg.Connections[n].OwnerID == owner {
+			cfg.Connections[n].AgentInbox = cfg.Connections[n].ID == id
+		}
+	}
+	if err := g.SaveConfig(ctx, cfg); err != nil {
+		return err
+	}
+	log.Printf("[AGENT-INBOX] account selected owner=%s connection=%s", owner, id)
+	return nil
 }

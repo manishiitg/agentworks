@@ -1,4 +1,4 @@
-// Package gmailinbound receives company mailbox events and stores agent inbox mail.
+// Package gmailinbound receives personal Gmail alias mail and stores agent inbox mail.
 // Receiving email never executes an agent.
 package gmailinbound
 
@@ -14,12 +14,10 @@ import (
 
 type Mailbox struct {
 	ConnectionID string
+	OwnerID      string
 	Email        string
-	Cursor       string
-	Generation   int64
-	Processed    int64
-	RenewAt      int64
 	Since        int64
+	Processed    int64
 	LastError    string
 }
 
@@ -92,7 +90,7 @@ func (r RawMessage) Parse(account string) (Message, error) {
 	if subject, e := new(mime.WordDecoder).DecodeHeader(m.Subject); e == nil {
 		m.Subject = subject
 	}
-	for _, name := range []string{"To", "Cc", "Delivered-To", "X-Original-To"} {
+	for _, name := range []string{"To", "Delivered-To"} {
 		list, _ := mail.ParseAddressList(r.Payload.header(name))
 		for _, a := range list {
 			m.Recipients = append(m.Recipients, strings.ToLower(a.Address))

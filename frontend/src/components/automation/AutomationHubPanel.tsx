@@ -120,7 +120,7 @@ export function AutomationHubPanel({
   const [functionsCounts, setFunctionsCounts] = useState<{ functions: number; running: number } | null>(null)
   const workspaceViewTarget = useWorkflowStore(state => state.workspaceViewTarget)
   const availableSections = useMemo(() => new Set<AutomationHubSection>([
-    ...(incomingEnabled && (isWorkflow || productTriggerScope?.profileId === 'work' || productTriggerScope?.profileId === 'work') ? ['email' as const] : []),
+    ...(incomingEnabled && !isWorkflow && (productTriggerScope?.profileId === 'work' || productTriggerScope?.profileId === 'code') ? ['email' as const] : []),
     ...(chatContent ? ['chats' as const] : []),
     ...(!relayMode ? ['schedules' as const] : []),
     ...((isWorkflow || productTriggerScope?.profileId === 'work' || productTriggerScope?.profileId === 'work') ? ['conditions' as const] : []),

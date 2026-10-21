@@ -126,3 +126,7 @@ It may be disabled on this installation or outside your current website access. 
 ## Versions and local copies
 
 The guide and MCP skill have source versions; package fingerprints identify the exact copy. Fetch current server guidance when a saved topic changes. <!-- product:knowledgebase -->Brain entry versions are separate: use the returned entry version as `expected_version` when updating a note. Starter notes and skills refresh only untouched platform-created copies; existing notes, customized packages and deliberately deleted copies are preserved. <!-- /product -->Local skill installation also preserves existing copies unless replacement is explicitly requested.
+
+<!-- product:work -->## Crew email inboxes
+
+<!-- product:work -->On servers, the company administrator turns Crew inboxes on or off. Connect Gmail in My Vault, grant Gmail read access, and mark one account **Use for Crew inboxes**. All Crews you own automatically get addresses; open **Inbox** in the Crew’s right panel to copy one and read received conversations and attachments. Only mail addressed to that Crew appears there, with existing Crew sharing. Other personal email stays private. No company receiving mailbox or Google Cloud receiving setup is needed. Disconnecting the selected account stops delivery to all your Crews. Receiving stores mail; optional Watchers choose what work to start. Local deployments do not have Crew inboxes.

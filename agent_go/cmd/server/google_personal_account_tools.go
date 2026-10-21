@@ -46,9 +46,6 @@ func (api *StreamingAPI) personalGoogleOperation(r *http.Request, workspace stri
 		scope.UserID = actor
 		scope.Workspace = personalConnectionItemRoot(actor, workspace)
 		for _, c := range svc.ListConnections() {
-			if c.AgentInboxReceiver {
-				continue
-			}
 			selected := workspace != "" && c.UsableFrom(scope)
 			if c.IsPrivate() && c.OwnerID != actor && !selected || !c.IsPrivate() && (workspace != "" || !currentUserIsAdmin(r)) {
 				continue
@@ -60,7 +57,7 @@ func (api *StreamingAPI) personalGoogleOperation(r *http.Request, workspace stri
 			}
 			accounts = append(accounts, personalGoogleAccountRow{personalConnectionPermissions: permissions, ID: c.ID, Owner: c.OwnerID, Label: conn.Email, Selected: selected, Connected: conn.Auth.Authenticated, Mine: c.OwnerID == actor, Google: conn})
 		}
-		result := map[string]any{"accounts": accounts, "can_connect": personalAccountManagementScope(r, workspace, true) == nil, "notice": googleAccountSharingNotice}
+		result := map[string]any{"accounts": accounts, "can_connect": personalAccountManagementScope(r, workspace, true) == nil, "notice": googleAccountSharingNotice, "inbox_available": !IsLocalMode()}
 
 		return result, nil
 	case "attach", "detach":
@@ -94,13 +91,29 @@ func (api *StreamingAPI) personalGoogleOperation(r *http.Request, workspace stri
 			return nil, err
 		}
 		id = conn.ID
-	case "disconnect", "reconnect":
+	case "disconnect", "reconnect", "set_inbox_account":
 	default:
 		return nil, fmt.Errorf("Choose list_saved, connect, attach, detach, reconnect or disconnect.")
 	}
 	c, ok := svc.GetConnection(id)
 	if !ok || !canManageGoogleAccount(r, c) {
 		return nil, fmt.Errorf("Ask the account owner to manage this connection in My Vault.")
+	}
+	if action == "set_inbox_account" {
+		if IsLocalMode() {
+			return nil, fmt.Errorf("Crew inboxes are available on server deployments")
+		}
+		if !c.Personal || c.OwnerID != actor {
+			return nil, fmt.Errorf("Choose your own Gmail account in My Vault")
+		}
+		status, _ := svc.AuthStatusForConnectionBlocking(r.Context(), c.ID)
+		if !status.Authenticated || !services.GoogleScopesGrant(status.Scopes, services.GmailReadonlyScope) {
+			return nil, fmt.Errorf("Use Change access to allow Gmail reading and complete Google sign-in first")
+		}
+		if err := svc.SetAgentInboxAccount(r.Context(), actor, id); err != nil {
+			return nil, err
+		}
+		return map[string]any{"message": "This Gmail account now supplies inboxes for all your Crews. Open a Crew’s Inbox to copy its address. Delivery starts when your company enables Crew inboxes."}, nil
 	}
 	if action == "disconnect" {
 		if err := svc.DeleteConnection(r.Context(), id); err != nil {
@@ -165,9 +178,9 @@ func (api *StreamingAPI) handlePersonalGoogleAccounts(w http.ResponseWriter, r *
 
 func (api *StreamingAPI) registerPersonalGoogleAccountTool(reg definitionToolRegistrar, workspace string) error {
 	return reg.RegisterCustomTool("manage_google_account",
-		"Manage personal Google accounts saved in My Vault. list_saved shows reusable accounts and whether they are used here. connect saves your account and, when called from an item you build, explicitly adds it here, returning a Google sign-in link. attach/detach adds or removes the saved account here; disconnect removes it everywhere; reconnect signs in again and can update permissions. Website account management is in My Vault. Only the account owner signs in; existing Builder and account-management permissions apply. Personal Google connections are used through gog; connecting does not create an inbox or start automation. Company accounts stay administrator-managed. "+googleAccountSharingNotice,
+		"Manage personal Google accounts saved in My Vault. list_saved shows reusable accounts and whether they are used here. connect saves your account and, when called from an item you build, explicitly adds it here, returning a Google sign-in link. attach/detach adds or removes the saved account here; disconnect removes it everywhere; reconnect signs in again and can update permissions. Website account management is in My Vault. Only the account owner signs in; existing Builder and account-management permissions apply. Personal Google connections use gog. On servers, set_inbox_account selects one of your own connected Gmail accounts with read access to supply all your Crew inboxes automatically when the company enables inboxes. It does not lend general mailbox access to Crews or start work. Company accounts stay administrator-managed. "+googleAccountSharingNotice,
 		map[string]interface{}{"type": "object", "properties": map[string]interface{}{
-			"action":                   map[string]interface{}{"type": "string", "enum": []string{"list_saved", "connect", "attach", "detach", "disconnect", "reconnect"}},
+			"action":                   map[string]interface{}{"type": "string", "enum": []string{"list_saved", "connect", "attach", "detach", "disconnect", "reconnect", "set_inbox_account"}},
 			"connection_id":            map[string]interface{}{"type": "string"},
 			"client_name":              map[string]interface{}{"type": "string", "description": "Optional saved Google sign-in app; omit to use the company app."},
 			"allow_read_access":        map[string]interface{}{"type": "boolean"},

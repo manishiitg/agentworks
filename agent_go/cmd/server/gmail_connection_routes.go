@@ -28,6 +28,7 @@ import (
 // Paths are exposed; their contents never are, and no token, secret, or
 // credential material appears here at all.
 type GmailConnectionResponse struct {
+	AgentInbox  bool   `json:"agent_inbox"`
 	ID          string `json:"id"`
 	DisplayName string `json:"display_name"`
 	Email       string `json:"email,omitempty"`
@@ -232,6 +233,7 @@ func projectGmailConnection(r *http.Request, svc *services.GmailService, conn se
 	}
 
 	out := GmailConnectionResponse{
+		AgentInbox:            conn.AgentInbox,
 		ID:                    conn.ID,
 		DisplayName:           conn.DisplayName,
 		Email:                 email,

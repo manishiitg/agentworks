@@ -21,9 +21,6 @@ func gmailConnectionFixture(t *testing.T) (*StreamingAPI, context.Context, *mock
 	t.Setenv("GMAIL_CONNECTIONS_DIR", filepath.Join(dir, "connections"))
 	t.Setenv("GMAIL_OAUTH_TOKEN_DIR", filepath.Join(dir, "tokens"))
 	t.Setenv("GOG_HOME", filepath.Join(dir, "store"))
-	t.Setenv("GMAIL_INBOUND_TOPICS", `{"app":"projects/test-project/topics/mail"}`)
-	t.Setenv("GMAIL_INBOUND_AUDIENCE", "https://example.com/api/hooks/gmail/events")
-	t.Setenv("GMAIL_INBOUND_PUSH_EMAIL", "push@test-project.iam.gserviceaccount.com")
 	binary := filepath.Join(dir, "gog")
 	script := "#!/bin/sh\ncat <<'JSON'\n" + `{"accounts":[{"email":"owner@example.com","client":"app","valid":true,"scopes":["https://www.googleapis.com/auth/gmail.readonly","https://www.googleapis.com/auth/gmail.send"]}]}` + "\nJSON\n"
 	if err := os.WriteFile(binary, []byte(script), 0700); err != nil {

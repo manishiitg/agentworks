@@ -217,6 +217,10 @@ func loadGmailConfigFromDisk() (*GmailConfig, error) {
 	if !exists {
 		return &GmailConfig{Enabled: false}, nil
 	}
+	data, err = retireCompanyInboxConnections(ctx, data)
+	if err != nil {
+		return nil, err
+	}
 	var cfg GmailConfig
 	if err := json.Unmarshal([]byte(data), &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse gmail-config.json: %w", err)

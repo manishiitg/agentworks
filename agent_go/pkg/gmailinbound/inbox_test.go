@@ -11,28 +11,22 @@ import (
 
 type inboxClient struct{ mail RawMessage }
 
-func (c inboxClient) Watch(context.Context) (string, int64, error) {
-	return "100", time.Now().Add(48 * time.Hour).Unix(), nil
-}
-func (c inboxClient) History(context.Context, string) ([]string, string, error) {
-	return []string{c.mail.ID}, "101", nil
-}
-func (c inboxClient) Resync(context.Context, int64) ([]string, string, error) {
-	return []string{c.mail.ID}, "101", nil
+func (c inboxClient) List(context.Context, int64, []string) ([]string, error) {
+	return []string{c.mail.ID}, nil
 }
 func (c inboxClient) Message(context.Context, string) (RawMessage, error) { return c.mail, nil }
-func TestCompanyMailIsStoredPerAgentWithoutExecution(t *testing.T) {
+func TestPersonalAliasMailIsSourceBoundWithoutExecution(t *testing.T) {
 	ctx := context.Background()
 	store, err := Open(filepath.Join(t.TempDir(), "mail.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	one, err := store.EnsureInbox(ctx, Inbox{ID: "one", ProfileID: "work", ProjectID: "one", Address: "company+one@example.com"})
+	one, err := store.EnsureInbox(ctx, Inbox{OwnerID: "owner", ConnectionID: "personal", ID: "one", ProfileID: "work", ProjectOwnerID: "owner", ConnectionID: "personal", ID: "one", Address: "company+one@example.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	two, err := store.EnsureInbox(ctx, Inbox{ID: "two", ProfileID: "work", ProjectID: "two", Address: "company+two@example.com"})
+	two, err := store.EnsureInbox(ctx, Inbox{OwnerID: "other", ConnectionID: "other", ID: "two", ProfileID: "work", ProjectOwnerID: "other", ConnectionID: "other", ID: "two", Address: "company+one@example.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +40,7 @@ func TestCompanyMailIsStoredPerAgentWithoutExecution(t *testing.T) {
 		Name  string `json:"name"`
 		Value string `json:"value"`
 	}{"To", one.Address})
-	if err = store.SetMailbox(ctx, "company", "company@example.com"); err != nil {
+	if err = store.SetMailbox(ctx, "personal", "owner", "owner@example.com"); err != nil {
 		t.Fatal(err)
 	}
 	calls := 0
@@ -57,11 +51,11 @@ func TestCompanyMailIsStoredPerAgentWithoutExecution(t *testing.T) {
 		}
 		return nil
 	}}
-	mailbox, _ := store.MailboxStatus(ctx, "company")
+	mailbox, _ := store.MailboxStatus(ctx, "personal")
 	if err = service.syncMailbox(ctx, mailbox); err == nil {
 		t.Fatal("lost a failed Watcher wake")
 	}
-	mailbox, _ = store.MailboxStatus(ctx, "company")
+	mailbox, _ = store.MailboxStatus(ctx, "personal")
 	if err = service.syncMailbox(ctx, mailbox); err != nil {
 		t.Fatal(err)
 	}

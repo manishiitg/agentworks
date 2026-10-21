@@ -318,7 +318,6 @@ chat:
       - manage_slack_account
       - update_gmail_connection_grants
       - manage_agent_email
-      - setup_gmail_inbound
       - update_schedule
       - update_slack_bot_route_permission
       - update_step_config

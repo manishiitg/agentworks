@@ -50,7 +50,7 @@ import { AutomationHubPanel } from './AutomationHubPanel'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 // Navigation is supplied by the shared side list. Pin inbox routing rather than the retired tab layout.
-it.each(['work','code','agentworks','relays'] as const)('opens the shared Inbox for %s and keeps Ask in its product', async profile => {
+it.each(['work','code'] as const)('opens the shared Inbox for %s and keeps Ask in its product', async profile => {
  const host=document.createElement('div');const root=createRoot(host);const onAsk=vi.fn()
  inboxCapability.enabled=true
  storeState.workspaceViewTarget={view:'workshop',target:'email',token:1}

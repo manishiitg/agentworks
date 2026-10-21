@@ -17,38 +17,50 @@ import (
 	"time"
 )
 
-func TestAgentEmailInboxUsesExistingSharingAndNeverPersonalAccounts(t *testing.T) {
-	api, ctx, _ := gmailConnectionFixture(t)
+func TestAgentEmailInboxUsesOwnerVaultAccountAndServerOnly(t *testing.T) {
+	env, ctx, root := conditionCodeFixture(t)
 	t.Setenv("LOCAL_MODE", "false")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENT_INBOX_ENABLED", "true")
-	t.Setenv("AGENT_INBOX_CONNECTION_ID", "mail")
-	svc := services.GetGmailService()
-	config := svc.GetConfig()
-	config.Connections[0].AgentInboxReceiver = true
-	if err := svc.SaveConfig(ctx, config); err != nil {
+	env.mock.mu.Lock()
+	env.mock.files["config/gmail-config.json"] = `{"connections":[{"id":"personal","personal":true,"owner_id":"owner","agent_inbox":true,"email":"owner@example.com","allow_read_access":true,"enabled":true}]}`
+	env.mock.mu.Unlock()
+	previous := services.GetGmailService()
+	t.Cleanup(func() { services.SetGmailService(previous) })
+	if _, err := services.InitGmailService(); err != nil {
 		t.Fatal(err)
 	}
-	inbox, err := api.resolveAgentEmailInbox(ctx, "Workflow/mail")
+	store, err := gmailinbound.Open(filepath.Join(t.TempDir(), "mail.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if inbox.ID != agentEmailID("agentworks", inbox.ProjectID) {
-		t.Fatal("address identity not tied to agent")
-	}
-	if _, err = api.gmailInbound.Store.StoreMessage(ctx, inbox, gmailinbound.Message{ID: "message", ThreadID: "thread", Body: "private"}); err != nil {
+	defer store.Close()
+	env.api.gmailInbound = &gmailinbound.Service{Store: store}
+	inbox, err := env.api.resolveAgentEmailInbox(ctx, root)
+	if err != nil {
 		t.Fatal(err)
 	}
-	reader := sharedSecretsRequest("GET", "/", "reader", nil).Context()
-	if _, err = api.agentEmailInboxResult(reader, map[string]interface{}{"workspace_path": "Workflow/mail"}); err != nil {
-		t.Fatal("existing shared access lost", err)
+	if !strings.HasPrefix(inbox.Address, "owner+agent-") || inbox.ConnectionID != "personal" {
+		t.Fatalf("inbox %+v", inbox)
+	}
+	if _, err = store.StoreMessage(ctx, inbox, gmailinbound.Message{ID: "mail", Body: "Crew mail"}); err != nil {
+		t.Fatal(err)
 	}
 	stranger := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "stranger"})
-	if _, err = api.resolveAgentEmailInbox(stranger, "Workflow/mail"); err == nil {
-		t.Fatal("private inbox exposed")
+	if _, err = env.api.resolveAgentEmailInbox(stranger, root); err == nil {
+		t.Fatal("private Crew inbox exposed")
 	}
-	if _, err = api.personalGoogleOperation(httptest.NewRequest("POST", "/", nil).WithContext(ctx), "", map[string]interface{}{"action": "select_inbox", "connection_id": "mail"}); err == nil {
-		t.Fatal("retired personal intake action still works")
+	svc := services.GetGmailService()
+	cfg := svc.GetConfig()
+	cfg.Connections[0].Enabled = false
+	if err = svc.SaveConfig(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if inboxSourceCurrent(inbox) {
+		t.Fatal("disabled account still receiving")
+	}
+	if _, err = env.api.agentEmailInboxResult(ctx, map[string]interface{}{"workspace_path": root}); err != nil {
+		t.Fatal("stored Crew mail lost on disconnection", err)
 	}
 	// No inbox endpoints, private DB or service workers are constructed locally.
 	t.Setenv("LOCAL_MODE", "true")
@@ -95,12 +107,8 @@ func TestAgentEmailWatcherRealPythonAndDurableCursor(t *testing.T) {
 	t.Setenv("LOCAL_MODE", "false")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENT_INBOX_ENABLED", "true")
-	t.Setenv("AGENT_INBOX_CONNECTION_ID", "company")
-	t.Setenv("GMAIL_INBOUND_TOPICS", `{"app":"projects/test-project/topics/mail"}`)
-	t.Setenv("GMAIL_INBOUND_AUDIENCE", "https://example.com/api/hooks/gmail/events")
-	t.Setenv("GMAIL_INBOUND_PUSH_EMAIL", "push@test-project.iam.gserviceaccount.com")
 	env.mock.mu.Lock()
-	env.mock.files["config/gmail-config.json"] = `{"connections":[{"id":"company","agent_inbox_receiver":true,"email":"company@example.com","client_name":"app","allow_read_access":true,"enabled":true}]}`
+	env.mock.files["config/gmail-config.json"] = `{"connections":[{"id":"personal","personal":true,"owner_id":"owner","agent_inbox":true,"email":"owner@example.com","client_name":"app","allow_read_access":true,"enabled":true}]}`
 	env.mock.mu.Unlock()
 	previous := services.GetGmailService()
 	t.Cleanup(func() { services.SetGmailService(previous) })

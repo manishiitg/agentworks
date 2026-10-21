@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/gmailsetup"
 )
 
 var gmailSetupConfigMu sync.Mutex
@@ -18,33 +16,6 @@ func gmailSetupConfigPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(root, "gmail-inbound", "config.json"), nil
-}
-
-// Explicit environment settings and setup's private file can coexist, but
-// neither can silently replace the other's receiving identity or client topic.
-func mergeGmailInboundConfig(a, b gmailInboundConfig) (gmailInboundConfig, error) {
-	if b.ConnectionID != "" {
-		a.ConnectionID = b.ConnectionID
-		a.Enabled = b.Enabled
-	}
-	if len(b.Topics) == 0 {
-		return a, nil
-	}
-	if a.Topics == nil {
-		a.Topics = map[string]string{}
-	}
-	if len(a.Topics) > 0 && (a.Audience != b.Audience || a.PushEmail != b.PushEmail) {
-		return a, fmt.Errorf("Gmail setup conflicts with the deployment's environment; reconcile its audience and push identity before retrying")
-	}
-	for client, topic := range b.Topics {
-		if old := a.Topics[client]; old != "" && old != topic {
-			return a, fmt.Errorf("Gmail setup conflicts with an existing OAuth client's topic")
-		}
-		a.Topics[client] = topic
-	}
-	a.Audience = b.Audience
-	a.PushEmail = b.PushEmail
-	return a, nil
 }
 
 func loadGmailSetupConfig(c gmailInboundConfig) (gmailInboundConfig, error) {
@@ -63,29 +34,7 @@ func loadGmailSetupConfig(c gmailInboundConfig) (gmailInboundConfig, error) {
 	if json.Unmarshal(raw, &saved) != nil {
 		return c, fmt.Errorf("invalid private Gmail setup configuration")
 	}
-	if len(saved.Topics) > 0 {
-		if err = validateGmailInboundConfig(saved); err != nil {
-			return c, err
-		}
-	}
-	return mergeGmailInboundConfig(c, saved)
-}
-
-func saveGmailSetupConfig(p gmailsetup.Plan) error {
-	gmailSetupConfigMu.Lock()
-	defer gmailSetupConfigMu.Unlock()
-	c, err := readGmailInboundConfig()
-	if err != nil {
-		return err
-	}
-	c, err = mergeGmailInboundConfig(c, gmailInboundConfig{Topics: map[string]string{p.ClientName: p.Topic}, Audience: p.Endpoint, PushEmail: p.PushEmail})
-	if err != nil {
-		return err
-	}
-	if err = validateGmailInboundConfig(c); err != nil {
-		return err
-	}
-	return writeGmailSetupConfig(c)
+	return saved, nil
 }
 
 func writeGmailSetupConfig(c gmailInboundConfig) error {
@@ -116,7 +65,7 @@ func writeGmailSetupConfig(c gmailInboundConfig) error {
 		err = os.Rename(f.Name(), path)
 	}
 	if err != nil {
-		return fmt.Errorf("cannot save private Gmail setup configuration; cloud resources remain available for a retry")
+		return fmt.Errorf("cannot save private Gmail setup configuration")
 	}
 	return nil
 }

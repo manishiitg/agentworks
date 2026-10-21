@@ -2589,6 +2589,7 @@ export interface GoogleServiceGrant {
 /** One configured Gmail sending account. Identifiers and labels only —
  *  the API never returns tokens, secrets, or credential file contents. */
 export interface GmailConnection {
+  agent_inbox?: boolean
   /** Server authorization to remove this account, independent of shared settings. */
   can_remove?: boolean
   can_manage?: boolean

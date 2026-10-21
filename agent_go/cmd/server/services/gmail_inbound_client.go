@@ -8,19 +8,17 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/gmailinbound"
 )
 
-// GmailInboundClient is a narrow server-owned adapter. Watch registration and
-// attachment reads use only the company receiving connection. Every invocation
-// re-resolves it and its current read grant; personal Gmail is never watched.
+// GmailInboundClient is only used by server receiving and stored-message attachment reads.
+// It never grants a Crew general access to its owner's private mailbox.
 type GmailInboundClient struct {
 	ConnectionID string
-	Topic        string
+	OwnerID      string
 }
 
 func (c GmailInboundClient) run(ctx context.Context, readOnly bool, args ...string) ([]byte, error) {
@@ -28,11 +26,11 @@ func (c GmailInboundClient) run(ctx context.Context, readOnly bool, args ...stri
 	if svc == nil {
 		return nil, fmt.Errorf("Gmail is unavailable")
 	}
-	saved, ok := svc.GetConnection(c.ConnectionID)
-	if !ok || saved.IsPrivate() || !saved.AgentInboxReceiver {
-		return nil, fmt.Errorf("Agent inbox receiving requires a company Google connection")
+	saved, err := svc.AgentInboxConnection(c.OwnerID)
+	if err != nil || saved.ID != c.ConnectionID {
+		return nil, fmt.Errorf("Reconnect your selected inbox account in My Vault")
 	}
-	scope := GmailUseScope{InboxReceiver: true}
+	scope := GmailUseScope{inboxOwner: c.OwnerID, UserID: c.OwnerID, ReadOnly: true}
 	conn, e := svc.ConnectionForScope(c.ConnectionID, scope)
 	if e != nil {
 		return nil, e
@@ -41,10 +39,13 @@ func (c GmailInboundClient) run(ctx context.Context, readOnly bool, args ...stri
 		return nil, fmt.Errorf("enable Gmail read access and reconnect")
 	}
 	status, _ := svc.AuthStatusForConnectionBlocking(ctx, c.ConnectionID)
-	if !GoogleScopesGrant(status.Scopes, GmailReadonlyScope) {
+	if !status.Authenticated || !GoogleScopesGrant(status.Scopes, GmailReadonlyScope) {
 		return nil, fmt.Errorf("Gmail read permission has not been granted")
 	}
 
+	if status.Email != "" && !strings.EqualFold(status.Email, conn.Email) {
+		return nil, fmt.Errorf("Inbox account identity changed; reconnect in My Vault")
+	}
 	access, e := svc.GoogleCLIAccessForConnectionIn(ctx, c.ConnectionID, scope)
 	if e != nil {
 		return nil, e
@@ -62,8 +63,6 @@ func (c GmailInboundClient) run(ctx context.Context, readOnly bool, args ...stri
 	final = append(final, "--json", "--no-input")
 	if readOnly {
 		final = append(final, "--readonly", "--gmail-no-send")
-	} else if len(args) > 1 && args[1] == "watch" {
-		final = append(final, "--gmail-no-send")
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
@@ -75,20 +74,18 @@ func (c GmailInboundClient) run(ctx context.Context, readOnly bool, args ...stri
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
 	if e = cmd.Run(); e != nil {
-		// Classify an expired history cursor without returning CLI output or
+		// Classify a deleted message without returning CLI output or
 		// arguments (which can contain token or message text) to the caller.
 		if strings.Contains(stderr.String(), "404") {
-			return nil, errInboundHistoryExpired
+			return nil, gmailinbound.ErrMessageGone
 		}
-		return nil, fmt.Errorf("Gmail command failed; check connection authorization and Pub/Sub configuration")
+		return nil, fmt.Errorf("Gmail connection needs attention; reconnect your inbox account in My Vault")
 	}
 	if out.overflow {
 		return nil, fmt.Errorf("Gmail response exceeds 30 MiB")
 	}
 	return out.Bytes(), nil
 }
-
-var errInboundHistoryExpired = gmailinbound.ErrHistoryExpired
 
 type limitedInboundOutput struct {
 	bytes.Buffer
@@ -107,67 +104,10 @@ func (b *limitedInboundOutput) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-func (c GmailInboundClient) Watch(ctx context.Context) (string, int64, error) {
-	b, e := c.run(ctx, false, "gmail", "watch", "start", "--topic", c.Topic)
-	if e != nil {
-		return "", 0, e
-	}
-	var result struct {
-		HistoryID    string      `json:"historyId"`
-		Expiration   json.Number `json:"expiration"`
-		ExpirationMS json.Number `json:"expirationMs"`
-	}
-	var envelope struct {
-		Watch json.RawMessage `json:"watch"`
-	}
-	_ = json.Unmarshal(b, &envelope)
-	if len(envelope.Watch) > 0 {
-		b = envelope.Watch
-	}
-	if e = json.Unmarshal(b, &result); e != nil {
-		return "", 0, e
-	}
-	exp := result.Expiration
-	if exp == "" {
-		exp = result.ExpirationMS
-	}
-	n, _ := strconv.ParseInt(string(exp), 10, 64)
-	return result.HistoryID, n / 1000, nil
-}
-func (c GmailInboundClient) History(ctx context.Context, since string) ([]string, string, error) {
-	var ids []string
-	page := ""
-	var cursor string
-	for i := 0; i < 100; i++ {
-		args := []string{"gmail", "history", "--since", since, "--max", "100"}
-		if page != "" {
-			args = append(args, "--page", page)
-		}
-		b, e := c.run(ctx, true, args...)
-		if e != nil {
-			return nil, "", e
-		}
-		var r struct {
-			HistoryID string   `json:"historyId"`
-			Messages  []string `json:"messages"`
-			Next      string   `json:"nextPageToken"`
-		}
-		if e = json.Unmarshal(b, &r); e != nil {
-			return nil, "", e
-		}
-		ids = append(ids, r.Messages...)
-		cursor = r.HistoryID
-		page = r.Next
-		if page == "" {
-			return ids, cursor, nil
-		}
-	}
-	return nil, "", fmt.Errorf("Gmail history backlog exceeds 100 pages; cursor retained")
-}
 func (c GmailInboundClient) Message(ctx context.Context, id string) (gmailinbound.RawMessage, error) {
 	b, e := c.run(ctx, true, "gmail", "raw", id)
 	var m gmailinbound.RawMessage
-	if errors.Is(e, errInboundHistoryExpired) {
+	if errors.Is(e, gmailinbound.ErrMessageGone) {
 		return m, gmailinbound.ErrMessageGone
 	}
 	if e != nil {
@@ -180,44 +120,57 @@ func (c GmailInboundClient) Message(ctx context.Context, id string) (gmailinboun
 	return m, e
 }
 
-// Resync captures a new cursor before listing the overlap window. Deliveries
-// already seen are deduplicated on disk; changes during the scan remain after
-// this cursor and will be fetched by the next incremental sync.
-func (c GmailInboundClient) Resync(ctx context.Context, since int64) ([]string, string, error) {
-	cursor, _, e := c.Watch(ctx)
-	if e != nil {
-		return nil, "", e
+// List fetches only messages Gmail matched to the owner's Crew aliases.
+// The overlap window handles arrivals during listing; the inbox store deduplicates IDs.
+func (c GmailInboundClient) List(ctx context.Context, since int64, addresses []string) ([]string, error) {
+	if len(addresses) == 0 {
+		return nil, nil
 	}
 	var ids []string
-	page := ""
-	for i := 0; i < 100; i++ {
-		params := map[string]interface{}{"userId": "me", "maxResults": 100, "q": fmt.Sprintf("after:%d", since-300)}
-		if page != "" {
-			params["pageToken"] = page
+	// Bound query size without changing the one-mailbox polling model.
+	for start := 0; start < len(addresses); start += 40 {
+		end := start + 40
+		if end > len(addresses) {
+			end = len(addresses)
 		}
-		b, _ := json.Marshal(params)
-		data, e := c.run(ctx, true, "api", "call", "gmail", "v1", "gmail.users.messages.list", "--params", string(b))
-		if e != nil {
-			return nil, "", e
+		terms := []string{}
+		for _, address := range addresses[start:end] {
+			terms = append(terms, "deliveredto:"+address, "to:"+address)
 		}
-		var r struct {
-			Messages []struct {
-				ID string `json:"id"`
-			} `json:"messages"`
-			Next string `json:"nextPageToken"`
-		}
-		if e = json.Unmarshal(data, &r); e != nil {
-			return nil, "", e
-		}
-		for _, m := range r.Messages {
-			ids = append(ids, m.ID)
-		}
-		page = r.Next
-		if page == "" {
-			return ids, cursor, nil
+		query := fmt.Sprintf("after:%d {%s}", since-300, strings.Join(terms, " "))
+		page := ""
+		for n := 0; n < 100; n++ {
+			params := map[string]any{"userId": "me", "maxResults": 100, "q": query}
+			if page != "" {
+				params["pageToken"] = page
+			}
+			b, _ := json.Marshal(params)
+			data, err := c.run(ctx, true, "api", "call", "gmail", "v1", "gmail.users.messages.list", "--params", string(b))
+			if err != nil {
+				return nil, err
+			}
+			var r struct {
+				Messages []struct {
+					ID string `json:"id"`
+				} `json:"messages"`
+				Next string `json:"nextPageToken"`
+			}
+			if err = json.Unmarshal(data, &r); err != nil {
+				return nil, err
+			}
+			for _, m := range r.Messages {
+				ids = append(ids, m.ID)
+			}
+			page = r.Next
+			if page == "" {
+				break
+			}
+			if n == 99 {
+				return nil, fmt.Errorf("Crew email backlog exceeds 100 pages; check position retained")
+			}
 		}
 	}
-	return nil, "", fmt.Errorf("Gmail recovery backlog exceeds 100 pages; cursor retained")
+	return ids, nil
 }
 func (c GmailInboundClient) Attachment(ctx context.Context, messageID string, a gmailinbound.Attachment) ([]byte, error) {
 	if a.Size > 20*1024*1024 {

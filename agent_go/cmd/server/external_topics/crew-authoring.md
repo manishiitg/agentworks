@@ -241,3 +241,7 @@ Use `workspace action=chat_tools` with `workspace_id` and an explicit `chat_id` 
 Import a laptop-native coding project's files and exact chat into a new Crew or a named agent in an existing Crew. Adding keeps that Crew's Main, instructions and Share. Raw history stays private to Builders; server continuation uses a summary and the disclosed company account. Login files and `.env` are excluded. Native chat resume comes later.
 
 Crews run on the server. An optional laptop connection in Settings adds local command and local-to-Crew file copy tools for its owner's interactive Builder chat. Sharing a Crew does not share the laptop. Initial imports of native laptop coding chats use the CLI import flow; a hosted Crew does not publish a second copy.
+
+## Crew email inboxes
+
+On servers only, the company administrator enables Crew inboxes. People connect Gmail in My Vault and choose one account with `manage_google_account` action=set_inbox_account. Every Crew they own gets its own address automatically. Read that Crew’s addressed mail with `get_agent_inbox` or `agent_inbox`; use the right-panel Inbox to see conversations and attachments. Other personal email stays private. No company mailbox or Google Cloud receiving setup is needed. Receiving stores mail only; optional ordinary Python Watchers decide what starts work.

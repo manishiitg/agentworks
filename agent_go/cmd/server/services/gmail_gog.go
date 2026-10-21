@@ -38,12 +38,12 @@ import (
 func gogHomeDir() string { return gogconfig.Home() }
 
 // gogHomeForConnection is the store a connection's gog account lives in.
-// A private or agent-inbox receiving connection has its own store beside the shared one, never
+// A private connection has its own store beside the shared one, never
 // inside it: the shared store is what trusted terminals, workflows and Crews
 // are handed (gogconfig.Environment), so a private account kept there would
 // be reachable by them.
 func gogHomeForConnection(conn GmailConnection) string {
-	if !conn.IsPrivate() && !conn.AgentInboxReceiver {
+	if !conn.IsPrivate() {
 		return gogHomeDir()
 	}
 	sum := sha256.Sum256([]byte(strings.TrimSpace(conn.OwnerID) + "\x00" + strings.TrimSpace(conn.ScopeWorkspace) + "\x00" + conn.ID))

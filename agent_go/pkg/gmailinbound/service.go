@@ -2,26 +2,18 @@ package gmailinbound
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
 )
 
 type Client interface {
-	Watch(context.Context) (string, int64, error)
-	History(context.Context, string) ([]string, string, error)
+	List(context.Context, int64, []string) ([]string, error)
 	Message(context.Context, string) (RawMessage, error)
-	Resync(context.Context, int64) ([]string, string, error)
 }
 
-var ErrHistoryExpired = errors.New("Gmail history cursor expired")
 var ErrMessageGone = errors.New("Gmail message no longer exists")
 
 type Service struct {
@@ -30,7 +22,6 @@ type Service struct {
 	Client  func(context.Context, Mailbox) (Client, error)
 	Inboxes func(context.Context) ([]Inbox, error)
 	Stored  func(context.Context, Inbox) error
-	Verify  func(context.Context, string) error
 	mu      sync.Mutex
 	busy    map[string]bool
 	wg      sync.WaitGroup
@@ -88,38 +79,21 @@ func (s *Service) syncNext(ctx context.Context) {
 }
 func (s *Service) syncMailbox(ctx context.Context, m Mailbox) error {
 	syncStarted := time.Now().Unix()
-	initial := m.Cursor == "" || m.Processed == 0
 	client, e := s.Client(ctx, m)
 	if e != nil {
 		return e
 	}
-	if m.RenewAt <= time.Now().Unix() {
-		cursor, expiration, e := client.Watch(ctx)
-		if e != nil {
-			return e
-		}
-		if cursor == "" {
-			return fmt.Errorf("Gmail watch returned no history position")
-		}
-		renew := time.Now().Add(24 * time.Hour).Unix()
-		if expiration > 0 && expiration-3600 < renew {
-			renew = expiration - 3600
-		}
-		if e = s.Store.Watch(ctx, m.ConnectionID, cursor, renew); e != nil {
-			return e
-		}
-		if m.Cursor == "" {
-			m.Cursor = cursor
-		}
-	}
-	ids, cursor, e := client.History(ctx, m.Cursor)
-	if initial || errors.Is(e, ErrHistoryExpired) {
-		ids, cursor, e = client.Resync(ctx, m.Since)
-	}
+	inboxes, e := s.Inboxes(ctx)
 	if e != nil {
 		return e
 	}
-	inboxes, e := s.Inboxes(ctx)
+	addresses := []string{}
+	for _, i := range inboxes {
+		if i.ConnectionID == m.ConnectionID && i.OwnerID == m.OwnerID {
+			addresses = append(addresses, i.Address)
+		}
+	}
+	ids, e := client.List(ctx, m.Since, addresses)
 	if e != nil {
 		return e
 	}
@@ -141,6 +115,9 @@ func (s *Service) syncMailbox(ctx context.Context, m Mailbox) error {
 			continue
 		}
 		for _, inbox := range inboxes {
+			if inbox.ConnectionID != m.ConnectionID || inbox.OwnerID != m.OwnerID {
+				continue
+			}
 			if message.ReceivedAt < inbox.CreatedAt*1000 {
 				continue
 			}
@@ -153,6 +130,12 @@ func (s *Service) syncMailbox(ctx context.Context, m Mailbox) error {
 			}
 			if !matched {
 				continue
+			}
+			if s.Enabled != nil && !s.Enabled(ctx) {
+				return nil
+			}
+			if _, err := s.Client(ctx, m); err != nil {
+				return err
 			}
 			fresh, err := s.Store.StoreMessage(ctx, inbox, message)
 			if err != nil {
@@ -169,60 +152,9 @@ func (s *Service) syncMailbox(ctx context.Context, m Mailbox) error {
 			}
 		}
 	}
-	if cursor == "" {
-		cursor = m.Cursor
+	if m.Processed == 0 || m.LastError != "" || len(ids) > 0 {
+		log.Printf("[AGENT-INBOX] checked connection=%s inboxes=%d matched=%d", m.ConnectionID, len(addresses), len(ids))
 	}
 	m.Since = syncStarted
-	return s.Store.Synced(ctx, m, cursor)
-}
-
-// Receive authenticates before accepting any payload. A successful response
-// means the wakeup is on disk, not that an agent has finished its work.
-func (s *Service) Receive(w http.ResponseWriter, r *http.Request) {
-	if s.Verify == nil {
-		http.Error(w, "email receiver is not configured", http.StatusServiceUnavailable)
-		return
-	}
-	header := r.Header.Get("Authorization")
-	if !strings.HasPrefix(header, "Bearer ") || s.Verify(r.Context(), strings.TrimPrefix(header, "Bearer ")) != nil {
-		http.Error(w, "invalid Pub/Sub identity", http.StatusUnauthorized)
-		return
-	}
-	var envelope struct {
-		Message struct {
-			Data string `json:"data"`
-		} `json:"message"`
-	}
-	if e := json.NewDecoder(io.LimitReader(r.Body, 64*1024)).Decode(&envelope); e != nil {
-		http.Error(w, "invalid notification", http.StatusBadRequest)
-		return
-	}
-	data, e := base64.StdEncoding.DecodeString(envelope.Message.Data)
-	if e != nil {
-		data, e = base64.RawURLEncoding.DecodeString(envelope.Message.Data)
-	}
-	var payload struct {
-		Email     string `json:"emailAddress"`
-		HistoryID string `json:"historyId"`
-	}
-	if e != nil || json.Unmarshal(data, &payload) != nil || !decimalID(payload.HistoryID) || payload.Email == "" {
-		http.Error(w, "invalid mailbox notification", http.StatusBadRequest)
-		return
-	}
-	if e = s.Store.Wake(r.Context(), strings.ToLower(payload.Email)); e != nil {
-		http.Error(w, "cannot persist notification", http.StatusServiceUnavailable)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-func decimalID(s string) bool {
-	if s == "" || len(s) > 30 {
-		return false
-	}
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return false
-		}
-	}
-	return true
+	return s.Store.Synced(ctx, m)
 }

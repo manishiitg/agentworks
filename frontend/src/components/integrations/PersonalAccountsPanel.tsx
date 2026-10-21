@@ -16,7 +16,7 @@ interface Account {
   problem?: string
   google?: GmailConnection
 }
-interface Accounts { accounts: Account[]; can_connect: boolean; notice: string; sign_in_ready?: boolean }
+interface Accounts { accounts: Account[]; can_connect: boolean; notice: string; sign_in_ready?: boolean; inbox_available?: boolean }
 const errorText = (cause: unknown) => {
   const data = (cause as { response?: { data?: { error?: string } | string } })?.response?.data
   return typeof data === 'string' ? data : data?.error || 'Could not update your accounts. Please try again.'
@@ -71,6 +71,7 @@ function ProviderAccounts({ provider, workspacePath, onChanged }: { provider: Pr
   return <div aria-label={`${label} accounts`} className="space-y-3 rounded-lg border border-border p-4">
     <div className="flex items-center gap-2"><ConnectionIcon icon={provider} name={label} size="sm" /><h3 className="text-sm font-medium">{label}</h3></div>
     {workspacePath && data?.notice && <p className="text-xs text-muted-foreground">{data.notice}</p>}
+    {central && provider === 'google' && data?.inbox_available && <p className="text-xs text-muted-foreground">Choose one Gmail account for all your Crew inboxes. Only mail addressed to a Crew appears there. Gmail read access is required; disconnecting this account stops delivery to all your Crews.</p>}
     {central && provider === 'slack' && <p className="text-xs text-muted-foreground">Only you can read or search your Slack. People using a product you add it to can send messages as you.</p>}
     {error && <div role="alert" className="text-xs text-destructive">{error} <Button variant="ghost" size="xs" onClick={() => void refresh()}>Retry</Button></div>}
     {message && <p role="status" className="text-xs">{message}</p>}
@@ -82,6 +83,7 @@ function ProviderAccounts({ provider, workspacePath, onChanged }: { provider: Pr
         {!central && account.can_add && !account.selected && <Button size="xs" variant="outline" disabled={busy} onClick={() => void act('attach', account)}>Use here</Button>}
         {!central && account.can_detach && <Button size="xs" variant="outline" disabled={busy} onClick={() => void act('detach', account)}>Remove here</Button>}
         {central && account.can_reconnect && <Button size="xs" variant="outline" disabled={busy} onClick={() => provider === 'google' && account.google ? changeGoogleAccountAccess(account.google, '') : void act('reconnect', account)}>{provider === 'google' ? 'Change access' : 'Reconnect'}</Button>}
+        {central && provider === 'google' && data?.inbox_available && account.mine && account.google?.personal && <Button size="xs" variant="outline" disabled={busy || account.google.agent_inbox} onClick={() => void act('set_inbox_account', account)}>{account.google.agent_inbox ? 'Crew inbox account' : 'Use for Crew inboxes'}</Button>}
         {central && account.can_manage && <Button size="xs" variant="ghost" disabled={busy} onClick={() => void act('disconnect', account)}>Disconnect everywhere</Button>}
       </div>
       {account.problem && <p role="alert" className="mt-2 break-words text-xs text-destructive">Not working: {account.problem}</p>}
