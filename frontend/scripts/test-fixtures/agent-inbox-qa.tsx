@@ -7,4 +7,4 @@ import '../../src/index.css'
 const query=new URLSearchParams(location.search)
 document.documentElement.classList.toggle('dark',query.get('theme')==='dark')
 useCapabilitiesStore.setState({capabilities:{local_mode:query.get('local')==='true',agent_inboxes:query.get('local')!=='true'} as never})
-createRoot(document.getElementById('root')!).render(<TooltipProvider><main className="mx-auto max-w-3xl space-y-6 p-4 text-foreground"><AgentInboxPanel workspacePath="Workflow/example" onAsk={()=>{}}/><CompanyAgentEmail/></main></TooltipProvider>)
+createRoot(document.getElementById('root')!).render(<TooltipProvider><main className="mx-auto max-w-3xl space-y-6 p-4 text-foreground"><AgentInboxPanel workspacePath="Crew/example" onAsk={()=>{}}/><CompanyAgentEmail/></main></TooltipProvider>)
