@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowRight, Bot, LayoutDashboard, Radio, RefreshCw, Search, Users, Workflow, X } from 'lucide-react'
+import { ArrowUpRight, Globe2, LayoutDashboard, RefreshCw, Search, Users, X } from 'lucide-react'
 import api from '../services/api'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
@@ -11,7 +11,6 @@ type Dashboard = {
   title?: string
   workspace: string
   project_title?: string
-  product?: string
   document_path: string
   short_path?: string
   shared_with_me: boolean
@@ -23,15 +22,6 @@ type DashboardPage = { dashboards: Dashboard[]; next_offset: number; has_more: b
 function dashboardTitle(row: Dashboard) {
   const title = row.title?.trim()
   return (!title || /^index(?:\.html?)?$/i.test(title)) ? row.project_title?.trim() || 'Dashboard' : title
-}
-
-function productPresentation(product?: string) {
-  switch (product) {
-    case 'crew': return { label: 'Crew', Icon: Bot, color: 'bg-violet-500/10 text-violet-700 dark:text-violet-300' }
-    case 'workflow': return { label: 'Goal', Icon: Workflow, color: 'bg-sky-500/10 text-sky-700 dark:text-sky-300' }
-    case 'relay': return { label: 'Flow', Icon: Radio, color: 'bg-amber-500/10 text-amber-700 dark:text-amber-300' }
-    default: return { label: 'Dashboard', Icon: LayoutDashboard, color: 'bg-primary/10 text-primary' }
-  }
 }
 
 /** Publication and access are decided by the same discovery service used by MCP. */
@@ -74,7 +64,7 @@ export function DashboardsPage() {
   }, [account, workspace, attempt])
 
   const search = query.trim().toLocaleLowerCase()
-  const visible = rows?.filter(row => [dashboardTitle(row), row.project_title, productPresentation(row.product).label]
+  const visible = rows?.filter(row => [dashboardTitle(row), row.project_title]
     .some(value => value?.toLocaleLowerCase().includes(search))) ?? []
 
   return <main className="flex h-full min-h-0 flex-col bg-background text-foreground">
@@ -108,9 +98,14 @@ export function DashboardsPage() {
           <p className="mt-1 text-sm text-muted-foreground">Try a different name or project.</p>
           <button type="button" onClick={() => setQuery('')} className="mt-4 rounded-md px-3 py-1.5 text-sm font-medium text-primary hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Clear search</button>
         </div>}
-        {rows && <div className="space-y-7">{([false, true] as const).map(shared => {
+        {rows?.length === 0 && !search && <div className="rounded-xl border border-dashed border-border px-5 py-10 text-center">
+          <Globe2 aria-hidden="true" className="mx-auto mb-3 h-6 w-6 text-muted-foreground" />
+          <h3 className="text-sm font-medium">Your dashboards will appear here</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Dashboards you publish or your team shares will appear here automatically.</p>
+        </div>}
+        {rows && <div className="space-y-6">{([false, true] as const).map(shared => {
           const items = visible.filter(row => row.shared_with_me === shared)
-          if (search && !items.length) return null
+          if (!items.length) return null
           const SectionIcon = shared ? Users : LayoutDashboard
           return <section key={String(shared)} aria-label={shared ? 'Shared with you' : 'Yours'}>
             <div className="mb-3 flex items-center gap-2">
@@ -118,21 +113,14 @@ export function DashboardsPage() {
               <h3 className="text-sm font-semibold">{shared ? 'Shared with you' : 'Yours'}</h3>
               <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground">{items.length}</span>
             </div>
-            {!items.length && <p className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">{shared ? 'When someone shares a dashboard with you, it appears here automatically.' : 'Publish a dashboard from any project to see it here.'}</p>}
             {items.length > 0 && <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {items.map(row => {
                 const title = dashboardTitle(row)
-                const { label, Icon, color } = productPresentation(row.product)
-                const project = row.project_title?.trim()
-                const showProject = project && project.toLocaleLowerCase() !== title.toLocaleLowerCase()
                 return <li key={`${row.workspace}/${row.dashboard_id}`} className="min-w-0">
-                  <a href={row.short_path || sharedReportLink(window.location.origin, row.workspace, row.document_path)} className="group flex h-full min-h-40 flex-col rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    <div className="mb-4 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5"><span className={`flex h-9 w-9 items-center justify-center rounded-lg ${color}`}><Icon aria-hidden="true" className="h-[18px] w-[18px]" /></span><span className="text-xs font-medium text-muted-foreground">{label}</span></div>
-                      <ArrowRight aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
-                    </div>
-                    <span className="break-words text-base font-semibold leading-snug">{title}</span>
-                    {showProject && <span className="mt-1.5 break-words text-xs text-muted-foreground">{project}</span>}
+                  <a href={row.short_path || sharedReportLink(window.location.origin, row.workspace, row.document_path)} className="group flex h-full min-h-20 items-center gap-3 rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <Globe2 aria-hidden="true" className="h-5 w-5 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 break-words text-sm font-medium leading-snug">{title}</span>
+                    <ArrowUpRight aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-foreground" />
                   </a>
                 </li>
               })}

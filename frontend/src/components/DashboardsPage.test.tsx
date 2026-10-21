@@ -31,12 +31,12 @@ it('shows every published page in its server-selected audience and refreshes aft
     expect(atob(url.searchParams.get('path')!)).toBe('Crew/sales')
     await act(async () => window.dispatchEvent(new Event('focus')))
     expect(host.querySelector('section a')).toBeNull()
-    expect(host.textContent).toContain('appears here automatically')
+    expect(host.textContent).toContain('appear here automatically')
   } finally { await act(async () => root.unmount()); host.remove(); post.mockReset() }
 })
 
 
-it('finds dashboards by display name or project without duplicating filename titles', async () => {
+it('shows compact website names without product labels and finds them by name or project', async () => {
   post.mockResolvedValue({ data: { dashboards: [
     { dashboard_id: 'overview', title: 'index', project_title: 'Account research', product: 'crew', workspace: 'Crew/research', document_path: 'db/reports/index.html', shared_with_me: true },
     { dashboard_id: 'sales', title: 'Weekly sales', project_title: 'Revenue', product: 'workflow', workspace: 'Goals/revenue', document_path: 'db/reports/sales.html', shared_with_me: true },
@@ -51,8 +51,11 @@ it('finds dashboards by display name or project without duplicating filename tit
     await act(async () => root.render(<DashboardsPage />))
     const shared = host.querySelector('section[aria-label="Shared with you"]')!
     expect(shared.querySelectorAll('a')).toHaveLength(2)
-    expect(shared.querySelector('a')!.textContent).toBe('CrewAccount research')
+    expect(shared.querySelector('a')!.textContent).toBe('Account research')
     expect(shared.textContent).not.toContain('index')
+    expect(shared.textContent).not.toContain('Crew')
+    expect(shared.textContent).not.toContain('Goal')
+    expect(host.querySelector('section[aria-label="Yours"]')).toBeNull()
     await type('  REVENUE ')
     expect(shared.querySelectorAll('a')).toHaveLength(1)
     expect(shared.textContent).toContain('Weekly sales')
