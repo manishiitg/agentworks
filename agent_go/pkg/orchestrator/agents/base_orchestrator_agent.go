@@ -102,9 +102,7 @@ func (boa *BaseOrchestratorAgent) Initialize(ctx context.Context) error {
 		boa.config.MaxTurns,
 		boa.config.LLMConfig.Primary.Provider,
 		boa.logger,
-		false, // cacheOnly - not used in orchestrator agents
-		boa.config.EnableContextOffloading,
-		boa.config.LargeOutputThreshold,        // Token threshold for context offloading
+		false,                                  // cacheOnly - not used in orchestrator agents
 		boa.config.EnableParallelToolExecution, // Parallel tool execution
 		&boa.config.LLMConfig,                  // Pass LLMConfig
 		boa.config.APIKeys,                     // Pass API keys

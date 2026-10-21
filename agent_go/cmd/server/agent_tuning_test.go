@@ -14,7 +14,6 @@ func clearTuningEnv(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
 		"TOOL_EXECUTION_TIMEOUT",
-		"LARGE_OUTPUT_THRESHOLD",
 		"ENABLE_PARALLEL_TOOL_EXECUTION",
 	} {
 		t.Setenv(name, "")
@@ -26,9 +25,6 @@ func TestApplySharedLLMAgentTuningDefaults(t *testing.T) {
 	var cfg agent.LLMAgentConfig
 	applySharedLLMAgentTuning(&cfg, &QueryRequest{}, nil)
 
-	if cfg.LargeOutputThreshold != 0 {
-		t.Error("offload thresholds should default to 0 (library defaults)")
-	}
 	if !cfg.EnableParallelToolExecution {
 		t.Error("parallel tool execution should default to enabled")
 	}
@@ -64,16 +60,12 @@ func TestApplySharedLLMAgentTuningDisablesClaudePrivateMemoryForEveryAgent(t *te
 func TestApplySharedLLMAgentTuningPriority(t *testing.T) {
 	clearTuningEnv(t)
 	// Env layer
-	t.Setenv("LARGE_OUTPUT_THRESHOLD", "5000")
 	t.Setenv("ENABLE_PARALLEL_TOOL_EXECUTION", "false")
 	t.Setenv("TOOL_EXECUTION_TIMEOUT", "90s")
 
 	// Env beats defaults.
 	var envCfg agent.LLMAgentConfig
 	applySharedLLMAgentTuning(&envCfg, &QueryRequest{}, nil)
-	if envCfg.LargeOutputThreshold != 5000 {
-		t.Errorf("env LargeOutputThreshold not applied: %d", envCfg.LargeOutputThreshold)
-	}
 	if envCfg.EnableParallelToolExecution {
 		t.Error("env should disable parallel tool execution")
 	}
@@ -87,7 +79,7 @@ func TestApplySharedLLMAgentTuningPriority(t *testing.T) {
 // sub-agent resolve identical tuning (sub-agents just have no preset layer).
 func TestRootAndSubAgentTuningMatch(t *testing.T) {
 	clearTuningEnv(t)
-	t.Setenv("LARGE_OUTPUT_THRESHOLD", "5000")
+	t.Setenv("TOOL_EXECUTION_TIMEOUT", "90s")
 
 	req := &QueryRequest{}
 
@@ -95,13 +87,12 @@ func TestRootAndSubAgentTuningMatch(t *testing.T) {
 	applySharedLLMAgentTuning(&rootCfg, req, nil)
 	applySharedLLMAgentTuning(&subCfg, req, nil)
 
-	if rootCfg.LargeOutputThreshold != subCfg.LargeOutputThreshold ||
-		rootCfg.EnableParallelToolExecution != subCfg.EnableParallelToolExecution ||
+	if rootCfg.EnableParallelToolExecution != subCfg.EnableParallelToolExecution ||
 		rootCfg.ToolTimeout != subCfg.ToolTimeout {
 		t.Errorf("root and sub-agent tuning diverged:\nroot: %+v\nsub:  %+v", rootCfg, subCfg)
 	}
-	if subCfg.LargeOutputThreshold != 5000 {
-		t.Errorf("env values not applied: %d", subCfg.LargeOutputThreshold)
+	if subCfg.ToolTimeout != 90*time.Second {
+		t.Errorf("env values not applied: %v", subCfg.ToolTimeout)
 	}
 }
 

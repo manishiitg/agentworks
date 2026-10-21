@@ -1546,7 +1546,6 @@ export CONTEXT_EDITING_TURN_THRESHOLD="20"  # Compact outputs older than 20 turn
 
 # Context offloading configuration (offloads large tool outputs to filesystem)
 # Tool outputs larger than this threshold are saved to file and replaced with a reference
-export LARGE_OUTPUT_THRESHOLD="50000"  # Offload outputs larger than 50k tokens (default: 10000)
 
 # Set main LLM configuration (uses Bedrock with AWS credentials from environment)
 # Note: Frontend Published LLMs override this for actual agent execution
@@ -1703,7 +1702,6 @@ echo "- Context Summarization: $ENABLE_CONTEXT_SUMMARIZATION" >> "$LOG_PATH"
 echo "- Token Threshold: $TOKEN_THRESHOLD_PERCENT (70%) | Fixed: ${FIXED_TOKEN_THRESHOLD} tokens" >> "$LOG_PATH"
 echo "- Keep Last Messages: $SUMMARY_KEEP_LAST_MESSAGES" >> "$LOG_PATH"
 echo "- Context Editing: $ENABLE_CONTEXT_EDITING (Threshold: ${CONTEXT_EDITING_THRESHOLD} tokens, Age: ${CONTEXT_EDITING_TURN_THRESHOLD} turns)" >> "$LOG_PATH"
-echo "- Large Output Threshold: ${LARGE_OUTPUT_THRESHOLD} tokens" >> "$LOG_PATH"
 echo "- Agent API URL: $MCP_AGENT_SERVER_URL" >> "$LOG_PATH"
 if [ "$WITH_WORKSPACE" = true ]; then
     echo "- Native Workspace: Enabled (${WORKSPACE_API_URL}, docs=${WORKSPACE_DOCS_PATH})" >> "$LOG_PATH"
@@ -2225,7 +2223,6 @@ echo "📁 Workspace Tools: Enabled"
 echo "🌐 Agent API URL: $MCP_AGENT_SERVER_URL"
 echo "📝 Context Summarization: $ENABLE_CONTEXT_SUMMARIZATION (Threshold: $TOKEN_THRESHOLD_PERCENT = 70%, Fixed: ${FIXED_TOKEN_THRESHOLD} tokens, Keep: $SUMMARY_KEEP_LAST_MESSAGES msgs)"
 echo "✂️  Context Editing: $ENABLE_CONTEXT_EDITING (Threshold: ${CONTEXT_EDITING_THRESHOLD} tokens, Age: ${CONTEXT_EDITING_TURN_THRESHOLD} turns)"
-echo "📦 Large Output Threshold: ${LARGE_OUTPUT_THRESHOLD} tokens"
 echo "📊 Debug level: $LOG_LEVEL"
 
 # Verify main.go exists before attempting to run

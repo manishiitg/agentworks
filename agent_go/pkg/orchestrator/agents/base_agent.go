@@ -147,8 +147,6 @@ func NewBaseAgent(
 	provider string,
 	logger loggerv2.Logger,
 	cacheOnly bool,
-	enableContextOffloading *bool, // Context offloading configuration
-	largeOutputThreshold int, // Token threshold for context offloading (0 = use default: 10000)
 	enableParallelToolExecution bool, // Parallel tool execution configuration
 	llmConfig *LLMConfig, // NEW: Full LLM configuration
 	apiKeys *AgentAPIKeys, // API keys for providers
@@ -275,9 +273,6 @@ func NewBaseAgent(
 			// agents (including Muse structured workflow steps) when it exists in
 			// this agent's admitted direct-tool registry.
 			AdditionalBridge: platformBridgeTools,
-		},
-		Context: mcpagent.ContextRuntimeConfig{
-			Offloading: enableContextOffloading, LargeOutputThreshold: largeOutputThreshold,
 		},
 		Coding: mcpagent.CodingRuntimeConfig{
 			AgentToolsMode:       workflowExecutionNativeToolsMode(agentType, forceStructuredCodingAgent, isolateCodingAgentWorkspace, strings.TrimSpace(codingAgentOutputDir) != ""),

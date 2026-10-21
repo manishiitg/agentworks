@@ -220,11 +220,6 @@ func (bo *BaseOrchestrator) GetIterationFolder() string {
 	return bo.iterationFolder
 }
 
-// GetLargeOutputThreshold returns the token threshold for context offloading (0 = use default: 10000)
-func (bo *BaseOrchestrator) GetLargeOutputThreshold() int {
-	return bo.largeOutputThreshold
-}
-
 // GetBrowserDownloadsPath returns the relative path for browser downloads (e.g., "runs/.../execution/Downloads")
 func (bo *BaseOrchestrator) GetBrowserDownloadsPath() string {
 	return bo.browserDownloadsPath

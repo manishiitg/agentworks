@@ -124,9 +124,6 @@ func (bo *BaseOrchestrator) createAgentConfigWithLLM(agentName string, maxTurns 
 	}
 	config.MCPSessionID = bo.mcpSessionID
 
-	// Context offloading configuration from orchestrator
-	config.LargeOutputThreshold = bo.GetLargeOutputThreshold()
-
 	return config
 }
 
@@ -398,7 +395,7 @@ func (bo *BaseOrchestrator) CreateAndSetupStandardAgent(
 }
 
 // CreateAndSetupStandardAgentWithConfig creates and sets up an agent with a pre-created configuration
-// This allows agents to have full control over config (custom LLM, servers, EnableContextOffloading, etc.)
+// This allows agents to have full control over config (custom LLM, servers, etc.)
 // while still using the standard setup logic (initialization, event bridge connection, tool registration)
 func (bo *BaseOrchestrator) CreateAndSetupStandardAgentWithConfig(
 	ctx context.Context,

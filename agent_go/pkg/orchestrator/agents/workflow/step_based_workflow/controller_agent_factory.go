@@ -1164,9 +1164,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) createKBConsolidateAgent(ctx context.
 		Provider: config.LLMConfig.Primary.Provider,
 		ModelID:  config.LLMConfig.Primary.ModelID,
 	})
-	disabled := false
-	config.EnableContextOffloading = &disabled
-
 	toolsToRegister, executorsToUse := hcpo.prepareWorkspaceToolsOnly()
 
 	createAgentFunc := func(config *agents.OrchestratorAgentConfig, logger loggerv2.Logger, tracer observability.Tracer, eventBridge mcpagent.AgentEventListener) agents.OrchestratorAgent {
@@ -1226,9 +1223,6 @@ func (hcpo *StepBasedWorkflowOrchestrator) createKBReorganizeAgent(ctx context.C
 		Provider: config.LLMConfig.Primary.Provider,
 		ModelID:  config.LLMConfig.Primary.ModelID,
 	})
-	disabled := false
-	config.EnableContextOffloading = &disabled
-
 	toolsToRegister, executorsToUse := hcpo.prepareWorkspaceToolsOnly()
 
 	createAgentFunc := func(config *agents.OrchestratorAgentConfig, logger loggerv2.Logger, tracer observability.Tracer, eventBridge mcpagent.AgentEventListener) agents.OrchestratorAgent {

@@ -367,7 +367,7 @@ func (o *Observer) HandleEvent(_ context.Context, event *unifiedevents.AgentEven
 func (o *Observer) recordMCPCall(event *unifiedevents.AgentEvent, server, tool, callID string) {
 	server = strings.TrimSpace(server)
 	if server == "" || server == "custom" || server == "virtual-tools" || server == "direct_execution" ||
-		tool == "get_api_spec" || tool == "search_large_output" || isCodingCLIProvider(o.provider) {
+		tool == "get_api_spec" || isCodingCLIProvider(o.provider) {
 		return
 	}
 	entry := o.baseEntry(event)

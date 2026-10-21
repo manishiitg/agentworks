@@ -27,7 +27,6 @@ export interface AgentConfigs {
   enabled_custom_tools?: string[];
   enabled_custom_tool_categories?: string[];  // Legacy format kept for transitional frontend compatibility
   enabled_skills?: string[];
-  enable_context_offloading?: boolean;
   use_code_execution_mode?: boolean;
   disable_parallel_tool_execution?: boolean;  // Disable parallel tool execution (default: enabled)
   knowledgebase_access?: 'read' | 'write' | 'read-write' | 'none';
