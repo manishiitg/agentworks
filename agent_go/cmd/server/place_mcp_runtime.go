@@ -71,19 +71,13 @@ func (api *StreamingAPI) resolveMCPServer(ctx context.Context, sessionID, server
 	if sessionID == "" {
 		person = mcpCaller(ctx)
 	}
-	// A Crew's or Goal's Vault MCPs are its owner's for everyone who uses it (scopeAgentMCP); a lent personal Slack
-	// keeps only its send side for anyone else.
+	// A Crew's or Goal's Vault MCPs are its owner's for everyone who uses it (scopeAgentMCP); the Vault proxy keeps a lent
+	// personal Slack to its send side for anyone else (lentVaultSlackRefusal).
 	lender := person
 	if root := api.placeRootForSession(sessionID); root != "" && person != "" {
 		lender = api.projectSecretsOwner(person, root)
 	}
-	resolved, err = api.resolveGovernedMCP(ctx, lender, server)
-	if err == nil && resolved != nil {
-		if guardErr := api.guardPersonalSlackCall(ctx, sessionID, resolved.Name, tool); guardErr != nil {
-			return nil, guardErr
-		}
-	}
-	return resolved, err
+	return api.resolveGovernedMCP(ctx, lender, server)
 }
 
 // resolveCodeMCPServer decides every MCP call from a Code session. isCode is

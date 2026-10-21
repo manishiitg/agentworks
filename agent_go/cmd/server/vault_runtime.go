@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -12,6 +13,7 @@ import (
 	"github.com/manishiitg/mcpagent/mcpcache"
 	"github.com/manishiitg/mcpagent/mcpcache/openapi"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"os"
@@ -334,6 +336,11 @@ func (api *StreamingAPI) handleVaultRuntimeMCP(w http.ResponseWriter, r *http.Re
 				http.Error(w, "session ownership changed", 403)
 				return
 			}
+			// Every lent Vault call passes here, so the personal-Slack rule lives here once.
+			if refusal := api.lentVaultSlackRefusal(r, in, owner, root); refusal != "" {
+				http.Error(w, refusal, 403)
+				return
+			}
 		}
 	}
 	runtimePath := "/api/admin/runtime/mcp"
@@ -465,7 +472,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 	}
 	// A Crew's or Goal's Vault MCPs are its owner's, for everyone who uses it (owner-lent, the same rule as its secrets,
 	// projectSecretsOwner; owner 2026-10-21 "one store, Vault only"). The gateway checks the owner's grants; a lent
-	// personal Slack is limited to its send side for anyone else (guardPersonalSlackCall).
+	// personal Slack is limited to its send side for anyone else (lentVaultSlackRefusal).
 	lender := person
 	if root := api.placeRootForSession(sessionID); root != "" && person != "" {
 		lender = api.projectSecretsOwner(person, root)
@@ -710,4 +717,65 @@ func (api *StreamingAPI) discoverResolvedServerTools(ctx context.Context, resolv
 	}
 	shown := placeMCPPlainName(resolved.Name)
 	return &ToolStatus{Name: shown, Server: shown, Connection: connectionConnected, Status: "ok", Tools: details, FunctionNames: names, ToolsEnabled: len(names)}, nil
+}
+
+// lentVaultSlackRefusal applies the personal-Slack rule to a lent Vault call (owner decision 2026-10-16, kept for Vault
+// 2026-10-21): on a Slack connection lent by its owner (the delegation's person) to someone else (the session's person),
+// only the send-side tools are allowed. It reads the JSON-RPC body (one message or a batch), restores it for the proxy,
+// logs each tools/call attempt or refusal and returns a refusal message, or "" to let the call through.
+func (api *StreamingAPI) lentVaultSlackRefusal(r *http.Request, in vaultDelegation, caller, root string) string {
+	rows, err := vaultServersFor(r.Context(), in.Person)
+	if err != nil {
+		return ""
+	}
+	slack := false
+	for _, row := range rows {
+		if row.ID == in.Connector && strings.EqualFold(row.Provider, "slack") {
+			slack = true
+			break
+		}
+	}
+	if !slack || r.Body == nil {
+		return ""
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 4<<20))
+	_ = r.Body.Close()
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	r.ContentLength = int64(len(body))
+	if err != nil {
+		return personalSlackCallError
+	}
+	type call struct {
+		Method string `json:"method"`
+		Params struct {
+			Name string `json:"name"`
+		} `json:"params"`
+	}
+	var calls []call
+	if trimmed := bytes.TrimSpace(body); len(trimmed) > 0 && trimmed[0] == '[' {
+		if json.Unmarshal(trimmed, &calls) != nil {
+			return personalSlackCallError
+		}
+	} else if len(trimmed) > 0 {
+		var one call
+		if json.Unmarshal(trimmed, &one) != nil {
+			return personalSlackCallError
+		}
+		calls = []call{one}
+	}
+	for _, c := range calls {
+		if c.Method != "tools/call" {
+			continue
+		}
+		tool := c.Params.Name
+		if i := strings.LastIndex(tool, "__"); i >= 0 {
+			tool = tool[i+2:]
+		}
+		if !personalSlackToolAllowed(caller, in.Person, tool) {
+			log.Printf("[SLACK_ACCOUNTS] vault_connection=%s owner=%s item=%s caller=%s session=%s tool=%s event=tool_refused reason=not_account_owner", in.Connector, in.Person, root, caller, in.Session, tool)
+			return personalSlackCallError
+		}
+		log.Printf("[SLACK_ACCOUNTS] vault_connection=%s owner=%s item=%s caller=%s session=%s tool=%s event=tool_attempt", in.Connector, in.Person, root, caller, in.Session, tool)
+	}
+	return ""
 }
