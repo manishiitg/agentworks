@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Which attached agents run an older CLI than this server offers (PLAT-861). The CLI says its build when it attaches;
+// Which attached agents run an older CLI than this server offers (PLAT-861). The helper reports its build on exact-lease metadata updates;
 // the server compares it with the build in downloads/version.json. Development builds and attachments that did not
 // say are never "behind".
 
@@ -53,7 +53,7 @@ func latestServedCLIBuild() string {
 // cliUpdateNotice is what an agent is told, in its own message results, when the CLI it runs through is older than the
 // one this server offers. It reaches every app that reads messages (with or without hooks), including older CLIs, because
 // it rides in the server's reply. The agent runs the update when the person has asked, or passes it to the person.
-const cliUpdateNotice = "A newer AgentWorks CLI is available on this server. Run `agentworks update` (or ask the person to), then `agentworks setup <app>` for their coding app, and restart the app. The old `login --token-stdin` option is gone; use `agentworks login --no-browser` and approve the link in any browser."
+const cliUpdateNotice = "An updated AgentWorks helper is available. If updating is part of the person's request, run `agentworks update`; otherwise tell them an update is available. Existing chats reconnect automatically after the helper restarts."
 
 func agentUpdateNeeded(a namedMessageAgent) bool {
 	if a.Attachment == nil || a.Attachment.ClientBuild == "" || a.Attachment.ClientBuild == "dev" {

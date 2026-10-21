@@ -26,7 +26,7 @@ type namedAgentAttachment struct {
 	Provider         string    `json:"provider"`
 	SessionID        string    `json:"native_session_id"`
 	ConnectionID     string    `json:"connection_id"`
-	ClientBuild      string    `json:"client_build,omitempty"` // the CLI build that attached, when it said
+	ClientBuild      string    `json:"client_build,omitempty"` // the helper build last reported by this exact connection
 }
 
 // A guest-run product keeps the owner's storage namespace but its own actor.
@@ -240,6 +240,9 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			}
 			a.Attachment.DeliveryRoute = value
 		}
+		if build := cleanClientBuild(externalArg(args, "client_build")); build != "" {
+			a.Attachment.ClientBuild = build
+		}
 		a.Attachment.Repository = cleanAgentLabel(externalArg(args, "repository"))
 		a.Attachment.Branch = cleanAgentLabel(externalArg(args, "branch"))
 		activity := externalArg(args, "activity")
@@ -340,6 +343,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 	if a.Attachment != nil {
 		out["attachment_id"] = a.Attachment.ID
 		out["provider"] = a.Attachment.Provider
+		out["client_build"] = a.Attachment.ClientBuild
 		out["delivery_route"] = a.Attachment.DeliveryRoute
 		out["native_session_id"] = a.Attachment.SessionID
 	}

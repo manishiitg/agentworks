@@ -15,6 +15,7 @@ import (
 // AgentAttachment identifies one explicitly attached native conversation. An
 // address can move to a new session, but an old listener cannot follow it.
 type AgentAttachment struct {
+	ClientBuild   string    `json:"client_build,omitempty"`
 	Repository    string    `json:"repository,omitempty"`
 	Branch        string    `json:"branch,omitempty"`
 	Activity      string    `json:"activity,omitempty"`
@@ -84,7 +85,7 @@ func (c *Client) AttachAgent(ctx context.Context, opts AgentAttachmentOptions) (
 
 // UpdateAgentLabel changes only presentation, using the same exact lease.
 func (c *Client) UpdateAgentLabel(ctx context.Context, a AgentAttachment, label string) error {
-	body := map[string]any{"action": "label", "agent_name": a.AgentName, "attachment_id": a.ID, "label": label}
+	body := map[string]any{"action": "label", "agent_name": a.AgentName, "attachment_id": a.ID, "label": label, "client_build": a.ClientBuild}
 	if a.DeliveryRoute != "" {
 		body["delivery_route"] = a.DeliveryRoute
 	}

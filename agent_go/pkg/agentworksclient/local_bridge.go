@@ -240,7 +240,7 @@ type LocalBridgeOptions struct {
 	// Version is the build that runs the bridge. A newer CLI replaces a bridge
 	// that reports another version, so hooks never talk to an older helper.
 	Version string
-	// ClientBuild is this CLI's source build id; it is sent with every attach.
+	// ClientBuild is this helper's build id, reported on attach and metadata refresh.
 	ClientBuild string
 }
 
@@ -2339,9 +2339,10 @@ func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 	} else if b.options.ChatContext != nil {
 		repository, branch = b.options.ChatContext(ctx, a, workspace)
 	}
-	if label == a.Label && route == a.DeliveryRoute && repository == a.Repository && branch == a.Branch && activity == a.Activity && activityAt.Equal(a.ActivityAt) {
+	if a.ClientBuild == b.options.ClientBuild && label == a.Label && route == a.DeliveryRoute && repository == a.Repository && branch == a.Branch && activity == a.Activity && activityAt.Equal(a.ActivityAt) {
 		return
 	}
+	a.ClientBuild = b.options.ClientBuild
 	a.DeliveryRoute, a.Repository, a.Branch, a.Activity, a.ActivityAt = route, repository, branch, activity, activityAt
 	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -2353,6 +2354,7 @@ func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 	defer b.mu.Unlock()
 	for _, current := range b.sessions {
 		if current == s && current.Attachment.ID == a.ID && !current.Offline && !current.ServerClosed {
+			current.Attachment.ClientBuild = a.ClientBuild
 			current.Attachment.Label = label
 			current.Attachment.DeliveryRoute = route
 			current.Attachment.Repository, current.Attachment.Branch = repository, branch

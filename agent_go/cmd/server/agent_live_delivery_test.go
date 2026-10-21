@@ -210,7 +210,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	}
 	// A chat rename updates presentation on the same lease. Free text that
 	// resembles another address is disambiguated; it never becomes a target.
-	lease := agentworksclient.AgentAttachment{AgentName: "reviewer", ID: meta["attachment_id"].(string), DeliveryRoute: "claude_channel"}
+	lease := agentworksclient.AgentAttachment{AgentName: "reviewer", ID: meta["attachment_id"].(string), DeliveryRoute: "claude_channel", ClientBuild: "current-build"}
 	if err := stranger.UpdateAgentLabel(ctx, lease, "Impersonation"); err == nil {
 		t.Fatal("another connection changed this chat's label")
 	}
@@ -221,6 +221,26 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	}
 	if err := receiver.UpdateAgentLabel(ctx, lease, "Sender"); err != nil {
 		t.Fatal(err)
+	}
+	// An ordinary metadata request that reports no build cannot erase the
+	// last known build and suppress an outdated-helper notice.
+	withoutBuild := lease
+	withoutBuild.ClientBuild = ""
+	if err := receiver.UpdateAgentLabel(ctx, withoutBuild, "Sender"); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := readAgentMessageSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundBuild := false
+	for _, agent := range stored.Agents {
+		if agent.Name == "reviewer" && agent.Attachment != nil {
+			foundBuild = agent.Attachment.ClientBuild == "current-build" && agent.Attachment.ID == lease.ID
+		}
+	}
+	if !foundBuild {
+		t.Fatal("exact-lease metadata did not refresh the helper build")
 	}
 	directory := call(receiver, map[string]any{"action": "list_agents", "agent_name": "reviewer"})
 	foundLabel := false
