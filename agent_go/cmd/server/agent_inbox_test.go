@@ -38,7 +38,7 @@ func TestHostedAgentInboxOverMCP(t *testing.T) {
 	}
 	defer store.Close()
 	ctx := context.Background()
-	issue := func(user string, cli bool, workflows []string) string {
+	issue := func(user string, cli bool) string {
 		t.Helper()
 		id, resource := cliOAuthClientID, srv.URL+"/api/external/v1"
 		if !cli {
@@ -48,7 +48,7 @@ func TestHostedAgentInboxOverMCP(t *testing.T) {
 			}
 			id, resource = c.ID, srv.URL+externalMCPPath
 		}
-		g := mcpOAuthGrant{FamilyID: uuid.NewString(), ClientID: id, Resource: resource, UserID: user, Username: user, Scopes: []string{"workflows:read", "crews:run", "runs:execute"}, WorkflowIDs: workflows}
+		g := mcpOAuthGrant{FamilyID: uuid.NewString(), ClientID: id, Resource: resource, UserID: user, Username: user, Scopes: []string{"workflows:read", "crews:run", "runs:execute"}}
 		tx, err := store.db.BeginTx(ctx, nil)
 		if err != nil {
 			t.Fatal(err)
@@ -63,7 +63,7 @@ func TestHostedAgentInboxOverMCP(t *testing.T) {
 		}
 		return raw
 	}
-	hosted, other, cliRaw := issue("owner", false, nil), issue("other", false, nil), issue("owner", true, nil)
+	hosted, other, cliRaw := issue("owner", false), issue("other", false), issue("owner", true)
 	cli, err := agentworksclient.New(srv.URL, cliRaw)
 	if err != nil {
 		t.Fatal(err)
@@ -270,10 +270,16 @@ func TestHostedAgentInboxOverMCP(t *testing.T) {
 			if c.ID != first["inbox_id"] {
 				continue
 			}
-			if len(c.Messages) != 2 {
-				t.Fatalf("file retries stored %d messages, want 2", len(c.Messages))
-			}
+			var fileMessages []agentMessage
 			for _, m := range c.Messages {
+				if m.Submission == "hosted-file" || m.Submission == "cli-file-reply" {
+					fileMessages = append(fileMessages, m)
+				}
+			}
+			if len(fileMessages) != 2 {
+				t.Fatalf("file retries stored %d messages, want 2", len(fileMessages))
+			}
+			for _, m := range fileMessages {
 				fileID := regexp.MustCompile(`file-[0-9a-f]{32}`).FindString(m.Text)
 				if fileID == "" {
 					t.Fatal("file message lost its attachment")
@@ -296,10 +302,8 @@ func TestHostedAgentInboxOverMCP(t *testing.T) {
 			t.Fatalf("file retries or refused changes left %d files, want 2", files)
 		}
 	})
-	// Product-scoped OAuth and PAT display names cannot claim hosted provenance.
-	scoped := issue("owner", false, []string{"wf_reports"})
-	init(scoped)
-	call(scoped, map[string]any{"action": "register", "agent_name": "scoped"}, false)
+	// Project MCP is checked through its real audience in project_mcp_test.go.
+	// A PAT display name cannot claim hosted provenance.
 	patStore, err := openAccessTokens()
 	if err != nil {
 		t.Fatal(err)
