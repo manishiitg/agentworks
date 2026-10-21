@@ -329,6 +329,7 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 		return err
 	}
 	if err == nil {
+		recordHookRendered(root, out, input.Event, req.Transport)
 		admitAfterEmit(cmd.Context(), root, o, req, out.Messages)
 	}
 	return nil

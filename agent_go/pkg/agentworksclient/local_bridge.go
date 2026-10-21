@@ -2721,10 +2721,15 @@ func (b *localBridge) takeOffers(callCtx context.Context, s *localSession, trans
 			if err != nil {
 				var apiErr *APIError
 				status, code := 0, "request_failed"
+				request := "null"
 				if errors.As(err, &apiErr) {
 					status, code = apiErr.Status, apiErr.Code
+					if apiErr.Request != nil {
+						metadata, _ := json.Marshal(apiErr.Request)
+						request = string(metadata)
+					}
 				}
-				log.Printf("[BRIDGE-NATIVE] validation_failed agent=%s attachment=%s http_status=%d code=%q chunk=%d requested_ids=%d", snap.Attachment.AgentName, snap.Attachment.ID, status, code, offset/20+1, len(picked))
+				log.Printf("[BRIDGE-NATIVE] validation_failed agent=%s attachment=%s http_status=%d code=%q chunk=%d requested_ids=%d request=%s", snap.Attachment.AgentName, snap.Attachment.ID, status, code, offset/20+1, len(picked), request)
 				return validation{}, err // no part of this round can be offered
 			}
 			var part validation

@@ -12,9 +12,40 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
+
+// Real write failures used to omit the server request ID, making a 502
+// impossible to match. Correlation must not copy secrets from the request.
+func TestFailedHTTPTraceExcludesRequestSecrets(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Request-ID", "gateway-123")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte("not JSON"))
+	}))
+	defer s.Close()
+	c, _ := New(s.URL, "header-secret")
+	_, err := c.request(context.Background(), http.MethodPost, "/api/external/v1/call?access_token=query-secret", map[string]string{"password": "body-secret"}, true)
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusBadGateway || apiErr.Request == nil {
+		t.Fatalf("missing HTTP correlation: %v", err)
+	}
+	r := apiErr.Request
+	if r.ID != "gateway-123" || r.Method != http.MethodPost || r.Path != "/api/external/v1/call" || r.DurationMS < 0 {
+		t.Fatalf("wrong trace: %+v", r)
+	}
+	if _, e := time.Parse(time.RFC3339Nano, r.StartedAt); e != nil {
+		t.Fatal(e)
+	}
+	raw, _ := json.Marshal(apiErr)
+	for _, secret := range []string{"header-secret", "query-secret", "body-secret", "access_token", "password", "not JSON"} {
+		if strings.Contains(string(raw)+apiErr.Error(), secret) {
+			t.Fatalf("request data leaked into trace: %s", secret)
+		}
+	}
+}
 
 func TestHTTPRoundtripAndLogin(t *testing.T) {
 	var calls int

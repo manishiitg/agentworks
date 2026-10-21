@@ -592,12 +592,14 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 	cleared := []string{}
 	inboxes := map[string]string{}
 	reasons := map[string]string{} // message id -> why it was left out (logged; counted for the client)
+	offeredAttachments := map[string]string{}
 	for _, id := range ids {
 		for _, c := range s.Conversations {
 			for _, m := range c.Messages {
 				if m.ID != id {
 					continue
 				}
+				offeredAttachments[id] = m.LiveAttachment
 				switch {
 				case c.Endpoints[1-m.From].NamedAgentID != a.ID || c.Endpoints[1-m.From].UserID != a.UserID:
 					reasons[id] = "not_addressed_to_this_agent"
@@ -656,7 +658,7 @@ func (api *StreamingAPI) validateAgentOffers(w http.ResponseWriter, r *http.Requ
 			continue // a normal re-check of a message the chat already took
 		}
 		if validateLogDue(id, reason, time.Now()) {
-			log.Printf("[AGENT-MESSAGE-VALIDATE] left out message=%s agent=%s reason=%s", id, a.Name, reason)
+			log.Printf("[AGENT-MESSAGE-VALIDATE] left out message=%s agent=%s attachment=%s message_attachment=%s reason=%s request_id=%q", id, a.Name, a.Attachment.ID, offeredAttachments[id], reason, r.Header.Get("X-Request-ID"))
 		}
 	}
 	if _, _, err = currentAgentAttachment(r.Context(), live, a.Name, a.Attachment.ID); err != nil {

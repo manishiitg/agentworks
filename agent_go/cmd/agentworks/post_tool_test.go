@@ -55,6 +55,7 @@ func TestPostToolHookBudgetAndContext(t *testing.T) {
 		for i, name := range []string{"empty", "pending", "slow"} {
 			mode.Store(int32(i))
 			var output bytes.Buffer
+			before, _ := os.ReadFile(filepath.Join(root, "bridge.log"))
 			start := time.Now()
 			err := postToolMessages(context.Background(), root, &options{stdout: &output}, agentworksclient.LocalBridgeRequest{Provider: provider, SessionID: cursorTestSession, HostKey: "fixture-host"})
 			elapsed := time.Since(start)
@@ -62,11 +63,19 @@ func TestPostToolHookBudgetAndContext(t *testing.T) {
 			if err != nil || elapsed > 2*time.Second {
 				t.Fatalf("post-tool exceeded budget: %v %s", err, elapsed)
 			}
+			after, _ := os.ReadFile(filepath.Join(root, "bridge.log"))
 			if i != 1 {
+				if !bytes.Equal(before, after) {
+					t.Fatal("empty/error hook logged a render")
+				}
 				if output.Len() != 0 {
 					t.Fatal("empty/error post-tool emitted output")
 				}
 				continue
+			}
+			trace := string(after[len(before):])
+			if !strings.Contains(trace, "event=PostToolUse transport="+provider+"_hook outcome=rendered message=message") || !strings.Contains(trace, "rendered_at=") || strings.Contains(trace, "MID_TURN_MARKER") {
+				t.Fatal("hook render trace missing or contains body", trace)
 			}
 			if !strings.Contains(output.String(), "MID_TURN_MARKER") || !strings.Contains(output.String(), "acknowledge processed once") {
 				t.Fatal("body or receipt reminder lost", output.String())

@@ -27,13 +27,28 @@ type Tool struct {
 }
 
 type APIError struct {
-	Status  int    `json:"status"`
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Status  int               `json:"status"`
+	Code    string            `json:"code"`
+	Message string            `json:"message"`
+	Request *HTTPRequestTrace `json:"request,omitempty"`
+}
+
+// HTTPRequestTrace contains correlation metadata only, never query strings,
+// request bodies, credentials or response bodies.
+type HTTPRequestTrace struct {
+	ID         string `json:"id,omitempty"`
+	Method     string `json:"method"`
+	Path       string `json:"path"`
+	StartedAt  string `json:"started_at"`
+	DurationMS int64  `json:"duration_ms"`
 }
 
 func (e *APIError) Error() string {
-	return fmt.Sprintf("AgentWorks %s (HTTP %d): %s", e.Code, e.Status, e.Message)
+	text := fmt.Sprintf("AgentWorks %s (HTTP %d): %s", e.Code, e.Status, e.Message)
+	if e.Request != nil {
+		return fmt.Sprintf("%s [request_id=%q method=%s path=%q started_at=%s duration_ms=%d]", text, e.Request.ID, e.Request.Method, e.Request.Path, e.Request.StartedAt, e.Request.DurationMS)
+	}
+	return text
 }
 
 type Client struct {
@@ -127,6 +142,7 @@ func (c *Client) request(ctx context.Context, method, path string, body any, aut
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	started := time.Now()
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("AgentWorks request failed: %w", err)
@@ -140,7 +156,13 @@ func (c *Client) request(ctx context.Context, method, path string, body any, aut
 		return nil, errors.New("response exceeds 16 MiB limit; narrow the request")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		e := &APIError{Status: resp.StatusCode, Code: "http_error", Message: http.StatusText(resp.StatusCode)}
+		id := resp.Header.Get("X-Request-ID")
+		if len(id) > 128 || strings.IndexFunc(id, func(r rune) bool {
+			return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.')
+		}) >= 0 {
+			id = ""
+		}
+		e := &APIError{Status: resp.StatusCode, Code: "http_error", Message: http.StatusText(resp.StatusCode), Request: &HTTPRequestTrace{ID: id, Method: req.Method, Path: req.URL.Path, StartedAt: started.UTC().Format(time.RFC3339Nano), DurationMS: time.Since(started).Milliseconds()}}
 		var envelope struct {
 			Error json.RawMessage `json:"error"`
 		}

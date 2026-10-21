@@ -102,6 +102,9 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			detail := map[string]any{"code": "client_error", "message": err.Error()}
 			if apiErr != nil {
 				detail = map[string]any{"code": apiErr.Code, "message": apiErr.Message, "status": apiErr.Status}
+				if apiErr.Request != nil {
+					detail["request"] = apiErr.Request
+				}
 			}
 			_ = json.NewEncoder(stderr).Encode(map[string]any{"error": detail})
 		} else {

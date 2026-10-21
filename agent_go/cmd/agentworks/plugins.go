@@ -346,8 +346,11 @@ func pluginCommand(o *options) *cobra.Command {
 		} else {
 			written = json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": input.Event, "additionalContext": text}})
 		}
-		if written == nil && req.Provider != "muse" {
-			admitAfterEmit(ctx, root, o, req, out.Messages)
+		if written == nil {
+			recordHookRendered(root, out, input.Event, req.Transport)
+			if req.Provider != "muse" {
+				admitAfterEmit(ctx, root, o, req, out.Messages)
+			}
 		}
 		return written
 	}}
@@ -465,6 +468,13 @@ func hookLog(root, format string, args ...any) {
 	fmt.Fprintf(f, "%s [HOOK] %s\n", time.Now().Format("2006/01/02 15:04:05"), fmt.Sprintf(format, args...))
 }
 
+// Successful stdout encoding is a render observation, not model admission.
+func recordHookRendered(root string, out agentworksclient.LocalBridgeReply, event, transport string) {
+	for _, m := range out.Messages {
+		hookLog(root, "event=%s transport=%s outcome=rendered message=%s inbox=%s attachment=%s rendered_at=%s", event, transport, m.MessageID, m.InboxID, m.AttachmentID, time.Now().UTC().Format(time.RFC3339Nano))
+	}
+}
+
 func pluginPersonPrompt(provider, prompt string) bool {
 	commands := []string{"/agentworks", "/agentworks:agentworks"}
 	if provider == "muse" {
@@ -505,9 +515,14 @@ func postToolMessages(ctx context.Context, root string, o *options, req agentwor
 		if text == "" {
 			return nil
 		}
-		return json.NewEncoder(o.stdout).Encode(map[string]any{"additional_context": text})
+		err = json.NewEncoder(o.stdout).Encode(map[string]any{"additional_context": text})
+	} else {
+		err = json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "PostToolUse", "additionalContext": pluginMessageText(out, req.Transport)}})
 	}
-	return json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "PostToolUse", "additionalContext": pluginMessageText(out, req.Transport)}})
+	if err == nil {
+		recordHookRendered(root, out, "PostToolUse", req.Transport)
+	}
+	return err
 }
 
 func pluginMessageText(out agentworksclient.LocalBridgeReply, transport string) string {
