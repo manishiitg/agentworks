@@ -38,9 +38,17 @@ func (api *StreamingAPI) promoteConnectionToVault(ctx context.Context, person, n
 	if err != nil {
 		return "", err
 	}
+	_, message, err := api.promoteStoredConnection(ctx, person, store, serverName, name, vaultID, confirm)
+	return message, err
+}
+
+// promoteStoredConnection is promoteConnectionToVault from a known store and server name (a chat's promote finds them from
+// the chat; the one-off migration from the attachment index). It returns the new Vault connection's ID (empty until
+// confirm) and the message for the person.
+func (api *StreamingAPI) promoteStoredConnection(ctx context.Context, person, store, serverName, name, vaultID string, confirm bool) (string, string, error) {
 	servers, err := listPlaceMCPServers(store)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	var server placeMCPServer
 	for _, candidate := range servers {
@@ -50,27 +58,27 @@ func (api *StreamingAPI) promoteConnectionToVault(ctx context.Context, person, n
 		}
 	}
 	if server.Name == "" {
-		return "", fmt.Errorf("connection %q was not found", name)
+		return "", "", fmt.Errorf("connection %q was not found", name)
 	}
 	if server.OAuth == nil {
-		return "", errors.New("only sign-in (OAuth) connections can be promoted; for a key or header connection add the secret to Vault instead")
+		return "", "", errors.New("only sign-in (OAuth) connections can be promoted; for a key or header connection add the secret to Vault instead")
 	}
 	_, cfg, err := placeMCPServerConfig(store, serverName)
 	if err != nil || cfg.OAuth == nil {
 		if err == nil {
 			err = errors.New("connection has no sign-in configuration")
 		}
-		return "", fmt.Errorf("read connection %q: %w", name, err)
+		return "", "", fmt.Errorf("read connection %q: %w", name, err)
 	}
 	token, err := oauth.ReadTokenFile(cfg.OAuth.TokenFile)
 	if err != nil || len(token) == 0 {
-		return "", fmt.Errorf("connection %q is not signed in here yet; sign in first, then promote it", name)
+		return "", "", fmt.Errorf("connection %q is not signed in here yet; sign in first, then promote it", name)
 	}
 	if !confirm {
 		if vaultID != "" {
-			return fmt.Sprintf("Promoting %q copies its existing sign-in into your vault %s (no new sign-in). Everyone you add to that vault will use it as the account that signed in, and only you and the vault's other owners can change or remove it. The personal connection stays as it is. Call promote again with confirm=true to go ahead.", name, vaultID), nil
+			return "", fmt.Sprintf("Promoting %q copies its existing sign-in into your vault %s (no new sign-in). Everyone you add to that vault will use it as the account that signed in, and only you and the vault's other owners can change or remove it. The personal connection stays as it is. Call promote again with confirm=true to go ahead.", name, vaultID), nil
 		}
-		return fmt.Sprintf("Promoting %q copies its existing sign-in into Vault as a new shared connection (no new sign-in). Anyone in a group you later grant it to will use it as the account that signed in. No group is given access by this step, and the personal connection stays as it is. Call promote_place_connection again with confirm=true to go ahead.", name), nil
+		return "", fmt.Sprintf("Promoting %q copies its existing sign-in into Vault as a new shared connection (no new sign-in). Anyone in a group you later grant it to will use it as the account that signed in. No group is given access by this step, and the personal connection stays as it is. Call promote_place_connection again with confirm=true to go ahead.", name), nil
 	}
 
 	id, createErr := "", error(nil)
@@ -80,15 +88,15 @@ func (api *StreamingAPI) promoteConnectionToVault(ctx context.Context, person, n
 		id, createErr = createOwnVaultConnection(ctx, person, vaultID, server)
 	}
 	if createErr != nil {
-		return "", fmt.Errorf("create the Vault connection: %w", createErr)
+		return "", "", fmt.Errorf("create the Vault connection: %w", createErr)
 	}
 	connection, err := vaultConnection(ctx, id)
 	if err != nil {
-		return "", fmt.Errorf("new Vault connection %s: %w", id, err)
+		return "", "", fmt.Errorf("new Vault connection %s: %w", id, err)
 	}
 	template, err := api.vaultOAuthTemplate(ctx, id, connection.OAuthServer, "")
 	if err != nil {
-		return "", fmt.Errorf("new Vault connection %s: %w", id, err)
+		return "", "", fmt.Errorf("new Vault connection %s: %w", id, err)
 	}
 
 	mutex := platformMCPOAuthMutex("vault:" + id)
@@ -126,16 +134,16 @@ func (api *StreamingAPI) promoteConnectionToVault(ctx context.Context, person, n
 	}
 	mutex.Unlock()
 	if writeErr != nil {
-		return "", fmt.Errorf("Vault connection %s was created but the sign-in could not be stored (%w); it is unsigned and can be signed in or removed in Vault", id, writeErr)
+		return "", "", fmt.Errorf("Vault connection %s was created but the sign-in could not be stored (%w); it is unsigned and can be signed in or removed in Vault", id, writeErr)
 	}
 	log.Printf("[VAULT_PROMOTE] %s promoted connection %q (store %s) to Vault connection %s", person, serverName, store, id)
 	if _, err := vaultServiceRequest(ctx, person, http.MethodPost, "/api/admin/connectors/"+id+"/sync", nil); err != nil {
-		return fmt.Sprintf("Created Vault connection %s with the existing sign-in, but tool discovery failed (%v). Run sync_connection with connection_id %s. No group has access yet.", id, err, id), nil
+		return id, fmt.Sprintf("Created Vault connection %s with the existing sign-in, but tool discovery failed (%v). Run sync_connection with connection_id %s. No group has access yet.", id, err, id), nil
 	}
 	if vaultID != "" {
-		return fmt.Sprintf("Promoted %q into your vault %s as connection %s with its existing sign-in; tools were discovered. Everyone you add to the vault can use it. The personal connection is unchanged. Some providers rotate refresh tokens, so if either copy stops working, sign that one in again.", name, vaultID, id), nil
+		return id, fmt.Sprintf("Promoted %q into your vault %s as connection %s with its existing sign-in; tools were discovered. Everyone you add to the vault can use it. The personal connection is unchanged. Some providers rotate refresh tokens, so if either copy stops working, sign that one in again.", name, vaultID, id), nil
 	}
-	return fmt.Sprintf("Promoted %q to Vault connection %s with its existing sign-in; tools were discovered. No group has access yet: inspect the connection, then grant a group (save_permissions). The personal connection is unchanged. Some providers rotate refresh tokens, so if either copy stops working, sign that one in again.", name, id), nil
+	return id, fmt.Sprintf("Promoted %q to Vault connection %s with its existing sign-in; tools were discovered. No group has access yet: inspect the connection, then grant a group (save_permissions). The personal connection is unchanged. Some providers rotate refresh tokens, so if either copy stops working, sign that one in again.", name, id), nil
 }
 
 // promotableConnection finds the store and exact name of the sign-in connection the person means: the one attached to

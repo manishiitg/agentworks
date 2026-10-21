@@ -80,6 +80,20 @@ func (api *StreamingAPI) vaultManagementCall(w http.ResponseWriter, r *http.Requ
 		externalJSON(w, json.RawMessage(result))
 		return
 	}
+	if name == "migrate_place_connections" {
+		if !vaultAdminActive(claims.UserID) {
+			externalError(w, 403, "forbidden", "Only a Vault administrator can move the old project connections into Vault.")
+			return
+		}
+		apply, _ := args["apply"].(bool)
+		rows, err := api.migratePlaceConnections(r.Context(), apply)
+		if err != nil {
+			externalError(w, 502, "migration_failed", err.Error())
+			return
+		}
+		externalJSON(w, map[string]any{"applied": apply, "rows": rows})
+		return
+	}
 	if name == "list_vault_mcp_servers" || name == "call_vault_mcp_tool" {
 		result, err := vaultManagementMCP(r.Context(), claims.UserID, name, args)
 		if err != nil {
