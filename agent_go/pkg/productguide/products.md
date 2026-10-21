@@ -1,17 +1,25 @@
-Choose a product by the work you want to accomplish. Discover its current tools before acting: the products enabled on this server and your access decide what you can use. Your own MCP sign-in follows your website role: owners and workflow editors build; other people use shared work in Run mode. Machine, service-account and device connections keep their assigned limits.
+AgentWorks helps a person describe a business process, build a working version with their AI app, and share it with their team. Start with the work: the information people provide, the result they need and who will use it. The AI chooses the appropriate enabled product; people do not need to learn the catalog before starting. Respect a product they explicitly choose.
 
-Agent conversations have two modes: **Builder** is the owner's workspace for building and changing the product; **Run** is how everyone else understands it and uses what the owner published. These mode names do not replace the current permission checks on individual operations. Shared dashboards let people in Run mode understand and use published work. Within a product shared with you, runs, results, execution and step logs, function calls and token usage are visible. Sharing also includes MCP reads of its files, skills, memory, knowledge and instructions; secret values and private logs stay excluded. Share offers Only me, Chosen people or Everyone and creates a standard dashboard when needed. Secret values and personal provider accounts and logins remain private. Personal chats stay private. Crew and Flows have a main owner and can have co-owners. Builders can see every Builder chat in their project. People with Run access use their own chat and the dashboard; Builder chats stay private to Builders. Workflows retain their current owners and editors.
+A marketing lead might ask for campaign reviews, a support lead for policy-based reply drafts, or an operations lead for a recurring follow-up process. Reuse the team's available knowledge and connections, try a representative example, then return a usable team link with a clear explanation of what works and any missing setup. ChatGPT and Cowork use the remote connection; teammates can use the shared website without installing MCP or the same AI app.
+
+### Build, share and contribute
+
+- **Build:** the website Builder and a person's AI app over MCP use the same current access. Builders create and improve the process; a shared project's Run experience is how teammates use it.
+- **Share:** choose **Only me / Chosen people / Everyone**. Sharing creates a standard dashboard when needed, with Ask and published actions; it does not make teammates Builders.
+- **Contribute:** teammates bring inputs, case context and suggestions through the shared entry points. Editing shared knowledge follows its existing folder access. When requested, use existing co-owner/editor access for people who will help build; explain that Builders can see Builder chats.
+
+Within shared work, current product access covers its runs, results, execution logs and token usage, plus permitted MCP file reads. Secret values, private logs and personal provider logins stay protected. Shared runs use the product's selected accounts under their existing grants. Use current tool evidence to distinguish a created project from a completed example or a working shared link. A five-minute first version is an aim to verify, not a guarantee for every process or missing connection.
 
 | Product | Choose it for |
 |---|---|
-<!-- product:agentworks -->| Goals | An ongoing objective with a plan, scheduled work, measurements and Pulse follow-through. |
-<!-- /product --><!-- product:crew -->| Crew | Private project work, coding and reusable agents, with files, skills, conversations and published functions. |
-<!-- /product --><!-- product:relays -->| Flows | A code-based workflow with a test, publish and production-run lifecycle. |
+<!-- product:agentworks -->| Goals | Ongoing outcomes that need a plan, measurements, scheduled work and follow-up. |
+<!-- /product --><!-- product:crew -->| Crew | A reusable specialist or shared workspace for requests, knowledge, files and team actions; also coding work. |
+<!-- /product --><!-- product:relays -->| Flows | Repeatable code pipelines with a test, publish and production-run lifecycle. |
 <!-- /product --><!-- product:knowledgebase -->| Brain | Shared knowledge, files and reusable skill packages. |
 <!-- /product --><!-- product:mcp-gateway -->| Vault | Shared MCP integrations, secrets and centrally managed access. |
 <!-- /product --><!-- product:bullpen -->| AgentBridge | Connecting, finding and coordinating your external coding agents. |
 <!-- /product -->
-Products can work together when this installation enables them and your current access allows it. Access to one product never grants access to another project's content or connected account.
+Products can work together when this installation enables them and current access allows it. Discover live tools before acting. A person's MCP sign-in follows their website access; machine, service-account and device connections retain their assigned limits. Access to one product never grants access to another project's content or connected account.
 
 ## Product details
 
@@ -29,7 +37,7 @@ Use Goals when the task is a continuing outcome, rather than a single question o
 Crew combines the former Code and Crew products. Use it to work privately with an agent, develop a repository or build a specialist that other people can use. New projects start **Only me**; Share changes access to the same project.
 
 - **Abilities:** project files and instructions, coding and review, named chat tabs, selected skills and integrations, browser and database tools, dashboards, typed functions, schedules and costs. Memory is optional: existing former Code projects keep it off and former Crew projects keep it on until a Builder changes the setting. A Builder can switch Memory on or off in Settings.
-- **MCP route:** start with `workspace action=list`, then `get` using its returned `workspace_id`. Use `create`, `update`, `ask` and the chat actions from the live schema. Load `crew-authoring` for setup and discover published functions with `functions action=list`. Keep the returned project IDs; an internal `code:` or `work:` prefix identifies the stored project, without creating another product or permission.
+- **MCP route:** start with `workspace action=list`, then `get` using its returned `workspace_id`. Use `create`, `update`, `ask` and the chat actions from the live schema. Load `crew-authoring` for setup and discover published functions with `functions action=list`. Keep the canonical `workspace_id` returned by discovery; do not construct retired product selectors.
 - **Access:** the main owner and co-owners build together and can see all Builder chats. Share offers **Only me / Chosen people / Everyone**. People with Run access see their own chat and the dashboard, can use published functions and read permitted files, runs and results over MCP. Builder chats, secret values and private logs remain excluded. Current connection, account and project checks still apply; sharing does not grant Builder access.
 - **Accounts and costs:** work uses the project's selected model and connected accounts under their current grants. Sharing does not switch accounts automatically. Show whose account will be used and attribute activity to the caller.
 - **Optional laptop access:** Crew runs on the server, including its files, shell, functions, schedules and background work. Connect your computer once with the AgentWorks CLI, then choose it and its folders in Crew Settings. Read access lets the owner copy files into Crew; Read & write also allows commands on that computer. Use `manage_laptop_access` for settings and folder grants, `execute_local_shell_command` for commands and `copy_local_file_to_crew` to copy into Crew, using their live schemas. Laptop access belongs to the owner’s interactive Builder chat; Run callers, schedules and Pulse do not inherit it. A disconnected laptop leaves normal server work available. There is no separate Publish copy, sync or copy back to the laptop; server secrets are not sent to laptop commands.
@@ -74,6 +82,15 @@ Use AgentBridge to connect and coordinate external agents while they keep workin
 <!-- /product -->
 ## Product choice FAQ
 
+### I know my business process. Must I choose a product first?
+
+No. Describe what the team does, the information it uses, the result it needs and who should use it. Your connected AI chooses an appropriate product, asks only for essential missing details and builds a small working version. A useful handoff includes a checked example, a working link, the saved audience and how teammates contribute. Missing account sign-in or setup must be named clearly.
+
+### Does sharing let everyone change how it works?
+
+Sharing gives people the current Run experience: Ask, published actions and their dashboard. They can supply work, add context and suggest improvements through those entry points. Shared knowledge edits need its existing folder access. Ask to add a co-owner or workflow editor when someone should help build; that access includes the project's Builder conversations. Use existing roles, not a new contribution permission.
+
+
 <!-- product:agentworks --><!-- product:crew -->### Should I use Goals or a Crew?
 
 Use **Goals** for an ongoing outcome that needs a plan, measures, scheduled work and follow-up. Use a **Crew** for a reusable specialist that answers requests or exposes functions. A Goal can call a Crew when both are enabled and accessible.
@@ -92,7 +109,7 @@ Use **Brain** for reusable knowledge, documents, procedures and skills. Use **Va
 
 <!-- /product --><!-- /product --><!-- product:crew -->### Where did Code go?
 
-**Crew** is the combined product for private coding/project work and reusable agents. Keep using the same project; its old links and IDs still work. Sharing a hosted project changes its audience, without copying it.
+**Crew** is the combined product for private coding/project work and reusable agents. Find the current Crew with `workspace action=list` and retain its returned identity. Sharing a hosted project changes its audience, without copying it.
 
 <!-- /product --><!-- product:bullpen --><!-- product:crew -->### Should I use Crew or AgentBridge?
 

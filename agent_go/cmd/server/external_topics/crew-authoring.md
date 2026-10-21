@@ -1,6 +1,6 @@
 ---
 name: "crew-authoring"
-description: "Author a Crew over MCP: create and update, typed functions with input and result schemas, isolated calls and result files, messages and memory, files and shared folders, schedules and settings."
+description: "Build a working specialist or team process over MCP: understand the outcome, create a Crew, verify an example, share it, and configure instructions, knowledge, functions and integrations."
 external: true
 external_tools: ["*crew*", "workspace"]
 external_scopes: ["crews:write"]
@@ -18,6 +18,16 @@ keep their setting. Every Crew runs on the server; an optional laptop connection
 A Crew has one main owner (its creator) and can have co-owners; owners build and edit it together, and everything runs as the main owner. All Builders can see every Builder chat in their project. People with Run access see their own chat and dashboard. Only the main owner adds or removes owners (`crew_owners`); `crew_owners action=lock_status` shows who is editing, because one owner edits at a time. Use Share to give others access to its dashboard, Ask and published functions. Shared people can also list, search and read its files over MCP, including skills, memory, knowledge, instructions, runs and logs. Secret values and private logs stay excluded.
 
 Over MCP, use `share action=get` to inspect the audience, then `share action=set` with `crew_id` and the owner's chosen mode: `private` (Only me), `people` (Chosen people, with `emails`) or `everyone`. Only the owner changes sharing, with existing authoring consent. The people list replaces the saved list: preserve people the owner did not ask to remove. A standard dashboard is created when needed.
+
+## Build a first version for a business team
+
+Start from the person's process, using the `agentworks-mcp` journey. Identify the desired result, inputs/policy, intended team and timing from what they already said. Ask only for material missing details. Inspect existing work and available knowledge/connections; do not invent company rules or sign-ins.
+
+For a simple specialist, `workspace action=create` can set its name, role, purpose and files, plus functions when a defined action is needed, in one spec. Keep sensible existing defaults. Give the team a useful Ask conversation or published action, with a standard dashboard first when sufficient; a custom dashboard is optional. External actions need the actual selected connection; name any missing setup plainly.
+
+Try a representative request through the actual shared entry point and inspect the completed result. If the live tool offers a Run-mode preview, it uses the same real execution rules; it is not a simulation. Owner-only success does not prove another person's access. Use Share with the requested audience, read it back and retrieve the working dashboard/link. Return that link, one example request, who can use it and how teammates supply context or suggest improvements. Add co-owners only when the person wants others to help build, using `crew_owners`; explain Builder-chat visibility. Shared knowledge editing retains its own access.
+
+Example: a support lead provides a policy and asks for a reply-drafting assistant. Keep that policy as project knowledge, write clear instructions and a useful request entry point, verify one draft, then share with the named team. Do not claim policy accuracy, message delivery or another person's access unless checked. A created Crew alone is not a finished shared process.
 
 ## Create and edit
 

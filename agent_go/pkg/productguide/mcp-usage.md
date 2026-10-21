@@ -1,14 +1,25 @@
 # Using AgentWorks over MCP
 
-Use AgentWorks products<!-- product:knowledgebase --> and shared Brain knowledge<!-- /product --> through the tools available to your connection. Read [the product guide](references/products.md) to choose a product; [versions.json](references/versions.json) identifies this skill package.
+Help a person turn a business process into something their team can use and improve from ChatGPT, Cowork or another connected AI app. Start with their work and desired result; choose the AgentWorks product using [the product guide](references/products.md). [versions.json](references/versions.json) identifies this skill package.
 
-For CLI installation, sign-in, updates or connecting a coding chat, read [the setup guide](references/cli-setup.md), also available as `help action=topic topic=cli-setup`. <!-- product:knowledgebase -->The same guide is at `Shared/AgentWorks/cli-setup.md` in Brain. <!-- /product -->Load it when the person asks for setup; use their actual server address.
+## From a description to shared work
 
-The website's local AI setup shows optional terminal-app installation, then connecting the AI app to MCP tools. <!-- product:bullpen -->Optional live messaging between coding chats follows through `agentworks setup` for the selected app and **AgentBridge → Connect an agent**. <!-- /product -->MCP tools do not require the AgentWorks terminal app.
+Use this journey when someone wants to build a process for marketing, support, operations or another team. For a one-off question or an existing project, do the requested work without making a new agent.
+
+1. **Understand the result.** Identify the task, its inputs or knowledge, what a useful result looks like, who will use it and when it should run. Reuse details already given. Ask only for missing choices that materially affect the result; use a short conversation, not a setup questionnaire.
+2. **Choose and connect.** Pick the appropriate enabled product internally, respecting any product the person requested. Inspect existing work, knowledge, skills and connections before creating duplicates. Reuse accounts only under their current selection and grants. If a required connection is missing, give the exact sign-in or website step and continue independent work; never claim it is connected.
+3. **Build a small working version.** Create the requested instructions, knowledge and useful entry points with the live tools. Leave model defaults and optional settings alone unless the task needs a change. Give people a natural way to supply inputs and get results through Ask, a function or a dashboard; keep schemas, IDs and code in tool calls.
+4. **Try the actual experience.** Run one representative example within the person's requested scope and inspect the completed result. Check the published entry point or Run experience when available, rather than treating creation as proof it works. Runs have real effects; do not invent a simulation or add an approval round to an already authorized action. Say precisely what ran and what is still unverified.
+5. **Share as requested.** Use the person's chosen audience with the existing Share tools. If “my team” does not identify people or Everyone, resolve that missing choice. Read back the saved audience and dashboard/link; a standard dashboard is enough for a simple first version. Do not claim a teammate opened it unless that was actually checked.
+6. **Make contribution clear.** Show an example request and how teammates can submit inputs, add case context and suggest improvements through the available shared entry points. Use existing knowledge-folder permissions for edits to shared knowledge. People asked to help build can be added through existing co-owner/editor tools; sharing for use does not grant Builder access. Do not add co-owners merely because someone asked to share.
+
+Finish with the working link, what it does, who can use it, how to contribute and any remaining setup. Distinguish “created”, “tested”, “shared” and “waiting for connection” using tool evidence. Aim for a useful first version quickly; five minutes is a target to measure, not a promise for arbitrary integrations or processes.
+
+Example: “Build a support assistant using this refund policy, try one customer question, and share it with the support team.” Choose the product and build from the supplied policy; do not make the person learn the product catalog first.
 
 ## Talking to people
 
-Use plain words. Explain the result and give one useful next step they can take in chat or on the website. Keep internal IDs, permissions jargon and command syntax out of replies unless the person asks for them. Use IDs returned by tools internally. When an action is unavailable, explain what the person can do instead. The CLI is an extra for developers, never the only path.
+Use plain words. Explain the result and give one useful next step they can take in chat or on the website. Keep internal IDs, permissions jargon and command syntax out of replies unless the person asks for them. Use IDs returned by tools internally. When an action is unavailable, explain what the person can do instead. ChatGPT and Cowork can use remote MCP without installing a terminal app; CLI setup is an extra for developers.
 
 ## Discover before acting
 
@@ -38,6 +49,8 @@ Crew combines the former Code and Crew products. Use `workspace action=list` to 
 To manage a product's sharing, use `share` action=get to inspect its audience, then action=set with `crew_id`, `workflow_id` or `flow_id` and the owner's choice of `private`, `people` (with `emails`) or `everyone`. Preserve existing people unless the owner requested removal. Shared people open the dashboard, Ask, use published functions and read product files, runs and logs over MCP. Secret values and private logs stay excluded. Sharing creates a standard dashboard when needed.
 
 Schedules call shared entry points at a chosen time. Watchers check for a condition and call an entry point when it occurs. Both belong to the person who creates them, use that person's current access and selected secrets, and attribute the work's cost to them. Use the discovered scheduling tools and current product guidance.
+
+For CLI installation, sign-in, updates or connecting a coding chat, load [the setup guide](references/cli-setup.md) or `help action=topic topic=cli-setup` only when relevant. <!-- product:knowledgebase -->The same guide is at `Shared/AgentWorks/cli-setup.md` in Brain. <!-- /product -->Use the person's actual server address. <!-- product:bullpen -->Optional live coding-chat messaging uses AgentBridge setup. <!-- /product -->
 
 Load guidance relevant to the work:
 

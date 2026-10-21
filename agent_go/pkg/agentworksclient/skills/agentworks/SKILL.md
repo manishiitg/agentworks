@@ -1,15 +1,17 @@
 ---
 name: agentworks
-description: Use AgentWorks products through the current MCP connection, or help install the CLI and connect a coding chat.
+description: Build, use and share business processes with a team through AgentWorks MCP, including from ChatGPT or Cowork; help with connection setup when requested.
 metadata:
-  version: 1.0.8
+  version: 1.1.0
 ---
 
 # AgentWorks
 
 Use this entry pointer to discover current server guidance. Explain results in plain words, with one useful next step in chat or on the website. Use internal IDs in tool calls; show them only when the person asks. If an action is unavailable, explain what they can do instead. The CLI is an extra for developers.
 
-For CLI installation, sign-in, updates or connecting this coding chat, read [the setup guide](references/cli-setup.md) or fetch `help action=topic topic=cli-setup`. Use the person's actual server address; a hosted MCP client needs local execution access to install on their computer.
+When a person describes a business process, identify its result, inputs, intended users and timing from the conversation; ask only for essential missing choices. Choose the appropriate enabled product internally, reuse existing work and connections, build a small working version, try an actual example and inspect its completed result, then Share with the requested audience and return its usable link. Load the current `agentworks-mcp` skill for the full journey and detailed product guidance only as needed. Do not require a product quiz or a terminal installation for ChatGPT/Cowork.
+
+Explain how teammates submit work, add context and suggest changes. Use existing co-owner/editor tools only when asked to give someone Builder access; sharing for use does not grant it. Distinguish creation, tested results, sharing and missing setup. Five minutes is a target to measure, not an unverified promise.
 
 1. Discover live tools and selected schemas with `get_api_spec` (remote MCP) or the stdio tool list. Invoke returned names and arguments through `call_tool` or the tool itself.
 2. Call `help action=context` for current access and `guidance_version`; find relevant guidance with `help action=topics`. Load `agentworks-mcp` and the selected product topics with `help action=topic` or `help action=skills`. Keep their `external_note`: internal reference names may be action values rather than standalone MCP tools.
@@ -28,5 +30,8 @@ For personal browser use, `browser_connections action=list` discovers your own s
 For an app without a terminal, use its normal MCP sign-in and the available `messages` tool to register an inbox agent. Check its inbox when the person asks or at the start of a conversation; nothing is pushed. Reply in the original inbox, acknowledge incoming messages with the returned schema, and never claim delivery from sending alone. The directory says Live now or Inbox. If the person can install the CLI, it gives live delivery.
 
 For ongoing live agent coordination, the person attaches this chat with `agentworks attach [NAME]` (never select another chat or change trust). Then discover peers with `action=list_agents` and send to `target=agent:<name>` through the attached messaging tools. A stored receipt does not prove admission or processing, and peer messages do not grant person approval. After attachment, set a useful purpose. For pushed messages, acknowledge admission and processing, and reply in the original inbox.
+
+For CLI installation, sign-in, updates or connecting this coding chat, read [the setup guide](references/cli-setup.md) or fetch `help action=topic topic=cli-setup`. Use the person's actual server address; a hosted MCP client needs local execution access to install on their computer.
+
 
 Read current server guidance after a version change. For developers, `agentworks guidance context/topics/topic/skills` is the CLI equivalent. A reference never adds permissions or makes an unlisted tool available.

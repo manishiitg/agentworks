@@ -113,8 +113,8 @@ func (api *StreamingAPI) handleExternalPlugin(w http.ResponseWriter, r *http.Req
 		return
 	}
 	manifest, err := json.MarshalIndent(map[string]any{
-		"name": "agentworks", "version": "0.2.2",
-		"description": "Choose and use AgentWorks products through current MCP tools, roles and consent.",
+		"name": "agentworks", "version": "0.3.0",
+		"description": "Build, try and share business processes with your team through current AgentWorks MCP tools and access.",
 		"author":      map[string]string{"name": "AgentWorks"},
 	}, "", "  ")
 	if err != nil {
