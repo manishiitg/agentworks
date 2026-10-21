@@ -67,8 +67,6 @@ import {
   TokenUsageEventDisplay,
   RetryAttemptEventDisplay,
   BrokenPipeEventDisplay,
-  LargeToolOutputDetectedEventDisplay,
-  LargeToolOutputFileWrittenEventDisplay,
   MaxTurnsReachedEventDisplay,
   ContextCancelledEventDisplay
 } from './debug'
@@ -718,12 +716,6 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
   }
   if (isEventType(event, 'broken_pipe')) {
     return <CompactWrapper compact={compact}><BrokenPipeEventDisplay event={getEventData(event)} /></CompactWrapper>
-  }
-  if (isEventType(event, 'large_tool_output_detected')) {
-    return <CompactWrapper compact={compact}><LargeToolOutputDetectedEventDisplay event={getEventData(event)} /></CompactWrapper>
-  }
-  if (isEventType(event, 'large_tool_output_file_written')) {
-    return <CompactWrapper compact={compact}><LargeToolOutputFileWrittenEventDisplay event={getEventData(event)} /></CompactWrapper>
   }
   if (isEventType(event, 'max_turns_reached')) {
     return <CompactWrapper compact={compact}><MaxTurnsReachedEventDisplay event={getEventData(event)} /></CompactWrapper>

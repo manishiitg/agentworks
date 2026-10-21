@@ -43,19 +43,6 @@ func CDPEnabled() bool {
 	}
 }
 
-// A coding CLI can accept much less than mcpagent's own bridge result limit.
-// Snapshot output above this threshold must fail explicitly rather than being
-// silently narrowed or truncated: the agent, not the runtime, chooses which
-// evidence surface to inspect next.
-const maxInlineSnapshotOutputRunes = 24000
-
-// fullSnapshotFlag is an AgentWorks-level opt-in, not an agent-browser flag. It
-// is stripped from the argument list before the CLI runs. It exists so the
-// agent -- not the runtime -- decides when an oversized tree is worth its
-// context cost, which is the same principle the cap itself was written to
-// protect.
-const fullSnapshotFlag = "--full-snapshot"
-
 // execCmd is an alias so tests can swap it out; defaults to exec.Command.
 var execCmd = exec.Command
 
@@ -95,31 +82,12 @@ func WithCdpPorts(ports ...int) ExecutorOption {
 	}
 }
 
-// OversizedOutputSpiller persists content too large to return inline to a
-// location the calling session can read back, returning the workspace-relative
-// path it landed at. It must apply the same "only if this session actually has
-// tool_output_folder read access" check the caller already verified — this
-// type does not itself carry authority to write anywhere.
-type OversizedOutputSpiller func(ctx context.Context, content string) (relPath string, err error)
-
 // Executor handles the execution of browser tool commands
 type Executor struct {
-	Client         *Client
-	CdpPort        int   // Legacy primary port; first entry in CdpPorts when configured.
-	CdpPorts       []int // Explicitly authorized CDP browsers. Empty means headless.
-	RuntimeConfig  *BrowserRuntimeConfig
-	SpillOversized OversizedOutputSpiller // Optional; nil means "no recoverable spill available for this session."
-}
-
-// WithOversizedOutputSpiller wires a session-scoped write path for content that
-// would otherwise be silently discarded when a snapshot exceeds the inline cap.
-// The caller (not this package) is responsible for confirming, via the session's
-// own already-granted folder guard, that the target directory is actually
-// readable back by that session -- see workspace_browser_tools.go.
-func WithOversizedOutputSpiller(spiller OversizedOutputSpiller) ExecutorOption {
-	return func(e *Executor) {
-		e.SpillOversized = spiller
-	}
+	Client        *Client
+	CdpPort       int   // Legacy primary port; first entry in CdpPorts when configured.
+	CdpPorts      []int // Explicitly authorized CDP browsers. Empty means headless.
+	RuntimeConfig *BrowserRuntimeConfig
 }
 
 // NewExecutor creates a new browser executor
@@ -332,22 +300,6 @@ type cdpArgInfo struct {
 	port  int
 }
 
-// extractFullSnapshotArg pulls the AgentWorks-only --full-snapshot flag out of
-// the agent-browser argument list. Returns whether it was present and the args
-// with every occurrence removed.
-func extractFullSnapshotArg(args []string) (bool, []string) {
-	found := false
-	cleaned := make([]string, 0, len(args))
-	for _, arg := range args {
-		if strings.TrimSpace(arg) == fullSnapshotFlag {
-			found = true
-			continue
-		}
-		cleaned = append(cleaned, arg)
-	}
-	return found, cleaned
-}
-
 func extractCDPArg(args []string) (cdpArgInfo, []string, error) {
 	var info cdpArgInfo
 	cleaned := make([]string, 0, len(args))
@@ -443,11 +395,6 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 		return string(statusJSON), nil
 	}
 	argsArray := stringArgs(args["args"])
-	// --full-snapshot is an AgentWorks-level flag, not an agent-browser one: strip
-	// it before the CLI ever sees it, or agent-browser rejects it as an unknown
-	// subcommand. It is the agent's explicit opt-in to receive an oversized
-	// snapshot inline, accepting the context cost, instead of the spill+grep path.
-	fullSnapshotRequested, argsArray := extractFullSnapshotArg(argsArray)
 	cdpArg, argsWithoutCDP, cdpArgErr := extractCDPArg(argsArray)
 	if cdpArgErr != nil {
 		return "", cdpArgErr
@@ -1286,11 +1233,6 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 		return formatAgentBrowserSkillsOutput(output), nil
 	}
 	if command == "snapshot" {
-		if handled, err := e.handleOversizedSnapshot(ctx, &output, fullSnapshotRequested); err != nil {
-			return "", err
-		} else if handled {
-			return output, nil
-		}
 		if isCdpMode {
 			if handoff, recording := getCDPRecordingHandoff(cdpPort, cdpOwner); recording && handoff.NeedsSnapshot {
 				markCDPRecordingSnapshotReady(cdpPort, cdpOwner)
@@ -1306,79 +1248,6 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 	}
 
 	return output, nil
-}
-
-// handleOversizedSnapshot applies the inline size cap to a snapshot result.
-//
-// It used to return an error and DISCARD the output, which cost the step a full
-// round trip and left it choosing a narrower --selector/--depth without ever
-// having seen the tree. Measured live 2026-08-17 (customer-login): 4 snapshots at
-// ~30.4k runes against the 24k cap, each one a blind retry.
-//
-// The original rationale is kept intact -- a snapshot must never be SILENTLY
-// narrowed, because a truncated accessibility tree reads exactly like a page
-// where the element is absent, and "not found" is the wrong conclusion to hand a
-// QA step. So the head is returned with a loud, unmissable incompleteness banner
-// rather than quietly. The agent still chooses what to inspect next; it just now
-// chooses with evidence instead of without.
-//
-// Returns handled=true when it has produced the final result for this call.
-func (e *Executor) handleOversizedSnapshot(ctx context.Context, output *string, fullSnapshotRequested bool) (bool, error) {
-	runeCount := len([]rune(*output))
-	if runeCount <= maxInlineSnapshotOutputRunes {
-		return false, nil
-	}
-	if fullSnapshotRequested {
-		// Explicit opt-in: hand back the whole tree. Anything past the bridge's
-		// own 128KB result cap is truncated and persisted to tool_output_folder
-		// by mcpbridge, which agent steps can now read (see
-		// setupAgentFolderGuard).
-		*output = fmt.Sprintf("SNAPSHOT_FULL (%d runes, %d bytes) -- returned inline because %s was requested.\n\n%s",
-			runeCount, len(*output), fullSnapshotFlag, *output)
-		return true, nil
-	}
-	full := *output
-	head := string([]rune(full)[:maxInlineSnapshotOutputRunes])
-
-	// PLAT-200: the default truncated path used to just discard everything past
-	// the head -- unlike the --full-snapshot path above, nothing spilled it
-	// anywhere, so the only way to recover the rest was a second, full-cost
-	// snapshot call. If this session's caller has confirmed (via its own
-	// granted folder guard, not a path this package invents) that it can write
-	// somewhere the session can also read back, persist the full tree there so
-	// the agent gets a real recoverable path instead of only a re-run option.
-	spilledPath := ""
-	if e.SpillOversized != nil {
-		if p, err := e.SpillOversized(ctx, full); err == nil && strings.TrimSpace(p) != "" {
-			spilledPath = strings.TrimSpace(p)
-		}
-	}
-	recoveryLine := fmt.Sprintf("  - agent_browser(command=\"snapshot\", args=[..., %q])            -- this exact snapshot in full, inline (re-runs the command)", fullSnapshotFlag)
-	if spilledPath != "" {
-		// execute_shell_command is the registered tool that can read the session's
-		// already-granted tool_output_folder. Do not advertise the test-only
-		// read_workspace_file helper here: an unavailable recovery command turns a
-		// successful spill back into an unrecoverable snapshot.
-		recoveryLine = fmt.Sprintf("  - execute_shell_command(command=\"sed -n '1,240p' %q\") -- read this saved tree in chunks; use later line ranges as needed (no re-run)", spilledPath)
-	}
-	*output = fmt.Sprintf(`SNAPSHOT_TRUNCATED: showing the first %d of %d runes (%d bytes).
-
-*** THIS TREE IS INCOMPLETE. An element missing from the text below may still exist on the page -- do NOT record it as absent, and do not assert a negative from this output. ***
-
-To get what you need, pick one -- but choose based on WHY the tree below is
-large, not by trying options in order. --depth only shrinks a tree that is
-large because it is deeply NESTED; on a WIDE/FLAT page (many sibling rows,
-cards, or list items at a similar shallow depth -- look at the indentation
-below), raising or lowering --depth can return a byte-identical result and
-waste the retry, since the size comes from sibling count, not nesting:
-  - agent_browser(command="snapshot", args=[..., "--selector", "<css>"])  -- scope to the region you actually need (cheapest, works for wide OR deep trees)
-  - agent_browser(command="snapshot", args=[..., "--compact"])           -- strip empty structural wrappers (helps on noisy markup)
-  - agent_browser(command="snapshot", args=[..., "--interactive"])       -- only clickable/typeable elements (helps when you only need to act, not read)
-  - agent_browser(command="snapshot", args=[..., "--depth", "<n>"])      -- a shallower tree (only helps if the head below looks deeply nested, not wide)
-%s
-
-%s`, maxInlineSnapshotOutputRunes, runeCount, len(*output), recoveryLine, head)
-	return true, nil
 }
 
 func formatAgentBrowserSkillsOutput(output string) string {

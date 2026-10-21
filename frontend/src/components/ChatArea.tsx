@@ -857,10 +857,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         }
       }
 
-      if (event.type === 'large_tool_output_detected' || event.type === 'large_tool_output_file_written') {
-        return false
-      }
-
       return true
     })
 

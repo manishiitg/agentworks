@@ -128,7 +128,7 @@ var LEGACY_REMOVED_EVENT_TYPES = map[string]bool{
 	"cache_error": true, "cache_expired": true, "cache_hit": true, "cache_miss": true,
 	"cache_operation_start": true, "cache_write": true, "comprehensive_cache": true,
 	"context_canceled": true, "context_editing_completed": true, "context_editing_error": true,
-	"decision_evaluated": true, "large_tool_output_server_unavailable": true,
+	"decision_evaluated": true,
 	"learning_completed": true, "learning_failed": true, "learning_skipped": true,
 	"live_execution_streaming": true, "mcp_server_connection_error": true,
 	"mcp_server_discovery": true, "model_change": true, "orchestrator_error": true,

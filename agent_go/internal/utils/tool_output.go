@@ -2,9 +2,6 @@ package utils
 
 import "strings"
 
-// DefaultLargeToolOutputThreshold is retained for the integration test commands.
-const DefaultLargeToolOutputThreshold = 20000
-
 // ExtractActualContent unwraps the text form returned by MCP tools.
 func ExtractActualContent(content string) string {
 	if strings.HasPrefix(content, `{"type":"text","text":"`) {

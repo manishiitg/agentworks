@@ -123,9 +123,6 @@ export interface EventDataUnion {
   token_usage?: TokenUsageEvent;
   max_turns_reached?: MaxTurnsReachedEvent;
   context_cancelled?: ContextCancelledEvent;
-  large_tool_output_detected?: LargeToolOutputDetectedEvent;
-  large_tool_output_file_written?: LargeToolOutputFileWrittenEvent;
-  large_tool_output_file_write_error?: LargeToolOutputFileWriteErrorEvent;
   retry_attempt?: RetryAttemptEvent;
   unified_completion?: UnifiedCompletionEvent;
   orchestrator_end?: OrchestratorEndEvent;
@@ -640,67 +637,6 @@ export interface ContextCancelledEvent {
   turn?: number;
   reason?: string;
   duration?: number;
-}
-export interface LargeToolOutputDetectedEvent {
-  timestamp?: string;
-  trace_id?: string;
-  span_id?: string;
-  event_id?: string;
-  parent_id?: string;
-  is_end_event?: boolean;
-  correlation_id?: string;
-  hierarchy_level?: number;
-  session_id?: string;
-  component?: string;
-  metadata?: {
-    [k: string]: unknown;
-  };
-  tool_name?: string;
-  output_size?: number;
-  threshold?: number;
-  output_folder?: string;
-  server_available?: boolean;
-}
-export interface LargeToolOutputFileWrittenEvent {
-  timestamp?: string;
-  trace_id?: string;
-  span_id?: string;
-  event_id?: string;
-  parent_id?: string;
-  is_end_event?: boolean;
-  correlation_id?: string;
-  hierarchy_level?: number;
-  session_id?: string;
-  component?: string;
-  metadata?: {
-    [k: string]: unknown;
-  };
-  tool_name?: string;
-  file_path?: string;
-  output_size?: number;
-  file_size?: number;
-  output_folder?: string;
-  preview?: string;
-}
-export interface LargeToolOutputFileWriteErrorEvent {
-  timestamp?: string;
-  trace_id?: string;
-  span_id?: string;
-  event_id?: string;
-  parent_id?: string;
-  is_end_event?: boolean;
-  correlation_id?: string;
-  hierarchy_level?: number;
-  session_id?: string;
-  component?: string;
-  metadata?: {
-    [k: string]: unknown;
-  };
-  tool_name?: string;
-  error?: string;
-  output_size?: number;
-  output_folder?: string;
-  fallback_used?: boolean;
 }
 export interface RetryAttemptEvent {
   timestamp?: string;

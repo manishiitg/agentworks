@@ -470,33 +470,8 @@ Deleted 2026-09-22 (batch 4) with its start twin: schema-only, zero emitters. Re
 
 Deleted 2026-09-22 (batch 4) with its end twin: schema-only, zero emitters. Removed: const, struct, schema-gen entries, generated/union entries, component-switch arms.
 
-## `large_tool_output_detected` — LIVE
 
-Producers:
-- `mcpagent/agent/parallel_tool_execution.go`
-- `mcpagent/agent/conversation.go`
-- `mcp-agent-builder-go/agent_go/cmd/schema-gen/main.go`
-Consumers:
-- `mcp-agent-builder-go/frontend/src/components/ChatArea.tsx`
-- `mcp-agent-builder-go/frontend/src/components/events/EventDispatcher.tsx`
 
-## `large_tool_output_file_write_error` — TELEMETRY-DEMOTE
-
-Producers:
-- `mcpagent/agent/parallel_tool_execution.go`
-- `mcpagent/agent/conversation.go`
-- `mcp-agent-builder-go/agent_go/cmd/schema-gen/main.go`
-Consumers: none found
-
-## `large_tool_output_file_written` — LIVE
-
-Producers:
-- `mcpagent/agent/parallel_tool_execution.go`
-- `mcpagent/agent/conversation.go`
-- `mcp-agent-builder-go/agent_go/cmd/schema-gen/main.go`
-Consumers:
-- `mcp-agent-builder-go/frontend/src/components/ChatArea.tsx`
-- `mcp-agent-builder-go/frontend/src/components/events/EventDispatcher.tsx`
 
 ## `large_tool_output_server_unavailable` — REMOVED
 

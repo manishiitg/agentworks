@@ -1187,15 +1187,6 @@
         "context_cancelled": {
           "$ref": "#/$defs/ContextCancelledEvent"
         },
-        "large_tool_output_detected": {
-          "$ref": "#/$defs/LargeToolOutputDetectedEvent"
-        },
-        "large_tool_output_file_written": {
-          "$ref": "#/$defs/LargeToolOutputFileWrittenEvent"
-        },
-        "large_tool_output_file_write_error": {
-          "$ref": "#/$defs/LargeToolOutputFileWriteErrorEvent"
-        },
         "retry_attempt": {
           "$ref": "#/$defs/RetryAttemptEvent"
         },
@@ -1307,9 +1298,6 @@
         "conversation_start",
         "conversation_thinking",
         "conversation_turn",
-        "large_tool_output_detected",
-        "large_tool_output_file_write_error",
-        "large_tool_output_file_written",
         "learn_code_script_execution",
         "llm_generation_end",
         "llm_generation_error",
@@ -1607,174 +1595,6 @@
           "type": "object"
         },
         "status": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
-    },
-    "LargeToolOutputDetectedEvent": {
-      "properties": {
-        "timestamp": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "trace_id": {
-          "type": "string"
-        },
-        "span_id": {
-          "type": "string"
-        },
-        "event_id": {
-          "type": "string"
-        },
-        "parent_id": {
-          "type": "string"
-        },
-        "is_end_event": {
-          "type": "boolean"
-        },
-        "correlation_id": {
-          "type": "string"
-        },
-        "hierarchy_level": {
-          "type": "integer"
-        },
-        "session_id": {
-          "type": "string"
-        },
-        "component": {
-          "type": "string"
-        },
-        "metadata": {
-          "type": "object"
-        },
-        "tool_name": {
-          "type": "string"
-        },
-        "output_size": {
-          "type": "integer"
-        },
-        "threshold": {
-          "type": "integer"
-        },
-        "output_folder": {
-          "type": "string"
-        },
-        "server_available": {
-          "type": "boolean"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
-    },
-    "LargeToolOutputFileWriteErrorEvent": {
-      "properties": {
-        "timestamp": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "trace_id": {
-          "type": "string"
-        },
-        "span_id": {
-          "type": "string"
-        },
-        "event_id": {
-          "type": "string"
-        },
-        "parent_id": {
-          "type": "string"
-        },
-        "is_end_event": {
-          "type": "boolean"
-        },
-        "correlation_id": {
-          "type": "string"
-        },
-        "hierarchy_level": {
-          "type": "integer"
-        },
-        "session_id": {
-          "type": "string"
-        },
-        "component": {
-          "type": "string"
-        },
-        "metadata": {
-          "type": "object"
-        },
-        "tool_name": {
-          "type": "string"
-        },
-        "error": {
-          "type": "string"
-        },
-        "output_size": {
-          "type": "integer"
-        },
-        "output_folder": {
-          "type": "string"
-        },
-        "fallback_used": {
-          "type": "boolean"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object"
-    },
-    "LargeToolOutputFileWrittenEvent": {
-      "properties": {
-        "timestamp": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "trace_id": {
-          "type": "string"
-        },
-        "span_id": {
-          "type": "string"
-        },
-        "event_id": {
-          "type": "string"
-        },
-        "parent_id": {
-          "type": "string"
-        },
-        "is_end_event": {
-          "type": "boolean"
-        },
-        "correlation_id": {
-          "type": "string"
-        },
-        "hierarchy_level": {
-          "type": "integer"
-        },
-        "session_id": {
-          "type": "string"
-        },
-        "component": {
-          "type": "string"
-        },
-        "metadata": {
-          "type": "object"
-        },
-        "tool_name": {
-          "type": "string"
-        },
-        "file_path": {
-          "type": "string"
-        },
-        "output_size": {
-          "type": "integer"
-        },
-        "file_size": {
-          "type": "integer"
-        },
-        "output_folder": {
-          "type": "string"
-        },
-        "preview": {
           "type": "string"
         }
       },

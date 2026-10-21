@@ -29,8 +29,6 @@ NEVER-DISPLAYED = hidden/nulled; RETENTION-ONLY = kept in store, never rendered.
 - [ ] `delegation_start` — P: go/cmd/server/delegation.go, go/cmd/server/services/bot_event_filter.go, go/internal/terminals/store.go, go/internal/events/event_store.go | C: fe/src/stores/useChatStore.ts, fe/src/components/events/EventDispatcher.tsx, fe/src/components/events/eventModeUtils.ts
 - [ ] `fix_applied` — P: go/pkg/orchestrator/agents/workflow/step_based_workflow/pulse_finding_lifecycle.go | C: fe/src/components/workflow/pulseFindingPresentation.ts
 - [ ] `human_input` — P: go/cmd/agentworks/main.go, go/cmd/server/terminal_routes.go, go/pkg/orchestrator/agents/workflow/step_based_workflow/consolidated_plan_tools.go, go/pkg/orchestrator/agents/workflow/step_based_workflow/planning_agent.go (+1 more) | C: fe/src/utils/stepConfigMatching.ts, fe/src/components/ChatArea.tsx, fe/src/components/workflow/canvas/WorkflowCanvas.tsx, fe/src/components/workflow/executionLogs/helpers.tsx (+1 more)
-- [ ] `large_tool_output_detected` — P: mcp/agent/parallel_tool_execution.go, mcp/agent/conversation.go, go/cmd/schema-gen/main.go | C: fe/src/components/ChatArea.tsx, fe/src/components/events/EventDispatcher.tsx
-- [ ] `large_tool_output_file_written` — P: mcp/agent/parallel_tool_execution.go, mcp/agent/conversation.go, go/cmd/schema-gen/main.go | C: fe/src/components/ChatArea.tsx, fe/src/components/events/EventDispatcher.tsx
 - [ ] `learn_code_script_execution` — P: go/pkg/orchestrator/agents/workflow/step_based_workflow/controller_progress.go (`emitScriptedExecutionEvent`, 4 call sites), go/cmd/schema-gen/main.go, go/internal/events/event_store.go (STRUCTURAL) | C: fe/src/stores/useChatStore.ts, fe/src/components/ChatArea.tsx, fe/src/components/events/EventDispatcher.tsx, fe/src/components/events/eventModeUtils.ts
 - [ ] `live_input_confirmed` — P: go/cmd/server/conversation_turn_queue.go, go/cmd/server/live_input_durable.go | C: fe/src/utils/liveInputReceipt.ts, fe/src/components/ChatArea.tsx
 - [ ] `llm_generation_end` — P: mcp/agent/conversation.go, mcp/agent/agent.go, go/cmd/schema-gen/main.go, go/cmd/server/scheduled_turn_outcome.go (+4 more) | C: fe/src/products/sparkquill/api/platform/events.ts, fe/src/stores/useRunningWorkflowsStore.ts, fe/src/stores/useChatStore.ts, fe/src/utils/cleanConversation.ts (+5 more)
@@ -108,7 +106,6 @@ NEVER-DISPLAYED = hidden/nulled; RETENTION-ONLY = kept in store, never rendered.
 
 ## TELEMETRY-DEMOTE (1)
 
-- [ ] `large_tool_output_file_write_error` — P: mcp/agent/parallel_tool_execution.go, mcp/agent/conversation.go, go/cmd/schema-gen/main.go | C: none
 
 ## NEVER-DISPLAYED (1)
 

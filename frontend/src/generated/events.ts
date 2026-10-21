@@ -20,9 +20,6 @@ export interface UnifiedEventsComplete {
   conversation_error?: ConversationErrorEvent;
   conversation_start?: ConversationStartEvent;
   conversation_turn?: ConversationTurnEvent;
-  large_tool_output_detected?: LargeToolOutputDetectedEvent;
-  large_tool_output_file_write_error?: LargeToolOutputFileWriteErrorEvent;
-  large_tool_output_file_written?: LargeToolOutputFileWrittenEvent;
   learn_code_script_execution?: ScriptedExecutionEvent;
   llm_generation_end?: LLMGenerationEndEvent;
   llm_generation_error?: LLMGenerationErrorEvent;
@@ -380,67 +377,6 @@ export interface ToolInfo {
   description?: string;
   name?: string;
   server?: string;
-}
-export interface LargeToolOutputDetectedEvent {
-  component?: string;
-  correlation_id?: string;
-  event_id?: string;
-  hierarchy_level?: number;
-  is_end_event?: boolean;
-  metadata?: {
-    [k: string]: unknown;
-  };
-  output_folder?: string;
-  output_size?: number;
-  parent_id?: string;
-  server_available?: boolean;
-  session_id?: string;
-  span_id?: string;
-  threshold?: number;
-  timestamp?: string;
-  tool_name?: string;
-  trace_id?: string;
-}
-export interface LargeToolOutputFileWriteErrorEvent {
-  component?: string;
-  correlation_id?: string;
-  error?: string;
-  event_id?: string;
-  fallback_used?: boolean;
-  hierarchy_level?: number;
-  is_end_event?: boolean;
-  metadata?: {
-    [k: string]: unknown;
-  };
-  output_folder?: string;
-  output_size?: number;
-  parent_id?: string;
-  session_id?: string;
-  span_id?: string;
-  timestamp?: string;
-  tool_name?: string;
-  trace_id?: string;
-}
-export interface LargeToolOutputFileWrittenEvent {
-  component?: string;
-  correlation_id?: string;
-  event_id?: string;
-  file_path?: string;
-  file_size?: number;
-  hierarchy_level?: number;
-  is_end_event?: boolean;
-  metadata?: {
-    [k: string]: unknown;
-  };
-  output_folder?: string;
-  output_size?: number;
-  parent_id?: string;
-  preview?: string;
-  session_id?: string;
-  span_id?: string;
-  timestamp?: string;
-  tool_name?: string;
-  trace_id?: string;
 }
 export interface ScriptedExecutionEvent {
   component?: string;

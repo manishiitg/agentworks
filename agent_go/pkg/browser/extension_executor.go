@@ -163,7 +163,6 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 		return "", fmt.Errorf("CHROME_EXTENSION_UNSUPPORTED: %s is unavailable through the extension", command)
 	}
 	values := stringArgs(args["args"])
-	full, values := extractFullSnapshotArg(values)
 	for _, arg := range values {
 		for _, flag := range []string{"--cdp", "--session", "--profile", "--provider", "--executable-path", "--extension", "--auto-connect", "--connect", "--engine", "--args", "--proxy", "--headers", "--state", "--user-data-dir", "--socket-dir", "--config", "--namespace", "--init-script", "--enable", "--restore", "--restore-save", "--restore-check-url", "--restore-check-text", "--restore-check-fn", "--session-name", "--download-path", "--screenshot-dir", "--ca-cert", "--action-policy", "--allowed-domains", "--debug", "--verbose", "-v", "-p"} {
 			if arg == flag || strings.HasPrefix(arg, flag+"=") || (flag == "-p" && strings.HasPrefix(arg, "-p")) {
@@ -214,7 +213,7 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 	if command == "record" && len(values) == 1 && values[0] == "stop" {
 		// Stopping belongs to the recording lease, not the current page. A closed
 		// target must still let the encoder finish and release its state.
-		return e.executeExtensionCommand(ctx, b, client, opts, owner, endpoint, command, values, "", full)
+		return e.executeExtensionCommand(ctx, b, client, opts, owner, endpoint, command, values, "")
 	}
 	createdFirstTab := false
 	firstTabLabel := ""
@@ -327,10 +326,10 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 		output, err := json.Marshal(map[string]interface{}{"success": true, "data": data})
 		return string(output), err
 	}
-	return e.executeExtensionCommand(ctx, b, client, opts, owner, endpoint, command, values, selected.TargetID, full)
+	return e.executeExtensionCommand(ctx, b, client, opts, owner, endpoint, command, values, selected.TargetID)
 }
 
-func (e *Executor) executeExtensionCommand(ctx context.Context, b *browserrelay.Binding, client *browserrelay.Client, opts *ExecuteOptions, owner, endpoint, command string, values []string, targetID string, full bool) (string, error) {
+func (e *Executor) executeExtensionCommand(ctx context.Context, b *browserrelay.Binding, client *browserrelay.Client, opts *ExecuteOptions, owner, endpoint, command string, values []string, targetID string) (string, error) {
 	values = normalizeAgentBrowserCommandArgs(command, values)
 	if (command == "screenshot" || command == "record") && (opts.FolderGuard == nil || !opts.FolderGuard.Enabled) {
 		return "", fmt.Errorf("Screenshot and recording files require a workspace folder guard")
@@ -395,11 +394,6 @@ func (e *Executor) executeExtensionCommand(ctx context.Context, b *browserrelay.
 			}
 			deleteBrowserArtifactLease(artifactPlan.LeaseKey)
 			_ = os.Remove(artifactPlan.StagedPath)
-		}
-	}
-	if command == "snapshot" {
-		if _, err := e.handleOversizedSnapshot(ctx, &output, full); err != nil {
-			return "", err
 		}
 	}
 	return output, nil

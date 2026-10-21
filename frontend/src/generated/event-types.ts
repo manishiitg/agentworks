@@ -49,9 +49,6 @@ import type {
   TokenUsageEvent,
   MaxTurnsReachedEvent,
   ContextCancelledEvent,
-  LargeToolOutputDetectedEvent,
-  LargeToolOutputFileWrittenEvent,
-  LargeToolOutputFileWriteErrorEvent,
   RetryAttemptEvent,
   UnifiedCompletionEvent,
   OrchestratorEndEvent,
@@ -157,9 +154,6 @@ export type EventTypeString =
   | 'token_usage'
   | 'max_turns_reached'
   | 'context_cancelled'
-  | 'large_tool_output_detected'
-  | 'large_tool_output_file_written'
-  | 'large_tool_output_file_write_error'
   | 'retry_attempt'
   | 'broken_pipe'
   | 'unified_completion'
@@ -235,9 +229,6 @@ export interface EventTypeToDataMap {
   'token_usage': TokenUsageEvent;
   'max_turns_reached': MaxTurnsReachedEvent;
   'context_cancelled': ContextCancelledEvent;
-  'large_tool_output_detected': LargeToolOutputDetectedEvent;
-  'large_tool_output_file_written': LargeToolOutputFileWrittenEvent;
-  'large_tool_output_file_write_error': LargeToolOutputFileWriteErrorEvent;
   'retry_attempt': RetryAttemptEvent;
   'unified_completion': UnifiedCompletionEvent;
   'orchestrator_end': OrchestratorEndEvent;
@@ -589,9 +580,6 @@ export type {
   TokenUsageEvent,
   MaxTurnsReachedEvent,
   ContextCancelledEvent,
-  LargeToolOutputDetectedEvent,
-  LargeToolOutputFileWrittenEvent,
-  LargeToolOutputFileWriteErrorEvent,
   RetryAttemptEvent,
   UnifiedCompletionEvent,
   OrchestratorEndEvent,
