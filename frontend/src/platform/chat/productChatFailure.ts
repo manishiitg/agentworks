@@ -1,5 +1,6 @@
 export type ProductChatFailureCode =
   | 'quota_exhausted'
+  | 'billing_error'
   | 'authentication_failed'
   | 'rate_limited'
   | 'provider_unavailable'
@@ -39,7 +40,7 @@ const QUOTA_MARKERS = [
 
 const STRONG_FAILURE_MARKERS = [
   /^all LLMs failed\b/i,
-  /\[(?:quota_exhausted|authentication_failed|rate_limited|provider_unavailable)\]/i,
+  /\[(?:quota_exhausted|billing_error|authentication_failed|rate_limited|provider_unavailable)\]/i,
   /^usage limit reached\s*·\s*\/upgrade/i,
   /^failed to (?:start|continue|complete) (?:streaming|the request|the conversation)/i,
 ]
@@ -122,6 +123,17 @@ export function normalizeProductChatFailure(rawError: string, hints: FailureHint
       code: 'pulse_unavailable',
       title: 'Pulse is unavailable',
       message: raw,
+      retryable: false,
+      technicalDetails,
+    }
+  }
+
+  if (normalizedCode === 'billing_error' || /\[billing_error\]/i.test(evidence)) {
+    return {
+      code: 'billing_error',
+      title: 'AI account billing check failed',
+      message: "This AI account couldn't be used: its billing check failed. Ask your admin to check the account's payment, or choose another model.",
+      provider,
       retryable: false,
       technicalDetails,
     }

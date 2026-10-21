@@ -289,6 +289,24 @@ describe('buildCleanConversationItems', () => {
     }))
   })
 
+  it('shows a billing refusal without usage-reset advice or an upgrade action', () => {
+    const raw = 'selected LLM failed: example-cli/model [billing_error]: API error 402: Billing verification failed. Please check your payment method. (billing_error)'
+    const items = buildCleanConversationItems([
+      event('failure', 'agent_error', { error: raw, retry_at: '2030-01-01T00:00:00Z' }),
+    ])
+    const failure = items.at(-1)?.failure
+    expect(failure).toEqual(expect.objectContaining({
+      code: 'billing_error',
+      title: 'AI account billing check failed',
+      message: "This AI account couldn't be used: its billing check failed. Ask your admin to check the account's payment, or choose another model.",
+      retryable: false,
+      technicalDetails: raw,
+    }))
+    expect(failure).not.toHaveProperty('retryAt')
+    expect(failure).not.toHaveProperty('resetLabel')
+    expect(failure).not.toHaveProperty('actionUrl')
+  })
+
   it('shows the Muse reset time and upgrade action instead of a network failure', () => {
     const raw = `all LLMs failed (primary + 0 fallbacks): muse-cli/muse-spark-1.3-contributor [quota_exhausted]: Usage limit reached · /upgrade
 (https://accountscenter.meta.com/muse_code/?ep=xgrade) for increased limits, or
