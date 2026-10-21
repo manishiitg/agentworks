@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -129,4 +130,13 @@ func publicNetworkReservedUsername(name string) bool {
 		return true
 	}
 	return adminUsernamesFromEnv()[name]
+}
+
+func publicNetworkUsername(dir *userDirectory, userID, displayName string) string {
+	name, err := normalizeMessageAgentName(displayName)
+	if err != nil || len(name) < 3 || publicNetworkReservedUsername(name) {
+		sum := sha256.Sum256([]byte(userID))
+		name = fmt.Sprintf("member-%x", sum[:6])
+	}
+	return dir.uniqueDirectoryUsername(name, "")
 }

@@ -43,10 +43,13 @@ func TestPublicNetworkSignupAndConsent(t *testing.T) {
 	}
 	ext.EmailVerified = true
 	google := ensureDirectoryUserForExternal(ext.ExternalID, ext)
-	if google == nil || google.Admin || isConfiguredAdmin(google) || google.CanCreate || google.ID == rec.ID {
+	if google == nil || google.Admin || isConfiguredAdmin(google) || google.CanCreate || google.ID == rec.ID || strings.Contains(google.Username, "@") {
 		t.Fatal("Google display name granted account authority")
 	}
 
+	if strings.Contains(publicNetworkUsername(&userDirectory{}, "person-id", "private@example.com"), "@") {
+		t.Fatal("Google account email became its public name")
+	}
 	for _, reserved := range []string{"admin", "owner", "support", "agentworks"} {
 		if !publicNetworkReservedUsername(reserved) {
 			t.Fatalf("reserved name offered: %s", reserved)
