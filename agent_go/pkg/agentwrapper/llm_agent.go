@@ -974,7 +974,6 @@ func (w *LLMAgentWrapper) FinalizeDefinition(ctx context.Context) error {
 		_ = next.Close()
 		return fmt.Errorf("start finalized agent session: %w", err)
 	}
-	old := w.agent
 	oldSession := w.session
 	w.agent = next
 	w.session = nextSession
@@ -982,7 +981,6 @@ func (w *LLMAgentWrapper) FinalizeDefinition(ctx context.Context) error {
 	if oldSession != nil {
 		_ = oldSession.Close()
 	}
-	mcpagent.RetireReplacedAgent(old)
 	return nil
 }
 

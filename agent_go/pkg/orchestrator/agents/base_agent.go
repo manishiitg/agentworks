@@ -559,7 +559,6 @@ func (ba *BaseAgent) finalizeDefinition(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("finalize immutable agent definition: %w", err)
 	}
-	old := ba.agent
 	nextAgent.SetInstalledSkillResolver(ba.installedSkillResolver)
 	nextSession, err := nextAgent.Start(ctx)
 	if err != nil {
@@ -570,7 +569,6 @@ func (ba *BaseAgent) finalizeDefinition(ctx context.Context) error {
 	ba.session = nextSession
 	ba.instructions = ba.definition.Instructions
 	ba.finalized = true
-	mcpagent.RetireReplacedAgent(old)
 	return nil
 }
 
@@ -604,7 +602,6 @@ func (ba *BaseAgent) replaceDefinition(ctx context.Context, nextDefinition mcpag
 	if ba.session != nil {
 		_ = ba.session.Close()
 	}
-	mcpagent.RetireReplacedAgent(ba.agent)
 	ba.agent = nextAgent
 	ba.session = nextSession
 	ba.definition = nextDefinition
