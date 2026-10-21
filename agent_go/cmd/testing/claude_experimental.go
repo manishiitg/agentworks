@@ -490,6 +490,10 @@ func verifyClaudeExperimentalRealMCPBridge(llmInstance llmtypes.Model, bridgePat
 	if err != nil {
 		return nil, fmt.Errorf("failed to build MCP tools JSON: %w", err)
 	}
+	toolsFile := filepath.Join(os.TempDir(), "claude-experimental-mcp-tools.json")
+	if err := os.WriteFile(toolsFile, toolsJSON, 0o600); err != nil {
+		return nil, fmt.Errorf("failed to write MCP tools file: %w", err)
+	}
 
 	mcpConfig, err := json.Marshal(map[string]interface{}{
 		"mcpServers": map[string]interface{}{
@@ -498,7 +502,7 @@ func verifyClaudeExperimentalRealMCPBridge(llmInstance llmtypes.Model, bridgePat
 				"env": map[string]string{
 					"MCP_API_URL":    mockServer.url,
 					"MCP_API_TOKEN":  "test-token",
-					"MCP_TOOLS":      string(toolsJSON),
+					"MCP_TOOLS_FILE": toolsFile,
 					"MCP_BRIDGE_LOG": filepath.Join(os.TempDir(), "claude-experimental-mcpbridge.log"),
 				},
 			},

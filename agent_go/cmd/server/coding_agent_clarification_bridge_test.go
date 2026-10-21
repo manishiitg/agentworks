@@ -50,7 +50,7 @@ func TestCodingAgentClarificationThroughMCPBridge(t *testing.T) {
 			}))
 			defer server.Close()
 			tools, _ := json.Marshal([]map[string]interface{}{{"name": "request_clarification", "description": "Ask for choices", "type": "custom", "input_schema": codingAgentClarificationSchema()}})
-			bridge, err := client.NewStdioMCPClient(binary, append(os.Environ(), "MCP_API_URL="+server.URL, "MCP_API_TOKEN=test-clarification-token", "MCP_SESSION_ID="+session, "MCP_TOOLS="+string(tools)))
+			bridge, err := client.NewStdioMCPClient(binary, append(os.Environ(), "MCP_API_URL="+server.URL, "MCP_API_TOKEN=test-clarification-token", "MCP_SESSION_ID="+session, "MCP_TOOLS_FILE="+writeMCPToolsFileForTest(t, tools)))
 			if err != nil {
 				t.Fatal(err)
 			}

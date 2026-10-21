@@ -146,7 +146,7 @@ COMMIT;
 		"MCP_API_URL="+customAPI.URL,
 		"MCP_API_TOKEN=bridge-test-token",
 		"MCP_SESSION_ID="+sessionID,
-		"MCP_TOOLS="+string(toolsJSON),
+		"MCP_TOOLS_FILE="+writeMCPToolsFileForTest(t, toolsJSON),
 	))
 	if err != nil {
 		t.Fatalf("start mcpbridge: %v", err)

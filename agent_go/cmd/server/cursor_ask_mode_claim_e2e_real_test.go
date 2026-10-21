@@ -263,7 +263,7 @@ func mcpBridgeConfigJSON(t *testing.T, apiURL, token string, advertiseTool bool)
 				"env": map[string]string{
 					"MCP_API_URL":    apiURL,
 					"MCP_API_TOKEN":  token,
-					"MCP_TOOLS":      string(toolsJSON),
+					"MCP_TOOLS_FILE": writeMCPToolsFileForTest(t, toolsJSON),
 					"MCP_BRIDGE_LOG": filepath.Join(t.TempDir(), "mcpbridge.log"),
 				},
 				"trust": true,

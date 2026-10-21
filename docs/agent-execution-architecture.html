@@ -108,7 +108,7 @@ sounds, because bridge-only mode removes its ability to act (below).</div>
 <p>The model's tools are Go functions in the server process. The bridge is how it reaches them:</p>
 <pre><code>model calls a tool
   → CLI invokes its MCP server        <span class="muted">(--mcp-config)</span>
-  → mcpbridge (stdio subprocess)      <span class="muted">MCP_TOOLS / MCP_API_URL / MCP_API_TOKEN</span>
+  → mcpbridge (stdio subprocess)      <span class="muted">MCP_TOOLS_FILE / MCP_API_URL / MCP_API_TOKEN</span>
   → HTTP POST /tools/custom/{name}    <span class="muted">bearer token + X-Session-ID</span>
   → executor server                   <span class="muted">same process as the agent</span>
   → Go handler runs</code></pre>

@@ -104,10 +104,10 @@ variant of the same bridge**, not the curl-discovery route:
    in `Config.Tools` — callers never need to touch mcpagent's own files at all.
 4. `mcpagent.BuildBridgeMCPConfig()` combines `bridgeTools` +
    `Agent.additionalBridgeTools`, resolves each name to its real schema,
-   serializes the result into the `MCP_TOOLS` env var, and launches `mcpbridge`
+   writes the result to a private file named by `MCP_TOOLS_FILE` (one environment string over 128 KiB cannot start a process), and launches `mcpbridge`
    with that set for the session.
 5. `mcpbridge` itself has **zero hardcoded tool names** — it reads its entire tool
-   list from `MCP_TOOLS` at startup (see `cmd/mcpbridge/main.go`). For a `"custom"`
+   list from `MCP_TOOLS_FILE` at startup (see `cmd/mcpbridge/main.go`). For a `"custom"`
    type entry, a tool call becomes `POST {MCP_API_URL}/tools/custom/{name}` with an
    `X-Session-ID` header — landing back on the *same app process* that registered
    the handler in step 2, not a separate orchestrator.

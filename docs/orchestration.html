@@ -96,7 +96,7 @@
       <tr><td><code>MCP_API_URL</code></td><td>Go server HTTP base</td><td>Where the bridge forwards every call. Static across sessions.</td></tr>
       <tr><td><code>MCP_SESSION_ID</code></td><td>this session</td><td>Sent as <code>X-Session-ID</code>; scopes to the session's registry &amp; allow-list.</td></tr>
       <tr><td><code>MCP_VIRTUAL_SCOPE_ID</code></td><td>per-agent scope</td><td>Sent as <code>X-Virtual-Scope-ID</code>; routes <code>get_api_spec</code> to <b>one specific agent instance's</b> handler. <span class="tag bad">the crux</span></td></tr>
-      <tr><td><code>MCP_TOOLS</code></td><td>bridge tool defs (JSON)</td><td>The small <b>native</b> set the bridge advertises: <code>execute_shell_command</code>, <code>diff_patch_workspace_file</code>, <code>agent_browser</code>, <code>get_api_spec</code>. Everything else is discovered via <code>get_api_spec</code>.</td></tr>
+      <tr><td><code>MCP_TOOLS_FILE</code></td><td>path of the file holding the bridge tool defs (JSON)</td><td>The small <b>native</b> set the bridge advertises: <code>execute_shell_command</code>, <code>diff_patch_workspace_file</code>, <code>agent_browser</code>, <code>get_api_spec</code>. Everything else is discovered via <code>get_api_spec</code>.</td></tr>
       <tr><td><code>MCP_API_TOKEN</code></td><td>auth token</td><td>Sent as <code>Authorization: Bearer …</code>.</td></tr>
     </tbody>
   </table>
