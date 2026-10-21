@@ -10,7 +10,7 @@ import (
 const agentEmailSetupDescription = "Turn Crew inboxes on or off for this server. Administrator only. Users connect Gmail in My Vault, then choose one account with Use for Crew inboxes. All their existing and future Crews receive addresses automatically. No company mailbox, Google Cloud setup or per-Crew binding. Receiving stores addressed mail only; normal optional Python Watchers start work. Unavailable locally."
 
 func agentEmailSetupSchema() map[string]interface{} {
-	return map[string]interface{}{"type": "object", "required": []string{"action"}, "additionalProperties": false, "properties": map[string]interface{}{"action": map[string]interface{}{"type": "string", "enum": []string{"status", "configure"}}, "enabled": map[string]interface{}{"type": "boolean"}}}
+	return map[string]interface{}{"type": "object", "required": []string{"action"}, "additionalProperties": false, "properties": map[string]interface{}{"action": map[string]interface{}{"type": "string", "enum": []any{"status", "configure"}}, "enabled": map[string]interface{}{"type": "boolean"}}}
 }
 func agentEmailAdmin(ctx context.Context) bool {
 	c := GetUserFromContext(ctx)
