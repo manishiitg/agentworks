@@ -70,10 +70,9 @@ func postModernExternalTool(t *testing.T, url, target string, args map[string]an
 }
 
 func TestExternalMCPFunctionQuestionUsesCapabilityGatedElicitation(t *testing.T) {
-	env := newTriggerLinkEnv(t)
-	env.api.agentProfiles = env.svc.registry
+	f, _ := newExternalCrewCommandFixture(t)
 	call := &crewFunctionCall{ID: "fn-mcp-elicit-crew", UserID: "owner", CallerKind: triggerCallerUser,
-		TargetKind: triggerCallerCrew, TargetID: "beta", Status: "running", CreatedAt: time.Now(), UpdatedAt: time.Now(), done: make(chan struct{})}
+		TargetKind: triggerCallerCrew, TargetProfileID: "work", TargetID: "team", TargetPath: externalCommandCrewRoot, Status: "running", CreatedAt: time.Now(), UpdatedAt: time.Now(), done: make(chan struct{})}
 	crewFunctionCalls.Lock()
 	crewFunctionCalls.m[call.ID] = call
 	crewFunctionCalls.Unlock()
@@ -88,21 +87,25 @@ func TestExternalMCPFunctionQuestionUsesCapabilityGatedElicitation(t *testing.T)
 		t.Fatal(err)
 	}
 	claims := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:run"}, AllCrews: true}}
-	srv := serveExternalMCP(t, env.api, claims)
+	srv := serveExternalMCP(t, f.api, claims)
 	url := srv.URL + externalMCPPath
-	args := map[string]any{"call_id": call.ID}
+	args := map[string]any{"action": "status", "crew_id": "team", "call_id": call.ID}
 
 	// A modern client without the elicitation capability receives the same
 	// pollable pending_inputs contract as before.
-	plain := postModernExternalTool(t, url, "get_crew_function_call", args, false, "", nil)
+	plain := postModernExternalTool(t, url, "functions", args, false, "", nil)
 	if plain["resultType"] == "input_required" {
 		t.Fatalf("capability-less client was elicited: %v", plain)
 	}
-	if got := plain["structuredContent"].(map[string]any)["pending_inputs"].([]any); len(got) != 1 {
+	content, ok := plain["structuredContent"].(map[string]any)
+	if !ok {
+		t.Fatalf("polling failed before elicitation: %v", plain)
+	}
+	if got := content["pending_inputs"].([]any); len(got) != 1 {
 		t.Fatalf("polling fallback lost pending question: %v", plain)
 	}
 
-	first := postModernExternalTool(t, url, "get_crew_function_call", args, true, "", nil)
+	first := postModernExternalTool(t, url, "functions", args, true, "", nil)
 	if first["resultType"] != "input_required" {
 		t.Fatalf("expected input_required, got %v", first)
 	}
@@ -122,35 +125,35 @@ func TestExternalMCPFunctionQuestionUsesCapabilityGatedElicitation(t *testing.T)
 	}
 
 	// A different user cannot use the returned state as authority to answer.
-	other := serveExternalMCP(t, env.api, &UserClaims{UserID: "other", AccessToken: &accesstokens.Token{Scopes: []string{"crews:run"}, AllCrews: true}})
+	other := serveExternalMCP(t, f.api, &UserClaims{UserID: "other", AccessToken: &accesstokens.Token{Scopes: []string{"crews:run"}, AllCrews: true}})
 	responses := map[string]any{"mcp-elicit-request": map[string]any{"action": "accept", "content": map[string]any{"response": "main"}}}
-	foreign := postModernExternalTool(t, other.URL+externalMCPPath, "get_crew_function_call", args, true, state, responses)
+	foreign := postModernExternalTool(t, other.URL+externalMCPPath, "functions", args, true, state, responses)
 	if foreign["isError"] != true {
 		t.Fatalf("foreign user answered call: %v", foreign)
 	}
-	changed := postModernExternalTool(t, url, "get_crew_function_call", map[string]any{"call_id": "another-call"}, true, state, responses)
+	changed := postModernExternalTool(t, url, "functions", map[string]any{"action": "status", "crew_id": "team", "call_id": "another-call"}, true, state, responses)
 	if changed["isError"] != true {
 		t.Fatalf("changed call_id accepted an elicitation answer: %v", changed)
 	}
-	invalid := postModernExternalTool(t, url, "get_crew_function_call", args, true, state,
+	invalid := postModernExternalTool(t, url, "functions", args, true, state,
 		map[string]any{"mcp-elicit-request": map[string]any{"action": "accept", "content": map[string]any{"response": "unknown"}}})
 	if invalid["isError"] != true {
 		t.Fatalf("invalid choice was accepted: %v", invalid)
 	}
-	declined := postModernExternalTool(t, url, "get_crew_function_call", args, true, state,
+	declined := postModernExternalTool(t, url, "functions", args, true, state,
 		map[string]any{"mcp-elicit-request": map[string]any{"action": "decline"}})
 	if declined["isError"] == true || declined["resultType"] == "input_required" {
 		t.Fatalf("declining should return a pollable status: %v", declined)
 	}
 
-	final := postModernExternalTool(t, url, "get_crew_function_call", args, true, state, responses)
+	final := postModernExternalTool(t, url, "functions", args, true, state, responses)
 	if final["isError"] == true || final["resultType"] == "input_required" {
 		t.Fatalf("answer did not finish elicitation: %v", final)
 	}
 	if answer, err := store.WaitForResponseCtx(context.Background(), "mcp-elicit-request", time.Second); err != nil || answer != "main" {
 		t.Fatalf("waiting Crew got %q, %v", answer, err)
 	}
-	replay := postModernExternalTool(t, url, "get_crew_function_call", args, true, state, responses)
+	replay := postModernExternalTool(t, url, "functions", args, true, state, responses)
 	if replay["isError"] != true {
 		t.Fatalf("duplicate elicitation answer was accepted: %v", replay)
 	}
@@ -172,21 +175,21 @@ func TestExternalMCPWorkflowQuestionArrivesAfterFirstPoll(t *testing.T) {
 	})
 	srv := serveExternalMCP(t, f.api, &UserClaims{UserID: "owner", Username: "owner"})
 	url := srv.URL + externalMCPPath
-	args := map[string]any{"workflow_id": "invoices", "call_id": call.ID}
-	first := postModernExternalTool(t, url, "get_workflow_function_call", args, true, "", nil)
+	args := map[string]any{"action": "status", "workflow_id": "invoices", "call_id": call.ID}
+	first := postModernExternalTool(t, url, "functions", args, true, "", nil)
 	if first["resultType"] == "input_required" {
 		t.Fatalf("question appeared before it existed: %v", first)
 	}
 	if err := store.CreatePendingRequest("mcp-late-workflow-request", "What should the report say?", "", "workflow-chat", nil, true, time.Minute, call.ID); err != nil {
 		t.Fatal(err)
 	}
-	second := postModernExternalTool(t, url, "get_workflow_function_call", args, true, "", nil)
+	second := postModernExternalTool(t, url, "functions", args, true, "", nil)
 	if second["resultType"] != "input_required" {
 		t.Fatalf("late question was not elicited: %v", second)
 	}
 	state := second["requestState"].(string)
 	responses := map[string]any{"mcp-late-workflow-request": map[string]any{"action": "accept", "content": map[string]any{"response": "Ship the summary"}}}
-	answered := postModernExternalTool(t, url, "get_workflow_function_call", args, true, state, responses)
+	answered := postModernExternalTool(t, url, "functions", args, true, state, responses)
 	if answered["isError"] == true {
 		t.Fatalf("workflow answer failed: %v", answered)
 	}
