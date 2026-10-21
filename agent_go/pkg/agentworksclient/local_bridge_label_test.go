@@ -61,3 +61,17 @@ func TestBridgeLabelRefreshKeepsLeaseAndDoesNotBlock(t *testing.T) {
 	default:
 	}
 }
+
+func TestCrossNetworkDirectoryOmitsProjectContext(t *testing.T) {
+	raw := directoryWithoutProjectContext(json.RawMessage(`{"agents":[{"repository":"private-project","branch":"customer-work","activity":"Working","activity_at":"2026-10-21T07:00:00Z"}],"note":"directory"}`))
+	var out struct {
+		Agents []map[string]any `json:"agents"`
+	}
+	if json.Unmarshal(raw, &out) != nil || len(out.Agents) != 1 {
+		t.Fatal("invalid projection")
+	}
+	a := out.Agents[0]
+	if a["repository"] != nil || a["branch"] != nil || a["activity"] != "Working" || a["activity_at"] == nil {
+		t.Fatal("cross-network project names or activity lost", a)
+	}
+}

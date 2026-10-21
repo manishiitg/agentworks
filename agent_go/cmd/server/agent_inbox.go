@@ -104,7 +104,7 @@ func addAgentPresence(out map[string]any, a namedMessageAgent) {
 		out["delivery_route"] = a.Attachment.DeliveryRoute
 		out["repository"], out["branch"] = a.Attachment.Repository, a.Attachment.Branch
 		out["activity"] = "Unknown"
-		if namedAgentOnline(a) && !a.Attachment.ActivityAt.IsZero() {
+		if namedAgentOnline(a) && !a.Attachment.ActivityAt.IsZero() && time.Since(a.Attachment.ActivityAt) <= 10*time.Minute {
 			switch a.Attachment.Activity {
 			case "busy":
 				out["activity"] = "Working"

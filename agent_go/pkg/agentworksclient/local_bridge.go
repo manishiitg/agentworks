@@ -969,7 +969,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			for _, request := range requests {
 				raw, err := request.client.Call(callCtx, "messages", map[string]any{"action": "list_agents", "agent_name": request.name})
 				if err == nil {
-					out.Directories = append(out.Directories, LocalAgentDirectory{Server: request.client.baseURL, Agents: raw})
+					out.Directories = append(out.Directories, LocalAgentDirectory{Server: request.client.baseURL, Agents: directoryWithoutProjectContext(raw)})
 				}
 			}
 		})
@@ -1521,10 +1521,14 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 		}
 		network := via.Network
+		crossNetwork := via.Also
 		snap := &localSession{Attachment: via.Attachment, client: via.client}
 		var reply LocalBridgeReply
 		b.unlocked(func() {
 			reply = b.mailboxCall(callCtx, snap, in, out)
+			if in.Action == "peers" && crossNetwork {
+				reply.Result = directoryWithoutProjectContext(reply.Result)
+			}
 			if in.Action == "ping_person" {
 				// A ping names a message id; the person does not say which network it went through. Try the
 				// others when this network does not know the message.
@@ -1541,7 +1545,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			for _, x := range extras {
 				raw, err := x.client.Call(callCtx, "messages", map[string]any{"action": "list_agents", "agent_name": x.Attachment.AgentName})
 				if err == nil {
-					reply.Directories = append(reply.Directories, LocalAgentDirectory{Server: x.Network, Agents: raw})
+					reply.Directories = append(reply.Directories, LocalAgentDirectory{Server: x.Network, Agents: directoryWithoutProjectContext(raw)})
 				}
 			}
 		})
@@ -2313,6 +2317,12 @@ func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 	b.mu.Lock()
 	a, explicitName, client := s.Attachment, s.LabelName, s.client
 	workspace, activity, activityAt := s.WorkspaceDir, s.Activity, s.ActivityAt
+	crossNetwork := s.Also
+	if crossNetwork {
+		if primary := b.sessions[localBridgeKey(a.Provider, a.SessionID)]; primary != nil {
+			activity, activityAt = primary.Activity, primary.ActivityAt
+		}
+	}
 	route := localDeliveryRoute(s)
 	active := !b.closed && !s.Offline && !s.ServerClosed && client != nil
 	b.mu.Unlock()
@@ -2324,7 +2334,9 @@ func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 		label = b.options.ChatLabel(a, explicitName)
 	}
 	repository, branch := a.Repository, a.Branch
-	if b.options.ChatContext != nil {
+	if crossNetwork {
+		repository, branch = "", "" // Never publish a company's project names on another login's network.
+	} else if b.options.ChatContext != nil {
 		repository, branch = b.options.ChatContext(ctx, a, workspace)
 	}
 	if label == a.Label && route == a.DeliveryRoute && repository == a.Repository && branch == a.Branch && activity == a.Activity && activityAt.Equal(a.ActivityAt) {
@@ -3006,4 +3018,23 @@ func networkTarget(target, network string) string {
 		return target[:at]
 	}
 	return target
+}
+
+// A multi-network directory carries activity but never another company's project names.
+func directoryWithoutProjectContext(raw json.RawMessage) json.RawMessage {
+	var result map[string]json.RawMessage
+	if json.Unmarshal(raw, &result) != nil {
+		return nil
+	}
+	var agents []map[string]json.RawMessage
+	if json.Unmarshal(result["agents"], &agents) != nil {
+		return nil
+	}
+	for _, agent := range agents {
+		delete(agent, "repository")
+		delete(agent, "branch")
+	}
+	result["agents"], _ = json.Marshal(agents)
+	clean, _ := json.Marshal(result)
+	return clean
 }
