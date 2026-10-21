@@ -3,6 +3,7 @@ package upstream
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"net/netip"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mark3labs/mcp-go/client"
@@ -104,6 +106,42 @@ type boundedTransport struct {
 	bearerToken string
 	authScheme  string
 	accessToken func(context.Context) (string, error)
+	refusal     *refusalNote
+}
+
+// refusalNote keeps what the upstream server said when it answered an error, so a failed connect can show it.
+type refusalNote struct {
+	mu   sync.Mutex
+	text string
+}
+
+func (n *refusalNote) set(text string) {
+	n.mu.Lock()
+	n.text = text
+	n.mu.Unlock()
+}
+
+func (n *refusalNote) get() string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.text
+}
+
+// refusalReason is the server's own sentence: a JSON-RPC error message, else the start of the body.
+func refusalReason(body string) string {
+	var rpc struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.Unmarshal([]byte(body), &rpc) == nil && strings.TrimSpace(rpc.Error.Message) != "" {
+		return strings.TrimSpace(rpc.Error.Message)
+	}
+	body = strings.Join(strings.Fields(body), " ")
+	if len(body) > 300 {
+		body = body[:300]
+	}
+	return body
 }
 
 func (t boundedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -131,6 +169,14 @@ func (t boundedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	if t.refusal != nil && resp.StatusCode >= 400 && resp.StatusCode != http.StatusUnauthorized && resp.Body != nil {
+		excerpt, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		resp.Body = struct {
+			io.Reader
+			io.Closer
+		}{io.MultiReader(strings.NewReader(string(excerpt)), resp.Body), resp.Body}
+		t.refusal.set(refusalReason(string(excerpt)))
+	}
 	if resp.ContentLength > maxResponseBytes {
 		resp.Body.Close()
 		return nil, errors.New("upstream response exceeds size limit")
@@ -139,7 +185,10 @@ func (t boundedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return resp, nil
 }
 
-func safeHTTPClient(opts DialOptions) *http.Client {
+func safeHTTPClient(opts DialOptions) *http.Client { return safeHTTPClientNoting(opts, nil) }
+
+// safeHTTPClientNoting is safeHTTPClient that also keeps the upstream's error answers in refusal.
+func safeHTTPClientNoting(opts DialOptions, refusal *refusalNote) *http.Client {
 	dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
 	base := &http.Transport{
 		Proxy:                 nil,
@@ -163,7 +212,7 @@ func safeHTTPClient(opts DialOptions) *http.Client {
 		},
 	}
 	return &http.Client{
-		Transport:     boundedTransport{base: base, bearerToken: opts.BearerToken, authScheme: opts.AuthScheme, accessToken: opts.AccessToken},
+		Transport:     boundedTransport{base: base, bearerToken: opts.BearerToken, authScheme: opts.AuthScheme, accessToken: opts.AccessToken, refusal: refusal},
 		Timeout:       30 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
@@ -178,7 +227,8 @@ func DialWithOptions(ctx context.Context, url string, opts DialOptions) (*Client
 	if _, err := ValidateURL(url, opts); err != nil {
 		return nil, err
 	}
-	c, err := client.NewStreamableHttpClient(url, transport.WithHTTPBasicClient(safeHTTPClient(opts)))
+	refusal := &refusalNote{}
+	c, err := client.NewStreamableHttpClient(url, transport.WithHTTPBasicClient(safeHTTPClientNoting(opts, refusal)))
 	if err != nil {
 		return nil, fmt.Errorf("upstream client: %w", err)
 	}
@@ -191,6 +241,9 @@ func DialWithOptions(ctx context.Context, url string, opts DialOptions) (*Client
 	initReq.Params.Capabilities = mcp.ClientCapabilities{}
 	if _, err := c.Initialize(ctx, initReq); err != nil {
 		c.Close()
+		if said := refusal.get(); said != "" && !IsAuthorizationRequired(err) {
+			return nil, fmt.Errorf("upstream refused the connection: %s", said)
+		}
 		return nil, fmt.Errorf("upstream initialize: %w", err)
 	}
 	return &Client{c: c, url: url}, nil

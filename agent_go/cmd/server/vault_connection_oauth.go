@@ -250,7 +250,7 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 			_, syncErr := vaultServiceRequest(context.Background(), userID, http.MethodPost, "/api/admin/connectors/"+id+"/sync", nil)
 			log.Printf("[VAULT_SIGNIN] connection=%s app=%s tool sync after sign-in took %s ok=%t err=%v", id, name, time.Since(syncStarted).Round(time.Millisecond), syncErr == nil, syncErr)
 			if err := syncErr; err != nil {
-				return fmt.Errorf("signed in to %s, but Vault could not load its tools (%w); use Refresh to retry", name, err)
+				return errors.New(vaultSyncProblem(name, err))
 			}
 			return nil
 		},
@@ -475,4 +475,25 @@ func (api *StreamingAPI) capLayerConnectionAccess(ctx context.Context, userID, o
 	}
 	data, err := json.Marshal(result)
 	return string(data), err
+}
+
+var slackAppEnableLink = regexp.MustCompile(`https://api\.slack\.com/apps/[A-Z0-9]+/app-assistant`)
+
+// vaultSyncProblem says in plain words why a signed-in connection could not load its tools. When the server gave its own
+// reason, that reason is shown instead of the transport error behind it.
+func vaultSyncProblem(name string, err error) string {
+	const marker = "upstream refused the connection: "
+	message := err.Error()
+	if at := strings.Index(message, marker); at >= 0 {
+		said := strings.TrimSpace(message[at+len(marker):])
+		if strings.Contains(said, "not enabled for Slack MCP server access") {
+			link := slackAppEnableLink.FindString(said)
+			if link != "" {
+				link = " at " + link
+			}
+			return "signed in to Slack, but Slack has not allowed this app to use its tools yet. The owner of the Slack app turns it on" + link + ", then use Refresh"
+		}
+		return fmt.Sprintf("signed in to %s, but it refused the connection: %s; use Refresh to retry", name, said)
+	}
+	return fmt.Sprintf("signed in to %s, but Vault could not load its tools (%s); use Refresh to retry", name, message)
 }
