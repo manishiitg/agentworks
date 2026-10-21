@@ -11,11 +11,11 @@
 # Browser sign-in grants read and run access without copying a credential.
 set -eu
 
-SERVER="${AGENTWORKS_SERVER:-}"
+SERVER="${AGENTWORKS_SERVER:-https://network.agentworkshq.com}"
 INSTALL_DIR="${HOME:-/tmp}/.local/bin"
 
 usage() {
-  echo "usage: sh install-agentworks.sh --server https://YOUR-SERVER-ADDRESS [--dir DIR] [--no-login]" >&2
+  echo "usage: sh install-agentworks.sh [--server https://YOUR-SERVER-ADDRESS] [--dir DIR] [--no-login]" >&2
 }
 
 while [ $# -gt 0 ]; do
@@ -109,5 +109,4 @@ if [ "${NO_LOGIN:-0}" != 1 ]; then
   "$INSTALL_DIR/agentworks" login --server "$SERVER"
 fi
 
-echo "Done. Try: $INSTALL_DIR/agentworks workflows list"
-echo "For AI assistants, paste the MCP command from the Connect tab."
+echo "Done. In your coding-agent chat, ask: Connect this chat to AgentBridge."

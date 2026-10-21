@@ -38,10 +38,11 @@ type AuthProvider interface {
 
 // ExternalUser represents a user authenticated by an external provider
 type ExternalUser struct {
-	ExternalID string // ID from external provider
-	Email      string
-	Username   string
-	Provider   string // "cognito", "supabase", "simple"
+	EmailVerified bool   // Provider-confirmed email, never user-editable display metadata.
+	ExternalID    string // ID from external provider
+	Email         string
+	Username      string
+	Provider      string // "cognito", "supabase", "simple"
 }
 
 // ProviderInfo represents provider information returned to frontend
@@ -695,12 +696,13 @@ func (p *SupabaseSocialProvider) ExchangeCode(ctx context.Context, code, redirec
 		return nil, fmt.Errorf("token exchange failed: %s", resp.Status)
 	}
 
-	// The PKCE token response already carries the user; no userinfo call needed.
+	// The PKCE token response already carries the provider-confirmed user.
 	var tokenResp struct {
 		User struct {
-			ID           string `json:"id"`
-			Email        string `json:"email"`
-			UserMetadata struct {
+			ID               string `json:"id"`
+			Email            string `json:"email"`
+			EmailConfirmedAt string `json:"email_confirmed_at"`
+			UserMetadata     struct {
 				Name     string `json:"name"`
 				FullName string `json:"full_name"`
 			} `json:"user_metadata"`
@@ -724,10 +726,11 @@ func (p *SupabaseSocialProvider) ExchangeCode(ctx context.Context, code, redirec
 	log.Printf("[AUTH:SupabaseGoogle] User authenticated: %s (id: %s)", username, tokenResp.User.ID)
 
 	return &ExternalUser{
-		ExternalID: tokenResp.User.ID,
-		Email:      tokenResp.User.Email,
-		Username:   username,
-		Provider:   p.Name(),
+		ExternalID:    tokenResp.User.ID,
+		EmailVerified: tokenResp.User.EmailConfirmedAt != "",
+		Email:         tokenResp.User.Email,
+		Username:      username,
+		Provider:      p.Name(),
 	}, nil
 }
 

@@ -28,7 +28,7 @@ const mcpOAuthConnectionsPath = "/api/oauth/mcp/connections"
 var mcpOAuthDefaultScopes = []string{"workflows:read", "files:read", "runs:execute", "crews:read", "crews:run", "crews:write", "crews:review", "vault:read", "vault:manage", "users:manage"}
 
 // Builder is supported only when explicitly requested, never by default.
-var mcpOAuthScopes = append(slices.Clone(mcpOAuthDefaultScopes), "builder:chat", "relays:write", "knowledgebase:read", "knowledgebase:write", "dashboards:read")
+var mcpOAuthScopes = append(slices.Clone(mcpOAuthDefaultScopes), "builder:chat", "relays:write", "knowledgebase:read", "knowledgebase:write", "dashboards:read", "messages:read", "messages:send")
 
 // The resource identifier is fixed by server configuration, never Host or
 // X-Forwarded-Host from an unauthenticated request.
@@ -45,7 +45,7 @@ func mcpOAuthURLs() (origin, resource string, ok bool) {
 func mcpOAuthChallenge(w http.ResponseWriter) {
 	origin, _, ok := mcpOAuthURLs()
 	if ok {
-		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+origin+mcpOAuthProtectedResourcePath+`", scope="`+strings.Join(mcpOAuthDefaultScopes, " ")+`"`)
+		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+origin+mcpOAuthProtectedResourcePath+`", scope="`+strings.Join(mcpOAuthAdvertisedScopes(), " ")+`"`)
 	}
 	w.Header().Set("Cache-Control", "no-store")
 }
@@ -68,7 +68,7 @@ func (api *StreamingAPI) handleMCPOAuthProtectedResource(w http.ResponseWriter, 
 			if a, bound := projectMCPAudienceForResource(resource); bound {
 				return a.scopes()
 			}
-			return mcpOAuthScopes
+			return mcpOAuthAdvertisedScopes()
 		}(),
 	})
 }
@@ -86,7 +86,7 @@ func (api *StreamingAPI) handleMCPOAuthMetadata(w http.ResponseWriter, r *http.R
 		"token_endpoint": origin + mcpOAuthTokenPath, "registration_endpoint": origin + mcpOAuthRegisterPath,
 		"response_types_supported": []string{"code"}, "grant_types_supported": []string{"authorization_code", "refresh_token"},
 		"code_challenge_methods_supported": []string{"S256"}, "token_endpoint_auth_methods_supported": []string{"none"},
-		"scopes_supported": mcpOAuthScopes,
+		"scopes_supported": mcpOAuthAdvertisedScopes(),
 	})
 }
 
@@ -162,6 +162,9 @@ func personSignInScopes(stored []string) bool {
 }
 
 func mcpOAuthPersonScopes(user *UserClaims) []string {
+	if agentBridgeOnlyDeployment() {
+		return []string{"messages:read", "messages:send"}
+	}
 	return mcpOAuthScopesFor(user, slices.Clone(mcpOAuthScopes))
 }
 
@@ -169,6 +172,9 @@ func mcpOAuthPersonScopes(user *UserClaims) []string {
 // only for an admin or Code reviewer. Everyone else neither sees nor grants it
 // (the tools re-check the account on every call regardless).
 func mcpOAuthScopesFor(user *UserClaims, scopes []string) []string {
+	if agentBridgeOnlyDeployment() {
+		return slices.DeleteFunc(slices.Clone(scopes), func(scope string) bool { return scope != "messages:read" && scope != "messages:send" })
+	}
 	// An administrator who asks for nothing in particular (the default scopes) gets every supported scope: the CLI sign-in and a
 	// client taking the advertised default would otherwise leave an admin without Brain, Builder, Flows or dashboards. What the
 	// server or the account refuses is still removed below, and a client that names its scopes gets exactly those.

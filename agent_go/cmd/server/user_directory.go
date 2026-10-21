@@ -735,17 +735,24 @@ func ensureDirectoryUserForExternal(userID string, ext *ExternalUser) *UserRecor
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	if !isConfiguredAdmin(&rec) {
+	configuredAdmin := rec.Email != "" && adminUsernamesFromEnv()[rec.Email]
+	if !configuredAdmin && adminUsernamesFromEnv()[strings.ToLower(rec.Username)] {
+		rec.Username = dir.uniqueDirectoryUsername("", rec.Email)
+	}
+	if !configuredAdmin && !publicNetworkExternalSignup(ext) {
 		return nil
 	}
-	rec.Admin = true
-	rec.CanCreate = true
+	rec.Admin = configuredAdmin
+	rec.CanCreate = rec.Admin
+	if publicNetworkExternalSignup(ext) {
+		rec.Products = []string{"bullpen"}
+	}
 	dir.Users = append(dir.Users, rec)
 	if err := saveUserDirectory(dir); err != nil {
 		log.Printf("[USERS] cannot record SSO user %s: %v", ext.Username, err)
 		return nil
 	}
-	log.Printf("[USERS] bootstrapped configured admin %s via %s", ext.Username, ext.Provider)
+	log.Printf("[USERS] external_account_created user_id=%s provider=%s admin=%v", rec.ID, ext.Provider, rec.Admin)
 	return dir.byID(userID)
 }
 

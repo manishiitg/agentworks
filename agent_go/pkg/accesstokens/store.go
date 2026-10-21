@@ -30,7 +30,7 @@ var ErrInvalid = errors.New("access token is invalid, expired, or revoked")
 const MaxLocalPresets = 32
 
 var ErrLocalPresetLimit = errors.New("maximum 32 active local access tokens; revoke an unused local token before creating another")
-var Scopes = []string{"llm:use", "dashboards:read", "workflows:read", "files:read", "runs:execute", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "crews:review", "vault:read", "vault:manage", "users:manage", "knowledgebase:read", "knowledgebase:write", "devices:connect"}
+var Scopes = []string{"llm:use", "dashboards:read", "workflows:read", "files:read", "runs:execute", "builder:chat", "relays:write", "crews:read", "crews:run", "crews:write", "crews:review", "vault:read", "vault:manage", "users:manage", "knowledgebase:read", "knowledgebase:write", "devices:connect", "messages:read", "messages:send"}
 
 // workflowScopes is the complete workflow permission set; FullBuilderAccess
 // means all of these, independent of any Crew permissions.
@@ -225,7 +225,7 @@ func Validate(t Token, now time.Time) error {
 			hasWorkflowScope, hasCrewScope = true, true
 		case strings.HasPrefix(s, "crews:"):
 			hasCrewScope = true
-		case s == "llm:use" || s == "crews:review" || s == "vault:read" || s == "vault:manage" || s == "users:manage" || s == "devices:connect":
+		case strings.HasPrefix(s, "messages:") || s == "llm:use" || s == "crews:review" || s == "vault:read" || s == "vault:manage" || s == "users:manage" || s == "devices:connect":
 			// Bounded by the account (admin or Code reviewer), not by IDs.
 		case strings.HasPrefix(s, "knowledgebase:"):
 			// Bounded by current domain grants and optional folder caps.

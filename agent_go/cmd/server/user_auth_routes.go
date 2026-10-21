@@ -213,8 +213,12 @@ func UserAuthRoutes(router http.Handler, api *StreamingAPI) {
 }
 
 // handleRegister handles user registration
-// Registration is always disabled - users are managed via AUTH_USERS env var
+// Public AgentBridge networks can enroll their own people; company servers remain provisioned.
 func (api *StreamingAPI) handleRegister(w http.ResponseWriter, r *http.Request) {
+	if publicNetworkSignupEnabled() {
+		api.registerPublicNetworkUser(w, r)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	http.Error(w, `{"error": "Registration is disabled - users are configured via AUTH_USERS environment variable"}`, http.StatusForbidden)
 }
@@ -429,7 +433,7 @@ func (api *StreamingAPI) handleAuthCallback(w http.ResponseWriter, r *http.Reque
 		http.Error(w, `{"error": "Failed to authenticate with provider"}`, http.StatusInternalServerError)
 		return
 	}
-	if !externalAuthIdentityApproved(extUser.Email) {
+	if !externalAuthIdentityApproved(extUser.Email) && !publicNetworkExternalSignup(extUser) {
 		log.Printf("[AUTH] OAuth login refused: email is not in the user directory via provider %s", stateEntry.Provider)
 		http.Error(w, `{"error": "This account is not approved for this workspace"}`, http.StatusForbidden)
 		return
@@ -621,7 +625,7 @@ func (api *StreamingAPI) handleGetAuthMode(w http.ResponseWriter, r *http.Reques
 
 	response := AuthModeResponse{
 		MultiUserMode:       IsMultiUserMode(),
-		RegistrationEnabled: false, // Registration is always disabled - use providers
+		RegistrationEnabled: publicNetworkSignupEnabled(),
 		Providers:           GetProviderInfoList(baseURL),
 	}
 

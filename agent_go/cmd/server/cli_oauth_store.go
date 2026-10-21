@@ -26,7 +26,7 @@ func (s *mcpOAuthStore) CreateCLIDevice(ctx context.Context, requested ...string
 		return
 	}
 	if len(requested) == 0 {
-		requested = append(append([]string{}, mcpOAuthDefaultScopes...), "devices:connect")
+		requested, _ = validCLIOAuthScopes(nil)
 	}
 	scopes, _ := json.Marshal(requested)
 	result, err := s.db.ExecContext(ctx, `INSERT INTO cli_devices(hash,verification_hash,scopes,status,expires_at) SELECT ?,?,?,'pending',? WHERE (SELECT COUNT(*) FROM cli_devices)<10000`, mcpOAuthHash(deviceCode), mcpOAuthHash(verificationCode), string(scopes), time.Now().Add(10*time.Minute).Unix())
@@ -62,7 +62,7 @@ func (s *mcpOAuthStore) DecideCLIDevice(ctx context.Context, verificationCode st
 	}
 	granted := mcpOAuthPersonScopes(user)
 	for _, scope := range requested {
-		if scope == "devices:connect" {
+		if scope == "devices:connect" && !agentBridgeOnlyDeployment() {
 			granted = append(granted, scope)
 		}
 	}

@@ -91,7 +91,7 @@ func namedAgentOperationAllowed(claims *UserClaims, send bool) bool {
 	if t.BoundAgentID != "" {
 		return t.Allows("messages:send") || !send && t.Allows("messages:read")
 	}
-	return t.Allows("crews:run") || t.Allows("runs:execute") || externalCodeRunAllowed(claims) || !send && (t.Allows("crews:read") || t.Allows("workflows:read"))
+	return t.Allows("messages:send") || !send && t.Allows("messages:read") || t.Allows("crews:run") || t.Allows("runs:execute") || externalCodeRunAllowed(claims) || !send && (t.Allows("crews:read") || t.Allows("workflows:read"))
 }
 
 // Read a fresh store snapshot. Mutation callers already hold agentMessageMu;
@@ -272,7 +272,7 @@ func (api *StreamingAPI) externalMessageCaller(ctx context.Context, claims *User
 func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
 	if !namedAgentOperationAllowed(claims, true) {
-		externalError(w, 403, "insufficient_scope", "Registering or removing an agent requires a run-enabled connection.")
+		externalError(w, 403, "insufficient_scope", "Connect AgentBridge to register or remove an agent.")
 		return
 	}
 	name, err := normalizeMessageAgentName(externalArg(args, "agent_name"))

@@ -6,7 +6,7 @@ import { Input } from '../components/ui/Input'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/Card'
 import { Alert, AlertDescription } from '../components/ui/alert'
 import { Loader2, KeyRound, Mail, User, Lock, AlertCircle } from 'lucide-react'
-import type { AuthProvider } from '../services/api'
+import { authApi, type AuthProvider } from '../services/api'
 import { RunloopMark } from '../components/branding/RunloopLogo'
 import { getRuntimeAppName, runtimeBrandAsset } from '../runtime-branding'
 import { hasGatewaySSO } from '../products/productSurfaceConfig'
@@ -95,6 +95,9 @@ function cleanUpLoginUrl() {
 export function Login() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [creatingAccount, setCreatingAccount] = useState(false)
+  const [signupBusy, setSignupBusy] = useState(false)
+  const [signupError, setSignupError] = useState<string | null>(null)
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null)
   const {
     login,
@@ -104,7 +107,8 @@ export function Login() {
     clearError,
     providers,
     checkAuthMode,
-    isMultiUserModeChecked
+    isMultiUserModeChecked,
+    registrationEnabled
   } = useAuthStore()
 
   // Check auth mode on mount to get available providers
@@ -124,12 +128,16 @@ export function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     clearError()
+    setSignupError(null)
+    setSignupBusy(true)
     try {
-      await login(username, password, selectedProvider || undefined)
+      if (creatingAccount) await authApi.register(username, password)
+      await login(username, password, creatingAccount ? "simple" : selectedProvider || undefined)
       cleanUpLoginUrl()
     } catch (err) {
-      console.error('Login failed:', err)
-    }
+      const data = (err as { response?: { data?: { error?: string } } })?.response?.data
+      setSignupError(data?.error || 'Could not sign in. Try again.')
+    } finally { setSignupBusy(false) }
   }
 
   const handleOAuthLogin = async (provider: AuthProvider) => {
@@ -217,9 +225,9 @@ export function Login() {
               ? <img src={runtimeBrandAsset('markUrl') ?? ''} alt={runtimeAppName} className="h-12 w-12" />
               : <RunloopMark className="h-14 w-14" />}
           </div>
-          <CardTitle className="text-2xl">Welcome Back</CardTitle>
+          <CardTitle className="text-2xl">{creatingAccount ? "Join AgentBridge" : "Welcome"}</CardTitle>
           <CardDescription className="text-base">
-            Sign in to continue to {runtimeAppName}
+            {creatingAccount ? "Create your own account on" : "Sign in to"} {runtimeAppName}
             {providers.length > 0 && (
               <span className="block text-xs text-muted-foreground/70 mt-1">
                 via {providers.map(p => (providerConfig[p.name]?.displayName || p.name)).join(', ')}
@@ -230,10 +238,10 @@ export function Login() {
 
         <CardContent className="space-y-4">
           {/* Error Alert */}
-          {error && (
+          {(signupError || error) && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription>{signupError || error}</AlertDescription>
             </Alert>
           )}
 
@@ -353,7 +361,9 @@ export function Login() {
                       id="password"
                       name="password"
                       type="password"
-                      autoComplete="current-password"
+                      autoComplete={creatingAccount ? "new-password" : "current-password"}
+                      minLength={creatingAccount ? 8 : undefined}
+                      maxLength={256}
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -367,19 +377,22 @@ export function Login() {
               <Button
                 type="submit"
                 className="w-full h-11 text-base font-medium"
-                disabled={isLoading}
+                disabled={isLoading || signupBusy}
               >
-                {isLoading ? (
+                {isLoading || signupBusy ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Signing in...
                   </>
                 ) : (
-                  'Sign in'
+                  creatingAccount ? 'Create account' : 'Sign in'
                 )}
               </Button>
             </form>
           )}
+          {registrationEnabled && isSimpleCredentialProvider && <Button variant="link" className="w-full" onClick={() => { setCreatingAccount(!creatingAccount); setSignupError(null); clearError() }}>
+            {creatingAccount ? "Already have an account? Sign in" : "New here? Create an account"}
+          </Button>}
         </CardContent>
 
         <CardFooter className="flex flex-col gap-2 text-center text-sm text-muted-foreground">

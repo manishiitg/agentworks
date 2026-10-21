@@ -531,6 +531,10 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 			}
 		}
 	}
+	if err := publicNetworkMessageQuotaErr(s, userID, time.Now().UTC()); err != nil {
+		agentMessageMu.Unlock()
+		return nil, err
+	}
 	if len(c.Messages) >= agentMessageKeep {
 		if c.Messages[0].Delivery == "pending" || c.Messages[0].Delivery == "dispatching" {
 			agentMessageMu.Unlock()

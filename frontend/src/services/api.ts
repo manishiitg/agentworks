@@ -2915,8 +2915,8 @@ export const authApi = {
   },
 
   // Register a new user (only available in multi-user mode)
-  register: async (username: string, password: string, email?: string): Promise<AuthResponse> => {
-    const response = await api.post('/api/auth/register', { username, password, email })
+  register: async (username: string, password: string): Promise<{ status: string }> => {
+    const response = await api.post('/api/auth/register', { username, password })
     return response.data
   },
 

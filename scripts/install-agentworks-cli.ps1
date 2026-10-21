@@ -12,7 +12,7 @@ param(
   [switch]$NoLogin
 )
 $ErrorActionPreference = 'Stop'
-if (-not $Server) { throw 'missing -Server (or the AGENTWORKS_SERVER environment variable)' }
+if (-not $Server) { $Server = 'https://network.agentworkshq.com' }
 $Server = $Server.TrimEnd('/')
 
 $machineArchitecture = $env:PROCESSOR_ARCHITEW6432

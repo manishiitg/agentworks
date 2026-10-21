@@ -374,6 +374,9 @@ func tokenSessionWorkflowReadRoot(_ *UserClaims, workflowPhaseFolder string) str
 }
 
 func externalTokenAllows(c *UserClaims, tool externalTool) bool {
+	if agentBridgeOnlyDeployment() && tool.Name != "messages" && tool.Name != "help" && tool.actions == nil {
+		return false
+	}
 	if c == nil || !(productpolicy.Selection{}).AllowsTool(tool.Name) {
 		return false
 	}
@@ -419,7 +422,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 			return true
 		}
 		t := c.AccessToken
-		return t.Allows("crews:run") || t.Allows("crews:read") || t.Allows("runs:execute") || t.Allows("workflows:read") || externalCodeRunAllowed(c)
+		return t.Allows("messages:read") || t.Allows("messages:send") || t.Allows("crews:run") || t.Allows("crews:read") || t.Allows("runs:execute") || t.Allows("workflows:read") || externalCodeRunAllowed(c)
 	}
 	if isDashboardTool(tool.Name) {
 		return dashboardScopeAllowed(c, dashboardActions[tool.Name])

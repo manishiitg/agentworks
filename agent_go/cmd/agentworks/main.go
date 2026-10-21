@@ -279,8 +279,11 @@ func (o *options) connection(forLogin bool) (agentworksclient.Config, string, er
 	if requested == "" {
 		requested = cfg.Server
 	}
+	if requested == "" && forLogin {
+		requested = "https://network.agentworkshq.com"
+	}
 	if requested == "" {
-		return cfg, path, errors.New("server is required: use --server or agentworks login")
+		return cfg, path, errors.New("sign in first with agentworks login")
 	}
 	normalized, err := agentworksclient.ValidateServer(requested)
 	if err != nil {

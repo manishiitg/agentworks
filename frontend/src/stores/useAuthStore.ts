@@ -40,6 +40,7 @@ interface AuthState {
   // Multi-user mode flag
   isMultiUserMode: boolean
   isMultiUserModeChecked: boolean
+  registrationEnabled: boolean
 
   // Available auth providers
   providers: AuthProvider[]
@@ -102,6 +103,7 @@ export const useAuthStore = create<AuthState>()(
         error: null,
         isMultiUserMode: false,
         isMultiUserModeChecked: false,
+        registrationEnabled: false,
         providers: [],
 
         // Check if server is in multi-user mode and get available providers
@@ -113,6 +115,7 @@ export const useAuthStore = create<AuthState>()(
               isMultiUserMode: response.multi_user_mode,
               isMultiUserModeChecked: true,
               providers: response.providers || [],
+              registrationEnabled: response.registration_enabled === true,
               error: null,
             })
           } catch (error) {
