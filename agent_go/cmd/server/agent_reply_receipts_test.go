@@ -298,3 +298,28 @@ func TestAgentMailboxRecoveryReplyAndReceipt(t *testing.T) {
 	tool(map[string]any{"action": "read", "inbox_id": inbox}, true)
 	tool(map[string]any{"action": "ack", "message_id": id, "delivery": "processed"}, true)
 }
+
+// A Windows hook chat is online but cannot wake itself. Stored receipts must
+// describe the observed route without inventing admission from the stream.
+func TestStoredAgentReceiptFollowsRoute(t *testing.T) {
+	a := namedMessageAgent{ID: "route-receipt-fixture", Name: "worker", Attachment: &namedAgentAttachment{ID: "route-lease", DeliveryContract: 2}}
+	agentLiveEvents.Lock()
+	agentLiveEvents.online[a.ID] = &agentLiveStream{attachmentID: a.Attachment.ID}
+	agentLiveEvents.Unlock()
+	t.Cleanup(func() { agentLiveEvents.Lock(); delete(agentLiveEvents.online, a.ID); agentLiveEvents.Unlock() })
+	for _, tc := range []struct{ route, text string }{
+		{"codex_hook", "Stored; worker gets it at its next step."},
+		{"", "Stored; worker gets it when it next checks."},
+		{"inbox", "Stored; worker gets it when it next checks."},
+		{"codex_desktop", "Sent to worker's open chat; waiting for worker to pick it up."},
+	} {
+		a.Attachment.DeliveryRoute = tc.route
+		state, text := receiptState(agentMessage{Delivery: "stored"}, &a, true)
+		if state != "sent" || text != tc.text {
+			t.Fatalf("route %q: %s %s", tc.route, state, text)
+		}
+		if state, _ = receiptState(agentMessage{Delivery: "processed"}, &a, true); state != "handled" {
+			t.Fatal("route changed a real receipt")
+		}
+	}
+}

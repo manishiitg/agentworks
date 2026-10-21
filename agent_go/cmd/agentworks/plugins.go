@@ -96,7 +96,7 @@ func pluginCommand(o *options) *cobra.Command {
 				return pluginBlock(o, "Pi bridge root is unsafe or unavailable")
 			}
 		}
-		req := agentworksclient.LocalBridgeRequest{Provider: args[0], SessionID: input.SessionID, WorkspaceDir: input.Cwd, Activity: hookActivity(input.Event)}
+		req := agentworksclient.LocalBridgeRequest{Provider: args[0], SessionID: input.SessionID, WorkspaceDir: input.Cwd, Activity: hookActivity(input.Event), Transport: args[0] + "_hook"}
 		if args[0] != "pi" {
 			pid, host, _ := providerHostProcess(args[0])
 			req.HostKey = host
@@ -1103,7 +1103,10 @@ func codexNativeOffer(ctx context.Context, remote string, out agentworksclient.L
 func notifyAgentWaiting(a agentworksclient.AgentAttachment, notice string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	text := "Message waiting for agent:" + a.AgentName + ". Open the chat to receive it."
+	text := "Message waiting for agent:" + a.AgentName + ". Open the chat and send a message to receive it."
+	if a.Provider == "codex" {
+		text = "Message waiting for agent:" + a.AgentName + ". Open that Codex chat and send any message to receive it."
+	}
 	if notice != "" {
 		text = "agent:" + a.AgentName + ". " + notice
 	}

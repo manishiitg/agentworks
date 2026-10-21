@@ -1000,6 +1000,10 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	}
 	if in.Action == "attach" {
 		if s != nil && s.Attachment.AgentName == in.AgentName {
+			if in.HostKey != "" && in.HostKey == s.HostKey && observedHookTransport(in.Provider, in.Transport) != "" {
+				s.HookTransport = in.Transport
+				_ = b.save()
+			}
 			if in.LabelName != "" {
 				s.LabelName = in.LabelName
 				_ = b.save()
@@ -1256,11 +1260,17 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		next := &localSession{Also: in.Also, OwnCLI: in.OwnAttach && !in.Also, SetupPending: in.Setup && !in.Also, AccountSenders: true, Attachment: a, HostKey: in.HostKey, NativeRemote: in.NativeRemote, ConfigPath: connectionPath, ParentConfigPath: in.ConfigPath, Offers: map[string]localOffer{}, client: client}
 		next.LabelName = in.LabelName
 		next.WorkspaceDir = in.WorkspaceDir
+		if observedHookTransport(in.Provider, in.Transport) != "" {
+			next.HookTransport = in.Transport
+		}
 		if previous != nil && previous.Attachment.AgentID == a.AgentID {
 			next.Offers = previous.Offers
 			next.SeenThrough = previous.SeenThrough
 			if previous.Attachment.SessionID == a.SessionID {
 				next.LastGuidanceAt = previous.LastGuidanceAt
+				if next.HookTransport == "" && previous.HostKey == in.HostKey {
+					next.HookTransport = previous.HookTransport
+				}
 				if next.WorkspaceDir == "" {
 					next.WorkspaceDir = previous.WorkspaceDir
 				}
@@ -1387,7 +1397,12 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		return LocalBridgeReply{Error: "This chat's connection is not available. Run agentworks login if needed, then type /agentworks attach in the chat."}
 	}
 	if !s.Offline && in.HostKey != "" && in.HostKey == s.HostKey {
+		// A real hook invocation identifies the route even when no mail is pending.
 		changed := false
+		if observedHookTransport(in.Provider, in.Transport) != "" && s.HookTransport != in.Transport {
+			s.HookTransport = in.Transport
+			changed = true
+		}
 		if filepath.IsAbs(in.WorkspaceDir) && in.WorkspaceDir != s.WorkspaceDir {
 			s.WorkspaceDir = in.WorkspaceDir
 			changed = true
@@ -2288,6 +2303,17 @@ func (b *localBridge) housekeeping(ctx context.Context) {
 	}
 }
 
+// Only providers with a hook that actually drains messages can report one.
+func observedHookTransport(provider, transport string) string {
+	switch provider {
+	case "codex", "cursor", "claude", "muse", "agy":
+		if transport == provider+"_hook" {
+			return transport
+		}
+	}
+	return ""
+}
+
 // Route metadata describes the observed adapter, never model admission.
 func localDeliveryRoute(s *localSession) string {
 	if s.Offline || s.LastError != "" {
@@ -2308,7 +2334,7 @@ func localDeliveryRoute(s *localSession) string {
 	if s.HookTransport != "" {
 		return s.HookTransport
 	}
-	return "inbox"
+	return "" // No observed adapter: the server reports delivery unknown.
 }
 
 // Metadata reads and HTTP run outside the global bridge lock. A label update

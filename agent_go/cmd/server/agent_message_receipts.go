@@ -32,7 +32,14 @@ func receiptState(m agentMessage, destAgent *namedMessageAgent, destNamed bool) 
 		return "waiting_offline", fmt.Sprintf("Saved in %s's inbox; %s sees it when it next checks.", name, name)
 	}
 	if destNamed {
-		return "sent", fmt.Sprintf("Sent to %s's open chat; waiting for %s to pick it up.", name, name)
+		switch agentDeliveryMode(*destAgent) {
+		case "live":
+			return "sent", fmt.Sprintf("Sent to %s's open chat; waiting for %s to pick it up.", name, name)
+		case "next_step":
+			return "sent", fmt.Sprintf("Stored; %s gets it at its next step.", name)
+		default:
+			return "sent", fmt.Sprintf("Stored; %s gets it when it next checks.", name)
+		}
 	}
 	return "sent", "Sent to the product's chat; waiting for it to pick it up."
 }

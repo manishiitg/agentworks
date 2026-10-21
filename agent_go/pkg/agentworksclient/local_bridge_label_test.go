@@ -36,7 +36,7 @@ func TestBridgeLabelRefreshKeepsLeaseAndDoesNotBlock(t *testing.T) {
 	go func() { b.refreshChatLabel(context.Background(), s); close(done) }()
 	select {
 	case args := <-started:
-		if args["action"] != "label" || args["attachment_id"] != "lease" || args["agent_name"] != "worker" || args["delivery_route"] != "inbox" || args["repository"] != "project" || args["branch"] != "feature/mail" || args["client_build"] != "current-build" {
+		if args["action"] != "label" || args["attachment_id"] != "lease" || args["agent_name"] != "worker" || args["delivery_route"] != "" || args["repository"] != "project" || args["branch"] != "feature/mail" || args["client_build"] != "current-build" {
 			t.Fatal(args)
 		}
 	case <-time.After(time.Second):
@@ -91,5 +91,40 @@ func TestCrossNetworkDirectoryOmitsProjectContext(t *testing.T) {
 	a := out.Agents[0]
 	if a["repository"] != nil || a["branch"] != nil || a["activity"] != "Working" || a["activity_at"] == nil {
 		t.Fatal("cross-network project names or activity lost", a)
+	}
+}
+
+// Windows Codex reported only a waiting toast: an empty real hook must still
+// identify its route without contacting the server or admitting a message.
+func TestEmptyHookRecordsRoute(t *testing.T) {
+	for _, provider := range []string{"codex", "cursor"} {
+		t.Run(provider, func(t *testing.T) {
+			client, err := New("https://example.com", "fixture-token")
+			if err != nil {
+				t.Fatal(err)
+			}
+			s := &localSession{Attachment: AgentAttachment{ID: "lease", Provider: provider, SessionID: "session"}, HostKey: "host", client: client}
+			b := &localBridge{root: t.TempDir(), sessions: map[string]*localSession{localBridgeKey(provider, "session"): s}, changed: make(chan struct{})}
+			if localDeliveryRoute(s) != "" {
+				t.Fatal("no observed route must stay unknown")
+			}
+			ctx := context.Background()
+			request := LocalBridgeRequest{Action: "post_tool", Provider: provider, SessionID: "session", HostKey: "different-host", Transport: provider + "_hook"}
+			b.handle(ctx, ctx, request)
+			if s.HookTransport != "" {
+				t.Fatal("other process reported the route")
+			}
+			request.HostKey = "host"
+			out := b.handle(ctx, ctx, request)
+			if out.Error != "" || len(out.Messages) != 0 || localDeliveryRoute(s) != provider+"_hook" || len(s.Offers) != 0 {
+				t.Fatalf("empty hook: %+v route=%s", out, localDeliveryRoute(s))
+			}
+			if provider == "codex" {
+				s.NativeRemote = "desktop+unix:///example/ipc.sock"
+				if localDeliveryRoute(s) != "codex_desktop" {
+					t.Fatal("hook replaced native delivery")
+				}
+			}
+		})
 	}
 }
