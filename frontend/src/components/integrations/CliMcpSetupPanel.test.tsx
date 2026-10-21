@@ -22,68 +22,95 @@ beforeEach(() => {
 })
 afterEach(() => vi.resetAllMocks())
 
-async function renderPanel(host: HTMLElement) {
+async function renderPanel(host: HTMLElement, selectApp = true) {
   await import('./CliMcpSetupContent')
   const root = createRoot(host)
   await act(async () => root.render(<CliMcpSetupPanel />))
+  if (selectApp) await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Claude Code"]')!.click())
   return root
 }
 function button(host: HTMLElement, label: string) {
-  const found = Array.from(host.querySelectorAll('button')).find(item => item.textContent?.includes(label))
+  const found = Array.from(host.querySelectorAll('button')).find(item => item.getAttribute('aria-label') === label || item.textContent?.includes(label))
   if (!found) throw new Error(`Missing button: ${label}`)
   return found
 }
 
+async function chooseApp(host: HTMLElement, label: string) {
+  const change = [...host.querySelectorAll('button')].find(item => item.textContent === 'Change app')
+  if (change) await act(async () => change.click())
+  await act(async () => button(host, label).click())
+}
+
 describe('MCP setup', () => {
+  it('starts with an app chooser instead of commands and nested destination menus', async () => {
+    const host = document.createElement('div'); document.body.append(host); const root = await renderPanel(host, false)
+    try {
+      expect(host.textContent).toContain('Which AI app do you use?')
+      expect(host.querySelector('pre')).toBeNull()
+      expect(host.textContent).not.toContain('claude mcp add')
+      expect(host.querySelector('[aria-label="Connection destination"]')).toBeNull()
+      await chooseApp(host, 'ChatGPT')
+      expect(host.textContent).toContain('Choose OAuth')
+      expect(host.textContent).not.toContain('claude mcp add')
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
   it('connects local and hosted agents directly through MCP without a token or binary', async () => {
     const host = document.createElement('div'); document.body.append(host); const root = await renderPanel(host)
     try {
       expect(host.textContent).toContain("claude mcp add --transport http agentworks 'https://agentworks.example.com/api/external/v1/mcp'")
       expect(host.textContent).not.toContain('Create connection')
       expect(host.textContent).not.toContain('aw_pat_')
-      expect(host.textContent).toContain('1. Install the AgentWorks app for your terminal')
-      expect(host.textContent).toContain('optional for MCP tools')
-      expect(host.textContent).toContain("curl -fsSL 'https://agentworks.example.com/api/downloads/cli/install-agentworks.sh' | sh -s -- --server 'https://agentworks.example.com' --no-login")
-      expect(host.textContent).toContain('2. Connect your AI app')
-      expect(host.textContent).toContain('agentworks setup claude')
-      expect(host.querySelector('a[href="/agentbridge/connect"]')).not.toBeNull()
-      await act(async () => button(host, 'Windows').click())
-      expect(host.textContent).toContain("-Server 'https://agentworks.example.com' -NoLogin")
-      expect(host.textContent).toContain('install-agentworks.ps1')
+      expect(host.textContent).toContain('Optional: use the AgentWorks skill')
+      expect(host.textContent).toContain('Connect Claude Code')
+      expect(host.querySelectorAll('a[href="/agentbridge/connect"]')).toHaveLength(0)
       expect(host.textContent).not.toContain('AGENTWORKS_TOKEN')
-      await act(async () => Array.from(host.querySelectorAll('button')).find(item => item.textContent === 'Codex')!.click())
+      await chooseApp(host, 'Codex')
       expect(host.textContent).toContain("codex mcp add agentworks --url 'https://agentworks.example.com/api/external/v1/mcp'")
       expect(host.textContent).toContain('codex mcp login agentworks')
-      expect(host.textContent).toContain('agentworks setup codex')
-      await act(async () => Array.from(host.querySelectorAll('button')).find(item => item.textContent === 'Cursor')!.click())
+      await chooseApp(host, 'Cursor')
       expect(host.textContent).toContain('~/.cursor/mcp.json')
       expect(host.querySelector('pre')?.textContent).toContain('"url": "https://agentworks.example.com/api/external/v1/mcp"')
       expect(host.textContent).toContain('cursor-agent mcp login agentworks')
-      await act(async () => Array.from(host.querySelectorAll('button')).find(item => item.textContent === 'Muse')!.click())
+      await chooseApp(host, 'Muse Code')
       expect(host.textContent).toContain('~/.config/muse/settings.json')
       expect(host.querySelector('pre')?.textContent).toContain('"schema_version": 1')
       expect(host.textContent).toContain('muse mcp login agentworks')
-      await act(async () => button(host, 'JSON MCP client').click())
+      await chooseApp(host, 'Other app')
       expect(host.querySelector('pre')?.textContent).toContain('"url": "https://agentworks.example.com/api/external/v1/mcp"')
       expect(host.querySelector('pre')?.textContent).not.toContain('AGENTWORKS_TOKEN')
-      await act(async () => button(host, 'Hosted AI app').click())
+      await chooseApp(host, 'ChatGPT')
       expect(host.textContent).toContain('https://agentworks.example.com/api/external/v1/mcp')
       expect(host.textContent).toContain('Choose OAuth')
       expect(host.textContent).not.toContain('install-agentworks.sh')
-      await act(async () => Array.from(host.querySelectorAll('button')).find(item => item.textContent === 'Claude Cowork')!.click())
+      await chooseApp(host, 'Claude Cowork')
       expect(host.textContent).toContain('Download Cowork plugin')
       expect(host.textContent).toContain('Customize → Plugins')
-      expect(host.textContent).toContain('Connect manually instead')
+      expect(host.textContent).toContain('Customize → Connectors → Add custom connector')
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 
+  it('shows web-app guides without keys and distinguishes personal Muse from Muse Code', async () => {
+    const host = document.createElement('div'); document.body.append(host); const root = await renderPanel(host, false)
+    try {
+      await chooseApp(host, 'Grok')
+      expect(host.textContent).toContain('grok.com/connectors → New Connector → Custom')
+      expect(host.textContent).toContain('Choose OAuth')
+      await chooseApp(host, 'OpenAI dots')
+      expect(host.textContent).toContain('Enable it for your dot')
+      expect(host.textContent).toContain('Availability depends on your account')
+      await chooseApp(host, 'Muse personal agent')
+      expect(host.textContent).toContain('setup has not been verified yet')
+      expect(host.textContent).not.toContain('muse mcp login')
+      expect(host.textContent).not.toContain('Create connection key')
+    } finally { await act(async () => root.unmount()); host.remove() }
+  })
   it('keeps OAuth on a multi-user server even when reached through loopback', async () => {
     authMode.isMultiUserMode = true
     vi.mocked(getApiBaseUrl).mockReturnValue('http://127.0.0.1:18743')
     const host = document.createElement('div'); document.body.append(host); const root = await renderPanel(host)
     try {
       expect(host.textContent).toContain('Approve the OAuth connection')
-      expect(host.textContent).not.toContain('Create access token')
+      expect(host.textContent).not.toContain('Create connection key')
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 
@@ -103,8 +130,8 @@ describe('MCP setup', () => {
     vi.mocked(externalSkillApi.downloadCoworkPlugin).mockRejectedValue(new Error('offline'))
     const host = document.createElement('div'); document.body.append(host); const root = await renderPanel(host)
     try {
-      await act(async () => button(host, 'Hosted AI app').click())
-      await act(async () => Array.from(host.querySelectorAll('button')).find(item => item.textContent === 'Claude Cowork')!.click())
+      await chooseApp(host, 'ChatGPT')
+      await chooseApp(host, 'Claude Cowork')
       await act(async () => button(host, 'Download Cowork plugin').click())
       expect(externalSkillApi.downloadCoworkPlugin).toHaveBeenCalledOnce()
       expect(host.textContent).toContain('Plugin download failed')
@@ -125,11 +152,9 @@ describe('MCP setup', () => {
     vi.mocked(getApiBaseUrl).mockReturnValue('http://127.0.0.1:18743')
     const host = document.createElement('div'); document.body.append(host); const root = await renderPanel(host)
     try {
-      expect(host.textContent).toContain('Create access token')
-      expect(host.textContent).toContain('1. Install the AgentWorks app for your terminal')
-      expect(host.textContent).toContain("--server 'http://127.0.0.1:18743' --no-login")
-      expect(host.textContent).toContain('2. Connect your AI app')
-      expect(host.textContent).toContain('3. Optional: let your agents message each other')
+      expect(host.textContent).toContain('Create connection key')
+      expect(host.textContent).toContain('1. Use a connection key')
+      expect(host.textContent).toContain('Connect Claude Code')
       expect(host.querySelector('pre')?.textContent).toContain('http://127.0.0.1:18743/api/external/v1/mcp')
       expect(host.querySelector('pre')?.textContent).toContain('Authorization')
       expect(host.textContent).not.toContain('Approve the OAuth connection')

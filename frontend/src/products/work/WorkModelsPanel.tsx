@@ -446,7 +446,7 @@ export function WorkModelsPanel({
         <fieldset disabled={chatModelSaving || (Boolean(modelTarget) && chatModelsLoading)} className="min-w-0 border-0 p-0">
         {savedProviderUnusable && (
           <p role="alert" className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-            This project is set to {selectedOption?.label || selectedOption?.provider}, which is not available to you here. Choose another coding agent below; your next message uses it.
+            This {effectiveProfileId === 'knowledgebase' || effectiveProfileId === 'caplayer' ? 'assistant' : 'project'} is set to {selectedOption?.label || selectedOption?.provider}, which is not available to you here. Choose another coding agent below; your next message uses it.
           </p>
         )}
         <SharedTokenUsageNotice className="mb-3" accountProvider={inUseConnectionId || accounts !== null ? sharedAccountProvider(inUseConnectionId, selectedOption?.provider) : undefined} />
@@ -459,7 +459,7 @@ export function WorkModelsPanel({
           workspacePath={workspacePath}
           llmConfig={llmConfig}
           onChange={selectProvider}
-          scopeNoun="project"
+          scopeNoun={effectiveProfileId === 'knowledgebase' || effectiveProfileId === 'caplayer' ? 'assistant' : 'project'}
           canWriteOverride
           allowedProviderIds={workProviderIds}
           splitPiProviders={false}

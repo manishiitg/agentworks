@@ -8,7 +8,7 @@ import { markFeatureUsed } from '../../utils/featureUsage'
 import { recordTabReorderTelemetry } from '../../utils/chatDeliveryTelemetry'
 import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../../utils/workspaceViewPreference'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from 'react'
-import { Check, ChevronDown, GripVertical, Loader2, Pencil, Pin, PinOff, Plus, Trash2, X } from 'lucide-react'
+import { CalendarClock, UsersRound, Sparkles, Check, ChevronDown, GripVertical, Loader2, Pencil, Pin, PinOff, Plus, Trash2, X } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { ProductChatLandingCard } from '../../components/chat/ProductChatLandingCard'
@@ -873,13 +873,13 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
             type="button"
             onClick={() => setMoreOpen(open => !open)}
             aria-expanded={moreOpen}
-            className="inline-flex h-7 max-w-40 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted"
-            title="Agents: switch, reorder or close"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            title="Switch agent"
+            aria-label={`Agents: switch, reorder or close (${agentCount})`}
             aria-haspopup="dialog"
             data-testid="work-more-tabs"
           >
-            <span className="truncate">{`Agents · ${agentCount}`}</span>
-            <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+            <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
           {moreOpen && (
             <div className="absolute right-0 top-8 z-50 max-h-80 min-w-64 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md" role="dialog" aria-label="Agents">
@@ -1078,7 +1078,7 @@ function WorkTopBarControl({
                   <EntityIdentityIcon icon={session.identity?.icon} label={session.identity?.name || session.title} />
                   <span className="min-w-0">
                     <span className="block truncate font-medium">{session.identity?.name || session.title}</span>
-                    {session.identity?.name && session.identity.name !== session.title
+                    {session.identity?.name && session.identity.name !== session.title && !/^(?:new project|new crew)$/i.test(session.title.trim())
                       ? <span className="block truncate text-xs text-muted-foreground">{session.title}</span>
                       : null}
                   </span>
@@ -1412,6 +1412,18 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     },
   )
 
+  // Enter dashboards with room to read. Reopening chat is an explicit choice and
+  // resizing remains untouched; do not fight either while the dashboard is open.
+  const previousDashboardLocation = useRef<string | null>(null)
+  useEffect(() => {
+    const location = `${selected?.id ?? ''}:${workspaceView}`
+    if (previousDashboardLocation.current === location) return
+    const wasDashboard = previousDashboardLocation.current?.endsWith(':dashboard')
+    previousDashboardLocation.current = location
+    if (workspaceView === 'dashboard') setChatOpen(false)
+    else if (wasDashboard) setChatOpen(true)
+  }, [selected?.id, workspaceView])
+
   const landingProjectId = selected?.id
   const landingWorkspacePath = selected?.workspacePath
   const landingIsShared = isWorkSessionRun(selected)
@@ -1629,7 +1641,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
           {error ? (
             <div className="grid h-full place-items-center p-6 text-center text-sm text-destructive">{error}</div>
           ) : !selected ? (
-            <div className="flex h-full items-center justify-center bg-gray-50 dark:bg-gray-900">
+            <div className="flex h-full items-center justify-center bg-background">
               {sessionsLoading || creating ? (
                 <span className="text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Opening {product.noun}…</span>
               ) : (
@@ -1637,12 +1649,12 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                   tour="crew-empty-state"
                   product={product.noun}
                   icon={<span className="font-mono text-3xl font-semibold text-gray-600 dark:text-gray-200">{'<>'}</span>}
-                  title={sessions.length ? `Choose a ${product.itemNoun}` : 'Your AI workspace for any project'}
-                  description={sessions.length ? 'Open an existing workspace from the project menu, or create another.' : 'Create a persistent crew member for everyday questions, research, coding, and ongoing work. It can use your project files, browser, terminal, MCP servers, and connected tools.'}
+                  title={sessions.length ? `Choose a ${product.itemNoun}` : 'An assistant for work you do again'}
+                  description={sessions.length ? 'Open an existing workspace from the project menu, or create another.' : 'Prepare reports, research a topic or draft replies. Give your Crew the skills and connections it needs, then reuse it with your team.'}
                   features={[
-                    { title: 'Chat and create', description: 'Ask questions, research, write, analyze, and keep the context together.' },
-                    { title: 'Code and operate', description: 'Work with files, code, the browser, terminal, skills, and MCP tools.' },
-                    { title: 'Run automatically', description: 'Continue work with schedules, triggers, background tasks, and bots.' },
+                    { icon: Sparkles, title: 'Teach it your work', description: 'Add instructions, files and reusable skills.' },
+                    { icon: UsersRound, title: 'Share with your team', description: 'Publish a dashboard and useful functions.' },
+                    { icon: CalendarClock, title: 'Set a schedule', description: 'Have recurring work happen at the right time.' },
                   ]}
                   createTour="crew-create"
                   createLabel={`Create ${sessions.length ? 'another' : 'your first'} ${product.itemNoun}`}
@@ -1660,7 +1672,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               mobilePreview={reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
               onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => setPanelOpen(true)}
               tabs={!isShared && tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} profileId={product.profileId} allowSideChats /> : <div className="min-w-0 flex-1" />}
-              toolbar={<WorkWorkspaceToolbar sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={isWorkSessionRun(selected)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} />}
+              toolbar={<><WorkWorkspaceToolbar sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={isWorkSessionRun(selected)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} />{!isShared && workspaceView === 'dashboard' && !chatOpen && <button type="button" onClick={() => setChatOpen(true)} className="min-h-8 shrink-0 rounded-md border border-border px-3 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Ask about this dashboard</button>}</>}
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView) } as React.HTMLAttributes<HTMLElement>}
               chat={<>

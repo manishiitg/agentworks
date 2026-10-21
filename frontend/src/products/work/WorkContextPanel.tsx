@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BookOpen, Cpu, Sparkles, DollarSign, Files, Hand, Laptop, LayoutDashboard, MessageSquareText, Route, Settings, Terminal, Database } from 'lucide-react'
+import { BookOpen, CalendarClock, Cpu, Sparkles, DollarSign, Files, Hand, Laptop, LayoutDashboard, MessageSquareText, Route, Settings, Terminal, Database } from 'lucide-react'
 import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
 import { WorkspaceAgentBridgeRows } from '../../components/workspace/WorkspaceAgentBridgeRows'
 import { WorkspaceAutomationRows, WorkspaceChannelRows, WorkspaceConnectionRows } from '../../components/workspace/WorkspaceProjectNavigation'
@@ -45,31 +45,35 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const status = useProjectStatus({ kind: 'crew', workspacePath, profileId, projectId })
   const webhooks = enabledPanels?.has('triggers') !== false
   return <WorkspaceContextCard>
-    <Group title="Use & share">
+    <Group title="Your work">
+      {allowed('dashboard') && <Row icon={LayoutDashboard} onClick={() => { selectReportDocument(workspacePath, defaultPath); onOpen('dashboard') }}>Dashboard</Row>}
+      {allowed('files') && <Row icon={Files} onClick={() => onOpen('files')}>Files</Row>}
+      {allowed('memory') && (!enabledPanels || enabledPanels.has('skills')) && <Row icon={Sparkles} onClick={() => { setWorkspaceViewTarget('memory', 'skills'); onOpen('memory') }}>Skills</Row>}
+      {allowed('schedules') && <Row icon={CalendarClock} detail={status.schedules ? String(status.schedules) : undefined} onClick={() => openAutomation('schedules')}>Schedules</Row>}
+      {showSuggestions && Boolean(count) && <Row icon={Hand} attention detail={`${count} waiting`} onClick={() => onOpen('suggestions')}>Suggestions</Row>}
+    </Group>
+    <Group title="Share" collapsed>
       {allowed('dashboard') && <>
-        <Row icon={LayoutDashboard} onClick={() => { selectReportDocument(workspacePath, defaultPath); onOpen('dashboard') }}>Dashboard</Row>
         {documents.filter(document => document.path !== defaultPath).map(document => <Row key={document.path} icon={LayoutDashboard} hint={document.path} onClick={() => { selectReportDocument(workspacePath, document.path); onOpen('dashboard') }}>{reportDocumentLabel(document, documents)}</Row>)}
         {allowed('mcp') && <ShareDashboardButton workspacePath={workspacePath} variant="row" onOpen={() => openConnection('share')} />}
       </>}
       {allowed('browser') && <WorkspaceBrowserRow workspacePath={workspacePath} profileId={profileId} onClick={() => onOpen('browser')} />}
-      {allowed('schedules') && <WorkspaceAutomationRows onOpen={openAutomation} triggers={webhooks} counts={status} />}
+      {allowed('schedules') && <WorkspaceAutomationRows onOpen={openAutomation} triggers={webhooks} counts={status} excludeSchedules />}
       {allowed('mcp') && <WorkspaceChannelRows onOpen={openConnection} slack={bots} whatsapp={bots} slackBot={bots} slackAccountStatus={status.slackAccount} slackBotStatus={status.slackBot} whatsappStatus={status.whatsapp} emailStatus={status.email} onOpenEmail={allowed('schedules') ? () => openAutomation('email') : undefined} />}
     </Group>
-    {allowed('mcp') && <Group title="Connections">
+    {allowed('mcp') && <Group title="Connections" collapsed>
       <WorkspaceConnectionRows onOpen={openConnection} workMode enabledPanels={enabledPanels} details={{ 'mcp:connected': status.mcps === undefined ? undefined : status.mcps ? String(status.mcps) : 'None' }} />
       {projectId && <Row icon={Laptop} detail={status.computerChats === undefined ? undefined : status.computerChats ? String(status.computerChats) : 'None'} onClick={() => openConnection('agents')}>Chats from your computer</Row>}
       {allowed('identity') && <Row icon={Laptop} onClick={() => { setWorkspaceViewTarget('identity', 'location'); onOpen('identity') }}>Local laptop</Row>}
       <WorkspaceAgentBridgeRows />
     </Group>}
-    <Group title="Ops" collapsed>
+    <Group title="Setup" collapsed>
       {allowed('plan') && <Row icon={Route} onClick={() => onOpen('plan')}>Plan</Row>}
-      {allowed('files') && <Row icon={Files} onClick={() => onOpen('files')}>Files</Row>}
       {allowed('shell') && <Row icon={Terminal} onClick={() => onOpen('shell')}>Terminal</Row>}
       {allowed('database') && <Row icon={Database} onClick={() => onOpen('database')}>Database</Row>}
       {allowed('memory') && (!enabledPanels || enabledPanels.has('memory')) && <Row icon={BookOpen} onClick={() => { setWorkspaceViewTarget('memory', 'memory'); onOpen('memory') }}>Memory</Row>}
-      {allowed('memory') && (!enabledPanels || enabledPanels.has('skills')) && <Row icon={Sparkles} onClick={() => { setWorkspaceViewTarget('memory', 'skills'); onOpen('memory') }}>Skills</Row>}
       {allowed('history') && <Row icon={MessageSquareText} onClick={() => onOpen('history')}>Chat history</Row>}
-      {showSuggestions && <Row icon={Hand} attention={Boolean(count)} detail={count ? `${count} waiting` : undefined} onClick={() => onOpen('suggestions')}>Suggestions</Row>}
+      {showSuggestions && !count && <Row icon={Hand} attention={Boolean(count)} detail={count ? `${count} waiting` : undefined} onClick={() => onOpen('suggestions')}>Suggestions</Row>}
       {allowed('costs') && <Row icon={DollarSign} onClick={() => onOpen('costs')}>Costs and usage</Row>}
       {allowed('identity') && isWorkIdentityTabEnabled('models', enabledPanels) && <Row icon={Cpu} onClick={() => openIdentity('models')}>Models</Row>}
       {allowed('identity') && <Row icon={Settings} onClick={() => openIdentity('general')}>Settings</Row>}

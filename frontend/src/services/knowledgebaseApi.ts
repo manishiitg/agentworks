@@ -47,6 +47,7 @@ export type BrainAccessMode = 'off' | 'read' | 'write'
 export interface KnowledgeProject { manifest_version: string; brain_access?: BrainAccessMode | 'folders'; can_manage: boolean }
 
 export const knowledgebaseApi = {
+  prepareAccess: async (args: Record<string, unknown>): Promise<{ proposal_id: string }> => (await api.post('/api/knowledgebase/manage', args)).data,
   project: async (workspace_path: string, signal?: AbortSignal): Promise<KnowledgeProject> => (await api.get('/api/knowledgebase/project', { params: { workspace_path }, signal })).data,
   setProjectAccess: async (args: { workspace_path: string; mode: BrainAccessMode; expected_manifest_version: string; request_id: string }): Promise<{ brain_access: BrainAccessMode; manifest_version: string }> => (await api.post('/api/knowledgebase/project', { action: 'set_project_access', ...args })).data,
  proposals: async (): Promise<{ proposals: KnowledgeAccessProposal[] }> => (await api.get("/api/knowledgebase/access-proposals")).data,

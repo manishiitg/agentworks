@@ -68,15 +68,14 @@ describe('Brain shared Files view', () => {
     expect(host.querySelector('[aria-label="Open files"]')).toBeNull()
     expect(host.textContent).toContain('Resource not found')
   })
-  it('uses the shared Ask AI behavior for Folder access in the Files header', async () => {
-    const { host, onAsk } = await mount()
+  it('opens Folder access without asking or sending to the assistant', async () => {
+    const onOpenAccess = vi.fn()
+    const { host, onAsk } = await mount({ onOpenAccess })
     const button = [...host.querySelectorAll('button')].find(button => button.textContent === 'Folder access')!
-    await act(async () => { button.click() })
-    expect(button.textContent).toContain('Sure?')
+    await act(async () => button.click())
+    expect(onOpenAccess).toHaveBeenCalledOnce()
     expect(onAsk).not.toHaveBeenCalled()
-    await new Promise(resolve => setTimeout(resolve, 650))
-    await act(async () => { button.click() })
-    expect(onAsk).toHaveBeenCalledOnce()
+    expect(host.textContent).not.toContain('Sure?')
   })
   it('shows Models without fetching hidden files or folder access', async () => {
     const { host, render } = await mount()
@@ -89,7 +88,8 @@ describe('Brain shared Files view', () => {
     mocks.folders.mockResolvedValue({ folders: [] }); mocks.entries.mockResolvedValue({ entries: [] })
     const onConnect = vi.fn()
     const { host, render } = await mount({ folder: '', onConnect })
-    expect(host.textContent).toContain('No knowledge available yet')
+    expect(host.textContent).toContain('Knowledge your agents can share')
+    expect(host.querySelector('[aria-label="How Brain works"]')).not.toBeNull()
     await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Connect AI tools')!.click())
     expect(onConnect).toHaveBeenCalledOnce()
     expect(mocks.gitPost).not.toHaveBeenCalled()

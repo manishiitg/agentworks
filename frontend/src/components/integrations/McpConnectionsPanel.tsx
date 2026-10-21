@@ -43,20 +43,22 @@ export interface McpPanelNotice { message: string; retry?: () => void; tone?: 'e
 export interface McpConnectionSection { id: string; label: string; loading?: boolean }
 
 /** The sole MCP browser UI. Adapters provide scoped data and authorized callbacks, never layouts. */
-export function McpConnectionsPanel({ servers, catalog = [], view, loading = false, notices = [], refresh, addCustom, help, children, searchTestId, headerActions, showTools = true, connectionSections }: {
+export function McpConnectionsPanel({ servers, catalog = [], view, loading = false, notices = [], refresh, addCustom, help, children, searchTestId, headerActions, description, density = 'cards', showTools = true, connectionSections }: {
   servers: McpConnectionRow[]; catalog?: McpCatalogRow[]; view?: 'connected' | 'available'
   loading?: boolean; notices?: McpPanelNotice[]; refresh?: () => void
   addCustom?: McpAction; help?: ReactNode; children?: ReactNode; searchTestId?: string; headerActions?: ReactNode; showTools?: boolean
   connectionSections?: McpConnectionSection[]
+  description?: string; density?: 'cards' | 'directory'
 }) {
   const [tab, setTab] = useState<'connected' | 'available'>('connected')
   const activeView = view ?? tab
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState('name')
   const [offerFilter, setOfferFilter] = useState('all')
+  const [category, setCategory] = useState('all')
   const { catalog: offerCatalog, refresh: refreshOffers } = useMcpOffers(activeView === 'available')
   const [picks, setPicks] = useState<Record<string, string[]>>({})
-  useEffect(() => { setQuery(''); setSort('name'); setOfferFilter('all') }, [activeView])
+  useEffect(() => { setQuery(''); setSort('name'); setOfferFilter('all'); setCategory('all') }, [activeView])
   const matches = (item: { name: string; description?: string }) => `${item.name} ${item.description || ''}`.toLowerCase().includes(query.trim().toLowerCase())
   const connections = servers.filter(matches).sort((a, b) => sort === 'tools' ? (b.toolCount ?? 0) - (a.toolCount ?? 0) : a.name.localeCompare(b.name))
   const connectedProviders = new Set(servers.map(server => server.provider?.trim().toLowerCase()))
@@ -70,44 +72,49 @@ export function McpConnectionsPanel({ servers, catalog = [], view, loading = fal
     const needsReview = offerNeedsReview(offer, offerCatalog.freshnessDays)
     return offerFilter === 'review' ? needsReview : !needsReview && offer.kind === offerFilter
   }
-  const available = catalog.filter(item => matches(item) && matchesOffer(item)).sort((a, b) => a.name.localeCompare(b.name))
-  const groups = [...new Set(available.map(item => item.batch?.name || item.category || 'Connectors'))]
+  const available = catalog.filter(item => matches(item) && matchesOffer(item) && (category === 'all' || (item.batch?.name || item.category || 'Connectors') === category)).sort((a, b) => a.name.localeCompare(b.name))
+  const categoryOrder = ['productivity', ...GROUP_ORDER.filter(item => item.id !== 'productivity').map(item => item.id)]
+  const rank = (value: string) => { const index = categoryOrder.indexOf(value); return index < 0 ? categoryOrder.length : index }
+  const allGroups = [...new Set(catalog.map(item => item.batch?.name || item.category || 'Connectors'))].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+  const groups = allGroups.filter(group => available.some(item => (item.batch?.name || item.category || 'Connectors') === group))
   const count = activeView === 'connected' ? connections.length : available.length
   return <div className="space-y-4 text-xs" data-testid="mcp-connections-panel">
-    {(!view || headerActions) && <div className="flex min-w-0 items-center justify-between gap-2">
+    {(!view || headerActions || description) && <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+      {description && <p className="min-w-0 flex-1 text-sm text-muted-foreground">{description}</p>}
       {!view && <div className="min-w-0 flex-1 overflow-x-auto"><WorkspaceViewTabs value={tab} onChange={value => setTab(value as typeof tab)} ariaLabel="MCP browser"
         options={[{ value: 'connected', label: 'Connected MCPs', count: servers.length }, { value: 'available', label: 'Available MCPs', count: catalog.length }]} /></div>}
       {headerActions && <div className="shrink-0 whitespace-nowrap">{headerActions}</div>}
     </div>}
     <div className="flex flex-wrap items-center gap-2">
       <span className="relative min-w-40 flex-1 sm:max-w-xs"><Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
-        <Input aria-label="Search servers" placeholder="Search servers…" value={query} onChange={event => setQuery(event.target.value)} className="pl-8" data-testid={searchTestId} /></span>
+        <Input aria-label="Search servers" placeholder="Search apps and MCPs…" value={query} onChange={event => setQuery(event.target.value)} className="pl-8" data-testid={searchTestId} /></span>
       <select aria-label="Sort servers" className="h-8 rounded-md border border-input bg-background px-2 text-xs" value={sort} onChange={event => setSort(event.target.value)}>
         <option value="name">Sort A–Z</option>{showTools && activeView === 'connected' && <option value="tools">Sort by tools</option>}
       </select>
+      {activeView === 'available' && allGroups.length > 1 && <select aria-label="Connection category" className="h-8 rounded-md border border-input bg-background px-2 text-xs" value={category} onChange={event => setCategory(event.target.value)}><option value="all">All categories</option>{allGroups.map(group => <option key={group} value={group}>{GROUP_ORDER.find(item => item.id === group)?.label || group}</option>)}</select>}
       {activeView === 'available' && hasOffers && <select aria-label="Filter by offer" className="h-8 rounded-md border border-input bg-background px-2 text-xs" value={offerFilter} onChange={event => setOfferFilter(event.target.value)}>
         <option value="all">Offers: All</option><option value="recurring">Free tiers</option><option value="trial">Trial credits</option>
         <option value="grant">Grants</option><option value="open_source">Open source</option><option value="review">Needs review</option>
       </select>}
-      <span className="text-muted-foreground">{count} {count === 1 ? 'result' : 'results'}</span>
+      <span className="text-muted-foreground">{count} {density === 'directory' && activeView === 'connected' && !query ? (count === 1 ? 'connection' : 'connections') : (count === 1 ? 'result' : 'results')}</span>
       {refresh && <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Refresh MCPs" disabled={loading} onClick={() => { refresh(); if (activeView === 'available') refreshOffers() }}><RefreshCw className={loading ? 'animate-spin' : ''} /></Button>}
     </div>
     {notices.map((notice, i) => <div key={`${i}:${notice.message}`} role={notice.tone === 'info' ? undefined : 'alert'} className={notice.tone === 'info' ? 'text-muted-foreground' : 'text-destructive'}>
       {notice.message}{notice.retry && <Button variant="ghost" size="xs" onClick={notice.retry}>Retry</Button>}
     </div>)}
     {loading && !(activeView === 'connected' && connectionSections) && <p className="flex items-center gap-1 text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />Loading servers…</p>}
-    {activeView === 'connected' ? <section aria-label="Connected servers" className="space-y-3">
+    {activeView === 'connected' ? <section aria-label="Connected servers" className={density === 'directory' ? 'divide-y divide-border/60 overflow-hidden rounded-xl border border-border/70' : 'space-y-3'}>
       {connectionSections ? connectionSections.map((section, index) => {
         const rows = connections.filter(server => server.sectionId === section.id)
         return <section key={section.id} aria-label={section.label} className={`space-y-2 ${index ? 'border-t border-border pt-4' : ''}`}>
           <h4 className="flex items-center gap-2 font-medium">{section.label}<span className="text-muted-foreground">{rows.length}</span></h4>
           {section.loading && <p className="flex items-center gap-1 text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />Loading servers…</p>}
           {!section.loading && !rows.length && <p className="py-2 text-muted-foreground">{query ? 'No MCPs match your search.' : 'No MCPs available.'}</p>}
-          {rows.map(server => <McpConnectionCard key={server.id} server={server} showTools={showTools} />)}
+          {rows.map(server => <McpConnectionCard key={server.id} server={server} showTools={showTools} density={density} />)}
         </section>
       }) : <>
         {!loading && connections.length === 0 && <p className="py-4 text-muted-foreground">No connected MCPs{query ? ' match your search' : ' yet'}.</p>}
-        {connections.map(server => <McpConnectionCard key={server.id} server={server} showTools={showTools} />)}
+        {connections.map(server => <McpConnectionCard key={server.id} server={server} showTools={showTools} density={density} />)}
       </>}
     </section> : <>
       <section aria-label="Available servers" className="space-y-4">
@@ -136,7 +143,7 @@ export function McpConnectionsPanel({ servers, catalog = [], view, loading = fal
   </div>
 }
 
-export function McpConnectionCard({ server, showTools }: { server: McpConnectionRow; showTools: boolean }) {
+export function McpConnectionCard({ server, showTools, density = 'cards' }: { server: McpConnectionRow; showTools: boolean; density?: 'cards' | 'directory' }) {
   const [open, setOpen] = useState(false)
   const [tools, setTools] = useState<McpToolRow[] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -158,8 +165,8 @@ export function McpConnectionCard({ server, showTools }: { server: McpConnection
   const actions = [...(server.actions ?? [])]
   if (showTools && server.loadTools) actions.unshift({ label: 'Refresh tool list', run: () => { setOpen(true); setAttempt(value => value + 1) } })
   const canExpand = showTools && (server.tools !== undefined || !!server.loadTools)
-  return <article aria-label={`${server.name} server`} className="min-w-0 rounded-md border border-border p-3">
-    <McpServerHeader name={server.name} status={server.status} statusDot={server.statusDot} detail={server.source && <span>· {server.source}</span>}
+  return <article aria-label={`${server.name} server`} className={density === 'directory' ? 'min-w-0 px-3 py-3 transition-colors hover:bg-muted/20 sm:px-4' : 'min-w-0 rounded-md border border-border p-3'}>
+    <McpServerHeader name={server.name} brandName={server.provider} status={server.status} statusDot={server.statusDot} detail={server.source && <span>· {server.source}</span>}
       toolCount={showTools ? server.toolCount ?? (tools ? tools.length : undefined) : undefined} expanded={open} toolsLabel={server.toolsLabel?.(open)} onToggleTools={canExpand ? () => setOpen(value => !value) : undefined}
       selection={server.selection && <input type="checkbox" aria-label={server.selection.label} checked={server.selection.checked} disabled={server.selection.disabled} onChange={() => void server.selection!.change()} />}
       actions={<>{server.controls}{actions.length > 0 && <IconPopover icon={<MoreHorizontal className="h-4 w-4" />} label={`Actions for ${server.name}`} panelClassName="w-52 !p-1">

@@ -429,7 +429,7 @@ function VaultCard({ vault, onChanged }: { vault: VaultView; onChanged: () => vo
   )
 }
 
-export default function MyVaultsPage() {
+export default function MyVaultsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const isAdmin = useAuthStore(state => state.user?.is_admin === true)
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const sharedVaultsEnabled = !isLocalProductInstallation() && visibleProductSurfaceIDs(allowedProducts).includes('mcp-gateway')
@@ -472,13 +472,13 @@ export default function MyVaultsPage() {
   const owned = (vaults ?? []).filter(vault => vault.role === 'owner').length
   return (
     <section aria-label="My vaults" className="flex h-full min-h-0 flex-col bg-background">
-      <WorkspacePageHeader page="vaults" title="My vaults" icon={Vault} />
+      {!embedded && <WorkspacePageHeader page="vaults" title="My vaults" icon={Vault} />}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl space-y-4 p-4 text-xs sm:p-6">
-          {isAdmin && <McpAppsSection />}
-          {isAdmin && <CompanyAgentEmail />}
+          <div><h2 className="text-lg font-semibold">My vaults</h2><p className="mt-1 text-sm text-muted-foreground">Your connected accounts, secrets and vaults shared with you.</p></div>
           <PersonalAccountsPanel />
           <VaultSlackBots />
+          {isAdmin && <details className="rounded-lg border border-border p-4"><summary className="cursor-pointer text-sm font-semibold">Company app setup</summary><div className="mt-3 space-y-4"><McpAppsSection /><CompanyAgentEmail /></div></details>}
           {isAdmin && <details aria-label="Company Slack bot" className="rounded-lg border border-border p-4"><summary className="cursor-pointer text-sm font-semibold">Company Slack bot (admin)</summary><div className="mt-3"><SlackAdminPanel /></div></details>}
           {sharedVaultsEnabled && <>
           <h2 className="pt-3 text-base font-semibold">Shared vaults</h2>

@@ -2516,6 +2516,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/knowledgebase/secrets", api.handleBrainSecrets).Methods("GET", "PUT", "OPTIONS")
 	apiRouter.HandleFunc("/knowledgebase/secrets/{name}", api.handleBrainSecrets).Methods("DELETE", "OPTIONS")
 	apiRouter.HandleFunc("/knowledgebase/access-proposals", api.handleKnowledgebaseAccessProposals).Methods("GET", "POST")
+	apiRouter.HandleFunc("/knowledgebase/manage", api.handleKnowledgebaseManagement).Methods("POST")
 	apiRouter.HandleFunc("/knowledgebase/maintenance/reconcile-backup", api.handleKnowledgebaseReconcileBackup).Methods("POST")
 	apiRouter.PathPrefix("/knowledgebase/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		externalError(w, http.StatusNotFound, "NOT_FOUND", "Brain endpoint not found.")

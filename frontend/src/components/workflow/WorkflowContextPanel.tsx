@@ -1,4 +1,4 @@
-import { ArrowUpCircle, BookOpen, Code2, Database, History, Cloud, Cpu, DollarSign, Files, FileText, Globe, Hand, LayoutDashboard, MessageSquareText, Route, Settings, BellRing, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowUpCircle, CalendarClock, BookOpen, Code2, Database, History, Cloud, Cpu, DollarSign, Files, FileText, Globe, Hand, LayoutDashboard, MessageSquareText, Route, Settings, BellRing, ShieldCheck, Sparkles } from 'lucide-react'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
@@ -32,33 +32,34 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
       <Row icon={PulseIcon} onClick={() => open('pulse')}>Pulse</Row>
       {decisionsRow}
     </>}
-    <Group title="Use & share">
+    <Group title="Your work">
       <Row icon={LayoutDashboard} onClick={() => { selectReportDocument(workspacePath, defaultPath); open('report') }}>Dashboard</Row>
+      <Row icon={Route} onClick={() => open('flow', relayMode ? 'graph' : undefined)}>{relayMode ? 'Flow' : 'Plan & progress'}</Row>
+      {relayMode && <Row icon={History} onClick={() => open('flow', 'calls')}>Runs</Row>}
+      <Row icon={Files} onClick={() => open('files')}>Files</Row>
+      {!relayMode && <Row icon={CalendarClock} detail={status.schedules ? String(status.schedules) : undefined} onClick={() => open('workshop', 'schedules')}>Schedules</Row>}
+      {!relayMode && !pulseOn && decisionsRow}
+    </Group>
+    <Group title="Share" collapsed>
       {documents.filter(document => document.path !== defaultPath).map(document => <Row key={document.path} icon={LayoutDashboard} hint={document.path} onClick={() => { selectReportDocument(workspacePath, document.path); open('report') }}>{reportDocumentLabel(document, documents)}</Row>)}
       <ShareDashboardButton workspacePath={workspacePath} variant="row" onOpen={() => openConnection('share')} />
       {!relayMode && <WorkspaceBrowserRow workspacePath={workspacePath} profileId="workflow" onClick={() => open('browser')} />}
-      <WorkspaceAutomationRows relay={relayMode} onOpen={section => open('workshop', section)} counts={status} />
+      <WorkspaceAutomationRows relay={relayMode} onOpen={section => open('workshop', section)} counts={status} excludeSchedules />
       <WorkspaceChannelRows onOpen={openConnection} slack={true} whatsapp={!relayMode} slackBot={!relayMode} slackAccountStatus={status.slackAccount} slackBotStatus={status.slackBot} whatsappStatus={status.whatsapp} emailStatus={status.email} onOpenEmail={() => open('workshop', 'email')} />
     </Group>
-    <Group title="Connections">
+    <Group title="Connections" collapsed>
       <WorkspaceConnectionRows onOpen={openConnection} relayMode={relayMode} details={{ 'mcp:connected': status.mcps === undefined ? undefined : status.mcps ? String(status.mcps) : 'None' }} />
       <WorkspaceAgentBridgeRows />
     </Group>
-    <Group title="Ops" collapsed>
+    <Group title="Setup" collapsed>
       {!relayMode && !pulseOn && <Row icon={PulseIcon} onClick={() => open('pulse')}>Turn Pulse on</Row>}
-      {relayMode ? <>
-        <Row icon={Route} onClick={() => open('flow', 'graph')}>Flow</Row>
-        <Row icon={History} onClick={() => open('flow', 'calls')}>Runs</Row>
-        <Row icon={Code2} onClick={() => open('flow', 'source')}>Code</Row>
-      </> : <Row icon={Route} onClick={() => open('flow')}>Plan</Row>}
-      <Row icon={Files} onClick={() => open('files')}>Files</Row>
+      {relayMode && <Row icon={Code2} onClick={() => open('flow', 'source')}>Code</Row>}
       {!relayMode && <>
         <Row icon={BookOpen} onClick={() => open('knowledge', 'knowledgebase')}>Knowledge base</Row>
         <Row icon={Database} onClick={() => open('knowledge', 'database')}>Database</Row>
       </>}
       <Row icon={Sparkles} onClick={() => open('mcp', 'skills')}>Skills</Row>
       <Row icon={MessageSquareText} onClick={() => open('workshop', 'chats')}>Chat history</Row>
-      {!relayMode && !pulseOn && decisionsRow}
       <Row icon={DollarSign} onClick={() => open('costs')}>Costs and usage</Row>
       <Row icon={FileText} onClick={() => open('execution-logs')}>Run logs</Row>
       <Row icon={Cpu} onClick={() => open('identity', 'llm')}>Models</Row>

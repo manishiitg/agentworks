@@ -3,7 +3,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import { LayoutGrid, Plus } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
-import { ProductSurfaceSwitcher } from '../ProductSurfaceSwitcher'
 
 type TopBarEntitySelectorProps = {
   label?: string
@@ -79,7 +78,7 @@ export function TopBarEntitySelector({
     }
   }, [compact, open, onToggle, onClose, sidebarSettings])
 
-  const selectionHint = toolbarKind === 'page' ? 'Switch workspace or product' : placeholder === 'Select Automation' ? 'Choose automation' : 'Choose workspace'
+  const selectionHint = toolbarKind === 'page' ? 'Switch project' : placeholder === 'Select Automation' ? 'Choose automation' : 'Choose workspace'
   const sidebarTitle = label ? `${selectionHint} · ${label}` : selectionHint
 
   useLayoutEffect(() => {
@@ -182,7 +181,7 @@ export function TopBarEntitySelector({
           {compact && <header className="shrink-0 border-b border-border bg-popover px-3 py-2 text-xs font-semibold">{placeholder === 'Select Automation' ? 'Automations' : 'Workspaces'}</header>}
           {compact ? <div data-picker-workspaces className="min-h-0 max-h-[min(260px,35dvh)] overflow-y-auto [&>div]:max-h-none [&>div]:space-y-0 [&>div]:p-1 [&_button]:py-1.5 [&_button]:text-xs">{children}</div> : children}
           {compact && <>
-            <ProductSurfaceSwitcher menuOnly onSelect={onClose} />
+
             {!sidebarSettings && <section data-picker-setup className="shrink-0 border-t border-border p-1.5">
               <div ref={registerSetup} data-picker-setup-slot />
             </section>}

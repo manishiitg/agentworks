@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   presets: [] as any[],
   builders: {} as Record<string, any>,
   product: 'work',
+  enabled: ['work', 'agentworks'],
   active: [] as any[],
   selectedTab: null as string | null,
   history: vi.fn(),
@@ -24,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   app: { showWorkflowsOverview: false, showSchedulesOverview: false, adminPage: null },
   openNavigation: vi.fn(() => true),
 }))
+vi.mock('./ConnectedAgentsSidebar', () => ({ default: () => <p data-testid="connected-agent-list">Connected agents · reviewer</p> }))
 vi.mock('../../stores/useAppStore', () => ({ useAppStore: (select: any) => select(mocks.app) }))
 vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: (select: any) => select({ showLLMModal: false }) }))
 vi.mock('../../utils/quickNavigation', () => ({
@@ -61,7 +63,7 @@ vi.mock('../../services/api', () => ({ agentApi: { listChatHistorySessions: mock
 vi.mock('../../hooks/useWorkflowBuilderBindings', () => ({ useWorkflowBuilderBindings: () => mocks.builders }))
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: vi.fn() }))
 vi.mock('../../hooks/useResumePreviousChat', () => ({ useResumePreviousChat: () => mocks.resume }))
-vi.mock('./SidebarStepInspections', () => ({ default: () => null }))
+vi.mock('./SidebarStepInspections', () => ({ default: ({ visible }: { visible: boolean }) => <div data-testid="step-inspections" data-visible={visible} /> }))
 vi.mock('../../utils/chatIdentity', () => ({
   captureChatIdentity: () => 1,
   isChatIdentityCurrent: () => true,
@@ -75,10 +77,10 @@ vi.mock('../../utils/productWorkspaceNavigation', () => ({ openProductWorkspace:
 vi.mock('../../products/work/workSessions', () => ({ loadWorkSessionsIncludingShared: async () => [] }))
 vi.mock('../../products/work/projectProduct', () => ({ CREW_PRODUCT: { profileId: 'work' } }))
 vi.mock('../../products/productSurfaceConfig', () => ({
-  enabledProductSurfaces: () => ['work', 'agentworks'],
+  enabledProductSurfaces: () => mocks.enabled,
   intersectAllowedProductSurfaces: (surfaces: string[], allowed: string[] | null) =>
     allowed ? surfaces.filter((surface) => allowed.includes(surface)) : surfaces,
-  PRODUCT_SURFACE_LABELS: { work: 'Crew', agentworks: 'Goals' },
+  PRODUCT_SURFACE_LABELS: { work: 'Crew', agentworks: 'Goals', knowledgebase: 'Brain', 'mcp-gateway': 'Vault', bullpen: 'AgentBridge' },
 }))
 vi.mock('../ProductSurfaceIcon', () => ({ ProductSurfaceIcon: () => null }))
 import WorkspaceChatsSidebar from './WorkspaceChatsSidebar'
@@ -92,6 +94,7 @@ afterEach(() => {
   mocks.presets = []
   mocks.builders = {}
   mocks.product = 'work'
+  mocks.enabled = ['work', 'agentworks']
   mocks.active = []
   mocks.selectedTab = null
   mocks.user = { id: 'alice', allowed_products: null, allowed_workflow_ids: null }
@@ -291,4 +294,102 @@ it('links to the dashboard library in the shared sidebar and marks its deep link
       expect(link.getAttribute('aria-current')).toBe('page')
     })
   } finally { window.history.replaceState({}, '', '/') }
+})
+
+it('collapses a single Goal without closing its chat and remembers the project preference', async () => {
+  mocks.product = 'agentworks'
+  mocks.presets = [{ id: 'goal', label: 'ICICI corporate', selectedFolder: { filepath: 'Workflow/icici' } }]
+  mocks.tabs = {
+    main: { tabId: 'main', sessionId: 'main', name: 'ICICI corporate', createdAt: 1, isStreaming: true,
+      metadata: { mode: 'workflow', phaseId: 'workflow-builder', presetQueryId: 'goal', agentProfileBuilder: true } },
+  }
+  mocks.builders = { goal: { session_id: 'main', sessions: { main: { is_builder: true, kind: 'builder' } } } }
+  mocks.history.mockResolvedValue({ sessions: [] })
+  await render(async host => {
+    const toggle = host.querySelector<HTMLButtonElement>('[aria-label="Expand ICICI corporate"]')!
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    const panel = host.querySelector<HTMLDivElement>(`#${toggle.getAttribute('aria-controls')}`)!
+    expect(panel.hidden).toBe(true)
+    expect(panel.querySelector('[data-visible="false"]')).not.toBeNull()
+    await act(async () => toggle.click())
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(panel.hidden).toBe(false)
+    expect(panel.querySelector('[data-visible="true"]')).not.toBeNull()
+    expect(mocks.openTab).not.toHaveBeenCalled()
+    expect(mocks.close).not.toHaveBeenCalled()
+    await act(async () => host.querySelector<HTMLButtonElement>('[title="ICICI corporate · Goals"]')!.click())
+    expect(mocks.openTab).toHaveBeenCalledWith('main')
+    expect(panel.hidden).toBe(false)
+  })
+  await render(async (host, rerender) => {
+    const toggle = host.querySelector<HTMLButtonElement>('[aria-label="Collapse ICICI corporate"]')!
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    await act(async () => toggle.click())
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(host.querySelector('[aria-label="Running"]')).not.toBeNull()
+    mocks.user = { ...mocks.user, id: 'bob' }
+    await rerender()
+    expect(host.querySelector('[aria-label="Expand ICICI corporate"]')).not.toBeNull()
+  })
+  await render(async host => {
+    expect(host.querySelector('[aria-label="Expand ICICI corporate"]')).not.toBeNull()
+  })
+})
+
+it('keeps Brain and Vault available without chats while respecting product access', async () => {
+  mocks.enabled = ['agentworks', 'work', 'knowledgebase', 'mcp-gateway']
+  mocks.history.mockResolvedValue({ sessions: [] })
+  await render(async (host, rerender) => {
+    const brain = host.querySelector<HTMLButtonElement>('[aria-label="Brain"]')!
+    const vault = host.querySelector<HTMLButtonElement>('[aria-label="Vault"]')!
+    expect(brain).not.toBeNull()
+    expect(vault).not.toBeNull()
+    expect(host.querySelector('[aria-label="Show Brain chats"]')).toBeNull()
+    await act(async () => brain.click())
+    expect(mocks.openProduct).toHaveBeenLastCalledWith('knowledgebase')
+    await act(async () => vault.click())
+    expect(mocks.openProduct).toHaveBeenLastCalledWith('mcp-gateway')
+    expect(mocks.openTab).not.toHaveBeenCalled()
+    mocks.user.allowed_products = ['knowledgebase']
+    await rerender()
+    expect(host.querySelector('[aria-label="Brain"]')).not.toBeNull()
+    expect(host.querySelector('[aria-label="Vault"]')).toBeNull()
+    mocks.enabled = ['agentworks', 'work']
+    await rerender()
+    expect(host.querySelector('[aria-label="Shared tools"]')).toBeNull()
+  })
+})
+
+it('opens the product directly even when it has existing chats', async () => {
+  mocks.enabled = ['knowledgebase', 'mcp-gateway']
+  mocks.product = 'knowledgebase'
+  mocks.tabs = { brain: { tabId: 'brain', sessionId: 'brain-chat', name: 'Folder access help', createdAt: 1,
+    metadata: { agentProfileId: 'knowledgebase' } } }
+  mocks.history.mockResolvedValue({ sessions: [] })
+  await render(async host => {
+    const footer = host.querySelector('[data-testid="shared-tool-shortcuts"]')!
+    expect(footer.querySelector('[aria-expanded]')).toBeNull()
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Brain"]')!.click())
+    expect(mocks.openProduct).toHaveBeenCalledWith('knowledgebase')
+    expect(mocks.openTab).not.toHaveBeenCalled()
+    expect(host.querySelector('[aria-label="Brain"]')?.getAttribute('aria-current')).toBe('page')
+  })
+})
+
+it('opens AgentBridge directly with current product permission checks', async () => {
+  mocks.enabled = ['knowledgebase', 'mcp-gateway', 'bullpen']
+  mocks.history.mockResolvedValue({ sessions: [] })
+  await render(async (host, rerender) => {
+    const bridge = host.querySelector<HTMLButtonElement>('[aria-label="AgentBridge"]')!
+    expect(bridge).not.toBeNull()
+    expect(bridge.closest('[aria-label="Shared tools"]')).not.toBeNull()
+    expect(host.querySelector('[data-testid="connected-agent-list"]')).toBeNull()
+    await act(async () => bridge.click())
+    expect(mocks.openProduct).toHaveBeenLastCalledWith('bullpen')
+    expect(host.querySelector('[aria-label="Show connected agents"]')).toBeNull()
+    mocks.user.allowed_products = ['knowledgebase']
+    await rerender()
+    expect(host.querySelector('[aria-label="AgentBridge"]')).toBeNull()
+    expect(host.querySelector('[data-testid="connected-agent-list"]')).toBeNull()
+  })
 })

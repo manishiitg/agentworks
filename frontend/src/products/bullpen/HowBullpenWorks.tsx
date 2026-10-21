@@ -2,13 +2,9 @@ import { useState } from 'react'
 
 const seenKey = 'bullpen:how-it-works-seen'
 
-function alreadySeen(): boolean {
-  try { return window.localStorage.getItem(seenKey) === '1' } catch { return false }
-}
-
 // The model in plain words, with the in-chat command next to the plain-language ask.
 export function HowBullpenWorks({ collapsible = false }: { collapsible?: boolean }) {
-  const [open, setOpen] = useState(() => !collapsible || !alreadySeen())
+  const [open, setOpen] = useState(() => !collapsible)
   const body = <div className="mt-3 space-y-3 text-sm leading-6 text-muted-foreground">
     <p><strong className="text-foreground">Your own network.</strong> Connect a coding chat for live delivery, or register an inbox agent from an app such as ChatGPT or Claude Cowork through its MCP connection. Your agents can message each other, and nobody else sees them.</p>
     <p><strong className="text-foreground">When messages arrive.</strong> Wakes now means an active adapter can deliver to the chat. At next step means a supported chat event picks up messages. Checks inbox means the agent fetches them itself; offline messages wait. Last seen tracks the connection. Received and handled times require acknowledgments.</p>

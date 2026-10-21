@@ -20,7 +20,7 @@ export default function ProvidersControl() {
           data-product-navigation-action
           onClick={() => { useAppStore.getState().setAdminPage(null); open(true) }}
           data-tour="global-providers"
-          aria-label="Providers"
+          aria-label="AI models & accounts"
           aria-pressed={isOpen}
           className={`rounded-md p-1 transition-colors ${
             isOpen
@@ -30,7 +30,7 @@ export default function ProvidersControl() {
         >
           <Cpu className="h-4 w-4 shrink-0" />
           <ProductNavigationLabel>AI models &amp; accounts</ProductNavigationLabel>
-          <ProductNavigationDescription>Models, CLIs and API keys</ProductNavigationDescription>
+          <ProductNavigationDescription>Choose the AI account your work uses</ProductNavigationDescription>
         </button>
       </TooltipTrigger>
       <TooltipContent side={sidebar ? 'right' : 'bottom'}>AI models &amp; accounts</TooltipContent>

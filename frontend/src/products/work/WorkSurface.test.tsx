@@ -304,7 +304,8 @@ describe('Crew native tab dragging', () => {
       const ids = (selector: string, attribute: string) => [...host.querySelectorAll(selector)].map(node => node.getAttribute(attribute))
       expect(ids('[data-chat-tab-id]', 'data-chat-tab-id')).toEqual(['main', 'b', 'a', 'bot', 'schedule'])
       const menu = host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!
-      expect(menu.textContent).toBe('Agents · 4')
+      expect(menu.textContent).toBe('')
+      expect(menu.getAttribute('aria-label')).toBe('Agents: switch, reorder or close (4)')
       await act(async () => menu.click())
       expect(ids('[data-chat-list-id]', 'data-chat-list-id')).toEqual(['main', 'b', 'a', 'z', 'bot', 'schedule'])
       expect(host.querySelector('[aria-label="Agents"] [title="Close activity view"]')).not.toBeNull()
@@ -333,7 +334,8 @@ describe('Crew native tab dragging', () => {
       await act(async () => gesture('drop', host.querySelector('[data-chat-tab-id="b"]')!))
       expect(order).toHaveBeenCalledWith('work', 'crew', ['crew:chat:b', 'crew:chat:a'])
       const menu = host.querySelector<HTMLButtonElement>('[data-testid="work-more-tabs"]')!
-      expect(menu.textContent).toContain('Agents · 3')
+      expect(menu.textContent).toBe('')
+      expect(menu.getAttribute('aria-label')).toBe('Agents: switch, reorder or close (3)')
       await act(async () => menu.click())
       expect(host.querySelector('[aria-label="Agents"]')?.textContent).toContain('a')
       expect(host.querySelector('[aria-label="Unpin a"]')).not.toBeNull()

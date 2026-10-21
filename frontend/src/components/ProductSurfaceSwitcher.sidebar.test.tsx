@@ -24,6 +24,17 @@ afterEach(async () => { await act(async () => root.unmount()); host.remove(); de
 afterAll(() => vi.unstubAllGlobals())
 const render = () => act(async () => root.render(<ProductTopBar sidebar><ProductSurfaceSwitcher /></ProductTopBar>))
 describe('collapsible product navigation', () => {
+  it.each([['knowledgebase', 'Brain'], ['mcp-gateway', 'Vault']] as const)('keeps %s switching compact and accessible', async (surface, label) => {
+    window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'knowledgebase', 'mcp-gateway'], gatewayUrl: 'http://127.0.0.1:18163' }
+    auth.allowed = [surface, 'agentworks']
+    useProductSurfaceStore.setState({ productSurface: surface })
+    await render()
+    const trigger = host.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!
+    expect(trigger.getAttribute('aria-label')).toBe(`Switch product: ${label}`)
+    expect(trigger.querySelector('span.sr-only')?.textContent).toBe(label)
+    await act(async () => trigger.click())
+    expect([...host.querySelectorAll('[role="menuitem"]')].map(button => button.getAttribute('aria-label'))).toEqual(['Goals', label, 'Dashboards'])
+  })
   it.each(['workspace', 'service', 'standard'])('uses the same permitted product grid in a %s picker', async placement => {
     auth.allowed = ['agentworks', 'work', 'code']
     await act(async () => root.render(placement === 'standard' ? <ProductSurfaceSwitcher /> : <ProductTopBar sidebar><ProductSurfaceSwitcher menuOnly={placement === 'workspace'} /></ProductTopBar>))

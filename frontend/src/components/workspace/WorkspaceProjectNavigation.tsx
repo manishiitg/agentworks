@@ -35,10 +35,10 @@ export function projectAutomationSections({ relay = false, triggers = true, inco
 
 const countText = (value?: number) => (value === undefined ? undefined : value ? String(value) : 'None')
 
-export function WorkspaceAutomationRows({ onOpen, relay = false, triggers = true, counts }: { onOpen: (section: string) => void; relay?: boolean; triggers?: boolean; counts?: ProjectStatus }) {
+export function WorkspaceAutomationRows({ onOpen, relay = false, triggers = true, counts, excludeSchedules = false }: { onOpen: (section: string) => void; relay?: boolean; triggers?: boolean; counts?: ProjectStatus; excludeSchedules?: boolean }) {
   const byId: Record<string, number | undefined> = { schedules: counts?.schedules, conditions: counts?.conditions, triggers: counts?.triggers, functions: counts?.functions }
   return <div role="group" aria-label="Automations" className="mt-1 space-y-1 border-t border-border/60 pt-2">
-    {projectAutomationSections({ relay, triggers }).map(item =>
+    {projectAutomationSections({ relay, triggers }).filter(item => !excludeSchedules || item.id !== 'schedules').map(item =>
       <Row key={item.id} icon={item.icon} detail={countText(byId[item.id])} onClick={() => onOpen(item.id)}>{item.label}</Row>)}
   </div>
 }

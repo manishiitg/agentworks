@@ -617,6 +617,7 @@ function GroupPermissions({
               Number(data.permissions.get(b.PublicName)?.allowed ?? false) - Number(data.permissions.get(a.PublicName)?.allowed ?? false))
             const allowedTools = tools.filter(t => data.permissions.get(t.PublicName)?.allowed).length
             const assigned = connectorAssigned(c.ID)
+            const effectiveToolAccess = tools.length === 0 ? 'No tools discovered yet' : allowedTools === tools.length ? 'All tools allowed' : `${allowedTools} of ${tools.length} tools allowed`
             const regexRules = data.policies.filter(p => p.status === 'published').flatMap(p => p.rules)
               .filter(rule => tools.some(tool => tool.PublicName === rule.public_name))
               .reduce((count, rule) => count + rule.conditions.filter(condition => condition.op === 'matches').length, 0)
@@ -630,9 +631,9 @@ function GroupPermissions({
                   detail={<>
                     {regexRules > 0 && <span className="rounded bg-muted px-2 py-0.5" title="Saved regular-expression conditions">{regexRules} regex {regexRules === 1 ? 'rule' : 'rules'}</span>}
                     {full && (readOnly
-                      ? <span className="text-xs text-muted-foreground">{data.readOnlyServers.has(c.ID) ? 'Whole server · read tools only' : 'Whole server · all tools'}</span>
+                      ? <span className="text-xs text-muted-foreground">{data.readOnlyServers.has(c.ID) ? `Read tools only · ${effectiveToolAccess}` : effectiveToolAccess}</span>
                       : <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title="Reads only: the server's own read marks, or your labels on the Servers page. Unmarked tools count as write.">
-                        Whole server
+                        {effectiveToolAccess}
                         <Checkbox checked={data.readOnlyServers.has(c.ID)} disabled={busy !== null}
                           onCheckedChange={v => void run(`level:${c.ID}`, () => attachGroupServer(base, groupId, c.ID, v === true))}
                           aria-label={`Read tools only on ${c.Label || c.Provider}`} />

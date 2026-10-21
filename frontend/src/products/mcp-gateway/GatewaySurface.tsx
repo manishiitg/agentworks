@@ -2,15 +2,15 @@ import { clearServiceChatRequest, currentServiceChatRequest, useServiceChatNavig
 import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { useWorkspaceViewPreference } from '../../hooks/useWorkspaceViewPreference'
 import { normalizeViewFrom } from '../../utils/workspaceViewPreference'
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
-import { ArrowLeft, Loader2, MessageCircle, ShieldCheck, ScrollText, PlugZap, BarChart3, SlidersHorizontal, Smartphone, Tablet, Laptop } from 'lucide-react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
+import { ArrowLeft, Loader2, MessageCircle, ShieldCheck, ScrollText, PlugZap, BarChart3, SlidersHorizontal } from 'lucide-react'
 import { gatewayBaseUrl } from '../productSurfaceConfig'
+import { ProductBreadcrumb } from '../../components/workspace/ProductBreadcrumb'
 import { ModePresetBar } from '../../components/ModePresetBar'
 import ChatArea from '../../components/ChatArea'
 import { ProductChatLandingCard } from '../../components/chat/ProductChatLandingCard'
 import { ProductWorkspaceShell } from '../../components/workspace/ProductWorkspaceShell'
 import { WorkspaceSplitDivider } from '../../components/workspace/WorkspaceSplitDivider'
-import { WorkspaceToolsGroup, WorkspaceToolsMenu } from '../../components/workspace/WorkspaceToolsMenu'
 import { WorkspaceViewIconButton } from '../../components/workflow/WorkspaceViewIconButton'
 import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
 import { VAULT_PANEL_SECTIONS } from '../productPanels'
@@ -37,11 +37,12 @@ import { useChatStore } from '../../stores/useChatStore'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import { clampWorkSplitRatio } from '../work/workSurfaceLayoutResolver'
 import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
-import { readReportPreviewPreference, writeReportPreviewPreference, type ReportPreviewDevice } from '../../utils/reportPreviewPreference'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { GatewayContextPanel, type VaultPage } from './GatewayContextPanel'
 import { useVaultChat } from './useVaultChat'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
+
+const MyVaultsPage = lazy(() => import('../../components/MyVaultsPage'))
 
 const WORKSPACE = 'Chats/CapLayer'
 
@@ -65,6 +66,11 @@ function GatewayAdminWorkspace({ base, standalone, page, onPage }: { base: strin
   const closeChat = () => { setChatOpen(false); setMobilePane('workspace') }
   const openPanel = (next: GatewayPanel) => { setPanel(next); onPage(null); setMobilePane('chat') }
   const openPage = (next: VaultPage) => { onPage(next); setMobilePane('chat') }
+  useEffect(() => {
+    const home = (event: Event) => { if ((event as CustomEvent).detail === 'mcp-gateway') { setPanel('servers'); onPage(null); setChatOpen(false); setMobilePane('chat') } }
+    window.addEventListener('open-product-home', home)
+    return () => window.removeEventListener('open-product-home', home)
+  }, [setPanel, onPage])
   const sessionId = useChatStore(state => tabId ? state.chatTabs[tabId]?.sessionId : undefined)
   const chatBusy = useChatStore(state => Boolean(tabId && state.chatTabs[tabId]?.isStreaming))
   const revision = useChatStore(state => {
@@ -93,7 +99,6 @@ function GatewayAdminWorkspace({ base, standalone, page, onPage }: { base: strin
     window.addEventListener('vault-open-panel', open)
     return () => window.removeEventListener('vault-open-panel', open)
   }, [setPanel])
-  const [previewDevice, setPreviewDevice] = useState<ReportPreviewDevice>(() => readReportPreviewPreference(WORKSPACE))
   const addCustomServer = useCallback(async () => {
     if (readOnly) return
     const identity = captureChatIdentity()
@@ -121,30 +126,23 @@ function GatewayAdminWorkspace({ base, standalone, page, onPage }: { base: strin
     if (!rect?.width) return
     start(event, { onMove: x => updateRatio((x - rect.left) / rect.width), onEnd: () => updateRatio(ratioRef.current, true) })
   }, [start, updateRatio])
-  const title = page === 'audit' ? 'Audit logs' : page === 'connect' ? 'Vault MCP endpoint' : gatewayPanels.find(item => item.id === panel)?.label ?? 'Vault'
+  const title = page === 'my-vaults' ? 'My vaults' : page === 'audit' ? 'Audit logs' : page === 'connect' ? 'Vault MCP endpoint' : gatewayPanels.find(item => item.id === panel)?.label ?? 'Vault'
   return <ProductWorkspaceShell
     testId="gateway-setup-panel" splitRef={splitRef} chatOpen panelOpen splitRatio={ratio} compactContext={!chatOpen} mobilePane={mobilePane}
     onOpenChat={() => setMobilePane('chat')} onOpenWorkspace={() => setMobilePane('workspace')}
     chatProps={{ 'aria-label': 'Vault management' }} workspaceProps={{ 'aria-label': chatOpen ? 'Vault assistant panel' : 'Vault overview' }}
-    tabs={<div className="flex min-w-0 flex-1 items-center gap-2">{page && <WorkspaceViewIconButton icon={ArrowLeft} label="Back to Vault management" onClick={() => onPage(null)} />}<h1 className="truncate text-sm font-semibold">{title}</h1></div>}
+    tabs={<div className="flex min-w-0 flex-1 items-center gap-2"><ProductBreadcrumb surface="mcp-gateway" section={title} onHome={() => { openPanel('servers'); closeChat() }} /></div>}
     toolbar={<div className="ml-auto flex shrink-0 items-center gap-1">
       <button type="button" onClick={() => setMobilePane(value => value === 'chat' ? 'workspace' : 'chat')} aria-label="Vault options" className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted md:hidden"><SlidersHorizontal className="h-4 w-4" /></button>
-      <WorkspaceToolsMenu>{close => <>
-        <WorkspaceToolsGroup title="Vault">{gatewayPanels.map(item => <button type="button" role="menuitem" key={item.id} aria-current={!page && panel === item.id ? 'page' : undefined} onClick={() => { openPanel(item.id); close() }} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-muted"><item.icon className="h-3.5 w-3.5 text-muted-foreground" />{item.label}</button>)}
-          <button type="button" role="menuitem" aria-current={page === 'audit' ? 'page' : undefined} onClick={() => { openPage('audit'); close() }} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-muted"><ScrollText className="h-3.5 w-3.5 text-muted-foreground" />Audit logs</button>
-          <button type="button" role="menuitem" aria-current={page === 'connect' ? 'page' : undefined} onClick={() => { openPage('connect'); close() }} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-muted"><PlugZap className="h-3.5 w-3.5 text-muted-foreground" />Vault MCP endpoint</button>
-        </WorkspaceToolsGroup>
-        <WorkspaceToolsGroup title="Assistant"><button type="button" role="menuitem" aria-label="Open Vault assistant" onClick={() => { openChat(); close() }} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-muted"><MessageCircle className="h-3.5 w-3.5 text-muted-foreground" />Vault assistant</button></WorkspaceToolsGroup>
-        <WorkspaceToolsGroup title="Preview">{([['mobile', Smartphone, 'Mobile preview'], ['tablet', Tablet, 'Tablet preview'], ['desktop', Laptop, 'Laptop preview']] as const).map(([device, Icon, label]) => <button key={device} type="button" role="menuitem" aria-label={label} aria-pressed={previewDevice === device} onClick={() => { setPreviewDevice(device); writeReportPreviewPreference(WORKSPACE, device); close() }} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-muted"><Icon className="h-3.5 w-3.5 text-muted-foreground" />{label}</button>)}</WorkspaceToolsGroup>
-      </>}</WorkspaceToolsMenu>
     </div>}
-    chat={<div className={`mx-auto flex h-full min-h-0 w-full flex-1 flex-col ${previewDevice === 'mobile' ? 'max-w-[390px] border-x border-border' : previewDevice === 'tablet' ? 'max-w-[768px]' : ''}`} data-vault-preview={previewDevice}>
+    chat={<div className="flex h-full min-h-0 w-full flex-1 flex-col">
       {page ? <GatewayManagementPage base={base} page={page} /> : <GatewayWorkspacePane base={base} panel={panel} revision={revision} chatBusy={chatBusy} peopleTabRequest={peopleTabRequest}
-        servers={<GatewayServersPanel chatSessionId={sessionId ?? undefined} base={base} view={panel === 'available-mcps' ? 'available' : 'connected'} onConnected={() => openPanel('servers')} standalone={standalone} onAddCustom={addCustomServer} revision={revision} />} modelSettings={error ? <div className="p-4 text-sm"><p role="alert" className="text-destructive">{error}</p><button type="button" onClick={retry} className="mt-2 underline">Retry assistant settings</button></div> : tabId ? <GatewayModelSettings tabId={tabId} /> : <p className="p-4 text-sm text-muted-foreground">Opening model settings…</p>} />}
+        servers={<GatewayServersPanel chatSessionId={sessionId ?? undefined} base={base} view={panel === 'available-mcps' ? 'available' : 'connected'} onConnected={() => openPanel('servers')} onBrowse={() => openPanel('available-mcps')} standalone={standalone} onAddCustom={addCustomServer} revision={revision} />} modelSettings={error ? <div className="p-4 text-sm"><p role="alert" className="text-destructive">{error}</p><button type="button" onClick={retry} className="mt-2 underline">Retry assistant settings</button></div> : tabId ? <GatewayModelSettings tabId={tabId} /> : <p className="p-4 text-sm text-muted-foreground">Opening model settings…</p>} />}
     </div>}
     divider={<WorkspaceSplitDivider ratio={ratio} onPointerDown={resize} onStep={delta => updateRatio(ratioRef.current + delta, true)} className="md:row-start-2" />}
     workspace={<div className="h-full min-h-0 overflow-y-auto">
-      <div hidden={chatOpen}><button type="button" onClick={() => setMobilePane('chat')} className="mx-4 mt-3 inline-flex items-center gap-2 text-xs text-muted-foreground md:hidden"><ArrowLeft className="h-3.5 w-3.5" />Back to management</button><GatewayContextPanel panel={panel} page={page} onOpen={openPanel} onPage={openPage} onChat={openChat} readOnly={readOnly} /></div>
+      <div hidden={chatOpen}><button type="button" onClick={() => setMobilePane('chat')} className="mx-4 mt-3 inline-flex items-center gap-2 text-xs text-muted-foreground md:hidden"><ArrowLeft className="h-3.5 w-3.5" />Back to management</button><GatewayContextPanel panel={panel} page={page} onOpen={openPanel} onPage={openPage} onChat={openChat} readOnly={readOnly}
+        /></div>
       {chatRequested && <section hidden={!chatOpen} aria-label="Vault chat" className="h-full min-h-0 flex-col" style={{ display: chatOpen ? 'flex' : 'none' }}>
         <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2"><WorkspaceViewIconButton label="Back to Vault overview" icon={ArrowLeft} onClick={closeChat} /><MessageCircle className="h-4 w-4 text-muted-foreground" /><h2 className="text-sm font-medium">Vault assistant</h2></div>
         <div className="min-h-0 flex-1">{error ? <div className="p-6 text-sm"><p role="alert" className="text-destructive">{error}</p><button type="button" onClick={retry} className="mt-2 underline">Retry assistant</button></div> : tabId ? <ChatArea tabId={tabId} compact showProductSteerAction showProductTerminalControl
@@ -160,6 +158,8 @@ function GatewayAdminWorkspace({ base, standalone, page, onPage }: { base: strin
 
 function GatewayManagementPage({ base, page }: { base: string; page: VaultPage }) {
   const [auditTab, setAuditTab] = useState<'logs' | 'analysis'>('logs')
+  const canOpenMyVaults = useAuthStore(state => Boolean(state.user && state.user.can_create !== false))
+  if (page === 'my-vaults') return canOpenMyVaults ? <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Opening My vaults…</p>}><MyVaultsPage embedded /></Suspense> : <p role="status" className="p-4 text-sm text-muted-foreground">My vaults is not available for this account.</p>
   return <section aria-label={page === 'audit' ? 'Vault audit page' : 'Vault MCP endpoint page'} className="flex h-full min-h-0 flex-col">
     {page === 'audit' && <WorkspaceViewTabs value={auditTab} onChange={value => setAuditTab(value === 'analysis' ? 'analysis' : 'logs')}
       options={[{ value: 'logs', label: 'Logs', icon: ScrollText }, { value: 'analysis', label: 'Analysis', icon: BarChart3 }]} ariaLabel="Audit tabs" />}
@@ -170,7 +170,7 @@ function GatewayManagementPage({ base, page }: { base: string; page: VaultPage }
 }
 
 /** Same header, global pages, chat runtime and split shell as Crew and Code. */
-const normalizeVaultPage = normalizeViewFrom(['workspace', 'audit', 'connect'] as const)
+const normalizeVaultPage = normalizeViewFrom(['workspace', 'audit', 'connect', 'my-vaults'] as const)
 
 export function GatewaySurface({ standalone = false }: { standalone?: boolean } = {}) {
   const base = gatewayBaseUrl() ?? (standalone ? window.location.origin : null)
@@ -186,7 +186,7 @@ export function GatewaySurface({ standalone = false }: { standalone?: boolean } 
   useEffect(() => {
     try {
       const requested = sessionStorage.getItem('vault.requested-panel')
-      if (requested === 'audit' || requested === 'connect') {
+      if (requested === 'audit' || requested === 'connect' || requested === 'my-vaults') {
         sessionStorage.removeItem('vault.requested-panel')
         setPage(requested)
       } else if (requested) setPage(null)
@@ -201,7 +201,7 @@ export function GatewaySurface({ standalone = false }: { standalone?: boolean } 
   useEffect(() => {
     const open = (event: Event) => {
       const requested = (event as CustomEvent).detail
-      setPage(requested === 'audit' || requested === 'connect' ? requested : null)
+      setPage(requested === 'audit' || requested === 'connect' || requested === 'my-vaults' ? requested : null)
     }
     window.addEventListener('vault-open-panel', open)
     return () => window.removeEventListener('vault-open-panel', open)

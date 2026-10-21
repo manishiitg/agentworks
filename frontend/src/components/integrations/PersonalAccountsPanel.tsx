@@ -87,9 +87,9 @@ function ProviderAccounts({ provider, workspacePath, onChanged }: { provider: Pr
       {account.problem && <p role="alert" className="mt-2 break-words text-xs text-destructive">Not working: {account.problem}</p>}
       {account.google && <><p className="mt-2 text-xs text-muted-foreground">{googleAccessSummary(account.google)}</p><GooglePermissions account={account.google} /></>}
     </div>)}
-    {central && provider === 'google' && data && (data.can_connect || data.accounts.some(account => account.can_reconnect)) && <GoogleAccountConnect canConnect={data.can_connect} onChanged={() => { void refresh(); onChanged?.() }} />}
+    {central && provider === 'google' && data && (data.can_connect || data.accounts.some(account => account.can_reconnect)) && <GoogleAccountConnect initiallyExpanded={data.accounts.length === 0} canConnect={data.can_connect} onChanged={() => { void refresh(); onChanged?.() }} />}
     {central && provider === 'slack' && data?.can_connect && !data.accounts.some(account => account.mine) && <Button variant="outline" size="sm" disabled={busy || data.sign_in_ready === false} onClick={() => void act('connect')}>Connect Slack account</Button>}
-    {central && data?.sign_in_ready === false && <p className="text-xs text-muted-foreground">An administrator needs to open My Vault → Sign-in apps → Slack and save this server’s Slack app before you connect your account.</p>}
+    {central && data?.sign_in_ready === false && <p className="text-xs text-muted-foreground">An administrator needs to open My vaults → Company app setup → Sign-in apps → Slack and save this server’s Slack app before you connect your account.</p>}
   </div>
 }
 

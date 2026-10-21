@@ -1,7 +1,6 @@
 import { requestServiceChat } from '../../utils/serviceChatNavigation'
-import ConnectedAgentsSidebar from './ConnectedAgentsSidebar'
 import { useResumePreviousChat } from '../../hooks/useResumePreviousChat'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { CalendarClock, ChevronDown, LayoutDashboard, Loader2, MessageCircle, MessageSquare, Search, Slack, Webhook, X } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -85,6 +84,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   const expanded = useSidebarExpansionStore(state => state.expanded)
   const toggleExpanded = useSidebarExpansionStore(state => state.toggle)
   const allowed = intersectAllowedProductSurfaces(enabledProductSurfaces(), user?.allowed_products)
+  const resourceSurfaces = (['knowledgebase', 'mcp-gateway', 'bullpen'] as const).filter(surface => allowed.includes(surface))
   useLiveRefetch(
     () => {
       setTick((value) => value + 1)
@@ -348,7 +348,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   const toggleSection = (id: string) =>
     toggleExpanded(sidebarExpansionKey(scope, 'project', id))
   const workspaces = sidebarWorkspaceGroups(rows)
-  const renderChat = (row: SidebarChat, workspaceTitle?: string, genericChatNumber?: number, workspaceEntry?: string, visible = true) => {
+  const renderChat = (row: SidebarChat, workspaceTitle?: string, genericChatNumber?: number, workspaceEntry?: string, visible = true, disclosure?: { panelId: string; expanded: boolean; onToggle: () => void }) => {
     const tab = row.tabId ? tabs[row.tabId] : undefined
     const inspecting = tab?.metadata?.stepInspections?.items.some(item => inspectionKey(item) === tab.metadata?.stepInspections?.activeId)
     const selected = row.tabId === selectedTab && product === row.surface && !globalPageOpen && !providersOpen && !inspecting
@@ -380,7 +380,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     const details = [
       duplicateWorkspaceName ? PRODUCT_SURFACE_LABELS[row.surface] : '',
       row.waiting ? 'Needs you' : '',
-      repeatedRun || (runChat && !scheduled) ? date : '',
+      repeatedRun || scheduled || runChat ? date : '',
     ]
       .filter(Boolean)
       .join(' · ')
@@ -398,7 +398,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
               useChatStore.getState().addToast('Could not open this chat.', 'error')
             )
           }}
-          className={`mb-0.5 flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${canClose ? 'pr-8' : ''} ${selected ? 'bg-foreground/[0.08] text-foreground' : 'text-foreground/75 hover:bg-muted hover:text-foreground'}`}
+          className={`mb-0.5 flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${canClose || disclosure ? 'pr-9' : ''} ${selected ? 'bg-foreground/[0.08] text-foreground' : 'text-foreground/75 hover:bg-muted hover:text-foreground'}`}
         >
           {hasSourceIcon && <span className="shrink-0 opacity-60" title={sourceLabel} aria-hidden="true">
             {workspaceEntry ? (
@@ -426,6 +426,19 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
             />
           ) : null}
         </button>
+        {disclosure && (
+          <button
+            type="button"
+            aria-label={`${disclosure.expanded ? 'Collapse' : 'Expand'} ${title}`}
+            aria-expanded={disclosure.expanded}
+            aria-controls={disclosure.panelId}
+            title={disclosure.expanded ? 'Collapse steps' : 'Show steps'}
+            onClick={disclosure.onToggle}
+            className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ChevronDown aria-hidden="true" className={`h-3 w-3 transition-transform ${disclosure.expanded ? '' : '-rotate-90'}`} />
+          </button>
+        )}
         {canClose && (
           <button
             type="button"
@@ -447,14 +460,14 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
           </button>
         )}
       </div>
-      {row.surface === 'agentworks' && <SidebarStepInspections
+      {row.surface === 'agentworks' && <div id={disclosure?.panelId} hidden={disclosure ? !disclosure.expanded : undefined}><SidebarStepInspections
         row={row}
         workspace={row.workspace || presets.find(preset => preset.id === row.workflowId)?.selectedFolder?.filepath || ''}
         scope={scope}
-        visible={visible}
+        visible={visible && (!disclosure || disclosure.expanded)}
         selected={product === row.surface && !globalPageOpen && !providersOpen}
         onOpen={() => open(row)}
-      />}
+      /></div>}
       </div>
     )
   }
@@ -466,14 +479,16 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
     ).length
     const waiting = workspace.chats.filter((row) => row.waiting).length
     const unnamedChats = workspace.chats
-      .filter((row) => !row.workflowId && row.title === workspace.title && !row.scheduled)
+      .filter((row) => !row.workflowId && (row.title === workspace.title || /^(?:new project|new crew|new chat)$/i.test(row.title.trim())) && !row.scheduled)
+      .sort((a, b) => Number(b.chatOrder?.isMainChat) - Number(a.chatOrder?.isMainChat) || a.id.localeCompare(b.id))
       .map((row) => row.id)
-      .sort()
     const panelId = `sidebar-workspace-${index}`
     const only = workspace.chats.length === 1 ? workspace.chats[0] : null
     const onlyTab = only?.tabId ? tabs[only.tabId] : undefined
     const primaryOnly = only && !only.scheduled && only.workflowSessionKind !== 'run' && (!onlyTab || !canCloseWorkspaceChatTab(onlyTab, tabs)) && (only.builder || only.title === workspace.title)
-    if (primaryOnly) return <div key={workspace.id}>{renderChat(only, undefined, undefined, workspace.title)}</div>
+    if (primaryOnly) return <div key={workspace.id}>{renderChat(only, undefined, undefined, workspace.title, true,
+      only.surface === 'agentworks' ? { panelId, expanded: !hidden, onToggle: () => toggleSection(workspace.id) } : undefined
+    )}</div>
     return (
       <section key={workspace.id} className="mb-2">
         <button
@@ -537,16 +552,8 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
         </div>
       </div>
       <div className="shrink-0 px-2 pb-1"><NewProjectMenu /></div>
-      <nav aria-label="Dashboards" className="shrink-0 px-2 pb-1">
-        <a href="/dashboards" aria-current={window.location.pathname === '/dashboards' ? 'page' : undefined}
-          className={`flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${window.location.pathname === '/dashboards' ? 'bg-foreground/[0.08] text-foreground' : 'text-foreground/85 hover:bg-muted hover:text-foreground'}`}>
-          <LayoutDashboard className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />Dashboards
-        </a>
-      </nav>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-2">
         {workspaces.map((workspace, index) => !isResourceWorkspace(workspace.surface) ? renderWorkspace(workspace, index) : null)}
-        {allowed.includes('bullpen') && <ConnectedAgentsSidebar />}
-        {workspaces.map((workspace, index) => isResourceWorkspace(workspace.surface) ? renderWorkspace(workspace, index) : null)}
         {directory?.scope === scope && !directory.authoritative && (
           <button className="px-2 py-3 text-left text-xs text-muted-foreground underline" onClick={() => setDirectoryTick(value => value + 1)}>
             Some projects could not load. Try again.
@@ -563,6 +570,30 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
         {history && !history.error && !rows.length && directory?.scope === scope && directory.authoritative && (
           <p className="px-2 py-3 text-xs text-muted-foreground">No chats yet.</p>
         )}
+      </div>
+      <div className="flex shrink-0 gap-1 border-t border-border/60 p-2" data-testid="shared-tool-shortcuts">
+        <nav aria-label="Dashboards" className="min-w-0 flex-1">
+          <a href="/dashboards" title="Dashboards" aria-current={window.location.pathname === '/dashboards' ? 'page' : undefined}
+            className={`flex min-h-12 flex-col items-center justify-center gap-1 rounded-md px-1 py-1.5 text-[10px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${window.location.pathname === '/dashboards' ? 'bg-foreground/[0.08] text-foreground' : 'text-foreground/75 hover:bg-muted hover:text-foreground'}`}>
+            <LayoutDashboard className="h-5 w-5 shrink-0" aria-hidden="true" /><span>Dashboards</span>
+          </a>
+        </nav>
+        {resourceSurfaces.length > 0 && <nav aria-label="Shared tools" className="flex min-w-0 gap-1" style={{ flex: resourceSurfaces.length }}>
+          {resourceSurfaces.map(surface => {
+            const title = PRODUCT_SURFACE_LABELS[surface]
+            const selected = window.location.pathname !== '/dashboards' && product === surface && !globalPageOpen && !providersOpen
+            return <button key={surface} type="button" aria-label={title} title={title} aria-current={selected ? 'page' : undefined}
+              onClick={() => {
+                if (!intersectAllowedProductSurfaces(enabledProductSurfaces(), useAuthStore.getState().user?.allowed_products).includes(surface)) return
+                useSidebarHistoryStore.setState(state => ({ request: null, generation: state.generation + 1 }))
+                openProductWorkspace(surface)
+              }}
+              className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-md px-1 py-1.5 text-[10px] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? 'bg-foreground/[0.08] text-foreground' : 'text-foreground/75'}`}>
+              <ProductSurfaceIcon surface={surface} className="h-5 w-5 shrink-0" />
+              <span className="max-w-full truncate">{surface === 'bullpen' ? 'Bridge' : title}</span>
+            </button>
+          })}
+        </nav>}
       </div>
       {footer && <div className="shrink-0 border-t border-border/60 bg-background/60 p-2">{footer}</div>}
     </aside>

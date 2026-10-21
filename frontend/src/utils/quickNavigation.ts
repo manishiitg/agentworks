@@ -28,7 +28,7 @@ export type QuickNavigationItem = {
 }
 
 const CREATION_LABELS: Record<ProductCreateSurface, string> = {
-  agentworks: 'Create new workflow', relays: 'Create new Flow', work: 'Create new Crew',
+  agentworks: 'Create new Goal', relays: 'Create new Flow', work: 'Create new Crew',
   'video-studio': 'Create new video project',
 }
 
@@ -62,7 +62,7 @@ export function quickNavigationItems(
     items.push({ ...common, type: 'menu', id: `browse:${scope}`, label, subtitle: 'Browse · show the full list', isActive: false, action: scope === 'active' ? 'active' : 'browse', scope })
   }
   browse('active', 'Running work')
-  if (products.includes('agentworks')) { browse('workflows', 'All workflows'); browse('chats', 'All chats') }
+  if (products.includes('agentworks')) { browse('workflows', 'All Goals'); browse('chats', 'All chats') }
   if (products.includes('relays')) browse('relays', 'All Flows')
   if (products.includes('work')) browse('crew', 'All Crews')
   if (products.length) browse('products', 'All products')
@@ -83,7 +83,7 @@ export function quickNavigationItems(
   if (products.some(surface => GLOBAL_PAGE_SURFACES.includes(surface))) {
     menu('providers', 'AI models & accounts', 'AI accounts, models and costs')
     if (user?.is_admin) menu('users', 'Users and access', 'Manage users and permissions')
-    if (user) menu('mcp', 'Connect an AI agent (MCP)', 'Connect an agent to this server')
+    if (user) menu('mcp', 'Connect AI tools', 'Connect an agent to this server')
   }
   if (current === 'mcp-gateway' && products.includes(current) && gatewayAdminUrl() && user?.is_admin) {
     menu('vault-audit', 'Vault audit logs', 'Vault · audit and analysis')

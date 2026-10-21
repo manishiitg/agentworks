@@ -38,7 +38,7 @@ it.each([false, true])('keeps existing permission gates inside the labeled menu 
     expect(menu.textContent).toContain('Connect AI tools')
     expect(menu.querySelector('[aria-label="Users and access"]') !== null).toBe(admin)
     expect(menu.querySelector('[aria-label="My vaults"]')).not.toBeNull()
-    await act(async () => menu.querySelector<HTMLButtonElement>('[aria-label="Connect an AI agent (MCP)"]')!.click())
+    await act(async () => menu.querySelector<HTMLButtonElement>('[aria-label="Connect AI tools"]')!.click())
     expect(useAppStore.getState().adminPage).toBe('mcp')
     expect(menu.hidden).toBe(true)
   } finally { await act(async () => root.unmount()); host.remove() }
@@ -81,8 +81,9 @@ it.each((['agentworks', 'work', 'code', 'relays'] as ProductSurface[]).flatMap(s
     expect(tools.querySelector('[data-product-navigation-action]')).toBeNull()
     const picker = host.querySelector<HTMLElement>('.preset-dropdown')!
     const setup = picker.querySelector<HTMLElement>('[data-picker-setup]')!
-    expect(picker.querySelector('[aria-label="Products"]')!.compareDocumentPosition(setup) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    const mcp = setup.querySelector<HTMLButtonElement>('[aria-label="Connect an AI agent (MCP)"]')!
+    expect(picker.querySelector('[aria-label="Products"]')).toBeNull()
+    expect(setup).not.toBeNull()
+    const mcp = setup.querySelector<HTMLButtonElement>('[aria-label="Connect AI tools"]')!
     expect(setup.querySelector('[aria-label="Users and access"]') !== null).toBe(admin)
     expect(setup.querySelector('[aria-label="My vaults"]')).not.toBeNull()
     expect(setup.querySelector('[aria-label="Setup"]')?.className).toContain('grid-cols-2')
@@ -93,11 +94,11 @@ it.each((['agentworks', 'work', 'code', 'relays'] as ProductSurface[]).flatMap(s
     expect(picker.hidden).toBe(false)
     mcp.focus()
     await act(async () => mcp.dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowUp',bubbles:true})))
-    expect(document.activeElement?.getAttribute('aria-label')).toBe('Providers')
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('AI models & accounts')
     await act(async () => mcp.click())
     expect(useAppStore.getState().adminPage).toBe('mcp')
     expect(picker.hidden).toBe(true)
-    expect(setup.querySelector('[aria-label="Connect an AI agent (MCP)"]')).toBe(mcp)
+    expect(setup.querySelector('[aria-label="Connect AI tools"]')).toBe(mcp)
     await act(async () => window.dispatchEvent(new Event('open-product-settings')))
     expect(picker.hidden).toBe(false)
     await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true})))
@@ -126,7 +127,7 @@ it('closes lifted picker state before Setup navigation reparents controls into a
     await act(async () => root.render(<TooltipProvider><Navigation /></TooltipProvider>))
     await act(async () => window.dispatchEvent(new Event('open-product-settings')))
     expect(host.querySelector<HTMLElement>('.preset-dropdown')?.hidden).toBe(false)
-    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Connect an AI agent (MCP)"]')!.click())
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Connect AI tools"]')!.click())
     expect(useProductNavigationToolbarStore.getState().targetKind).toBe('page')
     expect(host.querySelector<HTMLElement>('.preset-dropdown')?.hidden).toBe(true)
     expect(host.querySelector('header [aria-label="Product navigation"]')).not.toBeNull()
@@ -155,7 +156,7 @@ it.each((['agentworks', 'work', 'code', 'relays'] as ProductSurface[]).flatMap(s
     expect(menu.hidden).toBe(false)
     expect(picker.hidden).toBe(true)
     expect(menu.className).toContain('bottom-full')
-    await act(async () => destination.querySelector<HTMLButtonElement>('[aria-label="Connect an AI agent (MCP)"]')!.click())
+    await act(async () => destination.querySelector<HTMLButtonElement>('[aria-label="Connect AI tools"]')!.click())
     expect(useAppStore.getState().adminPage).toBe('mcp')
     expect(menu.hidden).toBe(true)
     await act(async () => useProductNavigationToolbarStore.setState({ sidebarSettingsTarget: null }))

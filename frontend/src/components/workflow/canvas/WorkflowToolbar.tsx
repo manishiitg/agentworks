@@ -60,6 +60,8 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
   variablesManifest,
   isLoadingWorkspaceState = false,
   chatTabsSlot,
+  showChatArea,
+  onToggleChatArea,
   className = ''
 }) => {
   // Workspace store for opening folders
@@ -263,6 +265,7 @@ export const WorkflowToolbar: React.FC<WorkflowToolbarProps> = ({
       {/* Right side - View controls */}
       <div data-tour="workflow-tools" data-testid="tour-workflow-tools" className="ml-auto flex shrink-0 items-center gap-1">
         <TooltipProvider delayDuration={150}>
+          {activeWorkspaceView === 'report' && showChatArea === false && onToggleChatArea && canWrite && <button type="button" onClick={onToggleChatArea} className="min-h-8 rounded-md border border-border px-3 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Ask about this dashboard</button>}
           {workflowMode && !globalPageOpen && !providersOpen && <GlobalActivityMonitor />}
           {workspacePath && canWrite && <>
             <WorkspaceContextButton

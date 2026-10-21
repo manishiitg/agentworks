@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ target: vi.fn(), open: vi.fn() }))
 vi.mock('../../hooks/useWorkspaceViewTarget', () => ({ setWorkspaceViewTarget: mocks.target }))
-vi.mock('../../services/api', () => ({ agentApi: { listReportHumanInputs: async () => ({ success: true, inputs: [] }) } }))
+vi.mock('../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: { listReportHumanInputs: async () => ({ success: true, inputs: [] }) } }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: any) => select({ user: { allowed_products: ['work'] } }) }))
 vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
 vi.mock('../../components/workflow/ShareDashboardButton', () => ({ ShareDashboardButton: () => <button>Share</button> }))
@@ -21,11 +21,11 @@ it('shows one grouped menu, keeps Ops collapsed and routes moved destinations', 
   const inventory = workWorkspacePanels()
   try {
     await act(async () => root.render(<WorkContextPanel workspacePath="Crew/example" projectId="example" panels={[...inventory.views, ...inventory.ops, ...inventory.setup]} onOpen={mocks.open} />))
-    expect([...host.querySelectorAll('h2,summary')].map(node => node.textContent)).toEqual(['Use & share', 'Connections', 'Ops'])
+    expect([...host.querySelectorAll('h2,summary')].map(node => node.textContent)).toEqual(['Your work', 'Share', 'Connections', 'Setup'])
     expect(host.querySelector('details')?.open).toBe(false)
     const buttons = [...host.querySelectorAll('button')]
-    for (const label of ['Dashboard', 'Share', 'Schedules', 'Watchers', 'Webhooks', 'Functions', 'Slack', 'Memory & skills', 'Chat history', 'Settings']) expect(buttons.filter(button => button.textContent === label)).toHaveLength(1)
-    expect(host.textContent).not.toContain('More tools')
+    for (const label of ['Dashboard', 'Share', 'Schedules', 'Watchers', 'Webhooks', 'Functions', 'Slack as me', 'Slack bot', 'Memory', 'Skills', 'Chat history', 'Settings']) expect(buttons.filter(button => button.textContent === label)).toHaveLength(1)
+    expect([...host.querySelectorAll('details')].every(item => !item.open)).toBe(true)
     expect(host.textContent).not.toContain('Edit shortcuts')
     await act(async () => buttons.find(button => button.textContent === 'Webhooks')!.click())
     expect(mocks.target).toHaveBeenLastCalledWith('workshop', 'triggers')

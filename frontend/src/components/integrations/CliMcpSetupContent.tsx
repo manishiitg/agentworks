@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react'
-import { Copy, Download, Globe, Plug, Terminal } from 'lucide-react'
+import { Copy, Download, Globe, Plug } from 'lucide-react'
 import { SettingsCard } from '../ui/SettingsCard'
 import { Button } from '../ui/Button'
 import { useAuthStore } from '../../stores/useAuthStore'
+import { HostedAiAppGuide } from './HostedAiAppGuide'
+import { AI_APPS, AiAppPicker, isHostedAiApp, type AiApp, type HostedAiApp } from './AiAppPicker'
 import { LocalMcpTokenPanel } from './LocalMcpTokenPanel'
-import { AgentMessagingStep, CommandRow, CopyButton, InstallAgentWorksStep } from './LocalAgentSetupSteps'
+import { CommandRow, CopyButton } from './LocalAgentSetupSteps'
 import api, { externalSkillApi, getApiBaseUrl } from '../../services/api'
 
 type Destination = 'local-assistant' | 'hosted-assistant'
 type LocalClient = 'claude-code' | 'codex' | 'cursor' | 'muse' | 'json-client'
-type HostedClient = 'chatgpt' | 'cowork'
+type HostedClient = HostedAiApp
 interface OAuthConnection { id: string; client_name: string; scopes: string[]; expires_at: string; resource?: string }
 
 function JsonBlock({ json, label, hint }: { json: string; label: string; hint: string }) {
@@ -26,6 +28,7 @@ export function CliMcpSetupContent({ target = 'agentworks', endpoint, projectNam
   const serverName = connectionName || target
   const serviceName = target === 'vault' ? 'Vault' : 'AgentWorks'
   const connectionPath = `/api/oauth/${target === 'vault' ? 'vault' : 'mcp'}/connections`
+  const [app, setApp] = useState<AiApp | null>(null)
   const [destination, setDestination] = useState<Destination>('local-assistant')
   const [localClient, setLocalClient] = useState<LocalClient>('claude-code')
   const [hostedClient, setHostedClient] = useState<HostedClient>('chatgpt')
@@ -106,42 +109,18 @@ export function CliMcpSetupContent({ target = 'agentworks', endpoint, projectNam
     finally { setSkillBusy(null) }
   }
 
-  const destinations = [
-    { id: 'local-assistant', icon: Terminal, title: 'AI agent on this computer', description: 'Claude Code, Codex, Cursor, Muse, or another local MCP client.' },
-    { id: 'hosted-assistant', icon: Globe, title: 'Hosted AI app', description: 'ChatGPT or Claude Cowork.' },
-  ] as const
-
   if (useLocalToken) return <LocalMcpTokenPanel endpoint={mcpUrl} origin={origin} />
 
   return <div className="space-y-5">
-    <div className="space-y-3">
-      <div><h3 className="text-base font-semibold text-foreground">Connect an AI agent to {projectName || serviceName}</h3>
-        <p className="mt-1 text-sm text-muted-foreground">Choose your app, add the MCP URL, and approve access in your browser. {projectName && `Approval is limited to ${projectName}.`}</p></div>
-      {target === 'vault' && <div className="space-y-2">
-        <p className="text-sm text-muted-foreground">Everyone uses this same MCP URL. Sign in with your own platform account; your user and group permissions determine which MCP tools and shared secrets you can access.</p>
-        <CommandRow label="Vault MCP URL" command={mcpUrl} />
-      </div>}
-      <div className="grid gap-2" role="group" aria-label="Connection destination">
-        {destinations.map(({ id, icon: Icon, title, description }) => <button key={id} type="button" aria-pressed={destination === id} onClick={() => setDestination(id)} className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${destination === id ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/30'}`}>
-          <Icon className="h-4 w-4 shrink-0 text-primary" /><span className="flex min-w-0 flex-col gap-0.5"><span className="text-sm font-medium text-foreground">{title}</span><span className="text-xs text-muted-foreground">{description}</span></span>
-        </button>)}
-      </div>
-    </div>
-    <SettingsCard icon={destination === 'local-assistant' ? <Plug className="h-4 w-4 text-primary" /> : <Globe className="h-4 w-4 text-primary" />}
-      title={destination === 'local-assistant' ? 'Connect a local AI agent' : 'Connect a hosted AI app'}
-      description={destination === 'local-assistant' ? `Connect directly to ${serviceName} over HTTP MCP. You can use the tools without installing the AgentWorks terminal app.` : 'Use the MCP URL in an AI app that connects from the cloud.'}>
-      {destination === 'local-assistant' ? <div className="space-y-4">
-        {target === 'agentworks' && !projectName && <InstallAgentWorksStep origin={origin} />}
+    <div><h3 className="text-base font-semibold text-foreground">Use {projectName || serviceName} in your AI app</h3><p className="mt-1 text-sm text-muted-foreground">{target === 'vault' ? 'Let your AI app use the tools and secrets allowed by your Vault access.' : projectName ? `Connect your AI app to ${projectName}. Access is limited to this project.` : 'Let your AI app work with the projects, knowledge and tools you can access.'}</p></div>
+    <AiAppPicker value={app} localOnly={isLoopbackOrigin} onChange={next => { setApp(next); if (isHostedAiApp(next)) { setDestination('hosted-assistant'); setHostedClient(next) } else { setDestination('local-assistant'); setLocalClient(next) } }} />
+    {app && <>
+    {destination === 'hosted-assistant' ? <HostedAiAppGuide app={hostedClient} endpoint={mcpUrl} serviceName={serviceName} localServer={isLoopbackOrigin}>
+      {hostedClient === 'cowork' && target === 'agentworks' && !projectName && <details className="rounded-md border border-border p-3 text-xs text-muted-foreground"><summary className="cursor-pointer font-medium">Optional: Cowork plugin</summary><p className="my-2">Download the plugin, then open Customize → Plugins in Cowork and upload it.</p><Button variant="outline" size="sm" disabled={skillBusy !== null || isLoopbackOrigin} onClick={() => void downloadCoworkPlugin()}><Download className="mr-1 h-3.5 w-3.5" />Download Cowork plugin</Button>{pluginMsg && <p className="mt-2">{pluginMsg}</p>}</details>}
+      {target === 'agentworks' && !projectName && hostedClient === 'chatgpt' && <details className="rounded-md border border-border p-3 text-xs text-muted-foreground"><summary className="cursor-pointer font-medium">Optional: give the assistant workflow guidance</summary><p className="mt-2">Upload the skill where Skills are supported, or paste its text into the app's custom instructions.</p><div className="mt-3 flex flex-wrap gap-2"><Button variant="outline" size="sm" disabled={skillBusy !== null} onClick={() => void downloadSkill()}><Download className="mr-1 h-3.5 w-3.5" />Download skill .zip</Button><Button variant="ghost" size="sm" disabled={skillBusy !== null} onClick={() => void copySkill()}><Copy className="mr-1 h-3.5 w-3.5" />Copy skill text</Button></div>{skillMsg && <p className="mt-2">{skillMsg}</p>}</details>}
+    </HostedAiAppGuide> : <SettingsCard icon={<Plug className="h-4 w-4 text-primary" />} title={`Connect ${AI_APPS.find(item => item.id === app)?.name}`} description={`Follow these steps, then approve access when ${serviceName} opens in your browser.`}>
+      <div className="space-y-4">
         <div className="space-y-2">
-          {target === 'agentworks' && !projectName && <h4 className="text-sm font-medium text-foreground">2. Connect your AI app</h4>}
-          <p className="text-xs font-medium text-foreground">Choose your AI agent</p>
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Local MCP client">
-            <Button variant={localClient === 'claude-code' ? 'default' : 'outline'} size="sm" aria-pressed={localClient === 'claude-code'} onClick={() => setLocalClient('claude-code')}>Claude Code</Button>
-            <Button variant={localClient === 'codex' ? 'default' : 'outline'} size="sm" aria-pressed={localClient === 'codex'} onClick={() => setLocalClient('codex')}>Codex</Button>
-            <Button variant={localClient === 'cursor' ? 'default' : 'outline'} size="sm" aria-pressed={localClient === 'cursor'} onClick={() => setLocalClient('cursor')}>Cursor</Button>
-            <Button variant={localClient === 'muse' ? 'default' : 'outline'} size="sm" aria-pressed={localClient === 'muse'} onClick={() => setLocalClient('muse')}>Muse</Button>
-            <Button variant={localClient === 'json-client' ? 'default' : 'outline'} size="sm" aria-pressed={localClient === 'json-client'} onClick={() => setLocalClient('json-client')}>JSON MCP client</Button>
-          </div>
           {localClient === 'claude-code' ? <CommandRow label={`Add ${serviceName} to Claude Code`} command={`claude mcp add --transport http ${serverName} ${quoted(mcpUrl)}`} />
             : localClient === 'codex' ? <div className="space-y-2"><CommandRow label={`Add ${serviceName} to Codex`} command={`codex mcp add ${serverName} --url ${quoted(mcpUrl)}`} /><CommandRow label={`Sign in to ${serviceName}`} command={`codex mcp login ${serverName}`} /></div>
               : localClient === 'cursor' ? <div className="space-y-2"><JsonBlock label="Add to ~/.cursor/mcp.json" json={mcpJson} hint={`Merge the ${serverName} entry into mcpServers if the file already has servers.`} /><CommandRow label={`Sign in to ${serviceName}`} command={`cursor-agent mcp login ${serverName}`} /></div>
@@ -150,32 +129,9 @@ export function CliMcpSetupContent({ target = 'agentworks', endpoint, projectNam
         </div>
         <p className="text-xs text-muted-foreground">Approve the OAuth connection in your browser when your agent asks. A local server URL works only for agents on this computer.</p>
         {target === 'agentworks' && !projectName && localClient === 'claude-code' && <details className="rounded-md border border-border p-3 text-xs text-muted-foreground"><summary className="cursor-pointer font-medium text-foreground">Optional: use the AgentWorks skill</summary><p className="mt-2">The skill teaches Claude Code how to use the workflow tools. Once {serviceName} is connected, ask Claude to install it; it fetches the text through its own connection, so nothing is public and nothing is pasted.</p><div className="mt-2"><CommandRow label="Tell Claude" command="Install the AgentWorks skill: call get_skill and save its content to ~/.claude/skills/agentworks/SKILL.md" /></div><div className="mt-3 flex flex-wrap gap-2"><Button variant="ghost" size="sm" disabled={skillBusy !== null} onClick={() => void copySkill()}><Copy className="mr-1 h-3.5 w-3.5" />Copy skill text</Button></div>{skillMsg && <p className="mt-2">{skillMsg}</p>}</details>}
-        {target === 'agentworks' && !projectName && <AgentMessagingStep app={localClient === 'claude-code' ? 'claude' : localClient === 'json-client' ? undefined : localClient} />}
-      </div> : <div className="space-y-4">
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Hosted MCP client">
-          <Button variant={hostedClient === 'chatgpt' ? 'default' : 'outline'} size="sm" aria-pressed={hostedClient === 'chatgpt'} onClick={() => setHostedClient('chatgpt')}>ChatGPT</Button>
-          <Button variant={hostedClient === 'cowork' ? 'default' : 'outline'} size="sm" aria-pressed={hostedClient === 'cowork'} onClick={() => setHostedClient('cowork')}>Claude Cowork</Button>
-        </div>
-        {hostedClient === 'cowork' && target === 'agentworks' && !projectName ? <div className="space-y-2 rounded-md border border-border p-3">
-          <p className="text-sm font-medium text-foreground">Install AgentWorks in Cowork</p>
-          <p className="text-xs text-muted-foreground">Download the plugin, then open Customize → Plugins in Cowork and upload it. Connect AgentWorks and approve access in your browser.</p>
-          <Button variant="outline" size="sm" disabled={skillBusy !== null || isLoopbackOrigin} onClick={() => void downloadCoworkPlugin()}><Download className="mr-1 h-3.5 w-3.5" />Download Cowork plugin</Button>
-          {pluginMsg && <p className="text-xs text-muted-foreground">{pluginMsg}</p>}
-        </div> : hostedClient === 'cowork' ? <p className="text-xs text-muted-foreground">In Cowork, open Customize → Connectors → Add custom connector.</p> : <p className="text-xs text-muted-foreground">In ChatGPT, open Settings → Apps & Connectors → Developer Mode, then add a custom MCP connector.</p>}
-        {hostedClient === 'chatgpt' ? <CommandRow label="Remote MCP URL" command={mcpUrl} /> : <details className="rounded-md border border-border p-3 text-xs text-muted-foreground"><summary className="cursor-pointer font-medium text-foreground">Connect manually instead</summary><p className="mt-2 mb-2">In Cowork, open Customize → Connectors → Add custom connector, then use this URL.</p><CommandRow label="Remote MCP URL" command={mcpUrl} /></details>}
-        {isLoopbackOrigin && <p className="text-xs text-amber-500">Hosted apps need a public server URL; open Connect on that server instead.</p>}
-        <p className="text-xs text-muted-foreground">Choose OAuth when the app asks how to authenticate. {serviceName} will open a sign-in and permission screen.</p>
-        {target === 'agentworks' && !projectName && hostedClient === 'chatgpt' && <details className="rounded-md border border-border p-3 text-xs text-muted-foreground">
-          <summary className="cursor-pointer font-medium text-foreground">Optional: give the assistant workflow guidance</summary>
-          <p className="mt-2">Upload the skill where Skills are supported, or paste its text into the app&apos;s custom instructions.</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" disabled={skillBusy !== null} onClick={() => void downloadSkill()}><Download className="mr-1 h-3.5 w-3.5" />Download skill .zip</Button>
-            <Button variant="ghost" size="sm" disabled={skillBusy !== null} onClick={() => void copySkill()}><Copy className="mr-1 h-3.5 w-3.5" />Copy skill text</Button>
-          </div>
-          {skillMsg && <p className="mt-2">{skillMsg}</p>}
-        </details>}
-      </div>}
-    </SettingsCard>
+      </div>
+    </SettingsCard>}
+    </>}
     {connectionLoadError && <p role="alert" className="text-sm text-amber-600">Connected apps are unavailable. Restart or update the AgentWorks server to use browser sign-in.</p>}
     {connections.length > 0 && <SettingsCard icon={<Plug className="h-4 w-4 text-primary" />} title="Connected apps" description="Revoke access to an AI app when you are done.">
       <div className="space-y-2">{connections.map(item => <div key={item.id} className="flex items-center justify-between gap-2 text-sm"><span className="min-w-0 truncate">{item.client_name}</span><Button variant="outline" size="sm" onClick={() => void revoke(item.id)}>Revoke</Button></div>)}</div>

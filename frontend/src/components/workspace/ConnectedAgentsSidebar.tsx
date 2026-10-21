@@ -17,7 +17,7 @@ const PROVIDERS: Record<string, string> = {
 }
 
 /** Connection presence from AgentBridge; this is not a running-task indicator. */
-export default function ConnectedAgentsSidebar() {
+export default function ConnectedAgentsSidebar({ embedded = false }: { embedded?: boolean } = {}) {
   const userId = useAuthStore((state) => state.user?.id)
   const workspace = useWorkspaceConnectionStore((state) => state.activeWorkspaceId)
   const scope = `${workspace}:${userId || ''}`
@@ -71,10 +71,11 @@ export default function ConnectedAgentsSidebar() {
   }, [scope, userId, attempt])
   const data = snapshot?.scope === scope ? snapshot : null
   // Shown even with nothing connected, so every server offers the way to connect one.
-  if (!userId || !data) return null
+  if (!userId) return null
+  if (!data) return embedded ? <p role="status" className="px-3 py-2 text-xs text-muted-foreground">Loading connected agents…</p> : null
   return (
-    <section aria-label="Connected CLI agents" className="mt-5">
-      <button
+    <section aria-label="Connected CLI agents" className={embedded ? "py-1" : "mt-5"}>
+      {embedded ? <p className="px-2 py-1 text-xs text-muted-foreground">Connected agents{!data.error && ` · ${data.agents.length}`}</p> : <button
         type="button"
         aria-expanded={!collapsed}
         aria-controls="sidebar-connected-agents"
@@ -87,8 +88,8 @@ export default function ConnectedAgentsSidebar() {
         {data && !data.error && (
           <span className="ml-auto text-[10px] tabular-nums">{data.agents.length}</span>
         )}
-      </button>
-      <div id="sidebar-connected-agents" hidden={collapsed}>
+      </button>}
+      <div id="sidebar-connected-agents" hidden={!embedded && collapsed}>
         {!data ? (
           <p className="px-3 py-2 text-xs text-muted-foreground">Loading connections…</p>
         ) : data.error ? (

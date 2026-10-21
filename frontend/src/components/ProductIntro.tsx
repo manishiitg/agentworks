@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, type LucideIcon } from 'lucide-react'
 
 interface ProductIntroProps {
   tour: string
@@ -7,7 +7,7 @@ interface ProductIntroProps {
   icon: ReactNode
   title: string
   description: string
-  features: { title: string; description: string }[]
+  features: { title: string; description: string; icon?: LucideIcon }[]
   createLabel: string
   createTour: string
   onCreate: () => void
@@ -29,7 +29,7 @@ export function ProductIntro({ tour, product, icon, title, description, features
       <div className="mt-5 grid grid-cols-1 gap-2 text-left text-xs text-muted-foreground sm:grid-cols-3">
         {features.map(feature => (
           <div key={feature.title} className="rounded-lg border border-border bg-background/70 px-3 py-2.5">
-            <span className="block font-medium text-foreground">{feature.title}</span>
+            <span className="mb-2 block">{feature.icon && <feature.icon className="h-5 w-5 text-primary" aria-hidden="true" />}</span><span className="mb-1 block font-medium text-foreground">{feature.title}</span>
             {feature.description}
           </div>
         ))}

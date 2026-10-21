@@ -170,10 +170,10 @@ it('browses all workflows or Relays from footer icons without requiring typed sc
     ] as never })
   })
   const shortcuts = host.querySelector('[aria-label="Quick navigation shortcuts"]')!
-  await act(async () => shortcuts.querySelector<HTMLButtonElement>('[aria-label="All workflows"]')!.click())
+  await act(async () => shortcuts.querySelector<HTMLButtonElement>('[aria-label="All Goals"]')!.click())
   expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['workflow:workflow', 'create:agentworks'])
   expect(host.querySelector('input')!.value).toBe('')
-  expect(host.querySelector('[aria-label="Show all work and navigation"]')?.textContent).toContain('All workflows')
+  expect(host.querySelector('[aria-label="Show all work and navigation"]')?.textContent).toContain('All Goals')
   await act(async () => shortcuts.querySelector<HTMLButtonElement>('[aria-label="All Flows"]')!.click())
   expect([...host.querySelectorAll('[data-navigation-id]')].map(row => row.getAttribute('data-navigation-id'))).toEqual(['workflow:relay', 'create:relays'])
   expect(onClose).not.toHaveBeenCalled()
@@ -182,7 +182,7 @@ it('browses all workflows or Relays from footer icons without requiring typed sc
 })
 
 it.each([
-  ['Users and access', 'users'], ['Connect an AI agent (MCP)', 'mcp'], ['AI models & accounts', 'providers'],
+  ['Users and access', 'users'], ['Connect AI tools', 'mcp'], ['AI models & accounts', 'providers'],
 ])('opens %s directly from its footer icon', async (label, destination) => {
   const { host, onClose } = await renderNavigation('')
   useAppStore.setState({ adminPage: null })
@@ -240,7 +240,7 @@ it('hides unavailable products and admin-only menus and opens Providers on an al
   const { host } = await renderNavigation('@menus ', ['code'], false)
   expect(host.textContent).toContain('AI models & accounts')
   expect(host.textContent).not.toContain('Users and access')
-  expect(host.textContent).toContain('Connect an AI agent') // MCP is for every signed-in person (owner, 2026-10-09)
+  expect(host.textContent).toContain('Connect AI tools') // MCP is for every signed-in person (owner, 2026-10-09)
   expect(host.textContent).not.toContain('Schedules and triggers')
   expect(quickNavigationItems(useAuthStore.getState().user, 'work').filter(item => item.type === 'product').map(item => item.surface)).toEqual(['work'])
   await act(async () => host.querySelector('[data-navigation-id="menu:providers"]')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
@@ -449,7 +449,7 @@ it('distinguishes saved Crew side-chat names and activates the existing tab', as
       metadata: { mode: 'multi-agent', agentProfileId: 'work', agentProfileProjectId: 'p1', agentProfileProjectTitle: 'Shared Crew', agentProfileConversationKey: index ? `p1:chat:${name}` : 'p1' },
     }])) as never })
   })
-  expect(host.querySelector('[data-navigation-id="crew:main"]')?.textContent).toContain('Main')
+  expect(host.querySelector('[data-navigation-id="crew:main"]')?.textContent).toContain('Builder')
   for (const name of ['Finance', 'Research']) {
     const row = host.querySelector(`[data-navigation-id="crew:${name}"]`)!
     expect(row.textContent).toContain(name)

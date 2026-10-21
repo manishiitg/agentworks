@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GatewaySurface } from './GatewaySurface'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { usePanelSwitcherStore } from '../../stores/usePanelSwitcherStore'
-const auth = vi.hoisted(() => ({ user: { id: 'admin', is_admin: true } as { id?: string; is_admin: boolean; is_vault_reader?: boolean } | null, checkAuth: vi.fn() }))
+const auth = vi.hoisted(() => ({ user: { id: 'admin', is_admin: true } as { id?: string; is_admin: boolean; is_vault_reader?: boolean; can_create?: boolean } | null, checkAuth: vi.fn() }))
 const globalPage = vi.hoisted(() => ({ adminPage: null as string | null, showLLMModal: false }))
 const chatRuntime = vi.hoisted(() => {
   const state = { chatTabs: {} as Record<string, any>, tabEvents: {}, activeSessionsCache: [] as any[], createChatTab: vi.fn(), setTabConfig: vi.fn(), setTabMetadata: vi.fn() }
@@ -20,6 +20,7 @@ vi.mock('../../components/UpdateProgressToast', () => ({ UpdateProgressToast: ()
 vi.mock('../../components/topbar/LlmModalHost', () => ({ default: () => null }))
 vi.mock('../../components/SchedulesPage', () => ({ default: () => null }))
 vi.mock('../../components/AdminPages', () => ({ default: () => null }))
+vi.mock('../../components/MyVaultsPage', () => ({ default: ({ embedded }: { embedded?: boolean }) => <div data-testid="my-vaults" data-embedded={String(embedded)}>Personal accounts and shared vaults</div> }))
 vi.mock('./GatewayAuditPanel', () => ({ GatewayAuditPanel: ({ tab }: any) => <div data-testid="audit-content">{tab}</div> }))
 vi.mock('./GatewayConnectPanel', () => ({ GatewayConnectPanel: () => <div data-testid="endpoint-content">Endpoint connection</div> }))
 vi.mock('./GatewayModelSettings', () => ({ GatewayModelSettings: () => <span>Shared provider model settings</span> }))
@@ -99,11 +100,23 @@ describe('GatewaySurface', () => {
     expect(chatRuntime.resolve).not.toHaveBeenCalled(); expect(chatRuntime.hydrate).not.toHaveBeenCalled()
     expect(container!.querySelector('[aria-label="Vault sections"]')).toBeNull()
     expect(container!.querySelector('[aria-label="Collapse workspace panel"]')).toBeNull()
+    expect(container!.querySelector('[aria-label="More workspace tools"]')).toBeNull()
+    expect(button(main(), 'Connect MCP')).toBeDefined()
+  })
+  it('opens My vaults within Vault and keeps it unavailable to Run-only accounts', async () => {
+    healthy(); await renderSurface()
+    await shortcut('My vaults')
+    expect(main().querySelector('[data-testid="my-vaults"]')?.getAttribute('data-embedded')).toBe('true')
+    expect(chatRuntime.resolve).not.toHaveBeenCalled()
+    auth.user = { id: 'run-person', is_admin: false, is_vault_reader: true, can_create: false }
+    await act(async () => surfaceRoot!.render(<GatewaySurface />))
+    expect(button(overview(), 'My vaults')).toBeUndefined()
+    expect(main().querySelector('[data-testid="my-vaults"]')).toBeNull()
   })
   it('navigates MCP inventories in main without starting the assistant', async () => {
     healthy(); await renderSurface(); await shortcut('Connected MCPs')
     expect(main().querySelector('[aria-label="Connected servers"]')).not.toBeNull()
-    await shortcut('Available MCPs'); expect(main().querySelector('[aria-label="Available servers"]')).not.toBeNull()
+    await act(async () => button(main(), 'Connect MCP').click()); expect(main().querySelector('[aria-label="Available servers"]')).not.toBeNull()
     expect(button(overview(), 'Available MCPs').getAttribute('aria-current')).toBe('page')
     expect(chatRuntime.resolve).not.toHaveBeenCalled()
   })
@@ -124,7 +137,8 @@ describe('GatewaySurface', () => {
     expect(button(overview(), 'Vault MCP endpoint').getAttribute('aria-current')).toBe('page')
     expect(container!.querySelectorAll('[data-product-navigation-slot]')).toHaveLength(1)
     expect(useProductNavigationToolbarStore.getState().target).toBe(container!.querySelector('[data-product-navigation-slot]'))
-    await act(async () => button(container!, 'Back to Vault management').click())
+    expect(container!.querySelector('[aria-label="Back to Vault management"]')).toBeNull()
+    await act(async () => container!.querySelector<HTMLButtonElement>('h1 button')!.click())
     expect(main().querySelector('[aria-label="Connected servers"]')).not.toBeNull(); expect(chatRuntime.resolve).not.toHaveBeenCalled()
   })
   it('opens the existing assistant on the right and retains its draft and management selection', async () => {
@@ -158,13 +172,14 @@ describe('GatewaySurface', () => {
     expect(chatRuntime.draft).toHaveBeenCalledExactlyOnceWith({ tabId: 'tab-session', message: 'Help me connect a custom MCP server. Ask me for its name and URL.' })
     expect(container!.querySelector('[aria-label="Vault chat"]')?.hasAttribute('hidden')).toBe(false)
   })
-  it('retains preview choices under More and applies them to management', async () => {
-    healthy(); await renderSurface(); await act(async () => button(container!, 'More workspace tools').click())
-    const menu = container!.querySelector('[role="menu"][aria-label="More workspace tools"]')!
-    for (const label of ['Mobile preview', 'Tablet preview', 'Laptop preview']) expect(button(menu, label)).toBeDefined()
-    await act(async () => button(menu, 'Mobile preview').click())
-    expect(main().querySelector('[data-vault-preview="mobile"]')).not.toBeNull()
-    expect(localStorage.getItem('workflow_report_preview_preference:Chats/CapLayer')).toBe('mobile'); expect(chatRuntime.resolve).not.toHaveBeenCalled()
+  it('keeps audit and setup visible and removes irrelevant preview sizes', async () => {
+    healthy(); await renderSurface()
+    expect(overview().querySelector('details')).toBeNull()
+    for (const label of ['Audit logs', 'Vault MCP endpoint', 'Models']) expect(button(overview(), label)).toBeDefined()
+    expect(overview().textContent).not.toContain('Preview size')
+    expect(overview().textContent).not.toContain('Mobile preview')
+    expect(main().querySelector('[data-vault-preview]')).toBeNull()
+    expect(chatRuntime.resolve).not.toHaveBeenCalled()
   })
   it('retains new-conversation rotation in the shared assistant', async () => {
     healthy(); await renderSurface(); await openAssistant(); await act(async () => button(container!, 'New assistant conversation').click())

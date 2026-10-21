@@ -16,7 +16,7 @@ const errorText = (cause: unknown, fallback: string) => {
 }
 
 /** One permission form for company OAuth apps, named JSON uploads and existing accounts. */
-export function GoogleAccountConnect({ onChanged, canConnect = true }: { onChanged?: () => void; canConnect?: boolean }) {
+export function GoogleAccountConnect({ onChanged, canConnect = true, initiallyExpanded = true }: { onChanged?: () => void; canConnect?: boolean; initiallyExpanded?: boolean }) {
   const workspacePath = ''
   const readOnly = false
   const lockedReason = 'Manage your personal Google account in My Vault.'
@@ -33,7 +33,7 @@ export function GoogleAccountConnect({ onChanged, canConnect = true }: { onChang
   const [opened, setOpened] = useState(false)
   const [authUrl, setAuthUrl] = useState('')
   const [copied, setCopied] = useState(false)
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(initiallyExpanded)
   const contentId = useId()
   const [changing, setChanging] = useState<{ id: string; email: string; gmail: Level; levels: Record<string, Level> } | null>(null)
   const sectionRef = useRef<HTMLElement>(null)

@@ -39,7 +39,7 @@ export function AdminPanel() {
     {error && <p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{error}</p>}
     <div className="relative"><Search aria-hidden="true" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><input aria-label="Find a person or agent" value={query} onChange={event => { setQuery(event.target.value); setCursors(['']) }} placeholder="Search people and agent names" className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
 
-    {!page ? <p role="status" className="py-8 text-center text-sm text-muted-foreground">Loading…</p> : !(page.people ?? []).length ? <p className="py-8 text-center text-sm text-muted-foreground">No one matches.</p> : <ul className="space-y-3">
+    {!page ? <p role="status" className="py-8 text-center text-sm text-muted-foreground">Loading…</p> : !(page.people ?? []).length ? <p className="py-8 text-center text-sm text-muted-foreground">{query.trim() ? 'No one matches your search.' : 'No people are listed on this server yet.'}</p> : <ul className="space-y-3">
       {(page.people ?? []).map(person => <li key={person.username} className="rounded-xl border border-border p-4">
         <p className="font-semibold">{person.username} <span className="text-xs font-normal text-muted-foreground">{({ admin: 'Admin', creator: 'Creator', editor: 'Editor', viewer: 'Member' } as Record<string, string>)[person.role] || person.role}{person.disabled && ' · disabled'} · {(person.agents ?? []).length} agent{(person.agents ?? []).length === 1 ? '' : 's'}</span></p>
         {(person.agents ?? []).length > 0 && <ul className="mt-3 divide-y divide-border">

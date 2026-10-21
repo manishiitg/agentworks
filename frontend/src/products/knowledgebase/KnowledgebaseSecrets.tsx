@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button'
 // Brain's own secrets (PLAT-633), not Vault's platform secrets: names only, managed by people who own the whole Brain.
 export function KnowledgebaseSecrets() {
   const [names, setNames] = useState<string[] | null>(null)
+  const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
   const [value, setValue] = useState('')
   const [busy, setBusy] = useState(false)
@@ -24,7 +25,7 @@ export function KnowledgebaseSecrets() {
     setBusy(true); setError('')
     try {
       const response = await api.put<{ secrets: string[] }>('/api/knowledgebase/secrets', { name: name.trim(), value })
-      setNames(response.data.secrets ?? []); setName(''); setValue('')
+      setNames(response.data.secrets ?? []); setName(''); setValue(''); setAdding(false)
     } catch (failure) { failed(failure, 'The secret was not saved.') } finally { setBusy(false) }
   }
   async function remove(secret: string) {
@@ -37,7 +38,7 @@ export function KnowledgebaseSecrets() {
   return <div className="space-y-4 p-4 text-sm" data-testid="knowledgebase-secrets">
     <div>
       <h3 className="font-semibold">Brain secrets</h3>
-      <p className="mt-1 text-xs text-muted-foreground">Brain's own secrets, such as the Git backup token. Platform secrets stay in Vault. Values are never shown.</p>
+      <p className="mt-1 text-xs text-muted-foreground">Private keys used by Brain, such as your backup token. Shared platform secrets are managed in Vault. Values are never shown.</p>
     </div>
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     {names === null ? <p className="text-muted-foreground">Loading…</p> : names.length === 0
@@ -46,11 +47,12 @@ export function KnowledgebaseSecrets() {
           <KeyRound className="h-4 w-4 text-muted-foreground" /><code className="min-w-0 flex-1 truncate">{secret}</code>
           <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Remove ${secret}`} disabled={busy} onClick={() => void remove(secret)}><Trash2 className="h-3.5 w-3.5" /></Button>
         </li>)}</ul>}
-    <form className="space-y-2 rounded-lg border border-border p-3" onSubmit={event => { event.preventDefault(); void save() }}>
+    {!adding && <Button variant="outline" size="sm" onClick={() => setAdding(true)}>Add secret</Button>}
+    {adding && <form className="space-y-2 rounded-lg border border-border p-3" onSubmit={event => { event.preventDefault(); void save() }}>
       <p className="text-xs font-medium">Add or replace a secret</p>
       <input aria-label="Secret name" value={name} onChange={event => setName(event.target.value)} placeholder="BRAIN_GITHUB_PAT" className="w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs" />
       <input aria-label="Secret value" type="password" autoComplete="off" value={value} onChange={event => setValue(event.target.value)} placeholder="Value" className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs" />
-      <div className="flex justify-end"><Button size="sm" type="submit" disabled={busy || !name.trim() || !value}>Save</Button></div>
-    </form>
+      <div className="flex justify-end gap-2"><Button variant="ghost" size="sm" disabled={busy} onClick={() => { setAdding(false); setName(''); setValue('') }}>Cancel</Button><Button size="sm" type="submit" disabled={busy || !name.trim() || !value}>Save</Button></div>
+    </form>}
   </div>
 }

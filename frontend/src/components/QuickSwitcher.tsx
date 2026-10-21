@@ -142,7 +142,7 @@ const activeSessionLabel = (session: ActiveSessionInfo): string => {
       session.preset_name ||
       session.workspace_path?.split('/').filter(Boolean).pop() ||
       session.title ||
-      'Automation'
+      'Goal'
   }
   return nonWorkflowActivityTitle(session)
 }
@@ -150,8 +150,8 @@ const activeSessionLabel = (session: ActiveSessionInfo): string => {
 const activeSessionStatusLabel = (session: ActiveSessionInfo): string => {
   if (runtimeNeedsUserInput(session)) return 'waiting for input'
   const bgCount = session.running_background_agent_count ?? 0
-  if (bgCount > 0) return `${bgCount} bg agent${bgCount === 1 ? '' : 's'}`
-  if (runtimeHasBackgroundAgents(session)) return 'bg agents running'
+  if (bgCount > 0) return `${bgCount} working`
+  if (runtimeHasBackgroundAgents(session)) return 'working'
   if (hasIdleAliveCodingAgent(session) && sessionRuntimeStatus(session) === 'stopped') return 'idle'
   return sessionRuntimeStatus(session)
 }
@@ -371,7 +371,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       .map(tab => {
         const activeSession = tab.sessionId ? visibleActiveSessions.find(session => session.session_id === tab.sessionId) : undefined
         const project = tab.metadata?.agentProfileIdentityName || tab.metadata?.agentProfileProjectTitle || 'Crew'
-        const role = tab.metadata?.agentProfileBuilder ? 'Builder' : isWorkSideChatTab(tab) ? tab.name : 'Main'
+        const role = tab.metadata?.agentProfileBuilder ? 'Builder' : isWorkSideChatTab(tab) ? tab.name : 'Builder'
         return {
           type: 'crew' as const,
           id: `crew:${tab.tabId}`,
@@ -421,7 +421,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           type: 'workflow' as const,
           id: `workflow:${preset.id}`,
           label: preset.label,
-          subtitle: `${preset.workflowKind === 'relay' ? 'Flow' : 'Automation'}${builderStateSuffix(workflowTab)}${activeSessionSuffix(activeSession)}${activeCountSuffix}`,
+          subtitle: `${preset.workflowKind === 'relay' ? 'Flow' : 'Goal'}${builderStateSuffix(workflowTab)}${activeSessionSuffix(activeSession)}${activeCountSuffix}`,
           searchText: `${preset.selectedFolder!.filepath} ${activeSessionSearchText(activeSession)}`,
           isActive: productSurface === workflowSurfaceForPreset(preset.id) && isWorkflowMode && preset.id === activePresetId,
           lastAccessedAt: recentPresetAccessedAt[preset.id] || (() => {
@@ -750,7 +750,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                         {item.label}
                       </span>
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 font-medium flex-shrink-0">
-                        {(item.type === 'menu' || item.type === 'product') && item.scope ? 'browse' : item.type === 'menu' && item.action === 'create' ? 'create' : item.type === 'workflow' && item.preset.workflowKind === 'relay' ? 'relay' : item.type}
+                        {(item.type === 'menu' || item.type === 'product') && item.scope ? 'browse' : item.type === 'menu' && item.action === 'create' ? 'create' : item.type === 'workflow' ? (item.preset.workflowKind === 'relay' ? 'Flow' : 'Goal') : item.type === 'crew' ? 'Crew' : item.type}
                       </span>
                       {activeSession && item.type !== 'active' && (
                         runtimeNeedsUserInput(activeSession) ? (

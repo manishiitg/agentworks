@@ -121,6 +121,18 @@ describe('GatewayGroupsPanel', () => {
     expect(container!.textContent).toContain('Add MCPs (1)')
   })
 
+  it.each([false, true])('describes effective tools on an attached server (allowed=%s)', async (allowed) => {
+    const fallback = healthyFetch()
+    await renderPanel(vi.fn((url: string) => {
+      if (url.includes('/servers')) return Promise.resolve(jsonResponse(200, { servers: ['c1'] }))
+      if (url.includes('/permissions')) return Promise.resolve(jsonResponse(200, { permissions: [{ public_name: 'notion__search', allowed, governed: false, source: 'server' }] }))
+      return fallback(url)
+    }))
+    expect(container!.textContent).toContain(allowed ? 'All tools allowed' : '0 of 1 tools allowed')
+    if (!allowed) expect(container!.textContent).not.toContain('All tools allowed')
+    expect(container!.querySelector('[aria-label="Read tools only on Notion"]')).not.toBeNull()
+  })
+
   it('keeps secret controls mounted and the add list open while refreshing after a saved grant', async () => {
     let refreshSecrets: ((value: Response) => void) | undefined
     let reads = 0

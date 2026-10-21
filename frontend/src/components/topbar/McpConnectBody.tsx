@@ -14,9 +14,9 @@ export default function McpConnectBody({ codeReview }: { codeReview: boolean }) 
   const hasBullpen = visibleProductSurfaceIDs(allowedProducts).includes('bullpen')
   return (
     <div className="space-y-6">
-      {hasBullpen && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-4"><p className="text-sm text-muted-foreground">For messages between your coding agents, open AgentBridge.</p><Button variant="outline" size="sm" onClick={() => openProductWorkspace('bullpen')}>Open AgentBridge</Button></div>}
       <div className="space-y-5">
       <CliMcpSetupPanel />
+      {hasBullpen && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-4"><p className="text-sm text-muted-foreground">For messages between your coding agents, open AgentBridge.</p><Button variant="outline" size="sm" onClick={() => openProductWorkspace('bullpen')}>Open AgentBridge</Button></div>}
       <details className="rounded-lg border border-border p-4 text-sm"><summary className="cursor-pointer font-medium text-foreground">What your connections can access</summary><div className="mt-4 space-y-3">
       {codeReview && (
         <div className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">

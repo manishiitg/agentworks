@@ -56,6 +56,7 @@ export function ProductSurfaceSwitcher({ className, standalone = false, menuOnly
   const compact = useCompactProductNavigation()
   const pageHeader = useProductNavigationToolbarStore(state => state.targetKind === 'page')
   const productSurface = useProductSurfaceStore((state) => state.productSurface)
+  const resourceProduct = productSurface === 'knowledgebase' || productSurface === 'mcp-gateway'
   const allowedProducts = useAuthStore((state) => state.user?.allowed_products)
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -138,7 +139,7 @@ export function ProductSurfaceSwitcher({ className, standalone = false, menuOnly
         className={`relative flex h-8 items-center gap-1.5 rounded-lg px-2 text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary`}>
         {sidebar && <span aria-hidden="true" className="absolute -left-1.5 h-4 w-0.5 rounded-r bg-primary" />}
         <CurrentIcon className="h-4 w-4 shrink-0" title="" />
-        <span className={pageHeader ? 'sr-only' : 'text-xs font-medium'}>{currentProduct.label}</span>{!pageHeader && <ChevronDown className="h-3 w-3" aria-hidden="true" />}
+        <span className={pageHeader || resourceProduct ? 'sr-only' : 'text-xs font-medium'}>{currentProduct.label}</span>{!pageHeader && <ChevronDown className="h-3 w-3" aria-hidden="true" />}
       </button>
       {open && <div className={sidebar ? 'absolute left-full top-0 z-50 pl-2' : 'absolute right-0 top-full z-50 pt-2'}>
         {productMenu(true, 'w-[420px] max-w-[calc(100vw-24px)]')}
@@ -162,7 +163,7 @@ export function ProductSurfaceSwitcher({ className, standalone = false, menuOnly
         className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-left text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
         <CurrentIcon className="h-4 w-4 shrink-0" title="" />
-        <span className="whitespace-nowrap text-xs font-medium">{currentProduct.label}</span>
+        <span className={resourceProduct ? 'sr-only' : 'whitespace-nowrap text-xs font-medium'}>{currentProduct.label}</span>
         <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open ? (

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { KeyRound, RefreshCw, Trash2 } from 'lucide-react'
+import { KeyRound, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Button } from '../../components/ui/Button'
 import OAuthStatusBadge from '../../components/OAuthStatusBadge'
 import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import { McpConnectionsPanel, type McpConnectionRow, type McpCatalogRow } from '../../components/integrations/McpConnectionsPanel'
@@ -45,11 +46,12 @@ function gatewayStatusDot(status: string): string {
   return 'bg-gray-400'
 }
 
-export function GatewayServersPanel({ base, standalone = false, view = 'connected', onConnected, onAddCustom, revision, chatSessionId }: {
+export function GatewayServersPanel({ base, standalone = false, view = 'connected', onConnected, onBrowse, onAddCustom, revision, chatSessionId }: {
   base: string
   standalone?: boolean
   view?: 'connected' | 'available'
   onConnected?: () => void
+  onBrowse?: () => void
   onAddCustom?: () => Promise<void>
   revision?: string
   chatSessionId?: string
@@ -194,7 +196,7 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
       const needsReview = tools.filter(tool => tool.Status === 'quarantined').length
       const approved = tools.filter(tool => tool.Status === 'active').length
       return {
-        id: c.ID, name, provider: row.catalogMatch?.Name ?? c.Provider, source: c.OAuthCredentialID ? `Vault · ${c.OAuthServer}` : 'Vault', status: c.Status === 'active' ? 'Connected' : c.Status === 'disabled' ? 'Disabled' : c.Status === 'quarantined' ? 'Connection needs review' : c.Status === 'authentication_required' ? 'Sign-in required' : c.Status,
+        id: c.ID, name, provider: row.catalogMatch?.Name ?? c.Provider, source: c.OAuthCredentialID ? c.OAuthServer : undefined, status: c.Status === 'active' ? 'Connected' : c.Status === 'disabled' ? 'Disabled' : c.Status === 'quarantined' ? 'Connection needs review' : c.Status === 'authentication_required' ? 'Sign-in required' : c.Status,
         statusDot: gatewayStatusDot(c.Status), toolCount: c.Status === 'authentication_required' ? undefined : tools.length,
         controls: !readOnly && c.Status === 'authentication_required' && c.OAuthServer ? <OAuthStatusBadge chatSessionId={chatSessionId} scope="vault" serverName={c.OAuthServer} connectionId={c.OAuthCredentialID} requiresOAuth connection="available" connectLabel="Sign in" onAuthChange={valid => { if (valid) bump() }} /> : undefined,
         toolsLabel: (open: boolean) => `${open ? 'Hide' : 'Show'} ${plural(tools.length, 'tool')} on ${name}`,
@@ -232,6 +234,8 @@ export function GatewayServersPanel({ base, standalone = false, view = 'connecte
     details: namingKey === row.key ? <McpNamedConnectionForm provider={row.catalogMatch!.Name} busy={addingKey === row.key} cancel={() => setNamingKey(null)} submit={name => onAddToGateway(row, name)} /> : undefined,
   }))
   return <McpConnectionsPanel servers={servers} catalog={readOnly ? [] : catalog} view={view} loading={loading} refresh={bump} searchTestId="gateway-servers-search"
+    density="directory" description={view === 'connected' ? 'Apps and tools your agents can use.' : 'Choose an app or MCP your agents can use.'}
+    headerActions={view === 'connected' && !readOnly && onBrowse ? <Button size="sm" onClick={onBrowse}><Plus />Connect MCP</Button> : undefined}
     notices={[
       ...(error ? [{ message: data ? `Could not refresh: ${error}. Saved data may be outdated.` : error, retry: bump }] : []),
       ...(actionError ? [{ message: actionError, retry: bump }] : []),

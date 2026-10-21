@@ -29,7 +29,7 @@ export default function McpControl() {
           role={inSettings ? 'menuitem' : undefined}
           data-product-navigation-action
           onClick={() => { useLLMStore.getState().setShowLLMModal(false); setAdminPage('mcp') }}
-          aria-label="Connect an AI agent (MCP)"
+          aria-label="Connect AI tools"
           aria-pressed={active}
           data-tour="global-mcp"
           className={`relative rounded-md p-1.5 transition-colors ${active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
@@ -39,7 +39,7 @@ export default function McpControl() {
           <ProductNavigationDescription>CLI, Cowork &amp; ChatGPT</ProductNavigationDescription>
         </button>
       </TooltipTrigger>
-      <TooltipContent side={sidebar ? 'right' : 'bottom'}>Connect an AI agent (MCP)</TooltipContent>
+      <TooltipContent side={sidebar ? 'right' : 'bottom'}>Connect AI tools</TooltipContent>
     </Tooltip>
   )
 }

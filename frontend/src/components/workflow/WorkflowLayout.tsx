@@ -9,7 +9,7 @@ import { WorkflowGoalSetupBar } from './WorkflowGoalSetupBar'
 import { usePointerDrag } from '../../hooks/usePointerDrag'
 import React, { useMemo, useCallback, useRef, useEffect, forwardRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { PanelLeftOpen, PanelRightOpen } from 'lucide-react'
+import { PanelLeftOpen, PanelRightOpen, Waypoints, Target } from 'lucide-react'
 import { WorkflowCanvas, type WorkflowCanvasRef } from './canvas'
 import { useGlobalPresetStore } from '../../stores/useGlobalPresetStore'
 import { useModeStore } from '../../stores/useModeStore'
@@ -59,6 +59,7 @@ import {
   writeWorkflowSplitPreference,
 } from '../../utils/reportPreviewPreference'
 import { WorkspaceSplitRail } from '../workspace/WorkspaceSplitDivider'
+import { WorkspacePageHeader } from '../workspace/WorkspacePageHeader'
 import { RelayIntro } from './RelayIntro'
 import { ReportView } from './ReportViewer'
 import { AutomationHubPanel } from '../automation/AutomationHubPanel'
@@ -1328,6 +1329,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     prevWorkflowWorkspaceViewRef.current = workflowWorkspaceView
 
     if (workflowWorkspaceView === 'report' && prev !== 'report') {
+      setShowChatArea(false)
       if (!workspaceMinimized) {
         reportAutoMinimizedWorkspaceRef.current = true
         setWorkspaceMinimized(true)
@@ -1336,6 +1338,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     }
 
     if (workflowWorkspaceView !== 'report' && prev === 'report') {
+      setShowChatArea(true)
       reportAutoMinimizedWorkspaceRef.current = false
     }
   }, [selectedModeCategory, workflowWorkspaceView, workspaceMinimized, setWorkspaceMinimized])
@@ -2281,7 +2284,8 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   if (!activeWorkflowPreset && !workspacePath) {
     return (
       <div className={`flex flex-col h-full ${className}`}>
-        <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900">
+        <WorkspacePageHeader title={isRelaySurface ? 'Flows' : 'Goals'} icon={isRelaySurface ? Waypoints : Target} showBack={false} />
+        <div className="flex-1 overflow-y-auto bg-background">
           <div className="flex min-h-full items-center justify-center py-6">
             {isRelaySurface ? <RelayIntro /> : (
               <div data-tour="automation-empty-state" className="flex flex-col items-center gap-4 text-center max-w-md">
@@ -2409,28 +2413,25 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
 
             {activeWorkflowChatTabId && contractUpgrade && hasWorkflowContractUpgrade(contractUpgrade) && (
               <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/60 px-4 py-2 text-sm">
-                <span className="min-w-0 flex-1 text-muted-foreground">
+                <div className="min-w-0 flex-1 text-muted-foreground">
                   {startingContractUpgrade
                     ? 'Opening the workflow update in chat…'
                     : contractUpgradeTab
                       ? contractUpgradeQueued
-                        ? 'Workflow update requested. The message is queued in chat and will start when the chat is ready.'
+                        ? 'Update queued in chat. It will start when the chat is ready.'
                         : contractUpgradeStreaming
-                          ? 'Workflow update is in progress in chat. The pending notice will clear when the migrations are applied.'
-                          : 'Workflow update requested in chat. Continue there to finish the migrations or answer any questions.'
+                          ? 'Updating in chat…'
+                          : 'Continue in chat to finish this update.'
                       : <>
                         {contractUpgrade.required
-                          ? 'This workflow needs a manual platform update before you can start it from chat'
+                          ? 'Update needed before starting in chat'
                           : 'Workflow update available'}
-                        {contractUpgrade.current_version && contractUpgrade.platform_version
-                          ? contractUpgrade.current_version === contractUpgrade.platform_version
-                            ? ' (code layout update required).'
-                            : ` (v${contractUpgrade.current_version} → v${contractUpgrade.platform_version}).`
-                          : '.'}
-                        {' '}Builder reviews and applies the pending migrations in chat.
-                        {' '}Schedules keep running the saved version and will not update it automatically.
+                        <details className="mt-1 text-xs"><summary className="w-fit cursor-pointer">About this update</summary><p className="mt-1">
+                          {contractUpgrade.current_version && contractUpgrade.platform_version ? `Version ${contractUpgrade.current_version} → ${contractUpgrade.platform_version}. ` : ''}
+                          Builder applies the update in chat. Schedules keep running the saved version until you update it.
+                        </p></details>
                       </>}
-                </span>
+                </div>
                 {canStartContractUpgrade ? (
                   <button
                     type="button"

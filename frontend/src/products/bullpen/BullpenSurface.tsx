@@ -2,8 +2,9 @@ import { currentProductRoute } from '../../utils/productRoutes'
 import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { AgentUsage, BullpenUsageOverview } from './BullpenUsage'
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { BookOpen, Check, Copy, MessagesSquare, RefreshCw, Search, Terminal, UsersRound } from 'lucide-react'
+import { BookOpen, Check, Copy, MessagesSquare, RefreshCw, Search, Terminal, UsersRound, ShieldCheck } from 'lucide-react'
 import { ModePresetBar } from '../../components/ModePresetBar'
+import { WorkspaceContextCard, WorkspaceContextRow } from '../../components/workspace/WorkspaceContextCard'
 import { WorkspacePageHeader } from '../../components/workspace/WorkspacePageHeader'
 import LlmModalHost from '../../components/topbar/LlmModalHost'
 import { AgentMessagingSetupPanel } from './AgentMessagingSetupPanel'
@@ -40,7 +41,7 @@ function AgentAddress({ target }: { target: string }) {
   </div>
 }
 
-function AgentDirectory({ onConnect, isAdmin }: { onConnect: () => void; isAdmin: boolean }) {
+function AgentDirectory({ onConnect }: { onConnect: () => void }) {
   const [agents, setAgents] = useState<BullpenAgent[]>([])
   const [loading, setLoading] = useState(true)
   const [usageLoading, setUsageLoading] = useState(true)
@@ -78,13 +79,12 @@ function AgentDirectory({ onConnect, isAdmin }: { onConnect: () => void; isAdmin
     .sort((a, b) => Number(b.online) - Number(a.online) || a.agent_name.localeCompare(b.agent_name))
   return <section aria-label="Your agents" className="space-y-5">
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><h2 className="text-lg font-semibold">Your agents</h2><p className="mt-1 text-sm text-muted-foreground">Names registered to your account on this server.</p></div>
+      <div><h2 className="text-lg font-semibold">Your agents</h2><p className="mt-1 text-sm text-muted-foreground">Your connected agents and published agents you can reach.</p></div>
       <div className="flex gap-2"><Button variant="outline" size="sm" disabled={loading} onClick={() => setAttempt(value => value + 1)}><RefreshCw className="mr-2 h-3.5 w-3.5" />Refresh agents</Button><Button size="sm" onClick={onConnect}>Connect an agent</Button></div>
     </div>
-    <HowBullpenWorks collapsible />
     {notices.length > 1 ? <details className="rounded-lg border border-border bg-muted/40 p-3 text-sm"><summary className="cursor-pointer">{notices.length} notices from an administrator · Show</summary><div className="mt-3 space-y-2">{notices.map(item => <div key={item.notice_id} role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 p-3 text-sm"><span className="min-w-0 break-words">{item.text}</span><Button variant="outline" size="sm" onClick={() => void bullpenApi.dismissNotice(item.notice_id).then(() => setNotices(list => list.filter(entry => entry.notice_id !== item.notice_id))).catch(() => undefined)}>Dismiss</Button></div>)}<Button variant="outline" size="sm" onClick={() => void Promise.all(notices.map(item => bullpenApi.dismissNotice(item.notice_id))).then(() => setNotices([])).catch(() => undefined)}>Dismiss all</Button></div></details> : notices.map(item => <div key={item.notice_id} role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 p-3 text-sm"><span className="min-w-0 break-words">{item.text}</span><Button variant="outline" size="sm" onClick={() => void bullpenApi.dismissNotice(item.notice_id).then(() => setNotices(list => list.filter(entry => entry.notice_id !== item.notice_id))).catch(() => undefined)}>Dismiss</Button></div>)}
     <div className="relative"><Search aria-hidden="true" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><input aria-label="Find an agent" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search names, providers and purpose" className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
-    {error ? <p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{error}</p> : loading && !agents.length ? <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading your agents…</p> : !agents.length ? <div className="rounded-xl border border-dashed border-border p-8 text-center"><MessagesSquare className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><h3 className="font-medium">Bring your first agent into AgentBridge</h3><p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">Connect a coding chat so your other agents can find it, exchange messages and reply.</p><Button className="mt-5" onClick={onConnect}>Set up messaging</Button></div> : !visible.length ? <p className="py-8 text-center text-sm text-muted-foreground">No agents match your search.</p> : <div className="grid gap-3 md:grid-cols-2">
+    {error ? <p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{error}</p> : loading && !agents.length ? <p role="status" className="py-12 text-center text-sm text-muted-foreground">Loading your agents…</p> : !agents.length ? <div className="rounded-xl border border-dashed border-border p-8 text-center"><MessagesSquare className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><h3 className="font-medium">Bring your first agent into AgentBridge</h3><p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">Connect an AI app or coding chat to exchange messages with your other agents.</p><Button className="mt-5" onClick={onConnect}>Set up messaging</Button></div> : !visible.length ? <p className="py-8 text-center text-sm text-muted-foreground">No agents match your search.</p> : <div className="grid gap-3 md:grid-cols-2">
       {visible.map(agent => <article key={agent.agent_id} className="min-w-0 space-y-3 rounded-xl border border-border p-4">
         <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="line-clamp-2 break-words font-semibold" title={agent.label || agent.agent_name}>{agent.label || agent.agent_name}</h3><p className="mt-1 truncate font-mono text-xs text-muted-foreground" title={agent.agent_name}>{agent.agent_name} · {agent.type || 'Agent'}{agent.provider ? ` · ${providerNames[agent.provider] || agent.provider}` : ''}</p></div><span className="flex shrink-0 flex-col items-end gap-1"><span className="rounded-full bg-muted px-2 py-1 text-xs">{agent.presence || 'Status unavailable'}</span>{agent.update_needed && <span className="rounded-full border border-border px-2 py-1 text-xs" title="The AgentWorks CLI on this agent's computer is older than the server's. Run agentworks update there.">CLI update available</span>}{agent.published && <span className="rounded-full border border-border px-2 py-1 text-xs" title="Everyone on this server can find and message this agent.">Published to network</span>}</span></div>
         {agent.purpose && agent.purpose.length <= 120 && <p className="break-words text-sm text-muted-foreground">{agent.purpose}</p>}
@@ -100,30 +100,37 @@ function AgentDirectory({ onConnect, isAdmin }: { onConnect: () => void; isAdmin
         <AgentUsage usage={agent.usage} unavailable={agent.usage_unavailable} provider={agent.provider} />
       </article>)}
     </div>}
-    {!error && (usageLoading ? <p role="status" className="text-sm text-muted-foreground">Loading optional usage…</p> : <BullpenUsageOverview agents={agents} onChange={() => setAttempt(value => value + 1)} />)}
-    <p className="text-xs leading-5 text-muted-foreground">Wakes now means the chat has an active delivery adapter. At next step means it receives messages at a supported chat event. Checks inbox means it fetches messages itself; offline messages wait. Last seen tracks the connection, not whether the agent read anything. Received and handled times come from acknowledgments. Optional usage reporting is off unless you turn it on with agentworks usage on.{updated && ' Last refreshed ' + updated.toLocaleTimeString() + '.'}</p>
-    <div className="rounded-xl bg-muted/30 p-4 text-sm"><h3 className="font-medium">Start a conversation</h3><p className="mt-2 leading-6 text-muted-foreground">Copy an agent address, then ask your coding agent to send it a message through AgentWorks. To let everyone on this server find and message an agent, ask it to publish itself to the network (and to take itself back to undo it). Replies stay in the same conversation. This page shows your directory; it does not expose private chat transcripts.</p></div>
-    {isAdmin && <AdminPanel />}
+    <HowBullpenWorks collapsible />
+    {!error && <details className="rounded-xl border border-border p-4"><summary className="cursor-pointer text-sm font-medium">Optional token usage</summary><div className="mt-4">{usageLoading ? <p role="status" className="text-sm text-muted-foreground">Loading optional usage…</p> : <BullpenUsageOverview agents={agents} onChange={() => setAttempt(value => value + 1)} />}</div></details>}
+    <p className="text-xs text-muted-foreground">{updated && `Last refreshed ${updated.toLocaleTimeString()}. `}Connection status does not mean a message has been read.</p>
+    <details className="rounded-xl border border-border p-4 text-sm"><summary className="cursor-pointer font-medium">How to start a conversation</summary><p className="mt-2 leading-6 text-muted-foreground">Copy an agent address, then ask your connected agent to send it a message through AgentWorks. Replies stay in the same conversation. This directory does not show private chat transcripts.</p></details>
   </section>
 }
 
 export function BullpenSurface() {
-  const [view, setView] = usePersistentTab('bullpen:view', 'agents', ['agents', 'setup'] as const, currentProductRoute()?.surface === 'bullpen' ? (currentProductRoute()?.view === 'setup' ? 'setup' : 'agents') : undefined)
-  useProductUrlView('bullpen', { view: view === 'setup' ? 'setup' : undefined })
+  const [view, setView] = usePersistentTab('bullpen:view', 'agents', ['agents', 'setup', 'admin'] as const, currentProductRoute()?.surface === 'bullpen' ? (currentProductRoute()?.view === 'setup' ? 'setup' : currentProductRoute()?.view === 'admin' ? 'admin' : 'agents') : undefined)
+  useProductUrlView('bullpen', { view: view === 'agents' ? undefined : view })
   const adminPage = useAppStore(state => state.adminPage)
   const showProviders = useLLMStore(state => state.showLLMModal)
   const user = useAuthStore(state => state.user)
-  useRegisterPanelSwitcher('bullpen', views, id => setView(id as 'agents' | 'setup'))
+  useRegisterPanelSwitcher('bullpen', user?.role === 'admin' ? [...views, { id: 'admin', label: 'Administration' }] : views, id => setView(id as 'agents' | 'setup' | 'admin'))
   return <div className="flex h-dvh min-h-0 min-w-0 bg-background text-foreground" data-testid="bullpen-surface">
     <ModePresetBar reduced walkthroughPaused />
     <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       {showProviders ? <LlmModalHost /> : adminPage ? <Suspense fallback={<p className="p-6">Opening settings…</p>}><AdminPages /></Suspense> : <div className="flex h-full min-h-0 w-full flex-col">
-        <WorkspacePageHeader title="AgentBridge" icon={MessagesSquare} showBack={false} below={
-          <nav aria-label="AgentBridge views" className="flex flex-wrap gap-2">{views.map(({ id, label, icon: Icon }) => <Button key={id} variant={view === id ? 'default' : 'ghost'} size="sm" aria-pressed={view === id} onClick={() => setView(id)}><Icon className="mr-2 h-4 w-4" />{label}</Button>)}<a href="https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><BookOpen className="h-4 w-4" aria-hidden="true" />AgentBridge help<span className="sr-only"> (opens in a new tab)</span></a></nav>
-        } />
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
-        <p className="mb-5 text-sm text-muted-foreground">Your connected agents, in one place.</p>
-        {view === 'setup' ? <AgentMessagingSetupPanel onOpenMcp={() => useAppStore.getState().setAdminPage('mcp')} /> : user ? <AgentDirectory key={user.id} isAdmin={user.role === 'admin'} onConnect={() => setView('setup')} /> : <p>Sign in to see your agents.</p>}
+        <WorkspacePageHeader title="AgentBridge" icon={MessagesSquare} showBack={false} onProductHome={() => setView('agents')} />
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
+          <div className="min-w-0 flex-1 p-4 sm:p-6 lg:overflow-y-auto">
+            {view === 'setup' ? <AgentMessagingSetupPanel onOpenMcp={() => useAppStore.getState().setAdminPage('mcp')} /> : view === 'admin' && user?.role === 'admin' ? <AdminPanel /> : user ? <AgentDirectory key={user.id} onConnect={() => setView('setup')} /> : <p>Sign in to see your agents.</p>}
+          </div>
+          <div className="shrink-0 lg:w-72" role="navigation" aria-label="AgentBridge views">
+            <WorkspaceContextCard title="AgentBridge" summary="Connect your AI agents so they can message each other." subtle>
+              <WorkspaceContextRow icon={UsersRound} active={view === 'agents'} onClick={() => setView('agents')}>Agents</WorkspaceContextRow>
+              <WorkspaceContextRow icon={MessagesSquare} active={view === 'setup'} onClick={() => setView('setup')}>Connect an agent</WorkspaceContextRow>
+              {user?.role === 'admin' && <WorkspaceContextRow icon={ShieldCheck} active={view === 'admin'} onClick={() => setView('admin')}>Administration</WorkspaceContextRow>}
+              <a href="https://github.com/manishiitg/agentworks/blob/main/docs/bullpen.md" target="_blank" rel="noopener noreferrer" className="flex min-h-8 items-center gap-2.5 rounded-md px-1 py-1.5 text-xs text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><BookOpen className="h-3.5 w-3.5" aria-hidden="true" />AgentBridge help<span className="sr-only"> (opens in a new tab)</span></a>
+            </WorkspaceContextCard>
+          </div>
         </div>
       </div>}
     </main>

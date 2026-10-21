@@ -22,16 +22,16 @@ it('places enabled Pulse above the groups; Off hides it and Relay has none', asy
   state.canWrite = true; state.enabled = true
   try {
     await act(async () => root.render(<WorkflowContextPanel workspacePath="Workflow/example" />))
-    expect([...host.querySelectorAll('h2,summary')].map(node => node.textContent)).toEqual(['Use & share', 'Connections', 'Ops'])
+    expect([...host.querySelectorAll('h2,summary')].map(node => node.textContent)).toEqual(['Your work', 'Share', 'Connections', 'Setup'])
     expect(host.querySelector('button')?.textContent).toBe('Pulse')
-    const ops = host.querySelector('details')!
+    const ops = [...host.querySelectorAll('details')].find(item => item.querySelector('summary')?.textContent === 'Setup')!
     expect(ops.open).toBe(false)
     expect(ops.textContent).toContain('Publish')
     expect(ops.textContent).toContain('Notify')
     state.enabled = false
     await act(async () => root.render(<WorkflowContextPanel workspacePath="Workflow/example" />))
     expect([...host.querySelectorAll('button')].filter(button => button.textContent === 'Pulse')).toHaveLength(0)
-    expect(host.querySelector('details')?.textContent).toContain('Turn Pulse on')
+    expect([...host.querySelectorAll('details')].find(item => item.querySelector('summary')?.textContent === 'Setup')?.textContent).toContain('Turn Pulse on')
     await act(async () => root.render(<RelayContextPanel workspacePath="Workflow/example" />))
     for (const label of ['Pulse', 'Publish', 'Notify', 'Schedules', 'Functions']) expect(host.textContent).not.toContain(label)
     const webhooks = [...host.querySelectorAll('button')].find(button => button.textContent === 'Webhooks')!

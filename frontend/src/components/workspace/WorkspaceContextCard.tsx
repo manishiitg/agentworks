@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react'
 import { ChevronRight, Search, type LucideIcon } from 'lucide-react'
-export function WorkspaceContextCard({ children, title, summary }: { children: ReactNode; title?: string; summary?: string }) {
+export function WorkspaceContextCard({ children, title, summary, subtle = false }: { children: ReactNode; title?: string; summary?: string; subtle?: boolean }) {
   return (
-    <div className="h-full min-h-0 p-3 sm:p-4">
+    <div className="max-h-full min-h-0 p-3 sm:p-4">
       <aside
         aria-label="Workspace context"
-        className="flex h-full min-h-0 flex-col gap-3 overflow-hidden rounded-2xl border border-border bg-muted/70 p-4 shadow-sm dark:bg-zinc-800/80"
+        className={`flex max-h-[calc(100dvh-6rem)] min-h-0 flex-col gap-3 overflow-hidden rounded-2xl border border-border p-4 shadow-sm ${subtle ? 'bg-muted/30 dark:bg-zinc-900/70' : 'bg-muted/70 dark:bg-zinc-800/80'}`}
       >
         {(title || summary) && <header className="shrink-0 border-b border-border pb-3">
           {title && <h2 className="text-sm font-semibold text-foreground">{title}</h2>}
@@ -21,7 +21,7 @@ export function WorkspaceContextCard({ children, title, summary }: { children: R
           className="flex w-full shrink-0 items-center gap-2.5 border-t border-border px-1 pt-3 text-xs text-muted-foreground hover:text-foreground"
         >
           <Search className="h-3.5 w-3.5" />
-          <span className="flex-1 text-left">Find a panel</span>
+          <span className="flex-1 text-left">Find a view</span>
           <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px]">
             {typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl+K'}
           </kbd>
@@ -50,10 +50,10 @@ export function WorkspaceContextSection({
   )
 }
 
-/** Ops sits last in the list; it starts open and the person can fold it away (owner, 2026-10-20). */
+/** Secondary destinations remain reachable without crowding everyday work. */
 export function WorkspaceContextGroup({ title, collapsed = false, children }: { title: string; collapsed?: boolean; children: ReactNode }) {
   if (!collapsed) return <WorkspaceContextSection title={title}>{children}</WorkspaceContextSection>
-  return <details open className="group/ops border-t border-border pt-2">
+  return <details className="group/ops border-t border-border pt-2">
     <summary className="flex cursor-pointer list-none items-center gap-1.5 py-1 text-[11px] font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
       <ChevronRight aria-hidden="true" className="h-3 w-3 transition-transform group-open/ops:rotate-90" />{title}
     </summary>
@@ -83,7 +83,7 @@ export function WorkspaceContextRow({
       onClick={onClick}
       title={hint}
       aria-current={active ? 'page' : undefined}
-      className={`flex w-full items-center gap-2.5 rounded-md px-1 py-1.5 text-left text-xs ${attention ? 'bg-amber-500/10 text-amber-500' : active ? 'bg-background/50 text-foreground' : 'text-foreground/85'} hover:bg-background/40`}
+      className={`flex w-full items-center gap-2.5 rounded-md px-1 min-h-8 py-1.5 text-left text-xs ${attention ? 'bg-amber-500/10 text-amber-500' : active ? 'bg-background/50 text-foreground' : 'text-foreground/85'} hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
     >
       <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate">{children}</span>

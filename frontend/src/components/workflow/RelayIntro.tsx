@@ -1,4 +1,4 @@
-import { Workflow } from 'lucide-react'
+import { CheckCircle2, MessageSquareText, Repeat2, Workflow } from 'lucide-react'
 import { ProductIntro } from '../ProductIntro'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useCommandDialogStore } from '../../stores/useCommandDialogStore'
@@ -11,14 +11,14 @@ export function RelayIntro() {
       tour="relay-empty-state"
       product="Flows"
       icon={<Workflow className="h-9 w-9 text-gray-600 dark:text-gray-200" />}
-      title="Turn an idea into an API you can reuse"
-      description="Describe an agent or a chain of agents in chat. Choose the information it receives and the result it returns, then connect it to your website or product."
+      title="Run the same steps every time"
+      description="Describe the work once. Your website or CRM can start it whenever it is needed."
       features={[
-        { title: 'Build in chat', description: 'Describe the steps, tools and decisions you need. The builder creates them and shows a visual graph.' },
-        { title: 'Test your draft', description: 'Try sample inputs, see what each agent did and review the final result. Refine it in chat.' },
-        { title: 'Publish a version', description: 'Call a published version through API triggers while editing the next draft.' },
+        { icon: MessageSquareText, title: 'Describe the work', description: 'Tell the builder what starts the work and what should happen.' },
+        { icon: CheckCircle2, title: 'Try an example', description: 'Check the result before you put it to work.' },
+        { icon: Repeat2, title: 'Use it again', description: 'Connect your app to the published Flow.' },
       ]}
-      footer="Example: receive a support request → classify it → route it to an agent → return a JSON response."
+      footer="Example: a support request arrives → identify the issue → send it to the right team."
       createTour="relay-create"
       createLabel="Create your first Flow"
       canCreate={canCreate}

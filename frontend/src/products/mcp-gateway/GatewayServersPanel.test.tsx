@@ -96,7 +96,7 @@ describe('GatewayServersPanel', () => {
     expect(refreshTools).toHaveBeenCalledOnce()
     expect(container!.querySelector('[aria-label="Available servers"]')).toBeNull()
     expect(container!.querySelector('[data-testid="mcp-add-custom"]')).toBeNull()
-    expect(container!.textContent).toContain('3 results')
+    expect(container!.textContent).toContain('3 connections')
     expect(container!.textContent).not.toContain('Linear')
   })
 

@@ -1,4 +1,4 @@
-import { ProductSettingsMenu } from './workspace/ProductSettingsMenu'
+import { WorkspaceSetupMenu } from './workspace/WorkspaceSetupMenu'
 import { useProductNavigationToolbarStore } from '../stores/useProductNavigationToolbarStore'
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { workflowTriggerLabel } from '../utils/workflowSessionKinds'
@@ -26,14 +26,9 @@ import { GlobalActivityButton } from './topbar/GlobalActivityButton'
 import { GlobalActivityMonitor } from './GlobalActivityMonitor'
 import { useGlobalSchedulerPaused } from '../hooks/useGlobalSchedulerPaused'
 import WorkflowWalkthrough from './workflow/WorkflowWalkthrough'
-import { ProductSurfaceSwitcher } from './ProductSurfaceSwitcher'
 import { ProductTopBar, ProductTopBarActions, ProductTopBarMain, ProductNavigationLabel } from './workspace/ProductTopBar'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import WorkspaceTopBarControls from './WorkspaceTopBarControls'
-import McpControl from './topbar/McpControl'
-import UsersControl from './topbar/UsersControl'
-import VaultsControl from './topbar/VaultsControl'
-import ProvidersControl from './topbar/ProvidersControl'
 import { TopBarEntitySelector } from './topbar/TopBarEntitySelector'
 import { WorkflowIcon } from './workflow/WorkflowIcon'
 import ConfirmationDialog from './ui/ConfirmationDialog'
@@ -618,7 +613,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
           {/* Product and current automation */}
           <ProductTopBarMain>
             {/* Product-level navigation stays separate from AgentWorks modes. */}
-            {!workspaceTitleNavigation && !hasWorkspacePicker && <ProductSurfaceSwitcher className="mr-1" />}
             {!activityMonitorInWorkspace && (reduced || isGlobalPage || selectedModeCategory !== 'workflow' || !activePreset) && <GlobalActivityMonitor />}
 
             {productControl}
@@ -783,7 +777,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
                 useLLMStore.getState().setShowLLMModal(false)
                 setAdminPage(null); setShowSchedulesOverview(false); setActivityWorkflowPath(null); setShowWorkflowsOverview(true)
               }} />}
-              <ProductSettingsMenu activity={<>
+              <WorkspaceSetupMenu activity={<>
                 {(hasProductActivity || hasProductSchedules) && <TooltipProvider delayDuration={400}>
               <div data-product-navigation-section="product-actions" aria-label="Product actions" className="flex flex-col items-stretch gap-1">
               {hasProductSchedules && <Tooltip>
@@ -819,14 +813,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, pr
             </TooltipProvider>}
               {productActions && <div data-product-navigation-divider="product-platform">{productActions}</div>}
 
-</>}>
-              <ProvidersControl />
-
-              <McpControl />
-
-              <VaultsControl />
-              <UsersControl />
-              </ProductSettingsMenu>
+</>} />
               <WorkspaceTopBarControls
                 onOpenWalkthrough={isRelaySurface ? undefined : openWorkflowWalkthrough}
                 onOpenShortcuts={() => setShowShortcuts(true)}

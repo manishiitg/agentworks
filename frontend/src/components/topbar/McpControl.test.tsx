@@ -41,7 +41,7 @@ describe('MCP connect control in the top bar', () => {
   ])('shows for %s and opens the MCP page', async (_name, user) => {
     const { host, cleanup } = await render({ user, isMultiUserMode: true })
     try {
-      const button = host.querySelector('button[aria-label="Connect an AI agent (MCP)"]') as HTMLButtonElement
+      const button = host.querySelector('button[aria-label="Connect AI tools"]') as HTMLButtonElement
       expect(button).not.toBeNull()
       await act(async () => button.click())
       expect(useAppStore.getState().adminPage).toBe('mcp')
@@ -49,7 +49,7 @@ describe('MCP connect control in the top bar', () => {
   })
   it('shows for an ordinary member too, and stays hidden when nobody is signed in', async () => {
     const member = await render({ user: { id: 'm', username: 'Member' }, isMultiUserMode: true })
-    try { expect(member.host.querySelector('button[aria-label="Connect an AI agent (MCP)"]')).not.toBeNull() } finally { await member.cleanup() }
+    try { expect(member.host.querySelector('button[aria-label="Connect AI tools"]')).not.toBeNull() } finally { await member.cleanup() }
     const nobody = await render({ user: null, isMultiUserMode: true })
     try { expect(nobody.host.querySelector('button')).toBeNull() } finally { await nobody.cleanup() }
   })

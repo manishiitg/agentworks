@@ -25,7 +25,7 @@ function dashboardTitle(row: Dashboard) {
 }
 
 /** Publication and access are decided by the same discovery service used by MCP. */
-export function DashboardsPage() {
+export function DashboardsPage({ navigationActive = true }: { navigationActive?: boolean } = {}) {
   const account = useAuthStore(state => state.user?.id)
   const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const [query, setQuery] = useState('')
@@ -68,7 +68,7 @@ export function DashboardsPage() {
     .some(value => value?.toLocaleLowerCase().includes(search))) ?? []
 
   return <main className="flex h-full min-h-0 flex-col bg-background text-foreground">
-    <WorkspaceTopToolbar navigationKind="page">
+    <WorkspaceTopToolbar navigationKind="page" navigationActive={navigationActive}>
       <div className="flex items-center gap-3"><LayoutDashboard className="h-5 w-5 text-muted-foreground" /><h1 className="text-lg font-semibold">Dashboards</h1></div>
     </WorkspaceTopToolbar>
     <div className="min-h-0 flex-1 overflow-y-auto">

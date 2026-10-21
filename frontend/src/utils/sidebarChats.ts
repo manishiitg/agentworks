@@ -58,7 +58,9 @@ export function isGeneratedSidebarPrompt(title: string) {
   return readableGeneratedChatTitle(title) !== null
 }
 export function sidebarChatDisplayTitle(row: SidebarChat, workspaceTitle?: string, number?: number) {
+  if (row.surface === 'work' && row.chatOrder?.isMainChat) return 'Builder'
   const title = row.title.trim()
+  if (row.surface === 'work' && /^(?:new project|new crew|new chat)$/i.test(title)) return row.scheduled || row.workflowSessionKind === 'run' ? 'Run' : number ? `Builder ${number}` : 'Builder'
   const generated = readableGeneratedChatTitle(title, row.scheduled)
   if (generated) return generated
   if (row.scheduled && /^schedule-manual--manual-p_/i.test(row.id) && /^Pulse\b/i.test(title)) return 'Manual review'
@@ -174,8 +176,7 @@ export function sidebarChats({
       tabId: tab.tabId,
       title:
         meta?.scheduledJobName?.trim() ||
-        (meta?.agentProfileProjectId &&
-        meta?.agentProfileConversationKey === meta.agentProfileProjectId
+        (meta?.agentProfileIsMainChat
           ? meta?.agentProfileIdentityName ||
             projects.find(
               (project) =>
