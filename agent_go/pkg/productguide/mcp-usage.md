@@ -60,7 +60,14 @@ Load guidance relevant to the work:
 <!-- /product -->
 For other work, choose from the topics actually listed by this connection.
 
-<!-- product:knowledgebase -->## Brain notes and skills
+<!-- product:crew -->
+## Open a shared Crew dashboard in chat
+
+When `open_dashboard` is listed, discover the published Crew dashboard with `dashboard action=list`, then pass its `resource_id` to `open_dashboard`. A host with MCP Apps support displays the page inline, with Ask and published actions; other clients receive its website link. Opening or refreshing starts no run. Ask sends only after the person submits; a function opens its inputs before Run. Keep the returned chat and submission receipts when continuing, and inspect completion. Inline views use the same product sharing and current account access. Scripts, database editing and streaming media remain available from the website; explain an unavailable feature instead of inventing results.
+
+<!-- /product -->
+<!-- product:knowledgebase -->
+## Brain notes and skills
 
 - Browse/search before creating a duplicate note. Read its current opaque version before updating; pass it as `expected_version` with a stable request ID.
 - Find packages with `brain_skills action=list`, then retrieve one with `action=get`. Install all returned files with their relative paths; preserve customized copies.

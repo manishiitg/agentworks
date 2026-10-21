@@ -26,11 +26,12 @@ import (
 // local stdio bridge.
 //
 // Unlike the CLI and stdio bridge, which list every tool, the remote surface
-// is three self-describing tools: search_tools finds names by keyword,
+// uses three self-describing tools: search_tools finds names by keyword,
 // get_api_spec returns schemas, call_tool executes. The full catalog (product.yaml's external_tools plus
 // run.tools) is resolved internally, so the MCP surface stays tiny no matter
 // how run mode grows, and hosted clients without tool search never face a
-// truncated tail.
+// truncated tail. The dashboard render tool and its app-only data reader add
+// the MCP Apps resource contract for authorized Crew connections.
 const externalMCPPath = "/api/external/v1/mcp"
 
 const (
@@ -99,7 +100,7 @@ var externalMCPToolDescriptions = map[string]string{
 	externalMCPToolCall:   "Executes one available AgentWorks tool by name with arguments matching its JSON schema. get_api_spec supplies schemas and workflow action=list supplies workflow IDs. The selected operation runs with the connection's existing permissions and current project access.",
 }
 
-// handleExternalMCP serves the three-tool remote surface over MCP Streamable
+// handleExternalMCP serves the remote tools and app resources over MCP Streamable
 // HTTP. It runs stateless: every request is independently authenticated,
 // matching the per-request PAT validation of the REST API.
 func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Request) {
@@ -201,9 +202,11 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 	index, fingerprint := externalMCPToolIndex(externalListedTools(claims, allowed))
 	mcpServer := server.NewMCPServer("AgentWorks", "1.0.0",
 		server.WithToolCapabilities(false),
+		server.WithResourceCapabilities(false, false),
 		server.WithElicitation(),
 		server.WithInstructions(instructions),
 	)
+	api.registerExternalDashboardApp(mcpServer, r)
 	for _, name := range externalMCPToolNames {
 		schema, err := json.Marshal(externalMCPToolSchemas[name])
 		if err != nil {
@@ -593,7 +596,7 @@ func externalMCPToolIndex(allowed []externalTool) (string, string) {
 		}
 	}
 	sort.Strings(names)
-	sum := sha256.Sum256([]byte(strings.Join(names, "\n")))
+	sum := sha256.Sum256([]byte("dashboard-app-v1\n" + strings.Join(names, "\n")))
 	return b.String(), "aw1-" + hex.EncodeToString(sum[:12])
 }
 

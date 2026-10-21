@@ -395,6 +395,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if tool.Name == "workspace" {
 		return externalWorkspaceAllowed(c)
 	}
+	if tool.Name == "open_dashboard" {
+		return userAllowedProduct(c, crewProfileID) && dashboardScopeAllowed(c, "get")
+	}
 	if tool.Name == "browser_connections" {
 		return externalBrowserConnectionsAllowed(c)
 	}

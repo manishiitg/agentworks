@@ -504,6 +504,7 @@ chat:
       - get_dashboard_catalog
       - list_dashboards
       - get_dashboard
+      - open_dashboard
       - create_dashboard
       - update_dashboard
       - validate_dashboard

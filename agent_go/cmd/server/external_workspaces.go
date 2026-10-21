@@ -24,6 +24,8 @@ func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[strin
 		"chat_id":          externalString("A chat name/id you can access; omit to use your caller conversation."),
 		"query":            externalString("Optional list filter."), "submission_id": externalString("Stable submission ID for a retry of the same ask."),
 		"wait_seconds": externalInteger(0, 25), "after": externalInteger(0, 1<<30),
+		"days":             externalInteger(1, 90),
+		"before":           externalString("For costs: page before this UTC day (YYYY-MM-DD)."),
 		"engine":           externalString("For set_chat_model: a provider from this Crew. Omit to use the Crew model."),
 		"model_id":         externalString("For set_chat_model: the model for that provider."),
 		"reasoning_effort": externalString("For set_chat_model: optional reasoning level."),

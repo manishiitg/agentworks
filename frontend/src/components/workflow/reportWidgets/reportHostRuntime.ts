@@ -236,8 +236,13 @@ export function applyReportTheme(
   theme: ReportHostTheme,
   emitChange: boolean,
 ): void {
-  const win = reportWindow(frame)
   const doc = frame.contentDocument
+  if (doc) applyReportDocumentTheme(doc, tokenSource, theme, emitChange)
+}
+
+/** Used inside an isolated document without giving its parent DOM access. */
+export function applyReportDocumentTheme(doc: Document, tokenSource: HTMLElement | null, theme: ReportHostTheme, emitChange: boolean): void {
+  const win = doc.defaultView as AnyWindow
   if (!win || !doc?.documentElement) return
   doc.documentElement.classList.toggle('dark', theme === 'dark')
   doc.documentElement.setAttribute('data-theme', theme)
@@ -279,8 +284,13 @@ export interface ReportHostInstallOptions {
  * is replaced on every call so a changed dataApi takes effect.
  */
 export function installReportHost(frame: HTMLIFrameElement, options: ReportHostInstallOptions): void {
-  const win = reportWindow(frame)
-  const doc = frame.contentDocument as (Document & AnyDocument) | null
+  if (frame.contentDocument) installReportDocumentHost(frame.contentDocument, options)
+}
+
+/** Same renderer runtime for native frames and opaque MCP Apps documents. */
+export function installReportDocumentHost(document: Document, options: ReportHostInstallOptions): void {
+  const doc = document as Document & AnyDocument
+  const win = doc.defaultView as AnyWindow
   if (!win || !doc) return
   const { title, dataApi, dispatchData } = options
   const debug = options.debug ?? (() => {})
@@ -331,7 +341,7 @@ export function installReportHost(frame: HTMLIFrameElement, options: ReportHostI
       // no allow-popups/allow-top-navigation, so a click would be silently
       // swallowed. Open them in a new browser tab from the parent window
       // instead, keeping the sandbox locked down.
-      if (/^https?:\/\//i.test(href)) {
+      if (/^(?:https?:\/\/|mailto:)/i.test(href)) {
         e.preventDefault()
         window.open(href, '_blank', 'noopener,noreferrer')
         return
@@ -593,7 +603,7 @@ export function installReportHost(frame: HTMLIFrameElement, options: ReportHostI
   // Initial theme application is setup, not a theme change. The single
   // report:data event below owns the initial render. This avoids every HTML
   // report doing a full data render once for theme and again for data.
-  applyReportTheme(frame, options.tokenSource, options.theme, false)
+  applyReportDocumentTheme(doc, options.tokenSource, options.theme, false)
 
   if (!dispatchData) return
 
