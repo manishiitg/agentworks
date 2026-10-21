@@ -234,6 +234,23 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 // against the scope-filtered catalog, call_tool runs through the REST
 // external dispatcher so results can never drift from the REST surface.
 func (api *StreamingAPI) externalMCPCall(ctx context.Context, r *http.Request, name string, allowed []externalTool, request mcp.CallToolRequest) *mcp.CallToolResult {
+	// Temporary observation for PLAT-856: compare ChatGPT conversation metadata
+	// across schema reads and calls. Never log the value, other metadata,
+	// headers or input.
+	if (name == externalMCPToolSpec || name == externalMCPToolCall) && request.Params.Meta != nil {
+		fields := request.Params.Meta.AdditionalFields
+		value, present := fields["openai/session"]
+		userAgent, _ := fields["openai/userAgent"].(string)
+		if present || strings.Contains(strings.ToLower(userAgent), "chatgpt") {
+			session, isString := value.(string)
+			hash := "absent"
+			if isString && session != "" {
+				sum := sha256.Sum256([]byte(session))
+				hash = hex.EncodeToString(sum[:8])
+			}
+			logfWithContext(api.httpRequestLogContext(r), "[EXTERNAL_MCP_SESSION_PROBE] session_present=%t session_string=%t session_hash=%s", present, isString, hash)
+		}
+	}
 	result := api.externalMCPDispatch(ctx, r, name, allowed, request)
 	logfWithContext(api.httpRequestLogContext(r), "%s", externalMCPCallLogLine(name, request.GetArguments(), result))
 	return result
