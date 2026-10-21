@@ -33,7 +33,7 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
       {decisionsRow}
     </>}
     <Group title="Your work">
-      <Row icon={LayoutDashboard} onClick={() => { selectReportDocument(workspacePath, defaultPath); open('report') }}>Dashboard</Row>
+      <Row icon={LayoutDashboard} onClick={() => { selectReportDocument(workspacePath, defaultPath); open('report') }}>Project dashboard</Row>
       <Row icon={Route} onClick={() => open('flow', relayMode ? 'graph' : undefined)}>{relayMode ? 'Flow' : 'Plan & progress'}</Row>
       {relayMode && <Row icon={History} onClick={() => open('flow', 'calls')}>Runs</Row>}
       <Row icon={Files} onClick={() => open('files')}>Files</Row>
