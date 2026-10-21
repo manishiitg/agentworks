@@ -46,7 +46,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const webhooks = enabledPanels?.has('triggers') !== false
   return <WorkspaceContextCard>
     <Group title="Your work">
-      {allowed('dashboard') && <Row icon={LayoutDashboard} onClick={() => { selectReportDocument(workspacePath, defaultPath); onOpen('dashboard') }}>Dashboard</Row>}
+      {allowed('dashboard') && <Row icon={LayoutDashboard} onClick={() => { selectReportDocument(workspacePath, defaultPath); onOpen('dashboard') }}>Project dashboard</Row>}
       {allowed('files') && <Row icon={Files} onClick={() => onOpen('files')}>Files</Row>}
       {allowed('memory') && (!enabledPanels || enabledPanels.has('skills')) && <Row icon={Sparkles} onClick={() => { setWorkspaceViewTarget('memory', 'skills'); onOpen('memory') }}>Skills</Row>}
       {allowed('schedules') && <Row icon={CalendarClock} detail={status.schedules ? String(status.schedules) : undefined} onClick={() => openAutomation('schedules')}>Schedules</Row>}
