@@ -99,7 +99,7 @@ func GetWorkWorkspaceMap(workspacePath, chatHistoryPath string) string {
 		return ""
 	}
 	text := "\n## Workspace\n\nYour selected primary workspace is `" + workspacePath +
-		"/`. The native coding CLI starts in this directory. Use paths relative to that working directory, or this exact authorized absolute path. Access levels for it and any additional attached folders are listed below; never infer access to another host path.\n"
+		"/`. This is the authoritative project folder. In a private CLI runtime, use `project/<path>` for project files. For shell commands that need the project as their working directory, use this exact authorized absolute path; follow the Crew CLI runtime instructions. Workspace bridge paths are relative to this project without `project/`. Access levels for it and any additional attached folders are listed below; never infer access to another host path.\n"
 	if chatHistoryPath = strings.TrimSpace(chatHistoryPath); chatHistoryPath != "" {
 		text += "\nPast conversations for the signed-in user are stored as JSON under `" + chatHistoryPath +
 			"/`. You may search and read those files when the user asks about an earlier chat or another Crew belonging to the same account. This access never includes another user's conversations. Treat these logs as reference history; continue to use the project-root MEMORY.md for curated durable memory.\n"
