@@ -504,8 +504,13 @@ func TestVaultDefaultsWithoutProjectSelectionAndRevoke(t *testing.T) {
 				}
 			}
 		}
-		if len(seen) != 2 || !seen["vault_notion-work"] || !seen["vault_notion-personal"] || calls-before != 1 {
-			t.Fatalf("default named account inventory: %v, requests %d", names, calls-before)
+		// No Vault pick = every authorized connection; a pick = only that one (owner, 2026-10-20).
+		want := map[string]bool{"vault_notion-work": true, "vault_notion-personal": true}
+		if len(selected) == 1 && selected[0] == "vault_notion-work" {
+			want = map[string]bool{"vault_notion-work": true}
+		}
+		if len(seen) != len(want) || !seen["vault_notion-work"] || (want["vault_notion-personal"] && !seen["vault_notion-personal"]) || calls-before != 1 {
+			t.Fatalf("named account inventory for %v: %v, requests %d", selected, names, calls-before)
 		}
 	}
 	names, _, _, err := api.scopeAgentMCP(personContext("bob"), "", nil, nil)
