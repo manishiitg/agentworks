@@ -125,12 +125,31 @@ func TestCLIDeviceOAuthBrowserApprovalAndRestrictions(t *testing.T) {
 	if pair2.Access == pair.Access || pair2.Refresh == pair.Refresh {
 		t.Fatal("refresh did not rotate")
 	}
+	// A stale login copy must not sign out the CLI holding the current pair.
+	if replay := request("POST", cliOAuthTokenPath, refreshForm.Encode(), "", "application/x-www-form-urlencoded"); replay.Code != 400 || !strings.Contains(replay.Body.String(), `"error":"invalid_grant"`) {
+		t.Fatal("stale CLI refresh was not refused with invalid_grant", replay.Code)
+	}
+	if current := request("GET", "/api/external/v1/tools", "", pair2.Access, ""); current.Code != 200 {
+		t.Fatal("stale refresh signed out the current CLI", current.Code)
+	}
+	refreshForm.Set("refresh_token", pair2.Refresh)
+	current := request("POST", cliOAuthTokenPath, refreshForm.Encode(), "", "application/x-www-form-urlencoded")
+	if current.Code != 200 {
+		t.Fatal("stale refresh revoked the current CLI refresh token", current.Code)
+	}
+	if err := json.Unmarshal(current.Body.Bytes(), &pair2); err != nil {
+		t.Fatal(err)
+	}
+	refreshForm.Set("refresh_token", pair2.Refresh)
 	revoked := request("POST", cliOAuthRevokePath, url.Values{"token": {pair2.Refresh}}.Encode(), "", "application/x-www-form-urlencoded")
 	if revoked.Code != 200 {
 		t.Fatal(revoked.Code, revoked.Body)
 	}
 	if after := request("GET", "/api/external/v1/tools", "", pair2.Access, ""); after.Code != 401 {
 		t.Fatal("revoked CLI token accepted", after.Code)
+	}
+	if after := request("POST", cliOAuthTokenPath, refreshForm.Encode(), "", "application/x-www-form-urlencoded"); after.Code != 400 {
+		t.Fatal("signed-out CLI refresh accepted", after.Code)
 	}
 	second := request("POST", cliOAuthDevicePath, "", "", "")
 	if second.Code != 200 {

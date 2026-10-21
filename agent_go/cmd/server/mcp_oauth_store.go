@@ -435,28 +435,16 @@ func (s *mcpOAuthStore) Refresh(ctx context.Context, raw, clientID, resource str
 	if err != nil {
 		return grant, "", "", err
 	}
-	// Check the token's audience before allowing a replay to revoke its family.
-	// A different registered client or resource has no authority over this grant.
+	// Only the registered client and resource may refresh this grant.
 	if grant.ClientID != clientID || grant.Resource != resource || (grant.ClientID == cliOAuthClientID) != strings.HasPrefix(raw, cliOAuthRefreshPrefix) {
 		mcpOAuthAudit(grant, "refresh_refused", "client_or_resource_mismatch")
 		return grant, "", "", errors.New("invalid refresh token")
 	}
 	if used.Valid {
+		// Another client process may still hold an older copy. Refuse that
+		// request without signing out the process holding the current token.
 		now := time.Now().Unix()
-		result, err := tx.ExecContext(ctx, `UPDATE tokens SET revoked_at=? WHERE family_id=? AND revoked_at IS NULL`, now, grant.FamilyID)
-		if err != nil {
-			return grant, "", "", err
-		}
-		n, err := result.RowsAffected()
-		if err != nil {
-			return grant, "", "", err
-		}
-		if err := tx.Commit(); err != nil {
-			return grant, "", "", err
-		}
-		if n > 0 {
-			log.Printf("mcp_oauth event=%q family=%q client=%q reason=%q refresh_used_at=%d reuse_after_seconds=%d", "family_revoked", grant.FamilyID, grant.ClientID, "refresh_reuse", used.Int64, now-used.Int64)
-		}
+		log.Printf("mcp_oauth event=%q family=%q client=%q reason=%q refresh_used_at=%d reuse_after_seconds=%d", "refresh_refused", grant.FamilyID, grant.ClientID, "refresh_reuse_refused", used.Int64, now-used.Int64)
 		return grant, "", "", errors.New("refresh token reuse detected")
 	}
 	if revoked.Valid {

@@ -176,17 +176,19 @@ func TestMCPOAuthAuthorizationRefreshAndRevocation(t *testing.T) {
 		t.Fatal(rotated.Code, rotated.Body)
 	}
 	var pair2 struct {
-		Access string `json:"access_token"`
-		Scope  string `json:"scope"`
+		Access  string `json:"access_token"`
+		Refresh string `json:"refresh_token"`
+		Scope   string `json:"scope"`
 	}
 	if err := json.Unmarshal(rotated.Body.Bytes(), &pair2); err != nil {
 		t.Fatal(err)
 	}
-	if pair2.Access == pair.Access || pair2.Access == "" || pair2.Scope != "workflows:read files:read dashboards:read" {
+	if pair2.Access == pair.Access || pair2.Access == "" || pair2.Refresh == "" || pair2.Refresh == pair.Refresh || pair2.Scope != "workflows:read files:read dashboards:read" {
 		t.Fatal("refresh did not rotate")
 	}
 	// A replay sent for the wrong client or resource must not revoke the
-	// connection that actually owns the token. A matching replay still does.
+	// connection that actually owns the token. Matching stale copies are also
+	// refused without signing out the process holding the current pair.
 	for _, mismatch := range [][2]string{{"other-client", resource}, {client.ID, "https://other.example.com/mcp"}} {
 		if _, _, _, err := store.Refresh(t.Context(), pair.Refresh, mismatch[0], mismatch[1]); err == nil {
 			t.Fatal("mismatched refresh accepted")
@@ -195,11 +197,22 @@ func TestMCPOAuthAuthorizationRefreshAndRevocation(t *testing.T) {
 			t.Fatal("mismatched replay revoked the real connection", err)
 		}
 	}
-	if w := request("POST", mcpOAuthTokenPath, refreshForm.Encode(), "", "application/x-www-form-urlencoded"); w.Code != 400 {
-		t.Fatal("refresh replay accepted", w.Code)
+	// An old copy must remain refused well after rotation, without a grace period.
+	if _, err := store.db.Exec(`UPDATE tokens SET used_at=used_at-7200 WHERE hash=?`, mcpOAuthHash(pair.Refresh)); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := store.Authenticate(t.Context(), pair2.Access); err == nil {
-		t.Fatal("refresh replay did not revoke family")
+	if w := request("POST", mcpOAuthTokenPath, refreshForm.Encode(), "", "application/x-www-form-urlencoded"); w.Code != 400 || !strings.Contains(w.Body.String(), `"error":"invalid_grant"`) {
+		t.Fatal("stale refresh was not refused with invalid_grant", w.Code)
+	}
+	if _, err := store.Authenticate(t.Context(), pair2.Access); err != nil {
+		t.Fatal("stale refresh revoked the current access token", err)
+	}
+	if w := request("POST", externalMCPPath, `{"jsonrpc":"2.0","id":2,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"oauth-test","version":"1"}}}`, pair2.Access, "application/json"); w.Code != 200 {
+		t.Fatal("current access token lost MCP access", w.Code)
+	}
+	refreshForm.Set("refresh_token", pair2.Refresh)
+	if w := request("POST", mcpOAuthTokenPath, refreshForm.Encode(), "", "application/x-www-form-urlencoded"); w.Code != 200 {
+		t.Fatal("stale refresh revoked the current refresh token", w.Code)
 	}
 	// A second grant can be explicitly revoked by the user, without exposing tokens.
 	fresh, err := store.RegisterClient(t.Context(), "Second client", []string{"https://second.example/callback"})
@@ -214,7 +227,7 @@ func TestMCPOAuthAuthorizationRefreshAndRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	freshGrant, freshAccess, _, err := store.ExchangeCode(t.Context(), freshCode, fresh.ID, "https://second.example/callback", resource, verifier)
+	freshGrant, freshAccess, freshRefresh, err := store.ExchangeCode(t.Context(), freshCode, fresh.ID, "https://second.example/callback", resource, verifier)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,6 +241,9 @@ func TestMCPOAuthAuthorizationRefreshAndRevocation(t *testing.T) {
 	}
 	if _, err := store.Authenticate(t.Context(), freshAccess); err == nil {
 		t.Fatal("revoked access accepted")
+	}
+	if _, _, _, err := store.Refresh(t.Context(), freshRefresh, fresh.ID, resource); err == nil {
+		t.Fatal("explicitly revoked refresh accepted")
 	}
 }
 
