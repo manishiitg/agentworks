@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/manishiitg/mcpagent/mcpcache/openapi"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
 
@@ -367,6 +368,9 @@ const personalSlackCallError = "Only the person who connected this Slack can rea
 // 2026-10-16, the decisions log): its owner may use every tool; anyone else only the send-side tools. It returns an error
 // for a refused call and logs the attempt or the refusal. Calls on any other server pass unchanged.
 func (api *StreamingAPI) guardPersonalSlackCall(ctx context.Context, session, server, tool string) error {
+	if strings.TrimSpace(tool) != "" && strings.HasPrefix(strings.ToLower(server), "vault_") {
+		return api.guardLentVaultSlackCall(ctx, session, server, tool)
+	}
 	if strings.TrimSpace(tool) == "" || !isPlaceMCPInternalName(server) && !strings.HasPrefix(strings.ToLower(server), "slack") {
 		return nil
 	}
@@ -472,4 +476,43 @@ func restrictSelectedToolsForSlack(selected, serverNames []string, entries []str
 		}
 	}
 	return append(out, entries...)
+}
+
+// guardLentVaultSlackCall applies the personal-Slack rule to a Vault Slack connection lent by a Crew's or Goal's owner
+// (scopeAgentMCP resolves its Vault MCPs as projectSecretsOwner): the owner may use every tool, anyone else only the send
+// side. A Slack connection lives only in a person's own vault (the company Vault refuses it), so the lender is its owner.
+func (api *StreamingAPI) guardLentVaultSlackCall(ctx context.Context, session, server, tool string) error {
+	caller := mcpCaller(ctx)
+	if caller == "" && session != "" && api.eventStore != nil {
+		caller = api.mcpSessionPerson(session)
+	}
+	root := api.mcpPlaceRoot(ctx, session)
+	if root == "" || caller == "" {
+		return nil
+	}
+	lender := api.projectSecretsOwner(caller, root)
+	if lender == caller {
+		return nil
+	}
+	rows, err := vaultServersFor(ctx, lender)
+	if err != nil {
+		return nil
+	}
+	lowered := strings.ToLower(server)
+	for _, row := range rows {
+		if !strings.EqualFold(row.Provider, "slack") {
+			continue
+		}
+		name := vaultServerName(row.ID)
+		if !strings.HasPrefix(lowered, strings.ToLower(name)) && !strings.HasPrefix(lowered, strings.ToLower(openapi.SanitizePathSegment(name))) {
+			continue
+		}
+		if personalSlackToolAllowed(caller, lender, tool) {
+			log.Printf("[SLACK_ACCOUNTS] vault_connection=%s owner=%s item=%s caller=%s session=%s tool=%s event=tool_attempt", row.ID, lender, root, caller, session, tool)
+			return nil
+		}
+		log.Printf("[SLACK_ACCOUNTS] vault_connection=%s owner=%s item=%s caller=%s session=%s tool=%s event=tool_refused reason=not_account_owner", row.ID, lender, root, caller, session, tool)
+		return fmt.Errorf("%s", personalSlackCallError)
+	}
+	return nil
 }

@@ -326,10 +326,14 @@ func (api *StreamingAPI) handleVaultRuntimeMCP(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if in.Session != "" {
+		// The session's own person, or the owner of its Crew/Goal lending that project's Vault MCPs (scopeAgentMCP).
 		owner := api.mcpSessionPerson(in.Session)
 		if owner != in.Person {
-			http.Error(w, "session ownership changed", 403)
-			return
+			root := api.placeRootForSession(in.Session)
+			if owner == "" || root == "" || api.projectSecretsOwner(owner, root) != in.Person {
+				http.Error(w, "session ownership changed", 403)
+				return
+			}
 		}
 	}
 	runtimePath := "/api/admin/runtime/mcp"
@@ -459,11 +463,18 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 		}
 		person = owner
 	}
+	// A Crew's or Goal's Vault MCPs are its owner's, for everyone who uses it (owner-lent, the same rule as its secrets,
+	// projectSecretsOwner; owner 2026-10-21 "one store, Vault only"). The gateway checks the owner's grants; a lent
+	// personal Slack is limited to its send side for anyone else (guardPersonalSlackCall).
+	lender := person
+	if root := api.placeRootForSession(sessionID); root != "" && person != "" {
+		lender = api.projectSecretsOwner(person, root)
+	}
 	// A product that picks Vault connections gets only those (MCPs come from Vault, owner 2026-10-20); one that picks
 	// none keeps every authorized Vault connection as its default. Cache discovery once; live calls still recheck the
 	// actor's current grants and argument rules at the gateway.
-	rows, inventoryErr := vaultServersFor(ctx, person)
-	ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{person, rows, inventoryErr})
+	rows, inventoryErr := vaultServersFor(ctx, lender)
+	ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{lender, rows, inventoryErr})
 	names = append([]string(nil), names...)
 	picksVault := false
 	for _, name := range names {
@@ -528,7 +539,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 			continue
 		}
 
-		resolved, err := api.resolveGovernedMCP(ctx, person, name)
+		resolved, err := api.resolveGovernedMCP(ctx, lender, name)
 		if err != nil {
 			continue
 		}
@@ -539,7 +550,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 			if secretErr != nil {
 				continue
 			}
-			cfg.Headers = map[string]string{"Authorization": "Bearer " + signVaultDelegation(secret, vaultDelegation{Person: person, Connector: strings.TrimPrefix(vaultSelectionName(resolved.Name), "vault_"), Session: sessionID, Expires: time.Now().Truncate(time.Hour).Add(24 * time.Hour).Unix()})}
+			cfg.Headers = map[string]string{"Authorization": "Bearer " + signVaultDelegation(secret, vaultDelegation{Person: lender, Connector: strings.TrimPrefix(vaultSelectionName(resolved.Name), "vault_"), Session: sessionID, Expires: time.Now().Truncate(time.Hour).Add(24 * time.Hour).Unix()})}
 		}
 		runtimeName := resolved.Name
 		if strings.HasPrefix(runtimeName, "vault_") {
