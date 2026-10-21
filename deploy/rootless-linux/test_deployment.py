@@ -157,6 +157,11 @@ class UserSlotsDeploymentCheckTest(unittest.TestCase):
         off = self.setup_server("PUBLIC_URL=x\n", users, {"slot01": "a", "slot02": "b"})
         with self.assertRaisesRegex(ValueError, "AGENTWORKS_SLOTS is not on"):
             self.checks.check_user_slots(*off)
+        network = self.setup_server("AGENT_PRODUCTS=bullpen\nAGENTWORKS_ENABLED_PRODUCT_SURFACES=bullpen\n", users, {})
+        self.checks.check_user_slots(*network)
+        mixed = self.setup_server("AGENT_PRODUCTS=bullpen\nAGENTWORKS_ENABLED_PRODUCT_SURFACES=bullpen,agentworks\n", users, {})
+        with self.assertRaisesRegex(ValueError, "AGENTWORKS_SLOTS is not on"):
+            self.checks.check_user_slots(*mixed)
 
     def test_a_single_account_server_needs_no_slots(self):
         env_path, users_path = self.setup_server("PUBLIC_URL=x\n", [{"id": "a", "email": "a@example.com"}], {})

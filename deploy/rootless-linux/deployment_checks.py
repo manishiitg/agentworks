@@ -100,6 +100,10 @@ def check_user_slots(env_path=ENV_FILE, users_path=None):
     if len(users) < 2:
         return
     values = env_file_values(env_path)
+    products = {p.strip() for p in values.get("AGENT_PRODUCTS", [""])[-1].split(",") if p.strip()}
+    surfaces = {p.strip() for p in values.get("AGENTWORKS_ENABLED_PRODUCT_SURFACES", [""])[-1].split(",") if p.strip()}
+    if products == surfaces == {"bullpen"}:
+        return  # A messaging-only network runs no person's hosted commands.
     mode = (values.get("AGENTWORKS_SLOTS") or [""])[-1].lower()
     if mode not in ("on", "optin"):
         raise ValueError(
