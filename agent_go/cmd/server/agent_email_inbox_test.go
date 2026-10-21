@@ -172,7 +172,10 @@ func TestAgentEmailWatcherRealPythonAndDurableCursor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	job := mustConditionJob(t, env.svc, ctx, out.(map[string]interface{})["id"].(string))
+	job, err := env.svc.Job(ctx, "owner", projectScheduleJobID("work", "mail-checks", out.(map[string]interface{})["id"].(string)))
+	if err != nil {
+		t.Fatal(err)
+	}
 	c.engine.Run = func(ctx context.Context, cfg conditiontrigger.Config, state json.RawMessage) ([]byte, error) {
 		if err := c.current(conditionContext(ctx, job), job, cfg); err != nil {
 			return nil, err
