@@ -482,6 +482,23 @@
         "registration_endpoint": "https://brightdata.com/users/auth/mcp/register",
         "token_file": "~/.config/mcpagent/tokens/default/BrightData.json"
       }
+    },
+    "Slack": {
+      "url": "https://mcp.slack.com/mcp",
+      "oauth": {
+        "auth_url": "https://slack.com/oauth/v2_user/authorize",
+        "token_url": "https://slack.com/api/oauth.v2.user.access",
+        "resource": "https://mcp.slack.com",
+        "token_file": "~/.config/mcpagent/tokens/default/Slack.json"
+      }
+    },
+    "GitHub": {
+      "url": "https://api.githubcopilot.com/mcp/",
+      "oauth": {
+        "auth_url": "https://github.com/login/oauth/authorize",
+        "token_url": "https://github.com/login/oauth/access_token",
+        "token_file": "~/.config/mcpagent/tokens/default/GitHub.json"
+      }
     }
   }
 }

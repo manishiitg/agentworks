@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/catalog"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/mcpserver"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/upstream"
@@ -110,5 +111,32 @@ func TestCustomConnectorNeedingSignInBecomesSignInConnection(t *testing.T) {
 	}
 	if c.Status != store.StatusAuthRequired || !strings.HasPrefix(c.OAuthServer, "custom:") || c.OAuthCredentialID != c.ID || c.UpstreamURL != remote.URL+"/mcp" {
 		t.Fatalf("not a sign-in connection for its own URL: %+v", c)
+	}
+}
+
+// Slack is a personal account (a person's DMs and private channels): the company Vault, shared with everyone, refuses
+// it by catalog name and by URL. GitHub is a company app and is in the catalog.
+func TestCompanyVaultRefusesPersonalSlack(t *testing.T) {
+	cat, err := catalog.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cat.Find("GitHub"); !ok {
+		t.Fatal("GitHub missing from the Vault catalog")
+	}
+	st, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "gateway.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	st.AddWorkspace(store.Workspace{ID: "w"})
+	g := mcpserver.New(st, nil, map[string]*upstream.Client{}, nil, upstream.DialOptions{AllowPrivate: true})
+	g.SetSharedOAuth(func(context.Context, string, string, string) (string, error) { return "", nil })
+	a := &Admin{Store: st, Gateway: g, Catalog: cat, WorkspaceID: "w"}
+	if _, err := a.AddConnectorFromCatalog(context.Background(), "Slack", "Team Slack", ""); err == nil || !strings.Contains(err.Error(), "own vault") {
+		t.Fatalf("company Vault accepted Slack: %v", err)
+	}
+	if _, err := a.AddConnectorCustom(context.Background(), "myslack", "My Slack", "", "https://mcp.slack.com/mcp"); err == nil || !strings.Contains(err.Error(), "own vault") {
+		t.Fatalf("company Vault accepted Slack by URL: %v", err)
 	}
 }

@@ -282,7 +282,12 @@ func (a *Admin) addConnectorFromCatalogFor(ctx context.Context, vaultID, provide
 	p, ok := a.Catalog.Find(providerName)
 	if !ok {
 		// A bare "unknown provider" left people guessing (server C 2026-10-07: "Github" is not in Vault's catalog).
-		return store.Connector{}, fmt.Errorf("%q is not an app Vault can connect. Available: %s. Google apps, GitHub and Slack are connected through their own integrations (Integrations), not Vault; for another app, store its API key as a Vault secret", strings.TrimSpace(providerName), strings.Join(a.Catalog.Names(), ", "))
+		return store.Connector{}, fmt.Errorf("%q is not an app Vault can connect. Available: %s. Google apps are connected through Integrations, not Vault; for any other MCP server, connect it by name and URL, or store its API key as a Vault secret", strings.TrimSpace(providerName), strings.Join(a.Catalog.Names(), ", "))
+	}
+	// A Slack sign-in reads that person's DMs and private channels: it is a personal account and lives only in the
+	// person's own vault, never in the company Vault that is shared with everyone.
+	if p.Key == catalog.Key("Slack") && vaultID == "" {
+		return store.Connector{}, errors.New("Slack is a personal account: connect it in your own vault (My Vault), not the company Vault")
 	}
 	if p.OAuth && (a.Gateway == nil || !a.Gateway.HasSharedOAuth()) {
 		return store.Connector{}, errors.New("this provider requires upstream OAuth; configure the shared product OAuth service")
@@ -345,6 +350,9 @@ func (a *Admin) AddConnectorCustomWithCredential(ctx context.Context, provider, 
 	upstreamURL = strings.TrimSpace(upstreamURL)
 	if err := a.Gateway.ValidateUpstreamURL(upstreamURL); err != nil {
 		return store.Connector{}, err
+	}
+	if u, err := url.Parse(upstreamURL); err == nil && (strings.EqualFold(u.Hostname(), "slack.com") || strings.HasSuffix(strings.ToLower(u.Hostname()), ".slack.com")) {
+		return store.Connector{}, errors.New("Slack is a personal account: connect it in your own vault (My Vault), not the company Vault")
 	}
 	c, err := a.addConnectorRow(key, label, slug, upstreamURL)
 	if err != nil {
