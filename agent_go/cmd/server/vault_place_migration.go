@@ -30,6 +30,11 @@ type placeMigrationRow struct {
 }
 
 func (api *StreamingAPI) migratePlaceConnections(ctx context.Context, apply bool) ([]placeMigrationRow, error) {
+	if apply {
+		// Moving a connection takes about a minute (tool discovery). A caller that gives up waiting must not stop the move
+		// half way, so the work outlives the request that started it.
+		ctx = context.WithoutCancel(ctx)
+	}
 	placeMCPMu.Lock()
 	all, err := readPlaceMCPAttachmentsLocked()
 	placeMCPMu.Unlock()
