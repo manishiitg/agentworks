@@ -50,6 +50,13 @@ func TestCrewCoOwnerHasPermissionsButNotIdentity(t *testing.T) {
 	if owner, ok := crewProjectOwnerID(root); !ok || owner != "owner" {
 		t.Fatalf("a co-owner changed whose Crew it is: %q", owner)
 	}
+	// A co-owner's Builder chat opens the Crew's folder (tool registration needs it); a stranger's does not.
+	if _, err := cleanAgentProfileWorkspace(root, "co"); err != nil {
+		t.Fatalf("co-owner refused the Crew folder: %v", err)
+	}
+	if _, err := cleanAgentProfileWorkspace(root, "ann"); err == nil {
+		t.Fatal("a stranger opened the Crew folder")
+	}
 	ref := crewPathRef{Root: root, OwnerID: "owner", Shared: true}
 	if got := crewAccessFor(&UserClaims{UserID: "co", Username: "co"}, ref); got != crewAccessOwner {
 		t.Fatalf("co-owner access = %v, want owner", got)

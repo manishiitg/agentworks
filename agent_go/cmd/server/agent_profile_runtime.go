@@ -211,8 +211,10 @@ func cleanAgentProfileWorkspace(raw, userID string) (string, error) {
 		if !ok {
 			return "", fmt.Errorf("selected_folder must be a crew you can open")
 		}
-		owner, ownerOK := crewProjectOwnerID(workspaceref.SharedProjectPath(project))
-		if !ownerOK || owner != sanitizeUserIDForPath(userID) {
+		// Permission, not identity (crew_co_owners.go): the main owner and registered co-owners build here.
+		root := workspaceref.SharedProjectPath(project)
+		owner, ownerOK := crewProjectOwnerID(root)
+		if !ownerOK || owner != sanitizeUserIDForPath(userID) && !crewIsCoOwner(root, userID) {
 			return "", fmt.Errorf("selected_folder must be a crew you can open")
 		}
 		return ref.Logical(), nil
