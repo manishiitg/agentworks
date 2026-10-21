@@ -84,38 +84,3 @@ export function RunloopMark({
     </svg>
   )
 }
-
-type RunloopLockupProps = {
-  className?: string
-  subtitle?: string
-  version?: string
-}
-
-export function RunloopLockup({
-  className,
-  subtitle,
-  version,
-}: RunloopLockupProps) {
-  return (
-    <div className={cn('flex items-center gap-3 min-w-0', className)}>
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-slate-950/90 shadow-[0_14px_28px_-18px_rgba(15,23,42,0.95)] ring-1 ring-slate-700/40">
-        <RunloopMark className="h-7 w-7" />
-      </div>
-      <div className="min-w-0">
-        <div className="truncate text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-          AgentWorks
-        </div>
-        {version ? (
-          <div className="truncate text-[10px] leading-tight text-slate-400 dark:text-slate-500">
-            v{version}
-          </div>
-        ) : null}
-        {subtitle ? (
-          <div className="truncate text-[11px] uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
-            {subtitle}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  )
-}

@@ -7,10 +7,6 @@ const GROUPS = [
   ['Project setup', ['identity', 'mcp', 'access', 'backup', 'publish', 'notify', 'playbooks']],
 ] as const
 
-export function workspacePanelGroup(id: string): string {
-  return GROUPS.find(([, ids]) => (ids as readonly string[]).includes(id))?.[0] ?? 'Other tools'
-}
-
 /** Group only the inventory already admitted by each product's permission gates. */
 export function groupWorkspacePanels<T extends { id: string }>(panels: readonly T[]) {
   const known = new Set<string>(GROUPS.flatMap(([, ids]) => [...ids]))

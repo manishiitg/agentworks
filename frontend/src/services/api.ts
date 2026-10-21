@@ -674,7 +674,6 @@ workspaceApi.interceptors.response.use(
   }
 )
 
-
 const coalesceRuntimeRead = createRequestCoalescer()
 const RUNTIME_READ_TIMEOUT_MS = 15_000
 // coalesceRuntimeRead only de-dupes truly concurrent calls (the in-flight
@@ -1538,7 +1537,6 @@ export const agentApi = {
     }, { headers: { 'X-Session-ID': sessionId } })
   },
 
-
   // Human Feedback Management
   // Submit human feedback response
   submitHumanFeedback: async (uniqueId: string, response: string): Promise<HumanFeedbackResponse> => {
@@ -2070,15 +2068,11 @@ export const agentApi = {
     return response.data as PulseOverviewResponse
   },
 
-
   // The Pulse's goal memory and decision log (PLAT-697).
-
 
   /** The owner's message to the workflow's Pulse; the reply appears in the conversation. */
 
-
   /** Confirm, reject, add, extend or close a focus area. */
-
 
   answerReportHumanInput: async (
     workspacePath: string,
@@ -2369,8 +2363,6 @@ export const agentApi = {
     })
   },
 
-
-
   // Get content of a specific log file
   // Returns string content (may be JSON that needs parsing)
   getLogFile: async (filePath: string): Promise<string | Record<string, unknown>> => {
@@ -2439,7 +2431,6 @@ export const agentApi = {
     const response = await api.get('/api/workspace/state', { params })
     return response.data
   },
-
 
   // Lightweight workflow summaries for dashboard pages (single call for all workflows)
   getWorkflowsSummary: async (workspacePaths: string[]): Promise<{
@@ -2555,7 +2546,6 @@ export const agentApi = {
     })
     return response.data
   },
-
 
   // Delete a step from plan and config
   deleteStep: async (
@@ -2687,14 +2677,6 @@ export const agentApi = {
     return response.data
   },
 
-}
-
-export const healthApi = {
-  // Health check
-  healthCheck: async () => {
-    const response = await api.get('/health')
-    return response.data
-  },
 }
 
 // --- Auth API ---

@@ -96,17 +96,3 @@ export const EVENT_TYPES = {
     'agent_end'
   ] as const,
 } as const
-
-/**
- * Combined configuration object
- */
-export const RUNNING_WORKFLOWS_CONFIG = {
-  polling: POLLING_INTERVALS,
-  limits: WORKFLOW_LIMITS,
-  events: EVENT_CONFIG,
-  validation: VALIDATION_CONFIG,
-  storage: STORAGE_KEYS,
-  eventTypes: EVENT_TYPES,
-} as const
-
-export type RunningWorkflowsConfig = typeof RUNNING_WORKFLOWS_CONFIG

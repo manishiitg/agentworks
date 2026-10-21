@@ -45,16 +45,3 @@ export function formatLLMOptions(options?: Record<string, unknown>): string {
   if (options.thinking_budget) parts.push(`budget ${String(options.thinking_budget)}`)
   return parts.join(' / ')
 }
-
-export function formatLLMRef(ref?: LLMDisplayRef | null): string {
-  if (!ref?.provider) return 'Not resolved'
-  const model = ref.model_id || ref.model
-  if (!model) return ref.provider
-  return `${ref.provider}/${model}`
-}
-
-export function formatLLMRefWithOptions(ref?: LLMDisplayRef | null): string {
-  const base = formatLLMRef(ref)
-  const options = formatLLMOptions(ref?.options)
-  return options ? `${base} (${options})` : base
-}

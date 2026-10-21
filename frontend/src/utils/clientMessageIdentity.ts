@@ -86,11 +86,6 @@ export function keepUnechoedProvisionals(
   return pending.length === 0 ? durable : [...durable, ...pending]
 }
 
-export function userMessageDisplayContent(event: PollingEvent): string {
-  const display = userMessageMetadata(event).display_content
-  return typeof display === 'string' ? display.trim() : ''
-}
-
 // Messages still waiting in the server's turn queue have no durable row yet.
 // Restore shows them as queued provisional bubbles (same id as the durable row
 // that will replace them) so a reload or another tab does not lose them.

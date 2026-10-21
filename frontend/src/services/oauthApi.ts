@@ -51,10 +51,6 @@ export interface OAuthStatusResponse {
   token_path?: string;
 }
 
-export interface OAuthLogoutRequest {
-  server_name: string;
-}
-
 export class OAuthApi {
   private baseUrl: string;
 

@@ -633,7 +633,6 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
     return cleanToWorkspaceRelativePath(folderPath)
   }, [])
 
-
   const getWorkspaceDisplayPath = useCallback((filepath: string): string => {
     const workflowFolderPath = getActiveWorkflowFolderPath()
     if (!workflowFolderPath) return filepath
@@ -1401,24 +1400,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
 // do change each time); the conversation surfaces pass only primitives.
 export const MarkdownRenderer = React.memo(MarkdownRendererImpl)
 
-// Specialized versions for different event types
-export const LLMMarkdownRenderer: React.FC<{ content: string; maxHeight?: string }> = ({ content, maxHeight = "600px" }) => (
-  <div className={`border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 overflow-y-auto overflow-x-hidden min-w-0`} style={{ maxHeight }}>
-    <div className="p-3 min-w-0">
-      <MarkdownRenderer content={content} />
-    </div>
-  </div>
-)
-
 export const ToolMarkdownRenderer: React.FC<{ content: string; maxHeight?: string }> = ({ content, maxHeight = "400px" }) => (
-  <div className={`border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 overflow-y-auto overflow-x-hidden min-w-0`} style={{ maxHeight }}>
-    <div className="p-3 min-w-0">
-      <MarkdownRenderer content={content} />
-    </div>
-  </div>
-)
-
-export const SystemMarkdownRenderer: React.FC<{ content: string; maxHeight?: string }> = ({ content, maxHeight = "256px" }) => (
   <div className={`border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 overflow-y-auto overflow-x-hidden min-w-0`} style={{ maxHeight }}>
     <div className="p-3 min-w-0">
       <MarkdownRenderer content={content} />

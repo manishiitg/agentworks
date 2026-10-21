@@ -78,66 +78,6 @@ export function normalizeGroupNames(
 }
 
 /**
- * Validates that group names exist in manifest and are enabled
- *
- * @param groupNames - Array of group names to validate
- * @param manifest - Variables manifest
- * @returns Array of valid, enabled group names
- */
-export function validateGroupNames(
-  groupNames: string[],
-  manifest: VariablesManifest | null
-): string[] {
-  if (!manifest?.groups || groupNames.length === 0) {
-    return []
-  }
-
-  return groupNames.filter(name => {
-    const group = manifest.groups!.find(g => g.name === name)
-    return group && group.enabled
-  })
-}
-
-/**
- * Gets information for a group by name
- *
- * @param groupName - Group name
- * @param manifest - Variables manifest
- * @param iterationFolder - Optional iteration folder for building folder path
- * @returns Group information or null if group not found
- */
-export function getGroupInfo(
-  groupName: string,
-  manifest: VariablesManifest | null,
-  iterationFolder?: string | null
-): {
-  name: string
-  folderName: string
-  folderPath: string | null
-} | null {
-  if (!manifest?.groups) {
-    return null
-  }
-
-  const group = manifest.groups.find(g => g.name === groupName)
-  if (!group) {
-    return null
-  }
-
-  // Folder name is the sanitized group name
-  const folderName = sanitizeForMatch(group.name) || group.name
-
-  // Build folder path if iteration is provided
-  const folderPath = iterationFolder ? `${iterationFolder}/${folderName}` : null
-
-  return {
-    name: group.name,
-    folderName,
-    folderPath
-  }
-}
-
-/**
  * Normalizes run folder selection
  * 
  * Ensures the folder path is valid and extracts iteration/group info
@@ -188,12 +128,4 @@ export function normalizeRunFolder(
   }
 
   return folderPath
-}
-
-/**
- * Type guard to check if a value is a valid group name format
- */
-export function isValidGroupNameFormat(value: string): boolean {
-  // Any non-empty string is a valid group name
-  return typeof value === 'string' && value.length > 0
 }

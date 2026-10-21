@@ -17,7 +17,6 @@ const CHAT_COMPATIBLE_PHASES = new Set([
   'workflow-builder',
 ])
 
-
 export function isChatCompatiblePhase(phaseId: string | undefined): boolean {
   return !!phaseId && CHAT_COMPATIBLE_PHASES.has(phaseId)
 }
@@ -376,24 +375,6 @@ export function withoutOptimisticUserMessage(events: PollingEvent[], eventId: st
   const metadata = inner?.metadata as Record<string, unknown> | undefined
   if (typeof metadata?.message_id === 'string' && metadata.message_id) return events
   return events.filter(event => event.id !== eventId)
-}
-
-// Synthetic separator injected when a follow-up is sent on a restored session.
-// EventHierarchy uses this to collapse all events above it.
-export function createConversationResumedEvent(previousEventCount: number): PollingEvent {
-  return {
-    id: `conversation-resumed-${Date.now()}`,
-    type: 'conversation_resumed',
-    timestamp: new Date().toISOString(),
-    data: {
-      type: 'conversation_resumed',
-      data: {
-        previous_event_count: previousEventCount,
-        timestamp: new Date().toISOString(),
-      }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any,
-  }
 }
 
 // ---------------------------------------------------------------------------

@@ -30,9 +30,7 @@ export const HUMAN_TOOLS = [
 
 export type WorkspaceAdvancedToolName = typeof WORKSPACE_ADVANCED_TOOLS[number];
 export type WorkspaceBrowserToolName = typeof WORKSPACE_BROWSER_TOOLS[number];
-export type WorkspaceToolName = typeof WORKSPACE_TOOLS[number];
 export type HumanToolName = typeof HUMAN_TOOLS[number];
-export type CustomToolName = WorkspaceToolName | HumanToolName;
 
 // Helper to get all tools for a category
 // Supports: workspace_tools (all visible workspace tools), workspace_advanced, workspace_browser, human_tools
@@ -53,17 +51,6 @@ export function getToolsByCategory(category: string, capabilities?: unknown): st
     default:
       return [];
   }
-}
-
-// Helper to get all available custom tools
-export function getAllCustomTools(capabilities?: unknown): string[] {
-  void capabilities;
-
-  return [
-    ...WORKSPACE_ADVANCED_TOOLS,
-    ...WORKSPACE_BROWSER_TOOLS,
-    ...HUMAN_TOOLS
-  ];
 }
 
 // Normalize MCP tool names: strip "mcp__<server>__" prefix so routing reuses existing components

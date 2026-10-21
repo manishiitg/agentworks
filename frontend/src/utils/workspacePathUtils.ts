@@ -195,24 +195,6 @@ export function resolveWorkspaceUploadPath(folderPath: string, scope?: string | 
 }
 
 /**
- * Check if a file should be included in workflow filter
- */
-export function shouldIncludeInWorkflowFilter(
-  filepath: string, 
-  workflowFolderPath: string
-): boolean {
-  const normalizedPath = normalizePathForComparison(filepath)
-  const normalizedWorkflow = normalizePathForComparison(workflowFolderPath)
-  
-  // Check if within workflow folder
-  if (normalizedPath === normalizedWorkflow || normalizedPath.startsWith(normalizedWorkflow + '/')) {
-    return true
-  }
-  
-  return false
-}
-
-/**
  * Collect all folder paths from a file tree (including both adjusted and original paths)
  */
 export function collectFolderPaths(files: PlannerFile[], includeOriginal: boolean = true): Set<string> {
@@ -277,20 +259,6 @@ export function restoreExpandedFolders(
   })
   
   return restored
-}
-
-/**
- * Extract folder paths that need to be expanded to show a file
- */
-export function extractFolderPathsForFile(filepath: string): string[] {
-  const parts = filepath.split('/').filter(Boolean)
-  const folders: string[] = []
-  
-  for (let i = 0; i < parts.length - 1; i++) {
-    folders.push(parts.slice(0, i + 1).join('/'))
-  }
-  
-  return folders
 }
 
 /**

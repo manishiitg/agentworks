@@ -82,20 +82,6 @@ export function isDocumentWidget(widget: ReportWidget): boolean {
   return false
 }
 
-// An HTML document widget renders in a sandboxed iframe (HtmlReportFrame) that
-// owns its full styling, so it goes edge-to-edge and full-width (no content-width
-// cap, no reserved scrollbar gutter — the iframe self-scrolls past its height cap).
-export function isHtmlDocumentWidget(widget: ReportWidget): boolean {
-  if (widget.kind !== 'file') return false
-  const fmt = widget.renderFormat || 'auto'
-  if (fmt === 'html') return true
-  if (fmt === 'auto') {
-    const ext = (widget.source || '').split('.').pop()?.toLowerCase()
-    return ext === 'html' || ext === 'htm'
-  }
-  return false
-}
-
 export function WidgetShell({
   widget,
   children,

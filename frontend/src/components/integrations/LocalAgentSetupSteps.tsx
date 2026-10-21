@@ -22,36 +22,3 @@ export function CommandRow({ command, label }: { command: string; label: string 
     <CopyButton text={command} label={label} />
   </div>
 }
-
-/** Setup instructions only. Copying a command does not install or connect anything. */
-export function InstallAgentWorksStep({ origin, numbered = true }: { origin: string; numbered?: boolean }) {
-  const [windows, setWindows] = useState(false)
-  const shellQuote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`
-  const psQuote = (value: string) => `'${value.replace(/'/g, "''")}'`
-  const command = windows
-    ? `& ([scriptblock]::Create((irm ${psQuote(`${origin}/api/downloads/cli/install-agentworks.ps1`)}))) -Server ${psQuote(origin)} -NoLogin`
-    : `curl -fsSL ${shellQuote(`${origin}/api/downloads/cli/install-agentworks.sh`)} | sh -s -- --server ${shellQuote(origin)} --no-login`
-  return <section className="space-y-2" aria-label="Install the terminal app">
-    <h4 className="text-sm font-medium text-foreground">{numbered ? '1. ' : ''}Install the AgentWorks app for your terminal</h4>
-    <p className="text-xs text-muted-foreground">{numbered ? 'This is optional for MCP tools. Install it if you want your agents to message each other; otherwise skip to step 2.' : 'Install this only if you want agents to exchange messages through AgentBridge.'}</p>
-    <div className="flex flex-wrap gap-2" role="group" aria-label="Terminal app platform">
-      <Button variant={windows ? 'outline' : 'default'} size="sm" aria-pressed={!windows} onClick={() => setWindows(false)}>macOS / Linux</Button>
-      <Button variant={windows ? 'default' : 'outline'} size="sm" aria-pressed={windows} onClick={() => setWindows(true)}>Windows</Button>
-    </div>
-    <p className="text-xs text-muted-foreground">Run this in {windows ? 'PowerShell' : 'Terminal'} on your computer. It installs from this server without signing you in.</p>
-    <CommandRow label="Install AgentWorks terminal app" command={command} />
-  </section>
-}
-
-type MessagingApp = 'claude' | 'codex' | 'cursor' | 'muse'
-
-export function AgentMessagingStep({ app, numbered = true }: { app?: MessagingApp; numbered?: boolean }) {
-  const [selected, setSelected] = useState<MessagingApp>('claude')
-  return <section className="space-y-2" aria-label="Optional agent messaging">
-    <h4 className="text-sm font-medium text-foreground">{numbered ? '3. Optional: let' : 'Let'} your agents message each other</h4>
-    <p className="text-xs text-muted-foreground">After installing the terminal app, run this setup command for your AI app.</p>
-    {!app && <label className="block text-xs text-muted-foreground">AI app for messaging<select className="ml-2 rounded border border-border bg-background p-2" value={selected} onChange={event => setSelected(event.target.value as MessagingApp)}><option value="claude">Claude Code</option><option value="codex">Codex</option><option value="cursor">Cursor</option><option value="muse">Muse</option></select></label>}
-    <CommandRow label="Set up agent messaging" command={`agentworks setup ${app ?? selected}`} />
-    <p className="text-xs text-muted-foreground">Then open <a className="text-primary underline" href="/agentbridge/connect">AgentBridge → Connect an agent</a> to sign in, check support for your app and computer, and connect the chat you choose.</p>
-  </section>
-}

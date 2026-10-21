@@ -159,10 +159,6 @@ export function isInspectorView(id: WorkspaceViewId | null | undefined): id is I
   return kind === 'inspector' || kind === 'capability'
 }
 
-export function isCapabilityView(id: WorkspaceViewId | null | undefined): id is CapabilityViewId {
-  return Boolean(id) && VIEW_BY_ID.get(id as string)?.kind === 'capability'
-}
-
 export function isPreviewView(id: WorkspaceViewId | null | undefined): id is PreviewViewId {
   return Boolean(id) && VIEW_BY_ID.get(id as string)?.kind === 'preview'
 }
@@ -178,10 +174,6 @@ export function isCanvasView(id: unknown): id is CanvasViewId {
 export function isWorkspacePaneView(id: WorkspaceViewId | null | undefined): boolean {
   return Boolean(id) && VIEW_BY_ID.get(id as string)?.pane === true
 }
-
-export const CAPABILITY_VIEWS = WORKSPACE_VIEWS.filter(
-  (view): view is WorkspaceView & { id: CapabilityViewId; kind: 'capability' } => view.kind === 'capability',
-)
 
 /** Legacy persisted ids that no longer exist as views of their own. `log` and
  * `soul` were the old Pulse/Soul preview, which is the report today;

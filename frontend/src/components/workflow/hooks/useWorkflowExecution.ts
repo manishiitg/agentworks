@@ -17,8 +17,6 @@ export type WorkflowExecutionStatus =
   | 'failed'
   | 'waiting_feedback'
 
-export type StepStatus = 'pending' | 'running' | 'completed' | 'failed'
-
 export interface UseWorkflowExecutionReturn {
   status: WorkflowExecutionStatus
   events: PollingEvent[]
