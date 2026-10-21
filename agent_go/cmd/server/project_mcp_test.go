@@ -12,12 +12,48 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
+
+const projectMCPAlphaRoot = "Crew/alpha"
+const projectMCPBetaRoot = "Crew/beta"
+
+// Canonical registered Crews, including an ID that differs from its folder.
+// OAuth and workspace HTTP use the same isolated fixtures and owner registry.
+func projectMCPCrewFixture(t *testing.T) (triggerLinkEnv, string) {
+	t.Helper()
+	owners := withProjectOwnerRegistry(t)
+	env := newTriggerLinkEnv(t)
+	registry := agentprofiles.NewRegistry()
+	profile := workproduct.BuiltinAgentProfile()
+	profile.Product = "work"
+	if err := registry.RegisterProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	env.api.agentProfiles = registry
+	env.mock.mu.Lock()
+	defer env.mock.mu.Unlock()
+	for path := range env.mock.files {
+		if strings.HasPrefix(path, "_users/") {
+			delete(env.mock.files, path)
+		}
+	}
+	for _, row := range []struct{ id, folder, owner string }{{"alpha", "alpha", "owner"}, {"beta", "beta", "owner"}, {"checks", "checks-folder", "owner"}, {"gamma", "gamma", "other"}} {
+		root := "Crew/" + row.folder
+		if err := owners.Register(projectOwnerRecord{Product: "work", Folder: row.folder, ProjectID: row.id, OwnerID: row.owner, Shared: true, CanonicalRoot: root, Private: true, AudienceConfigured: true}); err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := json.Marshal(map[string]any{"schema_version": 1, "product": "work", "id": row.id, "title": row.id, "session_id": "sess-" + row.id, "owner_id": row.owner, "created_at": "2026-10-01T00:00:00Z"})
+		env.mock.files[root+"/product.json"] = string(raw)
+	}
+	return env, "Crew/checks-folder"
+}
 
 func TestProjectMCPResourceCannotWiden(t *testing.T) {
 	t.Setenv("PUBLIC_URL", "https://agentworks.example.com")
-	for _, kind := range []string{"work", "code", "workflow", "relay"} {
+	for _, kind := range []string{"work", "workflow", "relay"} {
 		for _, access := range []string{"view", "use"} {
 			resource := "https://agentworks.example.com" + projectMCPPrefix + kind + "/selected/" + access
 			if !validMCPResource(resource) {
@@ -31,7 +67,7 @@ func TestProjectMCPResourceCannotWiden(t *testing.T) {
 			if token.AllowsCrew("other") || token.AllowsWorkflow("other") {
 				t.Fatal("escaped bounds")
 			}
-			if (kind == "work" || kind == "code") != token.AllowsCrew("selected") {
+			if (kind == "work") != token.AllowsCrew("selected") {
 				t.Fatal("wrong Crew bound")
 			}
 			if (kind == "workflow" || kind == "relay") != token.AllowsWorkflow("selected") {
@@ -49,7 +85,7 @@ func TestProjectMCPResourceCannotWiden(t *testing.T) {
 			}
 		}
 	}
-	for _, resource := range []string{"https://evil.example" + projectMCPPrefix + "work/a/use", "https://agentworks.example.com" + projectMCPPrefix + "work/a/build", "https://agentworks.example.com" + projectMCPPrefix + "work/a/use?project=b", "https://agentworks.example.com" + projectMCPPrefix + "work/a/use#x", "https://agentworks.example.com" + projectMCPPrefix + "work/../use", "https://agentworks.example.com" + projectMCPPrefix + "work/%61/use"} {
+	for _, resource := range []string{"https://agentworks.example.com" + projectMCPPrefix + "code/selected/view", "https://agentworks.example.com" + projectMCPPrefix + "code/selected/use", "https://evil.example" + projectMCPPrefix + "work/a/use", "https://agentworks.example.com" + projectMCPPrefix + "work/a/build", "https://agentworks.example.com" + projectMCPPrefix + "work/a/use?project=b", "https://agentworks.example.com" + projectMCPPrefix + "work/a/use#x", "https://agentworks.example.com" + projectMCPPrefix + "work/../use", "https://agentworks.example.com" + projectMCPPrefix + "work/%61/use"} {
 		if validMCPResource(resource) {
 			t.Fatal("accepted", resource)
 		}
@@ -58,12 +94,12 @@ func TestProjectMCPResourceCannotWiden(t *testing.T) {
 
 func TestProjectMCPCatalogExcludesGlobalAndBuilderTools(t *testing.T) {
 	tokenTestSetup(t)
-	t.Setenv("AGENT_PRODUCTS", "agentworks,work,code,relays,knowledgebase,mcp-gateway,bullpen")
+	t.Setenv("AGENT_PRODUCTS", "agentworks,work,relays,knowledgebase,mcp-gateway,bullpen")
 	catalog, err := externalTools()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, kind := range []string{"work", "code", "workflow", "relay"} {
+	for _, kind := range []string{"work", "workflow", "relay"} {
 		for _, mode := range []string{"view", "use"} {
 			a := projectMCPAudience{kind, "selected", mode}
 			token := a.token(accesstokens.Token{Scopes: a.scopes()})
@@ -90,13 +126,11 @@ func TestProjectMCPCatalogExcludesGlobalAndBuilderTools(t *testing.T) {
 			if _, exists := listed["dashboard"]; !exists {
 				t.Fatalf("%s/%s has no dashboard reads", kind, mode)
 			}
-			fn := "call_workflow_function"
-			if kind == "work" || kind == "code" {
-				fn = "call_crew_function"
-			}
-			definition, exists := externalCatalogTool(fn)
-			if !exists || externalTokenAllows(claims, definition) != (mode == "use") {
-				t.Fatalf("%s/%s function capability incorrect", kind, mode)
+			definition, exists := listed["functions"]
+			actions, _ := definition.InputSchema["properties"].(map[string]any)["action"].(map[string]any)["enum"].([]any)
+			canCall := slices.Contains(actions, any("call"))
+			if !exists || canCall != (mode == "use") {
+				t.Fatalf("%s/%s canonical function capability incorrect", kind, mode)
 			}
 		}
 	}
@@ -105,15 +139,14 @@ func TestProjectMCPCatalogExcludesGlobalAndBuilderTools(t *testing.T) {
 // Real OAuth storage, HTTP auth/consent and tool dispatch, isolated from all
 // real user data. No model call, provider request or business run is started.
 func TestProjectMCPOAuthDiscoveryPermissionsAndRevocation(t *testing.T) {
-	env, _, codeRoot := conditionCodeFixture(t)
+	env, checksRoot := projectMCPCrewFixture(t)
 	invalidateWorkflowManifestIndex()
 	t.Cleanup(invalidateWorkflowManifestIndex)
 	api := env.api
-	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "state"))
 	t.Setenv("WORKSPACE_DOCS_PATH", filepath.Join(t.TempDir(), "docs"))
 	t.Setenv("AUTH_SECRET", "project-mcp-isolated-signing-secret")
 	t.Setenv("PUBLIC_URL", "https://agentworks.example.com")
-	t.Setenv("AGENT_PRODUCTS", "agentworks,work,code,relays")
+	t.Setenv("AGENT_PRODUCTS", "agentworks,work,relays")
 	env.mock.mu.Lock()
 	var goal WorkflowManifest
 	if err := json.Unmarshal([]byte(env.mock.files[manifestPath("Workflow/reports")]), &goal); err != nil {
@@ -125,15 +158,6 @@ func TestProjectMCPOAuthDiscoveryPermissionsAndRevocation(t *testing.T) {
 	relay.Kind = "relay"
 	raw, _ := json.Marshal(relay)
 	env.mock.files[manifestPath("Workflow/project-flow")] = string(raw)
-	// Creation metadata is persisted on real project creation. Include it in
-	// these older minimal fixtures so consent can bind the original object.
-	for _, root := range []string{linkBetaPath, codeRoot} {
-		var doc map[string]any
-		_ = json.Unmarshal([]byte(env.mock.files[root+"/product.json"]), &doc)
-		doc["created_at"], doc["owner_id"] = "2026-10-01T00:00:00Z", "owner"
-		raw, _ := json.Marshal(doc)
-		env.mock.files[root+"/product.json"] = string(raw)
-	}
 	env.mock.mu.Unlock()
 
 	router := mux.NewRouter()
@@ -172,9 +196,9 @@ func TestProjectMCPOAuthDiscoveryPermissionsAndRevocation(t *testing.T) {
 	verifier := strings.Repeat("a", 43)
 	sum := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
-	for _, fixture := range []struct{ kind, id, root string }{{"work", "beta", linkBetaPath}, {"code", "checks", codeRoot}, {"workflow", goal.ID, "Workflow/reports"}, {"relay", relay.ID, "Workflow/project-flow"}} {
+	for _, fixture := range []struct{ kind, id, root string }{{"work", "beta", projectMCPBetaRoot}, {"work", "checks", checksRoot}, {"workflow", goal.ID, "Workflow/reports"}, {"relay", relay.ID, "Workflow/project-flow"}} {
 		for _, mode := range []string{"view", "use"} {
-			t.Run(fixture.kind+"/"+mode, func(t *testing.T) {
+			t.Run(fixture.kind+"/"+fixture.id+"/"+mode, func(t *testing.T) {
 				path := projectMCPPrefix + fixture.kind + "/" + fixture.id + "/" + mode
 				resource := "https://agentworks.example.com" + path
 				info := request("GET", "/api/oauth/mcp/project?workspace="+url.QueryEscape(fixture.root), "", jwt, "")
@@ -257,22 +281,23 @@ func TestProjectMCPOAuthDiscoveryPermissionsAndRevocation(t *testing.T) {
 					t.Fatal(err)
 				}
 				if fixture.kind == "work" {
-					if len(projects) != 1 || projects[0]["id"] != "beta" {
+					if len(projects) != 1 || projects[0]["id"] != fixture.id {
 						t.Fatal("crew discovery", projects)
 					}
 				} else if len(projects) != 0 {
 					t.Fatal("other Crews leaked", projects)
 				}
-				call := func(name string, args map[string]any) (int, map[string]any) {
+				callAs := func(caller *UserClaims, name string, args map[string]any) (int, map[string]any) {
 					body, _ := json.Marshal(map[string]any{"name": name, "arguments": args})
 					rec := httptest.NewRecorder()
-					api.handleExternalCall(rec, adminRequest("POST", path, string(body), claims, nil))
+					api.handleExternalCall(rec, adminRequest("POST", path, string(body), caller, nil))
 					out := map[string]any{}
 					_ = json.Unmarshal(rec.Body.Bytes(), &out)
 					return rec.Code, out
 				}
+				call := func(name string, args map[string]any) (int, map[string]any) { return callAs(claims, name, args) }
 				status, listed := call("workspace", map[string]any{"action": "list"})
-				if fixture.kind == "work" || fixture.kind == "code" {
+				if fixture.kind == "work" {
 					rows, _ := listed["workspaces"].([]any)
 					if status != 200 || len(rows) != 1 || rows[0].(map[string]any)["id"] != fixture.id {
 						t.Fatal("workspace discovery", status, listed)
@@ -280,7 +305,7 @@ func TestProjectMCPOAuthDiscoveryPermissionsAndRevocation(t *testing.T) {
 				} else if status != 403 {
 					t.Fatal("workflow connection reached workspace discovery", status, listed)
 				}
-				for _, selector := range []string{"alpha", "work:alpha", "code:alpha", "../alpha", linkAlphaPath} {
+				for _, selector := range []string{"alpha", "work:alpha", "code:alpha", "../alpha", projectMCPAlphaRoot} {
 					if status, out := call("workspace", map[string]any{"action": "get", "workspace_id": selector}); status < 400 {
 						t.Fatal("tampered selector", selector, status, out)
 					}
@@ -297,16 +322,36 @@ func TestProjectMCPOAuthDiscoveryPermissionsAndRevocation(t *testing.T) {
 				if status, _ := call("messages", map[string]any{"action": "list_agents"}); status != 403 {
 					t.Fatal("global agents exposed", status)
 				}
-				if status, _ := call("update_crew", map[string]any{"crew_id": fixture.id, "name": "must-not-write"}); status != 403 {
-					t.Fatal("Build permission exposed", status)
+				if status, _ := call("update_crew", map[string]any{"crew_id": fixture.id, "name": "must-not-write"}); status != 404 {
+					t.Fatal("retired Builder entry point must be refused, 404", status)
+				}
+				if status, _ := call("workspace", map[string]any{"action": "update", "workspace_id": "work:" + fixture.id, "changes": map[string]any{"name": "must-not-write"}}); status != 403 {
+					t.Fatal("canonical Builder permission exposed", status)
+				}
+				if fixture.kind == "work" {
+					if status, _ := callAs(crewWriter("other"), "workspace", map[string]any{"action": "update", "workspace_id": "work:" + fixture.id, "changes": map[string]any{"name": "must-not-write"}}); status != 404 {
+						t.Fatal("private Crew existence must be hidden from non-member, refused404", status)
+					}
 				}
 				if status, _ := call("workspace", map[string]any{"action": "ask", "workspace_id": fixture.kind + ":" + fixture.id, "message": "must-not-run"}); status != 403 {
 					t.Fatal("Builder conversation exposed", status)
 				}
 				if mode == "view" {
-					for _, name := range []string{"call_crew_function", "run_relay"} {
-						if externalTokenAllows(claims, externalTool{Name: name, executes: name == "run_relay"}) {
-							t.Fatal("View execution", name)
+					for name, action := range map[string]string{"functions": "call", "relay": "run"} {
+						definition, exists := externalCatalogTool(name)
+						if !exists {
+							t.Fatal("missing canonical tool", name)
+						}
+						filtered, allowed := externalMergedForClaims(claims, definition)
+						var actions []any
+						if allowed {
+							actions, _ = filtered.InputSchema["properties"].(map[string]any)["action"].(map[string]any)["enum"].([]any)
+						}
+						if slices.Contains(actions, any(action)) {
+							t.Fatal("View execution", name, action)
+						}
+						if status, _ := call(name, map[string]any{"action": action, "crew_id": fixture.id, "workflow_id": fixture.id, "function": "must-not-run"}); status != 403 {
+							t.Fatal("View execution must be refused", name, action, status)
 						}
 					}
 				}
@@ -375,11 +420,10 @@ func TestProjectMCPOAuthDiscoveryPermissionsAndRevocation(t *testing.T) {
 }
 
 func TestProjectMCPSharingRemovalCheckedNextRequest(t *testing.T) {
-	env, _, codeRoot := conditionCodeFixture(t)
+	env, checksRoot := projectMCPCrewFixture(t)
 	invalidateWorkflowManifestIndex()
 	t.Cleanup(invalidateWorkflowManifestIndex)
-	withProjectOwnerRegistry(t)
-	t.Setenv("AGENT_PRODUCTS", "agentworks,work,code,relays")
+	t.Setenv("AGENT_PRODUCTS", "agentworks,work,relays")
 	env.mock.mu.Lock()
 	var goal WorkflowManifest
 	_ = json.Unmarshal([]byte(env.mock.files[manifestPath("Workflow/reports")]), &goal)
@@ -392,13 +436,10 @@ func TestProjectMCPSharingRemovalCheckedNextRequest(t *testing.T) {
 	relayRaw, _ := json.Marshal(relay)
 	env.mock.files[manifestPath("Workflow/share-flow")] = string(relayRaw)
 	env.mock.mu.Unlock()
-	for _, fixture := range []struct{ kind, id, root string }{{"work", "beta", linkBetaPath}, {"code", "checks", codeRoot}, {"workflow", goal.ID, "Workflow/reports"}, {"relay", relay.ID, "Workflow/share-flow"}} {
-		t.Run(fixture.kind, func(t *testing.T) {
-			if fixture.kind == "work" || fixture.kind == "code" {
-				if err := defaultProjectOwners().Register(projectOwnerRecord{Product: fixture.kind, Folder: fixture.id, OwnerID: "owner"}); err != nil {
-					t.Fatal(err)
-				}
-				if err := defaultProjectOwners().SetAudience(fixture.kind, fixture.id, true, []string{"other"}); err != nil {
+	for _, fixture := range []struct{ kind, id, root string }{{"work", "beta", projectMCPBetaRoot}, {"work", "checks", checksRoot}, {"workflow", goal.ID, "Workflow/reports"}, {"relay", relay.ID, "Workflow/share-flow"}} {
+		t.Run(fixture.kind+"/"+fixture.id, func(t *testing.T) {
+			if fixture.kind == "work" {
+				if err := defaultProjectOwners().SetAudience(fixture.kind, strings.TrimPrefix(fixture.root, "Crew/"), true, []string{"other"}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -408,8 +449,8 @@ func TestProjectMCPSharingRemovalCheckedNextRequest(t *testing.T) {
 			if _, err := env.api.projectMCPTarget(t.Context(), claims, a); err != nil {
 				t.Fatal("shared access refused", err)
 			}
-			if fixture.kind == "work" || fixture.kind == "code" {
-				if err := defaultProjectOwners().SetAudience(fixture.kind, fixture.id, true, nil); err != nil {
+			if fixture.kind == "work" {
+				if err := defaultProjectOwners().SetAudience(fixture.kind, strings.TrimPrefix(fixture.root, "Crew/"), true, nil); err != nil {
 					t.Fatal(err)
 				}
 			} else {
@@ -452,31 +493,34 @@ func TestProjectMCPDashboardDiscoveryFiltersOtherAccessibleProjects(t *testing.T
 	}
 }
 
-func TestProjectMCPCodeStableIDUsesExistingFunctionSurface(t *testing.T) {
-	api, _ := newCodeAdminFixture(t, false)
-	withProjectOwnerRegistry(t)
-	t.Setenv("AGENT_PRODUCTS", "agentworks,work,code,relays")
-	a := projectMCPAudience{"code", "c0de0001-0000", "use"}
+func TestProjectMCPCrewStableIDUsesCanonicalFunctionSurface(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	api := f.api
+	a := projectMCPAudience{"work", "team", "use"}
 	token := a.token(accesstokens.Token{Scopes: a.scopes()})
 	claims := &UserClaims{UserID: "owner", AccessToken: &token}
 	if token.Allows("code:run") {
-		t.Fatal("legacy Code execution granted")
+		t.Fatal("retired Code execution granted")
 	}
 	target, err := api.projectMCPTarget(t.Context(), claims, a)
-	if err != nil || target.ID != a.ID || target.Root != codePrivacyOwnerRoot {
+	if err != nil || target.ID != a.ID || target.Root != externalCommandCrewRoot {
 		t.Fatalf("stable ID failed to resolve different storage folder: %+v %v", target, err)
 	}
-	for _, selector := range []string{a.ID, "code:" + a.ID} {
+	for _, selector := range []string{a.ID, "work:" + a.ID} {
 		_, manifest, ok := api.resolveExternalWorkspace(t.Context(), claims, selector)
 		if !ok || manifest.ID != a.ID {
 			t.Fatal("stable selector refused", selector)
 		}
 	}
-	status, out := externalCrewRequest(t, triggerLinkEnv{api: api}, claims, "list_crew_functions", map[string]any{"crew_id": "code:" + a.ID})
-	if status != 200 || out["functions"] == nil {
-		t.Fatal("existing Code function surface refused", status, out)
+	body, _ := json.Marshal(map[string]any{"name": "functions", "arguments": map[string]any{"action": "list", "crew_id": a.ID}})
+	rec := httptest.NewRecorder()
+	api.handleExternalCall(rec, adminRequest("POST", "/api/external/call", string(body), claims, nil))
+	out := map[string]any{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if rec.Code != 200 || out["functions"] == nil {
+		t.Fatal("canonical Crew function surface refused", rec.Code, out)
 	}
-	for _, selector := range []string{"work:" + a.ID, "../" + a.ID, codePrivacyOwnerRoot} {
+	for _, selector := range []string{"code:" + a.ID, "../" + a.ID, externalCommandCrewRoot} {
 		if _, _, ok := api.resolveExternalWorkspace(t.Context(), claims, selector); ok {
 			t.Fatal("wrong origin/path admitted", selector)
 		}
@@ -484,8 +528,8 @@ func TestProjectMCPCodeStableIDUsesExistingFunctionSurface(t *testing.T) {
 }
 
 func TestProjectMCPCreationIdentityRequiredAndStable(t *testing.T) {
-	env, _, codeRoot := conditionCodeFixture(t)
-	for _, fixture := range []struct{ kind, id, root string }{{"work", "beta", linkBetaPath}, {"code", "checks", codeRoot}} {
+	env, checksRoot := projectMCPCrewFixture(t)
+	for _, fixture := range []struct{ kind, id, root string }{{"work", "beta", projectMCPBetaRoot}, {"work", "checks", checksRoot}} {
 		a := projectMCPAudience{fixture.kind, fixture.id, "use"}
 		target := dashboardTarget{Root: fixture.root, ID: fixture.id}
 		env.mock.mu.Lock()
