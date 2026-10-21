@@ -1,4 +1,3 @@
-import type { TodoStep } from '../generated/event-types';
 import type { LLMProvider } from '../services/api-types';
 
 // AgentLLMConfig represents LLM configuration for an agent
@@ -21,7 +20,6 @@ export interface AgentConfigs {
   // workflow-local enabled_skills. New authoring never uses these settings.
   disable_learning?: boolean;
   learning_detail_level?: string;
-  keep_learning_full?: boolean;
   learnings_access?: 'read' | 'read-write' | 'none';
   learning_objective?: string;
   selected_servers?: string[];
@@ -31,16 +29,10 @@ export interface AgentConfigs {
   enabled_skills?: string[];
   enable_context_offloading?: boolean;
   use_code_execution_mode?: boolean;
-  delegating_agent_tier?: number;       // 1/2/3 - tier for orchestrator agent in tiered mode
-  orchestrator_llm?: AgentLLMConfig;          // Direct LLM override for orchestrator (works in both tiered and manual modes)
-  sub_agent_llm?: AgentLLMConfig;             // Direct LLM override for ALL sub-agents spawned by this step (works in both tiered and manual modes)
   disable_parallel_tool_execution?: boolean;  // Disable parallel tool execution (default: enabled)
-  disable_tier_optimization?: boolean;        // If true, execution agents always use Tier 1 (high reasoning)
   knowledgebase_access?: 'read' | 'write' | 'read-write' | 'none';
   knowledgebase_contribution?: string;
   db_access?: 'read' | 'write' | 'read-write' | 'none';
-  description_reviewed?: boolean;
-  review_notes?: string;
   // LEGACY, read-only (PLAT-287). A step's execution model is decided by its
   // plan `type` now — `scripted` is scripted, `agent` is agentic.
   // These two keys may still be present in a workflow's step_config.json until its
@@ -80,46 +72,6 @@ export interface StepConfig {
   id: string;                 // Stable step ID (generated from title) - required identifier
   title?: string;             // Step title (optional, for reference/display only)
   agent_configs?: AgentConfigs;
-}
-
-/**
- * Matches new plan steps with existing configs by ID only
- * Returns a map of step index -> matched AgentConfigs
- */
-export function matchStepConfigs(
-  newSteps: TodoStep[] | TodoStepWithConfigs[],
-  oldConfigs: StepConfig[]
-): Map<number, AgentConfigs> {
-  const result = new Map<number, AgentConfigs>();
-
-  // Create lookup map: ID -> config
-  const idConfigMap = new Map<string, AgentConfigs>();
-  
-  for (const stepConfig of oldConfigs) {
-    if (stepConfig.agent_configs !== undefined && stepConfig.id) {
-      idConfigMap.set(stepConfig.id, stepConfig.agent_configs);
-    }
-  }
-
-  // Match new steps to old configs by ID only
-  // Steps always have IDs from backend - throw error if missing
-  for (let i = 0; i < newSteps.length; i++) {
-    const step = newSteps[i];
-    
-    // Match by ID - step.id is required (always provided by backend)
-    const stepId = (step as TodoStepWithConfigs).id;
-    if (!stepId) {
-      throw new Error(`Step at index ${i} is missing required ID field. Step title: "${step.title || 'unknown'}"`);
-    }
-    
-    const config = idConfigMap.get(stepId);
-    if (config) {
-      result.set(i, config);
-    }
-    // If not found, step won't have config (use defaults)
-  }
-
-  return result;
 }
 
 // Validation schema types
@@ -482,10 +434,4 @@ export function isRoutingStep(step: PlanStep): step is RoutingPlanStep {
 
 export function isBranchStep(step: PlanStep): step is BranchPlanStep {
   return step.type === 'branch';
-}
-
-// A deterministic N-way switch -- either flavor. Same shape/mechanics,
-// different intent (routing = major fork, branch = small in-flow decision).
-export function isRouteSwitchStep(step: PlanStep): step is RoutingPlanStep | BranchPlanStep {
-  return isRoutingStep(step) || isBranchStep(step);
 }
