@@ -21,6 +21,9 @@ import (
 type crewLaptopSettings struct {
 	DeviceID string                       `json:"device_id"`
 	Folders  []localfiles.FolderSelection `json:"folders"`
+	// Commands lets the agent run terminal commands on the computer. It is separate from the folders' Read or
+	// Read & write, which cover files only; a command also needs a Read & write folder.
+	Commands bool `json:"commands"`
 }
 
 var laptopSettingsMu sync.Mutex

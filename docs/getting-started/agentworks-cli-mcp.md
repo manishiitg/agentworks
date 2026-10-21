@@ -39,12 +39,14 @@ Then tell your own MCP agent, for example: “Connect my Reports folder to this
 Crew with Read access” or “Allow commands in my project folder.” It can list
 your connected computer, browse folder names, and save the same permissions as
 the website with `manage_laptop_access`. Its `workspace_id` comes from
-`workspace action=list`. Read allows file copies; Read & write also permits
-commands. Removing access takes effect on subsequent calls, including while
+`workspace action=list`. Read allows listing and copying files; Read & write also permits
+writing files. Commands are a separate switch (`commands`). Removing access takes effect on subsequent calls, including while
 the computer is offline.
 
+- `list_local_files` lists one folder of a granted folder; `write_local_file`
+  creates or replaces a text file in a granted Read & write folder.
 - `execute_local_shell_command` runs on your computer in a granted Read & write
-  folder. Commands use your computer’s existing operating-system permissions;
+  folder, when the commands switch is on. Commands use your computer’s existing operating-system permissions;
   the folder is their starting location. Server environment and secrets are
   never forwarded. If a connection or timeout leaves the outcome uncertain,
   inspect the result before retrying a command with effects.
@@ -796,8 +798,7 @@ The CLI uses the same saved login as AgentBridge. The first run opens browser si
 AgentBridge keeps its existing chat attachments; `start` does not attach a chat for you.
 
 Open **Crew → Connections → Local laptop** (the same page as **Settings → Laptop access**) and choose your connected computer, browse its folders and add the ones this Crew needs.
-Each folder has **Read** or **Read & write** access. Read lets the agent read and copy files into Crew, with no arbitrary local
-commands. Read & write also enables local commands. Changes apply to the next operation without restarting the CLI.
+Each folder has **Read** or **Read & write** access. Read lets the agent list and copy files into Crew. Read & write also lets it write files there. Local commands are a separate switch ("Run terminal commands") and also need a Read & write folder. Changes apply to the next operation without restarting the CLI.
 Permissions belong to this Crew and this computer; another Crew does not inherit them. Sharing a Crew does not share your laptop.
 
 `agentworks status` shows the computer connection, `agentworks watch` shows local activity and `agentworks debug` produces a
@@ -817,10 +818,12 @@ and model and may be saved in chat history. There is no automatic sync.
 After updating from the old folder-based CLI, run `agentworks stop`, then `agentworks start`. Choose folders and permissions in
 Crew settings. The old `--workspace`, `--block`, `--downloads`, `--folder` and `--write-folder` setup is removed.
 
-The owner's interactive Builder chat gets two extra tools:
+The owner's interactive Builder chat gets these extra tools:
 
+- `list_local_files` and `write_local_file`: list a folder, and write a text file in
+  a Read & write folder.
 - `execute_local_shell_command`: run a command in the connected folder on the
-  laptop. Normal `execute_shell_command` continues to run on the server.
+  laptop (needs the commands switch). Normal `execute_shell_command` continues to run on the server.
 - `copy_local_file_to_crew`: copy a relative local file into an editable relative
   Crew path. Text and binary files up to 11 MiB are copied as bytes through the
   normal guarded Crew writer. The model receives a receipt, not the file bytes.

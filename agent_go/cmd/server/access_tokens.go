@@ -389,7 +389,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if (isExternalCrewTool(tool.Name) || isExternalCodeReviewTool(tool.Name)) && !productEnabled(crewProfileID) {
 		return false
 	}
-	if tool.Name == "manage_laptop_access" || tool.Name == "execute_local_shell_command" || tool.Name == "copy_local_file_to_crew" {
+	if tool.Name == "manage_laptop_access" || isExternalLaptopFileTool(tool.Name) {
 		return personalLaptopSettingsClaims(c) && externalWorkspaceAllowed(c)
 	}
 	if tool.Name == "workspace" {

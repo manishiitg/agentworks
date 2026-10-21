@@ -642,7 +642,7 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalVaultCall(w, r, tool.Name, call.Arguments)
 		return
 	}
-	if tool.Name == "execute_local_shell_command" || tool.Name == "copy_local_file_to_crew" {
+	if isExternalLaptopFileTool(tool.Name) {
 		api.externalLaptopToolCall(w, r, tool.Name, call.Arguments)
 		return
 	}

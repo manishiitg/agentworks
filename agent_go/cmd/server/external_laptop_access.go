@@ -92,7 +92,7 @@ func (api *StreamingAPI) externalLaptopToolCall(w http.ResponseWriter, r *http.R
 		return
 	}
 	if registrar.execute == nil {
-		externalError(w, 403, "folder_access", "Commands require Read & write access for the folder. Change it with manage_laptop_access or in Crew Settings.")
+		externalError(w, 403, "folder_access", "Commands need the Run terminal commands switch on and a Read & write folder. Change them with manage_laptop_access or in Crew Settings.")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), registrar.timeout)
@@ -116,21 +116,37 @@ func (api *StreamingAPI) laptopSettingsDeviceCall(ctx context.Context, c *UserCl
 	return api.localDeviceCallForOwner(ctx, c, device, request)
 }
 
+// The laptop tools that act on files or run commands, as opposed to manage_laptop_access which only chooses folders.
+func isExternalLaptopFileTool(name string) bool {
+	switch name {
+	case "execute_local_shell_command", "copy_local_file_to_crew", "list_local_files", "write_local_file":
+		return true
+	}
+	return false
+}
+
 func externalLaptopAccessDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_laptop_access", "Connect your laptop folders to a Crew you own. get returns the saved access and setup steps; devices lists your connected computers; browse lists folder names; set saves the complete folder selection with Read or Read & write; remove disconnects the Crew. Uses the same settings as Connections → Local laptop. Install and sign in to AgentWorks on that computer once, then keep it running. Use execute_local_shell_command and copy_local_file_to_crew for the local work you allow.", true, false, map[string]any{
+	add("manage_laptop_access", "Connect your laptop folders to a Crew you own. get returns the saved access and setup steps; devices lists your connected computers; browse lists folder names; set saves the complete folder selection with Read or Read & write; remove disconnects the Crew. Uses the same settings as Connections → Local laptop. Install and sign in to AgentWorks on that computer once, then keep it running. Folders cover files (list_local_files, copy_local_file_to_crew, and write_local_file for Read & write); commands (execute_local_shell_command) need the separate commands switch.", true, false, map[string]any{
 		"action":       map[string]any{"type": "string", "enum": []any{"get", "devices", "browse", "set", "remove"}},
 		"workspace_id": externalString("Your Crew's stable workspace_id from workspace action=list."),
 		"device_id":    externalString("Your connected computer from action=devices; required for browse or set with folders."),
 		"path":         externalString("Folder to browse on your computer; omit to start from its home folder."),
-		"folders": map[string]any{"type": "array", "maxItems": 32, "description": "The complete selection for this Crew. Omitted previous folders lose access. Read permits file copies into Crew; write also permits local commands under the computer's existing permissions.", "items": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+		"commands":     map[string]any{"type": "boolean", "description": "Allow terminal commands (execute_local_shell_command) on the computer. Folder access covers files only. Needs a Read & write folder to run. Omit to keep the saved choice."},
+		"folders": map[string]any{"type": "array", "maxItems": 32, "description": "The complete selection for this Crew. Omitted previous folders lose access. Read permits listing and copying files into Crew; write also permits write_local_file (files only; commands are the separate commands switch).", "items": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 			"id":     externalString("Keep the saved folder id when changing its access; omit for a new folder."),
 			"path":   externalString("Absolute local folder path returned by browse."),
 			"access": map[string]any{"type": "string", "enum": []any{"read", "write"}},
 		}, "required": []any{"path", "access"}}},
 	}, "action", "workspace_id")
-	add("execute_local_shell_command", "Run a command on your own connected laptop for a Crew you own. Requires a Read & write folder saved by manage_laptop_access. Commands start in that folder and run under your computer's existing permissions. Normal Crew shell stays on the server; server environment and secrets are never forwarded. A timed-out/disconnected call may have run: do not retry it blindly.", true, false, map[string]any{
+	add("execute_local_shell_command", "Run a command on your own connected laptop for a Crew you own. Requires commands turned on and a Read & write folder saved by manage_laptop_access. Commands start in that folder and run under your computer's existing permissions. Normal Crew shell stays on the server; server environment and secrets are never forwarded. A timed-out/disconnected call may have run: do not retry it blindly.", true, false, map[string]any{
 		"workspace_id": externalString("Your Crew's workspace_id from workspace action=list."), "folder": externalString("Granted folder ID from manage_laptop_access action=get; optional when only one is granted."), "command": externalString("Command to run on your laptop."), "timeout": externalInteger(1, 300),
 	}, "workspace_id", "command")
+	add("list_local_files", "List one folder on your own connected laptop for a Crew you own, using a granted Read or Read & write folder. path is relative to that folder; omit it for the folder itself. One level, at most 200 entries.", true, false, map[string]any{
+		"workspace_id": externalString("Your Crew's workspace_id from workspace action=list."), "folder": externalString("Granted folder ID from manage_laptop_access action=get; optional when only one is granted."), "path": externalString("Folder inside the granted folder; omit for the folder itself."),
+	}, "workspace_id")
+	add("write_local_file", "Create or replace one text file in a Read & write folder on your own connected laptop for a Crew you own. Replaces the whole file; text only, at most 11 MiB.", true, false, map[string]any{
+		"workspace_id": externalString("Your Crew's workspace_id from workspace action=list."), "folder": externalString("Granted folder ID from manage_laptop_access action=get; optional when only one is writable."), "path": externalString("File path relative to the granted folder."), "content": externalString("The complete new text of the file."),
+	}, "workspace_id", "path", "content")
 	add("copy_local_file_to_crew", "Copy one local file into a Crew you own, using your granted Read or Read & write folder. local_path is relative to that laptop folder; crew_path is relative to the Crew on the server. Text or binary, at most 11 MiB; bytes go directly to the normal guarded Crew writer. Replaces the destination; no sync or server-to-laptop copy. File content is not returned through the model.", true, false, map[string]any{
 		"workspace_id": externalString("Your Crew's workspace_id from workspace action=list."), "folder": externalString("Granted folder ID from manage_laptop_access action=get; optional when only one is granted."), "local_path": externalString("File relative to the granted laptop folder."), "crew_path": externalString("Editable destination relative to this Crew."),
 	}, "workspace_id", "local_path", "crew_path")
@@ -180,6 +196,11 @@ func (api *StreamingAPI) externalLaptopAccessCall(w http.ResponseWriter, r *http
 				return
 			}
 			settings.DeviceID = externalArg(args, "device_id")
+			if value, present := args["commands"].(bool); present {
+				settings.Commands = value
+			} else if previous, err := readLaptopSettings(c.UserID, root); err == nil {
+				settings.Commands = previous.Commands
+			}
 		}
 		data, _ := json.Marshal(settings)
 		request := r.Clone(r.Context())

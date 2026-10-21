@@ -55,7 +55,7 @@ func laptopConnectionTurn(req QueryRequest, profile *resolvedAgentProfile) bool 
 }
 
 func laptopConnectionInstructions() string {
-	return "\nThis Crew runs on the server. Ordinary shell, files, skills, connections, secrets, functions and background work use the server. The owner may allow laptop folders in Crew Settings. Read grants provide copy_local_file_to_crew; Read & write also enables execute_local_shell_command. Each tool lists the allowed folders and their IDs. Use the local shell only when work needs that connected computer; paths are relative to its granted folder. Copy local files explicitly into the Crew when needed; there is no automatic sync. Local output and copied files reach this server and the model and may be saved in chat history. Never put server secrets, SECRET_* values, AGENTWORKS_* environment values or login data into a laptop command. If the laptop is not connected, explain that the local action is unavailable and continue server work; never retry an uncertain command blindly.\n"
+	return "\nThis Crew runs on the server. Ordinary shell, files, skills, connections, secrets, functions and background work use the server. The owner may allow laptop folders in Crew Settings. Read folders provide list_local_files and copy_local_file_to_crew; Read & write folders also provide write_local_file; execute_local_shell_command needs the owner's Run terminal commands switch as well. Each tool lists the allowed folders and their IDs. Use the local shell only when work needs that connected computer; paths are relative to its granted folder. Copy local files explicitly into the Crew when needed; there is no automatic sync. Local output and copied files reach this server and the model and may be saved in chat history. Never put server secrets, SECRET_* values, AGENTWORKS_* environment values or login data into a laptop command. If the laptop is not connected, explain that the local action is unavailable and continue server work; never retry an uncertain command blindly.\n"
 }
 
 // Retained tool callbacks are reused between turns. Check the live turn and
@@ -497,10 +497,73 @@ func (api *StreamingAPI) registerGrantedLaptopTools(registrar definitionToolRegi
 			hasWrite = true
 		}
 	}
+	gate.Declare("list_local_files")
+	if err := registrar.RegisterCustomToolWithTimeout("list_local_files",
+		"List the files and folders inside one folder of your connected computer's shared folder (one level, at most 200 entries). path is relative to the granted folder; omit it for the folder itself. Works for Read and Read & write folders."+allowedFolders,
+		map[string]interface{}{"type": "object", "properties": map[string]interface{}{"folder": map[string]interface{}{"type": "string", "description": "Folder ID from your Crew Laptop access settings; optional when only one is allowed"}, "path": map[string]interface{}{"type": "string", "description": "Folder inside the granted folder, relative to it; omit for the granted folder itself"}}},
+		func(ctx context.Context, args map[string]interface{}) (string, error) {
+			caller, err := check(ctx)
+			if err != nil {
+				return "", err
+			}
+			dir := externalArg(args, "path")
+			if dir == "" {
+				dir = "."
+			}
+			response, err := api.localDeviceCallForOwner(ctx, caller, selected.DeviceID, localfiles.Request{CrewID: root, ResourceID: externalArg(args, "folder"), Operation: "list", Path: dir, RequestID: uuid.NewString()})
+			if err != nil {
+				return "", err
+			}
+			log.Printf("[LAPTOP_TOOL] session=%s owner=%s operation=list entries=%d", activity, caller.UserID, len(response.Entries))
+			out, _ := json.Marshal(map[string]interface{}{"entries": response.Entries})
+			return string(out), nil
+		}, 60*time.Second, "workspace_advanced"); err != nil {
+		return err
+	}
 	if hasWrite {
+		gate.Declare("write_local_file")
+		if err := registrar.RegisterCustomToolWithTimeout("write_local_file",
+			"Create or replace one text file in a Read & write folder of your connected computer. path is relative to the granted folder; folders on the way are created. Replaces the whole file, so read it first (copy_local_file_to_crew) when you only want to change part of it. Text only, at most 11 MiB; for other files ask the person to copy them."+allowedFolders,
+			map[string]interface{}{"type": "object", "properties": map[string]interface{}{"folder": map[string]interface{}{"type": "string", "description": "Folder ID from your Crew Laptop access settings; optional when only one is writable"}, "path": map[string]interface{}{"type": "string", "description": "File path relative to the granted folder"}, "content": map[string]interface{}{"type": "string", "description": "The complete new text of the file"}}, "required": []string{"path", "content"}},
+			func(ctx context.Context, args map[string]interface{}) (string, error) {
+				caller, err := check(ctx)
+				if err != nil {
+					return "", err
+				}
+				target, err := wf.CleanRelative(externalArg(args, "path"))
+				if err != nil || target == "." {
+					return "", errors.New("Choose a file path inside the granted folder")
+				}
+				content := externalArg(args, "content")
+				if len(content) > wf.MaxBinaryFileBytes {
+					return "", errors.New("The file is larger than 11 MiB")
+				}
+				folder := externalArg(args, "folder")
+				current, err := api.localDeviceCallForOwner(ctx, caller, selected.DeviceID, localfiles.Request{CrewID: root, ResourceID: folder, Operation: "read", Path: target, RequestID: uuid.NewString()})
+				expected := wf.MissingRevision
+				if err == nil && current.File != nil && current.File.Exists {
+					expected = current.File.Revision
+				} else if err != nil && !strings.Contains(strings.ToLower(err.Error()), "not found") {
+					return "", err
+				}
+				if _, err := check(ctx); err != nil {
+					return "", err
+				}
+				response, err := api.localDeviceCallForOwner(ctx, caller, selected.DeviceID, localfiles.Request{CrewID: root, ResourceID: folder, Operation: "write", Path: target, Content: content, ExpectedRevision: expected, RequestID: uuid.NewString()})
+				if err != nil {
+					return "", err
+				}
+				log.Printf("[LAPTOP_TOOL] session=%s owner=%s operation=write_file bytes=%d", activity, caller.UserID, len(content))
+				out, _ := json.Marshal(map[string]interface{}{"written": target, "receipt": response.Receipt})
+				return string(out), nil
+			}, 60*time.Second, "workspace_advanced"); err != nil {
+			return err
+		}
+	}
+	if hasWrite && settings.Commands {
 		gate.Declare("execute_local_shell_command")
 		if err := registrar.RegisterCustomToolWithTimeout("execute_local_shell_command",
-			"Run a command on your connected computer in its selected shared folder. Ordinary execute_shell_command runs on the server. Use this tool for local files, programs, builds, tests and git. Commands require Read & write for that folder and run as you on this computer, with the existing operating-system permissions. Output reaches the server/model. No server environment or secrets are forwarded. Paths start in the granted folder. timeout defaults to 60 seconds, maximum 300. If the laptop is disconnected, server work remains available."+allowedFolders,
+			"Run a command on your connected computer in its selected shared folder. Ordinary execute_shell_command runs on the server. Use this tool for local files, programs, builds, tests and git. Commands need the Run terminal commands switch on and a Read & write folder, and run as you on this computer, with the existing operating-system permissions. Output reaches the server/model. No server environment or secrets are forwarded. Paths start in the granted folder. timeout defaults to 60 seconds, maximum 300. If the laptop is disconnected, server work remains available."+allowedFolders,
 			map[string]interface{}{"type": "object", "properties": map[string]interface{}{"folder": map[string]interface{}{"type": "string", "description": "Folder ID from your Crew Laptop access settings; optional when only one is allowed"}, "command": map[string]interface{}{"type": "string"}, "timeout": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 300}}, "required": []string{"command"}},
 			func(ctx context.Context, args map[string]interface{}) (string, error) {
 				caller, err := check(ctx)

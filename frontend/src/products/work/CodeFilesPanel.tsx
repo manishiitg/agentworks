@@ -81,7 +81,7 @@ function connectionNote(listed: LocalFileDevice[], chosen: string) {
 }
 
 interface LaptopFolder { id: string; path: string; access: 'read' | 'write' }
-interface LaptopSettings { device_id: string; folders: LaptopFolder[] }
+interface LaptopSettings { device_id: string; folders: LaptopFolder[]; commands: boolean }
 interface LaptopDirectory { path: string; parent: string; folders: string[] }
 
 /** The backend owns grants. No project manifest or browser preference grants laptop access. */
@@ -90,7 +90,7 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string; works
   const project = tab?.metadata?.agentProfileProjectId
   const profile = tab?.metadata?.agentProfileId
   const endpoint = project && profile ? `/api/agent-profiles/${encodeURIComponent(profile)}/projects/${encodeURIComponent(project)}/laptop` : ''
-  const [settings, setSettings] = useState<LaptopSettings>({ device_id: '', folders: [] })
+  const [settings, setSettings] = useState<LaptopSettings>({ device_id: '', folders: [], commands: false })
   const [directory, setDirectory] = useState<LaptopDirectory>()
   const [path, setPath] = useState('')
   const [error, setError] = useState<string>()
@@ -101,7 +101,7 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string; works
   const latest = useLatestCliVersion(Boolean(endpoint))
   useEffect(() => {
     let active = true
-    setLoaded(false); setDirectory(undefined); setSettings({ device_id: '', folders: [] }); setError(undefined)
+    setLoaded(false); setDirectory(undefined); setSettings({ device_id: '', folders: [], commands: false }); setError(undefined)
     if (endpoint) void api.get<LaptopSettings>(endpoint, { skipSessionContext: true }).then(result => { if (active) { setSettings(result.data); setLoaded(true) } }).catch(cause => { if (active) setError(localFileError(cause)) })
     return () => { active = false }
   }, [endpoint])
@@ -128,7 +128,7 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string; works
       <p className="text-xs leading-5 text-muted-foreground">Crew runs on the server. Laptop access is available only to you in your Builder chat while the CLI is connected. Sharing this Crew does not share your computer. AgentBridge uses the same CLI.</p>
       <ComputerSetup connected={devices.length > 0} reconnecting={Boolean(settings.device_id)} />
       <label htmlFor="crew-laptop-device" className="block text-xs font-medium">Your computer</label>
-      <select id="crew-laptop-device" value={settings.device_id} disabled={busy || !loaded} className="w-full rounded-md border border-border bg-background p-2 text-sm" onChange={event => { setDirectory(undefined); void save({ device_id: event.target.value, folders: [] }) }}>
+      <select id="crew-laptop-device" value={settings.device_id} disabled={busy || !loaded} className="w-full rounded-md border border-border bg-background p-2 text-sm" onChange={event => { setDirectory(undefined); void save({ device_id: event.target.value, folders: [], commands: false }) }}>
         <option value="">No laptop access</option>
         {settings.device_id && !device && <option value={settings.device_id}>{settings.device_id} — Offline</option>}
         {devices.map(item => <option key={item.device_id} value={item.device_id}>{item.device_id}</option>)}
@@ -149,7 +149,11 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId: string; works
         <div className="max-h-52 overflow-auto">{directory.folders.map(name => <button key={name} disabled={busy} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted" onClick={() => void browse(join(directory.path, name))}><Folder className="h-4 w-4" />{name}</button>)}</div>
         <div className="flex gap-2"><Button size="sm" disabled={busy || settings.folders.some(folder => folder.path === directory.path)} onClick={() => void save({ ...settings, folders: [...settings.folders, { id: '', path: directory.path, access: 'read' }] }).then(saved => { if (saved) setDirectory(undefined) })}>Allow this folder</Button><Button size="sm" variant="ghost" onClick={() => setDirectory(undefined)}>Close</Button></div>
       </div>}
-      <p className="text-xs leading-5 text-muted-foreground">Read allows reading and copying files into Crew. Read &amp; write also allows local commands. Commands run as you on this computer: Windows uses your account permissions; macOS uses its existing light sandbox. Folder permissions are not full command isolation. Local output and copied files reach the server and may be saved in chat. Server secrets are not forwarded.</p>
+      {settings.device_id && <label className="flex items-start gap-2 rounded-md border border-border p-3 text-xs leading-5">
+        <input type="checkbox" className="mt-1" checked={settings.commands} disabled={busy || !device} onChange={event => void save({ ...settings, commands: event.target.checked })} />
+        <span><span className="font-medium">Run terminal commands on this computer</span><br />Off: the agent can only list and read files, and write files in Read &amp; write folders. On: it can also run commands in a Read &amp; write folder.</span>
+      </label>}
+      <p className="text-xs leading-5 text-muted-foreground">Read lets the agent list files and copy them into Crew. Read &amp; write also lets it write files in that folder. Commands are separate: they need the switch above and a Read &amp; write folder, and run as you on this computer (Windows uses your account permissions; macOS uses its existing light sandbox). Folder permissions are not full command isolation. Local output and copied files reach the server and may be saved in chat. Server secrets are not forwarded.</p>
       <Button size="sm" variant="ghost" disabled={refreshing} onClick={() => { setCheckNote(undefined); void refresh().then(listed => { if (listed) setCheckNote(connectionNote(listed, settings.device_id)) }) }}><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />Check connection</Button>
       {checkNote && <p role="status" className="text-xs text-muted-foreground">{checkNote}</p>}
       {(error || deviceError) && <p role="alert" className="text-sm text-destructive">{error || deviceError}</p>}

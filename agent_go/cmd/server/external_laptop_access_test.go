@@ -182,6 +182,16 @@ func TestMCPLaptopCommandAndBinaryCopyUseSavedFolderAccess(t *testing.T) {
 	}
 	folders[0].(map[string]any)["access"] = "write"
 	call("manage_laptop_access", map[string]any{"action": "set", "device_id": "mcp-laptop", "folders": folders}, 200)
+	// Read & write covers files only: the agent can list and write, but commands need their own switch.
+	call("execute_local_shell_command", map[string]any{"folder": "files", "command": "printf laptop-mcp"}, 403)
+	call("write_local_file", map[string]any{"folder": "files", "path": "notes/hello.txt", "content": "hello from the crew"}, 200)
+	if written, err := os.ReadFile(filepath.Join(folder, "notes/hello.txt")); err != nil || string(written) != "hello from the crew" {
+		t.Fatalf("written file: %q %v", written, err)
+	}
+	if listed := call("list_local_files", map[string]any{"folder": "files", "path": "notes"}, 200); !strings.Contains(string(listed), "hello.txt") {
+		t.Fatalf("listing: %s", listed)
+	}
+	call("manage_laptop_access", map[string]any{"action": "set", "device_id": "mcp-laptop", "folders": folders, "commands": true}, 200)
 	if capability := security.CurrentSandboxCapability(); capability.Available {
 		result := call("execute_local_shell_command", map[string]any{"folder": "files", "command": "printf laptop-mcp", "timeout": 10}, 200)
 		if !strings.Contains(string(result), "laptop-mcp") {

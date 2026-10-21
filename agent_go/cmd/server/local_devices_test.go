@@ -430,7 +430,7 @@ func saveTestLaptopSettings(t *testing.T, device string, folders []localfiles.Fo
 	if err = os.MkdirAll(filepath.Dir(file), 0700); err != nil {
 		t.Fatal(err)
 	}
-	data, _ := json.Marshal(crewLaptopSettings{DeviceID: device, Folders: folders})
+	data, _ := json.Marshal(crewLaptopSettings{DeviceID: device, Folders: folders, Commands: true})
 	if err = os.WriteFile(file, data, 0600); err != nil {
 		t.Fatal(err)
 	}

@@ -522,6 +522,8 @@ chat:
       - manage_laptop_access
       - execute_local_shell_command
       - copy_local_file_to_crew
+      - list_local_files
+      - write_local_file
       - update_settings
       - manage_schedules
       - workflow_team

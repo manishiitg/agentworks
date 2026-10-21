@@ -12,7 +12,7 @@ let root: Root
 let container: HTMLDivElement
 afterEach(async () => { if (root) await act(async () => root.unmount()); container?.remove(); vi.clearAllMocks() })
 it('uses backend folder permissions and changes them without reconnecting the CLI', async () => {
- const settings = { device_id: 'laptop', folders: [{ id: 'reports', path: '/home/person/Reports', access: 'read' }] }
+ const settings = { device_id: 'laptop', commands: false, folders: [{ id: 'reports', path: '/home/person/Reports', access: 'read' }] }
  transport.get.mockResolvedValue({ data: settings })
  transport.put.mockImplementation(async (_: string, next: unknown) => ({ data: next }))
  container = document.createElement('div'); document.body.append(container); root = createRoot(container)
@@ -20,7 +20,12 @@ it('uses backend folder permissions and changes them without reconnecting the CL
  const permission = container.querySelector('select[aria-label="Access for /home/person/Reports"]') as HTMLSelectElement
  expect(permission.value).toBe('read')
  await act(async () => { permission.value = 'write'; permission.dispatchEvent(new Event('change', { bubbles: true })) })
- expect(transport.put).toHaveBeenCalledWith('/api/agent-profiles/work/projects/crew/laptop', { device_id: 'laptop', folders: [{ ...settings.folders[0], access: 'write' }] }, { skipSessionContext: true })
+ expect(transport.put).toHaveBeenCalledWith('/api/agent-profiles/work/projects/crew/laptop', { ...settings, folders: [{ ...settings.folders[0], access: 'write' }] }, { skipSessionContext: true })
+ // Terminal commands are their own switch, separate from the folders' Read or Read & write.
+ const commands = container.querySelector('input[type="checkbox"]') as HTMLInputElement
+ expect(commands.checked).toBe(false)
+ await act(async () => { commands.click() })
+ expect(transport.put).toHaveBeenLastCalledWith('/api/agent-profiles/work/projects/crew/laptop', expect.objectContaining({ commands: true }), { skipSessionContext: true })
  expect(container.textContent).toContain('AgentBridge uses the same CLI')
  expect(container.textContent).not.toContain('--workspace')
 })
