@@ -114,6 +114,12 @@ func (api *StreamingAPI) migratePlaceConnections(ctx context.Context, apply bool
 				continue
 			}
 			row.Result, row.Detail = "moved", "Vault connection "+id
+			// A copied login is not always accepted by the Vault; say so instead of reporting a working connection.
+			if row.Kind != "noauth" {
+				if c, err := vaultConnection(ctx, id); err == nil && c.Status != "active" {
+					row.Result, row.Detail = "moved, sign in again", "Vault connection "+id+" needs the owner to sign in once (Vault, or Slack as me for Slack)"
+				}
+			}
 			log.Printf("[PLACE_MIGRATION] moved owner=%s connection=%s kind=%s item=%s vault_connection=%s", a.Owner, a.Server, row.Kind, root, id)
 			rows = append(rows, row)
 		}
