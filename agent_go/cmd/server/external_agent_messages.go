@@ -340,7 +340,7 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 			_, other := a["owner"]
 			return a["update_needed"] == true && !other
 		}) {
-			out["update_notice"] = cliUpdateNotice
+			out["update_notice"] = "Some of your agents use an older AgentWorks helper. Update the ones marked Update needed from their own apps."
 		}
 		// The same one list as inside the app (PLAT-861-297): Crews, Goals and Relays this person owns or that are
 		// shared with them, with their functions, next to their AgentBridge agents.
