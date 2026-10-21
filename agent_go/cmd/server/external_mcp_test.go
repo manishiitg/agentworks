@@ -338,7 +338,7 @@ func TestExternalMCPToolMenuNamesToolsAndExpiresWhenToolsChange(t *testing.T) {
 	}
 	list := post(session, `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`)
 	body, _ := io.ReadAll(list.Body)
-	if list.StatusCode != 200 || !strings.Contains(string(body), "Tools you can use now") || !strings.Contains(string(body), "settings") {
+	if list.StatusCode != 200 || !strings.Contains(string(body), "Tools available to this connection") || !strings.Contains(string(body), "settings") {
 		t.Fatalf("tools/list: %d %s", list.StatusCode, body)
 	}
 	if stale := post("aw1-000000000000000000000000", `{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}`); stale.StatusCode != http.StatusNotFound {
