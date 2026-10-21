@@ -912,3 +912,35 @@ func slackPlatformBotHasTargets(ctx context.Context) bool {
 	}
 	return false
 }
+
+// crewHasNoUsableSlackBot is true only when the Crew's settings are read and neither its selected Slack bot nor the platform
+// default is an enabled connection. Anything unclear (no settings found, an error) answers false, so a tool is never hidden
+// on a guess.
+func crewHasNoUsableSlackBot(ctx context.Context, profileID, workspacePath string) bool {
+	raw, found, err := readProjectRuntimeManifest(ctx, profileID, workspacePath)
+	if err != nil || !found {
+		return false
+	}
+	var manifest map[string]interface{}
+	if json.Unmarshal([]byte(raw), &manifest) != nil {
+		return false
+	}
+	capabilities, _ := manifest["capabilities"].(map[string]interface{})
+	selected, _ := capabilities["slack_connection_id"].(string)
+	svc, err := ensureSlackService()
+	if err != nil {
+		return false
+	}
+	if selected = strings.TrimSpace(selected); selected == "" {
+		selected = svc.DefaultConnectionID()
+	}
+	if selected == "" {
+		return true
+	}
+	for _, conn := range svc.ListConnections() {
+		if conn.ID == selected {
+			return !conn.Enabled
+		}
+	}
+	return true
+}
