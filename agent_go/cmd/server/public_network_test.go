@@ -76,6 +76,7 @@ func TestPublicNetworkSignupAndConsent(t *testing.T) {
 		t.Fatal("website did not receive sign-up availability")
 	}
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "work,bullpen")
+	t.Setenv("AGENT_PRODUCTS", "work,bullpen")
 	if got := register(`{"username":"new-person","password":"test-password-long-enough"}`); got != 403 {
 		t.Fatal("public signup enabled on a company server")
 	}
