@@ -52,8 +52,6 @@ export const CREW_PRODUCT: ProjectProductConfig = {
   preferenceNamespace: 'work',
 }
 
-export const PROJECT_PRODUCT_IDS: readonly ProjectProductId[] = ['work']
-
 export function isProjectProductId(value: unknown): value is ProjectProductId {
   return value === 'work'
 }

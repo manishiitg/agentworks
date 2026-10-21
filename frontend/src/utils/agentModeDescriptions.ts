@@ -11,13 +11,3 @@
 // There is no "Chief of Staff" product on main; that only exists on the
 // separate, unmerged feature/chief-of-staff-product branch.
 export type AgentMode = 'multi-agent' | 'workflow'
-
-export const getAgentModeDescription = (agentMode: AgentMode): string => {
-  switch (agentMode) {
-    case 'workflow':
-      return 'Todo-list-based automation execution with human verification and sequential task completion'
-    case 'multi-agent':
-    default:
-      return 'Direct chat with the selected model, skills, tools, and workspace context'
-  }
-}

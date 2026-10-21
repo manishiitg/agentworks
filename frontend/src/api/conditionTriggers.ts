@@ -1,6 +1,5 @@
 import axios from 'axios'
 import { getApiBaseUrl, getAuthToken } from '../services/api'
-import type { ProductTriggerScope } from './productWebhooks'
 
 export interface ConditionTrigger {
   id: string
@@ -24,7 +23,6 @@ export interface ConditionTrigger {
   last_error?: string
   last_run_at?: string
 }
-export type WatcherScope = ProductTriggerScope
 export type WatcherCaller = { owner_id: string; id: string; name: string; target: ConditionTrigger['target']; enabled: boolean; last_status?: string; last_run_at?: string; last_dispatch_at?: string }
 export interface ConditionHistory {
   pending: number

@@ -15,18 +15,6 @@ export const getDisplayTimeZone = (): string | undefined => {
   }
 }
 
-export const displayTimeZoneLabel = (): string => {
-  const zone = getDisplayTimeZone()
-  if (!zone) return ''
-  try {
-    return new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'short' })
-      .formatToParts(new Date())
-      .find(part => part.type === 'timeZoneName')?.value || zone
-  } catch {
-    return zone
-  }
-}
-
 export const formatDeploymentDateTime = (value?: string | number | Date | null): string => {
   if (value === undefined || value === null || value === '') return ''
   const date = value instanceof Date ? value : new Date(value)

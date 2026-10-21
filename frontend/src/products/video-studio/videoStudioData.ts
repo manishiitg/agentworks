@@ -1,6 +1,6 @@
 import { agentApi, getApiBaseUrl, getAuthToken } from '../../services/api'
 import { createProductProject, loadProductProjects, parseProductProjectManifest, type ProductProject } from '../../platform/chat/productProjects'
-import { flattenFiles, responseContent, responseFiles, slugifyTitle } from '../../utils/plannerFiles'
+import { slugifyTitle } from '../../utils/plannerFiles';
 import { loadWorkspacePresentations, parseWorkspacePresentations, type WorkspacePresentation } from '../../platform/presentations/presentationData'
 
 export const VIDEO_PROJECTS_ROOT = 'Chats/Video Studio/projects'
@@ -106,14 +106,6 @@ export type DocumentPresentation = {
   revision: number
   updatedAt: string
   workspacePresentation: WorkspacePresentation
-}
-
-export type VideoAsset = {
-  path: string
-  name: string
-  size?: number
-  mimeType?: string
-  modifiedAt?: string
 }
 
 export type VideoWorkflowStep = {
@@ -284,25 +276,6 @@ export async function loadDocumentPresentations(project: VideoProject): Promise<
   return toDocumentPresentations(await loadWorkspacePresentations(project.workspacePath, ['document.markdown']))
 }
 
-export async function loadVideoAssets(project: VideoProject): Promise<VideoAsset[]> {
-  try {
-    const response = await agentApi.getPlannerFiles(project.workspacePath, -1, 5)
-    return flattenFiles(responseFiles(response))
-      .filter((file) => file.type !== 'folder')
-      .filter((file) => /\/(uploads|work|outputs|runs)\//.test(file.filepath))
-      .map((file) => ({
-        path: file.filepath,
-        name: file.filepath.split('/').pop() || file.filepath,
-        size: file.size,
-        mimeType: file.mime_type,
-        modifiedAt: file.last_modified,
-      }))
-      .sort((a, b) => (b.modifiedAt || '').localeCompare(a.modifiedAt || ''))
-  } catch {
-    return []
-  }
-}
-
 export function parseWorkflowSteps(content: string): VideoWorkflowStep[] {
   try {
     const parsed = JSON.parse(content) as { steps?: unknown }
@@ -321,16 +294,6 @@ export function parseWorkflowSteps(content: string): VideoWorkflowStep[] {
         : undefined
       return [{ id, title: asString(step.title) || id, type: asString(step.type) || 'scripted', routes }]
     })
-  } catch {
-    return []
-  }
-}
-
-export async function loadVideoWorkflow(project: VideoProject): Promise<VideoWorkflowStep[]> {
-  try {
-    const response = await agentApi.getPlannerFileContent(`${project.workspacePath}/planning/plan.json`)
-    const document = responseContent(response)
-    return document ? parseWorkflowSteps(document.content) : []
   } catch {
     return []
   }

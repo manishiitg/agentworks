@@ -1,4 +1,4 @@
-import type { VariableGroup, VariablesManifest } from '../services/api-types'
+import type { VariablesManifest } from '../services/api-types';
 
 /**
  * Utility functions for workflow-related operations
@@ -48,46 +48,6 @@ export function extractIterationFolder(runFolder: string | null | undefined): st
   }
   
   return null
-}
-
-/**
- * Extracts the group name from a run folder path
- * Matches the folder name against sanitized group names from the manifest.
- *
- * @param runFolder - The run folder path (e.g., "iteration-1/production")
- * @param manifest - Optional variables manifest to resolve folder names to group names
- * @returns The group name, or null if not found
- */
-export function extractGroupNameFromFolder(
-  runFolder: string | null | undefined,
-  manifest?: VariablesManifest | null
-): string | null {
-  if (!runFolder || runFolder === 'new' || !runFolder.includes('/')) {
-    return null
-  }
-
-  const parts = runFolder.split('/')
-  if (parts.length !== 2) return null
-
-  const groupFolderName = parts[1] // e.g., "production"
-
-  // Try to resolve it to a group name using manifest
-  if (manifest?.groups) {
-    const sanitizeForMatch = (name: string) =>
-      name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').trim()
-
-    const group = manifest.groups.find((g: VariableGroup) => {
-      const sanitizedName = sanitizeForMatch(g.name)
-      const folderNameSanitized = sanitizeForMatch(groupFolderName)
-
-      return sanitizedName === folderNameSanitized || g.name === groupFolderName
-    })
-
-    return group?.name || null
-  }
-
-  // No manifest provided, return the folder name as-is
-  return groupFolderName
 }
 
 /**

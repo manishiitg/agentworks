@@ -219,17 +219,3 @@ export async function loadAgentProfileInteractionKinds(
     return new Set()
   }
 }
-
-/** Returns complete declarative interaction bindings for product-owned UI. */
-export async function loadAgentProfileInteractions(profileId: string, version?: number): Promise<AgentProfileInteractionBinding[]> {
-  if (!profileId) return []
-  try {
-    const profile = await loadAgentProfile(profileId, version)
-    return [...(profile.tools || []).map(tool => tool?.interaction), ...(profile.interactions || [])]
-      .filter((binding): binding is AgentProfileInteractionBinding => Boolean(
-        binding && typeof binding.kind === 'string' && binding.kind.trim() && typeof binding.render === 'string' && binding.render.trim(),
-      ))
-  } catch {
-    return []
-  }
-}

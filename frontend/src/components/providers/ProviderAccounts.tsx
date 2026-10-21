@@ -46,14 +46,6 @@ export function accountStatusText(status?: ProviderAccountStatus | 'loading', ke
   }
 }
 
-/** Whose account a row is, for action labels. */
-export function accountScopeLabel(record: ProviderConnection): string {
-  const relation = accountRelation(record)
-  if (relation === 'server') return 'admin-managed account'
-  if (relation === 'own') return 'your account'
-  return `${record.owner_name || 'another person'}'s account`
-}
-
 /** Subtitle for someone else's account the viewer sees but may not use. */
 export function otherAccountDetail(record: ProviderConnection, summary: string): string {
   const owner = record.owner_name || record.owner_user_id || 'unknown'

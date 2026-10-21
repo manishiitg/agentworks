@@ -67,19 +67,3 @@ export const getPublishStateVisual = (state?: string): PublishStateVisual => {
       }
   }
 }
-
-// Tailwind classes for the small status dot overlaid on the toolbar publish icon.
-export const getPublishDotClass = (state?: string): string => {
-  switch (state) {
-    case 'published':
-      return 'bg-emerald-500'
-    case 'publishing':
-      return 'bg-sky-500 animate-pulse'
-    case 'configured_not_verified':
-      return 'bg-amber-500'
-    case 'failed':
-      return 'bg-red-500'
-    default:
-      return 'bg-muted-foreground/40'
-  }
-}

@@ -37,34 +37,6 @@ export function formatDuration(durationNs: number): string {
 }
 
 /**
- * Formats a duration in nanoseconds to milliseconds (for display in compact mode)
- * @param durationNs - Duration in nanoseconds (from Go time.Duration)
- * @returns Duration in milliseconds as string
- */
-export function formatDurationMs(durationNs: number): string {
-  if (!durationNs || durationNs <= 0) {
-    return '0ms'
-  }
-
-  const durationMs = Math.round(durationNs / 1000000)
-  return `${durationMs}ms`
-}
-
-/**
- * Formats a duration in nanoseconds to seconds (for display in compact mode)
- * @param durationNs - Duration in nanoseconds (from Go time.Duration)
- * @returns Duration in seconds as string
- */
-export function formatDurationSeconds(durationNs: number): string {
-  if (!durationNs || durationNs <= 0) {
-    return '0s'
-  }
-
-  const durationSeconds = (durationNs / 1000000000).toFixed(1)
-  return `${durationSeconds}s`
-}
-
-/**
  * Formats a duration in nanoseconds to a compact format suitable for inline display
  * @param durationNs - Duration in nanoseconds (from Go time.Duration)
  * @returns Compact duration string

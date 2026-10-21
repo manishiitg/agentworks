@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle2, ChevronDown, ChevronRight, Clock3, Loader2, MessageSquareText, RefreshCw, Send, Sparkles, X } from 'lucide-react'
 import { agentApi } from '../../services/api'
 import type { ReportHumanInput } from '../../services/api-types'
@@ -611,85 +611,6 @@ export function ReportHumanInputPanel({
       )}
     </section>
   )
-}
-
-export type ReportHumanInputScope = {
-	workspacePath: string
-	workspaceLabel: string
-}
-
-export function ReportHumanInputCollection({
-	scopes,
-	source,
-	className = '',
-}: {
-	scopes: ReportHumanInputScope[]
-	source?: string
-	className?: string
-}) {
-	const scopeKey = scopes.map(scope => `${scope.workspacePath}\u0000${scope.workspaceLabel}`).join('\u0001')
-	const stableScopes = useMemo(() => scopeKey.split('\u0001').filter(Boolean).map(value => {
-		const [workspacePath, workspaceLabel] = value.split('\u0000')
-		return { workspacePath, workspaceLabel }
-	}), [scopeKey])
-	const [inputs, setInputs] = useState<ReportHumanInput[]>([])
-	const [loading, setLoading] = useState(false)
-	const [error, setError] = useState<string | null>(null)
-	const [refreshNonce, setRefreshNonce] = useState(0)
-
-	const loadInputs = useCallback(async (cancelled?: () => boolean, showLoading = true) => {
-		const paths = stableScopes.map(scope => scope.workspacePath).filter(Boolean)
-		if (paths.length === 0) {
-			setInputs([])
-			return
-		}
-		if (showLoading) setLoading(true)
-		if (showLoading) setError(null)
-		try {
-			const result = await agentApi.listReportHumanInputsAggregate(paths, undefined, source)
-			if (cancelled?.()) return
-			if (!result.success) throw new Error(result.error || 'Failed to load questions.')
-			const nextInputs = result.inputs || []
-			setInputs(previous => keepPreviousInputsWhenUnchanged(previous, nextInputs))
-			if (!showLoading) setError(null)
-		} catch (err) {
-			if (cancelled?.()) return
-			setError(err instanceof Error ? err.message : 'Failed to load questions.')
-			if (showLoading) setInputs([])
-		} finally {
-			if (showLoading && !cancelled?.()) setLoading(false)
-		}
-	}, [source, stableScopes])
-
-	useEffect(() => {
-		let cancelled = false
-		void loadInputs(() => cancelled)
-		return () => { cancelled = true }
-	}, [loadInputs, refreshNonce])
-
-	// Live-feed notices for any workflow; see the single-workflow panel above.
-	useLiveRefetch(() => { void loadInputs(undefined, false) }, {
-		kinds: ['human_inputs'], fallbackMs: 0, safetyMs: 0,
-	})
-
-	if (loading && inputs.length === 0 && !error) return null
-
-	return (
-		<div className={className}>
-			{stableScopes.map((scope, index) => (
-				<ReportHumanInputPanel
-					key={scope.workspacePath}
-					workspacePath={scope.workspacePath}
-					workspaceLabel={scope.workspaceLabel}
-					source={source}
-					providedInputs={inputs.filter(input => input.workspace_path === scope.workspacePath)}
-					providedLoading={loading}
-					providedError={index === 0 ? error : null}
-					onRequestRefresh={() => setRefreshNonce(value => value + 1)}
-				/>
-			))}
-		</div>
-	)
 }
 
 export default ReportHumanInputPanel

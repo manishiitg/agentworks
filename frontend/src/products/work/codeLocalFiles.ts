@@ -80,7 +80,6 @@ function fetchLatestCliVersion(): Promise<LatestCli | undefined> {
     .catch(() => undefined)
   return latestCliPromise
 }
-export function resetLatestCliVersionForTests() { latestCliPromise = undefined }
 export function useLatestCliVersion(enabled: boolean): LatestCli | undefined {
   const [latest, setLatest] = useState<LatestCli | undefined>()
   useEffect(() => {
@@ -99,4 +98,3 @@ export function cliUpdateNeeded(device: LocalFileDevice | undefined, latest: Lat
   if (latest.build && device.cli_build && device.cli_build !== 'dev') return device.cli_build !== latest.build
   return device.cli_version !== latest.version
 }
-export function shortCliVersion(version: string | undefined) { return version ? version.slice(0, 7) : 'older' }

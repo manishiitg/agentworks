@@ -97,10 +97,6 @@ export function resolveDelegationMainModel(
   }
 }
 
-export function hasWorkflowLLMTierDefaults(provider: string, providerManifest: ProviderManifestEntry[] = []) {
-  return Boolean(findManifestDefaults(provider, providerManifest))
-}
-
 function getTierDefaults(option: LLMOption, providerManifest: ProviderManifestEntry[] = []) {
   return findManifestDefaults(option.provider, providerManifest)
 }

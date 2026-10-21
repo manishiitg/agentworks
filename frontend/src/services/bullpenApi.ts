@@ -87,7 +87,6 @@ export interface BullpenAdminAuditRow {
   result: string
 }
 
-
 export interface UsageCounters { input_tokens: number; output_tokens: number; cached_tokens: number }
 export interface UsageReading { reading_id: string; agent_id: string; observed_at: string; window_start: string; session: UsageCounters & { model?: string; source: string; skipped_records?: number; turn_count?: number; model_call_count?: number }; delta: UsageCounters; baseline: boolean; discontinuity?: boolean }
 export interface BullpenUsage extends UsageReading { reporting: boolean; available: boolean; reason?: string; today: UsageCounters; today_timezone: string }
@@ -119,9 +118,4 @@ export function bullpenError(error: unknown): string {
   if (status === 401) return 'Sign in again to see your agents.'
   if (status === 404) return 'This server needs an update before it can show the agent directory.'
   return 'Could not load your agents. Try refreshing.'
-}
-
-export function sharingError(error: unknown): string {
-  const data = (error as { response?: { data?: { error?: { message?: string }; message?: string } } })?.response?.data
-  return data?.error?.message || data?.message || 'Could not change sharing. Try again.'
 }

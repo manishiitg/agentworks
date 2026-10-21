@@ -7,10 +7,6 @@
 // multi-session tabs retaining tens of MB of event objects.
 export const MAX_EVENTS_TO_PROCESS = 1000
 
-// Per-delegation child event budget.
-// SubAgentHierarchy renders 20 at a time; we keep extra for stats and follow-up continuity.
-export const MAX_CHILD_EVENTS_PER_DELEGATION = 300
-
 // Cleanup threshold: start cleanup above the retained max to avoid pruning on
 // every small batch once a session reaches the cap.
 export const CLEANUP_THRESHOLD = 1200

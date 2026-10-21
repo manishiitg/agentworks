@@ -7,20 +7,6 @@ import {
   type LucideIcon
 } from 'lucide-react'
 
-// Shared backup-status presentation helpers used by both the dedicated
-// WorkflowBackupView and the toolbar status dot, so the two never drift.
-
-export type BackupState =
-  | 'not_configured'
-  | 'local_only'
-  | 'configured_not_verified'
-  | 'running'
-  | 'healthy'
-  | 'partial'
-  | 'failed'
-  | 'skipped'
-  | string
-
 export const formatBackupStateLabel = (state?: string): string => {
   switch (state) {
     case 'loading':
@@ -92,25 +78,5 @@ export const getBackupStateVisual = (state?: string): BackupStateVisual => {
         badge: 'border-border bg-muted text-muted-foreground',
         icon: 'text-muted-foreground'
       }
-  }
-}
-
-// Tailwind classes for the small status dot overlaid on the toolbar backup icon.
-export const getBackupDotClass = (state?: string): string => {
-  switch (state) {
-    case 'not_configured':
-    case 'local_only':
-      return 'bg-red-500'
-    case 'healthy':
-      return 'bg-emerald-500'
-    case 'running':
-      return 'bg-sky-500 animate-pulse'
-    case 'partial':
-    case 'configured_not_verified':
-      return 'bg-amber-500'
-    case 'failed':
-      return 'bg-red-500'
-    default:
-      return 'bg-muted-foreground/40'
   }
 }

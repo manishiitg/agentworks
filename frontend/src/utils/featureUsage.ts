@@ -17,10 +17,6 @@ export function markFeatureUsed(feature: UsedFeature) {
   } catch { /* per-viewer convenience only */ }
 }
 
-export function featureUsed(feature: UsedFeature): boolean {
-  return Boolean(read()[feature])
-}
-
 // The features this browser has seen used; sent to the server, which decides which tips to skip.
 export function usedFeatures(): string[] {
   return Object.keys(read()).filter(feature => Boolean(read()[feature]))

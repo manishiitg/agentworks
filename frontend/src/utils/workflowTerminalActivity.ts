@@ -90,13 +90,6 @@ function terminalTimestamp(terminal: TerminalSnapshot): number {
   return Date.parse(terminal.updated_at || terminal.created_at || '') || 0
 }
 
-function presetForTerminal(
-  terminal: TerminalSnapshot,
-  presets: WorkflowPreset[],
-): WorkflowPreset | undefined {
-  return presets.find(preset => terminalMatchesWorkflowPreset(terminal, preset))
-}
-
 export function sortLiveWorkflowTerminals(terminals: TerminalSnapshot[]): TerminalSnapshot[] {
   return [...terminals].sort((a, b) => {
     const rankDelta = terminalSortRank(a) - terminalSortRank(b)
@@ -153,19 +146,4 @@ export function liveWorkflowTerminalSessionForPreset(
       isLiveWorkflowTerminal(candidate)
     )
   return terminal ? activeSessionFromWorkflowTerminal(terminal, { preset, title }) : undefined
-}
-
-export function activeSessionsFromLiveWorkflowTerminals(
-  terminals: TerminalSnapshot[],
-  presets: WorkflowPreset[],
-): ActiveSessionInfo[] {
-  const bySession = new Map<string, ActiveSessionInfo>()
-  for (const terminal of sortLiveWorkflowTerminals(terminals)) {
-    if (!terminal.session_id || !isLiveWorkflowTerminal(terminal)) continue
-    if (terminalWorkflowKeys(terminal).length === 0) continue
-    if (bySession.has(terminal.session_id)) continue
-    const preset = presetForTerminal(terminal, presets)
-    bySession.set(terminal.session_id, activeSessionFromWorkflowTerminal(terminal, { preset }))
-  }
-  return Array.from(bySession.values())
 }

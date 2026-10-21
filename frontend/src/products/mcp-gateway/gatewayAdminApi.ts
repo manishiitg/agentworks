@@ -140,14 +140,6 @@ function normalizeAccessPackage(policy: GatewayAccessPackageResponse): GatewayAc
   return { ...policy, rules: (policy.rules ?? []).map(rule => ({ ...rule, conditions: rule.conditions ?? [] })) }
 }
 
-export interface GatewayPolicyEvent {
-  at: string
-  actor: string
-  action: string
-  package_id: string
-  version: number
-}
-
 export class GatewayApiError extends Error {
   status: number
 

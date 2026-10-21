@@ -32,37 +32,6 @@ export const isValidJSON = (str: string): boolean => {
 }
 
 /**
- * Detects if content is JSON based on structure analysis
- * More comprehensive than simple parsing - looks for JSON-like patterns
- * @param content - The content string to check
- * @returns True if the content appears to be JSON
- */
-export const isJSONContent = (content: string): boolean => {
-  const trimmed = content.trim()
-  
-  // Must start with { or [
-  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
-    return false
-  }
-  
-  // Try to parse it
-  return isValidJSON(trimmed)
-}
-
-/**
- * Safely parses JSON and returns the parsed object or null
- * @param jsonString - The JSON string to parse
- * @returns Parsed object or null if invalid JSON
- */
-export const safeParseJSON = (jsonString: string): unknown => {
-  try {
-    return JSON.parse(jsonString)
-  } catch {
-    return null
-  }
-}
-
-/**
  * Extracts the logical tool name from an MCP-prefixed tool name.
  * MCP tools are named as mcp__<server-name>__<tool-name>.
  * Regular tools are returned as-is.

@@ -476,12 +476,6 @@ export interface LLMGuidanceResponse {
   guidance?: string
 }
 
-// Human Feedback types
-export interface HumanFeedbackRequest {
-  unique_id: string
-  response: string
-}
-
 export interface HumanFeedbackResponse {
   unique_id: string
   status: string
@@ -562,9 +556,6 @@ export interface ReportHumanInput {
 
 /** The Pulse's recommendation on one decision; also that decision's log entry (PLAT-697). */
 
-
-
-
 /** One line of the Pulse conversation shown in the Pulse tab (PLAT-697 phase 4). */
 export interface GoalLeadMessage {
   id: string
@@ -587,7 +578,6 @@ export interface GoalLeadConversation {
 
 /** A focus area's lifecycle: proposed by the Pulse, confirmed by the owner, tracked, closed. */
 
-
 export interface GoalLeadResponse {
  success: boolean
  conversation?: GoalLeadConversation
@@ -608,18 +598,6 @@ export interface ReportHumanInputResponse {
   apply_message?: string
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 export interface PulseOverviewResponse {
  success: boolean
  outward_actions?: PulseOutwardActions
@@ -639,24 +617,12 @@ export type PulseOutwardActions = 'ask' | 'allow'
 
 /** One code-computed silence alarm (PLAT-697): no run or no goal reading for days. */
 
-
 /** The Pulse's goal status: code facts plus the latest daily goal check verdict. */
-
 
 /** Work Pulse did (or plans) to move the user's goals, and constraint challenges. */
 
-
 /** The workflow's own Pulse schedule. Normal schedules only back up, publish
  * and notify; the full Pulse runs here and, in self mode, picks its own next time. */
-
-
-
-
-
-
-
-
-
 
 export interface GoalMetric {
   goal_id?: string
@@ -680,44 +646,6 @@ export interface GoalMetric {
   target?: number
   target_date?: string
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // Slack Feedback Configuration types
 
@@ -1024,20 +952,6 @@ export interface GmailTestResponse {
   message: string
 }
 
-export interface AgentStreamEvent {
-  type: string
-  query_id: string
-  timestamp: string
-  data?: Record<string, unknown>
-  content?: string
-  error?: string
-}
-
-// Polling API types
-export interface RegisterObserverRequest {
-  session_id?: string
-}
-
 // Observer APIs removed - no longer needed
 
 // Use the PollingEventSchema type from generated events
@@ -1045,13 +959,6 @@ export interface RegisterObserverRequest {
 
 // Re-export the EventTypeString for convenience
 export type { EventTypeString }
-
-
-
-
-
-
-
 
 export interface ListTerminalsResponse {
   terminals: TerminalSnapshot[]
@@ -1306,46 +1213,6 @@ export interface PlannerFileContent {
   encoding?: string;
 }
 
-export interface PlannerFilesResponse {
-  success: boolean;
-  message: string;
-  data: PlannerFile[];
-}
-
-export interface PlannerFolderChildrenResponse {
-  success: boolean;
-  message: string;
-  data: {
-    children: PlannerFile[];
-    total: number;
-    folderPath: string;
-  };
-}
-
-export interface CreateFolderRequest {
-  folder_path: string;
-  commit_message?: string;
-}
-
-export interface CreateFolderResponse {
-  folder_path: string;
-  last_modified: string;
-  created: boolean;
-}
-
-export interface CopyFolderRequest {
-  source_path: string;
-  destination_path: string;
-  commit_message?: string;
-}
-
-export interface CopyFolderResponse {
-  source_path: string;
-  destination_path: string;
-  files_copied: number;
-  dirs_created: number;
-}
-
 // File Version types
 export interface FileVersion {
   commit_hash: string;
@@ -1354,10 +1221,6 @@ export interface FileVersion {
   date: string;
   content?: string;
   diff?: string;
-}
-
-export interface FileVersionHistoryRequest {
-  limit?: number;
 }
 
 // Workflow metadata for background/minimized workflows
@@ -1407,15 +1270,6 @@ export interface ChatSession {
   completed_at?: string;
   status: string;
   last_activity?: string;
-}
-
-export interface ChatEvent {
-  id: string;
-  session_id: string;
-  chat_session_id: string;
-  event_type: string;
-  timestamp: string;
-  event_data: Record<string, unknown>;
 }
 
 export interface ChatHistorySummary {
@@ -1588,7 +1442,6 @@ export interface WorkflowBuilderSessionResponse {
 }
 
 // SSE message types (match backend sseEventMessage / sseStatusMessage)
-
 
 export interface CreateChatSessionRequest {
   session_id: string;
@@ -1974,7 +1827,6 @@ export interface VoiceEngineStatus {
   size_mb: number;
 }
 
-
 export interface WorkflowStatus {
   id: string;
   title: string;
@@ -2041,9 +1893,6 @@ export const ExecutionStrategy = {
   // Single step execution
   RUN_SINGLE_STEP: 'run_single_step',
 } as const;
-
-// Execution strategies
-export type ExecutionStrategyType = typeof ExecutionStrategy[keyof typeof ExecutionStrategy];
 
 // Variable Groups API types
 export interface Variable {
@@ -2345,21 +2194,6 @@ export interface ExecutionLogsResponse {
   token_usage?: TokenUsageFile;
 }
 
-
-
-
-
-
-
-
-// Batch execution event types
-export interface BatchExecutionStartEvent {
-  total_groups: number;
-  enabled_group_names: string[];
-  iteration_number: number;
-  workspace_path: string;
-}
-
 export interface BatchGroupStartEvent {
   group_name: string;
   group_index: number;
@@ -2383,30 +2217,12 @@ export interface BatchGroupEndEvent {
   remaining_groups: number;
 }
 
-export interface BatchExecutionEndEvent {
-  total_groups: number;
-  completed_groups: number;
-  failed_groups: number;
-  canceled_groups: number;
-  duration: number;  // Duration in nanoseconds
-  success: boolean;
-  error?: string;
-  iteration_number: number;
-  completed_group_names: string[];
-  failed_group_names: string[];
-}
-
 export interface BatchExecutionCanceledEvent {
   total_groups: number;
   completed_groups: number;
   canceled_group_name: string;
   remaining_group_names: string[];
   reason: string;
-}
-
-export interface WorkflowReviewDataResponse {
-  success: boolean;
-  costs: WorkflowCostsResponse;
 }
 
 // ---------------------------------------------------------------------------
@@ -2425,15 +2241,8 @@ export interface WorkflowReviewDataResponse {
 // commits that forget the regen step.
 // ---------------------------------------------------------------------------
 
-import type { ReportPlanDocumentSection, ReportPlanDocumentSectionLayout, ReportPlanDocumentWidget, ReportPlanDocumentWidgetLayout } from '../generated/report-plan'
-
-// Enum aliases — the codegen embeds the same literal unions inline on each
-// consuming field, so these are independently useful where callsites need
-// to name an enum (function args, switch exhaustiveness checks, etc.). They
-// must mirror the Go enum tags; if these drift, callsites will break.
-export type ReportWidgetKind = 'file' | 'file-list' | 'interaction';
+import type { ReportPlanDocumentSection, ReportPlanDocumentWidget } from '../generated/report-plan';
 export type ReportFileRenderFormat = 'auto' | 'html' | 'text' | 'code' | 'json' | 'image' | 'video' | 'audio' | 'pdf' | 'link';
-export type ReportFileListFormat = 'list' | 'cards' | 'table' | 'gallery';
 export type ReportFormatterName =
   | 'currency-inr'
   | 'currency-usd'
@@ -2447,10 +2256,6 @@ export type ReportFormatterName =
   | 'number-2dp'
   | 'bytes'
   | 'boolean-icon';
-// Direct re-exports of the generated types under their public names. Adding
-// a field to any of these = edit the Go struct and regenerate.
-export type ReportWidgetLayout = ReportPlanDocumentWidgetLayout;
-export type ReportSectionLayout = ReportPlanDocumentSectionLayout;
 
 // Narrowed widget type. The parser always sets `path` to a string, so callsites
 // can rely on it being defined — the schema makes it optional because Go's
@@ -2465,49 +2270,6 @@ export type ReportWidget = ReportPlanDocumentWidget & {
   sql?: string;
   path: string;
 };
-
-export interface ReportWidgetResponse {
-  workspace_path: string;
-  widget_id: string;
-  instance_key: string;
-  question: string;
-  response_kind: 'choice' | 'text' | 'choice-with-text' | string;
-  options: ReportHumanInputOption[];
-  allow_free_text: boolean;
-  subject_id?: string;
-  subject_version?: string;
-  subject_hash?: string;
-	status: 'pending' | 'answered' | 'executing' | 'completed' | 'failed' | 'expired' | 'cancelled' | string;
-  selected_option_id?: string;
-  note?: string;
-  answered_by?: string;
-  consumed_by?: string;
-	outcome_summary?: string;
-	execution_key?: string;
-	execution_revision?: number;
-	claimed_by?: string;
-	claim_started_at?: string;
-	completed_at?: string;
-	failed_at?: string;
-	failure_summary?: string;
-  revision: number;
-  answered_at?: string;
-  consumed_at?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ReportWidgetResponsesResponse {
-  success: boolean;
-  responses: ReportWidgetResponse[];
-  error?: string;
-}
-
-export interface ReportWidgetResponseResponse {
-  success: boolean;
-  response: ReportWidgetResponse;
-  error?: string;
-}
 
 // Narrowed row — widgets is a ReportWidget[] (with source/path defined),
 // not the looser ReportPlanDocumentWidget[] from the raw schema.
@@ -2612,138 +2374,6 @@ export interface WorkflowPhase {
   title: string;
   description: string;
   options?: WorkflowPhaseOption[];
-}
-
-// ============================================================================
-// Chat Cost Analysis Types
-// ============================================================================
-
-export interface ChatModelUsage {
-  provider: string;
-  input_tokens: number;
-  output_tokens: number;
-  reasoning_tokens: number;
-  cache_tokens: number;
-  cache_read_tokens: number;
-  cache_write_tokens: number;
-  llm_call_count: number;
-  input_cost_usd: number;
-  output_cost_usd: number;
-  reasoning_cost_usd: number;
-  cache_cost_usd: number;
-  total_cost_usd: number;
-  context_window_usage: number;
-  model_context_window: number;
-  context_usage_percent: number;
-}
-
-export interface SessionCostSummary {
-  session_id: string;
-  title: string;
-  agent_mode: string;
-  created_at: string;
-  status: string;
-  total_cost_usd: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_llm_calls: number;
-  by_model: Record<string, ChatModelUsage>;
-  by_agent?: Record<string, ChatModelUsage>;
-}
-
-export interface AggregateCosts {
-  total_cost_usd: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_llm_calls: number;
-  total_sessions: number;
-  by_model: Record<string, ChatModelUsage>;
-  by_agent?: Record<string, ChatModelUsage>;
-}
-
-export interface UserCostsResponse {
-  sessions: SessionCostSummary[];
-  aggregate: AggregateCosts;
-}
-
-export interface SessionCostDetail {
-  session_id: string;
-  title: string;
-  created_at: string;
-  by_model: Record<string, ChatModelUsage>;
-  by_turn_and_model?: Record<string, Record<string, ChatModelUsage>>;
-  by_agent_and_model?: Record<string, Record<string, ChatModelUsage>>;
-  total_cost_usd: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_llm_calls: number;
-}
-
-// ============================================================================
-// Delegation Logs Types (Multi-Agent Mode)
-// ============================================================================
-
-export interface DelegationLogEntry {
-  delegation_id: string;
-  session_id?: string;
-  instruction: string;
-  reasoning_level?: string;
-  model_id?: string;
-  servers?: string[];
-  background_agent_id?: string;
-  depth: number;
-  status: 'running' | 'completed' | 'failed';
-  start_time: string;
-  end_time?: string;
-  duration?: string;
-  result?: string;
-  error?: string;
-  input_tokens: number;
-  output_tokens: number;
-  tool_calls: number;
-  token_usage?: Record<string, ChatModelUsage>;
-  total_cost_usd: number;
-}
-
-export interface DelegationLogsResponse {
-  delegations: DelegationLogEntry[];
-  total_cost_usd: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_llm_calls: number;
-  by_model: Record<string, ChatModelUsage>;
-}
-
-export interface AgentCostSummary {
-  name: string;
-  input_tokens: number;
-  output_tokens: number;
-  total_cost_usd: number;
-  llm_calls: number;
-  by_model: Record<string, ChatModelUsage>;
-}
-
-export interface SessionDelegationLogs {
-  session_id: string;
-  title: string;
-  created_at: string;
-  status: string;
-  total_cost_usd: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_llm_calls: number;
-  main_agent: AgentCostSummary;
-  delegations: DelegationLogEntry[];
-  by_model: Record<string, ChatModelUsage>;
-}
-
-export interface AllDelegationLogsResponse {
-  sessions: SessionDelegationLogs[];
-  total_cost_usd: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_llm_calls: number;
-  by_model: Record<string, ChatModelUsage>;
 }
 
 // Workflow plan changelog (History view "Plan edits" feed)
@@ -3117,7 +2747,6 @@ export interface ScheduledJob {
   after_run?: ScheduleAfterRun
   /** Legacy, read for one release; kept in step with after_run. */
 
-
   id: string
   name: string
   description: string
@@ -3192,7 +2821,6 @@ export interface ScheduledJob {
 export interface CreateScheduledJobRequest {
   after_run?: ScheduleAfterRun
 
-
   run_destination?: 'crew_chat' | 'isolated'
   name: string
   description?: string
@@ -3228,7 +2856,6 @@ export interface CreateScheduledJobRequest {
 
 export interface UpdateScheduledJobRequest {
   after_run?: ScheduleAfterRun
-
 
   name?: string
   description?: string
@@ -3403,9 +3030,6 @@ export interface WorkflowPulseConfig {
   outward_actions?: PulseOutwardActions
   enabled?: boolean
 }
-
-
-
 
 export interface WorkflowCapabilities {
   selected_servers: string[]
@@ -3583,23 +3207,6 @@ export interface MigrateWorkflowsResponse {
   total: number
 }
 
-// --- Output plan (planning/output_plan.json) ---
-
-export interface WorkflowOutputPlanStep {
-  id?: string
-  title?: string
-  description?: string
-  instructions?: string
-  output_filename?: string
-  enabled?: boolean
-  context_dependencies?: string[]
-  context_output?: string
-}
-
-export interface WorkflowOutputPlan {
-  step: WorkflowOutputPlanStep | null
-}
-
 // Per-user override for where workflow questions should land. Empty fields
 // fall back to the connector's workspace-wide default. The Disabled flags let
 // a user opt out of one connector entirely (e.g. only Slack, never WhatsApp).
@@ -3630,8 +3237,6 @@ export interface NotificationRouteSummary {
   fields?: OrgDashboardNotificationField[]
   sections?: OrgDashboardNotificationSection[]
 }
-
-
 
 export interface OrgDashboardRouteNotifications {
   routing_step_id?: string
@@ -3704,7 +3309,6 @@ export interface WorkspaceStepInspectionsResponse {
   items: WorkspaceStepInspection[]
   next_cursor: string | null
 }
-
 
 export interface GoalObservation {
   observation_id: string

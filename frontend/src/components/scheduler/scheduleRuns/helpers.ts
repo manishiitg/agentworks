@@ -23,9 +23,6 @@ export type PresetMap = Map<string, { label: string; workspacePath: string | nul
 
 export const hasScheduleRunIssue = (job: ScheduledJob) => job.has_run_issue === true
 
-export const isSchedulePartialStatus = (status?: ScheduledJob['last_status']) =>
-  status === 'partial' || status === 'interrupted'
-
 export const isScheduleWaitingStatus = (status?: ScheduledJob['last_status']) =>
   status === 'waiting_for_workflow' || status === 'waiting_for_capacity'
 

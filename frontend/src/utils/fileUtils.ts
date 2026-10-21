@@ -94,16 +94,3 @@ export const extractFolderPaths = (filepath: string): string[] => {
   
   return foldersToExpand
 }
-
-/**
- * Checks if a file path represents a new file creation
- * @param toolName - Name of the tool being called
- * @returns true if this is a file creation operation
- */
-export const isFileCreationTool = (toolName: string): boolean => {
-  return toolName === 'update_workspace_file' || 
-         toolName === 'patch_workspace_file' ||
-         toolName === 'diff_patch_workspace_file' ||
-         toolName === 'read_workspace_file' ||
-         toolName === 'get_workspace_file_nested'
-}

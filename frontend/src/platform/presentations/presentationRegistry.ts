@@ -8,10 +8,6 @@ export function registerPresentationRenderer(kind: string, renderer: ComponentTy
   renderers.set(kind, renderer)
 }
 
-export function hasPresentationRenderer(kind: string): boolean {
-  return renderers.has(kind)
-}
-
 export function getPresentationRenderer(kind: string): ComponentType<PresentationRendererProps> | undefined {
   return renderers.get(kind)
 }

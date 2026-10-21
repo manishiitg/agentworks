@@ -50,10 +50,3 @@ export function WorkspaceToolsMenu({ children, label = 'More workspace tools' }:
     </div>
   </nav>
 }
-
-export function WorkspaceToolsGroup({ title, children }: { title: string; children: ReactNode }) {
-  return <div role="group" aria-label={title} className="border-t border-border first:border-t-0">
-    <h3 className="px-3 pb-1 pt-2 text-[10px] font-medium text-muted-foreground">{title}</h3>
-    {children}
-  </div>
-}

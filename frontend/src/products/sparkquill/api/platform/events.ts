@@ -4,12 +4,11 @@
 // own mapping from a session's events to the stored transcript the
 // activity history reads (turns themselves render in the shared ChatArea).
 import type { StoredMsg } from '../../stores/types'
-import { eventBelongsToSession, isForegroundSessionEvent, mcpToolDisplayName } from '../../../../../shared/session'
-import type { PollingEvent, SSEEventMessage } from '../../../../../shared/session'
+import { eventBelongsToSession, isForegroundSessionEvent } from '../../../../../shared/session';
+import type { PollingEvent } from '../../../../../shared/session';
 
 /** The shapes the UI code below reads; aliases of the shared contract. */
 export type PlatformEvent = PollingEvent
-export type EventBatch = SSEEventMessage
 
 /**
  * A coding-agent turn's whole assistant text (narration before tool calls
@@ -71,17 +70,4 @@ export function isMainEvent(e: PlatformEvent, sessionID: string): boolean {
   if (sessionID && !eventBelongsToSession(sessionID, e)) return false
   const data = e.data as { component?: unknown; correlation_id?: unknown } | undefined
   return isForegroundSessionEvent(e, data?.component, data?.correlation_id)
-}
-
-/** Platform tool names carry an MCP server prefix; the UI shows bare names. */
-export function bareToolName(name: string): string {
-  return mcpToolDisplayName(name).name
-}
-
-/** Strips the per-user product root so paths match what the UI already uses. */
-export function familyRelativePath(path: string): string {
-  const clean = String(path ?? '').replace(/^\/+/, '')
-  const marker = 'Chats/SparkQuill/'
-  const i = clean.indexOf(marker)
-  return i >= 0 ? clean.slice(i + marker.length) : clean
 }
