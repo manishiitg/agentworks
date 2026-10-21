@@ -305,7 +305,12 @@ func (api *StreamingAPI) externalCrewExecutionCall(w http.ResponseWriter, r *htt
 	common.SetSessionSandbox(session, profile.Runtime.Sandbox.IsStrict(), profile.Runtime.Sandbox.NetworkDisabled())
 	bindConversationBrowserIsolation(session, claims.UserID, root, nil)
 	// Only trusted transport code assigns database authority and location.
-	common.SetSessionShellEnv(session, map[string]string{"DB_PATH": path.Join(root, "db", "db.sqlite"), "WORKFLOW_DB_ACCESS": "read-write"})
+	shellEnv := map[string]string{"DB_PATH": path.Join(root, "db", "db.sqlite"), "WORKFLOW_DB_ACCESS": "read-write"}
+	// The same selected secrets a chat turn of this Crew gets, so a script run over MCP sees $SECRET_X like one run in chat.
+	for name, value := range api.crewSelectedSecretEnv(r.Context(), profile.ID, crew.Binding.WorkspacePath, root, claims.UserID) {
+		shellEnv[name] = value
+	}
+	common.SetSessionShellEnv(session, shellEnv)
 	ctx := context.WithValue(r.Context(), common.ChatSessionIDKey, session)
 	ctx = context.WithValue(ctx, common.WorkflowSessionIDKey, session)
 	ctx = context.WithValue(ctx, common.UserIDKey, claims.UserID)
@@ -472,4 +477,22 @@ func crewExecutionFilePaths(root string, guard *wf.FolderGuard) (reads, writes, 
 		blockedWrites = append(blockedWrites, path.Join(root, p))
 	}
 	return
+}
+
+// crewSelectedSecretEnv returns SECRET_<NAME> for each secret selected in the Crew's settings, resolved as in a chat turn
+// (project copy, shared Vault copy, Vault grants checked). Nothing is returned when none is selected or one cannot be read.
+func (api *StreamingAPI) crewSelectedSecretEnv(ctx context.Context, profileID, workspacePath, secretWorkspace, userID string) map[string]string {
+	names, initialized, err := productSelectedSecrets(ctx, profileID, workspacePath)
+	if err != nil || !initialized || len(names) == 0 {
+		return nil
+	}
+	secrets := api.loadSelectedSecrets(ctx, userID, secretWorkspace, names)
+	if err := validateVaultSecretSelection(ctx, userID, secrets, &names); err != nil {
+		return nil
+	}
+	env := make(map[string]string, len(secrets))
+	for _, secret := range secrets {
+		env["SECRET_"+secret.Name] = secret.Value
+	}
+	return env
 }
