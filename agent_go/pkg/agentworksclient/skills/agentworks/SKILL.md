@@ -2,12 +2,12 @@
 name: agentworks
 description: Build, use and share business processes with a team through AgentWorks MCP, including from ChatGPT or Cowork; help with connection setup when requested.
 metadata:
-  version: 1.1.0
+  version: 1.1.1
 ---
 
 # AgentWorks
 
-Use this entry pointer to discover current server guidance. Explain results in plain words, with one useful next step in chat or on the website. Use internal IDs in tool calls; show them only when the person asks. If an action is unavailable, explain what they can do instead. The CLI is an extra for developers.
+Use this entry pointer to discover server guidance for the current MCP connection. Explain results in plain words, with one useful next step in chat or on the website. Use internal IDs in tool calls; show them only when the person asks. If an action is unavailable, explain what they can do instead. The CLI is an extra for developers.
 
 When a person describes a business process, identify its result, inputs, intended users and timing from the conversation; ask only for essential missing choices. Choose the appropriate enabled product internally, reuse existing work and connections, build a small working version, try an actual example and inspect its completed result, then Share with the requested audience and return its usable link. Load the current `agentworks-mcp` skill for the full journey and detailed product guidance only as needed. Do not require a product quiz or a terminal installation for ChatGPT/Cowork.
 
