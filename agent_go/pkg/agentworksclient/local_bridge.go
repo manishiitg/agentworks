@@ -155,6 +155,7 @@ type localOffer struct {
 
 type localSession struct {
 	LabelName       string `json:"label_name,omitempty"`
+	HookTransport   string `json:"hook_transport,omitempty"`
 	lateNotice      string // set when an attach finished after its command had given up; said once on the next prompt
 	museWatch       *museWatchState
 	OfflineExplicit bool `json:"offline_explicit,omitempty"`
@@ -885,22 +886,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	if in.Action == "list" {
 		out := LocalBridgeReply{}
 		for _, session := range b.sessions {
-			state := LocalAgentState{Network: session.Network, AgentAttachment: session.Attachment, Online: !session.Offline, ServerClosed: session.ServerClosed, HostAlive: b.options.HostAlive != nil && hostAliveFrom(probed, session.Attachment.Provider, session.HostKey, b.options.HostAlive), Route: "hooks", LastError: session.LastError}
-			if museWatchActive(session) {
-				state.Route = "muse_monitor"
-			}
-			if session.Attachment.Provider == "pi" {
-				state.Route = "stored"
-				if piNativeActive(session) {
-					state.Route = "pi_extension"
-				}
-			}
-			if session.NativeRemote != "" {
-				state.Route = nativeCodexTransport(session.NativeRemote)
-			}
-			if session.Offline {
-				state.Route = "stored"
-			}
+			state := LocalAgentState{Network: session.Network, AgentAttachment: session.Attachment, Online: !session.Offline, ServerClosed: session.ServerClosed, HostAlive: b.options.HostAlive != nil && hostAliveFrom(probed, session.Attachment.Provider, session.HostKey, b.options.HostAlive), Route: localDeliveryRoute(session), LastError: session.LastError}
 			var last time.Time
 			for _, offer := range session.Offers {
 				if !offer.Offered && !offer.Suppressed {
@@ -1663,6 +1649,10 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return LocalBridgeReply{Error: "unsupported delivery adapter for this provider"}
 		}
 
+		if strings.HasSuffix(in.Transport, "_hook") && s.HookTransport != in.Transport {
+			s.HookTransport = in.Transport
+			_ = b.save()
+		}
 		if in.Action == "next" {
 			if in.Transport == "claude_channel" {
 				s.nativeCalls++
@@ -2236,23 +2226,48 @@ func (b *localBridge) housekeeping(ctx context.Context) {
 	}
 }
 
+// Route metadata describes the observed adapter, never model admission.
+func localDeliveryRoute(s *localSession) string {
+	if s.Offline || s.LastError != "" {
+		return "inbox"
+	}
+	if s.NativeRemote != "" {
+		return nativeCodexTransport(s.NativeRemote)
+	}
+	if s.nativeCalls > 0 {
+		return "claude_channel"
+	}
+	if museWatchActive(s) {
+		return "muse_monitor"
+	}
+	if piNativeActive(s) {
+		return "pi_extension"
+	}
+	if s.HookTransport != "" {
+		return s.HookTransport
+	}
+	return "inbox"
+}
+
 // Metadata reads and HTTP run outside the global bridge lock. A label update
 // never attaches, moves an address, creates a receipt or restores a closed chat.
 func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
-	if b.options.ChatLabel == nil {
-		return
-	}
 	b.mu.Lock()
 	a, explicitName, client := s.Attachment, s.LabelName, s.client
+	route := localDeliveryRoute(s)
 	active := !b.closed && !s.Offline && !s.ServerClosed && client != nil
 	b.mu.Unlock()
 	if !active || ctx.Err() != nil {
 		return
 	}
-	label := b.options.ChatLabel(a, explicitName)
-	if label == a.Label {
+	label := a.Label
+	if b.options.ChatLabel != nil {
+		label = b.options.ChatLabel(a, explicitName)
+	}
+	if label == a.Label && route == a.DeliveryRoute {
 		return
 	}
+	a.DeliveryRoute = route
 	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if err := client.UpdateAgentLabel(callCtx, a, label); err != nil {
@@ -2264,8 +2279,9 @@ func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 	for _, current := range b.sessions {
 		if current == s && current.Attachment.ID == a.ID && !current.Offline && !current.ServerClosed {
 			current.Attachment.Label = label
+			current.Attachment.DeliveryRoute = route
 			_ = b.save()
-			log.Printf("[BRIDGE-LABEL] agent=%s attachment=%s status=updated", a.AgentName, a.ID)
+			log.Printf("[BRIDGE-LABEL] agent=%s attachment=%s route=%s status=updated", a.AgentName, a.ID, route)
 			break
 		}
 	}

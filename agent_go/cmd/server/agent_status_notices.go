@@ -135,12 +135,12 @@ func sweepAgentStatusNotices(s *agentMessageStore, now time.Time) bool {
 			e := senders[k][l]
 			state := "it is offline"
 			if e.online {
-				state = "it is connected but has not picked it up yet"
+				state = "its connection is online; receipt is not confirmed"
 			}
-			tail := "It is stored and will be read when its person next uses that chat."
+			tail := "No receipt has been confirmed. The agent can check its inbox."
 			if e.nobody && e.mailbox {
 				state = "no live chat is attached to this name, but it reads its mailbox"
-				tail = "It is stored in its mailbox; it reads it when it next checks."
+				tail = "No receipt has been confirmed. It can check its inbox."
 			} else if e.nobody {
 				state = "no chat is attached to this name; it may have been renamed or retired"
 				tail = "It is stored but nobody will read it unless a chat takes that name again."
@@ -152,9 +152,9 @@ func sweepAgentStatusNotices(s *agentMessageStore, now time.Time) bool {
 			if e.count > 1 {
 				what = fmt.Sprintf("%d of your messages (the oldest sent %s)", e.count, e.oldest.UTC().Format("15:04 UTC"))
 			}
-			lines = append(lines, fmt.Sprintf("%s has not read %s: %s. %s", l, what, state, tail))
+			lines = append(lines, fmt.Sprintf("%s has not acknowledged %s: %s. %s", l, what, state, tail))
 		}
-		text := strings.Join(lines, "\n") + "\nStatus only: you do not need to resend or reply. You can tell your person it is waiting."
+		text := strings.Join(lines, "\n") + "\nStatus only: you do not need to resend or reply. You can tell your person receipt is unconfirmed."
 		appendAgentStatusMessage(s, endpoints[k], text, now)
 	}
 	return true

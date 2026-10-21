@@ -210,7 +210,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	}
 	// A chat rename updates presentation on the same lease. Free text that
 	// resembles another address is disambiguated; it never becomes a target.
-	lease := agentworksclient.AgentAttachment{AgentName: "reviewer", ID: meta["attachment_id"].(string)}
+	lease := agentworksclient.AgentAttachment{AgentName: "reviewer", ID: meta["attachment_id"].(string), DeliveryRoute: "claude_channel"}
 	if err := stranger.UpdateAgentLabel(ctx, lease, "Impersonation"); err == nil {
 		t.Fatal("another connection changed this chat's label")
 	}
@@ -227,12 +227,30 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	for _, raw := range directory["agents"].([]any) {
 		a := raw.(map[string]any)
 		if a["agent_name"] == "reviewer" {
-			foundLabel = a["label"] == "Sender (reviewer)" && a["target"] == "agent:reviewer" && a["online"] == true
+			foundLabel = a["label"] == "Sender (reviewer)" && a["target"] == "agent:reviewer" && a["online"] == true && a["presence"] == "Wakes now" && a["last_received_at"] != nil && a["last_handled_at"] != nil
 		}
 	}
 	if !foundLabel {
 		t.Fatal("rename changed the identity or hid its real address", directory)
 	}
+	// The same open stream can be hook-only. Presence follows the reported
+	// adapter, not the TCP connection, and metadata cannot create a receipt.
+	lease.DeliveryRoute = "claude_hook"
+	if err := receiver.UpdateAgentLabel(ctx, lease, "Sender"); err != nil {
+		t.Fatal(err)
+	}
+	directory = call(receiver, map[string]any{"action": "list_agents", "agent_name": "reviewer"})
+	for _, raw := range directory["agents"].([]any) {
+		row := raw.(map[string]any)
+		if row["agent_name"] == "reviewer" && (row["presence"] != "At next step" || row["delivery_mode"] != "next_step") {
+			t.Fatal("hook connection claimed immediate delivery", row)
+		}
+	}
+	lease.DeliveryRoute = "codex_queue"
+	if err := receiver.UpdateAgentLabel(ctx, lease, "Sender"); err == nil {
+		t.Fatal("accepted another provider's adapter")
+	}
+
 	// A simplified person NAME attach cannot displace a live chat, including
 	// when the other computer is absent from the local bridge journal.
 	if _, err := receiver.AttachAgent(context.Background(), agentworksclient.AgentAttachmentOptions{RejectLiveMove: true, AgentName: "reviewer", Provider: "claude", SessionID: "another-computer-session"}); err == nil || !strings.Contains(err.Error(), "detach it there first") {
@@ -334,5 +352,21 @@ func TestAgentLiveGuestCallerKeepsItsActor(t *testing.T) {
 	endpoint.Guest = ""
 	if !sameAccountAgentSender(endpoint, "owner") {
 		t.Fatal("owner-run Crew cannot reach its account")
+	}
+}
+
+func TestAgentReceiptActivityKeepsOwnerAndReceiptBoundaries(t *testing.T) {
+	now := time.Now().UTC()
+	s := agentMessageStore{Conversations: []agentConversation{
+		{Endpoints: [2]agentMessageEndpoint{{UserID: "sender"}, {UserID: "owner", NamedAgentID: "own"}}, Messages: []agentMessage{
+			{From: 0, SentAt: now.Add(time.Hour)}, // storage is not a received receipt
+			{From: 0, AdmittedAt: now, ProcessedAt: now.Add(time.Minute)},
+			{From: 0, Kind: "status", AdmittedAt: now.Add(time.Hour)},
+		}},
+		{Endpoints: [2]agentMessageEndpoint{{UserID: "sender"}, {UserID: "other", NamedAgentID: "foreign"}}, Messages: []agentMessage{{From: 0, AdmittedAt: now.Add(time.Hour)}}},
+	}}
+	activity := ownerAgentReceiptActivity(s, "owner")
+	if len(activity) != 1 || !activity["own"]["last_received_at"].Equal(now) || !activity["own"]["last_handled_at"].Equal(now.Add(time.Minute)) {
+		t.Fatal("activity mixed owners, server notices or stored messages", activity)
 	}
 }

@@ -61,7 +61,7 @@ func externalMessageToolForRequest(r *http.Request, tool externalTool) externalT
 	props := maps.Clone(tool.InputSchema["properties"].(map[string]any))
 	tool.InputSchema["properties"] = props
 	if hostedAgentMailbox(claims) {
-		tool.Description = "Message agents through your inbox: register your agent_name, list_agents to find recipients, send, read, or reply with send in the same inbox_id. Acknowledge your incoming message with ack and delivery=read or handled. " + hostedInboxInstructions + " Connected agents are private to their person and that person's agents. Published agents can be found and messaged by everyone on this server. Existing account and connection access still applies. Send uses the same message size and rate limits as the CLI. Publishing an agent still needs the person's request."
+		tool.Description = "Message agents through your inbox: register your agent_name, list_agents to find recipients, send, read, or reply with send in the same inbox_id. The directory includes Crews, Goals, Relays, coding chats and hosted inboxes. Show name, type, provider, presence, last_seen_at and available receipt times; Builder/Run is access, not online status. Acknowledge your incoming message with ack and delivery=read or handled. " + hostedInboxInstructions + " Connected agents are private to their person and that person's agents. Published agents can be found and messaged by everyone on this server. Existing account and connection access still applies. Send uses the same message size and rate limits as the CLI. Publishing an agent still needs the person's request."
 		props["delivery"] = map[string]any{"type": "string", "enum": []any{"read", "handled"}, "description": "For ack: read means you received the message; handled means you finished handling it. This never claims live delivery."}
 		delete(props, "attachment_id")
 		delete(props, "transport")
@@ -75,17 +75,36 @@ func externalMessageToolForRequest(r *http.Request, tool externalTool) externalT
 }
 
 func agentDeliveryMode(a namedMessageAgent) string {
-	if namedAgentOnline(a) {
-		return "live"
+	if !namedAgentOnline(a) {
+		if a.Attachment != nil || a.EverAttached {
+			return "offline"
+		}
+		return "inbox"
 	}
-	return "inbox"
+	switch a.Attachment.DeliveryRoute {
+	case "codex_desktop", "codex_queue", "claude_session", "claude_channel", "muse_monitor", "pi_extension":
+		return "live"
+	case "codex_hook", "claude_hook", "cursor_hook", "muse_hook", "agy_hook":
+		return "next_step"
+	case "inbox":
+		return "inbox"
+	default:
+		return "unknown"
+	}
 }
 
 func addAgentPresence(out map[string]any, a namedMessageAgent) {
-	online := namedAgentOnline(a)
-	out["online"], out["presence"], out["delivery_mode"] = online, "Inbox", "inbox"
-	if online {
-		out["presence"], out["delivery_mode"] = "Live now", "live"
+	out["online"], out["presence"], out["delivery_mode"] = namedAgentOnline(a), namedAgentPresence(a), agentDeliveryMode(a)
+	out["type"] = "Hosted agent"
+	if a.Attachment != nil || a.EverAttached {
+		out["type"] = "Coding chat"
+	}
+	if a.Attachment != nil {
+		out["provider"] = a.Attachment.Provider
+		out["delivery_route"] = a.Attachment.DeliveryRoute
+	}
+	if !a.LastOnlineAt.IsZero() {
+		out["last_seen_at"] = a.LastOnlineAt
 	}
 }
 

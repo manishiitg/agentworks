@@ -153,7 +153,7 @@ func TestHostedAgentInboxOverMCP(t *testing.T) {
 	init(hosted)
 	init(other)
 	registered := call(hosted, map[string]any{"action": "register", "agent_name": "browser-helper"}, true)
-	if registered["presence"] != "Inbox" || registered["delivery_mode"] != "inbox" || !strings.Contains(registered["message"].(string), "Nothing is pushed") {
+	if registered["presence"] != "Checks inbox" || registered["delivery_mode"] != "inbox" || !strings.Contains(registered["message"].(string), "Nothing is pushed") {
 		t.Fatalf("inbox explanation: %v", registered)
 	}
 	cliCall(map[string]any{"action": "register", "agent_name": "terminal-helper"})

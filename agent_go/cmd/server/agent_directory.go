@@ -36,7 +36,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 		kind := "crew"
 
 		row := map[string]interface{}{
-			"kind": kind, "id": "workspace:" + profileID + ":" + id, "crew_id": id, "name": name, "owner": crew["owner"],
+			"kind": kind, "type": "Crew", "presence": "Runs when called", "delivery_mode": "on_request", "id": "workspace:" + profileID + ":" + id, "crew_id": id, "name": name, "owner": crew["owner"],
 			"your_access": crew["access"], "description": crew["description"], "functions": agentDirectoryFunctions(functions),
 			"reach": "call_function(target=<id>, function=<name>) for a function; send_message(target=<id>) to ask it",
 		}
@@ -62,7 +62,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			access = "editor"
 		}
 		agents = append(agents, map[string]interface{}{
-			"kind": kind, "id": "workflow:" + manifest.ID, "workflow_id": manifest.ID, "name": firstNonEmptyTrimmed(manifest.Label, workflow.WorkspacePath),
+			"kind": kind, "type": map[string]string{"goal": "Goal", "relay": "Relay"}[kind], "presence": "Runs when called", "delivery_mode": "on_request", "id": "workflow:" + manifest.ID, "workflow_id": manifest.ID, "name": firstNonEmptyTrimmed(manifest.Label, workflow.WorkspacePath),
 			"your_access": access, "description": strings.TrimSpace(manifest.Description), "functions": agentDirectoryFunctions(workflowFunctions(manifest)),
 			"reach": "call_function(target=<id>, function=<name>)",
 		})
@@ -81,7 +81,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 	}
 	return map[string]interface{}{
 		"agents": agents,
-		"note":   "Every agent you own or that is shared with you. Use its id; a name works only when it matches one agent.",
+		"note":   "Every agent you own or that is shared with you. Show name, type, provider, presence and last_seen_at; include last_received_at and last_handled_at when supplied. Builder/Run describes access, not connection or delivery. Crews, Goals and Relays run when called and have no laptop heartbeat. Last seen is connection activity, not proof that the model read a message. Missing timestamps are unknown, never zero activity. Use the id; a name works only when unique.",
 	}, nil
 }
 

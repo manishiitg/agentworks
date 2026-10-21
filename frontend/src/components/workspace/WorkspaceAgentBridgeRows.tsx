@@ -20,6 +20,6 @@ export function WorkspaceAgentBridgeRows() {
   const open = () => openProductWorkspace('bullpen')
   return <>
     <Row icon={Cable} detail={agents.length ? `${agents.length} online` : 'None online'} onClick={open}>AgentBridge</Row>
-    {agents.slice(0, 5).map(agent => <Row key={agent.agent_id} icon={Terminal} hint={`${agent.agent_name}${agent.purpose ? ` · ${agent.purpose}` : ''}`} detail={BRIDGE_PROVIDERS[agent.provider || ''] || agent.provider || 'CLI agent'} onClick={open}>{agent.label || agent.agent_name}</Row>)}
+    {agents.slice(0, 5).map(agent => <Row key={agent.agent_id} icon={Terminal} hint={`${agent.agent_name} · ${agent.presence || 'Delivery unknown'}${agent.last_seen_at ? ` · Last seen ${new Date(agent.last_seen_at).toLocaleString()}` : ''}${agent.purpose ? ` · ${agent.purpose}` : ''}`} detail={BRIDGE_PROVIDERS[agent.provider || ''] || agent.provider || 'CLI agent'} onClick={open}>{agent.label || agent.agent_name}</Row>)}
   </>
 }

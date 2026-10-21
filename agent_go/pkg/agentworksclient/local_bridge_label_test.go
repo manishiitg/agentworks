@@ -34,7 +34,7 @@ func TestBridgeLabelRefreshKeepsLeaseAndDoesNotBlock(t *testing.T) {
 	go func() { b.refreshChatLabel(context.Background(), s); close(done) }()
 	select {
 	case args := <-started:
-		if args["action"] != "label" || args["attachment_id"] != "lease" || args["agent_name"] != "worker" {
+		if args["action"] != "label" || args["attachment_id"] != "lease" || args["agent_name"] != "worker" || args["delivery_route"] != "inbox" {
 			t.Fatal(args)
 		}
 	case <-time.After(time.Second):

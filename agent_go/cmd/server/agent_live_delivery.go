@@ -17,6 +17,7 @@ import (
 
 type namedAgentAttachment struct {
 	DeliveryContract int    `json:"delivery_contract,omitempty"`
+	DeliveryRoute    string `json:"delivery_route,omitempty"`
 	ID               string `json:"attachment_id"`
 	Provider         string `json:"provider"`
 	SessionID        string `json:"native_session_id"`
@@ -85,10 +86,18 @@ func notifyAgentLiveChanged() {
 
 // Presence is projected by the server for every directory surface.
 func namedAgentPresence(a namedMessageAgent) string {
-	if namedAgentOnline(a) {
-		return "Live now"
+	switch agentDeliveryMode(a) {
+	case "live":
+		return "Wakes now"
+	case "next_step":
+		return "At next step"
+	case "offline":
+		return "Offline; messages wait"
+	case "unknown":
+		return "Connected; delivery unknown"
+	default:
+		return "Checks inbox"
 	}
-	return "Inbox"
 }
 
 func namedAgentOnline(a namedMessageAgent) bool {
@@ -216,6 +225,15 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			externalError(w, 409, "attachment_changed", "The exact attachment is no longer current.")
 			return
 		}
+		if route, supplied := args["delivery_route"]; supplied {
+			value, ok := route.(string)
+			providers := map[string]string{"codex_desktop": "codex", "codex_queue": "codex", "claude_session": "claude", "claude_channel": "claude", "muse_monitor": "muse", "pi_extension": "pi", "codex_hook": "codex", "claude_hook": "claude", "cursor_hook": "cursor", "muse_hook": "muse", "agy_hook": "agy"}
+			if !ok || value != "inbox" && providers[value] != a.Attachment.Provider {
+				externalError(w, 400, "invalid_arguments", "Delivery route must match this chat's provider.")
+				return
+			}
+			a.Attachment.DeliveryRoute = value
+		}
 		a.Label = cleanAgentLabel(externalArg(args, "label"))
 	case "detach":
 		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") {
@@ -289,7 +307,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 	}
 	out := map[string]any{"agent_id": a.ID, "agent_name": a.Name, "label": agentLabel(*a), "purpose": a.Purpose, "status": externalArg(args, "action") + "ed"}
 	if externalArg(args, "action") == "label" {
-		log.Printf("[AGENT-LABEL] agent=%s attachment=%s status=updated", a.ID, a.Attachment.ID)
+		log.Printf("[AGENT-LABEL] agent=%s attachment=%s route=%s status=updated", a.ID, a.Attachment.ID, a.Attachment.DeliveryRoute)
 	}
 	if externalArg(args, "action") == "ack" {
 		out["delivery"] = ackDelivery
@@ -299,6 +317,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 	if a.Attachment != nil {
 		out["attachment_id"] = a.Attachment.ID
 		out["provider"] = a.Attachment.Provider
+		out["delivery_route"] = a.Attachment.DeliveryRoute
 		out["native_session_id"] = a.Attachment.SessionID
 	}
 	externalJSON(w, out)

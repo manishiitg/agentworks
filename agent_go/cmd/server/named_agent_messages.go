@@ -165,6 +165,7 @@ func listNamedMessageAgents(ctx context.Context, userID string) (map[string]inte
 func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessageStore, withUsage bool) map[string]interface{} {
 	items := []map[string]interface{}{}
 	now := time.Now().UTC()
+	activity := ownerAgentReceiptActivity(s, userID)
 	for _, a := range s.Agents {
 		if a.UserID == userID && namedAgentDiscoverable(a, now) {
 			item := map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "delivery_mode": agentDeliveryMode(a), "published": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0, "provider": func() string {
@@ -175,6 +176,11 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 			}()}
 			item["label"] = agentLabel(a)
 			addAgentPresence(item, a)
+			if times := activity[a.ID]; times != nil {
+				for key, value := range times {
+					item[key] = value
+				}
+			}
 			if agentUpdateNeeded(a) {
 				item["update_needed"] = true
 			}
@@ -610,4 +616,30 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 		case <-time.After(250 * time.Millisecond):
 		}
 	}
+}
+
+// Receipt times are private activity of the caller's own agents. Shared-agent
+// rows get presence only, never timestamps derived from their conversations.
+func ownerAgentReceiptActivity(s agentMessageStore, userID string) map[string]map[string]time.Time {
+	out := map[string]map[string]time.Time{}
+	for _, conversation := range s.Conversations {
+		for _, message := range conversation.Messages {
+			if message.From < 0 || message.From > 1 || serverAuthoredKind(message.Kind) {
+				continue
+			}
+			dest := conversation.Endpoints[1-message.From]
+			if dest.UserID != userID || dest.NamedAgentID == "" {
+				continue
+			}
+			if out[dest.NamedAgentID] == nil {
+				out[dest.NamedAgentID] = map[string]time.Time{}
+			}
+			for key, stamp := range map[string]time.Time{"last_received_at": message.AdmittedAt, "last_handled_at": message.ProcessedAt} {
+				if stamp.After(out[dest.NamedAgentID][key]) {
+					out[dest.NamedAgentID][key] = stamp
+				}
+			}
+		}
+	}
+	return out
 }
