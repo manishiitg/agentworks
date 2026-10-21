@@ -3,6 +3,8 @@ package server
 import (
 	"github.com/gorilla/mux"
 	"net/http"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
 // Dashboard identity and Ask capability are used by the native project chat.
@@ -35,5 +37,17 @@ func (api *StreamingAPI) handleDashboardQuestionView(w http.ResponseWriter, r *h
 	if !ok {
 		return
 	}
-	externalJSON(w, map[string]any{"resource_id": resolved.Resource.ID, "project_id": resolved.Target.ID, "product": resolved.Target.Kind, "dashboard": resolved.Document, "capability": resolved.Capability})
+	view := map[string]any{"resource_id": resolved.Resource.ID, "project_id": resolved.Target.ID, "product": resolved.Target.Kind, "dashboard": resolved.Document, "capability": resolved.Capability}
+	document := dashboards.Document(resolved.Resource.Dashboard, "")
+	page, automatic, err := api.liveDefaultDashboard(r.Context(), GetUserFromContext(r.Context()), resolved.Target.Root, document, []byte(resolved.Snapshot.Files["index.html"]))
+	if err != nil {
+		dashboardError(w, err)
+		return
+	}
+	if automatic {
+		// The viewer pins authored pages for Ask evidence. Only this server-owned
+		// automatic view may supply current HTML beside its saved base revision.
+		view["live_page"] = map[string]string{"document_path": document, "html": string(page)}
+	}
+	externalJSON(w, view)
 }

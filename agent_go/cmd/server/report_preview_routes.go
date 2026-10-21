@@ -262,7 +262,7 @@ func (api *StreamingAPI) handleReportPreviewFile(w http.ResponseWriter, r *http.
 		http.Error(w, fmt.Sprintf("read %s: %v", relative, err), status)
 		return
 	}
-	data, err = api.liveDefaultDashboard(r.Context(), claims, workspacePath, document, data)
+	data, _, err = api.liveDefaultDashboard(r.Context(), claims, workspacePath, document, data)
 	if err != nil {
 		dashboardError(w, err)
 		return

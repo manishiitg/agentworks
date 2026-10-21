@@ -186,38 +186,42 @@ func (api *StreamingAPI) defaultDashboardInfoFor(ctx context.Context, claims *Us
 
 // liveDefaultDashboard renders only the platform's untouched automatic page.
 // Authored pages and explicitly selected snapshots remain exactly as saved.
-func (api *StreamingAPI) liveDefaultDashboard(ctx context.Context, claims *UserClaims, root, document string, data []byte) ([]byte, error) {
+func (api *StreamingAPI) liveDefaultDashboard(ctx context.Context, claims *UserClaims, root, document string, data []byte) ([]byte, bool, error) {
 	if document != dashboards.Document(defaultDashboardID, "") || !unmodifiedDefaultDashboard(string(data)) || (claims != nil && claims.Scope == reportPreviewScope) {
-		return data, nil
+		return data, false, nil
+	}
+	if guard := dashboardFileGuard(claims); guard != nil && !guard.Allows(document, false) {
+		// A grant for one saved revision must not become a live-page grant.
+		return data, false, nil
 	}
 	target, err := api.dashboardTarget(ctx, claims, root)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	publication, err := readPublishedProject(ctx, root)
 	if err != nil {
 		return storedDefaultDashboard(data, root, err)
 	}
 	if publishedDashboardSource(publication) {
-		return data, nil
+		return data, false, nil
 	}
 	info, err := api.defaultDashboardInfoFor(ctx, claims, target)
 	if err != nil {
 		return storedDefaultDashboard(data, root, err)
 	}
 	log.Printf("[DASHBOARD_DEFAULT] live automatic page: kind=%s root=%s functions=%d", target.Kind, target.Root, len(info.Functions))
-	return []byte(defaultDashboardHTML(info)), nil
+	return []byte(defaultDashboardHTML(info)), true, nil
 }
 
 // An unavailable declaration store does not take the saved Ask page down.
 // Current access refusals still win over the previously published bytes.
-func storedDefaultDashboard(data []byte, root string, err error) ([]byte, error) {
+func storedDefaultDashboard(data []byte, root string, err error) ([]byte, bool, error) {
 	status := wf.StatusCode(err)
 	if status == http.StatusUnauthorized || status == http.StatusForbidden || status == http.StatusNotFound {
-		return nil, err
+		return nil, false, err
 	}
 	log.Printf("[DASHBOARD_DEFAULT] live declarations unavailable; serving stored automatic page: root=%s status=%d error=%v", root, status, err)
-	return data, nil
+	return data, false, nil
 }
 
 // ensureDefaultDashboard returns the dashboard a person opens for this

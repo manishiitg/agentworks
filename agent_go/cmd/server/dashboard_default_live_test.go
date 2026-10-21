@@ -9,8 +9,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gorilla/mux"
+
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // Drive shared live reads through the real workspace store: declarations
@@ -27,7 +31,11 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 			reader := &UserClaims{UserID: "other", Username: "other"}
 			ctx := context.WithValue(context.Background(), UserContextKey, owner)
 			root := externalCommandCrewRoot
-			op := func(action string, args map[string]any) dashboards.Result {
+			type documentResult struct {
+				dashboards.Result
+				ResourceID string `json:"resource_id"`
+			}
+			op := func(action string, args map[string]any) documentResult {
 				t.Helper()
 				if args == nil {
 					args = map[string]any{}
@@ -39,7 +47,7 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 				if w.Code != 200 {
 					t.Fatalf("%s: %d %s", action, w.Code, w.Body.String())
 				}
-				var result dashboards.Result
+				var result documentResult
 				if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 					t.Fatal(err)
 				}
@@ -48,6 +56,27 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 			op("share", map[string]any{"mode": "everyone"})
 			before := op("get", nil)
 			original := before.Snapshot.Files["index.html"]
+			if before.ResourceID == "" {
+				t.Fatal("the browser has no dashboard view identity")
+			}
+			view := func(claims *UserClaims) (int, map[string]any) {
+				t.Helper()
+				r := mux.SetURLVars(adminRequest(http.MethodGet, "/api/dashboards/"+before.ResourceID, "", claims, nil), map[string]string{"dashboard": before.ResourceID})
+				w := httptest.NewRecorder()
+				f.api.handleDashboardQuestionView(w, r)
+				var out map[string]any
+				_ = json.Unmarshal(w.Body.Bytes(), &out)
+				return w.Code, out
+			}
+			livePage := func() string {
+				t.Helper()
+				status, out := view(reader)
+				page, ok := out["live_page"].(map[string]any)
+				if status != 200 || !ok || page["document_path"] != dashboards.Document(defaultDashboardID, "") {
+					t.Fatalf("browser view lacks the server's automatic page: %d %v", status, out)
+				}
+				return page["html"].(string)
+			}
 			live := dashboards.Document(defaultDashboardID, "")
 			read := func(document string, claims *UserClaims) *httptest.ResponseRecorder {
 				t.Helper()
@@ -73,6 +102,9 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 				if w.Code != 200 || !strings.Contains(w.Body.String(), `data-report-action="published_reply"`) || strings.Contains(w.Body.String(), "unpublished_reply") {
 					t.Fatalf("Run page did not use the published function list: %d %s", w.Code, w.Body.String())
 				}
+				if page := livePage(); !strings.Contains(page, `data-report-action="published_reply"`) || strings.Contains(page, "unpublished_reply") {
+					t.Fatal("browser view did not exclude the unpublished function")
+				}
 				return
 			}
 			feed := livefeed.Default.Subscribe()
@@ -89,8 +121,20 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 			if w := read(live, reader); w.Code != 200 || !strings.Contains(w.Body.String(), `data-report-action="draft_reply"`) {
 				t.Fatalf("new function is missing without republish: %d %s", w.Code, w.Body.String())
 			}
+			if !strings.Contains(livePage(), `data-report-action="draft_reply"`) {
+				t.Fatal("browser metadata pinned the old page instead of supplying the live function")
+			}
 			if w := read(dashboards.Document(defaultDashboardID, before.Dashboard.Published), reader); w.Code != 200 || w.Body.String() != original {
 				t.Fatalf("a selected publication changed: %d %s", w.Code, w.Body.String())
+			}
+			bounded := *reader
+			bounded.AccessToken = &accesstokens.Token{ID: "snapshot-reader", Scopes: []string{"dashboards:read", "crews:read", "crews:run"}, AllCrews: true, FileGuard: &wf.FolderGuard{ReadPaths: []string{dashboards.Document(defaultDashboardID, before.Dashboard.Published)}}}
+			if status, out := view(&bounded); (status != 200 && status != http.StatusNotFound) || out["live_page"] != nil {
+				t.Fatalf("a saved-revision grant became a live-page grant: %d %v", status, out)
+			}
+			boundedContext := context.WithValue(context.Background(), UserContextKey, &bounded)
+			if page, automatic, err := f.api.liveDefaultDashboard(boundedContext, &bounded, root, live, []byte(original)); err != nil || automatic || string(page) != original {
+				t.Fatalf("the renderer changed a bounded snapshot: automatic=%v error=%v", automatic, err)
 			}
 			if after := op("get", nil); after.Dashboard.Revision != before.Dashboard.Revision || after.Dashboard.Published != before.Dashboard.Published {
 				t.Fatal("a live read wrote or republished the saved dashboard")
@@ -98,6 +142,9 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 			write(`{"functions":[]}`)
 			if w := read(live, reader); w.Code != 200 || strings.Contains(w.Body.String(), "draft_reply") {
 				t.Fatalf("removed function is still visible: %d %s", w.Code, w.Body.String())
+			}
+			if strings.Contains(livePage(), "draft_reply") {
+				t.Fatal("browser metadata retained a removed function")
 			}
 			// Keep the old marker deliberately: an edited body still belongs to its author.
 			marker := defaultDashboardMarker.FindString(original)
@@ -109,7 +156,13 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 			if w := read(live, reader); w.Code != 200 || w.Body.String() != custom {
 				t.Fatalf("a custom dashboard was changed: %d %s", w.Code, w.Body.String())
 			}
+			if status, out := view(reader); status != 200 || out["live_page"] != nil {
+				t.Fatalf("custom browser view must keep its pinned source: %d %v", status, out)
+			}
 			op("share", map[string]any{"mode": "private"})
+			if status, _ := view(reader); status != http.StatusNotFound {
+				t.Fatalf("revoked browser view remained available: %d", status)
+			}
 			if w := read(live, reader); w.Code != http.StatusForbidden {
 				t.Fatalf("a revoked shared link remained readable: %d", w.Code)
 			}
