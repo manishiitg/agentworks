@@ -18,7 +18,7 @@ import (
 // -> immutable files -> authenticated live report reads. No storage mock.
 func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	f := newExternalToolsFixture(t)
-	withProjectOwnerRegistry(t)
+	registry := withProjectOwnerRegistry(t)
 	t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", "true")
 	t.Setenv("PUBLIC_URL", "https://example.com")
 	owner := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{ID: "dashboard-writer", Scopes: []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "builder:chat", "crews:write"}, WorkflowIDs: []string{"invoices"}, AllCrews: true}}
@@ -167,12 +167,17 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	}
 	// Crew uses the same publication/read path at its canonical root.
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["agentworks","work"]},{"id":"reader","username":"reader","products":["agentworks","work"]}]}`)
+	reader.AccessToken.ProjectKind = "work"
+	reader.AccessToken.Scopes = append(reader.AccessToken.Scopes, "crews:read")
 	// The changed product grants invalidate the owner's catalog; reconnect
 	// both clients before testing Crew operations under the new grants.
 	cli = reconnectAfterCatalogChange(t, ctx, cli, srv.URL+externalMCPPath)
 	rcli = dialExternalMCP(t, ctx, rsrv.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, rcli)
 	stubCrewLookups(t, map[string]string{"Crew/dashboard-team": "owner"}, nil)
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "dashboard-team", OwnerID: "owner", Shared: true, Private: true, RunPeople: []string{"reader"}}); err != nil {
+		t.Fatal(err)
+	}
 	f.write(t, "Crew/dashboard-team/product.json", `{"id":"dashboard-team","product":"work","title":"Team"}`)
 	crewCreated := call("create_dashboard", map[string]any{"workspace": "Crew/dashboard-team", "dashboard_id": "team", "title": "Team", "files": map[string]any{"index.html": "<html><title>Team</title><body>Shared Crew</body></html>"}})
 	crewRevision := crewCreated["dashboard"].(map[string]any)["revision"].(string)
