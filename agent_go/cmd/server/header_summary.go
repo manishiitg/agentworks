@@ -27,7 +27,7 @@ func (api *StreamingAPI) handleGetHeaderSummary(w http.ResponseWriter, r *http.R
 
 	var scheduleSummary WorkflowScheduleSummary
 	if api.scheduler != nil {
-		summary, err := api.scheduler.CachedWorkflowScheduleSummary(r.Context())
+		summary, err := api.scheduler.LatestWorkflowScheduleSummary(r.Context())
 		if err == nil {
 			scheduleSummary = summary
 		}
