@@ -34,3 +34,33 @@ it('shows every published page in its server-selected audience and refreshes aft
     expect(host.textContent).toContain('appears here automatically')
   } finally { await act(async () => root.unmount()); host.remove(); post.mockReset() }
 })
+
+
+it('finds dashboards by display name or project without duplicating filename titles', async () => {
+  post.mockResolvedValue({ data: { dashboards: [
+    { dashboard_id: 'overview', title: 'index', project_title: 'Account research', product: 'crew', workspace: 'Crew/research', document_path: 'db/reports/index.html', shared_with_me: true },
+    { dashboard_id: 'sales', title: 'Weekly sales', project_title: 'Revenue', product: 'workflow', workspace: 'Goals/revenue', document_path: 'db/reports/sales.html', shared_with_me: true },
+  ], next_offset: 2, has_more: false } })
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+  const search = () => host.querySelector('input')!
+  const type = async (value: string) => act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search(), value)
+    search().dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  try {
+    await act(async () => root.render(<DashboardsPage />))
+    const shared = host.querySelector('section[aria-label="Shared with you"]')!
+    expect(shared.querySelectorAll('a')).toHaveLength(2)
+    expect(shared.querySelector('a')!.textContent).toBe('CrewAccount research')
+    expect(shared.textContent).not.toContain('index')
+    await type('  REVENUE ')
+    expect(shared.querySelectorAll('a')).toHaveLength(1)
+    expect(shared.textContent).toContain('Weekly sales')
+    await type('missing')
+    expect(host.querySelector('section a')).toBeNull()
+    expect(host.textContent).toContain('No matching dashboards')
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Clear search"]')!.click())
+    expect(host.querySelectorAll('section a')).toHaveLength(2)
+    expect(post).toHaveBeenCalledTimes(1)
+  } finally { await act(async () => root.unmount()); host.remove(); post.mockReset() }
+})
