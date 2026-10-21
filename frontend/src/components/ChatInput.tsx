@@ -3153,7 +3153,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             )}
 <ChatComposerControls>
               <div className={nativeTerminalTools ? 'hidden' : 'flex min-w-0 items-center gap-1.5'}>
-                {agentProfileId === 'work' && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} />}
                 {chatInputStatusLine && (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -3555,6 +3554,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     {activeTab.metadata.agentProfileChatModelLabel}
                   </button> : <span className="max-w-40 truncate px-1 text-[11px] text-muted-foreground" title={activeTab.metadata.agentProfileChatModelLabel}>{activeTab.metadata.agentProfileChatModelLabel}</span>
                 )}
+                {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
+                {agentProfileId === 'work' && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} />}
                 {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}
                 <SharedTokenUsageChip accountProvider={sharedAccountProvider(activeTab?.metadata?.agentProfileConnectionID
                   || (activeTab?.metadata?.agentProfileChatProvider === currentOption?.provider ? activeTab?.metadata?.agentProfileChatConnectionID : undefined), currentOption?.provider)} />
