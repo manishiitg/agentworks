@@ -58,6 +58,9 @@ esac
 	}
 	data, _ := os.ReadFile(logPath)
 	args := string(data)
+	if strings.Contains(args, " to:") {
+		t.Fatal("personal mailbox query widened with to search")
+	}
 	for _, want := range []string{"--account\nowner@example.com", "--client\nprivate-client", "--home\n", "--readonly", "--gmail-no-send", `"pageToken":"second"`, `deliveredto:owner+agent-one@example.com`} {
 		if !strings.Contains(args, want) {
 			t.Fatalf("missing %q in %s", want, args)

@@ -135,7 +135,7 @@ func (c GmailInboundClient) List(ctx context.Context, since int64, addresses []s
 		}
 		terms := []string{}
 		for _, address := range addresses[start:end] {
-			terms = append(terms, "deliveredto:"+address, "to:"+address)
+			terms = append(terms, "deliveredto:"+address)
 		}
 		query := fmt.Sprintf("after:%d {%s}", since-300, strings.Join(terms, " "))
 		page := ""
