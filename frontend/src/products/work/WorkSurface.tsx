@@ -41,7 +41,6 @@ import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
 import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, removeWorkSessionTemplate, loadWorkSessionsIncludingShared, isWorkSessionRun, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
-import { useSharedCrewHasDashboard } from './useSharedCrewDashboard'
 import { loadWorkspaceLandingView } from '../../components/workflow/workspaceLandingView'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { setProjectMode } from './codeLocalFiles'
@@ -1234,18 +1233,11 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }, [selected?.id, product.profileId])
 
 
-  // Someone else's Crew offers only the read-only inspect surface, no
-  // matter what the server's feature list enables for owned Crews.
-  // Code's terminal: the owner's own Code only (Code is owner-only; nobody else's Code offers one).
+  // The server's can_build response keeps owners/co-owners in the Builder
+  // workspace. People the Crew is only shared with use its dashboard.
   const showShell = product.hasTerminal && !isWorkSessionRun(selected) && selectedMode !== 'cowork'
   const isShared = isWorkSessionRun(selected)
-  // A Code has no Memory: someone else's Code offers only its files.
   const sharedPanels = SHARED_CREW_WORKSPACE_PANELS
-  // Someone else's Crew: the right pane exists only when it has a dashboard to show; otherwise the chat is alone.
-  const sharedCrewHasDashboard = useSharedCrewHasDashboard(isShared ? selected?.workspacePath : undefined)
-  useEffect(() => {
-    if (isShared && sharedCrewHasDashboard !== null) setPanelOpen(sharedCrewHasDashboard)
-  }, [isShared, sharedCrewHasDashboard])
   const workspacePanels = useMemo(() => isShared ? sharedPanels : enabledWorkspacePanels, [enabledWorkspacePanels, isShared, sharedPanels])
   const openWorkPresentationView = useCallback((view: string, target?: string) => {
     if (!(view in WORK_UI_PRESENTATION_VIEWS)) return
@@ -1588,7 +1580,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
 
   return (
     <ProjectProductProvider value={product}>
-    <TerminalFocusLayout tabId={tabId} enabled={chatOpen && !showProviders && !showSchedulesOverview && !adminPage} className="flex h-screen min-h-0 bg-background">
+    <TerminalFocusLayout tabId={tabId} enabled={!isShared && chatOpen && !showProviders && !showSchedulesOverview && !adminPage} className="flex h-screen min-h-0 bg-background">
       <UpdateProgressToast />
       <GlobalHumanFeedbackPrompt />
       <ModePresetBar
@@ -1663,23 +1655,15 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               splitRef={splitLayoutRef}
               compactContext={!isWorkSessionRun(selected) && workspaceView==='context'}
               toolbarWhenPanelClosed={!isWorkSessionRun(selected)}
-              chatOpen={chatOpen} panelOpen={panelOpen} splitRatio={splitRatio}
+              chatOpen={!isShared && chatOpen} panelOpen={isShared || panelOpen} splitRatio={splitRatio}
+              showChatReopenControl={!isShared}
               mobilePreview={reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
-              onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => { if (!(isShared && sharedCrewHasDashboard === false)) setPanelOpen(true) }}
-              tabs={tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} profileId={product.profileId} allowSideChats={!isWorkSessionRun(selected)} /> : <div className="min-w-0 flex-1" />}
+              onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => setPanelOpen(true)}
+              tabs={!isShared && tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} profileId={product.profileId} allowSideChats /> : <div className="min-w-0 flex-1" />}
               toolbar={<WorkWorkspaceToolbar sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={isWorkSessionRun(selected)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} />}
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView) } as React.HTMLAttributes<HTMLElement>}
               chat={<>
-                  {/* A Code's privacy notice lives in Setup → General and the
-                      Share dialog, not above every chat. */}
-                  {isWorkSessionRun(selected) && selected.shared ? (
-                    <div className="flex items-center gap-3 border-b border-border bg-muted/60 px-4 py-2 text-sm">
-                      <span className="min-w-0 flex-1 text-muted-foreground">
-                        {selected.shared.ownerUsername || selected.shared.ownerId}’s {product.noun} · Run. Your chats stay private to you.
-                      </span>
-                    </div>
-                  ) : null}
                   {!isWorkSessionRun(selected) && selectedTemplates.length > 0 ? (
                     // Many templates used to stack their setup rows and push the chat off the screen. The rows share one
                     // capped area that scrolls, so the chat always keeps most of the height.

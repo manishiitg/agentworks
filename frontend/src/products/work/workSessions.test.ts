@@ -39,7 +39,7 @@ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
 
 import { updateProductProjectLLMConfig, updateProductProjectSelections } from '../../platform/chat/productProjects'
 import type { SharedProjectSummary } from '../../services/api-types'
-import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, loadWorkSessionsIncludingShared, parseSessionManifest, sessionSlug, sharedProjectToWorkSession, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
+import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, isWorkSessionRun, loadWorkSessionsIncludingShared, parseSessionManifest, sessionSlug, sharedProjectToWorkSession, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
 
 // The backend owns creation. This response fixture lets consumer tests keep
 // testing selection forwarding and later template edits without a browser writer.
@@ -226,6 +226,12 @@ function ownedSession(overrides: Partial<WorkSession> = {}): WorkSession {
 }
 
 describe('sharedProjectToWorkSession', () => {
+  it('keeps co-owners in Builder according to the server, even under another owner', () => {
+    expect(isWorkSessionRun(sharedProjectToWorkSession(sharedRow({ can_build: true })))).toBe(false)
+    expect(isWorkSessionRun(sharedProjectToWorkSession(sharedRow({ can_build: false })))).toBe(true)
+    expect(isWorkSessionRun(ownedSession())).toBe(false)
+  })
+
   it('maps a shared row to a read-only session stub without the owner’s live session', () => {
     const session = sharedProjectToWorkSession(sharedRow())
 
