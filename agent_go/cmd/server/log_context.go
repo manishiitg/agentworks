@@ -180,11 +180,6 @@ func (lc serverLogContext) WithWorkflow(workspacePath string) serverLogContext {
 	return lc
 }
 
-func (lc serverLogContext) WithGroup(groupName string) serverLogContext {
-	lc.Group = strings.TrimSpace(groupName)
-	return lc
-}
-
 // Context carries the diagnostic identity through detached/background agent
 // contexts. These values are deliberately metadata only: authorization still
 // uses UserIDKey and the existing workspace/session guards.

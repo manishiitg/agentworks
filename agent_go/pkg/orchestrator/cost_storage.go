@@ -611,36 +611,6 @@ func TokenUsageTotalCostUSD(tokenFile *TokenUsageFile) float64 {
 	return TokenUsageLLMCostUSD(tokenFile) + TokenUsageToolCostUSD(tokenFile)
 }
 
-func ClonePhaseTokenUsageFile(src *PhaseTokenUsageFile) *PhaseTokenUsageFile {
-	if src == nil {
-		return nil
-	}
-
-	clone := &PhaseTokenUsageFile{
-		CreatedAt:         src.CreatedAt,
-		UpdatedAt:         src.UpdatedAt,
-		ByPhaseAndModel:   make(map[string]map[string]*ModelTokenUsage),
-		ByModel:           make(map[string]*ModelTokenUsage),
-		SessionCumulative: make(map[string]*ModelTokenUsage),
-	}
-
-	for modelID, usage := range src.ByModel {
-		clone.ByModel[modelID] = CloneModelTokenUsage(usage)
-	}
-
-	for phaseID, modelMap := range src.ByPhaseAndModel {
-		clone.ByPhaseAndModel[phaseID] = make(map[string]*ModelTokenUsage)
-		for modelID, usage := range modelMap {
-			clone.ByPhaseAndModel[phaseID][modelID] = CloneModelTokenUsage(usage)
-		}
-	}
-	for sessionID, usage := range src.SessionCumulative {
-		clone.SessionCumulative[sessionID] = CloneModelTokenUsage(usage)
-	}
-
-	return clone
-}
-
 func ApplyModelTokenDataToPhaseTokenUsageFile(tokenFile *PhaseTokenUsageFile, phaseKey string, modelTokenData *ModelTokenData, now time.Time) {
 	if tokenFile == nil || modelTokenData == nil || strings.TrimSpace(phaseKey) == "" {
 		return

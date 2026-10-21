@@ -111,20 +111,3 @@ const (
 	AgentStepCompleted events.EventType = "todo_task_step_completed" // When the entire todo task step is completed
 
 )
-
-// Helper function to get component from orchestrator event type
-func GetComponentFromEventType(eventType events.EventType) string {
-	switch eventType {
-	case OrchestratorEnd,
-		OrchestratorAgentStart, OrchestratorAgentEnd, OrchestratorAgentError,
-		VariablesExtracted,
-		StepTokenUsage,
-		BatchExecutionCanceled,
-		RequestHumanFeedback, BlockingHumanFeedback, PlanApproval, HumanFeedbackResolved,
-		RoutingEvaluated, PreValidationCompleted,
-		AgentRouteSelected, AgentStepCompleted:
-		return "orchestrator"
-	default:
-		return "system"
-	}
-}
