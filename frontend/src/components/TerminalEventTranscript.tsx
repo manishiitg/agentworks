@@ -7,7 +7,7 @@ import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
 import React, { memo, createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { prependedIndex, transcriptReadingState, useTranscriptScroll, type TranscriptReadingState } from './useTranscriptScroll'
-import { CheckCircle2, ChevronDown, ChevronRight, CircleDashed, FileText, Terminal as TerminalIcon, XCircle } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronRight, CircleDashed, FileText, Send, Terminal as TerminalIcon, XCircle } from 'lucide-react'
 import { WorkspaceImage } from './ui/WorkspaceImage'
 import { isImageAttachmentPath } from '../utils/chatMessageContent'
 import { InspectExecutionButton } from './chat/InspectExecutionButton'
@@ -48,6 +48,7 @@ import { isChatDeliveryTelemetryEvent, recordChatDeliveryTelemetry } from '../ut
 import { ShowFullContentButton, chatArtifactRef, useChatArtifactText } from './ChatArtifactExpander'
 import { WebSearchToolCallDisplay } from './events/tools/ToolCallSpecialRender/WebSearchToolCallDisplay'
 import { isWebSearchToolCall } from '../utils/webSearchToolCall'
+import { isAgentMessageSendToolCall, parseAgentMessageSend } from '../utils/agentMessageSend'
 import { AgentInboxMessage, agentInboxMessage } from './AgentInboxMessage'
 
 
@@ -902,6 +903,7 @@ const ThinkingBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'thinking'
 // searches so the order of what happened is preserved.
 type ToolBatchSegment =
   | { kind: 'search'; pair: PairedToolCall }
+  | { kind: 'message'; pair: PairedToolCall }
   | { kind: 'tools'; key: string; pairs: PairedToolCall[] }
 
 function segmentToolBatch(batchKey: string, pairs: PairedToolCall[]): ToolBatchSegment[] {
@@ -909,6 +911,11 @@ function segmentToolBatch(batchKey: string, pairs: PairedToolCall[]): ToolBatchS
   for (const pair of pairs) {
     if (isWebSearchToolCall(pair.name, pair.args)) {
       segments.push({ kind: 'search', pair })
+      continue
+    }
+    // A message this chat sent to another agent is shown like one it receives, not hidden in the chip.
+    if (isAgentMessageSendToolCall(pair.name) && parseAgentMessageSend(pair.name, pair.args, pair.result, pair.status)) {
+      segments.push({ kind: 'message', pair })
       continue
     }
     const last = segments[segments.length - 1]
@@ -939,6 +946,37 @@ const WebSearchCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
   )
 }
 
+// A message this chat sent to another agent: one compact row (who, and whether it went), the text behind a disclosure.
+const MessageSentCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
+  const [open, toggleOpen] = useDisclosure(`sent:${pair.key}`)
+  const view = useMemo(() => parseAgentMessageSend(pair.name, pair.args, pair.result, pair.status), [pair.name, pair.args, pair.result, pair.status])
+  if (!view) return null
+  const state = view.failed ? 'could not send' : view.accepted ? 'sent' : 'sending'
+  return (
+    <div data-testid="terminal-clear-message-sent" className="my-3 border-y border-border/60 py-2">
+      <button
+        type="button"
+        onClick={toggleOpen}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <Send className={`h-3.5 w-3.5 shrink-0 ${view.failed ? 'text-red-500' : 'text-primary/70'}`} aria-hidden="true" />
+        <span className="truncate">
+          Message to <span className="font-medium text-foreground/85">{view.target || 'this conversation'}</span>
+        </span>
+        <span className={`shrink-0 ${view.failed ? 'text-red-400' : ''}`}>{state}</span>
+        {open ? <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0" />}
+      </button>
+      {open && (
+        <div className="mt-2 max-h-56 overflow-auto rounded-lg bg-muted/60 p-3 [&_li]:!text-[12px] [&_p]:!text-[12px]">
+          <ConversationMarkdownRenderer content={view.message} framed={false} maxHeight="none" copyableCode />
+          {view.failed && view.error && <p className="mt-2 whitespace-pre-wrap text-red-400">{view.error}</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }>; toolLayout?: 'grouped' | 'rows' }> = ({ item, toolLayout }) => {
   const pairs = useMemo(() => pairToolCalls(item.events), [item.events])
   const segments = useMemo(() => segmentToolBatch(item.key, pairs), [item.key, pairs])
@@ -950,7 +988,9 @@ const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }>; to
     <>
       {segments.map(segment => segment.kind === 'search'
         ? <WebSearchCard key={segment.pair.key} pair={segment.pair} />
-        : <ToolChip key={segment.key} chipKey={segment.key} pairs={segment.pairs} toolCount={segment.pairs.length} />)}
+        : segment.kind === 'message'
+          ? <MessageSentCard key={segment.pair.key} pair={segment.pair} />
+          : <ToolChip key={segment.key} chipKey={segment.key} pairs={segment.pairs} toolCount={segment.pairs.length} />)}
     </>
   )
 }
