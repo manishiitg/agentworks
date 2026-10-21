@@ -2,7 +2,9 @@ package dashboards
 
 import (
 	"bytes"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -243,7 +245,10 @@ func ValidateJSONSpec(data []byte) (JSONSpec, error) {
 			return spec, fail(400, "unknown dashboard component: "+el.Type)
 		}
 		if el.Props == nil {
-			el.Props = map[string]any{}
+			return spec, fail(400, "dashboard elements need a props object")
+		}
+		if el.Children == nil {
+			return spec, fail(400, "dashboard elements need a children array (empty for a leaf)")
 		}
 		if !safeStateBindings(el.Props) {
 			return spec, fail(400, "dashboard state binding has an unsafe path")
@@ -366,6 +371,14 @@ func prepareJSONSnapshot(snap *Snapshot) error {
 		page, err := JSONHTML(snap.Title, []byte(source))
 		if err != nil {
 			return err
+		}
+		// Preserve the platform's automatic-page fingerprint only while the
+		// JSON source still produces exactly that page. An owner changing the
+		// spec loses the marker even if they left the old HTML file untouched.
+		sum := sha256.Sum256([]byte(page))
+		automatic := page + "<!-- agentworks-default-dashboard:" + hex.EncodeToString(sum[:8]) + " -->\n"
+		if snap.Files["index.html"] == automatic {
+			page = automatic
 		}
 		snap.Files["index.html"] = page
 	}

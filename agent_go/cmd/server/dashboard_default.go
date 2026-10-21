@@ -94,6 +94,13 @@ func defaultDashboardHTML(info defaultDashboardInfo) (string, error) {
 			id := fmt.Sprintf("function-%d", i)
 			actions = append(actions, id)
 			elements[id] = dashboards.JSONElement{Type: "FunctionButton", Props: map[string]any{"name": fn.Name, "label": fn.Name, "className": "dashboard-button"}, Children: []string{}}
+			if fn.Description != "" {
+				description := id + "-description"
+				card := id + "-card"
+				elements[description] = dashboards.JSONElement{Type: "Text", Props: map[string]any{"text": defaultDashboardText(fn.Description, 140), "variant": "muted"}, Children: []string{}}
+				elements[card] = dashboards.JSONElement{Type: "Stack", Props: map[string]any{"gap": "sm"}, Children: []string{id, description}}
+				actions[len(actions)-1] = card
+			}
 		}
 		elements["actions"] = dashboards.JSONElement{Type: "Grid", Props: map[string]any{"columns": 2, "gap": "sm"}, Children: actions}
 		children = append(children, "actions-title", "actions")
@@ -220,7 +227,15 @@ func (api *StreamingAPI) ensureDefaultDashboard(ctx context.Context, claims *Use
 	if err != nil {
 		return "", false, err
 	}
-	files := map[string]string{"index.html": page}
+	spec, _, err := dashboards.JSONSpecFromHTML(page)
+	if err != nil {
+		return "", false, err
+	}
+	source, err := json.Marshal(spec)
+	if err != nil {
+		return "", false, err
+	}
+	files := map[string]string{"index.json": string(source), "index.html": page}
 	if existing != nil {
 		current, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: target.Root, Action: "get", ID: defaultDashboardID, IncludeDraft: true})
 		if err != nil {

@@ -2,6 +2,8 @@ package dashboards
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -51,6 +53,31 @@ func TestJSONDashboardPublicationRetainsHTMLRevisions(t *testing.T) {
 	call(Request{Action: "restore", ID: "overview", Revision: old.Dashboard.Revision, ExpectedRevision: updated.Dashboard.Revision})
 	if call(Request{Action: "get", ID: "overview"}).Snapshot.Files["index.html"] != legacy {
 		t.Fatal("HTML restore changed existing behavior")
+	}
+	// A JSON source edit cannot retain a stale automatic-page marker.
+	var auto Snapshot
+	if err := json.Unmarshal([]byte(`{"title":"Auto","files":{}}`), &auto); err != nil {
+		t.Fatal(err)
+	}
+	auto.Files["index.json"] = spec
+	body, err := JSONHTML(auto.Title, []byte(spec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte(body))
+	auto.Files["index.html"] = body + "<!-- agentworks-default-dashboard:" + hex.EncodeToString(sum[:8]) + " -->\n"
+	if err := prepareJSONSnapshot(&auto); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(auto.Files["index.html"], "agentworks-default-dashboard:") {
+		t.Fatal("unchanged automatic source lost its marker")
+	}
+	auto.Files["index.json"] = strings.Replace(spec, "Recorded sales", "Owner design", 1)
+	if err := prepareJSONSnapshot(&auto); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(auto.Files["index.html"], "agentworks-default-dashboard:") {
+		t.Fatal("owner-authored JSON retained automatic controls")
 	}
 	// Direct publication cannot bypass current catalog validation.
 	p := filepath.Join(docs, root, snapshotPath("overview", old.Dashboard.Revision))

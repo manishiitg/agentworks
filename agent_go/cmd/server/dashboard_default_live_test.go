@@ -66,7 +66,7 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 			created := op("get", nil)
 			// Seed historical platform output through the same workspace writer
 			// as automatic creation, without the authored-page HTML validator.
-			old, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "update", ID: defaultDashboardID, ExpectedRevision: created.Dashboard.Revision, Files: map[string]string{"index.html": string(oldPage)}, IncludeDraft: true})
+			old, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "update", ID: defaultDashboardID, ExpectedRevision: created.Dashboard.Revision, Files: map[string]string{"index.html": string(oldPage)}, Remove: []string{"index.json"}, IncludeDraft: true})
 			if err != nil {
 				t.Fatal(err)
 			}
