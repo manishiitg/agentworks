@@ -63,18 +63,22 @@ func (api *StreamingAPI) migratePlaceConnections(ctx context.Context, apply bool
 				row.Kind, row.Result, row.Detail = "google", "skipped", "Google stays in its own integration"
 				rows = append(rows, row)
 				continue
-			case server.OAuth == nil:
+			case len(server.Headers) > 0:
 				row.Kind, row.Result, row.Detail = "key", "skipped", "it uses a key or header: add the key to Vault as a secret and select it"
 				rows = append(rows, row)
 				continue
 			}
-			if _, catalogErr := vaultCatalogProvider(ctx, server.URL); catalogErr != nil {
+			provider, catalogErr := vaultCatalogProvider(ctx, server.URL)
+			if catalogErr != nil {
 				row.Kind, row.Result, row.Detail = "custom", "skipped", "a custom server: add it in Vault by name and URL, then select it"
 				rows = append(rows, row)
 				continue
 			}
 			row.Kind = "oauth"
-			if isPersonalSlack(server) {
+			switch {
+			case server.OAuth == nil:
+				row.Kind = "noauth"
+			case isPersonalSlack(server):
 				row.Kind = "slack"
 			}
 			if !apply {
@@ -90,7 +94,7 @@ func (api *StreamingAPI) migratePlaceConnections(ctx context.Context, apply bool
 				continue
 			}
 			if !done {
-				id, err = api.placeMigrationConnection(ctx, a.Owner, store, a.Server, row.Kind)
+				id, err = api.placeMigrationConnection(ctx, a.Owner, store, server, provider, row.Kind)
 				if err != nil {
 					failed[key] = err.Error()
 					row.Result, row.Detail = "failed", err.Error()
@@ -132,7 +136,8 @@ func placeMigrationServer(store, name string) (placeMCPServer, bool) {
 
 // placeMigrationConnection returns the Vault connection that stands for one stored connection: the owner's existing Slack
 // for a Slack account, else a new connection in the owner's own vault with the stored login re-sealed into it.
-func (api *StreamingAPI) placeMigrationConnection(ctx context.Context, owner, store, serverName, kind string) (string, error) {
+func (api *StreamingAPI) placeMigrationConnection(ctx context.Context, owner, store string, server placeMCPServer, provider, kind string) (string, error) {
+	serverName := server.Name
 	if !personVaultActive(owner) {
 		return "", errors.New("this person's account cannot own a vault")
 	}
@@ -147,9 +152,51 @@ func (api *StreamingAPI) placeMigrationConnection(ctx context.Context, owner, st
 	if err != nil {
 		return "", err
 	}
+	if kind == "noauth" {
+		// Nothing to carry over: Vault connects the catalog server itself. One connection per server in a vault, so a
+		// second place entry for the same server reuses it.
+		if id, found, err := ownVaultConnectionOf(ctx, owner, provider); err != nil {
+			return "", err
+		} else if found {
+			return id, nil
+		}
+		id, err := createOwnVaultConnection(ctx, owner, vaultID, server)
+		if err != nil {
+			return "", fmt.Errorf("move %s: %w", serverName, err)
+		}
+		return id, nil
+	}
 	id, _, err := api.promoteStoredConnection(ctx, owner, store, serverName, serverName, vaultID, true)
 	if err != nil {
 		return "", fmt.Errorf("move %s: %w", serverName, err)
 	}
 	return id, nil
+}
+
+// ownVaultConnectionOf finds the person's connection to one catalog server in a vault they own.
+func ownVaultConnectionOf(ctx context.Context, person, provider string) (string, bool, error) {
+	list, err := personalVaults(ctx, person)
+	if err != nil {
+		return "", false, err
+	}
+	norm := func(name string) string {
+		var b strings.Builder
+		for _, r := range strings.ToLower(name) {
+			if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+				b.WriteRune(r)
+			}
+		}
+		return b.String()
+	}
+	for _, v := range list.Vaults {
+		if v.Role != "owner" {
+			continue
+		}
+		for _, c := range v.Connections {
+			if norm(c.Provider) == norm(provider) {
+				return c.ID, true, nil
+			}
+		}
+	}
+	return "", false, nil
 }

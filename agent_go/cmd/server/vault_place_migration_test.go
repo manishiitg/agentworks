@@ -28,6 +28,7 @@ func TestPlaceMigrationDryRunClassifiesAndChangesNothing(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]any{"providers": []any{
 			map[string]any{"Name": "Slack", "URL": "https://mcp.slack.com/mcp"},
 			map[string]any{"Name": "Notion", "URL": "https://mcp.notion.com/mcp"},
+			map[string]any{"Name": "Context7", "URL": "https://mcp.context7.com/mcp"},
 		}})
 	}))
 	defer gateway.Close()
@@ -37,7 +38,8 @@ func TestPlaceMigrationDryRunClassifiesAndChangesNothing(t *testing.T) {
 		{Name: "slack_work", Label: "Work Slack", Catalog: "Slack", URL: "https://mcp.slack.com/mcp", Transport: "http", OAuth: &oauth.OAuthConfig{AuthURL: "https://slack.com/oauth/v2_user/authorize", TokenURL: "https://slack.com/api/oauth.v2.user.access"}},
 		{Name: "notion", Label: "Notion", Catalog: "Notion", URL: "https://mcp.notion.com/mcp", Transport: "http", OAuth: signIn},
 		{Name: "jam", Label: "Jam", URL: "https://mcp.jam.example.com/mcp", Transport: "http", OAuth: signIn},
-		{Name: "crm", Label: "CRM", URL: "https://crm.example.com/mcp", Transport: "http"},
+		{Name: "crm", Label: "CRM", URL: "https://crm.example.com/mcp", Transport: "http", Headers: map[string]placeMCPHeader{"Authorization": {Secret: "CRM_TOKEN", Format: "Bearer {}"}}},
+		{Name: "context7", Label: "Context7", URL: "https://mcp.context7.com/mcp", Transport: "http"},
 		{Name: "gmail", Label: "Gmail", Catalog: "GoogleGmail", URL: "https://gmailmcp.googleapis.com/mcp/v1", Transport: "http", OAuth: signIn},
 	}
 	for _, server := range servers {
@@ -57,7 +59,7 @@ func TestPlaceMigrationDryRunClassifiesAndChangesNothing(t *testing.T) {
 	for _, row := range rows {
 		got[row.Server] = row.Kind + ":" + row.Result
 	}
-	want := map[string]string{"slack_work": "slack:would move", "notion": "oauth:would move", "jam": "custom:skipped", "crm": "key:skipped", "gmail": "google:skipped"}
+	want := map[string]string{"slack_work": "slack:would move", "notion": "oauth:would move", "jam": "custom:skipped", "crm": "key:skipped", "context7": "noauth:would move", "gmail": "google:skipped"}
 	for server, result := range want {
 		if got[server] != result {
 			t.Fatalf("%s = %q, want %q (all: %v)", server, got[server], result, got)
