@@ -357,6 +357,21 @@ func InitializeWorkflowDB(c *gin.Context) {
 		return
 	}
 
+	// A DB created after Crew setup must keep the project slot's existing
+	// directory write access, so its owner can author db/migrations/ files.
+	// Database files and their raw-access guards are unchanged.
+	project, err := os.Stat(filepath.Dir(filepath.Dir(fullPath)))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{Success: false, Message: "Failed to inspect database project", Error: err.Error()})
+		return
+	}
+	if mode := utils.ProjectDirectoryMode(project); mode&os.ModeSetgid != 0 {
+		if err := makeSlotWriteDirectoryUsable(filepath.Dir(fullPath), filepath.Dir(filepath.Dir(fullPath))); err != nil {
+			c.JSON(http.StatusInternalServerError, models.APIResponse[any]{Success: false, Message: "Failed to prepare database folder", Error: err.Error()})
+			return
+		}
+	}
+
 	var backupPath string
 	if destructive {
 		if _, statErr := os.Stat(fullPath); statErr == nil {

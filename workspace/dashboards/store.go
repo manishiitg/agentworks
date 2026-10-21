@@ -17,6 +17,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/utils"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -122,14 +123,25 @@ func readJSON(root *os.Root, p string, out any) error {
 	return d.Decode(out)
 }
 func safeParents(root *os.Root, p string) error {
+	project, err := root.Stat(".")
+	if err != nil {
+		return err
+	}
+	mode := utils.ProjectDirectoryMode(project)
 	parts := strings.Split(path.Dir(p), "/")
 	current := ""
 	for _, part := range parts {
 		current = path.Join(current, part)
 		info, err := root.Lstat(current)
 		if os.IsNotExist(err) {
-			if err = root.Mkdir(current, 0755); err != nil {
+			if err = root.Mkdir(current, mode.Perm()); err != nil {
 				return err
+			}
+			// Apply explicitly: the service umask can remove group write.
+			if mode&os.ModeSetgid != 0 {
+				if err = root.Chmod(current, mode); err != nil {
+					return err
+				}
 			}
 			continue
 		}
