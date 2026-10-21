@@ -363,7 +363,7 @@ func JSONHTML(title string, source []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return `<!doctype html><html lang="en" data-report-renderer="json-render"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; base-uri 'none'"><title>` + html.EscapeString(title) + `</title><link rel="stylesheet" href="/report-preview/dashboard-json.css"><script id="__dashboard_spec" type="application/json">` + string(encoded) + `</script><script defer src="/report-preview/dashboard-json.js"></script></head><body><div id="dashboard-root"></div></body></html>`, nil
+	return `<!doctype html><html lang="en" data-report-renderer="json-render"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; base-uri 'none'"><title>` + html.EscapeString(title) + `</title><link rel="stylesheet" href="/dashboard-json.css"><script id="__dashboard_spec" type="application/json">` + string(encoded) + `</script></head><body><div id="dashboard-root"><p role="status">Loading dashboard…</p></div><script defer src="/dashboard-json.js" onerror="document.documentElement.dataset.reportState='error';document.getElementById('dashboard-root').textContent='Dashboard renderer unavailable.'"></script></body></html>`, nil
 }
 
 func prepareJSONSnapshot(snap *Snapshot) error {

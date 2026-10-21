@@ -16,7 +16,7 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost')
   const file = url.searchParams.get('path')
   if (url.pathname === '/report-preview/report-preview.js') { res.setHeader('Content-Type', 'text/javascript'); res.end(await readFile(path.join(root, 'report-preview.js'))); return }
-  if (/^\/report-preview\/dashboard-json\.(js|css)$/.test(url.pathname)) { res.setHeader('Content-Type', url.pathname.endsWith('.css') ? 'text/css' : 'text/javascript'); res.end(await readFile(path.join(root, 'frontend/dist', path.basename(url.pathname)))); return }
+  if (/^\/dashboard-json\.(js|css)$/.test(url.pathname)) { res.setHeader('Content-Type', url.pathname.endsWith('.css') ? 'text/css' : 'text/javascript'); res.end(await readFile(path.join(root, 'frontend/dist', path.basename(url.pathname)))); return }
   if (url.pathname.endsWith('/file')) {
     if (file === 'db/summary.json') { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ total })); return }
     res.setHeader('Content-Type', 'text/html')

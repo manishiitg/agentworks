@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
+
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
 )
@@ -233,6 +235,30 @@ func TestReportPreviewScriptHandlerServesTheBuiltBundle(t *testing.T) {
 	api.reportPreviewPageHandler(rec, httptest.NewRequest(http.MethodGet, "/report-preview/", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "/report-preview/report-preview.js") {
 		t.Fatalf("expected the page to reference the script, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestJSONDashboardAssetsUseThePackagedFrontend(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("STATIC_DIR", dir)
+	api := &StreamingAPI{}
+	for _, name := range []string{"dashboard-json.js", "dashboard-json.css"} {
+		body := "/* trusted renderer " + name + " */"
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+		rec := httptest.NewRecorder()
+		api.dashboardJSONAssetHandler(rec, httptest.NewRequest(http.MethodGet, "/"+name, nil))
+		if rec.Code != http.StatusOK || rec.Body.String() != body {
+			t.Fatalf("asset %s: status=%d body=%q", name, rec.Code, rec.Body.String())
+		}
+	}
+	page, err := dashboards.JSONHTML("Example", []byte(`{"root":"title","elements":{"title":{"type":"Heading","props":{"text":"Example"},"children":[]}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page, `src="/dashboard-json.js"`) || !strings.Contains(page, `href="/dashboard-json.css"`) || !strings.Contains(page, "Loading dashboard") || !strings.Contains(page, "Dashboard renderer unavailable") {
+		t.Fatalf("missing canonical assets/load failure state: %s", page)
 	}
 }
 

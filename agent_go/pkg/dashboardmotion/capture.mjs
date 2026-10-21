@@ -71,7 +71,7 @@ async function prepareDashboard(page) {
   fs.writeFileSync(path.join(config.project, '.runtime/report-preview.js'), await runtime.text())
   if (captured.renderer === 'json-render') {
     for (const name of ['dashboard-json.js', 'dashboard-json.css']) {
-      const asset = await fetch(new URL('/report-preview/' + name, origin))
+      const asset = await fetch(new URL('/' + name, origin))
       if (!asset.ok) throw new Error('The JSON dashboard rendering assets are unavailable.')
       fs.writeFileSync(path.join(config.project, '.runtime', name), Buffer.from(await asset.arrayBuffer()))
     }

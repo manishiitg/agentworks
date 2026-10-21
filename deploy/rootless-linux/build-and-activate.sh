@@ -375,6 +375,8 @@ done
 cp "$HOME/.config/systemd/user/$PRODUCT-agent.service.d/zz-deploy-managed.conf" \
    "$HOME/.config/systemd/user/$PRODUCT-workspace.service.d/zz-deploy-managed.conf"
 echo "Environment=AGENTWORKS_STATE_ROOT=$REMOTE_APP/state" >> "$HOME/.config/systemd/user/$PRODUCT-agent.service.d/zz-deploy-managed.conf"
+# The agent serves renderer assets from the same packaged frontend as nginx.
+echo "Environment=STATIC_DIR=$REMOTE_APP/current/frontend" >> "$HOME/.config/systemd/user/$PRODUCT-agent.service.d/zz-deploy-managed.conf"
 echo "Environment=AGENTWORKS_STATE_ROOT=$REMOTE_APP/state" >> "$HOME/.config/systemd/user/$PRODUCT-workspace.service.d/zz-deploy-managed.conf"
 for entry in "${AGENT_EXTRA_ENV[@]:-}"; do
   [[ -n "$entry" ]] && echo "Environment=$entry" >> "$HOME/.config/systemd/user/$PRODUCT-agent.service.d/zz-deploy-managed.conf"
