@@ -441,7 +441,7 @@ func TestProjectMCPDashboardDiscoveryFiltersOtherAccessibleProjects(t *testing.T
 	token := a.token(accesstokens.Token{Scopes: a.scopes()})
 	claims := &UserClaims{UserID: "owner", AccessToken: &token}
 	rec := httptest.NewRecorder()
-	f.api.listAccessibleDashboards(rec, adminRequest("GET", "/api/external/v1/call", "", claims, nil), 100, 0, false)
+	f.api.listAccessibleDashboards(rec, adminRequest("GET", "/api/external/v1/call", "", claims, nil), 100, 0, false, false)
 	var result struct {
 		Dashboards []struct {
 			ProjectID string `json:"project_id"`

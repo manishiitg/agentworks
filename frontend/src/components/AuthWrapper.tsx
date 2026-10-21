@@ -8,11 +8,12 @@ import { SharedFile } from "../pages/SharedFile";
 import { SharedFolder } from "../pages/SharedFolder";
 import { ReportPage } from "../pages/ReportPage";
 import { DashboardShortLink } from "./DashboardShortLink";
-import { SharedWithMePage } from "./SharedWithMePage";
 import { Loader2 } from "lucide-react";
 import { WorkspaceConnectionSwitcher } from "./WorkspaceConnectionSwitcher";
 import { DesktopAppOnlyGate } from "./DesktopAppOnlyGate";
 import { isDesktopAppOnlyMode } from "../services/api";
+
+const DashboardsPage = lazy(() => import("./DashboardsPage").then(module => ({ default: module.DashboardsPage })));
 
 const ProductRouteBoundary = lazy(() => import("./ProductRouteBoundary").then(module => ({ default: module.ProductRouteBoundary })));
 
@@ -57,7 +58,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
   const [sharedFolderPath, setSharedFolderPath] = useState<string | null>(null);
   const [reportWorkspacePath, setReportWorkspacePath] = useState<string | null>(null);
   const [dashboardCode, setDashboardCode] = useState<string | null>(null);
-  const [sharedList, setSharedList] = useState(false);
+  const [dashboardList, setDashboardList] = useState(false);
   const openDashboardLink = useCallback((root: string, documentPath: string) => {
     const params = new URLSearchParams({ document: documentPath, path: encodeBase64Utf8(root) });
     window.history.replaceState({}, "", `/report?${params.toString()}`);
@@ -76,7 +77,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
       setSharedFolderPath(null);
       setReportWorkspacePath(null);
       setDashboardCode(null);
-      setSharedList(false);
+      setDashboardList(false);
       setIsAuthCallback(false);
       setIsMcpConsent(false);
       setIsCliConsent(false);
@@ -99,8 +100,8 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
         }
       };
 
-      if (path === "/shared") {
-        setSharedList(true);
+      if (path === "/dashboards") {
+        setDashboardList(true);
         return;
       }
 
@@ -245,7 +246,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
     if (isDesktopAppOnlyMode() && !window.electronAPI) {
       return <DesktopAppOnlyGate />;
     }
-    if (sharedList) return <SharedWithMePage />;
+    if (dashboardList) return <Suspense fallback={<div role="status" className="p-6">Loading dashboards…</div>}><DashboardsPage /></Suspense>;
     if (dashboardCode) return <DashboardShortLink code={dashboardCode} onResolved={openDashboardLink} />;
     if (reportWorkspacePath) {
       return (
@@ -279,7 +280,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
     return <DesktopAppOnlyGate />;
   }
 
-  if (sharedList) return <SharedWithMePage />;
+  if (dashboardList) return <Suspense fallback={<div role="status" className="p-6">Loading dashboards…</div>}><DashboardsPage /></Suspense>;
   if (dashboardCode) return <DashboardShortLink code={dashboardCode} onResolved={openDashboardLink} />;
 
   if (reportWorkspacePath) {

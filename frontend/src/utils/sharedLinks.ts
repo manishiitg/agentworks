@@ -36,7 +36,8 @@ export function sharedReturnPath(value: string | null): string | null {
   const kinds = ['file', 'folder', 'report']
   const queryRoute = kinds.some(kind => url.pathname === `/${kind}`) && url.searchParams.has('path')
   const legacyRoute = kinds.some(kind => url.pathname.startsWith(`/${kind}/`) && url.pathname.length > kind.length + 2)
-  if (!queryRoute && !legacyRoute) return null
+  const dashboardRoute = url.pathname === '/dashboards' || /^\/d\/[2-9a-hj-km-np-z]{10}$/.test(url.pathname)
+  if (!queryRoute && !legacyRoute && !dashboardRoute) return null
   return url.pathname + url.search
 }
 

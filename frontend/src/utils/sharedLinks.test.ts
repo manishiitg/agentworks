@@ -51,6 +51,8 @@ describe('Shared file links', () => {
   it('only restores internal asset pages after OAuth', () => {
     expect(sharedReturnPath('/file?path=YWJj')).toBe('/file?path=YWJj')
     expect(sharedReturnPath('/file/YWJj')).toBe('/file/YWJj')
+    expect(sharedReturnPath('/dashboards')).toBe('/dashboards')
+    expect(sharedReturnPath('/d/23456789ab')).toBe('/d/23456789ab')
     for (const value of ['//evil.com/file?path=x', '/\\evil.com/file?path=x', 'https://evil.com/file?path=x', '/admin?path=x', '/file']) expect(sharedReturnPath(value)).toBeNull()
   })
 

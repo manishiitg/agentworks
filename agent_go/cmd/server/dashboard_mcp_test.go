@@ -51,8 +51,31 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	if strings.Contains(link, "token=") || !strings.Contains(link, "document=") {
 		t.Fatalf("bad live link: %s", link)
 	}
-	updated := call("update_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev1, "files": map[string]any{"index.html": "<html><title>Overview</title><body>Second</body></html>"}})
+	updated := call("update_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev1, "title": "Draft title", "files": map[string]any{"index.html": "<html><title>Overview</title><body>Second</body></html>"}})
 	rev2 := updated["dashboard"].(map[string]any)["revision"].(string)
+	// The published library is the same HTTP/MCP list, using the live
+	// snapshot even when its owner has renamed the draft.
+	call("create_dashboard", map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "unpublished", "title": "Unpublished draft", "files": map[string]any{"index.html": "<p>Draft</p>"}})
+	library := call("dashboard", map[string]any{"action": "list", "published_only": true, "limit": 1})
+	liveRows := library["dashboards"].([]any)
+	if library["total"] != float64(1) || library["has_more"] != false || len(liveRows) != 1 {
+		t.Fatalf("published library includes drafts or paginates before filtering: %v", library)
+	}
+	live := liveRows[0].(map[string]any)
+	if live["dashboard_id"] != "overview" || live["revision"] != rev1 || live["title"] != "Overview" || live["shared_with_me"] != false {
+		t.Fatalf("library is not the owner's published snapshot: %v", live)
+	}
+	web := httptest.NewRecorder()
+	f.api.handleDashboards(web, adminRequest(http.MethodPost, "/api/dashboards", `{"action":"list","published_only":true,"limit":1}`, owner, nil))
+	var webList map[string]any
+	if web.Code != http.StatusOK || json.Unmarshal(web.Body.Bytes(), &webList) != nil {
+		t.Fatalf("website library: %d %s", web.Code, web.Body.String())
+	}
+	webRows, _ := json.Marshal(webList["dashboards"])
+	mcpRows, _ := json.Marshal(library["dashboards"])
+	if string(webRows) != string(mcpRows) {
+		t.Fatalf("HTTP/MCP library differ: %s / %s", webRows, mcpRows)
+	}
 	stale := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "publish_dashboard", "arguments": map[string]any{"workspace": "Workflow/invoices", "dashboard_id": "overview", "expected_revision": rev1}})
 	requireRemoteError(t, stale, "stale publication", "revision_conflict")
 	reader := &UserClaims{UserID: "reader", Username: "reader", AccessToken: &accesstokens.Token{ID: "reader", Scopes: []string{"dashboards:read"}, WorkflowIDs: []string{"invoices"}, AllCrews: true}}

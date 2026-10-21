@@ -29,15 +29,15 @@ describe('collapsible product navigation', () => {
     await act(async () => root.render(placement === 'standard' ? <ProductSurfaceSwitcher /> : <ProductTopBar sidebar><ProductSurfaceSwitcher menuOnly={placement === 'workspace'} /></ProductTopBar>))
     if (placement !== 'workspace') await act(async () => host.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!.click())
     const menu = host.querySelector('[data-product-switch-menu]')!
-    expect([...menu.querySelectorAll('[data-product-option]')].map(button => button.getAttribute('aria-label'))).toEqual(['Goals', 'Crew'])
+    expect([...menu.querySelectorAll('[data-product-option]')].map(button => button.getAttribute('aria-label'))).toEqual(['Goals', 'Crew', 'Dashboards'])
     expect(menu.textContent).not.toContain('Vault')
     const goals = menu.querySelector<HTMLButtonElement>('[aria-label="Goals"]')!
     const crew = menu.querySelector<HTMLButtonElement>('[aria-label="Crew"]')!
     goals.focus()
     await act(async () => goals.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true })))
-    expect(document.activeElement).toBe(crew)
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Dashboards')
     await act(async () => crew.click())
-    expect(useProductSurfaceStore.getState().productSurface).toBe('code')
+    expect(useProductSurfaceStore.getState().productSurface).toBe('work')
   })
   it('preserves deployment title and favicon when entering Vault', async () => {
     Object.assign(window.__APP_RUNTIME_CONFIG__!, { appName: 'customer', faviconUrl: '/brand/icon.svg' })
@@ -59,9 +59,9 @@ describe('collapsible product navigation', () => {
     expect(trigger.getAttribute('aria-label')).toBe('Switch product: Crew')
     const group = host.querySelector('[role="group"]')!
     await act(async () => group.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })))
-    expect(Array.from(host.querySelectorAll('[role="menuitem"]')).map(b => b.getAttribute('aria-label'))).toEqual(['Goals', 'Crew', 'Vault'])
+    expect(Array.from(host.querySelectorAll('[role="menuitem"]')).map(b => b.getAttribute('aria-label'))).toEqual(['Goals', 'Crew', 'Vault', 'Dashboards'])
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Crew"]')!.click())
-    expect(useProductSurfaceStore.getState().productSurface).toBe('code')
+    expect(useProductSurfaceStore.getState().productSurface).toBe('work')
     expect(host.querySelector('[role="menu"]')).toBeNull()
     await act(async () => trigger.click())
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Goals"]')!.click())
@@ -87,7 +87,8 @@ describe('collapsible product navigation', () => {
     expect(host.querySelectorAll('[role="group"][aria-label="Products"] button').length).toBe(1)
     expect(host.querySelector('[aria-label^="Switch product:"]')?.getAttribute('aria-label')).toBe('Switch product: Crew')
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label^="Switch product:"]')!.click())
-    expect(host.querySelector('[role="menu"]')).toBeNull()
+    expect(host.querySelector('[role="menu"] [aria-label="Dashboards"]')).not.toBeNull()
+    expect(host.querySelector('[aria-label="Goals"]')).toBeNull()
   })
   it('hides Vault when the deployment has no gateway', async () => {
     window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['agentworks', 'work', 'code', 'mcp-gateway'] }

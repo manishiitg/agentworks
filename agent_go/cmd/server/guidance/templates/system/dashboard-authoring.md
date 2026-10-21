@@ -17,6 +17,9 @@ external operations use the authorized `workspace` returned by discovery.
 
 1. `list_dashboards` lists accessible documents, project roots and live URLs.
    Omit workspace for cross-project discovery; use limit/offset for pagination.
+   Use `published_only: true` for the same live publications shown on `/dashboards`.
+   That page collects yours and dashboards shared with you automatically. Sharing
+   is still project access; removing access removes it from discovery and blocks its link.
    Goals, <!-- product:relays -->Flows and <!-- /product -->Crews (including projects formerly called Code) use current project access.
 2. `get_dashboard` returns source and revision. Existing HTML documents can be
    read using their returned document_path; adopt them by creating a new managed

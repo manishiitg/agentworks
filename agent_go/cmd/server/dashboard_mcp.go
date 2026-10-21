@@ -28,6 +28,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		if action == "list" {
 			props["limit"] = externalInteger(1, 200)
 			props["shared_with_me"] = map[string]any{"type": "boolean", "description": "true lists only dashboards other people shared with you."}
+			props["published_only"] = map[string]any{"type": "boolean", "description": "true lists live dashboards only, matching the Dashboards page. Unpublished drafts are excluded before pagination."}
 			props["offset"] = externalInteger(0, 10000)
 			required = nil
 			props["workspace"] = externalString("Optional project root. Omit (and workflow_id/crew_id) to discover dashboards across accessible projects.")
@@ -239,7 +240,7 @@ func parseDashboardURL(raw, p string) (string, error) {
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }
-func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http.Request, limit, offset int, sharedOnly bool) {
+func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http.Request, limit, offset int, sharedOnly, publishedOnly bool) {
 	claims := GetUserFromContext(r.Context())
 	roots := []string{}
 	discovered, err := DiscoverWorkflowManifests(r.Context())
@@ -279,7 +280,7 @@ func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http
 			continue
 		}
 		seen[target.Root] = true
-		result, err := dashboardWorkspaceRequest(r.Context(), dashboards.Request{Root: target.Root, Action: "list", Guard: dashboardFileGuard(claims), IncludeDraft: dashboardAuthoringAllowed(claims, &target)})
+		result, err := dashboardWorkspaceRequest(r.Context(), dashboards.Request{Root: target.Root, Action: "list", Guard: dashboardFileGuard(claims), IncludeDraft: dashboardAuthoringAllowed(claims, &target) && !publishedOnly})
 		if err != nil {
 			failed = append(failed, target.Root)
 			continue
@@ -290,6 +291,9 @@ func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http
 			continue
 		}
 		for _, d := range result.Dashboards {
+			if publishedOnly && d.Managed && d.Published == "" {
+				continue
+			}
 			viewTarget := target
 			viewTarget.Edit = dashboardAuthoringAllowed(claims, &target)
 			row := dashboardDiscoveryRow(viewTarget, d)

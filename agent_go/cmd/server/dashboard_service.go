@@ -239,30 +239,31 @@ func dashboardError(w http.ResponseWriter, err error) {
 // The authenticated transport supplies claims; JSON cannot set roles or draft rights.
 func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request) {
 	var args struct {
-		ExportID     string            `json:"export_id"`
-		Submission   string            `json:"submission_id"`
-		Composition  string            `json:"composition_path"`
-		SourceMode   string            `json:"source_mode"`
-		ExportWidth  int               `json:"viewport_width"`
-		ExportHeight int               `json:"viewport_height"`
-		Duration     float64           `json:"duration_s"`
-		FPS          int               `json:"fps"`
-		Workspace    string            `json:"workspace"`
-		Action       string            `json:"action"`
-		ID           string            `json:"dashboard_id"`
-		Title        string            `json:"title"`
-		Files        map[string]string `json:"files"`
-		Remove       []string          `json:"remove"`
-		Expected     string            `json:"expected_revision"`
-		Revision     string            `json:"revision"`
-		Document     string            `json:"document_path"`
-		Theme        string            `json:"theme"`
-		Width        string            `json:"width"`
-		Limit        int               `json:"limit"`
-		Offset       int               `json:"offset"`
-		Mode         string            `json:"mode"`
-		SharedWithMe bool              `json:"shared_with_me"`
-		Emails       []string          `json:"emails"`
+		ExportID      string            `json:"export_id"`
+		Submission    string            `json:"submission_id"`
+		Composition   string            `json:"composition_path"`
+		SourceMode    string            `json:"source_mode"`
+		ExportWidth   int               `json:"viewport_width"`
+		ExportHeight  int               `json:"viewport_height"`
+		Duration      float64           `json:"duration_s"`
+		FPS           int               `json:"fps"`
+		Workspace     string            `json:"workspace"`
+		Action        string            `json:"action"`
+		ID            string            `json:"dashboard_id"`
+		Title         string            `json:"title"`
+		Files         map[string]string `json:"files"`
+		Remove        []string          `json:"remove"`
+		Expected      string            `json:"expected_revision"`
+		Revision      string            `json:"revision"`
+		Document      string            `json:"document_path"`
+		Theme         string            `json:"theme"`
+		Width         string            `json:"width"`
+		Limit         int               `json:"limit"`
+		Offset        int               `json:"offset"`
+		Mode          string            `json:"mode"`
+		SharedWithMe  bool              `json:"shared_with_me"`
+		PublishedOnly bool              `json:"published_only"`
+		Emails        []string          `json:"emails"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<20))
 	decoder.DisallowUnknownFields()
@@ -280,7 +281,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if args.Action == "list" && args.Workspace == "" {
-		api.listAccessibleDashboards(w, r, args.Limit, args.Offset, args.SharedWithMe)
+		api.listAccessibleDashboards(w, r, args.Limit, args.Offset, args.SharedWithMe, args.PublishedOnly)
 		return
 	}
 	target, err := api.dashboardTarget(r.Context(), claims, args.Workspace)
@@ -343,6 +344,9 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		}
 	}
 	req := dashboards.Request{Root: target.Root, Action: args.Action, ID: args.ID, Title: args.Title, Files: args.Files, Remove: args.Remove, ExpectedRevision: args.Expected, Revision: args.Revision, DocumentPath: args.Document, IncludeDraft: includeDraft}
+	if args.Action == "list" && args.PublishedOnly {
+		req.IncludeDraft = false
+	}
 	if claims.AccessToken != nil {
 		req.Guard = claims.AccessToken.FileGuard
 	}
@@ -433,6 +437,9 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		rows := []map[string]any{}
 		resources := []dashboardQuestionDiscovery{}
 		for _, d := range result.Dashboards {
+			if args.PublishedOnly && d.Managed && d.Published == "" {
+				continue
+			}
 			viewTarget := target
 			viewTarget.Edit = includeDraft
 			row := dashboardDiscoveryRow(viewTarget, d)

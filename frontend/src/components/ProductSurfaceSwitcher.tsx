@@ -1,6 +1,6 @@
 import { useCompactProductNavigation, useProductNavigationSidebar } from './workspace/ProductTopBar'
 import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
-import { ChevronDown, MessagesSquare, Network, Waypoints } from 'lucide-react'
+import { ChevronDown, LayoutDashboard, MessagesSquare, Network, Waypoints } from 'lucide-react'
 import { RunloopMark } from './branding/RunloopLogo'
 import { VideoStudioMark } from '../products/video-studio/VideoStudioMark'
 import { SparkQuillMark } from '../products/sparkquill/SparkQuillMark'
@@ -8,6 +8,7 @@ import { WorkMark } from '../products/work/WorkMark'
 import { VaultMark } from '../products/mcp-gateway/VaultMark'
 import { BrainMark } from '../products/knowledgebase/BrainMark'
 import { useProductSurfaceStore, type ProductSurface } from '../stores/useProductSurfaceStore'
+import { productRoutePath } from '../utils/productRoutes'
 import { openProductWorkspace } from '../utils/productWorkspaceNavigation'
 import { useAuthStore } from '../stores/useAuthStore'
 import { gatewayAdminUrl, navigationProductSurfaceIDs } from '../products/productSurfaceConfig'
@@ -27,6 +28,8 @@ type ProductSurfaceSwitcherProps = {
 // Product marks can render any element; callers only rely on the common
 // className/title surface, not SVG-specific props.
 type ProductMarkComponent = ComponentType<{ className?: string; title?: string }>
+
+const dashboards = { id: 'dashboards', label: 'Dashboards', description: 'Open your published dashboards and dashboards shared with you.', icon: LayoutDashboard }
 
 const products: Array<{
   id: ProductSurface
@@ -64,7 +67,10 @@ export function ProductSurfaceSwitcher({ className, standalone = false, menuOnly
     ? products.filter(product => product.id === 'mcp-gateway')
     : products.filter(product => visibleProductIDs.includes(product.id) && (product.id !== 'mcp-gateway' || gatewayUrl !== null)),
   [visibleProductIDs, gatewayUrl, standalone])
-  const currentProduct = visibleProducts.find((product) => product.id === (standalone ? 'mcp-gateway' : productSurface)) ?? visibleProducts[0] ?? products[0]
+  // Dashboards collects existing product publications; it needs no separate product grant.
+  const menuProducts = standalone ? visibleProducts : [...visibleProducts, dashboards]
+  const dashboardPage = !standalone && window.location.pathname === '/dashboards'
+  const currentProduct = dashboardPage ? dashboards : visibleProducts.find((product) => product.id === (standalone ? 'mcp-gateway' : productSurface)) ?? visibleProducts[0] ?? products[0]
   const CurrentIcon = currentProduct.icon
 
   useEffect(() => {
@@ -84,7 +90,8 @@ export function ProductSurfaceSwitcher({ className, standalone = false, menuOnly
     setOpen(false)
     onSelect?.()
     if (standalone) return
-    openProductWorkspace(product)
+    if (dashboardPage) window.location.assign(productRoutePath({ surface: product }))
+    else openProductWorkspace(product)
   }
 
   useEffect(() => {
@@ -103,24 +110,27 @@ export function ProductSurfaceSwitcher({ className, standalone = false, menuOnly
     }
   }, [open])
 
-  const productMenu = (popup: boolean, className = '') => <ProductSwitchMenu products={visibleProducts} current={currentProduct.id} popup={popup} className={className}
-    onSelect={id => { const product = visibleProducts.find(item => item.id === id); if (product) activateProduct(product.id) }}
+  const productMenu = (popup: boolean, className = '') => <ProductSwitchMenu products={menuProducts} current={currentProduct.id} popup={popup} className={className}
+    onSelect={id => {
+      if (id === 'dashboards') { setOpen(false); onSelect?.(); window.location.assign('/dashboards'); return }
+      const product = visibleProducts.find(item => item.id === id); if (product) activateProduct(product.id)
+    }}
     onEscape={() => { setOpen(false); menuRef.current?.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')?.focus() }} />
   if (menuOnly) return productMenu(false)
 
   if (compact) return (
     <div ref={menuRef} role="group" aria-label="Products"
       className={sidebar ? 'relative border-b border-border pb-3' : 'relative'}
-      onMouseEnter={() => { if (visibleProducts.length > 1) setOpen(true) }}
+      onMouseEnter={() => { if (menuProducts.length > 1) setOpen(true) }}
       onMouseLeave={() => setOpen(false)}
       onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false) }}>
       <button type="button" aria-label={`Switch product: ${currentProduct.label}`}
-        aria-haspopup={visibleProducts.length > 1 ? 'menu' : undefined} aria-expanded={open}
+        aria-haspopup={menuProducts.length > 1 ? 'menu' : undefined} aria-expanded={open}
         data-tour-products={visibleProductIDs.join(' ')} data-product-navigation-action
         title={currentProduct.label}
-        onClick={() => visibleProducts.length > 1 ? setOpen(true) : activateProduct(currentProduct.id)}
+        onClick={() => menuProducts.length > 1 ? setOpen(true) : activateProduct(productSurface)}
         onKeyDown={(event) => {
-          if (event.key === 'ArrowDown' && visibleProducts.length > 1) {
+          if (event.key === 'ArrowDown' && menuProducts.length > 1) {
             event.preventDefault(); setOpen(true)
             requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus())
           }

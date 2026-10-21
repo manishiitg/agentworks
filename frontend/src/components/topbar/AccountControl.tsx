@@ -1,6 +1,6 @@
 import { ProductNavigationLabel, useProductNavigationSidebar } from '../workspace/ProductTopBar'
 import { useEffect, useRef, useState } from 'react'
-import { HelpCircle, Keyboard, KeyRound, LogOut, Users, Globe } from 'lucide-react'
+import { HelpCircle, Keyboard, KeyRound, LogOut, LayoutDashboard, Globe } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useAuthStore } from '../../stores/useAuthStore'
 import NotificationsControl from './NotificationsControl'
@@ -92,13 +92,13 @@ export default function AccountControl({ onOpenWalkthrough, onOpenShortcuts }: A
             )}
             <p className="text-xs text-gray-500 dark:text-gray-400">{`AgentWorks v${APP_VERSION}`}</p>
           </div>
-          {isMultiUserMode && <button type="button" role="menuitem" className={itemClass} onClick={() => {
+          <button type="button" role="menuitem" className={itemClass} onClick={() => {
             setOpen(false)
-            window.location.assign('/shared')
+            window.location.assign('/dashboards')
           }}>
-            <Users className="h-4 w-4 text-muted-foreground" />
-            Shared with me
-          </button>}
+            <LayoutDashboard className="h-4 w-4 text-muted-foreground" />
+            Dashboards
+          </button>
           <button type="button" role="menuitem" className={itemClass} onClick={() => { setOpen(false); setBrowserConnections(true) }}><Globe className="h-4 w-4 text-muted-foreground" />Browser connections</button>
           <button type="button" role="menuitem" className={itemClass} onClick={() => { setOpen(false); window.dispatchEvent(new Event('open-welcome-home')) }}>
             <HelpCircle className="h-4 w-4 text-muted-foreground" />
