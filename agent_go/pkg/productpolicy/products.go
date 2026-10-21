@@ -114,7 +114,7 @@ func ToolProduct(name string) string {
 	switch name {
 	case "brain_browse", "brain_read", "brain_update", "brain_skills", "brain_access", "brain_schedule", "brain_secrets", "brain_admin", "manage_brain_schedule", "manage_brain_secrets":
 		return "knowledgebase"
-	case "manage_vault_access", "manage_vault_groups", "manage_vault_secret_access", "query_vault_db", "mutate_vault_db", "list_vault_mcp_servers", "call_vault_mcp_tool", "manage_vault_tools", "read_vault_audit", "manage_my_vaults", "manage_global_secret", "manage_vault_secret", "share_mcp_to_vault":
+	case "manage_vault_access", "manage_vault_groups", "manage_vault_secret_access", "query_vault_db", "mutate_vault_db", "list_vault_mcp_servers", "call_vault_mcp_tool", "manage_vault_tools", "migrate_place_connections", "read_vault_audit", "manage_my_vaults", "manage_global_secret", "manage_vault_secret", "share_mcp_to_vault":
 		return "mcp-gateway"
 	case "list_review_workspaces", "get_review_costs", "list_review_files", "read_review_file", "list_review_chats", "read_review_chat", "get_review_audit":
 		return "work"
