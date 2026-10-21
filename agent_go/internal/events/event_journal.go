@@ -33,10 +33,6 @@ type EventJournalStats struct {
 	Events    int64
 }
 
-type DurableEventJournalStats interface {
-	Stats() (EventJournalStats, error)
-}
-
 type DurableEventJournalPageReader interface {
 	ReadPage(sessionID string, opts DurableEventPageOptions) (DurableEventPage, error)
 	DeleteSession(sessionID string) error

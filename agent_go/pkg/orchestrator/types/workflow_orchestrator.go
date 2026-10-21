@@ -197,33 +197,6 @@ func (wo *WorkflowOrchestrator) SetKBShape(v string) {
 	wo.kbShape = v
 }
 
-// Human verification types
-type HumanVerificationRequest struct {
-	Objective        string    `json:"objective"`
-	TodoListMarkdown string    `json:"todo_list_markdown"`
-	GeneratedAt      time.Time `json:"generated_at"`
-	VerificationID   string    `json:"verification_id"`
-	Status           string    `json:"status"` // "pending", "approved", "modified", "rejected"
-}
-
-// LLM verification check
-type LLMVerificationCheck struct {
-	VerificationFile string    `json:"verification_file"`
-	CheckedAt        time.Time `json:"checked_at"`
-	IsVerified       bool      `json:"is_verified"`
-	Reasoning        string    `json:"reasoning"`
-}
-
-// Todo verification response
-type TodoVerificationResponse struct {
-	VerificationID           string    `json:"verification_id"`
-	IsApproved               bool      `json:"is_approved"`
-	Reasoning                string    `json:"reasoning"`
-	VerifiedAt               time.Time `json:"verified_at"`
-	SuggestedModifications   []string  `json:"suggested_modifications,omitempty"`
-	ModifiedTodoListMarkdown string    `json:"modified_todo_list_markdown,omitempty"`
-}
-
 // convertDBAgentLLMConfig converts a workflowtypes.AgentLLMConfig to step_based_workflow.AgentLLMConfig,
 // preserving the selected model.
 func convertDBAgentLLMConfig(dbConfig *workflowtypes.AgentLLMConfig) *step_based_workflow.AgentLLMConfig {

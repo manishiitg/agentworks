@@ -1301,15 +1301,6 @@ type whatsappWorkflowManifest struct {
 	} `json:"execution_defaults"`
 }
 
-type whatsappCrewManifest struct {
-	Product  string `json:"product"`
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Identity struct {
-		Name string `json:"name"`
-	} `json:"identity"`
-}
-
 type whatsappDocumentListResponse struct {
 	Success bool               `json:"success"`
 	Data    []whatsappDocument `json:"data"`
