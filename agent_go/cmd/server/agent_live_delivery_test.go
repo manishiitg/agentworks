@@ -39,7 +39,7 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	srv := httptest.NewServer(AuthMiddleware(mux))
 	defer srv.Close()
 	t.Setenv("PUBLIC_URL", srv.URL)
-	issue := func() (*agentworksclient.Client, string) {
+	issue := func() (*agentworksclient.Client, string, string) {
 		t.Helper()
 		device, verification, e := store.CreateCLIDevice(context.Background(), "crews:run", "workflows:read", "runs:execute")
 		if e != nil {
@@ -56,11 +56,11 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		return c, mcpOAuthTokenForGrant(grant).ID
+		return c, mcpOAuthTokenForGrant(grant).ID, token
 	}
-	receiver, receiverConnection := issue()
-	sender, _ := issue()
-	stranger, _ := issue()
+	receiver, receiverConnection, receiverToken := issue()
+	sender, _, _ := issue()
+	stranger, _, _ := issue()
 	call := func(c *agentworksclient.Client, args map[string]any) map[string]any {
 		t.Helper()
 		raw, e := c.Call(context.Background(), "messages", args)
@@ -252,6 +252,41 @@ func TestAgentLiveClaudeChannelOverAuthenticatedHTTP(t *testing.T) {
 	}
 	if !foundLabel {
 		t.Fatal("rename changed the identity or hid its real address", directory)
+	}
+	// An omitted route leaves the observed adapter untouched.
+	body, _ := json.Marshal(map[string]any{"action": "label", "agent_name": lease.AgentName, "attachment_id": lease.ID, "label": "Sender"})
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, srv.URL+"/api/external/v1/agents/attachment", strings.NewReader(string(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Authorization", "Bearer "+receiverToken)
+	request.Header.Set("Content-Type", "application/json")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("omitted-route status: %d", response.StatusCode)
+	}
+	directory = call(receiver, map[string]any{"action": "list_agents", "agent_name": "reviewer"})
+	for _, raw := range directory["agents"].([]any) {
+		row := raw.(map[string]any)
+		if row["agent_name"] == "reviewer" && (row["presence"] != "Wakes now" || row["delivery_mode"] != "live") {
+			t.Fatal("omitted route cleared the adapter", row)
+		}
+	}
+	// Losing an observed adapter clears its old route on the same lease.
+	lease.DeliveryRoute = ""
+	if err := receiver.UpdateAgentLabel(ctx, lease, "Sender"); err != nil {
+		t.Fatal(err)
+	}
+	directory = call(receiver, map[string]any{"action": "list_agents", "agent_name": "reviewer"})
+	for _, raw := range directory["agents"].([]any) {
+		row := raw.(map[string]any)
+		if row["agent_name"] == "reviewer" && (row["presence"] != "Connected; delivery unknown" || row["delivery_mode"] != "unknown") {
+			t.Fatal("missing adapter kept an old route", row)
+		}
 	}
 	// The same open stream can be hook-only. Presence follows the reported
 	// adapter, not the TCP connection, and metadata cannot create a receipt.

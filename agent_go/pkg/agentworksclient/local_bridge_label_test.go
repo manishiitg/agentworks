@@ -36,6 +36,9 @@ func TestBridgeLabelRefreshKeepsLeaseAndDoesNotBlock(t *testing.T) {
 	go func() { b.refreshChatLabel(context.Background(), s); close(done) }()
 	select {
 	case args := <-started:
+		if _, supplied := args["delivery_route"]; !supplied {
+			t.Fatal("unknown route must clear any previous adapter")
+		}
 		if args["action"] != "label" || args["attachment_id"] != "lease" || args["agent_name"] != "worker" || args["delivery_route"] != "" || args["repository"] != "project" || args["branch"] != "feature/mail" || args["client_build"] != "current-build" {
 			t.Fatal(args)
 		}

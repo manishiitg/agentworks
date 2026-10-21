@@ -86,9 +86,7 @@ func (c *Client) AttachAgent(ctx context.Context, opts AgentAttachmentOptions) (
 // UpdateAgentLabel changes only presentation, using the same exact lease.
 func (c *Client) UpdateAgentLabel(ctx context.Context, a AgentAttachment, label string) error {
 	body := map[string]any{"action": "label", "agent_name": a.AgentName, "attachment_id": a.ID, "label": label, "client_build": a.ClientBuild}
-	if a.DeliveryRoute != "" {
-		body["delivery_route"] = a.DeliveryRoute
-	}
+	body["delivery_route"] = a.DeliveryRoute // Empty clears an adapter that is no longer observed.
 	body["repository"], body["branch"] = a.Repository, a.Branch
 	body["activity"], body["activity_at"] = a.Activity, a.ActivityAt
 	_, err := c.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", body, true)

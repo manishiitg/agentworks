@@ -234,7 +234,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		if route, supplied := args["delivery_route"]; supplied {
 			value, ok := route.(string)
 			providers := map[string]string{"codex_desktop": "codex", "codex_queue": "codex", "claude_session": "claude", "claude_channel": "claude", "muse_monitor": "muse", "pi_extension": "pi", "codex_hook": "codex", "claude_hook": "claude", "cursor_hook": "cursor", "muse_hook": "muse", "agy_hook": "agy"}
-			if !ok || value != "inbox" && providers[value] != a.Attachment.Provider {
+			if !ok || value != "" && value != "inbox" && providers[value] != a.Attachment.Provider {
 				externalError(w, 400, "invalid_arguments", "Delivery route must match this chat's provider.")
 				return
 			}
