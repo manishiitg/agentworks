@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"database/sql"
+	"math"
 	"path/filepath"
 	"testing"
 	"time"
@@ -114,6 +115,69 @@ func generationEvent(spanID string, prompt, completion int) *unifiedevents.Agent
 				"cost_usd_estimated": 0.42,
 			}},
 		},
+	}
+}
+
+func TestWorkflowChildUsageJoinsNamedScheduleWithoutDuplicatingCharges(t *testing.T) {
+	ledger, dbPath := newTestLedger(t)
+	ctx := context.WithValue(context.Background(), common.UserIDKey, "owner")
+	ctx = costobserver.ContextWithAttribution(ctx, costledger.Attribution{AttributionVersion: 1, ProductKind: "workflow", ProductID: "workflow-a", ProductName: "Checks", Activity: "scheduled_run", ActorID: "owner"})
+	ctx = costobserver.ContextWithSource(ctx, costobserver.Source{ID: "workflow-schedule:opaque", Label: "Daily checks", RunID: "occurrence-a"})
+	bo := &BaseOrchestrator{agentMode: "workflow", workspacePath: "Workflow/demo", iterationFolder: "iteration-1-sched"}
+	sink := &recordingObserverSink{}
+	if err := bo.attachCostObserver(ctx, sink, stageAgentConfig("child-a", "pi-cli", "google/gemini-3.7-flash"), "agent", "execution", "step-a"); err != nil {
+		t.Fatal(err)
+	}
+	event := generationEvent("span-a", 2522, 1730)
+	data := event.Data.(*unifiedevents.LLMGenerationEndEvent)
+	data.Metadata = map[string]interface{}{"provider": "pi-cli", "cost_usd_estimated": 0.0199488, "cache_read_input_tokens": 154264, "prompt_tokens_include_cache": false}
+	observer := sink.costObserver(t)
+	for i := 0; i < 2; i++ {
+		if err := observer.HandleEvent(ctx, event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	actual := generationEvent("span-b", 10, 5)
+	actual.Data.(*unifiedevents.LLMGenerationEndEvent).Metadata = map[string]interface{}{"provider": "pi-cli", "cost_usd": 0.123, "cost_usd_estimated": 0.42}
+	if err := observer.HandleEvent(ctx, actual); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := ledger.Summarize("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := summary.BySource["workflow-schedule:opaque"]
+	if source == nil || source.Label != "Daily checks" || source.RunCount != 1 || source.CallCount != 2 {
+		t.Fatalf("schedule grouping = %+v", source)
+	}
+	if math.Abs(summary.Total.TotalCostUSD-0.1429488) > 1e-12 || summary.Total.CallCount != 2 {
+		t.Fatalf("repeated event changed totals: %+v", summary.Total)
+	}
+	db, err := sql.Open("sqlite", "file:"+dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	rows, err := db.Query(`SELECT billing_basis, pricing_source, product_id, activity FROM cost_events ORDER BY event_id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for i, expected := range []string{"token_estimate", "provider_actual"} {
+		if !rows.Next() {
+			t.Fatalf("missing row %d: %v", i, rows.Err())
+		}
+		var basis, pricing, product, activity string
+		if err := rows.Scan(&basis, &pricing, &product, &activity); err != nil {
+			t.Fatal(err)
+		}
+		wantPricing := "model_registry"
+		if expected == "provider_actual" {
+			wantPricing = "provider"
+		}
+		if basis != expected || pricing != wantPricing || product != "workflow-a" || activity != "scheduled_run" {
+			t.Fatalf("unexpected ledger identity: %s %s %s %s", basis, pricing, product, activity)
+		}
 	}
 }
 

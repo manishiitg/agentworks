@@ -95,6 +95,31 @@ func WithProductAttribution(a costledger.Attribution) Option {
 
 type attributionContextKey struct{}
 
+// Source identifies the admitted automation and occurrence that launched work.
+// Keep it on the context so child agents join the same named cost group.
+type Source struct {
+	ID, Label, RunID string
+}
+
+type sourceContextKey struct{}
+
+func ContextWithSource(ctx context.Context, source Source) context.Context {
+	return context.WithValue(ctx, sourceContextKey{}, source)
+}
+
+func SourceFromContext(ctx context.Context) Source {
+	if ctx == nil {
+		return Source{}
+	}
+	source, _ := ctx.Value(sourceContextKey{}).(Source)
+	return source
+}
+
+func WithSourceFromContext(ctx context.Context) Option {
+	source := SourceFromContext(ctx)
+	return WithSource(source.ID, source.Label, source.RunID)
+}
+
 func ContextWithAttribution(ctx context.Context, a costledger.Attribution) context.Context {
 	return context.WithValue(ctx, attributionContextKey{}, a)
 }
@@ -393,6 +418,10 @@ func (o *Observer) recordLLMGeneration(event *unifiedevents.AgentEvent, generati
 	if totalCostUSD <= 0 {
 		billingBasis = "unpriced"
 		pricingSource = ""
+	} else if isSubscriptionCodingProvider(provider) {
+		// CLI dollar telemetry is API-equivalent usage even when supplied by
+		// the provider; it is not a charge on a subscription login.
+		billingBasis = "subscription_shadow"
 	}
 	if effectiveModel == "" {
 		effectiveModel = modelID
@@ -478,6 +507,8 @@ func (o *Observer) recordLegacyTokenUsage(event *unifiedevents.AgentEvent, tu *u
 	if totalCostUSD <= 0 {
 		billingBasis = "unpriced"
 		pricingSource = ""
+	} else if isSubscriptionCodingProvider(provider) {
+		billingBasis = "subscription_shadow"
 	}
 	if effectiveModel == "" {
 		effectiveModel = modelID

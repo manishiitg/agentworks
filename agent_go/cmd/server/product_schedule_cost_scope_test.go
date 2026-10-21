@@ -12,6 +12,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 )
 
@@ -54,7 +55,7 @@ func TestProductScheduleTurnRecordsScheduleCostScope(t *testing.T) {
 			calls = 25
 		}
 		obs := newCostObserver(ledger, session, "owner", req.AgentMode,
-			withCostAttribution(scope, "", "", "query-"+session), costSourceOption(req))
+			withCostAttribution(scope, "", "", "query-"+session), costobserver.WithSourceFromContext(costSourceContext(context.Background(), req)))
 		if err := obs.HandleEvent(context.Background(), &unifiedevents.AgentEvent{
 			Type: unifiedevents.LLMGenerationEnd, Timestamp: time.Date(2026, 10, 7, 9, 0, 0, 0, time.UTC),
 			SpanID: "span-" + session, Component: "llm",

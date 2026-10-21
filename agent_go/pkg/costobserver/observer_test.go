@@ -65,6 +65,46 @@ func TestObserverRecordsOnlyRealInProcessMCPActivity(t *testing.T) {
 	}
 }
 
+func TestSubscriptionDollarTelemetryRemainsShadowUsage(t *testing.T) {
+	dbPath := t.TempDir() + "/costs.sqlite"
+	ledger, err := costledger.NewSQLiteLedger(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	for _, legacy := range []bool{false, true} {
+		obs := New(ledger, fmt.Sprintf("subscription-%v", legacy), "owner", "chat", WithModel("claude-code", "claude-opus-5"), WithAttribution(ScopeChat, "", "", "turn"))
+		metadata := map[string]interface{}{"provider": "claude-code", "cost_usd": 0.123, "cost_usd_estimated": 0.00075}
+		event := &unifiedevents.AgentEvent{Type: unifiedevents.LLMGenerationEnd, Timestamp: time.Now(), SpanID: "native-cost", Data: &unifiedevents.LLMGenerationEndEvent{UsageMetrics: unifiedevents.UsageMetrics{PromptTokens: 100, CompletionTokens: 10}, BaseEventData: unifiedevents.BaseEventData{Metadata: metadata}}}
+		if legacy {
+			event.Type = unifiedevents.TokenUsage
+			event.Data = &unifiedevents.TokenUsageEvent{Provider: "claude-code", ModelID: "claude-opus-5", GenerationInfo: metadata}
+		}
+		if err := obs.HandleEvent(context.Background(), event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := ledger.Summarize("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows.Total.TotalCostUSD != 0.246 {
+		t.Fatalf("usage totals changed: %+v", rows.Total)
+	}
+	db, err := sql.Open("sqlite", "file:"+dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var shadows int
+	if err := db.QueryRow(`SELECT count(*) FROM cost_events WHERE billing_basis='subscription_shadow' AND pricing_source='provider'`).Scan(&shadows); err != nil {
+		t.Fatal(err)
+	}
+	if shadows != 2 {
+		t.Fatalf("shadow rows = %d, want 2", shadows)
+	}
+}
+
 func TestNewWarnsWhenLaunchPathCannotNameItsScope(t *testing.T) {
 	var logged bytes.Buffer
 	previous := log.Writer()

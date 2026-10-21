@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -50,6 +51,12 @@ func chatTurnCostScope(req QueryRequest, agentModeForScope, phaseID string) stri
 // entries (PLAT-702); a person's own turn names none.
 func costSourceOption(req QueryRequest) costobserver.Option {
 	return costobserver.WithSource(req.CostSourceID, req.CostSourceLabel, req.CostSourceRunID)
+}
+
+func costSourceContext(ctx context.Context, req QueryRequest) context.Context {
+	return costobserver.ContextWithSource(ctx, costobserver.Source{
+		ID: req.CostSourceID, Label: req.CostSourceLabel, RunID: req.CostSourceRunID,
+	})
 }
 
 // handleCostSummary is the HTTP handler for GET /api/cost/summary.

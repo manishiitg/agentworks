@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	orchestrator_events "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 )
 
@@ -21,7 +22,7 @@ func currentWorkshopParentExecutionID(ctx context.Context) string {
 	return ""
 }
 
-// withWorkshopExecutionParent copies only lifecycle identity from a live tool
+// withWorkshopExecutionParent copies lifecycle and cost identity from a live tool
 // call into the detached workshop context. Workshop work must outlive the HTTP
 // request, so its cancellation still derives from sessionCtx; copying the whole
 // request context would incorrectly cancel a long-running workflow when the
@@ -30,6 +31,8 @@ func withWorkshopExecutionParent(base, launch context.Context) context.Context {
 	if base == nil {
 		base = context.Background()
 	}
+	base = costobserver.ContextWithAttribution(base, costobserver.AttributionFromContext(launch))
+	base = costobserver.ContextWithSource(base, costobserver.SourceFromContext(launch))
 	parentExecutionID := currentWorkshopParentExecutionID(launch)
 	if parentExecutionID == "" {
 		return base

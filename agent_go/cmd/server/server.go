@@ -5396,6 +5396,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				workflowCost.Activity = "workflow_run"
 			}
 			workflowCtx = costobserver.ContextWithAttribution(workflowCtx, workflowCost)
+			workflowCtx = costSourceContext(workflowCtx, req)
 			api.setSessionCostAttribution(sessionID, workflowCost)
 			// Register in active executions registry
 			activeExec := &ActiveWorkflowExecution{
@@ -5868,6 +5869,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		api.setSessionCostAttribution(sessionID, turnCostAttribution)
 		streamCtx = queryLogCtx.Context(streamCtx)
 		streamCtx = costobserver.ContextWithAttribution(streamCtx, turnCostAttribution)
+		streamCtx = costSourceContext(streamCtx, req)
 		// Tools that start their own model (generate_text_llm, read_image)
 		// resolve and admit accounts with this turn's scope.
 		streamCtx = virtualtools.WithProviderAccountKeys(streamCtx, mergedAPIKeys)
@@ -7644,7 +7646,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// Use a detached context for workflow-builder setup. /api/query returns
 				// an acknowledgement before the background turn finishes, so r.Context()
 				// is canceled while these short setup reads/session refreshes still run.
-				setupCtx := context.WithoutCancel(r.Context())
+				setupCtx := context.WithoutCancel(streamCtx)
 
 				// Build GroupInfo and extra template vars for the interactive-workshop system prompt
 				if workflowPhaseID == workflowtypes.WorkflowStatusWorkflowBuilder {

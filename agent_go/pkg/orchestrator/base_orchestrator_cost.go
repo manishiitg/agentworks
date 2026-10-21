@@ -78,6 +78,7 @@ func (bo *BaseOrchestrator) attachCostObserver(
 		costobserver.WithSourcePlatform(costobserver.SourcePlatformFromContext(ctx)),
 		costobserver.WithLaunchPath(launchPath),
 		costobserver.WithProductAttribution(costobserver.AttributionFromContext(ctx)),
+		costobserver.WithSourceFromContext(ctx),
 	)
 	if err := agent.AddObserver(observer); err != nil {
 		return fmt.Errorf("attach cost observer to %s: %w", agentName, err)
