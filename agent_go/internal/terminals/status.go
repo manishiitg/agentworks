@@ -585,15 +585,11 @@ func terminalContentLooksFatal(content string) bool {
 }
 
 func terminalContentLooksBusy(content string) bool {
-	lines := cleanedLines(content)
+	lines, _ := cleanedLinesTail(content, 80)
 	if len(lines) == 0 {
 		return false
 	}
-	start := 0
-	if len(lines) > 80 {
-		start = len(lines) - 80
-	}
-	for _, line := range lines[start:] {
+	for _, line := range lines {
 		if isTerminalBusyLine(line) {
 			return true
 		}
@@ -653,4 +649,29 @@ func isCursorBrailleSpinnerLine(trimmed string) bool {
 		return r >= '⠀' && r <= '⣿'
 	}
 	return false
+}
+
+// busyScanTailBytes is how much of the end of a terminal buffer the busy checks read first. A coding CLI's buffer holds up
+// to 20,000 lines of scrollback and the checks ran on every poll of the chat, stripping the colour codes from all of it
+// to look at its last screen, which kept a small server's CPU busy.
+const busyScanTailBytes = 96 << 10
+
+// cleanedLinesTail returns the cleaned lines at the end of content, at least `want` of them, and whether they are all of
+// the content's lines. A long buffer is cleaned from its last busyScanTailBytes only; when that holds fewer than `want`
+// lines the whole buffer is cleaned, so the answer is the same as cleaning everything.
+func cleanedLinesTail(content string, want int) (lines []string, complete bool) {
+	if len(content) > busyScanTailBytes {
+		tail := content[len(content)-busyScanTailBytes:]
+		if i := strings.IndexByte(tail, '\n'); i >= 0 {
+			tail = tail[i+1:] // the cut may fall inside a line
+		}
+		if lines = cleanedLines(tail); len(lines) >= want {
+			return lines[len(lines)-want:], false
+		}
+	}
+	lines = cleanedLines(content)
+	if len(lines) > want {
+		lines = lines[len(lines)-want:]
+	}
+	return lines, true
 }

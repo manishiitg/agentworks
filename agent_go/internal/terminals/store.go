@@ -2142,27 +2142,34 @@ func (s *Store) markInactive(sessionID, ownerID string, metadata map[string]inte
 }
 
 func terminalHasSettledPromptAfterBusy(content string, metadata map[string]interface{}) bool {
-	lines := cleanedLines(content)
-	if len(lines) == 0 {
-		return false
-	}
 	provider := providerLabel(content, metadata)
 	// Cursor's follow-up prompt remains visible while it is composing, so it
 	// cannot disambiguate an intermediate end event from a settled pane.
 	if provider != "Codex CLI" && provider != "Claude Code" {
 		return false
 	}
-	lastBusy := -1
-	lastPrompt := -1
-	for i, line := range lines {
-		if isTerminalBusyLine(line) {
-			lastBusy = i
+	// Only the last busy line and the last prompt line matter, and both are at the end of the buffer: read the end first and
+	// read everything only when the end has no busy line (a prompt before an unseen busy line cannot be told apart).
+	lines, complete := cleanedLinesTail(content, 200)
+	for {
+		if len(lines) == 0 {
+			return false
 		}
-		if isProviderIdlePromptLine(provider, line, true) {
-			lastPrompt = i
+		lastBusy := -1
+		lastPrompt := -1
+		for i, line := range lines {
+			if isTerminalBusyLine(line) {
+				lastBusy = i
+			}
+			if isProviderIdlePromptLine(provider, line, true) {
+				lastPrompt = i
+			}
 		}
+		if lastBusy >= 0 || complete {
+			return lastPrompt > lastBusy
+		}
+		lines, complete = cleanedLines(content), true
 	}
-	return lastPrompt > lastBusy
 }
 
 func (s *Store) findInactiveTargetLocked(sessionID, ownerID string, metadata map[string]interface{}) (string, Snapshot, bool) {
