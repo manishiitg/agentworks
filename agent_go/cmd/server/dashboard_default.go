@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"html"
 	"io"
 	"log"
 	"net/http"
@@ -78,65 +77,42 @@ func defaultDashboardText(s string, limit int) string {
 
 // defaultDashboardHTML is the generated page: pure markup, no scripts that run
 // anything. The Ask button and function buttons are the host's own widgets.
-func defaultDashboardHTML(info defaultDashboardInfo) string {
-	var buttons strings.Builder
-	for _, fn := range info.Functions {
-		name := html.EscapeString(fn.Name)
-		fmt.Fprintf(&buttons, "      <button type=\"button\" data-report-action=\"%s\"><b>%s</b>", name, name)
-		if fn.Description != "" {
-			fmt.Fprintf(&buttons, "<small>%s</small>", html.EscapeString(defaultDashboardText(fn.Description, 140)))
-		}
-		buttons.WriteString("</button>\n")
+func defaultDashboardHTML(info defaultDashboardInfo) (string, error) {
+	elements := map[string]dashboards.JSONElement{
+		"page":  {Type: "Stack", Props: map[string]any{"gap": "lg", "className": "dashboard-home"}, Children: []string{"title"}},
+		"title": {Type: "Heading", Props: map[string]any{"text": info.Title, "level": "h1"}, Children: []string{}},
 	}
-	functions := ""
-	if buttons.Len() > 0 {
-		functions = "    <h3>What it can do</h3>\n    <div class=\"fn\">\n" + buttons.String() + "    </div>\n"
-	}
-	description := ""
+	children := []string{"title"}
 	if info.Description != "" {
-		description = "    <p class=\"lead\">" + html.EscapeString(defaultDashboardText(info.Description, 600)) + "</p>\n"
+		elements["purpose"] = dashboards.JSONElement{Type: "Text", Props: map[string]any{"text": defaultDashboardText(info.Description, 600)}, Children: []string{}}
+		children = append(children, "purpose")
 	}
-	body := `<!doctype html>
-<html lang="en" data-mode="dark" data-report-fit="viewport">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>` + html.EscapeString(info.Title) + `</title>
-<style>
-  :root { color-scheme: dark; --report-mode: dark; --report-radius: 8px; --report-background:#0d1117; --report-foreground:#e6edf3; --report-card:#161b22; --report-card-foreground:#e6edf3; --report-muted:#161b22; --report-muted-foreground:#8b949e; --report-border:#30363d; --report-input:#30363d; --report-primary:#238636; --report-primary-foreground:#ffffff; --report-ring:#58a6ff;
-    --bg:#0d1117; --card:#161b22; --fg:#e6edf3; --muted:#8b949e; --line:#30363d; --hover:#21262d; }
-  * { box-sizing: border-box; }
-  html, body { overflow-x: hidden; }
-  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
-  .main { min-width:0; max-width:1200px; margin:0 auto; padding:20px 24px; }
-  h1 { font-size:22px; font-weight:600; margin:0 0 6px; }
-  h3 { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:20px 0 8px; }
-  .lead { margin:0 0 8px; color:var(--muted); max-width:70ch; }
-  .fn { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px; }
-  button { font:inherit; text-align:left; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--fg); cursor:pointer; min-width:0; }
-  button:hover { background:var(--hover); }
-  button:disabled { opacity:.5; cursor:not-allowed; }
-  button b { display:block; font-weight:600; overflow-wrap:anywhere; }
-  button small { display:block; color:var(--muted); font-size:12px; margin-top:2px; }
-  .ask { margin-top:24px; padding-top:16px; border-top:1px solid var(--line); }
-  @media (max-width: 640px) { .main { padding:20px 16px; } }
-</style>
-</head>
-<body>
-<main class="main">
-    <h1>` + html.EscapeString(info.Title) + `</h1>
-` + description + functions + `    <div class="ask">
-      <button type="button" data-report-chat-button>Ask about this dashboard</button>
-    </div>
-</main>
-</body>
-</html>
-`
+	if len(info.Functions) > 0 {
+		elements["actions-title"] = dashboards.JSONElement{Type: "Heading", Props: map[string]any{"text": "What it can do", "level": "h3"}, Children: []string{}}
+		actions := []string{}
+		for i, fn := range info.Functions {
+			id := fmt.Sprintf("function-%d", i)
+			actions = append(actions, id)
+			elements[id] = dashboards.JSONElement{Type: "FunctionButton", Props: map[string]any{"name": fn.Name, "label": fn.Name, "className": "dashboard-button"}, Children: []string{}}
+		}
+		elements["actions"] = dashboards.JSONElement{Type: "Grid", Props: map[string]any{"columns": 2, "gap": "sm"}, Children: actions}
+		children = append(children, "actions-title", "actions")
+	}
+	elements["ask"] = dashboards.JSONElement{Type: "AskButton", Props: map[string]any{"label": "Ask about this dashboard"}, Children: []string{}}
+	children = append(children, "ask")
+	root := elements["page"]
+	root.Children = children
+	elements["page"] = root
+	spec := dashboards.JSONSpec{Root: "page", Elements: elements, Styles: ".dashboard-home{max-width:1200px;margin:0 auto;padding:24px} @media(max-width:600px){.dashboard-home{padding:16px}}"}
+	data, _ := json.Marshal(spec)
+	body, err := dashboards.JSONHTML(info.Title, data)
+	if err != nil {
+		return "", err
+	}
 	sum := sha256.Sum256([]byte(body))
-	return body + "<!-- agentworks-default-dashboard:" + hex.EncodeToString(sum[:8]) + " -->\n"
+	return body + "<!-- agentworks-default-dashboard:" + hex.EncodeToString(sum[:8]) + " -->\n", nil
 }
 
-// defaultDashboardInfoFor reads only what the product declares.
 func (api *StreamingAPI) defaultDashboardInfoFor(ctx context.Context, claims *UserClaims, target dashboardTarget) (defaultDashboardInfo, error) {
 	info := defaultDashboardInfo{Kind: target.Kind, Title: target.Title}
 	switch target.Kind {
@@ -202,7 +178,8 @@ func (api *StreamingAPI) liveDefaultDashboard(ctx context.Context, claims *UserC
 		return storedDefaultDashboard(data, root, err)
 	}
 	log.Printf("[DASHBOARD_DEFAULT] live automatic page: kind=%s root=%s functions=%d", target.Kind, target.Root, len(info.Functions))
-	return []byte(defaultDashboardHTML(info)), true, nil
+	page, err := defaultDashboardHTML(info)
+	return []byte(page), true, err
 }
 
 // An unavailable declaration store does not take the saved Ask page down.
@@ -239,7 +216,10 @@ func (api *StreamingAPI) ensureDefaultDashboard(ctx context.Context, claims *Use
 	if err != nil {
 		return "", false, err
 	}
-	page := defaultDashboardHTML(info)
+	page, err := defaultDashboardHTML(info)
+	if err != nil {
+		return "", false, err
+	}
 	files := map[string]string{"index.html": page}
 	if existing != nil {
 		current, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: target.Root, Action: "get", ID: defaultDashboardID, IncludeDraft: true})

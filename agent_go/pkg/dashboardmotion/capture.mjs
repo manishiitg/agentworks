@@ -53,7 +53,7 @@ async function prepareDashboard(page) {
   const captured = await previewFrame.evaluate(async () => {
     if (window.__reportPreview.getState().previewState !== 'ready') throw new Error('The dashboard could not load. Check its preview before exporting again.')
     await document.fonts.ready
-    return { data: await window.__reportPreview.freeze(), motion: window.__reportPreview.motion(), state: window.__reportPreview.getState() }
+    return { data: await window.__reportPreview.freeze(), motion: window.__reportPreview.motion(), state: window.__reportPreview.getState(), renderer: document.querySelector('iframe')?.contentDocument?.documentElement.dataset.reportRenderer }
   })
   motionCount = captured.motion.length
   if (!config.duration_s && motionCount) duration = Math.max(...captured.motion.map(player => player.duration))
@@ -69,6 +69,13 @@ async function prepareDashboard(page) {
   if (!runtime.ok) throw new Error('The dashboard rendering runtime is unavailable.')
   fs.mkdirSync(path.join(config.project, '.runtime'), { recursive: true })
   fs.writeFileSync(path.join(config.project, '.runtime/report-preview.js'), await runtime.text())
+  if (captured.renderer === 'json-render') {
+    for (const name of ['dashboard-json.js', 'dashboard-json.css']) {
+      const asset = await fetch(new URL('/report-preview/' + name, origin))
+      if (!asset.ok) throw new Error('The JSON dashboard rendering assets are unavailable.')
+      fs.writeFileSync(path.join(config.project, '.runtime', name), Buffer.from(await asset.arrayBuffer()))
+    }
+  }
 }
 
 async function beforeCapture(page, time) {

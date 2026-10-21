@@ -417,6 +417,11 @@ func Execute(ctx context.Context, docs string, req Request) (Result, error) {
 		if e != nil {
 			return out, e
 		}
+		if source, ok := snap.Files["index.json"]; ok {
+			if _, e := ValidateJSONSpec([]byte(source)); e != nil {
+				return out, e
+			}
+		}
 		for p := range snap.Files {
 			if req.Guard != nil && !req.Guard.Allows(renderFile(req.ID, rev, p), true) {
 				return out, fail(403, "publication outside connection write grants")
@@ -469,6 +474,9 @@ func Execute(ctx context.Context, docs string, req Request) (Result, error) {
 			return out, fail(400, "invalid removed file")
 		}
 		delete(snap.Files, p)
+	}
+	if err := prepareJSONSnapshot(&snap); err != nil {
+		return out, err
 	}
 	if _, ok := snap.Files["index.html"]; !ok {
 		return out, fail(400, "index.html required")

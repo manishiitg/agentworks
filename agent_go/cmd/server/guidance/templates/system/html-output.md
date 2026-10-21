@@ -1,3 +1,8 @@
+For new Dashboards, use json-render with the complete supplied shadcn catalog;
+read reporting-policy.md and get_dashboard_catalog for usage. This reference
+continues to describe existing HTML Dashboards and separately requested HTML
+artifacts. Existing HTML source and revisions stay supported.
+
 ## HTML output: formats and runtime usage
 
 Load this reference when writing an HTML artifact. Follow the user's design

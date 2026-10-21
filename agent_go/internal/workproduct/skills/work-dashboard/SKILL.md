@@ -10,12 +10,62 @@ or another project view intended to organize or manage information visually.
 
 
 
-## Contract
+## JSON-render dashboards (default)
+
+Create new dashboards with the pinned Vercel json-render library and its complete
+supplied shadcn catalog. Call `get_dashboard_catalog` once for the current component
+props and mechanics. Layout, typography, colors, navigation and component placement
+remain the designer's choice; do not add platform-required sections or sample values.
+
+Pass `files: {"index.json": "<JSON specification>"}` to `create_dashboard` or
+`update_dashboard`. The source uses `root`, `elements` and optional `state`.
+Each element has `type`, `props` and `children`; `on`, `visible`, `repeat` and
+named `slots` use json-render semantics. Nullable props can be omitted. The server
+validates the catalog and tree and creates the HTML entry automatically. Keep
+`index.json` as the editable source; do not hand-edit its generated `index.html`.
+
+Use optional `data` entries to load actual project values:
+`{"statePath":"/totals","method":"query","sql":"SELECT total FROM totals","params":[]}`,
+`{"statePath":"/summary","method":"get","path":"db/summary.json"}`, or
+`{"statePath":"/live","method":"run","path":"code/reports/summary.py","args":{}}`.
+These use the same authorized `report.query/get/run` APIs, on load and explicit
+refresh. Bind props with `{"$state":"/totals"}`; form inputs can use `$bindState`.
+Data args may use `$state` references. Only local state/form actions and
+`refreshData` are supported in `on`/`watch`; neither rendering nor local state
+executes a published function.
+
+The full shadcn catalog is available, plus `Metric`, `BarChart`, `LineChart`,
+`AskButton`, `ChatPanel`, `FunctionButton` and optional `MotionControls`.
+AskButton only opens the existing composer. ChatPanel requires an `id` and a
+positive `height`; choose its position, size and responsive CSS. FunctionButton
+names this project's published function and opens its existing input form; the
+person presses Run. Flow function controls remain unavailable until its existing
+function adapter supports them. Preview has no native conversation or function
+execution. Native controls do not add access or choose another account/project.
+
+Use optional `styles` for authored CSS. The renderer supplies the app's light/dark
+theme variables; use classes and CSS to express the requested design. Its bundled
+Tailwind classes cover supplied components, not every dynamically invented utility.
+For requested playback, optional `motion: {"duration":12,"statePath":"/playback"}`
+uses the existing shared clock; chart `progress` may bind to `/playback/progress`.
+Add MotionControls only where desired. Load historical values before playback;
+never invent missing history. MP4 uses the same published layout and frozen data.
+
+Images/avatars resolve project assets (db/, knowledgebase/, docs/) through the
+existing file API; inline data images are also supported. Links are static
+http(s)/mailto addresses and open only from a person's click. JSON contains no
+raw HTML, scripts or arbitrary fetch operations. Managed assets/scripts still use
+`{{dashboard_assets}}` and `{{dashboard_scripts}}` for immutable revision paths.
+Validate/preview the draft, then publish it through the same dashboard tools.
+Existing authored HTML dashboards and historical revisions remain supported;
+when editing one, preserve its format unless the person asks to convert it.
+
+## Existing HTML contract
 
 Layout, typography, colors, charts, navigation and visual style follow the
 user's preferences and supplied references. This skill describes platform usage.
 
-- Dashboard documents are HTML files under `db/reports/`; `index.html` is the
+- Existing HTML dashboard documents are files under `db/reports/`; `index.html` is the
   backward-compatible default. Supporting assets belong under `db/assets/`.
 - For multiple top-toolbar views, create one HTML document per useful view.
   The toolbar discovers them automatically. Optionally add `db/reports/views.json`

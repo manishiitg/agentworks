@@ -66,6 +66,7 @@ chat:
       - perform_ui_action
       - get_file_link
       - get_report_link
+      - get_dashboard_catalog
       - list_dashboards
       - get_dashboard
       - create_dashboard

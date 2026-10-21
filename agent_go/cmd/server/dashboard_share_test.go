@@ -121,7 +121,10 @@ func TestDashboardShareResumesStandardDraftButNeverPublishesAuthoredDraft(t *tes
 	for _, authored := range []bool{false, true} {
 		t.Run(map[bool]string{false: "standard", true: "authored"}[authored], func(t *testing.T) {
 			f := newExternalToolsFixture(t)
-			page := defaultDashboardHTML(defaultDashboardInfo{Kind: "workflow", Title: "Earlier title"})
+			page, pageErr := defaultDashboardHTML(defaultDashboardInfo{Kind: "workflow", Title: "Earlier title"})
+			if pageErr != nil {
+				t.Fatal(pageErr)
+			}
 			if authored {
 				// Editors commonly keep the marker. The changed body must be
 				// treated as authored, not overwritten just because it remains.

@@ -98,7 +98,7 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 					t.Fatalf("browser view lacks the server's automatic page: %d %v", status, out)
 				}
 				html := page["html"].(string)
-				if !strings.Contains(html, "data-report-chat-button") || strings.Contains(html, "data-report-chat-panel") {
+				if !strings.Contains(html, `"type":"AskButton"`) || strings.Contains(html, `"type":"ChatPanel"`) {
 					t.Fatal("the old automatic snapshot must receive the new live button layout")
 				}
 				return html
@@ -125,10 +125,10 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 					t.Fatal(err)
 				}
 				w := read(live, reader)
-				if w.Code != 200 || !strings.Contains(w.Body.String(), `data-report-action="published_reply"`) || strings.Contains(w.Body.String(), "unpublished_reply") {
+				if w.Code != 200 || !strings.Contains(w.Body.String(), `published_reply`) || strings.Contains(w.Body.String(), "unpublished_reply") {
 					t.Fatalf("Run page did not use the published function list: %d %s", w.Code, w.Body.String())
 				}
-				if page := livePage(); !strings.Contains(page, `data-report-action="published_reply"`) || strings.Contains(page, "unpublished_reply") {
+				if page := livePage(); !strings.Contains(page, `published_reply`) || strings.Contains(page, "unpublished_reply") {
 					t.Fatal("browser view did not exclude the unpublished function")
 				}
 				return
@@ -144,10 +144,10 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 			if !found {
 				t.Fatalf("declaration save did not notify the open dashboard: %v", notices)
 			}
-			if w := read(live, reader); w.Code != 200 || !strings.Contains(w.Body.String(), `data-report-action="draft_reply"`) {
+			if w := read(live, reader); w.Code != 200 || !strings.Contains(w.Body.String(), `draft_reply`) {
 				t.Fatalf("new function is missing without republish: %d %s", w.Code, w.Body.String())
 			}
-			if !strings.Contains(livePage(), `data-report-action="draft_reply"`) {
+			if !strings.Contains(livePage(), `draft_reply`) {
 				t.Fatal("browser metadata pinned the old page instead of supplying the live function")
 			}
 			if w := read(dashboards.Document(defaultDashboardID, before.Dashboard.Published), reader); w.Code != 200 || w.Body.String() != original {

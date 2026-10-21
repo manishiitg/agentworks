@@ -1,0 +1,26 @@
+@import "tailwindcss";
+@source "../node_modules/@json-render/shadcn/dist";
+@custom-variant dark (&:where(.dark, .dark *));
+@theme inline {
+  --color-background: hsl(var(--background)); --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card)); --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover)); --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary)); --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary)); --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted)); --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent)); --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive)); --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border)); --color-input: hsl(var(--input)); --color-ring: hsl(var(--ring));
+  --radius-sm: calc(var(--radius, .5rem) - 4px); --radius-md: calc(var(--radius, .5rem) - 2px); --radius-lg: var(--radius, .5rem);
+}
+html,body{margin:0;min-width:0;background:hsl(var(--background,0 0% 100%));color:hsl(var(--foreground,0 0% 15%));font-family:system-ui,sans-serif}
+button,a,input,select,textarea{font:inherit}
+.dashboard-button{padding:.5rem .75rem;border:1px solid hsl(var(--border));border-radius:var(--radius,.5rem);cursor:pointer}
+.dashboard-button:disabled{opacity:.5;cursor:default}
+.dashboard-metric{display:block;font-size:2rem;font-variant-numeric:tabular-nums}
+.dashboard-bar-row{display:grid;grid-template-columns:minmax(5rem,1fr) 3fr auto;gap:.75rem;align-items:center;margin:.5rem 0}
+.dashboard-bar{min-height:1.25rem;background:hsl(var(--primary));border-radius:.25rem}
+.dashboard-motion{display:flex;align-items:center;gap:.75rem}.dashboard-motion input{min-width:0;flex:1}
+figure{margin:0}svg{max-width:100%;display:block}table{width:100%;text-align:left}
+
+.dashboard-chart{width:100%;min-width:0}.dashboard-chart svg{width:100%;height:auto}

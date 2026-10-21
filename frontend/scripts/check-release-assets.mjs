@@ -20,7 +20,7 @@ async function rejectStandaloneGatewayLogin(root) {
 }
 
 export async function checkReleaseAssets(root) {
-  for (const name of ['index.html', 'report-preview.js']) {
+  for (const name of ['index.html', 'report-preview.js', 'dashboard-json.js', 'dashboard-json.css']) {
     const asset = path.join(root, name)
     let info
     try { info = await stat(asset) } catch { /* diagnosed below */ }

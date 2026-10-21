@@ -325,6 +325,7 @@ chat:
       - update_variable
       - update_workflow_config
       - validate_plan_change
+      - get_dashboard_catalog
       - list_dashboards
       - get_dashboard
       - create_dashboard
@@ -500,6 +501,7 @@ chat:
     # lists. Admitting an authoring mutation here is a deliberate API
     # change: direct file writes require their own scope; plans remain Builder-owned.
     external_tools:
+      - get_dashboard_catalog
       - list_dashboards
       - get_dashboard
       - create_dashboard

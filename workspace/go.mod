@@ -3,6 +3,7 @@ module github.com/manishiitg/coding-agent-loop/workspace
 go 1.25.0
 
 require (
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/creack/pty v1.1.24
 	github.com/gin-contrib/gzip v1.2.6
 	github.com/gin-gonic/gin v1.12.0
