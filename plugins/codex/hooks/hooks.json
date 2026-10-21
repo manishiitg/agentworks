@@ -43,6 +43,17 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agentworks plugin hook codex",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -42,6 +44,26 @@ type pluginHookInput struct {
 	Cwd                string          `json:"cwd"`
 }
 
+// Cursor supplies an object for generic post-tool input and a JSON string for
+// its MCP fence event. Normalize only that field; do not interpret tool content.
+func (input *pluginHookInput) UnmarshalJSON(raw []byte) error {
+	type plain pluginHookInput
+	wire := struct {
+		*plain
+		ToolInput json.RawMessage `json:"tool_input"`
+	}{plain: (*plain)(input)}
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return err
+	}
+	if len(wire.ToolInput) > 0 && string(wire.ToolInput) != "null" {
+		if wire.ToolInput[0] == '"' {
+			return json.Unmarshal(wire.ToolInput, &input.CursorToolInput)
+		}
+		input.CursorToolInput = string(wire.ToolInput)
+	}
+	return nil
+}
+
 // Hooks receive the session ID from the CLI itself. Only a literal person
 // prompt is consumed for attach, and it is blocked before reaching the model.
 func pluginCommand(o *options) *cobra.Command {
@@ -51,7 +73,11 @@ func pluginCommand(o *options) *cobra.Command {
 			return errors.New("unsupported hook provider")
 		}
 		var input pluginHookInput
-		if err := json.NewDecoder(io.LimitReader(o.stdin, 64<<10)).Decode(&input); err != nil {
+		reader := bufio.NewReader(io.LimitReader(o.stdin, 64<<10))
+		if prefix, _ := reader.Peek(3); bytes.Equal(prefix, []byte{0xef, 0xbb, 0xbf}) {
+			_, _ = reader.Discard(3) // PowerShell may prefix JSON with a UTF-8 BOM.
+		}
+		if err := json.NewDecoder(reader).Decode(&input); err != nil {
 			return err
 		}
 		if args[0] == "cursor" {
@@ -70,7 +96,7 @@ func pluginCommand(o *options) *cobra.Command {
 				return pluginBlock(o, "Pi bridge root is unsafe or unavailable")
 			}
 		}
-		req := agentworksclient.LocalBridgeRequest{Provider: args[0], SessionID: input.SessionID}
+		req := agentworksclient.LocalBridgeRequest{Provider: args[0], SessionID: input.SessionID, WorkspaceDir: input.Cwd, Activity: hookActivity(input.Event)}
 		if args[0] != "pi" {
 			pid, host, _ := providerHostProcess(args[0])
 			req.HostKey = host
@@ -94,6 +120,9 @@ func pluginCommand(o *options) *cobra.Command {
 			if err := confirmPiPersonInput(cmd.Context(), root, req.HostKey, input.SessionID, input.Prompt, input.PiPersonToken); err != nil {
 				return pluginBlock(o, "Pi hook requires a one-use proof from literal person input. Type /agentworks attach yourself in the TUI.")
 			}
+		}
+		if input.Event == "PostToolUse" {
+			return postToolMessages(cmd.Context(), root, o, req)
 		}
 		var out agentworksclient.LocalBridgeReply
 		ctx, cancel := context.WithTimeout(cmd.Context(), 8*time.Second)
@@ -263,7 +292,7 @@ func pluginCommand(o *options) *cobra.Command {
 		}
 		if input.Event == "SessionEnd" {
 			req.Action = "offline"
-		} else if input.Event == "Stop" || input.Event == "UserPromptSubmit" {
+		} else if input.Event == "Stop" || input.Event == "UserPromptSubmit" || input.Event == "PostToolUse" {
 			if input.Event == "Stop" && input.StopActive {
 				return nil
 			}
@@ -290,7 +319,7 @@ func pluginCommand(o *options) *cobra.Command {
 			}
 		}
 		if out.Attached && out.Notice != "" && len(out.Messages) == 0 && out.SetupContext == "" {
-			return json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "UserPromptSubmit", "additionalContext": out.Notice}})
+			return json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": input.Event, "additionalContext": out.Notice}})
 		}
 		if !out.Attached || len(out.Messages) == 0 && out.SetupContext == "" && out.Held == 0 {
 			return nil
@@ -309,7 +338,7 @@ func pluginCommand(o *options) *cobra.Command {
 		if input.Event == "Stop" {
 			written = json.NewEncoder(o.stdout).Encode(map[string]any{"decision": "block", "reason": text})
 		} else {
-			written = json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "UserPromptSubmit", "additionalContext": text}})
+			written = json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": input.Event, "additionalContext": text}})
 		}
 		if written == nil && req.Provider != "muse" {
 			admitAfterEmit(ctx, root, o, req, out.Messages)
@@ -441,6 +470,38 @@ func pluginPersonPrompt(provider, prompt string) bool {
 		}
 	}
 	return false
+}
+
+func hookActivity(event string) string {
+	switch event {
+	case "UserPromptSubmit", "PostToolUse":
+		return "busy"
+	case "Stop":
+		return "idle"
+	case "SessionStart":
+		return "unknown"
+	}
+	return ""
+}
+
+// Post-tool hooks are opportunistic: one local call, a 1.5 s total budget,
+// no reconnect/setup/network work when empty, and no output on failure.
+func postToolMessages(ctx context.Context, root string, o *options, req agentworksclient.LocalBridgeRequest) error {
+	ctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	defer cancel()
+	req.Action, req.Transport = "post_tool", req.Provider+"_hook"
+	out, err := agentworksclient.CallLocalBridge(ctx, root, req)
+	if err != nil || !out.Attached || out.Offline || len(out.Messages) == 0 {
+		return nil
+	}
+	if req.Provider == "cursor" {
+		text := cursorFollowup(out, req.SessionID, out.Attachment.ID, false, false)
+		if text == "" {
+			return nil
+		}
+		return json.NewEncoder(o.stdout).Encode(map[string]any{"additional_context": text})
+	}
+	return json.NewEncoder(o.stdout).Encode(map[string]any{"hookSpecificOutput": map[string]any{"hookEventName": "PostToolUse", "additionalContext": pluginMessageText(out, req.Transport)}})
 }
 
 func pluginMessageText(out agentworksclient.LocalBridgeReply, transport string) string {
@@ -798,7 +859,7 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 			root = configured
 		}
-		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Version: cliVersion, ClientBuild: cliBuild, Notify: notifyAgentWaiting, Ping: notifyPing, HostAlive: cursorAwareHostAlive, UsageRead: readAttachedUsage(root), ChatLabel: attachedChatLabel, AutoUpdate: autoUpdateHelperCallback})
+		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Version: cliVersion, ClientBuild: cliBuild, Notify: notifyAgentWaiting, Ping: notifyPing, HostAlive: cursorAwareHostAlive, UsageRead: readAttachedUsage(root), ChatLabel: attachedChatLabel, ChatContext: attachedChatContext, AutoUpdate: autoUpdateHelperCallback})
 	}}
 	serve.Flags().StringVar(&piRootOverride, "pi-root", "", "Pi SDK configured root")
 	_ = serve.Flags().MarkHidden("pi-root")

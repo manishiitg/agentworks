@@ -11,6 +11,10 @@ export interface BullpenAgent {
   provider?: string
   online: boolean
   presence?: string
+  repository?: string
+  branch?: string
+  activity?: string
+  activity_at?: string
   type?: string
   delivery_mode?: string
   last_seen_at?: string

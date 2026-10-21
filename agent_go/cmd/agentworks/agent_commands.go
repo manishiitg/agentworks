@@ -34,6 +34,7 @@ const personCommandHelp = "AgentWorks: /agentworks share publishes this chat's a
 // Reuse the exact session's saved identity and parent login, even when the
 // default CLI login has changed. The person's attach refreshes the process fence.
 func prepareAttachment(ctx context.Context, root string, o *options, req *agentworksclient.LocalBridgeRequest, cwd string) error {
+	req.WorkspaceDir = cwd
 	req.LabelName = req.AgentName
 	req.ReuseIdentity = req.AgentName == ""
 	req.Setup = true

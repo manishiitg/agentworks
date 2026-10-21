@@ -1,6 +1,6 @@
 # install-agentworks.ps1 - install the AgentWorks CLI from your server on Windows and (optionally) sign in.
 #
-# Served at https://<server>/api/downloads/cli/install-agentworks.ps1 and shown prefilled in Code > settings > Location.
+# Served at https://<server>/api/downloads/cli/install-agentworks.ps1 and shown prefilled in Crew settings > Laptop access.
 #
 #   & ([scriptblock]::Create((irm 'https://<server>/api/downloads/cli/install-agentworks.ps1'))) -Server 'https://<server>' -NoLogin
 #
@@ -15,10 +15,12 @@ $ErrorActionPreference = 'Stop'
 if (-not $Server) { throw 'missing -Server (or the AGENTWORKS_SERVER environment variable)' }
 $Server = $Server.TrimEnd('/')
 
-switch ($env:PROCESSOR_ARCHITECTURE) {
+$machineArchitecture = $env:PROCESSOR_ARCHITEW6432
+if (-not $machineArchitecture) { $machineArchitecture = $env:PROCESSOR_ARCHITECTURE }
+switch ($machineArchitecture) {
   'AMD64' { $arch = 'amd64' }
   'ARM64' { $arch = 'arm64' }
-  default { throw "unsupported architecture: $($env:PROCESSOR_ARCHITECTURE) (need AMD64 or ARM64)" }
+  default { throw "unsupported architecture: $machineArchitecture (need AMD64 or ARM64)" }
 }
 $asset = "agentworks-windows-$arch.exe"
 $base = "$Server/api/downloads/cli"
@@ -34,11 +36,21 @@ try {
   $actual = (Get-FileHash -Algorithm SHA256 (Join-Path $stage $asset)).Hash.ToLower()
   if ($expected -ne $actual) { throw "checksum mismatch for $asset; refusing to install" }
 
+  # The CLI's version command is local-only. Invoke the staged file with the
+  # call operator so spaces and apostrophes in the path stay one argument.
+  $candidate = Join-Path $stage $asset
+  $versionOutput = & $candidate version
+  if ($LASTEXITCODE -ne 0) { throw 'The downloaded CLI could not run; the installed copy was kept.' }
+  $candidateVersion = $versionOutput | ConvertFrom-Json
+  if ($candidateVersion.os -ne 'windows' -or $candidateVersion.arch -ne $arch -or -not $candidateVersion.version) {
+    throw 'The downloaded CLI reported the wrong platform; the installed copy was kept.'
+  }
   New-Item -ItemType Directory -Force -Path $Dir | Out-Null
   $target = Join-Path $Dir 'agentworks.exe'
-  if (Test-Path $target) { Move-Item -Force $target "$target.old" -ErrorAction SilentlyContinue } # a running copy can be renamed, not replaced
-  Move-Item -Force (Join-Path $stage $asset) $target
-  Remove-Item "$target.old" -Force -ErrorAction SilentlyContinue
+  $oldTarget = "$target.old-" + [guid]::NewGuid().ToString('N')
+  if (Test-Path $target) { Move-Item $target $oldTarget } # a running copy can be renamed, not replaced
+  Move-Item -Force $candidate $target
+  Remove-Item $oldTarget -Force -ErrorAction SilentlyContinue
   Write-Host "Installed $target"
 } finally {
   Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
@@ -60,4 +72,4 @@ if (-not $NoLogin) {
   Write-Host "Signing in to $Server ..."
   & $target login --server $Server
 }
-Write-Host 'Done. In your project folder run: agentworks start --server <server> --workspace "<workspace name>"'
+Write-Host 'Done. Open your Crew settings in AgentWorks and choose Laptop access to connect this computer.'

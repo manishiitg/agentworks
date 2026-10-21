@@ -55,7 +55,7 @@ func observeCursor(root string, process cursorProcess, input pluginHookInput) er
 		removeMuseObservation(dir, name)
 		return nil
 	}
-	if input.Event != "SessionStart" && input.Event != "UserPromptSubmit" && input.Event != "Stop" {
+	if input.Event != "SessionStart" && input.Event != "UserPromptSubmit" && input.Event != "Stop" && input.Event != "PostToolUse" {
 		return nil
 	}
 	raw, err := json.Marshal(cursorObservation{Session: input.SessionID, PID: process.PID, Host: process.Host, Kind: process.Kind, Cwd: input.Cwd})

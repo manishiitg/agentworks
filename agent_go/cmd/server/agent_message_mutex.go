@@ -30,6 +30,15 @@ func (m *agentMessageMutex) Lock() {
 	m.wait = m.acquired.Sub(start)
 }
 
+// Presence is optional metadata; it must not queue behind message I/O.
+func (m *agentMessageMutex) TryLock() bool {
+	if !m.mu.TryLock() {
+		return false
+	}
+	m.acquired, m.wait, m.caller = time.Now(), 0, "presence"
+	return true
+}
+
 func (m *agentMessageMutex) Unlock() {
 	hold, caller, wait := time.Since(m.acquired), m.caller, m.wait
 	m.mu.Unlock()

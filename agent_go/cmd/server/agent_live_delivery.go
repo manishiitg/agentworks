@@ -16,13 +16,17 @@ import (
 )
 
 type namedAgentAttachment struct {
-	DeliveryContract int    `json:"delivery_contract,omitempty"`
-	DeliveryRoute    string `json:"delivery_route,omitempty"`
-	ID               string `json:"attachment_id"`
-	Provider         string `json:"provider"`
-	SessionID        string `json:"native_session_id"`
-	ConnectionID     string `json:"connection_id"`
-	ClientBuild      string `json:"client_build,omitempty"` // the CLI build that attached, when it said
+	Repository       string    `json:"repository,omitempty"`
+	Branch           string    `json:"branch,omitempty"`
+	Activity         string    `json:"activity,omitempty"`
+	ActivityAt       time.Time `json:"activity_at,omitempty"`
+	DeliveryContract int       `json:"delivery_contract,omitempty"`
+	DeliveryRoute    string    `json:"delivery_route,omitempty"`
+	ID               string    `json:"attachment_id"`
+	Provider         string    `json:"provider"`
+	SessionID        string    `json:"native_session_id"`
+	ConnectionID     string    `json:"connection_id"`
+	ClientBuild      string    `json:"client_build,omitempty"` // the CLI build that attached, when it said
 }
 
 // A guest-run product keeps the owner's storage namespace but its own actor.
@@ -133,13 +137,15 @@ func recordNamedAgentActivity(ctx context.Context, agentID, attachmentID string,
 	if !force && recent {
 		return
 	}
+	if !agentMessageMu.TryLock() {
+		return // A later authenticated heartbeat retries; mail never waits for presence.
+	}
+	defer agentMessageMu.Unlock()
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 	defer cancel()
-	agentMessageMu.Lock()
-	defer agentMessageMu.Unlock()
 	s, err := readAgentMessageStore(ctx)
 	if err != nil {
-		log.Printf("[AGENT-PRESENCE] check=read status=failed agent=%s", agentID)
+		log.Printf("[AGENT-PRESENCE] check=read status=failed agent=%s class=%s", agentID, agentDeliveryErrorClass(err))
 		return
 	}
 	for i := range s.Agents {
@@ -159,7 +165,7 @@ func recordNamedAgentActivity(ctx context.Context, agentID, attachmentID string,
 		}
 		a.LastOnlineAt = now
 		if err := saveAgentMessageStore(ctx, s); err != nil {
-			log.Printf("[AGENT-PRESENCE] check=save status=failed agent=%s", agentID)
+			log.Printf("[AGENT-PRESENCE] check=save status=failed agent=%s class=%s", agentID, agentDeliveryErrorClass(err))
 			return
 		}
 		agentLiveEvents.Lock()
@@ -234,6 +240,23 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			}
 			a.Attachment.DeliveryRoute = value
 		}
+		a.Attachment.Repository = cleanAgentLabel(externalArg(args, "repository"))
+		a.Attachment.Branch = cleanAgentLabel(externalArg(args, "branch"))
+		activity := externalArg(args, "activity")
+		if activity != "" && activity != "busy" && activity != "idle" && activity != "unknown" {
+			externalError(w, 400, "invalid_arguments", "Use a reported busy or idle state, or unknown.")
+			return
+		}
+		var at time.Time
+		if raw := externalArg(args, "activity_at"); raw != "" {
+			var parseErr error
+			at, parseErr = time.Parse(time.RFC3339Nano, raw)
+			if parseErr != nil || at.After(time.Now().Add(time.Minute)) {
+				externalError(w, 400, "invalid_arguments", "Activity time must be a valid observed time.")
+				return
+			}
+		}
+		a.Attachment.Activity, a.Attachment.ActivityAt = activity, at
 		a.Label = cleanAgentLabel(externalArg(args, "label"))
 	case "detach":
 		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") {
@@ -359,6 +382,11 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 	defer cancel()
 	r = r.WithContext(streamCtx)
 	stream := &agentLiveStream{attachmentID: id, cancel: cancel}
+	type admissionRetry struct {
+		next  time.Time
+		delay time.Duration
+	}
+	admissionRetries := map[string]admissionRetry{}
 	agentLiveEvents.Lock()
 	if previous := agentLiveEvents.online[a.ID]; previous != nil && previous.cancel != nil {
 		previous.cancel()
@@ -439,12 +467,20 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 				continue
 			}
 			if !status {
+				if time.Now().Before(admissionRetries[m.ID].next) {
+					continue
+				}
 				if e = api.recheckAgentMessageAdmission(r.Context(), c, m); e != nil {
+					retry := admissionRetries[m.ID]
+					retry.delay = min(30*time.Second, max(time.Second, retry.delay*2))
+					retry.next = time.Now().Add(retry.delay)
+					admissionRetries[m.ID] = retry
 					if validateLogDue(m.ID, "stream_admission_refused", time.Now()) {
-						log.Printf("[AGENT-STREAM] held message=%s attachment=%s reason=admission_recheck_failed", m.ID, id)
+						log.Printf("[AGENT-STREAM] held message=%s attachment=%s reason=admission_recheck_failed class=%s", m.ID, id, agentDeliveryErrorClass(e))
 					}
 					continue
 				}
+				delete(admissionRetries, m.ID)
 				if e = api.externalAuthorizeMessagePeer(r.Context(), live, source, false); e != nil {
 					if validateLogDue(m.ID, "stream_sender_refused", time.Now()) {
 						log.Printf("[AGENT-STREAM] held message=%s attachment=%s reason=sender_authorization_failed", m.ID, id)

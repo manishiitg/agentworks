@@ -19,7 +19,7 @@ func TestAgentPluginUnattachedHookAndPersonCommand(t *testing.T) {
 	cache := t.TempDir()
 	t.Setenv("XDG_CACHE_HOME", cache)
 	var stdout, stderr bytes.Buffer
-	input := `{"session_id":"unattached","hook_event_name":"Stop","stop_hook_active":false}`
+	input := "\ufeff" + `{"session_id":"unattached","hook_event_name":"PostToolUse","tool_input":{"command":"echo ready"}}`
 	if code := run(context.Background(), []string{"plugin", "hook", "codex"}, strings.NewReader(input), &stdout, &stderr, func(string) string { return "" }); code != 0 || stdout.Len() != 0 || stderr.Len() != 0 {
 		t.Fatalf("unattached hook interfered: %d %s %s", code, stdout.String(), stderr.String())
 	}

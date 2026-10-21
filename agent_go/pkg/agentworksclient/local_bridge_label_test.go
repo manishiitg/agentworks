@@ -28,13 +28,14 @@ func TestBridgeLabelRefreshKeepsLeaseAndDoesNotBlock(t *testing.T) {
 	s := &localSession{Attachment: AgentAttachment{ID: "lease", AgentID: "stable-id", AgentName: "worker", Label: "Earlier", Provider: "codex", SessionID: "session"}, client: client,
 		Offers: map[string]localOffer{"message": {AgentLiveMessage: AgentLiveMessage{MessageID: "message", Delivery: "processed"}}}}
 	b := &localBridge{root: t.TempDir(), sessions: map[string]*localSession{"chat": s}, changed: make(chan struct{}), options: LocalBridgeOptions{
-		ChatLabel: func(AgentAttachment, string) string { return "Renamed" },
+		ChatLabel:   func(AgentAttachment, string) string { return "Renamed" },
+		ChatContext: func(context.Context, AgentAttachment, string) (string, string) { return "project", "feature/mail" },
 	}}
 	done := make(chan struct{})
 	go func() { b.refreshChatLabel(context.Background(), s); close(done) }()
 	select {
 	case args := <-started:
-		if args["action"] != "label" || args["attachment_id"] != "lease" || args["agent_name"] != "worker" || args["delivery_route"] != "inbox" {
+		if args["action"] != "label" || args["attachment_id"] != "lease" || args["agent_name"] != "worker" || args["delivery_route"] != "inbox" || args["repository"] != "project" || args["branch"] != "feature/mail" {
 			t.Fatal(args)
 		}
 	case <-time.After(time.Second):

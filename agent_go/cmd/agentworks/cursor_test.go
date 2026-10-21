@@ -173,6 +173,10 @@ func TestCursorHookLeaseAndRecovery(t *testing.T) {
 	if err := normalizeCursorHook(&input); err != nil || input.Event != "Stop" {
 		t.Fatal("native hook normalization failed", err)
 	}
+	input.Event = "postToolUse"
+	if err := normalizeCursorHook(&input); err != nil || input.Event != "PostToolUse" {
+		t.Fatal("post-tool delivery event lost", err)
+	}
 	state := agentworksclient.LocalBridgeReply{Attached: true, Attachment: agentworksclient.AgentAttachment{ID: "lease", Provider: "cursor", SessionID: cursorTestSession}}
 	state.Messages = []agentworksclient.AgentLiveMessage{
 		{AttachmentID: "lease", MessageID: "first", InboxID: "inbox", Sender: "worker", Message: "First valid", Sequence: 1},

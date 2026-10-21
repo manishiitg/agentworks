@@ -15,14 +15,18 @@ import (
 // AgentAttachment identifies one explicitly attached native conversation. An
 // address can move to a new session, but an old listener cannot follow it.
 type AgentAttachment struct {
-	DeliveryRoute string `json:"delivery_route,omitempty"`
-	ID            string `json:"attachment_id"`
-	AgentID       string `json:"agent_id"`
-	AgentName     string `json:"agent_name"`
-	Label         string `json:"label"`
-	Purpose       string `json:"purpose"`
-	Provider      string `json:"provider"`
-	SessionID     string `json:"native_session_id"`
+	Repository    string    `json:"repository,omitempty"`
+	Branch        string    `json:"branch,omitempty"`
+	Activity      string    `json:"activity,omitempty"`
+	ActivityAt    time.Time `json:"activity_at,omitempty"`
+	DeliveryRoute string    `json:"delivery_route,omitempty"`
+	ID            string    `json:"attachment_id"`
+	AgentID       string    `json:"agent_id"`
+	AgentName     string    `json:"agent_name"`
+	Label         string    `json:"label"`
+	Purpose       string    `json:"purpose"`
+	Provider      string    `json:"provider"`
+	SessionID     string    `json:"native_session_id"`
 }
 
 type AgentLiveMessage struct {
@@ -84,6 +88,8 @@ func (c *Client) UpdateAgentLabel(ctx context.Context, a AgentAttachment, label 
 	if a.DeliveryRoute != "" {
 		body["delivery_route"] = a.DeliveryRoute
 	}
+	body["repository"], body["branch"] = a.Repository, a.Branch
+	body["activity"], body["activity_at"] = a.Activity, a.ActivityAt
 	_, err := c.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", body, true)
 	return err
 }

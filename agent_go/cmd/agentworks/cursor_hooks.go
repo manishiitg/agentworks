@@ -37,6 +37,8 @@ func normalizeCursorHook(input *pluginHookInput) error {
 		input.Event = "SessionStart"
 	case "sessionEnd":
 		input.Event = "SessionEnd"
+	case "postToolUse":
+		input.Event = "PostToolUse"
 	case "stop":
 		input.Event = "Stop"
 	case "beforeMCPExecution":
@@ -168,7 +170,10 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 		}
 		return nil
 	}
-	req := agentworksclient.LocalBridgeRequest{Provider: "cursor", SessionID: input.SessionID, HostKey: process.Host}
+	req := agentworksclient.LocalBridgeRequest{Provider: "cursor", SessionID: input.SessionID, HostKey: process.Host, WorkspaceDir: cursorFolder(input), Activity: hookActivity(input.Event)}
+	if input.Event == "PostToolUse" {
+		return postToolMessages(cmd.Context(), root, o, req)
+	}
 	if control {
 		words, parseErr := pluginPromptWords(strings.TrimSpace(input.Prompt))
 		if parseErr != nil || len(words) < 2 {
@@ -260,10 +265,14 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 	}
 	// Ordinary prompt submissions never drain or replace the person's prompt.
 	if input.Event == "UserPromptSubmit" {
+		ctx, cancel := context.WithTimeout(cmd.Context(), 150*time.Millisecond)
+		defer cancel()
+		req.Action = "observe"
+		_, _ = agentworksclient.CallLocalBridge(ctx, root, req)
 		return nil
 	}
 	ctxStatus, cancelStatus := context.WithTimeout(cmd.Context(), 3*time.Second)
-	state, err := bridgeCall(ctxStatus, root, o, agentworksclient.LocalBridgeRequest{Action: "status", Provider: "cursor", SessionID: req.SessionID, HostKey: req.HostKey})
+	state, err := bridgeCall(ctxStatus, root, o, agentworksclient.LocalBridgeRequest{Action: "status", Provider: "cursor", SessionID: req.SessionID, HostKey: req.HostKey, WorkspaceDir: req.WorkspaceDir, Activity: req.Activity})
 	cancelStatus()
 	if err == nil && state.Offline && state.Attachment.Provider == "cursor" && state.Attachment.SessionID == req.SessionID {
 		// After an update or restart the chat comes back by itself, as itself, unless
@@ -312,7 +321,11 @@ func cursorHookCommand(cmd *cobra.Command, o *options, input pluginHookInput) er
 	if text == "" {
 		return nil
 	}
-	if err := json.NewEncoder(o.stdout).Encode(map[string]any{"followup_message": text}); err != nil {
+	outputKey := "followup_message"
+	if input.Event == "PostToolUse" {
+		outputKey = "additional_context"
+	}
+	if err := json.NewEncoder(o.stdout).Encode(map[string]any{outputKey: text}); err != nil {
 		return err
 	}
 	if err == nil {

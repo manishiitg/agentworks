@@ -119,7 +119,16 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 
 func agentMessageConnectionClaims(ctx context.Context, id string) (*UserClaims, error) {
 	if strings.HasPrefix(id, "oauth-") {
-		grant, err := mcpOAuthFamilyActive(ctx, strings.TrimPrefix(id, "oauth-"))
+		// A saved message or already-authenticated stream follows the sign-in,
+		// not the short-lived access token used when it started. Incoming HTTP
+		// still authenticates its bearer separately. LiveFamily rechecks the
+		// parent/binding, revocation, refresh expiry and current account access.
+		store, err := openMCPOAuthStore()
+		if err != nil {
+			return nil, err
+		}
+		defer store.Close()
+		grant, err := store.LiveFamily(ctx, strings.TrimPrefix(id, "oauth-"))
 		if err != nil {
 			return nil, err
 		}

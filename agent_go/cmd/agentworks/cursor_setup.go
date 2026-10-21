@@ -18,7 +18,7 @@ import (
 // other /agentworks commands (beforeSubmitPrompt), delivery when a turn ends
 // (stop), reconnect and close (sessionStart, sessionEnd), and the per-call chat
 // record for the messaging tools in the shared desktop app (beforeMCPExecution).
-var cursorHookEvents = []string{"sessionStart", "beforeSubmitPrompt", "stop", "sessionEnd", "beforeMCPExecution"}
+var cursorHookEvents = []string{"sessionStart", "beforeSubmitPrompt", "stop", "postToolUse", "sessionEnd", "beforeMCPExecution"}
 
 func setupCommand(o *options) *cobra.Command {
 	say := newSetupStyle(o.stdout).Say

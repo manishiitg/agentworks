@@ -28,7 +28,9 @@ import (
 // LocalBridgeRequest is the adapter boundary. Attachment/configuration is a
 // person-only CLI or prompt-submit action, never exposed as an MCP tool.
 type LocalBridgeRequest struct {
-	OwnAttach bool `json:"own_attach,omitempty"`
+	WorkspaceDir string `json:"workspace_dir,omitempty"`
+	Activity     string `json:"activity,omitempty"`
+	OwnAttach    bool   `json:"own_attach,omitempty"`
 	// RefreshRoute says something that can create a native route just happened (a chat starting), so the
 	// next lookup runs at once instead of waiting out the retry interval.
 	RefreshRoute bool `json:"refresh_route,omitempty"`
@@ -154,9 +156,12 @@ type localOffer struct {
 }
 
 type localSession struct {
-	LabelName       string `json:"label_name,omitempty"`
-	HookTransport   string `json:"hook_transport,omitempty"`
-	lateNotice      string // set when an attach finished after its command had given up; said once on the next prompt
+	WorkspaceDir    string    `json:"workspace_dir,omitempty"`
+	Activity        string    `json:"activity,omitempty"`
+	ActivityAt      time.Time `json:"activity_at,omitempty"`
+	LabelName       string    `json:"label_name,omitempty"`
+	HookTransport   string    `json:"hook_transport,omitempty"`
+	lateNotice      string    // set when an attach finished after its command had given up; said once on the next prompt
 	museWatch       *museWatchState
 	OfflineExplicit bool `json:"offline_explicit,omitempty"`
 	OwnCLI          bool `json:"own_cli,omitempty"`
@@ -214,6 +219,7 @@ var ErrNativeOfferUnconfirmed = errors.New("native offer has no admission receip
 var ErrNativeOfferRejected = errors.New("native offer failed before delivery")
 
 type LocalBridgeOptions struct {
+	ChatContext func(context.Context, AgentAttachment, string) (string, string)
 	ChatLabel   func(AgentAttachment, string) string
 	UsageNow    func() time.Time
 	UsageRead   func(context.Context, AgentAttachment, string, int64) (agentusage.Native, error)
@@ -1249,11 +1255,16 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		var err error
 		next := &localSession{Also: in.Also, OwnCLI: in.OwnAttach && !in.Also, SetupPending: in.Setup && !in.Also, AccountSenders: true, Attachment: a, HostKey: in.HostKey, NativeRemote: in.NativeRemote, ConfigPath: connectionPath, ParentConfigPath: in.ConfigPath, Offers: map[string]localOffer{}, client: client}
 		next.LabelName = in.LabelName
+		next.WorkspaceDir = in.WorkspaceDir
 		if previous != nil && previous.Attachment.AgentID == a.AgentID {
 			next.Offers = previous.Offers
 			next.SeenThrough = previous.SeenThrough
 			if previous.Attachment.SessionID == a.SessionID {
 				next.LastGuidanceAt = previous.LastGuidanceAt
+				if next.WorkspaceDir == "" {
+					next.WorkspaceDir = previous.WorkspaceDir
+				}
+				next.Activity, next.ActivityAt = previous.Activity, previous.ActivityAt
 			}
 		}
 		old := map[string]*localSession{}
@@ -1375,6 +1386,23 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		return LocalBridgeReply{Error: "This chat's connection is not available. Run agentworks login if needed, then type /agentworks attach in the chat."}
 	}
+	if !s.Offline && in.HostKey != "" && in.HostKey == s.HostKey {
+		changed := false
+		if filepath.IsAbs(in.WorkspaceDir) && in.WorkspaceDir != s.WorkspaceDir {
+			s.WorkspaceDir = in.WorkspaceDir
+			changed = true
+		}
+		if (in.Activity == "busy" || in.Activity == "idle" || in.Activity == "unknown") && in.Activity != s.Activity {
+			s.Activity, s.ActivityAt = in.Activity, time.Now().UTC()
+			changed = true
+		}
+		if changed {
+			_ = b.save()
+		}
+	}
+	if in.Action == "observe" {
+		return LocalBridgeReply{}
+	}
 	if in.RefreshRoute {
 		s.routeTriedAt = time.Time{}
 	}
@@ -1385,6 +1413,20 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		b.startNative(s)
 		b.wake()
+	}
+	if in.Action == "post_tool" {
+		// Never reconnect, discover an adapter, fetch setup or contact the server
+		// for an empty post-tool hook. The existing stream already queues mail.
+		pending := localPending(s)
+		if !s.Also {
+			for _, extra := range b.extrasOf(key) {
+				pending = pending || localPending(extra)
+			}
+		}
+		if s.Offline || s.ServerClosed || s.SetupPending || s.NativeRemote != "" || s.nativeCalls > 0 || !pending {
+			return LocalBridgeReply{}
+		}
+		in.Action = "drain"
 	}
 	out := LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Attachment: s.Attachment, LastError: s.LastError, NativeDelivery: s.NativeRemote != "" || piNativeActive(s) || museWatchActive(s), MonitorActive: museWatchActive(s)}
 	if in.WantNotice && s.lateNotice != "" {
@@ -1830,10 +1872,13 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 		if len(out.Messages) == 0 && out.SetupContext == "" {
 			continue
 		}
-		err := b.options.NativeOffer(ctx, s.NativeRemote, out)
+		b.mu.Lock()
+		offeredRemote := s.NativeRemote
+		b.mu.Unlock()
+		err := b.options.NativeOffer(ctx, offeredRemote, out)
 		if errors.Is(err, ErrNativeOfferRejected) && b.options.NativeRoute != nil {
-			refreshed := b.options.NativeRoute(s.Attachment.Provider, s.Attachment.SessionID, hostKey, s.NativeRemote)
-			if refreshed != "" && refreshed != s.NativeRemote {
+			refreshed := b.options.NativeRoute(s.Attachment.Provider, s.Attachment.SessionID, hostKey, offeredRemote)
+			if refreshed != "" && refreshed != offeredRemote {
 				b.mu.Lock()
 				current := b.sessions[localBridgeKey(s.Attachment.Provider, s.Attachment.SessionID)] == s
 				if current {
@@ -1845,9 +1890,22 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 					return
 				}
 				if err == nil {
-					err = b.options.NativeOffer(ctx, refreshed, out)
+					offeredRemote = refreshed
+					err = b.options.NativeOffer(ctx, offeredRemote, out)
 				}
 			}
+		}
+		outcome := "uncertain"
+		switch {
+		case err == nil:
+			outcome = "admitted"
+		case errors.Is(err, ErrNativeOfferUnconfirmed):
+			outcome = "offered_unconfirmed"
+		case errors.Is(err, ErrNativeOfferRejected):
+			outcome = "rejected_before_delivery"
+		}
+		for _, message := range out.Messages {
+			log.Printf("[BRIDGE-NATIVE] outcome=%s agent=%s attachment=%s message=%s route=%s", outcome, out.Attachment.AgentName, out.Attachment.ID, message.MessageID, nativeCodexTransport(offeredRemote))
 		}
 		if err == nil || errors.Is(err, ErrNativeOfferUnconfirmed) {
 			b.mu.Lock()
@@ -2254,6 +2312,7 @@ func localDeliveryRoute(s *localSession) string {
 func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 	b.mu.Lock()
 	a, explicitName, client := s.Attachment, s.LabelName, s.client
+	workspace, activity, activityAt := s.WorkspaceDir, s.Activity, s.ActivityAt
 	route := localDeliveryRoute(s)
 	active := !b.closed && !s.Offline && !s.ServerClosed && client != nil
 	b.mu.Unlock()
@@ -2264,10 +2323,14 @@ func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 	if b.options.ChatLabel != nil {
 		label = b.options.ChatLabel(a, explicitName)
 	}
-	if label == a.Label && route == a.DeliveryRoute {
+	repository, branch := a.Repository, a.Branch
+	if b.options.ChatContext != nil {
+		repository, branch = b.options.ChatContext(ctx, a, workspace)
+	}
+	if label == a.Label && route == a.DeliveryRoute && repository == a.Repository && branch == a.Branch && activity == a.Activity && activityAt.Equal(a.ActivityAt) {
 		return
 	}
-	a.DeliveryRoute = route
+	a.DeliveryRoute, a.Repository, a.Branch, a.Activity, a.ActivityAt = route, repository, branch, activity, activityAt
 	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if err := client.UpdateAgentLabel(callCtx, a, label); err != nil {
@@ -2280,6 +2343,8 @@ func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 		if current == s && current.Attachment.ID == a.ID && !current.Offline && !current.ServerClosed {
 			current.Attachment.Label = label
 			current.Attachment.DeliveryRoute = route
+			current.Attachment.Repository, current.Attachment.Branch = repository, branch
+			current.Attachment.Activity, current.Attachment.ActivityAt = activity, activityAt
 			_ = b.save()
 			log.Printf("[BRIDGE-LABEL] agent=%s attachment=%s route=%s status=updated", a.AgentName, a.ID, route)
 			break

@@ -851,3 +851,19 @@ func TestCodexMessagingResumesItsExistingAttachment(t *testing.T) {
 		t.Fatal("an unavailable chat was attached")
 	}
 }
+
+func TestPostToolEmptyStaysLocal(t *testing.T) {
+	b := &localBridge{root: t.TempDir(), changed: make(chan struct{}), sessions: map[string]*localSession{}}
+	client, err := New("https://example.com", "fixture-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := &localSession{Attachment: AgentAttachment{Provider: "codex", SessionID: "exact", ID: "lease"}, HostKey: "host", client: client, Offers: map[string]localOffer{}}
+	b.sessions[localBridgeKey("codex", "exact")] = session
+	b.options.NativeRoute = func(string, string, string, string) string { t.Fatal("post-tool discovered native route"); return "" }
+	start := time.Now()
+	out := b.handle(context.Background(), context.Background(), LocalBridgeRequest{Action: "post_tool", Provider: "codex", SessionID: "exact", HostKey: "host", Transport: "codex_hook"})
+	if out.Error != "" || len(out.Messages) != 0 || time.Since(start) > 100*time.Millisecond {
+		t.Fatal("empty post-tool left the local fast path", out.Error)
+	}
+}

@@ -25,6 +25,12 @@
         "command": "agentworks plugin hook cursor",
         "timeout": 20
       }
+    ],
+    "postToolUse": [
+      {
+        "command": "agentworks plugin hook cursor",
+        "timeout": 20
+      }
     ]
   }
 }
