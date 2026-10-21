@@ -56,14 +56,6 @@ func goalLeadFailedRuns(entries []ScheduleRunEntry, since time.Time) []goalLeadF
 	return out
 }
 
-// goalLeadRunHealth is what Technical Review read after runs, for the
-// conversation's goal check: failed runs, steps' CONCERNS: lines, open
-// workflow issues and whether each schedule's runs ran the workflow.
-
-// goalLeadRunHealthSince: since the last goal check, at most a week back.
-
-const goalLeadRunHealthNote = "Read failed runs, step concerns and relevant goal evidence. For a failure that threatens the goal, ask Builder for one coherent repair and verified results under the current permissions. Reuse ongoing work and pending decisions; a failure does not create a separate reviewer or repair session."
-
 // claimGoalLeadRunFailures returns the failed runs of the last day that the
 // conversation has not been woken for, and marks them noticed.
 func claimGoalLeadRunFailures(ctx context.Context, workspacePath string, now time.Time) ([]goalLeadFailedRun, error) {
