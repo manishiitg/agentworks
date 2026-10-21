@@ -199,6 +199,22 @@ func ConfigTokenProvider(server, path string) func(context.Context) (string, err
 			return "", err
 		}
 		tokens, err := client.RefreshOAuth(ctx, cfg.RefreshToken)
+		var apiErr *APIError
+		if errors.As(err, &apiErr) && apiErr.Code == "invalid_grant" {
+			// A browser sign-in can replace this file while refresh is in flight.
+			// Recover only from that saved login, never replay the rejected token.
+			latest, loadErr := LoadConfig(path)
+			if loadErr != nil {
+				return "", loadErr
+			}
+			if latest.Server == server && latest.RefreshToken != "" && latest.RefreshToken != cfg.RefreshToken {
+				if latest.Token != "" && time.Until(latest.ExpiresAt) > 2*time.Minute {
+					return latest.Token, nil
+				}
+				cfg = latest
+				tokens, err = client.RefreshOAuth(ctx, cfg.RefreshToken)
+			}
+		}
 		if err != nil {
 			return "", fmt.Errorf("refresh browser login: %w (run agentworks login again)", err)
 		}
