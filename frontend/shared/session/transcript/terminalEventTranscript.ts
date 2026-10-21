@@ -6,6 +6,7 @@ import { isMainAgentTerminal } from './terminalIdentity'
 import type { PollingEvent, TerminalSnapshot } from '../types'
 import { compareTerminalEvents } from './terminalEventPage'
 import { distinctServerTurns, eventTurnID } from '../eventTurnIdentity'
+import { interruptedCompletionMessage } from '../completionOutcome'
 
 // FORMATTED VIEW VISIBILITY CONTRACT
 //
@@ -626,7 +627,7 @@ function isTranscriptEvent(event: PollingEvent): boolean {
   if (isAgentItemWrapperEvent(event)) return false
   if (event.type === 'agent_end' || event.type === 'unified_completion') {
     const fields = eventFields(event)
-    const failed = fields.success === false || Boolean(textField(fields.error))
+    const failed = fields.success === false || Boolean(textField(fields.error)) || Boolean(interruptedCompletionMessage(fields.metadata))
     // The panel header already owns the terminal's state. A successful empty
     // lifecycle card only repeats “Completed” after the real reply and makes
     // the conversation look like a trace log. Retained coding-agent turns in

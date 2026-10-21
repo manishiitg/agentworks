@@ -1,6 +1,7 @@
 import React from 'react'
 import { ConversationMarkdownRenderer } from '../../ui/MarkdownRenderer'
 import { humanReadableAgentResult } from '../system/eventDisplayUtils'
+import { interruptedCompletionMessage } from '../../../../shared/session/completionOutcome'
 
 interface UnifiedCompletionEvent {
   timestamp?: string
@@ -70,6 +71,11 @@ export const UnifiedCompletionEventDisplay: React.FC<UnifiedCompletionEventDispl
         </div>
       </div>
     )
+  }
+
+  const interrupted = interruptedCompletionMessage(event.metadata)
+  if (interrupted) {
+    return <div role="status" className="py-2 text-sm text-muted-foreground">{interrupted}</div>
   }
 
   // Error case without final_result: keep the original compact error display

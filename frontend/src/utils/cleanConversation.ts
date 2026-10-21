@@ -13,6 +13,7 @@ import {
 import { pairToolCalls, isAssistantUpdate } from './terminalEventTranscript'
 import { isConversationContinuityNotice } from '../components/ConversationContinuityNotice'
 import { distinctServerTurns, eventTurnID } from '../../shared/session/eventTurnIdentity'
+import { interruptedCompletionMessage } from '../../shared/session/completionOutcome'
 
 /**
  * A background task's output message is often the raw tool payload (a JSON object holding the whole command). Show the task's own
@@ -252,6 +253,12 @@ export function buildCleanConversationItems(events: PollingEvent[]): Conversatio
     // replies after refresh, not just the user's prompts.
     if (event.type === 'llm_generation_end' || event.type === 'unified_completion' || event.type === 'conversation_end') {
       const content = humanReadableAgentResult(firstText(payload.content, payload.final_result, payload.result))
+      const interrupted = event.type === 'unified_completion' && !content && interruptedCompletionMessage(payload.metadata)
+      if (interrupted) {
+        pushUnique({ id: event.id, role: 'error', content: interrupted, timestamp: event.timestamp }, eventTurnID(event))
+        completedAssistantAwaitingUsage = undefined
+        continue
+      }
       const turnID = eventTurnID(event)
 			const isIntermediateUpdate = payload.restored_intermediate_update === true
 			const rawError = firstText(payload.error, asRecord(payload.error)?.message)
