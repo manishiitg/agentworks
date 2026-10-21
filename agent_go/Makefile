@@ -24,6 +24,7 @@ install-linter:
 lint: install-linter
 	@echo "Running golangci-lint..."
 	@golangci-lint run ./...
+	@python3 ../scripts/check-unused.py go
 
 # Run linter with auto-fix
 lint-fix: install-linter
