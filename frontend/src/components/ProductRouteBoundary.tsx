@@ -41,6 +41,13 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
     const finish = (status: Status) => { if (!controller.signal.aborted) setResolution({ location, account, workspace, status, attempt, permissionKey }) }
     // Old Home bookmarks now return to the person's workspace as well.
     let requested = window.location.pathname === '/home' ? '/' : window.location.pathname + window.location.search
+    // This library has no selected product or new product grant. Its ordinary
+    // authenticated API decides which publications the person can discover.
+    if (window.location.pathname === '/dashboards') {
+      useWorkspaceReturnStore.setState({ firstVisit: false, restore: null })
+      void waitForChatStoreHydration().then(() => finish('ready'))
+      return () => controller.abort()
+    }
     let route = parseProductRoute(requested)
     const enabled = enabledProductSurfaces()
     const allowed = intersectAllowedProductSurfaces(enabled, allowedProducts)

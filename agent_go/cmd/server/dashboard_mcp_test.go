@@ -165,21 +165,20 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	if err := reportPreviewReadable(request, &previewClaims, "Workflow/invoices"); err == nil {
 		t.Fatal("preview widened revoked workflow bounds")
 	}
-	// A migrated Crew shares this same authoring/read path. Legacy owner links
-	// resolve to its canonical root, while readers cannot publish.
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["agentworks","work","code"]},{"id":"reader","username":"reader","products":["agentworks","work","code"]}]}`)
+	// Crew uses the same publication/read path at its canonical root.
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["agentworks","work"]},{"id":"reader","username":"reader","products":["agentworks","work"]}]}`)
 	// The changed product grants invalidate the owner's catalog; reconnect
 	// both clients before testing Crew operations under the new grants.
 	cli = reconnectAfterCatalogChange(t, ctx, cli, srv.URL+externalMCPPath)
 	rcli = dialExternalMCP(t, ctx, rsrv.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, rcli)
-	stubCrewLookups(t, map[string]string{"Crew/dashboard-team": "owner"}, map[string]string{"_users/owner/Chats/Work/projects/dashboard-team": "Crew/dashboard-team"})
+	stubCrewLookups(t, map[string]string{"Crew/dashboard-team": "owner"}, nil)
 	f.write(t, "Crew/dashboard-team/product.json", `{"id":"dashboard-team","product":"work","title":"Team"}`)
 	crewCreated := call("create_dashboard", map[string]any{"workspace": "Crew/dashboard-team", "dashboard_id": "team", "title": "Team", "files": map[string]any{"index.html": "<html><title>Team</title><body>Shared Crew</body></html>"}})
 	crewRevision := crewCreated["dashboard"].(map[string]any)["revision"].(string)
 	call("publish_dashboard", map[string]any{"workspace": "Crew/dashboard-team", "dashboard_id": "team", "expected_revision": crewRevision})
-	crewList := callRemoteTool(t, ctx, rcli, externalMCPToolCall, map[string]any{"name": "list_dashboards", "arguments": map[string]any{"workspace": "_users/owner/Chats/Work/projects/dashboard-team"}})
-	requireRemoteSuccess(t, crewList, "Crew reader discovery through legacy root")
+	crewList := callRemoteTool(t, ctx, rcli, externalMCPToolCall, map[string]any{"name": "list_dashboards", "arguments": map[string]any{"workspace": "Crew/dashboard-team"}})
+	requireRemoteSuccess(t, crewList, "Crew reader discovery through canonical root")
 	if !strings.Contains(marshalStructured(t, crewList), "document=") {
 		t.Fatal("Crew discovery lacks its live URL")
 	}
@@ -191,7 +190,7 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 		t.Fatalf("Crew reader: %d %s", crewResponse.Code, crewResponse.Body.String())
 	}
 	// Relay authoring reuses relays:write and requires its current Builder owner.
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"editor","products":["agentworks","work","relays","code"]},{"id":"reader","username":"reader","role":"editor","products":["agentworks","work","relays","code"]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"editor","products":["agentworks","work","relays"]},{"id":"reader","username":"reader","role":"editor","products":["agentworks","work","relays"]}]}`)
 	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["other"],"editors":["owner"],"readers":["reader"]}}`)
 	owner.AccessToken.Scopes = []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "relays:write"}
 	// Changed consent changes the catalog and requires a fresh MCP session.
@@ -208,16 +207,10 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	if !noCrew.IsError {
 		t.Fatal("Relay consent edited Crew dashboard")
 	}
-	// Code authoring is owner-only and reuses code:run. Reviewers gain no writes.
-	const codeRoot = "_users/owner/Chats/Code/projects/dashboard-code"
-	f.write(t, codeRoot+"/product.json", `{"id":"dashboard-code","product":"code","title":"Code"}`)
-	owner.AccessToken.Scopes = []string{"dashboards:read", "code:run"}
-	// Changed consent changes the catalog and requires a fresh MCP session.
+	// Crew authoring uses current Crew consent, including folder grants.
+	owner.AccessToken.Scopes = []string{"dashboards:read", "crews:write"}
 	cli = dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, cli)
-	codeDraft := call("create_dashboard", map[string]any{"workspace": codeRoot, "dashboard_id": "code-view", "title": "Code view", "files": map[string]any{"index.html": "<html><title>Code</title><body>Code</body></html>"}})
-	codeRev := codeDraft["dashboard"].(map[string]any)["revision"].(string)
-	call("publish_dashboard", map[string]any{"workspace": codeRoot, "dashboard_id": "code-view", "expected_revision": codeRev})
 	for _, deniedCase := range []struct {
 		user   string
 		scopes []string
@@ -226,9 +219,9 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 		id     string
 		rev    string
 	}{
-		{"reader", []string{"dashboards:read", "code:run"}, []string{"invoices"}, codeRoot, "code-view", codeRev},
-		{"owner", []string{"dashboards:read", "crews:review"}, []string{"invoices"}, codeRoot, "code-view", codeRev},
-		{"owner", []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "relays:write"}, []string{"invoices"}, codeRoot, "code-view", codeRev},
+		{"reader", []string{"dashboards:read", "crews:write"}, []string{"invoices"}, "Crew/dashboard-team", "team", crewRevision},
+		{"owner", []string{"dashboards:read", "crews:review"}, []string{"invoices"}, "Crew/dashboard-team", "team", crewRevision},
+		{"owner", []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "relays:write"}, []string{"invoices"}, "Crew/dashboard-team", "team", crewRevision},
 		{"reader", []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "relays:write"}, []string{"invoices"}, "Workflow/invoices", "relay-view", relayRev},
 		{"owner", []string{"dashboards:read", "workflows:read", "files:read", "runs:execute", "relays:write"}, []string{"other"}, "Workflow/invoices", "relay-view", relayRev},
 	} {
@@ -242,7 +235,7 @@ func TestDashboardMCPAuthoringAndTeamRead(t *testing.T) {
 	}
 	// Folder caps still refuse a dashboard mutation with otherwise valid consent.
 	owner.AccessToken.FileGuard = &wf.FolderGuard{WritePaths: []string{"docs"}}
-	folderDenied := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "update_dashboard", "arguments": map[string]any{"workspace": codeRoot, "dashboard_id": "code-view", "expected_revision": codeRev, "files": map[string]any{"index.html": "<html><title>Code</title><body>Changed</body></html>"}}})
+	folderDenied := callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "update_dashboard", "arguments": map[string]any{"workspace": "Crew/dashboard-team", "dashboard_id": "team", "expected_revision": crewRevision, "files": map[string]any{"index.html": "<html><title>Team</title><body>Changed</body></html>"}}})
 	if !folderDenied.IsError {
 		t.Fatal("dashboard edit bypassed folder caps")
 	}

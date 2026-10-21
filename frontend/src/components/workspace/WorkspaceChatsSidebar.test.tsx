@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   tabs: {} as any,
   presets: [] as any[],
   builders: {} as Record<string, any>,
-  product: 'code',
+  product: 'work',
   active: [] as any[],
   selectedTab: null as string | null,
   history: vi.fn(),
@@ -73,12 +73,12 @@ vi.mock('../../utils/globalProductNavigation', () => ({
 }))
 vi.mock('../../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: mocks.openProduct }))
 vi.mock('../../products/work/workSessions', () => ({ loadWorkSessionsIncludingShared: async () => [] }))
-vi.mock('../../products/work/projectProduct', () => ({ CREW_PRODUCT: { profileId: 'code' } }))
+vi.mock('../../products/work/projectProduct', () => ({ CREW_PRODUCT: { profileId: 'work' } }))
 vi.mock('../../products/productSurfaceConfig', () => ({
-  enabledProductSurfaces: () => ['code', 'work', 'agentworks'],
+  enabledProductSurfaces: () => ['work', 'agentworks'],
   intersectAllowedProductSurfaces: (surfaces: string[], allowed: string[] | null) =>
     allowed ? surfaces.filter((surface) => allowed.includes(surface)) : surfaces,
-  PRODUCT_SURFACE_LABELS: { code: 'Code', work: 'Crew', agentworks: 'Goals' },
+  PRODUCT_SURFACE_LABELS: { work: 'Crew', agentworks: 'Goals' },
 }))
 vi.mock('../ProductSurfaceIcon', () => ({ ProductSurfaceIcon: () => null }))
 import WorkspaceChatsSidebar from './WorkspaceChatsSidebar'
@@ -91,7 +91,7 @@ afterEach(() => {
   mocks.tabs = {}
   mocks.presets = []
   mocks.builders = {}
-  mocks.product = 'code'
+  mocks.product = 'work'
   mocks.active = []
   mocks.selectedTab = null
   mocks.user = { id: 'alice', allowed_products: null, allowed_workflow_ids: null }
@@ -116,19 +116,19 @@ it('opens existing tabs through the shared navigator and lists no stored history
   mocks.tabs = {
     tab: {
       tabId: 'tab',
-      sessionId: 'code:project:one',
-      name: 'My Code',
+      sessionId: 'work:project:one',
+      name: 'My Crew',
       createdAt: 1,
-      metadata: { agentProfileId: 'code', agentProfileProjectId: 'one' },
+      metadata: { agentProfileId: 'work', agentProfileProjectId: 'one' },
     },
   }
   mocks.history.mockResolvedValue({
-    sessions: [{ session_id: 'code:project:two', title: 'Saved Code chat' }],
+    sessions: [{ session_id: 'work:project:two', title: 'Saved Crew chat' }],
   })
   await render(async (host) => {
-    await act(async () => (host.querySelector('[title="My Code · Code"]') as HTMLButtonElement).click())
+    await act(async () => (host.querySelector('[title="My Crew · Crew"]') as HTMLButtonElement).click())
     expect(mocks.openTab).toHaveBeenCalledWith('tab')
-    expect(host.querySelector('[title="Saved Code chat · Code"]')).toBeNull()
+    expect(host.querySelector('[title="Saved Crew chat · Crew"]')).toBeNull()
   })
 })
 it('labels remembered Goal Run chats from server kind while keeping one unnumbered Builder', async () => {
@@ -174,7 +174,7 @@ it('discards an old account’s late history response', async () => {
     mocks.user = { id: 'bob', allowed_products: null, allowed_workflow_ids: null }
     await rerender()
     await act(async () =>
-      finish({ sessions: [{ session_id: 'code:project:private', title: 'Alice private chat' }] })
+      finish({ sessions: [{ session_id: 'work:project:private', title: 'Alice private chat' }] })
     )
     expect(host.textContent).not.toContain('Alice private chat')
     expect(host.textContent).toContain('Some projects could not load')
@@ -191,14 +191,14 @@ it('does not turn an unavailable history catalog into a false empty state', asyn
 it('shows per-chat running state under one collapsible workspace without merging equal chat names', async () => {
   mocks.tabs = Object.fromEntries(['one', 'two'].map((id) => [id, {
     tabId: id, sessionId: id, name: 'Analysis', createdAt: 1, isStreaming: true,
-    metadata: { agentProfileId: 'code', agentProfileProjectId: 'project', agentProfileProjectTitle: 'Accounting' },
+    metadata: { agentProfileId: 'work', agentProfileProjectId: 'project', agentProfileProjectTitle: 'Accounting' },
   }]))
   mocks.history.mockResolvedValue({ sessions: [] })
   await render(async (host) => {
-    const heading = host.querySelector<HTMLButtonElement>('[title="Code · Accounting · 2 chats · 2 running"]')!
+    const heading = host.querySelector<HTMLButtonElement>('[title="Crew · Accounting · 2 chats · 2 running"]')!
     expect(heading.textContent).toContain('2 working')
     const panel = host.querySelector<HTMLDivElement>(`#${heading.getAttribute('aria-controls')}`)!
-    expect(panel.querySelectorAll('[title="Analysis · Code"]')).toHaveLength(2)
+    expect(panel.querySelectorAll('[title="Analysis · Crew"]')).toHaveLength(2)
     expect(panel.querySelectorAll('[aria-label="Running"]')).toHaveLength(2)
     expect(panel.hidden).toBe(true)
     expect(heading.getAttribute('aria-expanded')).toBe('false')
@@ -214,13 +214,13 @@ it('shows per-chat running state under one collapsible workspace without merging
 it('shows no Recent chats list and keeps ordinary named chats free of repeated status text', async () => {
   mocks.tabs = {
     analysis: { tabId: 'analysis', sessionId: 'analysis', name: 'Monthly analysis', createdAt: 1, isStreaming: true,
-      metadata: { agentProfileId: 'code', agentProfileProjectId: 'one', agentProfileProjectTitle: 'Accounting' } },
+      metadata: { agentProfileId: 'work', agentProfileProjectId: 'one', agentProfileProjectTitle: 'Accounting' } },
   }
-  mocks.history.mockResolvedValue({ sessions: [{ session_id: 'code:project:old', title: 'Previous report' }] })
+  mocks.history.mockResolvedValue({ sessions: [{ session_id: 'work:project:old', title: 'Previous report' }] })
   await render(async host => {
     expect(host.textContent).not.toContain('Recent chats')
     expect(host.textContent).not.toContain('Previous report')
-    const chat = host.querySelector<HTMLButtonElement>('[title="Monthly analysis · Code"]')!
+    const chat = host.querySelector<HTMLButtonElement>('[title="Monthly analysis · Crew"]')!
     expect(chat.textContent).toBe('Monthly analysis')
     expect(chat.querySelector('[aria-label="Running"]')).not.toBeNull()
   })
@@ -244,35 +244,14 @@ it('removes the filter field and closes a run view without selecting it', async 
   })
 })
 
-it('opens single-chat workspaces directly and distinguishes matching names across products', async () => {
-  mocks.tabs = {
-    code: { tabId: 'code', sessionId: 'code:project:one', name: 'Accounting', createdAt: 1, metadata: { agentProfileId: 'code', agentProfileProjectId: 'one', agentProfileProjectTitle: 'Accounting' } },
-    crew: { tabId: 'crew', sessionId: 'work:project:two', name: 'Accounting', createdAt: 2, metadata: { agentProfileId: 'work', agentProfileProjectId: 'two', agentProfileProjectTitle: 'Accounting' } },
-  }
-  mocks.history.mockResolvedValue({ sessions: [] })
-  await render(async host => {
-    const code = host.querySelector<HTMLButtonElement>('[title="Accounting · Code"]')!
-    const crew = host.querySelector<HTMLButtonElement>('[title="Accounting · Crew"]')!
-    expect(code.textContent).toBe('AccountingCode')
-    expect(crew.textContent).toBe('AccountingCrew')
-    expect(code.hasAttribute('aria-expanded')).toBe(false)
-    expect(host.textContent).not.toContain('Main chat')
-    await act(async () => code.click())
-    expect(mocks.openTab).toHaveBeenLastCalledWith('code')
-    await act(async () => crew.click())
-    expect(mocks.openTab).toHaveBeenLastCalledWith('crew')
-    expect(mocks.openProduct).toHaveBeenLastCalledWith('work')
-  })
-})
-
 it('keeps Goals activity out of the shared chat sidebar', async () => {
   mocks.app.showWorkflowsOverview = true
-  mocks.tabs = { code: { tabId: 'code', sessionId: 'code:project:one', name: 'Accounting', createdAt: 1, metadata: { agentProfileId: 'code', agentProfileProjectId: 'one', agentProfileProjectTitle: 'Accounting' } } }
-  mocks.selectedTab = 'code'
+  mocks.tabs = { code: { tabId: 'work', sessionId: 'work:project:one', name: 'Accounting', createdAt: 1, metadata: { agentProfileId: 'work', agentProfileProjectId: 'one', agentProfileProjectTitle: 'Accounting' } } }
+  mocks.selectedTab = 'work'
   mocks.history.mockResolvedValue({ sessions: [] })
   await render(async (host, rerender) => {
     expect(host.querySelector('[aria-label="Activity"]')).toBeNull()
-    expect(host.querySelector('[title="Accounting · Code"]')?.hasAttribute('aria-current')).toBe(false)
+    expect(host.querySelector('[title="Accounting · Crew"]')?.hasAttribute('aria-current')).toBe(false)
     expect(mocks.openNavigation).not.toHaveBeenCalled()
     mocks.user.allowed_products = ['work']
     await rerender()
@@ -300,4 +279,16 @@ it('labels the parent source and returns from inspection to the parent chat', as
     expect(mocks.setMetadata).toHaveBeenCalledWith('main',{stepInspections:{items:[target],activeId:null}})
     expect(mocks.openTab).toHaveBeenCalledWith('main')
   })
+})
+
+
+it('links to the dashboard library in the shared sidebar and marks its deep link active', async () => {
+  window.history.replaceState({}, '', '/dashboards')
+  try {
+    await render(async host => {
+      const link = host.querySelector('nav[aria-label="Dashboards"] a')!
+      expect(link.getAttribute('href')).toBe('/dashboards')
+      expect(link.getAttribute('aria-current')).toBe('page')
+    })
+  } finally { window.history.replaceState({}, '', '/') }
 })

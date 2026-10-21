@@ -96,6 +96,7 @@ branding:
 
 ui:
   tips:
+    - id: dashboards-library
     - id: quick-switcher
     - id: toolbar-hide
   surface: ""

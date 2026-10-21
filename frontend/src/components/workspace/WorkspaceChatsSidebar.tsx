@@ -2,7 +2,7 @@ import { requestServiceChat } from '../../utils/serviceChatNavigation'
 import ConnectedAgentsSidebar from './ConnectedAgentsSidebar'
 import { useResumePreviousChat } from '../../hooks/useResumePreviousChat'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { CalendarClock, ChevronDown, Loader2, MessageCircle, MessageSquare, Search, Slack, Webhook, X } from 'lucide-react'
+import { CalendarClock, ChevronDown, LayoutDashboard, Loader2, MessageCircle, MessageSquare, Search, Slack, Webhook, X } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useChatStore } from '../../stores/useChatStore'
@@ -537,6 +537,12 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
         </div>
       </div>
       <div className="shrink-0 px-2 pb-1"><NewProjectMenu /></div>
+      <nav aria-label="Dashboards" className="shrink-0 px-2 pb-1">
+        <a href="/dashboards" aria-current={window.location.pathname === '/dashboards' ? 'page' : undefined}
+          className={`flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${window.location.pathname === '/dashboards' ? 'bg-foreground/[0.08] text-foreground' : 'text-foreground/85 hover:bg-muted hover:text-foreground'}`}>
+          <LayoutDashboard className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />Dashboards
+        </a>
+      </nav>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-2">
         {workspaces.map((workspace, index) => !isResourceWorkspace(workspace.surface) ? renderWorkspace(workspace, index) : null)}
         {allowed.includes('bullpen') && <ConnectedAgentsSidebar />}

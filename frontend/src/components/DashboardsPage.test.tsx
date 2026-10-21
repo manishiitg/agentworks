@@ -6,7 +6,7 @@ const post = vi.hoisted(() => vi.fn())
 vi.mock('../services/api', () => ({ default: { post } }))
 vi.mock('../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { id: 'person' } }) }))
 vi.mock('../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: (state: unknown) => unknown) => select({ activeWorkspaceId: 'server' }) }))
-vi.mock('./ProductSurfaceSwitcher', () => ({ ProductSurfaceSwitcher: () => null }))
+vi.mock('./workspace/WorkspaceTopToolbar', () => ({ WorkspaceTopToolbar: ({ children }: { children: import('react').ReactNode }) => <header>{children}</header> }))
 import { DashboardsPage } from './DashboardsPage'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 

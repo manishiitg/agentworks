@@ -4,7 +4,7 @@ import api from '../services/api'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { sharedReportLink } from '../utils/sharedLinks'
-import { ProductSurfaceSwitcher } from './ProductSurfaceSwitcher'
+import { WorkspaceTopToolbar } from './workspace/WorkspaceTopToolbar'
 
 type Dashboard = {
   dashboard_id: string
@@ -56,12 +56,12 @@ export function DashboardsPage() {
     return () => controller.abort()
   }, [account, workspace, attempt])
 
-  return <main className="min-h-screen bg-background text-foreground">
-    <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-8">
+  return <main className="flex h-full min-h-0 flex-col bg-background text-foreground">
+    <WorkspaceTopToolbar navigationKind="page">
       <div className="flex items-center gap-3"><LayoutDashboard className="h-5 w-5 text-muted-foreground" /><h1 className="text-lg font-semibold">Dashboards</h1></div>
-      <div className="flex items-center gap-3"><ProductSurfaceSwitcher /><a href="/" className="text-sm text-muted-foreground hover:text-foreground">Workspace</a></div>
-    </header>
-    <div className="mx-auto max-w-5xl space-y-8 px-4 py-6 sm:px-8">
+      <a href="/" className="text-sm text-muted-foreground hover:text-foreground">Workspace</a>
+    </WorkspaceTopToolbar>
+    <div className="min-h-0 flex-1 overflow-y-auto"><div className="mx-auto max-w-5xl space-y-8 px-4 py-6 sm:px-8">
       <div className="flex items-start justify-between gap-4">
         <p className="text-sm text-muted-foreground">Your published dashboards and dashboards shared with you, all in one place.</p>
         <button type="button" onClick={refresh} className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted"><RefreshCw className="h-3.5 w-3.5" />Refresh</button>
@@ -81,6 +81,6 @@ export function DashboardsPage() {
           </li>)}
         </ul>
       </section>)}
-    </div>
+    </div></div>
   </main>
 }

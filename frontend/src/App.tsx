@@ -3,7 +3,8 @@ import LlmModalHost from './components/topbar/LlmModalHost'
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // Code is a second product definition over the same project surface.
 import { useShallow } from "zustand/react/shallow";
-import { useEffect, useCallback, useRef, useState, lazy, Suspense } from "react";
+import { useEffect, useCallback, useContext, useRef, useState, lazy, Suspense } from "react";
+import { DashboardsPageContext } from './contexts/DashboardsPageContext'
 import { ThemeProvider } from "./contexts/ThemeContext.tsx";
 import { UpdateProgressToast } from "./components/UpdateProgressToast";
 import { GlobalHumanFeedbackPrompt } from "./components/GlobalHumanFeedbackPrompt";
@@ -46,6 +47,7 @@ import { markFeatureUsed } from './utils/featureUsage'
 const queryClient = new QueryClient();
 
 const WorkflowsOverviewPage = lazy(() => import('./components/ActivityPage'))
+const DashboardsPage = lazy(() => import('./components/DashboardsPage').then(module => ({ default: module.DashboardsPage })))
 const SchedulesPage = lazy(() => import('./components/SchedulesPage'))
 const AdminPages = lazy(() => import('./components/AdminPages'))
 const VideoStudioSurface = lazy(() => loadVideoStudioSurface().then(module => ({ default: module.VideoStudioSurface })))
@@ -100,6 +102,7 @@ const hasOpenWorkspaceCollapsingPopup = () => {
 
 
 function AppWorkspace() {
+  const dashboardsOpen = useContext(DashboardsPageContext)
   const returnNote = useWorkspaceReturnStore(state => state.note || state.saveError)
   const firstVisit = useWorkspaceReturnStore(state => state.firstVisit)
   const productSurface = useProductSurfaceStore(state => state.productSurface)
@@ -135,12 +138,13 @@ function AppWorkspace() {
   // choice cannot expose a product disabled on this host -- or, now,
   // a product this specific logged-in user isn't granted.
   useEffect(() => {
+    if (dashboardsOpen) return
     const userAllowedSurfaces = intersectAllowedProductSurfaces([productSurface], allowedProducts)
     if (userAllowedSurfaces.length === 0 || !isEnabledProductSurface(productSurface)) {
       const fallback = intersectAllowedProductSurfaces(enabledProductSurfaces(), allowedProducts)
       setProductSurface(fallback[0] ?? deploymentDefaultProductSurface())
     }
-  }, [productSurface, setProductSurface, allowedProducts])
+  }, [productSurface, setProductSurface, allowedProducts, dashboardsOpen])
 
   // Store subscriptions
   const { hasCompletedInitialSetup, selectedModeCategory, setModeCategory, completeInitialSetup } = useModeStore(useShallow(state => ({
@@ -615,22 +619,22 @@ function AppWorkspace() {
   // former profile-less Chat landing was removed; product-owned chats render
   // outside this shell and continue to use their own agent profiles.
   useEffect(() => {
-    if (productSurface !== 'agentworks' && productSurface !== 'relays') return
+    if (dashboardsOpen || productSurface !== 'agentworks' && productSurface !== 'relays') return
     if (!hasCompletedInitialSetup || selectedModeCategory !== 'workflow') {
       setModeCategory('workflow')
       setShowWorkflowsOverview(productSurface === 'agentworks')
       completeInitialSetup()
     }
-  }, [completeInitialSetup, hasCompletedInitialSetup, productSurface, selectedModeCategory, setModeCategory, setShowWorkflowsOverview])
+  }, [completeInitialSetup, hasCompletedInitialSetup, productSurface, selectedModeCategory, setModeCategory, setShowWorkflowsOverview, dashboardsOpen])
 
-  useWorkflowTabRestore(hasCompletedInitialSetup && !showWorkflowsOverview, productSurface, selectedModeCategory)
+  useWorkflowTabRestore(!dashboardsOpen && hasCompletedInitialSetup && !showWorkflowsOverview, productSurface, selectedModeCategory)
 
   // Restore active presets after stores are initialized
   const hasRestoredPresetRef = useRef(false)
   useEffect(() => {
     // AgentWorks only restores automation presets. Product chats own their
     // profile configuration and never use the removed generic-chat preset.
-    if ((productSurface === 'agentworks' || productSurface === 'relays') && hasCompletedInitialSetup && selectedModeCategory === 'workflow') {
+    if (!dashboardsOpen && (productSurface === 'agentworks' || productSurface === 'relays') && hasCompletedInitialSetup && selectedModeCategory === 'workflow') {
       // Add a small delay to ensure stores are fully initialized
       const timer = setTimeout(() => {
         const activePreset = getActivePreset(selectedModeCategory)
@@ -646,13 +650,13 @@ function AppWorkspace() {
 
       return () => clearTimeout(timer)
     }
-  }, [hasCompletedInitialSetup, selectedModeCategory, productSurface, getActivePreset, applyPreset])
+  }, [hasCompletedInitialSetup, selectedModeCategory, productSurface, getActivePreset, applyPreset, dashboardsOpen])
 
   // Retry preset restoration for workflow mode after presets finish loading from manifests
   // The 500ms timer above may fire before refreshPresets() completes
   const workflowPresetsForRestore = useGlobalPresetStore(state => state.workflowPresets)
   useEffect(() => {
-    if (hasRestoredPresetRef.current) return
+    if (dashboardsOpen || hasRestoredPresetRef.current) return
     if (!hasCompletedInitialSetup || selectedModeCategory !== 'workflow') return
     if (workflowPresetsForRestore.length === 0) return // Presets not loaded yet
 
@@ -661,7 +665,7 @@ function AppWorkspace() {
       hasRestoredPresetRef.current = true
       applyPreset(activePreset.id, 'workflow')
     }
-  }, [hasCompletedInitialSetup, selectedModeCategory, workflowPresetsForRestore, getActivePreset, applyPreset])
+  }, [hasCompletedInitialSetup, selectedModeCategory, workflowPresetsForRestore, getActivePreset, applyPreset, dashboardsOpen])
 
 
   // Start new chat function
@@ -788,7 +792,9 @@ function AppWorkspace() {
             initialQuery={quickSwitcherInitialQuery}
           />
         )}
-        {productSurface === 'bullpen' ? (
+        {dashboardsOpen ? (
+          <div className="flex h-screen min-h-0 bg-background"><ModePresetBar reduced walkthroughPaused /><div className="min-h-0 min-w-0 flex-1"><Suspense fallback={<FileSurfaceFallback />}><DashboardsPage /></Suspense></div></div>
+        ) : productSurface === 'bullpen' ? (
           <Suspense fallback={<ProductSurfaceFallback label="AgentBridge" />}><BullpenSurface /></Suspense>
         ) : productSurface === 'video-studio' ? (
           <Suspense fallback={<ProductSurfaceFallback label="Video Studio" />}><VideoStudioSurface /></Suspense>

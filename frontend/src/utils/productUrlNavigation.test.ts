@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 
 vi.mock('../stores/useProductSurfaceStore', async () => {
   const { createStore } = await import('zustand/vanilla')
-  return { useProductSurfaceStore: createStore(() => ({ productSurface: 'code', selectedWorkProjectId: 'removed' })) }
+  return { useProductSurfaceStore: createStore(() => ({ productSurface: 'work', selectedWorkProjectId: 'removed' })) }
 })
 vi.mock('../stores/useAppStore', () => ({ useAppStore: { getState: () => ({ showWorkflowsOverview: false }), subscribe: () => () => {} } }))
 vi.mock('../stores/useGlobalPresetStore', () => ({ useGlobalPresetStore: { subscribe: () => () => {} } }))
@@ -16,25 +16,25 @@ afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); window.history.repla
 
 it('does not rewrite a fresh deep link to the default view before the surface applies it', () => {
   vi.useFakeTimers()
-  window.history.replaceState({}, '', '/code/projects/example?view=shell')
+  window.history.replaceState({}, '', '/crew/projects/example?view=shell')
   // The surface has not applied the linked view yet; it still projects Files.
   let projectedView = 'files'
   const unregister = registerProductUrlView('work', () => ({ id: 'example', view: projectedView }))
   const stop = observeProductHistory()
   try {
     vi.runAllTimers()
-    expect(window.location.pathname + window.location.search).toBe('/code/projects/example?view=shell')
+    expect(window.location.pathname + window.location.search).toBe('/crew/projects/example?view=shell')
     // A deliberate in-app view switch still updates the URL normally.
     projectedView = 'costs'
     productUrlViewChanged()
     vi.runAllTimers()
-    expect(window.location.pathname + window.location.search).toBe('/code/projects/example?view=costs')
+    expect(window.location.pathname + window.location.search).toBe('/crew/projects/example?view=costs')
   } finally { stop(); unregister() }
 })
 
 it('replaces a removed project with its inventory fallback and still pushes a deliberate project choice', () => {
   vi.useFakeTimers()
-  window.history.replaceState({}, '', '/code/projects/removed')
+  window.history.replaceState({}, '', '/crew/projects/removed')
   const unregister = registerProductUrlView('work', () => ({ view: 'files' }))
   const stop = observeProductHistory()
   const push = vi.spyOn(window.history, 'pushState')
@@ -42,12 +42,30 @@ it('replaces a removed project with its inventory fallback and still pushes a de
   try {
     replaceProductSelection(() => useProductSurfaceStore.setState({ selectedWorkProjectId: 'available' }))
     vi.runAllTimers()
-    expect(window.location.pathname).toBe('/code/projects/available')
+    expect(window.location.pathname).toBe('/crew/projects/available')
     expect(replace).toHaveBeenCalledOnce()
     expect(push).not.toHaveBeenCalled()
     useProductSurfaceStore.setState({ selectedWorkProjectId: 'chosen' })
     vi.runAllTimers()
-    expect(window.location.pathname).toBe('/code/projects/chosen')
+    expect(window.location.pathname).toBe('/crew/projects/chosen')
     expect(push).toHaveBeenCalledOnce()
   } finally { stop(); unregister() }
+})
+
+
+it('keeps the Dashboards deep link until deliberate navigation, including returning to the same Crew', () => {
+  vi.useFakeTimers()
+  useProductSurfaceStore.setState({ productSurface: 'work', selectedWorkProjectId: 'same' })
+  window.history.replaceState({}, '', '/dashboards')
+  const popped = vi.fn()
+  window.addEventListener('popstate', popped)
+  const stop = observeProductHistory()
+  try {
+    vi.runAllTimers()
+    expect(window.location.pathname).toBe('/dashboards')
+    productUrlViewChanged()
+    vi.runAllTimers()
+    expect(window.location.pathname).toBe('/crew/projects/same')
+    expect(popped).toHaveBeenCalledOnce()
+  } finally { stop(); window.removeEventListener('popstate', popped) }
 })

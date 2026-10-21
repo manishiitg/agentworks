@@ -15,3 +15,5 @@
   text: 'Ask “build a dashboard from these files” in your own project. Open Dashboard, or find it with Ctrl+K, to view the result.'
 - id: project-dashboard-update
   text: 'In a project you own, ask “refresh this dashboard with the latest data”. You can also ask to schedule regular updates.'
+- id: dashboards-library
+  text: 'Your published dashboards and the ones shared with you are in Dashboards in the left menu.'

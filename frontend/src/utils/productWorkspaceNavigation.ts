@@ -5,6 +5,7 @@ import { useLLMStore } from '../stores/useLLMStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import type { ProductSurface } from '../products/productSurfaceConfig'
 import { cancelPendingWorkflowNavigation } from './workflowNavigation'
+import { productUrlViewChanged } from './productUrlNavigation'
 
 /** Product icons and page Back buttons share the same workspace destination. */
 export function openProductWorkspace(surface: ProductSurface) {
@@ -33,5 +34,5 @@ export function openProductWorkspace(surface: ProductSurface) {
     app.setAgentMode('multi-agent')
   }
   useProductSurfaceStore.getState().setProductSurface(surface)
-
+  if (window.location.pathname === '/dashboards') productUrlViewChanged()
 }

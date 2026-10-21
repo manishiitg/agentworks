@@ -12,8 +12,7 @@ import { Loader2 } from "lucide-react";
 import { WorkspaceConnectionSwitcher } from "./WorkspaceConnectionSwitcher";
 import { DesktopAppOnlyGate } from "./DesktopAppOnlyGate";
 import { isDesktopAppOnlyMode } from "../services/api";
-
-const DashboardsPage = lazy(() => import("./DashboardsPage").then(module => ({ default: module.DashboardsPage })));
+import { DashboardsPageContext } from '../contexts/DashboardsPageContext';
 
 const ProductRouteBoundary = lazy(() => import("./ProductRouteBoundary").then(module => ({ default: module.ProductRouteBoundary })));
 
@@ -246,7 +245,6 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
     if (isDesktopAppOnlyMode() && !window.electronAPI) {
       return <DesktopAppOnlyGate />;
     }
-    if (dashboardList) return <Suspense fallback={<div role="status" className="p-6">Loading dashboards…</div>}><DashboardsPage /></Suspense>;
     if (dashboardCode) return <DashboardShortLink code={dashboardCode} onResolved={openDashboardLink} />;
     if (reportWorkspacePath) {
       return (
@@ -261,7 +259,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
         />
       );
     }
-    return <Suspense fallback={<div role="status" className="grid min-h-screen place-items-center">Opening link…</div>}><ProductRouteBoundary account={user?.id} allowedProducts={user?.allowed_products}>{children}</ProductRouteBoundary></Suspense>;
+    return <DashboardsPageContext.Provider value={dashboardList}><Suspense fallback={<div role="status" className="grid min-h-screen place-items-center">Opening link…</div>}><ProductRouteBoundary account={user?.id} allowedProducts={user?.allowed_products}>{children}</ProductRouteBoundary></Suspense></DashboardsPageContext.Provider>;
   }
 
   // Multi-user mode: require authentication (login only, no registration)
@@ -280,7 +278,6 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
     return <DesktopAppOnlyGate />;
   }
 
-  if (dashboardList) return <Suspense fallback={<div role="status" className="p-6">Loading dashboards…</div>}><DashboardsPage /></Suspense>;
   if (dashboardCode) return <DashboardShortLink code={dashboardCode} onResolved={openDashboardLink} />;
 
   if (reportWorkspacePath) {
@@ -297,5 +294,5 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
     );
   }
 
-  return <Suspense fallback={<div role="status" className="grid min-h-screen place-items-center">Opening link…</div>}><ProductRouteBoundary account={user?.id} allowedProducts={user?.allowed_products}>{children}</ProductRouteBoundary></Suspense>;
+  return <DashboardsPageContext.Provider value={dashboardList}><Suspense fallback={<div role="status" className="grid min-h-screen place-items-center">Opening link…</div>}><ProductRouteBoundary account={user?.id} allowedProducts={user?.allowed_products}>{children}</ProductRouteBoundary></Suspense></DashboardsPageContext.Provider>;
 }
