@@ -255,6 +255,7 @@ func TestWorkPlatformSkillsRegisterAndLoad(t *testing.T) {
 		"work-dashboard":          {"db/reports/index.html", "window.report.sendChatMessage", "query_workflow_db", "validate_report_html", "get_report_link"},
 		"work-ui-control":         {"list_ui_capabilities", "perform_ui_action", "search_tools", "bridge tool routing", "`memory`", "`workshop`", "`identity`", "`mcp`", "Do not use Workflow-only views", "Scheduled, webhook, bot"},
 		"background-work":         {"run_in_background", "[AUTO-NOTIFICATION]", "query_agent"},
+		"crew-laptop":             {"manage_laptop_access", "devices", "Operation not permitted", "agentworks start", ".aws", "Read & write"},
 	}
 	for name, required := range checks {
 		if !skills.IsBuiltinSkill(name) {

@@ -244,7 +244,7 @@ func TestCrewProductSurfaceE2E(t *testing.T) {
 	if err != nil || runPrompt != workproduct.RunPromptTemplate() {
 		t.Fatalf("Crew Run prompt is not its product.yaml source: %v", err)
 	}
-	for mode, names := range map[string][]string{"builder": {"crew-builder", "crew-agents"}, "run": {"crew-run"}} {
+	for mode, names := range map[string][]string{"builder": {"crew-builder", "crew-agents", "crew-laptop"}, "run": {"crew-run"}} {
 		if err := compareProductSurface(manifest.Chat[mode].Skills, names); err != nil {
 			t.Fatalf("Crew %s skills: %v", mode, err)
 		}

@@ -7,6 +7,7 @@ Use the Crew's existing role and purpose. Change setup only within the user's
 request. Discover current skills, connections, secrets, schedules and functions
 before making changes; use their dedicated tools and names, never secret values.
 Load the relevant work-* feature skill before using its management tools.
+For the person's laptop or a folder on their computer, read `crew-laptop`.
 
 In the private CLI runtime, `project/` links to the real Crew. Read, create,
 rename and edit durable project files there; for commands that need

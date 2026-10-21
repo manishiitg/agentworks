@@ -192,6 +192,7 @@ func RegisterProductSkills() error {
 				{Name: "crew-run", Description: "Use a Crew in Run mode: inspect, answer, run permitted workflow triggers and suggest changes to its owner.", Path: "skills/crew-run/SKILL.md"},
 				{Name: "crew-builder", Path: "skills/crew-builder/SKILL.md"},
 				{Name: "crew-agents", Path: "skills/crew-agents/SKILL.md"},
+				{Name: "crew-laptop", Path: "skills/crew-laptop/SKILL.md"},
 				// Cowork (a Code project in Cowork mode): the playbook for a private business assistant.
 				{Name: "cowork-assistant", Path: "skills/cowork-assistant/SKILL.md"},
 				{Name: "cowork-browser-tasks", Path: "skills/cowork-browser-tasks/SKILL.md"},
