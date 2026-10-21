@@ -203,8 +203,9 @@ func GetAuthSecret() []byte {
 // API routes require JWT tokens in both single-user and multi-user modes.
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Skip auth for certain paths
-		if shouldSkipAuth(r.URL.Path) {
+		// The MCP Apps document bootstrap is inert and must load through API
+		// ingress without credentials. Only this exact GET is public.
+		if (r.Method == http.MethodGet && r.URL.Path == dashboardAppFramePath) || shouldSkipAuth(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}

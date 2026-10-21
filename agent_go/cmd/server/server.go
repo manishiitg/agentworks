@@ -2440,6 +2440,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// API routes
 	apiRouter := router.PathPrefix("/api").Subrouter()
 	apiRouter.Use(api.apiRequestLogMiddleware)
+	apiRouter.HandleFunc(strings.TrimPrefix(dashboardAppFramePath, "/api"), api.dashboardAppFrame).Methods("GET")
 	apiRouter.HandleFunc("/bullpen/agents", api.handleBullpenAgents).Methods("GET")
 	apiRouter.HandleFunc("/bullpen/agents/usage", api.handleBullpenAgentUsage).Methods("GET")
 	apiRouter.HandleFunc("/bullpen/usage", api.handleBullpenUsage).Methods("GET", "DELETE")
@@ -3245,7 +3246,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// binary, so it works wherever the server runs regardless of how the SPA
 	// is served. Registered before the SPA catch-all below.
 	router.HandleFunc(reportPreviewPagePath, api.reportPreviewPageHandler).Methods("GET")
-	router.HandleFunc(dashboardAppFramePath, api.dashboardAppFrame).Methods("GET")
 	router.HandleFunc(reportPreviewPagePath+"report-preview.js", api.reportPreviewScriptHandler).Methods("GET")
 	router.HandleFunc("/dashboard-json.js", api.dashboardJSONAssetHandler).Methods("GET")
 	router.HandleFunc("/dashboard-json.css", api.dashboardJSONAssetHandler).Methods("GET")

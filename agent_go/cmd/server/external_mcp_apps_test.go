@@ -110,3 +110,33 @@ func TestExternalMCPDashboardAppPublishedAccessAndRevocation(t *testing.T) {
 		t.Fatal("public frame must contain only an isolated bootstrap")
 	}
 }
+
+// The hosted ingress forwards API paths; only the inert GET bootstrap is
+// public. Nearby API paths and other methods keep normal authentication.
+func TestExternalMCPDashboardAppBootstrapAuth(t *testing.T) {
+	api := &StreamingAPI{}
+	called := false
+	handler := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		api.dashboardAppFrame(w, r)
+	}))
+	for _, item := range []struct {
+		method, path string
+		want         int
+	}{
+		{http.MethodGet, dashboardAppFramePath, http.StatusOK},
+		{http.MethodPost, dashboardAppFramePath, http.StatusUnauthorized},
+		{http.MethodHead, dashboardAppFramePath, http.StatusUnauthorized},
+		{http.MethodGet, dashboardAppFramePath + "/x", http.StatusUnauthorized},
+	} {
+		called = false
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, httptest.NewRequest(item.method, item.path, nil))
+		if res.Code != item.want || called != (item.want == http.StatusOK) {
+			t.Fatalf("%s %s: status=%d handler=%t", item.method, item.path, res.Code, called)
+		}
+		if item.want == http.StatusOK && (res.Body.String() != dashboardAppFrameHTML || !strings.Contains(res.Header().Get("Content-Security-Policy"), "sandbox allow-scripts;")) {
+			t.Fatal("public bootstrap lost its static body or opaque-origin CSP")
+		}
+	}
+}

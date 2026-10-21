@@ -24,7 +24,7 @@ import (
 
 const dashboardAppURI = "ui://agentworks/dashboard/v1.html"
 const dashboardAppMIME = "text/html;profile=mcp-app"
-const dashboardAppFramePath = "/mcp-apps/frame"
+const dashboardAppFramePath = "/api/mcp-apps/frame"
 
 //go:embed mcp_apps/frame.html
 var dashboardAppFrameHTML string

@@ -31,14 +31,14 @@ try {
   let origin = ''
   server = createServer((request, response) => {
     response.setHeader('Content-Type', 'text/html')
-    if (request.url === '/mcp-apps/frame') {
+    if (request.url === '/api/mcp-apps/frame') {
       response.setHeader('Content-Security-Policy', "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline' blob:; img-src data: blob:; font-src data: blob:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'")
       response.end(frame); return
     }
     if (request.url === '/app') {
       // Same resource structure as Go: trusted runtime bytes, no bearer token.
       response.setHeader('Content-Security-Policy', `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src ${origin}`)
-      const runtimes = JSON.stringify({ document: child, frame_url: origin + '/mcp-apps/frame', ...jsonAssets }).replaceAll('<', '\\u003c')
+      const runtimes = JSON.stringify({ document: child, frame_url: origin + '/api/mcp-apps/frame', ...jsonAssets }).replaceAll('<', '\\u003c')
       response.end(`<main id="app"></main><script id="aw-runtimes" type="application/json">${runtimes}</script><script>${main.replaceAll('</script', '<\\/script')}</script>`); return
     }
     response.end(`<iframe id="app" src="/app" style="width:800px;height:1200px"></iframe><script>
@@ -113,7 +113,7 @@ try {
     }
     addEventListener('message', listener)
     probe.onload = () => probe.contentWindow.postMessage({ kind: 'agentworks-dashboard-document', html: `<script>let isolated=false;try{localStorage.getItem('sandbox-canary')}catch{isolated=true}parent.postMessage({kind:'sandbox-proof',isolated},'*')<\/script>` }, '*')
-    probe.src = '/mcp-apps/frame'; document.body.append(probe)
+    probe.src = '/api/mcp-apps/frame'; document.body.append(probe)
   })), true)
   if (process.env.BROWSER_CHECK_ARTIFACT_DIR) {
     await mkdir(process.env.BROWSER_CHECK_ARTIFACT_DIR, { recursive: true })
