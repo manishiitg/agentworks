@@ -96,9 +96,6 @@ func runtimeConfigForLLMAgent(config LLMAgentConfig, model llmtypes.Model, trace
 			CodeExecution: config.UseCodeExecutionMode, ParallelExecution: config.EnableParallelToolExecution,
 			Timeout: config.ToolTimeout, AdditionalBridge: config.AdditionalBridgeTools,
 		},
-		Context: mcpagent.ContextRuntimeConfig{
-			LargeOutputThreshold: config.LargeOutputThreshold,
-		},
 		Coding: mcpagent.CodingRuntimeConfig{
 			ClaudeCodeTransport:               config.ClaudeCodeTransport,
 			PersistentClaudeCode:              config.ClaudeCodePersistentInteractiveSession,
@@ -350,9 +347,6 @@ type LLMAgentConfig struct {
 	// whereas Claude Code's native Bash has no equivalent restriction.
 	CodexNetworkAccess bool
 	APIKeys            *llm.ProviderAPIKeys // API keys for providers
-
-	// Context offloading configuration
-	LargeOutputThreshold int // Token threshold for context offloading (0 = use default: 10000)
 
 	// Parallel tool execution: When enabled, multiple tool calls in a single LLM response
 	// are executed concurrently using a fork-join pattern instead of sequentially

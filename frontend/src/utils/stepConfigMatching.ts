@@ -29,7 +29,6 @@ export interface AgentConfigs {
   enabled_custom_tools?: string[];
   enabled_custom_tool_categories?: string[];  // Legacy format kept for transitional frontend compatibility
   enabled_skills?: string[];
-  enable_context_offloading?: boolean;
   use_code_execution_mode?: boolean;
   delegating_agent_tier?: number;       // 1/2/3 - tier for orchestrator agent in tiered mode
   orchestrator_llm?: AgentLLMConfig;          // Direct LLM override for orchestrator (works in both tiered and manual modes)

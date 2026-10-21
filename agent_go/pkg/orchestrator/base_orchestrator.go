@@ -97,9 +97,6 @@ type BaseOrchestrator struct {
 	// Iteration folder for token persistence (workflow-specific)
 	iterationFolder string
 
-	// Context offloading configuration
-	largeOutputThreshold int // Token threshold for context offloading (0 = use default: 10000)
-
 	// MCP session ID for connection sharing across agents
 	// When set, all agents created by this orchestrator share MCP connections
 	mcpSessionID string
@@ -155,16 +152,6 @@ func NewBaseOrchestrator(
 	contextAwareBridge := NewContextAwareEventBridge(eventBridge, logger)
 
 	// Load context summarization configuration from environment variables
-	// Load large output threshold for context offloading from environment
-	// Default to 0 which means use library default (10000 tokens)
-	largeOutputThreshold := 0
-	if envVal := os.Getenv("LARGE_OUTPUT_THRESHOLD"); envVal != "" {
-		if threshold, err := strconv.Atoi(envVal); err == nil && threshold > 0 {
-			largeOutputThreshold = threshold
-			logger.Info(fmt.Sprintf("🔧 Large output threshold set to %d tokens from env", largeOutputThreshold))
-		}
-	}
-
 	// Default maxTurns from environment variable when not provided (0).
 	// Negative values are preserved to mean "no turn cap".
 	if maxTurns == 0 {
@@ -208,8 +195,6 @@ func NewBaseOrchestrator(
 		useCodeExecutionMode: useCodeExecutionMode, // NEW field
 		llmConfig:            llmConfig,
 		maxTurns:             maxTurns,
-		// Context offloading configuration
-		largeOutputThreshold: largeOutputThreshold,
 	}
 
 	// Create workspace client for direct typed API access (used by orchestrator methods).

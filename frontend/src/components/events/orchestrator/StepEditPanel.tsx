@@ -525,14 +525,6 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
       finalConfigs.enabled_custom_tools = enabledCustomTools;
     }
 
-    // Handle context offloading virtual tools: only save if explicitly set to false
-    if (agentConfigs.enable_context_offloading === false) {
-      finalConfigs.enable_context_offloading = false;
-    } else {
-      // Default to true (undefined means enabled for backward compatibility)
-      finalConfigs.enable_context_offloading = undefined;
-    }
-
     // Handle disable_learning: explicitly save false when enabled, true when disabled
     // nil/undefined = not set (default enabled), false = explicitly enabled, true = disabled
     // CRITICAL: When user unchecks checkbox (to enable learning), we MUST save false explicitly
@@ -677,11 +669,6 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
     // Check if no filtering (default: all enabled)
     if (enabledCustomTools.length === 0) {
       const defaultParts = ['All custom tools enabled (default)'];
-      if (agentConfigs.enable_context_offloading === false) {
-        defaultParts.push('Context offloading: disabled');
-      } else {
-        defaultParts.push('Context offloading: enabled');
-      }
       return defaultParts.join(' • ');
     }
     
@@ -737,13 +724,6 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
     } else if (!workspaceCategoryEnabled && workspaceSpecificTools.length > 0) {
       // Workspace tools enabled but human tools disabled
       parts.push('0/1 human tools');
-    }
-    
-    // Context offloading status
-    if (agentConfigs.enable_context_offloading === false) {
-      parts.push('Context offloading: disabled');
-    } else {
-      parts.push('Context offloading: enabled');
     }
     
     return parts.length > 0 ? parts.join(' • ') : 'No custom tools';
@@ -1205,37 +1185,6 @@ export const StepEditPanel: React.FC<StepEditPanelProps> = ({
                     })}
                   </div>
                 )}
-              </div>
-            </div>
-
-            {/* Context Offloading Virtual Tools Toggle */}
-            <div className="border-t border-gray-200 dark:border-gray-700"></div>
-            <div className="space-y-2">
-              <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
-                Context Offloading Virtual Tools
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id={`large-output-${stepIndex}`}
-                  checked={agentConfigs.enable_context_offloading !== false}
-                  onChange={(e) => {
-                    setAgentConfigs((prev) => ({
-                      ...prev,
-                      enable_context_offloading: e.target.checked,
-                    }));
-                  }}
-                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                />
-                <label
-                  htmlFor={`large-output-${stepIndex}`}
-                  className="text-xs text-gray-600 dark:text-gray-400 cursor-pointer flex-1"
-                >
-                  Enable Context Offloading Virtual Tools
-                  <span className="text-gray-500 dark:text-gray-500 ml-1">
-                    (search_large_output with read/search/query operations)
-                  </span>
-                </label>
               </div>
             </div>
 

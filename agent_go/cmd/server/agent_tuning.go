@@ -38,9 +38,6 @@ func applySharedLLMAgentTuning(cfg *agent.LLMAgentConfig, req *QueryRequest, pre
 	}
 	cfg.ToolTimeout = resolveToolTimeout()
 
-	// Context offloading: tool outputs larger than this (tokens) go to the filesystem.
-	cfg.LargeOutputThreshold = envPositiveInt("LARGE_OUTPUT_THRESHOLD", 0) // 0 = library default (10000)
-
 	cfg.EnableParallelToolExecution = os.Getenv("ENABLE_PARALLEL_TOOL_EXECUTION") != "false"
 }
 

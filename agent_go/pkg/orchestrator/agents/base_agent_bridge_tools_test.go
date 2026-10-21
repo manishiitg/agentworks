@@ -47,7 +47,7 @@ func TestWorkflowBaseUsesOnDemandTransportSkill(t *testing.T) {
 	}
 	model := &stepPromptCaptureModel{}
 	tool := mcpagent.ToolDefinition{Name: "query_workflow_db", Description: "Read workflow facts.", InputSchema: map[string]interface{}{"type": "object"}, Execute: func(context.Context, map[string]interface{}) (string, error) { return "facts", nil }}
-	base, err := NewBaseAgent(t.Context(), TodoPlannerExecutionAgentType, "Fixture", model, "Workflow orientation.", []string{mcpclient.NoServers}, []mcpagent.ToolDefinition{tool}, nil, true, AgentMode(""), nil, "", config, "fixture", 0, "auto", 2, "", loggerv2.NewNoop(), false, nil, 0, false, nil, nil, "", "", false, false, false, "", nil, nil)
+	base, err := NewBaseAgent(t.Context(), TodoPlannerExecutionAgentType, "Fixture", model, "Workflow orientation.", []string{mcpclient.NoServers}, []mcpagent.ToolDefinition{tool}, nil, true, AgentMode(""), nil, "", config, "fixture", 0, "auto", 2, "", loggerv2.NewNoop(), false, false, nil, nil, "", "", false, false, false, "", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

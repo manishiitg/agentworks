@@ -139,10 +139,6 @@ type OrchestratorAgentConfig struct {
 	// CodingAgentOutputDir is the trusted step artifact directory linked as
 	// output/ inside that private runtime. It is never authored in workflow JSON.
 	CodingAgentOutputDir string `json:"-"`
-	// Context offloading configuration
-	EnableContextOffloading *bool `json:"enable_context_offloading,omitempty"` // Enable/disable context offloading (default: true if nil)
-	LargeOutputThreshold    int   `json:"large_output_threshold,omitempty"`    // Token threshold for context offloading (0 = use default: 10000)
-
 	// System prompt configuration
 	OverwriteSystemPrompt *bool `json:"overwrite_system_prompt,omitempty"` // Overwrite (true) or append (false) system prompt during execution (default: false if nil)
 
