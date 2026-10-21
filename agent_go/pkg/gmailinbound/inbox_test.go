@@ -22,11 +22,11 @@ func TestPersonalAliasMailIsSourceBoundWithoutExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	one, err := store.EnsureInbox(ctx, Inbox{OwnerID: "owner", ConnectionID: "personal", ID: "one", ProfileID: "work", ProjectOwnerID: "owner", ConnectionID: "personal", ID: "one", Address: "company+one@example.com"})
+	one, err := store.EnsureInbox(ctx, Inbox{OwnerID: "owner", ConnectionID: "personal", ID: "one", ProfileID: "work", ProjectID: "one", Address: "owner+agent-one@example.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	two, err := store.EnsureInbox(ctx, Inbox{OwnerID: "other", ConnectionID: "other", ID: "two", ProfileID: "work", ProjectOwnerID: "other", ConnectionID: "other", ID: "two", Address: "company+one@example.com"})
+	two, err := store.EnsureInbox(ctx, Inbox{OwnerID: "other", ConnectionID: "other", ID: "two", ProfileID: "work", ProjectID: "two", Address: "owner+agent-one@example.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
