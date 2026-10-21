@@ -20,5 +20,7 @@ export function CodeChatConnectionStatus({ sessionId }: { sessionId: string }) {
     return () => { active = false; window.removeEventListener('crew-laptop-settings-changed', load) }
   }, [profile, project])
   if (!computer) return null
-  return <span role="status" title={`${computer}. Manage folders in Settings → Laptop access.`} className="inline-flex h-7 min-w-0 max-w-48 items-center gap-1.5 text-[11px] text-muted-foreground"><Laptop className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Laptop · {computer}</span></span>
+  // Opens the Crew's Local laptop panel, the way the model name opens Models.
+  return <button type="button" title={`${computer}. Open the Local laptop settings.`} onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-chat-laptop', { detail: { projectId: project } }))}
+    className="inline-flex h-7 min-w-0 max-w-48 items-center gap-1.5 rounded px-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"><Laptop className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Laptop · {computer}</span></button>
 }
