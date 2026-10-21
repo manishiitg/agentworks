@@ -154,7 +154,7 @@ export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }
 
   return (
     <section
-      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto bg-[#0b0e14] text-[#e7e9e5]"
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto overflow-y-hidden bg-[#0b0e14] text-[#e7e9e5]"
       data-testid="main-agent-terminal-scroll-container"
     >
       <div
