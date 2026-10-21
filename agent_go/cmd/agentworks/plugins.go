@@ -68,7 +68,13 @@ func (input *pluginHookInput) UnmarshalJSON(raw []byte) error {
 // prompt is consumed for attach, and it is blocked before reaching the model.
 func pluginCommand(o *options) *cobra.Command {
 	root := &cobra.Command{Use: "plugin", Short: "Local coding-agent hooks and MCP delivery"}
-	hook := &cobra.Command{Use: "hook PROVIDER", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	hook := &cobra.Command{Use: "hook PROVIDER", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) (hookErr error) {
+		defer func() {
+			if hookErr != nil {
+				reason := strings.TrimSuffix(strings.Join(strings.Fields(hookErr.Error()), " "), ".")
+				hookErr = fmt.Errorf("AgentWorks hook failed: %s. Run agentworks update.", reason)
+			}
+		}()
 		if !messagingPluginProvider(args[0]) && args[0] != "pi" && args[0] != "cursor" {
 			return errors.New("unsupported hook provider")
 		}

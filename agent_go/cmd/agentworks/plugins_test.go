@@ -305,3 +305,14 @@ func TestAgentPersonAttachOnGrammarIsStrict(t *testing.T) {
 		}
 	}
 }
+
+// The Windows report exposed only exit 1. Hook errors keep their cause and
+// give one next step on stderr; successful quiet hooks remain covered above.
+func TestHookFailureExplainsNextStep(t *testing.T) {
+	var stdout, stderr strings.Builder
+	code := run(context.Background(), []string{"plugin", "hook", "codex"}, strings.NewReader("{"), &stdout, &stderr, func(string) string { return "" })
+	line := strings.TrimSpace(stderr.String())
+	if code != 1 || stdout.Len() != 0 || strings.Count(line, "\n") != 0 || !strings.Contains(line, "AgentWorks hook failed:") || !strings.Contains(line, "unexpected EOF") || !strings.HasSuffix(line, "Run agentworks update.") {
+		t.Fatalf("hook failure: code=%d stderr=%q stdout=%q", code, line, stdout.String())
+	}
+}
