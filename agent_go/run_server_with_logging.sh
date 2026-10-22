@@ -1342,7 +1342,9 @@ FRONTEND_RUNTIME_CONFIG_PATH="${AGENTWORKS_RUNTIME_CONFIG_PATH:-${SCRIPT_DIR}/..
 FRONTEND_PID=""
 ELECTRON_PID=""
 ELECTRON_MEMORY_MONITOR_PID=""
-FRONTEND_LOG_PATH=""
+# Dashboard assets also prepare on backend-only launches. Their dependency and
+# build output needs a real log path even when we keep an existing Vite process.
+FRONTEND_LOG_PATH="${LOG_DIR}/frontend_debug.log"
 ELECTRON_LOG_PATH=""
 FRONTEND_DIR="${SCRIPT_DIR}/../frontend"
 DESKTOP_DIR="${SCRIPT_DIR}/../desktop"
