@@ -78,8 +78,13 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 	call(worker, map[string]any{"action": "register", "agent_name": "worker"}, true)
 	// A name registered by a CLI sign-in keeps receiving while its chat is closed (no attachment): only names
 	// never attached and held by MCP sign-ins are refused (owner 2026-10-16).
-	if n := len(call(foreign, map[string]any{"action": "list_agents"}, true)["agents"].([]any)); n != 0 {
-		t.Fatal("foreign account saw directory")
+	// The unified directory includes accessible shared products. These two
+	// private connected names must remain absent from the other person's list.
+	for _, item := range call(foreign, map[string]any{"action": "list_agents"}, true)["agents"].([]any) {
+		row := item.(map[string]any)
+		if row["id"] == "agent:reviewer" || row["id"] == "agent:worker" {
+			t.Fatal("foreign account saw a private named agent", row["id"])
+		}
 	}
 	call(foreign, map[string]any{"action": "send", "target": "agent:reviewer", "message": "Foreign"}, false)
 	send := map[string]any{"action": "send", "agent_name": "worker", "target": "agent:reviewer", "message": "Ready for review", "submission_id": "review-one"}
