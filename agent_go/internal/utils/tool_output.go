@@ -7,7 +7,7 @@ func ExtractActualContent(content string) string {
 	if strings.HasPrefix(content, `{"type":"text","text":"`) {
 		start := len(`{"type":"text","text":"`)
 		end := strings.LastIndex(content, `"}`)
-		if end > start {
+		if end >= start {
 			text := content[start:end]
 			text = strings.ReplaceAll(text, `\"`, `"`)
 			text = strings.ReplaceAll(text, `\n`, "\n")
