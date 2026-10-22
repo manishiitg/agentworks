@@ -12,9 +12,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Brain keeps its own secrets (owner, 2026-10-06: "Vault = platform secrets and everything is product specific"): the
-// Git backup token and anything else Brain's folder needs, in the shared encrypted secret store under Brain's folder,
-// managed by the people who own the whole Brain. Platform (Vault) secrets are not listed in Brain.
+// Brain retains its whole-Brain owner boundary; Vault stores its values.
 const brainSecretsPath = brainFolderName
 
 var brainSecretName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
@@ -148,7 +146,7 @@ func (api *StreamingAPI) registerBrainSecretsTool(registrar definitionToolRegist
 		"required":             []string{"action"},
 		"additionalProperties": false,
 	}
-	description := "Brain's own secrets (not Vault's platform secrets): list their names, set one (for example BRAIN_GITHUB_PAT, the Git backup token named by configure_backup's pat_secret) or delete one. Values are never shown. Only people who own the whole Brain manage them."
+	description := "Vault-backed Brain secrets: list their names, set one (for example BRAIN_GITHUB_PAT, the Git backup token named by configure_backup's pat_secret) or delete one. Values are never shown. Only people who own the whole Brain manage them."
 	return registrar.RegisterCustomTool(brainSecretsToolName, description, params, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		claims := GetUserFromContext(ctx)
 		if claims == nil || claims.UserID != userID {

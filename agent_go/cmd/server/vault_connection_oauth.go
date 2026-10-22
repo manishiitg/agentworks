@@ -439,6 +439,7 @@ func (api *StreamingAPI) capLayerConnectionAccess(ctx context.Context, userID, o
 	if operation == "configure_sign_in_app" {
 		var in struct {
 			Key          string `json:"key"`
+			ProjectID    string `json:"project_id,omitempty"`
 			ClientID     string `json:"client_id"`
 			ClientSecret string `json:"client_secret"`
 			Remove       bool   `json:"remove"`
@@ -469,7 +470,7 @@ func (api *StreamingAPI) capLayerConnectionAccess(ctx context.Context, userID, o
 		if strings.TrimSpace(in.ClientID) == "" || len(in.ClientID) > 300 || strings.ContainsAny(in.ClientID, " \r\n\t") || len(in.ClientSecret) > 8192 {
 			return "", errors.New("provide the app client ID and required secret")
 		}
-		if err := writeMCPApp(key, mcpApp{ClientID: strings.TrimSpace(in.ClientID), ClientSecret: in.ClientSecret, UpdatedAt: time.Now().UTC().Format(time.RFC3339), UpdatedBy: userID}); err != nil {
+		if err := writeMCPApp(key, mcpApp{ProjectID: in.ProjectID, ClientID: strings.TrimSpace(in.ClientID), ClientSecret: in.ClientSecret, UpdatedAt: time.Now().UTC().Format(time.RFC3339), UpdatedBy: userID}); err != nil {
 			return "", err
 		}
 		return "Stored the shared sign-in app encrypted. Existing accounts and grants are retained; credential values are never returned.", nil

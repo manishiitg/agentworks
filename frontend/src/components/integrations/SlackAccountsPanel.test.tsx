@@ -6,7 +6,6 @@ import { expect, it, vi } from 'vitest'
 const requests = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(async () => ({ data: {} })) }))
 vi.mock('../../services/api', () => ({ default: requests, getApiBaseUrl: () => 'https://app.example.com' }))
 vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { is_admin: false } }) }))
-vi.mock('../../products/work/McpAppsSection', () => ({ McpAppsSection: () => null }))
 import SlackAccountsPanel from './SlackAccountsPanel'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })

@@ -1,6 +1,5 @@
 import type { KnowledgeAccessProposal } from '../../services/knowledgebaseApi'
 import { useState } from 'react'
-import { SecretField } from '../../components/ui/SecretField'
 
 const labels: Record<string, string> = {
   configure_backup: 'Configure Git backup',
@@ -31,7 +30,8 @@ export function KnowledgebaseAccessConfirmation({ proposals, error, busy, onConf
       <dl className="my-2 text-sm">{fields.filter(([key]) => key in proposal.arguments).map(([key, label]) =>
         <div key={key} className="flex gap-2"><dt className="text-muted-foreground">{label}:</dt><dd className="break-all whitespace-pre-wrap">{String(proposal.arguments[key] || (key === 'folder_path' ? 'Organization root' : 'false'))}</dd></div>)}</dl>
       <p className="mb-2 text-xs text-muted-foreground">Review the exact scope and identity. Permissions are checked again when you approve.</p>
-      {proposal.arguments.action === 'configure_backup' && String(proposal.arguments.remote_url).startsWith('https://') && <div className="mb-3"><SecretField label="PAT (optional)" value={pats[proposal.id] || ''} onChange={value => setPATs(current => ({ ...current, [proposal.id]: value }))} disabled={busy} placeholder="For private repositories" hint={proposal.arguments.pat_configured ? 'A PAT was provided. Leave blank to keep it, or enter a replacement. Stored encrypted in Brain.' : 'Enter here for a private repository. Stored encrypted in Brain; never sent to chat.'} /></div>}
+      {proposal.arguments.action==='configure_backup'&&<p className="mb-3 text-xs text-muted-foreground">For private repositories, save the backup credential through Vault chat and use its secret name.</p>}
+
       <button type="button" disabled={busy} onClick={() => void confirm(proposal.id, true, proposal.arguments.action === 'configure_backup')} className="mr-3 rounded border px-3 py-1">Approve</button>
       <button type="button" disabled={busy} onClick={() => void confirm(proposal.id, false, false)} className="rounded border px-3 py-1">Cancel</button>
     </div>)}

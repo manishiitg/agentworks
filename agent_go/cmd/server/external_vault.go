@@ -230,6 +230,10 @@ func (api *StreamingAPI) vaultManagementCall(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	} else if name == "manage_vault_secret_access" {
+		if externalArg(args, "scope") == "brain" {
+			api.vaultBrainSecretCall(w, r, args)
+			return
+		}
 		switch op {
 		case "list":
 			if group == "" {
@@ -412,4 +416,58 @@ func btoi(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// Brain's existing whole-folder ownership checks stay authoritative in Vault chat.
+func (api *StreamingAPI) vaultBrainSecretCall(w http.ResponseWriter, r *http.Request, args map[string]any) {
+	claims := GetUserFromContext(r.Context())
+	if !brainSecretsManager(r) || claims == nil || claims.AccessToken != nil && !claims.AccessToken.Allows("knowledgebase:write") {
+		externalError(w, 403, "forbidden", "Only people who manage the whole Brain can change its Vault secrets.")
+		return
+	}
+	op := externalArg(args, "operation")
+	switch op {
+	case "list":
+	case "set_value":
+		values, _ := args["values"].(map[string]any)
+		if len(values) == 0 {
+			externalError(w, 400, "invalid_arguments", "Provide values by secret name.")
+			return
+		}
+		existing, err := api.brainSecretNames(r.Context())
+		if err != nil {
+			externalError(w, 503, "vault_unavailable", "Vault is unavailable.")
+			return
+		}
+		overwrite, _ := args["overwrite"].(bool)
+		for name, raw := range values {
+			value, _ := raw.(string)
+			if !overwrite && containsExactString(existing, name) {
+				continue
+			}
+			if err := api.setBrainSecret(r.Context(), name, value); err != nil {
+				externalError(w, 400, "invalid_arguments", err.Error())
+				return
+			}
+		}
+	case "delete":
+		name := externalArg(args, "name")
+		if name == "" || externalArg(args, "confirm") != name {
+			externalError(w, 400, "invalid_arguments", "Repeat the secret name in confirm.")
+			return
+		}
+		if err := api.deleteSharedWorkflowSecret(r.Context(), brainSecretsPath, name, claims.UserID); err != nil {
+			externalError(w, 400, "invalid_arguments", err.Error())
+			return
+		}
+	default:
+		externalError(w, 400, "invalid_arguments", "Brain’s Vault scope supports list, set_value and delete; its access follows Brain ownership.")
+		return
+	}
+	names, err := api.brainSecretNames(r.Context())
+	if err != nil {
+		externalError(w, 503, "vault_unavailable", "Vault is unavailable.")
+		return
+	}
+	externalJSON(w, map[string]any{"secrets": names, "stored_in": "Vault", "scope": "brain"})
 }

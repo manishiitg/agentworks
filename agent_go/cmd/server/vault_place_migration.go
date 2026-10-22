@@ -397,10 +397,6 @@ func backupLegacyMCPStore() error {
 
 // Legacy inventory readers below are used by the one-off importer and retired
 // store cleanup only. Live setup and execution never resolve these accounts.
-func personalMCPByCatalog(person, name string) (placeMCPServer, bool) {
-	v, ok, _ := lookupPersonalMCP(person, name)
-	return v, ok
-}
 func lookupPersonalMCP(person, name string) (placeMCPServer, bool, error) {
 	rows, err := listPlaceMCPServers(person)
 	if err != nil {

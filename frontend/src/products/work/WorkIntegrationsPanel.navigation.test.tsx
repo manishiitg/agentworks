@@ -22,7 +22,6 @@ vi.mock('../../components/workflow/WorkflowBotsPanel', () => ({ default: ({ fixe
 vi.mock('../../components/workflow/WorkflowEmailPanel', () => ({ default: () => <div data-content="gmail">Existing Google apps</div> }))
 vi.mock('../../components/integrations/ProjectMcpSetupPanel', () => ({ ProjectMcpSetupPanel: () => <div data-content="cli">Existing MCP setup</div> }))
 vi.mock('./CrewPublishedAgents', () => ({ CrewPublishedAgents: () => <div data-content="agents">Chats from your computer</div> }))
-vi.mock('./McpAppsSection', () => ({ McpAppsSection: () => null }))
 vi.mock('./codeLocalFiles', () => ({ useCodeFilesPreference: () => ({ location: 'server' }) }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (value: unknown) => unknown) => select({ chatTabs: {} }) }))
 import { WorkIntegrationsPanel } from './WorkIntegrationsPanel'
