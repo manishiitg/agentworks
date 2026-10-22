@@ -12,7 +12,7 @@ import (
 )
 
 // Real MCP, native migration tool, Builder stamp checks and disk. An owner
-// moves a workflow from 1.0.46 to 1.0.47 without a model turn; the Builder's
+// prepares a legacy workflow before the 1.0.45 and 1.0.46 checks, then moves it to 1.0.47 without a model turn; the Builder's
 // ordering and role rules still hold.
 func TestExternalContractUpgradeOverMCP(t *testing.T) {
 	f := newBuilderOperationFixture(t)
@@ -23,8 +23,8 @@ func TestExternalContractUpgradeOverMCP(t *testing.T) {
 	workspace := httptest.NewServer(router)
 	defer workspace.Close()
 	t.Setenv("WORKSPACE_API_URL", workspace.URL)
-	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoices","created_by":"owner","version":"1.0.46","code_layout_version":1,"access":{"owners":["owner"],"editors":["outsider"],"readers":["reader"]}}`)
-	f.write(t, "Workflow/invoices/planning/plan.json", `{"steps":[{"id":"chat","type":"message_sequence","title":"Chat","description":"Talk to the person","items":[{"id":"hello","type":"user_message","message":"Hello"}]}]}`)
+	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","label":"Invoices","created_by":"owner","version":"1.0.44","code_layout_version":1,"access":{"owners":["owner"],"editors":["outsider"],"readers":["reader"]}}`)
+	f.write(t, "Workflow/invoices/planning/plan.json", `{"steps":[{"id":"chat","type":"orchestrator","title":"Chat","description":"Talk to the person","items":[{"id":"hello","type":"user_message","message":"Hello"}]}]}`)
 	_, owner := f.issue(t, "owner")
 	_, reader := f.issue(t, "reader")
 
@@ -32,14 +32,41 @@ func TestExternalContractUpgradeOverMCP(t *testing.T) {
 	if !strings.Contains(status, `"version":"1.0.46"`) || !strings.Contains(status, `"version":"1.0.47"`) || !strings.Contains(status, "upgrade-agent-step") {
 		t.Fatalf("status did not list the owed migration: %s", status)
 	}
-	// The stamp is refused until the migration's work is done.
+	// Status stays read-only; explicit preparation uses the existing raw JSON
+	// migration before any typed checker, without moving the contract stamp.
+	if !strings.Contains(f.read(t, "Workflow/invoices/planning/plan.json"), `"type":"orchestrator"`) {
+		t.Fatal("status mutated the saved plan")
+	}
+	f.call(t, reader, "workflow_upgrade", map[string]any{"action": "prepare"}, 403)
+	prepared := externalTestBody(t, f.call(t, owner, "workflow_upgrade", map[string]any{"action": "prepare"}, 200), 200)["result"].(string)
+	if !strings.Contains(prepared, `"agent_steps"`) || !strings.Contains(prepared, `migrated`) {
+		t.Fatalf("preparation omitted the migration receipt: %s", prepared)
+	}
+	if !strings.Contains(f.read(t, "Workflow/invoices/workflow.json"), `"1.0.44"`) {
+		t.Fatal("preparation stamped a version")
+	}
+	noOp := f.call(t, owner, "workflow_upgrade", map[string]any{"action": "prepare"}, 200).Body.String()
+	if !strings.Contains(noOp, "no_op") {
+		t.Fatalf("repeated preparation was not a no-op: %s", noOp)
+	}
+	f.write(t, "Workflow/invoices/code/check/main.py", "import sqlite3\nconn = sqlite3.connect('db/db.sqlite')\n")
+	managedStamp := map[string]any{"action": "stamp", "version": "1.0.45", "confirm": "invoices"}
+	f.call(t, owner, "workflow_upgrade", managedStamp, 409)
+	f.write(t, "Workflow/invoices/code/check/main.py", "from agentworks_db import query\nrows = query('SELECT 1')\n")
+	f.call(t, owner, "workflow_upgrade", managedStamp, 200)
+	layoutStamp := map[string]any{"action": "stamp", "version": "1.0.46", "confirm": "invoices"}
+	f.call(t, owner, "workflow_upgrade", layoutStamp, 409) // heading checks still apply
+	revision := externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
+	f.call(t, owner, "plan", map[string]any{"action": "update_step", "expected_revision": revision, "request_id": "layout-before-agent-stamp", "arguments": map[string]any{"step_id": "chat", "changes": map[string]any{"description": "## Goal\nTalk to the person.\n## Inputs\nTheir message.\n## Output\nA greeting.\n## Done when\nThe person is greeted.", "reason": "Organize the existing greeting task."}}}, 200)
+	f.call(t, owner, "workflow_upgrade", layoutStamp, 200)
+
+	// Stamps still follow the ladder after preparation.
 	stamp := map[string]any{"action": "stamp", "version": "1.0.47", "confirm": "invoices"}
-	f.call(t, owner, "workflow_upgrade", stamp, 409)
 	if !strings.Contains(f.read(t, "Workflow/invoices/workflow.json"), `"1.0.46"`) {
 		t.Fatal("a refused stamp changed the workflow")
 	}
 
-	revision := externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
+	revision = externalTestBody(t, f.call(t, owner, "get_plan", map[string]any{}, 200), 200)["revision"].(string)
 	f.call(t, owner, "plan", map[string]any{"action": "migrate_agent_steps", "arguments": map[string]any{}, "expected_revision": revision, "request_id": "migrate-agent-steps"}, 200)
 	if !strings.Contains(f.read(t, "Workflow/invoices/planning/plan.json"), `"type": "agent"`) && !strings.Contains(f.read(t, "Workflow/invoices/planning/plan.json"), `"type":"agent"`) {
 		t.Fatal("the saved step type was not migrated")

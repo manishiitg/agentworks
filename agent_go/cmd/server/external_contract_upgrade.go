@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
@@ -16,8 +18,8 @@ import (
 var contractVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
 func externalContractUpgradeDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("workflow_upgrade", "Workflow contract upgrades without a model turn, with the same checks as the Builder. action=status lists the migrations this workflow still owes, in order. action=stamp records one completed migration: pass version (the next one owed) and confirm (repeat the workflow_id). The stamp runs the Builder's prerequisite checks and refuses out-of-order versions. A migration's work is done first: for the agent-step migration (1.0.47) call plan action=migrate_agent_steps with empty arguments, then stamp; the Goal-agent migration (1.0.50) is plan action=migrate_goal_agents; the skills migration (1.0.51) is plan action=migrate_workflow_skills; other migrations need builder action=chat, whose native tools are get_contract_upgrades, the named migrate_* tool and set_workflow_contract_version (not this external workflow_upgrade tool). Goals workflows only. Requires Builder consent and a current owner or editor role; changes are not applied while the workflow is running.", true, true, map[string]any{
-		"action":  map[string]any{"type": "string", "enum": []any{"status", "stamp"}},
+	add("workflow_upgrade", "Workflow contract upgrades without a model turn, with the same checks as the Builder. action=status only lists the migrations this workflow still owes, in order. Start an explicit upgrade with action=prepare: it runs the native migrate_agent_steps on raw saved JSON before any plan checker and does not stamp a version. action=stamp records one completed migration: pass version (the next one owed) and confirm (repeat the workflow_id). The stamp runs the Builder's prerequisite checks and refuses out-of-order versions. A migration's work is done first: the agent-step conversion is prepared first, even below 1.0.46; stamp 1.0.47 only when it becomes the next version owed; the Goal-agent migration (1.0.50) is plan action=migrate_goal_agents; the skills migration (1.0.51) is plan action=migrate_workflow_skills; other migrations need builder action=chat, whose native tools are get_contract_upgrades, the named migrate_* tool and set_workflow_contract_version (not this external workflow_upgrade tool). Goals workflows only. Requires Builder consent and a current owner or editor role; changes are not applied while the workflow is running.", true, true, map[string]any{
+		"action":  map[string]any{"type": "string", "enum": []any{"status", "prepare", "stamp"}},
 		"version": externalString("stamp: the contract version to record, such as 1.0.47; must be the next one status lists."),
 		"confirm": externalString("stamp: repeat the workflow_id to confirm."),
 	}, "action")
@@ -64,11 +66,30 @@ func (api *StreamingAPI) externalContractUpgradeCall(w http.ResponseWriter, r *h
 		for _, step := range workflowVersionUpgradePlan(current) {
 			pending = append(pending, map[string]string{"version": step.to, "migration": step.label})
 		}
-		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "version": workflowContractVersionForUpgrade(current), "platform_version": WorkflowContractCurrentVersion, "code_layout_version": current.CodeLayoutVersion, "pending": pending, "next": "Do the next migration's work, then workflow_upgrade action=stamp. The agent-step migration (1.0.47) is plan action=migrate_agent_steps with empty arguments; the Goal-agent migration (1.0.50) is plan action=migrate_goal_agents; the skills migration (1.0.51) is plan action=migrate_workflow_skills; other migrations use builder action=chat. Inside Builder chat use get_contract_upgrades, the migration tool named by its instructions and set_workflow_contract_version; workflow_upgrade is for the external MCP caller."})
+		externalJSON(w, map[string]any{"workflow_id": workflow.Manifest.ID, "version": workflowContractVersionForUpgrade(current), "platform_version": WorkflowContractCurrentVersion, "code_layout_version": current.CodeLayoutVersion, "pending": pending, "next": "Start an explicit upgrade with workflow_upgrade action=prepare, before Builder chat or plan checkers; this converts retired agent records without stamping. Then do the next migration's work and workflow_upgrade action=stamp in order; the Goal-agent migration (1.0.50) is plan action=migrate_goal_agents; the skills migration (1.0.51) is plan action=migrate_workflow_skills; other migrations use builder action=chat. Inside Builder chat use get_contract_upgrades, the migration tool named by its instructions and set_workflow_contract_version; workflow_upgrade is for the external MCP caller."})
+		return
+	}
+	if action == "prepare" {
+		if args["version"] != nil || args["confirm"] != nil {
+			externalError(w, 400, "invalid_arguments", "prepare takes no version or confirm; it never stamps.")
+			return
+		}
+		// Reuse the native migration's authoring, consent, team, revision and
+		// changelog path. This raw-JSON prerequisite must precede typed checkers;
+		// the later 1.0.47 stamp still follows the ordinary contract ladder.
+		revision, err := externalPlanRevision(ctx, rootPath)
+		if err != nil {
+			externalFailure(w, err)
+			return
+		}
+		api.externalPlanMutationCall(w, r.WithContext(ctx), map[string]any{
+			"action": "migrate_agent_steps", "arguments": map[string]any{},
+			"expected_revision": revision, "request_id": "upgrade-prepare-" + uuid.NewString(),
+		}, workflow)
 		return
 	}
 	if action != "stamp" {
-		externalError(w, 400, "invalid_arguments", "action must be status or stamp.")
+		externalError(w, 400, "invalid_arguments", "action must be status, prepare or stamp.")
 		return
 	}
 	version := externalArg(args, "version")

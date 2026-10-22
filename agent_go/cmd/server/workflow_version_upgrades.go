@@ -172,7 +172,9 @@ If a script cannot be converted without a product decision (it needs a PRAGMA, A
 
 const upgradeStepDescriptionLayout = `WORKFLOW CONTRACT UPGRADE: STEP DESCRIPTIONS USE THE STANDARD LAYOUT.
 
-Do only this migration. Every agent step's description (type agent or orchestrator, nested sub-agent steps included) now uses the section layout from builder-reference references/step-description.md ("Use this section layout"), in this order:
+Before any plan checker, call migrate_agent_steps to prepare saved records as canonical agent steps. This raw-JSON prerequisite works on earlier contract versions and does not stamp 1.0.47; keep stamps in order. If preparation fails, stop and report it.
+
+Do only the description migration after preparation. Every agent step's description (type agent, nested sub-agent steps included) now uses the section layout from builder-reference references/step-description.md ("Use this section layout"), in this order:
 ## Goal       — what the step achieves, in one to three sentences
 ## Inputs     — what it reads: prior step outputs, DB tables, KB notes by name
 ## Output     — what it produces and where; the shape stays in validation_schema

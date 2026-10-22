@@ -6,7 +6,7 @@ export function hasWorkflowContractUpgrade(status: WorkflowContractUpgradeStatus
   return Boolean(status && (status.required || status.pending_count > 0 || status.pending?.length > 0))
 }
 
-export const MANUAL_CONTRACT_UPGRADE_MESSAGE = 'Update this workflow to the current platform contract now. Use get_contract_upgrades, complete and verify each pending migration in order, and stamp each completed version before continuing to the next. Do not run the workflow as part of the migration. If a migration requires a genuine product, business, or safety choice, stop and ask me in this chat instead of guessing. When all migrations are complete, confirm the final workflow contract version.'
+export const MANUAL_CONTRACT_UPGRADE_MESSAGE = 'Update this workflow to the current platform contract now. First call migrate_agent_steps to prepare saved agent records without stamping any version. Use get_contract_upgrades, complete and verify each pending migration in order, and stamp each completed version before continuing to the next. Do not run the workflow as part of the migration. If a migration requires a genuine product, business, or safety choice, stop and ask me in this chat instead of guessing. When all migrations are complete, confirm the final workflow contract version.'
 export const WORKFLOW_CONTRACT_UPGRADE_STATUS_EVENT = 'workflow-contract-upgrade-status'
 export const WORKFLOW_CONTRACT_UPGRADE_CHAT_EVENT = 'workflow-contract-upgrade-chat'
 

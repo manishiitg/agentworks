@@ -5556,7 +5556,7 @@ func registerNativePlanModificationTools(
 	// Note: human_feedback is already registered via WorkspaceTools (created by createCustomTools in server.go)
 	// No need to register it again here to avoid duplicate registration errors
 
-	if err := mcpAgent.RegisterCustomTool("migrate_agent_steps", "Migrate saved agent step types to agent/items without changing routes, contracts, or user text. Call during workflow contract v1.0.47 preflight.", objectToolSchema(map[string]interface{}{}), createMigrateAgentStepsExecutor(workspacePath, logger, readFile, writeFile), "workflow"); err != nil {
+	if err := mcpAgent.RegisterCustomTool("migrate_agent_steps", "Migrate saved agent step types to agent/items without changing routes, contracts, or user text. Call first at the start of an explicit workflow upgrade, before get_contract_upgrades or any typed plan checker. Works on earlier contract versions, returns no_op when nothing needs conversion, and never stamps a version; the later v1.0.47 stamp remains in order.", objectToolSchema(map[string]interface{}{}), createMigrateAgentStepsExecutor(workspacePath, logger, readFile, writeFile), "workflow"); err != nil {
 		return err
 	}
 
