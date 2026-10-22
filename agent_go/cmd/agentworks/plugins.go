@@ -880,7 +880,7 @@ func bridgeCommand(o *options) *cobra.Command {
 			}
 			root = configured
 		}
-		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Version: cliVersion, ClientBuild: cliBuild, Notify: notifyAgentWaiting, Ping: notifyPing, HostAlive: cursorAwareHostAlive, UsageRead: readAttachedUsage(root), ChatLabel: attachedChatLabel, ChatContext: attachedChatContext, AutoUpdate: autoUpdateHelperCallback})
+		return agentworksclient.ServeLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeOptions{NativeOffer: codexNativeOffer, NativeRoute: refreshNativeRoute, Version: cliVersion, ClientBuild: cliBuild, Ping: notifyPing, HostAlive: cursorAwareHostAlive, UsageRead: readAttachedUsage(root), ChatLabel: attachedChatLabel, ChatContext: attachedChatContext, AutoUpdate: autoUpdateHelperCallback})
 	}}
 	serve.Flags().StringVar(&piRootOverride, "pi-root", "", "Pi SDK configured root")
 	_ = serve.Flags().MarkHidden("pi-root")
@@ -1147,19 +1147,6 @@ func codexNativeOffer(ctx context.Context, remote string, out agentworksclient.L
 	c.Stderr = io.Discard
 	mayHaveDelivered = true
 	return c.Run()
-}
-
-func notifyAgentWaiting(a agentworksclient.AgentAttachment, notice string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	text := "Message waiting for agent:" + a.AgentName + ". Open the chat and send a message to receive it."
-	if a.Provider == "codex" {
-		text = "Message waiting for agent:" + a.AgentName + ". Open that Codex chat and send any message to receive it."
-	}
-	if notice != "" {
-		text = "agent:" + a.AgentName + ". " + notice
-	}
-	desktopNotify(ctx, a, text)
 }
 
 // notifyPing shows another agent's ping for this person. The second line is
