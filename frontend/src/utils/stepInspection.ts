@@ -16,6 +16,25 @@ export function isWorkflowInspectionTab(tab: ChatTab | undefined | null): boolea
  return tab?.metadata?.mode === 'workflow' && (!tab.metadata.agentProfileId || ['goals','workflow'].includes(tab.metadata.agentProfileId))
 }
 
+export function stepInspectionState(tab: ChatTab | undefined | null) {
+ const items = isWorkflowInspectionTab(tab) ? tab?.metadata?.stepInspections?.items.filter(item => item.session_id === tab.sessionId && readInspectionTarget(item)) ?? [] : []
+ const selected = items.find(item => inspectionKey(item) === tab?.metadata?.stepInspections?.activeId)
+ return { items, selected }
+}
+
+/** Navigation only: retain the parent session, draft and saved execution targets. */
+export function selectStepInspection(tabId: string, sessionId: string | null | undefined, id: string | null, close?: string): boolean {
+ const store = useChatStore.getState()
+ const tab = store.getTab(tabId)
+ if (!isWorkflowInspectionTab(tab) || !tab || tab.sessionId !== sessionId) return false
+ const items = tab.metadata?.stepInspections?.items ?? []
+ const next = close ? items.filter(item => inspectionKey(item) !== close) : items
+ if (id && !next.some(item => item.session_id === sessionId && readInspectionTarget(item) && inspectionKey(item) === id)) return false
+ if (!tab.metadata?.stepInspections) return id === null
+ store.setTabMetadata(tabId, { stepInspections: { items: next, activeId: id } })
+ return true
+}
+
 /** Only a card belonging to the selected parent chat may open an inspector. */
 export function openStepInspection(target: ExecutionInspectionTarget): boolean {
  const chat = useChatStore.getState()

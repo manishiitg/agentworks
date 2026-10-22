@@ -1,31 +1,25 @@
 import { lazy, Suspense, useEffect, useId, useRef, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { useChatStore } from '../../stores/useChatStore'
-import { inspectionKey, readInspectionTarget, isWorkflowInspectionTab } from '../../utils/stepInspection'
+import { inspectionKey, selectStepInspection, stepInspectionState } from '../../utils/stepInspection'
 
 const StepInspectionPanel = lazy(() => import('./StepInspectionPanel'))
 
-export function StepInspectionTabs({ tabId, children }: { tabId: string | null; children: ReactNode }) {
+export function StepInspectionTabs({ tabId, children, navigation = 'inline' }: { tabId: string | null; children: ReactNode; navigation?: 'inline' | 'shared' }) {
  const prefix = useId()
  const tabList = useRef<HTMLDivElement>(null)
  const tab = useChatStore(state => tabId ? state.chatTabs[tabId] : undefined)
- const items = isWorkflowInspectionTab(tab) ? tab?.metadata?.stepInspections?.items.filter(item => item.session_id === tab.sessionId && readInspectionTarget(item)) ?? [] : []
+ const { items, selected } = stepInspectionState(tab)
  const activeId = tab?.metadata?.stepInspections?.activeId
- const selected = items.find(item => inspectionKey(item) === activeId)
  useEffect(() => {
   tabList.current?.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.focus()
  }, [activeId])
  const select = (id: string | null, close?: string) => {
   if (!tabId) return
-  const store = useChatStore.getState()
-  const current = store.getTab(tabId)
-  if (!current || current.sessionId !== tab?.sessionId) return
-  const currentItems = current.metadata?.stepInspections?.items ?? []
-  const next = close ? currentItems.filter(item => inspectionKey(item) !== close) : currentItems
-  store.setTabMetadata(tabId, {stepInspections: {items: next, activeId: id}})
+  selectStepInspection(tabId, tab?.sessionId, id, close)
  }
  return <div className="flex h-full min-h-0 min-w-0 flex-col">
-  {items.length > 0 && <div role="tablist" ref={tabList} aria-label="Chat and step inspections" onKeyDown={event => {
+  {navigation === 'inline' && items.length > 0 && <div role="tablist" ref={tabList} aria-label="Chat and step inspections" onKeyDown={event => {
    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || (event.target as HTMLElement).getAttribute('role') !== 'tab') return
    const keys = [null, ...items.map(inspectionKey)]
    const current = Math.max(0, keys.indexOf(selected ? inspectionKey(selected) : null))
@@ -38,8 +32,8 @@ export function StepInspectionTabs({ tabId, children }: { tabId: string | null; 
     <button type="button" aria-label={`Close inspection ${item.name || 'step'}`} title="Close inspection" onClick={() => select(activeId === id ? null : activeId ?? null, id)} className="mr-1 rounded p-1 text-muted-foreground hover:bg-accent"><X className="h-3 w-3" /></button>
    </div> })}
   </div>}
-  <div id={`${prefix}-chat`} role="tabpanel" aria-labelledby={`${prefix}-chat-tab`} hidden={!!selected} className="h-full min-h-0 flex-1" style={selected ? {display:'none'} : undefined}>{children}</div>
-  {selected && <div id={`${prefix}-panel`} role="tabpanel" aria-labelledby={`${prefix}-${items.indexOf(selected)}-tab`} className="min-h-0 flex-1">
+  <div id={`${prefix}-chat`} role={navigation === 'inline' ? 'tabpanel' : 'region'} aria-label={navigation === 'shared' ? 'Chat' : undefined} aria-labelledby={navigation === 'inline' ? `${prefix}-chat-tab` : undefined} hidden={!!selected} className="h-full min-h-0 flex-1" style={selected ? {display:'none'} : undefined}>{children}</div>
+  {selected && <div id={`${prefix}-panel`} role={navigation === 'inline' ? 'tabpanel' : 'region'} aria-label={navigation === 'shared' ? `Step: ${selected.name || selected.step_id || 'Step'}` : undefined} aria-labelledby={navigation === 'inline' ? `${prefix}-${items.indexOf(selected)}-tab` : undefined} className="min-h-0 flex-1">
    <Suspense fallback={<div className="p-4 text-xs text-muted-foreground">Loading step…</div>}><StepInspectionPanel key={inspectionKey(selected)} target={selected} /></Suspense>
   </div>}
  </div>

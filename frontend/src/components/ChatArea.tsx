@@ -461,6 +461,8 @@ function prepareQueuedChatMessages(queuedMessages: string[]) {
 }
 
 interface ChatAreaProps {
+  // WorkflowLayout hosts inspection links in the shared chat strip.
+  inspectionNavigation?: 'inline' | 'shared'
   // New chat handler
   onNewChat?: () => void
   // Hide header when used inside another layout (like WorkflowLayout)
@@ -3881,7 +3883,7 @@ ChatAreaInner.displayName = 'ChatAreaInner'
 const ChatArea = forwardRef<ChatAreaRef, ChatAreaProps>((props, ref) => {
  const activeTabId = useChatStore(state => state.activeTabId)
  const tabId = props.tabId === undefined ? activeTabId : props.tabId
- return <StepInspectionTabs tabId={tabId ?? null}><ChatAreaInner {...props} ref={ref} /></StepInspectionTabs>
+ return <StepInspectionTabs tabId={tabId ?? null} navigation={props.inspectionNavigation}><ChatAreaInner {...props} ref={ref} /></StepInspectionTabs>
 })
 
 ChatArea.displayName = 'ChatArea'

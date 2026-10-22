@@ -13,6 +13,8 @@ import {
 import { shouldDisplayWorkflowTab, workflowTabDisplayName } from './workflowRuntimeTabProjection'
 import { isBlankWorkflowBuilderTab } from '../../utils/workflowTabResolution'
 import { AgentWorksChatTabItem } from '../chat/AgentWorksChatTabItem'
+import { StepInspectionTabItems } from '../chat/StepInspectionTabItems'
+import { selectStepInspection, stepInspectionState } from '../../utils/stepInspection'
 import { selectWorkflowTabsForStrip } from './workflowTabStripSelection'
 
 // ---------------------------------------------------------------------------
@@ -104,13 +106,19 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
   // Skip auto-close on initial mount
   const hasRenderedRef = useRef(false)
 
-  const handleTabClick = useCallback((tabId: string) => {
+  const showTab = useCallback((tabId: string) => {
     activateTab(tabId)
     onSelectChat?.()
     // On narrow screens the toolbar stays visible while only one content pane
     // is shown. A chat-tab selection must therefore bring the chat pane back.
     if (window.innerWidth < 768) setFocusedPane('chat')
   }, [onSelectChat, setFocusedPane])
+
+  const handleTabClick = useCallback((tabId: string) => {
+    const tab = useChatStore.getState().getTab(tabId)
+    if (tab) selectStepInspection(tabId, tab.sessionId, null)
+    showTab(tabId)
+  }, [showTab])
 
   const handleCloseTab = useCallback((tabId: string) => {
     void closeWorkspaceChatTab(tabId).catch(() => {
@@ -183,17 +191,17 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
       <div className={embedded
         ? 'flex min-w-0 items-center gap-1'
         : 'flex min-w-0 items-center gap-1 px-2 py-1'}>
-        <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
+        <div aria-label="Chat tabs" className="flex min-w-0 items-center gap-1 overflow-x-auto">
           {activeWorkflowTabs.map((tab) => {
             const isBlank = isBlankWorkflowBuilderTab(tab, activePresetId || '', tabEvents)
             const isPersistentChat = tab.metadata?.isViewOnly !== true && tab.metadata?.phaseId === 'workflow-builder'
             const workflowName = workflowPresets.find(preset => preset.id === tab.metadata?.presetQueryId)?.label?.trim()
               || (isRelaySurface ? 'Flow' : 'Workflow')
             return (
+              <React.Fragment key={tab.tabId}>
               <AgentWorksChatTabItem
-                key={tab.tabId}
                 tab={tab}
-                isActive={tab.tabId === activeTabId}
+                isActive={tab.tabId === activeTabId && !stepInspectionState(tab).selected}
                 // The persistent Chat is never closeable.
                 canClose={!isPersistentChat && activeWorkflowTabs.length > 1}
                 isBlank={false}
@@ -205,6 +213,8 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
                 closeStopsSession={tab.metadata?.isViewOnly !== true}
                 onMakeInteractive={handleMakeInteractive}
               />
+              <StepInspectionTabItems tab={tab} active={tab.tabId === activeTabId} onActivate={showTab} />
+              </React.Fragment>
             )
           })}
         </div>

@@ -101,6 +101,7 @@ const ChatAreaWithObserverId = forwardRef<ChatAreaRef, {
   return (
     <ChatArea
       ref={ref}
+      inspectionNavigation="shared"
       onNewChat={onNewChat}
       hideHeader={hideHeader}
       hideInput={effectiveHideInput}

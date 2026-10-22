@@ -31,6 +31,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = projectMenuHistoryScope(server || 'local', user?.id || 'pending', profileId, projectId || workspacePath)
   const storedRecent = useProjectMenuHistoryStore(state => state.recent[scope] || EMPTY_RECENT)
+  const storedStartHere = useProjectMenuHistoryStore(state => state.startHere[scope] || EMPTY_RECENT)
   const incomingEmail = useAgentInboxEnabled()
   const allowed = (view: WorkWorkspaceView) => panels.some(item => item.id === view)
   const canReadSharing = allowed('dashboard') && allowed('mcp')
@@ -69,10 +70,12 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const byId = new Map(items.map(item => [item.id, item]))
   const recent = [...new Set(storedRecent)].flatMap(id => byId.get(id) || []).slice(0, 10)
   const recentIDs = new Set(recent.map(item => item.id))
+  const startHere = [...new Set(storedStartHere)].filter(id => !recentIDs.has(id)).flatMap(id => byId.get(id) || [])
+  const featuredIDs = new Set([...recentIDs, ...startHere.map(item => item.id)])
   const open = (item: CrewMenuItem) => {
     // Recheck account/product admission if access changed while the menu was open.
     const current = useAuthStore.getState().user
-    if (current?.id !== user?.id) return
+    if (current?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
     const admitted = crewProjectMenuItems({ ...menuOptions, allowedProducts: current?.allowed_products })
     if (!admitted.some(candidate => candidate.id === item.id) && !(item.reportPath && admitted.some(candidate => candidate.id === 'dashboard') && byId.has(item.id))) return
     useProjectMenuHistoryStore.getState().visit(scope, item.id)
@@ -93,12 +96,13 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   }
   return <WorkspaceContextCard>
     {recent.length > 0 && <Group title="Recent">{recent.map(renderItem)}</Group>}
+    {startHere.length > 0 && <Group title="Start here">{startHere.map(renderItem)}</Group>}
     {CREW_MENU_GROUPS.map(group => {
-      const remaining = items.filter(item => item.group === group && !recentIDs.has(item.id))
+      const remaining = items.filter(item => item.group === group && !featuredIDs.has(item.id))
       if (!remaining.length) return null
       const plain = remaining.filter(item => !item.subgroup)
       const subgroups = [...new Set(remaining.flatMap(item => item.subgroup ? [item.subgroup] : []))]
-      return <Group key={scope + group} title={group} collapsed defaultOpen={!recent.length && group === 'Build'}>
+      return <Group key={scope + group} title={group} collapsed defaultOpen={!recent.length && !startHere.length && group === 'Build'}>
         {group !== 'Use' && plain.map(renderItem)}
         {subgroups.map(subgroup => <div key={subgroup} role="group" aria-label={subgroup} className="space-y-1">
           <h3 className="px-1 pb-1 pt-2 text-[10px] font-medium text-muted-foreground">{subgroup}</h3>

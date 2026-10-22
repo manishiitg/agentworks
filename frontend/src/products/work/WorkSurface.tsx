@@ -36,7 +36,10 @@ import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { loadWorkProductCommands } from './workData'
 import { CREW_PRODUCT, ProjectProductProvider, type ProjectProductConfig } from './projectProduct'
 import { workProjectActivity, workSideChatDisplayName } from './workProjectPresentation'
-import { CreateCodeWorkspaceDialog } from './CreateCodeWorkspaceDialog'
+import { CreateCrewWizard } from './CreateCrewWizard'
+import { prepareCrewOnboarding } from './crewOnboarding'
+import type { CrewOnboarding } from './crewStarterTypes'
+import { projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
 import { createWorkSession, deleteWorkSession, installWorkSessionTemplate, removeWorkSessionTemplate, loadWorkSessionsIncludingShared, isWorkSessionRun, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
@@ -1525,14 +1528,31 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     })
   }, [reportPreviewPreference, workspaceView, selected?.id, setSplitRatio, startSplitDrag])
 
-  const createProject = useCallback(async (title: string, description: string, icon?: string, templateId?: CrewTemplateId, runsOn?: RunsOnSelection, mode?: ProductMode) => {
+  const createProject = useCallback(async (title: string, description: string, icon?: string, templateId?: CrewTemplateId, runsOn?: RunsOnSelection, mode?: ProductMode, onboarding?: CrewOnboarding) => {
     if (creating) return
+    const user = useAuthStore.getState().user
+    const server = useWorkspaceConnectionStore.getState().activeWorkspaceId
+    if (!hasProductCreateAccess(user, useAuthStore.getState().isMultiUserMode, product.profileId)) return
+    const isCurrent = () => useAuthStore.getState().user?.id === user?.id && useWorkspaceConnectionStore.getState().activeWorkspaceId === server
     setCreating(true)
     setCreateError(null)
     try {
       const created = await create(title, description, icon, templateId, runsOn, mode)
+      if (!isCurrent()) return
       if (created.creationWarnings?.length) useChatStore.getState().addToast(created.creationWarnings.join(' '), 'warning')
-      if (templateId) {
+      if (onboarding) {
+        const next = await prepareCrewOnboarding({
+          scope: projectMenuHistoryScope(server || 'local', user?.id || 'pending', product.profileId, created.id),
+          workspacePath: created.workspacePath, onboarding, isCurrent,
+        })
+        if (next === 'stale') return
+        const view = next === 'sharing' ? 'mcp' : 'context'
+        if (next === 'sharing') setWorkspaceViewTarget('mcp', 'share')
+        if (next === 'sharing-unavailable') useChatStore.getState().addToast('Crew created. Sharing setup is unavailable right now; you can check People & access from the project menu.', 'info')
+        setPanelOpen(true)
+        setWorkspaceView(view)
+        writeWorkWorkspaceView(created.id, product.profileId, view)
+      } else if (templateId) {
         setPanelOpen(true)
         setWorkspaceView('files')
         writeWorkWorkspaceView(created.id, product.profileId, 'files')
@@ -1628,12 +1648,11 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         walkthroughPaused={createOpen || deleteCandidate !== null}
       />
       {createOpen ? (
-        <CreateCodeWorkspaceDialog
+        <CreateCrewWizard
           onClose={() => { if (!creating) setCreateOpen(false) }}
-          onCreate={(title, runsOn, mode) => createProject(title, '', undefined, undefined, runsOn, mode)}
+          onCreate={(title, purpose, runsOn, mode, onboarding) => createProject(title, purpose, undefined, undefined, runsOn, mode, onboarding)}
           initialMode={createMode}
-          profileId={product.profileId}
-          noun={product.itemNoun}
+          profileVersion={product.profileVersion}
           submitting={creating}
           error={createError}
         />

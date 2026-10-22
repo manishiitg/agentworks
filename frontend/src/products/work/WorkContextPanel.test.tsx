@@ -17,10 +17,12 @@ vi.mock('../../components/workflow/reportDocuments', () => ({ useReportDocuments
 import { WorkContextPanel } from './WorkContextPanel'
 import { workWorkspacePanels } from './workWorkspacePanels'
 import { useProjectMenuHistoryStore, projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
+import { CREW_STARTER_TYPES, crewStarterShortcuts } from './crewStarterTypes'
+import { crewProjectMenuItems } from './crewProjectMenu'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 beforeEach(() => {
   mocks.share = true; mocks.user = { id: 'alice', allowed_products: null }; mocks.server = 'local'; mocks.documents = []
-  useProjectMenuHistoryStore.setState({ recent: {} })
+  useProjectMenuHistoryStore.setState({ recent: {}, startHere: {} })
   window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'knowledgebase', 'mcp-gateway', 'bullpen'], gatewayUrl: 'http://vault' }
 })
 afterEach(() => { vi.clearAllMocks(); delete window.__APP_RUNTIME_CONFIG__ })
@@ -93,4 +95,41 @@ it('honors server feature inventory and keeps Run accounts limited to dashboard'
   const ids = inventory(new Set(['skills', 'schedules'])).map(item => item.id)
   expect(ids).toContain('memory'); expect(ids).toContain('history'); expect(ids).not.toContain('dashboard')
   expect(workWorkspacePanels({ readOnly: true }).views.map(item => item.id)).toEqual(['dashboard'])
+})
+
+it.each(CREW_STARTER_TYPES)('shows admitted $label starting shortcuts once and promotes visits to Recent', async starter => {
+  useProjectMenuHistoryStore.getState().seedStartHere(scope(), crewStarterShortcuts(starter.id))
+  await render(async host => {
+    const start = host.querySelector('section')!
+    expect(start.querySelector('h2')?.textContent).toBe('Start here')
+    const first = start.querySelector<HTMLButtonElement>('button')!
+    const label = first.textContent
+    expect([...host.querySelectorAll('button')].filter(node => node.textContent === label)).toHaveLength(1)
+    await act(async () => first.click())
+    const recent = host.querySelector('section')!
+    expect(recent.querySelector('h2')?.textContent).toBe('Recent')
+    expect(recent.querySelector('button')?.textContent).toBe(label)
+    expect([...host.querySelectorAll('button')].filter(node => node.textContent === label)).toHaveLength(1)
+  })
+})
+
+it('maps every starter shortcut to a real destination in the fully admitted Crew menu', () => {
+  const ids = crewProjectMenuItems({ panels: inventory(), projectId: 'example', allowedProducts: null }).map(item => item.id)
+  for (const starter of CREW_STARTER_TYPES) for (const shortcut of crewStarterShortcuts(starter.id)) {
+    expect(ids, `${starter.label}: ${shortcut}`).toContain(shortcut)
+  }
+})
+
+it('applies feature and sharing admission to starting shortcuts and drops stale server clicks', async () => {
+  mocks.share = false
+  useProjectMenuHistoryStore.getState().seedStartHere(scope(), ['mcp:share', 'files', 'shell', 'memory:skills'])
+  await render(async (host, update) => {
+    expect(button(host, 'People & access')).toBeUndefined()
+    await update('example', new Set(['skills']))
+    expect(button(host, 'Files')).toBeUndefined()
+    const skills = button(host, 'Skills')
+    mocks.server = 'other'
+    await act(async () => skills.click())
+    expect(mocks.open).not.toHaveBeenCalled()
+  })
 })

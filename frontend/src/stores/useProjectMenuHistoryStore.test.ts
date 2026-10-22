@@ -3,7 +3,7 @@ import { afterEach, expect, it } from 'vitest'
 import { createJSONStorage } from 'zustand/middleware'
 import { projectMenuHistoryScope, useProjectMenuHistoryStore } from './useProjectMenuHistoryStore'
 
-afterEach(() => useProjectMenuHistoryStore.setState({ recent: {} }))
+afterEach(() => useProjectMenuHistoryStore.setState({ recent: {}, startHere: {} }))
 
 it('keeps ten unique destinations in access order without growing on revisits', () => {
   const { visit } = useProjectMenuHistoryStore.getState()
@@ -23,10 +23,25 @@ it('restores histories without mixing accounts, servers, products or projects', 
   })) })
   const alice = projectMenuHistoryScope('local', 'alice', 'work', 'one')
   useProjectMenuHistoryStore.getState().visit(alice, 'files')
+  useProjectMenuHistoryStore.getState().seedStartHere(alice, ['files', 'memory:skills'])
   const saved = storage.get('project-menu-history-v1')!
   useProjectMenuHistoryStore.setState({ recent: {} })
   storage.set('project-menu-history-v1', saved)
   await useProjectMenuHistoryStore.persist.rehydrate()
   expect(useProjectMenuHistoryStore.getState().recent[alice]).toEqual(['files'])
+  expect(useProjectMenuHistoryStore.getState().startHere[alice]).toEqual(['memory:skills'])
   for (const key of [projectMenuHistoryScope('local', 'bob', 'work', 'one'), projectMenuHistoryScope('remote', 'alice', 'work', 'one'), projectMenuHistoryScope('local', 'alice', 'work', 'two'), projectMenuHistoryScope('local', 'alice', 'relays', 'one')]) expect(useProjectMenuHistoryStore.getState().recent[key]).toBeUndefined()
+})
+
+it('promotes starting shortcuts into real history without duplicates or reseeding used suggestions', () => {
+  const { seedStartHere, visit } = useProjectMenuHistoryStore.getState()
+  seedStartHere('crew', ['files', 'files', 'memory:skills'])
+  expect(useProjectMenuHistoryStore.getState().startHere.crew).toEqual(['files', 'memory:skills'])
+  expect(useProjectMenuHistoryStore.getState().recent.crew).toBeUndefined()
+  visit('crew', 'files')
+  expect(useProjectMenuHistoryStore.getState().startHere.crew).toEqual(['memory:skills'])
+  seedStartHere('crew', ['files', 'shell'])
+  expect(useProjectMenuHistoryStore.getState().startHere.crew).toEqual(['memory:skills'])
+  visit('crew', 'memory:skills')
+  expect(useProjectMenuHistoryStore.getState().startHere.crew).toEqual([])
 })
