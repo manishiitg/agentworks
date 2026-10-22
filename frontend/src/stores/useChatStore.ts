@@ -1178,14 +1178,14 @@ export const useChatStore = create<ChatState>()(
         
         logger.debug('ChatStore', 'Starting polling interval')
         const interval = setInterval(() => {
-          // A slow server must not build an overlapping queue every 500 ms.
+          // A slow server must not build an overlapping recovery queue.
           // Share this guard across stop/start cycles as well as one interval.
           if (eventPollInFlight) return
           eventPollInFlight = true
           void Promise.resolve().then(onPoll).catch(error => {
             logger.error('ChatStore', 'Error in polling callback:', error)
           }).finally(() => { eventPollInFlight = false })
-        }, 500)  // 500ms for streaming responsiveness
+        }, 1000)  // Live text uses SSE; this only schedules stalled-stream recovery.
         
         set({ pollingInterval: interval })
       },

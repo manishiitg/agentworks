@@ -45,6 +45,7 @@ export class SSEConnection {
   private readonly maxConsecutiveErrors: number
   private closed = false
   private open = false
+  private activityAt = Date.now()
   private readonly opts: SSEOptions
   private readonly log: SSELogger
 
@@ -118,9 +119,11 @@ export class SSEConnection {
         if (!res.ok || !res.body) throw new Error(`event stream HTTP ${res.status}`)
         this.consecutiveErrors = 0
         this.open = true
+        this.activityAt = Date.now()
         this.log.debug('SSE', `Connected to session ${this.opts.sessionId}`)
         this.opts.callbacks.onOpen?.()
         await readEventStream(res.body, controller.signal, ({ event, data, id }) => {
+          this.activityAt = Date.now()
           if (event === 'event' || event === '') this.handleEventFrame(data, id)
           else if (event === 'status') this.handleStatusFrame(data)
           else if (event === 'cursor' && id !== undefined) {
@@ -160,6 +163,11 @@ export class SSEConnection {
   /** Whether the connection is currently open. */
   get isConnected(): boolean {
     return this.open
+  }
+
+  /** Last open/frame time, including the server's two-second status ticks. */
+  get lastActivityAt(): number {
+    return this.activityAt
   }
 
   /** Whether the connection has been permanently closed. */

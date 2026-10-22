@@ -21,6 +21,6 @@ it('does not queue more polls while a slow cycle is outstanding', async () => {
   await vi.advanceTimersByTimeAsync(1000)
   expect(poll).toHaveBeenCalledTimes(1)
   finish()
-  await vi.advanceTimersByTimeAsync(500)
+  await vi.advanceTimersByTimeAsync(1000)
   expect(poll).toHaveBeenCalledTimes(2)
 })

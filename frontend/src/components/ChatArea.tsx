@@ -49,6 +49,7 @@ import { durableStreamStartCursor, nextForwardCursor } from '../utils/forwardCur
 import { clientMessageEventId, readClientMessageId } from '../utils/clientMessageIdentity'
 import { conversationToRestoredEvents } from '../../shared/session/restore'
 import { logger } from '../utils/logger'
+import { SessionEventRecovery } from '../services/sessionEventRecovery'
 
 import { useResumePreviousChat } from '../hooks/useResumePreviousChat'
 import { useFormattedTranscriptHydration } from '../hooks/useFormattedTranscriptHydration'
@@ -2070,8 +2071,10 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     )
   }, [handleSSEMessage])
 
-  // Polling function to get events for ALL active sessions (fallback when SSE unavailable)
-  const pollEvents = useCallback(async () => {
+  const [eventRecovery] = useState(() => new SessionEventRecovery())
+
+  // A single account-scoped scheduler checks only sessions needing recovery.
+  const pollEvents = useCallback(async (): Promise<void> => {
     const identity = captureChatIdentity()
     const chatStore = useChatStore.getState()
 
@@ -2101,7 +2104,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 
       // Hidden completed chats must not replay their durable history forever.
       // Real background work remains connected through the activity signals.
-      if (currentTab.metadata?.mode === 'multi-agent') {
+      if (currentTab.metadata?.mode === 'multi-agent' || currentTab.metadata?.mode === 'workflow') {
         return shouldKeepChatSessionSubscribed({
           isVisible: chatStore.activeTabId === currentTab.tabId,
           isStreaming: currentTab.isStreaming,
@@ -2152,9 +2155,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       }
     })
 
-    if (sessionsToPoll.length === 0) {
-      return
-    }
+    eventRecovery.retain(seenSessionIds)
+    if (sessionsToPoll.length === 0) return
 
     // Poll each session
     for (const { sessionId, tab } of sessionsToPoll) {
@@ -2204,105 +2206,41 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       // Track which session is currently being polled (for derived isStreaming)
 
       try {
-        const response = await agentApi.getSessionEvents(effectiveSessionId, currentLastEventIndex, {
-          durableChat,
-        })
+        // Restore owns the first durable page/cursor; never race it with a
+        // recovery read from zero. All later reads preserve the same cursor.
+        if (sseRestoreInFlightRef.current.has(effectiveSessionId)) continue
+        const response = await eventRecovery.poll(effectiveSessionId, useChatStore.getState().sseConnections[effectiveSessionId],
+          () => agentApi.getSessionEvents(effectiveSessionId, currentLastEventIndex, { durableChat }))
+        if (!response) continue
         if (!isChatIdentityCurrent(identity)) return
         if (response.session_id && response.session_id !== effectiveSessionId) continue
         if (currentTab && chatStore.getTab(currentTab.tabId)?.sessionId !== effectiveSessionId) continue
 
         recordChatDeliveryTelemetry('poll_received', effectiveSessionId, response.events, 'poll', currentTab?.tabId)
         processEventsResponse(response, effectiveSessionId, currentTab)
+        // A successful fallback also restores push delivery after persistent
+        // connection errors removed the old stream from the store.
+        if (!useChatStore.getState().sseConnections[effectiveSessionId]) {
+          connectSSE(effectiveSessionId,
+            msg => handleSSEMessage(msg, effectiveSessionId),
+            msg => handleSSEStatus(msg, effectiveSessionId),
+            () => startPolling(pollEvents), durableChat)
+        }
       } catch {
         // Continue polling other observers even if one fails
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- selectedModeCategory read from store directly inside callback to avoid stale setInterval closure
-  }, [getTabLastEventIndex, setTabLastEventIndex, setLastEventIndex, addTabEvents, getTabEvents, setIsStreaming, setIsCompleted, setHasActiveChat, activeSessionIds, processEventsResponse])
+  }, [getTabLastEventIndex, setTabLastEventIndex, setLastEventIndex, addTabEvents, getTabEvents, setIsStreaming, setIsCompleted, setHasActiveChat, activeSessionIds, processEventsResponse, eventRecovery, connectSSE, handleSSEMessage, handleSSEStatus, startPolling])
 
   const handleSSEFallback = useCallback((sessionId: string) => {
     logger.warn('ChatArea', `SSE failed for session ${sessionId}; starting polling fallback`)
     startPolling(pollEvents)
   }, [startPolling, pollEvents])
 
-  // No foreground chat can rely on EventSource alone. Browsers cap concurrent
-  // HTTP/1.1 connections per origin, and restored AgentWorks tabs may already
-  // occupy those slots with long-lived SSE streams. A queued EventSource does
-  // not reliably raise onerror, so the nominal SSE fallback never starts and a
-  // healthy tmux turn can look completely blank. Keep one small session-scoped
-  // catch-up loop for every submitted foreground turn. It reads the same event
-  // store and event IDs make concurrent SSE delivery harmlessly idempotent.
-  const foregroundCatchUpTimersRef = useRef<Record<string, number>>({})
-  const foregroundCatchUpGenerationRef = useRef<Record<string, number>>({})
-  const foregroundCatchUpMountedRef = useRef(true)
-  useEffect(() => {
-    foregroundCatchUpMountedRef.current = true
-    return () => {
-      foregroundCatchUpMountedRef.current = false
-      Object.values(foregroundCatchUpTimersRef.current).forEach(timer => window.clearTimeout(timer))
-      foregroundCatchUpTimersRef.current = {}
-      foregroundCatchUpGenerationRef.current = {}
-    }
-  }, [])
-
-  const startForegroundEventCatchUp = useCallback((sessionId: string) => {
-    // One loop per durable session is enough. The active-tab healing effect and
-    // the submission path may both request it in the same render window.
-    if (foregroundCatchUpTimersRef.current[sessionId] !== undefined) return
-
-    const generation = (foregroundCatchUpGenerationRef.current[sessionId] || 0) + 1
-    foregroundCatchUpGenerationRef.current[sessionId] = generation
-    // Reserve the slot before the first async request so a concurrent caller
-    // cannot start a second immediate tick.
-    foregroundCatchUpTimersRef.current[sessionId] = -1
-
-    const tick = async () => {
-      if (
-        !foregroundCatchUpMountedRef.current ||
-        foregroundCatchUpGenerationRef.current[sessionId] !== generation
-      ) return
-
-      const store = useChatStore.getState()
-      const tab = Object.values(store.chatTabs).find(candidate => candidate.sessionId === sessionId) || null
-      // Returning without clearing the timer entry leaked a dead generation into
-      // the map; the loop is over for this session once its tab is gone.
-      if (!tab) {
-        delete foregroundCatchUpTimersRef.current[sessionId]
-        return
-      }
-
-      let shouldContinue = true
-      try {
-        const since = Math.max(0, store.getTabLastEventIndex(sessionId))
-        if (isExecutionConversationTab(tab)) {
-          delete foregroundCatchUpTimersRef.current[sessionId]
-          return
-        }
-        const response = await agentApi.getSessionEvents(sessionId, since, { durableChat: true })
-        const freshStore = useChatStore.getState()
-        const freshTab = Object.values(freshStore.chatTabs).find(candidate => candidate.sessionId === sessionId) || null
-        recordChatDeliveryTelemetry('catchup_received', sessionId, response.events, 'foreground_catchup', freshTab?.tabId)
-        processEventsResponse(response, sessionId, freshTab)
-        shouldContinue = sessionStreamingState(response).isActive
-      } catch (error) {
-        logger.debug('ChatArea', `Foreground event catch-up failed for ${sessionId}; retrying`, error)
-      }
-
-      if (
-        shouldContinue &&
-        foregroundCatchUpMountedRef.current &&
-        foregroundCatchUpGenerationRef.current[sessionId] === generation
-      ) {
-        foregroundCatchUpTimersRef.current[sessionId] = window.setTimeout(tick, 750)
-      } else {
-        delete foregroundCatchUpTimersRef.current[sessionId]
-      }
-    }
-
-    void tick()
-  }, [processEventsResponse])
-
-
+  // Share the recovery scheduler with SSE failure handling. A silent stream
+  // still gets checked without a second per-turn HTTP polling loop.
+  const ensureEventRecovery = useCallback(() => startPolling(pollEvents), [startPolling, pollEvents])
 
   // Start centralized active sessions polling when component mounts
   useEffect(() => {
@@ -2512,20 +2450,11 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     // only needs to recompute when tabsWithSessions or activeSessionIds actually change.
   }, [tabsWithSessions, activeRuntimeSessionIds, activeTabIdFromStore])
 
-  // Also heal turns that were already running when this component mounted or
-  // hot-reloaded. Submission starts the loop immediately, but restored tabs
-  // and a UI updated while tmux is mid-turn must not wait for another message
-  // before gaining the same transport fallback.
+  // Restored and visible idle chats need the same silent-stream recovery as
+  // newly submitted turns, including retained CLI input and background work.
   useEffect(() => {
-    const store = useChatStore.getState()
-    for (const tab of tabsWithActiveSessions) {
-      if (!tab.sessionId) continue
-      const freshTab = store.getTab(tab.tabId) || tab
-      if (freshTab.isStreaming || freshTab.hasRunningBgAgents) {
-        startForegroundEventCatchUp(tab.sessionId)
-      }
-    }
-  }, [tabsWithActiveSessions, startForegroundEventCatchUp])
+    if (tabsWithActiveSessions.length > 0) ensureEventRecovery()
+  }, [tabsWithActiveSessions, ensureEventRecovery])
 
   // SSE connection management — connect/disconnect based on active sessions
   // Falls back to polling if SSE connection fails (handled inside connectSSE's onError callback)
@@ -3203,7 +3132,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             logger.error('ChatArea', 'Failed to refresh active sessions cache:', error)
             connectAfterRefresh()
           })
-        startForegroundEventCatchUp(responseSessionId)
+        ensureEventRecovery()
         return true
       } else if (response.status === 'live_input_delivered' || response.status === 'accepted') {
         // Single-entry routing: the backend took this message into the
@@ -3251,7 +3180,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             () => handleSSEFallback(sid)
           )
         }
-        if (sid) startForegroundEventCatchUp(sid)
+        if (sid) ensureEventRecovery()
         return true
       } else {
         console.log('[WF_DEBUG] ERROR: Backend non-started response', { status: response.status, message: response.message, response })
@@ -3287,7 +3216,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       unacknowledgedSendSessionsRef.current.delete(tabSessionId)
     }
 
-  }, [correctAgentMode, selectedModeCategory, getAgentModeFromCategory, isRequiredFolderSelected, finalResponse, effectiveServers, enabledTools, processedCompletionEventsRef, activeTab, scrollToBottom, getActiveSessions, resetStreamingState, connectSSE, handleSSEMessage, handleSSEStatus, buildExecutionOptions, handleSSEFallback, fullTurnStreaming, startForegroundEventCatchUp, knowledgebaseFolderPath])
+  }, [correctAgentMode, selectedModeCategory, getAgentModeFromCategory, isRequiredFolderSelected, finalResponse, effectiveServers, enabledTools, processedCompletionEventsRef, activeTab, scrollToBottom, getActiveSessions, resetStreamingState, connectSSE, handleSSEMessage, handleSSEStatus, buildExecutionOptions, handleSSEFallback, fullTurnStreaming, ensureEventRecovery, knowledgebaseFolderPath])
 
   // Submit every message immediately. The backend's durable conversation-turn
   // dispatcher owns per-session ordering and restart recovery. A second
