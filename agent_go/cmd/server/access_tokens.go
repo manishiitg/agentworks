@@ -408,9 +408,6 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return !IsLocalMode() && c != nil
 	}
 
-	if tool.Name == "manage_agent_email" {
-		return !IsLocalMode() && externalUsersAllowed(c)
-	}
 	if tool.Name == externalUsersTool || tool.Name == externalSignInAppsTool {
 		return externalUsersAllowed(c)
 	}

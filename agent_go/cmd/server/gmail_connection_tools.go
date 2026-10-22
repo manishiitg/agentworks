@@ -127,7 +127,7 @@ func (api *StreamingAPI) registerGmailConnectionManagementTools(registrar defini
 	if err := api.registerPersonalSlackAccountTool(registrar, workspacePath); err != nil {
 		return err
 	}
-	return api.registerAgentEmailTools(registrar, sessionID, workspacePath)
+	return nil
 }
 
 func (api *StreamingAPI) updateGmailConnectionGrantsFromTool(ctx context.Context, sessionID, workspacePath string, args map[string]interface{}, scope services.GmailUseScope) (string, error) {

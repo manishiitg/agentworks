@@ -1025,8 +1025,13 @@ func (m productProjectManifest) displayTitle() string {
 	return firstNonEmptyTrimmed(m.Identity.Name, m.Title)
 }
 
+// receivesEmail keeps an explicit off setting; an unset Crew setting defaults to on.
+func (m productProjectManifest) receivesEmail() bool {
+	return m.EmailInboxEnabled == nil || *m.EmailInboxEnabled
+}
+
 type productProjectManifest struct {
-	EmailInboxEnabled            bool            `json:"email_inbox_enabled,omitempty"`
+	EmailInboxEnabled            *bool           `json:"email_inbox_enabled,omitempty"`
 	MainChatKey                  string          `json:"main_chat_key,omitempty"`
 	KnowledgebaseContractHistory json.RawMessage `json:"knowledgebase_contract_history,omitempty"`
 	SharedKnowledgebase          json.RawMessage `json:"shared_knowledgebase,omitempty"`

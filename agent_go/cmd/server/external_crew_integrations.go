@@ -15,7 +15,7 @@ var crewIntegrationMembers = map[string]bool{
 	"create_slack_bot_route": true, "update_slack_bot_route_permission": true, "remove_slack_bot_route": true,
 	"slack": true, "send_slack_message": true, "google_workspace_cli": true,
 	"manage_google_account": true, "manage_slack_account": true, "manage_slack_bot": true, "list_gmail_connections": true, "update_gmail_connection_grants": true,
-	"get_agent_inbox": true, "configure_agent_inbox": true, "manage_agent_email": true,
+	"get_agent_inbox": true, "configure_agent_inbox": true,
 }
 
 func (api *StreamingAPI) crewIntegrationRegistry(root, session string) (crewCapabilityRegistrar, error) {

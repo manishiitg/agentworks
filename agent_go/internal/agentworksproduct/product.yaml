@@ -318,7 +318,6 @@ chat:
       - manage_google_account
       - manage_slack_account
       - update_gmail_connection_grants
-      - manage_agent_email
       - update_schedule
       - update_slack_bot_route_permission
       - update_step_config
@@ -615,7 +614,6 @@ chat:
       - users
       - sign_in_apps
       - agent_inbox
-      - manage_agent_email
     prompt:
       file: prompts/run.md
       includes: [prompts/workflow-shared.md]

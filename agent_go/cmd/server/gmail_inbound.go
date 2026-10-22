@@ -8,20 +8,11 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/gmailinbound"
 	"log"
 	"net/mail"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 )
-
-type gmailInboundConfig struct {
-	Enabled bool `json:"enabled"`
-}
-
-func readGmailInboundConfig() (gmailInboundConfig, error) {
-	return loadGmailSetupConfig(gmailInboundConfig{Enabled: os.Getenv("AGENT_INBOX_ENABLED") == "true"})
-}
 
 func userInboxClient(owner string) (services.GmailInboundClient, string, error) {
 	svc := services.GetGmailService()
@@ -48,7 +39,7 @@ func (api *StreamingAPI) initGmailInbound(router *mux.Router) func() {
 		log.Printf("[AGENT-INBOX] store unavailable: %v", err)
 		return func() {}
 	}
-	service := &gmailinbound.Service{Store: store, Enabled: func(ctx context.Context) bool { cfg, err := readGmailInboundConfig(); return err == nil && cfg.Enabled }, Client: func(ctx context.Context, m gmailinbound.Mailbox) (gmailinbound.Client, error) {
+	service := &gmailinbound.Service{Store: store, Client: func(ctx context.Context, m gmailinbound.Mailbox) (gmailinbound.Client, error) {
 		client, email, err := userInboxClient(m.OwnerID)
 		if err == nil && (client.ConnectionID != m.ConnectionID || email != m.Email) {
 			err = fmt.Errorf("Inbox account changed; delivery stopped")
@@ -61,9 +52,8 @@ func (api *StreamingAPI) initGmailInbound(router *mux.Router) func() {
 		Stored: func(ctx context.Context, i gmailinbound.Inbox) error { return api.wakeAgentInboxWatchers(ctx, i) }}
 	api.gmailInbound = service
 	router.HandleFunc("/api/agent-email/inbox", api.agentEmailInboxHTTP).Methods("GET")
-	router.HandleFunc("/api/agent-email/setup", api.agentEmailSetupHTTP).Methods("GET", "POST")
 	ctx, cancel := context.WithCancel(context.Background())
-	// Reconcile explicit Crew opt-ins before workers can use persisted inbox rows.
+	// Reconcile Crew receiving settings before workers can use persisted inbox rows.
 	if err := api.syncAgentEmailInboxes(ctx); err != nil {
 		log.Printf("[AGENT-INBOX] inventory needs attention: %v", err)
 	}

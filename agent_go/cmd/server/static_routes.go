@@ -96,7 +96,7 @@ func (api *StreamingAPI) handleCapabilities(w http.ResponseWriter, r *http.Reque
 		"workspace":     map[string]interface{}{},
 		"servers":       []string{},
 		"local_mode":    IsLocalMode(),
-		"agent_inboxes": agentEmailFeatureEnabled(),
+		"agent_inboxes": !IsLocalMode(),
 		"runtime_debug": runtimeDiagnosticsEnabled(),
 		// Deployment-owned IANA timezone used by UI timestamps. It is distinct
 		// from the host timezone and follows daylight-saving rules.

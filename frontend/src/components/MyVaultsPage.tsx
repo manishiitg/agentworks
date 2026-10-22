@@ -1,4 +1,3 @@
-import { CompanyAgentEmail } from './integrations/CompanyAgentEmail'
 import { VaultSlackBots } from './integrations/VaultSlackBots'
 import SlackAdminPanel from './admin/SlackAdminPanel'
 import { useAuthStore } from '../stores/useAuthStore'
@@ -479,7 +478,7 @@ export default function MyVaultsPage({ embedded = false }: { embedded?: boolean 
           <div><h2 className="text-lg font-semibold">My vaults</h2><p className="mt-1 text-sm text-muted-foreground">Your connected accounts, secrets and vaults shared with you.</p></div>
           <PersonalAccountsPanel />
           <VaultSlackBots />
-          {isAdmin && <details className="rounded-lg border border-border p-4"><summary className="cursor-pointer text-sm font-semibold">Company app setup</summary><div className="mt-3 space-y-4"><McpAppsSection /><CompanyAgentEmail /></div></details>}
+          {isAdmin && <details className="rounded-lg border border-border p-4"><summary className="cursor-pointer text-sm font-semibold">Company app setup</summary><div className="mt-3 space-y-4"><McpAppsSection /></div></details>}
           {isAdmin && <details aria-label="Company Slack bot" className="rounded-lg border border-border p-4"><summary className="cursor-pointer text-sm font-semibold">Company Slack bot (admin)</summary><div className="mt-3"><SlackAdminPanel /></div></details>}
           {sharedVaultsEnabled && <>
           <h2 className="pt-3 text-base font-semibold">Shared vaults</h2>

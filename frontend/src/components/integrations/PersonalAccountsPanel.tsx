@@ -71,7 +71,7 @@ function ProviderAccounts({ provider, workspacePath, onChanged }: { provider: Pr
   return <div aria-label={`${label} accounts`} className="space-y-3 rounded-lg border border-border p-4">
     <div className="flex items-center gap-2"><ConnectionIcon icon={provider} name={label} size="sm" /><h3 className="text-sm font-medium">{label}</h3></div>
     {workspacePath && data?.notice && <p className="text-xs text-muted-foreground">{data.notice}</p>}
-    {central && provider === 'google' && data?.inbox_available && <p className="text-xs text-muted-foreground">Choose one Gmail account for Crew inboxes, then ask each Crew’s Builder to enable incoming email. Only mail addressed to enabled Crews is received. Gmail read access is required; disconnecting this account stops delivery to all your Crews.</p>}
+    {central && provider === 'google' && data?.inbox_available && <p className="text-xs text-muted-foreground">Choose one Gmail account for Crew inboxes. Your Crews receive email by default; ask a Crew’s Builder to turn receiving off or back on. Only mail addressed to enabled Crews is received. Gmail read access is required; disconnecting this account stops delivery to all your Crews.</p>}
     {central && provider === 'slack' && <p className="text-xs text-muted-foreground">Only you can read or search your Slack. People using a product you add it to can send messages as you.</p>}
     {error && <div role="alert" className="text-xs text-destructive">{error} <Button variant="ghost" size="xs" onClick={() => void refresh()}>Retry</Button></div>}
     {message && <p role="status" className="text-xs">{message}</p>}

@@ -43,7 +43,6 @@ func TestAgentEmailInboxUsesOwnerVaultAccountAndServerOnly(t *testing.T) {
 	t.Setenv("LOCAL_MODE", "false")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	env, ctx, root := agentEmailCrewFixture(t)
-	t.Setenv("AGENT_INBOX_ENABLED", "true")
 	env.mock.mu.Lock()
 	env.mock.files["config/gmail-config.json"] = `{"connections":[{"id":"personal","personal":true,"owner_id":"owner","agent_inbox":true,"email":"owner@example.com","allow_read_access":true,"enabled":true}]}`
 	env.mock.mu.Unlock()
@@ -58,20 +57,39 @@ func TestAgentEmailInboxUsesOwnerVaultAccountAndServerOnly(t *testing.T) {
 	}
 	defer store.Close()
 	env.api.gmailInbound = &gmailinbound.Service{Store: store}
+	// A connected account starts no receiving until the owner selects it for inboxes.
+	svc := services.GetGmailService()
+	cfg := svc.GetConfig()
+	cfg.Connections[0].AgentInbox = false
+	if err = svc.SaveConfig(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err = env.api.syncAgentEmailInboxes(ctx); err != nil {
+		t.Fatal(err)
+	}
+	unselected, inboxErr := store.Inboxes(ctx)
+	unselectedMailboxes, mailboxErr := store.Mailboxes(ctx)
+	if inboxErr != nil || mailboxErr != nil || len(unselected) != 0 || len(unselectedMailboxes) != 0 {
+		t.Fatal("unselected Gmail created receiving rows", unselected, unselectedMailboxes, inboxErr, mailboxErr)
+	}
+	cfg.Connections[0].AgentInbox = true
+	if err = svc.SaveConfig(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
 	if err = env.api.syncAgentEmailInboxes(ctx); err != nil {
 		t.Fatal(err)
 	}
 	provisioned, err := store.Inboxes(ctx)
-	if err != nil || len(provisioned) != 0 {
-		t.Fatalf("account selection opted Crew into receiving: %+v %v", provisioned, err)
+	if err != nil || len(provisioned) != 1 || provisioned[0].WorkspacePath != root {
+		t.Fatalf("default-on Crew was not provisioned: %+v %v", provisioned, err)
 	}
 	status, err := env.api.agentEmailInboxResult(ctx, map[string]interface{}{"workspace_path": root})
-	if err != nil || status.(map[string]any)["enabled"] != false {
-		t.Fatalf("off-by-default status unavailable: %+v %v", status, err)
+	if err != nil || status.(map[string]any)["enabled"] != true {
+		t.Fatalf("default-on status unavailable: %+v %v", status, err)
 	}
 	mailboxes, err := store.Mailboxes(ctx)
-	if err != nil || len(mailboxes) != 0 {
-		t.Fatalf("opening disabled Inbox created a poller: %+v %v", mailboxes, err)
+	if err != nil || len(mailboxes) != 1 {
+		t.Fatalf("default-on Crew has no poller: %+v %v", mailboxes, err)
 	}
 	if _, err = env.api.configureAgentInbox(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "other"}), root, true); err == nil {
 		t.Fatal("Run person enabled the owner's personal mailbox")
@@ -131,6 +149,23 @@ func TestAgentEmailInboxUsesOwnerVaultAccountAndServerOnly(t *testing.T) {
 	if _, err = env.api.resolveAgentEmailInbox(ctx, root); err == nil {
 		t.Fatal("disabled Crew still available to a Watcher")
 	}
+	// Ordinary typed manifest rewrites must retain an explicit false setting.
+	env.mock.mu.Lock()
+	var manifest productProjectManifest
+	decodeErr := json.Unmarshal([]byte(env.mock.files[root+"/product.json"]), &manifest)
+	raw, encodeErr := json.Marshal(manifest)
+	env.mock.files[root+"/product.json"] = string(raw)
+	env.mock.mu.Unlock()
+	if decodeErr != nil || encodeErr != nil || manifest.receivesEmail() {
+		t.Fatal("manifest rewrite lost explicit off", decodeErr, encodeErr)
+	}
+	if err = env.api.syncAgentEmailInboxes(ctx); err != nil {
+		t.Fatal(err)
+	}
+	active, _ = store.Inboxes(ctx)
+	if len(active) != 0 {
+		t.Fatal("reconciliation reversed explicit off", active)
+	}
 	status, err = env.api.agentEmailInboxResult(ctx, map[string]interface{}{"workspace_path": root})
 	if err != nil || status.(map[string]any)["enabled"] != false {
 		t.Fatal("disabled Inbox status unavailable", status, err)
@@ -145,8 +180,7 @@ func TestAgentEmailInboxUsesOwnerVaultAccountAndServerOnly(t *testing.T) {
 	if _, err = env.api.configureAgentInbox(ctx, root, true); err != nil {
 		t.Fatal("owner could not re-enable this Crew", err)
 	}
-	svc := services.GetGmailService()
-	cfg := svc.GetConfig()
+	cfg = svc.GetConfig()
 	cfg.Connections[0].Enabled = false
 	if err = svc.SaveConfig(ctx, cfg); err != nil {
 		t.Fatal(err)
@@ -164,7 +198,7 @@ func TestAgentEmailInboxUsesOwnerVaultAccountAndServerOnly(t *testing.T) {
 	router := mux.NewRouter()
 	stop := local.initGmailInbound(router)
 	stop()
-	if local.gmailInbound != nil || agentEmailFeatureEnabled() {
+	if local.gmailInbound != nil {
 		t.Fatal("local receiving enabled")
 	}
 	for _, p := range []string{"/api/agent-email/inbox", "/api/agent-email/setup", "/api/hooks/gmail/events"} {
@@ -203,9 +237,6 @@ func TestAgentEmailWatcherRealPythonAndDurableCursor(t *testing.T) {
 	env, ctx, root := agentEmailCrewFixture(t)
 	env.mock.mu.Lock()
 	env.mock.files[root+"/product.json"] = strings.Replace(env.mock.files[root+"/product.json"], `"schema_version":1`, `"schema_version":1,"email_inbox_enabled":true`, 1)
-	env.mock.mu.Unlock()
-	t.Setenv("AGENT_INBOX_ENABLED", "true")
-	env.mock.mu.Lock()
 	env.mock.files["config/gmail-config.json"] = `{"connections":[{"id":"personal","personal":true,"owner_id":"owner","agent_inbox":true,"email":"owner@example.com","client_name":"app","allow_read_access":true,"enabled":true}]}`
 	env.mock.mu.Unlock()
 	previous := services.GetGmailService()
@@ -317,9 +348,9 @@ func (c personalWatcherMailClient) Message(ctx context.Context, id string) (gmai
 func TestPersonalGmailWatcherKeepsMailPrivateAndPinsOwnerSource(t *testing.T) {
 	t.Setenv("LOCAL_MODE", "false")
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	t.Setenv("AGENT_INBOX_ENABLED", "true")
 	env, ctx, root := agentEmailCrewFixture(t)
 	env.mock.mu.Lock()
+	env.mock.files[root+"/product.json"] = strings.Replace(env.mock.files[root+"/product.json"], `"schema_version":1`, `"schema_version":1,"email_inbox_enabled":false`, 1)
 	env.mock.files["config/gmail-config.json"] = `{"connections":[{"id":"personal","personal":true,"owner_id":"owner","agent_inbox":true,"email":"owner@example.com","allow_read_access":true,"enabled":true}]}`
 	env.mock.mu.Unlock()
 	old := services.GetGmailService()

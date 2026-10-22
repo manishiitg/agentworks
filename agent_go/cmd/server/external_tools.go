@@ -789,8 +789,8 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		api.externalCodeReviewCall(w, r, tool.Name, call.Arguments)
 		return
 	}
-	if tool.Name == "agent_inbox" || tool.Name == "manage_agent_email" {
-		api.externalAgentEmailCall(w, r, tool.Name, call.Arguments)
+	if tool.Name == "agent_inbox" {
+		api.externalAgentEmailCall(w, r, call.Arguments)
 		return
 	}
 	if tool.Name == "manage_condition_triggers" {

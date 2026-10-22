@@ -17,7 +17,6 @@ type Client interface {
 var ErrMessageGone = errors.New("Gmail message no longer exists")
 
 type Service struct {
-	Enabled func(context.Context) bool
 	Store   *Store
 	Client  func(context.Context, Mailbox) (Client, error)
 	Inboxes func(context.Context) ([]Inbox, error)
@@ -49,9 +48,6 @@ func (s *Service) Start(ctx context.Context) {
 }
 func (s *Service) Wait() { s.wg.Wait() }
 func (s *Service) syncNext(ctx context.Context) {
-	if s.Enabled != nil && !s.Enabled(ctx) {
-		return
-	}
 	boxes, e := s.Store.Mailboxes(ctx)
 	if e != nil {
 		return
@@ -144,9 +140,6 @@ func (s *Service) syncMailbox(ctx context.Context, m Mailbox) error {
 			}
 			if !matched {
 				continue
-			}
-			if s.Enabled != nil && !s.Enabled(ctx) {
-				return nil
 			}
 			if _, err := s.Client(ctx, m); err != nil {
 				return err

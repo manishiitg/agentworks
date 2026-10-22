@@ -18,11 +18,7 @@ func agentEmailID(profile, project string) string {
 	return uuid.NewSHA1(uuid.NameSpaceURL, []byte("agent-email:"+profile+":"+project)).String()
 }
 func (api *StreamingAPI) ensureAgentEmailInbox(ctx context.Context, profile, project, workspace, owner string) (gmailinbound.Inbox, error) {
-	cfg, err := readGmailInboundConfig()
-	if err != nil {
-		return gmailinbound.Inbox{}, err
-	}
-	if IsLocalMode() || api.gmailInbound == nil || !cfg.Enabled {
+	if IsLocalMode() || api.gmailInbound == nil {
 		return gmailinbound.Inbox{}, fmt.Errorf("Agent inboxes are not enabled on this server")
 	}
 	client, email, err := userInboxClient(owner)
@@ -50,7 +46,7 @@ func (api *StreamingAPI) agentEmailCrew(ctx context.Context, workspace string) (
 	if claims == nil || userAccessForClaims(claims).Disabled {
 		return gmailinbound.Inbox{}, false, fmt.Errorf("Sign in to open this agent's inbox")
 	}
-	if !agentEmailFeatureEnabled() || api.gmailInbound == nil {
+	if IsLocalMode() || api.gmailInbound == nil {
 		return gmailinbound.Inbox{}, false, fmt.Errorf("Crew inboxes are not enabled on this server")
 	}
 	if ref, ok := resolveCrewPath(ctx, claims.UserID, workspace); ok {
@@ -65,7 +61,7 @@ func (api *StreamingAPI) agentEmailCrew(ctx context.Context, workspace string) (
 		if err != nil || m.ID == "" {
 			return gmailinbound.Inbox{}, false, fmt.Errorf("Agent inbox unavailable")
 		}
-		return gmailinbound.Inbox{ProfileID: product.ProfileID, ProjectID: m.ID, WorkspacePath: ref.Root, OwnerID: ref.OwnerID}, m.EmailInboxEnabled, nil
+		return gmailinbound.Inbox{ProfileID: product.ProfileID, ProjectID: m.ID, WorkspacePath: ref.Root, OwnerID: ref.OwnerID}, m.receivesEmail(), nil
 	}
 	return gmailinbound.Inbox{}, false, fmt.Errorf("Email inboxes are available for Crews")
 }
@@ -124,11 +120,7 @@ func (api *StreamingAPI) configureAgentInbox(ctx context.Context, workspace stri
 	return api.agentEmailInboxResult(ctx, map[string]interface{}{"workspace_path": target.WorkspacePath})
 }
 func (api *StreamingAPI) syncAgentEmailInboxes(ctx context.Context) error {
-	cfg, err := readGmailInboundConfig()
-	if err != nil {
-		return err
-	}
-	if IsLocalMode() || api.gmailInbound == nil || !cfg.Enabled {
+	if IsLocalMode() || api.gmailInbound == nil {
 		return nil
 	}
 	if api.agentProfiles == nil {
@@ -155,7 +147,7 @@ func (api *StreamingAPI) syncAgentEmailInboxes(ctx context.Context) error {
 					return err
 				}
 				var m productProjectManifest
-				if !found || json.Unmarshal([]byte(raw), &m) != nil || m.ID == "" || m.Product != p.ID || !m.EmailInboxEnabled {
+				if !found || json.Unmarshal([]byte(raw), &m) != nil || m.ID == "" || m.Product != p.ID || !m.receivesEmail() {
 					continue
 				}
 				root := path.Dir(candidate)
@@ -272,35 +264,12 @@ func (api *StreamingAPI) agentEmailInboxHTTP(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(out)
 }
-func (api *StreamingAPI) registerAgentEmailTools(reg definitionToolRegistrar, session, workspace string) error {
-	if IsLocalMode() {
-		return nil
-	}
-
-	return reg.RegisterCustomTool("manage_agent_email", agentEmailSetupDescription, agentEmailSetupSchema(), func(ctx context.Context, args map[string]interface{}) (string, error) {
-		out, err := api.agentEmailSetupOperation(ctx, args)
-		if err != nil {
-			return "", err
-		}
-		b, err := json.Marshal(out)
-		return string(b), err
-	}, "gmail_connection_management")
-}
-
-func agentEmailFeatureEnabled() bool {
-	if IsLocalMode() {
-		return false
-	}
-	c, err := readGmailInboundConfig()
-	return err == nil && c.Enabled
-}
-
 func (api *StreamingAPI) registerAgentInboxTools(reg definitionToolRegistrar, workspace string, canConfigure bool) error {
 	if IsLocalMode() {
 		return nil
 	}
 	if canConfigure {
-		if err := reg.RegisterCustomTool("configure_agent_inbox", "Enable or disable incoming email for this Crew. Off by default. The Crew owner chooses one Gmail account in My Vault first. Only mail delivered to enabled Crew addresses is checked, about every 60 seconds per selected account; no personal-inbox scan. Disabling stops receiving and keeps stored mail. Does not create a Watcher or start work. Server deployments only.", map[string]interface{}{"type": "object", "additionalProperties": false, "required": []string{"enabled"}, "properties": map[string]interface{}{"enabled": map[string]interface{}{"type": "boolean"}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
+		if err := reg.RegisterCustomTool("configure_agent_inbox", "Enable or disable incoming email for this Crew. On by default on servers; an explicit off setting stays off. The Crew owner chooses one Gmail account in My Vault first. Only mail delivered to enabled Crew addresses is checked, about every 60 seconds per selected account; personal Gmail is checked more broadly only for an explicitly enabled personal Gmail Watcher. Disabling stops receiving and keeps stored mail. Does not create a Watcher or start work. Server deployments only.", map[string]interface{}{"type": "object", "additionalProperties": false, "required": []string{"enabled"}, "properties": map[string]interface{}{"enabled": map[string]interface{}{"type": "boolean"}}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			enabled, ok := args["enabled"].(bool)
 			if !ok {
 				return "", fmt.Errorf("Choose whether incoming email is enabled for this Crew")

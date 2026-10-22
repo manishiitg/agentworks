@@ -162,7 +162,6 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 		"manage_slack_bot":                  false,
 		"manage_slack_account":              false,
 		"get_agent_inbox":                   false,
-		"manage_agent_email":                false,
 		"configure_agent_inbox":             false,
 		"update_gmail_connection_grants":    false,
 		"query_workflow_db":                 false,

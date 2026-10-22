@@ -1,15 +1,15 @@
 # Crew inboxes
 
-Your company administrator turns **Crew inboxes** on once in **My Vault → Company app setup**. There is no company receiving mailbox or Google Cloud receiving setup.
+Crew inboxes are available on servers. There is no company email switch, receiving mailbox or Google Cloud receiving setup.
 
 1. Connect your Google account in **My Vault**. Reuse an account already saved there.
 2. On the Gmail account you want to use, choose **Use for Crew inboxes**. If needed, **Change access** to allow Gmail reading and finish Google sign-in.
-3. Open the Crew you want to receive email and choose **Inbox** in its right panel. Use **Ask AI** to say “Enable incoming email for this Crew.” Copy its address once enabled.
-4. Incoming email is **off by default for every Crew**. Enable only the Crews you want; ask Builder to disable receiving at any time. Stored mail stays available.
+3. Open the Crew you want to receive email and choose **Inbox** in its right panel. Copy its email address.
+4. Incoming email is **on by default for every Crew** once you select your Gmail inbox account. Any Crew you explicitly turned off stays off. Use **Ask AI** to turn receiving off or back on for that Crew. Stored mail stays available.
 
 If you have several Google accounts, choose just one for Crew inboxes. Changing that selection switches your enabled Crews. Disconnecting it or turning it off stops delivery. Renaming a Crew keeps its address. These addresses deliver into your existing Gmail through plus-addressing; they do not create extra Google accounts.
 
-Only enabled Crew addresses are checked. If no Crew is enabled, your mailbox is not polled. Only mail addressed to the Crew appears in its Inbox, usually within about 60 seconds. Other personal mail stays private. People who can already access the Crew can read its received conversations and attachments. Existing Google account permissions do not change.
+Only enabled Crew addresses are checked. If no Crew or personal Gmail Watcher is enabled, your mailbox is not polled. Only mail addressed to the Crew appears in its Inbox, usually within about 60 seconds. Other personal mail stays private. People who can already access the Crew can read its received conversations and attachments. Existing Google account permissions do not change.
 
 Receiving email does not start work. Ask the Builder to add an optional **Watcher** if certain mail should call chat or a published function. The Watcher can filter email fields using a Python script and follows its owner's existing permissions. Email content is untrusted data, never approval to change settings.
 
@@ -18,6 +18,6 @@ Crew inboxes are available on server deployments. Personal Google accounts still
 
 ### Watch your existing Gmail
 
-Ask your Crew Builder to watch your personal Gmail and send only matching content to your Crew chat. It uses the same Watcher setup: check_mode=inbox, email_source=personal_gmail, with Python supplied through script_content. You must own the Crew and select your own Gmail inbox account in My Vault with read access. The server's email feature must be enabled. A dedicated Crew email address is optional for this use.
+Ask your Crew Builder to watch your personal Gmail and send only matching content to your Crew chat. It uses the same Watcher setup: check_mode=inbox, email_source=personal_gmail, with Python supplied through script_content. You must own the Crew and select your own Gmail inbox account in My Vault with read access. Server deployments only. The Crew’s dedicated address may be on or off independently; creating this Watcher does not change that setting.
 
 It watches new received mail, including archived arrivals, about every60seconds; it excludes sent mail and drafts and does not import old mail. Private message bodies exist only in the temporary detector snapshot, up to20 at a time, then are deleted. Message identities and the Watcher cursor stay private; personal mail is never listed in the Crew Inbox. Only the event payload chosen by your Watcher is sent to your chat or published function. Use target kind=agent and a message for chat; functions must be declared entry points. Changing the selected Gmail requires a new Watcher.
