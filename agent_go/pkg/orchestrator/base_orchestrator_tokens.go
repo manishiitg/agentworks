@@ -608,7 +608,6 @@ func (bo *BaseOrchestrator) PersistTokenUsage(ctx context.Context, iterationFold
 	defer tokenFileMutex.Unlock()
 
 	store := newBaseOrchestratorTokenUsageStore(bo)
-	store.ensureRunMigrated(ctx, iterationFolder)
 
 	scope, runFolder := NormalizeCostScopeAndRunFolder(iterationFolder)
 	if runFolder == "" {
@@ -766,7 +765,6 @@ func (bo *BaseOrchestrator) PersistPhaseTokenUsage(ctx context.Context,
 	defer phaseTokenFileMutex.Unlock()
 
 	store := newBaseOrchestratorTokenUsageStore(bo)
-	store.ensurePhaseMigrated(ctx)
 
 	// Build file path under the dedicated phase costs folder.
 	workspacePath := bo.GetWorkspacePath()

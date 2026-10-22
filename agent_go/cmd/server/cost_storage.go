@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
@@ -24,39 +23,10 @@ func normalizeWorkspacePath(path string) string {
 	return filepath.ToSlash(filepath.Clean(cleaned))
 }
 
-var migratedCostWorkspaces sync.Map
-
-func ensureWorkspaceCostMigration(ctx context.Context, workspacePath string) error {
-	normalized := normalizeWorkspacePath(workspacePath)
-	if normalized == "" {
-		return nil
-	}
-	if _, loaded := migratedCostWorkspaces.Load(normalized); loaded {
-		return nil
-	}
-
-	if err := migrateLegacyCostFiles(ctx, normalized); err != nil {
-		return err
-	}
-
-	migratedCostWorkspaces.Store(normalized, struct{}{})
-	return nil
-}
-
 func workspaceCostPath(workspacePath string, parts ...string) string {
 	all := []string{normalizeWorkspacePath(workspacePath)}
 	all = append(all, parts...)
 	return pathpkg.Clean(pathpkg.Join(all...))
-}
-
-func migrateLegacyCostFiles(ctx context.Context, workspacePath string) error {
-	if err := migrateLegacyScopedTokenUsage(ctx, workspacePath, workspaceCostPath(workspacePath, "runs"), orchestrator.CostScopeExecution); err != nil {
-		return err
-	}
-	if err := migrateLegacyPhaseTokenUsage(ctx, workspacePath); err != nil {
-		return err
-	}
-	return nil
 }
 
 func listWorkspaceFilesRecursive(ctx context.Context, folderPath string) ([]string, error) {
@@ -101,164 +71,7 @@ func listWorkspaceFilesRecursive(ctx context.Context, folderPath string) ([]stri
 	return unique, nil
 }
 
-func migrateLegacyScopedTokenUsage(ctx context.Context, workspacePath, legacyRoot string, scope orchestrator.CostScope) error {
-	filePaths, err := listWorkspaceFilesRecursive(ctx, legacyRoot)
-	if err != nil {
-		return err
-	}
-
-	for _, filePath := range filePaths {
-		if pathpkg.Base(filePath) != "token_usage.json" {
-			continue
-		}
-
-		runFolder := strings.TrimPrefix(pathpkg.Dir(filePath), legacyRoot+"/")
-		if runFolder == pathpkg.Dir(filePath) || runFolder == "." || runFolder == "" {
-			continue
-		}
-
-		content, exists, err := readFileFromWorkspace(ctx, filePath)
-		if err != nil {
-			return err
-		}
-		if !exists {
-			continue
-		}
-
-		var tokenFile orchestrator.TokenUsageFile
-		if err := json.Unmarshal([]byte(content), &tokenFile); err != nil {
-			continue
-		}
-
-		ts := tokenFile.CreatedAt
-		if ts.IsZero() {
-			ts = tokenFile.UpdatedAt
-		}
-		if ts.IsZero() {
-			ts = time.Now().UTC()
-		}
-
-		targetPath := workspaceCostPath(
-			workspacePath,
-			"costs",
-			string(scope),
-			orchestrator.ExtractGroupFolderFromRunFolder(runFolder),
-			orchestrator.CostDateKey(ts)+".json",
-		)
-
-		dailyFile := &orchestrator.DailyGroupTokenUsageFile{
-			Date:        orchestrator.CostDateKey(ts),
-			GroupFolder: orchestrator.ExtractGroupFolderFromRunFolder(runFolder),
-			UpdatedAt:   time.Now().UTC(),
-			RunFolders:  make(map[string]*orchestrator.TokenUsageFile),
-		}
-
-		if existingContent, exists, readErr := readFileFromWorkspace(ctx, targetPath); readErr == nil && exists && existingContent != "" {
-			if err := json.Unmarshal([]byte(existingContent), dailyFile); err == nil && dailyFile.RunFolders == nil {
-				dailyFile.RunFolders = make(map[string]*orchestrator.TokenUsageFile)
-			}
-		}
-
-		dailyFile.RunFolders[runFolder] = orchestrator.MergeTokenUsageFiles(dailyFile.RunFolders[runFolder], &tokenFile)
-		dailyFile.UpdatedAt = time.Now().UTC()
-
-		jsonData, err := json.MarshalIndent(dailyFile, "", "  ")
-		if err != nil {
-			return err
-		}
-		if err := writeRawFileToWorkspace(ctx, targetPath, string(jsonData)); err != nil {
-			return err
-		}
-		if err := deleteWorkspaceFile(ctx, filePath); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func migrateLegacyPhaseTokenUsage(ctx context.Context, workspacePath string) error {
-	legacyPath := workspaceCostPath(workspacePath, "token_usage.json")
-	content, exists, err := readFileFromWorkspace(ctx, legacyPath)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		return nil
-	}
-
-	targetPath := workspaceCostPath(workspacePath, "costs", "phase", "token_usage.json")
-
-	var legacyTokenFile orchestrator.PhaseTokenUsageFile
-	if err := json.Unmarshal([]byte(content), &legacyTokenFile); err != nil {
-		return nil
-	}
-	orchestrator.EnsurePhaseTokenUsageFilePricing(&legacyTokenFile)
-
-	if existingContent, exists, readErr := readFileFromWorkspace(ctx, targetPath); readErr == nil && exists && existingContent != "" {
-		var targetTokenFile orchestrator.PhaseTokenUsageFile
-		if err := json.Unmarshal([]byte(existingContent), &targetTokenFile); err == nil {
-			orchestrator.EnsurePhaseTokenUsageFilePricing(&targetTokenFile)
-
-			if targetTokenFile.ByModel == nil {
-				targetTokenFile.ByModel = make(map[string]*orchestrator.ModelTokenUsage)
-			}
-			if targetTokenFile.ByPhaseAndModel == nil {
-				targetTokenFile.ByPhaseAndModel = make(map[string]map[string]*orchestrator.ModelTokenUsage)
-			}
-			if legacyTokenFile.ByModel == nil {
-				legacyTokenFile.ByModel = make(map[string]*orchestrator.ModelTokenUsage)
-			}
-			if legacyTokenFile.ByPhaseAndModel == nil {
-				legacyTokenFile.ByPhaseAndModel = make(map[string]map[string]*orchestrator.ModelTokenUsage)
-			}
-
-			if targetTokenFile.CreatedAt.IsZero() || (!legacyTokenFile.CreatedAt.IsZero() && legacyTokenFile.CreatedAt.Before(targetTokenFile.CreatedAt)) {
-				targetTokenFile.CreatedAt = legacyTokenFile.CreatedAt
-			}
-			if legacyTokenFile.UpdatedAt.After(targetTokenFile.UpdatedAt) {
-				targetTokenFile.UpdatedAt = legacyTokenFile.UpdatedAt
-			}
-
-			for modelID, usage := range legacyTokenFile.ByModel {
-				targetTokenFile.ByModel[modelID] = orchestrator.MergeModelTokenUsage(targetTokenFile.ByModel[modelID], usage)
-			}
-			for phaseID, modelMap := range legacyTokenFile.ByPhaseAndModel {
-				if targetTokenFile.ByPhaseAndModel[phaseID] == nil {
-					targetTokenFile.ByPhaseAndModel[phaseID] = make(map[string]*orchestrator.ModelTokenUsage)
-				}
-				for modelID, usage := range modelMap {
-					targetTokenFile.ByPhaseAndModel[phaseID][modelID] = orchestrator.MergeModelTokenUsage(targetTokenFile.ByPhaseAndModel[phaseID][modelID], usage)
-				}
-			}
-
-			mergedJSON, err := json.MarshalIndent(targetTokenFile, "", "  ")
-			if err != nil {
-				return err
-			}
-			if err := writeRawFileToWorkspace(ctx, targetPath, string(mergedJSON)); err != nil {
-				return err
-			}
-			if err := deleteWorkspaceFile(ctx, legacyPath); err != nil {
-				return err
-			}
-			return nil
-		}
-	}
-
-	if err := writeRawFileToWorkspace(ctx, targetPath, content); err != nil {
-		return err
-	}
-	if err := deleteWorkspaceFile(ctx, legacyPath); err != nil {
-		return err
-	}
-	return nil
-}
-
 func readPhaseTokenUsageFromCosts(ctx context.Context, workspacePath string) (*orchestrator.PhaseTokenUsageFile, error) {
-	if err := ensureWorkspaceCostMigration(ctx, workspacePath); err != nil {
-		return nil, err
-	}
-
 	phasePath := workspaceCostPath(workspacePath, "costs", "phase", "token_usage.json")
 	content, exists, err := readFileFromWorkspace(ctx, phasePath)
 	if err != nil {
@@ -297,10 +110,6 @@ func (r *storedRunTokenUsage) effectiveRunFolder() string {
 // ID. Legacy files without executions remain visible with a legacy:<path> key;
 // they are never merged into a new UUID-keyed execution.
 func readAllRunTokenUsageFromCosts(ctx context.Context, workspacePath string, scope orchestrator.CostScope) (map[string]*storedRunTokenUsage, error) {
-	if err := ensureWorkspaceCostMigration(ctx, workspacePath); err != nil {
-		return nil, err
-	}
-
 	root := workspaceCostPath(workspacePath, "costs", string(scope))
 
 	result := make(map[string]*storedRunTokenUsage)
@@ -420,10 +229,6 @@ func workflowRunCostEntryTime(entry workflowRunCostEntry) time.Time {
 }
 
 func readAllPhaseTokenUsageFromCosts(ctx context.Context, workspacePath string) ([]workflowPhaseDailyCostEntry, error) {
-	if err := ensureWorkspaceCostMigration(ctx, workspacePath); err != nil {
-		return nil, err
-	}
-
 	root := workspaceCostPath(workspacePath, "costs", "phase", "daily")
 
 	entries := make([]workflowPhaseDailyCostEntry, 0)
@@ -483,10 +288,6 @@ func readAllPhaseTokenUsageFromCosts(ctx context.Context, workspacePath string) 
 }
 
 func readAllRunDailyTokenUsageFromCosts(ctx context.Context, workspacePath string, scope orchestrator.CostScope) ([]workflowRunDailyCostEntry, error) {
-	if err := ensureWorkspaceCostMigration(ctx, workspacePath); err != nil {
-		return nil, err
-	}
-
 	root := workspaceCostPath(workspacePath, "costs", string(scope))
 
 	entries := make([]workflowRunDailyCostEntry, 0)

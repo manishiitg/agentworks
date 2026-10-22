@@ -43,15 +43,6 @@ func emptyTokenUsageFile() *TokenUsageFile {
 	}
 }
 
-func (s *tokenUsageFileStore) parseTokenUsageFile(content string) (*TokenUsageFile, error) {
-	var tokenFile TokenUsageFile
-	if err := json.Unmarshal([]byte(content), &tokenFile); err != nil {
-		return nil, err
-	}
-	EnsureTokenUsageFilePricing(&tokenFile)
-	return &tokenFile, nil
-}
-
 func (s *tokenUsageFileStore) parseDailyGroupTokenUsageFile(content string) (*DailyGroupTokenUsageFile, error) {
 	var dailyFile DailyGroupTokenUsageFile
 	if err := json.Unmarshal([]byte(content), &dailyFile); err != nil {
@@ -103,69 +94,6 @@ func (s *tokenUsageFileStore) parseDailyPhaseTokenUsageFile(content string) (*Da
 	return &dailyFile, nil
 }
 
-func (s *tokenUsageFileStore) legacyRunTokenUsagePath(iterationFolder string) string {
-	_, runFolder := NormalizeCostScopeAndRunFolder(iterationFolder)
-	return filepath.Join(s.workspacePath, "runs", runFolder, "token_usage.json")
-}
-
-func (s *tokenUsageFileStore) ensureRunMigrated(ctx context.Context, iterationFolder string) {
-	scope, runFolder := NormalizeCostScopeAndRunFolder(iterationFolder)
-	if runFolder == "" {
-		return
-	}
-
-	legacyPath := s.legacyRunTokenUsagePath(iterationFolder)
-	legacyContent, err := s.readFile(ctx, legacyPath)
-	if err != nil || legacyContent == "" {
-		return
-	}
-
-	legacyFile, err := s.parseTokenUsageFile(legacyContent)
-	if err != nil {
-		s.warnf(fmt.Sprintf("⚠️ Failed to parse legacy token usage file %s: %v", legacyPath, err))
-		return
-	}
-
-	migrateAt := legacyFile.CreatedAt
-	if migrateAt.IsZero() {
-		migrateAt = legacyFile.UpdatedAt
-	}
-	if migrateAt.IsZero() {
-		migrateAt = s.now()
-	}
-
-	targetPath := ResolveDailyGroupTokenUsagePath(s.workspacePath, scope, runFolder, migrateAt)
-	dailyFile := &DailyGroupTokenUsageFile{
-		Date:        CostDateKey(migrateAt),
-		GroupFolder: ExtractGroupFolderFromRunFolder(runFolder),
-		UpdatedAt:   s.now(),
-		Executions:  make(map[string]*ExecutionTokenUsage),
-		RunFolders:  make(map[string]*TokenUsageFile),
-	}
-
-	if existingContent, readErr := s.readFile(ctx, targetPath); readErr == nil && existingContent != "" {
-		if parsedDaily, parseErr := s.parseDailyGroupTokenUsageFile(existingContent); parseErr == nil {
-			dailyFile = parsedDaily
-		}
-	}
-
-	dailyFile.UpdatedAt = s.now()
-	dailyFile.RunFolders[runFolder] = MergeTokenUsageFiles(dailyFile.RunFolders[runFolder], legacyFile)
-
-	jsonData, err := json.MarshalIndent(dailyFile, "", "  ")
-	if err != nil {
-		s.warnf(fmt.Sprintf("⚠️ Failed to marshal migrated daily token usage for %s: %v", targetPath, err))
-		return
-	}
-	if err := s.writeFile(ctx, targetPath, string(jsonData)); err != nil {
-		s.warnf(fmt.Sprintf("⚠️ Failed to write migrated daily token usage for %s: %v", targetPath, err))
-		return
-	}
-	if err := s.deleteFile(ctx, legacyPath); err != nil && !strings.Contains(err.Error(), "not found") && !strings.Contains(err.Error(), "no such file") {
-		s.warnf(fmt.Sprintf("⚠️ Failed to delete legacy token usage file %s after migration: %v", legacyPath, err))
-	}
-}
-
 func (s *tokenUsageFileStore) readRun(ctx context.Context, iterationFolder string) *TokenUsageFile {
 	if iterationFolder == "" {
 		return &TokenUsageFile{
@@ -173,8 +101,6 @@ func (s *tokenUsageFileStore) readRun(ctx context.Context, iterationFolder strin
 			ByStepAndModel: make(map[string]map[string]*ModelTokenUsage),
 		}
 	}
-
-	s.ensureRunMigrated(ctx, iterationFolder)
 
 	scope, runFolder := NormalizeCostScopeAndRunFolder(iterationFolder)
 	filePath := ResolveDailyGroupTokenUsagePath(s.workspacePath, scope, runFolder, s.now())
@@ -213,7 +139,6 @@ func (s *tokenUsageFileStore) readRunAcrossDates(ctx context.Context, iterationF
 	if strings.TrimSpace(iterationFolder) == "" || s.listFiles == nil {
 		return emptyTokenUsageFile()
 	}
-	s.ensureRunMigrated(ctx, iterationFolder)
 
 	scope, runFolder := NormalizeCostScopeAndRunFolder(iterationFolder)
 	groupFolders := []string{ExtractGroupFolderFromRunFolder(runFolder)}
@@ -407,29 +332,7 @@ func archivedPathForRunFolder(runFolder, fromRunFolder, toRunFolder string) stri
 	return ""
 }
 
-func (s *tokenUsageFileStore) ensurePhaseMigrated(ctx context.Context) {
-	legacyPath := filepath.Join(s.workspacePath, "token_usage.json")
-	legacyContent, err := s.readFile(ctx, legacyPath)
-	if err != nil || legacyContent == "" {
-		return
-	}
-
-	targetPath := ResolvePhaseTokenUsagePath(s.workspacePath)
-	if existingContent, readErr := s.readFile(ctx, targetPath); readErr == nil && existingContent != "" {
-		return
-	}
-
-	if err := s.writeFile(ctx, targetPath, legacyContent); err != nil {
-		s.warnf(fmt.Sprintf("⚠️ Failed to migrate legacy phase token usage from %s to %s: %v", legacyPath, targetPath, err))
-		return
-	}
-	if err := s.deleteFile(ctx, legacyPath); err != nil && !strings.Contains(err.Error(), "not found") && !strings.Contains(err.Error(), "no such file") {
-		s.warnf(fmt.Sprintf("⚠️ Failed to delete legacy phase token usage file %s after migration: %v", legacyPath, err))
-	}
-}
-
 func (s *tokenUsageFileStore) readPhase(ctx context.Context) *PhaseTokenUsageFile {
-	s.ensurePhaseMigrated(ctx)
 
 	filePath := ResolvePhaseTokenUsagePath(s.workspacePath)
 	content, err := s.readFile(ctx, filePath)
