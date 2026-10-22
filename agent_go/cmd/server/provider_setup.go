@@ -55,7 +55,7 @@ var providerSetupCommands = map[string]map[string]providerSetupCommand{
 	"claude-code": {
 		"authenticate": {command: "claude", args: []string{"auth", "login"}},
 		"inspect":      {command: "claude", args: []string{"--tools", ""}},
-		"usage":        {command: "claude", args: []string{"--tools", ""}},
+		"usage":        {command: "claude", args: []string{"--tools", "", "--strict-mcp-config"}},
 	},
 	"codex-cli": {
 		// --device-auth prints a URL + code to authenticate from any device,
@@ -65,7 +65,7 @@ var providerSetupCommands = map[string]map[string]providerSetupCommand{
 		// local browser of its own, where the plain flow can never complete.
 		"authenticate": {command: "codex", args: []string{"login", "--device-auth"}},
 		"inspect":      {command: "codex", args: []string{"--sandbox", "read-only", "--ask-for-approval", "never"}},
-		"usage":        {command: "codex", args: []string{"--sandbox", "read-only", "--ask-for-approval", "never"}},
+		"usage":        {command: "codex", args: []string{"--sandbox", "read-only", "--ask-for-approval", "never", "--disable", "shell_tool", "-c", "mcp_servers={}"}},
 	},
 	"cursor-cli": {
 		"authenticate": {command: "cursor-agent", args: []string{"login"}},
@@ -178,14 +178,16 @@ var providerUsageCommands = map[string]string{
 }
 
 type providerSetupSnapshot struct {
-	ID        string    `json:"id"`
-	Provider  string    `json:"provider"`
-	Action    string    `json:"action"`
-	Status    string    `json:"status"`
-	ExitCode  *int      `json:"exit_code,omitempty"`
-	Error     string    `json:"error,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID           string    `json:"id"`
+	Provider     string    `json:"provider"`
+	Action       string    `json:"action"`
+	Status       string    `json:"status"`
+	ExitCode     *int      `json:"exit_code,omitempty"`
+	Error        string    `json:"error,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	UsageCommand string    `json:"usage_command,omitempty"`
+	InputLimit   int       `json:"input_limit,omitempty"`
 }
 
 type providerSetupSession struct {
@@ -209,38 +211,34 @@ type providerSetupSession struct {
 	// the server drives the usage command and every input is dropped.
 	readOnly       bool
 	usageSubmitted time.Time
+	usageInput     providerUsageInput
 }
 
-// userInput forwards browser input, except to a read-only session. In a usage session typed slash commands go through
-// the same allowlist as the coding agents' live terminals (default: /usage only), so a manager reading the account's
-// limits cannot /logout the shared account or change its settings from there, and free text is dropped (decideStrict), so it
-// cannot be used to chat with the model on the shared account.
+// Usage managers may type short input and navigate the CLI. Account/session
+// changes are cancelled server-side; non-managers never get interactive input.
 func (s *providerSetupSession) userInput(data string) error {
 	s.mu.Lock()
-	readOnly := s.readOnly
-	usage := s.action == "usage"
-	s.mu.Unlock()
-	if readOnly {
+	if s.readOnly {
+		s.mu.Unlock()
 		return nil
 	}
-	if usage {
-		switch decision, erase := terminalSlashGuard.decideStrict("provider-setup:"+s.id, []byte(data)); decision {
-		case slashDrop:
-			return nil
-		case slashCancel:
-			if erase > 0 {
-				return s.write(strings.Repeat("\x7f", erase))
-			}
-			return nil
+	var inputErr error
+	if s.action == "usage" {
+		data, inputErr = s.usageInput.filter(data)
+	}
+	s.mu.Unlock()
+	if data != "" {
+		if err := s.write(data); err != nil {
+			return err
 		}
 	}
-	return s.write(data)
+	return inputErr
 }
 
 func (s *providerSetupSession) snapshot() providerSetupSnapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return providerSetupSnapshot{
+	result := providerSetupSnapshot{
 		ID:        s.id,
 		Provider:  s.provider,
 		Action:    s.action,
@@ -250,6 +248,11 @@ func (s *providerSetupSession) snapshot() providerSetupSnapshot {
 		CreatedAt: s.createdAt,
 		UpdatedAt: s.updatedAt,
 	}
+	if s.action == "usage" {
+		result.UsageCommand = providerUsageCommands[s.provider]
+		result.InputLimit = providerUsageInputLimit
+	}
+	return result
 }
 
 func (s *providerSetupSession) isOwnedBy(userID string) bool {
@@ -695,7 +698,6 @@ func (m *providerSetupManager) remove(id string, stop bool) {
 	session := m.sessions[id]
 	delete(m.sessions, id)
 	m.mu.Unlock()
-	terminalSlashGuard.forget("provider-setup:" + id)
 	if stop && session != nil {
 		session.stop()
 	}
@@ -1008,6 +1010,7 @@ func (api *StreamingAPI) handleProviderSetupStream(w http.ResponseWriter, r *htt
 	}
 
 	clientClosed := make(chan struct{})
+	inputErrors := make(chan string, 1)
 	go func() {
 		defer close(clientClosed)
 		for {
@@ -1018,7 +1021,12 @@ func (api *StreamingAPI) handleProviderSetupStream(w http.ResponseWriter, r *htt
 			switch message.Type {
 			case "input":
 				if len(message.Data) <= 16*1024 {
-					_ = session.userInput(message.Data)
+					if err := session.userInput(message.Data); err != nil {
+						select {
+						case inputErrors <- err.Error():
+						default:
+						}
+					}
 				}
 			case "resize":
 				_ = session.resize(message.Cols, message.Rows)
@@ -1028,6 +1036,10 @@ func (api *StreamingAPI) handleProviderSetupStream(w http.ResponseWriter, r *htt
 
 	for {
 		select {
+		case inputError := <-inputErrors:
+			if err := connection.WriteJSON(map[string]string{"type": "input_error", "error": inputError}); err != nil {
+				return
+			}
 		case chunk, open := <-output:
 			if !open {
 				_ = connection.WriteJSON(map[string]interface{}{"type": "exit", "session": session.snapshot()})

@@ -261,6 +261,8 @@ export interface ProviderSetupSession {
   error?: string
   created_at: string
   updated_at: string
+  usage_command?: string
+  input_limit?: number
 }
 
 // Create axios instance for LLM configuration API (use Vite env so deploy URL works)

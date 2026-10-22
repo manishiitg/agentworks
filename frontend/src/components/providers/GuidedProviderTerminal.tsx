@@ -124,7 +124,8 @@ export default function GuidedProviderTerminal({ session, onFinished, onClose }:
       if (disposed) return
       if (typeof event.data === 'string') {
         try {
-          const message = JSON.parse(event.data) as { type?: string; session?: ProviderSetupSession }
+          const message = JSON.parse(event.data) as { type?: string; session?: ProviderSetupSession; error?: string }
+          if (message.type === 'input_error') setTerminalError(message.error || 'This entry was not accepted.')
           if (message.type === 'exit' && message.session) {
             sessionRef.current = message.session
             setConnection('finished')
@@ -152,6 +153,7 @@ export default function GuidedProviderTerminal({ session, onFinished, onClose }:
 
     const input = terminal.onData(data => {
       if (socket.readyState === WebSocket.OPEN) {
+        setTerminalError(null)
         socket.send(JSON.stringify({ type: 'input', data }))
       }
     })
@@ -230,8 +232,8 @@ export default function GuidedProviderTerminal({ session, onFinished, onClose }:
           Crew, Code or workflow, where tools, files and history are set up. */}
       <p data-testid="provider-terminal-purpose" className="border-b border-white/10 bg-violet-500/10 px-3 py-2 text-[11px] leading-4 text-violet-100">
         {isInstallation ? `Installing ${displayName} on this computer. When installation finishes, connect your account.` : isUsage
-          ? <>Check your account's usage{usageCommandHint(displayName)}. Only approved slash commands are accepted; chat messages are blocked.</>
-          : <>Use this terminal only to sign in and check usage{usageCommandHint(displayName)}. For real work, use a Crew or Goal.</>}
+          ? <>Type {session.usage_command} to check usage. Short entries up to {session.input_limit} characters and navigation keys work. Sign-in and account/session changes are blocked. Ordinary text can use the model and incur charges.</>
+          : <>Use this terminal for account setup and checks. For real work, use a Crew or Goal.</>}
       </p>
       <div ref={mountRef} className="h-[min(65vh,640px)] w-full p-2" aria-label={`Interactive ${displayName} setup terminal`} />
       {terminalError && <p className="border-t border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">{terminalError}</p>}
@@ -244,12 +246,4 @@ export default function GuidedProviderTerminal({ session, onFinished, onClose }:
       </p>
     </section>
   )
-}
-
-// The CLI's own usage command, when it has one, so the note says what to type.
-function usageCommandHint(displayName: string): string {
-  const name = displayName.toLowerCase()
-  if (name.includes('codex')) return ' (type /status)'
-  if (name.includes('claude') || name.includes('muse')) return ' (type /usage)'
-  return ''
 }
