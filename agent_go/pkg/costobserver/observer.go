@@ -331,6 +331,14 @@ func (o *Observer) HandleEvent(_ context.Context, event *unifiedevents.AgentEven
 		return nil
 	}
 	switch event.Type {
+	case unifiedevents.LLMGenerationStart:
+		if start, ok := event.Data.(*unifiedevents.LLMGenerationStartEvent); ok && start != nil {
+			o.logModelRequest(event, "started", o.provider, FirstNonEmpty(start.ModelID, o.modelID), "not_completed", 0)
+		}
+	case unifiedevents.LLMGenerationError:
+		if failure, ok := event.Data.(*unifiedevents.LLMGenerationErrorEvent); ok && failure != nil {
+			o.logModelRequest(event, "failed", o.provider, FirstNonEmpty(failure.ModelID, o.modelID), "not_completed", 0)
+		}
 	case unifiedevents.LLMGenerationEnd:
 		generation, ok := event.Data.(*unifiedevents.LLMGenerationEndEvent)
 		if !ok || generation == nil {
@@ -476,6 +484,16 @@ func (o *Observer) recordLLMGeneration(event *unifiedevents.AgentEvent, generati
 	entry.TotalCostUSD = totalCostUSD
 	entry.BillingBasis = billingBasis
 	entry.PricingSource = pricingSource
+	countBasis := "completed_generation"
+	if isCodingCLIProvider(provider) {
+		countBasis = "native_turn_fallback"
+	}
+	if stringValue(metadata["llm_call_count_source"]) == "native_model_generations" {
+		countBasis = "native_model_generations"
+	} else if stringValue(metadata["usage_source"]) == "retained" {
+		countBasis = "retained_native_step"
+	}
+	o.logModelRequest(event, "completed", provider, effectiveModel, countBasis, entry.LLMCallCount)
 	o.append(entry)
 }
 
