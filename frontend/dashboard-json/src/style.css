@@ -42,6 +42,7 @@
     --accent: 220 10% 16%; --accent-foreground: 220 16% 91%;
     --border: 220 9% 22%; --input: 220 9% 22%;
   }
+  :where(*, ::before, ::after) { border-color: hsl(var(--border)); }
   :where(html, body) { margin: 0; min-width: 0; background: hsl(var(--background)); color: hsl(var(--foreground)); font-family: var(--dashboard-font-family); line-height: 1.6; }
   :where(#dashboard-root) { box-sizing: border-box; width: 100%; max-width: var(--dashboard-page-width); padding: var(--dashboard-page-padding); margin-inline: auto; }
   :where(#dashboard-root > *, .dashboard-grid > *) { min-width: 0; }
