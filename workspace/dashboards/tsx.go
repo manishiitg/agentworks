@@ -31,6 +31,14 @@ func prepareTSXSnapshot(snap *Snapshot) error {
 				if args.Kind == api.ResolveEntryPoint && args.Path == "aw:entry" {
 					return api.OnResolveResult{Path: "entry", Namespace: "dashboard-entry"}, nil
 				}
+				// CSS browser resources stay browser resources, as in existing
+				// HTML dashboards. The compiler never reads them from the network.
+				if args.Kind == api.ResolveCSSURLToken || args.Kind == api.ResolveCSSImportRule {
+					lower := strings.ToLower(args.Path)
+					if strings.HasPrefix(lower, "data:") || strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "blob:") || strings.HasPrefix(lower, "#") {
+						return api.OnResolveResult{Path: args.Path, External: true}, nil
+					}
+				}
 				if modules[args.Path] {
 					return api.OnResolveResult{Path: args.Path, Namespace: "dashboard-runtime"}, nil
 				}
