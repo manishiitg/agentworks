@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	pathpkg "path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -336,8 +338,16 @@ func (api *StreamingAPI) restoreLatestBuilderConversation(ctx context.Context, p
 	}
 	restoreStarted := time.Now()
 	candidates := []candidate{}
-	for _, path := range paths {
+	// Newest first, and stop at the first conversation this person may see: a
+	// workflow can hold hundreds of MB of transcripts, and reading and parsing
+	// every one of them timed out the Builder (PLAT-861-311). Automation
+	// transcripts (schedule runs, assistant questions, run sessions) are never
+	// the main Builder chat, so they are skipped without being read.
+	for _, path := range builderConversationPathsNewestFirst(workspacePath, paths) {
 		if !isWorkflowBuilderConversationLogPath(workspacePath, path) {
+			continue
+		}
+		if separateWorkflowConversation(builderConversationFileSessionID(path)) {
 			continue
 		}
 
@@ -358,6 +368,7 @@ func (api *StreamingAPI) restoreLatestBuilderConversation(ctx context.Context, p
 		}
 		updatedAt := parseBuilderConversationUpdatedAt(log.UpdatedAt)
 		candidates = append(candidates, candidate{path: path, log: log, rawContent: content, updatedAt: updatedAt})
+		break
 	}
 
 	if len(candidates) == 0 {
@@ -413,6 +424,43 @@ func (api *StreamingAPI) restoreLatestBuilderConversation(ctx context.Context, p
 		Total:              len(rawEvents),
 		LastProcessedIndex: len(rawEvents) - 1,
 	}, nil
+}
+
+// builderConversationFileSessionID is the session id in a conversation log's
+// file name (session-<id>-conversation.json), or "" for any other name.
+func builderConversationFileSessionID(path string) string {
+	base := pathpkg.Base(path)
+	if !strings.HasPrefix(base, "session-") || !strings.HasSuffix(base, "-conversation.json") {
+		return ""
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(base, "session-"), "-conversation.json")
+}
+
+// builderConversationPathsNewestFirst orders conversation log paths by file
+// modification time, newest first, without reading them. When the workflow
+// folder is not on this machine it falls back to path order, which starts
+// with the date folder.
+func builderConversationPathsNewestFirst(workspacePath string, paths []string) []string {
+	ordered := append([]string(nil), paths...)
+	workflowDir, ok := resolveLocalWorkflowDir(workspacePath)
+	if !ok {
+		sort.Sort(sort.Reverse(sort.StringSlice(ordered)))
+		return ordered
+	}
+	modified := make(map[string]time.Time, len(ordered))
+	prefix := strings.Trim(workspacePath, "/") + "/"
+	for _, path := range ordered {
+		if info, err := os.Stat(filepath.Join(workflowDir, filepath.FromSlash(strings.TrimPrefix(strings.Trim(path, "/"), prefix)))); err == nil {
+			modified[path] = info.ModTime()
+		}
+	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if !modified[ordered[i]].Equal(modified[ordered[j]]) {
+			return modified[ordered[i]].After(modified[ordered[j]])
+		}
+		return ordered[i] > ordered[j]
+	})
+	return ordered
 }
 
 // builderConversationVisibleTo is deliberately stricter than workflow access:
