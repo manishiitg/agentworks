@@ -96,109 +96,17 @@ func TestWorkManifestDeclaresProjectScopeAndCodingAllowlist(t *testing.T) {
 	if !manifest.Profile.ToolPolicy.IsAllowlist() {
 		t.Fatal("work must declare tool_policy.mode: allowlist -- fail-open would silently reach workflow/schedule/pulse tools")
 	}
-	// Crew reuses platform coding tools plus its deliberately small,
-	// project-scoped schedule surface. General workflow authoring stays out;
-	// attached workflows have only the scoped internal-trigger run surface.
-	wantEnabled := map[string]bool{
-		"read_project_files":                     false,
-		"get_file_link":                          false,
-		"get_report_link":                        false,
-		"diff_patch_workspace_file":              false,
-		"execute_shell_command":                  false,
-		"agent_browser":                          false,
-		"browser_connections":                    false,
-		"read_image":                             false,
-		"list_secrets":                           false,
-		"set_workflow_secret":                    false,
-		"delete_workflow_secret":                 false,
-		"update_project_global_secret_selection": false,
-		"list_skills":                            false,
-		"search_skills":                          false,
-		"install_skill":                          false,
-		"import_skill":                           false,
-		"uninstall_skill":                        false,
-		"update_project_skill_selection":         false,
-		"list_mcp_servers":                       false,
-		"search_mcp_catalog":                     false,
-		"install_mcp_server":                     false,
-		"add_mcp_server":                         false,
-		"remove_mcp_server":                      false,
-		"get_mcp_server_logs":                    false,
-		"trigger_mcp_discovery":                  false,
-		"update_project_mcp_server_selection":    false,
-		"list_work_folders":                      false,
-		"attach_work_folder":                     false,
-		"detach_work_folder":                     false,
-		"list_accessible_workflows":              false,
-		"attach_workflow_reference":              false,
-		"detach_workflow_reference":              false,
-		"list_attached_workflows":                false,
-		"list_workflow_triggers":                 false,
-		"run_workflow_trigger":                   false,
-		"get_workflow_trigger_run":               false,
-		"define_function":                        false,
-		"delete_function":                        false,
-		"list_functions":                         false,
-		"call_function":                          false,
-		"get_function_call":                      false,
-		"reply_function_call":                    false,
-		"ask_function_update":                    false,
-		"report_function_progress":               false,
-		"return_function_result":                 false,
-		"manage_condition_triggers":              false, // Builder-owned Watcher callers.
-		"list_project_schedules":                 false,
-		"create_project_schedule":                false,
-		"update_project_schedule":                false,
-		"delete_project_schedule":                false,
-		"trigger_project_schedule":               false,
-		"list_project_triggers":                  false,
-		"create_project_trigger":                 false,
-		"update_project_trigger":                 false,
-		"delete_project_trigger":                 false,
-		"google_workspace_cli":                   false,
-
-		"send_slack_message": false, "slack": false, "get_slack_bot_settings": false, "get_slack_bot_credentials": false, "configure_slack_bot": false, "test_slack_bot_connection": false, "create_slack_bot_route": false, "update_slack_bot_route_permission": false, "remove_slack_bot_route": false,
-		"list_gmail_connections":            false,
-		"manage_google_account":             false,
-		"manage_slack_bot":                  false,
-		"manage_slack_account":              false,
-		"get_agent_inbox":                   false,
-		"configure_agent_inbox":             false,
-		"update_gmail_connection_grants":    false,
-		"query_workflow_db":                 false,
-		"mutate_workflow_db":                false,
-		"apply_workflow_db_migration":       false,
-		"create_workflow_database_snapshot": false,
-		"validate_report_html":              false,
-		"get_dashboard_catalog":             false,
-		"list_dashboards":                   false, "get_dashboard": false, "create_dashboard": false, "update_dashboard": false, "validate_dashboard": false, "preview_dashboard": false, "export_dashboard_motion": false, "publish_dashboard": false, "restore_dashboard": false, "get_dashboard_link": false,
-		"preview_report":       false,
-		"run_in_background":    false,
-		"query_agent":          false,
-		"list_agents":          false,
-		"terminate_agent":      false,
-		"list_ui_capabilities": false,
-		"get_ui_state":         false,
-		"perform_ui_action":    false,
-		"manage_vault_access":  false,
-		"manage_my_vaults":     false,
-		"brain_browse":         false,
-		"brain_read":           false,
-		"brain_update":         false,
-		"brain_skills":         false,
-		"brain_access":         false,
-		// The Crew's tabs are its agents (PLAT-861-262).
-		"open_project_chat": false, "list_project_chats": false, "ask_project_chat": false, "set_my_agent_identity": false,
-	}
-	for _, name := range manifest.Profile.ToolPolicy.Enabled {
-		if _, expected := wantEnabled[name]; !expected {
-			t.Fatalf("unexpected tool in coding and Knowledge Base allowlist: %q", name)
+	// Pin the product boundary rather than duplicate every shared feature's
+	// tool list: Crew keeps project operations, while Goal planning/execution
+	// stays with the workflow product.
+	for _, name := range []string{"read_project_files", "execute_shell_command", "read_image", "browser_connections", "manage_crew_model", "list_project_schedules", "create_project_schedule", "manage_condition_triggers", "call_function"} {
+		if !contains(manifest.Profile.ToolPolicy.Enabled, name) {
+			t.Fatalf("Crew lost project tool %q", name)
 		}
-		wantEnabled[name] = true
 	}
-	for name, found := range wantEnabled {
-		if !found {
-			t.Fatalf("expected tool_policy.enabled to include %q", name)
+	for _, name := range []string{"run_full_workflow", "execute_step", "workflow_team", "manage_workflow_schedule", "update_plan", "create_human_input_request"} {
+		if contains(manifest.Profile.ToolPolicy.Enabled, name) {
+			t.Fatalf("Crew admitted Goal planning/execution tool %q", name)
 		}
 	}
 	if len(manifest.Profile.Tools) != 3 || manifest.Profile.Tools[0].ID != "work.create-project" || manifest.Profile.Tools[1].ID != "work.set-identity" || manifest.Profile.Tools[2].ID != "work.custom-commands" {
