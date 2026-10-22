@@ -22,7 +22,7 @@ vi.mock('../../components/workflow/WorkflowLLMConfigurationPanel', () => ({ defa
 vi.mock('../../components/providers/GuidedProviderTerminal', () => ({ default: () => null }))
 vi.mock('../../services/api', () => ({ getApiBaseUrl: () => '', getAuthToken: () => null, agentApi: {} }))
 vi.mock('../../services/llm-config-api', () => ({
-  llmConfigService: { getProviderConnections: vi.fn(async () => []), getProviderModels: vi.fn(async () => ({ models: [] })) },
+  llmConfigService: { getProviderConnections: vi.fn(async () => []), getProviderModels: vi.fn(async () => ({ models: [] })), checkProviderUsage: vi.fn(async () => ({ usage_output: 'Current usage' })) },
 }))
 vi.mock('../../utils/agentProfileCapabilities', async importOriginal => ({
   ...await importOriginal<typeof import('../../utils/agentProfileCapabilities')>(),
@@ -242,11 +242,19 @@ it('shows the account the chat runs on: recorded, else the own default', async (
   ] as never)
   const own = await render()
   expect(own.host.querySelector('[data-testid="account-limits"]')?.textContent).toBe('Your own account · not limited')
+  const checkUsage = async (host: HTMLElement) => {
+    const button = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent?.trim() === 'Check usage')!
+    await act(async () => button.click())
+  }
+  await checkUsage(own.host)
+  expect(llmConfigService.checkProviderUsage).toHaveBeenLastCalledWith('muse-cli', 'mine', false)
   await act(async () => { root?.unmount() }); document.body.innerHTML = ''
   Object.assign(metadata, { agentProfileChatProvider: 'muse-cli', agentProfileChatConnectionID: 'global:muse-cli' })
   const shared = await render()
   expect(shared.host.querySelector('[data-testid="account-limits"]')?.textContent).toMatch(/^Shared account/)
   expect(state.configurationProps.llmConfig?.connection_id).toBe('global:muse-cli')
+  await checkUsage(shared.host)
+  expect(llmConfigService.checkProviderUsage).toHaveBeenLastCalledWith('muse-cli', 'global:muse-cli', false)
   delete metadata.agentProfileChatProvider; delete metadata.agentProfileChatConnectionID
   vi.mocked(llmConfigService.getProviderConnections).mockResolvedValue([])
 })

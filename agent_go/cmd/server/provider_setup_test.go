@@ -21,6 +21,30 @@ func environmentValue(environment []string, name string) (string, bool) {
 	return "", false
 }
 
+func TestServerClaudeSetupEnvironmentUsesChatCredentialWithoutOtherSecrets(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "ambient-token")
+	t.Setenv("CLAUDE_CONFIG_DIR", "/server/claude")
+	t.Setenv("ANTHROPIC_API_KEY", "unrelated-api-key")
+	t.Setenv("CODEX_API_KEY", "unrelated-codex-key")
+	t.Setenv("AUTH_SECRET", "unrelated-server-secret")
+	token := "resolved-chat-token"
+	environment := serverClaudeSetupEnvironment(&llm.ProviderAPIKeys{ClaudeCodeOAuthToken: &token})
+	if value, _ := environmentValue(environment, "CLAUDE_CODE_OAUTH_TOKEN"); value != token {
+		t.Fatal("usage terminal did not receive the resolved chat credential")
+	}
+	if value, _ := environmentValue(environment, "CLAUDE_CONFIG_DIR"); value != "/server/claude" {
+		t.Fatal("usage terminal lost the server account's config directory")
+	}
+	for _, name := range []string{"ANTHROPIC_API_KEY", "CODEX_API_KEY", "AUTH_SECRET"} {
+		if _, present := environmentValue(environment, name); present {
+			t.Fatalf("unrelated variable %s reached the Claude terminal", name)
+		}
+	}
+	if _, present := environmentValue(serverClaudeSetupEnvironment(&llm.ProviderAPIKeys{}), "CLAUDE_CODE_OAUTH_TOKEN"); present {
+		t.Fatal("an absent resolved token fell back to an ambient credential")
+	}
+}
+
 func TestWorkflowProviderSetupEnvironmentUsesClaudeTokenInIsolation(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "ambient-api-key")
 	t.Setenv("ANTHROPIC_AUTH_TOKEN", "ambient-auth-token")
@@ -232,6 +256,9 @@ func TestProviderUsagePromptAndTrustDetection(t *testing.T) {
 	codexScreen := "\x1b[2;1H>_ OpenAI Codex (v0.161.0)\x1b[5;1Hloading\x1b[7;1H\x1b[1m›\x1b[0m Ask Codex to do anything\x1b[9;1H? for shortcuts"
 	if !providerUsagePromptReady("codex-cli", providerUsageScreenText(codexScreen)) {
 		t.Fatal("cursor-addressed Codex prompt was not detected")
+	}
+	if !providerUsagePromptReady("claude-code", providerUsageScreenText("❯\u00a0Try a suggestion")) {
+		t.Fatal("Claude's non-breaking-space prompt was not detected")
 	}
 }
 

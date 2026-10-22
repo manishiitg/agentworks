@@ -409,10 +409,11 @@ func TestProviderAccountsServerSignInAdminOnly(t *testing.T) {
 // TestProviderAccountsLiveMuseUsage for the live CLI.
 func TestProviderAccountsUsageRunsInAccountHome(t *testing.T) {
 	env := newProviderAccountsEnv(t, "")
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "server-chat-token")
 	original := providerSetupCommands
 	providerSetupCommands = map[string]map[string]providerSetupCommand{
 		"muse-cli":    {"usage": {command: "/bin/sh", args: []string{"-c", `printf '❯\n'; IFS= read -r command; printf 'submitted:%s home:%s\n' "$command" "$HOME"; sleep 1`}}},
-		"claude-code": {"usage": {command: "/bin/sh", args: []string{"-c", `printf 'server-usage\n'; sleep 1`}}},
+		"claude-code": {"usage": {command: "/bin/sh", args: []string{"-c", `if [ "$CLAUDE_CODE_OAUTH_TOKEN" = server-chat-token ]; then printf 'server-usage\n'; else printf 'missing-chat-credential\n'; fi; sleep 1`}}},
 	}
 	t.Cleanup(func() { providerSetupCommands = original })
 	account := env.addAccount(t, "alice", map[string]interface{}{"provider": "muse-cli", "display_name": "Alice Muse", "auth_method": "cli_login"})
@@ -440,6 +441,11 @@ func TestProviderAccountsUsageRunsInAccountHome(t *testing.T) {
 	}
 	if w := env.do(t, env.api.handleStartProviderSetup, http.MethodPost, "/", "bob", map[string]interface{}{"provider": "muse-cli", "action": "inspect"}, nil); w.Code != http.StatusForbidden {
 		t.Fatalf("member inspected the server account: %d", w.Code)
+	}
+	for _, action := range []string{"authenticate", "inspect"} {
+		if w := env.do(t, env.api.handleStartProviderSetup, http.MethodPost, "/", "bob", map[string]interface{}{"provider": "claude-code", "action": action}, nil); w.Code != http.StatusForbidden {
+			t.Fatalf("member opened a Claude %s terminal: %d", action, w.Code)
+		}
 	}
 	closeProviderSetups(env.api)
 }

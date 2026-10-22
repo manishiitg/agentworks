@@ -7,11 +7,6 @@ import { describe, expect, it } from 'vitest'
 describe('WorkModelsPanel usage check', () => {
   const source = readFileSync('src/products/work/WorkModelsPanel.tsx', 'utf8')
 
-  it('asks about the project\'s own connection, not always the server account', () => {
-    expect(source).toContain('checkProviderUsage(selectedOption.provider, selectedConnectionId, replaceRunning)')
-    expect(source).not.toContain("startProviderSetup(\n        selectedOption.provider,\n        'usage'")
-  })
-
   it('is not hidden from non-admins in the browser: the server enforces who may see it', () => {
     expect(source).not.toContain('canCheckUsage')
     expect(source).not.toContain('is_admin')

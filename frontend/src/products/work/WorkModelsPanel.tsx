@@ -349,9 +349,9 @@ export function WorkModelsPanel({
     setUsageConflict(false)
     try {
       setUsageText(null)
-      // The account this project uses: its own connection, else the server's. The server decides what the caller may
+      // Use the same account displayed for this chat, including a recorded or personal default. The server decides what the caller may
       // do with it: a terminal for the account's owner and admins, read-only text for anyone else it is available to.
-      const result = await llmConfigService.checkProviderUsage(selectedOption.provider, selectedConnectionId, replaceRunning)
+      const result = await llmConfigService.checkProviderUsage(selectedOption.provider, inUseConnectionId, replaceRunning)
       if (result.session) setUsageSession(result.session)
       else setUsageText(result.usage_output || 'No usage output.')
     } catch (error) {

@@ -129,7 +129,9 @@ var providerSetupCursorMoves = regexp.MustCompile(`\x1b\[[0-9;]*[HfEBd]`)
 
 // providerUsageScreenText is a usage terminal's output as plain text, one screen row per line.
 func providerUsageScreenText(raw string) string {
-	return providerSetupANSI.ReplaceAllString(providerSetupCursorMoves.ReplaceAllString(raw, "\n"), "")
+	text := providerSetupANSI.ReplaceAllString(providerSetupCursorMoves.ReplaceAllString(raw, "\n"), "")
+	// Claude's prompt can separate the marker from its hint with a non-breaking space.
+	return strings.ReplaceAll(text, "\u00a0", " ")
 }
 
 // terminalQueryPattern finds what a full-screen CLI asks its terminal before it
@@ -766,6 +768,18 @@ func workflowProviderSetupEnvironment(provider string, keys *llm.ProviderAPIKeys
 	}
 }
 
+// The server's Claude chats use an explicit setup token when configured.
+// Usage and inspection must receive that same credential instead of falling
+// back to a different saved login. Keep other service secrets out of the PTY.
+func serverClaudeSetupEnvironment(keys *llm.ProviderAPIKeys) []string {
+	environment := append(minimalChildEnv(), passthroughChildEnv("CLAUDE_CONFIG_DIR")...)
+	if keys != nil && keys.ClaudeCodeOAuthToken != nil && strings.TrimSpace(*keys.ClaudeCodeOAuthToken) != "" {
+		environment = append(environment, "CLAUDE_CODE_OAUTH_TOKEN="+strings.TrimSpace(*keys.ClaudeCodeOAuthToken))
+	}
+	logChildEnv("provider-setup:claude-code:server", os.Environ(), environment)
+	return environment
+}
+
 func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusOK)
@@ -839,6 +853,9 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": environmentErr.Error()})
 			return
 		}
+	}
+	if environment == nil && request.Provider == "claude-code" && (request.Action == "usage" || request.Action == "inspect") {
+		environment = serverClaudeSetupEnvironment(MergedProviderAPIKeys(r.Context()))
 	}
 	// Which login a setup session touches: the server's own, or a private
 	// account's (paths only, never credentials).

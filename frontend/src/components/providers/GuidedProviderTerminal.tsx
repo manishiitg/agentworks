@@ -229,7 +229,9 @@ export default function GuidedProviderTerminal({ session, onFinished, onClose }:
       {/* The account terminal is for signing in and checking usage only; real work belongs in a
           Crew, Code or workflow, where tools, files and history are set up. */}
       <p data-testid="provider-terminal-purpose" className="border-b border-white/10 bg-violet-500/10 px-3 py-2 text-[11px] leading-4 text-violet-100">
-        {isInstallation ? `Installing ${displayName} on this computer. When installation finishes, connect your account.` : <>Use this terminal only to sign in and check usage{usageCommandHint(displayName)}. For real work, use a Crew, Code or workflow.</>}
+        {isInstallation ? `Installing ${displayName} on this computer. When installation finishes, connect your account.` : isUsage
+          ? <>Check your account's usage{usageCommandHint(displayName)}. Only approved slash commands are accepted; chat messages are blocked.</>
+          : <>Use this terminal only to sign in and check usage{usageCommandHint(displayName)}. For real work, use a Crew or Goal.</>}
       </p>
       <div ref={mountRef} className="h-[min(65vh,640px)] w-full p-2" aria-label={`Interactive ${displayName} setup terminal`} />
       {terminalError && <p className="border-t border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">{terminalError}</p>}
