@@ -44,11 +44,12 @@ export NODE_OPTIONS=--max-old-space-size=2048
 # application shell and the approved product backends. Fail before
 # building or touching the server if a checked-in allowlist drifts.
 # The product switcher (client enabledProductSurfaces) and the loaded backends
-# (AGENT_PRODUCTS) must name the same products; "agentworks" is the shell and is
-# only in the client list. A mismatch hides a product that is running, or offers
+# (AGENT_PRODUCTS) must name the same products; "agentworks" (Goals, the shell) may
+# be on either list or both, because the server rejects Goal pages' saved state when it
+# is missing from AGENT_PRODUCTS. A mismatch hides a product that is running, or offers
 # one that is not.
 client_products="$(sed -n 's/.*enabledProductSurfaces: *\[\(.*\)\].*/\1/p' "$RUNTIME_CONFIG" | head -n 1 | tr -d ' "' | tr ',' '\n' | grep -v '^agentworks$' | sort -u)"
-server_products="$(sed -n 's/^Environment=AGENT_PRODUCTS=//p' "$AGENT_SERVICE_FILE" | head -n 1 | tr -d ' ' | tr ',' '\n' | grep -v '^$' | sort -u)"
+server_products="$(sed -n 's/^Environment=AGENT_PRODUCTS=//p' "$AGENT_SERVICE_FILE" | head -n 1 | tr -d ' ' | tr ',' '\n' | grep -v '^$' | grep -v '^agentworks$' | sort -u)"
 [[ -n "$client_products" && -n "$server_products" ]] || { echo "Cannot read enabledProductSurfaces from the runtime config or AGENT_PRODUCTS from the agent service" >&2; exit 1; }
 only_client="$(comm -23 <(printf '%s\n' "$client_products") <(printf '%s\n' "$server_products") | paste -sd, -)"
 only_server="$(comm -13 <(printf '%s\n' "$client_products") <(printf '%s\n' "$server_products") | paste -sd, -)"
