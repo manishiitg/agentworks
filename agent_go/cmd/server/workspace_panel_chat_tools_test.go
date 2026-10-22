@@ -2,6 +2,9 @@ package server
 
 import (
 	"context"
+	"github.com/gin-gonic/gin"
+	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -20,6 +23,13 @@ func TestWorkspacePanelChatToolsBindCurrentBuilder(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.api.chatStore = history
+	router := gin.New()
+	router.GET("/api/documents", workspacehandlers.ListDocuments)
+	router.GET("/api/documents/*filepath", workspacehandlers.GetDocument)
+	router.PUT("/api/documents/*filepath", workspacehandlers.UpdateDocument)
+	workspace := httptest.NewServer(router)
+	defer workspace.Close()
+	t.Setenv("WORKSPACE_API_URL", workspace.URL)
 	const session, root = "builder", "Workflow/invoices"
 	f.api.lastQueryRequests = map[string]QueryRequest{session: {userID: "owner", SelectedFolder: root}}
 	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
