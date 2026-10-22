@@ -41,8 +41,8 @@ it.each(['local', 'server', 'account', 'enabled', 'relay'])('keeps product integ
     expect(host.querySelector('[role="tabpanel"]')?.textContent).toBe('Vault groups')
     expect(host.querySelector('[aria-label="About Brain"]')).not.toBeNull()
   } else if (scenario === 'relay') {
-    expect(menu.querySelectorAll('button')).toHaveLength(3)
-    expect(menu.textContent).toContain('Tools & secrets')
+    expect(menu.querySelectorAll('button')).toHaveLength(4)
+    expect(menu.textContent).toContain('WhatsApp')
     expect(menu.textContent).toContain('Google apps')
     expect(menu.textContent).not.toContain('Brain')
     expect(menu.textContent).toContain('Slack')
@@ -50,11 +50,13 @@ it.each(['local', 'server', 'account', 'enabled', 'relay'])('keeps product integ
     expect(knowledgebaseApi.bootstrap).not.toHaveBeenCalled()
   } else {
     expect(menu.textContent).not.toContain('Brain')
-    expect(menu.textContent).not.toContain('Vault')
+    // The project section keeps its Vault name even when the company Vault
+    // is unavailable; only the company-backed content is excluded.
+    expect(menu.textContent).not.toContain('Vault groups')
     expect(host.querySelector('[role="tabpanel"]')?.textContent).toBe('connected MCPs')
     expect(host.querySelector('[aria-label="About Brain"]')).toBeNull()
     expect(knowledgebaseApi.bootstrap).not.toHaveBeenCalled()
     expect(knowledgebaseApi.project).not.toHaveBeenCalled()
   }
-  expect(menu.textContent).toContain('Tools & secrets')
+  expect(menu.textContent).toContain('Vault')
 })

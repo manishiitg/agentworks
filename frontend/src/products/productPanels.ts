@@ -75,7 +75,7 @@ export const INTEGRATION_SECTIONS: PanelSection[] = [
   ...projectPluginTabs().map(tab => ({ id: tab.value, label: tab.label, keywords: 'mcp tools' })),
 ]
 /** Integrations sections a Relay offers (its panel shows only these). */
-export const RELAY_INTEGRATION_SECTION_IDS = new Set(['cli', 'apps', 'gmail', 'slack', ...projectPluginTabs().map(tab => tab.value)])
+export const RELAY_INTEGRATION_SECTION_IDS = new Set(['cli', 'apps', 'gmail', 'slack', 'whatsapp', ...projectPluginTabs().map(tab => tab.value)])
 
 export const WORKFLOW_IDENTITY_SECTIONS: PanelSection[] = [
   { id: 'general', label: 'General', keywords: 'name soul persona identity' },

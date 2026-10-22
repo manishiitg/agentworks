@@ -1,13 +1,17 @@
 // @vitest-environment happy-dom
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { InternalAxiosRequestConfig } from 'axios'
 
 vi.mock('../llm-config-api', () => ({}))
 import api, { agentApi } from '../api'
 
 const originalAdapter = api.defaults.adapter
+beforeEach(() => {
+  vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })
+})
 afterEach(() => {
   api.defaults.adapter = originalAdapter
+  vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
 
