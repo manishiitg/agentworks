@@ -9,7 +9,7 @@ import api, { agentApi } from '../../services/api'
 import { placeMcpApi } from '../../api/placeMcp'
 import { slackBotsApi } from '../integrations/ProductSlackPanel'
 import { skillsApi } from '../../api/skills'
-import { secretsApi } from '../../api/secrets'
+import type { SecretSources } from '../../api/secrets'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
@@ -54,7 +54,7 @@ export function useProjectStatus({ kind, workspacePath, profileId, projectId, en
         kind === 'crew' ? api.post<{ agents: unknown[] }>('/api/workspaces', { action: 'agents', workspace_id: `${profileId}:${projectId}` }).then(({ data }) => (data.agents || []).length) : Promise.reject(new Error('not listed')),
         skillsApi.workspaceSummary(workspacePath).then(result => result.custom_count),
         agentApi.listGmailConnections(workspacePath).then(result => result.connections.length),
-        secretsApi.getSecretSources(workspacePath).then(result => {
+        api.get<SecretSources>('/api/secrets/workflow/sources', { params: { workspace_path: workspacePath } }).then(({ data: result }) => {
           if (result.status !== 'available') throw new Error('Secret inventory is incomplete')
           return result.secrets.length
         }),
