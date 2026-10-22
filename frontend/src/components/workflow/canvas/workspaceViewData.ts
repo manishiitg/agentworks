@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react'
 import type { UsePlanDataReturn } from '../hooks/usePlanData'
 import type { UseWorkspaceStateReturn } from '../hooks/useWorkspaceState'
 import type { WorkflowExecutionStatus } from '../hooks/useWorkflowExecution'
-import type { VariablesManifest, PulseOutwardActions, WorkflowRunSetup } from '../../../services/api-types'
+import type { VariablesManifest, PulseOutwardActions, WorkflowRunSetup, PulseOverviewResponse } from '../../../services/api-types'
 
 export type WorkflowImageExportFormat = 'svg' | 'png' | 'jpeg'
 
@@ -21,6 +21,7 @@ export interface PulseData {
   refresh: (showLoading?: boolean) => Promise<void>
   hasSoul: boolean
   runSetup: WorkflowRunSetup | null
+  overview: PulseOverviewResponse | null
 
 }
 

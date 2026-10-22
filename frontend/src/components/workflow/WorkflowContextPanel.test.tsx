@@ -1,4 +1,7 @@
 // @vitest-environment happy-dom
+vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ addToast: vi.fn() }) } }))
+vi.mock('../../utils/pulseChatTab', () => ({ openWorkflowPulseChatTab: vi.fn(async () => 'pulse-tab') }))
+import { openWorkflowPulseChatTab } from '../../utils/pulseChatTab'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -119,7 +122,7 @@ it('opens the full Pulse panel from its name, expands subpanels separately and p
   const panels = menu.querySelector<HTMLElement>('[aria-label="Pulse panels"]')!
   expect(full.textContent).toBe('PulseOn')
   expect(panels.hidden).toBe(false)
-  expect([...panels.querySelectorAll('button')].map(row => row.textContent)).toEqual(['Talk to Pulse', 'Decisions2 waiting', 'Pulse settings'])
+  expect([...panels.querySelectorAll('button')].map(row => row.textContent)).toEqual(['Goals & metrics', 'Talk to Pulse', 'Decisions2 waiting', 'Pulse settings'])
   await act(async () => full.click())
   expect(state.open).toHaveBeenLastCalledWith('pulse', undefined)
   const toggle = menu.querySelector<HTMLButtonElement>('[aria-label="Hide Pulse panels"]')!
@@ -131,10 +134,12 @@ it('opens the full Pulse panel from its name, expands subpanels separately and p
   expect(host.querySelectorAll('[aria-label="Pulse panels"]')).toHaveLength(1)
   expect([...host.querySelectorAll('h2')].some(node => node.textContent === 'Recent')).toBe(false)
   await act(async () => panels.querySelectorAll('button')[0].click())
-  expect(state.open).toHaveBeenLastCalledWith('pulse', 'chat')
+  expect(state.open).toHaveBeenLastCalledWith('pulse', 'goals')
   await act(async () => panels.querySelectorAll('button')[1].click())
-  expect(state.open).toHaveBeenLastCalledWith('human-actions', undefined)
+  expect(openWorkflowPulseChatTab).toHaveBeenCalledWith('Workflow/example')
   await act(async () => panels.querySelectorAll('button')[2].click())
+  expect(state.open).toHaveBeenLastCalledWith('human-actions', undefined)
+  await act(async () => panels.querySelectorAll('button')[3].click())
   expect(state.open).toHaveBeenLastCalledWith('pulse', 'settings')
   expect([...host.querySelectorAll('button')].filter(node => node.textContent === 'Decisions2 waiting')).toHaveLength(1)
   state.enabled = false; await render()

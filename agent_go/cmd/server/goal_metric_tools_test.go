@@ -3,9 +3,11 @@ package server
 import (
 	"context"
 	"encoding/json"
+	step "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // PLAT-822: real metric tools and run recording preserve DB/run evidence without
@@ -14,6 +16,10 @@ import (
 // Exercise the real tool -> existing SQLite schema upgrade -> Pulse facts path.
 
 func TestGoalMetricToolsRoundTripMultipleOutcomes(t *testing.T) {
+	env := newCrewFunctionEnv(t)
+	env.mock.mu.Lock()
+	env.mock.files["Workflow/metrics/workflow.json"] = `{"id":"metrics","pulse":{"enabled":false}}`
+	env.mock.mu.Unlock()
 	root := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", root)
 	ws := "Workflow/metrics"
@@ -52,12 +58,20 @@ func TestGoalMetricToolsRoundTripMultipleOutcomes(t *testing.T) {
 			ID       string   `json:"id"`
 			Supports []string `json:"supports"`
 		}
-		Progress []json.RawMessage
+		Observations []json.RawMessage
 	}
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Metrics) != 3 || len(result.Progress) != 3 {
+	if len(result.Metrics) != 3 || len(result.Observations) != 1 {
 		t.Fatal("tool dropped outcomes", raw)
+	}
+	page, err := pulseOverview(context.Background(), ws, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	measurements, ok := page["measurements"].(*step.GoalMeasurementLedger)
+	if !ok || len(measurements.Metrics) != 3 || len(measurements.Observations) != 1 {
+		t.Fatalf("Pulse overview lost saved measurements: %v", page)
 	}
 }

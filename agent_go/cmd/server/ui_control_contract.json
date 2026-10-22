@@ -102,6 +102,10 @@
         "refresh"
       ],
       "targets": [
+        "goals",
+        "metrics",
+        "activity",
+        "decisions",
         "settings",
         "chat"
       ],

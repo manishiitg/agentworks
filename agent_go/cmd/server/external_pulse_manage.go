@@ -11,7 +11,7 @@ import (
 // (update_settings pulse); talking to Pulse is builder_pulse_chat.
 
 func externalPulseManageDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_pulse", "Read Pulse settings and its conversation (status), or start a Pulse turn (run_now). Turn Pulse on/off and set Outward with update_settings; talk with builder_pulse_chat. OFF starts no Pulse activity.", true, true, map[string]any{
+	add("manage_pulse", "Read Pulse settings, saved goal metrics, measurement history and its conversation (status), or start a Pulse turn (run_now). Turn Pulse on/off and set Outward with update_settings; talk with builder_pulse_chat. OFF starts no Pulse activity.", true, true, map[string]any{
 		"action": map[string]any{"type": "string", "enum": []any{"status", "run_now"}},
 	}, "action")
 }

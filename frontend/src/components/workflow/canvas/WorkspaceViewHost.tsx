@@ -1,3 +1,4 @@
+import { assertChatIdentityCurrent, captureChatIdentity } from '../../../utils/chatIdentity'
 import { inspectionKey } from '../../../utils/stepInspection'
 import { WorkspacePanelAssistant, WorkspacePanelNavigationProvider } from '../../workspace/WorkspacePanelNavigation'
 import { WorkspacePanelHeader } from '../../workspace/WorkspacePanelHeader'
@@ -31,7 +32,7 @@ import { useWorkflowStore } from '../../../stores/useWorkflowStore'
 import { useWorkflowManifestStore } from '../../../stores/useWorkflowManifestStore'
 import { useWorkspaceStore } from '../../../stores/useWorkspaceStore'
 import { agentApi, workspaceApi } from '../../../services/api'
-import type { ExecutionOptions, PulseOutwardActions, VariablesManifest, WorkflowRunSetup } from '../../../services/api-types'
+import type { ExecutionOptions, PulseOutwardActions, VariablesManifest, WorkflowRunSetup, PulseOverviewResponse } from '../../../services/api-types'
 import { assertNeverView, getWorkspaceView, isInspectorView, type InspectorViewId, type WorkspaceViewId, type WorkspaceViewKind } from '../workspaceViews'
 import { WorkspaceViewDataContext, useWorkspaceViewData, type FlowShell, type PulseData, type WorkflowImageExportFormat, type WorkspaceViewData } from './workspaceViewData'
 import { WORKFLOW_REPORT_EXPORT_EVENT, WorkflowCanvasInner, usePreviewDevice, type WorkflowCanvasProps, type WorkflowCanvasRef } from './WorkflowCanvas'
@@ -175,12 +176,13 @@ function InspectorBody({ workspacePath, presetQueryId, relayMode }: { workspaceP
         return null
       case 'pulse':
         return (
-          <PulseView
+          <PulseView key={workspacePath}
             workspacePath={workspacePath}
             monitorOn={pulse.monitorOn}
             monitorSaving={pulse.monitorSaving}
             onToggleMonitor={pulse.toggleMonitor}
             hasSoul={pulse.hasSoul}
+            overview={pulse.overview}
             outwardActions={pulse.outwardActions}
             outwardSaving={pulse.outwardSaving}
             onChangeOutward={pulse.setOutward}
@@ -310,6 +312,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
   const [pulseOutwardSaving, setPulseOutwardSaving] = useState(false)
   const [pulseHasSoul, setPulseHasSoul] = useState(false)
   const [pulseRunSetup, setPulseRunSetup] = useState<WorkflowRunSetup | null>(null)
+  const [pulseOverview, setPulseOverview] = useState<{ workspacePath: string; identity: number; data: PulseOverviewResponse } | null>(null)
   const [pulseStatusLoading, setPulseStatusLoading] = useState(false)
   const [pulseStatusError, setPulseStatusError] = useState<string | null>(null)
 
@@ -326,6 +329,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
   }, [workspacePath, pulseOutwardSaving, pulseOutward, updateWorkflowManifest])
 
   const refreshPulseOverview = useCallback(async (showLoading = true) => {
+    const identity = captureChatIdentity()
     if (!workspacePath) {
 
       setPulseStatusError(null)
@@ -335,6 +339,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
     setPulseStatusError(null)
     try {
       const resp = await agentApi.getPulseOverview(workspacePath)
+      assertChatIdentityCurrent(identity)
       if (!resp.success) {
         throw new Error(resp.error || 'Failed to load Pulse status')
       }
@@ -342,6 +347,7 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
       setPulseOutwardState(resp.outward_actions ?? 'ask')
       setPulseHasSoul(!!resp.has_soul)
       setPulseRunSetup(resp.run_setup ?? null)
+      setPulseOverview({ workspacePath, identity, data: resp })
 
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load Pulse status'
@@ -371,9 +377,10 @@ export const WorkspaceViewHost = React.memo(forwardRef<WorkflowCanvasRef, Workfl
     outwardActions: pulseOutward, outwardSaving: pulseOutwardSaving, setOutward: setPulseOutward,
     statusError: pulseStatusError, statusLoading: pulseStatusLoading, refresh: refreshPulseOverview,
     hasSoul: pulseHasSoul, runSetup: pulseRunSetup,
+    overview: pulseOverview?.workspacePath === workspacePath && pulseOverview.identity === captureChatIdentity() ? pulseOverview.data : null,
   }), [monitorOn, monitorSaving, toggleMonitor,
     pulseOutward, pulseOutwardSaving, setPulseOutward, pulseStatusError, pulseStatusLoading,
-    refreshPulseOverview, pulseHasSoul, pulseRunSetup])
+    refreshPulseOverview, pulseHasSoul, pulseRunSetup, pulseOverview, workspacePath])
 
   // The flow canvas's VariablesSidebar edits the manifest in place; keep the
   // toolbar showing that edit until the next workspace refresh replaces it.

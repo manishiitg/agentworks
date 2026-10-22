@@ -1,3 +1,5 @@
+import { openWorkflowPulseChatTab } from '../../utils/pulseChatTab'
+import { useChatStore } from '../../stores/useChatStore'
 import { useEffect, useId, useState } from 'react'
 import { ChevronRight, MessageSquareText, Settings2 } from 'lucide-react'
 import { PulseIcon } from './pulseIcon'
@@ -67,6 +69,10 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
     if (item.external) { openProductWorkspace(item.external); return }
     if (!item.view) return
     if (item.reportPath) selectReportDocument(workspacePath, item.reportPath)
+    if (item.id === 'pulse' && item.target === 'chat') {
+      void openWorkflowPulseChatTab(workspacePath).catch(error => useChatStore.getState().addToast(error instanceof Error ? error.message : 'Could not open Pulse chat.', 'error'))
+      return
+    }
     openView(item.view, item.target)
   }
   const renderItem = (item: WorkflowMenuItem) => {
@@ -92,6 +98,7 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
         </button>
       </div>
       <div id={pulseMenuId} hidden={!pulseMenuOpen} role="group" aria-label="Pulse panels" className="ml-2.5 mt-1 space-y-0.5 border-l border-border pl-3">
+        <Row icon={PulseIcon} onClick={() => open({ ...pulse, target: 'goals' })}>Goals &amp; metrics</Row>
         <Row icon={MessageSquareText} onClick={() => open({ ...pulse, target: 'chat' })}>Talk to Pulse</Row>
         {pulseDecisions && renderItem(pulseDecisions)}
         <Row icon={Settings2} onClick={() => open({ ...pulse, target: 'settings' })}>Pulse settings</Row>

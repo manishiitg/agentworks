@@ -24,7 +24,8 @@ function isInteractiveWorkflowTab(tab: ChatTab, presetId: string): boolean {
     tab.metadata?.presetQueryId === presetId &&
     tab.metadata?.isViewOnly !== true &&
     tab.metadata?.isScheduledRun !== true &&
-    tab.metadata?.isBotRun !== true
+    tab.metadata?.isBotRun !== true &&
+    tab.metadata?.isExecutionRun !== true
 }
 
 function isInteractiveProductTab(tab: ChatTab, profileId: string, conversationKey: string): boolean {

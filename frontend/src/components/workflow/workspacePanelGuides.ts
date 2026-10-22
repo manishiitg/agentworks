@@ -115,7 +115,7 @@ const AGENTWORKS_GUIDES: Record<string, GuideCopy> = {
   },
   Pulse: {
     purpose: 'See your goal, what Pulse changed, and what needs your answer.',
-    howTo: 'Choose Pulse on or off and whether outward actions need approval. Review the latest change, answer pending decisions, or open Pulse chat.',
+    howTo: 'Review your goals, metrics, evidence and saved Pulse activity. Ask Pulse about a specific goal, measurement or update, send your own question, or open its chat directly. Answer decisions and adjust On/Off and outward actions here.',
   },
   Schedules: {
     purpose: 'Run work automatically at chosen times.',

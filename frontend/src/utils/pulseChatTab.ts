@@ -1,46 +1,65 @@
 import type { ActiveSessionInfo } from '../services/api-types'
 import { agentApi } from '../services/api'
 import { useChatStore } from '../stores/useChatStore'
+import { useWorkflowStore } from '../stores/useWorkflowStore'
+import { convertObservedWorkflowTabToInteractive } from '../components/workflow/workflowChatTabConversion'
 import { activateTab } from './activateTab'
 import { openGlobalActivitySession } from './globalProductNavigation'
+import { assertChatIdentityCurrent, captureChatIdentity } from './chatIdentity'
+import { sendWorkspacePaneMessageToChat } from './workspacePaneChat'
 
-/**
- * Opens or focuses the workflow's "<workflow> Pulse" chat tab: the Pulse
- * conversation's session (PLAT-697). The Pulse tab shows no conversation;
- * after the owner talks to Pulse there, its reply is read in this tab.
- */
-export async function openPulseChatTab(workspacePath: string, sessionId: string): Promise<void> {
+/** Focus the continuing Pulse conversation, never the workflow's Builder. */
+export async function openPulseChatTab(workspacePath: string, sessionId: string, busy = false): Promise<string> {
+  const identity = captureChatIdentity()
   const id = sessionId.trim()
-  if (!id) return
-  const existing = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === id)
-  if (existing) {
-    activateTab(existing.tabId)
-    return
+  if (!id) throw new Error('Pulse chat is not available. Refresh Pulse and try again.')
+  let tab = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === id)
+  if (!tab) {
+    const now = new Date().toISOString()
+    const session: ActiveSessionInfo = {
+      session_id: id, observer_id: '', agent_mode: 'workflow', status: busy ? 'running' : 'completed',
+      last_activity: now, created_at: now, workspace_path: workspacePath, triggered_by: 'schedule',
+    }
+    await openGlobalActivitySession(session)
+    assertChatIdentityCurrent(identity)
+    tab = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === id)
   }
-  const now = new Date().toISOString()
-  // A Pulse turn runs as a workflow schedule session (schedule-goallead--…),
-  // so it opens through the same path as any scheduled workflow chat.
-  const session: ActiveSessionInfo = {
-    session_id: id,
-    observer_id: '',
-    agent_mode: 'workflow',
-    status: 'running',
-    last_activity: now,
-    created_at: now,
-    workspace_path: workspacePath,
-    triggered_by: 'schedule',
-  }
-  await openGlobalActivitySession(session)
+  if (!tab) throw new Error('Could not open Pulse chat. Refresh Pulse and try again.')
+  // The shared activity opener observes schedule sessions. Talking to Pulse is
+  // the existing interactive-continuation action on that exact conversation.
+  const tabId = tab.tabId
+  useChatStore.setState(state => {
+    const current = state.chatTabs[tabId]
+    if (!current) return state
+    const interactive = convertObservedWorkflowTabToInteractive(current)
+    return { chatTabs: { ...state.chatTabs, [tabId]: { ...interactive, name: 'Pulse', metadata: { ...interactive.metadata, isExecutionRun: true, phaseName: 'Pulse' } } } }
+  })
+  if (!activateTab(tabId)) throw new Error('Could not open Pulse chat. Refresh Pulse and try again.')
+  const workflow = useWorkflowStore.getState()
+  workflow.setShowChatArea(true)
+  workflow.setFocusedPane('chat')
+  return tab.tabId
 }
 
-/** Opens the workflow's Pulse chat tab when only the workflow is known (after
- * "Run goal check now" or "Run Goal Work now"): looks up its session first. */
-export async function openWorkflowPulseChatTab(workspacePath: string): Promise<void> {
-  try {
-    const lead = await agentApi.getGoalLead(workspacePath)
-    const sessionId = lead.success ? lead.conversation?.session_id || '' : ''
-    if (sessionId) await openPulseChatTab(workspacePath, sessionId)
-  } catch {
-    // The status line already says where the result shows; opening is a convenience.
+/** The server checks Pulse on/off and goal setup before resolving its chat. */
+export async function openWorkflowPulseChatTab(workspacePath: string): Promise<string> {
+  const identity = captureChatIdentity()
+  const lead = await agentApi.getGoalLead(workspacePath)
+  assertChatIdentityCurrent(identity)
+  if (!lead.success || lead.error || lead.conversation?.error) {
+    throw new Error(lead.error || lead.conversation?.error || 'Could not open Pulse chat.')
   }
+  const sessionId = lead.conversation?.session_id?.trim()
+  if (!lead.conversation?.has_goal || !sessionId) {
+    throw new Error('Turn Pulse on and set a goal with Builder before opening its chat.')
+  }
+  return openPulseChatTab(workspacePath, sessionId, lead.conversation.busy)
+}
+
+/** Explicit question actions use Pulse's exact tab and the normal chat delivery path. */
+export async function askWorkflowPulse(workspacePath: string, question: string): Promise<void> {
+  const identity = captureChatIdentity()
+  const tabId = await openWorkflowPulseChatTab(workspacePath)
+  assertChatIdentityCurrent(identity)
+  await sendWorkspacePaneMessageToChat({ tabId, message: question })
 }

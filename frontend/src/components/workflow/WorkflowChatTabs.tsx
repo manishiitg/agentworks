@@ -194,7 +194,7 @@ export const WorkflowChatTabs: React.FC<WorkflowChatTabsProps> = ({ embedded = f
         <div aria-label="Chat tabs" className="flex min-w-0 items-center gap-1 overflow-x-auto">
           {activeWorkflowTabs.map((tab) => {
             const isBlank = isBlankWorkflowBuilderTab(tab, activePresetId || '', tabEvents)
-            const isPersistentChat = tab.metadata?.isViewOnly !== true && tab.metadata?.phaseId === 'workflow-builder'
+            const isPersistentChat = tab.metadata?.isViewOnly !== true && tab.metadata?.isExecutionRun !== true && tab.metadata?.phaseId === 'workflow-builder'
             const workflowName = workflowPresets.find(preset => preset.id === tab.metadata?.presetQueryId)?.label?.trim()
               || (isRelaySurface ? 'Flow' : 'Workflow')
             return (

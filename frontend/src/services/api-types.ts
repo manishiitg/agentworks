@@ -604,11 +604,19 @@ export interface ReportHumanInputResponse {
   apply_message?: string
 }
 
+export interface GoalMeasurements {
+  metrics: GoalMetric[]
+  observations: GoalObservation[]
+}
+
 export interface PulseOverviewResponse {
  success: boolean
  outward_actions?: PulseOutwardActions
  has_soul?: boolean
  run_setup?: WorkflowRunSetup
+ measurements?: GoalMeasurements
+ measurements_error?: string
+ conversation?: GoalLeadConversation
  error?: string
 }
 

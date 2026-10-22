@@ -4051,8 +4051,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
-	if workflowPulseTagIsOff(r.Context(), req) {
-		logfWithContext(queryLogCtx, "[PULSE] Refused #pulse tag while off; nothing delivered to Builder")
+	if workflowPulseTagIsOff(r.Context(), req) || isGoalLeadSessionID(sessionID) && !workflowHasGoal(r.Context(), req.SelectedFolder) {
+		logfWithContext(queryLogCtx, "[PULSE] Refused Pulse message while unavailable; nothing delivered")
 		externalError(w, http.StatusConflict, "pulse_unavailable", errPulseOff.Error())
 		return
 	}
