@@ -193,3 +193,41 @@ func TestQuerySecretAdmissionLoadsTheExecutionWorkspace(t *testing.T) {
 		t.Fatalf("ungranted shared secret not refused: %v", err)
 	}
 }
+
+// A project-selected secret is lent by the Crew owner. Personal Vault grants
+// must not make the same project work in one owner's chat and fail in another.
+func TestCrewCoOwnersShareSelectedSecretsInChatAndMCP(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	if _, err := defaultProjectOwners().AddCoOwner("work", "test-team", "other"); err != nil {
+		t.Fatal(err)
+	}
+	withVaultSecretGrant(t, "owner", "CREW_TOKEN", "NOT_SELECTED")
+	t.Setenv("MULTI_USER_MODE", "true")
+	managedGlobalsMu.Lock()
+	oldGlobals, oldManaged := globalSecrets, managedGlobals
+	globalSecrets = nil
+	managedGlobals = map[string]string{"CREW_TOKEN": "test-only-value", "NOT_SELECTED": "not-for-this-project"}
+	managedGlobalsMu.Unlock()
+	t.Cleanup(func() {
+		managedGlobalsMu.Lock()
+		globalSecrets, managedGlobals = oldGlobals, oldManaged
+		managedGlobalsMu.Unlock()
+	})
+	f.write(t, externalCommandCrewRoot+"/workflow.json", `{"id":"team","capabilities":{"selected_global_secret_names":["CREW_TOKEN"]}}`)
+	names := []string{"CREW_TOKEN"}
+	for _, person := range []string{"owner", "other"} {
+		ctx := internalBotRequestContext(t.Context(), person)
+		req := QueryRequest{SelectedFolder: externalCommandCrewRoot, SelectedGlobalSecrets: &names}
+		if err := f.api.validateQuerySecretSelection(ctx, person, req); err != nil {
+			t.Errorf("Builder admission for %s: %v", person, err)
+		}
+		env := f.api.crewSelectedSecretEnv(ctx, "work", externalCommandCrewRoot, externalCommandCrewRoot, person)
+		if env["SECRET_CREW_TOKEN"] != "test-only-value" || len(env) != 1 {
+			t.Errorf("MCP selected secret for %s: missing or includes unselected names", person)
+		}
+	}
+	// This does not change the co-owner's personal Vault grants.
+	if err := validateVaultSecretSelection(t.Context(), "other", nil, &names); err == nil {
+		t.Fatal("project access widened personal Vault grants")
+	}
+}

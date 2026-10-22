@@ -477,12 +477,13 @@ func (api *StreamingAPI) crewSelectedSecretEnv(ctx context.Context, profileID, w
 	if err != nil {
 		return nil
 	}
-	scoped := api.loadSelectedSecrets(ctx, userID, secretWorkspace, names)
-	if err := validateVaultSecretSelection(ctx, userID, scoped, globals); err != nil {
+	owner := api.projectSecretsOwner(userID, workspacePath)
+	scoped := api.loadSelectedSecrets(ctx, owner, secretWorkspace, names)
+	if err := validateVaultSecretSelection(ctx, owner, scoped, globals); err != nil {
 		return nil
 	}
 	env := map[string]string{}
-	for _, secret := range api.mergeGlobalSecretsFor(ctx, api.projectSecretsOwner(userID, workspacePath), scoped, globals) {
+	for _, secret := range api.mergeGlobalSecretsFor(ctx, owner, scoped, globals) {
 		env["SECRET_"+secret.Name] = secret.Value
 	}
 	return env

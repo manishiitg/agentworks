@@ -4913,9 +4913,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					req.SelectedGlobalSecrets = caps.SelectedGlobalSecretNames
 				}
 				// User-stored secrets from manifest are authoritative for workflow UI edits.
-				req.DecryptedSecrets = api.loadSelectedSecrets(context.Background(), currentUserID, manifestWorkspacePath, caps.SelectedSecrets)
+				secretsOwner := currentUserID
+				if isCrewProjectPath(manifestWorkspacePath) && crewProjectOwnedByCaller(currentUserID, manifestWorkspacePath) {
+					secretsOwner = api.projectSecretsOwner(currentUserID, manifestWorkspacePath)
+				}
+				req.DecryptedSecrets = api.loadSelectedSecrets(context.Background(), secretsOwner, manifestWorkspacePath, caps.SelectedSecrets)
 				req.secretsWorkspacePath = manifestWorkspacePath
-				if err := validateVaultSecretSelection(r.Context(), currentUserID, req.DecryptedSecrets, &caps.SelectedSecrets); err != nil {
+				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.DecryptedSecrets, &caps.SelectedSecrets); err != nil {
 					http.Error(w, err.Error(), 403)
 					return
 				}
@@ -4941,7 +4945,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					req.NotificationPulseSummarySlackWebhookSecretNames = append([]string(nil), caps.Notifications.PulseSummarySlackWebhookSecretNames...)
 				}
 				api.resolveNotificationSecretForRequest(context.Background(), currentUserID, manifestWorkspacePath, &req)
-				if err := validateVaultSecretSelection(r.Context(), currentUserID, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
+				if err := validateVaultSecretSelection(r.Context(), secretsOwner, req.DecryptedSecrets, req.SelectedGlobalSecrets); err != nil {
 					http.Error(w, err.Error(), http.StatusForbidden)
 					return
 				}

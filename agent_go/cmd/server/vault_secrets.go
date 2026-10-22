@@ -239,6 +239,12 @@ func (api *StreamingAPI) handleVaultSecretAccess(w http.ResponseWriter, r *http.
 // must use the same server-resolved workspace and encrypted project store,
 // rather than treating the browser's empty decrypted list as authoritative.
 func (api *StreamingAPI) validateQuerySecretSelection(ctx context.Context, userID string, req QueryRequest) error {
+	// Crew owners build with the project's selected credentials, including
+	// when their own personal Vault grants differ. Other callers retain their
+	// existing admission identity; project access is checked by the turn.
+	if isCrewProjectPath(req.SelectedFolder) && crewProjectOwnedByCaller(userID, req.SelectedFolder) {
+		userID = api.projectSecretsOwner(userID, req.SelectedFolder)
+	}
 	scoped := req.DecryptedSecrets
 	if (req.AgentMode == "workflow" || req.AgentMode == "workflow_phase") && req.SelectedGlobalSecrets != nil && len(*req.SelectedGlobalSecrets) > 0 {
 		workspace := req.SelectedFolder
