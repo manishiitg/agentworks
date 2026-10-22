@@ -202,7 +202,7 @@ func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = env.api.sendAgentMessage(ctx, "owner", codeChatCaller(project, base), codeChatTarget(project, target, root), "Please review this shared work.", "", "owner-tabs-message")
+	receipt, err := env.api.sendAgentMessage(ctx, "owner", codeChatCaller(project, base), codeChatTarget(project, target, root), "Please review this shared work.", "", "owner-tabs-message")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,6 +216,27 @@ func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 	}
 	if _, err = registry.RemoveCoOwner("work", "owner-tabs", "other"); err != nil {
 		t.Fatal(err)
+	}
+	removed := env.api.agentMessageCallerRole(agentMessageEndpoint{Kind: triggerCallerCrew, ID: "beta", Profile: "work", UserID: "other", Path: root, Session: sessions["other"].SessionID, ChatKey: sessions["other"].ConversationKey})
+	if removed.Mode == "builder" {
+		t.Fatal("removed owner retained inferred Builder role")
+	}
+	stored, e := readAgentMessageStore(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	checked := false
+	for _, conversation := range stored.Conversations {
+		if conversation.ID == receipt["inbox_id"] {
+			checked = true
+			message := conversation.Messages[len(conversation.Messages)-1]
+			if e := env.api.recheckAgentMessageAdmission(ctx, conversation, message); e == nil {
+				t.Fatal("queued message still admitted to removed co-owner")
+			}
+		}
+	}
+	if !checked {
+		t.Fatal("message receipt was not stored")
 	}
 	if env.api.crewSessionTabView(request("other", http.MethodGet, "/api/terminals/main", ""), sessions["owner"].SessionID) {
 		t.Fatal("removed co-owner still views owner tab")
