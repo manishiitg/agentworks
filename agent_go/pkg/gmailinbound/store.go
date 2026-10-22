@@ -166,7 +166,7 @@ func (s *Store) MailboxStatus(ctx context.Context, id string) (Mailbox, error) {
 	return m, err
 }
 func (s *Store) Synced(ctx context.Context, m Mailbox) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE mailboxes SET started_at=?,processed=?,next_sync=?,error='' WHERE connection=?`, m.Since, time.Now().Unix(), time.Now().Add(30*time.Second).Unix(), m.ConnectionID)
+	_, err := s.db.ExecContext(ctx, `UPDATE mailboxes SET started_at=?,processed=?,next_sync=?,error='' WHERE connection=?`, m.Since, time.Now().Unix(), time.Now().Add(time.Minute).Unix(), m.ConnectionID)
 	return err
 }
 func (s *Store) SyncError(ctx context.Context, id string, e error) error {
