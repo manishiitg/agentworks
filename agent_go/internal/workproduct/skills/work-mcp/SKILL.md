@@ -14,8 +14,9 @@ Use `list_mcp_servers` to inspect this project's connections. Use `search_mcp_ca
   access to the project uses it, and no other project does. It acts as the
   connected account, so say whose login it is. Use `install_mcp_server` for a
   catalog server. Crew agent turns, including function and message runs, can
-  install or reuse current catalog servers only. Add custom URLs through
-  **Integrations**; an agent cannot attach a custom saved connection by name.
+  install or reuse current catalog servers and verified public remote MCP
+  URLs through the advertised setup tool. Keep its URL and ownership checks;
+  never attach another person's saved connection or bypass a denied call.
 <!-- product:mcp-gateway -->- MCPs shared across projects belong in **Vault**. An administrator connects them there and
   assigns tools and resource conditions to groups. Connecting grants no access.
 - Use `update_project_mcp_server_selection` to select or deselect a
@@ -36,14 +37,47 @@ Use `list_mcp_servers` to inspect this project's connections. Use `search_mcp_ca
   Install the requested catalog connection, return any real OAuth sign-in link,
   and select the connection for this project after sign-in. Refresh the inventory
   to verify `connected`; an installation or sign-in link alone is not success.
+  Completing that setup and checking it are part of the user's Connect request;
+  do not ask again whether to check or select the requested connection.
 - If a setup or shell tool fails, report the observed error briefly. Do not send
   the person back to the same Connect button that invoked this request, retry
   identical failing commands, or describe a filesystem error as a missing role.
-- Never ask for passwords or OAuth sign-ins in chat; direct users to the
-  sign-in link or Integrations > Connections. When a user gives you an API key
-  or OAuth client secret, store it as a secret by name with the secret tools
-  and never repeat it. Display OAuth links only when the setup tool actually
-  returns one.
+- Own the setup in chat instead of sending the person to a settings screen.
+  For a user-provided API key, pass `api_key` to `install_mcp_server` so the
+  server seals it; use the provider's documented `api_key_header` and
+  `api_key_format` when its header is not Authorization/Bearer. For OAuth app
+  setup, request only the missing `client_id` and `client_secret`, then call
+  the same tool on the saved exact connection name without label or catalog.
+  Credentials are encrypted; never repeat values or write them to project
+  files. Never ask for the person's account password. Display only the real
+  returned sign-in URL; the person signs in and approves at the provider.
+
+## Help the person reach the current screen
+
+The menu has Recent, Build, Use, Share, Integrations and Setup. An item in
+Recent is not repeated in its category. MCP connections are labelled **MCPs**;
+**MCP access** is a different page for using AgentWorks from another AI app.
+There is no separate "Integrations > Connections > Available" menu path.
+
+Connecting is done through the setup tools in chat. Only when the person asks
+to inspect the connection or needs help finding a screen, use UI navigation.
+In an interactive Builder, discover the UI tools as described in
+`work-ui-control`, inspect `list_ui_capabilities`, then open the advertised
+`mcp` view with target `connected` to show saved and pending accounts. Use
+target `available` only to add a new provider. Confirm an `applied` receipt
+before saying the page opened. Refresh it after setup if it is already open.
+If UI control is unavailable, say **Ctrl+K** (**Cmd+K** on Mac), search
+**MCPs**, and select the current project's result. The menu's **Find a view**
+opens the same search. Do not invent a sidebar or ask the person to hunt for
+a retired tab.
+
+If setup returns no sign-in link, explain the actual tool result. A provider
+that requires an OAuth app needs guided steps at the provider and the exact
+callback URL returned by the tool; collect its app details and retry the saved
+name here. A missing server callback address is a server configuration problem,
+not a reason to send the person to AgentWorks settings. Do not create another
+account, invent a link, or claim it connected. After authorization, verify and
+finish the original request without asking again whether to continue.
 
 ## Multiple accounts
 

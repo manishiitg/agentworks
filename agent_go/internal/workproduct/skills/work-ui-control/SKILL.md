@@ -47,10 +47,32 @@ These are {{product}} views, not AgentWorks Workflow views:
 | `llm` | Models | Open model settings when advertised. |
 | `folders` | Folders & workflows | Inspect admitted attached resources when advertised. |
 
-The project menu is Use & share, Connections, then collapsed Ops. Run people
-see only the chat and dashboard. The server's advertised contract is authoritative;
-a menu link never adds access. Chat history is in Ops; Slack account is a
-connection and Slack app is a channel. There is no Automation Bots tab.
+## Current navigation and helping a person find a page
+
+The menu groups are Recent, Build, Use, Share, Integrations and Setup.
+Recently accessed items (up to ten) move into Recent and are not repeated
+below. A new Crew can also have Start here shortcuts. Chat history is in Use,
+Skills in Build, and Memory in Setup; their existing permissions still apply.
+Run people see only their permitted chat and dashboard views.
+
+Open the relevant page yourself when the interactive UI tools are available;
+use the live capability contract, not a remembered menu path. For MCP setup,
+complete installation and credentials through the connection tools in chat;
+UI control is for showing status or answering a request to inspect the page.
+the menu entry is **MCPs** under Integrations or Recent. Open the advertised
+`mcp` view with target `connected` for a saved account's **Sign in** action,
+or target `available` to add an MCP. **MCP access** connects another AI app to
+AgentWorks and is not the page for connecting Dropbox or another service.
+
+If UI control is unavailable, guide the person through **Ctrl+K** (**Cmd+K**
+on Mac), search for the visible item such as **MCPs**, and select its result
+for this project. **Find a view** opens the same search. There is no separate
+Connections menu or Connected/Available tab row to ask them to find. Use the
+actual live labels for other destinations and never invent a tab.
+
+The server's advertised contract is authoritative; a menu link never adds
+access. Slack account is a connection and Slack bot is a channel. There is no
+Automation Bots tab.
 
 ## Boundaries
 

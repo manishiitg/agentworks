@@ -25,14 +25,21 @@ Connections are private to the authenticated person, even in a shared {{product}
   catalog. It returns a sign-in link for the person to open with their own
   account. Only this {{product}}'s owner can connect; anyone else can list.
   Google apps (Gmail, Drive, Calendar, Docs, Sheets, Slides) and GitHub are
-  not MCP connections: Google accounts are managed in **My Vault → Your connected accounts**, then selected in this item’s **Connections → Google apps** (the person signs in
-  there and you use it through `google_workspace_cli`); GitHub is a personal
+  not MCP connections: use the advertised Google account tools to return a
+  sign-in link and select the account here (you use it through
+  `google_workspace_cli`); GitHub is a personal
   access token in the secret `GITHUB_TOKEN`, used with git and the GitHub API.
-  Point the person there instead of trying `connect`.
-- **Providers that need an OAuth app.** When `connect` says so, send the person
-  to **Integrations** to finish it. Never ask for passwords, API keys
-  or OAuth client secrets in chat. A server that takes an API key uses a secret
-  the person stores as a secret; a connection refers to its secret name.
+  Use the corresponding account or secret tools in chat instead of MCP `connect`.
+- **API keys and OAuth app setup stay in chat.** Guide the provider's setup,
+  ask for only the missing app details or key, and pass user-provided
+  `api_key` or `client_id`/`client_secret` to the advertised connection tool.
+  The server stores credentials encrypted; never repeat them or write them to
+  project files. For a nonstandard key header, use `api_key_header` and
+  `api_key_format` from provider documentation. Retry an existing exact name
+  without label; never create a duplicate while completing authorization.
+  Return the tool's real sign-in URL for the person to approve at the provider,
+  then verify and finish setup as already requested. Never ask for a password
+  or send the person to AgentWorks settings to finish what chat can do.
 - **Remove one.** `manage_my_mcp_servers` with `remove` and the connection's
   `name` detaches it from this project for everyone; the same login can stay connected to other projects. Say which connection you are removing first.
 - **When a call fails.** "not available in this chat" means the connection was

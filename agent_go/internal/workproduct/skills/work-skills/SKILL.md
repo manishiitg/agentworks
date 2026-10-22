@@ -39,7 +39,8 @@ requested scope first.
   a separate action. Call `update_project_skill_selection(action="select",
   skill="folder-name")` with the exact folder returned by `list_skills`.
   Use `action="deselect"` to remove only this project's selection. The same
-  selection remains editable in **Setup > Skills**.
+  selection is managed through chat. **Build > Skills** (or Recent) shows
+  installed custom skills for reading; it has no select or uninstall buttons.
 - When the user explicitly asks to preserve or improve a repeatable procedure,
   create or update a focused custom skill inside this {{product}} project at
   `skills/<skill-name>/SKILL.md`. This is project-local durable knowledge, like

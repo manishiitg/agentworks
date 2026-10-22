@@ -11,7 +11,7 @@ from selection for this project. MCP setup has its own `work-mcp` skill.
 ## Personal Google and Slack accounts
 
 Manage saved accounts in **My Vault → Your connected accounts**. In this
-project’s **Connections → Google apps** or **Slack → Act in Slack**, choose
+project’s **Integrations → Google apps** or **Integrations → Slack account**, choose
 **Use here** or **Remove here** for a saved account. It is one login reused across products, separate from shared vaults.
 Use `manage_google_account` or `manage_slack_account` to inspect and manage
 these same accounts from chat; connect returns the real sign-in link. Never
@@ -34,9 +34,11 @@ a different account, or treat this refusal as a website-only restriction.
 
 ## Secrets
 
-Open **Connections → Secrets**. To show it in the current project with
+Manage secrets through the tools in this chat. If the person asks to inspect
+them, open **Secrets** in Integrations or Recent, or Ctrl+K (Cmd+K on Mac),
+search Secrets. To show it in the current project with
 `perform_ui_action`, use `view="mcp", action="open", target="secrets"`.
-There is no separate Secrets side-menu panel. Never claim it opened unless
+Secrets is a direct menu entry, not a tab to find under Connections. Never claim it opened unless
 the UI action confirms success.
 
 - Call `list_secrets` before creating, replacing, or deleting a secret.
@@ -49,7 +51,7 @@ the UI action confirms success.
 - {{product}} stores attached secret names in `workflow.json` under
   `capabilities.selected_secrets`, using the AgentWorks workflow contract.
   Secret values remain encrypted outside the manifest. <!-- product:mcp-gateway -->Shared Vault credentials also require the executing user's current group permission.<!-- /product --> Respect the user's
-  selections in **Connections > Secrets**; do not attach an unrelated credential.
+  selections under **Secrets**; do not attach an unrelated credential.
 - A read-only workflow or Crew reference never grants its secrets.
 <!-- product:mcp-gateway -->- A read-only workflow or Crew reference never grants its secrets. To reuse a
   credential across projects, it goes into Vault: a Vault administrator shares

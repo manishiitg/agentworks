@@ -258,20 +258,21 @@ const TAB_GUIDES: Record<string, (surface: WorkspacePanelSurface) => GuideCopy> 
   }),
   'Integrations · Plugins': surface => ({
     purpose: `Private app connections, project secrets, skills and shared Vault access for this ${surface === 'crew' ? 'project' : 'workflow'}.`,
-    howTo: 'Use Add connection to choose an app, MCP, secret or other project resource.',
+    howTo: 'Ask in chat to connect an app. Use Integrations or Recent to inspect its connection, secrets or shared access.',
     steps: [
-      'Connected shows the connections of this place; Available lets you add another account with its own login.',
-      'Secrets and Skills manage resources for this project.',
-      'Vault shows your groups and the shared connections and secret names they permit. Select the resources this project should use.',
+      'Ask the Builder to complete setup, provide the real sign-in link and verify the connection.',
+      'MCPs, Google apps and Secrets have their own menu entries. Skills are under Build.',
+      'Vault shows your groups and the shared connections and secret names they permit. Existing access permissions still apply.',
     ],
   }),
   'Integrations · MCPs': surface => ({
     purpose: `MCPs (Model Context Protocol servers) give this ${surface === 'crew' ? 'Crew member' : 'workflow'} tools from external apps and services.`,
-    howTo: `A platform connection makes an app available; selecting it here lets this ${surface === 'crew' ? 'project' : 'workflow'} use it.`,
+    howTo: `Ask in chat to connect an app to this ${surface === 'crew' ? 'project' : 'workflow'}. To inspect it, open MCPs from Integrations or Recent, or press Ctrl+K (Cmd+K on Mac) and search MCPs.`,
     steps: [
-      `Check “This ${surface === 'crew' ? 'project' : 'workflow'}” for apps already selected. “Platform connected” shows apps you can select.`,
-      `Select an app to allow its tools here. Removing the selection does not disconnect the shared platform account.`,
-      'For a new app, search “Connect a new app” and follow its setup. On multi-user installations, an admin manages these shared connections.',
+      'Tell the Builder which app and account to connect. It handles setup and checks what is missing; keep existing accounts when finishing a pending sign-in.',
+      'When the provider needs an API key or OAuth app, the Builder guides you through the required details. Credentials use encrypted storage; never provide your account password.',
+      'Open the real sign-in link returned in chat and approve access at the provider. The Builder then verifies the connection and finishes setup. The MCPs page also keeps its existing setup and inspection controls.',
+      'Project connections are used by people who have access to this project, as the connected account. Vault connections retain their existing user and group permissions.',
     ],
   }),
   'Integrations · Skills': surface => ({

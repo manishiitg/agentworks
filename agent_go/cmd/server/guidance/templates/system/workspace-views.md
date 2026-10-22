@@ -6,7 +6,7 @@ Pulse/child agents, and bot conversations do not manipulate the foreground
 workspace. Observing one of those conversations does not promote it; an
 explicit supported interactive continuation is required.
 
-The right-hand pane shows one Workflow view at a time.
+The right-hand pane shows one Goal or Flow view at a time.
 `perform_ui_action(view, action="open")` requests a view and
 `perform_ui_action(view, action="refresh")` invokes that view's reload. Only an
 `applied` receipt confirms that the visible shell acknowledged the action; it
@@ -14,10 +14,22 @@ does not prove every data request inside the view completed or that the user
 read it. Prefer one open per reply and do not repeatedly override a view the
 user selected.
 
+## Current menu and finding a page
+
+Goals, Flows and Crew use Recent, Build, Use, Share, Integrations and Setup;
+Recent entries are not duplicated below. MCP setup belongs in chat (see
+`integration-discovery` and `workflow-tools`); UI navigation is optional inspection.
+**MCPs** holds app connections; **MCP access** is for external AI clients.
+Check `list_ui_capabilities`: use advertised `mcp` target `connected` for saved
+accounts or `available` for Add an MCP, and require an `applied` receipt.
+If UI control is unavailable, explain **Ctrl+K** (**Cmd+K** on Mac), search the
+page's current name, then choose this project's result. Do not invent old tabs.
+
 ## Workflow views
 
 | View ID | Shows | Open it when |
 |---|---|---|
+| `context` | The project's navigation menu | Return to Recent and the grouped project views. |
 | `report` | The workflow's live HTML Dashboard | You built or edited the report, or the user asks to see results or metrics. |
 | `flow` | The workflow plan canvas | You changed steps or routes, or the user asks how the workflow is structured. |
 | `costs` | Token and cost usage by run, group, and step | The user asks what a run cost or which step is expensive. |

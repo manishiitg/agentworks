@@ -14,6 +14,8 @@ export function WorkspacePanelHeader({ workspacePath, view, title, onBack, conte
 }) {
   const scope = useWorkspacePanelScope(workspacePath, view)
   const guide = useWorkspacePanelNavigationStore(state => panelBackAction(state.guides, scope))
+  // The landing menu is already the navigation; it has no page actions or title bar.
+  if (view === 'context') return null
   const pageTitle = guide?.topic ?? title
   return <header data-testid="workspace-panel-header" aria-label="Panel navigation" className="flex min-h-11 shrink-0 items-center justify-between gap-3 border-b border-border bg-background px-3 py-1.5">
     <h2 className="min-w-0 truncate text-sm font-semibold" title={pageTitle}>{pageTitle}</h2>

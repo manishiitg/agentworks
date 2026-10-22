@@ -836,6 +836,8 @@ type QueryRequest struct {
 	BrowserMode string `json:"browser_mode,omitempty"`
 	// Caller input survives in-memory continuation copies, never client JSON.
 	callerBrowserInput *queuedBrowserInput `json:"-"`
+	// Captured from an authenticated HTTP request, never accepted in client JSON.
+	oauthRedirectURI string `json:"-"`
 	// CDP port for connecting to an existing Chrome browser (local mode only)
 	CdpPort *int `json:"cdp_port,omitempty"` // When set and > 0, connect to Chrome via CDP on this port instead of launching headless
 	// Explicitly authorized CDP browsers for specialized multi-profile testing.
@@ -3927,6 +3929,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r = r.WithContext(principalContext)
+	req.oauthRedirectURI = deriveOAuthRedirectURI(r)
 	if err := api.bindSlackInvocation(r.Context(), &req, r.Header.Get("X-Session-ID")); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
@@ -13849,7 +13852,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 
 	if err := registerTool(
 		"install_mcp_server",
-		"Connect a catalog server or user-supplied remote MCP URL to this workflow, <!-- product:relays -->Flow, <!-- /product -->Crew<!-- product:code --> or Code<!-- /product --> with the authenticated user's login; everyone with access to it can use it. Return an actual OAuth sign-in link or direct them to Integrations for credentials. Never ask for secrets in chat. Select the private server for a workflow using update_workflow_config or for a Crew using update_project_mcp_server_selection. <!-- product:mcp-gateway -->Shared setup belongs in Vault and requires group grants.<!-- /product -->",
+		"Connect a catalog server or verified remote MCP URL from this chat using the authenticated user's login. Accept user-provided api_key, or client_id/client_secret when the provider needs an OAuth app; store credentials encrypted and never repeat values. Return the actual OAuth sign-in link here, then verify discovery and finish project selection after the user approves at the provider. Guide missing app/key setup in chat; do not send the person to find an Integrations screen. Reuse an existing exact name without label when completing setup. Everyone with access to this project can use its connection. Select it with update_workflow_config or update_project_mcp_server_selection. <!-- product:mcp-gateway -->Shared setup belongs in Vault and retains current group grants.<!-- /product -->",
 		map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -13867,14 +13870,16 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 				},
 				"api_key": map[string]interface{}{
 					"type":        "string",
-					"description": "Deprecated: do not send credentials in chat. Enter the API key in Integrations.",
+					"description": "User-provided API key to store encrypted for this exact connection. Never repeat it or write it to project files.",
 				},
+				"api_key_header": map[string]interface{}{"type": "string", "description": "API key header from the provider documentation. Default Authorization."},
+				"api_key_format": map[string]interface{}{"type": "string", "description": "Header format with {} for the key, e.g. Bearer {}. Default Bearer {} for Authorization; otherwise the raw key."},
 				"client_id": map[string]interface{}{
 					"type":        "string",
 					"description": "Optional. Only for an OAuth server with no Dynamic Client Registration support, after the user has registered their own OAuth app and given you its client_id.",
 				},
 				"client_secret": map[string]interface{}{
-					"type": "string", "description": "Deprecated: enter client secrets in Integrations, never in chat.",
+					"type": "string", "description": "User-provided OAuth app secret, with client_id. Kept encrypted after successful sign-in; never repeat its value.",
 				},
 			},
 			"required": []string{"name"},

@@ -100,7 +100,7 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 	}
 	f.api.mcpConfig = config
 	result := crewCapabilityHTTP(t, f, crewWriter("owner"), "crew_mcp", map[string]any{"action": "install", "name": "example"}, 200)
-	if !strings.Contains(result, "Integrations") {
+	if !strings.Contains(result, "no PUBLIC_URL OAuth callback address") {
 		t.Fatal(result)
 	}
 	attachments, _ := placeMCPAttachmentsFor(externalCommandCrewRoot)

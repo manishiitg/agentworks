@@ -44,11 +44,11 @@ func (r crewCapabilityRegistrar) RegisterCustomTool(name, description string, sc
 	if normalized["required"] == nil {
 		delete(normalized, "required")
 	}
-	// MCP setup keeps credential entry in Integrations and excludes arbitrary process config.
+	// MCP setup accepts encrypted account credentials, while excluding arbitrary process config.
 	if name == "install_mcp_server" {
 		props := normalized["properties"].(map[string]any)
 		for key := range props {
-			if key != "name" && key != "url" && key != "label" && key != "catalog" {
+			if key != "name" && key != "url" && key != "label" && key != "catalog" && key != "reconnect" && key != "api_key" && key != "api_key_header" && key != "api_key_format" && key != "client_id" && key != "client_secret" {
 				delete(props, key)
 			}
 		}
@@ -92,7 +92,7 @@ func externalCrewCapabilityDefinitions(add func(string, string, bool, bool, map[
 	groups := []string{"crew_skills", "crew_mcp", "crew_folders", "crew_references"}
 	descriptions := map[string]string{
 		"crew_skills":     "Discover, search, install, import or uninstall skills in this Crew. Use settings to select installed skills. GitHub imports accept the same optional private-repository token as the website tool.",
-		"crew_mcp":        "List connections/catalog, search, install/attach using the exact name returned by list, or catalog; for a new custom remote MCP pass name and url, remove its Crew attachment, or discover its tools. Credentials and OAuth app setup stay in Integrations. Removing detaches only this Crew, preserving other projects and logins. Use settings to select connections.",
+		"crew_mcp":        "List connections/catalog, search, install/attach using the exact name returned by list, or catalog; for a new verified remote MCP pass name and url. Complete API key or OAuth app setup in chat using the install action's encrypted credential fields, return the real sign-in link, then verify discovery. Never repeat credentials. Removing detaches only this Crew, preserving other projects and logins. Use settings to select connections.",
 		"crew_folders":    "List, attach or detach this account's additional server folders within administrator-assigned roots. This changes all of the account's Crews, so it requires consent for all Crews without a file guard.",
 		"crew_references": "List accessible workflows and Crews with attached flags, or attach/detach an exact returned workspace_path. Workflow references are read-only; Crew references are shared read-write. Target access and connection bounds apply.",
 	}

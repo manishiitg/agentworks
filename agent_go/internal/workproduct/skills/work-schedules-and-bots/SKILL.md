@@ -88,7 +88,7 @@ An administrator sets up an internal Slack app named **AgentWorks** once in Sign
 
 Slack and WhatsApp bot connections use the shared AgentWorks connector
 infrastructure, but their route target is this {{product}} project chat. Configuration
-is in **Setup > Bots**. If no bot-management tool is available in the current
+is in **Use > Slack bot** or **Use > WhatsApp** (or Recent). If no bot-management tool is available in the current
 turn, explain the exact UI location rather than pretending a route was created.
 Bot messages inherit this project's workspace boundary, selected skills, MCP
 servers, and available secrets.
@@ -117,7 +117,7 @@ other people's messages or expose this account to another person.
   ask which account the user wants to connect without suggesting a provider email.
 
 - Gmail uses saved Google accounts in **My Vault → Your connected accounts**,
-  selected with **Use here** in this project’s **Connections → Google apps**;
+  selected with **Use here** in this project’s **Integrations → Google apps** (or Recent);
   it is not an MCP server. Company incoming email is stored in this agent’s dedicated Inbox and optional normal Python Watchers start work. Personal Gmail connects through gog. An explicitly requested personal Gmail Watcher can pass selected new mail to the owner’s Crew chat; it never fills the shared Inbox. Check `list_gmail_connections`
   before searching the MCP catalog or claiming Gmail is unavailable.
 - Before calling `google_workspace_cli`, use `list_skills` to check whether the
@@ -162,7 +162,7 @@ When asked to connect Slack or configure a route, inspect `get_slack_bot_setting
 4. Invite the bot to the desired channel. Obtain the exact channel ID from Slack's channel details, then create a route for the current workflow/project with `create_slack_bot_route`. Channel IDs belong only to routes; there is no global/default channel. Use `run` for bot routes. Do not ask users to choose a grant or offer bot authoring mode. Confirm with `get_slack_bot_settings` after the change.
 5. Everyone in a routed channel is allowed by default. To exclude users, set that route's `blocked_emails`; use `[]` to clear the list. Do not create a global Allowed Users list. The same app may serve different channels, each with its own workflow/project destination.
 
-Notify controls outbound workflow notifications and human feedback. The Slack page’s bot section controls conversations and channel routing. Gmail accounts are managed in My Vault and selected in Connections → Google apps, separately from Bots.
+Notify controls outbound workflow notifications and human feedback. The Slack page’s bot section controls conversations and channel routing. Gmail accounts are managed in My Vault and selected in Integrations → Google apps, separately from Bots.
 
 Bot routes use `run`, which gives runtime/read-only authority. Do not offer `owner` or workflow authoring through the bot. The Slack sender is audit metadata and never supplies execution permissions. Only an authenticated interactive owner may create, update, or remove a route. A Slack-origin session cannot manage routes. Legacy owner/Build routes are restricted to Run when decoded and revalidated. Read-only sessions receive inspection tools, not mutation tools. Permission changes invalidate running bot work and are rechecked on every turn.
 
