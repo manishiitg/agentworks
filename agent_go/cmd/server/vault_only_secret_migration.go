@@ -43,6 +43,27 @@ func (api *StreamingAPI) migrateLegacySecretDocuments(ctx context.Context, apply
 	})
 	backup := "config/vault-migration-backups/" + time.Now().UTC().Format("20060102T150405.000000000")
 	rows := []placeMigrationRow{}
+	for _, secret := range legacyEnvironmentSecrets() {
+		row := placeMigrationRow{Server: secret.Name, Kind: "environment secret", Result: "would move"}
+		if apply {
+			managedGlobalsMu.RLock()
+			_, known := managedGlobals[secret.Name]
+			managedGlobalsMu.RUnlock()
+			if !known {
+				if err := api.storeManagedGlobalSecret(ctx, secret.Name, secret.Value, true); err != nil {
+					return rows, err
+				}
+			}
+			row.Result = "moved"
+		}
+		rows = append(rows, row)
+	}
+	if apply {
+		if err := syncVaultSecretMetadata(ctx, mcpCaller(ctx)); err != nil {
+			return rows, err
+		}
+	}
+
 	for _, file := range files {
 		file = strings.TrimPrefix(file, "./")
 		if !strings.HasSuffix(file, ".json") {

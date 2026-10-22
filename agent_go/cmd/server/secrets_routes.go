@@ -25,37 +25,22 @@ type globalSecretEntry struct {
 	Managed bool
 }
 
-// globalSecrets is populated once at startup from GLOBAL_SECRET_* env vars
+// Retained only as one-off migration inventory; runtime uses managedGlobals.
 var globalSecrets []globalSecretEntry
 
-// loadGlobalSecrets scans os.Environ() for GLOBAL_SECRET_ prefix and populates globalSecrets
-func loadGlobalSecrets() {
-	managedGlobalsMu.Lock()
-	defer managedGlobalsMu.Unlock()
-	const prefix = "GLOBAL_SECRET_"
-	globalSecrets = nil
-	for _, env := range os.Environ() {
-		if !strings.HasPrefix(env, prefix) {
+// legacyEnvironmentSecrets is read only by the operator migration.
+func legacyEnvironmentSecrets() []globalSecretEntry {
+	rows := []globalSecretEntry{}
+	for _, item := range os.Environ() {
+		if !strings.HasPrefix(item, "GLOBAL_SECRET_") {
 			continue
 		}
-		eqIdx := strings.Index(env, "=")
-		if eqIdx < 0 {
-			continue
+		name, value, ok := strings.Cut(strings.TrimPrefix(item, "GLOBAL_SECRET_"), "=")
+		if ok && globalSecretNamePattern.MatchString(name) {
+			rows = append(rows, globalSecretEntry{Name: name, Value: value})
 		}
-		name := env[len(prefix):eqIdx]
-		value := env[eqIdx+1:]
-		if !globalSecretNamePattern.MatchString(name) {
-			continue
-		}
-		globalSecrets = append(globalSecrets, globalSecretEntry{Name: name, Value: value})
 	}
-	if len(globalSecrets) > 0 {
-		names := make([]string, len(globalSecrets))
-		for i, s := range globalSecrets {
-			names[i] = s.Name
-		}
-		log.Printf("[SECRETS] Loaded %d global secrets from environment: %v", len(globalSecrets), names)
-	}
+	return rows
 }
 
 // getGlobalSecrets snapshots environment and encrypted admin-managed globals.

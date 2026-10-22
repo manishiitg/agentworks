@@ -77,11 +77,6 @@ func (api *StreamingAPI) storeManagedGlobalSecret(ctx context.Context, name, val
 	}
 	managedGlobalsMu.Lock()
 	defer managedGlobalsMu.Unlock()
-	for _, secret := range globalSecrets {
-		if secret.Name == name {
-			return errors.New("This global is configured in the server environment; update it there")
-		}
-	}
 	if _, exists := managedGlobals[name]; exists && createOnly {
 		return errGlobalConflict
 	}
@@ -116,11 +111,6 @@ func (api *StreamingAPI) deleteManagedGlobalSecret(ctx context.Context, userID, 
 	}
 	managedGlobalsMu.Lock()
 	defer managedGlobalsMu.Unlock()
-	for _, secret := range globalSecrets {
-		if secret.Name == name {
-			return errors.New("This global is configured in the server environment; remove it there")
-		}
-	}
 	if _, exists := managedGlobals[name]; !exists {
 		return errGlobalNotFound
 	}
@@ -257,9 +247,6 @@ func sortedGlobalSecrets() []globalSecretEntry {
 	merged := map[string]globalSecretEntry{}
 	for name, value := range managedGlobals {
 		merged[name] = globalSecretEntry{Name: name, Value: value, Managed: true}
-	}
-	for _, secret := range globalSecrets {
-		merged[secret.Name] = secret
 	}
 	result := make([]globalSecretEntry, 0, len(merged))
 	for _, secret := range merged {

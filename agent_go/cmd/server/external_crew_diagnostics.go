@@ -129,12 +129,12 @@ func (api *StreamingAPI) externalCrewDiagnosticsCall(w http.ResponseWriter, r *h
 		externalError(w, 403, "forbidden", "Only the Crew owner can read full connection parameter schemas. Omit include_tools for tool names and descriptions.")
 		return
 	}
-	inventory, err := vaultServersFor(ctx, api.projectSecretsOwner(claims.UserID, root))
+	inventory, err := vaultServersFor(r.Context(), api.projectSecretsOwner(claims.UserID, root))
 	if err != nil {
 		externalError(w, 502, "connections_unavailable", "Vault is unavailable.")
 		return
 	}
-	selected, _ := projectSelectedServers(ctx, root)
+	selected, _ := projectSelectedServers(r.Context(), root)
 	hasPicks := false
 	none := false
 	for _, pick := range selected {

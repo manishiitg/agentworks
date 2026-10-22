@@ -2426,7 +2426,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	seedMCPBridgeCodeExecRegistry(api.logger)
 
 	// Load global secrets from GLOBAL_SECRET_* environment variables
-	loadGlobalSecrets()
 	if err := api.loadManagedGlobalSecrets(context.Background()); err != nil {
 		log.Fatalf("Failed to load managed global secrets: %v", err)
 	}

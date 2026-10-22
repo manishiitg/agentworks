@@ -175,7 +175,7 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 		if rawURL == "" {
 			if entry, ok := api.placeMCPCatalogEntry(catalog); ok {
 				if apiKey != "" {
-					rawURL = entry.URL
+					rawURL = entry.config.URL
 					if name == "" {
 						name = entry.Name
 					}

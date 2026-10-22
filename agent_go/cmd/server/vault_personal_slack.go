@@ -313,7 +313,12 @@ func (api *StreamingAPI) personalSlackOperation(r *http.Request, workspace strin
 			if strings.TrimSpace(label) == "" {
 				label = "My Slack account"
 			}
-			connectionID, err := createOwnVaultConnection(ctx, actor, vaultID, placeMCPServer{URL: "https://mcp.slack.com/mcp", Label: label})
+			data, err := vaultPersonRequest(ctx, actor, http.MethodPost, "/api/vaults/"+url.PathEscape(vaultID)+"/connectors", vaultPromoteJSON(map[string]string{"Provider": "Slack", "Label": label}))
+			var created struct{ ID string }
+			if err == nil && (json.Unmarshal(data, &created) != nil || !vaultConnectionID.MatchString(created.ID)) {
+				err = errors.New("Vault returned no connection ID")
+			}
+			connectionID := created.ID
 			if err != nil {
 				return nil, err
 			}
