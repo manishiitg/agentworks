@@ -154,8 +154,9 @@ func TestPrivateGmailSourceSkipsOldMailAndKeepsOnlyIdentity(t *testing.T) {
 	if len(active) != 1 || active[0].PersonalGmail() {
 		t.Fatal("private receiver survived last Watcher removal", active)
 	}
-	boxes, _ := store.Mailboxes(ctx)
-	if len(boxes) != 1 {
-		t.Fatal("stopping private receiving stopped dedicated Crew mail")
+	// Mailboxes returns only currently due polls; Synced deferred the next
+	// check for a minute. Inspect the stored receiver, not the due queue.
+	if _, err := store.MailboxStatus(ctx, "account"); err != nil {
+		t.Fatal("stopping private receiving stopped dedicated Crew mail", err)
 	}
 }
