@@ -1335,6 +1335,11 @@ func (api *StreamingAPI) agentMessageCallerRole(e agentMessageEndpoint) agentMes
 		api.lastQueryMu.RLock()
 		prior, known := api.lastQueryRequests[e.Session]
 		api.lastQueryMu.RUnlock()
+		if !known && ordinaryProjectChatKey(e.ID, e.ChatKey) && crewProjectOwnedByCaller(e.UserID, e.Path) {
+			if tab, found, err := crewTabForKey(context.Background(), e.UserID, e.Profile, e.ChatKey, e.Path); err == nil && found && tab.OwnerID == e.UserID && tab.Record.SessionID == e.Session {
+				e.Mode = "builder"
+			}
+		}
 		if known {
 			e.Mode = "run"
 			e.Guest = prior.CrewGuestCaller

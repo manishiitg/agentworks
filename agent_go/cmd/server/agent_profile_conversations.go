@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"io"
 	"log"
@@ -276,6 +277,19 @@ func (api *StreamingAPI) handleDeleteAgentProfileConversation(w http.ResponseWri
 	if !ok {
 		return
 	}
+	if err := crewQueryTabWriteError(r.Context(), userID, slot.profile.ID, slot.binding.WorkspacePath, sessionID); err != nil {
+		externalError(w, 403, "tab_owner", err.Error())
+		return
+	}
+	if isCrewProjectPath(slot.binding.WorkspacePath) {
+		if data, e := ReadChatHistoryConversation(userID, sessionID, slot.binding.WorkspacePath); e == nil {
+			author, _ := chatHistoryConversationIdentity(data)
+			if author != "" && author != userID {
+				externalError(w, 403, "tab_owner", "Only this tab’s owner can delete it.")
+				return
+			}
+		}
+	}
 	store := defaultProductConversationRegistryStore()
 	live, err := store.liveSessionIDs(r.Context(), userID, slot.profile.ID)
 	if err != nil {
@@ -439,8 +453,14 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 // resumeProductConversation owns saved-history verification and slot switching
 // for both browser and connector adapters.
 func resumeProductConversation(ctx context.Context, userID string, profile agentprofiles.Profile, binding productConversationBinding, sessionID string) (ProductConversationRecord, error) {
+	if err := crewQueryTabWriteError(ctx, userID, profile.ID, binding.WorkspacePath, sessionID); err != nil {
+		return ProductConversationRecord{}, err
+	}
 	verified := false
 	if session, found := chatHistorySessionsByID(userID, binding.WorkspacePath)[strings.TrimSpace(sessionID)]; found {
+		if isCrewProjectPath(binding.WorkspacePath) && session.UserID != "" && session.UserID != userID {
+			return ProductConversationRecord{}, fmt.Errorf("Only this tab’s owner can resume it. Use your own tab.")
+		}
 		verified = chatHistorySessionWorkspace(session) == normalizeConversationWorkspace(binding.WorkspacePath)
 	}
 	return defaultProductConversationRegistryStore().switchTo(ctx, userID, profile, binding, sessionID, verified)

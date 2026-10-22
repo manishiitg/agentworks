@@ -429,7 +429,7 @@ export function WorkModelsPanel({
             <span className="font-medium">Crew’s model</span><span className="text-xs text-muted-foreground">For chats without their own model</span>
           </button>
           {chatModelsLoading ? <p role="status" className="px-3 py-2 text-xs text-muted-foreground">Loading chats…</p> : [
-            { conversation_key: mainChatKey!, name: 'My Builder', can_write: true },
+            { conversation_key: mainChatKey!, name: 'Main chat', can_write: true },
             ...modelChats,
           ].map(chat => {
             const own = chatModels.find(model => model.conversation_key === chat.conversation_key)

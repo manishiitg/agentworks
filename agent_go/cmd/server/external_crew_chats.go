@@ -187,7 +187,7 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 		if status, body := scheduleHandler(r, api.handleAgentProfileChatModels, http.MethodGet, "/api/agent-profiles/work/chat-models", vars, url.Values{"project_id": {crewID}}, nil); status < 400 {
 			_ = json.Unmarshal(body, &models)
 		}
-		externalJSON(w, map[string]any{"crew_id": crewID, "chats": chats, "chat_models": models.ChatModels, "earlier": earlier(), "side_chats_left": max(0, externalCrewMaxSideChats-crewSideChatCount(chats))})
+		externalJSON(w, map[string]any{"crew_id": crewID, "chats": chats, "chat_models": models.ChatModels, "earlier": earlier(), "side_chats_left": max(0, externalCrewMaxSideChats-crewCallerSideChatCount(chats))})
 	case "message":
 		chat, found := findCrewChat(chats, externalArg(args, "chat_id"))
 		if !found {
@@ -241,7 +241,7 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 	case "new":
 		respond(scheduleHandler(r, api.handleRotateAgentProfileConversation, http.MethodPost, "/api/agent-profiles/work/conversation/new", vars, nil, AgentProfileConversationRequest{ConversationKey: crewID}))
 	case "side_open":
-		if crewSideChatCount(chats) >= externalCrewMaxSideChats {
+		if crewCallerSideChatCount(chats) >= externalCrewMaxSideChats {
 			externalError(w, 409, "too_many_chats", fmt.Sprintf("You already have %d side chats with this Crew; close one first.", externalCrewMaxSideChats))
 			return
 		}
@@ -323,6 +323,16 @@ func crewSideChatCount(chats []externalCrewChat) int {
 	n := 0
 	for _, chat := range chats {
 		if !chat.IsMain {
+			n++
+		}
+	}
+	return n
+}
+
+func crewCallerSideChatCount(chats []externalCrewChat) int {
+	n := 0
+	for _, chat := range chats {
+		if chat.CanWrite && !chat.IsMain {
 			n++
 		}
 	}

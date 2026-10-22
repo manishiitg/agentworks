@@ -583,6 +583,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   // product-conversations record, also changed over MCP). A browser tab is only the open window of a listed chat: a tab
   // the server does not list is not shown, whatever this browser remembered about it. null = not loaded yet.
   const [listed, setListed] = useState<AgentProfileSideChat[] | null>(null)
+  const ownedListed = (listed || []).filter(chat => chat.can_write !== false)
   const listedFor = (tab: ChatTab) => listed?.find(chat => tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id)
   const allTabs = Object.values(chatTabs)
   const sideChats = (listed || [])
@@ -663,7 +664,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     }
   }
   const moveSideChat = async (fromKey: string, toKey: string, attempt: { key: string; tabId: string; attemptId: string; dropped: boolean } = { key: fromKey, tabId: sideChats.find(tab => sideChatKey(tab) === fromKey)?.tabId || '', attemptId: crypto.randomUUID(), dropped: true }) => {
-    const keys = (listed || []).map(chat => chat.conversation_key)
+    const keys = ownedListed.map(chat => chat.conversation_key)
     const from = keys.indexOf(fromKey)
     const to = keys.indexOf(toKey)
     const targetId = sideChats.find(tab => sideChatKey(tab) === toKey)?.tabId
@@ -705,7 +706,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   // folder, model, MCPs and skills as the primary, its own conversation.
   const openSideChat = async (requestedName: string) => {
     const name = requestedName.trim()
-    if (!name || opening || sideChats.length >= WORK_SIDE_CHAT_LIMIT) return
+    if (!name || opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT) return
     const primary = chatTabs[canonicalTabId]
     if (!primary) return
     setOpening(true)
@@ -911,7 +912,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
               {tabs.map(tab => {
                 const key = tab.tabId === canonicalTabId || !canControl(tab) ? undefined : sideChatKey(tab)
                 const label = tab.tabId === canonicalTabId ? (tab.metadata?.agentProfileTabOwnerName ? `${tab.metadata.agentProfileTabOwnerName} · Builder` : projectName) : sideChatName(tab)
-                const position = (listed || []).findIndex(chat => chat.conversation_key === key)
+                const position = ownedListed.findIndex(chat => chat.conversation_key === key)
                 return <div
                   key={tab.tabId}
                   data-chat-list-id={tab.tabId}
@@ -943,8 +944,8 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
                     <span className="block truncate">{label}</span>{!canControl(tab) && <span className="block text-[10px] font-normal text-muted-foreground">{tab.metadata?.agentProfileTabOwnerName} controls this tab</span>}{!isAgentTab(tab) && <span className="block text-[10px] font-normal text-muted-foreground">Activity</span>}
                   </button>}
                   {reordering && key ? <div className="flex shrink-0 items-center">
-                    <button type="button" aria-label={`Move ${label} earlier`} disabled={position <= 0} onClick={() => { const target = listed?.[position - 1]; if (target) void moveSideChat(key, target.conversation_key) }} className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" /></button>
-                    <button type="button" aria-label={`Move ${label} later`} disabled={position < 0 || position === (listed?.length || 0) - 1} onClick={() => { const target = listed?.[position + 1]; if (target) void moveSideChat(key, target.conversation_key) }} className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5" /></button>
+                    <button type="button" aria-label={`Move ${label} earlier`} disabled={position <= 0} onClick={() => { const target = ownedListed[position - 1]; if (target) void moveSideChat(key, target.conversation_key) }} className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" /></button>
+                    <button type="button" aria-label={`Move ${label} later`} disabled={position < 0 || position === ownedListed.length - 1} onClick={() => { const target = ownedListed[position + 1]; if (target) void moveSideChat(key, target.conversation_key) }} className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5" /></button>
                   </div> : <>
                   {key && renaming !== tab.tabId && <button type="button" aria-label={`Rename ${label}`} title="Rename" className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setRenameDraft(sideChatName(tab)); setRenaming(tab.tabId) }}><Pencil className="h-3.5 w-3.5" /></button>}
                   {key && <button type="button" aria-pressed={sideChatPinned(tab)} aria-label={sideChatPinned(tab) ? `Unpin ${label}` : `Pin ${label} to the tab bar`} title={sideChatPinned(tab) ? 'Pinned to the tab bar. Click to unpin' : 'Pin to the tab bar'} className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring ${sideChatPinned(tab) ? 'text-foreground' : 'text-muted-foreground'}`} onClick={() => { void pinSideChat(key, !sideChatPinned(tab)) }}>{sideChatPinned(tab) ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}</button>}
@@ -992,10 +993,10 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         <button
           type="button"
           onClick={() => setNewTabName('')}
-          disabled={opening || sideChats.length >= WORK_SIDE_CHAT_LIMIT}
+          disabled={opening || ownedListed.length >= WORK_SIDE_CHAT_LIMIT}
           className={`ml-0.5 inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md text-xs text-primary transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 ${sideChats.length === 0 ? 'px-2' : 'w-7'}`}
           aria-label="New agent"
-          title={sideChats.length >= WORK_SIDE_CHAT_LIMIT
+          title={ownedListed.length >= WORK_SIDE_CHAT_LIMIT
             ? `At most ${WORK_SIDE_CHAT_LIMIT + 1} agents per project`
             : 'New agent (⌥⇧T on Mac, Alt+Shift+T on Windows): another agent in this project. The main agent keeps Slack, WhatsApp, MCP and schedules'}
           data-testid="work-new-chat-tab"

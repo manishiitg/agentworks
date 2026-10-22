@@ -18,6 +18,7 @@ def migrate(workspace, state):
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
     backup = state / 'backups' / ('crew-owner-tabs-' + stamp)
     changed = 0
+    moved = {}
     for path in (workspace / '_users').glob('*/chat_history/product-conversations.json'):
         user = path.parent.parent.name
         original = path.read_bytes()
@@ -47,6 +48,7 @@ def migrate(workspace, state):
             new = 'work/' + key
             if new in entries and entries[new]['session_id'] != record['session_id']:
                 raise ValueError('Crew tab key collision; no existing chat was replaced')
+            moved[(user, record['session_id'], project_id)] = key
             entries[new] = entries.pop(old)
             entries[new]['conversation_key'] = key
             for section in ('agents', 'previous'):
@@ -54,7 +56,7 @@ def migrate(workspace, state):
                     data[section][new] = data[section].pop(old)
             for previous in data.get('previous', {}).get(new, []):
                 previous['conversation_key'] = key
-            if user == project['owner_id']:
+            if user == project['owner_id'] and manifest.get('main_chat_key') in (None, '', project_id):
                 if not backup.exists():
                     backup.mkdir(parents=True, mode=0o700)
                 dest = backup / ('manifest-' + hashlib.sha256(str(manifest_path).encode()).hexdigest()[:16] + '.json')
@@ -71,6 +73,23 @@ def migrate(workspace, state):
             dest.write_bytes(original)
             os.chmod(dest, 0o600)
             path.write_text(json.dumps(data, indent=2) + '\n')
+    messages = workspace / '_system/agent_messages/conversations.json'
+    if moved and messages.exists():
+        original = messages.read_bytes()
+        data = json.loads(original)
+        touched = False
+        for conversation in data.get('conversations', []):
+            for endpoint in conversation.get('endpoints', []):
+                key = moved.get((endpoint.get('user_id'), endpoint.get('session'), endpoint.get('chat_key')))
+                if key:
+                    endpoint['chat_key'] = key
+                    touched = True
+        if touched:
+            backup.mkdir(parents=True, exist_ok=True, mode=0o700)
+            dest = backup / 'agent-messages.json'
+            dest.write_bytes(original)
+            os.chmod(dest, 0o600)
+            messages.write_text(json.dumps(data, indent=2) + '\n')
     print(f'Crew owner tabs: migrated {changed} default chats; sessions and transcripts retained.')
     if changed:
         print(f'Crew owner tabs backup: {backup}')

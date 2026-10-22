@@ -1770,15 +1770,15 @@ func (api *StreamingAPI) handleTerminalStream(w http.ResponseWriter, r *http.Req
 			revokeAccess()
 			break
 		}
+		if !api.crewSessionCanControl(r, snapshot.SessionID) {
+			continue
+		}
 		if frame, ok := parseLiveAttachResizeFrame(mt, data); ok {
 			if !frame.Reseed {
 				st.setSize(frame.Cols, frame.Rows)
 			} else if err := st.reseedViewer(connCtx, viewer, frame.Cols, frame.Rows, frame.Epoch); err != nil && connCtx.Err() == nil && !st.isDone() {
 				log.Printf("[live-attach] reseed terminal=%s session=%s: %v", snapshot.TerminalID, snapshot.TmuxSession, err)
 			}
-			continue
-		}
-		if !api.crewSessionCanControl(r, snapshot.SessionID) {
 			continue
 		}
 		// Child diagnostics accept geometry changes only.

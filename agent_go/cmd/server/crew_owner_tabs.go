@@ -118,9 +118,9 @@ func crewConversationTabAccess(ctx context.Context, caller string, profile agent
 // restart. Only actual Builder tabs qualify; unrelated private chats stay out.
 func (api *StreamingAPI) crewSessionTabView(r *http.Request, session string) bool {
 	caller := GetUserIDFromContext(r.Context())
-	owner, workspace := "", ""
+	owner := ""
 	if active, ok := api.getActiveSession(session); ok {
-		owner, workspace = active.UserID, active.WorkspacePath
+		owner = active.UserID
 	}
 	if owner == "" && api.eventStore != nil {
 		owner = api.eventStore.GetSessionOwner(session)
@@ -139,7 +139,7 @@ func (api *StreamingAPI) crewSessionTabView(r *http.Request, session string) boo
 		if record.SessionID != session || !isSideChatConversationKey(record.ConversationKey) {
 			continue
 		}
-		workspace = record.WorkspacePath
+		workspace := record.WorkspacePath
 		if !crewProjectOwnedByCaller(caller, workspace) || !crewProjectOwnedByCaller(owner, workspace) {
 			return false
 		}

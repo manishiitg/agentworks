@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 )
 
 // Exercise the actual website/MCP boundaries with two owners and two retained
@@ -152,9 +154,37 @@ func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 			t.Fatal("peer stop allowed")
 		}
 	}
+	// A restart has no active sessions. Durable ownership must still allow
+	// observation and refuse query/input/stop on the other person's tab.
+	env.api.eventStore = storeevents.NewEventStore(50)
+	for person, record := range sessions {
+		env.api.eventStore.SetSessionOwner(record.SessionID, person)
+	}
+	env.api.activeSessions = map[string]*ActiveSessionInfo{}
+	restarted := request("owner", http.MethodGet, "/api/terminals/main", "")
+	if !env.api.canAccessTerminalSession(restarted, sessions["other"].SessionID) {
+		t.Fatal("restart lost shared terminal view")
+	}
+	restarted.Method = http.MethodPost
+	if env.api.canAccessTerminalSession(restarted, sessions["other"].SessionID) || env.api.canUseSessionIDForQuery(restarted, sessions["other"].SessionID) {
+		t.Fatal("restart allowed foreign terminal/query input")
+	}
+	if err := env.api.verifySessionAccess(restarted, sessions["other"].SessionID); err == nil {
+		t.Fatal("restart allowed foreign stop")
+	}
+	binding, _, err := resolveConversationBindingForUser(restarted.Context(), "owner", profile, "beta")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resumeProductConversation(restarted.Context(), "owner", profile, binding, sessions["other"].SessionID); err == nil {
+		t.Fatal("resumed another owner's tab into own slot")
+	}
 	delivered := make(chan string, 1)
 	oldTurn := agentMessageTurn
-	agentMessageTurn = func(_ *StreamingAPI, _ context.Context, _ map[string]interface{}, session, user string) (internalSessionTurnResult, error) {
+	agentMessageTurn = func(_ *StreamingAPI, _ context.Context, req map[string]interface{}, session, user string) (internalSessionTurnResult, error) {
+		if pin, _ := req["pin_run_mode"].(bool); pin {
+			return internalSessionTurnResult{}, fmt.Errorf("owner tab was demoted to Run after restart")
+		}
 		delivered <- user + ":" + session
 		return internalSessionTurnResult{}, nil
 	}
