@@ -29,6 +29,7 @@ func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[strin
 		"before":           externalString("For costs: page before this UTC day (YYYY-MM-DD)."),
 		"engine":           externalString("For set_chat_model: a provider from this Crew. Omit to use the Crew model."),
 		"model_id":         externalString("For set_chat_model: the model for that provider."),
+		"connection_id":    externalString("For a chat model: your personal or available company account ID from provider_connections in the chats list. Only this chat uses it; empty engine restores the Crew default."),
 		"reasoning_effort": externalString("For set_chat_model: optional reasoning level."),
 		"tool_name":        externalString("For chat_tool: exact native name from chat_tools."),
 		"arguments":        map[string]any{"type": "object"},

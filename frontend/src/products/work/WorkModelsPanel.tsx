@@ -92,7 +92,7 @@ export function WorkModelsPanel({
     try {
       const models = await agentApi.setAgentProfileChatModel(effectiveProfileId, projectId, {
         conversation_key: modelTarget, engine: selection?.engine || '', model_id: selection?.modelId,
-        reasoning_effort: selection?.reasoningEffort,
+        reasoning_effort: selection?.reasoningEffort, connection_id: selection?.connectionId,
       })
       setChatModels(models)
       await queryClient.invalidateQueries({ queryKey: workChatModelsQueryKey(effectiveProfileId, projectId) })
@@ -225,7 +225,7 @@ export function WorkModelsPanel({
   const ownOption = options.find(option => option.id === ownChatModel?.engine)
   const savedSelection = ownChatModel ? {
     provider: ownOption?.provider, modelId: ownChatModel.model_id || '', reasoningEffort: ownChatModel.reasoning_effort,
-    connectionId: ownOption?.provider === projectSelection?.provider ? projectSelection?.connectionId : undefined,
+    connectionId: ownChatModel.connection_id || (ownOption?.provider === projectSelection?.provider ? projectSelection?.connectionId : undefined),
   } : projectSelection
   const selectedConnectionId = savedSelection?.connectionId ?? (supportsChatModels ? undefined : tab?.metadata?.agentProfileConnectionID)
   const savedOption = options.find(option => option.provider === savedSelection?.provider)
@@ -451,23 +451,18 @@ export function WorkModelsPanel({
           </p>
         )}
         <SharedTokenUsageNotice className="mb-3" accountProvider={inUseConnectionId || accounts !== null ? sharedAccountProvider(inUseConnectionId, selectedOption?.provider) : undefined} />
-        {modelTarget ? <label className="flex items-center justify-between gap-3 text-sm">Coding agent<select aria-label="Chat coding agent" className="rounded-md border border-input bg-background px-2 py-1.5" value={selectedOption?.id || ''} onChange={event => {
-          const option = options.find(item => item.id === event.target.value)
-          if (!option) return
-          const defaults = defaultForOption(option)
-          void changeSelection({ engine: option.id, provider: option.provider, modelId: defaults.modelId, reasoningEffort: defaults.reasoningEffort })
-        }}>{options.filter(option => workProviderIds.includes(option.provider || option.id)).map(option => <option key={option.id} value={option.id}>{option.label || option.provider}</option>)}</select></label> : <WorkflowLLMConfigurationPanel
+        <WorkflowLLMConfigurationPanel
           workspacePath={workspacePath}
           llmConfig={llmConfig}
           onChange={selectProvider}
-          scopeNoun={effectiveProfileId === 'knowledgebase' || effectiveProfileId === 'caplayer' ? 'assistant' : 'project'}
+          scopeNoun={modelTarget ? 'chat' : effectiveProfileId === 'knowledgebase' || effectiveProfileId === 'caplayer' ? 'assistant' : 'project'}
           canWriteOverride
           allowedProviderIds={workProviderIds}
           splitPiProviders={false}
           showModelsPerRole={false}
           configurationSource="agent_profile"
           product={effectiveAccountProduct}
-        />}
+        />
         <section
           className="mt-4 overflow-hidden rounded-xl border border-border bg-card"
           onKeyDown={event => {

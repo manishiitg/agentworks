@@ -84,7 +84,7 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, key := range []string{binding.ConversationKey, side.ConversationKey} {
-				if _, err := store.setAgentModel(ctx, claims.UserID, profile.ID, key, "codex-cli", "gpt-6-astra", "", claims.UserID); err != nil {
+				if _, err := store.setAgentModel(ctx, claims.UserID, profile.ID, key, "codex-cli", "gpt-6-astra", "", "", claims.UserID); err != nil {
 					t.Fatal(err)
 				}
 			}

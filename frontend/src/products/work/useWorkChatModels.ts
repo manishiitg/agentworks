@@ -23,10 +23,10 @@ export function applyWorkChatModels(profileId: string, projectId: string, models
       store.setTabMetadata(tab.tabId, { agentProfileChatModelLabel: model.display_label, agentProfileChatModelOverride: model.own_model, agentProfileCanOpenModels: canOpenModels })
       continue
     }
-    const changed = tab.metadata?.agentProfileEngine !== model.engine || tab.metadata?.agentProfileModelID !== model.model_id || tab.metadata?.agentProfileReasoningEffort !== model.reasoning_effort
+    const changed = tab.metadata?.agentProfileConnectionID !== model.connection_id || tab.metadata?.agentProfileEngine !== model.engine || tab.metadata?.agentProfileModelID !== model.model_id || tab.metadata?.agentProfileReasoningEffort !== model.reasoning_effort
     if (!changed && tab.metadata?.agentProfileChatModelOverride === model.own_model && tab.metadata?.agentProfileChatModelLabel === model.display_label && tab.metadata?.agentProfileCanOpenModels === canOpenModels) continue
     store.setTabMetadata(tab.tabId, {
-      agentProfileChatModelOverride: model.own_model, agentProfileEngine: model.engine,
+      agentProfileChatModelOverride: model.own_model, agentProfileEngine: model.engine, agentProfileConnectionID: model.connection_id,
       agentProfileModelID: model.model_id, agentProfileReasoningEffort: model.reasoning_effort,
       agentProfileChatModelLabel: model.display_label,
       agentProfileCanOpenModels: canOpenModels,

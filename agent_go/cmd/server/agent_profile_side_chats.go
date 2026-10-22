@@ -170,6 +170,7 @@ func (api *StreamingAPI) sideChatsFor(r *http.Request, userID string, slot profi
 // AgentProfileChatModel is one chat's own model on the Crew's Models page; an empty Engine follows the Crew's model.
 type AgentProfileChatModel struct {
 	ConversationKey string `json:"conversation_key"`
+	ConnectionID    string `json:"connection_id,omitempty"`
 	Engine          string `json:"engine,omitempty"`
 	ModelID         string `json:"model_id,omitempty"`
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
@@ -178,10 +179,9 @@ type AgentProfileChatModel struct {
 
 type AgentProfileEffectiveChatModel struct {
 	AgentProfileChatModel
-	Provider     string `json:"provider"`
-	ConnectionID string `json:"-"`
-	OwnModel     bool   `json:"own_model"`
-	Error        string `json:"error,omitempty"`
+	Provider string `json:"provider"`
+	OwnModel bool   `json:"own_model"`
+	Error    string `json:"error,omitempty"`
 }
 
 // Resolve metadata with the same engine/model validator used for a turn.
@@ -208,7 +208,9 @@ func effectiveProfileChatModel(profile agentprofiles.Profile, binding productCon
 		if !offered {
 			return AgentProfileEffectiveChatModel{}, fmt.Errorf("chat engine %q is unavailable", own.Engine)
 		}
-		if option.Provider != provider {
+		if own.ConnectionID != "" {
+			connection = own.ConnectionID
+		} else if option.Provider != provider {
 			connection = ""
 		}
 		engine, model, effort = own.Engine, own.ModelID, own.ReasoningEffort
@@ -223,8 +225,8 @@ func effectiveProfileChatModel(profile agentprofiles.Profile, binding productCon
 		return AgentProfileEffectiveChatModel{}, err
 	}
 	return AgentProfileEffectiveChatModel{
-		AgentProfileChatModel: AgentProfileChatModel{ConversationKey: chat.ConversationKey, Engine: engine, ModelID: query.ModelID, ReasoningEffort: query.ReasoningEffort},
-		Provider:              query.Provider, ConnectionID: query.ConnectionID, OwnModel: own.Engine != "",
+		AgentProfileChatModel: AgentProfileChatModel{ConversationKey: chat.ConversationKey, Engine: engine, ModelID: query.ModelID, ReasoningEffort: query.ReasoningEffort, ConnectionID: query.ConnectionID},
+		Provider:              query.Provider, OwnModel: own.Engine != "",
 	}, nil
 }
 
@@ -298,12 +300,19 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 			return
 		}
 		if engine := strings.TrimSpace(input.Engine); engine != "" {
-			if _, offered := findProviderOptionByID(slot.profile.Runtime.ProviderOptions, engine); !offered {
+			option, offered := findProviderOptionByID(slot.profile.Runtime.ProviderOptions, engine)
+			if !offered {
 				writeAgentProfileError(w, http.StatusUnprocessableEntity, "that model provider is not available here")
 				return
 			}
+			if connection := strings.TrimSpace(input.ConnectionID); connection != "" {
+				if _, err := api.admitProviderAccount(r.Context(), providerAccountScope{Principal: userID, WorkspacePath: slot.binding.WorkspacePath, Product: slot.profile.Product}, option.Provider, connection); err != nil {
+					writeAgentProfileError(w, http.StatusForbidden, err.Error())
+					return
+				}
+			}
 		}
-		if _, err := store.setAgentModel(r.Context(), userID, slot.profile.ID, key, input.Engine, input.ModelID, input.ReasoningEffort, userID); err != nil {
+		if _, err := store.setAgentModel(r.Context(), userID, slot.profile.ID, key, input.Engine, input.ModelID, input.ReasoningEffort, input.ConnectionID, userID); err != nil {
 			writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
 			return
 		}
@@ -314,13 +323,18 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 		return
 	}
 	identities := map[string]ProductAgentIdentity{}
+	tabOwners := map[string]string{}
 	for _, tab := range allTabs {
 		identities[tab.Record.ConversationKey] = tab.Identity
+		tabOwners[tab.Record.ConversationKey] = tab.OwnerID
 	}
 	out := []AgentProfileChatModel{}
 	for key, identity := range identities {
+		if tabOwners[key] != userID {
+			identity.ConnectionID = ""
+		}
 		if identity.Engine != "" {
-			out = append(out, AgentProfileChatModel{ConversationKey: key, Engine: identity.Engine, ModelID: identity.ModelID, ReasoningEffort: identity.ReasoningEffort, DisplayLabel: chatModelDisplayLabel(slot.profile.Runtime, identity.Engine, identity.ModelID)})
+			out = append(out, AgentProfileChatModel{ConversationKey: key, Engine: identity.Engine, ModelID: identity.ModelID, ReasoningEffort: identity.ReasoningEffort, ConnectionID: identity.ConnectionID, DisplayLabel: chatModelDisplayLabel(slot.profile.Runtime, identity.Engine, identity.ModelID)})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ConversationKey < out[j].ConversationKey })
@@ -341,6 +355,9 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 			// opening Models to repair it. Do not invent a replacement runtime.
 			effective = append(effective, AgentProfileEffectiveChatModel{AgentProfileChatModel: AgentProfileChatModel{ConversationKey: chat.ConversationKey, DisplayLabel: "Model unavailable"}, OwnModel: identities[chat.ConversationKey].Engine != "", Error: "Choose an available model in Models."})
 			continue
+		}
+		if tab.OwnerID != userID {
+			row.ConnectionID = ""
 		}
 		row.DisplayLabel = chatModelDisplayLabel(slot.profile.Runtime, row.Engine, row.ModelID)
 		effective = append(effective, row)

@@ -4081,9 +4081,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// A Slack channel turn runs as the bot identity; its shared-account
 	// tokens count toward, and are limited by, the target's owner.
 	botTokenOwner := botRouteTokenOwner(r.Context(), currentUserID, accountScope.WorkspacePath)
-	// A co-owner's Builder turn on a Crew runs as the Crew's MAIN owner: the owner's accounts and token limits apply
-	// and the cost is billed to them; the cost record still names the person who asked (owner, 2026-10-16).
-	if coOwnerOf := coOwnerTurnOwner(r.Context(), currentUserID, accountScope.WorkspacePath); botTokenOwner == "" && coOwnerOf != "" {
+	turnProvider, turnConnectionID := api.finalQueryTurnConnection(r.Context(), req, sessionID)
+	personalTabAccount, accountScopeErr := crewChatUsesPersonalAccountScope(r.Context(), currentUserID, sessionID, req, resolvedProfile, turnProvider, turnConnectionID)
+	if accountScopeErr != nil {
+		http.Error(w, accountScopeErr.Error(), http.StatusConflict)
+		return
+	}
+	// Inherited Crew accounts use its main owner. An explicit saved tab account
+	// uses that tab's owner, including company-account limits and attribution.
+	if coOwnerOf := coOwnerTurnOwner(r.Context(), currentUserID, accountScope.WorkspacePath); botTokenOwner == "" && coOwnerOf != "" && !personalTabAccount {
 		botTokenOwner = coOwnerOf
 		accountScope.Principal = coOwnerOf
 		log.Printf("[CREW_OWNERS] session=%s turn by co_owner=%s runs as main owner=%s (accounts, limits)", sessionID, sanitizeUserIDForPath(currentUserID), coOwnerOf)
@@ -4096,7 +4102,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	modelLimitPersonID := firstNonEmptyTrimmed(botTokenOwner, currentUserID)
 	// The FINAL account of the turn: a workflow chat that does not override
 	// the manifest runs on the workflow's saved model and account.
-	turnProvider, turnConnectionID := api.finalQueryTurnConnection(r.Context(), req, sessionID)
 	var admittedQueryAccount *storedProviderConnection
 	if turnProvider != "" {
 		admitID := turnConnectionID

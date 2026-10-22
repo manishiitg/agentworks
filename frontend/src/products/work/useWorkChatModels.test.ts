@@ -12,9 +12,9 @@ const effective = (key: string, own = false): AgentProfileEffectiveChatModel => 
 describe('server chat-model projection', () => {
   it('copies effective runtime, inheritance and edit permission directly from the server', () => {
     useChatStore.setState({ chatTabs: { main: chat('main', 'crew'), side: chat('side', 'crew:chat:review') } })
-    applyWorkChatModels('work', 'crew', [effective('crew', true), effective('crew:chat:review')], false)
+    applyWorkChatModels('work', 'crew', [{ ...effective('crew', true), connection_id: 'personal-account' }, effective('crew:chat:review')], false)
     const tabs = useChatStore.getState().chatTabs
-    expect(tabs.main.metadata).toMatchObject({ agentProfileChatModelLabel: 'Cursor · auto', agentProfileChatModelOverride: true, agentProfileEngine: 'cursor', agentProfileModelID: 'auto', agentProfileCanOpenModels: false })
+    expect(tabs.main.metadata).toMatchObject({ agentProfileChatModelLabel: 'Cursor · auto', agentProfileChatModelOverride: true, agentProfileEngine: 'cursor', agentProfileModelID: 'auto', agentProfileCanOpenModels: false, agentProfileConnectionID: 'personal-account' })
     expect(tabs.side.metadata).toMatchObject({ agentProfileChatModelOverride: false, agentProfileEngine: 'cursor', agentProfileModelID: 'auto' })
   })
 

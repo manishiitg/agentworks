@@ -667,7 +667,7 @@ func TestGetRelayCommandCatalogWithoutGenericRuntimeRegistration(t *testing.T) {
 // the Crew's model, and a workflow or function sends none (owner, 2026-10-19).
 func TestChatOwnModelWinsForEveryTurn(t *testing.T) {
 	_, req, profile, conversation := accountSwitchTestSetup(t, "main")
-	if _, err := defaultProductConversationRegistryStore().setAgentModel(req.Context(), "alice", profile.ID, conversation.ConversationKey, "codex-cli", "gpt-6-astra", "", "alice"); err != nil {
+	if _, err := defaultProductConversationRegistryStore().setAgentModel(req.Context(), "alice", profile.ID, conversation.ConversationKey, "codex-cli", "gpt-6-astra", "", "", "alice"); err != nil {
 		t.Fatal(err)
 	}
 	for _, input := range []AgentProfileChatRequest{{Message: "typed", Engine: "muse-cli"}, {Message: "called by a workflow"}} {

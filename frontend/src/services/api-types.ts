@@ -257,6 +257,7 @@ export interface AgentProfileConversationRequest {
 
 /** A caller-owned model choice; omitted chats follow the project default. */
 export interface AgentProfileChatModel {
+  connection_id?: string
   conversation_key: string
   engine: string
   model_id?: string

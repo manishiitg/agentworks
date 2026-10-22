@@ -1131,15 +1131,24 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 	// A chat with its own model (chosen by the person on the Crew's Models page) runs on it for every turn:
 	// typed in the app, or a workflow, function, schedule or another chat reaching it. The browser sends
 	// the Crew's model for every tab, so the server's per-chat choice wins.
-	if own, err := defaultProductConversationRegistryStore().agentIdentity(ctx, userID, profile.ID, conversation.ConversationKey); err == nil && own.Engine != "" {
+	modelConversation := conversation
+	own, err := defaultProductConversationRegistryStore().agentIdentity(ctx, userID, profile.ID, conversation.ConversationKey)
+	if err != nil {
+		return QueryRequest{}, err
+	}
+	if own.Engine == "" {
+		useProjectChatDefault(&input, &modelConversation, profile)
+	} else {
 		if _, offered := findProviderOptionByID(profile.Runtime.ProviderOptions, own.Engine); offered {
-			if !strings.EqualFold(strings.TrimSpace(input.Engine), own.Engine) {
+			if own.ConnectionID != "" {
+				input.ConnectionID = own.ConnectionID
+			} else if !strings.EqualFold(strings.TrimSpace(input.Engine), own.Engine) {
 				input.ConnectionID = ""
 			}
 			input.Engine, input.ModelID, input.ReasoningEffort = own.Engine, own.ModelID, own.ReasoningEffort
 		}
 	}
-	query, err := queryRequestForAgentProfileChat(profile, input, conversation)
+	query, err := queryRequestForAgentProfileChat(profile, input, modelConversation)
 	if err != nil {
 		return QueryRequest{}, err
 	}

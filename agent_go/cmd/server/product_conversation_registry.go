@@ -100,6 +100,7 @@ type ProductAgentIdentity struct {
 	Unpinned bool `json:"unpinned,omitempty"`
 	// Engine, ModelID and ReasoningEffort are the model the person chose for this one chat on the Crew's Models page
 	// (owner, 2026-10-19: chosen by hand only). Empty Engine means the chat follows the Crew's own model.
+	ConnectionID    string `json:"connection_id,omitempty"`
 	Engine          string `json:"engine,omitempty"`
 	ModelID         string `json:"model_id,omitempty"`
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
@@ -182,7 +183,7 @@ func (store productConversationRegistryStore) agentIdentity(ctx context.Context,
 }
 
 // setAgentModel saves the model a person chose for one chat; an empty engine returns the chat to the Crew's model.
-func (store productConversationRegistryStore) setAgentModel(ctx context.Context, userID, profileID, conversationKey, engine, modelID, reasoningEffort, actor string) (ProductAgentIdentity, error) {
+func (store productConversationRegistryStore) setAgentModel(ctx context.Context, userID, profileID, conversationKey, engine, modelID, reasoningEffort, connectionID, actor string) (ProductAgentIdentity, error) {
 	conversationKey = strings.TrimSpace(conversationKey)
 	path := productConversationRegistryPath(userID)
 	mutex := productConversationRegistryMutex(path)
@@ -200,9 +201,9 @@ func (store productConversationRegistryStore) setAgentModel(ctx context.Context,
 		document.Agents = map[string]ProductAgentIdentity{}
 	}
 	identity := document.Agents[entryKey]
-	identity.Engine, identity.ModelID, identity.ReasoningEffort = strings.TrimSpace(engine), strings.TrimSpace(modelID), strings.TrimSpace(reasoningEffort)
+	identity.Engine, identity.ModelID, identity.ReasoningEffort, identity.ConnectionID = strings.TrimSpace(engine), strings.TrimSpace(modelID), strings.TrimSpace(reasoningEffort), strings.TrimSpace(connectionID)
 	if identity.Engine == "" {
-		identity.ModelID, identity.ReasoningEffort = "", ""
+		identity.ModelID, identity.ReasoningEffort, identity.ConnectionID = "", "", ""
 	}
 	identity.UpdatedBy = strings.TrimSpace(actor)
 	identity.UpdatedAt = time.Now().UTC().Format(time.RFC3339)

@@ -118,9 +118,10 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 		}
 	}
 	if agentprofiles.HasFeature(profile.Definition, "models") {
-		return register("manage_crew_model", "Read the model choices and saved model of this chat (action=list), or change this chat's model when the person asks (action=set). Changes apply from the next message; this reply still uses the current model. Use an engine/model_id returned by list. An empty engine returns the chat to the Crew's default. Other chats and the Crew default stay unchanged.", map[string]any{
+		return register("manage_crew_model", "Read the model choices and saved model of this chat (action=list), or change this chat's model when the person asks (action=set). Changes apply from the next message; this reply still uses the current model. Use an engine/model_id and connection_id returned by list. Choose your own personal account or a company account available to you for this tab. An empty engine returns the chat to the Crew's default. Other chats and the Crew default stay unchanged.", map[string]any{
 			"action":           map[string]any{"type": "string", "enum": []string{"list", "set"}},
 			"engine":           map[string]any{"type": "string", "description": "Provider option from list. For set, an empty string uses the Crew default."},
+			"connection_id":    externalString("Your personal or available company account ID from provider_connections in list."),
 			"model_id":         externalString("Model from that provider's offered models."),
 			"reasoning_effort": externalString("Optional reasoning level offered for that provider."),
 		}, []string{"action"}, func(r *http.Request, args map[string]any) (string, error) {
@@ -147,7 +148,7 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 						return "", errors.New("Choose a provider, model and reasoning level offered by action=list.")
 					}
 				}
-				payload = map[string]any{"crew_id": crewID, "action": "set_model", "chat_id": project.Self.SessionID, "engine": externalArg(args, "engine"), "model_id": externalArg(args, "model_id"), "reasoning_effort": externalArg(args, "reasoning_effort")}
+				payload = map[string]any{"crew_id": crewID, "action": "set_model", "chat_id": project.Self.SessionID, "engine": externalArg(args, "engine"), "model_id": externalArg(args, "model_id"), "reasoning_effort": externalArg(args, "reasoning_effort"), "connection_id": externalArg(args, "connection_id")}
 			default:
 				return "", errors.New("Choose list or set.")
 			}
@@ -160,6 +161,11 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 			if err := json.Unmarshal(w.Body.Bytes(), &state); err != nil {
 				return "", err
 			}
+			accounts, err := api.listProviderAccountViews(r.Context(), claims.UserID, false, providerAccountScope{Principal: claims.UserID, WorkspacePath: ref.Root, Product: profile.Definition.Product})
+			if err != nil {
+				return "", err
+			}
+			state["provider_connections"] = accounts
 			state["provider_options"] = choices.Runtime.ProviderOptions
 			state["this_chat"] = project.Self.Key
 			state["next"] = "A saved model change applies from the next message."

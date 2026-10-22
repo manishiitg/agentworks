@@ -51,6 +51,7 @@ func externalCrewChatDefinitions(add func(string, string, bool, bool, map[string
 		"action":           map[string]any{"type": "string", "enum": []any{"list", "read", "new", "side_open", "side_close", "side_rename", "set_model", "delete", "stop", "message", "tools", "tool"}},
 		"engine":           externalString("For set_model: a provider option of this Crew (as on its Models page, e.g. claude-code, codex-cli); empty returns the chat to the Crew's model."),
 		"model_id":         externalString("For set_model: a model of that provider."),
+		"connection_id":    externalString("For a chat model: your personal or available company account ID from provider_connections in the chats list. Only this chat uses it; empty engine restores the Crew default."),
 		"reasoning_effort": externalString("For set_model: optional reasoning level."),
 		"name":             externalString("A short tab name saying what the agent is for; required for side_open and side_rename."),
 		"message":          externalString("For message: an attributed agent message to this tab, including another owner's tab."),
@@ -187,7 +188,18 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 		if status, body := scheduleHandler(r, api.handleAgentProfileChatModels, http.MethodGet, "/api/agent-profiles/work/chat-models", vars, url.Values{"project_id": {crewID}}, nil); status < 400 {
 			_ = json.Unmarshal(body, &models)
 		}
-		externalJSON(w, map[string]any{"crew_id": crewID, "chats": chats, "chat_models": models.ChatModels, "earlier": earlier(), "side_chats_left": max(0, externalCrewMaxSideChats-crewCallerSideChatCount(chats))})
+		accounts, err := api.listProviderAccountViews(ctx, claims.UserID, false, providerAccountScope{Principal: claims.UserID, WorkspacePath: workspace, Product: manifest.Product})
+		if err != nil {
+			externalError(w, 500, "accounts_unavailable", "Provider accounts could not be loaded. Try again in Models.")
+			return
+		}
+		choices, err := api.agentProfiles.Resolve(manifest.Product, 0, claims.UserID)
+		if err != nil {
+			externalError(w, 500, "models_unavailable", "Models could not be loaded.")
+			return
+		}
+		choices = limitProfileModelsToAccount(ctx, claims.UserID, profileWithAvailableProviders(choices))
+		externalJSON(w, map[string]any{"provider_connections": accounts, "provider_options": choices.Runtime.ProviderOptions, "crew_id": crewID, "chats": chats, "chat_models": models.ChatModels, "earlier": earlier(), "side_chats_left": max(0, externalCrewMaxSideChats-crewCallerSideChatCount(chats))})
 	case "message":
 		chat, found := findCrewChat(chats, externalArg(args, "chat_id"))
 		if !found {
@@ -204,7 +216,7 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 		}
 		respond(scheduleHandler(r, api.handleAgentProfileChatModels, http.MethodPost, "/api/agent-profiles/work/chat-models", vars, nil, map[string]string{
 			"project_id": crewID, "conversation_key": chat.key, "engine": externalArg(args, "engine"),
-			"model_id": externalArg(args, "model_id"), "reasoning_effort": externalArg(args, "reasoning_effort"),
+			"model_id": externalArg(args, "model_id"), "reasoning_effort": externalArg(args, "reasoning_effort"), "connection_id": externalArg(args, "connection_id"),
 		}))
 	case "read":
 		sessionID := externalArg(args, "session_id")

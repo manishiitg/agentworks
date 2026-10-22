@@ -12,7 +12,7 @@ const state = vi.hoisted(() => ({
   providerManifestLoaded: true,
   loadProviderManifest: vi.fn(),
   options: [] as AgentProfileProviderOption[],
-  configurationProps: {} as { product?: string; llmConfig?: PresetLLMConfig },
+  configurationProps: {} as { product?: string; llmConfig?: PresetLLMConfig; onChange: (config: PresetLLMConfig) => void },
   chatTabs: { project: { metadata: { agentProfileEngine: 'muse-cli', agentProfileReasoningEffort: 'medium', agentProfileConnectionID: undefined as string | undefined } } },
 }))
 vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: (selector: (value: typeof state) => unknown) => selector(state) }))
@@ -293,10 +293,23 @@ describe('caller-owned chat models', () => {
     await act(async () => main.click())
     const inherit = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === "Use Crew's model")!
     await act(async () => inherit.click())
-    expect(save).toHaveBeenCalledWith('work', 'crew', { conversation_key: 'crew', engine: '', model_id: undefined, reasoning_effort: undefined })
+    expect(save).toHaveBeenCalledWith('work', 'crew', { conversation_key: 'crew', engine: '', model_id: undefined, reasoning_effort: undefined, connection_id: undefined })
     expect(onRuntimeChange).not.toHaveBeenCalled()
     expect(host.querySelector('[aria-label="Models by chat"]')?.textContent).toContain("Main chatCrew's model")
   })
+  it('saves a configured personal or company account for this chat through the provider picker', async () => {
+    save.mockClear()
+    const { host, onRuntimeChange } = await renderChatModels()
+    const main = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent?.startsWith('Main chat'))!
+    await act(async () => main.click())
+    expect(host.querySelector('[aria-label="Chat coding agent"]')).toBeNull()
+    for (const connection_id of ['personal-muse', 'global:muse-cli']) {
+      await act(async () => state.configurationProps.onChange({ schema_version: 2, mode: 'provider_profile', provider: 'muse-cli', connection_id }))
+      expect(save).toHaveBeenLastCalledWith('work', 'crew', expect.objectContaining({ conversation_key: 'crew', engine: 'muse-cli', connection_id }))
+    }
+    expect(onRuntimeChange).not.toHaveBeenCalled()
+  })
+
   it('edits the fixed physical main-chat ID after migration', async () => {
     const metadata = state.chatTabs.project.metadata
     const original = { ...metadata }
