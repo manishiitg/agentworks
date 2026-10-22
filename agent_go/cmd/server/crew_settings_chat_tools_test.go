@@ -70,8 +70,16 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 	}
 	// The live native bridge validates this schema before the callback. An
 	// empty engine is the existing reset operation and must survive admission.
+	encodedSchema, err := json.Marshal(reg.tools["manage_crew_model"].params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wireSchema any
+	if err := json.Unmarshal(encodedSchema, &wireSchema); err != nil {
+		t.Fatal(err)
+	}
 	compiler := jsonschema.NewCompiler()
-	if err := compiler.AddResource("https://example.com/crew-model.json", reg.tools["manage_crew_model"].params); err != nil {
+	if err := compiler.AddResource("https://example.com/crew-model.json", wireSchema); err != nil {
 		t.Fatal(err)
 	}
 	schema, err := compiler.Compile("https://example.com/crew-model.json")
