@@ -224,7 +224,7 @@ func TestNamedAgentMailboxOverAuthenticatedHTTP(t *testing.T) {
 	if out := call(owner, deleted, true); out["removed"] != float64(0) {
 		t.Fatal("repeated delete changed history", out)
 	}
-	for _, args := range []map[string]any{{"action": "read", "agent_name": "reviewer", "inbox_id": inbox}, {"action": "read", "inbox_id": inbox}} {
+	for _, args := range []map[string]any{{"action": "read", "agent_name": "reviewer"}, {"action": "read", "agent_name": "reviewer", "inbox_id": inbox}} {
 		for _, item := range call(owner, args, true)["messages"].([]any) {
 			if item.(map[string]any)["message_id"] == receipt["message_id"] {
 				t.Fatal("deleted message reappeared on an inbox read")
