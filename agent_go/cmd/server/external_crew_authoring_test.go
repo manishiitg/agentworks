@@ -232,40 +232,51 @@ func TestExternalCrewAuthoringAccess(t *testing.T) {
 // A Crew's files are written by its owner anywhere editable; everyone else who can run the Crew may write only under
 // shared/<their id>/; protected paths are refused for the owner too (PLAT-837).
 func TestWriteCrewFileOwnerAnywhereOthersOnlyTheirSharedFolder(t *testing.T) {
-	env := newTriggerLinkEnv(t)
-	env.api.agentProfiles = env.svc.registry
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"other","username":"other","can_create":true}]}`)
+	fixture, _ := newExternalCrewCommandFixture(t)
+	env := triggerLinkEnv{api: fixture.api}
 	owner := crewWriter("owner")
 	other := &UserClaims{UserID: "other", Username: "other", AccessToken: &accesstokens.Token{Name: "laptop", Scopes: []string{"crews:read", "crews:run"}, AllCrews: true}}
 
-	// alpha belongs to owner. Someone else may not write outside their own shared folder, nor in another person's.
+	// The canonical Crew belongs to owner. Someone else may not write outside their own shared folder, nor in another person's.
 	for _, path := range []string{"notes/plan.md", "shared/owner/plan.md", "shared/other/../owner/x.md", "scripts/run.py"} {
-		if code, out := externalCrewRequest(t, env, other, "write_crew_file", map[string]any{"crew_id": "alpha", "path": path, "content": "x"}); code != 403 {
+		if code, out := externalCrewRequest(t, env, other, "write_crew_file", map[string]any{"crew_id": "team", "path": path, "content": "x"}); code != 403 {
 			t.Fatalf("a non-owner wrote %q: %d %v", path, code, out)
 		}
 	}
 	// Protected paths are refused to the owner as well.
 	for _, path := range []string{"functions.json", "product.json", "workflow.json", "builder/chat.json", "db/data.sqlite", ".git/config", "../beta/x.md"} {
-		if code, out := externalCrewRequest(t, env, owner, "write_crew_file", map[string]any{"crew_id": "alpha", "path": path, "content": "x"}); code != 403 {
+		if code, out := externalCrewRequest(t, env, owner, "write_crew_file", map[string]any{"crew_id": "team", "path": path, "content": "x"}); code != 403 {
 			t.Fatalf("a protected path %q was writable: %d %v", path, code, out)
 		}
 	}
 	// Exactly one of content and content_base64.
-	if code, _ := externalCrewRequest(t, env, other, "write_crew_file", map[string]any{"crew_id": "alpha", "path": "shared/other/a.txt", "content": "x", "content_base64": "eA=="}); code != 400 {
+	if code, _ := externalCrewRequest(t, env, other, "write_crew_file", map[string]any{"crew_id": "team", "path": "shared/other/a.txt", "content": "x", "content_base64": "eA=="}); code != 400 {
 		t.Fatalf("both content forms must be refused, got %d", code)
 	}
-	if code, _ := externalCrewRequest(t, env, other, "write_crew_file", map[string]any{"crew_id": "alpha", "path": "shared/other/a.txt"}); code != 400 {
+	if code, _ := externalCrewRequest(t, env, other, "write_crew_file", map[string]any{"crew_id": "team", "path": "shared/other/a.txt"}); code != 400 {
 		t.Fatalf("no content must be refused, got %d", code)
 	}
 	// A file over the shared-folder limit is refused before anything is written.
 	big := make([]byte, crewSharedFileMaxBytes+1)
-	if code, out := externalCrewRequest(t, env, other, "write_crew_file", map[string]any{"crew_id": "alpha", "path": "shared/other/big.bin", "content_base64": base64.StdEncoding.EncodeToString(big)}); code != 413 {
+	if code, out := externalCrewRequest(t, env, other, "write_crew_file", map[string]any{"crew_id": "team", "path": "shared/other/big.bin", "content_base64": base64.StdEncoding.EncodeToString(big)}); code != 413 {
 		t.Fatalf("a file over the shared limit = %d %v", code, out)
 	}
 	// The owner's token needs crews:write to write outside shared/<id>/.
 	runOnly := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:run"}, AllCrews: true}}
-	if code, _ := externalCrewRequest(t, env, runOnly, "write_crew_file", map[string]any{"crew_id": "alpha", "path": "notes/plan.md", "content": "x"}); code != 403 {
+	if code, _ := externalCrewRequest(t, env, runOnly, "write_crew_file", map[string]any{"crew_id": "team", "path": "notes/plan.md", "content": "x"}); code != 403 {
 		t.Fatalf("an owner token without crews:write wrote outside shared/, got %d", code)
+	}
+	// Allowed writes use the actual guarded writer and land in this Crew.
+	for _, allowed := range []struct {
+		caller *UserClaims
+		path   string
+	}{{owner, "notes/plan.md"}, {other, "shared/other/plan.md"}} {
+		if code, out := externalCrewRequest(t, env, allowed.caller, "write_crew_file", map[string]any{"crew_id": "team", "path": allowed.path, "content": "Shared input"}); code != 200 {
+			t.Fatalf("allowed write %s = %d %v", allowed.path, code, out)
+		}
+		if got := fixture.read(t, externalCommandCrewRoot+"/"+allowed.path); got != "Shared input" {
+			t.Fatalf("stored %s = %q", allowed.path, got)
+		}
 	}
 	// The tool gate: crews:run or crews:write reach the tool, crews:read alone does not.
 	tool := externalTool{Name: "write_crew_file"}
