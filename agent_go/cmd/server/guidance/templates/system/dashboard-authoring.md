@@ -79,8 +79,9 @@ finished first design. Infer the composition from the task and available data;
 do not ask them to choose fonts, spacing, card layouts or a template. Ask only
 for missing business meaning or data access that changes what the page can show.
 A dashboard request includes designing the page, not just arranging text blocks.
-Use the default theme as the foundation and refine the composition after seeing
-its desktop and mobile previews. Their explicit preferences always take priority.
+Use the default dark theme as the foundation unless the person asks for light
+or supplies an existing visual direction. Present dark previews first, and refine
+the composition after seeing its desktop and mobile previews. Their explicit preferences always take priority.
 
 Choose an editable starting composition, then adapt or combine it:
 

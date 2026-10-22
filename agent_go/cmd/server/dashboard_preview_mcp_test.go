@@ -43,6 +43,13 @@ func TestDashboardPreviewMCPImagesAndPublicLinks(t *testing.T) {
 	if len(result.Content) != 3 {
 		t.Fatalf("expected JSON and two inline screenshots, got %d blocks: %v", len(result.Content), result)
 	}
+	text, ok := mcp.AsTextContent(result.Content[0])
+	var preview struct {
+		Attached []reportPreviewScreenshot `json:"attached_screenshots"`
+	}
+	if !ok || json.Unmarshal([]byte(text.Text), &preview) != nil || len(preview.Attached) != 2 || preview.Attached[0].Theme != "dark" || preview.Attached[1].Theme != "light" {
+		t.Fatal("prefer dark when both were rendered; preserve an explicitly light-only capture")
+	}
 	for _, content := range result.Content[1:] {
 		img, ok := mcp.AsImageContent(content)
 		if !ok || img.MIMEType != "image/png" || img.Data != base64.StdEncoding.EncodeToString(pngBytes.Bytes()) {

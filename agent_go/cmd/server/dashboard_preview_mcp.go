@@ -25,12 +25,12 @@ func (api *StreamingAPI) externalMCPDashboardPreviewResult(r *http.Request, rec 
 		return externalMCPDispatchResult(rec)
 	}
 	selected := []reportPreviewScreenshot{}
-	// Prefer one desktop and one mobile image, using light when it was rendered.
+	// Prefer one desktop and one mobile image, using dark when it was rendered.
 	for _, width := range []int{reportPreviewDesktopWidth, reportPreviewMobileWidth, reportPreviewTabletWidth} {
 		var choice *reportPreviewScreenshot
 		for i := range preview.Screenshots {
 			shot := &preview.Screenshots[i]
-			if shot.Width == width && shot.Error == "" && (choice == nil || shot.Theme == "light") {
+			if shot.Width == width && shot.Error == "" && (choice == nil || shot.Theme == "dark") {
 				choice = shot
 			}
 		}
