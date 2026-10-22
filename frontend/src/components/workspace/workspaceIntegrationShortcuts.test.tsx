@@ -9,10 +9,10 @@ afterEach(() => { delete window.__APP_RUNTIME_CONFIG__; vi.unstubAllEnvs() })
 it('keeps one connection destination per resource, with skills and channels elsewhere', () => {
   const onOpen = vi.fn()
   const options = projectConnectionSections({ onOpen })
-  expect(options.map(item => item.id)).toEqual(['mcp:brain', 'mcp:secrets', 'mcp:connected', 'mcp:gmail', 'mcp:slack', 'mcp:folders'])
+  expect(options.map(item => item.id)).toEqual(['mcp:connected', 'mcp:secrets', 'mcp:brain', 'mcp:gmail', 'mcp:folders'])
   options.find(item => item.id === 'mcp:secrets')!.onClick()
   expect(onOpen).toHaveBeenLastCalledWith('secrets')
-  expect(projectConnectionSections({ relayMode: true, onOpen }).map(item => item.id)).toEqual(['mcp:secrets', 'mcp:connected', 'mcp:gmail', 'mcp:slack'])
+  expect(projectConnectionSections({ relayMode: true, onOpen }).map(item => item.id)).toEqual(['mcp:connected', 'mcp:secrets', 'mcp:gmail'])
 })
 it('retains separate server features and permitted products', () => {
   const options = projectConnectionSections({ onOpen: vi.fn(), allowedProducts: ['work'], workMode: true, enabledPanels: new Set(['secrets']) })

@@ -8,7 +8,7 @@ import type { ProjectStatus } from './useProjectStatus'
 
 export function projectConnectionSections(options: Parameters<typeof workspaceIntegrationShortcuts>[0]) {
   const admitted = workspaceIntegrationShortcuts(options)
-  return ['brain', 'secrets', 'connected', 'gmail', 'folders'].flatMap(id => admitted.find(item => item.id === `mcp:${id}`) ?? [])
+  return ['connected', 'secrets', 'brain', 'gmail', 'folders'].flatMap(id => admitted.find(item => item.id === `mcp:${id}`) ?? [])
 }
 
 export function projectChannelSections(slack: boolean, whatsapp: boolean) {
