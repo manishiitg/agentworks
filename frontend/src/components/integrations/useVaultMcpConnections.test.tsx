@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 const get = vi.hoisted(() => vi.fn())
 vi.mock('../../services/api', () => ({ default: { get } }))
+vi.mock('./useVaultSetupDraft', () => ({ useVaultSetupDraft: () => ({ open: vi.fn(), error: '' }) }))
 import { useVaultMcpConnections } from './useVaultMcpConnections'
 import { McpConnectionsPanel } from './McpConnectionsPanel'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })

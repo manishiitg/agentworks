@@ -5,6 +5,9 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '../ui/tooltip'
 const mocks=vi.hoisted(()=>({get:vi.fn()}))
 vi.mock('../../services/api',()=>({default:{get:mocks.get}}))
+vi.mock('./useVaultSetupDraft', () => ({ useVaultSetupDraft: () => ({ open: vi.fn(), error: '' }) }))
+vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: vi.fn() } }))
+vi.mock('../../utils/workspacePaneChat', () => ({ openWorkspacePaneChatWithDraft: vi.fn() }))
 import { ProjectMcpPanel } from './ProjectMcpPanel'
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 let clean=()=>{}

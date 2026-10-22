@@ -267,6 +267,10 @@ func (s *MemoryStore) DeleteVault(actor, vaultID string) error {
 	if _, err := s.ownedVaultLocked(actor, vaultID); err != nil {
 		return err
 	}
+	if g, ok := s.groups[vaultID]; ok && g.ProjectRoot != "" {
+		return errors.New("project Vault access follows the project; use its sharing settings")
+	}
+
 	for _, c := range s.connectors {
 		if c.VaultID == vaultID {
 			return errors.New("remove this vault's connections first")
@@ -293,9 +297,6 @@ func (s *MemoryStore) VaultAddSecret(actor, vaultID, name string) error {
 	g, err := s.ownedVaultLocked(actor, vaultID)
 	if err != nil {
 		return err
-	}
-	if g.ProjectRoot != "" {
-		return errors.New("project Vault access follows the project; use its sharing settings")
 	}
 	if existing, ok := s.secretResources[name]; ok && existing.VaultID != vaultID {
 		return errors.New("a secret with that name already exists")
