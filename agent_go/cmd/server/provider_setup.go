@@ -595,13 +595,16 @@ func driveProviderUsage(ctx context.Context, session *providerSetupSession) {
 		case <-ctx.Done():
 			return
 		case <-deadline.C:
+			log.Printf("[PROVIDER_USAGE] session=%s provider=%s startup_timeout trust_handled=%t", session.id, session.provider, trustHandled)
 			return
 		case <-ticker.C:
 			output := providerUsageScreenText(session.outputText())
 			if !trustHandled && providerUsageTrustPrompt(session.provider, output) {
 				if !acceptProviderUsageTrust(session, session.provider, output) {
+					log.Printf("[PROVIDER_USAGE] session=%s provider=%s trust_write_failed", session.id, session.provider)
 					return
 				}
+				log.Printf("[PROVIDER_USAGE] session=%s provider=%s trust_answered", session.id, session.provider)
 				trustHandled = true
 				baseline = len(output)
 				continue
@@ -614,10 +617,14 @@ func driveProviderUsage(ctx context.Context, session *providerSetupSession) {
 				visible = output[baseline:]
 			}
 			if providerUsagePromptReady(session.provider, visible) {
-				_ = session.write(usageCommand + "\r")
+				if session.write(usageCommand+"\r") != nil {
+					log.Printf("[PROVIDER_USAGE] session=%s provider=%s command_write_failed", session.id, session.provider)
+					return
+				}
 				session.mu.Lock()
 				session.usageSubmitted = time.Now()
 				session.mu.Unlock()
+				log.Printf("[PROVIDER_USAGE] session=%s provider=%s command_submitted command=%s", session.id, session.provider, usageCommand)
 				return
 			}
 		}
@@ -628,7 +635,10 @@ func providerUsageTrustPrompt(provider, output string) bool {
 	lower := strings.ToLower(output)
 	switch provider {
 	case "claude-code":
-		return strings.Contains(lower, "yes, i trust this folder") || strings.Contains(lower, "yes - i trust this project")
+		// Claude also positions words with cursor moves, which ANSI stripping
+		// removes instead of leaving spaces. Match either rendering.
+		compact := strings.Join(strings.Fields(lower), "")
+		return strings.Contains(compact, "yes,itrustthisfolder") || strings.Contains(compact, "yes-itrustthisproject")
 	case "codex-cli":
 		return strings.Contains(lower, "do you trust the contents of this directory") && strings.Contains(lower, "press enter to continue")
 	case "muse-cli":
@@ -642,7 +652,8 @@ func acceptProviderUsageTrust(session *providerSetupSession, provider, output st
 	lower := strings.ToLower(output)
 	switch provider {
 	case "claude-code":
-		if strings.Contains(lower, "❯ no, exit") || strings.Contains(lower, "❯ 1. no, exit") {
+		compact := strings.Join(strings.Fields(lower), "")
+		if strings.Contains(compact, "❯no,exit") || strings.Contains(compact, "❯1.no,exit") {
 			if session.write("\x1b[B") != nil {
 				return false
 			}

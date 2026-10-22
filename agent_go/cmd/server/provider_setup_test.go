@@ -210,7 +210,14 @@ func TestProviderUsageSessionSubmitsAllowlistedCommand(t *testing.T) {
 		"claude-code": {
 			"usage": {
 				command: "/bin/sh",
-				args:    []string{"-c", `printf '❯'; IFS= read -r command; printf '\nsubmitted:%s\npwd:%s\n' "$command" "$PWD"`},
+				args: []string{"-c", `stty raw -echo
+printf '❯\033[1CNo,\033[1Cexit\r\nYes,\033[1CI\033[1Ctrust\033[1Cthis\033[1Cfolder'
+selection=$(dd bs=1 count=4 2>/dev/null)
+[ "$selection" = "$(printf '\033[B\r')" ] || exit 1
+stty sane -echo
+printf '\ntrust-accepted\n❯'
+IFS= read -r command
+printf '\nsubmitted:%s\npwd:%s\n' "$command" "$PWD"`},
 			},
 		},
 	}
@@ -227,6 +234,9 @@ func TestProviderUsageSessionSubmitsAllowlistedCommand(t *testing.T) {
 	for time.Now().Before(deadline) {
 		output := session.outputText()
 		if strings.Contains(output, "submitted:/usage") {
+			if !strings.Contains(output, "trust-accepted") {
+				t.Fatal("usage command ran without accepting the cursor-positioned trust prompt")
+			}
 			if !strings.Contains(output, "agentworks-provider-usage-") {
 				t.Fatalf("usage command did not run in a throwaway workspace: %q", output)
 			}
