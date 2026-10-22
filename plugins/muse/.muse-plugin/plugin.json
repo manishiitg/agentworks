@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "agentworks-muse",
   "displayName": "AgentWorks",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "description": "Receive AgentWorks messages in an explicitly attached Muse session.",
   "compat": {
     "source": "native",
@@ -36,7 +36,7 @@
           "python3",
           "hooks/prompt_submit.py"
         ],
-        "timeoutMs": 10000
+        "timeoutMs": 1500
       },
       {
         "id": "stop",
@@ -45,7 +45,7 @@
           "python3",
           "hooks/stop.py"
         ],
-        "timeoutMs": 10000
+        "timeoutMs": 1500
       },
       {
         "id": "session-end",
@@ -54,7 +54,7 @@
           "python3",
           "hooks/session_end.py"
         ],
-        "timeoutMs": 10000
+        "timeoutMs": 1500
       }
     ],
     "mcpServers": [

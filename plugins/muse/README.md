@@ -164,6 +164,17 @@ and skips Stop when `stop_hook_active` is set. SessionEnd marks the attachment
 offline through the bridge but returns no output because Muse treats this event
 as observational.
 
+Lifecycle hooks allow 1.25 seconds for the CLI and have a 1.5-second native
+deadline. Ordinary timeout/failure returns quietly; explicit AgentWorks commands
+still report when their connection has not finished. Process creation can itself
+stall under load, so the native deadline also bounds the wrapper. Muse may add
+process-termination overhead to its recorded duration. A timeout does not
+acknowledge or delete a message; it remains available for later delivery.
+The existing local bridge log records start, elapsed milliseconds and the
+classified outcome, without prompt text or message content. A start without a
+completion plus a native timeout identifies an interrupted wrapper, not a proven
+bridge lock or network failure.
+
 Stop returns `decision: block` with the offered sender content in `reason`.
 UserPromptSubmit adds context through the shared handler. Neither writes terminal
 input, so an unsent composer draft is not touched. An offer is still stored until
