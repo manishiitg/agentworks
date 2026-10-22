@@ -18,12 +18,12 @@ const brainAdminTool = "brain_admin"
 
 var brainAdminReadActions = map[string]bool{"backup_status": true, "secrets_list": true, "secrets_request_set": true, "schedule_status": true, "whats_new": true}
 var brainAdminWriteActions = map[string]bool{
-	"backup_reconcile": true, "secrets_delete": true, "mark_seen": true,
+	"backup_reconcile": true, "secrets_set": true, "secrets_delete": true, "mark_seen": true,
 	"schedule_enable": true, "schedule_disable": true, "schedule_set_cadence": true, "schedule_set_message": true, "schedule_run_now": true,
 }
 
 // brainAdminSensitive are the changes that need the person's own live connection.
-var brainAdminSensitive = map[string]bool{"backup_reconcile": true, "secrets_delete": true}
+var brainAdminSensitive = map[string]bool{"backup_reconcile": true, "secrets_set": true, "secrets_delete": true}
 
 // brainAdminPersonOwn: the connection is the person's own, not a Brain service-account identity, an agent-bound token, a
 // folder-capped or access-only connection.
@@ -43,19 +43,20 @@ func brainAdminToolAllowed(c *UserClaims) bool {
 
 func externalBrainAdminDefinition(add func(name, description string, write, scoped bool, props map[string]any, required ...string)) {
 	actions := make([]any, 0, len(brainAdminReadActions)+len(brainAdminWriteActions))
-	for _, name := range []string{"backup_status", "backup_reconcile", "secrets_list", "secrets_request_set", "secrets_delete",
+	for _, name := range []string{"backup_status", "backup_reconcile", "secrets_list", "secrets_request_set", "secrets_set", "secrets_delete",
 		"schedule_status", "schedule_enable", "schedule_disable", "schedule_set_cadence", "schedule_set_message", "schedule_run_now",
 		"whats_new", "mark_seen"} {
 		actions = append(actions, name)
 	}
 	add(brainAdminTool, "Brain administration without the app. backup_status: whether the Git backup is configured and healthy (pending files, last automatic push and its error). "+
 		"backup_reconcile (administrators): re-check the backup against the repository. "+
-		"secrets_list / secrets_delete: Brain's own secrets (not Vault's), for example the backup token named by brain_access configure_backup pat_secret; people who own the whole Brain only; names only, values are never returned. "+
+		"secrets_list / secrets_set / secrets_delete: Vault-backed Brain secrets, for example the backup token named by brain_access configure_backup pat_secret; people who own the whole Brain only; names only, values are never returned. "+
 		"A secret's VALUE never goes through an agent: secrets_request_set (name) returns the command the person types in their own terminal (agentworks brain secret set NAME, hidden input); then refer to the secret by name. "+
 		"backup_reconcile and secrets_delete need the person's own connection. "+
 		"schedule_status / schedule_enable / schedule_disable / schedule_set_cadence (cadence_hours) / schedule_set_message (message) / schedule_run_now: your own Organize Brain schedule. "+
 		"whats_new: what changed in Brain since you last marked it seen (commits with the files added, updated or removed); mark_seen (commit) records the newest commit you read. "+
 		"Reads need knowledgebase:read, changes need knowledgebase:write.", true, false, map[string]any{
+		"value":         map[string]any{"type": "string", "minLength": 1, "maxLength": 65536, "description": "secrets_set: user-supplied value, encrypted by Vault and never returned."},
 		"action":        map[string]any{"type": "string", "enum": actions},
 		"name":          map[string]any{"type": "string", "maxLength": 128, "description": "secrets_request_set / secrets_delete: the secret's name (letters, digits, underscore; starts with a letter)."},
 		"cadence_hours": map[string]any{"type": "integer", "minimum": minScheduleCadenceHours, "maximum": maxScheduleCadenceHours, "description": "schedule_set_cadence: hours between runs (24 = daily, 168 = weekly)."},
@@ -127,13 +128,19 @@ func (api *StreamingAPI) externalBrainAdminCall(w http.ResponseWriter, r *http.R
 		}
 		log.Printf("[BRAIN] backup reconcile run by %s over MCP", claims.UserID)
 		knowledgebaseWriteJSON(w, map[string]any{"result": result})
-	case "secrets_list", "secrets_request_set", "secrets_delete":
+	case "secrets_list", "secrets_request_set", "secrets_set", "secrets_delete":
 		if !service.CanEditWholeBrain(principal) {
 			externalError(w, http.StatusForbidden, "FORBIDDEN", "Brain's secrets are managed by people who own the whole Brain.")
 			return
 		}
 		name := strings.TrimSpace(externalArg(args, "name"))
 		switch action {
+		case "secrets_set":
+			value, _ := args["value"].(string)
+			if err := api.setBrainSecret(ctx, name, value); err != nil {
+				externalError(w, 400, "invalid_arguments", err.Error())
+				return
+			}
 		case "secrets_request_set":
 			if !brainSecretName.MatchString(name) {
 				externalError(w, http.StatusBadRequest, "invalid_arguments", "secrets_request_set needs name: letters, digits and underscores, starting with a letter.")

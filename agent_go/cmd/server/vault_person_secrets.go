@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -54,6 +55,9 @@ func (api *StreamingAPI) setVaultSecret(ctx context.Context, person, vaultID, na
 	if strings.TrimSpace(value) == "" {
 		return errors.New("a non-empty value is required")
 	}
+	if err := api.checkVaultSecretProjectScope(ctx, person, vaultID); err != nil {
+		return err
+	}
 	full, err := vaultSecretName(vaultID, name)
 	if err != nil {
 		return err
@@ -81,6 +85,9 @@ func (api *StreamingAPI) setVaultSecret(ctx context.Context, person, vaultID, na
 
 // removeVaultSecret revokes a vault secret everywhere, then deletes its value.
 func (api *StreamingAPI) removeVaultSecret(ctx context.Context, person, vaultID, name string) error {
+	if err := api.checkVaultSecretProjectScope(ctx, person, vaultID); err != nil {
+		return err
+	}
 	full, err := vaultSecretName(vaultID, name)
 	if err != nil {
 		return err
@@ -128,4 +135,30 @@ func mustVaultSecretName(vaultID, name string) string {
 
 func sessionIDFromContextForVaults(ctx context.Context) string {
 	return executor.SessionIDFromContext(ctx)
+}
+
+func (api *StreamingAPI) checkVaultSecretProjectScope(ctx context.Context, person, vaultID string) error {
+	data, err := vaultPersonRequest(ctx, person, http.MethodGet, "/api/vaults/"+url.PathEscape(vaultID), nil)
+	if err != nil {
+		return err
+	}
+	var view struct{ Group struct{ ProjectRoot string } }
+	if json.Unmarshal(data, &view) != nil {
+		return errors.New("Vault scope unavailable")
+	}
+	root := view.Group.ProjectRoot
+	if root == "" {
+		return nil
+	}
+	if root == brainSecretsPath {
+		r := (&http.Request{}).WithContext(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: person}))
+		if !brainSecretsManager(r) {
+			return errors.New("only whole-Brain owners manage these secrets")
+		}
+		return nil
+	}
+	if api.projectSecretsOwner(person, root) != person || !placeMCPCanAttach(ctx, person, root) {
+		return errors.New("project secret access follows its current owner")
+	}
+	return nil
 }

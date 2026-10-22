@@ -64,6 +64,11 @@ func (s *MemoryStore) ListSecrets(workspace, user, group string, all bool) []Sec
 		if row.WorkspaceID != workspace {
 			continue
 		}
+		// Project scopes are consumed only through the host’s project authorization,
+		// never as account-wide secret grants (including after ownership changes).
+		if scope, ok := s.groups[row.VaultID]; ok && scope.ProjectRoot != "" && !all {
+			continue
+		}
 		allowed := all
 		if group != "" {
 			g, ok := s.groups[group]
@@ -96,6 +101,10 @@ func (s *MemoryStore) SetSecretGrants(workspace, name, actor string, groups []st
 	if !exists || row.WorkspaceID != workspace || len(groups) == 0 || len(groups) > 100 {
 		s.mu.Unlock()
 		return errors.New("unknown secret or invalid group selection")
+	}
+	if scope, ok := s.groups[row.VaultID]; ok && scope.ProjectRoot != "" {
+		s.mu.Unlock()
+		return errors.New("project secrets follow project access; copy a secret to a shared Vault scope to share it")
 	}
 	for _, group := range groups {
 		g, ok := s.groups[group]

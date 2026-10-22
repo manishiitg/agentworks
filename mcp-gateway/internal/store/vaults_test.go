@@ -100,6 +100,15 @@ func TestProjectVaultPreservesProjectIsolationAndOwnership(t *testing.T) {
 	if s.VaultOwnedBy("other", "v-12345678") {
 		t.Fatal("project secret scope exposed to another person")
 	}
+	if err := s.VaultAddSecret("owner", "v-12345678", "VLT_12345678__KEY"); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.ListSecrets("w", "owner", "", false); len(got) != 0 {
+		t.Fatal("project secrets became account-wide grants")
+	}
+	if s.SetSecretGrants("w", "VLT_12345678__KEY", "owner", []string{"v-12345678"}, true) == nil {
+		t.Fatal("project scope could be granted outside native project access")
+	}
 	if s.VaultSetMember("owner", "v-12345678", "other", true) == nil {
 		t.Fatal("project sharing bypassed")
 	}
