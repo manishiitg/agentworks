@@ -1,8 +1,10 @@
 package server
 
 import (
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
@@ -101,6 +103,26 @@ func TestProductDefaultSkillsHaveReadableModeSpecificDefinitions(t *testing.T) {
 				if len(definitions[mode]) != len(names) {
 					t.Fatalf("Goal %s catalog omitted a configured runtime definition", mode)
 				}
+			}
+		}
+		for _, name := range defaults["builder"] {
+			if !strings.HasPrefix(name, "panel-") {
+				continue
+			}
+			if !skills.IsWorkspacePanelSkill(name) || slices.Contains(defaults["run"], name) {
+				t.Fatalf("%s panel is missing or leaked setup into Run", name)
+			}
+			found := false
+			for _, doc := range definitions["builder"] {
+				if doc.FolderName == name {
+					found = true
+					if doc.Content != skills.BuiltinDefinition(name).Content {
+						t.Fatalf("%s copied or changed the shared %s procedure", profile.ID, name)
+					}
+				}
+			}
+			if !found {
+				t.Fatalf("%s Builder cannot read %s", profile.ID, name)
 			}
 		}
 		for mode, docs := range definitions {

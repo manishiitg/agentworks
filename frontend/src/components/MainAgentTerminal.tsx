@@ -29,6 +29,12 @@ const MAIN_AGENT_TERMINAL_MISSES_BEFORE_DROP = 3
 // Retain only one identity, never terminal output, and scope it to the login,
 // server, session and input access. Hidden chat views own no terminal poll.
 let retainedTerminal: { scope: string; snapshot: TerminalSnapshot } | null = null
+useAuthStore.subscribe((next, previous) => {
+  if (next.user?.id !== previous.user?.id) retainedTerminal = null
+})
+useWorkspaceConnectionStore.subscribe((next, previous) => {
+  if (next.activeWorkspaceId !== previous.activeWorkspaceId) retainedTerminal = null
+})
 
 // Product raw view for the one main coding-agent terminal. This intentionally
 // reuses the mature xterm renderer/live tmux attach rather than maintaining a
@@ -154,6 +160,7 @@ export function MainAgentTerminal({ sessionId, onUnavailable, readOnly = false }
       }
     }
     const retained = retainedTerminal?.scope === scope ? retainedTerminal.snapshot : null
+    if (retained) recordViewTimingTelemetry('terminal_ready', sessionId, '', 'metadata_cached', 0)
     snapshotRef.current = retained
     missesRef.current = 0
     setSnapshot(retained)

@@ -7134,6 +7134,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				// WhatsApp status, routing and unpairing, as in the WhatsApp card (pairing itself stays in the app).
+				if !crewReadOnly && !currentUserIsReadOnly {
+					if err := api.registerWorkspacePanelChatTools(llmAgent, toolGate, currentUserID, sessionID, chatWorkingFolder, "work"); err != nil {
+						sendError(fmt.Sprintf("Failed to register panel settings tools: %v", err), true)
+						return
+					}
+				}
 				if err := api.registerWhatsAppChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly); err != nil {
 					sendError(fmt.Sprintf("Failed to register WhatsApp tool: %v", err), true)
 					return

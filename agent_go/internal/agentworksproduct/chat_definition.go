@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 )
 
 func validateChatDefinitions(fsys fs.FS, m ProductManifest) error {
@@ -24,7 +25,7 @@ func validateChatDefinitions(fsys fs.FS, m ProductManifest) error {
 		known := map[string]bool{"system-tools": true, "builder-reference": true, "workflow-ui-control": true, "workflow-commands": mode == "builder"}
 		seen := map[string]bool{}
 		for _, name := range def.Skills {
-			if !known[name] || seen[name] {
+			if !(known[name] || mode == "builder" && skills.IsWorkspacePanelSkill(name)) || seen[name] {
 				return fmt.Errorf("chat %s: unknown or duplicate skill %q", mode, name)
 			}
 			seen[name] = true

@@ -52,7 +52,7 @@ func (api *StreamingAPI) externalWorkflowTeamCall(w http.ResponseWriter, r *http
 	claims := GetUserFromContext(r.Context())
 	authorize := func(ctx context.Context) (context.Context, error) {
 		live := claims
-		if write {
+		if write && claims.AccessToken != nil {
 			var err error
 			live, err = validateBuilderGrant(ctx, claims, workflow.Manifest.ID, workflow.WorkspacePath)
 			if err != nil {
@@ -64,6 +64,12 @@ func (api *StreamingAPI) externalWorkflowTeamCall(w http.ResponseWriter, r *http
 			if err != nil || live.UserID != claims.UserID || !live.AccessToken.AllowsWorkflow(workflow.Manifest.ID) ||
 				(!live.AccessToken.Allows("workflows:read") && !live.AccessToken.Allows("runs:execute")) {
 				return nil, errors.New("current workflow read consent is required")
+			}
+		}
+		if write && claims.AccessToken == nil {
+			level, current := workflowAccessForWorkspacePath(ctx, claims, workflow.WorkspacePath)
+			if current == nil || current.ID != workflow.Manifest.ID || !userAccessForClaims(claims).CanEdit || !userAllowedProduct(claims, "agentworks") || level != WorkflowAccessOwner && level != WorkflowAccessWrite {
+				return nil, errors.New("current workflow Builder access is required")
 			}
 		}
 		ctx = context.WithValue(ctx, UserContextKey, live)
@@ -155,7 +161,7 @@ func (api *StreamingAPI) externalWorkflowTeamCall(w http.ResponseWriter, r *http
 	// managers with current authoring consent and manifest access.
 	if action == "get" && out["can_manage"] == true {
 		live := GetUserFromContext(ctx)
-		if live.AccessToken != nil && live.AccessToken.BuilderAccess() && externalFileGuard(ctx, false).Allows("workflow.json", true) {
+		if (live.AccessToken == nil || live.AccessToken.BuilderAccess()) && externalFileGuard(ctx, false).Allows("workflow.json", true) {
 			status, raw = scheduleHandler(r, api.handleUserDirectory, http.MethodGet, "/api/users/directory", nil, nil, nil)
 			var directory struct {
 				Users []workflowAccessUser `json:"users"`

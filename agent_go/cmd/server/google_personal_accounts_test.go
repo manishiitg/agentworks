@@ -30,7 +30,7 @@ func TestPersonalGoogleConnectionsAcrossSurfaces(t *testing.T) {
 	gog := filepath.Join(t.TempDir(), "gog")
 	script := `#!/bin/sh
 case "$*" in
- *"auth list"*) printf '%s\n' '{"accounts":[{"email":"editor@example.com","client":"personal-app","valid":true,"scopes":["https://www.googleapis.com/auth/gmail.readonly"]}]}' ;;
+ *"auth list"*) printf '%s\n' '{"accounts":[{"email":"editor@example.com","client":"personal-app","valid":true,"scopes":["https://www.googleapis.com/auth/gmail.readonly"]},{"email":"original@example.com","client":"personal-app","valid":true,"scopes":["https://www.googleapis.com/auth/gmail.readonly"]}]}' ;;
  *) printf '%s\n' "$@" ;;
 esac
 `

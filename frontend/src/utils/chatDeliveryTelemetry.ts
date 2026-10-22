@@ -193,7 +193,7 @@ export function takeViewSwitchStart(): number {
 
 /** Content-free timings of the chat/terminal switch, so a slow switch shows up in the server log with its numbers.
  * view_switch: the click to the first paint of the new view (what = chat or terminal); terminal_ready: one of the terminal's own
- * loads (what = metadata or history). */
+ * loads (metadata, metadata_cached, history or first rendered stream_seed). */
 export function recordViewTimingTelemetry(phase: 'view_switch' | 'terminal_ready', sessionId: string, tabId: string, what: string, elapsedMs: number) {
   if (typeof window === 'undefined' || !sessionId) return
   if (queue.length >= MAX_QUEUED_EVENTS) queue.shift()

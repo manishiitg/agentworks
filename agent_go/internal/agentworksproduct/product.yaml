@@ -219,6 +219,12 @@ chat:
       - brain_access
       - add_step
       - manage_group
+      - settings
+      - workflow_team
+      - manage_project
+      - browser_connections
+      - manage_messaging
+      - manage_pulse
       - add_mcp_server
       - manage_step_route
       - agent_browser
@@ -391,7 +397,7 @@ chat:
     prompt:
       file: prompts/builder.md
       includes: [prompts/workflow-shared.md]
-    skills: [system-tools, builder-reference, workflow-ui-control, workflow-commands]
+    skills: [system-tools, builder-reference, workflow-ui-control, workflow-commands, panel-dashboard, panel-functions, panel-skills, panel-files, panel-database, panel-plan, panel-browser, panel-chat-history, panel-schedules, panel-watchers, panel-webhooks, panel-inbox, panel-slack-bot, panel-slack-account, panel-whatsapp, panel-mcp-access, panel-mcp-connections, panel-secrets, panel-brain, panel-linked-folders, panel-google-apps, panel-agentbridge, panel-sharing, panel-settings, panel-models, panel-costs, panel-knowledgebase, panel-playbooks, panel-pulse, panel-decisions, panel-team, panel-publish, panel-notify, panel-run-logs, panel-upgrades, panel-backup]
   run:
     # Default workflow phase tools; integration tests compare real registration.
     tools:

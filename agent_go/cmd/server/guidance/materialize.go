@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -200,7 +201,9 @@ func AttachConfiguredReferenceSurface(mode string, mcpManagement bool, names []s
 		switch name {
 		case "system-tools", "builder-reference", "workflow-ui-control", "workflow-commands":
 		default:
-			return fmt.Errorf("unknown reference skill %q", name)
+			if !skills.IsWorkspacePanelSkill(name) || mode == "run" {
+				return fmt.Errorf("unknown reference skill %q", name)
+			}
 		}
 	}
 	for _, name := range names {
@@ -221,6 +224,8 @@ func AttachConfiguredReferenceSurface(mode string, mcpManagement bool, names []s
 			}
 		case "workflow-commands":
 			skill = MaterializeGuidanceSkill(mode)
+		default:
+			skill = skills.BuiltinDefinition(name)
 		}
 		if skill != nil {
 			if err := attach(skill); err != nil {

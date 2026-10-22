@@ -1,3 +1,4 @@
+import { recordViewTimingTelemetry } from '../utils/chatDeliveryTelemetry'
 import { transcriptReadingKey } from './useTranscriptScroll'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, AlertTriangle, ArrowDownToLine, ArrowRightToLine, Bot, Braces, Bug, Check, ChevronDown, ChevronRight, ChevronUp, ClipboardCheck, Copy, CornerDownLeft, CornerUpLeft, GitBranch, History, Info, ListRestart, MessageSquare, Network, Power, RefreshCw, SearchCheck, Square, Terminal, Trash2, X } from 'lucide-react'
@@ -1534,6 +1535,8 @@ const LiveAttachXtermPaneInner: React.FC<{
     receivedLiveSeedRef.current = false
     wroteConnectingSnapshotRef.current = false
     lastVisibleReseedRef.current = { content: '', at: 0 }
+    const attachStartedAt = performance.now()
+    let firstSeed = true
 
     // convertEol stays FALSE: the WS carries the raw terminal byte stream (live
     // %output + the CR-normalized current-screen backfill), so xterm must honor the
@@ -1834,6 +1837,10 @@ const LiveAttachXtermPaneInner: React.FC<{
             // before enabling the keyboard. An old seed callback cannot enable
             // input on a replacement socket or during a geometry transition.
             if (closed || connectionEpoch !== epoch || wsRef.current !== ws || resizeReconnectPending || outputBlocked || inputFailed || reseed.shouldDropBinary() || parsedSeedEpoch !== renderEpoch) return
+            if (firstSeed) {
+              firstSeed = false
+              recordViewTimingTelemetry('terminal_ready', sessionId || '', '', 'stream_seed', performance.now() - attachStartedAt)
+            }
             setConnectionState(hasVisibleContent ? 'connected' : 'connecting')
             inputReadyRef.current = interactive
             term.options.disableStdin = !interactive

@@ -15,8 +15,8 @@ vi.mock('../services/api', () => ({
   },
 }))
 vi.mock('../hooks/useTheme', () => ({ useTheme: () => ({ theme: 'dark' }) }))
-vi.mock('../stores/useAuthStore', () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ user: { id: 'owner-' + identity.user } }) }))
-vi.mock('../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: (state: unknown) => unknown) => select({ activeWorkspaceId: 'server' }) }))
+vi.mock('../stores/useAuthStore', () => ({ useAuthStore: Object.assign((select: (state: unknown) => unknown) => select({ user: { id: 'owner-' + identity.user } }), { subscribe: vi.fn() }) }))
+vi.mock('../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: Object.assign((select: (state: unknown) => unknown) => select({ activeWorkspaceId: 'server' }), { subscribe: vi.fn() }) }))
 vi.mock('./TerminalCenter', () => ({
   LiveAttachXtermPane: ({ interactive, terminalId, contentRef }: { interactive: boolean; terminalId: string; contentRef: React.Ref<HTMLDivElement> }) => (
     <div ref={contentRef} data-testid="live-terminal" data-terminal={terminalId} data-interactive={String(interactive)}>
