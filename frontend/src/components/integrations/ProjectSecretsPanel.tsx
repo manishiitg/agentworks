@@ -13,10 +13,10 @@ export function ProjectSecretsPanel({ workspacePath, placeNoun, selectedSecrets,
   return <div className="space-y-4">
     <SecretSelectionSection workflowPath={workspacePath} selectedSecrets={selectedSecrets}
       onSecretChange={onSecretChange} showGlobalSecrets={false} projectSource="project"
-      workspaceSecretHeading={`Vault · ${placeNoun} secrets`} allowGlobalPromotion={false} />
+      workspaceSecretHeading={`For this ${placeNoun}`} allowGlobalPromotion={false} />
     {<div className="border-t border-border pt-4">
       <SecretSelectionSection workflowPath={workspacePath} selectedSecrets={selectedSecrets}
-        onSecretChange={onSecretChange} projectSource="vault" workspaceSecretHeading="Vault secrets"
+        onSecretChange={onSecretChange} projectSource="vault" workspaceSecretHeading="Shared from Vault"
         selectedGlobalSecrets={selectedGlobalSecrets} onGlobalSecretChange={onGlobalSecretChange} />
     </div>}
   </div>

@@ -21,6 +21,7 @@ import (
 
 // Statuses for connectors and tool snapshots.
 const (
+	StatusPending      = "pending"
 	StatusAuthRequired = "authentication_required"
 	StatusActive       = "active"
 	StatusDisabled     = "disabled"

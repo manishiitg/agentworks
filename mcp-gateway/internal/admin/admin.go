@@ -302,6 +302,8 @@ func (a *Admin) addConnectorFromCatalogFor(ctx context.Context, vaultID, provide
 	if err != nil {
 		return store.Connector{}, err
 	}
+	c.Transport = p.Transport
+	a.Store.AddConnector(c)
 	if c.OAuthCredentialID != "" {
 		return c, nil
 	}
@@ -342,7 +344,7 @@ func (a *Admin) AddConnectorCustomWithCredential(ctx context.Context, provider, 
 	return a.addConnectorCustomFor(ctx, "", provider, label, slug, upstreamURL, bearerToken, scheme)
 }
 
-func (a *Admin) addConnectorCustomFor(ctx context.Context, vaultID, provider, label, slug, upstreamURL, bearerToken, scheme string) (store.Connector, error) {
+func (a *Admin) addConnectorCustomFor(ctx context.Context, vaultID, provider, label, slug, upstreamURL, bearerToken, scheme string, transports ...string) (store.Connector, error) {
 	if err := validateConnectorCredential(bearerToken, scheme); err != nil {
 		return store.Connector{}, err
 	}
@@ -366,6 +368,13 @@ func (a *Admin) addConnectorCustomFor(ctx context.Context, vaultID, provider, la
 		return store.Connector{}, errors.New("OAuth connectors cannot use Basic credentials")
 	}
 	c.AuthScheme = scheme
+	if len(transports) > 0 {
+		if transports[0] != "" && transports[0] != "http" && transports[0] != "sse" {
+			a.Store.DeleteConnector(c.ID)
+			return store.Connector{}, errors.New("transport must be http or sse")
+		}
+		c.Transport = transports[0]
+	}
 	a.Store.AddConnector(c)
 	a.Store.SetConnectorBearer(c.ID, bearerToken)
 	if c.OAuthCredentialID != "" {

@@ -213,7 +213,7 @@ func (a *Admin) vaultRoutes(mux *http.ServeMux) {
 				}
 			}
 		case in.URL != "":
-			c, err = a.addConnectorCustomFor(ctx, vault, in.Name, in.Label, in.Slug, in.URL, in.Credential, in.AuthScheme)
+			c, err = a.addConnectorCustomFor(ctx, vault, in.Name, in.Label, in.Slug, in.URL, in.Credential, in.AuthScheme, in.Transport)
 		default:
 			c, err = a.addConnectorFromCatalogFor(ctx, vault, in.Provider, in.Label, in.Slug)
 		}
@@ -226,7 +226,12 @@ func (a *Admin) vaultRoutes(mux *http.ServeMux) {
 			writeErr(w, 400, errors.New("transport must be http or sse"))
 			return
 		}
-		c.Transport = in.Transport
+		if in.Transport != "" {
+			c.Transport = in.Transport
+		}
+		if in.Import && !in.OAuth {
+			c.Status = store.StatusPending
+		}
 		a.Store.AddConnector(c)
 		if err := a.Store.VaultAttachConnector(actor, vault, c.ID); err != nil {
 			// Never leave a connection nobody can manage: undo the creation if it cannot be bound.

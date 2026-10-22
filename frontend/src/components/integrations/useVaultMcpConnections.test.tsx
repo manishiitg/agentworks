@@ -17,7 +17,7 @@ async function mount() {
  await act(async () => root.render(<TooltipProvider><Harness /></TooltipProvider>)); return { host }
 }
 it('shows authorized MCPs automatically without project opt-in', async () => {
- get.mockResolvedValue({ data: { servers: [{ id: 'c1', label: 'Company Linear', provider: 'linear', tools: [{ name: 'linear__search', description: 'Search issues', input_schema: { type: 'object' } }] }] } })
+ get.mockResolvedValue({ data: { servers: [{ id: 'c1', label: 'Company Linear', provider: 'linear', status:'authentication_required', tools: [{ name: 'linear__search', description: 'Search issues', input_schema: { type: 'object' } }] }] } })
  const { host } = await mount()
  expect(get).toHaveBeenCalledWith('/api/vault/connections', {params:{}})
  expect(host.textContent).toContain('Company Linear')

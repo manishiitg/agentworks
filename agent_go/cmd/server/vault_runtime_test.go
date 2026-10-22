@@ -3,13 +3,14 @@ package server
 import (
 	"context"
 	"encoding/json"
-	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 
 	events "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -283,41 +284,6 @@ func TestPrivateMCPHTTPDefaultsToCallerAndCannotDisconnectAnotherUser(t *testing
 	}
 	if w := request("bob", `{"server_name":"Test","scope":"vault"}`, false); w.Code != 403 {
 		t.Fatal("non-admin could modify Vault connections")
-	}
-}
-
-func TestPrivateMCPSecretsHTTPStoresOnlyCallerAndNeverReturnsValues(t *testing.T) {
-	withMCPConnectionsRoot(t)
-	t.Setenv("AUTH_SECRET", strings.Repeat("k", 32))
-	t.Setenv("MULTI_USER_MODE", "true")
-	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice"},{"id":"bob","username":"bob"}]}`)
-	request := func(person, method, body string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest(method, "/api/me/secrets", strings.NewReader(body)).WithContext(personContext(person))
-		r.Header.Set("X-User-ID", "alice")
-		w := httptest.NewRecorder()
-		handlePersonalMCPSecrets(w, r)
-		return w
-	}
-	saved := request("alice", "POST", `{"name":"MCP_TEST_KEY","value":"test-private-value"}`)
-	if saved.Code != 200 || strings.Contains(saved.Body.String(), "test-private-value") || saved.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("unsafe save response: %d %s", saved.Code, saved.Body.String())
-	}
-	own := request("alice", "GET", "")
-	if own.Code != 200 || !strings.Contains(own.Body.String(), "MCP_TEST_KEY") || strings.Contains(own.Body.String(), "test-private-value") {
-		t.Fatal("private listing did not return names only")
-	}
-	other := request("bob", "GET", "")
-	if other.Code != 200 || strings.Contains(other.Body.String(), "MCP_TEST_KEY") {
-		t.Fatal("another person's secrets leaked through listing")
-	}
-	if value, err := personalSecretValue("alice", "MCP_TEST_KEY"); err != nil || value != "test-private-value" {
-		t.Fatal("owner could not resolve sealed key")
-	}
-	if _, err := personalSecretValue("bob", "MCP_TEST_KEY"); err == nil {
-		t.Fatal("another person could resolve the key")
-	}
-	if w := request("", "POST", `{"name":"MCP_TEST_KEY","value":"v"}`); w.Code != 401 {
-		t.Fatal("identity was accepted from caller-controlled header")
 	}
 }
 

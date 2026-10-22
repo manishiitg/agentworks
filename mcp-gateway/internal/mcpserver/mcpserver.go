@@ -334,7 +334,7 @@ func (g *Gateway) ensureConnected(ctx context.Context, workspaceID, connectorID 
 // Caller holds the connector operation lock.
 func (g *Gateway) resyncConnector(ctx context.Context, c store.Connector) error {
 	current, ok := g.store.GetConnector(c.ID)
-	if !ok || (current.Status != store.StatusActive && current.Status != store.StatusAuthRequired) || current.WorkspaceID != c.WorkspaceID {
+	if !ok || (current.Status != store.StatusActive && current.Status != store.StatusAuthRequired && current.Status != store.StatusPending) || current.WorkspaceID != c.WorkspaceID {
 		return fmt.Errorf("connector %s is no longer active", c.ID)
 	}
 	c = current

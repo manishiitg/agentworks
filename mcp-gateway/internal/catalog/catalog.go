@@ -16,10 +16,11 @@ var raw []byte
 
 // Provider is one connectable upstream template.
 type Provider struct {
-	Name  string
-	Key   string // normalized public-name prefix, e.g. "notion"
-	URL   string
-	OAuth bool
+	Name      string
+	Key       string // normalized public-name prefix, e.g. "notion"
+	URL       string
+	Transport string
+	OAuth     bool
 }
 
 // Catalog is the sorted provider list.
@@ -44,8 +45,9 @@ func LoadFile(path string) (*Catalog, error) {
 
 func parse(data []byte) (*Catalog, error) {
 	var doc map[string]map[string]struct {
-		URL   string `json:"url"`
-		OAuth any    `json:"oauth"`
+		URL      string `json:"url"`
+		OAuth    any    `json:"oauth"`
+		Protocol string `json:"protocol"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return nil, err
@@ -56,7 +58,7 @@ func parse(data []byte) (*Catalog, error) {
 		if s.URL == "" {
 			continue
 		}
-		p := Provider{Name: name, Key: Key(name), URL: s.URL, OAuth: s.OAuth != nil}
+		p := Provider{Name: name, Key: Key(name), URL: s.URL, OAuth: s.OAuth != nil, Transport: s.Protocol}
 		c.Providers = append(c.Providers, p)
 		c.byName[name] = p
 	}
