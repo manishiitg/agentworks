@@ -70,11 +70,6 @@ func readAs(t *testing.T, h http.Handler, user, target string) *httptest.Respons
 
 var workflowReadRoutes = []string{
 	"/api/workflow/pulse-overview",
-	"/api/workflow/pulse-findings",
-	"/api/workflow/pulse-reviews",
-	"/api/workflow/pulse-agent-metrics",
-	"/api/workflow/pulse-impact",
-	"/api/workflow/pulse-context",
 	"/api/workflow/goal-lead",
 	"/api/workspace/state",
 	"/api/workflow/run-folders",
@@ -126,6 +121,16 @@ func TestWorkflowReadRoutesRequireWorkflowAccess(t *testing.T) {
 				t.Fatalf("another user's tree: got %d, want 403", rec.Code)
 			}
 		})
+	}
+}
+
+// The overview uses current measurement data; retired Pulse protocols stay gone.
+func TestRetiredPulseReadRoutesStayRemoved(t *testing.T) {
+	h := readAccessRouter(t)
+	for _, route := range []string{"pulse-findings", "pulse-reviews", "pulse-agent-metrics", "pulse-impact", "pulse-context"} {
+		if rec := readAs(t, h, "alice", workflowReadTarget("/api/workflow/"+route, "Workflow/w")); rec.Code != http.StatusNotFound {
+			t.Fatalf("retired %s unexpectedly restored: %d", route, rec.Code)
+		}
 	}
 }
 
