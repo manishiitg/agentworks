@@ -44,6 +44,15 @@ esac
 	}}
 	cfg, _ := json.Marshal(config)
 	mock := &mockWorkspaceAPI{files: map[string]string{"config/gmail-config.json": string(cfg), "Workflow/orders/workflow.json": string(raw), "Workflow/flow/workflow.json": string(flow)}}
+	owners := withProjectOwnerRegistry(t)
+	for _, folder := range []string{"second", "account-crew"} {
+		if err := owners.Register(projectOwnerRecord{Product: "work", Folder: folder, ProjectID: folder, OwnerID: "editor", Shared: true}); err != nil {
+			t.Fatal(err)
+		}
+		product, _ := json.Marshal(map[string]any{"schema_version": 1, "product": "work", "id": folder, "title": folder})
+		mock.files["Crew/"+folder+"/product.json"] = string(product)
+		mock.files["Crew/"+folder+"/workflow.json"] = string(product)
+	}
 	ws := httptest.NewServer(mock)
 	defer ws.Close()
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
@@ -71,7 +80,7 @@ esac
 	selectAccount("builder", "mine", "Workflow/orders", true, 403)
 	selectAccount("runner", "mine", "Workflow/orders", true, 403)
 	selectAccount("boss", "mine", "Workflow/orders", true, 403)
-	selectAccount("editor", "mine", "_users/editor/Chats/Code/projects/second", true, 200)
+	selectAccount("editor", "mine", "Crew/second", true, 200)
 	for name, claims := range map[string]*UserClaims{
 		"bot cannot revoke the connector's grant": {UserID: "editor", Username: "editor", Provider: "bot_route"},
 		"token cannot manage another workflow":    {UserID: "editor", Username: "editor", AccessToken: &accesstokens.Token{Scopes: []string{"workflows:read", "builder:chat"}, WorkflowIDs: []string{"another"}}},
@@ -171,9 +180,9 @@ esac
 	// Native chat execution can arrive without request claims. It must keep
 	// the authenticated turn's person and token, just as the website does.
 	t.Setenv("LOCAL_MODE", "false")
-	api.lastQueryRequests = map[string]QueryRequest{"google-session": {userID: "editor", SelectedFolder: "Workflow/orders"}}
+	api.lastQueryRequests = map[string]QueryRequest{"google-session": {userID: "editor", SelectedFolder: "Crew/second"}}
 	native := crewCapabilityRegistrar{}
-	if err := api.registerPersonalGoogleAccountToolForCaller(native, "Workflow/orders", "google-session", GetUserFromContext(ctx)); err != nil {
+	if err := api.registerPersonalGoogleAccountToolForCaller(native, "Crew/second", "google-session", GetUserFromContext(ctx)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := native["manage_google_account"].execute(context.Background(), map[string]any{"action": "set_inbox_account", "connection_id": "mine"}); err != nil {
@@ -187,13 +196,13 @@ esac
 	}
 	// Even if an old registered callback survived into a second person's
 	// context-free native turn, it cannot act as the first person.
-	api.lastQueryRequests["google-session"] = QueryRequest{userID: "builder", SelectedFolder: "Workflow/orders"}
+	api.lastQueryRequests["google-session"] = QueryRequest{userID: "builder", SelectedFolder: "Crew/second"}
 	if _, err := native["manage_google_account"].execute(context.Background(), map[string]any{"action": "set_inbox_account", "connection_id": "mine"}); err == nil {
 		t.Fatal("stale registered tool acted as the previous turn's caller")
 	}
-	api.lastQueryRequests["google-session"] = QueryRequest{userID: "editor", SelectedFolder: "Workflow/orders"}
+	api.lastQueryRequests["google-session"] = QueryRequest{userID: "editor", SelectedFolder: "Crew/second"}
 	bounded := crewCapabilityRegistrar{}
-	if err := api.registerPersonalGoogleAccountToolForCaller(bounded, "Workflow/orders", "google-session", &UserClaims{UserID: "editor", AccessToken: &accesstokens.Token{Scopes: []string{"workflows:read", "builder:chat"}, WorkflowIDs: []string{"another"}}}); err != nil {
+	if err := api.registerPersonalGoogleAccountToolForCaller(bounded, "Crew/second", "google-session", &UserClaims{UserID: "editor", AccessToken: &accesstokens.Token{Scopes: []string{"workflows:read", "builder:chat"}, WorkflowIDs: []string{"another"}}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := bounded["manage_google_account"].execute(ctx, map[string]any{"action": "set_inbox_account", "connection_id": "mine"}); err == nil {
@@ -206,7 +215,7 @@ esac
 	if _, err := svc.ConnectionForScope("mine", selected); err == nil {
 		t.Fatal("detached account still usable")
 	}
-	if _, err := svc.ConnectionForScope("mine", services.GmailUseScope{Workspace: "_users/editor/Chats/Code/projects/second", CodeWorkspace: "_users/editor/Chats/Code/projects/second", UserID: "runner"}); err != nil {
+	if _, err := svc.ConnectionForScope("mine", services.GmailUseScope{Workspace: "Crew/second", UserID: "runner"}); err != nil {
 		t.Fatalf("detaching one disconnected another: %v", err)
 	}
 	if err := svc.ReloadConfig(context.Background()); err != nil {
@@ -250,7 +259,7 @@ esac
 		t.Fatal("workflow X used an account attached only to Y")
 	}
 	// Shared Crew execution uses its selected account, independently of caller.
-	crew := "_users/editor/Chats/Work/projects/crew"
+	crew := "Crew/account-crew"
 	selectAccount("editor", "mine", crew, true, 200)
 	// The connector is no longer a Builder. The owner's explicit decision is
 	// that the existing selection still works until someone removes it.
@@ -263,8 +272,8 @@ esac
 	if err != nil || !strings.Contains(result, "editor@example.com") {
 		t.Fatalf("shared Crew did not use its selected account: %s %v", result, err)
 	}
-	// Lost item access still lets the connector revoke using the same logical spelling.
-	selectAccount("editor", "mine", "Chats/Work/projects/crew", false, 200)
-	selectAccount("editor", "mine", "Chats/Work/projects/crew", false, 403)
+	// Lost item access still lets the connector revoke its explicit selection.
+	selectAccount("editor", "mine", "Crew/account-crew", false, 200)
+	selectAccount("editor", "mine", "Crew/account-crew", false, 403)
 
 }
