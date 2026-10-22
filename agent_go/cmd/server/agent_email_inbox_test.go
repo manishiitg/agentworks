@@ -74,6 +74,11 @@ func TestAgentEmailInboxUsesOwnerVaultAccountAndServerOnly(t *testing.T) {
 	if _, err = env.api.configureAgentInbox(internalBotRequestContext(ctx, "other"), root, true); err == nil {
 		t.Fatal("Run person enabled the owner's personal mailbox")
 	}
+	setDirectoryAdmin(t, "other", true)
+	if _, err = env.api.configureAgentInbox(internalBotRequestContext(ctx, "other"), root, true); err == nil {
+		t.Fatal("administrator enabled another person's personal Gmail")
+	}
+	setDirectoryAdmin(t, "other", false)
 	if _, err = env.api.configureAgentInbox(ctx, root, true); err != nil {
 		t.Fatal("owner could not enable this Crew", err)
 	}

@@ -86,6 +86,9 @@ func (api *StreamingAPI) configureAgentInbox(ctx context.Context, workspace stri
 	if err != nil {
 		return nil, err
 	}
+	if enabled && personalConnectionActor(ctx) != target.OwnerID {
+		return nil, fmt.Errorf("Only this Crew’s owner can enable receiving from their personal Gmail")
+	}
 	r, _ := http.NewRequestWithContext(ctx, http.MethodPost, "/api/agent-email/inbox", nil)
 	if _, err = personalConnectionItemScope(r, target.WorkspacePath, true, "Gmail", "Inbox"); err != nil {
 		return nil, err
