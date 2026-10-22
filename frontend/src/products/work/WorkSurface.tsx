@@ -1702,6 +1702,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               toolbarWhenPanelClosed={!isWorkSessionRun(selected)}
               chatOpen={!isShared && chatOpen} panelOpen={isShared || panelOpen} splitRatio={workspaceView === 'dashboard' ? splitRatio : 0.5}
               showChatReopenControl={!isShared}
+              laptopPreview={workspaceView === 'dashboard' && reportPreviewPreference === 'desktop'}
               mobilePreview={workspaceView === 'dashboard' && reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
               onOpenChat={() => setChatOpen(true)} onOpenWorkspace={() => setPanelOpen(true)}
               tabs={!isShared && tabId && canonicalTabId && selected ? <WorkChatTabs projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId} profileId={product.profileId} allowSideChats /> : <div className="min-w-0 flex-1" />}
@@ -1756,7 +1757,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                 minWidth={reportPreviewPreference === 'mobile' ? MOBILE_PANE_MIN : 15}
                 maxWidth={reportPreviewPreference === 'mobile' ? Math.max(MOBILE_PANE_MIN, (splitLayoutRef.current?.clientWidth || window.innerWidth) - 240) : 85}
                 widthUnit={reportPreviewPreference === 'mobile' ? 'px' : '%'}
-                onWidthChange={width => {
+                onWidthChange={reportPreviewPreference === 'desktop' ? undefined : width => {
                   if (reportPreviewPreference !== 'mobile') { setSplitRatio(1 - width / 100, true); return }
                   mobilePaneWidthRef.current = width; setMobilePaneWidthState(width); writeMobilePaneWidth(selected.id, width)
                 }}

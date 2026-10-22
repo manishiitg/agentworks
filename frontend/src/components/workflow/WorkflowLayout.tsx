@@ -1068,6 +1068,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     showWorkspacePane,
     focusedPane,
     reportPreviewPreference: dashboardView ? reportPreviewPreference : 'desktop',
+    laptopPreview: dashboardView && reportPreviewPreference === 'desktop',
     workspaceSplitRatio: dashboardView ? workspaceSplitRatio : 0.5,
     isWorkspaceViewActive: isWorkspacePaneView(workflowWorkspaceView),
     compactContext: workflowWorkspaceView === 'context',
@@ -2257,7 +2258,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   const canvasElement = (
     <DashboardLayoutProvider value={dashboardView ? <DashboardLayoutControls
       width={Math.round((1 - workspaceSplitRatio) * 100)}
-      onWidthChange={reportPreviewPreference === 'mobile' ? undefined : width => setSplitRatio(1 - width / 100, true)}
+      onWidthChange={reportPreviewPreference !== 'tablet' ? undefined : width => setSplitRatio(1 - width / 100, true)}
       previewDevice={reportPreviewPreference}
       onPreviewDeviceChange={device => writeReportPreviewPreference(workspacePath, device)}
       chatVisible={showChatArea}

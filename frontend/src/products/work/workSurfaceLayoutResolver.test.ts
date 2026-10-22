@@ -3,6 +3,10 @@ import { MOBILE_PREVIEW_PANE_COLUMN } from '../../components/workflow/workspaceL
 import { resolveWorkSurfaceLayout } from './workSurfaceLayoutResolver'
 
 describe('resolveWorkSurfaceLayout', () => {
+  it('gives laptop dashboard preview the remaining width beside 480px chat, independent of saved split', () => {
+    const layout = resolveWorkSurfaceLayout({ chatOpen: true, panelOpen: true, splitRatio: 0.8, laptopPreview: true })
+    expect(layout.gridStyle).toEqual({ '--work-split-columns': 'min(480px, calc(100% - 240px)) minmax(240px, 1fr)' })
+  })
   it('keeps the context bubble visible despite an older closed-pane preference', () => {
     const layout = resolveWorkSurfaceLayout({ chatOpen: true, panelOpen: false, splitRatio: 0.5, compactContext: true })
     expect(layout.showPanel).toBe(true)

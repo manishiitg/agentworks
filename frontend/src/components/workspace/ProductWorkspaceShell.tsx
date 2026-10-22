@@ -6,11 +6,11 @@ import { WorkspaceTopToolbar } from './WorkspaceTopToolbar'
 /** Complete split workspace used by Crew, Code, Vault and Brain. Product surfaces
  * supply content; pane geometry, tabs row and reopen controls have one owner. */
 export function ProductWorkspaceShell({
-  chatOpen, panelOpen, splitRatio, mobilePreview = false, mobilePaneWidth, mobilePane, splitRef,
+  chatOpen, panelOpen, splitRatio, mobilePreview = false, laptopPreview = false, mobilePaneWidth, mobilePane, splitRef,
   onOpenChat, onOpenWorkspace, tabs, toolbar, chat, workspace, divider,
   chatProps, workspaceProps, testId, compactContext = false, toolbarWhenPanelClosed = false, navigationActive = true, retainChat = false, retainWorkspace = false, showChatReopenControl = true,
 }: {
-  chatOpen: boolean; panelOpen: boolean; splitRatio: number; mobilePreview?: boolean; mobilePaneWidth?: number | null
+  chatOpen: boolean; panelOpen: boolean; splitRatio: number; mobilePreview?: boolean; laptopPreview?: boolean; mobilePaneWidth?: number | null
   /** Products with a phone pane switch keep both panes mounted while hiding the inactive one. */
   mobilePane?: 'chat' | 'workspace'
   splitRef?: Ref<HTMLDivElement>
@@ -28,7 +28,7 @@ export function ProductWorkspaceShell({
   /** Products with an explicit Assistant action do not need the edge tab. */
   showChatReopenControl?: boolean
 }) {
-  const layout = resolveWorkSurfaceLayout({ chatOpen, panelOpen, splitRatio, mobilePreview, mobilePaneWidth, mobilePane, compactContext })
+  const layout = resolveWorkSurfaceLayout({ chatOpen, panelOpen, splitRatio, mobilePreview, laptopPreview, mobilePaneWidth, mobilePane, compactContext })
   const chatClassName = mobilePane === 'workspace' && panelOpen
     ? `hidden md:flex ${layout.chatClassName.replace(/^flex /, '')}` : layout.chatClassName
   const workspaceClassName = mobilePane === 'chat' && chatOpen

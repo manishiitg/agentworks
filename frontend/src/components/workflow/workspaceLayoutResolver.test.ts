@@ -11,6 +11,10 @@ const base: WorkspaceLayoutInput = {
 }
 
 describe('resolveWorkspaceLayout', () => {
+  it('gives laptop dashboard preview the remaining width beside 480px chat, independent of saved split', () => {
+    const layout = resolveWorkspaceLayout({ ...base, reportPreviewPreference: 'desktop', workspaceSplitRatio: 0.8, laptopPreview: true })
+    expect(layout.splitLayoutStyle).toEqual({ '--workflow-split-columns': 'min(480px, calc(100% - 240px)) minmax(240px, 1fr)' })
+  })
   it('keeps the context bubble visible despite an older closed-pane preference', () => {
     const layout = resolveWorkspaceLayout({ ...base, compactContext: true, showWorkspacePane: false })
     expect(layout.workspacePaneVisible).toBe(true)

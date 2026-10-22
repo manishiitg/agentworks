@@ -39,8 +39,9 @@ export function DashboardLayoutControls({ width, minWidth = 15, maxWidth = 85, w
     {open && <div id={id} className="absolute right-0 top-full z-50 mt-2 w-64 space-y-4 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-lg" aria-label="Dashboard layout options">
       <p className="text-xs font-semibold">Dashboard layout</p>
       <div className="flex gap-1">{([
-        ['mobile', Smartphone, 'Mobile preview'], ['tablet', Tablet, 'Tablet preview'], ['desktop', Laptop, 'Desktop preview'],
+        ['mobile', Smartphone, 'Mobile preview'], ['tablet', Tablet, 'Tablet preview'], ['desktop', Laptop, 'Laptop preview'],
       ] as const).map(([device, Icon, label]) => <button key={device} type="button" aria-label={label} title={label} aria-pressed={previewDevice === device} onClick={() => onPreviewDeviceChange(device)} className={`flex h-8 flex-1 items-center justify-center rounded-md ${previewDevice === device ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}><Icon className="h-4 w-4" /></button>)}</div>
+      {previewDevice === 'desktop' && <p className="text-xs text-muted-foreground">480px chat · dashboard fills the remaining space</p>}
       {onWidthChange && <label className="block space-y-2 text-xs"><span className="flex justify-between gap-2"><span>Dashboard width</span><span className="text-muted-foreground">{Math.round(width)}{widthUnit}</span></span><input type="range" aria-label="Dashboard width" min={minWidth} max={maxWidth} value={width} onChange={event => onWidthChange(Number(event.target.value))} className="w-full accent-primary" /></label>}
       <div className="space-y-1 border-t border-border pt-2">
         <button type="button" onClick={() => { onToggleChat(); setOpen(false) }} className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs hover:bg-muted">{chatVisible ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}{chatVisible ? 'Expand dashboard' : 'Show chat alongside'}</button>

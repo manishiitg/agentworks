@@ -4,6 +4,8 @@ import type { ReportPreviewDevice } from '../../utils/reportPreviewPreference'
 
 export interface WorkspaceLayoutInput {
   compactContext?: boolean
+  /** Dashboard laptop preview keeps chat compact and lets the page fill the rest. */
+  laptopPreview?: boolean
   showChatArea: boolean
   showWorkspacePane: boolean
   focusedPane: FocusedPane
@@ -38,6 +40,7 @@ export interface WorkspaceLayout {
 /** Grid track for the workspace pane in Mobile preview. */
 export const CONTEXT_PANE_COLUMN = 'clamp(240px, 26vw, 316px)'
 export const MOBILE_PREVIEW_PANE_COLUMN = 'min(494px, calc(100% - 240px))'
+export const LAPTOP_PREVIEW_COLUMNS = 'min(480px, calc(100% - 240px)) minmax(240px, 1fr)'
 
 export function resolveWorkspaceLayout(input: WorkspaceLayoutInput): WorkspaceLayout {
   const {
@@ -83,6 +86,7 @@ export function resolveWorkspaceLayout(input: WorkspaceLayoutInput): WorkspaceLa
   const splitLayoutStyle = showChatArea && workspacePaneVisible
     ? ({ '--workflow-split-columns': input.compactContext ? `minmax(240px, 1fr) ${CONTEXT_PANE_COLUMN}` : shouldUseMobileReportPane
       ? `minmax(240px, 1fr) ${MOBILE_PREVIEW_PANE_COLUMN}`
+      : input.laptopPreview ? LAPTOP_PREVIEW_COLUMNS
       : `minmax(240px, ${workspaceSplitRatio}fr) minmax(240px, ${1 - workspaceSplitRatio}fr)` } as CSSProperties)
     : undefined
   const canvasPaneClassName = !showChatArea

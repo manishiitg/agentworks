@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { CONTEXT_PANE_COLUMN, MOBILE_PREVIEW_PANE_COLUMN } from '../../components/workflow/workspaceLayoutResolver'
+import { CONTEXT_PANE_COLUMN, LAPTOP_PREVIEW_COLUMNS, MOBILE_PREVIEW_PANE_COLUMN } from '../../components/workflow/workspaceLayoutResolver'
 
 export interface WorkSurfaceLayoutInput {
   compactContext?: boolean
@@ -8,6 +8,7 @@ export interface WorkSurfaceLayoutInput {
   splitRatio: number
   /** Mobile preview pins the panel to phone width, like the Builder split. */
   mobilePreview?: boolean
+  laptopPreview?: boolean
   /** The phone column's width in px after the person dragged the rail in Mobile preview; absent keeps the phone-width default. */
   mobilePaneWidth?: number | null
   /** Phone pane switch (Brain): below md only this pane is shown, so the grid
@@ -52,6 +53,7 @@ export function resolveWorkSurfaceLayout(input: WorkSurfaceLayoutInput): WorkSur
     gridStyle: split
       ? ({ '--work-split-columns': input.compactContext ? `minmax(240px, 1fr) ${CONTEXT_PANE_COLUMN}` : mobilePreview
         ? `minmax(240px, 1fr) ${mobilePaneWidth ? `${Math.round(mobilePaneWidth)}px` : MOBILE_PREVIEW_PANE_COLUMN}`
+        : input.laptopPreview ? LAPTOP_PREVIEW_COLUMNS
         : `minmax(240px, ${splitRatio}fr) minmax(240px, ${1 - splitRatio}fr)` } as CSSProperties)
       : undefined,
     toolbarClassName: `${split ? 'md:col-span-2' : ''} col-start-1 row-start-1`,
