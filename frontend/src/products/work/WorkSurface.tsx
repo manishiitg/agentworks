@@ -768,7 +768,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
           const tabs = Object.values(state.chatTabs)
           const existing = tabs.find(tab => tab.metadata?.agentProfileConversationKey === chat.conversation_key || tab.sessionId === chat.session_id)
           if (existing) {
-            state.setTabMetadata(existing.tabId, { agentProfileTabOwnerID: chat.tab_owner_id, agentProfileTabOwnerName: chat.tab_owner_name, agentProfileTabCanWrite: chat.can_write })
+            if (existing.metadata?.agentProfileTabOwnerID !== chat.tab_owner_id || existing.metadata?.agentProfileTabOwnerName !== chat.tab_owner_name || existing.metadata?.agentProfileTabCanWrite !== chat.can_write) state.setTabMetadata(existing.tabId, { agentProfileTabOwnerID: chat.tab_owner_id, agentProfileTabOwnerName: chat.tab_owner_name, agentProfileTabCanWrite: chat.can_write })
             // A tab this browser kept from before the project's product changed still names the old one, which hides it
             // from this strip; the server's list decides which project and product the chat is in.
             if (existing.metadata?.agentProfileConversationKey !== chat.conversation_key || existing.metadata?.agentProfileIsMainChat || existing.metadata?.agentProfileId !== profileId || existing.metadata?.agentProfileProjectId !== projectId) state.setTabMetadata(existing.tabId, { agentProfileTabOwnerID: chat.tab_owner_id,
