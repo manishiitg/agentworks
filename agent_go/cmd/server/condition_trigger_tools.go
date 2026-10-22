@@ -312,8 +312,9 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 			}
 		}
 		// Only Code reads its private project's detector. Other adapters
-		// save the caller's supplied Python at a server-chosen path.
-		if base.WatcherSource != nil {
+		// save the caller's supplied Python at a server-chosen path. This follows the saved watcher (job), the same record that
+		// decides how its script is read and saved, so one saved before Crews had caller watchers keeps its own script file.
+		if job.WatcherSource != nil {
 			cfg.Script = "code/triggers/" + job.Schedule.ID + ".py"
 		}
 		if !strings.HasPrefix(cfg.Script, "code/triggers/") || path.Clean(cfg.Script) != cfg.Script {
