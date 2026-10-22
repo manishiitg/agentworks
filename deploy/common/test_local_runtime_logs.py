@@ -12,8 +12,9 @@ SOURCE = (REPO / "agent_go/run_server_with_logging.sh").read_text()
 
 def function(name):
     start = SOURCE.index(name + "() {\n")
-    following = re.search(r"^[a-zA-Z_][a-zA-Z_0-9]*\(\) \{", SOURCE[start + 1:], re.M)
-    end = start + 1 + following.start() if following else len(SOURCE)
+    body = start + len(name + "() {\n")
+    following = re.search(r"^[a-zA-Z_][a-zA-Z_0-9]*\(\) \{", SOURCE[body:], re.M)
+    end = body + following.start() if following else len(SOURCE)
     return SOURCE[start:end]
 
 
