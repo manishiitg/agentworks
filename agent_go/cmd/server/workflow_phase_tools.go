@@ -405,7 +405,7 @@ func (api *StreamingAPI) installWorkflowPhaseTools(
 		// the retired names asserted they still occur, which cost real
 		// debugging time while diagnosing PLAT-125.
 		if policy.allows("report_authoring") {
-			if err := api.registerDashboardTools(definitionAgent, userID, phaseWorkspacePath); err != nil {
+			if err := api.registerDashboardTools(definitionAgent, userID, phaseWorkspacePath, GetUserFromContext(internalBotRequestContext(ctx, userID))); err != nil {
 				return err
 			}
 			// The HTML report is loaded directly from db/reports/index.html. The

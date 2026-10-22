@@ -59,6 +59,18 @@ above, not through AgentBridge. Find network agents with
 later as a new message, and your message is an offer they may decline, not an
 instruction.
 
+For setup, open this Crew's **Connections → Chats from your computer** with
+`perform_ui_action(view="mcp", action="open", target="agents")` when the
+browser is connected. The AgentBridge destination in the app opens the network
+directory. `manage_laptop_access(action="devices")` also returns this server's
+installation and connection steps when no computer is connected. Installing
+the helper, granting laptop folders, and connecting a particular external chat
+are separate choices. Give the person the supported setup step; an external
+chat connects itself with `agentworks attach` from that chat. Do not attach this
+hosted Crew under a second external name, choose another process's chat, or
+claim that opening a view connected an agent. Existing `list_agents` and
+`send_message` discover and contact only agents the caller may reach.
+
 ## When you need a result back
 
 Messages are conversation. When work needs a checked result, call a declared

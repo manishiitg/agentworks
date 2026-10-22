@@ -12,7 +12,7 @@ import (
 
 // The app Builder and external MCP call the same authorized service. The app
 // tools are bound to their project and cannot retarget another workspace.
-func (api *StreamingAPI) registerDashboardTools(reg definitionToolRegistrar, userID, root string) error {
+func (api *StreamingAPI) registerDashboardTools(reg definitionToolRegistrar, userID, root string, caller *UserClaims) error {
 	var definitions []externalTool
 	dashboardToolDefinitions(func(name, description string, write, scoped bool, props map[string]any, required ...string) {
 		if name == "get_report_link" {
@@ -21,6 +21,8 @@ func (api *StreamingAPI) registerDashboardTools(reg definitionToolRegistrar, use
 		delete(props, "workspace")
 		delete(props, "workflow_id")
 		delete(props, "crew_id")
+		delete(props, "flow_id")
+		delete(props, "workspace_id")
 		keys := []any{}
 		for _, key := range required {
 			if key != "workspace" {
@@ -31,19 +33,28 @@ func (api *StreamingAPI) registerDashboardTools(reg definitionToolRegistrar, use
 	})
 	for _, def := range definitions {
 		execute := func(ctx context.Context, args map[string]interface{}) (string, error) {
-			payload := map[string]any{"workspace": root, "action": dashboardActions[def.Name]}
-			for key, value := range args {
-				payload[key] = value
+			payload := map[string]any{}
+			props, _ := def.InputSchema["properties"].(map[string]any)
+			for key := range props {
+				if value, ok := args[key]; ok {
+					payload[key] = value
+				}
 			}
+			payload["workspace"], payload["action"] = root, dashboardActions[def.Name]
 			data, err := json.Marshal(payload)
 			if err != nil {
 				return "", err
 			}
-			claims := GetUserFromContext(ctx)
-			if claims == nil {
-				claims = &UserClaims{UserID: userID, Username: userID}
-				ctx = context.WithValue(ctx, UserContextKey, claims)
+			claims := caller
+			if current := GetUserFromContext(ctx); current != nil && current.UserID != userID {
+				return "", fmt.Errorf("Open your own project chat to manage its dashboard")
 			}
+			// Preserve the authenticated turn's token even when a native
+			// executor supplies an unscoped context for the same person.
+			if claims == nil || claims.UserID != userID {
+				return "", fmt.Errorf("Open your own project chat to manage its dashboard")
+			}
+			ctx = context.WithValue(ctx, UserContextKey, claims)
 			request := httptest.NewRequest(http.MethodPost, "/api/dashboards", strings.NewReader(string(data))).WithContext(ctx)
 			response := httptest.NewRecorder()
 			api.handleDashboards(response, request)

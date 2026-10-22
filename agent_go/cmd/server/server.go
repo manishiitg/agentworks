@@ -7120,6 +7120,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			// Laptop setup (computer, folders, commands switch) is available from the Crew owner's own chat, as in the panel.
 			if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
+				if err := api.registerCrewSettingsChatTools(llmAgent, toolGate, resolvedProfile, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder, getBaseURL(r)); err != nil {
+					sendError(fmt.Sprintf("Failed to register Crew settings tools: %v", err), true)
+					return
+				}
 				if err := api.registerLaptopAccessChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder); err != nil {
 					sendError(fmt.Sprintf("Failed to register laptop setup tool: %v", err), true)
 					return

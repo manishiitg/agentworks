@@ -112,7 +112,7 @@ var featureCatalog = map[string]featureDefinition{
 		PromptExtension: "Files are enabled. Treat the current project folder as the durable source of truth and preserve unrelated user files.",
 	},
 	"browser": {
-		Tools:           []string{"agent_browser"},
+		Tools:           []string{"agent_browser", "browser_connections"},
 		Skills:          []string{"agent-browser"},
 		UIPanels:        []string{"browser"},
 		Capabilities:    map[string]CapabilityRequirement{"browser": CapabilityPreferred},
@@ -160,6 +160,7 @@ var featureCatalog = map[string]featureDefinition{
 		Capabilities: map[string]CapabilityRequirement{"voice": CapabilityPreferred},
 	},
 	"models": {
+		Tools:           []string{"manage_crew_model"},
 		Skills:          []string{"work-integrations"},
 		UIPanels:        []string{"models"},
 		PromptExtension: "Project model selection is enabled. Read the attached `work-integrations` skill before changing provider or model configuration. Use the configured provider and model for this conversation; never claim another runtime based on model self-identification.",
@@ -198,7 +199,7 @@ var featureCatalog = map[string]featureDefinition{
 	},
 	"dashboard": {
 		Dependencies:    []string{"database", "files"},
-		Tools:           []string{"validate_report_html", "preview_report", "get_dashboard_catalog", "list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "export_dashboard_motion", "publish_dashboard", "restore_dashboard", "get_dashboard_link"},
+		Tools:           []string{"validate_report_html", "preview_report", "get_dashboard_catalog", "list_dashboards", "get_dashboard", "create_dashboard", "update_dashboard", "validate_dashboard", "preview_dashboard", "export_dashboard_motion", "publish_dashboard", "restore_dashboard", "get_dashboard_link", "get_dashboard_share", "share_dashboard"},
 		Skills:          []string{"work-dashboard"},
 		UIPanels:        []string{"dashboard"},
 		PromptExtension: "A visual Dashboard is enabled. Read the attached `work-dashboard` skill before creating or changing it. Follow the user's design preferences; this skill describes platform usage, not a visual style. New dashboards use json-render and the complete supplied shadcn catalog; call get_dashboard_catalog, author index.json through the dashboard tools, validate/preview then publish. Existing HTML dashboards and revisions remain supported; preserve their format when editing them. Use the existing project data, Ask and published-function contracts.",
@@ -208,6 +209,7 @@ var featureCatalog = map[string]featureDefinition{
 		PromptExtension: "Project Memory is enabled. Keep durable decisions, preferences, and learned context in the project-root `MEMORY.md`, following the concise dated-entry template in the shared project-memory instructions. Keep reusable procedures in focused custom skills and link the two when that helps the user understand which guidance applies. Do not copy live facts into memory when they can be fetched again.",
 	},
 	"costs": {
+		Tools:    []string{"get_crew_costs"},
 		UIPanels: []string{"costs"},
 	},
 	"background-work": {
