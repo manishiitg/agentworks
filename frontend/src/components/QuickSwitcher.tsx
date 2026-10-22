@@ -1,7 +1,7 @@
 import { panelSearchAliases } from './workspace/workspacePanelGroups'
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { isWorkSideChatTab } from '../products/work/workTabs'
-import { Activity, CalendarClock, Cpu, Layers, LayoutDashboard, LayoutGrid, MessageSquare, NotebookText, PanelRight, Plus, Plug, PlugZap, ScrollText, Search, Users, X } from 'lucide-react'
+import { Activity, CalendarClock, Cpu, Layers, LayoutGrid, MessageSquare, NotebookText, PanelRight, Plus, Plug, PlugZap, ScrollText, Search, Users, X } from 'lucide-react'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useModeStore } from '../stores/useModeStore'
 import { useChatStore } from '../stores'
@@ -20,7 +20,6 @@ import type { WorkSession } from '../products/work/workSessions'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { usePanelSwitcherStore } from '../stores/usePanelSwitcherStore'
 import { useAuthStore } from '../stores/useAuthStore'
-import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { intersectAllowedProductSurfaces, isEnabledProductSurface, visibleProductSurfaceIDs } from '../products/productSurfaceConfig'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
 import { openQuickNavigation, quickNavigationItems, type QuickNavigationItem, type QuickNavigationScope } from '../utils/quickNavigation'
@@ -112,25 +111,7 @@ interface PanelItem {
   sectionId?: string
 }
 
-interface DashboardItem {
-  type: 'dashboard'
-  id: string
-  label: string
-  subtitle: string
-  searchText: string
-  isActive: false
-  lastAccessedAt: 0
-  activeSession?: undefined
-  hasLocalActivity: false
-  href: string
-  sourceScope: string
-}
-
-type QuickSwitcherItem = DashboardItem | PanelItem | WorkflowItem | ChatTabItem | CrewChatItem | ActiveWorkItem | QuickNavigationItem
-
-function dashboardDirectoryScope(account: string | undefined, server: string, origin: string): string {
-  return JSON.stringify([account ?? '', server, origin])
-}
+type QuickSwitcherItem = PanelItem | WorkflowItem | ChatTabItem | CrewChatItem | ActiveWorkItem | QuickNavigationItem
 
 const EMPTY_CHAT_TABS: Record<string, ChatTab> = {}
 const EMPTY_ACTIVE_SESSIONS: ActiveSessionInfo[] = []
@@ -252,7 +233,7 @@ function QuickNavigationIcon({ item }: { item: QuickNavigationItem }) {
   const surface = item.surface ?? (item.scope === 'workflows' ? 'agentworks' : item.scope === 'relays' ? 'relays' : item.scope === 'crew' ? 'work' : undefined)
   if (item.action === 'create' || item.scope === 'create') return <Plus className="h-4 w-4 shrink-0" aria-hidden="true" />
   if (surface) return <ProductSurfaceIcon surface={surface} />
-  const Icon = item.scope === 'dashboards' ? LayoutDashboard : item.scope === 'panels' ? PanelRight : item.scope === 'products' ? LayoutGrid : item.scope === 'chats' ? MessageSquare
+  const Icon = item.scope === 'panels' ? PanelRight : item.scope === 'products' ? LayoutGrid : item.scope === 'chats' ? MessageSquare
     : item.action === 'providers' ? Cpu : item.action === 'users' ? Users : item.action === 'mcp' ? Plug
     : item.action === 'schedules' ? CalendarClock : item.action === 'activity' ? NotebookText
     : item.action === 'vault-audit' ? ScrollText : item.action === 'vault-connect' ? PlugZap : Activity
@@ -292,29 +273,6 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   // the account may open it.
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const user = useAuthStore(state => state.user)
-  const directoryServer = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
-  const directoryOrigin = useWorkspaceConnectionStore(state => state.profiles.find(profile => profile.id === state.activeWorkspaceId)?.apiBaseUrl ?? '')
-  const directoryScope = dashboardDirectoryScope(user?.id, directoryServer, directoryOrigin)
-  const [dashboards, setDashboards] = useState<{ scope: string; items: DashboardItem[]; status: 'loading' | 'ready' | 'failed'; partial: boolean }>({ scope: '', items: [], status: 'loading', partial: false })
-  useEffect(() => {
-    if (!isOpen) return
-    const controller = new AbortController()
-    setDashboards({ scope: directoryScope, items: [], status: 'loading', partial: false })
-    // Same paginated, published and caller-filtered list as /dashboards.
-    // Load only while open; never persist another account/server's rows.
-    void import('../services/dashboardDirectory').then(async directory => {
-      const result = await directory.loadDashboardDirectory(controller.signal)
-      if (controller.signal.aborted) return
-      setDashboards({ scope: directoryScope, status: 'ready', partial: result.partial, items: result.dashboards.map(row => ({
-        type: 'dashboard', id: `dashboard:${row.workspace}:${row.dashboard_id}`, label: directory.dashboardDisplayName(row),
-        subtitle: `Dashboard${row.project_title ? ` · ${row.project_title}` : ''}${row.shared_with_me ? ' · Shared with you' : ''}`,
-        searchText: `${row.title ?? ''} ${row.project_title ?? ''} ${row.document_path} dashboard report`,
-        isActive: false, lastAccessedAt: 0, hasLocalActivity: false, href: directory.dashboardDirectoryLink(row), sourceScope: directoryScope,
-      })) })
-    }).catch(() => { if (!controller.signal.aborted) setDashboards({ scope: directoryScope, items: [], status: 'failed', partial: false }) })
-    return () => controller.abort()
-  }, [isOpen, directoryScope])
-  const dashboardItems = dashboards.scope === directoryScope ? dashboards.items : []
   const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
   const navigationItems = useMemo(() => quickNavigationItems(user, productSurface, isMultiUserMode), [user, productSurface, isMultiUserMode])
   const footerItems = navigationItems.filter(item => item.type === 'menu' && item.action !== 'create')
@@ -349,7 +307,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
   const panelItems = useMemo<PanelItem[]>(() => {
     if (!isOpen || !visibleProductSurfaceIDs(user?.allowed_products).includes(productSurface)) return []
-    return (panelEntry?.panels ?? []).flatMap(panel => {
+    return (panelEntry?.panels ?? []).filter(panel => panel.id !== 'dashboard' && panel.id !== 'report').flatMap(panel => {
       const common = { type: 'panel' as const, isActive: false as const, lastAccessedAt: 0 as const, hasLocalActivity: false as const, panelId: panel.id }
       return [
         { ...common, id: `panel:${panel.id}`, label: panel.label, subtitle: `Panel${panel.group ? ` · ${panel.group}` : ''}`, searchText: `${panel.label} ${panel.id} ${panel.group ?? ''} ${panelSearchAliases[panel.id] ?? ''}` },
@@ -526,13 +484,13 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         if (isWorkProductSession(item.session)) return visibleProducts.has('work')
       }
       return visibleProducts.has('agentworks') || visibleProducts.has('relays')
-    }), ...dashboardItems, ...navigationItems.filter(item => item.scope), ...navigationItems.filter(item => !item.scope), ...panelItems]
-  }, [isOpen, isWorkflowMode, isChatMode, productSurface, activePresetId, chatTabs, activeSessions, activeTabId, workflowPresets, recentPresetOrder, recentPresetAccessedAt, crewDirectory, navigationItems, panelItems, user?.allowed_products, dashboardItems])
+    }), ...navigationItems.filter(item => item.scope), ...navigationItems.filter(item => !item.scope), ...panelItems]
+  }, [isOpen, isWorkflowMode, isChatMode, productSurface, activePresetId, chatTabs, activeSessions, activeTabId, workflowPresets, recentPresetOrder, recentPresetAccessedAt, crewDirectory, navigationItems, panelItems, user?.allowed_products])
 
   // Filter and sort
   const filteredItems = useMemo<QuickSwitcherItem[]>(() => {
     const rawQuery = query.toLowerCase().trim()
-    const scopeMatch = rawQuery.match(/^@(active|workflows?|relays?|chats?|tabs|crew|products?|menus?|panels?|create|dashboards?)\s*/)
+    const scopeMatch = rawQuery.match(/^@(active|workflows?|relays?|chats?|tabs|crew|products?|menus?|panels?|create)\s*/)
     const scope = scopeMatch?.[1] || scopeFilter
     const q = scopeMatch ? rawQuery.slice(scopeMatch[0].length).trim() : rawQuery
     const scoped = scope
@@ -541,7 +499,6 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           // activity is local (no server session yet).
           const creates = (surface: string) => item.type === 'menu' && item.action === 'create' && item.surface === surface
           if (scope === 'create') return item.type === 'menu' && item.action === 'create'
-          if (scope === 'dashboard' || scope === 'dashboards') return item.type === 'dashboard'
           if (scope === 'active') return item.type === 'active' || (!item.activeSession && item.hasLocalActivity)
           if (scope === 'workflow' || scope === 'workflows') return (item.type === 'workflow' && item.preset.workflowKind !== 'relay') || creates('agentworks')
           if (scope === 'relay' || scope === 'relays') return (item.type === 'workflow' && item.preset.workflowKind === 'relay') || creates('relays')
@@ -623,15 +580,6 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   }, [selectedIndex])
 
   const handleSelect = useCallback(async (item: QuickSwitcherItem) => {
-    if (item.type === 'dashboard') {
-      const connection = useWorkspaceConnectionStore.getState()
-      const currentScope = dashboardDirectoryScope(useAuthStore.getState().user?.id, connection.activeWorkspaceId, connection.profiles.find(profile => profile.id === connection.activeWorkspaceId)?.apiBaseUrl ?? '')
-      if (item.sourceScope !== currentScope) return
-      onClose()
-      // The existing signed-in dashboard route rechecks access on open.
-      window.location.assign(item.href)
-      return
-    }
     if (item.type === 'panel') {
       const current = useProductSurfaceStore.getState().productSurface
       if (current !== productSurface || !quickNavigationItems(useAuthStore.getState().user, current).some(candidate => candidate.surface === current)) return
@@ -720,7 +668,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
   if (!isOpen) return null
 
-  const placeholder = 'Search work, dashboards, products, panels, or create something new...'
+  const placeholder = 'Search work, products, panels, or create something new...'
   const emptyText = query ? 'No matching items' : scopeFilter ? 'No items in this list' : 'No work to switch to. Search for a product or menu.'
   return (
     <div
@@ -758,8 +706,6 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           </kbd>
         </div>
 
-        {(dashboards.scope !== directoryScope || dashboards.status === 'loading') && <p role="status" className="px-4 py-1.5 text-xs text-muted-foreground">Loading dashboards…</p>}
-        {dashboards.scope === directoryScope && (dashboards.status === 'failed' || dashboards.partial) && <p role="status" className="px-4 py-1.5 text-xs text-muted-foreground">{dashboards.partial ? 'Some dashboards could not be loaded.' : 'Dashboards could not be loaded.'} Close and reopen search to retry.</p>}
 
         {/* Item list */}
         <div ref={listRef} className="overflow-y-auto max-h-[48vh]">
@@ -770,7 +716,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           ) : (
             filteredItems.map((item, index) => {
               const isSelected = index === selectedIndex
-              const ItemIcon = item.type === 'dashboard' ? LayoutDashboard : item.type === 'panel' ? PanelRight : item.type === 'workflow'
+              const ItemIcon = item.type === 'panel' ? PanelRight : item.type === 'workflow'
                 ? Layers
                 : item.type === 'product'
                   ? LayoutGrid
