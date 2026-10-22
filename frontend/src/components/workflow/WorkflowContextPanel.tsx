@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { ChevronRight, MessageSquareText, Settings2 } from 'lucide-react'
 import { PulseIcon } from './pulseIcon'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
@@ -24,6 +24,8 @@ const EMPTY_RECENT: string[] = []
 
 /** Current product admission controls the inventory; recents are presentation only. */
 export function WorkflowContextPanel({ workspacePath, relayMode = false }: { workspacePath: string | null; relayMode?: boolean }) {
+  const [pulseMenuOpen, setPulseMenuOpen] = useState(true)
+  const pulseMenuId = useId()
   const openView = useWorkflowStore(state => state.openWorkspaceView)
   const canWrite = useCanWriteWorkflow(workspacePath)
   const multiUser = useAuthStore(state => state.isMultiUserMode)
@@ -79,19 +81,22 @@ export function WorkflowContextPanel({ workspacePath, relayMode = false }: { wor
     return <Row key={item.id} icon={item.icon} hint={item.reportPath} detail={detail} attention={item.id === 'human-actions' && decisions.loaded && decisions.count > 0} onClick={() => open(item)}>{item.label}</Row>
   }
   return <WorkspaceContextCard>
-    {pulse && <details key={scope} open aria-label="Pulse menu" className="group/pulse">
-      <summary aria-label="Pulse" title="Your goal agent" className="flex min-h-8 cursor-pointer list-none items-center gap-2.5 rounded-md px-1 py-1.5 text-xs font-medium text-primary hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-        <PulseIcon aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-        <span className="min-w-0 flex-1">Pulse</span>
-        <span className={`text-[10px] font-normal ${menuOptions.pulseEnabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{menuOptions.pulseEnabled ? 'On' : 'Off'}</span>
-        <ChevronRight aria-hidden="true" className="h-3 w-3 text-muted-foreground transition-transform group-open/pulse:rotate-90" />
-      </summary>
-      <div role="group" aria-label="Pulse panels" className="ml-2.5 mt-1 space-y-0.5 border-l border-border pl-3">
+    {pulse && <div key={scope} role="group" aria-label="Pulse menu">
+      <div className="grid grid-cols-[minmax(0,1fr)_24px] items-center rounded-md bg-primary/5">
+        <Row icon={PulseIcon} hint="Open the full Pulse panel"
+          detail={<span className={menuOptions.pulseEnabled ? 'text-emerald-600 dark:text-emerald-400' : undefined}>{menuOptions.pulseEnabled ? 'On' : 'Off'}</span>}
+          onClick={() => open(pulse)}>Pulse</Row>
+        <button type="button" aria-label={pulseMenuOpen ? 'Hide Pulse panels' : 'Show Pulse panels'} aria-expanded={pulseMenuOpen} aria-controls={pulseMenuId}
+          onClick={() => setPulseMenuOpen(value => !value)} className="flex h-8 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${pulseMenuOpen ? 'rotate-90' : ''}`} />
+        </button>
+      </div>
+      <div id={pulseMenuId} hidden={!pulseMenuOpen} role="group" aria-label="Pulse panels" className="ml-2.5 mt-1 space-y-0.5 border-l border-border pl-3">
         <Row icon={MessageSquareText} onClick={() => open({ ...pulse, target: 'chat' })}>Talk to Pulse</Row>
         {pulseDecisions && renderItem(pulseDecisions)}
-        <Row icon={Settings2} onClick={() => open({ ...pulse, target: 'settings' })}>Settings</Row>
+        <Row icon={Settings2} onClick={() => open({ ...pulse, target: 'settings' })}>Pulse settings</Row>
       </div>
-    </details>}
+    </div>}
     {recent.length > 0 && <Group title="Recent">{recent.map(renderItem)}</Group>}
     {PROJECT_MENU_GROUPS.map(group => {
       const remaining = items.filter(item => item.group === group && !recentIDs.has(item.id))

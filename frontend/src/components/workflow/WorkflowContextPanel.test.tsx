@@ -110,28 +110,37 @@ it.each([false, true])('groups named dashboards once and preserves selection in 
   expect(host.querySelector('[aria-label="Project dashboards"]')?.closest('section')?.querySelector('h2')?.textContent).toBe('Recent')
 })
 
-it('groups real Pulse panels once above Recent, preserves targets and reflects OFF without activation', async () => {
+it('opens the full Pulse panel from its name, expands subpanels separately and preserves OFF', async () => {
   useProjectMenuHistoryStore.getState().visit(scope(), 'pulse')
   useProjectMenuHistoryStore.getState().visit(scope(), 'human-actions')
   await render()
-  const menu = host.querySelector<HTMLDetailsElement>('[aria-label="Pulse menu"]')!
-  const summary = menu.querySelector('summary')!
-  expect(summary.textContent).toBe('PulseOn')
-  expect(menu.open).toBe(true)
-  expect([...menu.querySelectorAll('button')].map(row => row.textContent)).toEqual(['Talk to Pulse', 'Decisions2 waiting', 'Settings'])
+  const menu = host.querySelector<HTMLElement>('[aria-label="Pulse menu"]')!
+  const full = menu.querySelector('button')!
+  const panels = menu.querySelector<HTMLElement>('[aria-label="Pulse panels"]')!
+  expect(full.textContent).toBe('PulseOn')
+  expect(panels.hidden).toBe(false)
+  expect([...panels.querySelectorAll('button')].map(row => row.textContent)).toEqual(['Talk to Pulse', 'Decisions2 waiting', 'Pulse settings'])
+  await act(async () => full.click())
+  expect(state.open).toHaveBeenLastCalledWith('pulse', undefined)
+  const toggle = menu.querySelector<HTMLButtonElement>('[aria-label="Hide Pulse panels"]')!
+  await act(async () => toggle.click())
+  expect(panels.hidden).toBe(true)
+  expect(state.open).toHaveBeenCalledTimes(1)
+  await act(async () => toggle.click())
+  expect(panels.hidden).toBe(false)
   expect(host.querySelectorAll('[aria-label="Pulse panels"]')).toHaveLength(1)
   expect([...host.querySelectorAll('h2')].some(node => node.textContent === 'Recent')).toBe(false)
-  await act(async () => menu.querySelectorAll('button')[0].click())
+  await act(async () => panels.querySelectorAll('button')[0].click())
   expect(state.open).toHaveBeenLastCalledWith('pulse', 'chat')
-  await act(async () => menu.querySelectorAll('button')[1].click())
+  await act(async () => panels.querySelectorAll('button')[1].click())
   expect(state.open).toHaveBeenLastCalledWith('human-actions', undefined)
-  await act(async () => menu.querySelectorAll('button')[2].click())
+  await act(async () => panels.querySelectorAll('button')[2].click())
   expect(state.open).toHaveBeenLastCalledWith('pulse', 'settings')
   expect([...host.querySelectorAll('button')].filter(node => node.textContent === 'Decisions2 waiting')).toHaveLength(1)
   state.enabled = false; await render()
-  expect(menu.querySelector('summary')!.textContent).toBe('PulseOff')
-  await act(async () => menu.querySelectorAll('button')[0].click())
-  expect(state.open).toHaveBeenLastCalledWith('pulse', 'chat')
+  expect(full.textContent).toBe('PulseOff')
+  await act(async () => full.click())
+  expect(state.open).toHaveBeenLastCalledWith('pulse', undefined)
   expect(state.enabled).toBe(false)
   await render(true)
   expect(host.querySelector('[aria-label="Pulse menu"]')).toBeNull()
