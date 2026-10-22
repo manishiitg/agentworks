@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"path"
@@ -478,6 +479,9 @@ func (api *StreamingAPI) crewSelectedSecretEnv(ctx context.Context, profileID, w
 		return nil
 	}
 	owner := api.projectSecretsOwner(userID, workspacePath)
+	if owner != userID {
+		log.Printf("[CREW_SECRETS] actor=%s owner=%s surface=mcp", userID, owner)
+	}
 	scoped := api.loadSelectedSecrets(ctx, owner, secretWorkspace, names)
 	if err := validateVaultSecretSelection(ctx, owner, scoped, globals); err != nil {
 		return nil

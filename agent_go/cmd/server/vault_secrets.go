@@ -243,7 +243,11 @@ func (api *StreamingAPI) validateQuerySecretSelection(ctx context.Context, userI
 	// when their own personal Vault grants differ. Other callers retain their
 	// existing admission identity; project access is checked by the turn.
 	if isCrewProjectPath(req.SelectedFolder) && crewProjectOwnedByCaller(userID, req.SelectedFolder) {
-		userID = api.projectSecretsOwner(userID, req.SelectedFolder)
+		owner := api.projectSecretsOwner(userID, req.SelectedFolder)
+		if owner != userID {
+			log.Printf("[CREW_SECRETS] actor=%s owner=%s surface=chat", userID, owner)
+		}
+		userID = owner
 	}
 	scoped := req.DecryptedSecrets
 	if (req.AgentMode == "workflow" || req.AgentMode == "workflow_phase") && req.SelectedGlobalSecrets != nil && len(*req.SelectedGlobalSecrets) > 0 {
