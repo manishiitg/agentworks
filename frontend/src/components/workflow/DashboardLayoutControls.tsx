@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { Laptop, PanelLeftClose, PanelLeftOpen, PanelRightClose, SlidersHorizontal, Smartphone, Tablet } from 'lucide-react'
+import { Laptop, PanelLeftClose, PanelLeftOpen, SlidersHorizontal, Smartphone, Tablet } from 'lucide-react'
 import type { ReportPreviewDevice } from '../../utils/reportPreviewPreference'
 
 const DashboardLayoutContext = createContext<ReactNode>(null)
@@ -10,7 +10,7 @@ export function DashboardLayoutActions() {
 }
 
 /** Dashboard sizing belongs to its header, not a floating workspace divider. */
-export function DashboardLayoutControls({ width, minWidth = 15, maxWidth = 85, widthUnit = '%', onWidthChange, previewDevice, onPreviewDeviceChange, chatVisible, onToggleChat, onClose }: {
+export function DashboardLayoutControls({ width, minWidth = 15, maxWidth = 85, widthUnit = '%', onWidthChange, previewDevice, onPreviewDeviceChange, chatVisible, onToggleChat }: {
   width: number
   minWidth?: number
   maxWidth?: number
@@ -20,7 +20,6 @@ export function DashboardLayoutControls({ width, minWidth = 15, maxWidth = 85, w
   onPreviewDeviceChange: (device: ReportPreviewDevice) => void
   chatVisible: boolean
   onToggleChat: () => void
-  onClose: () => void
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -45,7 +44,6 @@ export function DashboardLayoutControls({ width, minWidth = 15, maxWidth = 85, w
       {onWidthChange && <label className="block space-y-2 text-xs"><span className="flex justify-between gap-2"><span>Dashboard width</span><span className="text-muted-foreground">{Math.round(width)}{widthUnit}</span></span><input type="range" aria-label="Dashboard width" min={minWidth} max={maxWidth} value={width} onChange={event => onWidthChange(Number(event.target.value))} className="w-full accent-primary" /></label>}
       <div className="space-y-1 border-t border-border pt-2">
         <button type="button" onClick={() => { onToggleChat(); setOpen(false) }} className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs hover:bg-muted">{chatVisible ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}{chatVisible ? 'Expand dashboard' : 'Show chat alongside'}</button>
-        <button type="button" onClick={onClose} className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs hover:bg-muted"><PanelRightClose className="h-4 w-4" />Close dashboard panel</button>
       </div>
     </div>}
   </div>

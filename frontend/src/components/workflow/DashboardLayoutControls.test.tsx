@@ -6,15 +6,16 @@ import { DashboardLayoutActions, DashboardLayoutControls, DashboardLayoutProvide
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 it('keeps sizing inside the dashboard header with keyboard close and the original layout callbacks', async () => {
-  const width = vi.fn(), device = vi.fn(), toggle = vi.fn(), close = vi.fn()
+  const width = vi.fn(), device = vi.fn(), toggle = vi.fn()
   const host = document.createElement('div'); document.body.append(host)
   const root = createRoot(host)
   try {
-    await act(async () => root.render(<DashboardLayoutProvider value={<DashboardLayoutControls width={50} onWidthChange={width} previewDevice="desktop" onPreviewDeviceChange={device} chatVisible onToggleChat={toggle} onClose={close} />}><header><DashboardLayoutActions /></header><main /></DashboardLayoutProvider>))
+    await act(async () => root.render(<DashboardLayoutProvider value={<DashboardLayoutControls width={50} onWidthChange={width} previewDevice="tablet" onPreviewDeviceChange={device} chatVisible onToggleChat={toggle} />}><header><DashboardLayoutActions /></header><main /></DashboardLayoutProvider>))
     const button = host.querySelector<HTMLButtonElement>('[aria-label="Dashboard layout"]')!
     expect(button.closest('header')).not.toBeNull()
     expect(host.querySelector('[role="separator"]')).toBeNull()
     await act(async () => button.click())
+    expect(host.textContent).not.toContain('Close dashboard panel')
     const range = host.querySelector<HTMLInputElement>('input[type="range"]')!
     expect(range.getAttribute('aria-label')).toBe('Dashboard width')
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Mobile preview"]')!.click())

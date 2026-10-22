@@ -1018,11 +1018,6 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
     if (persist) writeWorkflowSplitPreference(workspacePath, ratio, reportPreviewPreference)
   }, [reportPreviewPreference, workspacePath])
 
-  const collapseWorkspaceFromRail = useCallback(() => {
-    setShowWorkspacePane(false)
-    setWorkspaceMinimized(true)
-  }, [setShowWorkspacePane, setWorkspaceMinimized])
-
   const collapseChatFromRail = useCallback(() => {
     setShowChatArea(false)
     setFocusedPane('preview')
@@ -1065,7 +1060,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   // point for every flag combination (see workspaceLayoutResolver.ts).
   const layout = resolveWorkspaceLayout({
     showChatArea,
-    showWorkspacePane,
+    showWorkspacePane: dashboardView || showWorkspacePane,
     focusedPane,
     reportPreviewPreference: dashboardView ? reportPreviewPreference : 'desktop',
     laptopPreview: dashboardView && reportPreviewPreference === 'desktop',
@@ -1285,7 +1280,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   })
 
   useWorkspaceReturn(relayMode ? 'relays' : 'agentworks', activePresetId ?? undefined, workflowWorkspaceView ?? undefined,
-    { chat_open: showChatArea, panel_open: workflowWorkspaceView === 'context' || showWorkspacePane, split_ratio: workspaceSplitRatio, navigation_mode: 'fixed', preview_device: reportPreviewPreference, focused_pane: focusedPane },
+    { chat_open: showChatArea, panel_open: dashboardView || workflowWorkspaceView === 'context' || showWorkspacePane, split_ratio: workspaceSplitRatio, navigation_mode: 'fixed', preview_device: reportPreviewPreference, focused_pane: focusedPane },
     saved => {
       setShowChatArea(saved.chat_open); setShowWorkspacePane(saved.panel_open)
       // This flag controls the Files sidebar, not the workspace panel. Opening
@@ -2263,7 +2258,6 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
       onPreviewDeviceChange={device => writeReportPreviewPreference(workspacePath, device)}
       chatVisible={showChatArea}
       onToggleChat={() => { if (showChatArea) collapseChatFromRail(); else handleToggleChatArea() }}
-      onClose={collapseWorkspaceFromRail}
     /> : null}>
     <WorkflowCanvas
       ref={canvasRef}
