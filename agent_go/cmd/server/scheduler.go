@@ -74,6 +74,7 @@ type ScheduleContext struct {
 	// across retries. A busy workflow must not extend a stale occurrence forever.
 	QueuedExpiresAt       time.Time
 	QueuedOccurrenceCount int
+	OrderedScheduleIDs    []string // enabled schedules sharing the serial workflow lease
 
 	// ProducedRunEvidence reports whether this invocation actually started the
 	// workflow and created or restarted a run folder. It is deliberately
@@ -587,6 +588,13 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 		Schedule:      sched,
 		Capabilities:  lockedScheduleCapabilities(manifest.Capabilities),
 		OwnerUserID:   workflowExecutionOwnerUserID(manifest),
+	}
+	if sched.ScheduleType != "webhook" && sched.ID != manualWorkflowPulseScheduleID && !scheduleAllowsParallel(sched) {
+		for _, candidate := range manifest.Schedules {
+			if candidate.Enabled && candidate.ScheduleType != "webhook" && candidate.ID != manualWorkflowPulseScheduleID && !scheduleAllowsParallel(candidate) {
+				sctx.OrderedScheduleIDs = append(sctx.OrderedScheduleIDs, candidate.ID)
+			}
+		}
 	}
 	if manifest.Kind == "relay" {
 		if groups := normalizeScheduleGroupNames(sched.GroupNames); len(groups) == 1 {
@@ -2286,7 +2294,7 @@ func (s *SchedulerService) resumeQueuedScheduleOccurrences(ctx context.Context, 
 		sctx.ScheduledFor = item.ScheduledFor
 		sctx.QueuedExpiresAt = item.ExpiresAt
 		sctx.QueuedOccurrenceCount = item.OccurrenceCount
-		launchKey := workflowScheduleRuntimeKey(item.ScopeID, item.ScheduleID)
+		_, _, launchKey := scheduleStateScope(sctx)
 		if !s.beginQueuedLaunch(launchKey) {
 			continue
 		}
@@ -4058,14 +4066,15 @@ func (s *SchedulerService) claimScheduleRun(ctx context.Context, sctx *ScheduleC
 		triggerSource = "cron"
 	}
 	run := schedulerstate.Run{
-		RunID:         runID,
-		ScopeType:     scopeType,
-		ScopeID:       scopeID,
-		LockKey:       lockKey,
-		ScheduleID:    sctx.Schedule.ID,
-		TriggerSource: triggerSource,
-		ScheduledFor:  sctx.ScheduledFor,
-		StartedAt:     startedAt,
+		RunID:              runID,
+		ScopeType:          scopeType,
+		ScopeID:            scopeID,
+		LockKey:            lockKey,
+		ScheduleID:         sctx.Schedule.ID,
+		TriggerSource:      triggerSource,
+		ScheduledFor:       sctx.ScheduledFor,
+		StartedAt:          startedAt,
+		OrderedScheduleIDs: sctx.OrderedScheduleIDs,
 	}
 	if triggerSource == "queued" {
 		return s.stateStore.BeginQueuedRun(ctx, run)

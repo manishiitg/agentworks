@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -62,20 +63,23 @@ func IsTerminal(state State) bool {
 }
 
 type Run struct {
-	RunID           string
-	ScopeType       string
-	ScopeID         string
-	LockKey         string
-	ScheduleID      string
-	TriggerSource   string
-	ScheduledFor    time.Time
-	State           State
-	StartedAt       time.Time
-	UpdatedAt       time.Time
-	CompletedAt     *time.Time
-	ActiveSessionID string
-	RunFolder       string
-	ErrorMessage    string
+	// OrderedScheduleIDs lists enabled schedules sharing this run's serial lane.
+	// Admission input only: parallel lanes and webhooks leave it empty.
+	OrderedScheduleIDs []string `json:"-"`
+	RunID              string
+	ScopeType          string
+	ScopeID            string
+	LockKey            string
+	ScheduleID         string
+	TriggerSource      string
+	ScheduledFor       time.Time
+	State              State
+	StartedAt          time.Time
+	UpdatedAt          time.Time
+	CompletedAt        *time.Time
+	ActiveSessionID    string
+	RunFolder          string
+	ErrorMessage       string
 }
 
 type Transition struct {
@@ -352,6 +356,9 @@ func (s *Store) beginRun(ctx context.Context, run Run, consumePending bool) erro
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := checkPendingPriority(ctx, tx, run); err != nil {
+		return err
+	}
 	if consumePending {
 		result, deleteErr := tx.ExecContext(ctx, `DELETE FROM schedule_pending_occurrences
 			WHERE scope_type=? AND scope_id=? AND schedule_id=?`, run.ScopeType, run.ScopeID, run.ScheduleID)
@@ -383,6 +390,45 @@ func (s *Store) beginRun(ctx context.Context, run Run, consumePending bool) erro
 		return err
 	}
 	return tx.Commit()
+}
+
+// Check priority inside the lease transaction: sorting the queue alone still
+// lets a concurrent cron or manual trigger take the workflow's free slot.
+func checkPendingPriority(ctx context.Context, tx *sql.Tx, run Run) error {
+	if len(run.OrderedScheduleIDs) == 0 {
+		return nil
+	}
+	competing := make(map[string]bool, len(run.OrderedScheduleIDs))
+	for _, id := range run.OrderedScheduleIDs {
+		competing[id] = true
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT schedule_id, scheduled_for, expires_at
+		FROM schedule_pending_occurrences WHERE scope_type=? AND scope_id=?`, run.ScopeType, run.ScopeID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, dueText, expiryText string
+		if err := rows.Scan(&id, &dueText, &expiryText); err != nil {
+			return err
+		}
+		if !competing[id] {
+			continue // Deleted, disabled, or independently parallel schedules.
+		}
+		due, err := parseTime(dueText)
+		if err != nil {
+			return err
+		}
+		expiry, err := parseTime(expiryText)
+		if err != nil {
+			return err
+		}
+		if run.StartedAt.Before(expiry) && due.Before(run.ScheduledFor) {
+			return fmt.Errorf("%w: schedule %s due %s is waiting first", ErrRunAlreadyActive, id, formatTime(due))
+		}
+	}
+	return rows.Err()
 }
 
 func (s *Store) Transition(ctx context.Context, transition Transition) error {
@@ -704,7 +750,7 @@ func (s *Store) ListPendingOccurrences(ctx context.Context) ([]PendingOccurrence
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT scope_type, scope_id, schedule_id,
 		scheduled_for, latest_scheduled_for, queued_at, expires_at, trigger_source, policy, occurrence_count, reason
-		FROM schedule_pending_occurrences ORDER BY queued_at ASC`)
+		FROM schedule_pending_occurrences ORDER BY queued_at ASC, scope_type, scope_id, schedule_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -731,7 +777,15 @@ func (s *Store) ListPendingOccurrences(ctx context.Context) ([]PendingOccurrence
 		}
 		pending = append(pending, item)
 	}
-	return pending, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Parse before comparing: RFC3339Nano text does not sort fractional and
+	// whole-second timestamps chronologically within the same second.
+	sort.SliceStable(pending, func(i, j int) bool {
+		return pending[i].ScheduledFor.Before(pending[j].ScheduledFor)
+	})
+	return pending, nil
 }
 
 func (s *Store) GetPendingOccurrence(ctx context.Context, scopeType, scopeID, scheduleID string) (PendingOccurrence, error) {
