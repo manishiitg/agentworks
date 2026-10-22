@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
-import { mkdtemp, readFile, mkdir, copyFile, symlink } from 'node:fs/promises'
+import { mkdtemp, readFile, mkdir, copyFile, symlink, unlink } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -85,4 +85,9 @@ try {
 execFileSync('go', ['test', './dashboards', '-run', '^TestJSONDashboardPublicationRetainsHTMLRevisions$', '-count=1'], { cwd: path.join(repo, 'workspace'), env: { ...process.env, DASHBOARD_JSON_TEST_FIXTURE: path.join(output, 'fixture.html') }, stdio: 'inherit' })
 await copyFile(path.join(frontend, 'dist/report-preview.js'), path.join(output, 'report-preview.js'))
 await symlink(frontend, path.join(output, 'frontend'))
-execFileSync('node', ['scripts/test-dashboard-json-browser.mjs'], { cwd: frontend, env: { ...process.env, DASHBOARD_JSON_QA_DIR: output, CHROME_PATH: chromium.executablePath() }, stdio: 'inherit' })
+try {
+  execFileSync('node', ['scripts/test-dashboard-json-browser.mjs'], { cwd: frontend, env: { ...process.env, DASHBOARD_JSON_QA_DIR: output, CHROME_PATH: chromium.executablePath() }, stdio: 'inherit' })
+} finally {
+  // Artifact upload follows symlinks; retain screenshots, not node_modules.
+  await unlink(path.join(output, 'frontend'))
+}
