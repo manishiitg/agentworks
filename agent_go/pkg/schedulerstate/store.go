@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -134,7 +135,8 @@ type Event struct {
 }
 
 type Store struct {
-	db *sql.DB
+	db                     *sql.DB
+	invalidPendingWarnings sync.Map
 }
 
 // Five-field cron has one-minute resolution. Retain at least the complete
@@ -356,7 +358,7 @@ func (s *Store) beginRun(ctx context.Context, run Run, consumePending bool) erro
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := checkPendingPriority(ctx, tx, run); err != nil {
+	if err := s.checkPendingPriority(ctx, tx, run); err != nil {
 		return err
 	}
 	if consumePending {
@@ -394,7 +396,7 @@ func (s *Store) beginRun(ctx context.Context, run Run, consumePending bool) erro
 
 // Check priority inside the lease transaction: sorting the queue alone still
 // lets a concurrent cron or manual trigger take the workflow's free slot.
-func checkPendingPriority(ctx context.Context, tx *sql.Tx, run Run) error {
+func (s *Store) checkPendingPriority(ctx context.Context, tx *sql.Tx, run Run) error {
 	if len(run.OrderedScheduleIDs) == 0 {
 		return nil
 	}
@@ -409,26 +411,32 @@ func checkPendingPriority(ctx context.Context, tx *sql.Tx, run Run) error {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var id, dueText, expiryText string
+		var id string
+		var dueText, expiryText sql.NullString
 		if err := rows.Scan(&id, &dueText, &expiryText); err != nil {
 			return err
 		}
 		if !competing[id] {
 			continue // Deleted, disabled, or independently parallel schedules.
 		}
-		due, err := parseTime(dueText)
-		if err != nil {
-			return err
-		}
-		expiry, err := parseTime(expiryText)
-		if err != nil {
-			return err
+		due, dueErr := parseTime(dueText.String)
+		expiry, expiryErr := parseTime(expiryText.String)
+		if !dueText.Valid || !expiryText.Valid || dueErr != nil || expiryErr != nil || due.IsZero() || expiry.IsZero() {
+			s.warnInvalidPending(run.ScopeType, run.ScopeID, id)
+			continue
 		}
 		if run.StartedAt.Before(expiry) && due.Before(run.ScheduledFor) {
 			return fmt.Errorf("%w: schedule %s due %s is waiting first", ErrRunAlreadyActive, id, formatTime(due))
 		}
 	}
 	return rows.Err()
+}
+
+func (s *Store) warnInvalidPending(scopeType, scopeID, scheduleID string) {
+	key := scopeType + "\x00" + scopeID + "\x00" + scheduleID
+	if _, warned := s.invalidPendingWarnings.LoadOrStore(key, true); !warned {
+		log.Printf("[SCHEDULER_STATE] ignoring unreadable pending timing scope=%s/%s schedule=%s", scopeType, scopeID, scheduleID)
+	}
 }
 
 func (s *Store) Transition(ctx context.Context, transition Transition) error {
@@ -758,22 +766,30 @@ func (s *Store) ListPendingOccurrences(ctx context.Context) ([]PendingOccurrence
 	var pending []PendingOccurrence
 	for rows.Next() {
 		var item PendingOccurrence
-		var scheduledFor, latestScheduledFor, queuedAt, expiresAt string
+		var scheduledFor, latestScheduledFor, queuedAt, expiresAt sql.NullString
 		if err := rows.Scan(&item.ScopeType, &item.ScopeID, &item.ScheduleID, &scheduledFor,
 			&latestScheduledFor, &queuedAt, &expiresAt, &item.TriggerSource, &item.Policy, &item.OccurrenceCount, &item.Reason); err != nil {
 			return nil, err
 		}
-		if item.ScheduledFor, err = parseTime(scheduledFor); err != nil {
-			return nil, err
+		times := []struct {
+			raw  sql.NullString
+			dest *time.Time
+		}{
+			{scheduledFor, &item.ScheduledFor}, {latestScheduledFor, &item.LatestScheduledFor},
+			{queuedAt, &item.QueuedAt}, {expiresAt, &item.ExpiresAt},
 		}
-		if item.QueuedAt, err = parseTime(queuedAt); err != nil {
-			return nil, err
+		valid := true
+		for _, field := range times {
+			parsed, parseErr := parseTime(field.raw.String)
+			if !field.raw.Valid || parseErr != nil || parsed.IsZero() {
+				valid = false
+				break
+			}
+			*field.dest = parsed
 		}
-		if item.LatestScheduledFor, err = parseTime(latestScheduledFor); err != nil {
-			return nil, err
-		}
-		if item.ExpiresAt, err = parseTime(expiresAt); err != nil {
-			return nil, err
+		if !valid {
+			s.warnInvalidPending(item.ScopeType, item.ScopeID, item.ScheduleID)
+			continue
 		}
 		pending = append(pending, item)
 	}

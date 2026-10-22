@@ -584,3 +584,29 @@ func TestRetiredPulseStagesReleaseLocksOnOpen(t *testing.T) {
 		t.Fatalf("Pulse active index lost: %v", err)
 	}
 }
+
+// A damaged queue timestamp must not hold every schedule in its workflow.
+func TestUnreadablePendingTimingDoesNotBlockAdmission(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := store.UpsertPendingOccurrence(ctx, PendingOccurrence{
+		ScopeType: "workflow", ScopeID: "Workflow/demo", ScheduleID: "damaged",
+		ScheduledFor: now.Add(-time.Hour), ExpiresAt: now.Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, `UPDATE schedule_pending_occurrences SET scheduled_for='unreadable'`); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := store.ListPendingOccurrences(ctx)
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("unreadable row stopped queue scan: %+v %v", pending, err)
+	}
+	if err := store.BeginRun(ctx, Run{
+		RunID: "next", ScopeType: "workflow", ScopeID: "Workflow/demo", LockKey: "workflow:demo",
+		ScheduleID: "next", ScheduledFor: now, OrderedScheduleIDs: []string{"damaged", "next"},
+	}); err != nil {
+		t.Fatalf("unreadable row blocked valid admission: %v", err)
+	}
+}
