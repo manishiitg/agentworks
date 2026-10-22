@@ -71,8 +71,7 @@ it('keeps MCP and Skills hidden for a secrets-only project and rejects their tar
   state.allowed_products = ['work']
   const host = await mount(CREW_PRODUCT, new Set(['secrets']))
   expect(host.querySelector('[data-content="secrets"]')).not.toBeNull()
-  expect(host.querySelector('nav')?.textContent).not.toContain('MCPs')
-  expect(host.querySelector('nav')?.textContent).not.toContain('Skills')
+  expect(host.querySelector('nav')).toBeNull()
   for (const target of ['connected', 'available', 'skills', 'vault', 'brain']) await act(async () => state.target(target))
   expect(host.querySelector('[data-content="secrets"]')).not.toBeNull()
   for (const target of ['mcp', 'skills', 'vault', 'brain']) expect(host.querySelector(`[data-content="${target}"]`)).toBeNull()
