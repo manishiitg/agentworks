@@ -460,10 +460,10 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		// readers keep AgentWorks-only tools. Hybrid needs an allowlist tool
 		// policy (agentprofiles validation); the switch is on by default, so a
 		// profile without one keeps AgentWorks-only tools instead of failing.
-		if crewProjectOwnedByCallerStrict(userID, crewRoot) && crew.Binding.ProjectNativeAgentTools && profile.ToolPolicy.IsAllowlist() {
+		if crewProjectOwnedByCaller(userID, crewRoot) && crew.Binding.ProjectNativeAgentTools && profile.ToolPolicy.IsAllowlist() {
 			profile.Runtime.AgentTools.Mode = "full"
 		}
-		if !crewProjectOwnedByCallerStrict(userID, crewRoot) {
+		if !crewProjectOwnedByCaller(userID, crewRoot) {
 			profile.Runtime.AgentTools.Mode = "mcp_only"
 		}
 		if !crewOwned {
@@ -1136,7 +1136,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			return err
 		}
 		ownGmail := agentprofiles.FeatureOption(resolved.Definition, "bots", "gmail") == "own"
-		if !readOnly && (agentprofiles.FeatureOption(resolved.Definition, "bots", "dm_only") != "true" || (ownGmail && crewProjectOwnedByCallerStrict(userID, workspacePath))) {
+		if !readOnly && (agentprofiles.FeatureOption(resolved.Definition, "bots", "dm_only") != "true" || (ownGmail && crewProjectOwnedByCaller(userID, workspacePath))) {
 			if err := api.registerGmailConnectionManagementTools(registrar, sessionID, workspacePath); err != nil {
 				return err
 			}

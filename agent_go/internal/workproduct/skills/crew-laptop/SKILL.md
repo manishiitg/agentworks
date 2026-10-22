@@ -5,13 +5,13 @@ description: Read when the person mentions their laptop or computer, a folder on
 
 # Laptop connection
 
-The Crew runs on the server. A connected laptop adds two separate things. Files: `list_local_files` and `copy_local_file_to_crew` for a Read folder, and also `write_local_file` for a Read & write folder. Commands: `execute_local_shell_command` runs a command in a Read & write folder as the person, only when the person has turned on "Run terminal commands" for this Crew. Nothing syncs.
+The Crew runs on the server. Every current owner shares its selected laptop, folders and commands switch; each keeps their own chat tabs. People only shared with use the dashboard and do not get laptop tools. A connected laptop adds two separate things. Files: `list_local_files` and `copy_local_file_to_crew` for a Read folder, and also `write_local_file` for a Read & write folder. Commands: `execute_local_shell_command` runs a command in a Read & write folder as the person, only when the person has turned on "Run terminal commands" for this Crew. Nothing syncs.
 
 ## Check first (read-only)
 
 Everything the Local laptop panel does you can do here with `manage_laptop_access`; the person never has to open the panel.
 
-1. `manage_laptop_access` with `devices` lists the person's connected computers. `get` shows the computer, folders and whether commands are on for this Crew.
+1. `manage_laptop_access` with `devices` lists the person's computers plus the computer already selected for this Crew. `get` shows the computer, folders and whether commands are on for this Crew.
 2. Tell the person plainly what you found: connected or not, which folder, Read or Read & write, and whether terminal commands are on.
 3. To set up or change: `browse` to find the folder, then `set` with the complete choice (device, every folder to keep with Read or Read & write, and `commands`). It takes effect from the next message. `list_local_files` with no folder shows the folders you can use now.
 

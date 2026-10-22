@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -63,6 +64,13 @@ func TestCrewCoOwnerHasPermissionsButNotIdentity(t *testing.T) {
 	ref := crewPathRef{Root: root, OwnerID: "owner", Shared: true}
 	if got := crewAccessFor(&UserClaims{UserID: "co", Username: "co"}, ref); got != crewAccessOwner {
 		t.Fatalf("co-owner access = %v, want owner", got)
+	}
+	if got := (&StreamingAPI{}).crewBrowserAccess(&UserClaims{UserID: "co"}, root); got != WorkflowAccessOwner {
+		t.Fatalf("co-owner browser access: %v", got)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "co"}))
+	if scope, err := personalConnectionItemScope(request, root, false, "Google", "Google apps"); err != nil || scope.Workspace != root {
+		t.Fatalf("co-owner project accounts: %+v %v", scope, err)
 	}
 	if got := crewAccessFor(&UserClaims{UserID: "ann", Username: "ann"}, ref); got != crewAccessNone {
 		t.Fatalf("a stranger on a private Crew got access %v", got)

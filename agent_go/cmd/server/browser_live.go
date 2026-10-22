@@ -82,7 +82,7 @@ func (api *StreamingAPI) crewBrowserAccess(claims *UserClaims, workspace string)
 	if claims == nil || strings.TrimSpace(claims.UserID) == "" || !isCrewProjectPath(workspace) {
 		return WorkflowAccessNone
 	}
-	if crewProjectOwnedByCallerStrict(claims.UserID, workspace) {
+	if crewProjectOwnedByCaller(claims.UserID, workspace) {
 		return WorkflowAccessOwner
 	}
 	if api.agentProfiles == nil {

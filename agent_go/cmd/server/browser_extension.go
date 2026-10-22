@@ -38,7 +38,7 @@ func (api *StreamingAPI) projectExtensionAccess(r *http.Request, workspace, prof
 	if claims == nil || !userAllowedProduct(claims, profile) {
 		return "", fmt.Errorf("Product access required")
 	}
-	if !crewProjectOwnedByCallerStrict(claims.UserID, workspace) {
+	if !crewProjectOwnedByCaller(claims.UserID, workspace) {
 		return "", fmt.Errorf("Project ownership required")
 	}
 	return api.browserWorkspaceAccess(r, workspace, profile, true)

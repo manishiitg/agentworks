@@ -40,6 +40,7 @@ esac
 	config := services.GmailConfig{GogPath: gog, GwsPath: gog, Connections: []services.GmailConnection{
 		{ID: "mine", DisplayName: "Personal account", Personal: true, OwnerID: "editor", Enabled: true, AuthBackend: "gog", ClientName: "personal-app", Email: "editor@example.com", AllowReadAccess: true},
 		{ID: "other", DisplayName: "Other account", Personal: true, OwnerID: "builder", Enabled: true},
+		{ID: "not-granted", DisplayName: "Unselected private account", Personal: true, OwnerID: "editor", Enabled: true},
 		{ID: "legacy", DisplayName: "Original Code account", Email: "original@example.com", AuthBackend: "gog", ClientName: "personal-app", AllowReadAccess: true, ScopeWorkspace: "_users/editor/Chats/Code/projects/original", OwnerID: "editor", Enabled: true},
 		{ID: "company", DisplayName: "Company account", Enabled: true},
 	}}
@@ -240,6 +241,37 @@ esac
 	// Shared Crew execution uses its selected account, independently of caller.
 	crew := "Crew/account-crew"
 	selectAccount("editor", "mine", crew, true, 200)
+	if _, err := owners.AddCoOwner("work", "account-crew", "builder"); err != nil {
+		t.Fatal(err)
+	}
+	selectAccount("builder", "other", crew, true, 200)
+	listed := httptest.NewRecorder()
+	router.ServeHTTP(listed, googleAppRequest(http.MethodGet, "/api/human-feedback/gmail/connections?workspace_path=Crew/account-crew", "", "builder"))
+	var connections GmailConnectionsResponse
+	if listed.Code != 200 || json.Unmarshal(listed.Body.Bytes(), &connections) != nil {
+		t.Fatalf("co-owner accounts: %d %s", listed.Code, listed.Body.String())
+	}
+	seen := map[string]bool{}
+	for _, account := range connections.Connections {
+		seen[account.ID] = true
+		if account.ID == "mine" && (account.CanManage || account.CanReconnect) {
+			t.Fatal("project access changed personal account ownership")
+		}
+	}
+	if !seen["mine"] || !seen["other"] || seen["not-granted"] || seen["legacy"] {
+		t.Fatalf("project account selection leaked private accounts: %v", seen)
+	}
+	coReconnect := httptest.NewRecorder()
+	startGmailOAuthHandler(api)(coReconnect, mux.SetURLVars(googleAppRequest(http.MethodPost, "/", "", "builder"), map[string]string{"id": "mine"}))
+	if coReconnect.Code != http.StatusForbidden {
+		t.Fatalf("co-owner personal reconnect: %d", coReconnect.Code)
+	}
+	coDisconnect := httptest.NewRecorder()
+	deleteGmailConnectionHandler(api)(coDisconnect, mux.SetURLVars(googleAppRequest(http.MethodDelete, "/", "", "builder"), map[string]string{"id": "mine"}))
+	if coDisconnect.Code != http.StatusForbidden {
+		t.Fatalf("co-owner personal disconnect: %d", coDisconnect.Code)
+	}
+	selectAccount("builder", "other", crew, false, 200)
 	// The connector is no longer a Builder. The owner's explicit decision is
 	// that the existing selection still works until someone removes it.
 	withMemoryUserDirectory(t, `{"users":[{"id":"builder","username":"builder","can_create":true},{"id":"editor","username":"editor"},{"id":"runner","username":"runner"},{"id":"boss","username":"boss","admin":true}]}`)
