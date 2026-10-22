@@ -14,6 +14,7 @@ import (
 // scheduler state, then restart discovery and use the same function dispatcher.
 // Creating the caller must not alter the product it watches.
 func TestConditionProductCallerOwnsDetectorAndCallsOwnCrew(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	env, ctx, root := agentEmailCrewFixture(t)
 	target := triggerTarget{Kind: triggerCallerCrew, Path: root, CrewID: "mail-checks", CrewProfile: "work", CrewOwner: "owner"}
 	if err := writeCrewFunctions(ctx, target, []crewFunction{{Name: "review", Instructions: "Review the supplied ticket."}}); err != nil {
