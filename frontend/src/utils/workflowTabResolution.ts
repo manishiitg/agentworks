@@ -103,7 +103,7 @@ export function isBlankWorkflowBuilderTab(
   if (!meta || meta.mode !== 'workflow') return false
   if (meta.phaseId !== 'workflow-builder') return false
   if (meta.workshopMode === 'run') return false
-  if (meta.isViewOnly === true) return false
+  if (meta.isViewOnly === true || meta.isExecutionRun === true) return false
   if (meta.presetQueryId !== presetQueryId) return false
   if (tab.name !== WORKFLOW_BUILDER_TAB_NAME && tab.name !== 'Workflow Builder') return false
   if (tab.isStreaming) return false
@@ -139,6 +139,7 @@ function idleWorkflowBuilderTabId(
       return meta?.mode === 'workflow' &&
         meta.phaseId === 'workflow-builder' &&
         meta.isViewOnly !== true &&
+        meta.isExecutionRun !== true &&
         meta.presetQueryId === presetQueryId &&
         !tab.isStreaming
     })
@@ -160,6 +161,7 @@ function persistentWorkflowBuilderTabId(
     .filter(tab => tab.metadata?.mode === 'workflow' &&
       tab.metadata.phaseId === 'workflow-builder' &&
       tab.metadata.isViewOnly !== true &&
+      tab.metadata.isExecutionRun !== true &&
       tab.metadata.presetQueryId === presetQueryId)
     .sort((a, b) => {
       const aBlank = isBlankWorkflowBuilderTab(a, presetQueryId, tabEvents)
@@ -182,7 +184,7 @@ function persistentWorkflowBuilderTabId(
 const pendingBuilderTabCreation = new Map<string, Promise<string>>()
 
 function isBuilderSession(metadata: TabMetadata): boolean {
-  return !metadata.isScheduledRun && !metadata.isBotRun && metadata.phaseId === 'workflow-builder'
+  return !metadata.isScheduledRun && !metadata.isBotRun && !metadata.isExecutionRun && metadata.phaseId === 'workflow-builder'
 }
 
 /** Whether an existing tab is the same *kind* of lane the session is. A

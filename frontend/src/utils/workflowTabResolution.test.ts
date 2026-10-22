@@ -137,6 +137,13 @@ describe('resolveWorkflowTabForSession', () => {
     expect(updateTabSessionId).not.toHaveBeenCalled()
   })
 
+  it('never rebinds an interactive Pulse conversation as the persistent Builder', async () => {
+    const pulse = tab({ tabId: 'pulse', name: 'Pulse', sessionId: 'schedule-goallead--goal-g1', metadata: { ...builder, isViewOnly: false, isScheduledRun: false, isExecutionRun: true } })
+    const { result, updateTabSessionId } = run([pulse], 'builder-session', builder)
+    expect(await result).toEqual({ tabId: 'new-tab', via: 'created' })
+    expect(updateTabSessionId).not.toHaveBeenCalled()
+  })
+
   it('picks the schedule tab, not the Builder chat, when both share a session id', async () => {
     const chat = tab({ tabId: 'chat', metadata: { ...builder } })
     const lane = tab({ tabId: 'lane' })

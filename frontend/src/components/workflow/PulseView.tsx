@@ -111,9 +111,11 @@ export default function PulseView({ workspacePath, monitorOn, monitorSaving, onT
           <button type="button" disabled={!canTalk} onClick={talk} className="text-sm font-medium text-primary disabled:opacity-50">Open Pulse chat</button></div>
         <p className="mt-1 text-xs text-muted-foreground">{monitorOn ? hasSoul ? 'Send a question to Pulse, or continue in its chat.' : 'Set a goal with Builder before messaging Pulse.' : 'Turn Pulse on before sending it a message.'}</p>
         <div className="mt-3 flex flex-wrap gap-2">{[
-          ['Progress', 'How are we progressing toward our goals? Use our latest measurements and evidence, and explain anything missing or out of date.'],
-          ['Blockers', 'What is blocking our goals? Check the latest evidence and pending decisions, and tell me what needs my attention.'],
-          ['Next action', 'What should we do next to move our goals forward? Explain why using the current evidence and work already underway.'],
+          ['Goal progress', 'How is the goal doing? Check the key numbers, their trends, and what is helping or blocking progress, using current evidence.'],
+          ['Current work', 'What are you working on now, and what comes next? Check the actual work in progress.'],
+          ['What worked?', 'What have you tried for the goal, what worked and what did not? Use the saved evidence and say where the result is unknown.'],
+          ['Biggest opportunity', 'What one change would move the goal most this week, and what do you need from me or Builder for it?'],
+          ['Needs my input', 'What decisions or information do you need from me, with your recommendation for each?'],
         ].map(([label, message]) => <button key={label} type="button" disabled={!canTalk || sending} onClick={() => void ask(message)} className="rounded-md border px-3 py-2 text-xs hover:bg-muted/40 disabled:opacity-50">{label}</button>)}</div>
         <form className="mt-3 flex flex-col items-end gap-2" onSubmit={event => { event.preventDefault(); void ask(question) }}>
           <textarea aria-label="Question for Pulse" placeholder="Ask Pulse a specific question…" value={question} onChange={event => setQuestion(event.target.value)} rows={2} disabled={!canTalk || sending} className="w-full resize-y rounded-lg border bg-background p-3 text-sm disabled:opacity-50" />

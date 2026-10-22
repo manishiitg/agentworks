@@ -69,7 +69,7 @@ export function cachedWorkflowTabIdForPreset(
   for (const tab of Object.values(tabs)) {
     const meta = tab.metadata
     if (meta?.mode !== 'workflow' || meta.presetQueryId !== presetId) continue
-    if (meta.phaseId !== 'workflow-builder' || meta.isViewOnly === true) continue
+    if (meta.phaseId !== 'workflow-builder' || meta.isViewOnly === true || meta.isExecutionRun === true) continue
     if (!tab.sessionId || (tabEvents[tab.sessionId]?.length ?? 0) === 0) continue
     if (!best || (tab.lastAccessedAt ?? tab.createdAt ?? 0) > (best.lastAccessedAt ?? best.createdAt ?? 0)) best = tab
   }

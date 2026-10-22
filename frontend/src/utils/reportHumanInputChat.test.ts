@@ -54,7 +54,7 @@ describe('Pulse decision chat routing', () => {
     })
 
     expect(selectWorkspacePaneWorkflowTab(
-      { schedule, chat },
+      { schedule, chat, pulse: tab('pulse', { metadata: { mode: 'workflow', presetQueryId: 'workflow-one', phaseId: 'workflow-builder', isExecutionRun: true } }) },
       'workflow-one',
     )?.tabId).toBe('chat')
   })
