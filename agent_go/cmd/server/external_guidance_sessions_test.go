@@ -131,12 +131,12 @@ func TestExternalGuidanceSessionsNative(t *testing.T) {
 	if handle == "" || prep["guidance_skills"] == nil || status(prep) != "delivered_to_client" {
 		t.Fatalf("preparation: %+v", prep)
 	}
-	// Dashboard preparation includes both reusable authoring and motion skills.
+	// Dashboard preparation includes shared panel, authoring and motion skills.
 	prepared := map[string]bool{}
 	for _, raw := range prep["guidance_skills"].([]any) {
 		prepared[raw.(map[string]any)["name"].(string)] = true
 	}
-	if len(prepared) != 2 || !prepared["dashboard-authoring"] || !prepared["motion-guide"] {
+	if len(prepared) != 3 || !prepared["dashboard-authoring"] || !prepared["motion-guide"] || !prepared["panel-dashboard"] {
 		t.Fatalf("dashboard preparation skills: %+v", prepared)
 	}
 	// A second conversation with the same identity has its own independent handle.

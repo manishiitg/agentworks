@@ -84,7 +84,9 @@ it('keeps role and sharing gates for current and recent items', async () => {
 })
 
 it('retains separate Relay graph, runs and code targets', async () => {
+  state.multiUser = true
   await render(true)
+  expect(button('Team')).toBeUndefined()
   for (const [label, target] of [['Flow', 'graph'], ['Runs', 'calls'], ['Code', 'source']]) {
     await act(async () => button(label).click()); expect(state.open).toHaveBeenLastCalledWith('flow', target)
   }

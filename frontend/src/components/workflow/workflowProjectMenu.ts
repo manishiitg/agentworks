@@ -46,7 +46,7 @@ export function workflowProjectMenuItems({ relayMode = false, isMultiUser = fals
   }
   add('mcp', 'Use', 'MCP access', Cable, 'cli', 'Use from other apps')
   if (canShare) add('mcp', 'Share', 'People & access', ShieldCheck, 'share')
-  if (isMultiUser) add('access', 'Share', 'Team', ShieldCheck, 'workflow')
+  if (isMultiUser && !relayMode) add('access', 'Share', 'Team', ShieldCheck, 'workflow')
   if (!relayMode) {
     add('publish', 'Share', 'Publish', Globe)
     add('notify', 'Share', 'Notify', BellRing)

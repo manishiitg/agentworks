@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"unicode"
@@ -255,6 +256,11 @@ func TestExternalGuidanceTopicsDiscloseUnavailableTools(t *testing.T) {
 		}
 		for name := range vocab {
 			if exposed[name] || !externalGuidanceMentions(content, name) {
+				continue
+			}
+			// A canonical action qualified by its admitted compound tool is
+			// usable even when the action name is not a root MCP tool.
+			if strings.Contains(content, " action="+name) && !slices.Contains(externalNamedOperationsFor(nil, content), name) {
 				continue
 			}
 			covered[name] = true

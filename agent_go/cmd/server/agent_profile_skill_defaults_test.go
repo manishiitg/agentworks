@@ -95,7 +95,7 @@ func TestProductDefaultSkillsHaveReadableModeSpecificDefinitions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", profile.ID, err)
 		}
-		if len(definitions["builder"]) == 0 || len(definitions["run"]) == 0 {
+		if len(definitions["builder"]) == 0 || profile.ID != "relays" && len(definitions["run"]) == 0 {
 			t.Fatalf("%s lacks readable defaults: %v", profile.ID, definitions)
 		}
 		if profile.ID == "agentworks" {

@@ -72,7 +72,7 @@ func TestExternalGuidanceCatalogAndWorkflowSkills(t *testing.T) {
 		}
 	}
 	for i := 0; i < 3; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/api/external/v1/tools?names=needs_you", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/external/v1/tools?names=list_workflows", nil)
 		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, claims))
 		w := httptest.NewRecorder()
 		f.api.handleExternalTools(w, req)
@@ -143,22 +143,20 @@ func TestExternalGuidanceCatalogAndWorkflowSkills(t *testing.T) {
 
 func TestExternalGuidanceCrewAndBrainSkillDelivery(t *testing.T) {
 	t.Run("Crew", func(t *testing.T) {
-		env := newTriggerLinkEnv(t)
-		env.api.agentProfiles = env.svc.registry
-		docs := t.TempDir()
-		t.Setenv("WORKSPACE_DOCS_PATH", docs)
+		f, _ := newExternalCrewCommandFixture(t)
+		docs := f.docs
 		t.Setenv("AUTH_SECRET", "crew-guidance-test-secret")
 		t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-		location := filepath.Join(docs, filepath.FromSlash(linkBetaPath), "skills", "custom", "SKILL.md")
+		location := filepath.Join(docs, filepath.FromSlash(externalCommandCrewRoot), "skills", "custom", "SKILL.md")
 		if err := os.MkdirAll(filepath.Dir(location), 0700); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(location, []byte("# Custom Crew instructions\n"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		claims := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{ID: "crew-guidance", Scopes: []string{"crews:read"}, CrewIDs: []string{"beta"}}}
-		args := map[string]any{"action": "read", "crew_id": "beta", "path": "skills/custom/SKILL.md"}
-		body := guidanceTestCall(t, env.api, claims, "files", args, "", 200)
+		claims := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{ID: "crew-guidance", Scopes: []string{"crews:read"}, CrewIDs: []string{"team"}}}
+		args := map[string]any{"action": "read", "crew_id": "team", "path": "skills/custom/SKILL.md"}
+		body := guidanceTestCall(t, f.api, claims, "files", args, "", 200)
 		handle := guidanceTestHandle(t, body)
 		if body["guidance_resources"].([]any)[0].(map[string]any)["source"] != "crew" {
 			t.Fatal("Crew skill source missing")
@@ -167,10 +165,10 @@ func TestExternalGuidanceCrewAndBrainSkillDelivery(t *testing.T) {
 		token := *claims.AccessToken
 		token.CrewIDs = []string{"alpha"}
 		copy.AccessToken = &token
-		if denied := guidanceTestCall(t, env.api, &copy, "files", args, handle, 404); denied["guidance"] != nil {
+		if denied := guidanceTestCall(t, f.api, &copy, "files", args, handle, 404); denied["guidance"] != nil {
 			t.Fatal("receipt bypassed current Crew bounds")
 		}
-		t.Cleanup(env.api.closeGuidanceSessions)
+		t.Cleanup(f.api.closeGuidanceSessions)
 	})
 	t.Run("Brain", func(t *testing.T) {
 		api, service := knowledgebaseServerTest(t)
